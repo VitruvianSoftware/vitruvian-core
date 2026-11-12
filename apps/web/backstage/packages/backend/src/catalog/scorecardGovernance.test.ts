@@ -30,11 +30,11 @@ const REPO_ROOT = resolve(__dirname, "../../../../../../..");
 describe("Service Maturity Scorecards & Governance", () => {
   const componentPaths = [
     "apps/web/backstage/catalog-info.yaml",
-    "apps/suites/tabula/catalog-info.yaml",
+    "apps/suites/vitruvian-tabs/catalog-info.yaml",
     "apps/web/oauth-user-inspector/catalog-info.yaml",
-    "apps/cli/devx/catalog-info.yaml",
-    "apps/cli/homelab/catalog-info.yaml",
-    "apps/mcp/slack/catalog-info.yaml",
+    "apps/cli/vitruvian-devx/catalog-info.yaml",
+    "apps/cli/vitruvian-homelab/catalog-info.yaml",
+    "apps/mcp/vitruvian-slack-mcp/catalog-info.yaml",
     "apps/desktop/vitruvian-code/catalog-info.yaml",
   ];
 
@@ -79,9 +79,9 @@ describe("Service Maturity Scorecards & Governance", () => {
 
   const goldComponentPaths = [
     "apps/web/backstage/catalog-info.yaml",
-    "apps/suites/tabula/catalog-info.yaml",
+    "apps/suites/vitruvian-tabs/catalog-info.yaml",
     "apps/web/oauth-user-inspector/catalog-info.yaml",
-    "apps/mcp/slack/catalog-info.yaml",
+    "apps/mcp/vitruvian-slack-mcp/catalog-info.yaml",
   ];
 
   it.each(goldComponentPaths)(

@@ -30,7 +30,7 @@ the first 80 characters, so the Mac has a record of what the phone did.
 | GET | `/v1/vms` | – | `{available:bool, reason:string, vms:[{name, status, vm_type, cpus:int, memory_bytes:int, disk_bytes:int, arch}]}` — `limactl list --json` (one object per line). `available:false` with a reason when limactl is absent or fails |
 | GET | `/v1/containers` | – | `{available, reason, runtime:"docker"|"podman"|"", containers:[{name, image, status}]}` — `docker ps --format '{{json .}}'`, then `podman ps --format json`; daemon down ⇒ `available:false`, reason = the tool's first stderr line |
 | GET | `/v1/k8s` | – | `{available, reason, context, nodes:[{name, ready:bool, version, roles:[string]}]}` — only when the agent was started with `--kube-context` (and optionally `--kubeconfig <file>`, since the lab cluster's config is not `~/.kube/config`); else `available:false, reason:"not configured (--kube-context)"`. Uses `kubectl [--kubeconfig F] --context X get nodes -o json` with a 5 s bound |
-| GET | `/v1/tools` | – | `{tools:{<name>:{available:bool, path}}}` for adb, agy, claude, docker, homespeaker, kubectl, limactl, ollama, osascript, podman, shortcuts, xcodebuild — PATH lookup on the agent's PATH, so "present" means "the exec endpoint can run it". The gallery uses it to say "not on this Mac" instead of offering Install |
+| GET | `/v1/tools` | – | `{tools:{<name>:{available:bool, path}}}` for adb, agy, claude, docker, speaker, kubectl, limactl, ollama, osascript, podman, shortcuts, xcodebuild — PATH lookup on the agent's PATH, so "present" means "the exec endpoint can run it". The gallery uses it to say "not on this Mac" instead of offering Install |
 | GET | `/v1/antigravity` | – | `{available, reason, version, models:[{id,label}], agents:[string]}` — `agy --version`, `agy models`, `agy agents`, refreshed every 10 min (models is a network call). agy has no build/eval/queue query; this is what it can honestly report |
 | GET | `/v1/ollama` | – | `{available, reason, models:[{name, id, size_bytes, modified}], running:[{name, id, size_bytes, processor, context, until}]}` — `ollama list` + `ollama ps`; daemon down ⇒ `available:false` with ollama's message. An idle daemon has `running:[]`, which is not an error |
 | GET | `/v1/audio` | – | `{volume_percent:int, muted:bool}` — `osascript -e 'get volume settings'` |
@@ -282,29 +282,29 @@ so a tailnet peer learns nothing about whether it guessed one.
 
 # v1.4 additions
 
-Same rules as above. One new module: **HomeSpeaker** (`apps/desktop/home-speaker`), the menu bar
+Same rules as above. One new module: **Vitruvian Speaker** (`apps/desktop/vitruvian-speaker`), the menu bar
 app (or Vitruvian extension) that reads coding-agent replies aloud on Google Home speakers.
 
-The agent never imports HomeSpeaker's code (the inter-app boundary forbids it) and **never reads or
-writes HomeSpeaker's settings, secrets, history, monitor-status, door or coding-agent hook files**.
-It asks the HomeSpeaker program instead, so the rules for a value (its choices, ranges and clamps)
-live in one place, HomeSpeaker, and the agent only carries them.
+The agent never imports Vitruvian Speaker's code (the inter-app boundary forbids it) and **never reads or
+writes Vitruvian Speaker's settings, secrets, history, monitor-status, door or coding-agent hook files**.
+It asks the Vitruvian Speaker program instead, so the rules for a value (its choices, ranges and clamps)
+live in one place, Vitruvian Speaker, and the agent only carries them.
 
 - **Which program.** The only file the agent still reads is the choice file
   `~/.gemini/speaker_door.json`, to learn which program is chosen: the app
-  (`/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker`) or the Vitruvian extension's
+  (`/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker`) or the Vitruvian extension's
   `bin/tool` (same flags). The choice file is read on every request, never written.
 - **Minimum version.** `--version` counts only on exit 0 with a `major.minor[.patch]` version; `--state` only on exit 0 with valid JSON; an `--apply` refusal (exit 1, JSON error) is a valid answer, a non-zero exit without JSON is an error. A replay is gated too (`--no-history` needs 1.41.0); plain say is not. Before the first `--state` or `--apply` of a request the agent runs
-  `<program> --version` (15 s bound). Below `1.41.0` (`MIN_HOME_SPEAKER_VERSION`) it never runs
+  `<program> --version` (15 s bound). Below `1.41.0` (`MIN_SPEAKER_VERSION`) it never runs
   `--state` or `--apply` (an older program would take them for unknown arguments and start its
   menu-bar app) and answers the **update sentence**:
-  `Update Home Speaker on <this Mac's name> (have X, need 1.41.0)`. `GET` returns it as
+  `Update Vitruvian Speaker on <this Mac's name> (have X, need 1.41.0)`. `GET` returns it as
   `{available:false, installed:true, reason:<sentence>}`; `POST` returns it as `409`.
 - **Not installed.** When the chosen program is missing, `GET` answers `installed:false,
-  available:false` with `reason:"HomeSpeaker is not installed at <path>"` and nothing is run;
+  available:false` with `reason:"Vitruvian Speaker is not installed at <path>"` and nothing is run;
   `POST` returns `409` with the same sentence.
 
-`GET /v1/homespeaker` → `{available, reason, installed, app_running, signed_in, enabled,
+`GET /v1/speaker` → `{available, reason, installed, app_running, signed_in, enabled,
 default_target, speech_length, structure_name, quiet_hours:{enabled,start,end,active},
 targets:[{key, name, room, type, selected}], last?:{text, target, source, at}, …}`
 
@@ -313,7 +313,7 @@ the fields below and the ones in the sections that follow; every field the phone
 name and meaning. A `--state` that times out, prints something that is not JSON, or has another
 contract version answers `{available:false, reason:"…"}` with the cause, not an error status.
 
-- `available` is the document's `config_initialized`; `false` carries Home Speaker's own
+- `available` is the document's `config_initialized`; `false` carries Vitruvian Speaker's own
   `config_problem`, or "has not been set up on this Mac". `installed` means the chosen program is
   there. `app_running` is `chosen_running`. `signed_in` is `sign_in.signed_in`; no token or key is
   ever in the document, only whether one is saved.
@@ -322,17 +322,17 @@ contract version answers `{available:false, reason:"…"}` with the cause, not a
   `poll_interval_seconds`). `targets` is `speakers` (`selected` is `is_default`); `quiet_hours`,
   `snooze_until`, `structure_*`, `homes` (`id`, `name`, `selected`), `available_voices` (`language` → `lang`),
   `custom_voices`, `local_voice_name`, `agents` (from `hooks`, including `stale_command` and `hook_program`), `legacy_launch_agent`,
-  `home_speaker_version`, `app_installed`, `owner_running`, `generic_settings` (`true` when `--state` carries a non-empty `settings[]` catalog), the `has_*` flags and monitor fields (from `sign_in` and `chat`) and
+  `speaker_version`, `app_installed`, `owner_running`, `generic_settings` (`true` when `--state` carries a non-empty `settings[]` catalog), the `has_*` flags and monitor fields (from `sign_in` and `chat`) and
   `recent` (the newest 5) / `last` come from the document under the same names.
 - `warnings` (`[string]`) is the program's own list of setup problems. It is new; older phones
   ignore it.
-- `/v1/tools` gains `homespeaker`, resolved by the bundle path (or the chosen extension) rather
+- `/v1/tools` gains `speaker`, resolved by the bundle path (or the chosen extension) rather
   than PATH, so the gallery can say "not on this Mac".
 
-`POST /v1/homespeaker` (act) turns the requested fields into `--apply --json` operations
+`POST /v1/speaker` (act) turns the requested fields into `--apply --json` operations
 (`{"contract_version":1,"operations":[…]}`) on the chosen program. The agent does no checking of
-its own: Home Speaker's rules are the one rule, so a value outside a range is clamped or refused
-by HomeSpeaker, not by the agent, and the reply is the `GET` shape read back afterwards.
+its own: Vitruvian Speaker's rules are the one rule, so a value outside a range is clamped or refused
+by Vitruvian Speaker, not by the agent, and the reply is the `GET` shape read back afterwards.
 
 | Request field | Operation |
 |---|---|
@@ -363,38 +363,38 @@ retries once on the program the refusal names (a second `not_chosen` is `409`). 
 `disable-rival…` is `agentHook` `disableRival` (agent `claude_code`) and `remove-legacy-agent` is
 `removeLegacyAgent`; both go alone, in the hook slot.
 
-Helper actions that do not touch Home Speaker's files run as before: clipboard speech
+Helper actions that do not touch Vitruvian Speaker's files run as before: clipboard speech
 (`speak_clipboard` → `--say`) and the voice preview (`preview_voice`, macOS `say` with the Mac voice
 `--state` reports).
 
-`POST /v1/homespeaker/say` (act) `{text}` → runs `HomeSpeaker --say <text>` (30 s bound) and
+`POST /v1/speaker/say` (act) `{text}` → runs `VitruvianSpeaker --say <text>` (30 s bound) and
 replies `{ok, output}` in the `/v1/argocd/sync` shape. `--say` is deliberate speech: it overrides
 quiet hours but honours the master switch, and reports a refusal in `output` with `ok:false`.
 409 when the app is not installed.
 
-Act log lines: `act homespeaker: enabled=false default_target=kitchen` and `act homespeaker: say …`.
+Act log lines: `act speaker: enabled=false default_target=kitchen` and `act speaker: say …`.
 
 ## v1.4.1: pause media while announcing
 
-`GET /v1/homespeaker` maps `pause_media` (bool) and `pause_media_extra_seconds` (number) from
-`--state --json`. `POST /v1/homespeaker` forwards both as `set` operations in `--apply --json`;
-HomeSpeaker validates the range and returns a refusal (400) if out of range.
+`GET /v1/speaker` maps `pause_media` (bool) and `pause_media_extra_seconds` (number) from
+`--state --json`. `POST /v1/speaker` forwards both as `set` operations in `--apply --json`;
+Vitruvian Speaker validates the range and returns a refusal (400) if out of range.
 
 ## v1.5: speaker volume and announce at a set volume
 
-`GET /v1/homespeaker/volume` (read) → `{available, reason?, speaker, percent, muted, online}` — the
-default speaker's volume, relayed from HomeSpeaker 1.9's `--volume`. Read, like `/v1/audio`: the
+`GET /v1/speaker/volume` (read) → `{available, reason?, speaker, percent, muted, online}` — the
+default speaker's volume, relayed from Vitruvian Speaker 1.9's `--volume`. Read, like `/v1/audio`: the
 speaker's own buttons show it to anyone in the room. `online:false` means `percent` is only the last
 level the speaker had; show it as offline. `available:false` with `reason` for Whole Home, a speaker
 with no volume control, or an app older than 1.9.
 
-`POST /v1/homespeaker/volume` (act) — exactly one of `{"percent": 0-100}` or `{"muted": bool}`; both
+`POST /v1/speaker/volume` (act) — exactly one of `{"percent": 0-100}` or `{"muted": bool}`; both
 or neither, or a percent out of range, is 400 and nothing runs. Runs `--set-volume` / `--mute` /
 `--unmute` (45 s bound) and answers in the `GET` shape with the level Google reports afterwards.
-Google reports a change ~3 s late and HomeSpeaker waits for it, so this takes several seconds.
+Google reports a change ~3 s late and Vitruvian Speaker waits for it, so this takes several seconds.
 
-`GET /v1/homespeaker` maps `announce_volume_enabled` (bool) and `announce_volume` (0-100) from
-`--state --json`, and `POST /v1/homespeaker` forwards both as `set` operations in `--apply --json`.
+`GET /v1/speaker` maps `announce_volume_enabled` (bool) and `announce_volume` (0-100) from
+`--state --json`, and `POST /v1/speaker` forwards both as `set` operations in `--apply --json`.
 
 # v1.5.1 corrections
 
@@ -543,16 +543,16 @@ prompts only.
 
 # v1.8 additions: speak on this Mac
 
-HomeSpeaker can speak on the Mac it runs on as well as (or instead of) the Google Home speakers.
-The contract is [`apps/desktop/home-speaker/docs/local-speech.md`](../../../desktop/home-speaker/docs/local-speech.md).
+Vitruvian Speaker can speak on the Mac it runs on as well as (or instead of) the Google Home speakers.
+The contract is [`apps/desktop/vitruvian-speaker/docs/local-speech.md`](../../../desktop/vitruvian-speaker/docs/local-speech.md).
 
-`GET /v1/homespeaker` gains `speak_home` (bool), `speak_local` (bool), `local_voice` (string, an
+`GET /v1/speaker` gains `speak_home` (bool), `speak_local` (bool), `local_voice` (string, an
 `AVSpeechSynthesisVoice` identifier) and `local_voice_name` (string: the identifier's last dotted
 component, e.g. `Aaron`; the raw identifier when that is not a plain name). Absent from the file
 means today's behaviour: `true`, `false` and `com.apple.ttsbundle.siri_Aaron_en-US_premium`.
 
-`POST /v1/homespeaker` accepts `speak_home` and `speak_local` (bools). Both `false` is accepted and
-written: the user asked for silence, and HomeSpeaker reports it. The voice is not settable here --
+`POST /v1/speaker` accepts `speak_home` and `speak_local` (bools). Both `false` is accepted and
+written: the user asked for silence, and Vitruvian Speaker reports it. The voice is not settable here --
 which voices are installed is only known on the Mac, so it is chosen there. As before, only the keys
 sent are written and every other key in the file is kept.
 
@@ -569,28 +569,28 @@ remains the only judge. Its button is the app link
 the address the phone already reached, and must be a bare `host[:port]` or the page is a 400. A
 code that is not six digits is a 400. The page sends `Content-Security-Policy: default-src 'none'`.
 
-# v1.10 additions: HomeSpeaker sources and replay
+# v1.10 additions: Vitruvian Speaker sources and replay
 
-HomeSpeaker 1.23 can switch each sender on and off under its master switch (`enabled`): the two
+Vitruvian Speaker 1.23 can switch each sender on and off under its master switch (`enabled`): the two
 coding agents, and the chat apps it watches. The phone gets the same switches, and a list of recent
 broadcasts it can replay with a tap.
 
-`GET /v1/homespeaker` gains `announce_claude_code`, `announce_antigravity`, `announce_opencode`,
+`GET /v1/speaker` gains `announce_claude_code`, `announce_antigravity`, `announce_opencode`,
 `slack_enabled`, `google_chat_enabled` and `beeper_enabled` (bool; the program's setting of the same
 name) and `recent` (`[{text, target, source, at}]`, the newest 5 of the program's history, newest
 first). `last` stays, and is `recent[0]` whenever both are present.
 
-`POST /v1/homespeaker` accepts the six switches as optional bools; each is a `set` operation. A body
+`POST /v1/speaker` accepts the six switches as optional bools; each is a `set` operation. A body
 with none of the recognised fields is 400.
 
-**Replay** is `POST /v1/homespeaker/say` with the broadcast's `text`; no new endpoint. Two notes:
+**Replay** is `POST /v1/speaker/say` with the broadcast's `text`; no new endpoint. Two notes:
 
 - The agent runs `--say` with `CLAUDECODE`, `ANTIGRAVITY_AGENT` and `AI_AGENT` removed from the
-  child's environment. HomeSpeaker 1.23 infers who is speaking from those, so an agent started
+  child's environment. Vitruvian Speaker 1.23 infers who is speaking from those, so an agent started
   from a coding agent's shell would otherwise have a replay held by that agent's switch. Removing
-  them works on every HomeSpeaker version; passing `--source user` would be refused by one older
+  them works on every Vitruvian Speaker version; passing `--source user` would be refused by one older
   than 1.23.
-- A replay runs `--say <text> --no-history` (Home Speaker 1.41+), so it is not listed again. The
+- A replay runs `--say <text> --no-history` (Vitruvian Speaker 1.41+), so it is not listed again. The
   agent no longer snapshots and restores a history file.
 
 The phone reads a reply without the five switches as an agent older than v1.10 and hides them. With
@@ -598,45 +598,45 @@ no `recent` it falls back to `last` as a one-row list.
 
 ---
 
-## v1.11 — HomeSpeaker door routing, Gemini TTS & announcement style
+## v1.11 — Vitruvian Speaker door routing, Gemini TTS & announcement style
 
-HomeSpeaker ships through two doors (`apps/desktop/home-speaker/Sources/HomeSpeakerCore/Door.swift`):
-the standalone `/Applications/HomeSpeaker.app` bundle (`"app"`) and the Vitruvian extension under
-`~/Library/Application Support/Vitruvian/Tools/dev.vitruvian.homespeaker` (`"extension"`). Which
+Vitruvian Speaker ships through two doors (`apps/desktop/vitruvian-speaker/Sources/VitruvianSpeakerCore/Door.swift`):
+the standalone `/Applications/Vitruvian Speaker.app` bundle (`"app"`) and the Vitruvian extension under
+`~/Library/Application Support/Vitruvian/Tools/dev.vitruvian.speaker` (`"extension"`). Which
 door is chosen is recorded in `~/.gemini/speaker_door.json`, which the agent reads (and never writes)
 to pick the program. `active_door` is the document's `active_door`; `active_door` in a POST is a
-`switchTo` operation, which Home Speaker refuses if that side is not installed (400).
+`switchTo` operation, which Vitruvian Speaker refuses if that side is not installed (400).
 
 When the choice file chooses `"extension"` (or records no choice and the standalone `.app` is
 absent) and the extension's `bin/tool` exists outside `.Trash`, every request goes to that program
 (`--version`, `--state`, `--apply`, `--say`, `--volume`, ...).
 
-`GET /v1/homespeaker` adds nine fields: `active_door` (`"app"` \| `"extension"`), `local_engine`,
+`GET /v1/speaker` adds nine fields: `active_door` (`"app"` \| `"extension"`), `local_engine`,
 `gemini_voice`, `has_gemini_key` (bool, the value never leaves the Mac), `announcement_style`,
 `style_model`, `beeper_announce`, `beeper_networks` (`[{key, name, state}]`; `state` is `"reading"`,
 `"muted"` or `"skipped"`, from `chat.beeper_networks`) and `mute_own_messages`. Each is the
 program's setting of that name (or its `sign_in` / `chat` entry).
 
-`POST /v1/homespeaker` accepts `local_engine`, `gemini_voice`, `announcement_style`, `style_model`
+`POST /v1/speaker` accepts `local_engine`, `gemini_voice`, `announcement_style`, `style_model`
 and `beeper_announce` as optional strings and `mute_own_messages` as an optional bool (each a `set`;
-Home Speaker refuses an unknown value with 400), and `beeper_network` as an optional
+Vitruvian Speaker refuses an unknown value with 400), and `beeper_network` as an optional
 `{"key": string, "reading": bool}` object (`setNetwork`).
 
 ---
 
 ## v1.12 — Phone announcements (`This phone`)
 
-HomeSpeaker can speak announcements on the paired Android phone over the phone bridge in addition to
+Vitruvian Speaker can speak announcements on the paired Android phone over the phone bridge in addition to
 (or instead of) the Google Home speakers and the Mac itself.
 
-`GET /v1/homespeaker` adds `speak_phone`, `phone_pause_media` and `phone_headphones_only` (the
+`GET /v1/speaker` adds `speak_phone`, `phone_pause_media` and `phone_headphones_only` (the
 program's settings) and `phone_connected` (bool): whether the phone bridge currently holds an open
 `/v1/phone/link` stream.
 
-`POST /v1/homespeaker` accepts `speak_phone`, `phone_pause_media` and `phone_headphones_only` as
+`POST /v1/speaker` accepts `speak_phone`, `phone_pause_media` and `phone_headphones_only` as
 optional bools; each is a `set` operation.
 
-`POST /v1/homespeaker/phone-say` — loopback (no bearer required from local processes on the Mac) or
+`POST /v1/speaker/phone-say` — loopback (no bearer required from local processes on the Mac) or
 act tier (pairing bearer token required from non-loopback peers), body up to 8 MiB:
 `{"text": string, "wav_base64"?: string, "pause_media"?: bool, "headphones_only"?: bool}`.
 - Blank `text` returns `400`.
@@ -651,7 +651,7 @@ act tier (pairing bearer token required from non-loopback peers), body up to 8 M
 
 ## Cast voice, cloned voices and a custom announcement style
 
-`GET /v1/homespeaker` adds `home_cast_voice` (bool: Google Home plays the selected local (Gemini)
+`GET /v1/speaker` adds `home_cast_voice` (bool: Google Home plays the selected local (Gemini)
 voice cast to it instead of its own cloud voice), `custom_voices` (`[{id, name}]`, from the
 document's `custom_voices`) and `custom_style_prompt` (the instruction used when `announcement_style`
 is `"custom"`, omitted when empty).
@@ -659,24 +659,24 @@ is `"custom"`, omitted when empty).
 `announcement_style` also accepts `"custom"`. `gemini_voice` is one of the prebuilt voices **or**
 the `id` of any entry in `custom_voices`; a stored value that is neither reads as `"Kore"`.
 
-`POST /v1/homespeaker` accepts `home_cast_voice` as an optional bool, `announcement_style:
+`POST /v1/speaker` accepts `home_cast_voice` as an optional bool, `announcement_style:
 "custom"`, and a `gemini_voice` matching a custom voice `id`; an unknown `gemini_voice` is refused by
-Home Speaker (400). `custom_voices` is read-only here; `custom_style_prompt` can be set or cleared
+Vitruvian Speaker (400). `custom_voices` is read-only here; `custom_style_prompt` can be set or cleared
 via POST.
 
 ---
 
-## Full Desktop HomeSpeaker parity
+## Full Desktop Vitruvian Speaker parity
 
-### `GET /v1/homespeaker` parity extensions
+### `GET /v1/speaker` parity extensions
 
-The following status and diagnostic fields bring `/v1/homespeaker` to full parity with desktop `HomeSpeakerToolCore`:
+The following status and diagnostic fields bring `/v1/speaker` to full parity with desktop `VitruvianSpeakerToolCore`:
 
 | Field | Type | Description |
 |---|---|---|
 | `quiet_hours.active` | bool | Whether quiet hours are currently silencing announcements |
 | `snooze_until` | string \| null | ISO-8601 UTC timestamp until which announcements are snoozed, or `null` when not snoozed |
-| `available_voices` | `[{id, name, lang}]` | Installed macOS voices, as Home Speaker lists them (`language` → `lang`) |
+| `available_voices` | `[{id, name, lang}]` | Installed macOS voices, as Vitruvian Speaker lists them (`language` → `lang`) |
 | `structure_id` | string | Google Home structure ID |
 | `homes` | `[{id, name}]` | Available Google Home structures discovered from targets |
 | `account_email` | string | Google account email address (`sign_in.email`) |
@@ -694,46 +694,46 @@ The following status and diagnostic fields bring `/v1/homespeaker` to full parit
 | `gws_installed` | bool | Whether `gws` CLI executable is installed on the Mac |
 | `gws_account` | string | Google Workspace account email configured for chat monitor |
 | `google_chat_source` | string | Backend for Google Chat (`"auto"`, `"api"`, or `"gws"`) |
-| `poll_interval` | int | Polling frequency in seconds (`poll_interval_seconds`; Home Speaker owns the default and range) |
+| `poll_interval` | int | Polling frequency in seconds (`poll_interval_seconds`; Vitruvian Speaker owns the default and range) |
 | `agents` | `[{agent, hook_state, speaks_twice, configured_by_instruction}]` | Integration status for `claude-code`, `antigravity`, and `opencode` (phone can install, update, or remove hooks for all three) |
-| `legacy_launch_agent` | bool | Whether Home Speaker reports the legacy chat-monitor launch agent |
+| `legacy_launch_agent` | bool | Whether Vitruvian Speaker reports the legacy chat-monitor launch agent |
 | `custom_oauth_client_id` | string | Saved Google Cloud OAuth client ID (always shown on phone) |
 | `has_custom_oauth_secret` | bool | Whether custom OAuth client secret is saved |
-| `home_speaker_version` | string | Version of the installed HomeSpeaker application |
-| `settings` | `[{key, kind, label, value, shown, choices?:[{value, label}], limits?:{min, max, step, default_value}}]` | Home Speaker's own `--state --json` catalog passed through verbatim when `available: true` (omitted when unavailable). Current phones read labels, choice lists, limits, and visibility rules directly from this array; top-level fields remain for older phones |
-| `outputs_label` | string | Home Speaker's summary of active outputs (`outputs_label` from `--state --json`), omitted when unavailable |
-| `outputs_footer` | string | Home Speaker's explanation of active outputs (`outputs_footer` from `--state --json`), omitted when unavailable |
-| `targets[].display_line` | string | Home Speaker's formatted label for each speaker (`speakers[].display_line` from `--state --json`) alongside `key`, `name`, `room`, `type`, and `selected` |
+| `speaker_version` | string | Version of the installed Vitruvian Speaker application |
+| `settings` | `[{key, kind, label, value, shown, choices?:[{value, label}], limits?:{min, max, step, default_value}}]` | Vitruvian Speaker's own `--state --json` catalog passed through verbatim when `available: true` (omitted when unavailable). Current phones read labels, choice lists, limits, and visibility rules directly from this array; top-level fields remain for older phones |
+| `outputs_label` | string | Vitruvian Speaker's summary of active outputs (`outputs_label` from `--state --json`), omitted when unavailable |
+| `outputs_footer` | string | Vitruvian Speaker's explanation of active outputs (`outputs_footer` from `--state --json`), omitted when unavailable |
+| `targets[].display_line` | string | Vitruvian Speaker's formatted label for each speaker (`speakers[].display_line` from `--state --json`) alongside `key`, `name`, `room`, `type`, and `selected` |
 
-`available_voices` comes from Home Speaker's `--state` (the agent no longer runs `say -v '?'` or caches a
-listing), so it follows whatever Home Speaker lists.
+`available_voices` comes from Vitruvian Speaker's `--state` (the agent no longer runs `say -v '?'` or caches a
+listing), so it follows whatever Vitruvian Speaker lists.
 
-### `POST /v1/homespeaker` parity updates
+### `POST /v1/speaker` parity updates
 
 The update endpoint supports these additional configuration actions and secret updates:
 
 | Field | Type | Behavior |
 |---|---|---|
-| `quiet_hours_start`, `quiet_hours_end` | string (`HH:MM`) | `set`; Home Speaker refuses invalid times (400) |
+| `quiet_hours_start`, `quiet_hours_end` | string (`HH:MM`) | `set`; Vitruvian Speaker refuses invalid times (400) |
 | `snooze_until` | string \| null | `""` or `null` clears the snooze (`snooze` with `clear`); a future ISO-8601 time is sent as the minutes to it (the program snoozes for `1`–`240` minutes); a time in the past or an unparseable one is 400 |
-| `snooze_minutes` | int | `snooze` with `minutes`; Home Speaker refuses values outside `1`–`240` (400) |
+| `snooze_minutes` | int | `snooze` with `minutes`; Vitruvian Speaker refuses values outside `1`–`240` (400) |
 | `custom_style_prompt` | string | Updates or clears phrasing rewrite instruction |
 | `local_voice` | string | `set` the macOS system voice identifier |
 | `preview_voice` | bool | Previews the Mac voice (the program's `local_voice`) locally via macOS `say` (never broadcasts to speakers) |
-| `test_media_pause` | bool | Executes `HomeSpeaker --test-media-pause` |
-| `active_door` | `"app"` \| `"extension"` | `switchTo`, sent last and alone; Home Speaker changes the choice file, not the agent |
-| `discover` | bool | Executes `HomeSpeaker --discover` to refresh targets |
-| `structure_id` | string | Switches the active home via `HomeSpeaker --discover --save --home <id>` |
+| `test_media_pause` | bool | Executes `VitruvianSpeaker --test-media-pause` |
+| `active_door` | `"app"` \| `"extension"` | `switchTo`, sent last and alone; Vitruvian Speaker changes the choice file, not the agent |
+| `discover` | bool | Executes `VitruvianSpeaker --discover` to refresh targets |
+| `structure_id` | string | Switches the active home via `VitruvianSpeaker --discover --save --home <id>` |
 | `remove_target` | string | `removeSpeaker` |
-| `sign_in` | bool | Launches `HomeSpeaker --sign-in` detached on the Mac so the user can complete Google Home OAuth in the Mac browser |
-| `sign_out` | bool | Runs `HomeSpeaker --sign-out` (the program clears its own tokens) |
+| `sign_in` | bool | Launches `VitruvianSpeaker --sign-in` detached on the Mac so the user can complete Google Home OAuth in the Mac browser |
+| `sign_out` | bool | Runs `VitruvianSpeaker --sign-out` (the program clears its own tokens) |
 | `import_antigravity` | bool | `importAntigravity` |
-| `grant_chat` | bool | Launches `HomeSpeaker --sign-in --chat` detached on the Mac so the user can grant Google Chat OAuth consent |
-| `disconnect_chat` | bool | Runs `HomeSpeaker --sign-out --chat` |
+| `grant_chat` | bool | Launches `VitruvianSpeaker --sign-in --chat` detached on the Mac so the user can grant Google Chat OAuth consent |
+| `disconnect_chat` | bool | Runs `VitruvianSpeaker --sign-out --chat` |
 | `speak_clipboard` | bool | Reads text from the macOS clipboard and announces it |
 | `google_chat_source` | `"auto"` \| `"api"` \| `"gws"` | `set` |
 | `gws_account` | string | Configures GWS account email for chat monitor |
-| `poll_interval` | int | `set` `poll_interval_seconds` (Home Speaker clamps or refuses out-of-range values) |
+| `poll_interval` | int | `set` `poll_interval_seconds` (Vitruvian Speaker clamps or refuses out-of-range values) |
 | `slack_token` | string | `setSecret` `slack` (empty string clears) |
 | `beeper_token` | string | `setSecret` `beeper` (empty string clears) |
 | `gemini_api_key` | string | `setSecret` `geminiKey` (empty string clears) |
@@ -744,48 +744,48 @@ The update endpoint supports these additional configuration actions and secret u
 
 ### Courier beside Beeper
 
-HomeSpeaker 1.37 reads chats from Courier as well as Beeper: the same local API on its own port,
+Vitruvian Speaker 1.37 reads chats from Courier as well as Beeper: the same local API on its own port,
 with its own token and its own switch, Announce choice and network list. The agent mirrors them the
 way it mirrors Beeper's.
 
-`GET /v1/homespeaker` adds `courier_enabled`, `courier_announce` (`"direct_and_mentions"` \| `"all"`),
+`GET /v1/speaker` adds `courier_enabled`, `courier_announce` (`"direct_and_mentions"` \| `"all"`),
 `courier_networks` (`[{key, name, state, read_anyway?}]`; `read_anyway: true`, sent only when true,
-marks a network read through Courier although Home Speaker's own Slack or Google Chat reader covers
+marks a network read through Courier although Vitruvian Speaker's own Slack or Google Chat reader covers
 it), `courier_networks_listed` / `beeper_networks_listed` (bool: whether the running monitor has
 listed that app's networks; until it has, only the saved mutes are known) and `has_courier_token`
 (bool, the value never leaves the Mac). All come from the document's settings and `chat` entry.
 
-`POST /v1/homespeaker` accepts:
+`POST /v1/speaker` accepts:
 
 | Field | Type | Operation |
 |---|---|---|
-| `courier_enabled` | bool | `set`. Home Speaker refuses turning it on while no Courier token is saved (400) |
+| `courier_enabled` | bool | `set`. Vitruvian Speaker refuses turning it on while no Courier token is saved (400) |
 | `courier_announce` | `"direct_and_mentions"` \| `"all"` | `set` |
 | `courier_network` | `{"key": string, "reading": bool}` | `setNetwork` (app `courier`), as `beeper_network` does Beeper's |
-| `courier_read_anyway` | `{"key": string, "on": bool}` | `setReadAnyway`: a network Home Speaker's own reader covers is read through Courier as well, which is how a second Slack workspace is heard |
-| `courier_token` | string | `setSecret` `courier` (never logged or echoed); an empty string clears it, and Home Speaker turns Courier off |
+| `courier_read_anyway` | `{"key": string, "on": bool}` | `setReadAnyway`: a network Vitruvian Speaker's own reader covers is read through Courier as well, which is how a second Slack workspace is heard |
+| `courier_token` | string | `setSecret` `courier` (never logged or echoed); an empty string clears it, and Vitruvian Speaker turns Courier off |
 
-### `POST /v1/homespeaker/say` replay support
+### `POST /v1/speaker/say` replay support
 
 Accepts `replay: true` or `replay_id: "<id>"`. A `replay_id` is looked up in the `recent` list of
 the program's `--state` (the agent reads no history file) and its text is said with
 `--say <text> --no-history`, so a replay is not recorded again; an id that is no longer there is
-400. Plain `POST /v1/homespeaker/say` stays plain `--say <text>`.
+400. Plain `POST /v1/speaker/say` stays plain `--say <text>`.
 
 ---
 
 ## Say who an announcement is from
 
-Home Speaker can start each announcement with the app it came from ("Claude: …"), or the app and
+Vitruvian Speaker can start each announcement with the app it came from ("Claude: …"), or the app and
 the session when several sessions of one app are talking ("Claude, Courier: …"). It is one choice
 setting, `announce_source`, off by default.
 
-`GET /v1/homespeaker` adds `announce_source` (`"off"` \| `"app"` \| `"app_and_session"`), read
-from the document's settings. An older Home Speaker sends nothing; the phone reads that as off and
+`GET /v1/speaker` adds `announce_source` (`"off"` \| `"app"` \| `"app_and_session"`), read
+from the document's settings. An older Vitruvian Speaker sends nothing; the phone reads that as off and
 hides the row, because the catalog has no `announce_source` entry.
 
-`POST /v1/homespeaker` accepts `announce_source` with the same values; it is a `set` operation, and
-Home Speaker rejects any other value.
+`POST /v1/speaker` accepts `announce_source` with the same values; it is a `set` operation, and
+Vitruvian Speaker rejects any other value.
 
 ---
 
@@ -812,7 +812,7 @@ Connects to the configured TV (`adb connect <address>`) and runs a single combin
 
 - `available`: `true` when `adb` is found on the Mac (`/opt/homebrew/bin/adb`, `/usr/local/bin/adb`, `~/Library/Android/sdk/platform-tools/adb`, or `PATH`).
 - `foreground`: one of `"Projectivy Home"`, `"SmartTube 4K"`, `"AerialViews 4K"`, `"Disney+"`, `"Netflix"`, `"Awake"`, or `"Standby"`.
-- `address`: read from `~/.config/vitruvian/tv.json` (`address` or `tvAddress`), falling back to `~/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.tv/storage.json`, then `"192.168.86.31:5555"`.
+- `address`: read from `~/.config/vitruvian/tv.json` (`address` or `tvAddress`), falling back to `~/Library/Application Support/com.vitruviansoftware.atrium/ToolData/dev.vitruvian.tv/storage.json`, then `"192.168.86.31:5555"`.
 
 ### `POST /v1/tv/act` (act — Bearer token)
 

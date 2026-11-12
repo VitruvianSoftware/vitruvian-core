@@ -243,7 +243,7 @@ fn production_checks_come_before_any_build() {
     let fx = fixture();
     for (tag, want) in [
         (None, "publish: GRADE=production needs RELEASE_TAG=gravastar-mouse-vX.Y.Z (the release-please tag); refusing to guess\n"),
-        (Some("esp32-s3-v1.0.0"), "publish: RELEASE_TAG=esp32-s3-v1.0.0 is not a gravastar-mouse-v* release; another component's release reached this rung\n"),
+        (Some("vitruvian-deck-v1.0.0"), "publish: RELEASE_TAG=vitruvian-deck-v1.0.0 is not a gravastar-mouse-v* release; another component's release reached this rung\n"),
         (Some("gravastar-mouse-v9.9.9"), "publish: gravastar-mouse-v9.9.9 is version 9.9.9, but this checkout is 0.1.2; check out the release tag first\n"),
     ] {
         let mut env = vec![("GRADE", "production")];

@@ -37,7 +37,7 @@ const vitruvianCodeReleaseEnvironmentName = "vitruvian-code-release"
 // vitruvianCodeReleaseEnvironment declares the environment and its single
 // deployment policy on the vitruvian-code repository. Only branch main may
 // deploy to it because release.yml runs exclusively on push to main (when
-// Copybara exports a release-please version bump). As with courier_release.go,
+// Copybara exports a release-please version bump). As with vitruvian_courier_release.go,
 // the secret values themselves live out of git and are pushed idempotently with
 // `REPO=VitruvianSoftware/vitruvian-code bazel run //tools/sync-env-secrets:apply -- vitruvian-code-release`
 // so CI applies of repo-config never wipe them. No required reviewer: the

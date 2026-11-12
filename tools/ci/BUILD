@@ -114,7 +114,7 @@ rust_test(
 )
 
 # The mirror's release workflow for the standalone Vitruvian Code app never runs here;
-# nexus-agent-mirror-toolchain.yaml rehearses its build and packaging on pull
+# vitruvian-code-mirror-toolchain.yaml rehearses its build and packaging on pull
 # requests. This fails when the steps the two share stop being the same, which
 # nothing else would report: the rehearsal would stay green while proving
 # nothing about the release. Reads both files as text; builds nothing.
@@ -124,10 +124,10 @@ rust_test(
     srcs = ["src/vitruvian_code_release_rehearsal_test.rs"],
     args = [
         "$(rootpath //apps/desktop/vitruvian-code:release_workflow)",
-        "$(rootpath //:.github/workflows/nexus-agent-mirror-toolchain.yaml)",
+        "$(rootpath //:.github/workflows/vitruvian-code-mirror-toolchain.yaml)",
     ],
     data = [
-        "//:.github/workflows/nexus-agent-mirror-toolchain.yaml",
+        "//:.github/workflows/vitruvian-code-mirror-toolchain.yaml",
         "//apps/desktop/vitruvian-code:release_workflow",
     ],
     edition = "2021",
@@ -1803,12 +1803,12 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-# tabula-deploy-preflight
+# vitruvian-tabs-deploy-preflight
 rust_library(
-    name = "tabula_deploy_preflight_lib",
-    srcs = ["src/tabula_deploy_preflight/lib.rs"],
-    crate_name = "tabula_deploy_preflight",
-    crate_root = "src/tabula_deploy_preflight/lib.rs",
+    name = "vitruvian_tabs_deploy_preflight_lib",
+    srcs = ["src/vitruvian_tabs_deploy_preflight/lib.rs"],
+    crate_name = "vitruvian_tabs_deploy_preflight",
+    crate_root = "src/vitruvian_tabs_deploy_preflight/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
@@ -1818,13 +1818,13 @@ rust_library(
 )
 
 rust_binary(
-    name = "tabula_deploy_preflight",
-    srcs = ["src/tabula_deploy_preflight/main.rs"],
+    name = "vitruvian_tabs_deploy_preflight",
+    srcs = ["src/vitruvian_tabs_deploy_preflight/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
     deps = [
-        ":tabula_deploy_preflight_lib",
+        ":vitruvian_tabs_deploy_preflight_lib",
         "//tools/shell-compat:shell_compat",
     ],
 )
@@ -1832,12 +1832,12 @@ rust_binary(
 # Black-box: runs the REAL binary as CI does, with fake gh/gcloud/curl on
 # PATH and throwaway git repos. Ported case for case from the shell suite.
 rust_test(
-    name = "tabula_deploy_preflight_test",
+    name = "vitruvian_tabs_deploy_preflight_test",
     size = "small",
-    srcs = ["src/tabula_deploy_preflight/tests.rs"],
-    data = [":tabula_deploy_preflight"],
+    srcs = ["src/vitruvian_tabs_deploy_preflight/tests.rs"],
+    data = [":vitruvian_tabs_deploy_preflight"],
     edition = "2021",
-    env = {"BIN": "$(rootpath :tabula_deploy_preflight)"},
+    env = {"BIN": "$(rootpath :vitruvian_tabs_deploy_preflight)"},
     rustc_flags = ["-Copt-level=3"],
     deps = [":ci_testkit"],
 )
@@ -1874,7 +1874,7 @@ rust_test(
     name = "release_pr_dequeue_test",
     size = "small",
     srcs = ["src/release_pr_dequeue/tests.rs"],
-    # vitruvian-release.yaml: the dequeue must run before release-please.
+    # vitruvian-atrium-release.yaml: the dequeue must run before release-please.
     data = [
         ":release_pr_dequeue",
         "//:workflow_files",

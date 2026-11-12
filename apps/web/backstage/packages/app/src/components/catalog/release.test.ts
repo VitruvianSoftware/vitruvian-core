@@ -35,14 +35,14 @@ describe("release target reader", () => {
   });
 
   it("detects npm package target from direct npm link", () => {
-    const mcpSlack: Entity = {
+    const vitruvianSlackMcp: Entity = {
       apiVersion: "backstage.io/v1alpha1",
       kind: "Component",
       metadata: {
-        name: "mcp-slack",
+        name: "vitruvian-slack-mcp",
         links: [
           {
-            url: "https://www.npmjs.com/package/@vitruviansoftware/mcp-slack",
+            url: "https://www.npmjs.com/package/@vitruviansoftware/vitruvian-slack-mcp",
             title: "npm Package",
           },
         ],
@@ -50,12 +50,13 @@ describe("release target reader", () => {
       spec: {},
     };
 
-    expect(isReleaseAvailable(mcpSlack)).toBe(true);
-    const target = readReleaseTarget(mcpSlack);
+    expect(isReleaseAvailable(vitruvianSlackMcp)).toBe(true);
+    const target = readReleaseTarget(vitruvianSlackMcp);
     expect(target).toEqual({
       type: "npm",
-      packageName: "@vitruviansoftware/mcp-slack",
-      packageUrl: "https://www.npmjs.com/package/@vitruviansoftware/mcp-slack",
+      packageName: "@vitruviansoftware/vitruvian-slack-mcp",
+      packageUrl:
+        "https://www.npmjs.com/package/@vitruviansoftware/vitruvian-slack-mcp",
     });
   });
 

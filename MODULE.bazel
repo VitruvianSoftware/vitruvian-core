@@ -102,7 +102,7 @@ go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
 # //:go.work and it is picked up here automatically.
 go_deps.from_file(go_work = "//:go.work")
 
-# go.mau.fi/whatsmeow (pulled in by mautrix-whatsapp for apps/desktop/courier):
+# go.mau.fi/whatsmeow (pulled in by mautrix-whatsapp for apps/desktop/vitruvian-courier):
 # its .proto files import each other by bare paths ("waSyncAction/...proto",
 # rooted at proto/), which gazelle cannot map to labels, so the generated
 # go_proto_library deps point at nonexistent packages. The generated
@@ -150,10 +150,10 @@ go_deps.module_override(
     path = "go.mau.fi/webp",
 )
 
-# go.mau.fi/mautrix-signal (Courier's Signal bridge): pkg/libsignalgo links
+# go.mau.fi/mautrix-signal (Vitruvian Courier's Signal bridge): pkg/libsignalgo links
 # Signal's Rust library through cgo as a bare `-lsignal_ffi`, expecting a
 # prebuilt libsignal_ffi.a on the linker search path. The patch drops that
-# flag and adds //apps/desktop/courier/libsignal:signal_ffi (built from source) to the
+# flag and adds //apps/desktop/vitruvian-courier/libsignal:signal_ffi (built from source) to the
 # gazelle-generated go_library's cdeps instead; it also links libc++, not
 # libstdc++, on darwin. go_repository applies patches after gazelle, so the
 # patch edits the generated BUILD.bazel.
@@ -163,15 +163,15 @@ go_deps.module_override(
     path = "go.mau.fi/mautrix-signal",
 )
 
-# github.com/mattn/go-sqlite3 (the cgo SQLite driver under Courier's engine and
-# its bridges): Courier's search index needs FTS5 (with contentless_delete,
+# github.com/mattn/go-sqlite3 (the cgo SQLite driver under Vitruvian Courier's engine and
+# its bridges): Vitruvian Courier's search index needs FTS5 (with contentless_delete,
 # SQLite 3.43+), which upstream compiles only under the sqlite_fts5 build tag.
 # A repo-wide --@rules_go//go/config:tags would be lost by any build that
 # doesn't read .bazelrc, so the patch adds -DSQLITE_ENABLE_FTS5 (and -lm, as
 # upstream's tagged file does) to the gazelle-generated go_library instead.
 # go_repository applies patches after gazelle, so the patch edits the
 # generated BUILD.bazel. Tested by TestFTS5IsCompiledIn
-# (apps/desktop/courier/engine/internal/sqlite).
+# (apps/desktop/vitruvian-courier/engine/internal/sqlite).
 go_deps.module_override(
     patch_strip = 1,
     patches = ["//tools/go_deps:go-sqlite3-fts5.patch"],
@@ -187,18 +187,18 @@ use_repo(go_deps, "com_github_blang_semver", "com_github_charmbracelet_bubbles",
 bazel_dep(name = "rules_nodejs", version = "6.7.4")
 
 # 3.2.x is required for App Router support in @aspect_rules_js//contrib/nextjs
-# (used by //tabula/web) and the exec-configured npm deps fix for js_image_layer.
+# (used by //apps/suites/vitruvian-tabs/web) and the exec-configured npm deps fix for js_image_layer.
 bazel_dep(name = "aspect_rules_js", version = "3.2.2")
 bazel_dep(name = "aspect_rules_ts", version = "3.8.11")
 
 # SWC transpiler for ts_project (fast JS transpile; tsc still type-checks + emits .d.ts).
 bazel_dep(name = "aspect_rules_swc", version = "2.7.2")
 
-# JS test runner (//tabula unit tests).
+# JS test runner (//apps/suites/vitruvian-tabs unit tests).
 bazel_dep(name = "aspect_rules_jest", version = "0.25.2")
 
 #########################
-# Hermetic integration/E2E test services (//tabula): rules_itest orchestrates
+# Hermetic integration/E2E test services (//apps/suites/vitruvian-tabs): rules_itest orchestrates
 # Postgres + Redis + the Fastify API as health-checked test services; browsers
 # for Playwright come from rules_playwright pinned to the lockfile's version.
 bazel_dep(name = "rules_itest", version = "0.0.56")
@@ -234,7 +234,7 @@ npm.npm_translate_lock(
     name = "npm",
     # Hermeticity: Prisma's lifecycle hooks download engine binaries from the
     # network (@prisma/engines postinstall) or auto-run `prisma generate`
-    # (@prisma/client postinstall). //tabula uses the engine-free generator and
+    # (@prisma/client postinstall). //apps/suites/vitruvian-tabs uses the engine-free generator and
     # runs generate as a build action, so both hooks are disabled.
     lifecycle_hooks_exclude = [
         "@prisma/client",
@@ -406,13 +406,13 @@ crate.from_cargo(
 )
 use_repo(crate, "crates")
 
-# The Slack MCP server's crates. A separate hub with its own Cargo.lock because
-# the image builds from apps/mcp/slack alone (see apps/mcp/slack/rs/Cargo.toml).
-# Re-lock: bazel run //tools/crates:lock -- --dir apps/mcp/slack/rs
+# The Vitruvian Slack MCP server's crates. A separate hub with its own Cargo.lock because
+# the image builds from apps/mcp/vitruvian-slack-mcp alone (see apps/mcp/vitruvian-slack-mcp/rs/Cargo.toml).
+# Re-lock: bazel run //tools/crates:lock -- --dir apps/mcp/vitruvian-slack-mcp/rs
 crate.from_cargo(
-    name = "mcp_slack_crates",
-    cargo_lock = "//apps/mcp/slack:rs/Cargo.lock",
-    cargo_toml = "//apps/mcp/slack:rs/Cargo.toml",
+    name = "vitruvian_slack_mcp_crates",
+    cargo_lock = "//apps/mcp/vitruvian-slack-mcp:rs/Cargo.lock",
+    cargo_toml = "//apps/mcp/vitruvian-slack-mcp:rs/Cargo.toml",
     platform_triples = [
         "aarch64-apple-darwin",
         "aarch64-unknown-linux-gnu",
@@ -420,15 +420,15 @@ crate.from_cargo(
         "x86_64-unknown-linux-gnu",
     ],
 )
-use_repo(crate, "mcp_slack_crates")
+use_repo(crate, "vitruvian_slack_mcp_crates")
 
-# The relay P0 spike server's crates. A separate hub with its own Cargo.lock
-# because its image builds with cargo from apps/suites/relay/spike (plus the
-# mcp-slack crate it reuses). Re-lock: bazel run //tools/crates:lock -- --dir apps/suites/relay/spike
+# The Vitruvian Relay P0 spike server's crates. A separate hub with its own Cargo.lock
+# because its image builds with cargo from apps/suites/vitruvian-relay/spike (plus the
+# vitruvian-slack-mcp crate it reuses). Re-lock: bazel run //tools/crates:lock -- --dir apps/suites/vitruvian-relay/spike
 crate.from_cargo(
-    name = "relay_spike_crates",
-    cargo_lock = "//apps/suites/relay/spike:Cargo.lock",
-    cargo_toml = "//apps/suites/relay/spike:Cargo.toml",
+    name = "vitruvian_relay_spike_crates",
+    cargo_lock = "//apps/suites/vitruvian-relay/spike:Cargo.lock",
+    cargo_toml = "//apps/suites/vitruvian-relay/spike:Cargo.toml",
     platform_triples = [
         "aarch64-apple-darwin",
         "aarch64-unknown-linux-gnu",
@@ -436,16 +436,16 @@ crate.from_cargo(
         "x86_64-unknown-linux-gnu",
     ],
 )
-use_repo(crate, "relay_spike_crates")
+use_repo(crate, "vitruvian_relay_spike_crates")
 
-# The Roborock daemon/CLI/MCP server's crates. A separate hub with its own
-# Cargo.lock because the mcp-roborock mirror builds from apps/mcp/roborock
-# alone (see apps/mcp/roborock/Cargo.toml).
-# Re-lock: bazel run //tools/crates:lock -- --dir apps/mcp/roborock
+# The Vitruvian Roborock MCP daemon/CLI/server's crates. A separate hub with its own
+# Cargo.lock because the vitruvian-roborock-mcp mirror builds from apps/mcp/vitruvian-roborock-mcp
+# alone (see apps/mcp/vitruvian-roborock-mcp/Cargo.toml).
+# Re-lock: bazel run //tools/crates:lock -- --dir apps/mcp/vitruvian-roborock-mcp
 crate.from_cargo(
-    name = "mcp_roborock_crates",
-    cargo_lock = "//apps/mcp/roborock:Cargo.lock",
-    cargo_toml = "//apps/mcp/roborock:Cargo.toml",
+    name = "vitruvian_roborock_mcp_crates",
+    cargo_lock = "//apps/mcp/vitruvian-roborock-mcp:Cargo.lock",
+    cargo_toml = "//apps/mcp/vitruvian-roborock-mcp:Cargo.toml",
     platform_triples = [
         "aarch64-apple-darwin",
         "aarch64-unknown-linux-gnu",
@@ -453,7 +453,7 @@ crate.from_cargo(
         "x86_64-unknown-linux-gnu",
     ],
 )
-use_repo(crate, "mcp_roborock_crates")
+use_repo(crate, "vitruvian_roborock_mcp_crates")
 
 # The Ostation 2 Pro CLI's crates. A separate hub with its own Cargo.lock, like
 # the Roborock one above, so apps/cli/ostation stays self-contained.
@@ -471,35 +471,35 @@ crate.from_cargo(
 )
 use_repo(crate, "ostation_crates")
 
-# ring compiles C with cc-rs: same execroot problem, same wrapper as Courier's
+# ring compiles C with cc-rs: same execroot problem, same wrapper as Vitruvian Courier's
 # libsignal annotation below. Linux too, since CI builds this on Linux.
 crate.annotation(
     build_script_env = {
-        "CC_aarch64_apple_darwin": "$(execpath @@//apps/desktop/courier/libsignal:cc_in_execroot)",
-        "CC_aarch64_unknown_linux_gnu": "$(execpath @@//apps/desktop/courier/libsignal:cc_in_execroot)",
-        "CC_x86_64_apple_darwin": "$(execpath @@//apps/desktop/courier/libsignal:cc_in_execroot)",
-        "CC_x86_64_unknown_linux_gnu": "$(execpath @@//apps/desktop/courier/libsignal:cc_in_execroot)",
-        "COURIER_BAZEL_EXECROOT": "$${pwd}",
+        "CC_aarch64_apple_darwin": "$(execpath @@//apps/desktop/vitruvian-courier/libsignal:cc_in_execroot)",
+        "CC_aarch64_unknown_linux_gnu": "$(execpath @@//apps/desktop/vitruvian-courier/libsignal:cc_in_execroot)",
+        "CC_x86_64_apple_darwin": "$(execpath @@//apps/desktop/vitruvian-courier/libsignal:cc_in_execroot)",
+        "CC_x86_64_unknown_linux_gnu": "$(execpath @@//apps/desktop/vitruvian-courier/libsignal:cc_in_execroot)",
+        "VITRUVIAN_COURIER_BAZEL_EXECROOT": "$${pwd}",
     },
-    build_script_tools = ["@@//apps/desktop/courier/libsignal:cc_in_execroot"],
+    build_script_tools = ["@@//apps/desktop/vitruvian-courier/libsignal:cc_in_execroot"],
     crate = "ring",
     repositories = [
-        "mcp_roborock_crates",
-        "mcp_slack_crates",
+        "vitruvian_roborock_mcp_crates",
+        "vitruvian_slack_mcp_crates",
     ],
 )
 
-# --- libsignal (Courier's Signal bridge) -----------------------------------
+# --- libsignal (Vitruvian Courier's Signal bridge) --------------------------
 # mautrix-signal's libsignalgo links Signal's Rust library, libsignal_ffi.a,
-# through cgo. //apps/desktop/courier/libsignal builds it from source; README.md there
-# explains the moving parts and apps/desktop/courier/engine/docs/m2-libsignal.md
+# through cgo. //apps/desktop/vitruvian-courier/libsignal builds it from source; README.md there
+# explains the moving parts and apps/desktop/vitruvian-courier/engine/docs/m2-libsignal.md
 # records why it is built this way.
 #
-# libsignal and Wand need Rust 1.98.1 (eframe/egui 0.37 require Rust >= 1.95;
+# libsignal and Vitruvian Wand need Rust 1.98.1 (eframe/egui 0.37 require Rust >= 1.95;
 # libsignal pins 1.98.1 in its rust-toolchain file). The SDK above stays on
 # 1.75.0: these toolchains only match when
-# //apps/desktop/courier/libsignal:rust_1_98_1 is true (also aliased at
-# //apps/suites/wand:rust_1_98_1), and only libsignal and Wand targets set that
+# //apps/desktop/vitruvian-courier/libsignal:rust_1_98_1 is true (also aliased at
+# //apps/suites/vitruvian-wand:rust_1_98_1_enabled), and only libsignal and Vitruvian Wand targets set that
 # flag (by transition). They are registered below, ahead of rules_rust's own
 # registration, so they are considered first and skipped everywhere else.
 # rules_rust (0.68.1 declared above; the graph resolves 0.69.0) knows checksums
@@ -583,7 +583,7 @@ _RUST_1_98_1_TARGETS = [
             exec_triple = exec_triple,
             sha256s = _RUST_1_98_1_SHA256S,
             target_compatible_with = _RUST_1_98_1_TARGETS[0][1],
-            target_settings = ["//apps/desktop/courier/libsignal:rust_1_98_1_enabled"],
+            target_settings = ["//apps/desktop/vitruvian-courier/libsignal:rust_1_98_1_enabled"],
             target_triple = _RUST_1_98_1_TARGETS[0][0],
             versions = ["1.98.1"],
         ),
@@ -636,13 +636,13 @@ register_toolchains(
     "@rust_toolchains//:rust_1_98_1_linux_aarch64__armv7-linux-androideabi__stable",
 )
 
-# libsignal's crate graph. apps/desktop/courier/libsignal/Cargo.toml is a one-package
+# libsignal's crate graph. apps/desktop/vitruvian-courier/libsignal/Cargo.toml is a one-package
 # workspace that depends on libsignal's crates at the pinned commit, so rules_rs
 # generates every one of them (build scripts included) like any crates.io crate.
 crate.from_cargo(
     name = "libsignal_crates",
-    cargo_lock = "//apps/desktop/courier/libsignal:Cargo.lock",
-    cargo_toml = "//apps/desktop/courier/libsignal:Cargo.toml",
+    cargo_lock = "//apps/desktop/vitruvian-courier/libsignal:Cargo.lock",
+    cargo_toml = "//apps/desktop/vitruvian-courier/libsignal:Cargo.toml",
     platform_triples = [
         "aarch64-apple-darwin",
         "x86_64-apple-darwin",
@@ -675,31 +675,31 @@ crate.from_cargo(
 # ASSUME_PATCHED only records that @signal_boringssl carries the patch; with
 # BORING_BSSL_PATH set, boring-sys skips patching anyway.
 crate.annotation(
-    build_script_data = ["@@//apps/desktop/courier/libsignal:boringssl_prefix"],
+    build_script_data = ["@@//apps/desktop/vitruvian-courier/libsignal:boringssl_prefix"],
     build_script_env = {
         "BORING_BSSL_ASSUME_PATCHED": "1",
-        "BORING_BSSL_PATH": "$(execpath @@//apps/desktop/courier/libsignal:boringssl_prefix)",
+        "BORING_BSSL_PATH": "$(execpath @@//apps/desktop/vitruvian-courier/libsignal:boringssl_prefix)",
         "BORING_BSSL_SYSROOT": _MACOS_SDK,
-        "LIBCLANG_PATH": "$(execpath @@//apps/desktop/courier/libsignal:libclang)",
+        "LIBCLANG_PATH": "$(execpath @@//apps/desktop/vitruvian-courier/libsignal:libclang)",
     },
     build_script_tools = [
-        "@@//apps/desktop/courier/libsignal:clang_headers",
-        "@@//apps/desktop/courier/libsignal:libclang",
+        "@@//apps/desktop/vitruvian-courier/libsignal:clang_headers",
+        "@@//apps/desktop/vitruvian-courier/libsignal:libclang",
     ],
     crate = "boring-sys",
     repositories = ["libsignal_crates"],
 )
 
 # libsignal's protobuf build scripts run protoc: prost-build from $PROTOC,
-# protobuf-codegen from $PATH. //apps/desktop/courier/libsignal:protoc is the protobuf
+# protobuf-codegen from $PATH. //apps/desktop/vitruvian-courier/libsignal:protoc is the protobuf
 # module's protoc plus its well-known types.
 [
     crate.annotation(
         build_script_env = {
-            "PATH": "$(execpath @@//apps/desktop/courier/libsignal:protoc)/bin:/usr/bin:/bin",
-            "PROTOC": "$(execpath @@//apps/desktop/courier/libsignal:protoc)/bin/protoc",
+            "PATH": "$(execpath @@//apps/desktop/vitruvian-courier/libsignal:protoc)/bin:/usr/bin:/bin",
+            "PROTOC": "$(execpath @@//apps/desktop/vitruvian-courier/libsignal:protoc)/bin/protoc",
         },
-        build_script_tools = ["@@//apps/desktop/courier/libsignal:protoc"],
+        build_script_tools = ["@@//apps/desktop/vitruvian-courier/libsignal:protoc"],
         crate = name,
         repositories = ["libsignal_crates"],
     )
@@ -737,21 +737,21 @@ crate.annotation(
 # execroot ($${pwd}, filled in by rules_rust) and then runs the real $CC.
 crate.annotation(
     build_script_env = {
-        "CC_aarch64_apple_darwin": "$(execpath @@//apps/desktop/courier/libsignal:cc_in_execroot)",
-        "CC_x86_64_apple_darwin": "$(execpath @@//apps/desktop/courier/libsignal:cc_in_execroot)",
-        "COURIER_BAZEL_EXECROOT": "$${pwd}",
+        "CC_aarch64_apple_darwin": "$(execpath @@//apps/desktop/vitruvian-courier/libsignal:cc_in_execroot)",
+        "CC_x86_64_apple_darwin": "$(execpath @@//apps/desktop/vitruvian-courier/libsignal:cc_in_execroot)",
+        "VITRUVIAN_COURIER_BAZEL_EXECROOT": "$${pwd}",
     },
-    build_script_tools = ["@@//apps/desktop/courier/libsignal:cc_in_execroot"],
+    build_script_tools = ["@@//apps/desktop/vitruvian-courier/libsignal:cc_in_execroot"],
     crate = "ring",
     repositories = ["libsignal_crates"],
 )
 use_repo(crate, "libsignal_crates")
 
-# --- gchat_ffi (Courier's Google Chat Rust engine) -------------------------
+# --- gchat_ffi (Vitruvian Courier's Google Chat Rust engine) ----------------
 crate.from_cargo(
     name = "gchat_crates",
-    cargo_lock = "//apps/desktop/courier/gchat:Cargo.lock",
-    cargo_toml = "//apps/desktop/courier/gchat:Cargo.toml",
+    cargo_lock = "//apps/desktop/vitruvian-courier/gchat:Cargo.lock",
+    cargo_toml = "//apps/desktop/vitruvian-courier/gchat:Cargo.toml",
     platform_triples = [
         "aarch64-apple-darwin",
         "x86_64-apple-darwin",
@@ -759,30 +759,30 @@ crate.from_cargo(
 )
 crate.annotation(
     build_script_env = {
-        "PATH": "$(execpath @@//apps/desktop/courier/gchat:protoc)/bin:/usr/bin:/bin",
-        "PROTOC": "$(execpath @@//apps/desktop/courier/gchat:protoc)/bin/protoc",
+        "PATH": "$(execpath @@//apps/desktop/vitruvian-courier/gchat:protoc)/bin:/usr/bin:/bin",
+        "PROTOC": "$(execpath @@//apps/desktop/vitruvian-courier/gchat:protoc)/bin/protoc",
     },
-    build_script_tools = ["@@//apps/desktop/courier/gchat:protoc"],
+    build_script_tools = ["@@//apps/desktop/vitruvian-courier/gchat:protoc"],
     crate = "prost-build",
     repositories = ["gchat_crates"],
 )
 crate.annotation(
     build_script_env = {
-        "CC_aarch64_apple_darwin": "$(execpath @@//apps/desktop/courier/libsignal:cc_in_execroot)",
-        "CC_x86_64_apple_darwin": "$(execpath @@//apps/desktop/courier/libsignal:cc_in_execroot)",
-        "COURIER_BAZEL_EXECROOT": "$${pwd}",
+        "CC_aarch64_apple_darwin": "$(execpath @@//apps/desktop/vitruvian-courier/libsignal:cc_in_execroot)",
+        "CC_x86_64_apple_darwin": "$(execpath @@//apps/desktop/vitruvian-courier/libsignal:cc_in_execroot)",
+        "VITRUVIAN_COURIER_BAZEL_EXECROOT": "$${pwd}",
     },
-    build_script_tools = ["@@//apps/desktop/courier/libsignal:cc_in_execroot"],
+    build_script_tools = ["@@//apps/desktop/vitruvian-courier/libsignal:cc_in_execroot"],
     crate = "ring",
     repositories = ["gchat_crates"],
 )
 use_repo(crate, "gchat_crates")
 
-# --- Wand (cross-platform BLE Air Mouse: macOS, Linux, Android) --------------
+# --- Vitruvian Wand (cross-platform BLE Air Mouse: macOS, Linux, Android) --------------
 crate.from_cargo(
-    name = "wand_crates",
-    cargo_lock = "//apps/suites/wand:Cargo.lock",
-    cargo_toml = "//apps/suites/wand:Cargo.toml",
+    name = "vitruvian_wand_crates",
+    cargo_lock = "//apps/suites/vitruvian-wand:Cargo.lock",
+    cargo_toml = "//apps/suites/vitruvian-wand:Cargo.toml",
     platform_triples = [
         "aarch64-apple-darwin",
         "x86_64-apple-darwin",
@@ -803,9 +803,9 @@ crate.annotation(
         "RULES_RUST_SYMLINK_EXEC_ROOT": "1",
     },
     crate = "libdbus-sys",
-    repositories = ["wand_crates"],
+    repositories = ["vitruvian_wand_crates"],
 )
-use_repo(crate, "wand_crates")
+use_repo(crate, "vitruvian_wand_crates")
 
 #########################
 # Support for Ruby, see https://github.com/bazel-contrib/rules_ruby
@@ -962,7 +962,7 @@ bazel_dep(name = "rules_license", version = "1.0.0")
 http_archive(
     name = "signal_boringssl",
     patch_args = ["-p1"],
-    patches = ["//apps/desktop/courier/libsignal:boring-pq.patch"],
+    patches = ["//apps/desktop/vitruvian-courier/libsignal:boring-pq.patch"],
     sha256 = "c7bb28cc94b40dd0606507c5010008138193bc7773b86058756a26df1b957b6f",
     strip_prefix = "boringssl-e2a57cfb4d915b4ba820585aef9fdee7bca13fe5",
     url = "https://github.com/google/boringssl/archive/e2a57cfb4d915b4ba820585aef9fdee7bca13fe5.tar.gz",
@@ -1081,7 +1081,7 @@ http_file(
 )
 
 #########################
-# Hermetic PostgreSQL for //tabula integration/E2E tests (real server binaries,
+# Hermetic PostgreSQL for //apps/suites/vitruvian-tabs integration/E2E tests (real server binaries,
 # initdb'd into $TEST_TMPDIR per test; see //tools/testinfra/postgres).
 # gnu-linked builds: the runners/RBE images are glibc (the musl variants are
 # dynamically linked against the musl loader, absent on Ubuntu). Pinned to
@@ -1226,7 +1226,7 @@ oci.pull(
 )
 use_repo(oci, "python_base", "python_base_linux_amd64", "python_base_linux_arm64_v8")
 
-# Base image for Node.js containers (//tabula/api). js_image_layer ships the
+# Base image for Node.js containers (//apps/suites/vitruvian-tabs/api). js_image_layer ships the
 # hermetic Node toolchain in its own layer and the js_binary launcher is a
 # shell script, so the base needs a shell — ubuntu, like the Python images
 # (distroless/nodejs has no /bin/sh and its bundled node would be unused).

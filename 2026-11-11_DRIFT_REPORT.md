@@ -318,287 +318,287 @@ No drift detected.
 
 No drift detected.
 
-## apps/cli/devx/README.md
+## apps/cli/vitruvian-devx/README.md
 
 No drift detected.
 
-## apps/cli/devx/cmd/README.md
+## apps/cli/vitruvian-devx/cmd/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/README.md
+## apps/cli/vitruvian-devx/internal/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/agent/README.md
+## apps/cli/vitruvian-devx/internal/agent/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/ai/README.md
+## apps/cli/vitruvian-devx/internal/ai/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/audit/README.md
+## apps/cli/vitruvian-devx/internal/audit/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/authproxy/README.md
+## apps/cli/vitruvian-devx/internal/authproxy/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/bridge/README.md
+## apps/cli/vitruvian-devx/internal/bridge/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/ci/README.md
+## apps/cli/vitruvian-devx/internal/ci/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/cloud/README.md
+## apps/cli/vitruvian-devx/internal/cloud/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/cloudflare/README.md
+## apps/cli/vitruvian-devx/internal/cloudflare/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/config/README.md
+## apps/cli/vitruvian-devx/internal/config/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/cron/README.md
+## apps/cli/vitruvian-devx/internal/cron/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/database/README.md
+## apps/cli/vitruvian-devx/internal/database/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/devcontainer/README.md
+## apps/cli/vitruvian-devx/internal/devcontainer/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/devxerr/README.md
+## apps/cli/vitruvian-devx/internal/devxerr/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/doctor/README.md
+## apps/cli/vitruvian-devx/internal/doctor/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/envvault/README.md
+## apps/cli/vitruvian-devx/internal/envvault/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/exposure/README.md
+## apps/cli/vitruvian-devx/internal/exposure/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/github/README.md
+## apps/cli/vitruvian-devx/internal/github/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/ignition/README.md
+## apps/cli/vitruvian-devx/internal/ignition/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/image/README.md
+## apps/cli/vitruvian-devx/internal/image/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/inspector/README.md
+## apps/cli/vitruvian-devx/internal/inspector/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/k8s/README.md
+## apps/cli/vitruvian-devx/internal/k8s/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/logs/README.md
+## apps/cli/vitruvian-devx/internal/logs/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/mcpinstall/README.md
+## apps/cli/vitruvian-devx/internal/mcpinstall/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/mcpserver/README.md
+## apps/cli/vitruvian-devx/internal/mcpserver/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/mock/README.md
+## apps/cli/vitruvian-devx/internal/mock/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/README.md
+## apps/cli/vitruvian-devx/internal/multinode/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/cluster/README.md
+## apps/cli/vitruvian-devx/internal/multinode/cluster/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/config/README.md
+## apps/cli/vitruvian-devx/internal/multinode/config/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/doctor/README.md
+## apps/cli/vitruvian-devx/internal/multinode/doctor/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/k3s/README.md
+## apps/cli/vitruvian-devx/internal/multinode/k3s/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/lima/README.md
+## apps/cli/vitruvian-devx/internal/multinode/lima/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/logging/README.md
+## apps/cli/vitruvian-devx/internal/multinode/logging/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/prereqs/README.md
+## apps/cli/vitruvian-devx/internal/multinode/prereqs/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/provider/README.md
+## apps/cli/vitruvian-devx/internal/multinode/provider/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/remote/README.md
+## apps/cli/vitruvian-devx/internal/multinode/remote/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/usb/README.md
+## apps/cli/vitruvian-devx/internal/multinode/usb/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/util/README.md
+## apps/cli/vitruvian-devx/internal/multinode/util/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/network/README.md
+## apps/cli/vitruvian-devx/internal/network/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/nuke/README.md
+## apps/cli/vitruvian-devx/internal/nuke/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/orchestrator/README.md
+## apps/cli/vitruvian-devx/internal/orchestrator/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/podman/README.md
+## apps/cli/vitruvian-devx/internal/podman/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/prereqs/README.md
+## apps/cli/vitruvian-devx/internal/prereqs/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/preview/README.md
+## apps/cli/vitruvian-devx/internal/preview/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/projectcfg/README.md
+## apps/cli/vitruvian-devx/internal/projectcfg/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/provider/README.md
+## apps/cli/vitruvian-devx/internal/provider/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/scaffold/README.md
+## apps/cli/vitruvian-devx/internal/scaffold/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/scaffold/templates/README.md
+## apps/cli/vitruvian-devx/internal/scaffold/templates/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/scaffold/templates/node-api/README.md
+## apps/cli/vitruvian-devx/internal/scaffold/templates/node-api/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/scaffold/templates/node-api/src/README.md
+## apps/cli/vitruvian-devx/internal/scaffold/templates/node-api/src/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/secrets/README.md
+## apps/cli/vitruvian-devx/internal/secrets/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/ship/README.md
+## apps/cli/vitruvian-devx/internal/ship/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/state/README.md
+## apps/cli/vitruvian-devx/internal/state/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/sync/README.md
+## apps/cli/vitruvian-devx/internal/sync/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/tailscale/README.md
+## apps/cli/vitruvian-devx/internal/tailscale/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/telemetry/README.md
+## apps/cli/vitruvian-devx/internal/telemetry/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/testutil/README.md
+## apps/cli/vitruvian-devx/internal/testutil/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/trafficproxy/README.md
+## apps/cli/vitruvian-devx/internal/trafficproxy/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/tui/README.md
+## apps/cli/vitruvian-devx/internal/tui/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/updater/README.md
+## apps/cli/vitruvian-devx/internal/updater/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/webhook/README.md
+## apps/cli/vitruvian-devx/internal/webhook/README.md
 
 No drift detected.
 
-## apps/cli/devx/scripts/README.md
+## apps/cli/vitruvian-devx/scripts/README.md
 
 No drift detected.
 
-## apps/cli/devx/scripts/src/README.md
+## apps/cli/vitruvian-devx/scripts/src/README.md
 
 No drift detected.
 
-## apps/cli/devx/tools/README.md
+## apps/cli/vitruvian-devx/tools/README.md
 
 No drift detected.
 
-## apps/cli/devx/tools/bridge-agent/README.md
+## apps/cli/vitruvian-devx/tools/bridge-agent/README.md
 
 No drift detected.
 
-## apps/cli/devx/tools/bridge-agent/src/README.md
+## apps/cli/vitruvian-devx/tools/bridge-agent/src/README.md
 
 No drift detected.
 
-## apps/cli/homelab/README.md
+## apps/cli/vitruvian-homelab/README.md
 
 No drift detected.
 
-## apps/cli/homelab/rs/README.md
+## apps/cli/vitruvian-homelab/rs/README.md
 
 No drift detected.
 
-## apps/cli/homelab/rs/src/README.md
+## apps/cli/vitruvian-homelab/rs/src/README.md
 
 No drift detected.
 
@@ -1270,10 +1270,6 @@ No drift detected.
 
 No drift detected.
 
-## apps/desktop/vitruvian/Sources/Vitruvian/Services/NexusAgent/README.md
-
-No drift detected.
-
 ## apps/desktop/vitruvian/Sources/Vitruvian/Services/Notch/README.md
 
 No drift detected.
@@ -1638,23 +1634,23 @@ No drift detected.
 
 No drift detected.
 
-## apps/mcp/roborock/README.md
+## apps/mcp/vitruvian-roborock-mcp/README.md
 
 No drift detected.
 
-## apps/mcp/roborock/rust_src/README.md
+## apps/mcp/vitruvian-roborock-mcp/rust_src/README.md
 
 No drift detected.
 
-## apps/mcp/slack/README.md
+## apps/mcp/vitruvian-slack-mcp/README.md
 
 No drift detected.
 
-## apps/mcp/slack/rs/README.md
+## apps/mcp/vitruvian-slack-mcp/rs/README.md
 
 No drift detected.
 
-## apps/mcp/slack/rs/src/README.md
+## apps/mcp/vitruvian-slack-mcp/rs/src/README.md
 
 No drift detected.
 
@@ -1802,199 +1798,199 @@ No drift detected.
 
 No drift detected.
 
-## apps/mobile/wearos/README.md
+## apps/mobile/vitruvian-watch/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/README.md
+## apps/mobile/vitruvian-watch/apps/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/common/README.md
+## apps/mobile/vitruvian-watch/apps/common/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/common/src/README.md
+## apps/mobile/vitruvian-watch/apps/common/src/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/common/src/main/README.md
+## apps/mobile/vitruvian-watch/apps/common/src/main/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/common/src/main/kotlin/README.md
+## apps/mobile/vitruvian-watch/apps/common/src/main/kotlin/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/common/src/main/kotlin/dev/README.md
+## apps/mobile/vitruvian-watch/apps/common/src/main/kotlin/com/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/common/src/main/kotlin/dev/vitruvian/README.md
+## apps/mobile/vitruvian-watch/apps/common/src/main/kotlin/com/vitruviansoftware/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/common/src/main/kotlin/dev/vitruvian/wear/README.md
+## apps/mobile/vitruvian-watch/apps/common/src/main/kotlin/com/vitruviansoftware/watch/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/common/src/main/kotlin/dev/vitruvian/wear/common/README.md
+## apps/mobile/vitruvian-watch/apps/common/src/main/kotlin/com/vitruviansoftware/watch/common/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/home-control/README.md
+## apps/mobile/vitruvian-watch/apps/home-control/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/home-control/src/README.md
+## apps/mobile/vitruvian-watch/apps/home-control/src/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/home-control/src/main/README.md
+## apps/mobile/vitruvian-watch/apps/home-control/src/main/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/home-control/src/main/kotlin/README.md
+## apps/mobile/vitruvian-watch/apps/home-control/src/main/kotlin/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/home-control/src/main/kotlin/dev/README.md
+## apps/mobile/vitruvian-watch/apps/home-control/src/main/kotlin/com/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/home-control/src/main/kotlin/dev/vitruvian/README.md
+## apps/mobile/vitruvian-watch/apps/home-control/src/main/kotlin/com/vitruviansoftware/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/home-control/src/main/kotlin/dev/vitruvian/wear/README.md
+## apps/mobile/vitruvian-watch/apps/home-control/src/main/kotlin/com/vitruviansoftware/watch/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/home-control/src/main/kotlin/dev/vitruvian/wear/home/README.md
+## apps/mobile/vitruvian-watch/apps/home-control/src/main/kotlin/com/vitruviansoftware/watch/home/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/nexus-wrist/README.md
+## apps/mobile/vitruvian-watch/apps/nexus-wrist/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/nexus-wrist/src/README.md
+## apps/mobile/vitruvian-watch/apps/nexus-wrist/src/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/nexus-wrist/src/main/README.md
+## apps/mobile/vitruvian-watch/apps/nexus-wrist/src/main/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/nexus-wrist/src/main/kotlin/README.md
+## apps/mobile/vitruvian-watch/apps/nexus-wrist/src/main/kotlin/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/nexus-wrist/src/main/kotlin/dev/README.md
+## apps/mobile/vitruvian-watch/apps/nexus-wrist/src/main/kotlin/com/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/nexus-wrist/src/main/kotlin/dev/vitruvian/README.md
+## apps/mobile/vitruvian-watch/apps/nexus-wrist/src/main/kotlin/com/vitruviansoftware/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/nexus-wrist/src/main/kotlin/dev/vitruvian/wear/README.md
+## apps/mobile/vitruvian-watch/apps/nexus-wrist/src/main/kotlin/com/vitruviansoftware/watch/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/nexus-wrist/src/main/kotlin/dev/vitruvian/wear/nexus/README.md
+## apps/mobile/vitruvian-watch/apps/nexus-wrist/src/main/kotlin/com/vitruviansoftware/watch/nexus/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/remote/README.md
+## apps/mobile/vitruvian-watch/apps/remote/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/remote/src/README.md
+## apps/mobile/vitruvian-watch/apps/remote/src/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/remote/src/main/README.md
+## apps/mobile/vitruvian-watch/apps/remote/src/main/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/remote/src/main/kotlin/README.md
+## apps/mobile/vitruvian-watch/apps/remote/src/main/kotlin/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/remote/src/main/kotlin/dev/README.md
+## apps/mobile/vitruvian-watch/apps/remote/src/main/kotlin/com/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/remote/src/main/kotlin/dev/vitruvian/README.md
+## apps/mobile/vitruvian-watch/apps/remote/src/main/kotlin/com/vitruviansoftware/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/remote/src/main/kotlin/dev/vitruvian/wear/README.md
+## apps/mobile/vitruvian-watch/apps/remote/src/main/kotlin/com/vitruviansoftware/watch/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/remote/src/main/kotlin/dev/vitruvian/wear/remote/README.md
+## apps/mobile/vitruvian-watch/apps/remote/src/main/kotlin/com/vitruviansoftware/watch/remote/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/scripts/README.md
+## apps/mobile/vitruvian-watch/apps/scripts/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/scripts/src/README.md
+## apps/mobile/vitruvian-watch/apps/scripts/src/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/vitruvian-pulse/README.md
+## apps/mobile/vitruvian-watch/apps/vitruvian-pulse/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/vitruvian-pulse/src/README.md
+## apps/mobile/vitruvian-watch/apps/vitruvian-pulse/src/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/vitruvian-pulse/src/main/README.md
+## apps/mobile/vitruvian-watch/apps/vitruvian-pulse/src/main/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/vitruvian-pulse/src/main/kotlin/README.md
+## apps/mobile/vitruvian-watch/apps/vitruvian-pulse/src/main/kotlin/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/vitruvian-pulse/src/main/kotlin/dev/README.md
+## apps/mobile/vitruvian-watch/apps/vitruvian-pulse/src/main/kotlin/com/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/vitruvian-pulse/src/main/kotlin/dev/vitruvian/README.md
+## apps/mobile/vitruvian-watch/apps/vitruvian-pulse/src/main/kotlin/com/vitruviansoftware/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/vitruvian-pulse/src/main/kotlin/dev/vitruvian/wear/README.md
+## apps/mobile/vitruvian-watch/apps/vitruvian-pulse/src/main/kotlin/com/vitruviansoftware/watch/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/vitruvian-pulse/src/main/kotlin/dev/vitruvian/wear/pulse/README.md
+## apps/mobile/vitruvian-watch/apps/vitruvian-pulse/src/main/kotlin/com/vitruviansoftware/watch/pulse/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/faces/README.md
+## apps/mobile/vitruvian-watch/faces/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/faces/daytona-platinum/README.md
+## apps/mobile/vitruvian-watch/faces/daytona-platinum/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/faces/daytona-platinum/scripts/README.md
+## apps/mobile/vitruvian-watch/faces/daytona-platinum/scripts/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/faces/daytona-platinum/scripts/src/README.md
+## apps/mobile/vitruvian-watch/faces/daytona-platinum/scripts/src/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/faces/daytona-platinum/src/README.md
+## apps/mobile/vitruvian-watch/faces/daytona-platinum/src/README.md
 
 No drift detected.
 
@@ -2018,371 +2014,371 @@ No drift detected.
 
 No drift detected.
 
-## apps/suites/relay/README.md
+## apps/suites/vitruvian-relay/README.md
 
 No drift detected.
 
-## apps/suites/relay/spike/README.md
+## apps/suites/vitruvian-relay/spike/README.md
 
 No drift detected.
 
-## apps/suites/relay/spike/src/README.md
+## apps/suites/vitruvian-relay/spike/src/README.md
 
 No drift detected.
 
-## apps/suites/tabula/README.md
+## apps/suites/vitruvian-tabs/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/README.md
+## apps/suites/vitruvian-tabs/api/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/README.md
+## apps/suites/vitruvian-tabs/api/prisma/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20251207000000_init/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20251207000000_init/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20251207232507_migration/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20251207232507_migration/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20251224030040_add_space_groups/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20251224030040_add_space_groups/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20251224042904_add_missing_workspace_models/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20251224042904_add_missing_workspace_models/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20251224043651_fix_id_types_to_string/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20251224043651_fix_id_types_to_string/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20260610000000_add_sync_versioning/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20260610000000_add_sync_versioning/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20260610010000_add_backup_name_type/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20260610010000_add_backup_name_type/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20260614003800_repair_drifted_sync_and_backup_columns/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20260614003800_repair_drifted_sync_and_backup_columns/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20260615000000_add_sharing_acl/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20260615000000_add_sharing_acl/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20260616000000_add_share_link_relay_id/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20260616000000_add_share_link_relay_id/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/rs/README.md
+## apps/suites/vitruvian-tabs/api/rs/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/rs/src/README.md
+## apps/suites/vitruvian-tabs/api/rs/src/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/rs/src/bin/README.md
+## apps/suites/vitruvian-tabs/api/rs/src/bin/README.md
 
 No drift detected.
 
-## apps/suites/tabula/cli/README.md
+## apps/suites/vitruvian-tabs/cli/README.md
 
 No drift detected.
 
-## apps/suites/tabula/cli/rs/README.md
+## apps/suites/vitruvian-tabs/cli/rs/README.md
 
 No drift detected.
 
-## apps/suites/tabula/cli/rs/src/README.md
+## apps/suites/vitruvian-tabs/cli/rs/src/README.md
 
 No drift detected.
 
-## apps/suites/tabula/cli/rs/src/commands/README.md
+## apps/suites/vitruvian-tabs/cli/rs/src/commands/README.md
 
 No drift detected.
 
-## apps/suites/tabula/cli/rs/src/utils/README.md
+## apps/suites/vitruvian-tabs/cli/rs/src/utils/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/README.md
+## apps/suites/vitruvian-tabs/extension/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/coverage/README.md
+## apps/suites/vitruvian-tabs/extension/coverage/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/coverage/lcov-report/README.md
+## apps/suites/vitruvian-tabs/extension/coverage/lcov-report/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/scripts/README.md
+## apps/suites/vitruvian-tabs/extension/scripts/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/scripts/src/README.md
+## apps/suites/vitruvian-tabs/extension/scripts/src/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/scripts/src/bin/README.md
+## apps/suites/vitruvian-tabs/extension/scripts/src/bin/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/README.md
+## apps/suites/vitruvian-tabs/extension/src/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/background/README.md
+## apps/suites/vitruvian-tabs/extension/src/background/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/components/README.md
+## apps/suites/vitruvian-tabs/extension/src/components/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/components/illustrations/README.md
+## apps/suites/vitruvian-tabs/extension/src/components/illustrations/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/components/onboarding/README.md
+## apps/suites/vitruvian-tabs/extension/src/components/onboarding/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/constants/README.md
+## apps/suites/vitruvian-tabs/extension/src/constants/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/dashboard/README.md
+## apps/suites/vitruvian-tabs/extension/src/dashboard/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/dashboard/hooks/README.md
+## apps/suites/vitruvian-tabs/extension/src/dashboard/hooks/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/hooks/README.md
+## apps/suites/vitruvian-tabs/extension/src/hooks/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/lib/README.md
+## apps/suites/vitruvian-tabs/extension/src/lib/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/lib/flags/README.md
+## apps/suites/vitruvian-tabs/extension/src/lib/flags/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/popup/README.md
+## apps/suites/vitruvian-tabs/extension/src/popup/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/services/README.md
+## apps/suites/vitruvian-tabs/extension/src/services/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/stores/README.md
+## apps/suites/vitruvian-tabs/extension/src/stores/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/testUtils/README.md
+## apps/suites/vitruvian-tabs/extension/src/testUtils/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/types/README.md
+## apps/suites/vitruvian-tabs/extension/src/types/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/utils/README.md
+## apps/suites/vitruvian-tabs/extension/src/utils/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/tests/unit/README.md
+## apps/suites/vitruvian-tabs/extension/tests/unit/README.md
 
 No drift detected.
 
-## apps/suites/tabula/infra/README.md
+## apps/suites/vitruvian-tabs/infra/README.md
 
 No drift detected.
 
-## apps/suites/tabula/infra/app/README.md
+## apps/suites/vitruvian-tabs/infra/app/README.md
 
 No drift detected.
 
-## apps/suites/tabula/infra/app/cmd/README.md
+## apps/suites/vitruvian-tabs/infra/app/cmd/README.md
 
 No drift detected.
 
-## apps/suites/tabula/infra/app/cmd/revname/README.md
+## apps/suites/vitruvian-tabs/infra/app/cmd/revname/README.md
 
 No drift detected.
 
-## apps/suites/tabula/infra/app/revision/README.md
+## apps/suites/vitruvian-tabs/infra/app/revision/README.md
 
 No drift detected.
 
-## apps/suites/tabula/infra/data/README.md
+## apps/suites/vitruvian-tabs/infra/data/README.md
 
 No drift detected.
 
-## apps/suites/tabula/infra/identity/README.md
+## apps/suites/vitruvian-tabs/infra/identity/README.md
 
 No drift detected.
 
-## apps/suites/tabula/infra/web/README.md
+## apps/suites/vitruvian-tabs/infra/web/README.md
 
 No drift detected.
 
-## apps/suites/tabula/infra/web/revision/README.md
+## apps/suites/vitruvian-tabs/infra/web/revision/README.md
 
 No drift detected.
 
-## apps/suites/tabula/shared/README.md
+## apps/suites/vitruvian-tabs/shared/README.md
 
 No drift detected.
 
-## apps/suites/tabula/shared/src/README.md
+## apps/suites/vitruvian-tabs/shared/src/README.md
 
 No drift detected.
 
-## apps/suites/tabula/shared/src/types/README.md
+## apps/suites/vitruvian-tabs/shared/src/types/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/README.md
+## apps/suites/vitruvian-tabs/web/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/__mocks__/README.md
+## apps/suites/vitruvian-tabs/web/__mocks__/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/__tests__/README.md
+## apps/suites/vitruvian-tabs/web/__tests__/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/app/README.md
+## apps/suites/vitruvian-tabs/web/app/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/app/analytics/README.md
+## apps/suites/vitruvian-tabs/web/app/analytics/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/app/components/README.md
+## apps/suites/vitruvian-tabs/web/app/components/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/app/components/space/README.md
+## apps/suites/vitruvian-tabs/web/app/components/space/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/app/s/README.md
+## apps/suites/vitruvian-tabs/web/app/s/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/app/s/[relayId]/README.md
+## apps/suites/vitruvian-tabs/web/app/s/[relayId]/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/app/workspaces/README.md
+## apps/suites/vitruvian-tabs/web/app/workspaces/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/app/workspaces/[id]/README.md
+## apps/suites/vitruvian-tabs/web/app/workspaces/[id]/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/lib/README.md
+## apps/suites/vitruvian-tabs/web/lib/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/types/README.md
+## apps/suites/vitruvian-tabs/web/types/README.md
 
 No drift detected.
 
-## apps/suites/wand/README.md
+## apps/suites/vitruvian-wand/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/README.md
+## apps/suites/vitruvian-wand/android/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/jni/README.md
+## apps/suites/vitruvian-wand/android/jni/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/jni/src/README.md
+## apps/suites/vitruvian-wand/android/jni/src/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/README.md
+## apps/suites/vitruvian-wand/android/src/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/main/README.md
+## apps/suites/vitruvian-wand/android/src/main/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/main/kotlin/README.md
+## apps/suites/vitruvian-wand/android/src/main/kotlin/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/main/kotlin/dev/README.md
+## apps/suites/vitruvian-wand/android/src/main/kotlin/com/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/main/kotlin/dev/vitruvian/README.md
+## apps/suites/vitruvian-wand/android/src/main/kotlin/com/vitruviansoftware/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/main/kotlin/dev/vitruvian/wand/README.md
+## apps/suites/vitruvian-wand/android/src/main/kotlin/com/vitruviansoftware/wand/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/main/kotlin/dev/vitruvian/wand/ble/README.md
+## apps/suites/vitruvian-wand/android/src/main/kotlin/com/vitruviansoftware/wand/ble/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/main/kotlin/dev/vitruvian/wand/core/README.md
+## apps/suites/vitruvian-wand/android/src/main/kotlin/com/vitruviansoftware/wand/core/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/main/kotlin/dev/vitruvian/wand/service/README.md
+## apps/suites/vitruvian-wand/android/src/main/kotlin/com/vitruviansoftware/wand/service/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/main/kotlin/dev/vitruvian/wand/ui/README.md
+## apps/suites/vitruvian-wand/android/src/main/kotlin/com/vitruviansoftware/wand/ui/README.md
 
 No drift detected.
 
-## apps/suites/wand/core/README.md
+## apps/suites/vitruvian-wand/core/README.md
 
 No drift detected.
 
-## apps/suites/wand/core/src/README.md
+## apps/suites/vitruvian-wand/core/src/README.md
 
 No drift detected.
 
-## apps/suites/wand/desktop/README.md
+## apps/suites/vitruvian-wand/desktop/README.md
 
 No drift detected.
 
-## apps/suites/wand/desktop/src/README.md
+## apps/suites/vitruvian-wand/desktop/src/README.md
 
 No drift detected.
 
@@ -5106,7 +5102,7 @@ No drift detected.
 
 No drift detected.
 
-## tools/ci/src/tabula_deploy_preflight/README.md
+## tools/ci/src/vitruvian_tabs_deploy_preflight/README.md
 
 No drift detected.
 

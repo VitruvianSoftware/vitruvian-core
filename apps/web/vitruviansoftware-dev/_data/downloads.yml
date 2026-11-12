@@ -28,43 +28,44 @@ categories:
     items:
       - id: vitruvian-code
         name: Vitruvian Code
-        version: "1.32.7"
+        version: "1.34.0"
         summary: >-
           macOS menu bar companion for AI coding assistants. Bridges Claude Code,
           Gemini Antigravity, and local LLMs to your phone via Telegram, with
           native toast notifications and streaming output.
         platforms: ["macOS Universal", "Apple Silicon", "Intel"]
+        # legacy name: Homebrew cask token in VitruvianSoftware/homebrew-tap
         brew_cask: vitruviansoftware/tap/nexus-agent
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.32.5/NexusAgent-1.32.5-universal.dmg
-            size: 8.5 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.34.0/VitruvianCode-1.34.0-macos.dmg
+            size: 9.8 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.32.7/NexusAgent-1.32.7-arm64.dmg
-            size: 5.6 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.34.0/VitruvianCode-1.34.0-arm64.dmg
+            size: 6.4 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.32.7/NexusAgent-1.32.7-x86_64.dmg
-            size: 5.7 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.34.0/VitruvianCode-1.34.0-x86_64.dmg
+            size: 6.6 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.32.5/NexusAgent-1.32.5-universal.zip
-            size: 8.5 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.34.0/VitruvianCode-1.34.0-macos.zip
+            size: 8.6 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-code/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-code
         extensions_url: /ai/#vitruvian-code
         extensions_label: MCP & Agent Setup
 
-      - id: vitruvian-desktop
-        name: Vitruvian Desktop
+      - id: vitruvian-atrium
+        name: Vitruvian Atrium
         version: "3.89.0"
         summary: >-
           The flagship desktop control hub for Vitruvian. Orchestrates AI coding sessions,
           multi-agent workspaces, live status tracking, and terminal integration from the macOS menu bar.
         platforms: ["macOS Universal", "Apple Silicon", "Intel"]
-        brew_cask: vitruviansoftware/tap/vitruvian
+        brew_cask: vitruviansoftware/tap/vitruvian-atrium
         downloads:
           - label: Universal DMG
             url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.89.0/Vitruvian-3.89.0-universal.dmg
@@ -83,18 +84,18 @@ categories:
             size: 83.8 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian
-        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian
-        extensions_url: /ai/#eco-vitruvian-desktop
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-atrium
+        extensions_url: /ai/#eco-vitruvian-atrium
         extensions_label: Browse Desktop Extensions
 
-      - id: home-speaker
-        name: HomeSpeaker
+      - id: vitruvian-speaker
+        name: Vitruvian Speaker
         version: "1.41.0"
         summary: >-
           A macOS menu bar app that announces agent summaries, chat notifications, and spoken
           briefings aloud on Google Home, Nest speakers, or local system speech synthesis with quiet hours.
         platforms: ["macOS Universal", "Apple Silicon", "Intel"]
-        brew_cask: vitruviansoftware/tap/home-speaker
+        brew_cask: vitruviansoftware/tap/vitruvian-speaker
         downloads:
           - label: Universal DMG
             url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.41.0/HomeSpeaker-1.41.0-universal.dmg
@@ -112,19 +113,19 @@ categories:
             url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.41.0/HomeSpeaker-1.41.0-universal.zip
             size: 5.7 MB
             arch: Universal
-        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=home-speaker
-        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/home-speaker
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-speaker
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-speaker
         extensions_url: /ai/#dev.vitruvian.homespeaker
-        extensions_label: HomeSpeaker Extension
+        extensions_label: Vitruvian Speaker Extension
 
-      - id: courier
-        name: Courier
+      - id: vitruvian-courier
+        name: Vitruvian Courier
         version: "0.3.16"
         summary: >-
           Every chat app in one inbox, on this Mac. A native macOS app that brings
           your messaging accounts into one window, signed with Developer ID and notarized.
         platforms: ["macOS Universal", "Apple Silicon", "Intel"]
-        brew_cask: vitruviansoftware/tap/courier
+        brew_cask: vitruviansoftware/tap/vitruvian-courier
         downloads:
           - label: Universal DMG
             url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/courier-v0.3.16/Courier-0.3.16-universal.dmg
@@ -142,8 +143,8 @@ categories:
             url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/courier-v0.3.16/Courier-0.3.16-universal.zip
             size: 150.4 MB
             arch: Universal
-        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=courier
-        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/courier
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-courier
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-courier
 
   - id: mobile
     title: Mobile & Companion Apps
@@ -170,28 +171,28 @@ categories:
     blurb: High-performance CLI tools for local development orchestration, declarative K3s clusters, and peripheral control.
     items:
       - id: devx
-        name: devx
-        version: "0.74.4"
+        name: Vitruvian DevX CLI
+        version: "0.74.5"
         summary: >-
           A local development orchestrator. One CLI provisions container VMs, ephemeral
           databases and cloud emulators, local K3s clusters, and Cloudflare tunnel ingress in dependency order.
         platforms: ["macOS (arm64, amd64)", "Linux (arm64, amd64)"]
         brew_formula: vitruviansoftware/tap/devx
         releases_url: https://github.com/VitruvianSoftware/devx/releases
-        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/cli/devx
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/cli/vitruvian-devx
         extensions_url: /ai/#eco-codex-opencode
         extensions_label: Agent Skills & Init
 
       - id: homelab
-        name: homelab
+        name: Vitruvian Homelab
         version: "1.6.1"
         summary: >-
-          Declarative multi-node K3s clusters on macOS. Describe nodes in one file and homelab
+          Declarative multi-node K3s clusters on macOS. Describe nodes in one file and Vitruvian Homelab
           provisions Lima VZ virtual machines, networking, and the cluster to match.
         platforms: ["macOS (Apple Silicon, Intel)"]
         brew_formula: vitruviansoftware/tap/homelab
         releases_url: https://github.com/VitruvianSoftware/homelab/releases
-        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/cli/homelab
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/cli/vitruvian-homelab
 
       - id: gravastar-mouse
         name: gravastar-mouse
@@ -208,15 +209,15 @@ categories:
     title: Embedded & Hardware Firmware
     blurb: Pre-compiled firmware binaries and companion controller tools for microcontroller displays and desk pads.
     items:
-      - id: esp32-s3
-        name: ESP32-S3 Desk Companion
+      - id: vitruvian-deck
+        name: Vitruvian Deck
         version: "0.1.12"
         summary: >-
           Firmware that turns a 1.69-inch ESP32-S3 touch board into a desk display for live Mac
           metrics and a USB and Bluetooth shortcut macro pad.
         platforms: ["ESP32-S3", "macOS"]
         downloads:
-          - label: Mac Controller ZIP
+          - label: Deck Bundle ZIP
             url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/esp32-s3-v0.1.12/esp32-s3-mac-controller.zip
             size: 994 KB
           - label: Firmware Binary
@@ -230,4 +231,4 @@ categories:
             size: 3 KB
         flash_command: esptool.py write_flash 0x0 bootloader.bin 0x8000 partitions.bin 0x10000 firmware.bin
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/esp32-s3-v0.1.12
-        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/embedded/esp32-s3
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/embedded/vitruvian-deck

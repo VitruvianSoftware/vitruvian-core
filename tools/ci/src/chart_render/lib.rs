@@ -28,8 +28,10 @@ const VALUES_DIR: &[u8] = b"tools/ci/chart-render";
 
 /// Chart-dir → dotted-values-path for the `kindIs "string"` type-rejection
 /// guard.  Declared, not derived: completeness is enforced both ways.
-const STRING_REJECT_CONTROLS: &[(&str, &str)] =
-    &[("apps/mcp/slack/deploy/chart", "networkPolicy.enabled")];
+const STRING_REJECT_CONTROLS: &[(&str, &str)] = &[(
+    "apps/mcp/vitruvian-slack-mcp/deploy/chart",
+    "networkPolicy.enabled",
+)];
 
 /// Extract every `required "<message>" .Values.<path>` from a chart's
 /// templates directory, returning deduplicated dotted paths.
@@ -444,7 +446,7 @@ mod tests {
 
     #[test]
     fn string_reject_controls_lookup() {
-        let reldir = b"apps/mcp/slack/deploy/chart";
+        let reldir = b"apps/mcp/vitruvian-slack-mcp/deploy/chart";
         let mut guarded: Option<&str> = None;
         for &(ctl_dir, ctl_path) in STRING_REJECT_CONTROLS {
             if reldir == ctl_dir.as_bytes() {
@@ -468,13 +470,13 @@ mod tests {
 
     #[test]
     fn reldir_strip_dot_slash() {
-        let dir = b"./apps/mcp/slack/deploy/chart";
+        let dir = b"./apps/mcp/vitruvian-slack-mcp/deploy/chart";
         let reldir = if dir.starts_with(b"./") {
             dir[2..].to_vec()
         } else {
             dir.to_vec()
         };
-        assert_eq!(reldir, b"apps/mcp/slack/deploy/chart");
+        assert_eq!(reldir, b"apps/mcp/vitruvian-slack-mcp/deploy/chart");
     }
 
     #[test]
@@ -492,7 +494,7 @@ mod tests {
     fn chart_name_from_yaml_content() {
         // Test the awk-based extraction indirectly: the pattern should match
         // "name: <value>" at the start of a line.
-        let yaml = b"apiVersion: v2\nname: mcp-slack\nversion: 0.1.0\n";
+        let yaml = b"apiVersion: v2\nname: vitruvian-slack-mcp\nversion: 0.1.0\n";
         // Simulate awk logic: find ^name: and take what follows ": "
         let mut extracted = Vec::new();
         for line in yaml.split(|&c| c == b'\n') {
@@ -506,7 +508,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(extracted, b"mcp-slack");
+        assert_eq!(extracted, b"vitruvian-slack-mcp");
     }
 
     #[test]

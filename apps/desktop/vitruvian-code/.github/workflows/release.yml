@@ -28,11 +28,7 @@
 # update the Homebrew cask -- all with the mirror's existing RELEASE_AUTOMATION_
 # TOKEN. Replaces the in-mirror release-please job (now in the monorepo).
 #
-# TAG SCHEME: this tags plain `vX.Y.Z` (matching the cask URL, which fixes the
-# old bug where releases were tagged `nexus-agent-vX.Y.Z` but the cask pointed
-# at `vX.Y.Z` -> brew install 404). The detect step also treats the LEGACY
-# `nexus-agent-v$V` tag as "already released" so the cutover (current version
-# 1.10.2, tagged nexus-agent-v1.10.2) is a NO-OP instead of a spurious rebuild.
+# TAG SCHEME: this tags plain `vX.Y.Z` (matching the cask URL).
 name: Release
 
 on:
@@ -73,10 +69,9 @@ jobs:
             echo "No version in manifest."
             exit 0
           fi
-          # New plain tag OR a component-prefixed tag (vitruvian-code-v, or nexus-agent-v
-          # before the rename) => already released.
-          if git rev-parse "v$V" >/dev/null 2>&1 || git rev-parse "vitruvian-code-v$V" >/dev/null 2>&1 || git rev-parse "nexus-agent-v$V" >/dev/null 2>&1; then
-            echo "v$V (or vitruvian-code-v$V, or legacy nexus-agent-v$V) already released -- nothing to do."
+          # New plain tag OR a component-prefixed tag => already released.
+          if git rev-parse "v$V" >/dev/null 2>&1 || git rev-parse "vitruvian-code-v$V" >/dev/null 2>&1; then
+            echo "v$V (or vitruvian-code-v$V) already released -- nothing to do."
           else
             echo "version=$V" >> "$GITHUB_OUTPUT"
             echo "Detected new release v$V."
@@ -126,20 +121,6 @@ jobs:
             macos/.build/release/vitruvian-code-tool
           if-no-files-found: error
 
-      # The bridge: the last release of Nexus Agent, the one old installs
-      # update to. It installs Vitruvian Code (bridge/ holds its own package).
-      - name: Build the bridge for ${{ matrix.arch }}
-        run: |
-          cd bridge
-          swift build -c release --arch ${{ matrix.arch }}
-
-      - name: Upload bridge binary
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: NexusAgent-${{ matrix.arch }}
-          path: bridge/.build/release/NexusAgent
-          if-no-files-found: error
-
   package:
     needs: [detect, build-macos]
     if: needs.detect.outputs.version
@@ -167,12 +148,6 @@ jobs:
           name: VitruvianCode-x86_64
           path: /tmp/x86_64
 
-      - name: Download the bridge binaries
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: NexusAgent-*
-          path: /tmp/bridge
-
       - name: Create universal binary
         run: |
           mkdir -p /tmp/universal
@@ -190,13 +165,6 @@ jobs:
             /tmp/x86_64/vitruvian-code-tool \
             -output /tmp/universal/vitruvian-code-tool
           lipo -info /tmp/universal/vitruvian-code-tool
-          # The bridge, one binary for both as well.
-          mkdir -p /tmp/bridge-universal
-          lipo -create \
-            /tmp/bridge/NexusAgent-arm64/NexusAgent \
-            /tmp/bridge/NexusAgent-x86_64/NexusAgent \
-            -output /tmp/bridge-universal/NexusAgent
-          lipo -info /tmp/bridge-universal/NexusAgent
 
       - name: Assemble .app bundles
         run: |
@@ -216,10 +184,6 @@ jobs:
           mkdir -p /tmp/dist-x86_64
           "$RUNNER_TEMP/bundle-app" /tmp/x86_64/VitruvianCode "$VERSION" /tmp/dist-x86_64
 
-          # The bridge: NexusAgent.app, under the name and ID old installs know.
-          mkdir -p /tmp/dist-bridge
-          "$RUNNER_TEMP/bundle-app" /tmp/bridge-universal/NexusAgent "$VERSION" /tmp/dist-bridge --bridge
-
       - name: Sign and notarize apps and tool
         env:
           VITRUVIAN_SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
@@ -232,7 +196,6 @@ jobs:
             --entitlements-app "/tmp/dist-universal/Vitruvian Code.app" \
             --entitlements-app "/tmp/dist-arm64/Vitruvian Code.app" \
             --entitlements-app "/tmp/dist-x86_64/Vitruvian Code.app" \
-            --plain-app /tmp/dist-bridge/NexusAgent.app \
             --macho /tmp/universal/vitruvian-code-tool
 
       - name: Check the apps
@@ -247,7 +210,6 @@ jobs:
           "$RUNNER_TEMP/check-packaged-app" "/tmp/dist-universal/Vitruvian Code.app" arm64 x86_64
           "$RUNNER_TEMP/check-packaged-app" "/tmp/dist-arm64/Vitruvian Code.app" arm64
           "$RUNNER_TEMP/check-packaged-app" "/tmp/dist-x86_64/Vitruvian Code.app" x86_64
-          "$RUNNER_TEMP/check-packaged-app" "/tmp/dist-bridge/NexusAgent.app" arm64 x86_64
 
       - name: Create DMGs
         run: |
@@ -255,9 +217,7 @@ jobs:
           VERSION="${{ needs.detect.outputs.version }}"
 
           for arch in universal arm64 x86_64; do
-            # The build for every Mac is the "macos" one: no new file says
-            # "universal". Old updaters take the zip that does, and only the
-            # bridge's zip is to be that.
+            # The build for every Mac is the "macos" one.
             name="$arch"
             if [ "$arch" = universal ]; then name="macos"; fi
             stage="$RUNNER_TEMP/dmg-stage-${arch}"
@@ -294,11 +254,7 @@ jobs:
         run: |
           VERSION="${{ needs.detect.outputs.version }}"
           ditto -c -k --keepParent "/tmp/dist-universal/Vitruvian Code.app" "${GITHUB_WORKSPACE}/VitruvianCode-${VERSION}-macos.zip"
-          # The bridge, in the zip old updaters take: the only one that says
-          # "universal", with NexusAgent.app inside.
-          ditto -c -k --keepParent /tmp/dist-bridge/NexusAgent.app "${GITHUB_WORKSPACE}/NexusAgent-${VERSION}-universal.zip"
           cd "${GITHUB_WORKSPACE}"
-          # What the bridge and the new updater check the new app's zip against.
           shasum -a 256 "VitruvianCode-${VERSION}-macos.zip" > "VitruvianCode-${VERSION}-macos.zip.sha256"
           cat "VitruvianCode-${VERSION}-macos.zip.sha256"
           ls -lh *.zip
@@ -370,9 +326,8 @@ jobs:
           # Ensure Casks directory exists
           mkdir -p Casks
 
-          # Write the Cask formula. The url tag (vX.Y.Z) now matches the release
-          # tag created above -- this is the fix for the old 404 (releases were
-          # tagged nexus-agent-vX while the cask pointed at vX).
+          # Write the Cask formula. The url tag (vX.Y.Z) matches the release
+          # tag created above.
           cat > Casks/nexus-agent.rb << EOF
           cask "nexus-agent" do
             version "${VERSION}"

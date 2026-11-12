@@ -44,7 +44,7 @@ pub const UNAVAILABLE: i32 = 12;
 pub const CATALOG: &str = "catalog/tools.json";
 pub const SCHEMA: &str = "catalog/catalog.schema.json";
 pub const SOURCES: &str = "catalog/sources.json";
-pub const APP_INFO: &str = "apps/desktop/vitruvian/Resources/Info.plist";
+pub const APP_INFO: &str = "apps/desktop/vitruvian-atrium/Resources/Info.plist";
 pub const HOME_REPO: &str = "VitruvianSoftware/vitruvian-core";
 pub const AUTOMERGE_MARK: &str = "<!-- catalog-bump: may merge itself -->";
 pub const FOREIGN_MARK: &str = "<!-- catalog-bump: foreign commits -->";
@@ -1890,13 +1890,13 @@ fn subparser(command: &str) -> Parser {
                 "--id",
                 "id",
                 true,
-                Some("the catalog entry, e.g. dev.vitruvian.homespeaker"),
+                Some("the catalog entry, e.g. dev.vitruvian.speaker"),
             ),
             val(
                 "--tag",
                 "tag",
                 true,
-                Some("the release, e.g. home-speaker-v1.20.0"),
+                Some("the release, e.g. vitruvian-speaker-v1.20.0"),
             ),
             val(
                 "--release-dir",
@@ -2205,12 +2205,12 @@ mod tests {
     #[test]
     fn branch_and_tag_helpers() {
         assert_eq!(
-            branch_for("dev.vitruvian.homespeaker", "1.20.0"),
-            "catalog/bump-dev.vitruvian.homespeaker-1.20.0"
+            branch_for("dev.vitruvian.speaker", "1.20.0"),
+            "catalog/bump-dev.vitruvian.speaker-1.20.0"
         );
-        let row = json::loads(r#"{"tagPrefix": "home-speaker-v"}"#).unwrap();
+        let row = json::loads(r#"{"tagPrefix": "vitruvian-speaker-v"}"#).unwrap();
         assert_eq!(
-            version_of(&row, "home-speaker-v1.20.0"),
+            version_of(&row, "vitruvian-speaker-v1.20.0"),
             Some("1.20.0".to_string())
         );
         assert_eq!(version_of(&row, "v1.20.0"), None);

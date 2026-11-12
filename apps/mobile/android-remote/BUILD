@@ -195,7 +195,7 @@ kt_jvm_test(
 # app has: a pull request whose one finished check failed drawn green, or an
 # out-of-sync ArgoCD app collapsed into the "all healthy" count, both render
 # perfectly and throw nothing.
-# Depends on :wire for the HomeSpeaker wire types (AgentCustomVoice) rather
+# Depends on :wire for the Vitruvian Speaker wire types (AgentCustomVoice) rather
 # than carrying a copy of them.
 kt_jvm_library(
     name = "derive",
@@ -215,9 +215,9 @@ kt_jvm_test(
         "src/main/kotlin/dev/vitruvian/remote/state/Derive.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/Wire.kt",
-        "//apps/desktop/home-speaker:Sources/HomeSpeakerToolCore/Pages.swift",
-        "//apps/desktop/home-speaker:testdata/controls.json",
-        "//apps/mobile/android-remote/macagent:golden_homespeaker_v1",
+        "//apps/desktop/vitruvian-speaker:Sources/VitruvianSpeakerToolCore/Pages.swift",
+        "//apps/desktop/vitruvian-speaker:testdata/controls.json",
+        "//apps/mobile/android-remote/macagent:golden_speaker_v1",
     ] + glob(["src/main/kotlin/dev/vitruvian/remote/screens/*.kt"]),
     test_class = "dev.vitruvian.remote.state.DeriveTest",
     deps = [
@@ -273,7 +273,7 @@ kt_jvm_library(
 kt_jvm_test(
     name = "wire_test",
     srcs = ["src/test/kotlin/dev/vitruvian/remote/state/WireTest.kt"],
-    data = ["//apps/mobile/android-remote/macagent:golden_homespeaker_v1"],
+    data = ["//apps/mobile/android-remote/macagent:golden_speaker_v1"],
     test_class = "dev.vitruvian.remote.state.WireTest",
     deps = [
         ":wire",

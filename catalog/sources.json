@@ -19,13 +19,13 @@
   ],
   "sources": [
     {
-      "id": "dev.vitruvian.homespeaker",
+      "id": "dev.vitruvian.speaker",
       "repo": "VitruvianSoftware/vitruvian-core",
-      "tagPrefix": "home-speaker-v",
-      "asset": "HomeSpeaker-{version}-tool.zip",
+      "tagPrefix": "vitruvian-speaker-v",
+      "asset": "VitruvianSpeaker-{version}-tool.zip",
       "uploader": "github-actions[bot]",
       "universal": true,
-      "releaseWorkflow": "home-speaker-release"
+      "releaseWorkflow": "vitruvian-speaker-release"
     },
     {
       "id": "dev.vitruvian.github",
@@ -36,10 +36,10 @@
       "universal": true
     },
     {
-      "id": "dev.vitruvian.nexus-agent",
-      "repo": "VitruvianSoftware/nexus-agent",
+      "id": "dev.vitruvian.code",
+      "repo": "VitruvianSoftware/vitruvian-code",
       "tagPrefix": "v",
-      "asset": "nexus-agent-tool-{version}.zip",
+      "asset": "vitruvian-code-tool-{version}.zip",
       "uploader": "ipv1337",
       "universal": true
     },

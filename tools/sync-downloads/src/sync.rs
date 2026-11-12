@@ -203,8 +203,8 @@ pub fn get_latest_release(
     fetch::fetch_json(&format!("repos/{}/releases/tags/{}", repo, latest), token)
 }
 
-/// The catalog block Courier's download links live in.
-const COURIER_SCOPE: &str = r"id:\s*courier[\s\S]*?";
+/// The catalog block Vitruvian Courier's download links live in.
+const VITRUVIAN_COURIER_SCOPE: &str = r"id:\s*vitruvian-courier[\s\S]*?";
 
 struct Catalog {
     content: String,
@@ -226,7 +226,7 @@ impl Catalog {
     }
 
     /// The url and size lines under a label, inside the block that starts
-    /// with `scope` (a regex prefix such as `id:\s*home-speaker[\s\S]*?`).
+    /// with `scope` (a regex prefix such as `id:\s*vitruvian-speaker[\s\S]*?`).
     fn asset(&mut self, scope: &str, label: &str, url: &str, size: &str) -> Result<(), Crash> {
         self.sub(
             &format!(
@@ -346,12 +346,12 @@ pub fn sync_catalog(
         }
     }
 
-    // 2. Vitruvian Desktop
-    if let Some(rel) = get_latest_release(CORE, Some("vitruvian-v"), token)? {
+    // 2. Vitruvian Atrium
+    if let Some(rel) = get_latest_release(CORE, Some("vitruvian-atrium-v"), token)? {
         if rel.truthy() {
-            let tag = str_of(&rel, "tag_name", "replace")?.replace("vitruvian-v", "");
-            say(&format!("✓ Vitruvian Desktop: v{}", tag));
-            cat.version("vitruvian-desktop", &tag)?;
+            let tag = str_of(&rel, "tag_name", "replace")?.replace("vitruvian-atrium-v", "");
+            say(&format!("✓ Vitruvian Atrium: v{}", tag));
+            cat.version("vitruvian-atrium", &tag)?;
             let list = assets(&rel)?;
             let mut has_universal_dmg = false;
             for a in &list {
@@ -361,7 +361,7 @@ pub fn sync_catalog(
                     break;
                 }
             }
-            let scope = r"id:\s*vitruvian-desktop[\s\S]*?";
+            let scope = r"id:\s*vitruvian-atrium[\s\S]*?";
             for a in list {
                 let Some(asset) = read_asset(&a, true)? else {
                     continue;
@@ -392,12 +392,12 @@ pub fn sync_catalog(
         }
     }
 
-    // 3. HomeSpeaker
-    if let Some(rel) = get_latest_release(CORE, Some("home-speaker-v"), token)? {
+    // 3. Vitruvian Speaker
+    if let Some(rel) = get_latest_release(CORE, Some("vitruvian-speaker-v"), token)? {
         if rel.truthy() {
-            let tag = str_of(&rel, "tag_name", "replace")?.replace("home-speaker-v", "");
-            say(&format!("✓ HomeSpeaker: v{}", tag));
-            cat.version("home-speaker", &tag)?;
+            let tag = str_of(&rel, "tag_name", "replace")?.replace("vitruvian-speaker-v", "");
+            say(&format!("✓ Vitruvian Speaker: v{}", tag));
+            cat.version("vitruvian-speaker", &tag)?;
             let list = assets(&rel)?;
             let mut has_universal_zip = false;
             for a in &list {
@@ -407,7 +407,7 @@ pub fn sync_catalog(
                     break;
                 }
             }
-            let scope = r"id:\s*home-speaker[\s\S]*?";
+            let scope = r"id:\s*vitruvian-speaker[\s\S]*?";
             for a in list {
                 let Some(asset) = read_asset(&a, true)? else {
                     continue;
@@ -428,22 +428,22 @@ pub fn sync_catalog(
         }
     }
 
-    // 3b. Courier: the same release shape as HomeSpeaker (both are packaged by
-    // //tools/desktop-package). Until the catalog has a `courier` entry, which
+    // 3b. Vitruvian Courier: the same release shape as Vitruvian Speaker (both are packaged by
+    // //tools/desktop-package). Until the catalog has a `vitruvian-courier` entry, which
     // is added by hand once the first release exists, nothing here matches and
     // the catalog is left alone.
-    if let Some(rel) = get_latest_release(CORE, Some("courier-v"), token)? {
+    if let Some(rel) = get_latest_release(CORE, Some("vitruvian-courier-v"), token)? {
         if rel.truthy() {
-            let tag = str_of(&rel, "tag_name", "replace")?.replace("courier-v", "");
-            say(&format!("✓ Courier: v{}", tag));
-            cat.version("courier", &tag)?;
+            let tag = str_of(&rel, "tag_name", "replace")?.replace("vitruvian-courier-v", "");
+            say(&format!("✓ Vitruvian Courier: v{}", tag));
+            cat.version("vitruvian-courier", &tag)?;
             for a in assets(&rel)? {
                 let Some(asset) = read_asset(&a, true)? else {
                     continue;
                 };
                 let name = name_str(&asset);
                 if let Some((_, label)) = DMG_LABELS.iter().find(|(n, _)| name.contains(n)) {
-                    cat.asset(COURIER_SCOPE, label, &asset.url, &asset.size)?;
+                    cat.asset(VITRUVIAN_COURIER_SCOPE, label, &asset.url, &asset.size)?;
                 }
             }
         }
@@ -476,20 +476,18 @@ pub fn sync_catalog(
         }
     }
 
-    // 7. esp32-s3
-    if let Some(rel) = get_latest_release(CORE, Some("esp32-s3-v"), token)? {
+    // 7. vitruvian-deck
+    if let Some(rel) = get_latest_release(CORE, Some("vitruvian-deck-v"), token)? {
         if rel.truthy() {
             let tag_name = str_of(&rel, "tag_name", "replace")?;
-            let ver = tag_name.replace("esp32-s3-v", "");
-            say(&format!("✓ esp32-s3: v{}", ver));
-            cat.version("esp32-s3", &ver)?;
-            cat.releases_url("esp32-s3", &tag_name)?;
+            let ver = tag_name.replace("vitruvian-deck-v", "");
+            say(&format!("✓ vitruvian-deck: v{}", ver));
+            cat.version("vitruvian-deck", &ver)?;
+            cat.releases_url("vitruvian-deck", &tag_name)?;
             for a in assets(&rel)? {
                 let asset = read_asset(&a, false)?.unwrap();
                 let label = match &asset.name {
-                    Value::Str(n) if n == "esp32-s3-mac-controller.zip" => {
-                        Some("Mac Controller ZIP")
-                    }
+                    Value::Str(n) if n == "vitruvian-deck.zip" => Some("Deck Bundle ZIP"),
                     Value::Str(n) if n == "firmware.bin" => Some("Firmware Binary"),
                     Value::Str(n) if n == "bootloader.bin" => Some("Bootloader Binary"),
                     Value::Str(n) if n == "partitions.bin" => Some("Partition Table"),
@@ -556,9 +554,8 @@ pub fn sync_catalog(
 /// The label of one of Vitruvian Code's release assets that is a download.
 /// The mirror names them VitruvianCode-<v>-macos.dmg (the build for every Mac),
 /// -arm64.dmg, -x86_64.dmg and -macos.zip (what the app updates itself from).
-/// No new asset says "universal": the one zip that does is the bridge for old
-/// Nexus Agent installs, which is no download. The `.sha256` files beside the
-/// zip are not either, so a name must END with what identifies it.
+/// The `.sha256` files beside the zip and the standalone tool zip are no
+/// downloads, so a name must END with what identifies it.
 pub fn code_label(name: &str) -> Option<&'static str> {
     const LABELS: [(&str, &str); 4] = [
         ("arm64.dmg", "Apple Silicon DMG"),
@@ -583,14 +580,14 @@ mod tests {
 
     // The cases in sync_downloads_test.py.
     #[test]
-    fn courier_links_update_only_courier() {
-        let original = "      - id: home-speaker\n        version: \"1.0.0\"\n        downloads:\n          - label: Universal DMG\n            url: https://example.invalid/hs.dmg\n            size: 1 MB\n      - id: courier\n        version: \"0.3.0\"\n        downloads:\n          - label: Universal DMG\n            url: https://example.invalid/old.dmg\n            size: 1 MB\n          - label: Apple Silicon DMG\n            url: https://example.invalid/old-arm64.dmg\n            size: 1 MB\n";
+    fn vitruvian_courier_links_update_only_vitruvian_courier() {
+        let original = "      - id: vitruvian-speaker\n        version: \"1.0.0\"\n        downloads:\n          - label: Universal DMG\n            url: https://example.invalid/hs.dmg\n            size: 1 MB\n      - id: vitruvian-courier\n        version: \"0.3.0\"\n        downloads:\n          - label: Universal DMG\n            url: https://example.invalid/old.dmg\n            size: 1 MB\n          - label: Apple Silicon DMG\n            url: https://example.invalid/old-arm64.dmg\n            size: 1 MB\n";
         let mut cat = Catalog {
             content: original.to_string(),
         };
-        cat.version("courier", "0.3.1").unwrap();
+        cat.version("vitruvian-courier", "0.3.1").unwrap();
         cat.asset(
-            COURIER_SCOPE,
+            VITRUVIAN_COURIER_SCOPE,
             "Universal DMG",
             "https://example.invalid/new.dmg",
             "2 MB",
@@ -598,25 +595,25 @@ mod tests {
         .unwrap();
         assert!(cat
             .content
-            .contains("id: courier\n        version: \"0.3.1\""));
+            .contains("id: vitruvian-courier\n        version: \"0.3.1\""));
         assert!(cat
             .content
             .contains("url: https://example.invalid/new.dmg\n            size: 2 MB"));
-        // HomeSpeaker's block, before Courier's, is untouched.
+        // Vitruvian Speaker's block, before Vitruvian Courier's, is untouched.
         assert!(cat.content.contains("version: \"1.0.0\""));
         assert!(cat.content.contains("https://example.invalid/hs.dmg"));
         assert!(cat.content.contains("old-arm64.dmg"));
     }
 
     #[test]
-    fn courier_without_a_catalog_entry_changes_nothing() {
-        let original = "      - id: home-speaker\n        version: \"1.0.0\"\n        downloads:\n          - label: Universal DMG\n            url: https://example.invalid/hs.dmg\n            size: 1 MB\n";
+    fn vitruvian_courier_without_a_catalog_entry_changes_nothing() {
+        let original = "      - id: vitruvian-speaker\n        version: \"1.0.0\"\n        downloads:\n          - label: Universal DMG\n            url: https://example.invalid/hs.dmg\n            size: 1 MB\n";
         let mut cat = Catalog {
             content: original.to_string(),
         };
-        cat.version("courier", "0.3.1").unwrap();
+        cat.version("vitruvian-courier", "0.3.1").unwrap();
         cat.asset(
-            COURIER_SCOPE,
+            VITRUVIAN_COURIER_SCOPE,
             "Universal DMG",
             "https://example.invalid/new.dmg",
             "2 MB",
@@ -643,18 +640,18 @@ mod tests {
             code_label("VitruvianCode-1.33.0-macos.zip"),
             Some("Universal ZIP")
         );
-        // The checksum beside the zip, the bridge, and the tool are no downloads.
+        // The checksum beside the zip, `-universal.zip`, and the tool are no downloads.
         assert_eq!(code_label("VitruvianCode-1.33.0-macos.zip.sha256"), None);
-        assert_eq!(code_label("NexusAgent-1.33.0-universal.zip"), None);
+        assert_eq!(code_label("VitruvianCode-1.33.0-universal.zip"), None);
         assert_eq!(code_label("vitruvian-code-tool-1.33.0.zip"), None);
     }
 
     #[test]
     fn test_parse_semver() {
         assert_eq!(semver("v1.2.3"), (1, 2, 3));
-        assert_eq!(semver("home-speaker-v1.11.0"), (1, 11, 0));
-        assert_eq!(semver("vitruvian-v3.37.1"), (3, 37, 1));
-        assert_eq!(semver("nexus-agent-1.20.1"), (1, 20, 1));
+        assert_eq!(semver("vitruvian-speaker-v1.11.0"), (1, 11, 0));
+        assert_eq!(semver("vitruvian-atrium-v3.37.1"), (3, 37, 1));
+        assert_eq!(semver("vitruvian-code-1.34.0"), (1, 34, 0));
         assert_eq!(semver("0.1.2"), (0, 1, 2));
         assert_eq!(semver("no-numbers"), (0, 0, 0));
     }

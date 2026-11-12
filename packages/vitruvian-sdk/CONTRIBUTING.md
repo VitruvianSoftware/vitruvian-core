@@ -36,7 +36,7 @@ the tests refuse anything less.
 | The Swift types | `Sources/VitruvianToolProtocol` | `VitruvianToolProtocolTests` |
 | An example | `protocol/examples/` | both of the above: they can only see a difference an example crosses |
 | The kits in other languages | `kits/` and `go/`, their types generated from the schema by `bazel run //tools/sdk-codegen` | `//tools/sdk-codegen:in_sync_test`, which fails when a generated file is not what the generator writes; and each kit's own tests, which hold that every request a tool may send has a call |
-| The app's pin | `apps/desktop/vitruvian/bazel/tool_protocol.sha256` in vitruvian-core, written by `bazel run //apps/desktop/vitruvian:pin_tool_protocol` | `tool_protocol_pin_test`, in the app's folder |
+| The app's pin | `apps/desktop/vitruvian-atrium/bazel/tool_protocol.sha256` in vitruvian-core, written by `bazel run //apps/desktop/vitruvian-atrium:pin_tool_protocol` | `tool_protocol_pin_test`, in the app's folder |
 | The conformance script and `vitruvian-tool run` | `conformance/src`, built as `//packages/vitruvian-sdk:conformance`, whose table of params is written by hand; `Sources/VitruvianToolCLI/Desk.swift` | `conformance_test`; `VitruvianToolCLITests`, which holds that the desk answers every request a tool may send |
 
 **Additive within a version.** A new message or field needs no new version

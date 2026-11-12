@@ -8,7 +8,7 @@
 
 ## Overview
 
-Vitruvian Code (formerly Nexus Agent, `apps/desktop/vitruvian-code/`) is a
+Vitruvian Code (`apps/desktop/vitruvian-code/`) is a
 macOS app that runs coding agents such as Claude Code and Antigravity (agy).
 It ships in two forms:
 
@@ -400,7 +400,7 @@ as environment values are marked sensitive. The app stores them in a private
 file only the user can read (mode 0600), shows them masked, and hands them to
 the helper in its first message. The app doesn't use the Keychain yet: with
 today's ad-hoc signing, macOS would ask for Keychain access again after every
-update, which is why `home-speaker` avoids it too. Moving to the Keychain
+update, which is why `vitruvian-speaker` avoids it too. Moving to the Keychain
 follows once Developer ID signing (PR #4589) has shipped.
 
 **Ollama (claude)** is today's setting that runs Claude Code against a local
@@ -846,7 +846,7 @@ mode and sandbox setting. The app's agy decisions then use the same inputs as
 
 **Secrets.** Sensitive environment values are stored in a private 0600 file
 through `Environment.writePrivateFile`, which already stores the bot's secrets
-this way. That also matches why `home-speaker`'s `SecretStore` avoids the
+this way. That also matches why `vitruvian-speaker`'s `SecretStore` avoids the
 Keychain: with ad-hoc signing, macOS asks for Keychain access again after
 every update. Moving to the Keychain is a follow-up once PR #4589's Developer
 ID signing has shipped.

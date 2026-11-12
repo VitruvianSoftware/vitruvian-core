@@ -526,9 +526,7 @@ public final class VitruvianCodeAutomationManager: ObservableObject {
         launchdLabel(forTaskID: task.id)
     }
 
-    /// What every automation's launchd label starts with. The first
-    /// version of the app used `nexus-agent.automation.`; the first launch of this
-    /// one moves those over (`VitruvianCodeLegacyMigration`).
+    /// What every automation's launchd label starts with.
     public nonisolated static let launchdLabelPrefix = "com.vitruviansoftware.code.automation."
 
     public nonisolated static func launchdLabel(forTaskID id: UUID) -> String {

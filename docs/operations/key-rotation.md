@@ -25,7 +25,7 @@ List them with `gh secret list -R VitruvianSoftware/vitruvian-core`:
 | `NTFY_GITHUB_ACTIONS_PASSWORD` | CI's login to self-hosted ntfy (notify-ci-issues) | the ntfy server — rotate with `bazel run //tools/gitops:ntfy-rotate-ci-password` (one step, nobody sees the value) |
 | `OTEL_GITHUB_WEBHOOK_SECRET` | Signs GitHub's CI webhook deliveries to the CI collector | generated — rotate with `bazel run //tools/gitops:rotate-github-otel-webhook-secret`, then **in order**: merge the sealed-file PR and let Argo CD sync; `kubectl -n cicd-telemetry rollout restart deploy/github-actions-collector` (it reads the secret at start); run the Repo Config Apply workflow (updates the webhook); redeliver any failed deliveries from the webhook's log. Between the restart and the apply, deliveries fail with 400 and GitHub does not retry them |
 | `DNS_CLOUDFLARE_API_TOKEN` | Cloudflare token for the website's custom-domain records (`repo-config`, `internal/site_domain`). DNS:Edit and Zone:Read on the `vitruviansoftware.dev` zone **only**; the zone also carries the Workspace mail records | Cloudflare dashboard, API Tokens. The value is kept in Bitwarden item `vitruvian-core/cloudflare-dns-token`. Store it with `bw get item vitruvian-core/cloudflare-dns-token \| jq -j '.fields[]\|select(.name=="CLOUDFLARE_API_TOKEN").value' \| gh secret set DNS_CLOUDFLARE_API_TOKEN -R VitruvianSoftware/vitruvian-core` (the value never prints) |
-| `DEVX_SYNC_SSH_KEY`, `HOMELAB_SYNC_SSH_KEY`, `MCP_SLACK_SYNC_SSH_KEY`, `NEXUS_AGENT_SYNC_SSH_KEY` | Copybara per-component deploy keys | each component's standalone-repo deploy keys |
+| `DEVX_SYNC_SSH_KEY`, `HOMELAB_SYNC_SSH_KEY`, `MCP_SLACK_SYNC_SSH_KEY`, `NEXUS_AGENT_SYNC_SSH_KEY` <!-- legacy name: Copybara deploy key secret for vitruvian-code --> | Copybara per-component deploy keys | each component's standalone-repo deploy keys |
 
 The detailed steps below are for `BUILDBUDDY_API_KEY`. For the others, only **how
 you create the new credential** differs (see each source of truth) — the
@@ -81,7 +81,7 @@ Never commit `user.bazelrc`.
   the job stays green and the build appears in the org's build history.
 - **Local (optional, macOS-safe):**
   ```sh
-  bazel build --config=remote --remote_executor= //apps/cli/devx/internal/multinode/lima:lima
+  bazel build --config=remote --remote_executor= //apps/cli/vitruvian-devx/internal/multinode/lima:lima
   ```
   This runs the build locally but streams to BuildBuddy with the new key (cache +
   BES, no remote execution), so it works from a Mac and confirms auth + that a

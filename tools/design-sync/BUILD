@@ -29,8 +29,8 @@ rust_library(
     srcs = [
         "src/inject_reference_fonts.rs",
         "src/lib.rs",
-        "src/mcp_slack_e2e.rs",
         "src/prepare.rs",
+        "src/vitruvian_slack_mcp_e2e.rs",
     ],
     crate_name = "design_sync_lib",
     crate_root = "src/lib.rs",
@@ -73,8 +73,8 @@ rust_binary(
 )
 
 rust_binary(
-    name = "test_mcp_slack_e2e",
-    srcs = ["src/bin/test_mcp_slack_e2e.rs"],
+    name = "test_vitruvian_slack_mcp_e2e",
+    srcs = ["src/bin/test_vitruvian_slack_mcp_e2e.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
@@ -85,8 +85,8 @@ rust_binary(
 )
 
 alias(
-    name = "test-mcp-slack-e2e",
-    actual = ":test_mcp_slack_e2e",
+    name = "test-vitruvian-slack-mcp-e2e",
+    actual = ":test_vitruvian_slack_mcp_e2e",
     visibility = ["//visibility:public"],
 )
 

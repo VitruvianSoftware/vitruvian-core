@@ -212,7 +212,7 @@ func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 		c.FloatingProjectEnabled = true
 	}
 	// Defaults false: the OSS floating project is a monorepo-specific addition
-	// (a home for open-source apps; in bu2 this is tabula), not part of the
+	// (a home for open-source apps; in bu2 this is vitruvian-tabs), not part of the
 	// upstream reference set, so the example stays unchanged unless opted in.
 	c.OSSFloatingProjectEnabled = conf.Get("oss_floating_project_enabled") == "true"
 	c.ClusterReaderMembers = splitAppList(conf.Get("cluster_reader_members"))
@@ -493,7 +493,7 @@ func (a AppIdentityConfig) PreviewGitHubEnvironment() string {
 }
 
 // defaultAppDeployRoles is replicated EXACTLY from the app-side stack this
-// identity is adopted from (tabula/infra/identity) — adoption must be
+// identity is adopted from (apps/suites/vitruvian-tabs/infra/identity) — adoption must be
 // permission-neutral.
 var defaultAppDeployRoles = []string{
 	"roles/run.admin",

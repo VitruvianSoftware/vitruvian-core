@@ -23,7 +23,7 @@
 # when that PR merges, cuts the GitHub Release tagged gravastar-mouse-vX.Y.Z.
 #
 # This is RELEASE MACHINERY, not delivery (the same split as
-# iot-esp32-s3-release.yaml): it publishes no artifact. The release it cuts is
+# iot-vitruvian-deck-release.yaml): it publishes no artifact. The release it cuts is
 # what the generated delivery-gravastar-mouse.yaml's `gravastar-mouse-production`
 # rung listens for, and the beta rolling prerelease is that unit's push rung.
 name: gravastar-mouse-release

@@ -12,10 +12,10 @@ and //tools/gitops). Identity and target project come from
 infrastructure/gcp-identities.tsv keyed on the app's infra dir — never ambient
 gcloud (principles §2.2).
 
-  bazel run //tools/gcp-secrets:status -- tabula/infra/build          # which secrets still need a value
-  bazel run //tools/gcp-secrets:seed   -- tabula/infra/build          # fill in every unseeded one
-  bazel run //tools/gcp-secrets:seed   -- tabula/infra/build NEON_API_KEY
-  bazel run //tools/gcp-secrets:seed   -- tabula/infra/build --force NEON_API_KEY   # rotate
+  bazel run //tools/gcp-secrets:status -- apps/suites/vitruvian-tabs/infra/build          # which secrets still need a value
+  bazel run //tools/gcp-secrets:seed   -- apps/suites/vitruvian-tabs/infra/build          # fill in every unseeded one
+  bazel run //tools/gcp-secrets:seed   -- apps/suites/vitruvian-tabs/infra/build NEON_API_KEY
+  bazel run //tools/gcp-secrets:seed   -- apps/suites/vitruvian-tabs/infra/build --force NEON_API_KEY   # rotate
 """
 
 # gazelle:ignore

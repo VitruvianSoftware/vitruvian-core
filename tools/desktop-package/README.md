@@ -1,6 +1,6 @@
 # Desktop Release Packaging Tool (`package-desktop`)
 
-`//tools/desktop-package:package-desktop` is the canonical, reusable packaging tool for macOS desktop applications in `apps/desktop/` (`home-speaker`, `vitruvian`, `vitruvian-code`, and future desktop apps).
+`//tools/desktop-package:package-desktop` is the canonical, reusable packaging tool for macOS desktop applications in `apps/desktop/` (`vitruvian-speaker`, `vitruvian`, `vitruvian-code`, and future desktop apps).
 
 It automates and enforces the standardized **6-point distribution contract** so developers and coding agents do not need to duplicate lipo thinning, codesigning, DMG packaging, checksumming, or cask maintenance by hand.
 
@@ -28,19 +28,19 @@ Every `.dmg` and `.zip` artifact is accompanied by a SHA-256 sidecar file (`.sha
 ```bash
 # Package a pre-built .app bundle:
 bazel run //tools/desktop-package:package-desktop -- \
-  --app-path dist/HomeSpeaker.app \
+  --app-path "dist/Vitruvian Speaker.app" \
   --version 1.11.0 \
   --dist-dir dist
 
 # Package from a Bazel-built ZIP archive (e.g. from macos_application):
 bazel run //tools/desktop-package:package-desktop -- \
-  --archive bazel-bin/apps/desktop/vitruvian/Vitruvian.zip \
+  --archive bazel-bin/apps/desktop/vitruvian-atrium/VitruvianAtrium.zip \
   --version 3.37.1 \
-  --dist-dir apps/desktop/vitruvian/dist
+  --dist-dir apps/desktop/vitruvian-atrium/dist
 
 # Dry-run validation (builds and validates artifacts locally without publishing):
 bazel run //tools/desktop-package:package-desktop -- \
-  --app-path dist/HomeSpeaker.app \
+  --app-path "dist/Vitruvian Speaker.app" \
   --version 1.11.0 \
   --dry-run
 ```
@@ -76,18 +76,18 @@ A release workflow should end with the same check as its own step, so the job's 
 
 ```bash
 bazel run //tools/desktop-package:package-desktop -- --verify-only \
-  --app-name HomeSpeaker --version 1.13.1 --tag home-speaker-v1.13.1 \
-  --require-asset HomeSpeaker-1.13.1-tool.zip
+  --app-name "Vitruvian Speaker" --version 1.41.0 --tag vitruvian-speaker-v1.41.0 \
+  --require-asset VitruvianSpeaker-1.41.0-tool.zip
 ```
 
 ### Writing a script that calls this tool
 
-Release runners are Macs, and a Mac's `/bin/bash` is 3.2. Two things differ from the bash on Linux and on most laptops, and together they shipped HomeSpeaker 1.12.0 and 1.13.0 with no files and a green run:
+Release runners are Macs, and a Mac's `/bin/bash` is 3.2. Two things differ from the bash on Linux and on most laptops, and together they shipped Vitruvian Speaker 1.12.0 and 1.13.0 with no files and a green run:
 
 - Expanding an **empty** array under `set -u` ends the script (`unbound variable`). Write `${args[@]+"${args[@]}"}`, never a bare `"${args[@]}"`, for any array that can be empty.
 - After that kind of abort an `EXIT` trap runs with `$?` equal to 0, and the script exits with the trap's status. A trap that only cleans up turns the abort into exit 0. Set a flag on the script's last line and have the trap exit non-zero without it.
 
-`//tools/desktop-package:package-desktop_test` and `//apps/desktop/home-speaker:publish_test` check both; copy the shape for a new app.
+`//tools/desktop-package:package-desktop_test` and `//apps/desktop/vitruvian-speaker:publish_test` check both; copy the shape for a new app.
 
 ---
 

@@ -90,6 +90,6 @@ jest_test(
     ],
     node_modules = ":node_modules",
     # Node 22.12+ require(esm) makes jest's generated config throw
-    # ERR_REQUIRE_ASYNC_MODULE; force the import() fallback, as mcp-slack does.
+    # ERR_REQUIRE_ASYNC_MODULE; force the import() fallback, as vitruvian-slack-mcp does.
     node_options = ["--no-experimental-require-module"],
 )

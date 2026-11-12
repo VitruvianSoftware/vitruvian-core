@@ -46,7 +46,7 @@ _IGNORE_GLOBS = [
     "**/dev-local/crds/**",
     "**/dev-local/values/**",
     "**/dev-local/dashboards/**",
-    "apps/mcp/slack/deploy/chart/gitops/**",
+    "apps/mcp/vitruvian-slack-mcp/deploy/chart/gitops/**",
     # generated DB migrations
     "**/prisma/migrations/**",
     # bazel symlinks, vendored trees, VCS
@@ -77,7 +77,7 @@ _IGNORE_GLOBS = [
     ".ds-sync/**",
     ".design-sync/sb-reference/**",
     ".design-sync/.cache/**",
-    # PlatformIO's downloaded framework + library deps (iot/esp32-s3/.pio):
+    # PlatformIO's downloaded framework + library deps (apps/embedded/vitruvian-deck/.pio):
     # ~1000 vendored upstream files that would otherwise fail :check on any
     # developer tree that has built the firmware once.
     "**/.pio/**",
@@ -108,10 +108,10 @@ _IGNORE_GLOBS = [
     # header into either; apps/desktop/vitruvian-code/THIRD_PARTY_NOTICES.md is
     # their notice.
     "apps/desktop/vitruvian-code/macos/Sources/VitruvianCodeUI/Resources/**",
-    # apps/desktop/vitruvian is an imported GPL-3.0-or-later fork (see its
+    # apps/desktop/vitruvian-atrium is an imported GPL-3.0-or-later fork (see its
     # UPSTREAM.md). Its upstream SPDX headers must stay verbatim and :add must
     # never write an MIT header into it.
-    "apps/desktop/vitruvian/**",
+    "apps/desktop/vitruvian-atrium/**",
 ]
 
 _LICENSE_FLAG = "mit"

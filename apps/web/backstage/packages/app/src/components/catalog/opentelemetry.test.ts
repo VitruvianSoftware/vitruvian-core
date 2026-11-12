@@ -85,10 +85,10 @@ describe("OpenTelemetry helpers", () => {
       expect(
         getOpenTelemetryServiceName(
           makeEntity({
-            [JAEGER_GROUP_ANNOTATION]: "mcp-slack",
+            [JAEGER_GROUP_ANNOTATION]: "vitruvian-slack-mcp",
           }),
         ),
-      ).toBe("mcp-slack");
+      ).toBe("vitruvian-slack-mcp");
     });
   });
 

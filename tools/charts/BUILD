@@ -21,8 +21,8 @@
 """Helm chart publishing.
 
 The charts themselves are co-located with the apps they deploy
-(tabula/deploy/chart, oauth-user-inspector/deploy/chart,
-mcp-slack/deploy/chart), so no single app package owns "publish the charts" --
+(apps/suites/vitruvian-tabs/deploy/chart, oauth-user-inspector/deploy/chart,
+vitruvian-slack-mcp/deploy/chart), so no single app package owns "publish the charts" --
 it is a repo-wide operation over a glob. This tool package owns it, which is
 also where its delivery() unit is declared.
 

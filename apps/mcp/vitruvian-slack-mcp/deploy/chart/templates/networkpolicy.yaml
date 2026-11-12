@@ -1,0 +1,173 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# WHY THIS EXISTS
+#
+# It bounds LATERAL MOVEMENT inside the cluster. That is the whole claim, and
+# it is narrower than what this file used to say.
+#
+# The previous version claimed it "bounds where a compromised process can send
+# the credential." That is FALSE for the policy below, and worth stating
+# plainly rather than quietly dropping: egress to the internet on :443 is
+# unrestricted here, so a compromised process can still post the bot token
+# anywhere it likes. Nothing in this file prevents that.
+#
+# What it does prevent: this pod reaching the apiserver, other namespaces,
+# CNPG/Postgres, the Buzz relay, or anything else inside the cluster. For an
+# internet-facing workload on a cluster that also hosts Zitadel and Postgres,
+# that is the half that matters — a compromise stays bounded to the credential
+# it already holds instead of becoming a foothold.
+#
+# THE RESIDUAL, NAMED SO NOBODY READS A GREEN POLICY AS FULL CONTAINMENT:
+# egress to the internet on :443 is unrestricted; this policy does NOT bound
+# credential exfiltration; that gap is #1428.
+#
+# AND :443 IS NOT THE ONLY WAY OUT. The DNS rule below carries no `rules.dns`
+# block — it cannot, see #1428 — so DNS QUERY CONTENT is unrestricted too. A
+# compromised process encodes the token into query labels, kube-dns forwards
+# them upstream, and nothing goes near :443. Two independent exfiltration
+# channels; naming only the first invites the conclusion that pinning :443 to
+# a CIDR set would close exfiltration. It would not — DNS tunnelling survives
+# that untouched. No L3/L4 shape closes the DNS half either, so this is a
+# property of the available policy language, not a defect in the rules below.
+# (Aegis, review of #1487.)
+#
+# WHY NOT toFQDNs — MEASURED, NOT ASSUMED (#1428)
+#
+# Host pinning would close the exfiltration half, and it is unusable here.
+# Cilium's L7 DNS proxy never answers on this cluster: with a `rules.dns`
+# block every lookup times out, including the names the rule explicitly
+# allows, and widening to `matchPattern: "*"` does not help. Drop the block
+# and DNS resolves instantly — but then `toFQDNs` matches nothing, because the
+# proxy is what populates the FQDN→IP mapping, so :443 is blocked instead.
+# Both ways out are closed. Platform defect, not a vitruvian-slack-mcp one; the day it
+# is fixed, this policy is the one that wants tightening.
+#
+# Worth knowing even then: `auth.ipv1337.dev` is a proxied CNAME, so the
+# addresses `toFQDNs` would learn are shared Cloudflare anycast IPs fronting
+# zones an attacker can register. That pinning is weaker than it reads.
+#
+# THIS POLICY IS ALLOW-ONLY ON PURPOSE. DO NOT ADD A DENY RULE.
+#
+# Cilium gives deny rules precedence over allow rules, so any deny here
+# outranks the allows below it. An `egressDeny` naming the cluster CIDR to
+# "explicitly" block the apiserver (10.43.0.1) also blocks kube-dns
+# (10.43.0.10) — same /16 — taking out the DNS this policy depends on. Same
+# shape as a blanket `ingressDeny` cutting the kubelet probe: it reads as
+# tightening and silently subtracts something load-bearing.
+#
+# It is also unnecessary. `enable-policy=default` means enforcement begins the
+# moment a policy selects this endpoint, so everything not allowed below is
+# already denied. Measured by ablation in a live scratch namespace: with only
+# the two rules below, the apiserver, another namespace's service and :80 to
+# world were all BLOCKED — and deleting the policy made them reachable again.
+# DENIED BY OMISSION, not by a missing rule.
+#
+# SCOPE OF THAT MEASUREMENT, so it is not read as more than it is: one node, a
+# busybox probe, seven checks plus a reverse control. NOT tested with the real
+# vitruvian-slack-mcp image, NOT under load, NOT across a node restart, NOT on a second
+# node.
+{{- /*
+  GATED ON AN EXPLICIT VALUE, AND THE GATE NOW MEANS THE OPPOSITE THING.
+
+  While the policy was measured-broken, `false` meant "deploy without egress
+  bounding" and the gate existed to stop that happening by accident. The
+  policy now works, so `false` means "deploy WITHOUT THE LATERAL BOUND" — the
+  pod may reach the apiserver, other namespaces, Postgres and the relay.
+
+  Narrower, and still a decision worth typing rather than defaulting: enabling
+  the app is a one-line rename of vitruvian-slack-mcp.yaml.disabled, so running an
+  internet-facing pod with no in-cluster containment should be a value someone
+  chose, not a warning someone skipped. Aegis's finding 3 on #1420, kept for
+  the new meaning rather than retired with the old one.
+
+  `required` on a nil value aborts the render, which is the chart's stated
+  convention: a value we cannot interpret must never resolve to the permissive
+  case.
+
+  The kindIs guard is not ceremony. Helm treats a non-empty STRING as truthy,
+  so `networkPolicy.enabled: "false"` — a plausible way to write this in a
+  values file — would sail through `required` and then render the broken
+  policy. That is the same fail-open-on-a-string shape as cfg.GetBool in
+  zitadel-apps-mcp-slack and the ChannelParam array bypass. Refuse it rather
+  than interpret it.
+*/}}
+{{- $npEnabled := required "networkPolicy.enabled must be set explicitly (true/false). true applies an L3/L4 CiliumNetworkPolicy that bounds LATERAL movement — the pod cannot reach the apiserver, other namespaces, Postgres or the relay (measured; see this file's header). It does NOT bound egress OUT of the cluster — neither :443 to any host nor DNS query content — so it does not prevent credential exfiltration by either route; that gap is #1428. false deploys with NO in-cluster containment at all, on an internet-facing pod holding a Slack token. Choose deliberately." .Values.networkPolicy.enabled }}
+{{- if kindIs "string" $npEnabled }}
+{{- fail "networkPolicy.enabled must be a boolean, not a string. Helm treats a non-empty string as true, so \"false\" would silently ENABLE the policy — the opposite of what was written." }}
+{{- end }}
+{{- if $npEnabled }}
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "vitruvian-slack-mcp.name" . }}-egress
+  labels: {{- include "vitruvian-slack-mcp.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels: {{- include "vitruvian-slack-mcp.selectorLabels" . | nindent 6 }}
+  egress:
+    # DNS to kube-dns, with NO `rules.dns` block — and the omission is the
+    # entire reason this policy works. A `rules.dns` block engages Cilium's L7
+    # DNS proxy, which does not answer on this cluster (#1428), so including
+    # one kills resolution outright. Plain L3/L4 to :53 never touches the
+    # proxy.
+    #
+    # The cost is honest: without the proxy there is no per-name DNS
+    # restriction, so this pod can resolve anything. Paired with the :443 rule
+    # below, that means no host pinning at all — see the residual in the
+    # header. Note the cost is not only resolution: unrestricted query CONTENT
+    # makes this rule an exfiltration path in its own right, independent of
+    # :443.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    # Outbound HTTPS to the public internet: Slack's API and the IdP's JWKS.
+    #
+    # `world` rather than CIDRs, and DO NOT NARROW IT TO IPv4 CIDRs. From
+    # inside this cluster `auth.ipv1337.dev` resolves to Cloudflare IPv6
+    # (2606:4700:3033::/32) — the pod reaches its own cluster's IdP by
+    # hairpinning out to Cloudflare's edge and back down the tunnel. An
+    # IPv4-only CIDR set therefore drops the IdP silently: tokens stop
+    # verifying and it looks like a Zitadel outage.
+    #
+    # Stated as a convention because that is what it is — a comment, which is
+    # the weakest control we have and loses to anyone confident they are
+    # improving the policy. The refusal that would actually hold is a
+    # boot-time JWKS reachability check in the server, so an unreachable IdP
+    # fails at startup instead of on the first authenticated request. That is
+    # tracked separately; until it exists, this note is what there is.
+    #
+    # `world` was confirmed load-bearing by ablation, not inferred from a
+    # passing test: removing this rule blocks the IdP, restoring it permits it.
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+{{- end }}

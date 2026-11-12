@@ -76,7 +76,7 @@ alias(
         ":linux_arm64": "@relock_cargo_aarch64_unknown_linux_gnu//:cargo/bin/cargo",
         ":linux_x86_64": "@relock_cargo_x86_64_unknown_linux_gnu//:cargo/bin/cargo",
     }),
-    visibility = ["//apps/suites/wand/build:__pkg__"],
+    visibility = ["//apps/suites/vitruvian-wand/build:__pkg__"],
 )
 
 rust_binary(

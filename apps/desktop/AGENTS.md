@@ -1,6 +1,6 @@
 # Desktop Applications Agent Guide (`apps/desktop/`)
 
-This guide is the single authoritative reference for developing, packaging, and releasing native macOS desktop and menu-bar applications in `apps/desktop/` (including [HomeSpeaker](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/home-speaker), [Vitruvian](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/vitruvian), [VitruvianCode](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/vitruvian-code), and future desktop apps).
+This guide is the single authoritative reference for developing, packaging, and releasing native macOS desktop and menu-bar applications in `apps/desktop/` (including [Vitruvian Speaker](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/vitruvian-speaker), [Vitruvian](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/vitruvian-atrium), [VitruvianCode](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/vitruvian-code), and future desktop apps).
 
 All desktop applications adhere to a **standardized 6-point release artifact contract** so that coding agents and human contributors have a uniform, predictable distribution pattern across the monorepo.
 
@@ -59,10 +59,10 @@ This builds all DMGs, universal ZIP, checksums, and prints the Homebrew Cask for
 ## 3. Architecture & Build Pipelines
 
 Desktop applications in `apps/desktop/` are built using either:
-- **Bazel rules_apple (`macos_application`)**: e.g. [Vitruvian](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/vitruvian/BUILD).
+- **Bazel rules_apple (`macos_application`)**: e.g. [Vitruvian Atrium](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/vitruvian-atrium/BUILD).
   - Built with `bazel build --config=macos-app --macos_cpus=arm64,x86_64 //apps/desktop/<app>:<App>`.
   - Produces a universal `.zip` containing `<App>.app`.
-- **Swift Package Manager (SwiftPM)**: e.g. [HomeSpeaker](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/home-speaker).
+- **Swift Package Manager (SwiftPM)**: e.g. [Vitruvian Speaker](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/vitruvian-speaker).
   - Built with `swift build -c release --arch arm64 --arch x86_64`.
   - Bundled into `<App>.app` with app resources, icons, and `Info.plist`.
 
@@ -147,11 +147,11 @@ When adding a new desktop app `apps/desktop/<app-name>`:
 
 1. **Governance & Metadata**:
    - Provide `LICENSE` (MIT `(c) 2026 VitruvianSoftware`), `README.md`, and `catalog-info.yaml`.
-   - **Exception: apps that embed copyleft code use a compatible licence instead of MIT.** `vitruvian` is GPL-3.0-or-later because it is an imported fork, and `courier` is AGPL-3.0-or-later because it embeds the AGPL mautrix bridges. Put that licence in `LICENSE` and give the sources an `SPDX-License-Identifier` header for it (never run `//tools/license:add`, which writes the MIT one). Such an app is exempt from the MIT-header content check in `tools/license/verify.sh`: add its directory to the exclusion list there, as `apps/desktop/vitruvian/` and `apps/desktop/courier/` already are. `//tools/license:check` still requires a header on every file.
+   - **Exception: apps that embed copyleft code use a compatible licence instead of MIT.** `vitruvian-atrium` is GPL-3.0-or-later because it is an imported fork, and `vitruvian-courier` is AGPL-3.0-or-later because it embeds the AGPL mautrix bridges. Put that licence in `LICENSE` and give the sources an `SPDX-License-Identifier` header for it (never run `//tools/license:add`, which writes the MIT one). Such an app is exempt from the MIT-header content check in `tools/license/verify.sh`: add its directory to the exclusion list there, as `apps/desktop/vitruvian-atrium/` and `apps/desktop/courier/` already are. `//tools/license:check` still requires a header on every file.
    - Add a `release-please-config.json` and `.release-please-manifest.json`.
 2. **Packaging Script**:
    - Create `apps/desktop/<app-name>/scripts/publish.sh` (or `publish.sh`) that builds the universal binary/bundle and invokes `//tools/desktop-package:package-desktop`.
-   - It runs under the Mac's bash 3.2: read "Writing a script that calls this tool" in `tools/desktop-package/README.md` first, and give it a test like `//apps/desktop/home-speaker:publish_test`.
+   - It runs under the Mac's bash 3.2: read "Writing a script that calls this tool" in `tools/desktop-package/README.md` first, and give it a test like `//apps/desktop/vitruvian-speaker:publish_test`.
 3. **Release Workflow**:
    - Add `.github/workflows/<app-name>-release.yaml` (or declare delivery unit in `tools/delivery/defs.bzl`).
    - End the publishing job with a `//tools/desktop-package:package-desktop -- --verify-only` step, so a release with missing files fails the job.

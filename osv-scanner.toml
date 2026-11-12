@@ -86,45 +86,45 @@ reason = "npm deepmerge (4.3.1), reached via build/test/CLI dependencies (@rollu
 [[IgnoredVulns]]
 id = "GO-2026-6911"
 ignoreUntil = 2026-12-23
-reason = "Go github.com/mark3labs/mcp-go (1.5.0) in apps/cli/devx/go.mod. Advisory published 2026-11-05 against client/transport.NewStreamableHTTP following untrusted HTTP redirects with bearer tokens. No fixed release exists upstream (1.5.0 is latest), and devx only uses mcp-go/server (stdio server) and never imports client/transport. Time-boxed to pick up an upstream release when available."
+reason = "Go github.com/mark3labs/mcp-go (1.5.0) in apps/cli/vitruvian-devx/go.mod. Advisory published 2026-11-05 against client/transport.NewStreamableHTTP following untrusted HTTP redirects with bearer tokens. No fixed release exists upstream (1.5.0 is latest), and devx only uses mcp-go/server (stdio server) and never imports client/transport. Time-boxed to pick up an upstream release when available."
 
-# libsignal (apps/desktop/courier/libsignal/Cargo.lock, added 2026-10-16 for Courier's
+# libsignal (apps/desktop/vitruvian-courier/libsignal/Cargo.lock, added 2026-10-16 for Vitruvian Courier's
 # Signal bridge). Signal's own crate graph pulls in three crates whose only
 # advisory is "unmaintained": no fixed version exists, and they go away only
 # when Signal drops them upstream. The fixable ones (rustls) were bumped.
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2025-0141"
-reason = "PERMANENT: no fixed version exists in any range ('bincode is unmaintained', a notice, not a flaw). crates.io bincode 1.3.3, a dependency of Signal's libsignal crates (apps/desktop/courier/libsignal/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when libsignal drops it or apps/desktop/courier/libsignal is re-pinned."
+reason = "PERMANENT: no fixed version exists in any range ('bincode is unmaintained', a notice, not a flaw). crates.io bincode 1.3.3, a dependency of Signal's libsignal crates (apps/desktop/vitruvian-courier/libsignal/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when libsignal drops it or apps/desktop/vitruvian-courier/libsignal is re-pinned."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0436"
-reason = "PERMANENT: no fixed version exists in any range ('paste - no longer maintained', a notice, not a flaw). crates.io paste 1.0.15, a dependency of Signal's libsignal crates (apps/desktop/courier/libsignal/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when libsignal drops it or apps/desktop/courier/libsignal is re-pinned."
+reason = "PERMANENT: no fixed version exists in any range ('paste - no longer maintained', a notice, not a flaw). crates.io paste 1.0.15, a dependency of Signal's libsignal crates (apps/desktop/vitruvian-courier/libsignal/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when libsignal drops it or apps/desktop/vitruvian-courier/libsignal is re-pinned."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0173"
-reason = "PERMANENT: no fixed version exists in any range ('proc-macro-error2 is unmaintained', a notice, not a flaw). crates.io proc-macro-error2 2.0.1, a build-time proc macro in Signal's libsignal crate graph (apps/desktop/courier/libsignal/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when libsignal drops it or apps/desktop/courier/libsignal is re-pinned."
+reason = "PERMANENT: no fixed version exists in any range ('proc-macro-error2 is unmaintained', a notice, not a flaw). crates.io proc-macro-error2 2.0.1, a build-time proc macro in Signal's libsignal crate graph (apps/desktop/vitruvian-courier/libsignal/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when libsignal drops it or apps/desktop/vitruvian-courier/libsignal is re-pinned."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0192"
-reason = "PERMANENT: no fixed version exists in any range ('ttf-parser is unmaintained', a notice, not a flaw). crates.io ttf-parser 0.25.1, reached via ab_glyph <- sctk-adwaita (Wayland window decorations) in eframe, Linux only (apps/suites/wand/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when eframe/winit drop it or apps/suites/wand is re-locked."
+reason = "PERMANENT: no fixed version exists in any range ('ttf-parser is unmaintained', a notice, not a flaw). crates.io ttf-parser 0.25.1, reached via ab_glyph <- sctk-adwaita (Wayland window decorations) in eframe, Linux only (apps/suites/vitruvian-wand/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when eframe/winit drop it or apps/suites/vitruvian-wand is re-locked."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0370"
-reason = "PERMANENT: no fixed version exists in any range ('zvariant is unmaintained', a notice, not a flaw). crates.io zvariant 5.15.1, reached via zbus 5.19.0 (latest) <- accesskit_unix (eframe screen-reader support) and ksni (tray-icon's Linux tray), Linux only (apps/suites/wand/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when eframe/tray-icon move off zbus or apps/suites/wand is re-locked."
+reason = "PERMANENT: no fixed version exists in any range ('zvariant is unmaintained', a notice, not a flaw). crates.io zvariant 5.15.1, reached via zbus 5.19.0 (latest) <- accesskit_unix (eframe screen-reader support) and ksni (tray-icon's Linux tray), Linux only (apps/suites/vitruvian-wand/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when eframe/tray-icon move off zbus or apps/suites/vitruvian-wand is re-locked."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0371"
-reason = "PERMANENT: no fixed version exists in any range ('zbus_names is unmaintained', a notice, not a flaw). crates.io zbus_names 4.3.5, part of zbus 5.19.0 (latest) <- accesskit_unix (eframe screen-reader support) and ksni (tray-icon's Linux tray), Linux only (apps/suites/wand/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when eframe/tray-icon move off zbus or apps/suites/wand is re-locked."
+reason = "PERMANENT: no fixed version exists in any range ('zbus_names is unmaintained', a notice, not a flaw). crates.io zbus_names 4.3.5, part of zbus 5.19.0 (latest) <- accesskit_unix (eframe screen-reader support) and ksni (tray-icon's Linux tray), Linux only (apps/suites/vitruvian-wand/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when eframe/tray-icon move off zbus or apps/suites/vitruvian-wand is re-locked."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0372"
-reason = "PERMANENT: no fixed version exists in any range ('zvariant_derive is unmaintained', a notice, not a flaw). crates.io zvariant_derive 5.15.1, proc macro of zvariant in zbus 5.19.0 (latest) <- accesskit_unix and ksni, Linux only (apps/suites/wand/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when eframe/tray-icon move off zbus or apps/suites/wand is re-locked."
+reason = "PERMANENT: no fixed version exists in any range ('zvariant_derive is unmaintained', a notice, not a flaw). crates.io zvariant_derive 5.15.1, proc macro of zvariant in zbus 5.19.0 (latest) <- accesskit_unix and ksni, Linux only (apps/suites/vitruvian-wand/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when eframe/tray-icon move off zbus or apps/suites/vitruvian-wand is re-locked."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0486"
 ignoreUntil = 2026-11-26
-reason = "TIME-BOXED, SHORT: crates.io rustix 1.1.4 in the Courier libsignal tree (apps/desktop/courier/libsignal/Cargo.lock; moving to apps/desktop/vitruvian-courier). A same-major fix exists (1.1.6), so this must be UPGRADED, not renewed: that lockfile is re-locked by hand (libsignal/README.md) because //tools/crates:lock refuses its edition-2024 workspace. Added 2026-11-12 because the advisory began failing every PR that touches a lockfile."
+reason = "TIME-BOXED, SHORT: crates.io rustix 1.1.4 in the Vitruvian Courier libsignal tree (apps/desktop/vitruvian-courier/libsignal/Cargo.lock). A same-major fix exists (1.1.6), so this must be UPGRADED, not renewed: that lockfile is re-locked by hand (libsignal/README.md) because //tools/crates:lock refuses its edition-2024 workspace. Added 2026-11-12 because the advisory began failing every PR that touches a lockfile."
 
 [[IgnoredVulns]]
 id = "GHSA-474x-hrwr-fgx4"

@@ -20,7 +20,7 @@
 
 name: Auto-merge release PRs
 
-# release-please (foundation-release, apps-release, tabula-release,
+# release-please (foundation-release, apps-release, vitruvian-tabs-release,
 # pulumi-library-release) opens ONE PR per released component on a
 # `release-please--*` branch, authored by the vitruvian-copybara-sync App. That
 # App is a bypass actor on the merge-queue ruleset's required-review rule (#804),
@@ -71,7 +71,7 @@ jobs:
     if: >-
       github.event.pull_request.draft == false &&
       startsWith(github.event.pull_request.head.ref, 'release-please--') &&
-      github.event.pull_request.head.ref != 'release-please--branches--main--components--vitruvian' &&
+      github.event.pull_request.head.ref != 'release-please--branches--main--components--vitruvian-atrium' &&
       github.event.pull_request.user.type == 'Bot' &&
       !contains(github.event.pull_request.labels.*.name, 'do-not-automerge')
     runs-on: ubuntu-26.04

@@ -4,7 +4,7 @@
 """saas-cli `bazel run` wrappers — the Neon and Upstash CLIs, pre-authenticated.
 
 For TROUBLESHOOTING and read-mostly operational work. Provisioning belongs to
-tabula/infra/data; creating or deleting a database through these CLIs puts it
+apps/suites/vitruvian-tabs/infra/data; creating or deleting a database through these CLIs puts it
 outside Pulumi state and the next apply will fight you.
 
 Authentication is not a step: both credentials live in the shared

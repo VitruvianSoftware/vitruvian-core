@@ -66,7 +66,7 @@ paths = ['''^tools/sync-env-secrets/secrets\.example/''']
 # extension ID and is meant to ship inside the published bundle.
 [[allowlists]]
 description = "Chrome extension manifest key is a public identity key"
-paths = ['''^apps/suites/tabula/extension/src/manifest\.json$''']
+paths = ['''^apps/suites/vitruvian-tabs/extension/src/manifest\.json$''']
 
 # `cloudflare-token-secret-project` is a reusable-workflow input naming the GCP
 # project that HOLDS the token in Secret Manager. It is a project id, not a
@@ -114,7 +114,7 @@ paths = ['''(^|/)Cargo\.lock$''']
 
 # The token-less `pulumi preview` pattern feeds a deliberately fake, 40-char
 # Cloudflare token so the provider's length validation passes without a real
-# credential (oauth-user-inspector/infra/app/main.go, tabula/infra/app/main.go,
+# credential (oauth-user-inspector/infra/app/main.go, apps/suites/vitruvian-tabs/infra/app/main.go,
 # pulumi-preview.yaml, and the runbook that documents it). Allowlisted by its
 # EXACT literal rather than by path, so a genuine Cloudflare token appearing in
 # any of those same files is still caught.
@@ -122,13 +122,13 @@ paths = ['''(^|/)Cargo\.lock$''']
 description = "the documented token-less-preview placeholder is not a credential"
 regexes = ['''preview-only-not-a-real-cloudflare-token''']
 
-# Courier's tests need a Telegram `api_hash` to prove it travels only to the
+# Vitruvian Courier's tests need a Telegram `api_hash` to prove it travels only to the
 # engine's environment (EngineSupervisorTests). The value is the obvious
 # 0-9a-f counting run, 32 hex characters because the app validates that shape.
 # Allowlisted by its EXACT literal, like the placeholder above, so a real
 # 32-hex hash anywhere else is still caught.
 [[allowlists]]
-description = "the made-up Telegram api_hash in Courier's tests is not a credential"
+description = "the made-up Telegram api_hash in Vitruvian Courier's tests is not a credential"
 regexes = ['''0123456789abcdef0123456789abcdef''']
 
 [[allowlists]]

@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# relay-spike: the relay P0 spike server, public at relay-spike.ipv1337.dev.
+# vitruvian-relay-spike: the Vitruvian Relay P0 spike server, public at relay-spike.ipv1337.dev.
 # Plan: docs/superpowers/plans/2026-11-09-relay-p0-spikes.md. Delete this app
 # (and its project and values) when P0 is done.
 apiVersion: argoproj.io/v1alpha1
@@ -33,10 +33,10 @@ spec:
   sources:
     - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
       targetRevision: main
-      path: apps/suites/relay/spike/deploy/chart
+      path: apps/suites/vitruvian-relay/spike/deploy/chart
       helm:
         valueFiles:
-          - $values/gitops/argocd/platform/relay-spike/values.yaml
+          - $values/gitops/argocd/platform/vitruvian-relay-spike/values.yaml
     - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
       targetRevision: main
       ref: values

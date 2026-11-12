@@ -21,12 +21,12 @@
 # ══════════════════════════════════════════════════════════════════════════
 # DISABLED ON PURPOSE. `.disabled` because ArgoCD's directory recursion only
 # reads .yaml/.yml/.json, so this file is inert until it is renamed — the same
-# mechanism tabula.yaml.disabled uses.
+# mechanism vitruvian-tabs.yaml.disabled uses.
 #
 # It is NOT disabled because it is unfinished. It is disabled because five
 # required values do not exist yet, and every one of them is a security
 # boundary rather than a setting. The chart refuses to render without them
-# (see mcp-slack/deploy/chart/templates/_helpers.tpl), so enabling this early
+# (see apps/mcp/vitruvian-slack-mcp/deploy/chart/templates/_helpers.tpl), so enabling this early
 # would produce a failed sync rather than an exposed endpoint — but a failed
 # sync on a publicly-routed hostname is still not a state worth entering.
 #
@@ -37,7 +37,7 @@
 #
 # TO ENABLE, all EIGHT must be true:
 #
-#   1. image.digest — the mcp-slack image is built and pushed, and you have
+#   1. image.digest — the vitruvian-slack-mcp image is built and pushed, and you have
 #      its sha256 digest. Never a tag: an internet-facing workload must run
 #      the artifact that was reviewed, not whatever the tag moved to.
 #
@@ -77,7 +77,7 @@
 #
 #      B. CURRENCY — nothing newer has been published:
 #           paths := the `on.push.paths` list, read from
-#                    `git show origin/main:.github/workflows/mcp-slack-image.yaml`
+#                    `git show origin/main:.github/workflows/vitruvian-slack-mcp-image.yaml`
 #                    — from the REF, never the working tree, which in a
 #                    worktree or a parked checkout is a third copy that can
 #                    disagree with both sides. Assert the list is non-empty.
@@ -86,7 +86,7 @@
 #         Every shell form of this has been measured wrong in some
 #         environment: a `$VAR` round-trip doesn't word-split in zsh; an
 #         inline `$(...)` gets glob-expanded by bash against the working tree,
-#         which silently drops `mcp-slack/.github/**` because `*` skips
+#         which silently drops `apps/mcp/vitruvian-slack-mcp/.github/**` because `*` skips
 #         dotfiles. All of them fail toward 0, i.e. "nothing newer".
 #
 #      B IS VACUOUS IMMEDIATELY AFTER A RE-PIN AND THAT IS NOT A NIT. When the
@@ -115,7 +115,7 @@
 #      orphan the SBOM, because the attestations hang off the index.
 #
 #      NOT COVERED BY THIS CRITERION: there are no `imagePullSecrets` anywhere
-#      in mcp-slack/deploy, so the pull is anonymous and works only because the
+#      in apps/mcp/vitruvian-slack-mcp/deploy, so the pull is anonymous and works only because the
 #      GHCR package is public.
 #
 #      Everything below cites STEP NAMES and comment headers, never absolute
@@ -134,7 +134,7 @@
 #      imagePullSecret that this workload deliberately does not have.
 #
 #        - The absence is a DESIGN CHOICE, not an oversight.
-#          `.github/workflows/mcp-slack-image.yaml`, under the header "WHY GHCR
+#          `.github/workflows/vitruvian-slack-mcp-image.yaml`, under the header "WHY GHCR
 #          AND NOT ARTIFACT REGISTRY", argues it: this image
 #          is consumed by the k3s homelab, which has no ambient cloud identity,
 #          so Artifact Registry would make a pull secret MANDATORY — a
@@ -143,7 +143,7 @@
 #          an internet-facing pod to protect against a state nobody has chosen.
 #        - The property IS asserted, by an anonymous request — the only
 #          instrument that can answer it, since an authenticated check succeeds
-#          on a private package. `mcp-slack-image.yaml`'s step "Verify the
+#          on a private package. `vitruvian-slack-mcp-image.yaml`'s step "Verify the
 #          image is anonymously pullable" exits 1 with the `gh api … -f
 #          visibility=public` remedy, and the "ASSERTION 4" comment directly
 #          above that step names THIS chart's missing `imagePullSecrets` as
@@ -157,11 +157,11 @@
 #      and a visibility flip generates no publish event — so for an
 #      already-pinned digest that gate never runs again. Because this chart
 #      pins by digest, a healthy deployment can go a long time with no
-#      `mcp-slack/**` push at all.
+#      `apps/mcp/vitruvian-slack-mcp/**` push at all.
 #
 #      `workflow_dispatch` IS NOT the re-check it looks like. Dispatch takes
 #      the same `!= 'pull_request'` branch as "Build and push" at
-#      mcp-slack-image.yaml's step "Build and push (multi-platform)", so it
+#      vitruvian-slack-mcp-image.yaml's step "Build and push (multi-platform)", so it
 #      builds and pushes a NEW image and
 #      verifies that digest, moving `:main` in the process. Re-verifying the
 #      currently pinned digest is not expressible today without publishing a
@@ -169,10 +169,10 @@
 #      the wrong answer under incident.
 #
 #      SO THE FIRST SIGNAL IS GENERIC AND ~15 MINUTES LATE. All three
-#      mcp-slack alerts are Envoy-traffic-derived, and a pod that never starts
+#      vitruvian-slack-mcp alerts are Envoy-traffic-derived, and a pod that never starts
 #      serves no requests, so none of them fires (they are at
-#      McpSlackSustained5xx, McpSlackIdpUnavailable and
-#      McpSlackSustainedForbidden, in platform/prometheus/applicationset.yaml).
+#      VitruvianSlackMcpSustained5xx, VitruvianSlackMcpIdpUnavailable and
+#      VitruvianSlackMcpSustainedForbidden, in platform/prometheus/applicationset.yaml).
 #      `PodNotReadyLong` in that same file (`for: 15m`, phase Pending|Unknown)
 #      does — an ImagePullBackOff pod is `Pending`.
 #      `NodeContainersStuckWaiting` needs >= 3 waiting
@@ -337,7 +337,7 @@
 # before enabling" (criterion 7's own words) — doesn't silently omit it.
 #
 # The alert for this workload is NOT in the chart — it lives in
-# gitops/argocd/platform/prometheus/applicationset.yaml, group `mcp-slack`.
+# gitops/argocd/platform/prometheus/applicationset.yaml, group `vitruvian-slack-mcp`.
 # This cluster has no prometheus-operator, so a PrometheusRule would sync
 # Healthy and never load. See the chart's values.yaml for the full note.
 # ══════════════════════════════════════════════════════════════════════════
@@ -352,18 +352,18 @@ metadata:
     argocd.argoproj.io/sync-wave: "2"
 spec:
   # Scoped per-app project, not the shared applications-project — see
-  # gitops/argocd/projects/mcp-slack-project.yaml.
+  # gitops/argocd/projects/vitruvian-slack-mcp-project.yaml.
   project: mcp-slack-project
   sources:
     # Source 1: The co-located Helm chart from this repo.
     - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
       targetRevision: main
-      path: apps/mcp/slack/deploy/chart
+      path: apps/mcp/vitruvian-slack-mcp/deploy/chart
       helm:
         valueFiles:
-          - $values/gitops/argocd/platform/mcp-slack/values.yaml
+          - $values/gitops/argocd/platform/vitruvian-slack-mcp/values.yaml
 
-    # Source 2: Values file kept in platform/mcp-slack, referenced from source 1
+    # Source 2: Values file kept in platform/vitruvian-slack-mcp, referenced from source 1
     # as `$values`. Extracted so argocd-image-updater can write resolved image
     # digests directly into a real file.
     - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
@@ -376,8 +376,8 @@ spec:
   #
   # selfHeal is on, and this cluster reconciles every 120s with 60s of jitter
   # (argocd-cm: timeout.reconciliation 120s, timeout.reconciliation.jitter
-  # 60s). So `kubectl scale deploy/mcp-slack --replicas=0` and
-  # `kubectl delete httproute mcp-slack` DO NOT CONTAIN ANYTHING — both are
+  # 60s). So `kubectl scale deploy/vitruvian-slack-mcp --replicas=0` and
+  # `kubectl delete httproute vitruvian-slack-mcp` DO NOT CONTAIN ANYTHING — both are
   # desired state here, and ArgoCD reverts them within ~2-3 minutes.
   #
   # That is the worst shape a containment action can have: it appears to work,
@@ -397,7 +397,7 @@ spec:
   #     -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
   #   kubectl patch application mcp-slack -n argocd --type=json \
   #     -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
-  #   kubectl scale deploy/mcp-slack -n mcp-slack --replicas=0
+  #   kubectl scale deploy/vitruvian-slack-mcp -n mcp-slack --replicas=0
   #
   # Seconds, and it survives, because nothing is reconciling any layer back.
   # Restore in reverse order. Skipping the first command produces the exact

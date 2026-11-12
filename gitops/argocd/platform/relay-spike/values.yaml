@@ -18,11 +18,14 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Live values for the relay spike chart (apps/suites/relay/spike/deploy/chart).
+# Live values for the Vitruvian Relay spike chart (apps/suites/vitruvian-relay/spike/deploy/chart).
 # The digest is pinned by hand: a spike doesn't get an image updater. Take a new
-# one from the relay-spike-image run's summary.
+# one from the vitruvian-relay-spike-image run's summary.
 image:
   digest: "main@sha256:f6a488ce2934cfbc517ff1ec42e0d260c399f20dfc0cd2fa5dd06d3b7917b3cb"
+  # OLD image name on purpose: the renamed image does not exist in GHCR until the
+  # first vitruvian-relay-spike-image run. Point this at ghcr.io/vitruviansoftware/vitruvian-relay-spike
+  # and re-pin the digest after that run.
   repository: ghcr.io/vitruviansoftware/relay-spike
 # From the zitadel-apps-relay stack's outputs (zitadel-apps-relay-apply run).
 oidc:

@@ -18,11 +18,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# Watches mcp-slack's floating `main` tag (ghcr.io/vitruviansoftware/mcp-slack)
+# Watches vitruvian-slack-mcp's floating `main` tag (ghcr.io/vitruviansoftware/mcp-slack)
 # for a new digest and writes the resolved `main@sha256:...` back into
 # gitops/argocd/platform/mcp-slack/values.yaml's `image.digest`.
 #
-# Why this exists: mcp-slack is built from this repo on every merge and pushed to
+# Why this exists: vitruvian-slack-mcp is built from this repo on every merge and pushed to
 # the same mutable `main` tag. A tag push never changes a committed manifest,
 # so ArgoCD sees no diff and the running pod keeps the old image. Pinning the
 # digest in git makes an image change an ordinary git change: ArgoCD rolls it out,
@@ -34,26 +34,26 @@
 # Credentials: reuses the existing argocd/buzz-image-updater-git-creds SSH deploy
 # key.
 #
-# Write-back never touches `main`: it pushes to `image-updates/mcp-slack` and
-# .github/workflows/image-updates-mcp-slack-pr.yaml opens/updates a PR from
+# Write-back never touches `main`: it pushes to `image-updates/vitruvian-slack-mcp` and
+# .github/workflows/image-updates-vitruvian-slack-mcp-pr.yaml opens/updates a PR from
 # there into main, so the change still goes through the merge queue like every
 # other change to this repo.
 apiVersion: argocd-image-updater.argoproj.io/v1alpha1
 kind: ImageUpdater
 metadata:
-  name: mcp-slack
+  name: vitruvian-slack-mcp
   namespace: argocd
 spec:
   writeBackConfig:
     method: "git:secret:argocd/buzz-image-updater-git-creds"
     gitConfig:
       repository: "git@github.com:VitruvianSoftware/vitruvian-core.git"
-      branch: "main:image-updates/mcp-slack"
+      branch: "main:image-updates/vitruvian-slack-mcp"
       writeBackTarget: "helmvalues:../../../../../gitops/argocd/platform/mcp-slack/values.yaml"
   applicationRefs:
     - namePattern: "mcp-slack"
       images:
-        - alias: "mcp-slack"
+        - alias: "vitruvian-slack-mcp"
           imageName: "ghcr.io/vitruviansoftware/mcp-slack:main"
           commonUpdateSettings:
             updateStrategy: "digest"

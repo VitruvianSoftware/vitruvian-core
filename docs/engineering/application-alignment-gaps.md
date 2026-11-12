@@ -17,7 +17,7 @@ Each gap is labeled **P0** (blocks the standard / live correctness or security i
 
 Two framing rules this doc enforces:
 
-1. **"No environments" is not always a gap.** The CLIs and agents (`devx`, `homelab`, `mcp-slack`, `nexus-agent`) are *released, not deployed*. They legitimately have no dev→prod ladder. Where that's the correct end state, it's marked **n/a**, not red. The actual gap there is that this is undocumented, so it *reads* as a hole.
+1. **"No environments" is not always a gap.** The CLIs and agents (`devx`, `homelab`, `vitruvian-slack-mcp`, `vitruvian-code`) are *released, not deployed*. They legitimately have no dev→prod ladder. Where that's the correct end state, it's marked **n/a**, not red. The actual gap there is that this is undocumented, so it *reads* as a hole.
 2. **A claimed standard that isn't enforced is a gap.** Several "standards" (MIT-via-`addlicense`, `actionlint`, Codecov) are asserted in docs but verifiably not wired or not enforcing. Those are called out explicitly because they are more dangerous than honest omissions.
 
 ---
@@ -28,18 +28,18 @@ Legend: **A** = aligned (meets the target) · **P** = partial (works but diverge
 
 | App | Local dev | Remote dev | CI/CD | Hosting | Envs / promotion | Secrets / config | Deploy identity | Testing | Observability | Governance |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **tabula** | P | G | A | P | P | P | **G** | P | P | P |
+| **vitruvian-tabs** | P | G | A | P | P | P | **G** | P | P | P |
 | **oauth-user-inspector** | P | G | P | A | P | A | **A** | P | P | A |
 | **devx** | P | G | P | A | n/a | A | n/a | A | A | A |
 | **homelab** | P | G | G | A | n/a | P | n/a | P | P | G |
-| **mcp-slack** | G | G | P | P | n/a | P | n/a | G | G | G |
-| **nexus-agent** | G | G | G | P | n/a | A | n/a | G | G | G |
+| **vitruvian-slack-mcp** | G | G | P | P | n/a | P | n/a | G | G | G |
+| **vitruvian-code** | G | G | G | P | n/a | A | n/a | G | G | G |
 
 Reading the matrix:
 
 - **No app is fully aligned across the board.** The closest is `devx`, which is correctly a *released-not-deployed* CLI.
-- **The columns hide an inversion worth calling out:** `tabula` has the most mature CI/CD and the *least* reproducible deploy identity (its WIF is click-ops). `oauth-user-inspector` has the cleanest deploy identity (the only Pulumi-codified WIF) but a thinner pipeline (single-shot deploy, development-only). The reference pattern is split across two apps; neither embodies it whole.
-- **`mcp-slack` and `nexus-agent` are the consistent laggards** — zero tests, no structured observability, divergent licenses, no publish automation behind their documented install paths.
+- **The columns hide an inversion worth calling out:** `vitruvian-tabs` has the most mature CI/CD and the *least* reproducible deploy identity (its WIF is click-ops). `oauth-user-inspector` has the cleanest deploy identity (the only Pulumi-codified WIF) but a thinner pipeline (single-shot deploy, development-only). The reference pattern is split across two apps; neither embodies it whole.
+- **`vitruvian-slack-mcp` and `vitruvian-code` are the consistent laggards** — zero tests, no structured observability, divergent licenses, no publish automation behind their documented install paths.
 - **Remote dev is `G` for every app** because there is no standard remote/cloud dev environment at all (only a generic, app-agnostic root `.devcontainer`).
 
 ---
@@ -48,32 +48,32 @@ Reading the matrix:
 
 Each gap below consolidates the dimension surveys and the explicitly-named session concerns. Priorities reflect blast radius and how badly the gap undermines a *claimed* standard.
 
-### 3.1 No uniform "how to run this app locally" — and tabula's docs actively lie
+### 3.1 No uniform "how to run this app locally" — and vitruvian-tabs's docs actively lie
 
-**Priority: P0 · Effort: M per app (docs) + L for the tabula rewrite**
+**Priority: P0 · Effort: M per app (docs) + L for the vitruvian-tabs rewrite**
 
 **Current state.** Five different inner loops coexist with no shared front door:
 
 | App | Local run today |
 |---|---|
-| tabula | `bazel build\|test\|run //apps/suites/tabula/...`, Bazel-managed hermetic Postgres/Redis for tests |
+| vitruvian-tabs | `bazel build\|test\|run //apps/suites/vitruvian-tabs/...`, Bazel-managed hermetic Postgres/Redis for tests |
 | oauth-user-inspector | `npm run dev` (concurrently vite + nodemon) — plain npm, bypasses pnpm/Bazel |
 | devx | `mage` (magefile.go) |
 | homelab | `mise run {build,test,lint}` (.mise.toml) |
-| mcp-slack | `bazel run //apps/mcp/slack:mcp-slack` (Rust; the npm build is retired, #4025) |
-| nexus-agent | `npm start` / `./bot.sh` / `node --watch` / DMG — four documented modes |
+| vitruvian-slack-mcp | `bazel run //apps/mcp/vitruvian-slack-mcp:vitruvian-slack-mcp` (Rust; the npm build is retired, #4025) |
+| vitruvian-code | `npm start` / `./bot.sh` / `node --watch` / DMG — four documented modes |
 
-The worst offender was **tabula**, which shipped **two contradictory narratives**. The root README describes the real pnpm+Bazel+Pulumi monorepo flow; but `apps/suites/tabula/docs/getting-started/{setup,development}.md` (formerly under `docs/tabula/`) and `reference/infrastructure.md` described a stale pre-monorepo world: `git clone github.com/BlueCentre/tabula`, npm workspaces, `docker-compose up -d` (Postgres 16 / Redis 7), Terraform, `tabcli dev start`, and **Node 18**. None of that is true: there is **no `docker-compose.yml` anywhere in the repo**, the build is Bazel+Pulumi (not npm+Terraform), and Node is pinned to 22. **(Update: those getting-started and infrastructure-reference pages have since been rewritten to the real flow and the tree relocated to `apps/suites/tabula/docs/` so it mirrors with the app. The broader local-dev gaps below — no `devx.yaml`, no uniform index — still stand.)**
+The worst offender was **vitruvian-tabs**, which shipped **two contradictory narratives**. The root README describes the real pnpm+Bazel+Pulumi monorepo flow; but `apps/suites/vitruvian-tabs/docs/getting-started/{setup,development}.md` (formerly under `docs/vitruvian-tabs/`) and `reference/infrastructure.md` described a stale pre-monorepo world: `git clone github.com/BlueCentre/tabula`, npm workspaces, `docker-compose up -d` (Postgres 16 / Redis 7), Terraform, `tabcli dev start`, and **Node 18**. None of that is true: there is **no `docker-compose.yml` anywhere in the repo**, the build is Bazel+Pulumi (not npm+Terraform), and Node is pinned to 22. **(Update: those getting-started and infrastructure-reference pages have since been rewritten to the real flow and the tree relocated to `apps/suites/vitruvian-tabs/docs/` so it mirrors with the app. The broader local-dev gaps below — no `devx.yaml`, no uniform index — still stand.)**
 
-Separately, the repo **builds a full local-dev orchestrator (`devx`)** — `devx up`, ephemeral DBs, `devx scaffold` templates that emit a `devx.yaml` — yet **not one of the six first-party apps contained a `devx.yaml`.** The repo did not dogfood its own tool. **(Update: `apps/suites/tabula/api` and `apps/web/oauth-user-inspector` now ship one. The other four apps have no backing services, so a `devx.yaml` would add ceremony without value — dogfooding is met where it is meaningful, not universally.)**
+Separately, the repo **builds a full local-dev orchestrator (`devx`)** — `devx up`, ephemeral DBs, `devx scaffold` templates that emit a `devx.yaml` — yet **not one of the six first-party apps contained a `devx.yaml`.** The repo did not dogfood its own tool. **(Update: `apps/suites/vitruvian-tabs/api` and `apps/web/oauth-user-inspector` now ship one. The other four apps have no backing services, so a `devx.yaml` would add ceremony without value — dogfooding is met where it is meaningful, not universally.)**
 
 > Note on a related doc-drift: `devx up` does **not** do `.env` injection, despite that claim appearing in earlier prose here and in the SOP. A `host` service receives only its `env:` map plus `PORT`; vault/`.env` injection belongs to `devx shell`, `devx db seed`, and `devx test`. The `devx` guide's own `databases.md` also documents `name:`/`version:` keys that the parser does not have and silently discards.
 
 **Target (Principles doc).** One documented "Run locally" contract per app type, `devx` as the dogfooded entrypoint for apps that need backing services, and a single `docs/` local-dev index linking each app's section.
 
 **Recommended action.**
-1. ✅ **Done** — tabula's `getting-started` and `reference/infrastructure.md` were rewritten to the real Bazel+pnpm+Pulumi flow (dropped the `BlueCentre` clone URL, Node 18→22, Terraform, and the non-existent compose file) and relocated to `apps/suites/tabula/docs/`. A light pass on lingering `apps/suites/tabula/CONTRIBUTING.md` prose is the only remainder.
-2. ✅ **Done** — committed `devx.yaml` for [`tabula/api`](../../apps/suites/tabula/api/devx.yaml) (Postgres + Redis, API gated on both healthy) and [`oauth-user-inspector`](../../apps/web/oauth-user-inspector/devx.yaml) (backend + Vite frontend). Both validated with `devx map`. Note the original framing here was wrong: `oauth-user-inspector` has **no** Postgres/Redis dependency at all (no such packages; it reads GCP Secret Manager), so its config declares no database. The remaining four apps have no backing services and need no `devx.yaml`.
+1. ✅ **Done** — vitruvian-tabs's `getting-started` and `reference/infrastructure.md` were rewritten to the real Bazel+pnpm+Pulumi flow (dropped the `BlueCentre` clone URL, Node 18→22, Terraform, and the non-existent compose file) and relocated to `apps/suites/vitruvian-tabs/docs/`. A light pass on lingering `apps/suites/vitruvian-tabs/CONTRIBUTING.md` prose is the only remainder.
+2. ✅ **Done** — committed `devx.yaml` for [`vitruvian-tabs/api`](../../apps/suites/vitruvian-tabs/api/devx.yaml) (Postgres + Redis, API gated on both healthy) and [`oauth-user-inspector`](../../apps/web/oauth-user-inspector/devx.yaml) (backend + Vite frontend). Both validated with `devx map`. Note the original framing here was wrong: `oauth-user-inspector` has **no** Postgres/Redis dependency at all (no such packages; it reads GCP Secret Manager), so its config declares no database. The remaining four apps have no backing services and need no `devx.yaml`.
 3. ✅ **Done** — [`docs/guides/local-development.md`](../guides/local-development.md) is the single local-dev index: per-app run/test/backing-services table, `devx.yaml` status, local-secret files, and the `.env.example` gaps.
 
 ### 3.2 No remote/cloud dev environment
@@ -94,14 +94,14 @@ Separately, the repo **builds a full local-dev orchestrator (`devx`)** — `devx
 
 | App | Build mechanism | Base | Package mgr |
 |---|---|---|---|
-| tabula (`//apps/suites/tabula/api:image`) | Bazel `node_image` + `oci_push` | node:20 | npm |
+| vitruvian-tabs (`//apps/suites/vitruvian-tabs/api:image`) | Bazel `node_image` + `oci_push` | node:20 | npm |
 | oauth-user-inspector | hand-written multi-stage `Dockerfile` + `docker buildx` | node:22-slim | pnpm/corepack |
 
-There is **no rule** saying which a containerized app should use, and tabula additionally still carries a `apps/suites/tabula/api/Dockerfile` (node:20-slim) that **no live workflow references** — vestigial and confusing. The verified core convention (frontends are *not* Bazel-built; Bazel runs only their `jest_test`) is correct and shared, but the production-image path is not.
+There is **no rule** saying which a containerized app should use, and vitruvian-tabs additionally still carries a `apps/suites/vitruvian-tabs/api/Dockerfile` (node:20-slim) that **no live workflow references** — vestigial and confusing. The verified core convention (frontends are *not* Bazel-built; Bazel runs only their `jest_test`) is correct and shared, but the production-image path is not.
 
-**Target (Principles doc).** One canonical container-build mechanism for Cloud Run apps, on a shared base (node:22-slim + pnpm, non-root, healthcheck, frozen lockfile in CI), emitted by the scaffold. Bazel `node_image` is the more-mature, remote-cacheable choice; if Dockerfile+buildx is blessed instead, tabula migrates onto it.
+**Target (Principles doc).** One canonical container-build mechanism for Cloud Run apps, on a shared base (node:22-slim + pnpm, non-root, healthcheck, frozen lockfile in CI), emitted by the scaffold. Bazel `node_image` is the more-mature, remote-cacheable choice; if Dockerfile+buildx is blessed instead, vitruvian-tabs migrates onto it.
 
-**Recommended action.** Pick one. Converge both apps. Delete `apps/suites/tabula/api/Dockerfile` if it is truly unused. Have the scaffold emit the chosen path.
+**Recommended action.** Pick one. Converge both apps. Delete `apps/suites/vitruvian-tabs/api/Dockerfile` if it is truly unused. Have the scaffold emit the chosen path.
 
 ### 3.4 Three Go task runners + Go version drift
 
@@ -121,34 +121,34 @@ There is **no rule** saying which a containerized app should use, and tabula add
 
 | Hosting target | Apps | Mechanism |
 |---|---|---|
-| GCP Cloud Run | tabula, oauth-user-inspector | image → Artifact Registry → Pulumi `cloudrunv2`, WIF, per-app GitHub Environment |
+| GCP Cloud Run | vitruvian-tabs, oauth-user-inspector | image → Artifact Registry → Pulumi `cloudrunv2`, WIF, per-app GitHub Environment |
 | Standalone repo + Homebrew/Releases | devx, homelab | goreleaser binaries + tap |
-| Standalone repo + GHCR image / DMG | mcp-slack, nexus-agent | `docker run ghcr.io/vitruviansoftware/mcp-slack:main` / macOS DMG |
-| dev-local k3s (ArgoCD GitOps) | *platform infra only* | app-of-apps; the one app wired for it (tabula) is checked in **disabled** |
+| Standalone repo + GHCR image / DMG | vitruvian-slack-mcp, vitruvian-code | `docker run ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main` / macOS DMG |
+| dev-local k3s (ArgoCD GitOps) | *platform infra only* | app-of-apps; the one app wired for it (vitruvian-tabs) is checked in **disabled** |
 
-A new app has nothing authoritative to follow. tabula even straddles two targets: it has a live-but-**disabled** k8s path (`gitops/argocd/applications/tabula.yaml.disabled` + `apps/suites/tabula/deploy/chart`, published OCI to GHCR) whose status — supported self-host option vs abandoned scaffolding — is undocumented.
+A new app has nothing authoritative to follow. vitruvian-tabs even straddles two targets: it has a live-but-**disabled** k8s path (`gitops/argocd/applications/vitruvian-tabs.yaml.disabled` + `apps/suites/vitruvian-tabs/deploy/chart`, published OCI to GHCR) whose status — supported self-host option vs abandoned scaffolding — is undocumented.
 
 **Target (Principles doc).** A published app-type → hosting-target decision matrix, referenced from each app's README/AGENTS, and encoded in the scaffold so the target is chosen at creation.
 
-**Recommended action.** Write the matrix. Then resolve tabula's dual identity: declare Cloud Run the sole production host and remove the disabled Application + `deploy/chart` dirs, **or** keep k8s as a deliberate option and document when it's used. Do not leave a half-wired second target in the tree.
+**Recommended action.** Write the matrix. Then resolve vitruvian-tabs's dual identity: declare Cloud Run the sole production host and remove the disabled Application + `deploy/chart` dirs, **or** keep k8s as a deliberate option and document when it's used. Do not leave a half-wired second target in the tree.
 
-### 3.6 No traversable dev→staging→prod ladder — even tabula can't promote past `development`
+### 3.6 No traversable dev→staging→prod ladder — even vitruvian-tabs can't promote past `development`
 
 **Priority: P0 · Effort: M**
 
-**Current state.** This is the headline environments gap, and it's verified against the filesystem. tabula's deploy workflow and `repo_config` offer `development`/`nonproduction`/`production`, and `apps/suites/tabula/infra/app/main.go` branches on all three — but the **only committed Pulumi stack files anywhere under `infrastructure/pulumi` are `development`/`dev`**:
+**Current state.** This is the headline environments gap, and it's verified against the filesystem. vitruvian-tabs's deploy workflow and `repo_config` offer `development`/`nonproduction`/`production`, and `apps/suites/vitruvian-tabs/infra/app/main.go` branches on all three — but the **only committed Pulumi stack files anywhere under `infrastructure/pulumi` are `development`/`dev`**:
 
 ```
 apps/web/oauth-user-inspector/infra/app/Pulumi.development.yaml
 apps/web/oauth-user-inspector/infra/identity/Pulumi.development.yaml
-apps/suites/tabula/infra/app/Pulumi.development.yaml
+apps/suites/vitruvian-tabs/infra/app/Pulumi.development.yaml
 infrastructure/pulumi/platform/repo_config/Pulumi.dev.yaml
 infrastructure/pulumi/platform/dev-local/Pulumi.example.yaml
 ```
 
-There are **zero `nonproduction`/`production` stacks**. So even the reference app cannot be promoted past development without first creating those stacks — the ladder is wired in CI and code but **not traversable**. `oauth-user-inspector` is worse: its `workflow_dispatch` choice list is `development`-only and its rollout is a straight cutover (no candidate/smoke/traffic-shift) vs tabula's real blue-green (no-traffic candidate → smoke → `promote=true` shift).
+There are **zero `nonproduction`/`production` stacks**. So even the reference app cannot be promoted past development without first creating those stacks — the ladder is wired in CI and code but **not traversable**. `oauth-user-inspector` is worse: its `workflow_dispatch` choice list is `development`-only and its rollout is a straight cutover (no candidate/smoke/traffic-shift) vs vitruvian-tabs's real blue-green (no-traffic candidate → smoke → `promote=true` shift).
 
-**Target (Principles doc).** Every Cloud Run app has at minimum `development` (auto on main) and `production` (workflow_dispatch + environment protection + required reviewer), each backed by (a) a committed `Pulumi.<env>.yaml` and (b) a GitHub Environment codified in `repo_config`. Promotion = re-run the same workflow against the higher env with the **same git SHA** (immutable image, promote-by-tag). tabula's blue-green is the shared rollout primitive, backported to oauth.
+**Target (Principles doc).** Every Cloud Run app has at minimum `development` (auto on main) and `production` (workflow_dispatch + environment protection + required reviewer), each backed by (a) a committed `Pulumi.<env>.yaml` and (b) a GitHub Environment codified in `repo_config`. Promotion = re-run the same workflow against the higher env with the **same git SHA** (immutable image, promote-by-tag). vitruvian-tabs's blue-green is the shared rollout primitive, backported to oauth.
 
 **Recommended action.** Commit the missing `Pulumi.<env>.yaml` stacks (at least `production`) per Cloud Run app, **or** explicitly scope each app to development-only and delete the dead env slots from the workflow + `repo_config` until a real target exists. Do not ship environment options that have no backing stack. Backport the candidate→smoke→promote pattern to oauth.
 
@@ -165,25 +165,25 @@ There are **zero `nonproduction`/`production` stacks**. So even the reference ap
 2. ✅ The helper is promoted to a shared library module `infrastructure/pulumi/pkg/secrets` — `EnvOrConfig` (required) and `EnvOrConfigOptional` (nil when absent) — and both `copybara_sync` and `repo_config` route through it via a local `replace` (#486). Non-secret values stay committed as config-as-code.
 3. ⏳ **Remaining:** rotate the BuildBuddy key (it has been in git history) and update the pipeline secret. This is an operator action at the BuildBuddy console, guided by `bazel run //tools/rotate-buildbuddy-key`.
 
-### 3.8 tabula's WIF deploy identity is click-ops
+### 3.8 vitruvian-tabs's WIF deploy identity is click-ops
 
 **Priority: P0 · Effort: M**
 
-**Current state.** The inversion noted in the matrix: the **most-deployed** app is the one **not** following the keyless-identity-as-code standard. `oauth-user-inspector-deploy-identity` is the reference — a Pulumi bootstrap of a repo-scoped WIF pool/provider + least-privilege deploy SA + runtime SA. tabula has **no equivalent**: its WIF pool/provider are click-ops, and only the resulting identifiers are mirrored into `repo_config`'s `tabulaVars` after the fact. The identity backing the most-mature deploy is the least reproducible and reviewable.
+**Current state.** The inversion noted in the matrix: the **most-deployed** app is the one **not** following the keyless-identity-as-code standard. `oauth-user-inspector-deploy-identity` is the reference — a Pulumi bootstrap of a repo-scoped WIF pool/provider + least-privilege deploy SA + runtime SA. vitruvian-tabs has **no equivalent**: its WIF pool/provider are click-ops, and only the resulting identifiers are mirrored into `repo_config`'s `tabulaVars` after the fact. The identity backing the most-mature deploy is the least reproducible and reviewable.
 
 **Target (Principles doc).** A codified per-app deploy-identity Pulumi bootstrap, modeled on `oauth-user-inspector-deploy-identity`, is mandatory for every Cloud Run app.
 
-**Recommended action.** Author `infrastructure/pulumi/apps/tabula-deploy-identity` mirroring the reference pattern, **import** the existing click-ops resources into its state, and make *it* (not hand-entered `repo_config` values) the source of truth for tabula's WIF provider/SA identifiers.
+**Recommended action.** Author `apps/suites/vitruvian-tabs/infra/identity` mirroring the reference pattern, **import** the existing click-ops resources into its state, and make *it* (not hand-entered `repo_config` values) the source of truth for vitruvian-tabs's WIF provider/SA identifiers.
 
 ### 3.9 oauth's GitHub Environment + Actions variables are click-ops
 
 **Priority: P1 · Effort: S**
 
-**Current state.** The mirror image of 3.8. `repo_config`'s environment logic is tabula-specific — the Pulumi function is literally named `tabulaEnvironments`. There is **no oauth equivalent**, so the `oauth-user-inspector-development` GitHub Environment and its non-secret Actions variables that the deploy workflow depends on are unmanaged click-ops.
+**Current state.** The mirror image of 3.8. `repo_config`'s environment logic is tabula-specific — the Pulumi function is literally named `vitruvianTabsEnvironments`. There is **no oauth equivalent**, so the `oauth-user-inspector-development` GitHub Environment and its non-secret Actions variables that the deploy workflow depends on are unmanaged click-ops.
 
 **Target.** All GitHub Environments + their non-secret variables codified in `repo_config`, via an app-agnostic per-app helper.
 
-**Recommended action.** Generalize `tabulaEnvironments` into a generic `envForApp` helper and add an `oauthVars`/`oauthEnvironments` block. (Rename the function while you're there — it manages more than tabula.)
+**Recommended action.** Generalize `vitruvianTabsEnvironments` into a generic `envForApp` helper and add an `oauthVars`/`oauthEnvironments` block. (Rename the function while you're there — it manages more than vitruvian-tabs.)
 
 ### 3.10 `actionlint` is claimed but absent; ESLint configured but never gated
 
@@ -208,26 +208,26 @@ There are **zero `nonproduction`/`production` stacks**. So even the reference ap
 |---|---|---|---|---|---|
 | devx | setup-go + golangci-lint + `go test -race` | ubuntu | yes | yes | Butane validation job; hand-rolled |
 | homelab | **`mise run`** on **macos-latest** | macOS | yes | yes | biggest outlier; older action pins (checkout@v4) |
-| mcp-slack | none (the mirror ships only `cla.yml`) | — | — | — | the Rust server's tests run in the monorepo pipeline unit (`:unit_tests`, `:mcp_slack_test`) |
-| nexus-agent | `node --check` (syntax only) + `swift build` | mixed | **no** | no | weakest test story in the repo |
+| vitruvian-slack-mcp | none (the mirror ships only `cla.yml`) | — | — | — | the Rust server's tests run in the monorepo pipeline unit (`:unit_tests`, `:vitruvian_slack_mcp_test`) |
+| vitruvian-code | `node --check` (syntax only) + `swift build` | mixed | **no** | no | weakest test story in the repo |
 
-Pins (checkout v4 vs v6), runners, and which checks run all differ. `homelab` and `nexus-agent` are the worst.
+Pins (checkout v4 vs v6), runners, and which checks run all differ. `homelab` and `vitruvian-code` are the worst.
 
 **Target.** Generate each mirror `ci.yml` from a shared per-language template (the `aspect-workflows-template` lineage): one Go matrix (setup-go + golangci-lint + `go test -race`), one Node matrix (pnpm install + lint + test + build). Pin runner timeouts, concurrency, and SHA-pinned actions in the template.
 
-**Recommended action.** Build the two templates, move `homelab` off macos-latest/`mise`-in-CI onto the standard Go template, and give `mcp-slack` and `nexus-agent` real test+lint jobs.
+**Recommended action.** Build the two templates, move `homelab` off macos-latest/`mise`-in-CI onto the standard Go template, and give `vitruvian-slack-mcp` and `vitruvian-code` real test+lint jobs.
 
 ### 3.12 No reusable Cloud Run deploy workflow
 
 **Priority: P1 · Effort: M (Partially Addressed)**
 
-**Current state.** tabula and oauth-user-inspector are both Cloud Run + WIF + Pulumi and their deploy workflows are near-identical in *shape* (auth → ensure-AR-repo → build/push image → `pulumi up` → smoke) yet **share zero code**. tabula adds blue-green + a `prisma migrate` step + 3 environments; oauth is single-shot, development-only. A new Cloud Run app has no thin caller to copy.
+**Current state.** vitruvian-tabs and oauth-user-inspector are both Cloud Run + WIF + Pulumi and their deploy workflows are near-identical in *shape* (auth → ensure-AR-repo → build/push image → `pulumi up` → smoke) yet **share zero code**. vitruvian-tabs adds blue-green + a `prisma migrate` step + 3 environments; oauth is single-shot, development-only. A new Cloud Run app has no thin caller to copy.
 
-**Addressed in this PR.** A reusable workflow `_deploy-cloud-run.yaml` was extracted, and tabula's deploy was converted into a thin caller of this shared pipeline (that caller is now a generated job in `.github/workflows/delivery-tabula.yaml`).
+**Addressed in this PR.** A reusable workflow `_deploy-cloud-run.yaml` was extracted, and vitruvian-tabs's deploy was converted into a thin caller of this shared pipeline (that caller is now a generated job in `.github/workflows/delivery-vitruvian-tabs.yaml`).
 
-**Remaining.** oauth-user-inspector's deploy calls `_deploy-cloud-run.yaml` like tabula's, but its IMAGE is still built with `docker buildx` natively instead of Bazel OCI rules (the generated `oauth-user-inspector-build` job). Converge the build.
+**Remaining.** oauth-user-inspector's deploy calls `_deploy-cloud-run.yaml` like vitruvian-tabs's, but its IMAGE is still built with `docker buildx` natively instead of Bazel OCI rules (the generated `oauth-user-inspector-build` job). Converge the build.
 
-**Target (Principles doc).** One reusable `_cloud-run-deploy.yaml` (the oauth pattern as base) with optional blue-green/migrate inputs (tabula's logic), parameterized by GitHub Environment, so a new Cloud Run app is one caller file.
+**Target (Principles doc).** One reusable `_cloud-run-deploy.yaml` (the oauth pattern as base) with optional blue-green/migrate inputs (vitruvian-tabs's logic), parameterized by GitHub Environment, so a new Cloud Run app is one caller file.
 
 **Recommended action.** Converge `oauth-user-inspector` onto the new reusable workflow. This folds together cleanly with 3.6 (ladder) and 3.8/3.9 (identity/env codification).
 
@@ -237,12 +237,12 @@ Pins (checkout v4 vs v6), runners, and which checks run all differ. `homelab` an
 
 **Current state.** Two apps document an install path that **no CI produces**:
 
-- **mcp-slack** — README says `npx -y @vitruviansoftware/mcp-slack@latest`, and the package has a `bin` entry, but **no npm-publish workflow exists** (the only mcp-slack workflow is copybara export). The documented `npx` path has nothing behind it. **(Update: closed the other way. The server is now Rust and the npm package is retired (#4025); it ships as the `ghcr.io/vitruviansoftware/mcp-slack` container image, built by `mcp-slack-image.yaml` on every merge, and the README and site install from that.)**
-- **nexus-agent** — README documents a DMG from Releases + a Gemini-CLI extension, but there is **no DMG-build/notarize workflow**. Its npm package is also named `nexus-agent` (not org-scoped like `@vitruviansoftware/mcp-slack`), which will collide with the public npm namespace if ever published.
+- **vitruvian-slack-mcp** — README says `npx -y @vitruviansoftware/vitruvian-slack-mcp@latest`, and the package has a `bin` entry, but **no npm-publish workflow exists** (the only vitruvian-slack-mcp workflow is copybara export). The documented `npx` path has nothing behind it. **(Update: closed the other way. The server is now Rust and the npm package is retired (#4025); it ships as the `ghcr.io/vitruviansoftware/vitruvian-slack-mcp` container image, built by `vitruvian-slack-mcp-image.yaml` on every merge, and the README and site install from that.)**
+- **vitruvian-code** — README documents a DMG from Releases + a Gemini-CLI extension, but there is **no DMG-build/notarize workflow**. Its npm package is also named `vitruvian-code` (not org-scoped like `@vitruviansoftware/vitruvian-slack-mcp`), which will collide with the public npm namespace if ever published.
 
-**Target.** Every shipped artifact has a CI build that produces it: `release-please` + npm-publish for mcp-slack; a notarized-DMG release workflow (or goreleaser-equivalent) for nexus-agent.
+**Target.** Every shipped artifact has a CI build that produces it: `release-please` + npm-publish for vitruvian-slack-mcp; a notarized-DMG release workflow (or goreleaser-equivalent) for vitruvian-code.
 
-**Recommended action.** Add the publish workflows so the READMEs become reproducible. Scope `nexus-agent` to `@vitruviansoftware/nexus-agent` (and decide whether it distributes via npm at all, or DMG-only).
+**Recommended action.** Add the publish workflows so the READMEs become reproducible. Scope `vitruvian-code` to `@vitruviansoftware/vitruvian-code` (and decide whether it distributes via npm at all, or DMG-only).
 
 ### 3.14 License divergence — and the check that's supposed to catch it doesn't
 
@@ -252,28 +252,28 @@ Pins (checkout v4 vs v6), runners, and which checks run all differ. `homelab` an
 
 | App | LICENSE | Source headers | Holder issue |
 |---|---|---|---|
-| tabula | MIT | MIT/VitruvianSoftware | `Copyright (c) 2025 **BlueCentre**` |
+| vitruvian-tabs | MIT | MIT/VitruvianSoftware | `Copyright (c) 2025 **BlueCentre**` |
 | oauth-user-inspector | MIT | MIT/VitruvianSoftware | — (reference) |
 | devx | MIT | MIT/VitruvianSoftware | — (reference) |
 | homelab | **Apache-2.0** | MIT (disagree!) | LICENSE ≠ headers |
-| mcp-slack | **Apache-2.0** | **Apache-2.0** header (`Vitruvian Software`, note the space) | both wrong |
-| nexus-agent | **Apache-2.0** | MIT (disagree!) | LICENSE ≠ headers; `package.json` also Apache-2.0 |
+| vitruvian-slack-mcp | **Apache-2.0** | **Apache-2.0** header (`Vitruvian Software`, note the space) | both wrong |
+| vitruvian-code | **Apache-2.0** | MIT (disagree!) | LICENSE ≠ headers; `package.json` also Apache-2.0 |
 
 Critically, the **license-check CI does not actually enforce MIT-ness or the holder**. `addlicense -check` only verifies a recognized header is *present* — verified empirically: the exact CI command exits 0 clean on the current tree despite the Apache files, and a fabricated `Apache / SomeRandomCorp` header also passes. The "MIT enforced repo-wide" invariant is **not enforced**.
 
 **Target (Principles doc).** One MIT license + `VitruvianSoftware (c) 2026` across all first-party apps; a real content gate that fails CI on non-MIT or wrong-holder headers/LICENSE files; all four governance files generated from one template so LICENSE and headers can't drift apart.
 
-**Recommended action.** Relicense `homelab`/`mcp-slack`/`nexus-agent` to MIT; fix tabula's `BlueCentre` holder; replace mcp-slack's Apache source header. Add a grep/diff (or small custom checker) alongside `addlicense` that fails on non-MIT or non-VitruvianSoftware content. Also fix `nexus-agent`'s `package.json` license field (license-check covers headers, not `package.json` fields).
+**Recommended action.** Relicense `homelab`/`vitruvian-slack-mcp`/`vitruvian-code` to MIT; fix vitruvian-tabs's `BlueCentre` holder; replace vitruvian-slack-mcp's Apache source header. Add a grep/diff (or small custom checker) alongside `addlicense` that fails on non-MIT or non-VitruvianSoftware content. Also fix `vitruvian-code`'s `package.json` license field (license-check covers headers, not `package.json` fields).
 
 ### 3.15 Uneven governance files; no root governance set
 
 **Priority: P2 · Effort: S**
 
-**Current state.** Per-app governance is patchy: **tabula** has no standalone `CLA.md` and no `CODE_OF_CONDUCT.md` (only an inline section in a 747-line `CONTRIBUTING.md`); **homelab** and **nexus-agent** lack `CODE_OF_CONDUCT.md`. There is **no root-level governance set** — every app reimplements its own, ranging from 21-line stubs to 747 lines, and only `apps/cli/devx/CONTRIBUTING.md` documents the `Co-Authored-By` trailer. Also: **tabula is the only first-party app not Copybara-mirrored** (the other five are in `tools/copybara/copy.bara.sky`), and whether that's intentional is undocumented.
+**Current state.** Per-app governance is patchy: **vitruvian-tabs** has no standalone `CLA.md` and no `CODE_OF_CONDUCT.md` (only an inline section in a 747-line `CONTRIBUTING.md`); **homelab** and **vitruvian-code** lack `CODE_OF_CONDUCT.md`. There is **no root-level governance set** — every app reimplements its own, ranging from 21-line stubs to 747 lines, and only `apps/cli/vitruvian-devx/CONTRIBUTING.md` documents the `Co-Authored-By` trailer. Also: **vitruvian-tabs is the only first-party app not Copybara-mirrored** (the other five are in `tools/copybara/copy.bara.sky`), and whether that's intentional is undocumented.
 
 **Target.** Identical governance quartet (LICENSE, CONTRIBUTING, CLA, CODE_OF_CONDUCT) per app, generated from one template; a thin per-app CONTRIBUTING that links a canonical root CONTRIBUTING/CODE_OF_CONDUCT (which should be added). Commit/PR/merge-queue conventions documented once at root.
 
-**Recommended action.** Add the missing files, add a root governance set, and either add tabula to the Copybara `COMPONENTS` list or document it as intentionally un-mirrored.
+**Recommended action.** Add the missing files, add a root governance set, and either add vitruvian-tabs to the Copybara `COMPONENTS` list or document it as intentionally un-mirrored.
 
 ### 3.16 Testing coverage is concentrated in one app
 
@@ -283,18 +283,18 @@ Critically, the **license-check CI does not actually enforce MIT-ness or the hol
 
 | App | Tests | Coverage gate |
 |---|---|---|
-| tabula | 4 Jest suites + Playwright e2e (hermetic Bazel stack) | api 85/70, extension 80/65; **web + cli: none** |
+| vitruvian-tabs | 4 Jest suites + Playwright e2e (hermetic Bazel stack) | api 85/70, extension 80/65; **web + cli: none** |
 | oauth-user-inspector | one ts-jest server suite; **React frontend untested** | none |
 | devx | 107 test files vs 274 source; integration-tagged | none (but strong) |
 | homelab | **3 test files vs 23 source**; lima/cluster/k3s untested | none |
-| mcp-slack | **zero tests** | — |
-| nexus-agent | **zero tests** (macOS app compile-checked only) | — |
+| vitruvian-slack-mcp | **zero tests** | — |
+| vitruvian-code | **zero tests** (macOS app compile-checked only) | — |
 
-`mcp-slack` and `nexus-agent` sit **outside the test sweep entirely** (compile-checked only). `homelab` is alarmingly thin given it provisions the **live** homelab cluster. `ADR-003` claims Codecov gating, but **Codecov is not wired**.
+`vitruvian-slack-mcp` and `vitruvian-code` sit **outside the test sweep entirely** (compile-checked only). `homelab` is alarmingly thin given it provisions the **live** homelab cluster. `ADR-003` claims Codecov gating, but **Codecov is not wired**.
 
 **Target (Principles doc).** A minimum test gate per language wired as a Bazel test target (so everything enters the sweep): `go test -race` with a coverage floor (devx is the reference); Jest + `coverageThreshold` for TS, every frontend gets a Jest smoke suite. Wire Codecov or delete the claim from ADR-003.
 
-**Recommended action.** Add minimal unit suites for `mcp-slack` (tool handlers) and `nexus-agent` (formatter/sessions) as Bazel `jest_test`/`go_test`. Add `coverageThreshold` to tabula web/cli and oauth. Raise `homelab` coverage on cluster/k3s/lima using devx's table-test+fake patterns. Resolve the Codecov claim.
+**Recommended action.** Add minimal unit suites for `vitruvian-slack-mcp` (tool handlers) and `vitruvian-code` (formatter/sessions) as Bazel `jest_test`/`go_test`. Add `coverageThreshold` to vitruvian-tabs web/cli and oauth. Raise `homelab` coverage on cluster/k3s/lima using devx's table-test+fake patterns. Resolve the Codecov claim.
 
 ### 3.17 No uniform observability baseline; Cloud Run apps have no probes; alerting routing is click-ops
 
@@ -303,12 +303,12 @@ Critically, the **license-check CI does not actually enforce MIT-ness or the hol
 **Current state.** Observability is bimodal and per-app:
 
 - dev-local k8s has a full Prometheus/Grafana/Loki/Tempo/OTel stack with a GitOps-codified **alerting ruleset** — but the **Alertmanager routing/receivers** (healthchecks.io dead-man's-switch + null receiver) are **absent from git**, so notification delivery is out-of-band click-ops. This violates the closed-loop GitOps mandate and is effectively **P0** for the platform (it's the long-open R3 alerting gap).
-- Cloud Run apps log structured (tabula pino, oauth winston) and both have a `/health` + Dockerfile `HEALTHCHECK` + post-deploy curl smoke — but **neither declares Cloud Run startup/liveness probes in Pulumi** (the Dockerfile HEALTHCHECK is ignored by Cloud Run), so an unhealthy-but-booted revision can serve traffic outside the smoke window.
-- `mcp-slack` and `nexus-agent` emit only raw `console`/stderr — no structured logger, correlation IDs, metrics, or health surface.
+- Cloud Run apps log structured (vitruvian-tabs pino, oauth winston) and both have a `/health` + Dockerfile `HEALTHCHECK` + post-deploy curl smoke — but **neither declares Cloud Run startup/liveness probes in Pulumi** (the Dockerfile HEALTHCHECK is ignored by Cloud Run), so an unhealthy-but-booted revision can serve traffic outside the smoke window.
+- `vitruvian-slack-mcp` and `vitruvian-code` emit only raw `console`/stderr — no structured logger, correlation IDs, metrics, or health surface.
 
 **Target (Principles doc).** Per-type observability standard: structured JSON logger everywhere, `/health` (+ `/ready`), correlation IDs; Cloud Run startup+liveness probes in the `cloudrunv2` container spec; the dev-local Alertmanager route/receivers codified in git via the Prometheus ApplicationSet (healthchecks.io URL via sealed-secret).
 
-**Recommended action.** Codify the Alertmanager config in git (P0). Add startup+liveness probes to both Cloud Run apps' `/health` endpoints. Put `mcp-slack`/`nexus-agent` on a real logger.
+**Recommended action.** Codify the Alertmanager config in git (P0). Add startup+liveness probes to both Cloud Run apps' `/health` endpoints. Put `vitruvian-slack-mcp`/`vitruvian-code` on a real logger.
 
 ### 3.18 IaC reproducibility: gitignored Pulumi stack config
 
@@ -324,11 +324,11 @@ Critically, the **license-check CI does not actually enforce MIT-ness or the hol
 
 **Priority: P2 · Effort: S**
 
-**Current state.** `tabula` (`api/.env.example`), `devx`, and `nexus-agent` ship a committed `.env.example`. **`mcp-slack`, `oauth-user-inspector`, and `homelab` do not** — so "how do I supply secrets to run this locally" is partly tribal knowledge. `mcp-slack` reads `SLACK_*` straight from `process.env` with no example; `oauth` reads runtime secrets from GCP Secret Manager but documents no local keys.
+**Current state.** `vitruvian-tabs` (`api/.env.example`), `devx`, and `vitruvian-code` ship a committed `.env.example`. **`vitruvian-slack-mcp`, `oauth-user-inspector`, and `homelab` do not** — so "how do I supply secrets to run this locally" is partly tribal knowledge. `vitruvian-slack-mcp` reads `SLACK_*` straight from `process.env` with no example; `oauth` reads runtime secrets from GCP Secret Manager but documents no local keys.
 
 **Target.** Every app that reads env/secret config ships a committed `.env.example` (placeholders only) listing required keys.
 
-**Recommended action.** Add `.env.example` to `mcp-slack`, `oauth-user-inspector`, and `homelab`. This is the cheap, uniform documentation of the local-secrets model and dovetails with 3.1.
+**Recommended action.** Add `.env.example` to `vitruvian-slack-mcp`, `oauth-user-inspector`, and `homelab`. This is the cheap, uniform documentation of the local-secrets model and dovetails with 3.1.
 
 ### 3.20 Sealed-secrets rotation/runbook undocumented in-tree
 
@@ -370,7 +370,7 @@ Critically, the **license-check CI does not actually enforce MIT-ness or the hol
 
 **Priority: P1 · Effort: S (partially addressed in this PR)**
 
-**Current state.** Most state-changing ops are pipeline-triggered (Cloud Run deploys on push, the `repo_config` / `sync-auth` apply workflows, ArgoCD reconcile) — but not all. The `zitadel-apps` Pulumi stack (the hosted OAuth applications) was applied **only** by a local `bazel run …:up`, exactly the "then run X locally" rot principle **§2.14** forbids. Separately, infra→app **ordering** was implicit: `tabula-deploy` correctly *expands* (Prisma `migrate deploy` + a no-traffic candidate) before shifting traffic, but nothing named the rule, so a new deploy could just as easily apply infra *after* the app (**§2.15**).
+**Current state.** Most state-changing ops are pipeline-triggered (Cloud Run deploys on push, the `repo_config` / `sync-auth` apply workflows, ArgoCD reconcile) — but not all. The `zitadel-apps` Pulumi stack (the hosted OAuth applications) was applied **only** by a local `bazel run …:up`, exactly the "then run X locally" rot principle **§2.14** forbids. Separately, infra→app **ordering** was implicit: `delivery-vitruvian-tabs` correctly *expands* (Prisma `migrate deploy` + a no-traffic candidate) before shifting traffic, but nothing named the rule, so a new deploy could just as easily apply infra *after* the app (**§2.15**).
 
 **Addressed in this PR.** Principles **§2.14** (the pipeline is the only trigger) and **§2.15** (expand → deploy → contract) are codified. The `zitadel-apps` apply is now wired as the gated **expand** job of `oauth-user-inspector-deploy` (runs before the app revision; `vars.ZITADEL_APPS_AUTO_APPLY`-gated so it cleanly no-ops until the machine-user key + org/project IDs are seeded once). The legitimate manual bootstraps (`…-deploy-identity`, `dev-local` — they seed the very identities the pipelines authenticate with) are the documented exception, not violations.
 
@@ -386,12 +386,12 @@ Ordered by leverage (how many gaps a single fix closes) and by live-correctness/
 |---|---|---|---|
 | 1 | ✅ **Removed the committed `secure:` BuildBuddy key and routed `repo_config` through the shared `pkg/secrets` helper** (#456 code / #484 / #486) — ⏳ only the operator key rotation remains (`bazel run //tools/rotate-buildbuddy-key`) | 3.7, 3.18 (and the secrets-model invariant) — *a key is in git history now* | P0 |
 | 2 | **Codify the dev-local Alertmanager routing/receivers in git** (sealed-secret healthchecks.io URL) | 3.17 — the long-open R3 alerting gap; restores the GitOps closed loop | P0 |
-| 3 | **Make license-check actually enforce MIT + holder**, then relicense homelab/mcp-slack/nexus-agent and fix tabula's holder | 3.14 — a claimed invariant is currently fake | P0 |
+| 3 | **Make license-check actually enforce MIT + holder**, then relicense homelab/vitruvian-slack-mcp/vitruvian-code and fix vitruvian-tabs's holder | 3.14 — a claimed invariant is currently fake | P0 |
 | 4 | **Extend `devx scaffold` to emit a fully-aligned app** (Bazel BUILD + reusable deploy workflow caller + Pulumi deploy-identity + `devx.yaml` + `.env.example` + governance quartet + mirror CI) | 3.3, 3.4, 3.8–3.13, 3.15, 3.19, 3.21 — stops new apps reopening every gap | P0 |
-| 5 | **Codify tabula's WIF deploy-identity as Pulumi** (import click-ops) and **generalize `tabulaEnvironments` → `envForApp`** to cover oauth | 3.8, 3.9 — the two click-ops deploy-identity halves | P0/P1 |
-| 6 | ⏳ **Commit the missing `Pulumi.<env>.yaml` stacks (≥ production)** or descope apps to development-only; ✅ **extract the reusable Cloud Run deploy workflow with blue-green/migrate inputs** (partially rolled out to tabula) | 3.6, 3.12 — makes promotion real | P0/P1 |
-| 7 | **Fix tabula's local-dev docs** (real Bazel+pnpm+Pulumi flow) and add a `devx.yaml` to tabula + oauth; write the `docs/` local-dev index | 3.1 — stops the docs from lying | P0 |
-| 8 | ⏳ **Add `actionlint` (✅ done) + ESLint gates**; build the shared mirror-CI templates and give mcp-slack/nexus-agent real test+lint jobs | 3.10, 3.11, 3.16 | P1 |
-| 9 | **Decide and document the app-type → hosting-target matrix**; resolve tabula's disabled k8s path; decide remote-dev scope | 3.5, 3.2 | P1/P2 |
+| 5 | **Codify vitruvian-tabs's WIF deploy-identity as Pulumi** (import click-ops) and **generalize `vitruvianTabsEnvironments` → `envForApp`** to cover oauth | 3.8, 3.9 — the two click-ops deploy-identity halves | P0/P1 |
+| 6 | ⏳ **Commit the missing `Pulumi.<env>.yaml` stacks (≥ production)** or descope apps to development-only; ✅ **extract the reusable Cloud Run deploy workflow with blue-green/migrate inputs** (partially rolled out to vitruvian-tabs) | 3.6, 3.12 — makes promotion real | P0/P1 |
+| 7 | **Fix vitruvian-tabs's local-dev docs** (real Bazel+pnpm+Pulumi flow) and add a `devx.yaml` to vitruvian-tabs + oauth; write the `docs/` local-dev index | 3.1 — stops the docs from lying | P0 |
+| 8 | ⏳ **Add `actionlint` (✅ done) + ESLint gates**; build the shared mirror-CI templates and give vitruvian-slack-mcp/vitruvian-code real test+lint jobs | 3.10, 3.11, 3.16 | P1 |
+| 9 | **Decide and document the app-type → hosting-target matrix**; resolve vitruvian-tabs's disabled k8s path; decide remote-dev scope | 3.5, 3.2 | P1/P2 |
 
 **The single most valuable move is #4 (the scaffold).** It is the enforcement surface for the Principles doc: most rows in [the matrix](#2-alignment-matrix) are red because apps were hand-wired, and a scaffold that emits an already-aligned app is what stops this backlog from regrowing every time a new app lands.

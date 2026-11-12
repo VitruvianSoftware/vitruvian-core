@@ -48,7 +48,7 @@ extension_kinds:
     blurb: Instructions an agent loads when a task calls for them, so it uses a tool the way its authors intended.
 
 projects:
-  - name: devx
+  - name: Vitruvian DevX CLI
     group: devtools
     featured: true
     status: released
@@ -58,7 +58,7 @@ projects:
       Cloudflare tunnel ingress, and starts everything in dependency order.
     tags: [Go, Lima, Kubernetes, Cloudflare]
     repo: https://github.com/VitruvianSoftware/devx
-    source: apps/cli/devx
+    source: apps/cli/vitruvian-devx
     install: brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/devx
     extension:
       kind: skill
@@ -68,24 +68,24 @@ projects:
           label: Add the skills to your project
           command: devx agent init
 
-  - name: homelab
+  - name: Vitruvian Homelab
     group: devtools
     featured: true
     status: released
     summary: >-
       Declarative multi-node K3s clusters on macOS. Describe the nodes in one
-      file and homelab provisions Lima VZ virtual machines, networking and the
+      file and Vitruvian Homelab provisions Lima VZ virtual machines, networking and the
       cluster to match.
     tags: [Go, K3s, Lima VZ, macOS]
     repo: https://github.com/VitruvianSoftware/homelab
-    source: apps/cli/homelab
+    source: apps/cli/vitruvian-homelab
     install: brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/homelab
 
   - name: homebrew-tap
     group: devtools
     status: released
     summary: >-
-      The Homebrew tap for Vitruvian tools: devx, homelab and our macOS
+      The Homebrew tap for Vitruvian tools: Vitruvian DevX CLI, Vitruvian Homelab and our macOS
       utilities, installable with one command.
     tags: [Homebrew, Ruby]
     repo: https://github.com/VitruvianSoftware/homebrew-tap
@@ -131,7 +131,7 @@ projects:
     tags: [Bazel, Bzlmod, Backstage]
     repo: https://github.com/VitruvianSoftware/kitchen-sink
 
-  - name: mcp-slack
+  - name: vitruvian-slack-mcp
     group: agents
     featured: true
     status: mirror
@@ -141,15 +141,15 @@ projects:
       as the bot or as you.
     tags: [Rust, MCP, Slack]
     repo: https://github.com/VitruvianSoftware/mcp-slack
-    source: apps/mcp/slack
+    source: apps/mcp/vitruvian-slack-mcp
     extension:
       kind: mcp
       needs: Docker, plus a Slack bot token, user token and team ID, passed to the server as environment variables (add an --env flag for each; the README lists them)
       installs:
         - tool: Claude Code
-          command: claude mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/mcp-slack:main
+          command: claude mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main
         - tool: Antigravity
-          command: agy mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/mcp-slack:main
+          command: agy mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main
 
   - name: gh-watch
     group: agents
@@ -245,7 +245,7 @@ projects:
     tags: [JavaScript, Antigravity, Claude Code, Subagents]
     source: apps/antigravity/plugins/savvy-fleet
 
-  - name: mcp-roborock
+  - name: vitruvian-roborock-mcp
     group: agents
     status: mirror
     summary: >-
@@ -254,7 +254,7 @@ projects:
       the robot home.
     tags: [Rust, MCP]
     repo: https://github.com/VitruvianSoftware/mcp-roborock
-    source: apps/mcp/roborock
+    source: apps/mcp/vitruvian-roborock-mcp
     extension:
       kind: plugin
       needs: rrctl on your PATH (download it from a 0.2.0+ release, or cargo install), and a Roborock account (the plugin walks you through logging in)
@@ -311,7 +311,7 @@ projects:
     tags: [Backstage, TypeScript, MCP]
     source: apps/web/backstage
 
-  - name: Tabula
+  - name: Vitruvian Tabs
     group: lab
     status: in-development
     summary: >-
@@ -319,7 +319,7 @@ projects:
       MV3 extension, a web dashboard and a CLI, with per-PR preview
       environments.
     tags: [TypeScript, Cloud Run, MV3]
-    source: apps/suites/tabula
+    source: apps/suites/vitruvian-tabs
 
   - name: Vitruvian design system
     group: lab
@@ -331,14 +331,14 @@ projects:
     tags: [CSS, React, Storybook]
     source: packages/design-system
 
-  - name: HomeSpeaker
+  - name: Vitruvian Speaker
     group: lab
     status: in-development
     summary: >-
       A macOS menu bar app that reads short summaries aloud on Google Home and
       Nest speakers: agent replies, new chat messages, or anything you type.
     tags: [Swift, macOS, Google Home]
-    source: apps/desktop/home-speaker
+    source: apps/desktop/vitruvian-speaker
 
   - name: Vitruvian
     group: lab
@@ -348,23 +348,23 @@ projects:
       JSON-RPC 2.0 extension runtime (VitruvianToolKit) for system telemetry,
       living-room Android TV control and developer workflows.
     tags: [Swift, macOS, AppKit]
-    source: apps/desktop/vitruvian
+    source: apps/desktop/vitruvian-atrium
 
   - name: Vitruvian Remote
     group: lab
     status: in-development
     summary: >-
       An Android remote and observability console for a Mac, designed for
-      foldables: trackpad, Sony Android TV over wireless ADB and HomeSpeaker
+      foldables: trackpad, Sony Android TV over wireless ADB and Vitruvian Speaker
       controls alongside live CPU, thermals, Lima VM and K3s dashboards.
     tags: [Kotlin, Jetpack Compose, Android]
     source: apps/mobile/android-remote
 
-  - name: ESP32-S3 desk companion
+  - name: Vitruvian Deck
     group: lab
     status: in-development
     summary: >-
       Firmware that turns a 1.69 inch ESP32-S3 touch board into a desk
       display for live Mac metrics and a USB and Bluetooth shortcut pad.
     tags: [C++, ESP32-S3, USB HID]
-    source: apps/embedded/esp32-s3
+    source: apps/embedded/vitruvian-deck

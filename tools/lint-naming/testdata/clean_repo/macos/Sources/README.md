@@ -4,7 +4,7 @@
 Component package providing implementation for `tools/lint-naming/testdata/clean_repo/macos/Sources`.
 
 ## Interface
-- `[VitruvianCodeCore.swift:NexusAgentCore]`
+- `[VitruvianCodeCore.swift:VitruvianCodeCore]`
 
 ## Invariants
 - None

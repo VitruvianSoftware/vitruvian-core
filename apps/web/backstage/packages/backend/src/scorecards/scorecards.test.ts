@@ -67,7 +67,7 @@ describe("Level 3 Fact Collectors", () => {
     ).toBe("library");
   });
 
-  it("verifies in-repo incident runbook section for buzz and tabula", async () => {
+  it("verifies in-repo incident runbook section for buzz and vitruvian-tabs", async () => {
     const buzzEntity: Entity = {
       apiVersion: "backstage.io/v1alpha1",
       kind: "Component",
@@ -89,14 +89,14 @@ describe("Level 3 Fact Collectors", () => {
   });
 
   it("verifies team registration in .github/CODEOWNERS", async () => {
-    const tabulaEntity: Entity = {
+    const vitruvianTabsEntity: Entity = {
       apiVersion: "backstage.io/v1alpha1",
       kind: "Component",
-      metadata: { name: "tabula" },
+      metadata: { name: "vitruvian-tabs" },
       spec: { owner: "group:default/tabula-team" },
     };
 
-    const facts = await collectSecurityFacts(tabulaEntity, REPO_ROOT);
+    const facts = await collectSecurityFacts(vitruvianTabsEntity, REPO_ROOT);
     expect(facts.codeownersBound).toBe(true);
     expect(facts.ownerTeam).toBe("tabula-team");
   });
@@ -130,11 +130,11 @@ describe("Level 3 Fact Collectors", () => {
 
 describe("Level 3 Multi-Track Scorecard Evaluator", () => {
   it("evaluates a microservice entity with live facts and 4 tracks", async () => {
-    const tabula: Entity = {
+    const vitruvianTabs: Entity = {
       apiVersion: "backstage.io/v1alpha1",
       kind: "Component",
       metadata: {
-        name: "tabula",
+        name: "vitruvian-tabs",
         description: "SaaS tab management platform on Cloud Run",
         annotations: {
           "backstage.io/techdocs-ref": "dir:.",
@@ -142,7 +142,7 @@ describe("Level 3 Multi-Track Scorecard Evaluator", () => {
           "vitruvian.dev/deploy-workflow": "delivery.yaml",
           "vitruvian.dev/release-model": "continuous-deploy",
           "vitruvian.dev/environments": "development nonproduction production",
-          "grafana/dashboard-selector": "tabula",
+          "grafana/dashboard-selector": "vitruvian-tabs",
         },
         links: [
           { url: "https://status.ipv1337.dev", title: "Uptime Status" },
@@ -160,13 +160,13 @@ describe("Level 3 Multi-Track Scorecard Evaluator", () => {
         type: "service",
         owner: "group:default/tabula-team",
         lifecycle: "production",
-        system: "tabula-platform",
+        system: "vitruvian-tabs-platform",
         providesApis: ["tabula-api"],
         dependsOn: ["resource:default/zitadel"],
       },
     };
 
-    const scorecard = await evaluateEntityScorecard(tabula, REPO_ROOT);
+    const scorecard = await evaluateEntityScorecard(vitruvianTabs, REPO_ROOT);
     expect(scorecard.archetype).toBe("service");
     expect(scorecard.overallTier).toBe("Gold");
     expect(scorecard.overallScore).toBe(100);

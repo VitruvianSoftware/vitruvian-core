@@ -24,6 +24,11 @@ Component package providing implementation for `tools/lint-naming/src/rules`.
 - `[directories.rs:ALLOWED_DOT_DIRS]`
 - `[directories.rs:GO_PACKAGE_DIR_ROOTS]`
 - `[directories.rs:SWIFT_DIR_ROOTS]`
+- `[retired_names.rs:RULE_ID]`
+- `[retired_names.rs:is_allowlisted_path]`
+- `[retired_names.rs:validate_retired_path]`
+- `[retired_names.rs:validate_retired_content]`
+- `[retired_names.rs:validate_retired_file_bytes]`
 
 ## Invariants
 - [bazel.rs:342]: `assert!(validate_bazel_target_name("B", "agent-app_test", "sh_test", None).is...`

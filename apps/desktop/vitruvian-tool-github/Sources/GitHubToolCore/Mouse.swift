@@ -11,7 +11,7 @@ import Foundation
 public enum MouseCommand {
     public static let name = "gravastar-mouse"
     /// The app's own copy, when the app is where it is usually installed.
-    public static let appCopy = "/Applications/Vitruvian.app/Contents/Helpers/gravastar-mouse"
+    public static let appCopy = "/Applications/Vitruvian Atrium.app/Contents/Helpers/gravastar-mouse"
 
     /// Install locations a program started by the app does not have on its
     /// PATH, in the order they are tried.

@@ -30,17 +30,17 @@
 /packages/orchestrator-core/ @VitruvianSoftware/platform-team
 /packages/pulumi/ @VitruvianSoftware/platform-team
 /tools/agent-guard/ @VitruvianSoftware/platform-team
-/apps/cli/devx/ @VitruvianSoftware/devx-team @VitruvianSoftware/platform-team
-/apps/cli/homelab/ @VitruvianSoftware/homelab-team @VitruvianSoftware/platform-team
+/apps/cli/vitruvian-devx/ @VitruvianSoftware/devx-team @VitruvianSoftware/platform-team
+/apps/cli/vitruvian-homelab/ @VitruvianSoftware/homelab-team @VitruvianSoftware/platform-team
 /apps/desktop/vitruvian-code/ @VitruvianSoftware/nexus-agent-team @VitruvianSoftware/platform-team
 /apps/desktop/vitruvian-tool-github/ @VitruvianSoftware/platform-team
-/apps/embedded/esp32-s3/ @VitruvianSoftware/platform-team
-/apps/mcp/roborock/ @VitruvianSoftware/platform-team
-/apps/mcp/slack/ @VitruvianSoftware/mcp-slack-team @VitruvianSoftware/platform-team
+/apps/embedded/vitruvian-deck/ @VitruvianSoftware/platform-team
+/apps/mcp/vitruvian-roborock-mcp/ @VitruvianSoftware/platform-team
+/apps/mcp/vitruvian-slack-mcp/ @VitruvianSoftware/mcp-slack-team @VitruvianSoftware/platform-team
 /apps/mobile/android-remote/ @VitruvianSoftware/platform-team
-/apps/mobile/wearos/ @VitruvianSoftware/platform-team
-/apps/suites/tabula/ @VitruvianSoftware/tabula-team @VitruvianSoftware/platform-team
-/apps/suites/wand/ @VitruvianSoftware/platform-team
+/apps/mobile/vitruvian-watch/ @VitruvianSoftware/platform-team
+/apps/suites/vitruvian-tabs/ @VitruvianSoftware/tabula-team @VitruvianSoftware/platform-team
+/apps/suites/vitruvian-wand/ @VitruvianSoftware/platform-team
 /apps/web/backstage/ @VitruvianSoftware/platform-team
 /apps/web/gods-eye-view/ @VitruvianSoftware/gods-eye-view-team @VitruvianSoftware/platform-team
 /apps/web/oauth-user-inspector/ @VitruvianSoftware/oauth-user-inspector-team @VitruvianSoftware/platform-team

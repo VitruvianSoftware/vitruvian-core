@@ -357,7 +357,7 @@ jobs:
   # THIS repository (VitruvianSoftware/vitruvian-sdk, release.yml): renaming
   # either stops publishing until the registry is told.
 
-  # @vitruviansoftware/tool-kit, by npm trusted publishing (OIDC), as mcp-slack
+  # @vitruviansoftware/tool-kit, by npm trusted publishing (OIDC), as vitruvian-slack-mcp
   # publishes. npm trusts the job, so there is no token anywhere.
   publish-npm-kit:
     name: Publish the TypeScript kit to npm
@@ -440,7 +440,7 @@ jobs:
         working-directory: kits/typescript
         run: npm publish --access public
 
-  # vitruvian-tool-kit, by PyPI trusted publishing, as mcp-roborock publishes.
+  # vitruvian-tool-kit, by PyPI trusted publishing, as vitruvian-roborock-mcp publishes.
   # Two jobs, so that the `pypi` environment is entered only when there is
   # something to publish.
   detect-pypi-kit:

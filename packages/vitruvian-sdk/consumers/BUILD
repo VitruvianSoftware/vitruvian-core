@@ -29,7 +29,7 @@
 # leave out whole folders only (exclude-paths in ../release-please-config.json),
 # never one file. While these lists were in ../BUILD, the pull request that
 # added a tool changed the SDK's BUILD and so cut an SDK release with nothing in
-# it: 1.1.0 from the GitHub tool (#3193), then 1.2.0 from the HomeSpeaker tool
+# it: 1.1.0 from the GitHub tool (#3193), then 1.2.0 from the Vitruvian Speaker tool
 # (#3211). This folder is in exclude-paths, so letting a tool in releases
 # nothing.
 #
@@ -45,7 +45,7 @@
 # tools are written with (MIT flows into GPL, one way).
 package_group(
     name = "app",
-    packages = ["//apps/desktop/vitruvian"],
+    packages = ["//apps/desktop/vitruvian-atrium"],
 )
 
 # Tools built in this repository against the SDK: the protocol, the kit, the
@@ -53,8 +53,8 @@ package_group(
 package_group(
     name = "tools",
     packages = [
-        "//apps/desktop/home-speaker",
         "//apps/desktop/vitruvian-code/macos",
+        "//apps/desktop/vitruvian-speaker",
         "//apps/desktop/vitruvian-tool-github",
         "//apps/desktop/vitruvian-tool-tv",
         "//apps/mobile/android-remote/macmenu",

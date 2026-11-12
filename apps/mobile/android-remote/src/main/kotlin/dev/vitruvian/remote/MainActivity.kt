@@ -474,14 +474,14 @@ private class ShadeNotifier(
       channel.description = "Your Mac going quiet, and commands that finish in the background."
       manager?.createNotificationChannel(channel)
 
-      val homeSpeakerChannel =
+      val vitruvianSpeakerChannel =
           NotificationChannel(
-              CHANNEL_HOMESPEAKER_ID,
-              CHANNEL_HOMESPEAKER_NAME,
+              CHANNEL_SPEAKER_ID,
+              CHANNEL_SPEAKER_NAME,
               NotificationManager.IMPORTANCE_DEFAULT,
           )
-      homeSpeakerChannel.description = "Announcements spoken by HomeSpeaker on your Mac."
-      manager?.createNotificationChannel(homeSpeakerChannel)
+      vitruvianSpeakerChannel.description = "Announcements spoken by Vitruvian Speaker on your Mac."
+      manager?.createNotificationChannel(vitruvianSpeakerChannel)
     }
   }
 
@@ -545,11 +545,11 @@ private class ShadeNotifier(
     if (!hasNotificationPermission()) return
     // One notification slot: each announcement replaces the last, so the shade never fills up and
     // turning mirroring off (one cancel) clears everything this feature posted.
-    val notificationId = HomeSpeakerNotificationReceiver.MIRROR_NOTIFICATION_ID
+    val notificationId = VitruvianSpeakerNotificationReceiver.MIRROR_NOTIFICATION_ID
     val openIntent =
         Intent(
                 Intent.ACTION_VIEW,
-                Uri.parse("vitruvian-remote://apps/homespeaker"),
+                Uri.parse("vitruvian-remote://apps/speaker"),
                 context,
                 MainActivity::class.java,
             )
@@ -563,7 +563,7 @@ private class ShadeNotifier(
         )
     val replayPending =
         actionPendingIntent(
-            action = HomeSpeakerNotificationReceiver.ACTION_REPLAY,
+            action = VitruvianSpeakerNotificationReceiver.ACTION_REPLAY,
             requestCode = notificationId xor 0x101,
             announcementId = id,
             announcementText = text,
@@ -571,16 +571,16 @@ private class ShadeNotifier(
         )
     val mutePending =
         actionPendingIntent(
-            action = HomeSpeakerNotificationReceiver.ACTION_MUTE,
+            action = VitruvianSpeakerNotificationReceiver.ACTION_MUTE,
             requestCode = notificationId xor 0x202,
             announcementId = id,
             announcementText = text,
             notificationId = notificationId,
         )
     val notification =
-        NotificationCompat.Builder(context, CHANNEL_HOMESPEAKER_ID)
+        NotificationCompat.Builder(context, CHANNEL_SPEAKER_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("HomeSpeaker")
+            .setContentTitle("Vitruvian Speaker")
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(openPending)
@@ -590,7 +590,8 @@ private class ShadeNotifier(
             .build()
     runCatching {
       NotificationManagerCompat.from(context)
-          .notify(HomeSpeakerNotificationReceiver.NOTIFICATION_TAG, notificationId, notification)
+          .notify(
+              VitruvianSpeakerNotificationReceiver.NOTIFICATION_TAG, notificationId, notification)
     }
   }
 
@@ -598,8 +599,8 @@ private class ShadeNotifier(
     runCatching {
       NotificationManagerCompat.from(context)
           .cancel(
-              HomeSpeakerNotificationReceiver.NOTIFICATION_TAG,
-              HomeSpeakerNotificationReceiver.MIRROR_NOTIFICATION_ID)
+              VitruvianSpeakerNotificationReceiver.NOTIFICATION_TAG,
+              VitruvianSpeakerNotificationReceiver.MIRROR_NOTIFICATION_ID)
     }
   }
 
@@ -611,11 +612,12 @@ private class ShadeNotifier(
       notificationId: Int,
   ): PendingIntent {
     val intent =
-        Intent(context, HomeSpeakerNotificationReceiver::class.java)
+        Intent(context, VitruvianSpeakerNotificationReceiver::class.java)
             .setAction(action)
-            .putExtra(HomeSpeakerNotificationReceiver.EXTRA_ANNOUNCEMENT_ID, announcementId)
-            .putExtra(HomeSpeakerNotificationReceiver.EXTRA_ANNOUNCEMENT_TEXT, announcementText)
-            .putExtra(HomeSpeakerNotificationReceiver.EXTRA_NOTIFICATION_ID, notificationId)
+            .putExtra(VitruvianSpeakerNotificationReceiver.EXTRA_ANNOUNCEMENT_ID, announcementId)
+            .putExtra(
+                VitruvianSpeakerNotificationReceiver.EXTRA_ANNOUNCEMENT_TEXT, announcementText)
+            .putExtra(VitruvianSpeakerNotificationReceiver.EXTRA_NOTIFICATION_ID, notificationId)
     return PendingIntent.getBroadcast(
         context,
         requestCode,
@@ -627,16 +629,16 @@ private class ShadeNotifier(
   private companion object {
     const val CHANNEL_ID = "vitruvian-remote"
     const val CHANNEL_NAME = "Vitruvian Remote"
-    const val CHANNEL_HOMESPEAKER_ID = "vitruvian-homespeaker-announcements"
-    const val CHANNEL_HOMESPEAKER_NAME = "HomeSpeaker announcements"
+    const val CHANNEL_SPEAKER_ID = "vitruvian-speaker-announcements"
+    const val CHANNEL_SPEAKER_NAME = "Vitruvian Speaker announcements"
   }
 }
 
 /**
- * Handles the "Replay" and "Mute" action buttons on a HomeSpeaker announcement notification off the
- * main thread with a 3-second timeout, then cancels the notification.
+ * Handles the "Replay" and "Mute" action buttons on a Vitruvian Speaker announcement notification
+ * off the main thread with a 3-second timeout, then cancels the notification.
  */
-public class HomeSpeakerNotificationReceiver : BroadcastReceiver() {
+public class VitruvianSpeakerNotificationReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     val action = intent.action ?: return
     val announcementId = intent.getStringExtra(EXTRA_ANNOUNCEMENT_ID).orEmpty()
@@ -656,14 +658,14 @@ public class HomeSpeakerNotificationReceiver : BroadcastReceiver() {
             withTimeout(ACTION_TIMEOUT_MS) {
               when (action) {
                 ACTION_REPLAY ->
-                    client.homeSpeakerSay(
+                    client.vitruvianSpeakerSay(
                         text = announcementText,
                         replay = true,
                         replayId = announcementId.ifBlank { null },
                         readTimeoutMs = ACTION_TIMEOUT_MS.toInt(),
                     )
                 ACTION_MUTE ->
-                    client.setHomeSpeakerVolume(
+                    client.setVitruvianSpeakerVolume(
                         muted = true,
                         readTimeoutMs = ACTION_TIMEOUT_MS.toInt(),
                     )
@@ -681,12 +683,12 @@ public class HomeSpeakerNotificationReceiver : BroadcastReceiver() {
   }
 
   public companion object {
-    public const val ACTION_REPLAY: String = "dev.vitruvian.remote.homespeaker.REPLAY"
-    public const val ACTION_MUTE: String = "dev.vitruvian.remote.homespeaker.MUTE"
+    public const val ACTION_REPLAY: String = "dev.vitruvian.remote.speaker.REPLAY"
+    public const val ACTION_MUTE: String = "dev.vitruvian.remote.speaker.MUTE"
     public const val EXTRA_ANNOUNCEMENT_ID: String = "announcement_id"
     public const val EXTRA_ANNOUNCEMENT_TEXT: String = "announcement_text"
     public const val EXTRA_NOTIFICATION_ID: String = "notification_id"
-    public const val NOTIFICATION_TAG: String = "homespeaker-announcement"
+    public const val NOTIFICATION_TAG: String = "speaker-announcement"
     /** The single slot every mirrored announcement is posted in. */
     public const val MIRROR_NOTIFICATION_ID: Int = 1
     private const val ACTION_TIMEOUT_MS = 3_000L

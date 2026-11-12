@@ -56,37 +56,37 @@ no design value of its own.
   (`# gazelle:ignore`), so a new `.kt` file must be added to the right target yourself. The
   package defaults to app-private visibility (inter-app boundary); keep it that way.
 - **Cross-workspace contracts.** A change to `macagent/API.md` is a change to the app and the
-  daemon in one PR. The HomeSpeaker module asks the chosen
-  HomeSpeaker program (`--state --json`, `--apply --json`, after `--version` against
-  `MIN_HOME_SPEAKER_VERSION`) and never reads or writes its settings, secrets, history, status or
+  daemon in one PR. The Vitruvian Speaker module asks the chosen
+  Vitruvian Speaker program (`--state --json`, `--apply --json`, after `--version` against
+  `MIN_SPEAKER_VERSION`) and never reads or writes its settings, secrets, history, status or
   hook files; the one file it reads is `~/.gemini/speaker_door.json`, to learn which program (app or
-  Vitruvian extension) is chosen. Its test is the golden `apps/desktop/home-speaker/testdata/state_v1.json`.
-- **Not mirrored.** Unlike `devx`, `mcp-slack` and `nexus-agent` there is no Copybara export;
+  Vitruvian extension) is chosen. Its test is the golden `apps/desktop/vitruvian-speaker/testdata/state_v1.json`.
+- **Not mirrored.** Unlike `devx`, `vitruvian-slack-mcp` and `vitruvian-code` there is no Copybara export;
   this directory is the only place the app is edited.
 
-## HomeSpeaker Parity Checklist
+## Vitruvian Speaker Parity Checklist
 
-When `apps/desktop/home-speaker` changes its config schema, secret store, or distribution doors,
+When `apps/desktop/vitruvian-speaker` changes its config schema, secret store, or distribution doors,
 update `android-remote` in lockstep across these files:
 
-- **Source of truth in `apps/desktop/home-speaker/Sources/HomeSpeakerCore/`:**
+- **Source of truth in `apps/desktop/vitruvian-speaker/Sources/VitruvianSpeakerCore/`:**
   - `Models.swift` (`SpeakerConfig`, `SpeechLength`, `LocalSpeechEngine`, `GeminiVoice`,
     `AnnouncementStyle`, `StyleModel`, `BroadcastSource`)
   - `Door.swift` & `Profile.swift` (`~/.gemini/speaker_door.json` active door resolution,
-    `ToolData/dev.vitruvian.homespeaker/{settings.json,history.json,secrets.json,running.lock}`)
+    `ToolData/dev.vitruvian.speaker/{settings.json,history.json,secrets.json,running.lock}`)
   - `SecretStore.swift` (`secrets.json` `google.refreshToken` and `geminiAPIKey`)
 - **Counterparts in `apps/mobile/android-remote/`:**
-  1. `macagent/rs/src/homespeaker.rs` & `macagent_test` (`active_program()`, `state()`,
+  1. `macagent/rs/src/speaker.rs` & `macagent_test` (`active_program()`, `state()`,
      `plan_ops()`, `apply()`, `handle_say`, `handle_phone_say`, `run_volume`, `speak_phone`,
      `phone_pause_media`, `phone_headphones_only`)
-  2. `macagent/API.md` (contract documentation for `/v1/homespeaker` and
-     `/v1/homespeaker/phone-say`)
-  3. `src/main/kotlin/dev/vitruvian/remote/state/Wire.kt` (`HomeSpeakerSources`, `HomeSpeakerWire`)
-  4. `src/main/kotlin/dev/vitruvian/remote/state/AgentClient.kt` (`AgentHomeSpeaker`,
-     `parseHomeSpeaker`, `setHomeSpeaker`)
+  2. `macagent/API.md` (contract documentation for `/v1/speaker` and
+     `/v1/speaker/phone-say`)
+  3. `src/main/kotlin/dev/vitruvian/remote/state/Wire.kt` (`VitruvianSpeakerSources`, `VitruvianSpeakerWire`)
+  4. `src/main/kotlin/dev/vitruvian/remote/state/AgentClient.kt` (`AgentVitruvianSpeaker`,
+     `parseVitruvianSpeaker`, `setVitruvianSpeaker`)
   5. `src/main/kotlin/dev/vitruvian/remote/state/Derive.kt` &
-     `src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt` (`homeSpeakerRows`,
-     `homeSpeakerExtraLists`, `setHomeSpeaker`)
+     `src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt` (`vitruvianSpeakerRows`,
+     `vitruvianSpeakerExtraLists`, `setVitruvianSpeaker`)
   6. `src/main/kotlin/dev/vitruvian/remote/bridge/Tools.kt` (`PhoneTools.speak` for `phone.speak`
      WAV playback, Android `TextToSpeech` fallback, transient audio focus, and headphone-only
      filtering)

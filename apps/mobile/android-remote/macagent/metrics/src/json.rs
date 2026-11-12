@@ -991,13 +991,13 @@ mod tests {
         );
         manifest.insert(
             "name".to_string(),
-            JsonValue::String("home-speaker".to_string()),
+            JsonValue::String("vitruvian-speaker".to_string()),
         );
         manifest.insert("license".to_string(), JsonValue::String("MIT".to_string()));
         manifest.insert(
             "description".to_string(),
             JsonValue::String(
-                "Speaks each finished Antigravity reply on your Google Home speakers or this Mac, through HomeSpeaker."
+                "Speaks each finished Antigravity reply on your Google Home speakers or this Mac, through Vitruvian Speaker."
                     .to_string(),
             ),
         );
@@ -1005,7 +1005,7 @@ mod tests {
 
         let val = JsonValue::Object(manifest);
         let got = format!("{}\n", val.to_json_string_swift_pretty());
-        let expected_swift = "{\n  \"author\" : {\n    \"name\" : \"VitruvianSoftware\",\n    \"url\" : \"https://github.com/VitruvianSoftware\"\n  },\n  \"description\" : \"Speaks each finished Antigravity reply on your Google Home speakers or this Mac, through HomeSpeaker.\",\n  \"license\" : \"MIT\",\n  \"name\" : \"home-speaker\",\n  \"version\" : \"1.0.0\"\n}\n";
+        let expected_swift = "{\n  \"author\" : {\n    \"name\" : \"VitruvianSoftware\",\n    \"url\" : \"https://github.com/VitruvianSoftware\"\n  },\n  \"description\" : \"Speaks each finished Antigravity reply on your Google Home speakers or this Mac, through Vitruvian Speaker.\",\n  \"license\" : \"MIT\",\n  \"name\" : \"vitruvian-speaker\",\n  \"version\" : \"1.0.0\"\n}\n";
         assert_eq!(got, expected_swift);
 
         // Default pretty writer remains unchanged (insertion order, ": " without space before colon).

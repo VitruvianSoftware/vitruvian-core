@@ -120,12 +120,12 @@ public object MockHost {
           // Read and driven through the agent, which shares the app's config
           // file: on / off, which speaker, how much of a reply, say this.
           GalleryEntry(
-              "homespeaker", "HomeSpeaker", "On / off, speaker, announce", "config", "homespeaker"),
+              "speaker", "Vitruvian Speaker", "On / off, speaker, announce", "config", "speaker"),
           GalleryEntry("tv", "Sony TV", "Power, 4K Aerials, apps, HDMI, cast URL", "adb", "adb"),
       )
 
   public val defaultInstalled: Set<String> =
-      setOf("claude", "antigravity", "homelab", "lima", "prs", "homespeaker", "tv")
+      setOf("claude", "antigravity", "homelab", "lima", "prs", "speaker", "tv")
 
   public val processes: List<Process> =
       listOf(

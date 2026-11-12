@@ -99,7 +99,7 @@ spec:
   targets:
     - ./backstage/catalog-info.yaml
     - ./devx/catalog-info.yaml
-    - ./tabula/catalog-info.yaml
+    - ./apps/suites/vitruvian-tabs/catalog-info.yaml
     # Platform infrastructure we operate (not applications we build)
     - ./gitops/catalog-info.yaml
 ---
@@ -431,7 +431,7 @@ describe("the root catalog Location", () => {
       "    - ./apps/order_service/catalog-info.yaml",
       "    - ./backstage/catalog-info.yaml",
       "    - ./devx/catalog-info.yaml",
-      "    - ./tabula/catalog-info.yaml",
+      "    - ./apps/suites/vitruvian-tabs/catalog-info.yaml",
       "    - ./gitops/catalog-info.yaml",
     ]);
   });

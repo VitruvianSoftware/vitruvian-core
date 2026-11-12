@@ -1,0 +1,171 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# release-please and the release for Vitruvian Courier, the macOS messaging app
+# (apps/desktop/vitruvian-courier). The same shape as vitruvian-speaker-release.yaml:
+# 1. Authors release PRs from conventional commits under apps/desktop/vitruvian-courier/.
+# 2. When the release PR merges, cuts the GitHub Release (tag: vitruvian-courier-vX.Y.Z).
+# 3. On a Mac, `bazel run //apps/desktop/vitruvian-courier/app:publish` builds the app for
+#    arm64 and x86_64, adds Vitruvian Courier's Telegram app ID, and hands it to
+#    //tools/desktop-package, which signs it with the Developer ID, notarises
+#    it, attaches the DMGs, the ZIP and their checksums to the release, and
+#    pushes Casks/vitruvian-courier.rb to VitruvianSoftware/homebrew-tap.
+# Unlike Vitruvian Speaker, Vitruvian Courier is notarised: the signing step and the notary
+# key are the ones delivery-vitruvian-atrium.yaml's production rung uses (one
+# Developer ID for every Mac app). There is no beta channel: nothing is
+# published on a push, only when a release PR merges.
+#
+# The publishing job refuses to publish without these secrets:
+#   - repository secrets VITRUVIAN_SIGNING_CERT_P12 and
+#     VITRUVIAN_SIGNING_CERT_PASSWORD, VITRUVIAN_NOTARY_API_KEY_P8,
+#     VITRUVIAN_NOTARY_KEY_ID and VITRUVIAN_NOTARY_ISSUER_ID (the ones the
+#     Vitruvian release uses; a job in an environment still sees them);
+#   - COURIER_TELEGRAM_API_ID and COURIER_TELEGRAM_API_HASH, secrets of the
+#     `vitruvian-courier-release` GitHub Environment, so only that job can read them.
+#     The environment is declared in infrastructure/pulumi/platform/repo-config
+#     (vitruvian_courier_release.go: only main and vitruvian-courier-v* tags may deploy to it); a
+#     person sets the values once with //tools/sync-env-secrets, as
+#     apps/desktop/vitruvian-courier/docs/cutover.md says. This workflow never sets them.
+name: vitruvian-courier-release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/desktop/vitruvian-courier/**"
+      - ".github/workflows/vitruvian-courier-release.yaml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to package and upload (e.g. vitruvian-courier-v0.4.0). Empty runs release-please."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    # Never cancel a release run; serialize them on the branch so rapid merges
+    # to main cannot race the release PR / tag creation (issue #461).
+    concurrency:
+      group: vitruvian-courier-release-${{ github.ref }}
+      cancel-in-progress: false
+    outputs:
+      release_created: ${{ steps.release.outputs['apps/desktop/vitruvian-courier--release_created'] }}
+      tag_name: ${{ steps.release.outputs['apps/desktop/vitruvian-courier--tag_name'] }}
+      version: ${{ steps.release.outputs['apps/desktop/vitruvian-courier--version'] }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # release-please PRs must be authored by an App (not GITHUB_TOKEN) so the
+      # PR triggers the merge queue's required checks.
+      - name: Mint App token for the release PR
+        id: app-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        if: ${{ inputs.tag == '' }}
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: apps/desktop/vitruvian-courier/release-please-config.json
+          manifest-file: apps/desktop/vitruvian-courier/.release-please-manifest.json
+          target-branch: main
+
+  publish-package:
+    needs: release-please
+    if: ${{ always() && !cancelled() && (needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')) }}
+    # Vitruvian Courier's Telegram app ID lives in this environment's secrets.
+    environment: vitruvian-courier-release
+    # The same Xcode as CI and developers (.xcode-version); see ci.yaml.
+    runs-on: xcode-27
+    # A cold build of the engine is libsignal's 2,000+ actions, twice (arm64
+    # and x86_64), and package-desktop notarises six times (three apps, three
+    # DMGs). The remote cache makes later runs much shorter.
+    timeout-minutes: 120
+    concurrency:
+      group: vitruvian-courier-publish-${{ inputs.tag || needs.release-please.outputs.tag_name }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+
+      - name: Select the pinned Xcode
+        uses: ./.github/actions/select-xcode
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      # REQUIRE_SIGNING: a release signed ad hoc would not open on anyone's Mac,
+      # so missing signing secrets fail here rather than ship.
+      - name: Import the signing identity
+        env:
+          SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
+          REQUIRE_SIGNING: "1"
+        run: bazel run //apps/desktop/vitruvian-atrium:ci_setup_signing
+
+      - name: Mint App token for the Homebrew tap
+        id: tap-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          owner: VitruvianSoftware
+          repositories: homebrew-tap
+
+      - name: Build, sign, notarise and publish Vitruvian Courier
+        env:
+          RELEASE_TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
+          # Cache-only: reuse what the vitruvian-courier-app-macos unit cached.
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
+          # Vitruvian Courier's own Telegram app ID, built into the app so Telegram
+          # sign-in needs no developer keys. Never printed.
+          COURIER_TELEGRAM_API_ID: ${{ secrets.COURIER_TELEGRAM_API_ID }}
+          COURIER_TELEGRAM_API_HASH: ${{ secrets.COURIER_TELEGRAM_API_HASH }}
+        run: bazel run //apps/desktop/vitruvian-courier/app:publish
+
+      # The job's last word, and not the publishing script's: ask GitHub what
+      # the release holds (Vitruvian Speaker 1.12.0 and 1.13.0 were published with no
+      # files and a green job).
+      - name: Check the release has every file
+        env:
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${TAG#vitruvian-courier-v}"
+          bazel run //tools/desktop-package:package-desktop -- --verify-only \
+            --app-name "Vitruvian Courier" --version "${version}" --tag "${TAG}"
+          gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json assets \
+            --jq '.assets[] | "\(.name)\t\(.size)"'

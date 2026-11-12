@@ -38,13 +38,13 @@ describe("sdlc metadata parser", () => {
     expect(readSdlcInfo(entity())).toBeUndefined();
   });
 
-  it("parses Tabula continuous delivery SDLC metadata", () => {
+  it("parses Vitruvian Tabs continuous delivery SDLC metadata", () => {
     const ent = entity({
       "vitruvian.dev/release-model": "continuous-deploy",
       "vitruvian.dev/environments": "development nonproduction production",
       "vitruvian.dev/deploy-workflow": "delivery.yaml",
       "vitruvian.dev/deploy-targets":
-        "//tabula/api:image_push //tabula/extension:chrome_zip",
+        "//apps/suites/vitruvian-tabs/api:image_push //apps/suites/vitruvian-tabs/extension:chrome_zip",
     });
 
     expect(isSdlcAvailable(ent)).toBe(true);
@@ -60,8 +60,8 @@ describe("sdlc metadata parser", () => {
     ]);
     expect(info?.workflow).toEqual({ name: "delivery.yaml", type: "deploy" });
     expect(info?.deployTargets).toEqual([
-      "//tabula/api:image_push",
-      "//tabula/extension:chrome_zip",
+      "//apps/suites/vitruvian-tabs/api:image_push",
+      "//apps/suites/vitruvian-tabs/extension:chrome_zip",
     ]);
   });
 

@@ -26,7 +26,7 @@ a pin past its `review_by`; and a registry pin that is **not documented in this 
 - **Risk:** the kit using something of Go's standard library newer than 1.22. `//packages/vitruvian-sdk:go_kit_vet_test` runs `go vet` on the kit as its own module, which refuses exactly that; Bazel's build does not see it.
 - **Removal:** when the kit raises its floor to the canonical Go, or the repository decides a published module's floor is not a pin. Re-justify at each `review_by` while the kit supports Go 1.22.
 
-> **Retired — `apps/suites/tabula/api/Dockerfile` (Node 20), removed 2026-06-25.** This was the seed exception. On review it turned out to be **vestigial**: tabula's API image is built by Bazel (`//apps/suites/tabula/api:image`, a `node_image`) whose Node version is bound to `.nvmrc` through the toolchain (`node_version_from_nvmrc`), so the standalone `node:20` Dockerfile was a pre-Bazel leftover that nothing built. It was **deleted** rather than bumped — the real build was already on canonical Node. The general lesson is below.
+> **Retired — `apps/suites/vitruvian-tabs/api/Dockerfile` (Node 20), removed 2026-06-25.** This was the seed exception. On review it turned out to be **vestigial**: vitruvian-tabs's API image is built by Bazel (`//apps/suites/vitruvian-tabs/api:image`, a `node_image`) whose Node version is bound to `.nvmrc` through the toolchain (`node_version_from_nvmrc`), so the standalone `node:20` Dockerfile was a pre-Bazel leftover that nothing built. It was **deleted** rather than bumped — the real build was already on canonical Node. The general lesson is below.
 
 ---
 
@@ -34,7 +34,7 @@ a pin past its `review_by`; and a registry pin that is **not documented in this 
 
 The cleanest way to avoid a hardcoded-version drift is to **not hardcode the version in the Dockerfile** — source it from the canonical file instead. The repo has two build paths, both of which can do this:
 
-- **Bazel-built images** (`node_image`, e.g. `//apps/suites/tabula/api:image`) already get their Node version from `.nvmrc` via the toolchain (`node.toolchain(node_version_from_nvmrc = "//:.nvmrc")` in `MODULE.bazel`). Nothing to pin — bump `.nvmrc` and every Bazel image follows. This is why tabula's Dockerfile was dead weight.
+- **Bazel-built images** (`node_image`, e.g. `//apps/suites/vitruvian-tabs/api:image`) already get their Node version from `.nvmrc` via the toolchain (`node.toolchain(node_version_from_nvmrc = "//:.nvmrc")` in `MODULE.bazel`). Nothing to pin — bump `.nvmrc` and every Bazel image follows. This is why vitruvian-tabs's Dockerfile was dead weight.
 - **Dockerfile-built images** (e.g. `oauth-user-inspector`) parameterize the major via a build arg instead of hardcoding it:
 
   ```dockerfile

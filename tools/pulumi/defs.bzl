@@ -124,7 +124,7 @@ def pulumi_go_test(name = "test", extra_data = [], timeout = None, visibility = 
     Tagged `no-remote-exec` + `requires-network`: RBE workers aren't guaranteed
     a `go` toolchain or Go module cache the way the GitHub Actions runner is
     (`actions/setup-go` in that job), and module verification needs the
-    network. Same reasoning `tabula/api`'s `no-remote-exec` service tests use
+    network. Same reasoning `apps/suites/vitruvian-tabs/api`'s `no-remote-exec` service tests use
     for an unavailable-on-RBE dependency — this runs locally only, not on RBE.
 
     Also tagged `exclusive`: Bazel runs it alone, after the build, one at a

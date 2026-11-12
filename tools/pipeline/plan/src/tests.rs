@@ -101,10 +101,17 @@ fn docs_only_fast_gate() {
             true,
         ),
         (
-            &["OWNERS", "apps/cli/devx/OWNERS", ".github/CODEOWNERS"],
+            &[
+                "OWNERS",
+                "apps/cli/vitruvian-devx/OWNERS",
+                ".github/CODEOWNERS",
+            ],
             true,
         ),
-        (&["docs/index.md", "tabula/api/src/app.ts"], false),
+        (
+            &["docs/index.md", "apps/suites/vitruvian-tabs/api/src/app.ts"],
+            false,
+        ),
         (
             &[
                 "apps/mobile/android-remote/catalog-info.yaml",
@@ -154,7 +161,7 @@ fn global_impact_check() {
             true,
             "core toolchain directory changed: tools/remote.bazelrc",
         ),
-        ("tabula/web/src/index.tsx", false, ""),
+        ("apps/suites/vitruvian-tabs/web/src/index.tsx", false, ""),
         ("apps/x/BUILD", false, ""),
     ];
     for (f, global, reason) in cases {
@@ -291,7 +298,7 @@ fn classify_persona_and_operation_cases() {
         ),
         (
             &[
-                "tabula/web/app/page.tsx",
+                "apps/suites/vitruvian-tabs/web/app/page.tsx",
                 "packages/design-system/src/Button.tsx",
             ],
             false,
@@ -300,14 +307,17 @@ fn classify_persona_and_operation_cases() {
             Operation::UiFeature,
         ),
         (
-            &["tabula/api/src/server.ts", "tabula/api/src/routes/auth.ts"],
+            &[
+                "apps/suites/vitruvian-tabs/api/src/server.ts",
+                "apps/suites/vitruvian-tabs/api/src/routes/auth.ts",
+            ],
             false,
             false,
             Persona::BackendDev,
             Operation::BackendApi,
         ),
         (
-            &["tabula/api/prisma/migrations/20260101_init/migration.sql"],
+            &["apps/suites/vitruvian-tabs/api/prisma/migrations/20260101_init/migration.sql"],
             false,
             false,
             Persona::BackendDev,
@@ -328,7 +338,10 @@ fn classify_persona_and_operation_cases() {
             Operation::InfraProvision,
         ),
         (
-            &["tabula/web/app/page.tsx", "tabula/api/src/server.ts"],
+            &[
+                "apps/suites/vitruvian-tabs/web/app/page.tsx",
+                "apps/suites/vitruvian-tabs/api/src/server.ts",
+            ],
             false,
             false,
             Persona::FullStackDev,
@@ -370,9 +383,9 @@ fn resolve_packages_finds_enclosing_packages() {
     assert_eq!(got, v(&["//app/server:all", "//app/ui:all"]));
 }
 
-const TABULA_BUILD: &str = r#"
+const VITRUVIAN_TABS_BUILD: &str = r#"
 pipeline_unit(
-    name = "tabula-web",
+    name = "vitruvian-tabs-web",
     tier = "L1",
     persona = "frontend",
     runner = "ubuntu-26.04",
@@ -383,19 +396,33 @@ pipeline_unit(
 #[test]
 fn compute_plan_hermetic() {
     let d = tmp("hermetic");
-    write(&d, "tabula/web/BUILD", TABULA_BUILD);
+    write(
+        &d,
+        "apps/suites/vitruvian-tabs/web/BUILD",
+        VITRUVIAN_TABS_BUILD,
+    );
     let root = d.to_str().unwrap();
-    let runner = Mock::new(&[("//tabula/web:all", &["//tabula/web:unit_tests"])]);
+    let runner = Mock::new(&[(
+        "//apps/suites/vitruvian-tabs/web:all",
+        &["//apps/suites/vitruvian-tabs/web:unit_tests"],
+    )]);
     let e = Engine::new(root, &runner);
 
     let p = e
-        .compute_plan(v(&["tabula/web/src/App.tsx"]), "main", "HEAD")
+        .compute_plan(
+            v(&["apps/suites/vitruvian-tabs/web/src/App.tsx"]),
+            "main",
+            "HEAD",
+        )
         .unwrap();
     assert_eq!(p.persona, Some(Persona::FrontendDev));
     assert_eq!(p.operation, Some(Operation::UiFeature));
-    assert_eq!(p.targets, Some(v(&["//tabula/web:unit_tests"])));
+    assert_eq!(
+        p.targets,
+        Some(v(&["//apps/suites/vitruvian-tabs/web:unit_tests"]))
+    );
     assert_eq!(p.matrix.len(), 1);
-    assert_eq!(p.matrix[0].name, "tabula-web");
+    assert_eq!(p.matrix[0].name, "vitruvian-tabs-web");
     assert_eq!(p.plan_source, PLAN_SOURCE_LIVE);
 
     let docs = e
@@ -407,7 +434,11 @@ fn compute_plan_hermetic() {
     let failing = Mock::failing();
     let e = Engine::new(root, &failing);
     let p = e
-        .compute_plan(v(&["tabula/web/src/App.tsx"]), "main", "HEAD")
+        .compute_plan(
+            v(&["apps/suites/vitruvian-tabs/web/src/App.tsx"]),
+            "main",
+            "HEAD",
+        )
         .unwrap();
     assert!(p.is_global_impact);
     assert_eq!(p.targets, Some(v(&["//..."])));
@@ -416,12 +447,20 @@ fn compute_plan_hermetic() {
 #[test]
 fn degraded_query_is_distinguishable_from_real_global_impact() {
     let d = tmp("degraded");
-    write(&d, "tabula/web/BUILD", TABULA_BUILD);
+    write(
+        &d,
+        "apps/suites/vitruvian-tabs/web/BUILD",
+        VITRUVIAN_TABS_BUILD,
+    );
     let root = d.to_str().unwrap();
 
     let failing = Mock::failing();
     let p = Engine::new(root, &failing)
-        .compute_plan(v(&["tabula/web/src/App.tsx"]), "main", "HEAD")
+        .compute_plan(
+            v(&["apps/suites/vitruvian-tabs/web/src/App.tsx"]),
+            "main",
+            "HEAD",
+        )
         .unwrap();
     assert!(p.is_global_impact && p.is_degraded);
     assert_eq!(
@@ -429,14 +468,21 @@ fn degraded_query_is_distinguishable_from_real_global_impact() {
         "query degraded: fallback to full sweep (simulated query error)"
     );
 
-    let ok = Mock::new(&[("//tabula/web:all", &["//tabula/web:unit_tests"])]);
+    let ok = Mock::new(&[(
+        "//apps/suites/vitruvian-tabs/web:all",
+        &["//apps/suites/vitruvian-tabs/web:unit_tests"],
+    )]);
     let p = Engine::new(root, &ok)
         .compute_plan(v(&["MODULE.bazel"]), "main", "HEAD")
         .unwrap();
     assert!(p.is_global_impact && !p.is_degraded);
 
     let p = Engine::new(root, &ok)
-        .compute_plan(v(&["tabula/web/src/App.tsx"]), "main", "HEAD")
+        .compute_plan(
+            v(&["apps/suites/vitruvian-tabs/web/src/App.tsx"]),
+            "main",
+            "HEAD",
+        )
         .unwrap();
     assert!(!p.is_global_impact && !p.is_degraded);
 }
@@ -447,8 +493,8 @@ fn test_rdeps_query_shape() {
     assert!(q.contains(r#"except attr(tags, "manual", //...)"#));
     assert!(q.find("except").unwrap() > q.find("rdeps(").unwrap());
     assert!(q.contains("rdeps(//...") && q.contains("_test"));
-    let q = build_test_rdeps_query(&v(&["//apps/embedded/esp32-s3:all"]));
-    assert!(q.contains("set(//apps/embedded/esp32-s3:*)") && !q.contains(":all"));
+    let q = build_test_rdeps_query(&v(&["//apps/embedded/vitruvian-deck:all"]));
+    assert!(q.contains("set(//apps/embedded/vitruvian-deck:*)") && !q.contains(":all"));
 }
 
 #[test]
@@ -859,7 +905,7 @@ pipeline_unit(
 )
 
 # Build + package + upload. The generated delivery workflow runs the script
-# directly (bash apps/desktop/vitruvian/publish.sh).
+# directly (bash apps/desktop/vitruvian-atrium/publish.sh).
 exports_files([
     "Tools/ci-setup-signing.sh",
     "publish.sh",
@@ -868,7 +914,7 @@ exports_files([
 
 #[test]
 fn desktop_unit_as_it_was_before_the_workaround() {
-    let u = must_read(DESKTOP_BUILD, "apps/desktop/vitruvian");
+    let u = must_read(DESKTOP_BUILD, "apps/desktop/vitruvian-atrium");
     assert_eq!(u.len(), 1);
     let u = &u[0];
     assert_eq!(u.name, "vitruvian-desktop-macos");
@@ -879,7 +925,7 @@ fn desktop_unit_as_it_was_before_the_workaround() {
     );
     assert!(u
         .test_targets
-        .contains(&"//apps/desktop/vitruvian:tool_protocol_pin_test".to_string()));
+        .contains(&"//apps/desktop/vitruvian-atrium:tool_protocol_pin_test".to_string()));
 }
 
 #[test]
@@ -922,11 +968,11 @@ fn compute_plan_fails_on_an_unreadable_unit() {
 #[test]
 fn unit_is_selected_through_a_dependency() {
     let d = tmp("throughdep");
-    write(&d, "apps/desktop/vitruvian/BUILD", DESKTOP_BUILD);
+    write(&d, "apps/desktop/vitruvian-atrium/BUILD", DESKTOP_BUILD);
     write(&d, "packages/tool-protocol/BUILD", "# a package\n");
     let runner = Mock::new(&[(
         "//packages/tool-protocol:all",
-        &["//apps/desktop/vitruvian:tool_protocol_pin_test"],
+        &["//apps/desktop/vitruvian-atrium:tool_protocol_pin_test"],
     )]);
     let p = Engine::new(d.to_str().unwrap(), &runner)
         .compute_plan(
@@ -946,15 +992,19 @@ fn unit_is_selected_through_a_dependency() {
 #[test]
 fn plan_json_matches_go_shape() {
     let d = tmp("json");
-    write(&d, "tabula/web/BUILD", TABULA_BUILD);
+    write(
+        &d,
+        "apps/suites/vitruvian-tabs/web/BUILD",
+        VITRUVIAN_TABS_BUILD,
+    );
     let runner = Mock::new(&[]);
     let mut p = Engine::new(d.to_str().unwrap(), &runner)
-        .compute_plan(v(&["tabula/web/x.ts"]), "base<&>", "")
+        .compute_plan(v(&["apps/suites/vitruvian-tabs/web/x.ts"]), "base<&>", "")
         .unwrap();
     p.duration_ms = 0;
     let got = unitfile::gocompat::json::marshal(&p);
     assert_eq!(
         got,
-        r#"{"schema_version":1,"base_rev":"base\u003c\u0026\u003e","head_rev":"","duration_ms":0,"changed_files":["tabula/web/x.ts"],"affected_packages":["//tabula/web:all"],"persona":"frontend-dev","operation":"ui-feature","is_docs_only":false,"is_global_impact":false,"is_degraded":false,"plan_source":"live-query","targets":null,"target_count":0,"matrix":[{"name":"tabula-web","package":"tabula/web","runner":"ubuntu-26.04","tier":"L1","persona":"frontend","targets":["//tabula/web:unit_tests"],"test_targets":"//tabula/web:unit_tests","target_count":1,"timeout_minutes":20,"concurrency_group":"pipeline-tabula-web","is_required":true}]}"#
+        r#"{"schema_version":1,"base_rev":"base\u003c\u0026\u003e","head_rev":"","duration_ms":0,"changed_files":["apps/suites/vitruvian-tabs/web/x.ts"],"affected_packages":["//apps/suites/vitruvian-tabs/web:all"],"persona":"frontend-dev","operation":"ui-feature","is_docs_only":false,"is_global_impact":false,"is_degraded":false,"plan_source":"live-query","targets":null,"target_count":0,"matrix":[{"name":"vitruvian-tabs-web","package":"apps/suites/vitruvian-tabs/web","runner":"ubuntu-26.04","tier":"L1","persona":"frontend","targets":["//apps/suites/vitruvian-tabs/web:unit_tests"],"test_targets":"//apps/suites/vitruvian-tabs/web:unit_tests","target_count":1,"timeout_minutes":20,"concurrency_group":"pipeline-vitruvian-tabs-web","is_required":true}]}"#
     );
 }

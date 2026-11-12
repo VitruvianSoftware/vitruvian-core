@@ -194,8 +194,8 @@
       ]
     },
     {
-      "name": "mcp-roborock",
-      "source": "./apps/mcp/roborock/plugin",
+      "name": "vitruvian-roborock-mcp",
+      "source": "./apps/mcp/vitruvian-roborock-mcp/plugin",
       "description": "A Roborock vacuum integration: a local daemon, an MCP server and plugins that let a coding agent check status, start room cleans or send the robot home.",
       "author": {
         "name": "VitruvianSoftware",

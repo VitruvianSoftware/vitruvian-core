@@ -151,7 +151,7 @@ pipeline_unit(
 #               attached to that release, then the homebrew-tap formula.
 # The release-please machinery that cuts the production tag lives in
 # .github/workflows/gravastar-mouse-release.yaml (release machinery, not
-# delivery -- the same split as esp32-s3 and vitruvian).
+# delivery -- the same split as vitruvian-deck and vitruvian).
 delivery(
     # Not "gravastar-mouse": that is the binary's target, and gazelle reads
     # this macro call as a rule of the same name.
@@ -172,7 +172,7 @@ delivery(
     # job (Xcode, Bazel, one script) minus the app signing, so that is the
     # provenance recorded.
     legacy_job = "package",
-    legacy_workflow = ".github/workflows/vitruvian-release.yaml",
+    legacy_workflow = ".github/workflows/vitruvian-atrium-release.yaml",
     promotion = "release:gravastar-mouse-v",
     render = "transcribed",
     run = "//packages/peripherals:publish",

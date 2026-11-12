@@ -41,7 +41,7 @@ describe("evaluateScorecard Level 3 Multi-Track engine", () => {
       apiVersion: "backstage.io/v1alpha1",
       kind: "Component",
       metadata: {
-        name: "tabula",
+        name: "vitruvian-tabs",
         description:
           "SaaS tab and workspace platform with blue-green Cloud Run.",
         annotations: {
@@ -50,11 +50,11 @@ describe("evaluateScorecard Level 3 Multi-Track engine", () => {
           "vitruvian.dev/deploy-workflow": "delivery.yaml",
           "vitruvian.dev/release-model": "continuous-deploy",
           "vitruvian.dev/environments": "development nonproduction production",
-          "grafana/dashboard-selector": "tabula",
+          "grafana/dashboard-selector": "vitruvian-tabs",
         },
         links: [
           {
-            url: "https://github.com/VitruvianSoftware/tabula",
+            url: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/suites/vitruvian-tabs",
             title: "GitHub",
           },
           { url: "https://status.ipv1337.dev", title: "Uptime Status" },
@@ -72,7 +72,7 @@ describe("evaluateScorecard Level 3 Multi-Track engine", () => {
         type: "service",
         owner: "tabula-team",
         lifecycle: "production",
-        system: "tabula-platform",
+        system: "vitruvian-tabs-platform",
         providesApis: ["tabula-api"],
         dependsOn: ["resource:default/zitadel"],
       },

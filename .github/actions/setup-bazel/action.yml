@@ -112,7 +112,7 @@ runs:
     #
     # Removes the free-disk-space set plus /usr/share/swift and
     # /usr/local/share/powershell (no hosted-Linux job uses either; the Swift
-    # lanes run on macOS, and tabula-e2e already removes both ahead of
+    # lanes run on macOS, and vitruvian-tabs-e2e already removes both ahead of
     # setup-bazel). NEVER add /usr/local/lib/android: android_sdk_repository
     # resolves the SDK from $ANDROID_HOME at analysis time.
     - name: Check free disk space before the cache restore

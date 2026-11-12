@@ -51,7 +51,7 @@ on:
 #
 # `github.sha` is unique per commit, so every pushed commit gets its own group
 # and its own verdict: nothing cancels it, nothing queues it behind a sibling.
-# Same pattern as tabula-e2e.yaml (#1311); guarded by //tools/conformance:check.
+# Same pattern as vitruvian-tabs-e2e.yaml (#1311); guarded by //tools/conformance:check.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -508,7 +508,7 @@ jobs:
           filters: |
             macos:
               - 'apps/desktop/vitruvian-code/**'
-              - 'apps/desktop/home-speaker/**'
+              - 'apps/desktop/vitruvian-speaker/**'
               - 'packages/peripherals/**'
               - 'apps/mobile/android-remote/macmenu/**'
               # The pinned Xcode: a bump changes every Swift build.
@@ -608,27 +608,27 @@ jobs:
           # the job that builds the app.
           bazel test "${cache[@]}" --config=macos-app //apps/desktop/vitruvian-code/macos:VitruvianCodeTests //apps/desktop/vitruvian-code/macos:app_holds_mermaid_test
 
-          # home-speaker build, unit tests & packaging validation
-          bazel build "${cache[@]}" --config=macos-app //apps/desktop/home-speaker/... //apps/desktop/home-speaker:HomeSpeaker
-          bazel test "${cache[@]}" --config=macos-app //apps/desktop/home-speaker:HomeSpeakerTests
-          # The Bitwarden -> HomeSpeaker secrets sync, against a fake `bw`.
+          # vitruvian-speaker build, unit tests & packaging validation
+          bazel build "${cache[@]}" --config=macos-app //apps/desktop/vitruvian-speaker/... //apps/desktop/vitruvian-speaker:VitruvianSpeaker
+          bazel test "${cache[@]}" --config=macos-app //apps/desktop/vitruvian-speaker:VitruvianSpeakerTests
+          # The Bitwarden -> Vitruvian Speaker secrets sync, against a fake `bw`.
           # `bazel build .../...` above compiles it but never RUNS it.
-          bazel test "${cache[@]}" --config=macos-app //apps/desktop/home-speaker:sync_secrets_test
-          # The HomeSpeaker tool for the Vitruvian app: its tests, the built
+          bazel test "${cache[@]}" --config=macos-app //apps/desktop/vitruvian-speaker:sync_secrets_test
+          # The Vitruvian Speaker tool for the Vitruvian app: its tests, the built
           # folder through the conformance script, and the release's zip of
           # it. All `manual`, so named here.
-          bazel test "${cache[@]}" --config=macos-app //apps/desktop/home-speaker:HomeSpeakerToolTests //apps/desktop/home-speaker:tool_conformance_test //apps/desktop/home-speaker:tool_version_test //apps/desktop/home-speaker:zip_tool_test
+          bazel test "${cache[@]}" --config=macos-app //apps/desktop/vitruvian-speaker:VitruvianSpeakerToolTests //apps/desktop/vitruvian-speaker:tool_conformance_test //apps/desktop/vitruvian-speaker:tool_version_test //apps/desktop/vitruvian-speaker:zip_tool_test
           # Release packaging, under the bash the release runner uses. A Mac's
           # /bin/bash is 3.2, where an empty array under `set -u` ends a script
-          # and an EXIT trap can turn that into exit 0: HomeSpeaker 1.12.0 and
+          # and an EXIT trap can turn that into exit 0: Vitruvian Speaker 1.12.0 and
           # 1.13.0 shipped with no files that way, and the dry run below was
           # green throughout. The Linux lane runs these two tests as well, but
           # its bash is too new to hit the case; REQUIRE_BASH32=1 makes them
           # fail here if they ever stop finding a bash 3.
-          bazel test "${cache[@]}" --config=macos-app --test_env=REQUIRE_BASH32=1 //tools/desktop-package:package-desktop_test //apps/desktop/home-speaker:publish_test
+          bazel test "${cache[@]}" --config=macos-app --test_env=REQUIRE_BASH32=1 //tools/desktop-package:package-desktop_test //apps/desktop/vitruvian-speaker:publish_test
           # The whole of it for real (SwiftPM build, codesign, hdiutil), short
           # of uploading. publish fails unless every artifact is in dist.
-          bazel run "${cache[@]}" //apps/desktop/home-speaker:publish -- --dry-run
+          bazel run "${cache[@]}" //apps/desktop/vitruvian-speaker:publish -- --dry-run
 
           # Vitruvian Remote menu bar app: the .app bundle is `manual`, so build
           # it by label. Its tests run in the generated remote-mac-menu unit.
@@ -640,14 +640,14 @@ jobs:
           # key itself, like the release.
           bazel run "${cache[@]}" //apps/mobile/android-remote/macmenu:publish-tool -- --dry-run
 
-          # Vitruvian desktop app (GPL fork, apps/desktop/vitruvian): build only.
+          # Vitruvian desktop app (GPL fork, apps/desktop/vitruvian-atrium): build only.
           # Changes to the app itself are built AND tested by the generated
-          # vitruvian-desktop-macos presubmit unit, so its path is deliberately
+          # vitruvian-atrium-macos presubmit unit, so its path is deliberately
           # not in the detect-macos filter (that would compile it twice per PR).
           # This line covers what the unit's planner does not: an Xcode or
           # toolchain bump (.xcode-version, tools/**) and the push-to-main run
           # that warms the remote cache for the unit.
-          bazel build "${cache[@]}" --config=macos-app //apps/desktop/vitruvian:Vitruvian
+          bazel build "${cache[@]}" --config=macos-app //apps/desktop/vitruvian-atrium:VitruvianAtrium
 
   build-macos:
     # REQUIRED merge-queue check. Runs on cheap Linux and ALWAYS reports (so the
@@ -863,10 +863,10 @@ jobs:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             devx:
-              - 'apps/cli/devx/**'
+              - 'apps/cli/vitruvian-devx/**'
               - '.github/workflows/ci.yaml'
             homelab:
-              - 'apps/cli/homelab/**'
+              - 'apps/cli/vitruvian-homelab/**'
               - '.github/workflows/ci.yaml'
             iac:
               - 'infrastructure/pulumi/**'
@@ -904,7 +904,7 @@ jobs:
               - '.github/actions/build-ci-tool/**'
               - '.github/workflows/ci.yaml'
             butane:
-              - 'apps/cli/devx/dev-machine.template.bu'
+              - 'apps/cli/vitruvian-devx/dev-machine.template.bu'
               - '.github/workflows/ci.yaml'
 
       - name: Decide which jobs run
@@ -973,17 +973,17 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: apps/cli/devx/go.mod
+          go-version-file: apps/cli/vitruvian-devx/go.mod
           # setup-go keys its module/build cache on a dependency file, defaulting
           # to a go.sum at the REPO ROOT. With GOWORK=off these are standalone
           # modules whose go.sum lives under <module>/, so the default key missed
           # and the cache never restored.
-          cache-dependency-path: apps/cli/devx/go.sum
+          cache-dependency-path: apps/cli/vitruvian-devx/go.sum
       - name: golangci-lint (devx)
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.12.1
-          working-directory: apps/cli/devx
+          working-directory: apps/cli/vitruvian-devx
 
   go-lint-homelab:
     name: go-lint (homelab)
@@ -998,8 +998,8 @@ jobs:
       - name: rustc test (homelab)
         run: |
           set -euo pipefail
-          rustc --edition 2021 --test apps/cli/homelab/rs/src/lib.rs -o "$RUNNER_TEMP/homelab_test"
-          (cd apps/cli/homelab && "$RUNNER_TEMP/homelab_test")
+          rustc --edition 2021 --test apps/cli/vitruvian-homelab/rs/src/lib.rs -o "$RUNNER_TEMP/homelab_test"
+          (cd apps/cli/vitruvian-homelab && "$RUNNER_TEMP/homelab_test")
 
   go-test-infra:
     # Go tests for the IaC programs (infrastructure/pulumi/** and apps/<category>/<app>/infra/**).
@@ -1081,7 +1081,7 @@ jobs:
     #
     # Until this lane existed, race coverage came only from the `go-test` matrix
     # above -- standalone `go test -race` over exactly two modules, devx and
-    # homelab. Every other Go target in the repo, including all of tabula's, had
+    # homelab. Every other Go target in the repo, including all of vitruvian-tabs's, had
     # never been race-tested anywhere. `bazel test` does not enable -race (there
     # was no race config in any bazelrc), which the go-test job's own comment
     # noted without closing.
@@ -1128,7 +1128,7 @@ jobs:
           echo "race-testing ${count} go_test target(s)"
           # A pattern file makes every target explicit, and Bazel errors on an
           # explicit target this Linux runner cannot build (cgo against a
-          # macOS-only library, e.g. Courier's gchat). Skip those; they are
+          # macOS-only library, e.g. Vitruvian Courier's gchat). Skip those; they are
           # race-tested on the macOS lane.
           bazel test --config=race --config=remote \
             --skip_incompatible_explicit_targets \
@@ -1222,7 +1222,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Validate Butane template
-        working-directory: apps/cli/devx
+        working-directory: apps/cli/vitruvian-devx
         run: |
           CF_TUNNEL_TOKEN=dummy DEV_HOSTNAME=ci-test \
             envsubst < dev-machine.template.bu | \

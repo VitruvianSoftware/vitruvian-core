@@ -41,10 +41,10 @@ let package = Package(
         // MUST MIRROR apps/desktop/vitruvian-code/macos/BUILD. These sources have TWO build
         // definitions -- Bazel for the monorepo, SwiftPM for the exported
         // standalone (VitruvianSoftware/vitruvian-code) -- and only the Bazel one
-        // runs in this repo's CI. When this manifest omitted NexusAgentCore (as
-        // the target was then called), `bazel build //nexus-agent/macos:NexusAgent`
-        // stayed green here while EVERY release build on the mirror failed with
-        // "no such module 'NexusAgentCore'", from 2026-07-11 until 2026-08-20.
+        // runs in this repo's CI. When this manifest omitted the shared core
+        // target, the monorepo Bazel build stayed green here while EVERY
+        // release build on the mirror failed with a missing-module error,
+        // from 2026-07-11 until 2026-08-20.
         // Nothing was watching the mirror, so nothing said so (#1511, #1851).
         // A target added to BUILD must be added here in the same change.
         .target(

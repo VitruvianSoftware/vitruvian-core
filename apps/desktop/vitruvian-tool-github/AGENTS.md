@@ -6,7 +6,7 @@ bundles; this is a tool, and its one artifact is a zip (see "Releases").
 
 ## Hard rules
 
-- **This directory is GPL-3.0-or-later**, like `apps/desktop/vitruvian`,
+- **This directory is GPL-3.0-or-later**, like `apps/desktop/vitruvian-atrium`,
   because its code came from that app's GitHub feature. New files get
   `// SPDX-License-Identifier: GPL-3.0-or-later` and
   `// Copyright (C) 2026 VitruvianSoftware`. Never copy code from here into

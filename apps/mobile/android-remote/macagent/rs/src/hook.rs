@@ -786,7 +786,7 @@ mod tests {
             ("~/.local/bin/vitruvian-remote-agent permission-hook", true),
             ("'/Users/j/My Apps/vitruvian-remote-agent' permission-hook", true),
             (
-                "'/Users/j/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/dev.vitruvian.remote/bin/vitruvian-remote-agent' permission-hook --config-dir '/Users/j/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.remote/config'",
+                "'/Users/j/Library/Application Support/com.vitruviansoftware.atrium/Tools/dev.vitruvian.remote/bin/vitruvian-remote-agent' permission-hook --config-dir '/Users/j/Library/Application Support/com.vitruviansoftware.atrium/ToolData/dev.vitruvian.remote/config'",
                 true,
             ),
             ("vitruvian-remote-agent token", false),
@@ -801,8 +801,8 @@ mod tests {
     #[test]
     fn test_format_hook_command_and_extension_replacement() {
         let standalone_exe = "/Users/j/.local/bin/vitruvian-remote-agent";
-        let ext_exe = "/Users/j/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/dev.vitruvian.remote/bin/vitruvian-remote-agent";
-        let ext_cfg = "/Users/j/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.remote/config";
+        let ext_exe = "/Users/j/Library/Application Support/com.vitruviansoftware.atrium/Tools/dev.vitruvian.remote/bin/vitruvian-remote-agent";
+        let ext_cfg = "/Users/j/Library/Application Support/com.vitruviansoftware.atrium/ToolData/dev.vitruvian.remote/config";
 
         assert_eq!(
             format_hook_command(standalone_exe, ""),

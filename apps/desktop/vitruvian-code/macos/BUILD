@@ -6,8 +6,7 @@ load("//tools/apple:defs.bzl", "APPLE_TOOLCHAIN_ONLY")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load("//tools/swift-test-preferences:defs.bzl", "swift_test")
 
-# The shared core: built into this app AND into the Vitruvian desktop app
-# (docs/superpowers/specs/2026-10-08-nexus-agent-shared-library-design.md).
+# The shared core: built into this app AND into the Vitruvian desktop app (#1851).
 # Swift 6 mode because Vitruvian's Core module is. Nothing here may import a
 # Vitruvian module: the dependency runs one way, MIT into GPL.
 # It is a module of its own because the app target has `@main`: linking that
@@ -20,7 +19,7 @@ swift_library(
     module_name = "VitruvianCodeCore",
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     visibility = [
-        "//apps/desktop/vitruvian:__pkg__",
+        "//apps/desktop/vitruvian-atrium:__pkg__",
         "//apps/desktop/vitruvian-code:__subpackages__",
     ],
 )
@@ -30,7 +29,7 @@ swift_library(
 filegroup(
     name = "shared_sources",
     srcs = glob(["Sources/VitruvianCodeCore/**/*.swift"]),
-    visibility = ["//apps/desktop/vitruvian:__pkg__"],
+    visibility = ["//apps/desktop/vitruvian-atrium:__pkg__"],
 )
 
 # The shared chat view: the SwiftUI the Code extension shows its chat with,
@@ -49,7 +48,7 @@ swift_library(
     module_name = "VitruvianCodeUI",
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     visibility = [
-        "//apps/desktop/vitruvian:__pkg__",
+        "//apps/desktop/vitruvian-atrium:__pkg__",
         "//apps/desktop/vitruvian-code:__subpackages__",
     ],
     deps = [":VitruvianCodeCore"],
@@ -60,7 +59,7 @@ swift_library(
 filegroup(
     name = "shared_ui_sources",
     srcs = glob(["Sources/VitruvianCodeUI/**/*.swift"]),
-    visibility = ["//apps/desktop/vitruvian:__pkg__"],
+    visibility = ["//apps/desktop/vitruvian-atrium:__pkg__"],
 )
 
 # What the chat view ships beside its code: the copy of Mermaid the diagram
@@ -74,7 +73,7 @@ filegroup(
         "Sources/VitruvianCodeUI/Resources/mermaid.min.js",
         "Sources/VitruvianCodeUI/Resources/mermaid-LICENSE.txt",
     ],
-    visibility = ["//apps/desktop/vitruvian:__pkg__"],
+    visibility = ["//apps/desktop/vitruvian-atrium:__pkg__"],
 )
 
 # The Code tool for the Vitruvian app (docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-f.md):

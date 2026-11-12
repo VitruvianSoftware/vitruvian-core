@@ -350,30 +350,31 @@ public class DeriveTest {
     assertFalse(Derive.claudeWaiting("waiting"))
   }
 
-  // --- HomeSpeaker ---------------------------------------------------------
+  // --- Vitruvian Speaker ---------------------------------------------------------
 
   @Test
   public fun `the speaker's worst problem is the status, never a cheerful on`() {
-    assertEquals("not installed", Derive.homeSpeakerStatus(false, false, false, true, true))
-    assertEquals("not set up", Derive.homeSpeakerStatus(false, true, false, true, true))
-    assertEquals("not signed in", Derive.homeSpeakerStatus(true, true, false, true, true))
-    assertEquals("off", Derive.homeSpeakerStatus(true, true, true, false, true))
-    assertEquals("on · app closed", Derive.homeSpeakerStatus(true, true, true, true, false))
-    assertEquals("on", Derive.homeSpeakerStatus(true, true, true, true, true))
+    assertEquals("not installed", Derive.vitruvianSpeakerStatus(false, false, false, true, true))
+    assertEquals("not set up", Derive.vitruvianSpeakerStatus(false, true, false, true, true))
+    assertEquals("not signed in", Derive.vitruvianSpeakerStatus(true, true, false, true, true))
+    assertEquals("off", Derive.vitruvianSpeakerStatus(true, true, true, false, true))
+    assertEquals("on · app closed", Derive.vitruvianSpeakerStatus(true, true, true, true, false))
+    assertEquals("on", Derive.vitruvianSpeakerStatus(true, true, true, true, true))
   }
 
   @Test
   public fun `a speaker that cannot speak is a problem even when switched on`() {
-    assertEquals(Derive.SpeakerHealth.Problem, Derive.homeSpeakerHealth(true, true, false, true))
-    assertEquals(Derive.SpeakerHealth.Off, Derive.homeSpeakerHealth(true, true, true, false))
-    assertEquals(Derive.SpeakerHealth.Ok, Derive.homeSpeakerHealth(true, true, true, true))
+    assertEquals(
+        Derive.SpeakerHealth.Problem, Derive.vitruvianSpeakerHealth(true, true, false, true))
+    assertEquals(Derive.SpeakerHealth.Off, Derive.vitruvianSpeakerHealth(true, true, true, false))
+    assertEquals(Derive.SpeakerHealth.Ok, Derive.vitruvianSpeakerHealth(true, true, true, true))
   }
 
   @Test
   public fun `This phone speaking alone needs no Google sign-in and explains its voice`() {
     assertEquals(
         "on",
-        Derive.homeSpeakerStatus(
+        Derive.vitruvianSpeakerStatus(
             true,
             true,
             false,
@@ -384,7 +385,7 @@ public class DeriveTest {
             speakPhone = true))
     assertEquals(
         Derive.SpeakerHealth.Ok,
-        Derive.homeSpeakerHealth(
+        Derive.vitruvianSpeakerHealth(
             true, true, false, true, speakHome = false, speakLocal = false, speakPhone = true))
     assertEquals(
         "Voice: Android TTS",
@@ -426,15 +427,16 @@ public class DeriveTest {
   public fun `both outputs off is a problem, not an on`() {
     assertEquals(
         "no outputs",
-        Derive.homeSpeakerStatus(
+        Derive.vitruvianSpeakerStatus(
             true, true, true, true, true, speakHome = false, speakLocal = false))
     assertEquals(
         Derive.SpeakerHealth.Problem,
-        Derive.homeSpeakerHealth(true, true, true, true, speakHome = false, speakLocal = false))
+        Derive.vitruvianSpeakerHealth(
+            true, true, true, true, speakHome = false, speakLocal = false))
     // Switched off overall is still just "off": nothing would be spoken either way.
     assertEquals(
         "off",
-        Derive.homeSpeakerStatus(
+        Derive.vitruvianSpeakerStatus(
             true, true, true, false, true, speakHome = false, speakLocal = false))
   }
 
@@ -442,15 +444,16 @@ public class DeriveTest {
   public fun `the Mac speaking alone needs no Google sign-in`() {
     assertEquals(
         "on",
-        Derive.homeSpeakerStatus(
+        Derive.vitruvianSpeakerStatus(
             true, true, false, true, true, speakHome = false, speakLocal = true))
     assertEquals(
         Derive.SpeakerHealth.Ok,
-        Derive.homeSpeakerHealth(true, true, false, true, speakHome = false, speakLocal = true))
+        Derive.vitruvianSpeakerHealth(
+            true, true, false, true, speakHome = false, speakLocal = true))
     // ...but the home speakers still do.
     assertEquals(
         "not signed in",
-        Derive.homeSpeakerStatus(
+        Derive.vitruvianSpeakerStatus(
             true, true, false, true, true, speakHome = true, speakLocal = true))
   }
 
@@ -479,7 +482,7 @@ public class DeriveTest {
   }
 
   @Test
-  public fun `Courier's networks HomeSpeaker reads itself are read here as well, Beeper's are greyed`() {
+  public fun `Courier's networks Vitruvian Speaker reads itself are read here as well, Beeper's are greyed`() {
     val slack = AgentBeeperNetwork("slack", "Slack", "skipped")
     val beeper = Derive.chatNetworkRow("Beeper", slack)
     assertEquals(Derive.NetworkSwitch.None, beeper.switch)
@@ -515,7 +518,7 @@ public class DeriveTest {
     assertEquals(null, Derive.networksLaterLine("Courier", listed = true))
     assertEquals(null, Derive.networksLaterLine("Beeper", listed = null))
     assertTrue(Derive.courierTokenSteps.contains("Settings › Integrations › New connection…"))
-    assertTrue(Derive.courierTokenSteps.contains("HomeSpeaker on your Mac"))
+    assertTrue(Derive.courierTokenSteps.contains("Vitruvian Speaker on your Mac"))
     assertFalse(
         "off until a token is saved", Derive.courierSwitchEnabled(hasToken = false, on = false))
     assertTrue("always switchable off", Derive.courierSwitchEnabled(hasToken = false, on = true))
@@ -733,7 +736,7 @@ public class DeriveTest {
     assertEquals(1, Derive.pauseCount(items, { it.name }, { it.image }))
   }
 
-  // --- HomeSpeaker progressive disclosure ----------------------------------
+  // --- Vitruvian Speaker progressive disclosure ----------------------------------
 
   @Test
   public fun `quiet hours subtitle reflects active status`() {
@@ -842,7 +845,7 @@ public class DeriveTest {
                 PollSource.K8s,
                 PollSource.Argo,
                 PollSource.Containers,
-                PollSource.HomeSpeaker,
+                PollSource.VitruvianSpeaker,
             ),
         due,
     )
@@ -870,13 +873,13 @@ public class DeriveTest {
     // A slow tick later: an open dashboard would ask again; Home's one-line
     // summary does not, but metrics and the Claude rows still do.
     val atSlowTick = Derive.pollDue(home, tick, tick * Derive.SLOW_POLL_EVERY, fetched)
-    assertFalse(PollSource.HomeSpeaker in atSlowTick)
+    assertFalse(PollSource.VitruvianSpeaker in atSlowTick)
     assertFalse(PollSource.Ollama in atSlowTick)
     assertTrue(PollSource.Metrics in atSlowTick)
     assertTrue(PollSource.ClaudeSessions in atSlowTick)
     assertTrue(PollSource.Sessions in atSlowTick)
     val atSummary = Derive.pollDue(home, tick, Derive.SUMMARY_POLL_MS, fetched)
-    assertTrue(PollSource.HomeSpeaker in atSummary)
+    assertTrue(PollSource.VitruvianSpeaker in atSummary)
     assertTrue(PollSource.Argo in atSummary)
     // GitHub keeps its own minute even on Home.
     assertFalse(PollSource.Prs in atSummary)
@@ -884,16 +887,15 @@ public class DeriveTest {
   }
 
   @Test
-  public fun `the HomeSpeaker module asks for the speaker and nothing else`() {
-    val due =
-        Derive.pollDue(view(PollPage.Apps, "homespeaker"), tick, 0, lastFetchedMs = emptyMap())
-    assertEquals(chrome + setOf(PollSource.HomeSpeaker, PollSource.SpeakerVolume), due)
+  public fun `the Vitruvian Speaker module asks for the speaker and nothing else`() {
+    val due = Derive.pollDue(view(PollPage.Apps, "speaker"), tick, 0, lastFetchedMs = emptyMap())
+    assertEquals(chrome + setOf(PollSource.VitruvianSpeaker, PollSource.SpeakerVolume), due)
   }
 
   @Test
   public fun `the TV is asked for only on the TV module`() {
     for (page in PollPage.values()) {
-      for (module in listOf("claude", "homespeaker", "prs", "homelab", "lima", "docker")) {
+      for (module in listOf("claude", "speaker", "prs", "homelab", "lima", "docker")) {
         assertFalse(
             "tv asked on $page/$module",
             PollSource.Tv in Derive.pollDue(view(page, module), tick, 0, emptyMap()))
@@ -943,15 +945,15 @@ public class DeriveTest {
 
   @Test
   public fun `opening a module fetches at once rather than at the next slow tick`() {
-    // HomeSpeaker was read for Home's row two seconds ago: not due on Home,
+    // Vitruvian Speaker was read for Home's row two seconds ago: not due on Home,
     // and under the old fixed cadence not due for another slow tick either.
     val last = allFetchedAt(0)
     val now = 2_000L
-    assertFalse(PollSource.HomeSpeaker in Derive.pollDue(view(PollPage.Home), tick, now, last))
+    assertFalse(PollSource.VitruvianSpeaker in Derive.pollDue(view(PollPage.Home), tick, now, last))
     // The volume has never been asked for at all, so opening the module asks
     // for it immediately.
     val lastNoVolume = last - PollSource.SpeakerVolume
-    val opened = Derive.pollDue(view(PollPage.Apps, "homespeaker"), tick, now, lastNoVolume)
+    val opened = Derive.pollDue(view(PollPage.Apps, "speaker"), tick, now, lastNoVolume)
     assertTrue(PollSource.SpeakerVolume in opened)
     // And a source that went stale while it was off screen is due the moment
     // it comes back, whatever the tick count says.
@@ -973,11 +975,11 @@ public class DeriveTest {
     val last = allFetchedAt(0)
     assertFalse(PollSource.Tv in Derive.pollDue(tv, slowTick, 60_000, last))
     assertTrue(PollSource.Tv in Derive.pollDue(tv, slowTick, 60_000, last, homeVisible))
-    // Home read HomeSpeaker for its row a moment ago; opening the module
+    // Home read Vitruvian Speaker for its row a moment ago; opening the module
     // still asks again, and for the volume Home never shows.
-    val speaker = view(PollPage.Apps, "homespeaker")
+    val speaker = view(PollPage.Apps, "speaker")
     assertEquals(
-        setOf(PollSource.HomeSpeaker, PollSource.SpeakerVolume),
+        setOf(PollSource.VitruvianSpeaker, PollSource.SpeakerVolume),
         Derive.pollDue(speaker, tick, 100, last, Derive.pollCadences(view(PollPage.Home), tick)))
     // Once it has been on screen for a pass, the cadence takes over again.
     val speakerVisible = Derive.pollCadences(speaker, tick)
@@ -986,7 +988,7 @@ public class DeriveTest {
     val awayVisible = Derive.pollCadences(speaker.copy(foreground = false), tick)
     // Everything on screen is asked for at once, host identity included.
     assertEquals(
-        chrome + setOf(PollSource.HomeSpeaker, PollSource.SpeakerVolume),
+        chrome + setOf(PollSource.VitruvianSpeaker, PollSource.SpeakerVolume),
         Derive.pollDue(speaker, tick, 100, last, awayVisible))
   }
 
@@ -1003,7 +1005,7 @@ public class DeriveTest {
 
   @Test
   public fun `backgrounded, the app asks only whether the Mac still answers`() {
-    val away = view(PollPage.Apps, "homespeaker", foreground = false)
+    val away = view(PollPage.Apps, "speaker", foreground = false)
     val last = allFetchedAt(0)
     // Nothing for a long while after the last read...
     assertEquals(
@@ -1017,7 +1019,7 @@ public class DeriveTest {
     // Coming back is an immediate refresh of what is on screen.
     val back = away.copy(foreground = true)
     assertEquals(
-        setOf(PollSource.Metrics, PollSource.HomeSpeaker, PollSource.SpeakerVolume),
+        setOf(PollSource.Metrics, PollSource.VitruvianSpeaker, PollSource.SpeakerVolume),
         Derive.pollDue(back, tick, Derive.BACKGROUND_POLL_MS, last))
   }
 
@@ -1076,12 +1078,15 @@ public class DeriveTest {
     assertTrue("idle Home made $homeTotal requests vs $old", homeTotal * 2 < old)
     assertEquals(null, home[PollSource.Tv])
     assertEquals(null, home[PollSource.SpeakerVolume])
-    // HomeSpeaker's row: once on arrival, then every SUMMARY_POLL_MS.
-    assertEquals((minute / Derive.SUMMARY_POLL_MS).toInt(), home[PollSource.HomeSpeaker])
-    val speaker = simulate(view(PollPage.Apps, "homespeaker"))
+    // Vitruvian Speaker's row: once on arrival, then every SUMMARY_POLL_MS.
+    assertEquals((minute / Derive.SUMMARY_POLL_MS).toInt(), home[PollSource.VitruvianSpeaker])
+    val speaker = simulate(view(PollPage.Apps, "speaker"))
     assertEquals(
         setOf(
-            PollSource.Metrics, PollSource.Host, PollSource.HomeSpeaker, PollSource.SpeakerVolume),
+            PollSource.Metrics,
+            PollSource.Host,
+            PollSource.VitruvianSpeaker,
+            PollSource.SpeakerVolume),
         speaker.keys)
     val away = simulate(view(PollPage.Home, foreground = false))
     assertEquals(mapOf(PollSource.Metrics to 2, PollSource.Host to 1), away)
@@ -1191,7 +1196,7 @@ public class DeriveTest {
             "docker",
             "grafana",
             "ollama",
-            "homespeaker",
+            "speaker",
             "tv",
         )
     val installed = setOf("claude", "docker", "ollama", "grafana", "xcode")
@@ -1262,7 +1267,7 @@ public class DeriveTest {
   }
 
   @Test
-  public fun `HomeSpeaker Now strip quick actions cover mute, quiet hours, room and replay states`() {
+  public fun `Vitruvian Speaker Now strip quick actions cover mute, quiet hours, room and replay states`() {
     // 1. Mute / Unmute: enabled whenever volume is available and online (even when speakHome is
     // off); disabled and omits "n/a" when volume is unavailable.
     val unmuted =
@@ -1408,7 +1413,7 @@ public class DeriveTest {
 
     // Full strip order: mute, quiet_hours, room, replay, snooze
     val strip =
-        Derive.homeSpeakerQuickActions(
+        Derive.vitruvianSpeakerQuickActions(
             paired = true,
             available = true,
             installed = true,
@@ -1615,7 +1620,8 @@ public class DeriveTest {
     assertEquals(Derive.NO_ANNOUNCEMENT_ID, enabledEmpty.state.baselineId)
     assertEquals(Derive.MirrorNotificationAction.None, enabledEmpty.action)
 
-    // 4. Toggled ON while HomeSpeaker is not available yet: keeps baselineId null so the first
+    // 4. Toggled ON while Vitruvian Speaker is not available yet: keeps baselineId null so the
+    // first
     // reachable poll still acts as first load and does not notify.
     val enabledOffline =
         Derive.mirrorToggle(
@@ -1859,73 +1865,74 @@ public class DeriveTest {
   }
 
   @Test
-  public fun `a Home Speaker refusal keeps its own words even when it says refused or reset`() {
-    // Home Speaker's --apply messages now reach the phone verbatim; only real network
+  public fun `a Vitruvian Speaker refusal keeps its own words even when it says refused or reset`() {
+    // Vitruvian Speaker's --apply messages now reach the phone verbatim; only real network
     // failures may read as "the Mac didn't answer".
     assertEquals(
-        "Couldn't change Speak: Home Speaker refused this change: not a choice",
-        Derive.homeSpeakerInlineError(
-            what = "change Speak", reason = "Home Speaker refused this change: not a choice"))
+        "Couldn't change Speak: Vitruvian Speaker refused this change: not a choice",
+        Derive.vitruvianSpeakerInlineError(
+            what = "change Speak", reason = "Vitruvian Speaker refused this change: not a choice"))
     assertEquals(
         "Couldn't reset: Reset settings is not available while signing in",
-        Derive.homeSpeakerInlineError(
+        Derive.vitruvianSpeakerInlineError(
             what = "reset", reason = "Reset settings is not available while signing in"))
     assertEquals(
         "Couldn't mute: the Mac didn't answer",
-        Derive.homeSpeakerInlineError(
+        Derive.vitruvianSpeakerInlineError(
             what = "mute", reason = "java.net.ConnectException: Connection refused"))
     assertEquals(
         "Couldn't mute: the Mac didn't answer",
-        Derive.homeSpeakerInlineError(
+        Derive.vitruvianSpeakerInlineError(
             what = "mute", reason = "java.net.SocketException: Connection reset"))
     assertEquals(
         "Couldn't mute: the Mac didn't answer",
-        Derive.homeSpeakerInlineError(
+        Derive.vitruvianSpeakerInlineError(
             what = "mute", reason = "failed to connect to /10.0.2.2 (port 8765)"))
   }
 
   @Test
-  public fun `HomeSpeaker inline errors use plain words for unreachable, auth, agent HTTP errors and explicit reasons`() {
+  public fun `Vitruvian Speaker inline errors use plain words for unreachable, auth, agent HTTP errors and explicit reasons`() {
     assertEquals(
         "Couldn't mute: the Mac didn't answer",
-        Derive.homeSpeakerInlineError(what = "mute", reason = "SocketTimeoutException: timed out"))
+        Derive.vitruvianSpeakerInlineError(
+            what = "mute", reason = "SocketTimeoutException: timed out"))
     assertEquals(
         "Couldn't mute: the Mac didn't answer",
-        Derive.homeSpeakerInlineError(
+        Derive.vitruvianSpeakerInlineError(
             what = "mute", reason = "ConnectException: Connection refused"))
     assertEquals(
         "Couldn't quiet hours on: this phone isn't paired",
-        Derive.homeSpeakerInlineError(what = "quiet hours on", authFailed = true))
+        Derive.vitruvianSpeakerInlineError(what = "quiet hours on", authFailed = true))
     assertEquals(
         "Couldn't mute: this phone isn't paired",
-        Derive.homeSpeakerInlineError(
-            what = "mute", reason = "agent: HTTP 401 for /v1/homespeaker/volume"))
+        Derive.vitruvianSpeakerInlineError(
+            what = "mute", reason = "agent: HTTP 401 for /v1/speaker/volume"))
     assertEquals(
         "Couldn't mute: this phone isn't paired",
-        Derive.homeSpeakerInlineError(what = "mute", reason = "HTTP 403 Forbidden"))
+        Derive.vitruvianSpeakerInlineError(what = "mute", reason = "HTTP 403 Forbidden"))
     assertEquals(
         "Couldn't mute: the Mac returned an error",
-        Derive.homeSpeakerInlineError(
-            what = "mute", reason = "agent: HTTP 500 for /v1/homespeaker/volume"))
+        Derive.vitruvianSpeakerInlineError(
+            what = "mute", reason = "agent: HTTP 500 for /v1/speaker/volume"))
     assertEquals(
         "Couldn't test: the Mac returned an error",
-        Derive.homeSpeakerInlineError(what = "test", reason = "HTTP 502 Bad Gateway"))
+        Derive.vitruvianSpeakerInlineError(what = "test", reason = "HTTP 502 Bad Gateway"))
     assertEquals(
         "Couldn't mute: the Mac returned an error",
-        Derive.homeSpeakerInlineError(what = "mute", reason = "agent: exit status 1"))
+        Derive.vitruvianSpeakerInlineError(what = "mute", reason = "agent: exit status 1"))
     assertEquals(
         "Couldn't replay: speaker is offline",
-        Derive.homeSpeakerInlineError(what = "replay", reason = "speaker is offline"))
+        Derive.vitruvianSpeakerInlineError(what = "replay", reason = "speaker is offline"))
     assertEquals(
-        "A HomeSpeaker sign-in is already running on the Mac",
-        Derive.homeSpeakerInlineError(
+        "A Vitruvian Speaker sign-in is already running on the Mac",
+        Derive.vitruvianSpeakerInlineError(
             what = "sign in on Mac",
-            reason = "agent: A HomeSpeaker sign-in is already running on the Mac"))
+            reason = "agent: A Vitruvian Speaker sign-in is already running on the Mac"))
     assertEquals(
-        "A HomeSpeaker sign-in is already running on the Mac",
-        Derive.homeSpeakerInlineError(
+        "A Vitruvian Speaker sign-in is already running on the Mac",
+        Derive.vitruvianSpeakerInlineError(
             what = "grant Google Chat",
-            reason = "A HomeSpeaker sign-in is already running on the Mac"))
+            reason = "A Vitruvian Speaker sign-in is already running on the Mac"))
   }
 
   @Test
@@ -1943,16 +1950,16 @@ public class DeriveTest {
   public fun `inline errors keep plain reasons that merely contain a number`() {
     assertEquals(
         "Couldn't mute: speaker 100 not found",
-        Derive.homeSpeakerInlineError(what = "mute", reason = "speaker 100 not found"))
+        Derive.vitruvianSpeakerInlineError(what = "mute", reason = "speaker 100 not found"))
     assertEquals(
         "Couldn't mute: the Mac returned an error",
-        Derive.homeSpeakerInlineError(
-            what = "mute", reason = "agent: HTTP 500 for /v1/homespeaker/volume"))
+        Derive.vitruvianSpeakerInlineError(
+            what = "mute", reason = "agent: HTTP 500 for /v1/speaker/volume"))
   }
 
   @Test
-  fun hookAgentSlugsMatchHomeSpeakerHookAgents() {
-    // HomeSpeaker's CodingAgent.supportsHook is true for every agent it knows.
+  fun hookAgentSlugsMatchVitruvianSpeakerHookAgents() {
+    // Vitruvian Speaker's CodingAgent.supportsHook is true for every agent it knows.
     assertEquals(setOf("claude-code", "antigravity", "opencode"), Derive.hookAgentSlugs)
   }
 
@@ -2703,11 +2710,11 @@ public class DeriveTest {
   }
 
   @Test
-  public fun `tapReset and resetHomeSpeakerRow enforce a 5 second two-tap confirmation window`() {
+  public fun `tapReset and resetVitruvianSpeakerRow enforce a 5 second two-tap confirmation window`() {
     val t0 = 100_000L
-    val initialRow = Derive.resetHomeSpeakerRow(armedAtMs = null, nowMs = t0, canAct = true)
-    assertEquals("Reset HomeSpeaker", initialRow.title)
-    assertEquals("puts every HomeSpeaker setting back to default", initialRow.subtitle)
+    val initialRow = Derive.resetVitruvianSpeakerRow(armedAtMs = null, nowMs = t0, canAct = true)
+    assertEquals("Reset Vitruvian Speaker", initialRow.title)
+    assertEquals("puts every Vitruvian Speaker setting back to default", initialRow.subtitle)
     assertEquals("Reset settings", initialRow.actionLabel)
     assertFalse(initialRow.danger)
 
@@ -2717,7 +2724,7 @@ public class DeriveTest {
     assertEquals(t0, firstTap.nextArmedAtMs)
 
     val armedRow =
-        Derive.resetHomeSpeakerRow(
+        Derive.resetVitruvianSpeakerRow(
             armedAtMs = firstTap.nextArmedAtMs, nowMs = t0 + 2_000L, canAct = true)
     assertEquals("Tap again to reset", armedRow.actionLabel)
     assertTrue(armedRow.danger)
@@ -2729,7 +2736,7 @@ public class DeriveTest {
 
     // After 5 s have elapsed, the row reverts and tapping again re-arms instead of resetting.
     val expiredRow =
-        Derive.resetHomeSpeakerRow(
+        Derive.resetVitruvianSpeakerRow(
             armedAtMs = firstTap.nextArmedAtMs, nowMs = t0 + 5_000L, canAct = true)
     assertEquals("Reset settings", expiredRow.actionLabel)
     assertFalse(expiredRow.danger)
@@ -2740,64 +2747,67 @@ public class DeriveTest {
   }
 
   @Test
-  public fun `stripHomeSpeakerErrorPrefixes and homeSpeakerInlineError format sign-in errors cleanly`() {
+  public fun `stripVitruvianSpeakerErrorPrefixes and vitruvianSpeakerInlineError format sign-in errors cleanly`() {
     assertEquals(
         "token exchange failed",
-        Derive.stripHomeSpeakerErrorPrefixes("homespeaker: error: token exchange failed"),
+        Derive.stripVitruvianSpeakerErrorPrefixes("speaker: error: token exchange failed"),
     )
     assertEquals(
         "invalid_grant",
-        Derive.stripHomeSpeakerErrorPrefixes("✗ homespeaker · sign in: HTTP 400: invalid_grant"),
+        Derive.stripVitruvianSpeakerErrorPrefixes("✗ speaker · sign in: HTTP 400: invalid_grant"),
     )
     assertEquals(
         "browser closed",
-        Derive.stripHomeSpeakerErrorPrefixes(
-            "agent: homespeaker: error: browser closed (HTTP 400)"),
+        Derive.stripVitruvianSpeakerErrorPrefixes(
+            "agent: speaker: error: browser closed (HTTP 400)"),
     )
     assertEquals(
         "Couldn't sign in: token exchange failed",
-        Derive.homeSpeakerInlineError(
-            what = "sign in", reason = "homespeaker: error: token exchange failed"),
+        Derive.vitruvianSpeakerInlineError(
+            what = "sign in", reason = "speaker: error: token exchange failed"),
     )
     assertEquals(
         "Couldn't sign in: access denied",
-        Derive.homeSpeakerInlineError(
+        Derive.vitruvianSpeakerInlineError(
             what = "grant Google Chat",
-            reason = "✗ homespeaker · grant Google Chat: error: access denied (HTTP 400)"),
+            reason = "✗ speaker · grant Google Chat: error: access denied (HTTP 400)"),
     )
     // UAT 2026-11-12: any helper "<action> failed:" wrapper is technical, not just sign-in's.
     assertEquals(
         "Couldn't choose home: the Mac returned an error",
-        Derive.homeSpeakerInlineError(
+        Derive.vitruvianSpeakerInlineError(
             what = "choose home", reason = "set structure failed: exit status 1"),
     )
     // UAT 2026-11-10: the agent's own "sign out failed:" prefix reached the row.
     assertEquals(
         "Couldn't sign out: the Mac returned an error",
-        Derive.homeSpeakerInlineError(what = "sign out", reason = "sign out failed: exit status 1"),
+        Derive.vitruvianSpeakerInlineError(
+            what = "sign out", reason = "sign out failed: exit status 1"),
     )
     assertEquals(
         "Couldn't sign in: browser closed",
-        Derive.homeSpeakerInlineError(what = "sign in", reason = "sign in failed: browser closed"),
+        Derive.vitruvianSpeakerInlineError(
+            what = "sign in", reason = "sign in failed: browser closed"),
     )
     assertEquals(
         "Couldn't sign in: access denied",
-        Derive.homeSpeakerInlineError(what = "grant", reason = "grant chat failed: access denied"),
+        Derive.vitruvianSpeakerInlineError(
+            what = "grant", reason = "grant chat failed: access denied"),
     )
     assertEquals(
         "Couldn't sign out: token revoke failed",
-        Derive.homeSpeakerInlineError(
-            what = "sign out", reason = "homespeaker: error: token revoke failed"),
+        Derive.vitruvianSpeakerInlineError(
+            what = "sign out", reason = "speaker: error: token revoke failed"),
     )
     assertEquals(
         "Couldn't disconnect: keychain locked",
-        Derive.homeSpeakerInlineError(
-            what = "disconnect Google Chat", reason = "homespeaker: error: keychain locked"),
+        Derive.vitruvianSpeakerInlineError(
+            what = "disconnect Google Chat", reason = "speaker: error: keychain locked"),
     )
     assertEquals(
         "Couldn't disconnect: token file busy",
-        Derive.homeSpeakerInlineError(
-            what = "disconnect", reason = "✗ homespeaker · disconnect: error: token file busy"),
+        Derive.vitruvianSpeakerInlineError(
+            what = "disconnect", reason = "✗ speaker · disconnect: error: token file busy"),
     )
   }
 
@@ -2841,11 +2851,11 @@ public class DeriveTest {
   @Test
   public fun `catalog labels choices limits and shown come from payload and substitute This phone`() {
     val sources =
-        HomeSpeakerWire.sources(
-            readRunfile("apps/mobile/android-remote/macagent/golden_homespeaker_v1.json"))
+        VitruvianSpeakerWire.sources(
+            readRunfile("apps/mobile/android-remote/macagent/golden_speaker_v1.json"))
     val catalog = sources.catalog
 
-    assertTrue(Derive.hasHomeSpeakerCatalog(available = true, catalog = catalog))
+    assertTrue(Derive.hasVitruvianSpeakerCatalog(available = true, catalog = catalog))
     assertEquals("Enable Voice Broadcasting", Derive.catalogLabel(catalog, "enabled"))
     assertEquals("Speak", Derive.catalogLabel(catalog, "speech_length"))
     assertEquals(
@@ -2874,24 +2884,25 @@ public class DeriveTest {
     // Synthetic catalog proves the phone uses whatever labels, choices and step limits arrive
     // without falling back to local copies or clamping step deltas on the phone.
     val custom =
-        HomeSpeakerCatalog(
+        VitruvianSpeakerCatalog(
             listOf(
-                HomeSpeakerSetting(
+                VitruvianSpeakerSetting(
                     key = "speech_length",
                     kind = "choice",
                     label = "Length from Mac",
                     stringValue = "terse",
                     shown = true,
-                    choices = listOf(HomeSpeakerChoice("terse", "One short line")),
+                    choices = listOf(VitruvianSpeakerChoice("terse", "One short line")),
                 ),
-                HomeSpeakerSetting(
+                VitruvianSpeakerSetting(
                     key = "announce_volume",
                     kind = "number",
                     label = "Custom level",
                     numberValue = 98.0,
                     shown = true,
                     limits =
-                        HomeSpeakerLimits(min = 10.0, max = 100.0, step = 5.0, defaultValue = 60.0),
+                        VitruvianSpeakerLimits(
+                            min = 10.0, max = 100.0, step = 5.0, defaultValue = 60.0),
                 ),
             ))
     assertEquals("Length from Mac", Derive.catalogLabel(custom, "speech_length"))
@@ -2906,38 +2917,39 @@ public class DeriveTest {
     assertEquals("+5", stepper.plusLabel)
     assertTrue(stepper.minusEnabled)
     assertTrue(stepper.plusEnabled)
-    // The stepper stops at Home Speaker's max: 98 + 5 is sent as 100, never 103.
+    // The stepper stops at Vitruvian Speaker's max: 98 + 5 is sent as 100, never 103.
     assertEquals(100.0, stepper.plusNext, 0.0)
   }
 
   @Test
   public fun `missing catalog yields helper reason when present or the update sentence`() {
-    val empty = HomeSpeakerCatalog()
-    assertFalse(Derive.hasHomeSpeakerCatalog(available = true, catalog = empty))
+    val empty = VitruvianSpeakerCatalog()
+    assertFalse(Derive.hasVitruvianSpeakerCatalog(available = true, catalog = empty))
     assertFalse(
-        Derive.hasHomeSpeakerCatalog(
+        Derive.hasVitruvianSpeakerCatalog(
             available = false,
             catalog =
-                HomeSpeakerCatalog(
-                    listOf(HomeSpeakerSetting("enabled", "toggle", "Enable", shown = true)))))
+                VitruvianSpeakerCatalog(
+                    listOf(VitruvianSpeakerSetting("enabled", "toggle", "Enable", shown = true)))))
 
     assertEquals(
-        "Update Home Speaker on atlas (have 1.38.0, need 1.40.0)",
-        Derive.missingCatalogMessage("Update Home Speaker on atlas (have 1.38.0, need 1.40.0)"),
+        "Update Vitruvian Speaker on atlas (have 1.38.0, need 1.40.0)",
+        Derive.missingCatalogMessage(
+            "Update Vitruvian Speaker on atlas (have 1.38.0, need 1.40.0)"),
     )
     assertEquals(
-        "Home Speaker is not installed on this Mac",
-        Derive.missingCatalogMessage("  Home Speaker is not installed on this Mac  "),
+        "Vitruvian Speaker is not installed on this Mac",
+        Derive.missingCatalogMessage("  Vitruvian Speaker is not installed on this Mac  "),
     )
     val fallback =
-        "Update Home Speaker and the Vitruvian Remote helper on your Mac to change these settings here."
+        "Update Vitruvian Speaker and the Vitruvian Remote helper on your Mac to change these settings here."
     assertEquals(fallback, Derive.missingCatalogMessage(null))
     assertEquals(fallback, Derive.missingCatalogMessage(""))
     assertEquals(fallback, Derive.missingCatalogMessage("   "))
   }
 
   @Test
-  public fun `deleted Home Speaker label constants choice lists and clamps stay out of phone sources`() {
+  public fun `deleted Vitruvian Speaker label constants choice lists and clamps stay out of phone sources`() {
     val files =
         listOf(
             "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/AgentClient.kt",
@@ -2978,7 +2990,7 @@ public class DeriveTest {
             "MIN_POLL_INTERVAL",
             "MAX_POLL_INTERVAL",
             "speakerChoiceLabel",
-            "homeSpeakerOutputs",
+            "vitruvianSpeakerOutputs",
             "homeSettingsRelevant",
             "castVoiceRelevant",
             "localVoiceInUse",
@@ -3021,27 +3033,28 @@ public class DeriveTest {
       }
       for (lit in forbiddenLiterals) {
         if (text.contains("\"$lit\"")) {
-          hits += "$path contains hardcoded Home Speaker choice/label literal \"$lit\""
+          hits += "$path contains hardcoded Vitruvian Speaker choice/label literal \"$lit\""
         }
       }
     }
     assertTrue(
-        "Local Home Speaker rulebook copies found:\n${hits.joinToString("\n")}", hits.isEmpty())
+        "Local Vitruvian Speaker rulebook copies found:\n${hits.joinToString("\n")}",
+        hits.isEmpty())
   }
 
   @Test
   public fun `probe catalog helpers handle shown false unknown keys choice phone substitution and stepper boundaries`() {
     val catalog =
-        HomeSpeakerCatalog(
+        VitruvianSpeakerCatalog(
             listOf(
-                HomeSpeakerSetting(
+                VitruvianSpeakerSetting(
                     key = "hidden_toggle",
                     kind = "toggle",
                     label = "Hidden on Your phone",
                     boolValue = true,
                     shown = false,
                 ),
-                HomeSpeakerSetting(
+                VitruvianSpeakerSetting(
                     key = "route_mode",
                     kind = "choice",
                     label = "Your phone routing",
@@ -3049,18 +3062,19 @@ public class DeriveTest {
                     shown = true,
                     choices =
                         listOf(
-                            HomeSpeakerChoice("phone_only", "Your phone only"),
-                            HomeSpeakerChoice("both", "Your phone + Mac"),
+                            VitruvianSpeakerChoice("phone_only", "Your phone only"),
+                            VitruvianSpeakerChoice("both", "Your phone + Mac"),
                         ),
                 ),
-                HomeSpeakerSetting(
+                VitruvianSpeakerSetting(
                     key = "pause_media_extra_seconds",
                     kind = "number",
                     label = "Resume after",
                     numberValue = 0.0,
                     shown = true,
                     limits =
-                        HomeSpeakerLimits(min = 0.0, max = 10.0, step = 0.5, defaultValue = 1.0),
+                        VitruvianSpeakerLimits(
+                            min = 0.0, max = 10.0, step = 0.5, defaultValue = 1.0),
                 ),
             ))
 
@@ -3072,8 +3086,8 @@ public class DeriveTest {
     assertEquals("This phone routing", Derive.catalogLabel(catalog, "route_mode"))
     assertEquals(
         listOf(
-            HomeSpeakerChoice("phone_only", "This phone only"),
-            HomeSpeakerChoice("both", "This phone + Mac"),
+            VitruvianSpeakerChoice("phone_only", "This phone only"),
+            VitruvianSpeakerChoice("both", "This phone + Mac"),
         ),
         Derive.catalogChoices(catalog, "route_mode"),
     )
@@ -3104,7 +3118,7 @@ public class DeriveTest {
 
   @Test
   public fun `catalog steppers stop at the limits and never send a value outside them`() {
-    val volume = HomeSpeakerLimits(min = 0.0, max = 100.0, step = 10.0, defaultValue = 60.0)
+    val volume = VitruvianSpeakerLimits(min = 0.0, max = 100.0, step = 10.0, defaultValue = 60.0)
     val nearMax = Derive.catalogStepper(current = 95.0, limits = volume, canAct = true)
     assertEquals(100.0, nearMax.plusNext, 0.0)
     val atMax = Derive.catalogStepper(current = 100.0, limits = volume, canAct = true)
@@ -3112,7 +3126,7 @@ public class DeriveTest {
     assertEquals(100.0, atMax.plusNext, 0.0)
     val nearMin = Derive.catalogStepper(current = 5.0, limits = volume, canAct = true)
     assertEquals(0.0, nearMin.minusNext, 0.0)
-    val poll = HomeSpeakerLimits(min = 5.0, max = 300.0, step = 5.0, defaultValue = 15.0)
+    val poll = VitruvianSpeakerLimits(min = 5.0, max = 300.0, step = 5.0, defaultValue = 15.0)
     assertEquals(5.0, Derive.catalogStepper(7.0, poll, true).minusNext, 0.0)
     assertEquals(300.0, Derive.catalogStepper(298.0, poll, true).plusNext, 0.0)
   }
@@ -3140,7 +3154,7 @@ public class DeriveTest {
   @Test
   public fun `without a catalog the Now strip keeps only replay, no setting controls`() {
     fun ids(hasCatalog: Boolean) =
-        Derive.homeSpeakerQuickActions(
+        Derive.vitruvianSpeakerQuickActions(
                 hasCatalog = hasCatalog,
                 paired = true,
                 available = true,
@@ -3162,16 +3176,16 @@ public class DeriveTest {
 
   @Test
   public fun `a refusal recorded under a catalog key shows on that row, an old label does not`() {
-    val errors = mapOf("speech_length" to "Home Speaker refused that")
-    assertEquals("Home Speaker refused that", Derive.settingError(errors, "speech_length"))
+    val errors = mapOf("speech_length" to "Vitruvian Speaker refused that")
+    assertEquals("Vitruvian Speaker refused that", Derive.settingError(errors, "speech_length"))
     assertNull(Derive.settingError(errors, "What to say"))
   }
 
   @Test
-  public fun `setHomeSpeaker files its errors under real catalog keys`() {
+  public fun `setVitruvianSpeaker files its errors under real catalog keys`() {
     val catalogKeys =
-        HomeSpeakerWire.sources(
-                readRunfile("apps/mobile/android-remote/macagent/golden_homespeaker_v1.json"))
+        VitruvianSpeakerWire.sources(
+                readRunfile("apps/mobile/android-remote/macagent/golden_speaker_v1.json"))
             .catalog
             .settings
             .map { it.key }
@@ -3182,8 +3196,8 @@ public class DeriveTest {
     val block =
         text.substringAfter("    val key =\n        controlId").substringBefore("else -> what")
     val keys = Regex("""-> "([a-z][a-z_]+)"""").findAll(block).map { it.groupValues[1] }.toList()
-    assertTrue("no catalog-key error keys found in setHomeSpeaker", keys.size >= 30)
-    // "snooze" is the phone's own Now-strip control, not a Home Speaker field.
+    assertTrue("no catalog-key error keys found in setVitruvianSpeaker", keys.size >= 30)
+    // "snooze" is the phone's own Now-strip control, not a Vitruvian Speaker field.
     val notInCatalog = keys.filter { it !in catalogKeys && it != "snooze" }
     assertTrue("error keys that are not catalog keys: $notInCatalog", notInCatalog.isEmpty())
   }
@@ -3215,8 +3229,8 @@ public class DeriveTest {
 
   @Test
   public fun `every catalog setting in golden payload is either hand-placed or gets a generic row exactly once`() {
-    val goldenJson = readRunfile("apps/mobile/android-remote/macagent/golden_homespeaker_v1.json")
-    val sources = HomeSpeakerWire.sources(goldenJson)
+    val goldenJson = readRunfile("apps/mobile/android-remote/macagent/golden_speaker_v1.json")
+    val sources = VitruvianSpeakerWire.sources(goldenJson)
     val catalog = sources.catalog
     assertTrue(sources.genericSettings)
     val catalogKeys = catalog.settings.map { it.key }
@@ -3226,8 +3240,8 @@ public class DeriveTest {
         readRunfile(
             "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
     assertFalse(
-        "placedHomeSpeakerKeys constant must stay deleted",
-        remoteText.contains("placedHomeSpeakerKeys"),
+        "placedVitruvianSpeakerKeys constant must stay deleted",
+        remoteText.contains("placedVitruvianSpeakerKeys"),
     )
     assertTrue(
         "Other settings must read placement.drawnKeys",
@@ -3270,7 +3284,7 @@ public class DeriveTest {
     )
 
     val generic =
-        Derive.genericHomeSpeakerRows(
+        Derive.genericVitruvianSpeakerRows(
                 catalog,
                 drawnKeys = drawn,
                 includeHidden = true,
@@ -3287,14 +3301,14 @@ public class DeriveTest {
 
     assertEquals(catalogKeys.size, drawn.size + generic.size)
     // Today every golden key has a hand-designed home, so "Other settings" is empty. A key
-    // Home Speaker adds later lands here and shows on the phone with no phone release; this
+    // Vitruvian Speaker adds later lands here and shows on the phone with no phone release; this
     // line then names it, which is the prompt to decide whether it deserves a hand-made row.
     assertEquals(emptyList<String>(), generic)
   }
 
   @Test
-  public fun `controls manifest supported ids match HomeSpeakerControls constants one to one`() {
-    val raw = readRunfile("apps/desktop/home-speaker/testdata/controls.json")
+  public fun `controls manifest supported ids match VitruvianSpeakerControls constants one to one`() {
+    val raw = readRunfile("apps/desktop/vitruvian-speaker/testdata/controls.json")
     val entries = JsonReader(raw).readValue() as List<*>
     val allManifestIds = mutableSetOf<String>()
     val supportedManifestIds = mutableSetOf<String>()
@@ -3310,27 +3324,29 @@ public class DeriveTest {
     assertTrue("no supported controls parsed from controls.json", supportedManifestIds.isNotEmpty())
 
     val constFields =
-        HomeSpeakerControls::class.java.declaredFields.filter {
+        VitruvianSpeakerControls::class.java.declaredFields.filter {
           java.lang.reflect.Modifier.isStatic(it.modifiers) && it.type == String::class.java
         }
     val phoneIds = constFields.map { it.get(null) as String }
     assertEquals(
-        "duplicate constant values in HomeSpeakerControls", phoneIds.toSet().size, phoneIds.size)
+        "duplicate constant values in VitruvianSpeakerControls",
+        phoneIds.toSet().size,
+        phoneIds.size)
 
     val phoneIdSet = phoneIds.toSet()
     val missingFromPhone = supportedManifestIds - phoneIdSet
     assertTrue(
-        "supported controls.json ids missing from HomeSpeakerControls: $missingFromPhone",
+        "supported controls.json ids missing from VitruvianSpeakerControls: $missingFromPhone",
         missingFromPhone.isEmpty(),
     )
     val notInManifest = phoneIdSet - allManifestIds
     assertTrue(
-        "HomeSpeakerControls ids missing from controls.json: $notInManifest",
+        "VitruvianSpeakerControls ids missing from controls.json: $notInManifest",
         notInManifest.isEmpty(),
     )
     val excludedInPhone = phoneIdSet - supportedManifestIds
     assertTrue(
-        "excluded controls.json ids present in HomeSpeakerControls: $excludedInPhone",
+        "excluded controls.json ids present in VitruvianSpeakerControls: $excludedInPhone",
         excludedInPhone.isEmpty(),
     )
 
@@ -3346,38 +3362,38 @@ public class DeriveTest {
         constFields
             .map { it.name }
             .filter { name ->
-              !Regex("""controlId\s*=\s*HomeSpeakerControls\.${Regex.escape(name)}\b""")
+              !Regex("""controlId\s*=\s*VitruvianSpeakerControls\.${Regex.escape(name)}\b""")
                   .containsMatchIn(remoteText)
             }
     assertTrue(
-        "HomeSpeakerControls constants missing `controlId = HomeSpeakerControls.X` in RemoteState.kt: $unwiredControls",
+        "VitruvianSpeakerControls constants missing `controlId = VitruvianSpeakerControls.X` in RemoteState.kt: $unwiredControls",
         unwiredControls.isEmpty(),
     )
   }
 
   @Test
-  public fun `hookWithoutHomeSpeaker matches Pages swift`() {
+  public fun `hookWithoutVitruvianSpeaker matches Pages swift`() {
     val pagesSwift =
-        readRunfile("apps/desktop/home-speaker/Sources/HomeSpeakerToolCore/Pages.swift")
+        readRunfile("apps/desktop/vitruvian-speaker/Sources/VitruvianSpeakerToolCore/Pages.swift")
     val match =
-        Regex("""public static let hookWithoutHomeSpeaker\s*=\s*"([^"]+)"""").find(pagesSwift)
-    assertTrue("hookWithoutHomeSpeaker constant not found in Pages.swift", match != null)
-    assertEquals(match!!.groupValues[1], Derive.HOOK_WITHOUT_HOMESPEAKER)
+        Regex("""public static let hookWithoutVitruvianSpeaker\s*=\s*"([^"]+)"""").find(pagesSwift)
+    assertTrue("hookWithoutVitruvianSpeaker constant not found in Pages.swift", match != null)
+    assertEquals(match!!.groupValues[1], Derive.HOOK_WITHOUT_VITRUVIANSPEAKER)
   }
 
   @Test
   public fun `generic renderer maps toggle choice number text and time kinds and honors shown`() {
     val catalog =
-        HomeSpeakerCatalog(
+        VitruvianSpeakerCatalog(
             listOf(
-                HomeSpeakerSetting(
+                VitruvianSpeakerSetting(
                     key = "future_toggle",
                     kind = "toggle",
                     label = "Chime on Your phone",
                     boolValue = true,
                     shown = true,
                 ),
-                HomeSpeakerSetting(
+                VitruvianSpeakerSetting(
                     key = "future_choice",
                     kind = "choice",
                     label = "Tone",
@@ -3385,34 +3401,35 @@ public class DeriveTest {
                     shown = true,
                     choices =
                         listOf(
-                            HomeSpeakerChoice("warm", "Warm on Your phone"),
-                            HomeSpeakerChoice("crisp", "Crisp"),
+                            VitruvianSpeakerChoice("warm", "Warm on Your phone"),
+                            VitruvianSpeakerChoice("crisp", "Crisp"),
                         ),
                 ),
-                HomeSpeakerSetting(
+                VitruvianSpeakerSetting(
                     key = "future_number",
                     kind = "number",
                     label = "Ducking",
                     numberValue = 95.0,
                     shown = true,
                     limits =
-                        HomeSpeakerLimits(min = 0.0, max = 100.0, step = 10.0, defaultValue = 50.0),
+                        VitruvianSpeakerLimits(
+                            min = 0.0, max = 100.0, step = 10.0, defaultValue = 50.0),
                 ),
-                HomeSpeakerSetting(
+                VitruvianSpeakerSetting(
                     key = "future_text",
                     kind = "text",
                     label = "Prefix",
                     stringValue = "Heads up:",
                     shown = true,
                 ),
-                HomeSpeakerSetting(
+                VitruvianSpeakerSetting(
                     key = "future_time",
                     kind = "time",
                     label = "Wake at",
                     stringValue = "07:15",
                     shown = true,
                 ),
-                HomeSpeakerSetting(
+                VitruvianSpeakerSetting(
                     key = "future_hidden",
                     kind = "toggle",
                     label = "Hidden",
@@ -3422,7 +3439,7 @@ public class DeriveTest {
             ))
 
     val visible =
-        Derive.genericHomeSpeakerRows(
+        Derive.genericVitruvianSpeakerRows(
             catalog = catalog,
             canAct = true,
             errors = mapOf("future_text" to "Refused"),
@@ -3467,8 +3484,8 @@ public class DeriveTest {
     assertEquals("23:30", timeCtrl.options.last().value)
 
     assertNull(
-        Derive.genericHomeSpeakerRow(
-            HomeSpeakerSetting(key = "unknown", kind = "curve", label = "Curve")))
+        Derive.genericVitruvianSpeakerRow(
+            VitruvianSpeakerSetting(key = "unknown", kind = "curve", label = "Curve")))
   }
 
   @Test
@@ -3491,8 +3508,10 @@ public class DeriveTest {
     val speakers =
         Derive.speakerRowSpecs(
             listOf(
-                HomeSpeakerTargetWire("office", "Office Mini", "Office", "Mini", selected = true),
-                HomeSpeakerTargetWire("kitchen", "Kitchen Hub", "Kitchen", "Hub", selected = false),
+                VitruvianSpeakerTargetWire(
+                    "office", "Office Mini", "Office", "Mini", selected = true),
+                VitruvianSpeakerTargetWire(
+                    "kitchen", "Kitchen Hub", "Kitchen", "Hub", selected = false),
             ),
             canAct = true,
         )
@@ -3523,7 +3542,8 @@ public class DeriveTest {
     assertEquals(1, fromExtNoApp.size)
     assertTrue(fromExtNoApp.single().selected)
 
-    // Stale hook: missing target HomeSpeaker offers both Update hook and Remove when active is
+    // Stale hook: missing target Vitruvian Speaker offers both Update hook and Remove when active
+    // is
     // installed.
     val staleTrashedApp =
         AgentHookStatus(
@@ -3531,8 +3551,8 @@ public class DeriveTest {
             agentSlug = "claude-code",
             hookState = "stale",
             staleCommand =
-                "'/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker' --claude-stop-hook",
-            hookProgram = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
+                "'/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker' --claude-stop-hook",
+            hookProgram = "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker",
         )
     val bothInstalled =
         Derive.agentHookRowSpec(
@@ -3546,7 +3566,7 @@ public class DeriveTest {
     assertTrue(appGoneExtActive.showUpdate)
     assertTrue(appGoneExtActive.showRemove)
     assertEquals("Remove", appGoneExtActive.removeLabel)
-    assertEquals(Derive.HOOK_WITHOUT_HOMESPEAKER, appGoneExtActive.subtitle)
+    assertEquals(Derive.HOOK_WITHOUT_VITRUVIANSPEAKER, appGoneExtActive.subtitle)
 
     val neitherInstalled =
         Derive.agentHookRowSpec(
@@ -3556,11 +3576,11 @@ public class DeriveTest {
 
     // Older helper (no generic_settings / copy support): hides generic rows and copy-on-switch.
     assertTrue(
-        Derive.genericHomeSpeakerRows(
+        Derive.genericVitruvianSpeakerRows(
                 catalog =
-                    HomeSpeakerCatalog(
+                    VitruvianSpeakerCatalog(
                         listOf(
-                            HomeSpeakerSetting(
+                            VitruvianSpeakerSetting(
                                 key = "beeper_address",
                                 kind = "text",
                                 label = "Address",

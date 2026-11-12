@@ -6,7 +6,7 @@ Provision **Neon serverless Postgres** as code.
 import "github.com/VitruvianSoftware/pulumi-library/go/pkg/neon"
 
 db, err := neon.NewProject(ctx, "db", &neon.ProjectArgs{
-    Name:     "tabula-development",
+    Name:     "vitruvian-tabs-development",
     RegionID: "aws-us-east-1",
     OrgID:    "org-...",
 })

@@ -32,7 +32,7 @@ Example (in an app's BUILD file):
 
     doctor(
         name = "doctor",
-        label = "tabula",
+        label = "vitruvian-tabs",
         required = ["bazel", "node", "pnpm", "git"],
         optional = ["docker", "gcloud"],
     )

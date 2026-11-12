@@ -7,11 +7,11 @@ heading: Plugins, MCP servers, skills and signed tools across your AI stack.
 lead: >-
   Everything here is discovered automatically from the vitruvian-core monorepo
   and published across our host marketplaces: Antigravity Desktop, Claude Code,
-  Codex & OpenCode, Vitruvian Desktop for macOS, and Vitruvian Remote for Android.
+  Codex & OpenCode, Vitruvian Atrium for macOS, and Vitruvian Remote for Android.
 description: >-
   Open-source plugins, MCP servers, portable agent skills, and signed macOS/Android
   extensions from Vitruvian Software for Antigravity, Claude Code, Codex, OpenCode,
-  and Vitruvian Desktop.
+  and Vitruvian Atrium.
 ---
 {%- comment -%}
   The list is _data/extensions.yml (written by tools/sync-site-tools)
@@ -89,14 +89,14 @@ description: >-
   <div class="container">
     <div class="section-head">
       <span class="eyebrow">{{ shown | prepend: '0' }}</span>
-      <h2>Vitruvian Desktop &amp; Android Remote Extensions</h2>
-      <p>Ed25519-signed JSON-RPC 2.0 extensions for the <a href="/downloads/#vitruvian-desktop">Vitruvian macOS host app</a> (notch island, Command Bar, Radial menu) and <a href="/downloads/#android-remote">Vitruvian Remote for Android</a>. Synchronized from the <a href="/tools/catalog/">signed catalog ledger (/tools/catalog/)</a> and built with the <a href="/tools/">Vitruvian Tool SDK (/tools/)</a>.</p>
+      <h2>Vitruvian Atrium &amp; Android Remote Extensions</h2>
+      <p>Ed25519-signed JSON-RPC 2.0 extensions for the <a href="/downloads/#vitruvian-atrium">Vitruvian macOS host app</a> (notch island, Command Bar, Radial menu) and <a href="/downloads/#android-remote">Vitruvian Remote for Android</a>. Synchronized from the <a href="/tools/catalog/">signed catalog ledger (/tools/catalog/)</a> and built with the <a href="/tools/">Vitruvian Tool SDK (/tools/)</a>.</p>
     </div>
     <div class="grid grid-2">
       {%- for tool in tool_catalog.tools -%}
-      {%- assign tool_ecosystems = "all vitruvian-desktop" -%}
+      {%- assign tool_ecosystems = "all vitruvian-atrium" -%}
       {%- if tool.id == "dev.vitruvian.remote" or tool.id == "dev.vitruvian.tv" or tool.id == "dev.vitruvian.homespeaker" -%}
-        {%- assign tool_ecosystems = "all vitruvian-desktop vitruvian-remote" -%}
+        {%- assign tool_ecosystems = "all vitruvian-atrium vitruvian-remote" -%}
       {%- endif -%}
       <article class="plate plate-live card extension-card" id="{{ tool.id }}" data-extension-card data-ecosystems="{{ tool_ecosystems }}">
         <div class="card-head">
@@ -117,7 +117,7 @@ description: >-
           {%- endfor -%}
         </ul>
         <div class="card-foot">
-          <div class="install-block" data-install-ecosystem="vitruvian-desktop">
+          <div class="install-block" data-install-ecosystem="vitruvian-atrium">
             <span class="install-label">Install in Vitruvian macOS</span>
             <code class="install">Settings › Extensions › {{ tool.name }} ({{ tool.size }})</code>
           </div>
@@ -151,10 +151,3 @@ description: >-
     </div>
   </div>
 </section>
-
-{%- comment -%}
-  Nexus Agent is Vitruvian Code now: an old link to /ai/#nexus-agent lands on it.
-{%- endcomment -%}
-<script>
-  if (window.location.hash === "#nexus-agent") { window.location.replace("#vitruvian-code"); }
-</script>

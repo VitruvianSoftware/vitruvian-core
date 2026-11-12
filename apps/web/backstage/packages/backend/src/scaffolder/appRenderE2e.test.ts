@@ -61,7 +61,7 @@ metadata:
 spec:
   targets:
     - ./backstage/catalog-info.yaml
-    - ./tabula/catalog-info.yaml
+    - ./apps/suites/vitruvian-tabs/catalog-info.yaml
 `;
 
 const silentLogger = () => {

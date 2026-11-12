@@ -582,7 +582,7 @@ with `{}`.
 have ten seconds; for everything after it, two.
 
 ```json message
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":["1","2"],"language":"en-US","dataFolder":"/Users/you/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/com.acme.deploys","features":["ui.status","ui.choice","preferences.options","ui.status.activity","ui.open.settings"]}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":["1","2"],"language":"en-US","dataFolder":"/Users/you/Library/Application Support/com.vitruviansoftware.atrium/ToolData/com.acme.deploys","features":["ui.status","ui.choice","preferences.options","ui.status.activity","ui.open.settings"]}}
 {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"1","toolVersion":"1.2.0"}}
 ```
 
@@ -1538,13 +1538,13 @@ language's own time (a `Date`, a `datetime`, a `time.Time`, a
 `SystemTime`) and write Unix seconds.
 
 - **Six characters or fewer, and a number is best.** The words are drawn in
-  about 30 points, in the look of Nexus Agent's text: about six characters
+  about 30 points, in the look of Vitruvian Code's text: about six characters
   at full size, eight once shrunk, and then cut with "…". The app keeps at
   most 12. Digits need no translation; `activity` may be a map of languages
   for words that do. Some scripts are wider: three or four characters there.
 - **Only the shown mark's words are drawn.** If the mark that wins has none,
   the percent is drawn, never another tool's words.
-- **A Nexus Agent session outranks every tool**, as it does for the mark.
+- **A Vitruvian Code session outranks every tool**, as it does for the mark.
   Your words come back when it ends.
 - **VoiceOver hears the words** after the status's own, as part of the
   closed island's button: "GitHub: Checks are running, 3". It does not hear
@@ -1940,7 +1940,7 @@ output and dependencies you do not ship out of it.
 
 The app copies the folder and runs the copy, so the original may move. The
 copy is in
-`~/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/<id>/`.
+`~/Library/Application Support/com.vitruviansoftware.atrium/Tools/<id>/`.
 What the tool saves goes in `ToolData/<id>/` beside it, which is also the
 folder the program is started in.
 

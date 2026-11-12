@@ -112,10 +112,13 @@ mod tests {
     #[test]
     fn order_respects_dependencies() {
         let units = vec![
-            u("tabula-web", &["tabula-shared", "design-system"]),
-            u("tabula-shared", &[]),
+            u(
+                "vitruvian-tabs-web",
+                &["vitruvian-tabs-shared", "design-system"],
+            ),
+            u("vitruvian-tabs-shared", &[]),
             u("design-system", &[]),
-            u("tabula-api", &["tabula-shared"]),
+            u("vitruvian-tabs-api", &["vitruvian-tabs-shared"]),
         ];
         let names: Vec<String> = build_dag(&units)
             .unwrap()
@@ -126,7 +129,12 @@ mod tests {
             .collect();
         assert_eq!(
             names,
-            ["design-system", "tabula-shared", "tabula-api", "tabula-web"]
+            [
+                "design-system",
+                "vitruvian-tabs-shared",
+                "vitruvian-tabs-api",
+                "vitruvian-tabs-web"
+            ]
         );
     }
 

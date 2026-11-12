@@ -92,8 +92,8 @@ pub const CORE_ACTIVE_QUERIES: &[(&str, &[(&str, &str)])] = &[
                 "Buzz Real-Time Relay WebSocket Connections",
             ),
             (
-                "sum(rate(envoy_cluster_upstream_rq_total{envoy_cluster_name=~\"httproute/mcp-slack/.*\"}[5m])) or vector(0)",
-                "MCP Slack Bridge Ingress Traffic",
+                "sum(rate(envoy_cluster_upstream_rq_total{envoy_cluster_name=~\"httproute/vitruvian-slack-mcp/.*\"}[5m])) or vector(0)",
+                "Vitruvian Slack MCP Bridge Ingress Traffic",
             ),
         ],
     ),
@@ -590,8 +590,8 @@ mod tests {
             "count%28argocd_app_info%29"
         );
         assert_eq!(
-            urllib_quote("httproute/mcp-slack/.*"),
-            "httproute/mcp-slack/.%2A"
+            urllib_quote("httproute/vitruvian-slack-mcp/.*"),
+            "httproute/vitruvian-slack-mcp/.%2A"
         );
     }
 }

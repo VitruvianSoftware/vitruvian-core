@@ -21,7 +21,7 @@ bidirectionally — see [§0 Sync shapes](#0-sync-shapes-what-replaced-bidirecti
 | Shape | Flag | Components | Generates |
 |---|---|---|---|
 | **One-way w/ PR-import** | `is_one_way=True` | `mcp-slack`, `mcp-roborock`, `devx`, `homelab`, `vitruvian-code`, `oauth-user-inspector` | `export_<comp>` (push to mirror `main`) + `import_pr_<comp>` (a labelled mirror PR → a **monorepo PR**, `CHANGE_REQUEST` mode) |
-| **Export-only** | `export_only=True` | `pulumi-library`, `pulumi_go-example-foundation`, `pulumi_ts-example-foundation`, `site-vitruviansoftware-dev`, `gh-watch`, `vitruvian-sdk`, `vitruvian-tool-github`, `vitruvian`, `courier`, `home-speaker`, `vitruvian-remote`, `esp32-desk-companion` | `export_<comp>` only — no import path of any kind |
+| **Export-only** | `export_only=True` | `pulumi-library`, `pulumi_go-example-foundation`, `pulumi_ts-example-foundation`, `site-vitruviansoftware-dev`, `gh-watch`, `vitruvian-sdk`, `vitruvian-tool-github`, `vitruvian`, `courier`, `vitruvian-speaker`, `vitruvian-remote`, `esp32-desk-companion` | `export_<comp>` only — no import path of any kind |
 | **Bidirectional** | `is_one_way=False` | *(none)* | legacy shape, retained as a knob only |
 
 There is deliberately **no push-to-`main` `import_<comp>`** for any component. External
@@ -99,13 +99,13 @@ flowchart LR
 
 ## 3. How the EXPORT flow works (monorepo → standalone)
 
-**Trigger:** a push to `vitruvian-core` `main` touching `apps/mcp/slack/**`.
+**Trigger:** a push to `vitruvian-core` `main` touching `apps/mcp/vitruvian-slack-mcp/**`.
 
-1. `copybara-export.yaml` fires (`on: push`, `paths: apps/mcp/slack/**`).
+1. `copybara-export.yaml` fires (`on: push`, `paths: apps/mcp/vitruvian-slack-mcp/**`).
 2. It writes auth to the runner: the deploy key → `~/.ssh/id_rsa` (with a guaranteed trailing
    newline), and `GITHUB_TOKEN` → `~/.git-credentials`.
 3. It runs `docker run olivr/copybara@sha256:… copybara` with `COPYBARA_WORKFLOW=export_mcp_slack`.
-4. Copybara **reads** vitruvian-core over **HTTPS** (`GITHUB_TOKEN`), strips the `apps/mcp/slack/` prefix
+4. Copybara **reads** vitruvian-core over **HTTPS** (`GITHUB_TOKEN`), strips the `apps/mcp/vitruvian-slack-mcp/` prefix
    (`core.move`), and **pushes** the migrated commit(s) to the standalone over **SSH** (deploy key),
    stamping each with `MONOREPO_REV_ID`.
 5. Nothing on the mirror side reacts. The mirror is read-only; the only way a change re-enters the
@@ -120,7 +120,7 @@ sequenceDiagram
     participant CB as Copybara image
     participant MS as mcp-slack main
     participant IMP as import (via dispatch)
-    Dev->>VC: push under apps/mcp/slack/**
+    Dev->>VC: push under apps/mcp/vitruvian-slack-mcp/**
     VC->>EXP: on: push
     EXP->>CB: docker run (export_mcp_slack, ITERATIVE)
     CB->>VC: read origin (HTTPS + GITHUB_TOKEN)
@@ -141,13 +141,13 @@ no push trigger and no `repository_dispatch` — a push to a mirror does **not**
    is the approval gate** — nothing is imported without it.
 3. On the next hourly cycle the workflow queries each mirror for open PRs carrying the label.
 4. For each one it runs `COPYBARA_WORKFLOW=import_pr_mcp_slack` in **`CHANGE_REQUEST`** mode:
-   Copybara reads the mirror PR, adds the `apps/mcp/slack/` prefix, and opens a **monorepo PR** on branch
+   Copybara reads the mirror PR, adds the `apps/mcp/vitruvian-slack-mcp/` prefix, and opens a **monorepo PR** on branch
    `mcp-slack-import-pr-<N>`, stamping `MCP_SLACK_REV_ID` and embedding a
    `Mirror-Of: VitruvianSoftware/mcp-slack#<N>` footer.
 5. That monorepo PR goes through normal review and the merge queue like any other change.
 6. On merge, `copybara-import-pr-close.yaml` reads the `Mirror-Of:` footer and closes the
    originating mirror PR by API (a commit trailer can't close a PR cross-repo).
-7. The merge to `main` touches `apps/mcp/slack/**`, so the **export** fires and reflects the change back
+7. The merge to `main` touches `apps/mcp/vitruvian-slack-mcp/**`, so the **export** fires and reflects the change back
    out to the mirror — where the export's own skip-guard sees `MCP_SLACK_REV_ID` and does not
    re-import it.
 
@@ -436,7 +436,7 @@ first. If the export reaches `main` before the key exists, it has nothing to pus
 
     **GitHub Pages and the custom domain belong to the mirror repo, not the monorepo.** Moving the
     source here changes none of it. `sync.go` does not create any of it either; it is set up with the
-    `devx sites` command (`apps/cli/devx/cmd/sites.go`):
+    `devx sites` command (`apps/cli/vitruvian-devx/cmd/sites.go`):
     - `devx sites init --domain <zone>` enables workflow-based Pages on the repo and creates a
       Cloudflare CNAME (DNS-only) for `<name>.<zone>` pointing at `<org>.github.io`.
     - `devx sites verify` creates the org-level `_github-pages-challenge-<Org>` TXT record that GitHub
@@ -480,7 +480,7 @@ invariants across releases, downloads, and documentation:
    - Standalone repos represent a single product, so GitHub natively resolves `/releases/latest`
      and `/releases/latest/download/<asset>`.
    - In a multi-component monorepo, releases use prefix-namespaced tags (e.g. `vitruvian-v*`,
-     `esp32-s3-v*`). GitHub supports only **one global `latest` release tag** repo-wide, so
+     `vitruvian-deck-v*`). GitHub supports only **one global `latest` release tag** repo-wide, so
      `/releases/latest` cannot route to multiple independent monorepo components.
    - For downloadable apps (DMGs, binaries, zip packages), provide permanent vanity redirect
      endpoints on `vitruviansoftware.dev` (e.g. `/downloads/latest/<component>.dmg` using HTML
@@ -529,13 +529,13 @@ invariants across releases, downloads, and documentation:
 
 **Diff the component across both repos:**
 ```bash
-gh api repos/VitruvianSoftware/vitruvian-core/contents/apps/mcp/slack/<file>?ref=main --jq .content | base64 -d
+gh api repos/VitruvianSoftware/vitruvian-core/contents/apps/mcp/vitruvian-slack-mcp/<file>?ref=main --jq .content | base64 -d
 gh api repos/VitruvianSoftware/mcp-slack/contents/<file>?ref=main --jq .content | base64 -d
 ```
 
 **Context files that must NOT cross the boundary** (already configured in `copy.bara.sky`):
 - export keeps each standalone's `.github/workflows/sync-to-monorepo.yaml` (and `package-lock.json`
-  for npm components: mcp-slack, nexus-agent);
+  for npm components: mcp-slack, vitruvian-code);
 - both directions keep the monorepo-only gazelle `**/BUILD` files (devx alone has 57).
 
 ---
@@ -595,7 +595,7 @@ to the standalones via the export. You manage every component's Dependabot confi
   onboarding a new component.)
 
 ### Pipeline (a monorepo Go bump, end to end)
-1. A monorepo Dependabot **Go PR** opens (e.g. a `apps/cli/devx/go.mod` bump).
+1. A monorepo Dependabot **Go PR** opens (e.g. a `apps/cli/vitruvian-devx/go.mod` bump).
 2. [`dependabot-bazel-reconcile.yaml`](../../.github/workflows/dependabot-bazel-reconcile.yaml) runs
    `bazel mod tidy` + `bazel run //:gazelle` and **commits any fix to the PR branch via the App
    token** — which **re-triggers CI** (a bot's own `GITHUB_TOKEN` push wouldn't). Version-only bumps
@@ -620,7 +620,7 @@ to the standalones via the export. You manage every component's Dependabot confi
 
 ```mermaid
 flowchart TD
-    DB["Dependabot PR in monorepo (apps/cli/devx/go.mod minor bump)"] --> RC["reconcile: bazel mod tidy + gazelle,<br/>commit via App token (re-triggers CI)"]
+    DB["Dependabot PR in monorepo (apps/cli/vitruvian-devx/go.mod minor bump)"] --> RC["reconcile: bazel mod tidy + gazelle,<br/>commit via App token (re-triggers CI)"]
     RC --> CI{"CI green?"}
     CI -- "no" --> H["human review"]
     CI -- "yes" --> AM{"minor/patch?"}
@@ -661,7 +661,7 @@ places**, both `addlicense@v1.2.0` with `-c "VitruvianSoftware" -l mit`:
   is caught on the PR, *before* fan-out. The binary lands in `GOPATH/bin` (not on the runner PATH), so
   it's invoked as `"$(go env GOPATH)/bin/addlicense"`.
 - **Each standalone's OWN CI.** devx checks in its `lint` job; homelab and mcp-slack each have a
-  `license-check` job; nexus-agent (which had no CI) gets a dedicated `license-check.yml`. This is the
+  `license-check` job; vitruvian-code (which had no CI) gets a dedicated `license-check.yml`. This is the
   only check that covers **standalone-only** files (e.g. `sync-to-monorepo.yaml`) the monorepo never sees.
 
 **Generated / tool-managed files are NEVER headered** — addlicense would fight their regeneration
@@ -683,7 +683,7 @@ Per-standalone ignore sets (no `**/BUILD` — standalones have no Bazel files):
 | devx | `docs/**`, `internal/scaffold/templates/**` |
 | homelab | *(none)* |
 | mcp-slack | `package-lock.json`, `node_modules/**` |
-| nexus-agent | `package-lock.json`, `node_modules/**`, `.release-please-manifest.json` |
+| vitruvian-code | `package-lock.json`, `node_modules/**`, `.release-please-manifest.json` |
 
 **Bulk-header many files:** run add-mode (drop `-check`) from the repo root with the monorepo ignore
 list, then confirm `bazel run //:gazelle` is still a no-op and `git status` shows no generated file

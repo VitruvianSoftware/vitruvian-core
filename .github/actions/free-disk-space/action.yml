@@ -26,7 +26,7 @@
 # selection uncertainty) have headroom. Runs on every event.
 #
 # Do NOT remove /usr/local/lib/android, or the Node/Python toolcache:
-# rules_android (in the module graph for //tabula) fetches an
+# rules_android (in the module graph for //apps/suites/vitruvian-tabs) fetches an
 # android_sdk_repository at analysis time and aborts the build if the SDK is
 # gone ("No Android SDK apis found"), even when no Android target is built in
 # the calling lane; Node/Python are used by other steps in some lanes (e.g.
@@ -45,7 +45,7 @@ inputs:
   extra-paths:
     description: >-
       Extra newline-separated paths to remove in addition to the 4 common
-      ones. tabula-e2e.yaml's jobs pass /usr/local/share/powershell and
+      ones. vitruvian-tabs-e2e.yaml's jobs pass /usr/local/share/powershell and
       /usr/share/swift here -- its hermetic Bazel stack (Postgres, Redis, the
       JDK toolchain, Chromium) plus coverage instrumentation is tighter on
       disk than the other lanes.

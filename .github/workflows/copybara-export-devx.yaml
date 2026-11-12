@@ -20,12 +20,12 @@
 
 name: Copybara Export (devx)
 
-# Exports vitruvian-core/devx/ to VitruvianSoftware/devx on every push under
-# devx/**. Thin caller — logic lives in _copybara-export.yaml.
+# Exports vitruvian-core/apps/cli/vitruvian-devx/ to VitruvianSoftware/devx on every push under
+# apps/cli/vitruvian-devx/**. Thin caller — logic lives in _copybara-export.yaml.
 on:
     push:
         branches: [main]
-        paths: ["apps/cli/devx/**", "tools/copybara/copy.bara.sky"]
+        paths: ["apps/cli/vitruvian-devx/**", "tools/copybara/copy.bara.sky"]
     workflow_dispatch:
         inputs:
             copybara-options:

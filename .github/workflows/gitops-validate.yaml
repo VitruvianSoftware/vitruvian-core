@@ -65,7 +65,7 @@ permissions:
 #
 # `github.sha` is unique per commit, so every pushed commit gets its own group
 # and its own verdict: nothing cancels it, nothing queues it behind a sibling.
-# Same pattern as tabula-e2e.yaml (#1311); guarded by //tools/conformance:check.
+# Same pattern as vitruvian-tabs-e2e.yaml (#1311); guarded by //tools/conformance:check.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -93,7 +93,7 @@ jobs:
           cache: false
 
       # Shared with actionlint, chart-render, supply-chain and
-      # mcp-slack-image: .github/actions/install-pinned-tool.
+      # vitruvian-slack-mcp-image: .github/actions/install-pinned-tool.
       - name: Install kubeconform (pinned + checksum-verified)
         uses: ./.github/actions/install-pinned-tool
         with:

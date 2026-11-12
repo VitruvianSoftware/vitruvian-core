@@ -18,6 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# legacy name: Copybara export workflow filename/name/concurrency group keyed by infra
 name: Copybara Export (nexus-agent)
 
 # Exports vitruvian-core/apps/desktop/vitruvian-code/ to VitruvianSoftware/vitruvian-code on every

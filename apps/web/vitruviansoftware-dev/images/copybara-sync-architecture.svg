@@ -42,12 +42,12 @@
       <text x="14" y="58" class="ok-text">• Shape: export_only=True</text>
 
       <rect x="295" width="270" height="70" class="pill" />
-      <text x="309" y="24" class="accent-blue">apps/cli/devx/</text>
+      <text x="309" y="24" class="accent-blue">apps/cli/vitruvian-devx/</text>
       <text x="309" y="42" class="box-body">• DevX workflow CLI &amp; agents</text>
       <text x="309" y="58" class="warn-text">• Shape: is_one_way=True (w/ PR import)</text>
 
       <rect x="590" width="280" height="70" class="pill" />
-      <text x="604" y="24" class="accent-blue">apps/cli/homelab/</text>
+      <text x="604" y="24" class="accent-blue">apps/cli/vitruvian-homelab/</text>
       <text x="604" y="42" class="box-body">• Cluster ops CLI &amp; diagnostics</text>
       <text x="604" y="58" class="warn-text">• Shape: is_one_way=True (w/ PR import)</text>
     </g>

@@ -996,20 +996,20 @@ mod tests {
             Component {
                 name: PyVal::Str(py("homelab")),
                 package_name: PyVal::Str(py("homelab")),
-                path: py("apps/cli/homelab"),
+                path: py("apps/cli/vitruvian-homelab"),
                 excludes: vec![],
                 visible: vis.clone(),
-                siblings: vec![py("apps/cli/homelab")],
-                config: py("apps/cli/homelab/release-please-config.json"),
+                siblings: vec![py("apps/cli/vitruvian-homelab")],
+                config: py("apps/cli/vitruvian-homelab/release-please-config.json"),
             },
             Component {
                 name: PyVal::Str(py("vitruvian")),
                 package_name: PyVal::Str(py("vitruvian")),
-                path: py("apps/desktop/vitruvian"),
+                path: py("apps/desktop/vitruvian-atrium"),
                 excludes: vec![],
                 visible: vis,
-                siblings: vec![py("apps/desktop/vitruvian")],
-                config: py("apps/desktop/vitruvian/release-please-config.json"),
+                siblings: vec![py("apps/desktop/vitruvian-atrium")],
+                config: py("apps/desktop/vitruvian-atrium/release-please-config.json"),
             },
         ]
     }
@@ -1034,8 +1034,8 @@ mod tests {
                 "fix: update Go deps",
                 "",
                 &[
-                    "apps/cli/homelab/go.mod",
-                    "apps/desktop/vitruvian/Info.plist",
+                    "apps/cli/vitruvian-homelab/go.mod",
+                    "apps/desktop/vitruvian-atrium/Info.plist",
                 ],
             ),
             &components,
@@ -1048,7 +1048,11 @@ mod tests {
         assert!(bad.unnamed[1].py_eq(&PyVal::Str(py("vitruvian"))));
 
         let scoped_ok = judge(
-            &make_pr("fix(homelab): fix flag", "", &["apps/cli/homelab/main.go"]),
+            &make_pr(
+                "fix(homelab): fix flag",
+                "",
+                &["apps/cli/vitruvian-homelab/main.go"],
+            ),
             &components,
             &[],
         )
@@ -1060,8 +1064,8 @@ mod tests {
                 "fix: shared update",
                 "Summary\n\nReleases: homelab, vitruvian\n",
                 &[
-                    "apps/cli/homelab/main.go",
-                    "apps/desktop/vitruvian/Info.plist",
+                    "apps/cli/vitruvian-homelab/main.go",
+                    "apps/desktop/vitruvian-atrium/Info.plist",
                 ],
             ),
             &components,
@@ -1075,8 +1079,8 @@ mod tests {
                 "chore: tidy everything",
                 "",
                 &[
-                    "apps/cli/homelab/main.go",
-                    "apps/desktop/vitruvian/Info.plist",
+                    "apps/cli/vitruvian-homelab/main.go",
+                    "apps/desktop/vitruvian-atrium/Info.plist",
                 ],
             ),
             &components,

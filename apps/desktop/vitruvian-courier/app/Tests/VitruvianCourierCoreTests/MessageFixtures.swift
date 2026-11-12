@@ -1,0 +1,357 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import XCTest
+
+@testable import VitruvianCourierCore
+
+/// A conversation on an app model on a stand-in engine (a `ConversationScript`), with the composer's settings and
+/// quick replies in a UserDefaults suite of the test's own. For the message actions, the thread pane and the
+/// message commands. All data here is made up.
+@MainActor
+struct ConversationHarness {
+    let script: ConversationScript
+    let server: TestEngineServer
+    let app: AppModel
+    let conversation: ConversationModel
+    let preferences: ComposerPreferences
+    let quickReplies: QuickReplies
+    let store: TestDefaults
+    /// The chats' rows, as the inbox would have them.
+    let rows: RowBox
+
+    func count(_ method: String) -> Int { server.receivedMethods().filter { $0 == method }.count }
+
+    /// The thread pane's pages asked for (room.events with thread). Each is applied when its answer comes: with
+    /// `ThreadModel.pagesApplied` it says every change so far has been read.
+    func threadReads() -> Int {
+        server.receivedParams("room.events").filter { $0["thread"] != nil && $0["before"] == nil }.count
+    }
+
+    /// The chat's newest pages asked for (room.events with no cursor, no around and no thread). Each is applied
+    /// when its answer comes: with `ConversationModel.pagesApplied` it says every change so far has been read.
+    func newestRequests() -> Int {
+        server.receivedParams("room.events").filter {
+            $0["before"] == nil && $0["after"] == nil && $0["around"] == nil && $0["thread"] == nil
+        }.count
+    }
+
+    func messageIDs(_ items: [TimelineItem]) -> [String] {
+        items.compactMap { if case let .message(m) = $0 { m.id } else { nil } }
+    }
+
+    func message(_ id: String) -> TimelineMessage? {
+        for case let .message(m) in conversation.items where m.id == id { return m }
+        return nil
+    }
+
+    /// Opens `room` and waits for its newest page and its features.
+    func open(_ room: String) async throws {
+        app.selectedRoomID = room
+        try await waitUntil { conversation.isLoaded && conversation.roomID == room }
+        if script.features[room] != nil {
+            try await waitUntil { conversation.features.source != .none }
+        }
+    }
+
+    func stop() async {
+        await app.stop()
+        server.stop()
+        store.remove()
+    }
+}
+
+/// The rows the inbox has, by chat.
+@MainActor
+final class RowBox {
+    var rows: [String: InboxRow] = [:]
+}
+
+@MainActor
+func startConversation(_ events: [String: [[String: Any]]],
+                       features: [String: [String: Any]] = [:],
+                       rows: [String: InboxRow] = [:],
+                       now: @escaping @MainActor () -> Date = { Date(timeIntervalSince1970: 1_760_600_600) },
+                       sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+                       locale: Locale = Locale(identifier: "en_US"))
+    async throws -> ConversationHarness {
+    let script = ConversationScript(events: events)
+    script.features = features
+    let server = try TestEngineServer(handler: script.handle)
+    let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
+    let supervisor = EngineSupervisor(
+        enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+        dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-data"), environment: [:], launcher: launcher,
+        credentials: InMemoryCredentialStore(), clientName: "Vitruvian Courier/test", timing: FakeTime().timing())
+    let app = AppModel(supervisor: supervisor)
+    let store = TestDefaults()
+    let preferences = ComposerPreferences(defaults: store.defaults)
+    let quickReplies = QuickReplies(defaults: store.defaults)
+    let box = RowBox()
+    box.rows = rows
+    let conversation = ConversationModel(appModel: app, attention: Attention(source: StaticPresence(), pollInterval: nil),
+                                         chat: { box.rows[$0] }, preferences: preferences, sleep: sleep, now: now,
+                                         locale: locale)
+    conversation.composer.quickReplies = quickReplies
+    conversation.setWindowKey(true)
+    var initialReloadDone = false
+    app.onConnect { _ in initialReloadDone = true }
+    app.start()
+    try await waitUntil { app.client != nil && initialReloadDone }
+    return ConversationHarness(script: script, server: server, app: app, conversation: conversation,
+                               preferences: preferences, quickReplies: quickReplies, store: store, rows: box)
+}
+
+/// A clipboard that keeps what was copied.
+final class FakePasteboard: TextPasteboard {
+    private(set) var strings: [String] = []
+
+    func setString(_ text: String) { strings.append(text) }
+}
+
+/// ChatFeatures as the engine writes them: by default a chat that can do everything a message action needs.
+func featuresJSON(reply: Bool = true, thread: Bool = true, replyIsThread: Bool = false, edit: Bool = true,
+                  editMaxAgeMS: Int64 = 0, unsend: Bool = true, unsendMaxAgeMS: Int64 = 0,
+                  deleteReachesPhone: Bool = false, hideDeletedPlaceholder: Bool = false,
+                  poll: [String: Any]? = ["max_options": 12, "option_max_length": 100],
+                  disappearing: [String: Any]? = nil, currentTimer: [String: Any]? = nil,
+                  source: String = "stored") -> [String: Any] {
+    [
+        "reply": reply, "thread": thread, "reply_is_thread": replyIsThread, "edit": edit,
+        "edit_max_age_ms": editMaxAgeMS, "edit_max_count": 0, "unsend": unsend, "unsend_max_age_ms": unsendMaxAgeMS,
+        "delete_reaches_phone": deleteReachesPhone, "hide_deleted_placeholder": hideDeletedPlaceholder,
+        "poll": poll as Any? ?? NSNull(), "disappearing": disappearing as Any? ?? NSNull(), "current_timer": currentTimer as Any? ?? NSNull(),
+        "formatting": ["bold", "italic"], "mention_room": false, "max_text_length": 65536, "source": source,
+        "sticker": ["supported": false, "mime_types": [] as [String], "captions": false] as [String: Any],
+        "gif": ["supported": false, "mime_types": [] as [String], "captions": false] as [String: Any],
+    ]
+}
+
+/// A reply that stays in its thread, as the engine stores it.
+func threadReply(id: String, root: String, room: String, at n: Int64, body: String? = nil,
+                 mine: Bool = false) -> [String: Any] {
+    var event = textEvent(id: id, room: room, at: n, body: body, mine: mine)
+    event["content"] = [
+        "msgtype": "m.text", "body": body ?? "Reply \(n)",
+        "m.relates_to": ["rel_type": "m.thread", "event_id": root, "is_falling_back": true,
+                         "m.in_reply_to": ["event_id": root]],
+    ]
+    return event
+}
+
+/// A thread's root: a text message with a summary of its replies, `unread` of them not read in the thread.
+func threadRoot(id: String, room: String, at n: Int64, replies: Int, unread: Int = 0,
+                mentionsMe: Bool = false) -> [String: Any] {
+    var event = textEvent(id: id, room: room, at: n, body: "Root \(n)")
+    event["thread"] = ["replies": replies, "last_ts": ConversationScript.timestamp(n + Int64(replies)),
+                       "last_senders": ["Ann"], "unread": unread, "unread_mentions_me": mentionsMe]
+    return event
+}
+
+/// A redaction of `target`, as the engine stores my unsend: `status` follows what the network said.
+func redactionEvent(id: String, of target: String, room: String, at n: Int64, status: String) -> [String: Any] {
+    [
+        "event_id": id, "room_id": room, "sender": Timeline.meUserID, "sender_name": "me",
+        "sender_avatar_path": "", "mine": true, "type": "m.room.redaction", "content": ["redacts": target],
+        "ts": ConversationScript.timestamp(n), "seq": n, "status": status, "status_reason": "", "media_path": "",
+        "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
+        "delivered": false, "read_by": [[String: Any]](),
+    ]
+}
+
+/// An edit of my message `target`, as the engine stores it.
+func editEvent(id: String, of target: String, room: String, at n: Int64, text: String, status: String) -> [String: Any] {
+    [
+        "event_id": id, "room_id": room, "sender": Timeline.meUserID, "sender_name": "me",
+        "sender_avatar_path": "", "mine": true, "type": "m.room.message",
+        "content": [
+            "msgtype": "m.text", "body": "* " + text, "m.new_content": ["msgtype": "m.text", "body": text],
+            "m.relates_to": ["rel_type": "m.replace", "event_id": target],
+        ],
+        "ts": ConversationScript.timestamp(n), "seq": n, "status": status, "status_reason": "", "media_path": "",
+        "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
+        "delivered": false, "read_by": [[String: Any]](),
+    ]
+}
+
+/// An inbox row for a chat, as the inbox would have it.
+func chatRow(_ id: String, name: String, network: String = "whatsapp", direct: Bool = true) -> InboxRow {
+    InboxRow(roomID: id, network: network, name: name, avatarPath: "", isDirect: direct, lastTS: 0, preview: "",
+             previewKind: .text, previewMine: false, unread: 0, muted: false)
+}
+
+// MARK: - Disappearing messages
+
+/// A clock the test moves, for the model's `now`.
+@MainActor
+final class TestClock {
+    private(set) var date: Date
+
+    init(_ seconds: TimeInterval) { date = Date(timeIntervalSince1970: seconds) }
+
+    func advance(_ seconds: TimeInterval) { date = date.addingTimeInterval(seconds) }
+
+    /// The clock in Unix milliseconds.
+    var millis: Int64 { Int64((date.timeIntervalSince1970 * 1000).rounded()) }
+}
+
+/// `event` with a disappearing timer that takes it at `millis` (Unix milliseconds).
+func expiring(_ event: [String: Any], at millis: Int64) -> [String: Any] {
+    var timed = event
+    timed["expires_at"] = millis
+    return timed
+}
+
+/// The note a bridge leaves when a chat's disappearing timer changes (bridgev2's DisappearingMessageNotice): a notice
+/// whose English body is the bridge's, and whose `com.beeper.action_message` says what happened.
+func timerNote(id: String, room: String, at n: Int64, by sender: String = "@ann:example.test", name: String = "Ann",
+               timerMS: Int64, timerType: String = "after_send", implicit: Bool = false) -> [String: Any] {
+    let mine = sender == Timeline.meUserID
+    return [
+        "event_id": id, "room_id": room, "sender": sender, "sender_name": mine ? "me" : name,
+        "sender_avatar_path": "", "mine": mine, "type": "m.room.message",
+        "content": [
+            "msgtype": "m.notice", "body": "Set the disappearing message timer to a while",
+            "com.beeper.action_message": [
+                "type": "disappearing_timer", "timer": timerMS, "timer_type": timerType, "implicit": implicit,
+            ] as [String: Any],
+        ] as [String: Any],
+        "ts": ConversationScript.timestamp(n), "seq": n, "status": "sent", "status_reason": "", "media_path": "",
+        "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
+        "delivered": false, "read_by": [[String: Any]](),
+    ]
+}
+
+/// A bridge's call notice as the engine stores it: the bridge's English body, and Vitruvian Courier's reading beside it
+/// (`fi.courier.call`, with the action message of type call). `call` is nil for a notice stored before the engine read
+/// calls (the action message alone).
+func callNote(id: String, room: String, at n: Int64, by sender: String = "@ann:example.test", name: String = "Ann",
+              body: String = "Incoming call. Use the WhatsApp app to answer.",
+              call: (state: String, media: String)? = ("ringing", "")) -> [String: Any] {
+    let mine = sender == Timeline.meUserID
+    var content: [String: Any] = [
+        "msgtype": "m.notice", "body": body, "com.beeper.action_message": ["type": "call"] as [String: Any],
+    ]
+    if let call { content["fi.courier.call"] = ["state": call.state, "media": call.media] }
+    return [
+        "event_id": id, "room_id": room, "sender": sender, "sender_name": mine ? "me" : name,
+        "sender_avatar_path": "", "mine": mine, "type": "m.room.message", "content": content,
+        "ts": ConversationScript.timestamp(n), "seq": n, "status": "sent", "status_reason": "", "media_path": "",
+        "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
+        "delivered": false, "read_by": [[String: Any]](),
+    ]
+}
+
+// MARK: - Stickers & GIFs (4.5c)
+
+/// An `m.sticker` event with the exact wire shape written by `actions.SendSticker` (`actions.go:1332-1340`).
+func stickerEventFixture(
+    id: String,
+    room: String = "!a",
+    mine: Bool = false,
+    ts: Int64,
+    seq: Int64 = 1,
+    name: String = "Party Parrot",
+    emoji: String? = "🦜",
+    mediaURL: String = "mxc://courier.local/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    mediaPath: String = "",
+    mimeType: String = "image/webp",
+    width: Int = 128,
+    height: Int = 128,
+    size: Int64 = 4096,
+    replyTo: String? = nil,
+    viewOnce: Bool? = nil
+) -> Event {
+    var info: [String: JSONValue] = [
+        "mimetype": .string(mimeType),
+        "size": .int(size),
+        "w": .int(Int64(width)),
+        "h": .int(Int64(height)),
+    ]
+    if let emoji, !emoji.isEmpty {
+        // Matches `actions.SendSticker` (`actions.go:1320-1331`) serialization of `event.BridgedSticker`
+        // when `BridgedSticker == nil && Emoji != ""`.
+        info["fi.mau.bridged_sticker"] = .object([
+            "network": .string(""),
+            "id": .string(""),
+            "emoji": .string(emoji),
+            "pack_url": .string(""),
+        ])
+    }
+    var content: [String: JSONValue] = [
+        "msgtype": .string("m.image"),
+        "body": .string(name),
+        "url": .string(mediaURL),
+        "info": .object(info),
+    ]
+    if let replyTo {
+        content["m.relates_to"] = .object([
+            "m.in_reply_to": .object(["event_id": .string(replyTo)]),
+        ])
+    }
+    return Event(
+        eventID: id,
+        roomID: room,
+        sender: mine ? Timeline.meUserID : "@ann:example.test",
+        senderName: mine ? "me" : "Ann Example",
+        mine: mine,
+        type: "m.sticker",
+        content: .object(content),
+        ts: ts,
+        seq: seq,
+        status: .sent,
+        mediaPath: mediaPath,
+        viewOnce: viewOnce
+    )
+}
+
+/// An `m.room.message` GIF event (`info["fi.mau.gif"] == true`) with the exact wire shape written by `actions.SendGIF` (`actions.go:1429-1444`).
+func gifEventFixture(
+    id: String,
+    room: String = "!a",
+    mine: Bool = false,
+    ts: Int64,
+    seq: Int64 = 1,
+    msgtype: String = "m.image",
+    fileName: String = "animation.gif",
+    caption: String? = nil,
+    mediaURL: String = "mxc://courier.local/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+    mediaPath: String = "",
+    mimeType: String = "image/gif",
+    width: Int = 320,
+    height: Int = 240,
+    size: Int64 = 12345,
+    viewOnce: Bool? = nil
+) -> Event {
+    let info: [String: JSONValue] = [
+        "mimetype": .string(mimeType),
+        "size": .int(size),
+        "w": .int(Int64(width)),
+        "h": .int(Int64(height)),
+        "is_animated": .bool(true),
+        "fi.mau.gif": .bool(true),
+    ]
+    let content: [String: JSONValue] = [
+        "msgtype": .string(msgtype),
+        "body": .string(caption ?? fileName),
+        "filename": .string(fileName),
+        "url": .string(mediaURL),
+        "info": .object(info),
+    ]
+    return Event(
+        eventID: id,
+        roomID: room,
+        sender: mine ? Timeline.meUserID : "@ann:example.test",
+        senderName: mine ? "me" : "Ann Example",
+        mine: mine,
+        type: "m.room.message",
+        content: .object(content),
+        ts: ts,
+        seq: seq,
+        status: .sent,
+        mediaPath: mediaPath,
+        isGIF: true,
+        isAnimated: true,
+        viewOnce: viewOnce
+    )
+}

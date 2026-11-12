@@ -1,0 +1,14 @@
+{
+  "name": "vitruvian-roborock-mcp",
+  "version": "0.2.0",
+  "description": "Check on and control a Roborock vacuum: status, live map, start, pause, dock and mop wash.",
+  "mcpServers": {
+    "vitruvian-roborock-mcp": {
+      "command": "sh",
+      "args": [
+        "-c",
+        "command -v rrctl >/dev/null 2>&1 || { echo \"vitruvian-roborock-mcp: rrctl is not on your PATH. Install it: https://github.com/VitruvianSoftware/mcp-roborock#quick-installation\" >&2; exit 127; }; exec rrctl mcp"
+      ]
+    }
+  }
+}

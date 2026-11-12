@@ -1,4 +1,4 @@
-Courier (apps/desktop/courier): compile github.com/mattn/go-sqlite3's bundled
+Vitruvian Courier (apps/desktop/vitruvian-courier): compile github.com/mattn/go-sqlite3's bundled
 SQLite with FTS5, for the engine's search index.
 
 Upstream turns FTS5 on only under the sqlite_fts5 build tag

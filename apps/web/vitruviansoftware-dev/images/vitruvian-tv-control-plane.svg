@@ -32,7 +32,7 @@
   <text x="44" y="49" class="title">Ambient TV Control Plane: macOS Notch Island &amp; Foldable Console</text>
   <text x="44" y="69" class="subtitle">Zero proprietary cloud APIs — shared ~/.config/vitruvian/tv.json state &amp; single-round-trip ADB shell queries</text>
 
-  <!-- Left Column Top: Vitruvian Desktop -->
+  <!-- Left Column Top: Vitruvian Atrium -->
   <rect x="24" y="108" width="320" height="220" rx="6" class="box-bg-highlight" />
   <rect x="24" y="108" width="4" height="220" fill="#93b0ca" />
   <text x="40" y="132" class="accent-text">MACOS DESKTOP SURFACE</text>

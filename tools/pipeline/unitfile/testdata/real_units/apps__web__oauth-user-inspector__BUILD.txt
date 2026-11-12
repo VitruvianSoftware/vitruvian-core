@@ -21,7 +21,7 @@
 # oauth-user-inspector: a Vite/React frontend + Express/TS backend served as one
 # container (see Dockerfile + oauth-user-inspector/infra/app for the
 # Cloud Run deploy). The production build runs via pnpm/vite/tsc (the monorepo
-# does not bazel-build frontends — cf. tabula/web); bazel runs the jest suite so
+# does not bazel-build frontends — cf. apps/suites/vitruvian-tabs/web); bazel runs the jest suite so
 # the server tests land in CI. gazelle:ignore stops the JS/TS extension from
 # rewriting this hand-authored file.
 # gazelle:ignore
@@ -86,7 +86,7 @@ jest_test(
     ],
     node_modules = ":node_modules",
     # Node 22.12+ require(esm) makes jest's generated config throw
-    # ERR_REQUIRE_ASYNC_MODULE; force the import() fallback (cf. tabula/web).
+    # ERR_REQUIRE_ASYNC_MODULE; force the import() fallback (cf. apps/suites/vitruvian-tabs/web).
     node_options = ["--no-experimental-require-module"],
 )
 

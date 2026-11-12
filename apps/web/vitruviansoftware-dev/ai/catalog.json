@@ -51,12 +51,12 @@
       "badge": "MCP",
       "blurb": "Model Context Protocol servers that work across Claude Code, Antigravity, OpenCode, Codex, and Cursor.",
       "bootstrap_label": "Add Slack MCP server",
-      "bootstrap_command": "claude mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/mcp-slack:main",
+      "bootstrap_command": "claude mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main",
       "feed_url": "/ai/catalog.json"
     },
     {
-      "id": "vitruvian-desktop",
-      "title": "Vitruvian Desktop (macOS)",
+      "id": "vitruvian-atrium",
+      "title": "Vitruvian Atrium (macOS)",
       "badge": "Vitruvian macOS",
       "blurb": "Ed25519-signed JSON-RPC 2.0 extensions for the macOS notch island, Command Bar, and Radial menu.",
       "bootstrap_label": "In-app catalog",
@@ -621,15 +621,15 @@
       ]
     },
     {
-      "id": "mcp-roborock",
-      "name": "mcp-roborock",
+      "id": "vitruvian-roborock-mcp",
+      "name": "vitruvian-roborock-mcp",
       "kind": "plugin",
       "category": "Home Automation & MCP",
       "status": "mirror",
       "summary": "A Roborock vacuum integration: a local daemon, an MCP server and plugins that let a coding agent check status, start room cleans or send the robot home.",
       "repo": "https://github.com/VitruvianSoftware/mcp-roborock",
       "mirrorRepo": "https://github.com/VitruvianSoftware/mcp-roborock",
-      "source": "apps/mcp/roborock",
+      "source": "apps/mcp/vitruvian-roborock-mcp",
       "ecosystems": [
         "claude-code",
         "antigravity",
@@ -683,7 +683,7 @@
       "ecosystems": [
         "antigravity",
         "claude-code",
-        "vitruvian-desktop"
+        "vitruvian-atrium"
       ],
       "capabilities": [
         "2 Skills",
@@ -708,15 +708,15 @@
       ]
     },
     {
-      "id": "mcp-slack",
-      "name": "mcp-slack",
+      "id": "vitruvian-slack-mcp",
+      "name": "vitruvian-slack-mcp",
       "kind": "mcp",
       "category": "Team Communication MCP",
       "status": "mirror",
       "summary": "A Slack MCP server with dual-token auth: around forty tools covering channels, threads, search, files, user groups and Canvas editing, acting as the bot or as you.",
       "repo": "https://github.com/VitruvianSoftware/mcp-slack",
       "mirrorRepo": "https://github.com/VitruvianSoftware/mcp-slack",
-      "source": "apps/mcp/slack",
+      "source": "apps/mcp/vitruvian-slack-mcp",
       "ecosystems": [
         "claude-code",
         "antigravity",
@@ -738,32 +738,32 @@
           "tool": "Claude Code",
           "ecosystem": "claude-code",
           "label": "Install in Claude Code",
-          "command": "claude mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/mcp-slack:main"
+          "command": "claude mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main"
         },
         {
           "tool": "Antigravity",
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
-          "command": "agy mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/mcp-slack:main"
+          "command": "agy mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main"
         },
         {
           "tool": "Codex / OpenCode",
           "ecosystem": "codex-opencode",
           "label": "Run the container (stdio MCP)",
-          "command": "docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/mcp-slack:main"
+          "command": "docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main"
         }
       ]
     },
     {
       "id": "devx",
-      "name": "devx",
+      "name": "Vitruvian DevX CLI",
       "kind": "skill",
       "category": "Local Dev & K3s Skills",
       "status": "released",
       "summary": "A local development orchestrator. One CLI provisions container VMs, ephemeral databases and cloud emulators, local K3s clusters and Cloudflare tunnel ingress, and starts everything in dependency order.",
       "repo": "https://github.com/VitruvianSoftware/devx",
       "mirrorRepo": "https://github.com/VitruvianSoftware/devx",
-      "source": "apps/cli/devx",
+      "source": "apps/cli/vitruvian-devx",
       "ecosystems": [
         "antigravity",
         "claude-code",

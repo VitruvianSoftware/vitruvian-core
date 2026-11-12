@@ -15,8 +15,8 @@ Component package providing implementation for `apps/desktop/vitruvian-code/maco
 
 ## Invariants
 - [lib.rs:198]: `assert!(status.success(), "zip failed");`
-- [lib.rs:335]: `assert!(app.join("Contents/MacOS/NexusAgent").exists());`
-- [lib.rs:336]: `assert!(app.join("Contents/Resources").exists());`
+- [lib.rs:339]: `assert!(app.join("Contents/MacOS/VitruvianCode").exists());`
+- [lib.rs:340]: `assert!(app.join("Contents/Resources").exists());`
 
 ## Side Effects
 - [bundle.rs:135]: `<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DT...`

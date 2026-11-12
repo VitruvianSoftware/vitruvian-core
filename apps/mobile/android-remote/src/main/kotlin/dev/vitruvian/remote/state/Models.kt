@@ -194,7 +194,7 @@ public data class ModuleRow(
     val toggle: RowToggle? = null,
     /** One-line inline error shown under the row when its last toggle or action failed. */
     val error: String? = null,
-    /** Manifest control ID (`HomeSpeakerControls`) for this row's primary control, if any. */
+    /** Manifest control ID (`VitruvianSpeakerControls`) for this row's primary control, if any. */
     val controlId: String? = null,
 )
 
@@ -266,7 +266,8 @@ public data class QuickAction(
  *
  * The Claude module's prompt box is wired to `sendModulePrompt` and carries the Pause updates
  * toggle with it, which is right for a coding agent and wrong for anything else. A module that
- * wants to SAY something -- HomeSpeaker's announce box -- supplies this instead. Null means no box.
+ * wants to SAY something -- Vitruvian Speaker's announce box -- supplies this instead. Null means
+ * no box.
  */
 public data class ModuleComposer(
     val placeholder: String,
@@ -304,8 +305,8 @@ public data class ModuleDashboard(
      */
     val extraLists: List<ModuleList> = emptyList(),
     /**
-     * [meta] is a warning, drawn in the warn colour: HomeSpeaker's "No outputs — nothing will be
-     * spoken" is a setting the user chose, and a dim line would read as fine.
+     * [meta] is a warning, drawn in the warn colour: Vitruvian Speaker's "No outputs — nothing will
+     * be spoken" is a setting the user chose, and a dim line would read as fine.
      */
     val metaWarn: Boolean = false,
     /** Top "Now" strip controls rendered before the metric plates when non-empty. */
@@ -388,12 +389,12 @@ public interface Notifier {
   public fun notify(id: String, title: String, body: String, deepLink: String)
 
   /**
-   * Posts a HomeSpeaker announcement notification on the "HomeSpeaker announcements" channel with
-   * "Replay" and "Mute" actions.
+   * Posts a Vitruvian Speaker announcement notification on the "Vitruvian Speaker announcements"
+   * channel with "Replay" and "Mute" actions.
    */
   public fun notifyAnnouncement(id: String, text: String) {}
 
-  /** Cancels a previously posted HomeSpeaker announcement notification. */
+  /** Cancels a previously posted Vitruvian Speaker announcement notification. */
   public fun cancelAnnouncement(id: String) {}
 
   /** Whether `POST_NOTIFICATIONS` is granted (always true below API 33). */

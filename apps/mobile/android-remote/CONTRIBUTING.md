@@ -2,7 +2,7 @@
 
 `apps/mobile/android-remote` lives in the
 [VitruvianSoftware/vitruvian-core](https://github.com/VitruvianSoftware/vitruvian-core)
-monorepo and — unlike `mcp-slack`, `nexus-agent` and `devx` — is **not mirrored**
+monorepo and — unlike `vitruvian-slack-mcp`, `vitruvian-code` and `devx` — is **not mirrored**
 to a standalone repository. There is no Copybara export for it, so this is the
 only place it is edited. That omission is deliberate, not drift: an unreleased
 client with no distribution channel has nothing to mirror yet.

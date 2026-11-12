@@ -218,14 +218,14 @@ spec:
                     expr: sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="buzz", container="relay"}[5m]))
                   - record: buzz:memory_bytes
                     expr: sum by (pod) (container_memory_working_set_bytes{namespace="buzz", container="relay"})
-                  - record: mcp_slack:requests_per_second
-                    expr: sum by (code_class) (label_replace(rate(envoy_cluster_upstream_rq_xx{envoy_cluster_name=~"httproute/mcp-slack/.+"}[5m]), "code_class", "${1}xx", "envoy_response_code_class", "(.+)"))
-                  - record: mcp_slack:ready_pods
+                  - record: vitruvian_slack_mcp:requests_per_second
+                    expr: sum by (code_class) (label_replace(rate(envoy_cluster_upstream_rq_xx{envoy_cluster_name=~"httproute/vitruvian-slack-mcp/.+"}[5m]), "code_class", "${1}xx", "envoy_response_code_class", "(.+)"))
+                  - record: vitruvian_slack_mcp:ready_pods
                     expr: sum by (namespace) (kube_pod_status_ready{namespace="mcp-slack", condition="true"})
-                  - record: mcp_slack:cpu_cores
-                    expr: sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="mcp-slack", container="mcp-slack"}[5m]))
-                  - record: mcp_slack:memory_bytes
-                    expr: sum by (pod) (container_memory_working_set_bytes{namespace="mcp-slack", container="mcp-slack"})
+                  - record: vitruvian_slack_mcp:cpu_cores
+                    expr: sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="mcp-slack", container="vitruvian-slack-mcp"}[5m]))
+                  - record: vitruvian_slack_mcp:memory_bytes
+                    expr: sum by (pod) (container_memory_working_set_bytes{namespace="mcp-slack", container="vitruvian-slack-mcp"})
                   - record: storybook:requests_per_second
                     expr: sum by (code_class) (label_replace(rate(envoy_cluster_upstream_rq_xx{envoy_cluster_name=~"httproute/storybook/.+"}[5m]), "code_class", "${1}xx", "envoy_response_code_class", "(.+)"))
                   - record: storybook:ready_pods
@@ -690,16 +690,16 @@ spec:
                       summary: "Scrape target down: {{ $labels.job }} / {{ $labels.instance }}"
                       description: "{{ $labels.job }} target {{ $labels.instance }} unscrapeable for >15m."
 
-                # ── 11. mcp-slack (internet-facing, auth-gated) ──────────────
+                # ── 11. vitruvian-slack-mcp (internet-facing, auth-gated) ──────────────
                 # This alert is the ONLY signal that authentication has broken
-                # on the mcp-slack endpoint.
+                # on the vitruvian-slack-mcp endpoint.
                 #
                 # The server keeps its listener up rather than exiting when
                 # Zitadel's JWKS is unreachable — correct, since an IdP blip
                 # should not take the endpoint down — and its /health probe
                 # deliberately does not touch the IdP, so the pod stays Ready
                 # while every MCP call fails. No pod-state or replica-count
-                # alert can see that condition. See mcp-slack/deploy/chart/
+                # alert can see that condition. See vitruvian-slack-mcp/deploy/chart/
                 # templates/deployment.yaml for why the probes are built that
                 # way.
                 #
@@ -766,7 +766,7 @@ spec:
                 # 2026-08-06 against live series: the wrong name returns no
                 # data at all, which would make this alert permanently silent
                 # while still looking present.
-                - name: mcp-slack
+                - name: vitruvian-slack-mcp
                   rules:
                   # COVERAGE THIS DOES NOT HAVE, recorded here rather than
                   # left to be rediscovered (#1501 instance 3). The tuning below
@@ -789,16 +789,16 @@ spec:
                   # chokes on the next word ("unexpected \"for\" in operand").
                   # Caught by //tools/ci:gitops_validate, which is the only
                   # reason this comment did not silently wedge the appset.
-                  - alert: McpSlackSustained5xx
+                  - alert: VitruvianSlackMcpSustained5xx
                     expr: |
                       sum(rate(envoy_cluster_upstream_rq_xx{
                             envoy_response_code_class="5",
-                            envoy_cluster_name=~"httproute/mcp-slack/.*"
+                            envoy_cluster_name=~"httproute/vitruvian-slack-mcp/.*"
                           }[5m]))
                         /
                       sum(rate(envoy_cluster_upstream_rq_xx{
                             envoy_response_code_class=~"2|5",
-                            envoy_cluster_name=~"httproute/mcp-slack/.*"
+                            envoy_cluster_name=~"httproute/vitruvian-slack-mcp/.*"
                           }[5m]))
                         > 0.5
                     for: 10m
@@ -809,8 +809,8 @@ spec:
                       # so the namespace is named here.
                       namespace: mcp-slack
                     annotations:
-                      summary: "mcp-slack failing {{ $value | humanizePercentage }} of requests"
-                      description: "Majority of mcp-slack requests returning 5xx for >10m while the pod is Ready and /health is green. Split the class before debugging: 503 means the IdP was unreachable and the token was never judged (IdpUnavailableError — check Zitadel/JWKS, not this server); 500 means an unexpected failure in this server (check pod logs). The alert fires on both because either is an outage, but they are different systems."
+                      summary: "vitruvian-slack-mcp failing {{ $value | humanizePercentage }} of requests"
+                      description: "Majority of vitruvian-slack-mcp requests returning 5xx for >10m while the pod is Ready and /health is green. Split the class before debugging: 503 means the IdP was unreachable and the token was never judged (IdpUnavailableError — check Zitadel/JWKS, not this server); 500 means an unexpected failure in this server (check pod logs). The alert fires on both because either is an outage, but they are different systems."
 
                   # Complement to the ratio, not a duplicate of it. The ratio
                   # answers "of what we answered, most failed"; this answers
@@ -869,11 +869,11 @@ spec:
                   # envoy_response_code), NOT '_rq_xx' (per-class only).
                   # Confirmed against live series that the per-code label
                   # exists on this cluster, including 503.
-                  - alert: McpSlackIdpUnavailable
+                  - alert: VitruvianSlackMcpIdpUnavailable
                     expr: |
                       sum(rate(envoy_cluster_upstream_rq{
                             envoy_response_code="503",
-                            envoy_cluster_name=~"httproute/mcp-slack/.*"
+                            envoy_cluster_name=~"httproute/vitruvian-slack-mcp/.*"
                           }[5m]))
                         > 0
                     for: 10m
@@ -884,8 +884,8 @@ spec:
                       # so the namespace is named here.
                       namespace: mcp-slack
                     annotations:
-                      summary: "mcp-slack cannot reach Zitadel (sustained 503)"
-                      description: "mcp-slack has been returning IdpUnavailableError (503) for >10m — the server could not reach the IdP to verify tokens. This is our failure, not the caller's. Does NOT indicate pod-down (an Envoy-generated 503 is not counted here), and does NOT yet cover a slow IdP — JWKSTimeout still returns 401, tracked on #1418."
+                      summary: "vitruvian-slack-mcp cannot reach Zitadel (sustained 503)"
+                      description: "vitruvian-slack-mcp has been returning IdpUnavailableError (503) for >10m — the server could not reach the IdP to verify tokens. This is our failure, not the caller's. Does NOT indicate pod-down (an Envoy-generated 503 is not counted here), and does NOT yet cover a slow IdP — JWKSTimeout still returns 401, tracked on #1418."
 
                   # THE ONLY DETECTION WE HAVE FOR CROSS-CLIENT INJECTION.
                   #
@@ -939,11 +939,11 @@ spec:
                   # '_rq_xx' (per-class only, cannot separate 403 from 404).
                   # Per-code series with envoy_response_code confirmed present
                   # on this cluster 2026-08-06.
-                  - alert: McpSlackSustainedForbidden
+                  - alert: VitruvianSlackMcpSustainedForbidden
                     expr: |
                       sum(rate(envoy_cluster_upstream_rq{
                             envoy_response_code="403",
-                            envoy_cluster_name=~"httproute/mcp-slack/.*"
+                            envoy_cluster_name=~"httproute/vitruvian-slack-mcp/.*"
                           }[15m]))
                         > 0
                     for: 30m
@@ -954,8 +954,8 @@ spec:
                       # so the namespace is named here.
                       namespace: mcp-slack
                     annotations:
-                      summary: "mcp-slack repeatedly refusing a validly-signed token (sustained 403)"
-                      description: "Someone holding a validly-signed token audienced for the mcp-slack project has been refused for >30m by one of this endpoint's per-request identity controls — an unlisted subject (OIDC_ALLOWED_SUBJECTS), a client that isn't the pinned OIDC client (OIDC_ALLOWED_CLIENT_ID, #1491), or a token carrying an azp claim at all. The endpoint is doing its job — this alert is the evidence that the cross-client path Zitadel documents as open is being exercised. TO ATTRIBUTE IT, grep the pod log for the literal string: mcp-slack: refused. The line names which control fired (SubjectNotAllowedError, ClientNotAllowedError or AuthorizedPartyPresentError) and the presented value, labelled sub=, client_id= or azp= to match — never assume it is a subject. Deliberately 403-only: this endpoint is scanned, so logging 401s would bury the signal in unauthenticated noise, and a 403 by construction means a validly-signed token audienced for our project. Note the presented identity is also returned to the CALLER (JSON body and WWW-Authenticate error_description), which is why keeping our own copy is the point — otherwise this is detection without attribution. The log line omits the presented value when the failing check has none to report, such as an absent client_id."
+                      summary: "vitruvian-slack-mcp repeatedly refusing a validly-signed token (sustained 403)"
+                      description: "Someone holding a validly-signed token audienced for the vitruvian-slack-mcp project has been refused for >30m by one of this endpoint's per-request identity controls — an unlisted subject (OIDC_ALLOWED_SUBJECTS), a client that isn't the pinned OIDC client (OIDC_ALLOWED_CLIENT_ID, #1491), or a token carrying an azp claim at all. The endpoint is doing its job — this alert is the evidence that the cross-client path Zitadel documents as open is being exercised. TO ATTRIBUTE IT, grep the pod log for the literal string: vitruvian-slack-mcp: refused. The line names which control fired (SubjectNotAllowedError, ClientNotAllowedError or AuthorizedPartyPresentError) and the presented value, labelled sub=, client_id= or azp= to match — never assume it is a subject. Deliberately 403-only: this endpoint is scanned, so logging 401s would bury the signal in unauthenticated noise, and a 403 by construction means a validly-signed token audienced for our project. Note the presented identity is also returned to the CALLER (JSON body and WWW-Authenticate error_description), which is why keeping our own copy is the point — otherwise this is detection without attribution. The log line omits the presented value when the failing check has none to report, such as an absent client_id."
                 # -- 12. GitOps delivery (ArgoCD) -----------------------------
                 # The gap these close: on 2026-08-18 a bad key in a chart values
                 # file made ArgoCD unable to render the backstage Application at

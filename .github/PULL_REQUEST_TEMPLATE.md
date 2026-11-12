@@ -6,10 +6,10 @@
 
 ## Affected Units / Components
 <!-- Check all affected components -->
-- [ ] `apps/cli/devx`
-- [ ] `apps/cli/homelab`
-- [ ] `apps/suites/tabula`
-- [ ] `apps/mcp/slack`
+- [ ] `apps/cli/vitruvian-devx`
+- [ ] `apps/cli/vitruvian-homelab`
+- [ ] `apps/suites/vitruvian-tabs`
+- [ ] `apps/mcp/vitruvian-slack-mcp`
 - [ ] `apps/desktop/vitruvian-code`
 - [ ] `apps/web/oauth-user-inspector`
 - [ ] `apps/web/backstage`

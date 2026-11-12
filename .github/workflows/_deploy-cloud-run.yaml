@@ -21,7 +21,7 @@
 name: _deploy-cloud-run
 
 # Reusable blue-green Cloud Run deploy (#500, docs/archive/assessments/repo-assessment.md §5.3),
-# extracted verbatim from tabula's production pipeline (the reference
+# extracted verbatim from vitruvian-tabs's production pipeline (the reference
 # implementation): Bazel rules_oci image push -> optional Prisma migrations ->
 # Pulumi candidate at 0% traffic -> smoke the candidate's dedicated URL ->
 # shift 100%. A smoke failure exits before the shift, so the live revision
@@ -38,7 +38,7 @@ name: _deploy-cloud-run
 #     (GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_DEPLOY_SERVICE_ACCOUNT,
 #     GCP_PROJECT_ID, GCP_REGION) -- pass `secrets: inherit`.
 #   * The Pulumi program reads <env-prefix>_IMAGE_TAG / _PROMOTE /
-#     _STABLE_REVISION (see tabula/infra/app/main.go envOrConfig).
+#     _STABLE_REVISION (see apps/suites/vitruvian-tabs/infra/app/main.go envOrConfig).
 #   * Migrations (run-migrations: true) implement the vendored-Prisma pattern;
 #     an app with a different migration story extends this workflow rather
 #     than bolting steps around the call.
@@ -55,7 +55,7 @@ on:
         required: true
         type: string
       bazel-image-target:
-        description: 'Bazel target for oci_push (e.g. //apps/suites/tabula/api:image_push). Optional if dockerfile-dir is provided.'
+        description: 'Bazel target for oci_push (e.g. //apps/suites/vitruvian-tabs/api:image_push). Optional if dockerfile-dir is provided.'
         required: false
         type: string
         default: ''
@@ -89,7 +89,7 @@ on:
           Fallback region when the GitHub Environment defines no GCP_REGION
           variable. Kept caller-scoped so each app can pin its region
           explicitly; both current apps deploy to the primary region
-          (tabula: us-central1, oauth-user-inspector: us-central1). us-west1
+          (vitruvian-tabs: us-central1, oauth-user-inspector: us-central1). us-west1
           is the fleet's SECONDARY region (bootstrap default_region_2), NOT
           any app's region — do not "reconcile" GCP_REGION to it.
         required: false
@@ -111,7 +111,7 @@ on:
         type: boolean
         default: false
       pulumi-dir:
-        description: "Pulumi project dir, e.g. tabula/infra/app"
+        description: "Pulumi project dir, e.g. apps/suites/vitruvian-tabs/infra/app"
         required: true
         type: string
       secret-prefix:
@@ -145,7 +145,7 @@ on:
         required: true
         type: string
       run-migrations:
-        description: "Run //apps/suites/tabula/api:schema_engine and //apps/suites/tabula/api:migrate_deploy_bin before Pulumi up"
+        description: "Run //apps/suites/vitruvian-tabs/api:schema_engine and //apps/suites/vitruvian-tabs/api:migrate_deploy_bin before Pulumi up"
         required: false
         type: boolean
         default: false
@@ -154,7 +154,7 @@ on:
           Opt-in: skip the migrate + blue-green + smoke when the live service
           already serves the desired revision. Requires the app's revision name
           to encode image digest + config hash and a `<pulumi-dir>/cmd/revname`
-          that recomputes it (tabula only). Fail-open — any doubt deploys.
+          that recomputes it (vitruvian-tabs only). Fail-open — any doubt deploys.
         required: false
         type: boolean
         default: false
@@ -259,7 +259,7 @@ jobs:
       # package) against the live serving revision. Equal -> the running service
       # already IS the desired state, so migrate + blue-green + smoke are
       # redundant and every step below is skipped. FAIL-OPEN: the script emits
-      # unchanged=false on any doubt (see tools/ci/src/tabula_deploy_preflight),
+      # unchanged=false on any doubt (see tools/ci/src/vitruvian_tabs_deploy_preflight),
       # so a bug can only ever REDEPLOY needlessly, never skip a real change.
       - name: Preflight — skip if live already serves the desired revision
         id: preflight
@@ -270,7 +270,7 @@ jobs:
           PULUMI_DIR: ${{ inputs.pulumi-dir }}
           CONFIG_FILE: Pulumi.${{ inputs.environment }}.yaml
           GOWORK: off
-        run: bazel run //tools/ci:tabula_deploy_preflight
+        run: bazel run //tools/ci:vitruvian_tabs_deploy_preflight
 
       - name: Configure docker for Artifact Registry
         if: ${{ inputs.image-digest == '' }}
@@ -318,7 +318,7 @@ jobs:
           SECRET_PREFIX: ${{ inputs.secret-prefix }}
         # Before the new revision takes traffic; vendored schema-engine keeps
         # this hermetic apart from the database connection itself. (The
-        # vendored-Prisma pattern -- tabula's; see the caller-contract note.)
+        # vendored-Prisma pattern -- vitruvian-tabs's; see the caller-contract note.)
         #
         # EXPAND phase (issue #819): the OLD revision keeps serving against the
         # just-migrated schema during the traffic shift below, so this must only
@@ -329,10 +329,10 @@ jobs:
         # un-marked backward-incompatible migration from reaching main.
         run: |
           bazel build --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
-            //apps/suites/tabula/api:schema_engine //apps/suites/tabula/api:migrate_deploy_bin \
+            //apps/suites/vitruvian-tabs/api:schema_engine //apps/suites/vitruvian-tabs/api:migrate_deploy_bin \
             //tools/ci:gcp_secret_or_fail
-          export PRISMA_SCHEMA_ENGINE_BINARY="$PWD/bazel-bin/apps/suites/tabula/api/schema-engine"
-          export PRISMA_QUERY_ENGINE_LIBRARY="$PWD/apps/suites/tabula/api/prisma/engine-placeholder"
+          export PRISMA_SCHEMA_ENGINE_BINARY="$PWD/bazel-bin/apps/suites/vitruvian-tabs/api/schema-engine"
+          export PRISMA_QUERY_ENGINE_LIBRARY="$PWD/apps/suites/vitruvian-tabs/api/prisma/engine-placeholder"
           # The secret id carries the app's SECRET_PREFIX when one is set, so
           # co-tenant apps sharing a project don't collide on a bare
           # `DATABASE_URL`. Falls back to the bare name for callers that have no
@@ -341,7 +341,7 @@ jobs:
           # //tools/ci:gcp_secret_or_fail surfaces the raw gcloud stderr on
           # failure: reading the WRONG secret id here (PERMISSION_DENIED, not
           # NOT_FOUND -- indistinguishable from an IAM gap otherwise) cost three
-          # rounds of IAM debugging on the tabula bu2 migration. Called from
+          # rounds of IAM debugging on the vitruvian-tabs bu2 migration. Called from
           # bazel-bin, not `bazel run`, so the capture holds only the secret.
           SECRET_ID="${SECRET_PREFIX}DATABASE_URL"
           DATABASE_URL="$("$PWD/bazel-bin/tools/ci/gcp_secret_or_fail" \
@@ -353,7 +353,7 @@ jobs:
           if [ -n "$DATABASE_URL" ]; then echo "::add-mask::$DATABASE_URL"; fi
           export DATABASE_URL
           bazel run --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
-            //apps/suites/tabula/api:migrate_deploy_bin -- --schema apps/suites/tabula/api/prisma/schema.prisma --phase expand
+            //apps/suites/vitruvian-tabs/api:migrate_deploy_bin -- --schema apps/suites/vitruvian-tabs/api/prisma/schema.prisma --phase expand
 
       - name: Fetch the Cloudflare API token (Secret Manager)
         # Cloud-native secret flow: pulled per-run as the deploy SA from the

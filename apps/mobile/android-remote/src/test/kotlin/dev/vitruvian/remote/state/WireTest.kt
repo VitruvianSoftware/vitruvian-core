@@ -331,10 +331,10 @@ public class WireTest {
         .forEach { assertNull(it, DeepLink.pairing(it)) }
   }
 
-  // --- HomeSpeaker sources and recent broadcasts (agent v1.10) -------------
+  // --- Vitruvian Speaker sources and recent broadcasts (agent v1.10) -------------
 
   /** What a v1.10 agent sends: every switch, and the history newest first. */
-  private val homeSpeakerV110 =
+  private val vitruvianSpeakerV110 =
       """
       {"available":true,"enabled":true,"speak_home":true,"speak_local":false,
        "announce_claude_code":false,"announce_antigravity":true,"announce_opencode":false,
@@ -348,8 +348,8 @@ public class WireTest {
           .trimIndent()
 
   @Test
-  public fun `homespeaker reads every source switch and the recent list in order`() {
-    val s = HomeSpeakerWire.sources(homeSpeakerV110)
+  public fun `speaker reads every source switch and the recent list in order`() {
+    val s = VitruvianSpeakerWire.sources(vitruvianSpeakerV110)
     assertEquals(false, s.announceClaudeCode)
     assertEquals(true, s.announceAntigravity)
     assertEquals(false, s.announceOpenCode)
@@ -371,11 +371,11 @@ public class WireTest {
    * a false would draw "off" for Claude Code on a Mac that is in fact speaking every reply.
    */
   @Test
-  public fun `homespeaker from an older agent reads as unknown, not off`() {
+  public fun `speaker from an older agent reads as unknown, not off`() {
     val old =
         """{"available":true,"enabled":true,"speak_home":true,"speak_local":false,""" +
             """"last":{"text":"hi","target":"Kitchen","source":"Say","at":"2026-10-17T09:00:00Z"}}"""
-    val s = HomeSpeakerWire.sources(old)
+    val s = VitruvianSpeakerWire.sources(old)
     assertNull(s.announceClaudeCode)
     assertNull(s.announceAntigravity)
     assertNull(s.announceOpenCode)
@@ -386,21 +386,21 @@ public class WireTest {
   }
 
   @Test
-  public fun `homespeaker survives odd shapes without inventing switches`() {
+  public fun `speaker survives odd shapes without inventing switches`() {
     listOf("", "not json", "[]", """{"announce_claude_code":"yes","recent":{"text":"x"}}""")
         .forEach { json ->
-          val s = HomeSpeakerWire.sources(json)
+          val s = VitruvianSpeakerWire.sources(json)
           assertNull(json, s.announceClaudeCode)
           assertTrue(json, s.recent.isEmpty())
         }
     // One bad entry in the list is skipped, not fatal for the rest.
-    val mixed = HomeSpeakerWire.sources("""{"recent":[42,{"text":"ok"}]}""")
+    val mixed = VitruvianSpeakerWire.sources("""{"recent":[42,{"text":"ok"}]}""")
     assertEquals(listOf(AgentLastBroadcast("ok", "", "", "")), mixed.recent)
   }
 
   @Test
-  public fun `homespeaker reads Courier beside Beeper and an older agent hides it`() {
-    val old = HomeSpeakerWire.sources(homeSpeakerV110)
+  public fun `speaker reads Courier beside Beeper and an older agent hides it`() {
+    val old = VitruvianSpeakerWire.sources(vitruvianSpeakerV110)
     assertNull("an agent that does not know Courier: no switch", old.courierEnabled)
     assertEquals("direct_and_mentions", old.courierAnnounce)
     assertTrue(old.courierNetworks.isEmpty())
@@ -409,7 +409,7 @@ public class WireTest {
     assertNull(old.courierNetworksListed)
 
     val s =
-        HomeSpeakerWire.sources(
+        VitruvianSpeakerWire.sources(
             """{"beeper_enabled":true,"beeper_networks":[{"key":"signal","name":"Signal","state":"reading"}],""" +
                 """"beeper_networks_listed":true,"courier_enabled":true,"courier_announce":"all",""" +
                 """"has_courier_token":true,"courier_networks_listed":false,""" +
@@ -432,15 +432,15 @@ public class WireTest {
     // but `courier_enabled` is null (unconfigured/off), it decodes as false rather than null so the
     // Courier row stays visible.
     val offNull =
-        HomeSpeakerWire.sources(
+        VitruvianSpeakerWire.sources(
             """{"courier_enabled":null,"has_courier_token":false,"courier_announce":"direct_and_mentions"}""")
     assertEquals(false, offNull.courierEnabled)
     assertEquals(false, offNull.hasCourierToken)
   }
 
   @Test
-  public fun `homespeaker reads v1_11 local engine, gemini voice, style and active door with safe defaults`() {
-    val old = HomeSpeakerWire.sources(homeSpeakerV110)
+  public fun `speaker reads v1_11 local engine, gemini voice, style and active door with safe defaults`() {
+    val old = VitruvianSpeakerWire.sources(vitruvianSpeakerV110)
     assertEquals("apple", old.localEngine)
     assertEquals("Kore", old.geminiVoice)
     assertEquals(false, old.hasGeminiKey)
@@ -452,7 +452,7 @@ public class WireTest {
     assertTrue(old.beeperNetworks.isEmpty())
 
     val v111 =
-        HomeSpeakerWire.sources(
+        VitruvianSpeakerWire.sources(
             """{"local_engine":"gemini","gemini_voice":"Fenrir","has_gemini_key":true,""" +
                 """"announcement_style":"briefing","style_model":"gemini","active_door":"extension",""" +
                 """"beeper_announce":"all","mute_own_messages":true,""" +
@@ -477,7 +477,7 @@ public class WireTest {
     assertEquals(false, v111.phoneConnected)
 
     val v112 =
-        HomeSpeakerWire.sources(
+        VitruvianSpeakerWire.sources(
             """{"speak_phone":true,"phone_pause_media":true,"phone_headphones_only":true,"phone_connected":true}""")
     assertEquals(true, v112.speakPhone)
     assertEquals(true, v112.phonePauseMedia)
@@ -486,14 +486,14 @@ public class WireTest {
   }
 
   @Test
-  public fun `homespeaker reads cast voice, cloned voices and the custom style prompt`() {
-    val old = HomeSpeakerWire.sources(homeSpeakerV110)
+  public fun `speaker reads cast voice, cloned voices and the custom style prompt`() {
+    val old = VitruvianSpeakerWire.sources(vitruvianSpeakerV110)
     assertEquals(false, old.homeCastVoice)
     assertTrue(old.customVoices.isEmpty())
     assertEquals("", old.customStylePrompt)
 
     val v =
-        HomeSpeakerWire.sources(
+        VitruvianSpeakerWire.sources(
             """
         {"home_cast_voice":true,
          "gemini_voice":"clone-1",
@@ -518,7 +518,7 @@ public class WireTest {
   }
 
   @Test
-  public fun `homespeaker reads full parity status fields, voices, homes and agent hooks`() {
+  public fun `speaker reads full parity status fields, voices, homes and agent hooks`() {
     val json =
         """
       {
@@ -542,7 +542,7 @@ public class WireTest {
         "legacy_launch_agent": true,
         "custom_oauth_client_id": "client-id-custom",
         "has_custom_oauth_secret": true,
-        "home_speaker_version": "1.23.0",
+        "speaker_version": "1.23.0",
         "recent": [
           {"id": "b-1", "text": "Turn complete", "target": "Living Room", "source": "claudeCode", "at": "2026-10-21T20:00:00Z"}
         ],
@@ -560,7 +560,7 @@ public class WireTest {
     """
             .trimIndent()
 
-    val v = HomeSpeakerWire.sources(json)
+    val v = VitruvianSpeakerWire.sources(json)
     assertEquals(true, v.quietHoursActive)
     assertEquals("home-xyz", v.structureId)
     assertEquals("user@example.com", v.accountEmail)
@@ -581,7 +581,7 @@ public class WireTest {
     assertEquals(true, v.legacyLaunchAgent)
     assertEquals("client-id-custom", v.customOAuthClientId)
     assertEquals(true, v.hasCustomOAuthSecret)
-    assertEquals("1.23.0", v.homeSpeakerVersion)
+    assertEquals("1.23.0", v.vitruvianSpeakerVersion)
 
     assertEquals(1, v.recent.size)
     assertEquals("b-1", v.recent[0].id)
@@ -614,7 +614,7 @@ public class WireTest {
         }
         """
             .trimIndent()
-    val v = HomeSpeakerWire.sources(json)
+    val v = VitruvianSpeakerWire.sources(json)
     assertEquals(4, v.agents.size)
 
     assertEquals("Claude Code", v.agents[0].agent)
@@ -673,60 +673,61 @@ public class WireTest {
   }
 
   @Test
-  public fun `homespeaker defaults quiet hours to 22_00 to 07_00 and leaves poll interval unclamped with default 15`() {
-    val defaults = HomeSpeakerWire.sources("{}")
+  public fun `speaker defaults quiet hours to 22_00 to 07_00 and leaves poll interval unclamped with default 15`() {
+    val defaults = VitruvianSpeakerWire.sources("{}")
     assertEquals("22:00", defaults.quietHoursStart)
     assertEquals("07:00", defaults.quietHoursEnd)
     assertEquals(15, defaults.pollInterval)
 
     val blankQuiet =
-        HomeSpeakerWire.sources("""{"quiet_hours":{"enabled":true,"start":"","end":"  "}}""")
+        VitruvianSpeakerWire.sources("""{"quiet_hours":{"enabled":true,"start":"","end":"  "}}""")
     assertEquals("22:00", blankQuiet.quietHoursStart)
     assertEquals("07:00", blankQuiet.quietHoursEnd)
 
     val customQuiet =
-        HomeSpeakerWire.sources(
+        VitruvianSpeakerWire.sources(
             """{"quiet_hours":{"enabled":true,"start":"23:30","end":"06:30"}}""")
     assertEquals("23:30", customQuiet.quietHoursStart)
     assertEquals("06:30", customQuiet.quietHoursEnd)
 
-    assertEquals(1, HomeSpeakerWire.sources("""{"poll_interval":1}""").pollInterval)
-    assertEquals(900, HomeSpeakerWire.sources("""{"poll_interval":900}""").pollInterval)
-    assertEquals(45, HomeSpeakerWire.sources("""{"poll_interval":45}""").pollInterval)
+    assertEquals(1, VitruvianSpeakerWire.sources("""{"poll_interval":1}""").pollInterval)
+    assertEquals(900, VitruvianSpeakerWire.sources("""{"poll_interval":900}""").pollInterval)
+    assertEquals(45, VitruvianSpeakerWire.sources("""{"poll_interval":45}""").pollInterval)
   }
 
   @Test
-  public fun `homespeaker extension_installed defaults to false and parses true`() {
-    assertEquals(false, HomeSpeakerWire.sources("{}").extensionInstalled)
+  public fun `speaker extension_installed defaults to false and parses true`() {
+    assertEquals(false, VitruvianSpeakerWire.sources("{}").extensionInstalled)
     assertEquals(
-        false, HomeSpeakerWire.sources("""{"extension_installed":false}""").extensionInstalled)
+        false, VitruvianSpeakerWire.sources("""{"extension_installed":false}""").extensionInstalled)
     assertEquals(
-        true, HomeSpeakerWire.sources("""{"extension_installed":true}""").extensionInstalled)
+        true, VitruvianSpeakerWire.sources("""{"extension_installed":true}""").extensionInstalled)
   }
 
   @Test
-  public fun `homespeaker has_google_chat_token defaults to false and parses true`() {
-    assertEquals(false, HomeSpeakerWire.sources("{}").hasGoogleChatToken)
+  public fun `speaker has_google_chat_token defaults to false and parses true`() {
+    assertEquals(false, VitruvianSpeakerWire.sources("{}").hasGoogleChatToken)
     assertEquals(
-        false, HomeSpeakerWire.sources("""{"has_google_chat_token":false}""").hasGoogleChatToken)
+        false,
+        VitruvianSpeakerWire.sources("""{"has_google_chat_token":false}""").hasGoogleChatToken)
     assertEquals(
-        true, HomeSpeakerWire.sources("""{"has_google_chat_token":true}""").hasGoogleChatToken)
+        true, VitruvianSpeakerWire.sources("""{"has_google_chat_token":true}""").hasGoogleChatToken)
   }
 
   @Test
-  public fun `homespeaker snooze_until defaults to null and parses non-blank ISO-8601 string`() {
-    assertEquals(null, HomeSpeakerWire.sources("{}").snoozeUntil)
-    assertEquals(null, HomeSpeakerWire.sources("""{"snooze_until":null}""").snoozeUntil)
-    assertEquals(null, HomeSpeakerWire.sources("""{"snooze_until":"   "}""").snoozeUntil)
+  public fun `speaker snooze_until defaults to null and parses non-blank ISO-8601 string`() {
+    assertEquals(null, VitruvianSpeakerWire.sources("{}").snoozeUntil)
+    assertEquals(null, VitruvianSpeakerWire.sources("""{"snooze_until":null}""").snoozeUntil)
+    assertEquals(null, VitruvianSpeakerWire.sources("""{"snooze_until":"   "}""").snoozeUntil)
     assertEquals(
         "2026-11-10T06:30:00Z",
-        HomeSpeakerWire.sources("""{"snooze_until":"2026-11-10T06:30:00Z"}""").snoozeUntil)
+        VitruvianSpeakerWire.sources("""{"snooze_until":"2026-11-10T06:30:00Z"}""").snoozeUntil)
   }
 
   @Test
   public fun `probe relay payload preserves courier read_anyway chat_runtime_error and active_door`() {
     val v =
-        HomeSpeakerWire.sources(
+        VitruvianSpeakerWire.sources(
             """
             {
               "enabled": true,
@@ -791,8 +792,8 @@ public class WireTest {
 
   @Test
   public fun `golden state payload parses settings catalog choices limits outputs and target display_line`() {
-    val json = readRunfile("apps/mobile/android-remote/macagent/golden_homespeaker_v1.json")
-    val s = HomeSpeakerWire.sources(json)
+    val json = readRunfile("apps/mobile/android-remote/macagent/golden_speaker_v1.json")
+    val s = VitruvianSpeakerWire.sources(json)
 
     assertEquals(39, s.settings.size)
     assertFalse(s.catalog.isEmpty)
@@ -805,9 +806,9 @@ public class WireTest {
     assertEquals(listOf("off", "app", "app_and_session"), source.choices.map { it.value })
     assertEquals(
         "app_and_session",
-        HomeSpeakerWire.sources("""{"announce_source":"app_and_session"}""").announceSource)
+        VitruvianSpeakerWire.sources("""{"announce_source":"app_and_session"}""").announceSource)
     // An older Mac sends nothing; the phone reads that as off.
-    assertEquals("off", HomeSpeakerWire.sources("{}").announceSource)
+    assertEquals("off", VitruvianSpeakerWire.sources("{}").announceSource)
 
     val speech = s.catalog["speech_length"]!!
     assertEquals("choice", speech.kind)
@@ -816,9 +817,9 @@ public class WireTest {
     assertTrue(speech.shown)
     assertEquals(
         listOf(
-            HomeSpeakerChoice("headline", "Headline (1-2 sentences)"),
-            HomeSpeakerChoice("summary", "Summary (about 4 lines)"),
-            HomeSpeakerChoice("full", "Full reply"),
+            VitruvianSpeakerChoice("headline", "Headline (1-2 sentences)"),
+            VitruvianSpeakerChoice("summary", "Summary (about 4 lines)"),
+            VitruvianSpeakerChoice("full", "Full reply"),
         ),
         speech.choices,
     )
@@ -832,21 +833,21 @@ public class WireTest {
     assertEquals("number", volume.kind)
     assertEquals("Volume", volume.label)
     assertEquals(45.0, volume.numberValue!!, 0.0)
-    assertEquals(HomeSpeakerLimits(0.0, 100.0, 10.0, 60.0), volume.limits)
+    assertEquals(VitruvianSpeakerLimits(0.0, 100.0, 10.0, 60.0), volume.limits)
     assertEquals(11, volume.choices.size)
-    assertEquals(HomeSpeakerChoice("0", "0%"), volume.choices.first())
-    assertEquals(HomeSpeakerChoice("100", "100%"), volume.choices.last())
+    assertEquals(VitruvianSpeakerChoice("0", "0%"), volume.choices.first())
+    assertEquals(VitruvianSpeakerChoice("100", "100%"), volume.choices.last())
 
     val announceVol = s.catalog["announce_volume"]!!
-    assertEquals(HomeSpeakerLimits(0.0, 100.0, 5.0, 60.0), announceVol.limits)
+    assertEquals(VitruvianSpeakerLimits(0.0, 100.0, 5.0, 60.0), announceVol.limits)
 
     val pauseExtra = s.catalog["pause_media_extra_seconds"]!!
     assertEquals("Resume after", pauseExtra.label)
-    assertEquals(HomeSpeakerLimits(0.0, 10.0, 1.0, 1.0), pauseExtra.limits)
+    assertEquals(VitruvianSpeakerLimits(0.0, 10.0, 1.0, 1.0), pauseExtra.limits)
 
     val poll = s.catalog["poll_interval_seconds"]!!
     assertEquals("Poll Interval", poll.label)
-    assertEquals(HomeSpeakerLimits(5.0, 300.0, 5.0, 15.0), poll.limits)
+    assertEquals(VitruvianSpeakerLimits(5.0, 300.0, 5.0, 15.0), poll.limits)
 
     assertEquals("Office Mini + This Mac + Your phone", s.outputsLabel)
     assertTrue(s.outputsFooter.orEmpty().contains("Your phone plays the Gemini voice"))
@@ -858,8 +859,8 @@ public class WireTest {
     assertEquals("office", s.targets.single { it.selected }.key)
 
     // The phone does not clamp poll_interval on wire parse; the Mac owns limits.
-    assertEquals(1, HomeSpeakerWire.sources("""{"poll_interval":1}""").pollInterval)
-    assertEquals(900, HomeSpeakerWire.sources("""{"poll_interval":900}""").pollInterval)
+    assertEquals(1, VitruvianSpeakerWire.sources("""{"poll_interval":1}""").pollInterval)
+    assertEquals(900, VitruvianSpeakerWire.sources("""{"poll_interval":900}""").pollInterval)
   }
 
   @Test
@@ -895,7 +896,7 @@ public class WireTest {
         """
             .trimIndent()
 
-    val s = HomeSpeakerWire.sources(json)
+    val s = VitruvianSpeakerWire.sources(json)
     assertEquals(2, s.settings.size)
 
     val chime = s.catalog["future_quantum_chime"]!!
@@ -910,15 +911,15 @@ public class WireTest {
     assertEquals(2.5, curve.numberValue!!, 0.0)
     assertEquals("2.5", curve.stringValue)
     assertFalse(curve.shown)
-    assertEquals(listOf(HomeSpeakerChoice("soft", "soft")), curve.choices)
+    assertEquals(listOf(VitruvianSpeakerChoice("soft", "soft")), curve.choices)
     assertNull(curve.limits)
   }
 
   @Test
-  public fun `homespeaker parses homes selected stale hook fields appInstalled and ownerRunning and degrades quietly on older payloads`() {
+  public fun `speaker parses homes selected stale hook fields appInstalled and ownerRunning and degrades quietly on older payloads`() {
     val golden =
-        HomeSpeakerWire.sources(
-            readRunfile("apps/mobile/android-remote/macagent/golden_homespeaker_v1.json"))
+        VitruvianSpeakerWire.sources(
+            readRunfile("apps/mobile/android-remote/macagent/golden_speaker_v1.json"))
     assertEquals(true, golden.appInstalled)
     assertEquals(true, golden.ownerRunning)
     assertEquals(
@@ -932,12 +933,12 @@ public class WireTest {
     assertEquals("installed", claude.hookState)
     assertNull(claude.staleCommand)
     assertEquals(
-        "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
+        "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker",
         claude.hookProgram,
     )
 
     val stalePayload =
-        HomeSpeakerWire.sources(
+        VitruvianSpeakerWire.sources(
             """
             {
               "app_installed": false,
@@ -947,8 +948,8 @@ public class WireTest {
                   "agent": "Antigravity",
                   "agent_slug": "antigravity",
                   "hook_state": "stale",
-                  "stale_command": "'/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker' --antigravity-hook",
-                  "hook_program": "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
+                  "stale_command": "'/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker' --antigravity-hook",
+                  "hook_program": "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker"
                 }
               ]
             }
@@ -959,16 +960,16 @@ public class WireTest {
     val staleAgent = stalePayload.agents.single()
     assertEquals("stale", staleAgent.hookState)
     assertEquals(
-        "'/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker' --antigravity-hook",
+        "'/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker' --antigravity-hook",
         staleAgent.staleCommand,
     )
     assertEquals(
-        "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
+        "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker",
         staleAgent.hookProgram,
     )
 
     val older =
-        HomeSpeakerWire.sources("""{"available":true,"homes":[{"id":"h1","name":"Home"}]}""")
+        VitruvianSpeakerWire.sources("""{"available":true,"homes":[{"id":"h1","name":"Home"}]}""")
     assertNull(older.appInstalled)
     assertNull(older.ownerRunning)
     assertFalse(older.genericSettings)
@@ -978,7 +979,7 @@ public class WireTest {
   @Test
   public fun `encodeUpdateBody serialises generic settings toggle number and text values`() {
     val body =
-        HomeSpeakerWire.encodeUpdateBody(
+        VitruvianSpeakerWire.encodeUpdateBody(
             settings =
                 linkedMapOf(
                     "future_toggle" to true,
@@ -1000,7 +1001,7 @@ public class WireTest {
 
   @Test
   public fun `encodeUpdateBody serialises stale hook remove request body`() {
-    val body = HomeSpeakerWire.encodeUpdateBody(agentHookAction = "remove:claude-code")
+    val body = VitruvianSpeakerWire.encodeUpdateBody(agentHookAction = "remove:claude-code")
     assertEquals("""{"agent_hook_action":"remove:claude-code"}""", body)
     val parsed = JsonReader(body).readValue() as Map<*, *>
     assertEquals(mapOf("agent_hook_action" to "remove:claude-code"), parsed)
@@ -1008,7 +1009,7 @@ public class WireTest {
 
   @Test
   public fun `encodeUpdateBody serialises door switch with copy true`() {
-    val body = HomeSpeakerWire.encodeUpdateBody(activeDoor = "extension", copy = true)
+    val body = VitruvianSpeakerWire.encodeUpdateBody(activeDoor = "extension", copy = true)
     assertEquals("""{"active_door":"extension","copy":true}""", body)
     val parsed = JsonReader(body).readValue() as Map<*, *>
     assertEquals(mapOf("active_door" to "extension", "copy" to true), parsed)

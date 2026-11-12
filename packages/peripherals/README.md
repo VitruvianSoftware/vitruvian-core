@@ -1,7 +1,7 @@
 # peripherals
 
 Turns the RGB light on a GravaStar mouse into a status light for the Mac.
-Anything that runs on the Mac (a Claude Code hook, a CI watcher, HomeSpeaker)
+Anything that runs on the Mac (a Claude Code hook, a CI watcher, Vitruvian Speaker)
 can make the mouse glow **blue while working, green on success, red on
 failure**, then put back the lighting you had before.
 
@@ -14,11 +14,11 @@ the 2.4 GHz dongle, on macOS 14 or later.
 
 Pick one; each gives you the same `gravastar-mouse` command.
 
-- **With the Vitruvian app.** The app carries its own copy, used by its GitHub
+- **With Vitruvian Atrium.** The app carries its own copy, used by its GitHub
   status light:
-  `/Applications/Vitruvian.app/Contents/Helpers/gravastar-mouse`. Link it onto
+  `/Applications/Vitruvian Atrium.app/Contents/Helpers/gravastar-mouse`. Link it onto
   your `PATH` to use it from a terminal or a hook:
-  `ln -s /Applications/Vitruvian.app/Contents/Helpers/gravastar-mouse ~/.local/bin/`.
+  `ln -s "/Applications/Vitruvian Atrium.app/Contents/Helpers/gravastar-mouse" ~/.local/bin/`.
 - **Homebrew:** trust our tap once (Homebrew 7 refuses to load anything from
   an untrusted third-party tap), then install by full name:
   `brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/gravastar-mouse`.

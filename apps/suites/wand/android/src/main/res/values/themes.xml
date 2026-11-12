@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Copyright (c) 2026 VitruvianSoftware -->
-<resources>
-    <style name="Theme.Wand" parent="android:Theme.Material.NoActionBar">
-        <item name="android:statusBarColor">#181715</item>
-        <item name="android:navigationBarColor">#181715</item>
-        <item name="android:windowBackground">#181715</item>
-    </style>
-</resources>

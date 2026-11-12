@@ -1,0 +1,55 @@
+{
+  "app": "vitruvian-tabs",
+  "build": "",
+  "build_context": "",
+  "changelog_inputs": {},
+  "companions": [],
+  "environments": ["development", "nonproduction", "production"],
+  "exclude_paths": [],
+  "extra_paths": [
+    "apps/suites/vitruvian-tabs/infra/app/",
+    "apps/suites/vitruvian-tabs/infra/web/",
+    "apps/suites/vitruvian-tabs/web/",
+    "tools/deploy/",
+    "\\.github/workflows/_deploy-cloud-run\\.yaml"
+  ],
+  "gate_var": "",
+  "github_environment": "tabula-{env}",
+  "graph_targets": [
+    "//apps/suites/vitruvian-tabs/api:image_push",
+    "//apps/suites/vitruvian-tabs/extension:chrome_zip"
+  ],
+  "image_digest_output": "web-image-digest",
+  "image_repository_path": "",
+  "kind": "cloud-run",
+  "legacy_job": "",
+  "legacy_workflow": "",
+  "name": "vitruvian-tabs-web",
+  "package": "apps/suites/vitruvian-tabs/infra/web",
+  "preflight": "",
+  "preview": {
+    "compute": "cloud-run",
+    "database": "",
+    "domain": "{app}.preview.vitruviansoftware.dev",
+    "enabled": true
+  },
+  "promotion": "release:vitruvian-tabs-web-v",
+  "render": "",
+  "run": "//apps/suites/vitruvian-tabs/infra/web:deploy",
+  "schema": 1,
+  "shared_build": "vitruvian-tabs",
+  "soak": true,
+  "workflow_inputs": {
+    "app-name": "tabula",
+    "cloudflare-token-secret-project": "prj-d-bu2-oss-floating-c3d1",
+    "default-region": "us-central1",
+    "env-prefix": "TABULA_WEB",
+    "pulumi-dir": "apps/suites/vitruvian-tabs/infra/web",
+    "pulumi-refresh": true,
+    "run-migrations": false,
+    "secret-prefix": "TABULA_",
+    "service-name": "tabula-web",
+    "smoke-url-path": "/",
+    "workload-migrated": false
+  }
+}

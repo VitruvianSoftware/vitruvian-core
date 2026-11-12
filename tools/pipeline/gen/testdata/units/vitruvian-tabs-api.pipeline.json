@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "name": "vitruvian-tabs-api",
+  "package": "apps/suites/vitruvian-tabs/api",
+  "test_targets": ["//apps/suites/vitruvian-tabs/api:integration_tests"],
+  "tier": "L1",
+  "runner": "ubuntu-26.04",
+  "persona": "backend",
+  "concurrency_group": "pipeline-vitruvian-tabs-api",
+  "timeout_minutes": 20,
+  "depends_on": ["vitruvian-tabs-shared"]
+}

@@ -124,7 +124,7 @@ func runEnvironments(t *testing.T) (vars map[string]map[string]string, envs map[
 		if err != nil {
 			return err
 		}
-		if err := tabulaEnvironments(ctx, cfg, repo); err != nil {
+		if err := vitruvianTabsEnvironments(ctx, cfg, repo); err != nil {
 			return err
 		}
 		if err := oauthEnvironment(ctx, cfg, repo); err != nil {

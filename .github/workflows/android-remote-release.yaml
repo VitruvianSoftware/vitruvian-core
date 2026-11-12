@@ -143,7 +143,7 @@ jobs:
         run: bazel run //apps/mobile/android-remote/macmenu:publish-tool
 
   # The release's last word, and not the publishing scripts': ask GitHub what
-  # the release holds. HomeSpeaker 1.12.0 and 1.13.0 were published with no
+  # the release holds. Vitruvian Speaker 1.12.0 and 1.13.0 were published with no
   # files while their publishing step printed success. The APK, the tool zip
   # the catalog installs from, and each one's checksum must be on the
   # release, and the zip must match its checksum, or this fails naming them.

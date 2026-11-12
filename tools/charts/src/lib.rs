@@ -469,8 +469,8 @@ mod tests {
     #[test]
     fn name_is_awks_second_field() {
         assert_eq!(
-            chart_name(b"apiVersion: v2\nname: tabula\nversion: 1\n"),
-            b"tabula"
+            chart_name(b"apiVersion: v2\nname: vitruvian-tabs\nversion: 1\n"),
+            b"vitruvian-tabs"
         );
         assert_eq!(chart_name(b"name: a: b\n"), b"a");
         assert_eq!(chart_name(b"name:nospace\n"), b"");

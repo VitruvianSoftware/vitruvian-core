@@ -43,8 +43,9 @@ metadata:
 spec:
   type: application
   lifecycle: production
+  # legacy name: GitHub team slug in infrastructure/pulumi/platform/repo-config
   owner: nexus-agent-team
   system: vitruvian-code
   consumesApis:
     - tabula-api
-    - mcp-slack-api
+    - vitruvian-slack-mcp-api

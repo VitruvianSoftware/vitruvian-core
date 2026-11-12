@@ -32,7 +32,7 @@ Component package providing implementation for `tools/preview/src`.
 - [neon_branch.rs:260]: `b"\",\n  \"database_url\": \"postgresql://neondb_owner:mock_password@ep-dry-r...`
 - [neon_branch.rs:302]: `b"/neondb?sslmode=require",`
 - [pr_comment.rs:302]: `assert!(render(b"bogus", b"a", b"1", b"", b"", b"", b"t").is_none());`
-- [pr_comment.rs:308]: `assert!(b.ends_with(b"\n\n<!-- vitruvian-preview-bot: tabula -->"));`
+- [pr_comment.rs:308]: `assert!(b.ends_with(b"\n\n<!-- vitruvian-preview-bot: vitruvian-tabs -->"));`
 - [pr_comment.rs:309]: `assert!(b.starts_with("### ❌".as_bytes()));`
 - [provision_preview.rs:192]: `b"postgresql://neondb_owner:mock@ep-mock.neon.tech/neondb?sslmode=require".to...`
 

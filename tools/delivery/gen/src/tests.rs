@@ -33,17 +33,17 @@ use crate::unit::{self, Unit};
 
 const FIXTURES: &[&str] = &[
     "charts",
-    "esp32-s3",
     "gravastar-mouse-publish",
     "oauth-user-inspector-identity",
     "oauth-user-inspector",
     "stripe",
-    "tabula-api",
-    "tabula-build-stack",
-    "tabula-dev-latest",
-    "tabula-identity",
-    "tabula-web",
-    "vitruvian",
+    "vitruvian-atrium",
+    "vitruvian-deck",
+    "vitruvian-tabs-api",
+    "vitruvian-tabs-build-stack",
+    "vitruvian-tabs-dev-latest",
+    "vitruvian-tabs-identity",
+    "vitruvian-tabs-web",
     "zitadel-apps",
 ];
 const WF: &str = "delivery-fixture.yaml";
@@ -180,7 +180,7 @@ fn phase0_renders_only_orchestrate() {
 fn output_var_name_is_the_orchestrator_contract() {
     for (i, w) in [
         ("oauth-user-inspector", "oauth_user_inspector"),
-        ("tabula-api", "tabula_api"),
+        ("vitruvian-tabs-api", "vitruvian_tabs_api"),
         ("charts", "charts"),
         ("a.b/c", "a_b_c"),
     ] {
@@ -334,25 +334,25 @@ fn phase2_rejects_declarations_that_would_render_a_broken_ladder() {
         for (k, v) in [
             ("app-name", "tabula"),
             ("env-prefix", "TABULA"),
-            ("pulumi-dir", "tabula/infra/app"),
+            ("pulumi-dir", "apps/suites/vitruvian-tabs/infra/app"),
             ("service-name", "tabula-api"),
         ] {
             wi.insert(k.to_string(), Value::Str(v.to_string()));
         }
         Unit {
             schema: 1,
-            name: "tabula-api".into(),
+            name: "vitruvian-tabs-api".into(),
             kind: "cloud-run".into(),
-            run: "//tabula/infra/app:deploy".into(),
+            run: "//apps/suites/vitruvian-tabs/infra/app:deploy".into(),
             environments: vec![
                 "development".into(),
                 "nonproduction".into(),
                 "production".into(),
             ],
             github_environment: "tabula-{env}".into(),
-            shared_build: "tabula".into(),
+            shared_build: "vitruvian-tabs".into(),
             image_digest_output: "image-digest".into(),
-            promotion: "release:tabula-api-v".into(),
+            promotion: "release:vitruvian-tabs-api-v".into(),
             soak: true,
             workflow_inputs: wi,
             ..Default::default()
@@ -368,7 +368,7 @@ fn phase2_rejects_declarations_that_would_render_a_broken_ladder() {
             "EMPTY STRING",
         ),
         (
-            Box::new(|u| u.github_environment = "tabula-app-{env}".into()),
+            Box::new(|u| u.github_environment = "vitruvian-tabs-app-{env}".into()),
             "fails the whole run at startup",
         ),
         (
@@ -405,7 +405,6 @@ fn group_by_app_gives_every_app_its_own_workflow() {
         .collect();
     let want: Vec<(String, Vec<String>)> = vec![
         ("charts", vec!["charts"]),
-        ("esp32-s3", vec!["esp32-s3"]),
         ("gravastar-mouse", vec!["gravastar-mouse-publish"]),
         (
             "oauth-user-inspector",
@@ -416,17 +415,18 @@ fn group_by_app_gives_every_app_its_own_workflow() {
             ],
         ),
         ("stripe", vec!["stripe"]),
+        ("vitruvian-atrium", vec!["vitruvian-atrium"]),
+        ("vitruvian-deck", vec!["vitruvian-deck"]),
         (
-            "tabula",
+            "vitruvian-tabs",
             vec![
-                "tabula-api",
-                "tabula-build-stack",
-                "tabula-dev-latest",
-                "tabula-identity",
-                "tabula-web",
+                "vitruvian-tabs-api",
+                "vitruvian-tabs-build-stack",
+                "vitruvian-tabs-dev-latest",
+                "vitruvian-tabs-identity",
+                "vitruvian-tabs-web",
             ],
         ),
-        ("vitruvian", vec!["vitruvian"]),
     ]
     .into_iter()
     .map(|(a, us)| (a.to_string(), us.into_iter().map(String::from).collect()))
@@ -441,11 +441,14 @@ fn group_by_app_gives_every_app_its_own_workflow() {
 fn group_by_app_refuses_couplings_across_apps() {
     let edits: Vec<(Edit, &str)> = vec![
         (Box::new(|us| us[0].app.clear()), "declares no app"),
-        (Box::new(|us| us[0].app = "Tabula_App".into()), "lowercase"),
+        (
+            Box::new(|us| us[0].app = "Vitruvian_Tabs".into()),
+            "lowercase",
+        ),
         (
             Box::new(|us| {
-                for u in us.iter_mut().filter(|u| u.name == "tabula-web") {
-                    u.app = "tabula-web".into();
+                for u in us.iter_mut().filter(|u| u.name == "vitruvian-tabs-web") {
+                    u.app = "vitruvian-tabs-web".into();
                 }
             }),
             "shared build",

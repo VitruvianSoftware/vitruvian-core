@@ -76,7 +76,7 @@ terminator)" step in the workflow sketch below.
 > this file (its `:38` evidence cell) and `apps/web/oauth-user-inspector/docs/OPERATIONS.md`.
 > Measured at two **immutable commits**, so the demonstration cannot itself go
 > stale: **1 workflow at `90c1f362`, 2 at `d17b7583`** — the latter added the
-> mcp-slack apply job as a second consumer. A count stated against `main` would
+> vitruvian-slack-mcp apply job as a second consumer. A count stated against `main` would
 > have been false within minutes of being written; this one reports the set at a
 > commit rather than asserting a number about a moving ref.
 >
@@ -116,7 +116,7 @@ internal Envoy, transparently to the provider (which still uses
    matches §2.6; not a static auth key.)
 2. **ACL**: allow `tag:ci` to reach the gateway, e.g.
    `{"action":"accept","src":["tag:ci"],"dst":["10.44.86.211:80"]}`
-   (the tailnet is devx-managed — `apps/cli/devx/internal/tailscale`).
+   (the tailnet is devx-managed — `apps/cli/vitruvian-devx/internal/tailscale`).
 
 ### Workflow change (`zitadel-infra` job in `oauth-user-inspector-deploy.yaml`)
 ```yaml
@@ -186,7 +186,7 @@ reconciled like the rest of the platform.
 
 - **Pros:** most GitOps-pure — fits §2.3 (closed-loop platform reconcile); no CI
   egress, no tailnet-from-CI; drift is continuously reconciled, not just on deploy.
-- **Cons:** biggest change — adopt + operate PKO; diverges from how `tabula` /
+- **Cons:** biggest change — adopt + operate PKO; diverges from how `vitruvian-tabs` /
   `oauth-user-inspector` deploy today (CI-Pulumi), so it splits the deploy model
   unless those migrate too; the machine-user key moves to an in-cluster (sealed)
   secret.

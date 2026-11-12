@@ -8,7 +8,7 @@
 
 ## Scope
 
-1. **App hotfix** — `tabula` and `oauth-user-inspector`, via Cloud Run blue-green. Both now use the **same** model: build the image once, promote the **immutable digest** through each env.
+1. **App hotfix** — `vitruvian-tabs` and `oauth-user-inspector`, via Cloud Run blue-green. Both now use the **same** model: build the image once, promote the **immutable digest** through each env.
 2. **Foundation stage** — `gcp-projects` / `gcp-networks`.
 
 **Not covered:** cluster / GitOps changes — that's ArgoCD reconciling from git, a separate failure domain that an Actions outage does not stop.
@@ -29,7 +29,7 @@
 
 | app | `pulumi-dir` | dev project | region | migrations | smoke |
 |---|---|---|---|---|---|
-| `tabula` (service `tabula-api`) | `apps/suites/tabula/infra/app` | `prj-d-bu2-oss-floating-c3d1` | `us-central1` | **yes** (`--phase expand`) | `GET /health` |
+| `vitruvian-tabs` (service `tabula-api`) | `apps/suites/vitruvian-tabs/infra/app` | `prj-d-bu2-oss-floating-c3d1` | `us-central1` | **yes** (`--phase expand`) | `GET /health` |
 | `oauth-user-inspector` | `apps/web/oauth-user-inspector/infra/app` | `prj-d-bu1-oss-floating-648a` | `us-central1` | no | `GET /` + DOM mount check |
 
 Nonproduction / production use `prj-n-…` / `prj-p-…` projects (same suffix scheme) — **VERIFY suffixes live**. Both apps fetch `CLOUDFLARE_API_TOKEN` at deploy time (customDomain grey-cloud DNS).
@@ -47,19 +47,19 @@ export CLOUDFLARE_API_TOKEN="$(gcloud secrets versions access latest --secret=CL
 GIT_SHA="$(git rev-parse HEAD)"
 ```
 
-**tabula** (build → EXPAND migration → deploy; repeat the `:deploy` per env development → nonproduction → production):
+**vitruvian-tabs** (build → EXPAND migration → deploy; repeat the `:deploy` per env development → nonproduction → production):
 
 ```bash
 IMAGE="us-central1-docker.pkg.dev/<build-project>/tabula/api"                 # VERIFY build project
-bazel run //apps/suites/tabula/api:image_push -- --repository "$IMAGE" --tag "$GIT_SHA"
+bazel run //apps/suites/vitruvian-tabs/api:image_push -- --repository "$IMAGE" --tag "$GIT_SHA"
 DIGEST="$IMAGE@$(gcloud artifacts docker images describe "$IMAGE:$GIT_SHA" --format='value(image_summary.digest)')"
 # EXPAND migration only (--phase expand refuses any *_contract migration):
-bazel build //apps/suites/tabula/api:schema_engine //apps/suites/tabula/api:migrate_deploy_bin
-export PRISMA_SCHEMA_ENGINE_BINARY="$PWD/bazel-bin/apps/suites/tabula/api/schema-engine"
-export PRISMA_QUERY_ENGINE_LIBRARY="$PWD/apps/suites/tabula/api/prisma/engine-placeholder"
+bazel build //apps/suites/vitruvian-tabs/api:schema_engine //apps/suites/vitruvian-tabs/api:migrate_deploy_bin
+export PRISMA_SCHEMA_ENGINE_BINARY="$PWD/bazel-bin/apps/suites/vitruvian-tabs/api/schema-engine"
+export PRISMA_QUERY_ENGINE_LIBRARY="$PWD/apps/suites/vitruvian-tabs/api/prisma/engine-placeholder"
 DATABASE_URL="$(gcloud secrets versions access latest --secret=DATABASE_URL --project=prj-d-bu2-oss-floating-c3d1)"; export DATABASE_URL  # VERIFY project
-bazel run //apps/suites/tabula/api:migrate_deploy_bin -- --schema apps/suites/tabula/api/prisma/schema.prisma --phase expand
-bazel run //apps/suites/tabula/infra/app:deploy -- --env development --project prj-d-bu2-oss-floating-c3d1 --image-digest "$DIGEST"  # VERIFY project
+bazel run //apps/suites/vitruvian-tabs/api:migrate_deploy_bin -- --schema apps/suites/vitruvian-tabs/api/prisma/schema.prisma --phase expand
+bazel run //apps/suites/vitruvian-tabs/infra/app:deploy -- --env development --project prj-d-bu2-oss-floating-c3d1 --image-digest "$DIGEST"  # VERIFY project
 ```
 
 **oauth-user-inspector** (build once, promote the SAME digest to every env; no migrations):
@@ -73,7 +73,7 @@ bazel run //apps/web/oauth-user-inspector/infra/app:deploy -- --env development 
 
 The `:deploy` target fails closed if a non-first deploy's candidate URL can't be resolved (never false-greens; #808), and promotes only after the smoke passes.
 
-> **Preflight parity.** CI's `//tools/ci:tabula_deploy_preflight` skips the whole rollout when the live service already serves this exact digest+config (fail-open). By hand, a re-run just deploys an identical candidate + no-op promote — harmless.
+> **Preflight parity.** CI's `//tools/ci:vitruvian_tabs_deploy_preflight` skips the whole rollout when the live service already serves this exact digest+config (fail-open). By hand, a re-run just deploys an identical candidate + no-op promote — harmless.
 
 ## Step 2 — Foundation stage (`gcp-projects` / `gcp-networks`)
 
@@ -102,7 +102,7 @@ Releases normally flow: `release-please` bumps the manifest → `//tools/copybar
 bazel run //tools/copybara/sync -- export <component>     # push the bump to the mirror
 ```
 
-**npm packages + Go modules** (mcp-slack, and the pulumi-library `ts/packages/*` + `go/pkg/*`) — one tool, dry-run by default:
+**npm packages + Go modules** (vitruvian-slack-mcp, and the pulumi-library `ts/packages/*` + `go/pkg/*`) — one tool, dry-run by default:
 
 ```bash
 bazel run //tools/release:publish-local -- pulumi-library            # dry run: prints the plan
@@ -113,14 +113,14 @@ bazel run //tools/release:publish-local -- mcp-slack --execute
 
 On the first `--execute` it **prompts you** for the npm token (a `@vitruviansoftware` automation token — the only publish cred with no local equivalent), stores it, backs it up to Bitwarden, and reuses it thereafter — no pre-setup, no hunting. GitHub-side auth is your `gh auth token`. Go-module "publishing" is just the tag `go/pkg/<name>/vX.Y.Z` (**slash** before the version — a dash is `go get`'s "unknown revision"; the tool enforces it, guarded by a test).
 
-**Go binaries** (devx, homelab) and **nexus-agent** (macOS `.app`/DMG/cask) are Mac/toolchain-bound and stay **manual** — no tool:
+**Go binaries** (devx, homelab) and **vitruvian-code** (macOS `.app`/DMG/cask) are Mac/toolchain-bound and stay **manual** — no tool:
 
 ```bash
 # clone the mirror, tag the release, run GoReleaser (needs gh token with contents:write on the
-# mirror AND the homebrew-tap repo). homelab is darwin-only; nexus-agent needs Swift + create-dmg.
+# mirror AND the homebrew-tap repo). homelab is darwin-only; vitruvian-code needs Swift + create-dmg.
 git clone https://github.com/VitruvianSoftware/<component>.git && cd <component>
-git tag vX.Y.Z && git push origin vX.Y.Z           # nexus-agent: plain vX.Y.Z, NOT nexus-agent-vX
-GITHUB_TOKEN="$(gh auth token)" goreleaser release --clean   # apps/cli/devx, apps/cli/homelab; apps/desktop/nexus-agent: see its release.yml
+git tag vX.Y.Z && git push origin vX.Y.Z           # vitruvian-code: plain vX.Y.Z, NOT vitruvian-code-vX
+GITHUB_TOKEN="$(gh auth token)" goreleaser release --clean   # apps/cli/vitruvian-devx, apps/cli/vitruvian-homelab; apps/desktop/vitruvian-code: see its release.yml
 ```
 
 ## Guardrails — do not skip

@@ -1,7 +1,7 @@
 # apple-signing
 
 Sets up the Apple **Developer ID** certificate and the **notary API key** that
-the Vitruvian release (`.github/workflows/delivery-vitruvian.yaml`) uses to sign
+the Vitruvian release (`.github/workflows/delivery-vitruvian-atrium.yaml`) uses to sign
 the app and have Apple approve it. With them, macOS opens the app without the
 "unverified developer" warning, and the permissions a person granted survive an
 update. Without them the release still works, signed ad hoc.

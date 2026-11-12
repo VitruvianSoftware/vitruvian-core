@@ -49,7 +49,7 @@ use std::path::{Path, PathBuf};
 const DIRS: &[&str] = &[
     ".github/workflows",
     ".github/actions",
-    "apps/cli/devx/internal/scaffold/templates",
+    "apps/cli/vitruvian-devx/internal/scaffold/templates",
 ];
 
 /// POSIX `[[:space:]]`.

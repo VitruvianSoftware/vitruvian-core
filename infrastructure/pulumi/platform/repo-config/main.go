@@ -284,7 +284,7 @@ func program(ctx *pulumi.Context) error {
 				// PRs. Both validate their whole dir on every queued commit, so they
 				// always report — safe to require.
 				"gitops-validate", "actionlint",
-				// migration-safety (#819) Squawk-lints Tabula's Prisma migrations so a
+				// migration-safety (#819) Squawk-lints Vitruvian Tabs's Prisma migrations so a
 				// backward-incompatible change can't reach main and break the OLD Cloud
 				// Run revision during the blue-green traffic shift. Its job runs a
 				// self-test on every event (and carries no pull_request paths filter),
@@ -331,7 +331,7 @@ func program(ctx *pulumi.Context) error {
 				// go-race (#1039-adjacent) runs the race detector over EVERY Bazel
 				// go_test target. Before it, race coverage was the standalone
 				// `go test -race` matrix over devx+homelab only -- so every other Go
-				// target, tabula's included, was never race-tested anywhere. Its job
+				// target, vitruvian-tabs's included, was never race-tested anywhere. Its job
 				// is unconditional (only the STEPS are path-gated), so it always
 				// reports and is safe to require.
 				"go-race",
@@ -462,7 +462,7 @@ func program(ctx *pulumi.Context) error {
 		return err
 	}
 
-	if err := tabulaEnvironments(ctx, cfg, repo); err != nil {
+	if err := vitruvianTabsEnvironments(ctx, cfg, repo); err != nil {
 		return err
 	}
 
@@ -470,9 +470,9 @@ func program(ctx *pulumi.Context) error {
 		return err
 	}
 
-	// Courier's release job and the Telegram app ID it builds in
-	// (courier_release.go).
-	if err := courierReleaseEnvironment(ctx, repo); err != nil {
+	// Vitruvian Courier's release job and the Telegram app ID it builds in
+	// (vitruvian_courier_release.go).
+	if err := vitruvianCourierReleaseEnvironment(ctx, repo); err != nil {
 		return err
 	}
 
@@ -558,33 +558,33 @@ type envGate struct {
 	reviewer bool           // require a human approval
 }
 
-var tabulaReleaseTags = []envTagPolicy{
-	{suffix: "tags", pattern: tabulaAPIReleaseTagPattern},
-	{suffix: "tags-web", pattern: tabulaWebReleaseTagPattern},
+var vitruvianTabsReleaseTags = []envTagPolicy{
+	{suffix: "tags", pattern: vitruvianTabsAPIReleaseTagPattern},
+	{suffix: "tags-web", pattern: vitruvianTabsWebReleaseTagPattern},
 }
 
-// tabulaEnvGate returns the deployment gate for tabula-<env>
+// vitruvianTabsEnvGate returns the deployment gate for tabula-<env>
 // (docs/engineering/deployment-strategy.md):
-//   - development: main only. delivery-tabula deploys it on push to main and
+//   - development: main only. delivery-vitruvian-tabs deploys it on push to main and
 //     on dispatch; preview-teardown is dispatched from main.
-//   - build: main plus the release tags, because delivery-tabula's
+//   - build: main plus the release tags, because delivery-vitruvian-tabs's
 //     tabula-build job also runs on `release`, whose ref is the tag.
 //   - nonproduction: main plus release tags, no reviewer. Promotion is
-//     release-gated in delivery-tabula, so the release merge is the human gate.
+//     release-gated in delivery-vitruvian-tabs, so the release merge is the human gate.
 //   - production: the same, plus a required reviewer as the final checkpoint.
 //     GitHub allows self-approval, so on a single-maintainer repo that is a
 //     deliberate "break glass" pause, not a four-eyes gate.
 //   - preview: open. It holds only the read-only tabula-preview identity
 //     (roles/viewer) that the PR pulumi-preview leg runs as. This is the
 //     ONLY open case; anything unlisted defaults to main only.
-func tabulaEnvGate(env string) envGate {
+func vitruvianTabsEnvGate(env string) envGate {
 	switch env {
 	case "development":
 		return envGate{mainOnly: true}
 	case "build", "nonproduction":
-		return envGate{mainOnly: true, tags: tabulaReleaseTags}
+		return envGate{mainOnly: true, tags: vitruvianTabsReleaseTags}
 	case "production":
-		return envGate{mainOnly: true, tags: tabulaReleaseTags, reviewer: true}
+		return envGate{mainOnly: true, tags: vitruvianTabsReleaseTags, reviewer: true}
 	case "preview":
 		return envGate{}
 	default:
@@ -594,17 +594,17 @@ func tabulaEnvGate(env string) envGate {
 	}
 }
 
-// tabulaEnvironments manages the per-component GitHub Environments for the
-// tabula deploy pipeline (.github/workflows/tabula-deploy.yaml). The
+// vitruvianTabsEnvironments manages the per-component GitHub Environments for the
+// vitruvian-tabs deploy pipeline (.github/workflows/delivery-vitruvian-tabs.yaml). The
 // environment name carries the component namespace (tabula-<env>), so the
 // variables inside use bare names (GCP_PROJECT_ID, ...) and protection rules
-// are scoped to tabula alone — a future component's production gate never
+// are scoped to vitruvian-tabs alone — a future component's production gate never
 // shares reviewers with this one.
 //
 // Only non-credential identifiers live here as Actions VARIABLES (project id,
 // service-account email, workload-identity provider path — keyless WIF needs
 // no key material). Runtime secrets such as DATABASE_URL stay in GCP Secret
-// Manager, managed by //infrastructure/pulumi/apps/tabula; the only GitHub-side
+// Manager, managed by //apps/suites/vitruvian-tabs/infra/app; the only GitHub-side
 // secret the deploy needs is the repo-level PULUMI_ACCESS_TOKEN.
 //
 // Per-environment variable values come from Pulumi config as JSON objects
@@ -615,20 +615,20 @@ func tabulaEnvGate(env string) envGate {
 //
 // Environments with no config entry are still created (empty), so protection
 // rules exist before the first deploy is wired up.
-func tabulaEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Repository) error {
+func vitruvianTabsEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Repository) error {
 	var tabulaVars map[string]map[string]string
 	_ = cfg.GetObject("tabulaVars", &tabulaVars)
 
 	for _, env := range []string{"build", "preview", "development", "nonproduction", "production"} {
 		name := "tabula-" + env
-		gate := tabulaEnvGate(env)
+		gate := vitruvianTabsEnvGate(env)
 
 		args := &github.RepositoryEnvironmentArgs{
 			Repository:  repo.Name,
 			Environment: pulumi.String(name),
 		}
 
-		// See tabulaEnvGate for which environments are pinned and why.
+		// See vitruvianTabsEnvGate for which environments are pinned and why.
 		if gate.mainOnly {
 			args.DeploymentBranchPolicy = &github.RepositoryEnvironmentDeploymentBranchPolicyArgs{
 				ProtectedBranches:    pulumi.Bool(false),
@@ -731,7 +731,7 @@ func oauthEnvGate(env string) envGate {
 // oauth-user-inspector deploy pipeline (.github/workflows/oauth-user-inspector-
 // deploy.yaml).
 //
-// As in tabulaEnvironments, only NON-credential identifiers live here as Actions
+// As in vitruvianTabsEnvironments, only NON-credential identifiers live here as Actions
 // VARIABLES — the deploy authenticates to GCP with keyless WIF, so project id,
 // region, deploy SA, and the WIF provider path are config-as-code, not secrets.
 //
@@ -760,7 +760,7 @@ func oauthEnvGate(env string) envGate {
 // accounts + WIF provider are minted by the Phase-3 per-env identity stacks
 // (which land in the prj-{env}-bu1-oss-floating projects). The environments are
 // created now — empty but with protection rules — so the gate exists before the
-// first deploy, mirroring tabulaEnvironments. Their vars are set in Phase 3.
+// first deploy, mirroring vitruvianTabsEnvironments. Their vars are set in Phase 3.
 func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repository) error {
 	nm := repoName(cfg)
 
@@ -915,7 +915,7 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 // used by the foundation IaC pipelines. These map to the per-stage Workload
 // Identity Federation (WIF) service accounts provisioned by gcp-bootstrap.
 //
-// Like tabulaEnvironments, only non-credential identifiers live here as
+// Like vitruvianTabsEnvironments, only non-credential identifiers live here as
 // Actions VARIABLES (GCP_PROJECT_ID, GCP_SERVICE_ACCOUNT, GCP_WORKLOAD_IDENTITY_PROVIDER).
 //
 //	pulumi config set --path 'foundationVars["foundation-bootstrap"]' \
@@ -1275,7 +1275,7 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 	// its own SA rather than widening this one.
 	// One entry per business-unit per env. bu1 keeps the legacy unsuffixed name
 	// (foundation-app-<env>) that the live workflow + WIF bindings already use —
-	// renaming it would break the completed oauth cutover. bu2 (tabula) is
+	// renaming it would break the completed oauth cutover. bu2 (vitruvian-tabs) is
 	// BU-suffixed (foundation-app-bu2-<env>) and reads sa-app-infra-bu2 from the
 	// bu2 projects leaf. projBU selects which gcp-projects leaf mints the SA.
 	appPhaseEnvironments := []struct {
@@ -1418,7 +1418,7 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 	// gcp-bootstrap. foundation-preview.yaml now picks the sign-in identity
 	// per leg itself, so the variable is informational, but it should never
 	// name a deploy account. PULUMI_ACCESS_TOKEN is repo-level (see
-	// tabulaEnvironments), so only the GCP_* variables are set here.
+	// vitruvianTabsEnvironments), so only the GCP_* variables are set here.
 	// foundation-app previews with the PROJ stage's vars (its read-only
 	// account is sa-terraform-proj-preview), so the preview env name and the
 	// vars key differ.
@@ -1503,7 +1503,7 @@ func previewFoundationVars(vars map[string]string) (map[string]string, error) {
 //	                            (was OFF: sync-auth previously required a local
 //	                            hand-apply after every change).
 //	PULUMI_PREVIEW_ENABLED      pulumi-preview.yaml posts advisory app-stack
-//	                            previews (tabula / oauth-user-inspector) on PRs.
+//	                            previews (vitruvian-tabs / oauth-user-inspector) on PRs.
 //	SITE_DOMAIN_MANAGED         turns on internal/site_domain: the website's
 //	                            apex CNAME, Pages verification TXT and Pages
 //	                            setting. Requires DNS_CLOUDFLARE_API_TOKEN.

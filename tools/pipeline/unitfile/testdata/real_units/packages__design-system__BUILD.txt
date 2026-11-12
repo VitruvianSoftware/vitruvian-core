@@ -21,8 +21,8 @@
 # @vitruviansoftware/design-system: Vitruvian, the shared design language --
 # CSS token layer + React component library + Storybook.
 #
-# This BUILD is hand-authored for the same reason as //mcp-slack and
-# //tabula/shared: a single co-located ts_project whose tsconfig (rootDir
+# This BUILD is hand-authored for the same reason as //vitruvian-slack-mcp and
+# //apps/suites/vitruvian-tabs/shared: a single co-located ts_project whose tsconfig (rootDir
 # ./src, outDir ./dist) resolves consistently, plus a Storybook devserver the
 # aspect JS/TS Gazelle extension does not model. Gazelle would rewrite this
 # file (leaving a broken empty src glob), emit a separate src/BUILD, and try to
@@ -64,7 +64,7 @@ exports_files([
 # storybook-image workflow -- is what actually checks them, not this target.
 #
 # tsconfig.json deliberately uses module=esnext + moduleResolution=bundler
-# rather than nodenext, matching //mcp-slack (the repo's other "type":"module"
+# rather than nodenext, matching //vitruvian-slack-mcp (the repo's other "type":"module"
 # package). Under nodenext tsc decides ESM-vs-CJS by reading the nearest
 # package.json, which is not an input to this action's sandbox, so every file
 # is treated as CommonJS and every export fails verbatimModuleSyntax (TS1295).

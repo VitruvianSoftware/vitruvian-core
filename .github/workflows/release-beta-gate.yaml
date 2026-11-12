@@ -19,21 +19,21 @@
 # SOFTWARE.
 
 
-# Keep vitruvian's release PR out of auto-merge until the beta DMG has been
+# Keep vitruvian-atrium's release PR out of auto-merge until the beta DMG has been
 # built for the exact code the release would tag (//tools/ci:release_beta_gate,
 # tools/ci/src/release_beta_gate, has the decision and how it finds that build).
 #
 # WHY A GATE AND NOT A HOLD. release-hold.yaml reacts to a RED development
 # deploy, so it can only stop a release PR that has not merged yet. For
 # vitruvian that race is lost: release-please opens the release PR on the same
-# push that runs `vitruvian-beta`, and the PR's CI can go green and merge before
+# push that runs `vitruvian-atrium-beta`, and the PR's CI can go green and merge before
 # the beta finishes. That is how vitruvian-v3.6.0 was tagged ten minutes before
 # the packaging fix landed, with no DMG, and a tag that cannot be re-published.
 # So this PR waits by default: release-pr-automerge.yaml leaves it alone, and
-# auto-merge is enabled here only once `vitruvian-beta` has SUCCEEDED for its
+# auto-merge is enabled here only once `vitruvian-atrium-beta` has SUCCEEDED for its
 # code.
 #
-# WHEN IT EVALUATES. On every push `delivery-vitruvian` run that completes on
+# WHEN IT EVALUATES. On every push `delivery-vitruvian-atrium` run that completes on
 # main (the beta's result arrives), and on every release PR open/update
 # (release-please rebuilt it on newer code, so an earlier green beta no longer
 # counts and auto-merge is turned back off). workflow_dispatch re-runs it by
@@ -47,8 +47,8 @@ name: release-beta-gate
 
 on:
   workflow_run:
-    # Matched by workflow NAME: vitruvian's generated delivery workflow.
-    workflows: [delivery-vitruvian]
+    # Matched by workflow NAME: vitruvian-atrium's generated delivery workflow.
+    workflows: [delivery-vitruvian-atrium]
     types: [completed]
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
@@ -60,13 +60,13 @@ permissions:
 jobs:
   gate:
     # Push runs of main carry the beta; a release or dispatch run does not. On
-    # pull_request, only vitruvian's in-repo release PR.
+    # pull_request, only vitruvian-atrium's in-repo release PR.
     if: >-
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_branch == 'main') ||
       (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.ref == 'release-please--branches--main--components--vitruvian' &&
+       github.event.pull_request.head.ref == 'release-please--branches--main--components--vitruvian-atrium' &&
        github.event.pull_request.head.repo.full_name == github.repository) ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-26.04
@@ -74,7 +74,7 @@ jobs:
     # Evaluations are idempotent and each re-reads the current state, so queue
     # them rather than cancel: the last one to run sees the newest state.
     concurrency:
-      group: release-beta-gate-vitruvian
+      group: release-beta-gate-vitruvian-atrium
       cancel-in-progress: false
     permissions:
       contents: read
@@ -100,15 +100,15 @@ jobs:
         with:
           tool: release_beta_gate
 
-      - name: Gate vitruvian's release PR on the beta DMG
+      - name: Gate vitruvian-atrium's release PR on the beta DMG
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
-          COMPONENT: vitruvian
-          CODE_PATH: apps/desktop/vitruvian
-          BETA_JOB: vitruvian-beta
-          WORKFLOW: delivery-vitruvian.yaml
-          # vitruvian delivered through the shared delivery.yaml before the
+          COMPONENT: vitruvian-atrium
+          CODE_PATH: apps/desktop/vitruvian-atrium
+          BETA_JOB: vitruvian-atrium-beta
+          WORKFLOW: delivery-vitruvian-atrium.yaml
+          # vitruvian-atrium delivered through the shared delivery.yaml before the
           # per-app split; code that workflow built is judged by its runs.
           LEGACY_WORKFLOW: delivery.yaml
           GATE_BIN: ${{ steps.gate-bin.outputs.path }}
@@ -127,7 +127,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
-          COMPONENT: vitruvian
+          COMPONENT: vitruvian-atrium
         run: |
           set -euo pipefail
           branch="release-please--branches--main--components--${COMPONENT}"

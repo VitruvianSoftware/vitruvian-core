@@ -235,7 +235,7 @@ final class ChatSymbolsTests: XCTestCase {
 
     func testANamedAppIsCaught() {
         XCTAssertEqual(Self.forbiddenUses(in: "import SwiftUI\nimport VitruvianCodeCore\n"), [])
-        XCTAssertEqual(Self.forbiddenUses(in: "import VitruvianCore\n").count, 1)
+        XCTAssertEqual(Self.forbiddenUses(in: "import VitruvianAtriumCore\n").count, 1)
         XCTAssertEqual(Self.forbiddenUses(in: "@AppStorage(\"vitruvian.x\") var x = false").count, 2)
         XCTAssertEqual(Self.forbiddenUses(in: "url.scheme == \"vitruvian-error\"").count, 1)
     }

@@ -34,13 +34,13 @@ use std::process::{Command, Stdio};
 
 /// The apps that must each ship an MIT LICENSE.
 pub const APPS: &[&str] = &[
-    "apps/suites/tabula",
+    "apps/suites/vitruvian-tabs",
     "apps/web/oauth-user-inspector",
-    "apps/cli/devx",
-    "apps/cli/homelab",
-    "apps/mcp/slack",
+    "apps/cli/vitruvian-devx",
+    "apps/cli/vitruvian-homelab",
+    "apps/mcp/vitruvian-slack-mcp",
     "apps/desktop/vitruvian-code",
-    "apps/desktop/home-speaker",
+    "apps/desktop/vitruvian-speaker",
 ];
 
 /// The `git ls-files` pathspecs whose headers are content-checked.
@@ -53,13 +53,13 @@ const EXEMPT_PREFIXES: &[&str] = &[
     "packages/pulumi/library/",
     "packages/pulumi/examples/",
     // an imported GPL-3.0-or-later fork, kept with its upstream headers
-    "apps/desktop/vitruvian/",
+    "apps/desktop/vitruvian-atrium/",
     // carries code from that fork, so GPL-3.0-or-later too
     "apps/desktop/vitruvian-tool-github/",
     // Vitruvian Code's unmodified vendored Mermaid (another holder's MIT)
     "apps/desktop/vitruvian-code/macos/Sources/VitruvianCodeUI/Resources/",
     // AGPL-3.0-or-later, with SPDX AGPL headers
-    "apps/desktop/courier/",
+    "apps/desktop/vitruvian-courier/",
 ];
 
 /// Whether verify.sh's filters drop this `git ls-files` line.
@@ -309,8 +309,8 @@ mod tests {
             "a/internal/scaffold/templates/t.go",
             "pulumi/library/x.go",
             "packages/pulumi/examples/y.ts",
-            "apps/desktop/vitruvian/S/main.swift",
-            "apps/desktop/courier/a.swift",
+            "apps/desktop/vitruvian-atrium/S/main.swift",
+            "apps/desktop/vitruvian-courier/a.swift",
             "bazel-/x.go",
         ] {
             assert!(is_exempt(p), "{p}");
@@ -437,7 +437,7 @@ mod tests {
         assert!(out.contains("has a non-MIT license header"));
 
         let (rc, _) = run_repo_case(|root| {
-            let dir = root.join("apps/desktop/vitruvian/Sources");
+            let dir = root.join("apps/desktop/vitruvian-atrium/Sources");
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(
                 dir.join("main.swift"),
@@ -465,9 +465,9 @@ mod tests {
                 format!("// Copyright (c) 2026 VitruvianSoftware\n{MIT_BODY}\n\npackage main\n"),
             )
             .unwrap();
-            std::fs::remove_file(root.join("apps/suites/tabula/LICENSE")).unwrap();
+            std::fs::remove_file(root.join("apps/suites/vitruvian-tabs/LICENSE")).unwrap();
         });
         assert_ne!(rc, 0, "missing-LICENSE");
-        assert!(out.contains("apps/suites/tabula/LICENSE is missing"));
+        assert!(out.contains("apps/suites/vitruvian-tabs/LICENSE is missing"));
     }
 }

@@ -1,0 +1,216 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Vorssaint
+
+import CoreGraphics
+import Foundation
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+
+package struct MouseClickDebounceConfig {
+    package let enabled: Bool
+    package let windowMilliseconds: Int
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(enabled: Bool, windowMilliseconds: Int) {
+        self.enabled = enabled
+        self.windowMilliseconds = windowMilliseconds
+    }
+}
+
+package enum MouseClickDebounceEvent: Equatable {
+    case down
+    case dragged
+    case up
+}
+
+package struct MouseClickDebounceInput: Equatable {
+    package let button: Int64
+    package let event: MouseClickDebounceEvent
+
+    /// Primary, secondary and middle clicks only. Extra buttons keep their
+    /// existing navigation, shortcut and gesture ownership untouched.
+    package static func resolve(type: CGEventType, buttonNumber: Int64) -> MouseClickDebounceInput? {
+        switch type {
+        case .leftMouseDown: return MouseClickDebounceInput(button: 0, event: .down)
+        case .leftMouseDragged: return MouseClickDebounceInput(button: 0, event: .dragged)
+        case .leftMouseUp: return MouseClickDebounceInput(button: 0, event: .up)
+        case .rightMouseDown: return MouseClickDebounceInput(button: 1, event: .down)
+        case .rightMouseDragged: return MouseClickDebounceInput(button: 1, event: .dragged)
+        case .rightMouseUp: return MouseClickDebounceInput(button: 1, event: .up)
+        case .otherMouseDown where buttonNumber == 2:
+            return MouseClickDebounceInput(button: 2, event: .down)
+        case .otherMouseDragged where buttonNumber == 2:
+            return MouseClickDebounceInput(button: 2, event: .dragged)
+        case .otherMouseUp where buttonNumber == 2:
+            return MouseClickDebounceInput(button: 2, event: .up)
+        default: return nil
+        }
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(button: Int64, event: MouseClickDebounceEvent) {
+        self.button = button
+        self.event = event
+    }
+}
+
+/// Conservative switch-bounce filtering with exact Down/Up ownership.
+///
+/// A healthy click passes through immediately. After its accepted Up, a new
+/// Down inside the short filter window is suppressed together with its own Up.
+/// The Up of an accepted Down is never suppressed, so resetting the state or
+/// stopping the tap cannot leave a button held in the target app.
+package struct MouseClickDebounceState {
+    private struct ButtonState {
+        var acceptedDown = false
+        var suppressedDown = false
+        var lastAcceptedUp: UInt64?
+        var lastEventTimestamp: UInt64?
+    }
+
+    private var stateByButton: [Int64: ButtonState] = [:]
+
+    package mutating func reset() {
+        stateByButton.removeAll()
+    }
+
+    package mutating func shouldSuppress(button: Int64,
+                                 event: MouseClickDebounceEvent,
+                                 timestampNanoseconds: UInt64,
+                                 config: MouseClickDebounceConfig) -> Bool {
+        guard config.enabled, (0...2).contains(button) else {
+            stateByButton.removeValue(forKey: button)
+            return false
+        }
+
+        var buttonState = sanitizedState(for: button, timestamp: timestampNanoseconds)
+        defer {
+            buttonState.lastEventTimestamp = timestampNanoseconds
+            stateByButton[button] = buttonState
+        }
+
+        switch event {
+        case .down:
+            // Repeated Down while the accepted press is still held is noise,
+            // but its eventual Up still belongs to that accepted press.
+            if buttonState.acceptedDown {
+                return true
+            }
+            // More Down packets can arrive before the Up paired with a click
+            // already identified as bounce. They share the same suppressed Up.
+            if buttonState.suppressedDown {
+                return true
+            }
+
+            let window = UInt64(max(0, config.windowMilliseconds)) * 1_000_000
+            if let release = buttonState.lastAcceptedUp,
+               timestampNanoseconds >= release,
+               timestampNanoseconds - release < window {
+                buttonState.suppressedDown = true
+                return true
+            }
+
+            buttonState.acceptedDown = true
+            return false
+
+        case .dragged:
+            // A suppressed Down must also own its drag packets; otherwise the
+            // target app would receive a drag with no matching press.
+            return buttonState.suppressedDown
+
+        case .up:
+            if buttonState.suppressedDown {
+                buttonState.suppressedDown = false
+                return true
+            }
+            guard buttonState.acceptedDown else {
+                // An unmatched Up may be recovery from a disabled tap. Passing
+                // it through is the only fail-open choice and cannot stick.
+                return false
+            }
+            buttonState.acceptedDown = false
+            buttonState.lastAcceptedUp = timestampNanoseconds
+            return false
+        }
+    }
+
+    private func sanitizedState(for button: Int64,
+                                timestamp: UInt64) -> ButtonState {
+        var state = stateByButton[button] ?? ButtonState()
+        guard let previous = state.lastEventTimestamp else { return state }
+        if timestamp < previous {
+            state = ButtonState()
+        }
+        return state
+    }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
+}
+
+/// The click filter's tap thread as bookkeeping: whether one is serving,
+/// whether it was told to stop, a start owed once it is gone, and the
+/// generation that tells a current restart or recovery from one a newer
+/// lifecycle change overtook. `MouseClickDebounceService` keeps it under its
+/// lifecycle lock.
+package struct MouseClickDebounceLifecycle {
+    package private(set) var hasTapThread = false
+    package private(set) var isStopping = false
+    package private(set) var restartsAfterStop = false
+    package private(set) var generation: UInt = 0
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
+
+    /// Asks for a serving thread; true when the caller should start one.
+    /// While the old thread is still on its way out after a stop, no second
+    /// thread starts beside it and its record is kept: the start is owed
+    /// instead, and paid once that thread is gone.
+    package mutating func requestStart() -> Bool {
+        if hasTapThread {
+            if isStopping {
+                restartsAfterStop = true
+            }
+            return false
+        }
+        isStopping = false
+        restartsAfterStop = false
+        generation &+= 1
+        hasTapThread = true
+        return true
+    }
+
+    /// Tells the serving thread to stop. Its record stays until the thread
+    /// itself reports it is gone, so a stop never erases a newer thread.
+    package mutating func requestStop() {
+        isStopping = true
+        restartsAfterStop = false
+        generation &+= 1
+    }
+
+    /// The serving thread is gone: whether a start is owed, and the
+    /// generation it was owed in.
+    package mutating func threadFinished() -> (restart: Bool, generation: UInt) {
+        let owed = (restart: restartsAfterStop, generation: generation)
+        hasTapThread = false
+        isStopping = false
+        restartsAfterStop = false
+        return owed
+    }
+
+    /// Whether work queued in `generation` still belongs to this lifecycle:
+    /// any start or stop since then makes it stale.
+    package func isCurrent(_ generation: UInt) -> Bool {
+        generation == self.generation
+    }
+
+    /// A tap the window server switched off goes straight back on only while
+    /// the filter is enabled, in the session on screen, with Accessibility,
+    /// and not on its way out. Anything else is rebuilt from the preferences.
+    package static func rearmsDisabledTap(enabled: Bool,
+                                          sessionIsActive: @autoclosure () -> Bool,
+                                          accessibilityGranted: @autoclosure () -> Bool,
+                                          stopping: Bool) -> Bool {
+        enabled && sessionIsActive() && accessibilityGranted() && !stopping
+    }
+}

@@ -22,7 +22,7 @@ version: 2
 updates:
   # ─── Go modules (per go.work member; root //:go.mod is an empty placeholder) ───
   - package-ecosystem: "gomod"
-    directory: "/apps/cli/devx"
+    directory: "/apps/cli/vitruvian-devx"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -42,7 +42,7 @@ updates:
           - "minor"
           - "patch"
   - package-ecosystem: "gomod"
-    directory: "/apps/cli/homelab"
+    directory: "/apps/cli/vitruvian-homelab"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -66,8 +66,8 @@ updates:
     directories:
       - "/"
       - "/.github/actions/*"
-      - "/apps/cli/devx/.github/workflows"
-      - "/apps/cli/homelab/.github/workflows"
+      - "/apps/cli/vitruvian-devx/.github/workflows"
+      - "/apps/cli/vitruvian-homelab/.github/workflows"
       - "/apps/antigravity/plugins/ext-marketplace/.github/workflows"
       - "/apps/antigravity/plugins/gh-watch/.github/workflows"
       - "/apps/antigravity/plugins/hookify/.github/workflows"
@@ -78,8 +78,8 @@ updates:
       - "/apps/antigravity/plugins/security-guidance/.github/workflows"
       - "/apps/antigravity/plugins/worktree-band/.github/workflows"
       - "/apps/desktop/vitruvian-code/.github/workflows"
-      - "/apps/mcp/roborock/.github/workflows"
-      - "/apps/mcp/slack/.github/workflows"
+      - "/apps/mcp/vitruvian-roborock-mcp/.github/workflows"
+      - "/apps/mcp/vitruvian-slack-mcp/.github/workflows"
       - "/apps/web/gods-eye-view/.github/workflows"
       - "/apps/web/vitruviansoftware-dev/.github/workflows"
       - "/packages/pulumi/library/.github/workflows"
@@ -117,7 +117,7 @@ updates:
   #     per-app blocks produced manifest-only PRs that never touched the root
   #     lock, which caused every lock-skew incident (#531) and which the
   #     tidy-check lockfile-sync guard now rightly rejects. Root scope covers
-  #     every member of pnpm-workspace.yaml (tabula/*, vitruvian-code,
+  #     every member of pnpm-workspace.yaml (vitruvian-tabs/*, vitruvian-code,
   #     oauth-user-inspector, tools, packages/*) with coherent lock updates.
   #     Group name *-minor-patch so dependabot-auto-merge enqueues them like
   #     the gomod groups. ───
@@ -156,7 +156,7 @@ updates:
       # the jest-30 migration, #573). Group them across ALL update-types so a
       # major arrives as ONE non-auto-merged PR for the deliberate test
       # migration it always requires. NB: jest 30's resolver also needs
-      # ts-first moduleFileExtensions in each tabula jest.config.js (compiled
+      # ts-first moduleFileExtensions in each vitruvian-tabs jest.config.js (compiled
       # .js siblings in the Bazel bin tree) — already in place.
       jest:
         patterns:
@@ -358,7 +358,7 @@ updates:
       # Outside the pulumi tree, so still enumerated.
       - "/apps/web/oauth-user-inspector/infra/app"
       - "/apps/web/oauth-user-inspector/infra/identity"
-      - "/apps/suites/tabula/infra/**"
+      - "/apps/suites/vitruvian-tabs/infra/**"
     schedule:
       interval: "weekly"
     # Raised from 5 alongside the `**` above: this entry went from 7 hand-listed

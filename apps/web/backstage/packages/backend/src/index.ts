@@ -134,7 +134,7 @@ backend.add(permissionModuleVitruvianPolicy);
 // ClusterRole in gitops/argocd/platform/backstage/rbac.yaml.
 backend.add(import("@backstage/plugin-kubernetes-backend"));
 
-// Cloud Run status for the apps that do NOT run in this cluster (tabula,
+// Cloud Run status for the apps that do NOT run in this cluster (vitruvian-tabs,
 // oauth-user-inspector). The Kubernetes plugin above covers the ones that do.
 backend.add(cloudRunPlugin);
 

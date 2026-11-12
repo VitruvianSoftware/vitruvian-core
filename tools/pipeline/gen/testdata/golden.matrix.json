@@ -57,15 +57,15 @@
       "concurrency_group": "pipeline-homelab"
     },
     {
-      "name": "mcp-slack-service",
-      "package": "mcp-slack",
-      "targets": "//mcp-slack:unit_tests",
-      "test_targets": "//mcp-slack:unit_tests",
+      "name": "vitruvian-slack-mcp-service",
+      "package": "vitruvian-slack-mcp",
+      "targets": "//vitruvian-slack-mcp:unit_tests",
+      "test_targets": "//vitruvian-slack-mcp:unit_tests",
       "runner": "ubuntu-26.04",
       "tier": "L1",
       "persona": "backend",
       "timeout_minutes": 15,
-      "concurrency_group": "pipeline-mcp-slack-service"
+      "concurrency_group": "pipeline-vitruvian-slack-mcp-service"
     },
     {
       "name": "vitruvian-code-macos",
@@ -113,63 +113,63 @@
       "concurrency_group": "pipeline-pulumi-repo-config"
     },
     {
-      "name": "tabula-api",
-      "package": "tabula/api",
-      "targets": "//tabula/api:integration_tests",
-      "test_targets": "//tabula/api:integration_tests",
+      "name": "vitruvian-tabs-api",
+      "package": "apps/suites/vitruvian-tabs/api",
+      "targets": "//apps/suites/vitruvian-tabs/api:integration_tests",
+      "test_targets": "//apps/suites/vitruvian-tabs/api:integration_tests",
       "runner": "ubuntu-26.04",
       "tier": "L1",
       "persona": "backend",
       "timeout_minutes": 20,
-      "concurrency_group": "pipeline-tabula-api",
-      "needs": ["tabula-shared"]
+      "concurrency_group": "pipeline-vitruvian-tabs-api",
+      "needs": ["vitruvian-tabs-shared"]
     },
     {
-      "name": "tabula-cli",
-      "package": "tabula/cli",
-      "targets": "//tabula/cli:unit_tests",
-      "test_targets": "//tabula/cli:unit_tests",
+      "name": "vitruvian-tabs-cli",
+      "package": "apps/suites/vitruvian-tabs/cli",
+      "targets": "//apps/suites/vitruvian-tabs/cli:unit_tests",
+      "test_targets": "//apps/suites/vitruvian-tabs/cli:unit_tests",
       "runner": "ubuntu-26.04",
       "tier": "L1",
       "persona": "backend",
       "timeout_minutes": 15,
-      "concurrency_group": "pipeline-tabula-cli",
-      "needs": ["tabula-shared"]
+      "concurrency_group": "pipeline-vitruvian-tabs-cli",
+      "needs": ["vitruvian-tabs-shared"]
     },
     {
-      "name": "tabula-extension",
-      "package": "tabula/extension",
-      "targets": "//tabula/extension:unit_tests",
-      "test_targets": "//tabula/extension:unit_tests",
+      "name": "vitruvian-tabs-extension",
+      "package": "apps/suites/vitruvian-tabs/extension",
+      "targets": "//apps/suites/vitruvian-tabs/extension:unit_tests",
+      "test_targets": "//apps/suites/vitruvian-tabs/extension:unit_tests",
       "runner": "ubuntu-26.04",
       "tier": "L1",
       "persona": "frontend",
       "timeout_minutes": 15,
-      "concurrency_group": "pipeline-tabula-extension",
-      "needs": ["tabula-shared"]
+      "concurrency_group": "pipeline-vitruvian-tabs-extension",
+      "needs": ["vitruvian-tabs-shared"]
     },
     {
-      "name": "tabula-shared",
-      "package": "tabula/shared",
-      "targets": "//tabula/shared:lib",
-      "test_targets": "//tabula/shared:lib",
+      "name": "vitruvian-tabs-shared",
+      "package": "apps/suites/vitruvian-tabs/shared",
+      "targets": "//apps/suites/vitruvian-tabs/shared:lib",
+      "test_targets": "//apps/suites/vitruvian-tabs/shared:lib",
       "runner": "ubuntu-26.04",
       "tier": "L1",
       "persona": "all",
       "timeout_minutes": 15,
-      "concurrency_group": "pipeline-tabula-shared"
+      "concurrency_group": "pipeline-vitruvian-tabs-shared"
     },
     {
-      "name": "tabula-web",
-      "package": "tabula/web",
-      "targets": "//tabula/web:unit_tests",
-      "test_targets": "//tabula/web:unit_tests",
+      "name": "vitruvian-tabs-web",
+      "package": "apps/suites/vitruvian-tabs/web",
+      "targets": "//apps/suites/vitruvian-tabs/web:unit_tests",
+      "test_targets": "//apps/suites/vitruvian-tabs/web:unit_tests",
       "runner": "ubuntu-26.04",
       "tier": "L1",
       "persona": "frontend",
       "timeout_minutes": 15,
-      "concurrency_group": "pipeline-tabula-web",
-      "needs": ["design-system", "tabula-shared"]
+      "concurrency_group": "pipeline-vitruvian-tabs-web",
+      "needs": ["design-system", "vitruvian-tabs-shared"]
     }
   ]
 }

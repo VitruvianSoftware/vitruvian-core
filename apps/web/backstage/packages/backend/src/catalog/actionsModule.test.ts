@@ -275,7 +275,7 @@ describe("registerCatalogMcpActions", () => {
               namespace,
               annotations: {
                 "github.com/project-slug": "VitruvianSoftware/vitruvian-core",
-                "argocd/app-name": "mcp-slack",
+                "argocd/app-name": "vitruvian-slack-mcp",
               },
             },
             spec: {
@@ -309,7 +309,7 @@ describe("registerCatalogMcpActions", () => {
       try {
         const refreshAction = registeredActions.get("refresh_catalog_entity");
         const result = await refreshAction.action({
-          input: { entity_ref: "component:default/mcp-slack" },
+          input: { entity_ref: "component:default/vitruvian-slack-mcp" },
           credentials: {
             $$type: "@backstage/BackstageCredentials",
             principal: { type: "user", userEntityRef: "user:default/ipv1337" },
@@ -318,8 +318,8 @@ describe("registerCatalogMcpActions", () => {
 
         expect(result.output).toEqual({
           message:
-            "Refresh successfully scheduled for component:default/mcp-slack",
-          entity_ref: "component:default/mcp-slack",
+            "Refresh successfully scheduled for component:default/vitruvian-slack-mcp",
+          entity_ref: "component:default/vitruvian-slack-mcp",
         });
       } finally {
         global.fetch = originalFetch;
@@ -335,9 +335,9 @@ describe("registerCatalogMcpActions", () => {
             {
               type: "software-catalog",
               document: {
-                title: "mcp-slack",
+                title: "vitruvian-slack-mcp",
                 text: "MCP server exposing Slack tools",
-                location: "/catalog/default/component/mcp-slack",
+                location: "/catalog/default/component/vitruvian-slack-mcp",
               },
             },
           ],
@@ -355,7 +355,7 @@ describe("registerCatalogMcpActions", () => {
         });
 
         expect(result.output.results).toHaveLength(1);
-        expect(result.output.results[0].title).toBe("mcp-slack");
+        expect(result.output.results[0].title).toBe("vitruvian-slack-mcp");
       } finally {
         global.fetch = originalFetch;
       }
@@ -366,13 +366,13 @@ describe("registerCatalogMcpActions", () => {
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,
         text: async () =>
-          "<h1>Documentation</h1><p>Welcome to mcp-slack docs</p>",
+          "<h1>Documentation</h1><p>Welcome to vitruvian-slack-mcp docs</p>",
       }) as any;
 
       try {
         const techdocsAction = registeredActions.get("get_techdocs_page");
         const result = await techdocsAction.action({
-          input: { name: "mcp-slack", path: "index.html" },
+          input: { name: "vitruvian-slack-mcp", path: "index.html" },
           credentials: {
             $$type: "@backstage/BackstageCredentials",
             principal: { type: "user", userEntityRef: "user:default/ipv1337" },
@@ -380,9 +380,10 @@ describe("registerCatalogMcpActions", () => {
         });
 
         expect(result.output).toEqual({
-          entity_ref: "Component:default/mcp-slack",
+          entity_ref: "Component:default/vitruvian-slack-mcp",
           path: "index.html",
-          content: "<h1>Documentation</h1><p>Welcome to mcp-slack docs</p>",
+          content:
+            "<h1>Documentation</h1><p>Welcome to vitruvian-slack-mcp docs</p>",
         });
       } finally {
         global.fetch = originalFetch;
@@ -495,11 +496,11 @@ describe("registerCatalogMcpActions", () => {
           apiVersion: "backstage.io/v1alpha1",
           kind: "Component",
           metadata: {
-            name: "mcp-slack",
+            name: "vitruvian-slack-mcp",
             namespace: "default",
             annotations: {
               "github.com/project-slug": "VitruvianSoftware/vitruvian-core",
-              "argocd/app-name": "mcp-slack",
+              "argocd/app-name": "vitruvian-slack-mcp",
             },
           },
           spec: {
@@ -513,14 +514,16 @@ describe("registerCatalogMcpActions", () => {
       try {
         const scorecardAction = registeredActions.get("get_entity_scorecard");
         const result = await scorecardAction.action({
-          input: { entity_ref: "component:default/mcp-slack" },
+          input: { entity_ref: "component:default/vitruvian-slack-mcp" },
           credentials: {
             $$type: "@backstage/BackstageCredentials",
             principal: { type: "user", userEntityRef: "user:default/ipv1337" },
           },
         });
 
-        expect(result.output.entity_ref).toBe("component:default/mcp-slack");
+        expect(result.output.entity_ref).toBe(
+          "component:default/vitruvian-slack-mcp",
+        );
         expect(result.output.archetype).toBe("service");
         expect(result.output.tracks).toBeDefined();
         expect(result.output.tracks.length).toBeGreaterThan(0);

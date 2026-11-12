@@ -676,10 +676,10 @@ fn queued_misses_when_the_push_changed_a_file_a_main_only_cache_is_keyed_on() {
         ".bazelversion",
         ".bazelrc",
         "go.sum",
-        "apps/cli/devx/go.mod",
+        "apps/cli/vitruvian-devx/go.mod",
         "go.work.sum",
         ".xcode-version",
-        "apps/cli/devx/.golangci.yml",
+        "apps/cli/vitruvian-devx/.golangci.yml",
     ] {
         let q = Queued::new();
         q.changed(&["docs/a.md", f]);

@@ -1,0 +1,2540 @@
+/* Copyright 2026 VitruvianSoftware. SPDX-License-Identifier: AGPL-3.0-or-later. */
+
+/* The window's subtitle while the engine starts. */
+"Connecting…" = "Connecting…";
+
+/* The window's subtitle after the engine stopped unexpectedly, while it is started again. */
+"Reconnecting…" = "Reconnecting…";
+
+/* The window's subtitle when the engine speaks another protocol version than the app. */
+"Update needed" = "Update needed";
+
+/* The window's subtitle when the engine is up. */
+"Connected" = "Connected";
+
+/* The window's subtitle once the engine has been stopped. */
+"Stopped" = "Stopped";
+
+/* The main window while the engine starts or restarts. */
+"Starting Vitruvian Courier’s engine…" = "Starting Vitruvian Courier’s engine…";
+
+/* The main window once the engine has been stopped (while the app quits). */
+"Vitruvian Courier’s engine is stopped." = "Vitruvian Courier’s engine is stopped.";
+
+/* The main window when another engine holds the data folder (the engine exits 3). The argument is the engine's own message, which names the folder. The restarts go on. */
+"Vitruvian Courier can’t start its engine: %@. Quit the other copy of Vitruvian Courier, or the command-line engine, that uses this folder. Vitruvian Courier keeps trying." = "Vitruvian Courier can’t start its engine: %@. Quit the other copy of Vitruvian Courier, or the command-line engine, that uses this folder. Vitruvian Courier keeps trying.";
+
+/* The main window when the engine stopped before it was ready and said why on standard error (for example, a data folder path that is too long). The argument is the engine's own message. The restarts go on. */
+"Vitruvian Courier’s engine stopped while starting: %@. Vitruvian Courier keeps trying." = "Vitruvian Courier’s engine stopped while starting: %@. Vitruvian Courier keeps trying.";
+
+/* As above, when the engine said nothing the app could read. */
+"Vitruvian Courier can’t start its engine: another copy of it is using Vitruvian Courier’s data folder. Quit the other copy of Vitruvian Courier, or the command-line engine. Vitruvian Courier keeps trying." = "Vitruvian Courier can’t start its engine: another copy of it is using Vitruvian Courier’s data folder. Quit the other copy of Vitruvian Courier, or the command-line engine. Vitruvian Courier keeps trying.";
+
+/* The main window when the engine is a different version from the app. */
+"This copy of Vitruvian Courier and its engine don’t match. Reinstall Vitruvian Courier to update it." = "This copy of Vitruvian Courier and its engine don’t match. Reinstall Vitruvian Courier to update it.";
+
+/* The menu of the inbox's keys, in the menu bar. */
+"Chat" = "Chat";
+
+/* Chat menu: opens the chat below the open one (⌘]). */
+"Next Chat" = "Next Chat";
+
+/* Chat menu: opens the chat above the open one (⌘[). */
+"Previous Chat" = "Previous Chat";
+
+/* Chat menu: opens the next chat that has unread messages (⌘U). */
+"Next Unread Chat" = "Next Unread Chat";
+
+/* Chat menu: marks the open (or selected) chats read (⌘⇧U) when one of them is unread or marked unread. Also the button on a notification that marks that chat read. */
+"Mark as Read" = "Mark as Read";
+
+/* Chat menu: mutes the open chat (⌘⇧M). */
+"Mute Chat" = "Mute Chat";
+
+/* Chat menu: unmutes the open chat when it is muted (⌘⇧M). */
+"Unmute Chat" = "Unmute Chat";
+
+/* The right-hand pane while no chat is open. */
+"Select a chat" = "Select a chat";
+
+/* The title of the window shown before any network is linked, and its button. */
+"Add a network" = "Add a network";
+
+/* Under the title of the window shown before any network is linked. */
+"Link WhatsApp, Signal, Telegram, Slack or Google Messages, and your chats appear here." = "Link WhatsApp, Signal, Telegram, Slack or Google Messages, and your chats appear here.";
+
+/* The inbox when the engine has no chats yet. */
+"No chats yet" = "No chats yet";
+
+/* A chat row's tooltip and accessibility label for the muted bell. */
+"Muted" = "Muted";
+
+/* A chat row's accessibility label for its unread count. The argument is the number. */
+"%lld unread" = "%lld unread";
+
+/* A chat row's preview when the newest message is the person's own. Keep the trailing space. */
+"You: " = "You: ";
+
+/* A chat row's preview label for a picture. */
+"Image" = "Image";
+
+/* A chat row's preview label for a video. */
+"Video" = "Video";
+
+/* A chat row's preview label for a voice message or other audio. */
+"Voice note" = "Voice note";
+
+/* A chat row's preview label for a file. */
+"File" = "File";
+
+/* A chat row's preview label for a sticker. */
+"Sticker" = "Sticker";
+
+/* A chat row's preview label for a poll; the poll's question follows it. */
+"Poll" = "Poll";
+
+/* A chat row's preview label for a note that the chat's disappearing-message timer changed. */
+"Disappearing messages changed" = "Disappearing messages changed";
+
+/* Banner: the network ended the session. The argument is the network's name. */
+"You’re logged out of %@." = "You’re logged out of %@.";
+
+/* Banner: the network refused the saved sign-in. The argument is the network's name. */
+"%@ no longer accepts your sign-in." = "%@ no longer accepts your sign-in.";
+
+/* Banner: the engine could not start the network. The argument is the network's name; the engine's reason follows. */
+"%@ isn’t running." = "%@ isn’t running.";
+
+/* Banner button: signs in to the network again. */
+"Reconnect" = "Reconnect";
+
+/* The date line in a chat for messages sent today. */
+"Today" = "Today";
+
+/* The date line in a chat for messages sent yesterday. */
+"Yesterday" = "Yesterday";
+
+/* The divider in a chat above the messages that have not been read. */
+"New" = "New";
+
+/* Spoken name of the divider above unread messages. */
+"New messages" = "New messages";
+
+/* What a deleted message says in a chat. Also the quote of a deleted message. */
+"This message was deleted" = "This message was deleted";
+
+/* What a message says when it could not be decrypted. */
+"Waiting for this message to be decrypted" = "Waiting for this message to be decrypted";
+
+/* Under a message whose text was changed after it was sent. */
+"Edited" = "Edited";
+
+/* The name of the person using Vitruvian Courier, in a quote and for screen readers. */
+"You" = "You";
+
+/* In a reply: the message it answers is older than what is loaded. */
+"Original message not loaded" = "Original message not loaded";
+
+/* Under a message of yours that the network has not taken yet. */
+"Sending…" = "Sending…";
+
+/* Under your newest message once the network has taken it. */
+"Sent" = "Sent";
+
+/* Under a message of yours that the network refused. */
+"Not sent" = "Not sent";
+
+/* Tooltip on Not sent when the network gave no reason. */
+"The network did not take this message." = "The network did not take this message.";
+
+/* Button under a message that was not sent: send it again. */
+"Retry" = "Retry";
+
+/* Button under a message that was not sent: remove it from this device. */
+"Delete" = "Delete";
+
+/* Button, menu item and tooltip: reply to this message. Also the button on a notification that types a reply. */
+"Reply" = "Reply";
+
+/* Menu in a message's context menu: add a reaction. */
+"React" = "React";
+
+/* Tooltip and spoken name of a quick reaction. The argument is the emoji. */
+"React with %@" = "React with %@";
+
+/* Menu item: copy a message's text. */
+"Copy" = "Copy";
+
+/* Spoken name of a reaction under a message: the emoji, then how many gave it. */
+"%@, %lld" = "%@, %lld";
+
+/* Spoken name of a reaction you gave: the emoji, then how many gave it. */
+"%@, %lld, including you" = "%@, %lld, including you";
+
+/* Spoken form of a deleted message. The argument is who sent it. */
+"%@: deleted message" = "%@: deleted message";
+
+/* Spoken form of a message that could not be decrypted. The argument is who sent it. */
+"%@: message waiting to be decrypted" = "%@: message waiting to be decrypted";
+
+/* Spoken form of an image. The arguments are who sent it and its caption. */
+"%@: image %@" = "%@: image %@";
+
+/* Spoken form of a sticker. The argument is who sent it. */
+"%@: sticker" = "%@: sticker";
+
+/* Spoken form of a video. The arguments are who sent it and its caption. */
+"%@: video %@" = "%@: video %@";
+
+/* Spoken form of a voice note. The argument is who sent it. */
+"%@: voice note" = "%@: voice note";
+
+/* Spoken form of a file. The arguments are who sent it, the file's name and its caption. */
+"%@: file %@ %@" = "%@: file %@ %@";
+
+/* In a chat, in place of a picture that could not be read. */
+"Image can’t be shown" = "Image can’t be shown";
+
+/* On a picture or file of a message whose file is not on this Mac yet. */
+"Not downloaded yet" = "Not downloaded yet";
+
+/* Tooltip on a file in a chat: opens it in the default app. */
+"Open" = "Open";
+
+/* Spoken hint on a file in a chat. */
+"Opens the file" = "Opens the file";
+
+/* Tooltip on the button that takes a file out of the message being written. */
+"Remove attachment" = "Remove attachment";
+
+/* Spoken name of the button that takes a file out of the message being written. The argument is the file's name. */
+"Remove %@" = "Remove %@";
+
+/* Tooltip on the paperclip in the composer. */
+"Attach files (⌘O)" = "Attach files (⌘O)";
+
+/* Spoken name of the paperclip in the composer. */
+"Attach files" = "Attach files";
+
+/* Message in the file picker. */
+"Choose files to send" = "Choose files to send";
+
+/* Button of the file picker. */
+"Attach" = "Attach";
+
+/* The composer's placeholder. */
+"Type a message…" = "Type a message…";
+
+/* Tooltip on the emoji button in the composer. */
+"Emoji & Symbols (⌃⌘Space)" = "Emoji & Symbols (⌃⌘Space)";
+
+/* Spoken name of the emoji button in the composer. */
+"Emoji and symbols" = "Emoji and symbols";
+
+/* Tooltip on the send button. */
+"Send (Return)" = "Send (Return)";
+
+/* Spoken name of the send button. Also the button that sends the reply typed in a notification. */
+"Send" = "Send";
+
+/* Closes a notice or banner. */
+"Dismiss" = "Dismiss";
+
+/* Above the composer: the message being replied to. The argument is who wrote it. */
+"Replying to %@" = "Replying to %@";
+
+/* Above the composer: the message being replied to is your own. */
+"Replying to yourself" = "Replying to yourself";
+
+/* Tooltip on the button that drops the reply. */
+"Clear quoted message (Esc)" = "Clear quoted message (Esc)";
+
+/* Spoken name of the button that drops the reply. */
+"Clear quoted message" = "Clear quoted message";
+
+/* Under the composer when a file would take the files to send past 90 MB. The argument is the file's name. */
+"Could not attach %@ — total size would exceed 90 MB." = "Could not attach %@ — total size would exceed 90 MB.";
+
+/* Under the composer when what was dropped is a folder or cannot be read. The argument is its name. */
+"Could not attach %@. Vitruvian Courier can send files, not folders." = "Could not attach %@. Vitruvian Courier can send files, not folders.";
+
+/* Under the composer after a send got no answer. */
+"Vitruvian Courier’s engine did not answer. The message may have been sent: check the chat before sending it again." = "Vitruvian Courier’s engine did not answer. The message may have been sent: check the chat before sending it again.";
+
+/* Under the composer when a send was refused with no reason to give. */
+"The message could not be sent." = "The message could not be sent.";
+
+/* Under the composer when a send was refused. The argument is the engine's reason. */
+"The message could not be sent: %@" = "The message could not be sent: %@";
+
+/* The engine refused a file for its size. */
+"A file is over 90 MB." = "A file is over 90 MB.";
+
+/* A send could not be made because the engine is not up. */
+"Vitruvian Courier’s engine is not connected." = "Vitruvian Courier’s engine is not connected.";
+
+/* A reaction, retry or delete got no answer. */
+"Vitruvian Courier’s engine did not answer in time." = "Vitruvian Courier’s engine did not answer in time.";
+
+/* A reaction, retry or delete failed for no reason to give. */
+"Vitruvian Courier’s engine could not do that." = "Vitruvian Courier’s engine could not do that.";
+
+/* In a bar above the composer when the newest messages could not be read. */
+"Vitruvian Courier could not read the latest messages." = "Vitruvian Courier could not read the latest messages.";
+
+/* In that bar when a chat was opened at a message (a search result) that has been deleted since: the newest messages show instead. */
+"That message isn’t in this chat any more." = "That message isn’t in this chat any more.";
+
+/* Button in that bar: read them again. */
+"Try again" = "Try again";
+
+/* In a chat with no messages. */
+"No messages yet" = "No messages yet";
+
+/* On the jump button: one message arrived while scrolled up. */
+"1 new message" = "1 new message";
+
+/* On the jump button: several messages arrived while scrolled up. */
+"%lld new messages" = "%lld new messages";
+
+/* Tooltip on the jump button. */
+"Jump to the newest message (⌘↓)" = "Jump to the newest message (⌘↓)";
+
+/* Spoken name of the jump button. */
+"Jump to the newest message" = "Jump to the newest message";
+
+/* Over a chat while files are dragged onto it. */
+"Drop files here to attach" = "Drop files here to attach";
+
+/* Name of the menu with the chat's keys. Also the placeholder in the reply typed in a notification. */
+"Message" = "Message";
+
+/* Menu item: pick files to send. */
+"Attach Files…" = "Attach Files…";
+
+/* Menu item: scroll the chat to its newest message. */
+"Jump to Newest Message" = "Jump to Newest Message";
+
+/* Under the composer when a file could not be read. The argument is its name. */
+"Could not read %@. It may have moved, or Vitruvian Courier may not be allowed to open it." = "Could not read %@. It may have moved, or Vitruvian Courier may not be allowed to open it.";
+
+/* Button at the top of a chat when older messages could not be read: try again. */
+"Load older messages" = "Load older messages";
+
+/* A send or reaction was refused: the chat's network has no account. */
+"This chat’s network isn’t linked." = "This chat’s network isn’t linked.";
+
+/* A send was refused: the text starts with the network's bridge command prefix. */
+"The network would take this as a command, so it was not sent." = "The network would take this as a command, so it was not sent.";
+
+/* A send or reaction was refused: the network did not start. */
+"This chat’s network isn’t running." = "This chat’s network isn’t running.";
+
+/* A send was refused: the network is not connected yet. */
+"The network isn’t connected yet." = "The network isn’t connected yet.";
+
+/* Retry or Delete was refused: the message had not failed. */
+"Only a message that was not sent can be sent again or deleted." = "Only a message that was not sent can be sent again or deleted.";
+
+/* An action was refused: the chat or message is gone. */
+"That chat or message is no longer there." = "That chat or message is no longer there.";
+
+/* Under the composer after a send went wrong: a file that was to be put back no longer fits with what was added since. The argument is its name. */
+"Could not put %@ back — total size would exceed 90 MB." = "Could not put %@ back — total size would exceed 90 MB.";
+
+/* As above, for several files. The arguments are how many, and their names. */
+"Could not put %lld files back — total size would exceed 90 MB: %@" = "Could not put %lld files back — total size would exceed 90 MB: %@";
+
+/* --- Adding a network --- */
+
+/* The File menu item that opens the Add a network sheet. */
+"Add a Network…" = "Add a Network…";
+
+/* A button that closes the Add a network sheet, cancelling any sign-in in progress. */
+"Cancel" = "Cancel";
+
+/* A button that goes on to the next step of a sign-in. */
+"Continue" = "Continue";
+
+/* A button that closes the Add a network sheet once the sign-in is over. */
+"Done" = "Done";
+
+/* The title of each step of a sign-in. The argument is the network's name, such as Slack. */
+"Link %@" = "Link %@";
+
+/* In the network picker: the button that starts signing in to a network with the app's preferred way. */
+"Link" = "Link";
+
+/* In the network picker: a menu of the other ways to sign in to a network. */
+"Other ways" = "Other ways";
+
+/* In the network picker, beside a network whose account works; and the end of a sign-in when the network gave no account name. */
+"Linked" = "Linked";
+
+/* The end of a sign-in that worked. The argument is what the network calls the account (a name, a phone number or an email address). */
+"Linked as %@" = "Linked as %@";
+
+/* The warning before linking Google Messages, which allows only one web session at a time (spec §5). No other app is named. */
+"Google Messages allows one web session at a time. Linking it here signs out any other place it’s open on the web, including other messaging apps." = "Google Messages allows one web session at a time. Linking it here signs out any other place it’s open on the web, including other messaging apps.";
+
+/* While the engine is working on a sign-in. The argument is the network's name. */
+"Waiting for %@…" = "Waiting for %@…";
+
+/* Under a QR code, emoji or code, while the app waits for the person to use it on their phone. */
+"Waiting for your phone…" = "Waiting for your phone…";
+
+/* Under a QR code to scan with the network's app. */
+"Scan this with your phone." = "Scan this with your phone.";
+
+/* Under an emoji the person taps in the network's app on their phone (Google Messages). */
+"Tap this on your phone." = "Tap this on your phone.";
+
+/* Under a code the person types into the network's app on their phone. */
+"Enter this on your phone." = "Enter this on your phone.";
+
+/* The accessibility label of a QR code. Also the name of a way to sign in. */
+"QR code" = "QR code";
+
+/* Shown instead of a QR code that CoreImage could not draw. */
+"Vitruvian Courier couldn’t draw this QR code." = "Vitruvian Courier couldn’t draw this QR code.";
+
+/* A ways-to-sign-in name: signing in with a phone number. */
+"Phone number" = "Phone number";
+
+/* A ways-to-sign-in name for Slack: signing in on Slack's web page in Vitruvian Courier's sign-in window. */
+"Sign in on the web" = "Sign in on the web";
+
+/* A ways-to-sign-in name for Slack: a code Slack emails. */
+"Sign in with an emailed code" = "Sign in with an emailed code";
+
+/* A ways-to-sign-in name for Slack: a Slack app's bot and app tokens. */
+"Slack app tokens" = "Slack app tokens";
+
+/* A ways-to-sign-in name for Google Messages: signing in with a Google account. */
+"Google account" = "Google account";
+
+/* A picker's placeholder in a sign-in step, before an option is chosen. */
+"Choose…" = "Choose…";
+
+/* Under a sign-in field whose value does not fit what the network expects. */
+"This doesn’t look right yet." = "This doesn’t look right yet.";
+
+/* The engine refused a value typed into a sign-in step. The step stays open for another try. */
+"That isn’t accepted. Check it and try again." = "That isn’t accepted. Check it and try again.";
+
+/* The sign-in timed out, was cancelled or was already over on the engine. */
+"The sign-in ended before it was finished. Try again." = "The sign-in ended before it was finished. Try again.";
+
+/* A sign-in for this network is already in progress (another window, or the command-line tool). The argument is the network's name. */
+"A sign-in for %@ is already open." = "A sign-in for %@ is already open.";
+
+/* The network's account already works, so the engine will not link it again. The argument is the network's name. */
+"%@ is already linked." = "%@ is already linked.";
+
+/* A sign-in failed for a reason the app has no better words for. The argument is the network's name. */
+"Vitruvian Courier couldn’t sign in to %@. Try again." = "Vitruvian Courier couldn’t sign in to %@. Try again.";
+
+/* The sign-in needs something Vitruvian Courier can't do yet (a value only a raw web request has, a passkey); it was cancelled. */
+"This sign-in needs a step Vitruvian Courier can’t do yet." = "This sign-in needs a step Vitruvian Courier can’t do yet.";
+
+/* The sheet while the sign-in window is open. The argument is the network's name. */
+"Sign in to %@ in the window that opened. Vitruvian Courier picks up the sign-in when you’re done." = "Sign in to %@ in the window that opened. Vitruvian Courier picks up the sign-in when you’re done.";
+
+/* The person closed the sign-in window before it was done; the sign-in was cancelled. The argument is the network's name. */
+"The sign-in window was closed, so signing in to %@ was cancelled." = "The sign-in window was closed, so signing in to %@ was cancelled.";
+
+/* The sign-in window's title. The argument is the network's name. */
+"Sign in to %@" = "Sign in to %@";
+
+/* In the sign-in window's bar. The argument is the network's name. */
+"Sign in to %@ here." = "Sign in to %@ here.";
+
+/* The sign-in window's button for when the page never says it is done by itself. */
+"I’ve signed in" = "I’ve signed in";
+
+/* The sign-in window's accessibility label for the page's address. The argument is the host name, such as slack.com. */
+"Page address: %@" = "Page address: %@";
+
+/* The sign-in window's address bar when the page is not an https page (no lock is shown). */
+"Not a secure page" = "Not a secure page";
+
+/* In the sign-in window, after I've signed in, when a value the network needs is not on the page yet. */
+"Vitruvian Courier hasn’t found everything it needs yet. Finish signing in, then try again." = "Vitruvian Courier hasn’t found everything it needs yet. Finish signing in, then try again.";
+
+/* --- Telegram set-up --- */
+
+/* The title of Telegram's set-up. */
+"Set up Telegram" = "Set up Telegram";
+
+/* Telegram's keys, the first step of linking Telegram in a build with no app ID of its own. api_id, api_hash and API development tools are Telegram's own names; keep them as they are. */
+"This build of Vitruvian Courier has no Telegram app ID of its own, and Telegram asks every app for one. Sign in at my.telegram.org, open API development tools, create an app, and copy its api_id and api_hash here. Vitruvian Courier keeps them in your Keychain, then goes on to link Telegram." = "This build of Vitruvian Courier has no Telegram app ID of its own, and Telegram asks every app for one. Sign in at my.telegram.org, open API development tools, create an app, and copy its api_id and api_hash here. Vitruvian Courier keeps them in your Keychain, then goes on to link Telegram.";
+
+/* The link to Telegram's site for app credentials. */
+"Open my.telegram.org" = "Open my.telegram.org";
+
+/* Under Telegram's api_id field when it is not a whole number from 1 to 2147483647. */
+"api_id is a whole number." = "api_id is a whole number.";
+
+/* Under Telegram's api_hash field when it is not 32 hexadecimal characters. */
+"api_hash is 32 letters and digits." = "api_hash is 32 letters and digits.";
+
+/* The button that saves Telegram's credentials and goes on to link Telegram. */
+"Save and continue" = "Save and continue";
+
+/* Telegram's credentials do not fit; nothing was saved. */
+"Check both values: api_id is a whole number and api_hash is 32 letters and digits, as shown at my.telegram.org." = "Check both values: api_id is a whole number and api_hash is 32 letters and digits, as shown at my.telegram.org.";
+
+/* The Keychain refused Telegram's credentials. */
+"Vitruvian Courier couldn’t save these in your Keychain." = "Vitruvian Courier couldn’t save these in your Keychain.";
+
+/* Telegram did not start within a minute of Vitruvian Courier's engine restarting with the saved keys. */
+"Telegram didn’t start. Vitruvian Courier has saved your keys, so try again from Add a network in a minute. If it still doesn’t start, quit Vitruvian Courier and open it again." = "Telegram didn’t start. Vitruvian Courier has saved your keys, so try again from Add a network in a minute. If it still doesn’t start, quit Vitruvian Courier and open it again.";
+
+/* The menu-bar icon's spoken name, and the app's name. */
+"Vitruvian Courier" = "Vitruvian Courier";
+
+/* Menu-bar menu: tells there is nothing unread. */
+"No unread chats" = "No unread chats";
+
+/* Menu-bar menu: tells that one chat has unread messages. */
+"1 unread chat" = "1 unread chat";
+
+/* Menu-bar menu: tells how many chats have unread messages. The argument is a number, 2 or more. */
+"%lld unread chats" = "%lld unread chats";
+
+/* Menu-bar menu: brings the Vitruvian Courier window forward, opening it again if it was closed. */
+"Open Vitruvian Courier" = "Open Vitruvian Courier";
+
+/* Menu-bar menu: quits Vitruvian Courier. */
+"Quit Vitruvian Courier" = "Quit Vitruvian Courier";
+
+/* The body of a notification that says a reply typed in another notification could not be sent. The text is waiting in that chat's message box. */
+"Your reply wasn’t sent — it’s waiting in the chat." = "Your reply wasn’t sent — it’s waiting in the chat.";
+
+/* The body of a notification that says a reply typed in another notification is waiting for its network (offline, starting or signed out) and will be sent once it is back. */
+"Your reply will be sent when the network is back." = "Your reply will be sent when the network is back.";
+
+/* The body of a notification that says a reply typed in a notification may or may not have been sent, because the engine did not answer. The text is waiting in that chat's message box. */
+"Your reply may not have been sent — check the chat before sending again." = "Your reply may not have been sent — check the chat before sending again.";
+
+/* Chat menu: marks the open (or selected) chats unread again. The mark stays on this Mac; no network is told. */
+"Mark as Unread" = "Mark as Unread";
+
+/* Toast under the inbox after one chat was archived. It has an Undo button. */
+"Archived 1 chat" = "Archived 1 chat";
+
+/* Toast under the inbox after chats were archived. The argument is how many, 2 or more. It has an Undo button. */
+"Archived %lld chats" = "Archived %lld chats";
+
+/* Toast under the inbox after chats were moved to Low Priority. It has an Undo button. */
+"Moved to Low Priority" = "Moved to Low Priority";
+
+/* Toast under the inbox after chats were hidden on this Mac. It has an Undo button. */
+"Hidden" = "Hidden";
+
+/* Toast under the inbox after a reminder was set. The argument is the reminder's date and time. It has an Undo button. */
+"Reminder set for %@" = "Reminder set for %@";
+
+/* Toast, and the words in place of an action, when the feature is not part of the person's plan. */
+"Available with a plan" = "Available with a plan";
+
+/* Toast when every chat asked to be archived is pinned: a pinned chat is never archived. */
+"Unpin a chat to archive it." = "Unpin a chat to archive it.";
+
+/* Toast when the chat's network cannot do what was asked (accept a message request, say). Nothing changed. */
+"This chat’s network can’t do that." = "This chat’s network can’t do that.";
+
+/* Toast when an inbox action failed for a reason the app has no words for. Nothing changed. */
+"That didn’t work. Try again." = "That didn’t work. Try again.";
+
+/* Toast under the inbox after the order or the hidden spaces of the spaces bar was saved. */
+"Sidebar updated" = "Sidebar updated";
+
+/* Remind Me menu: the time of the last reminder that was set, offered again. The argument is its date and time. */
+"Last Used %@" = "Last Used %@";
+
+/* Remind Me menu: one hour from now. */
+"In an Hour" = "In an Hour";
+
+/* Remind Me menu: two hours from now. */
+"In Two Hours" = "In Two Hours";
+
+/* Remind Me menu: 6 pm today. Offered only before 5 pm. */
+"This Evening" = "This Evening";
+
+/* Remind Me menu: 9 am tomorrow. */
+"Tomorrow" = "Tomorrow";
+
+/* Remind Me menu: 9 am on the coming Saturday. Offered Monday to Thursday. */
+"This Weekend" = "This Weekend";
+
+/* Remind Me menu: 9 am on the coming Monday. */
+"Next Week" = "Next Week";
+
+/* Command bar: archives every chat of the space shown, except pinned ones. It can be undone. */
+"Archive all chats" = "Archive all chats";
+
+/* Command bar: archives every chat of the space shown whose newest message is over a week old, except pinned ones. */
+"Archive all chats older than a week" = "Archive all chats older than a week";
+
+/* Command bar: archives every chat of the space shown that has nothing unread, except pinned ones. */
+"Archive all read chats" = "Archive all read chats";
+
+/* Command bar: marks every unread chat of the space shown as read. */
+"Mark all chats as read" = "Mark all chats as read";
+
+/* Command bar: shows the chats of people who have not been accepted yet. */
+"Show message requests" = "Show message requests";
+
+/* Command bar: shows or hides the spaces bar. */
+"Toggle space bar" = "Toggle space bar";
+
+/* Command bar: opens the screen where the spaces bar's order and hidden spaces are changed. */
+"Edit spaces" = "Edit spaces";
+
+/* Command bar: narrows the inbox by Unread, Drafts, Unanswered, DMs or Groups, one at a time. */
+"Filter Chats" = "Filter Chats";
+
+/* Command bar: narrows the inbox to Archived, Low Priority, Hidden, Requests, Reminders or Send Later. */
+"Filter by folder type" = "Filter by folder type";
+
+/* Command bar: narrows the inbox to direct messages or to groups. */
+"Filter by type" = "Filter by type";
+
+/* Command bar: shows the chats of one account, then the next. */
+"Filter by account" = "Filter by account";
+
+/* Command bar: starts or ends selecting several chats at once. */
+"Toggle chat selection mode" = "Toggle chat selection mode";
+
+/* Question asked before "Archive all chats" runs from the command bar. Archiving can be undone from the toast. */
+"Archive every chat in this space? Pinned chats stay where they are. You can undo this." = "Archive every chat in this space? Pinned chats stay where they are. You can undo this.";
+
+/* Question asked before "Archive all chats older than a week" runs from the command bar. Archiving can be undone from the toast. */
+"Archive every chat in this space whose last message is over a week old? Pinned chats stay where they are. You can undo this." = "Archive every chat in this space whose last message is over a week old? Pinned chats stay where they are. You can undo this.";
+
+/* Question asked before "Archive all read chats" runs from the command bar. Archiving can be undone from the toast. */
+"Archive every chat in this space that has nothing unread? Pinned chats stay where they are. You can undo this." = "Archive every chat in this space that has nothing unread? Pinned chats stay where they are. You can undo this.";
+
+/* Question asked before "Mark all chats as read" runs from the command bar. The networks are told, so there is no Undo. */
+"Mark every unread chat in this space as read? Your networks are told too, so this can’t be undone." = "Mark every unread chat in this space as read? Your networks are told too, so this can’t be undone.";
+
+/* ---- Milestone 4.1: the space bar, filters, selection, menus and Settings ▸ Inbox. ---- */
+
+/* Title of the Edit Spaces window. */
+"Edit Spaces" = "Edit Spaces";
+
+/* Title of the window that lists every label. */
+"Edit Labels" = "Edit Labels";
+
+/* Fallback title of a label window. */
+"Label" = "Label";
+
+/* Title of an account's auto-archive window, and the heading of the auto-archive section of a label or account. */
+"Auto-archive" = "Auto-archive";
+
+/* Chat menu: the help on the Label submenu. */
+"A label puts the chat in a space of its own, on this Mac." = "A label puts the chat in a space of its own, on this Mac.";
+
+/* Chat menu and row button: accepts a message request. */
+"Accept" = "Accept";
+
+/* Chat menu and row button: declines a message request. */
+"Decline" = "Decline";
+
+/* Help on Accept: the chat moves out of Requests. */
+"Moves the chat into your inbox." = "Moves the chat into your inbox.";
+
+/* Help on Decline: the chat is hidden on this Mac and the network is not told. */
+"Hides the chat on this Mac. The person isn’t told." = "Hides the chat on this Mac. The person isn’t told.";
+
+/* Chat menu, selection bar, settings and buttons: archives the chat. Also the space Archive's name and the confirm button of Archive all read. */
+"Archive" = "Archive";
+
+/* Chat menu and selection bar: brings an archived chat back. */
+"Unarchive" = "Unarchive";
+
+/* Help on Archive (spec §8). */
+"Clears the chat from your inbox until someone writes again." = "Clears the chat from your inbox until someone writes again.";
+
+/* Help on a disabled Archive: every chat it would act on is pinned. */
+"Unpin a chat to archive it" = "Unpin a chat to archive it";
+
+/* Question before ⌘⇧E archives one read chat. */
+"Archive 1 read chat?" = "Archive 1 read chat?";
+
+/* Question before ⌘⇧E archives this many read chats. */
+"Archive %lld read chats?" = "Archive %lld read chats?";
+
+/* Under the ⌘⇧E question. */
+"Pinned chats stay where they are. You can undo this." = "Pinned chats stay where they are. You can undo this.";
+
+/* Chat menu: starts selecting several chats. */
+"Begin Selecting" = "Begin Selecting";
+
+/* Chat menu and selection bar: hides the chat on this Mac. */
+"Hide" = "Hide";
+
+/* Chat menu and selection bar: shows a hidden chat again. */
+"Unhide" = "Unhide";
+
+/* Help on Hide (spec §8). */
+"Takes the chat out of your inbox without leaving it. Filter ▸ Hidden shows it again." = "Takes the chat out of your inbox without leaving it. Filter ▸ Hidden shows it again.";
+
+/* Help on Move to Low Priority (spec §8). */
+"Keeps the chat out of your inbox, even when new messages arrive." = "Keeps the chat out of your inbox, even when new messages arrive.";
+
+/* Chat menu and selection bar: takes the chat out of Low Priority. */
+"Move to Inbox" = "Move to Inbox";
+
+/* Chat menu and selection bar: moves the chat to Low Priority. */
+"Move to Low Priority" = "Move to Low Priority";
+
+/* Chat menu and selection bar: mutes the chat. */
+"Mute" = "Mute";
+
+/* Chat menu and selection bar: unmutes the chat. */
+"Unmute" = "Unmute";
+
+/* Chat menu: pins the chat. */
+"Pin" = "Pin";
+
+/* Chat menu: unpins the chat. */
+"Unpin" = "Unpin";
+
+/* Label submenu, View menu and the label list: opens the window that makes a label. */
+"New Label…" = "New Label…";
+
+/* Button of an alert that only says something. */
+"OK" = "OK";
+
+/* Edit Spaces: the line under the list. */
+"Drag a space to change its place, or below Hidden to take it off the bar." = "Drag a space to change its place, or below Hidden to take it off the bar.";
+
+/* Edit Spaces: help on a space's eye button. */
+"Hide from the bar" = "Hide from the bar";
+
+/* Edit Spaces: help on a hidden space's eye button. */
+"Show on the bar" = "Show on the bar";
+
+/* Edit Spaces: under the Hidden divider when nothing is hidden. */
+"No hidden spaces" = "No hidden spaces";
+
+/* Edit Spaces: the search field. */
+"Search Spaces" = "Search Spaces";
+
+/* Filter menu: no filter. */
+"All" = "All";
+
+/* Filter menu. */
+"Archived" = "Archived";
+
+/* Help on the Low Priority filter. */
+"Chats that stay out of your inbox, even when new messages arrive." = "Chats that stay out of your inbox, even when new messages arrive.";
+
+/* Help on the Unanswered filter. Inferred (inventory 01 §3). */
+"Chats where someone else sent the newest message." = "Chats where someone else sent the newest message.";
+
+/* Help on the No reply filter. Inferred (inventory 01 §3). */
+"Chats where you sent the newest message and no one has answered." = "Chats where you sent the newest message and no one has answered.";
+
+/* Help on the Hidden filter. */
+"Chats you hid. They stay out of your inbox." = "Chats you hid. They stay out of your inbox.";
+
+/* Filter menu: turns every filter off. */
+"Clear all filters" = "Clear all filters";
+
+/* Filter menu: one-to-one chats. */
+"DMs" = "DMs";
+
+/* The sort menu beside the Filter menu. */
+"Display Options" = "Display Options";
+
+/* Filter menu. */
+"Drafts" = "Drafts";
+
+/* The Filter menu's title with no filter on. */
+"Filter" = "Filter";
+
+/* The Filter menu's title with this many filters on. */
+"Filter (%lld)" = "Filter (%lld)";
+
+/* Heading of the ⌘⌥A popover of accounts. */
+"Filter by Account" = "Filter by Account";
+
+/* Filter menu: one-to-one chats with no name or a phone number for a name. */
+"From unknown numbers" = "From unknown numbers";
+
+/* Filter menu: group chats. */
+"Groups" = "Groups";
+
+/* Filter menu, and the space's name on the bar. */
+"Low Priority" = "Low Priority";
+
+/* Help on the Requests filter. */
+"Messages from people you haven’t chatted with before." = "Messages from people you haven’t chatted with before.";
+
+/* Help on the Filter menu. */
+"Narrow the list (⌥Tab steps through the common filters)" = "Narrow the list (⌥Tab steps through the common filters)";
+
+/* Display Options: the default order. */
+"Newest message first" = "Newest message first";
+
+/* The ⌘⌥A popover with no account linked. */
+"No accounts yet" = "No accounts yet";
+
+/* Filter menu: chats where I sent the newest message. */
+"No reply" = "No reply";
+
+/* Display Options. */
+"Oldest message first" = "Oldest message first";
+
+/* Help on the From unknown numbers filter. Inferred (inventory 01 §3). */
+"One-to-one chats with no name, or a phone number for a name." = "One-to-one chats with no name, or a phone number for a name.";
+
+/* Help on the DMs filter. */
+"One-to-one chats." = "One-to-one chats.";
+
+/* Display Options: the picker of orders. */
+"Order" = "Order";
+
+/* Display Options: chats with the latest reminder first. */
+"Reminder latest" = "Reminder latest";
+
+/* Display Options: chats with the soonest reminder first. */
+"Reminder soonest" = "Reminder soonest";
+
+/* Filter menu, the space's name on the bar, and a settings section. */
+"Reminders" = "Reminders";
+
+/* Filter menu, the space's name on the bar, and a settings section. */
+"Requests" = "Requests";
+
+/* Filter menu, and the space's name on the bar. */
+"Send Later" = "Send Later";
+
+/* Filter menu: chats where someone else sent the newest message. */
+"Unanswered" = "Unanswered";
+
+/* Filter menu, and the pinned strip's unread dot. */
+"Unread" = "Unread";
+
+/* A label colour. */
+"Blue" = "Blue";
+
+/* A label colour. */
+"Brown" = "Brown";
+
+/* A label colour. */
+"Cyan" = "Cyan";
+
+/* A label colour. */
+"Green" = "Green";
+
+/* A label colour (never offered). */
+"Grey" = "Grey";
+
+/* A label colour. */
+"Indigo" = "Indigo";
+
+/* A label colour. */
+"Mint" = "Mint";
+
+/* A label colour. */
+"Orange" = "Orange";
+
+/* A label colour. */
+"Pink" = "Pink";
+
+/* A label colour. */
+"Purple" = "Purple";
+
+/* A label colour. */
+"Red" = "Red";
+
+/* A label colour. */
+"Teal" = "Teal";
+
+/* A label colour. */
+"Yellow" = "Yellow";
+
+/* Label window: the heading above the colours. */
+"Colour" = "Colour";
+
+/* Label window: the heading above the icons. */
+"Icon" = "Icon";
+
+/* Chat menu: archives every read chat of the space shown, after asking. */
+"Archive All Read Chats…" = "Archive All Read Chats…";
+
+/* Chat menu (⌥Tab): Unread, Drafts, Unanswered, DMs, Groups, then All. */
+"Cycle Filters" = "Cycle Filters";
+
+/* View menu: opens the window that lists every label. */
+"Edit Labels…" = "Edit Labels…";
+
+/* View menu and space menus: opens Edit Spaces. */
+"Edit Spaces…" = "Edit Spaces…";
+
+/* Chat menu: ends selecting. */
+"End Selecting" = "End Selecting";
+
+/* Chat menu (⌘⌥A): opens the popover of accounts. */
+"Filter by Account…" = "Filter by Account…";
+
+/* Chat menu: the submenu of the first nine chats (⌃1–⌃9). */
+"Go to Chat" = "Go to Chat";
+
+/* Chat menu: the submenu of the first nine spaces (⌘1–⌘9). */
+"Go to Space" = "Go to Space";
+
+/* View menu and the built-in spaces' menu (⌘S). */
+"Hide Space Bar" = "Hide Space Bar";
+
+/* View menu and the built-in spaces' menu (⌘S). */
+"Show Space Bar" = "Show Space Bar";
+
+/* Chat menu (⌘⇧]). */
+"Next Account" = "Next Account";
+
+/* Chat menu (⌘⇧[). */
+"Previous Account" = "Previous Account";
+
+/* Edit menu. */
+"Redo" = "Redo";
+
+/* Edit menu: undoes the toast's action while it shows, else the text's. */
+"Undo" = "Undo";
+
+/* Chat menu (⌘L): the Remind Me popover for the open chat. */
+"Remind Me…" = "Remind Me…";
+
+/* Chat menu: selects every chat shown. */
+"Select All Chats" = "Select All Chats";
+
+/* Chat menu (⌘⇧Y) while the Unread filter is on. */
+"Show All Chats" = "Show All Chats";
+
+/* Chat menu (⌘⇧Y): turns the Unread filter on. */
+"Show Only Unread Chats" = "Show Only Unread Chats";
+
+/* A chat with no name, in its row and menus. */
+"Unnamed chat" = "Unnamed chat";
+
+/* The space bar's first space, and the chat list's title for it. */
+"Inbox" = "Inbox";
+
+/* VoiceOver: the grey rows shown while the first page loads. */
+"Loading chats" = "Loading chats";
+
+/* Remind Me submenu, popover and Custom sheet. */
+"Remind Me" = "Remind Me";
+
+/* Empty Drafts. */
+"A chat shows up here when you start a message and don’t send it." = "A chat shows up here when you start a message and don’t send it.";
+
+/* Help on Mute: every chat's network takes mutes (Account.syncs). A change made while the account is offline isn't sent later. */
+"Also muted on your phone when it’s connected" = "Also muted on your phone when it’s connected";
+
+/* Help on Mute: some of the chats' networks take mutes. */
+"Also muted on your phone where its network takes mutes, when it’s connected" = "Also muted on your phone where its network takes mutes, when it’s connected";
+
+/* Help on Pin: every chat's network takes pins (Account.syncs). A change made while the account is offline isn't sent later. */
+"Also pinned on your phone when it’s connected" = "Also pinned on your phone when it’s connected";
+
+/* Help on Pin: some of the chats' networks take pins. */
+"Also pinned on your phone where its network takes pins, when it’s connected" = "Also pinned on your phone where its network takes pins, when it’s connected";
+
+/* Help on Unmute: every chat's network takes mutes. */
+"Also unmuted on your phone when it’s connected" = "Also unmuted on your phone when it’s connected";
+
+/* Help on Unmute: some of the chats' networks take mutes. */
+"Also unmuted on your phone where its network takes mutes, when it’s connected" = "Also unmuted on your phone where its network takes mutes, when it’s connected";
+
+/* Help on Unpin: every chat's network takes pins. */
+"Also unpinned on your phone when it’s connected" = "Also unpinned on your phone when it’s connected";
+
+/* Help on Unpin: some of the chats' networks take pins. */
+"Also unpinned on your phone where its network takes pins, when it’s connected" = "Also unpinned on your phone where its network takes pins, when it’s connected";
+
+/* Empty Archive. */
+"Archive a chat to clear it from your inbox. It comes back when someone writes." = "Archive a chat to clear it from your inbox. It comes back when someone writes.";
+
+/* Empty Low Priority. */
+"Chats here stay out of your inbox, even when new messages arrive." = "Chats here stay out of your inbox, even when new messages arrive.";
+
+/* Empty Hidden. */
+"Hide a chat to take it out of your inbox without leaving it." = "Hide a chat to take it out of your inbox without leaving it.";
+
+/* Empty Requests. */
+"Messages from people you haven’t chatted with before show up here." = "Messages from people you haven’t chatted with before show up here.";
+
+/* Empty Send Later. */
+"Messages you schedule show up here." = "Messages you schedule show up here.";
+
+/* A row's line when a label or its account mutes it. The argument is the label's title or the network's name. */
+"Muted by %@" = "Muted by %@";
+
+/* Help on Mute: no chat's network takes mutes. */
+"Muted on this Mac only" = "Muted on this Mac only";
+
+/* Empty inbox. */
+"New messages show up here." = "New messages show up here.";
+
+/* Empty From unknown numbers. */
+"No chats from unknown numbers" = "No chats from unknown numbers";
+
+/* Empty label space. */
+"No chats with this label" = "No chats with this label";
+
+/* Empty Drafts. */
+"No drafts" = "No drafts";
+
+/* Empty Groups. */
+"No group chats" = "No group chats";
+
+/* Empty Hidden. */
+"No hidden chats" = "No hidden chats";
+
+/* Empty Requests. */
+"No message requests" = "No message requests";
+
+/* Empty Muted. */
+"No muted chats" = "No muted chats";
+
+/* Empty No reply. */
+"No one owes you a reply" = "No one owes you a reply";
+
+/* Empty DMs. */
+"No one-to-one chats" = "No one-to-one chats";
+
+/* Empty Reminders. */
+"No reminders" = "No reminders";
+
+/* Empty Send Later. */
+"No scheduled messages" = "No scheduled messages";
+
+/* Empty Archive. */
+"Nothing archived" = "Nothing archived";
+
+/* Empty Low Priority. */
+"Nothing in Low Priority" = "Nothing in Low Priority";
+
+/* Empty Unanswered. */
+"Nothing waiting for your answer" = "Nothing waiting for your answer";
+
+/* Help on Mark as Unread: an unread mark never reaches a network. */
+"On this Mac only" = "On this Mac only";
+
+/* Help on Pin: no chat's network takes pins. */
+"Pinned on this Mac only" = "Pinned on this Mac only";
+
+/* Empty label space. */
+"Right-click a chat and choose Label." = "Right-click a chat and choose Label.";
+
+/* Empty Reminders. */
+"Right-click a chat and choose Remind Me. It comes back to your inbox at that time." = "Right-click a chat and choose Remind Me. It comes back to your inbox at that time.";
+
+/* Help on Unmute: no chat's network takes mutes. */
+"Unmuted on this Mac only" = "Unmuted on this Mac only";
+
+/* Help on Unpin: no chat's network takes pins. */
+"Unpinned on this Mac only" = "Unpinned on this Mac only";
+
+/* Empty inbox. */
+"You’re all caught up" = "You’re all caught up";
+
+/* A row's line while more than one person types. The argument is how many. */
+"%lld people are typing…" = "%lld people are typing…";
+
+/* A row's line while one person types. The argument is their name. */
+"%@ is typing…" = "%@ is typing…";
+
+/* Help on a row's Reminder badge. */
+"A reminder you set brought this chat back." = "A reminder you set brought this chat back.";
+
+/* Before a row's draft. */
+"Draft:" = "Draft:";
+
+/* Help on a row's dot: the person marked it unread. */
+"Marked as unread" = "Marked as unread";
+
+/* A row's line for a message request. */
+"Message request" = "Message request";
+
+/* Help and VoiceOver on a More menu. */
+"More" = "More";
+
+/* VoiceOver: a row's checkbox while selecting. */
+"Not selected" = "Not selected";
+
+/* VoiceOver: a row's checkbox while selecting. */
+"Selected" = "Selected";
+
+/* A row's badge once its reminder came due. */
+"Reminder" = "Reminder";
+
+/* Help on a row's @: an unread message mentions me. */
+"You were mentioned" = "You were mentioned";
+
+/* A delay. */
+"1 day" = "1 day";
+
+/* A delay. */
+"1 hour" = "1 hour";
+
+/* A delay. */
+"1 minute" = "1 minute";
+
+/* A delay and an age. */
+"1 week" = "1 week";
+
+/* A delay of this many hours. */
+"%lld hours" = "%lld hours";
+
+/* A delay of this many minutes. */
+"%lld minutes" = "%lld minutes";
+
+/* A delay of none. */
+"No time" = "No time";
+
+/* Settings ▸ Inbox ▸ Requests: help. */
+"A message request is someone you haven’t chatted with before writing to you." = "A message request is someone you haven’t chatted with before writing to you.";
+
+/* Settings: the General auto-archive rule. */
+"After I read them" = "After I read them";
+
+/* Settings: the General auto-archive rule. */
+"After I reply" = "After I reply";
+
+/* Settings ▸ Inbox ▸ Archiving. */
+"After archiving the open chat" = "After archiving the open chat";
+
+/* Settings ▸ Inbox ▸ Archiving. */
+"After marking the open chat read or unread" = "After marking the open chat read or unread";
+
+/* Settings and Custom reminder: remind even if I have answered. */
+"Always" = "Always";
+
+/* Settings: help on the General auto-archive rule. */
+"An archived chat comes back to your inbox when someone writes." = "An archived chat comes back to your inbox when someone writes.";
+
+/* Settings ▸ Inbox ▸ Reminders. */
+"Archive a chat when I set a reminder on it" = "Archive a chat when I set a reminder on it";
+
+/* Settings ▸ Inbox ▸ Archiving: the General auto-archive rule. */
+"Archive chats by themselves" = "Archive chats by themselves";
+
+/* Settings: double-click archives. */
+"Archives it" = "Archives it";
+
+/* Settings: help on the archive-all tool. */
+"Archives these chats in your inbox once, now. Pinned chats stay where they are." = "Archives these chats in your inbox once, now. Pinned chats stay where they are.";
+
+/* Settings ▸ Inbox: a section. */
+"Archiving" = "Archiving";
+
+/* Settings ▸ Inbox ▸ Chat list: the hover button setting. */
+"Button on a chat you point at" = "Button on a chat you point at";
+
+/* Settings ▸ Inbox: a section. */
+"Chat list" = "Chat list";
+
+/* Settings: after an action, close the chat. */
+"Close the chat" = "Close the chat";
+
+/* Settings ▸ Inbox ▸ Chat list. */
+"Colour network icons" = "Colour network icons";
+
+/* Settings ▸ Inbox ▸ Chat list. */
+"Compact chat list" = "Compact chat list";
+
+/* Settings: double-click does nothing. */
+"Does nothing" = "Does nothing";
+
+/* Settings ▸ Inbox ▸ Chat list. */
+"Double-clicking a chat" = "Double-clicking a chat";
+
+/* Settings and Custom reminder: remind only if I haven't sent a message since setting it. */
+"If no reply" = "If no reply";
+
+/* Settings: the hover button marks read or unread. */
+"Mark Read or Unread" = "Mark Read or Unread";
+
+/* Settings ▸ Inbox ▸ Archiving. */
+"Mark chats read when I archive them" = "Mark chats read when I archive them";
+
+/* Settings: double-click marks read or unread. */
+"Marks it read or unread" = "Marks it read or unread";
+
+/* Settings: the hover button opens the chat's menu. */
+"Menu" = "Menu";
+
+/* Settings: double-click moves to or from Low Priority. */
+"Moves it to Low Priority or back" = "Moves it to Low Priority or back";
+
+/* Settings: double-click mutes or unmutes. */
+"Mutes or unmutes it" = "Mutes or unmutes it";
+
+/* Settings: no General auto-archive rule. */
+"Never" = "Never";
+
+/* Settings: no hover button. Show in Inbox: none of the chats. */
+"None" = "None";
+
+/* Settings ▸ Inbox ▸ Requests. */
+"Notify me about message requests" = "Notify me about message requests";
+
+/* Settings: help on pinned chats as full rows. */
+"Off, pinned chats sit above the list as small pictures." = "Off, pinned chats sit above the list as small pictures.";
+
+/* Settings: after an action, open the next chat. */
+"Open the next chat" = "Open the next chat";
+
+/* Settings: after an action, open the previous chat. */
+"Open the previous chat" = "Open the previous chat";
+
+/* Settings ▸ Inbox ▸ Reminders: the default condition; also the Custom reminder's picker. */
+"Remind me" = "Remind me";
+
+/* Settings ▸ Inbox ▸ Chat list. */
+"Show message previews" = "Show message previews";
+
+/* Settings ▸ Inbox ▸ Chat list. */
+"Show network icons" = "Show network icons";
+
+/* Settings ▸ Inbox ▸ Chat list. */
+"Show pinned chats as full rows" = "Show pinned chats as full rows";
+
+/* Settings ▸ Inbox ▸ Chat list. */
+"Show the space bar" = "Show the space bar";
+
+/* Settings ▸ Inbox ▸ Chat list. */
+"Show unread counts" = "Show unread counts";
+
+/* Settings: after an action, keep the chat open. */
+"Stay on it" = "Stay on it";
+
+/* Settings: help on archive when setting a reminder. */
+"The reminder brings it back to your inbox when it is due." = "The reminder brings it back to your inbox when it is due.";
+
+/* Settings: the General auto-archive rule's delay. */
+"Wait" = "Wait";
+
+/* Settings: help on mark read on archive. */
+"Your networks are told the chat was read, as when you open it." = "Your networks are told the chat was read, as when you open it.";
+
+/* A space's count. */
+"1 chat" = "1 chat";
+
+/* A space's count. */
+"%lld chats" = "%lld chats";
+
+/* Auto-archive section. */
+"1 chat here already matches this rule." = "1 chat here already matches this rule.";
+
+/* Auto-archive section. */
+"%lld chats here already match this rule." = "%lld chats here already match this rule.";
+
+/* The Reminders space's count. */
+"1 reminder" = "1 reminder";
+
+/* The Reminders space's count. */
+"%lld reminders" = "%lld reminders";
+
+/* The Requests space's count. */
+"1 request" = "1 request";
+
+/* The Requests space's count. */
+"%lld requests" = "%lld requests";
+
+/* An age. */
+"1 year" = "1 year";
+
+/* An age. */
+"2 weeks" = "2 weeks";
+
+/* An age. */
+"3 months" = "3 months";
+
+/* An age. */
+"4 weeks" = "4 weeks";
+
+/* An age. */
+"%lld days" = "%lld days";
+
+/* The label list with no label. */
+"A label groups chats from any network into a space of its own." = "A label groups chats from any network into a space of its own.";
+
+/* VoiceOver: the age picker of a sweep. */
+"Age" = "Age";
+
+/* Auto-archive section and archive-all tool: archives the one chat that matches. */
+"Archive 1 chat" = "Archive 1 chat";
+
+/* Auto-archive section and archive-all tool: archives the chats that match. */
+"Archive %lld chats" = "Archive %lld chats";
+
+/* Auto-archive section: the engine couldn't count the chats that match. */
+"Couldn’t check" = "Couldn’t check";
+
+/* Auto-archive section: help on the rule. */
+"Vitruvian Courier archives chats here by itself once their newest message is this old. They come back when someone writes." = "Vitruvian Courier archives chats here by itself once their newest message is this old. They come back when someone writes.";
+
+/* Label window: makes the label. */
+"Create Label" = "Create Label";
+
+/* The delete-label confirmation's button, and the label menu. */
+"Delete Label" = "Delete Label";
+
+/* The delete-label confirmation. */
+"Delete this label?" = "Delete this label?";
+
+/* The label list: deletes a label. */
+"Delete…" = "Delete…";
+
+/* Title of the window that changes a label. */
+"Edit Label" = "Edit Label";
+
+/* The label list: changes a label. */
+"Edit…" = "Edit…";
+
+/* Under the delete-label confirmation. */
+"It comes off every chat. The chats stay." = "It comes off every chat. The chats stay.";
+
+/* Title of the window that makes a label. */
+"New Label" = "New Label";
+
+/* The label list with no label. */
+"No labels yet" = "No labels yet";
+
+/* The label window's explanation. */
+"Pick a name, a colour and an icon. This is how the label looks everywhere in Vitruvian Courier." = "Pick a name, a colour and an icon. This is how the label looks everywhere in Vitruvian Courier.";
+
+/* Label window: saves the changes. */
+"Save" = "Save";
+
+/* Label window: the title field. */
+"Title" = "Title";
+
+/* VoiceOver: the all-or-read picker of a sweep. */
+"Which chats" = "Which chats";
+
+/* A sweep: Archive [all] chats older than … . */
+"all" = "all";
+
+/* A sweep: Archive [all / read] chats older than [age]. */
+"chats older than" = "chats older than";
+
+/* A sweep: Archive [read] chats older than … . */
+"read" = "read";
+
+/* Help on Remind Me. */
+"Brings the chat back to your inbox at the time you pick." = "Brings the chat back to your inbox at the time you pick.";
+
+/* Remind Me: opens the date picker. */
+"Custom…" = "Custom…";
+
+/* Remind Me: ends the chat's reminder. */
+"Dismiss Reminder" = "Dismiss Reminder";
+
+/* Custom reminder: sets it. */
+"Set Reminder" = "Set Reminder";
+
+/* VoiceOver: the Custom reminder's date picker. */
+"When" = "When";
+
+/* Help on If no reply. Inferred (inventory 01 §18). */
+"“If no reply” skips the reminder when you have sent a message in the chat since you set it." = "“If no reply” skips the reminder when you have sent a message in the chat since you set it.";
+
+/* The list's header while selecting one chat. */
+"1 chat selected" = "1 chat selected";
+
+/* The list's header while selecting this many chats. */
+"%lld chats selected" = "%lld chats selected";
+
+/* The list's header while selecting: selects every chat shown. */
+"Select All" = "Select All";
+
+/* Help on Cancel while selecting. */
+"Stop selecting (Esc)" = "Stop selecting (Esc)";
+
+/* Show in Inbox: every chat. */
+"All Messages" = "All Messages";
+
+/* Account menu: opens the account's auto-archive window. */
+"Auto-Archive…" = "Auto-Archive…";
+
+/* Label menu: opens the label's window. */
+"Edit Label…" = "Edit Label…";
+
+/* Label menu. */
+"Mute Label" = "Mute Label";
+
+/* Label menu. */
+"Unmute Label" = "Unmute Label";
+
+/* Account menu. */
+"Mute Space" = "Mute Space";
+
+/* Account menu. */
+"Unmute Space" = "Unmute Space";
+
+/* Help on Mute Space. */
+"Mutes every chat of this account on this Mac." = "Mutes every chat of this account on this Mac.";
+
+/* Help on Mute Label. */
+"Mutes every chat with this label on this Mac." = "Mutes every chat with this label on this Mac.";
+
+/* VoiceOver: the bar's nudge to make the first label. */
+"New label" = "New label";
+
+/* Help on the bar's nudge to make the first label. */
+"New label: put chats from any network into a space of their own." = "New label: put chats from any network into a space of their own.";
+
+/* Show in Inbox: only one-to-one chats. */
+"Only DMs" = "Only DMs";
+
+/* Account and label menus: which of the space's chats also show in the inbox. */
+"Show in Inbox" = "Show in Inbox";
+
+/* VoiceOver: the space bar. */
+"Spaces" = "Spaces";
+
+/* Help on Show in Inbox. */
+"Which of these chats also show in your inbox." = "Which of these chats also show in your inbox.";
+
+/* Help on the toast's Undo. */
+"Undo (⌘Z)" = "Undo (⌘Z)";
+/* VoiceOver: one of the 24 label icons, by its place in the grid. */
+"Icon %lld" = "Icon %lld";
+
+/* Question before an archive-all button archives one chat. */
+"Archive 1 chat?" = "Archive 1 chat?";
+
+/* Question before an archive-all button archives this many chats. */
+"Archive %lld chats?" = "Archive %lld chats?";
+
+/* Question before an archive-all when the chats that match couldn't be counted. */
+"Archive these chats? Pinned chats stay where they are. You can undo this." = "Archive these chats? Pinned chats stay where they are. You can undo this.";
+
+/* Button on a notification: brings the chat back in one hour. */
+"Remind in 1 Hour" = "Remind in 1 Hour";
+
+/* Button on a notification: brings the chat back in eight hours. */
+"Remind in 8 Hours" = "Remind in 8 Hours";
+
+/* Notification text when a reminder the person set comes due. The notification's title is the chat's name. */
+"You asked to be reminded about this chat." = "You asked to be reminded about this chat.";
+
+/* Vitruvian Courier menu (⌘K) and a chat's right-click menu (⌘F): opens search. */
+"Search…" = "Search…";
+
+/* Chat menu (⌘F): searches the open chat's messages, or every chat with none open. */
+"Search in Chat…" = "Search in Chat…";
+
+/* Tooltip of Search… in a chat's right-click menu. */
+"Search the messages in this chat." = "Search the messages in this chat.";
+
+/* Command bar: opens ⌘K's search over every chat. */
+"Search chats" = "Search chats";
+
+/* Command bar: opens ⌘K's search over every chat. */
+"Search messages in all chats" = "Search messages in all chats";
+
+/* Command bar: opens search in the open chat (⌘F). */
+"Search messages in current chat" = "Search messages in current chat";
+
+/* VoiceOver: the search panel. */
+"Search" = "Search";
+
+/* Placeholder of the search field (⌘K). */
+"Search chats, people and messages" = "Search chats, people and messages";
+
+/* Placeholder of the search field while it searches one chat (⌘F). */
+"Search this chat" = "Search this chat";
+
+/* Chip in the search field naming the chat searched in. The argument is the chat's name. */
+"In: %@" = "In: %@";
+
+/* Tooltip and VoiceOver label of the × on the chip naming the chat searched in. */
+"Search every chat" = "Search every chat";
+
+/* Quiet line at the top of search results while messages already on this Mac are still being indexed. */
+"Still adding older messages to search. Some results may be missing." = "Still adding older messages to search. Some results may be missing.";
+
+/* Under the Chats section of search once Show more has listed the most it lists. The argument is that number (100). */
+"Showing the first %lld chats. Type more to narrow it down." = "Showing the first %lld chats. Type more to narrow it down.";
+
+/* Search, after one letter: chats and people are searched, messages need two. */
+"Type one more letter to search messages." = "Type one more letter to search messages.";
+
+/* Under a search section: lists more of it. */
+"Show more" = "Show more";
+
+/* Under the Messages section of search: what search covers. */
+"Vitruvian Courier searches the messages on this Mac. Older history appears as each network sends it." = "Vitruvian Courier searches the messages on this Mac. Older history appears as each network sends it.";
+
+/* In the title row of the Recent searches section of search. */
+"Clear Recent Searches" = "Clear Recent Searches";
+
+/* In the title row of the Messages section of search: also lists messages with only some of the words. */
+"Show partial matches" = "Show partial matches";
+
+/* In the title row of the Messages section of search, while partial matches are listed. */
+"Hide partial matches" = "Hide partial matches";
+
+/* Tooltip of Show partial matches. */
+"Also list messages that have some of the words, after those with all of them." = "Also list messages that have some of the words, after those with all of them.";
+
+/* Divider in search's Messages section above the messages that have only some of the words. */
+"Partial matches" = "Partial matches";
+
+/* Search section before anything is typed: the chats opened most recently. */
+"Recent" = "Recent";
+
+/* Search section before anything is typed: the chat archived most recently. */
+"Last archived" = "Last archived";
+
+/* Search section before anything is typed: searches whose results were opened. */
+"Recent searches" = "Recent searches";
+
+/* Search section of chats found by name; also the search filter for direct messages or groups. */
+"Chats" = "Chats";
+
+/* Search section of people found by name in groups shared with me. */
+"In groups" = "In groups";
+
+/* Search section of photos and videos found. */
+"Media" = "Media";
+
+/* Search section of messages found. */
+"Messages" = "Messages";
+
+/* Search panel before anything is typed, with nothing recent. */
+"Find any chat, person or message on this Mac." = "Find any chat, person or message on this Mac.";
+
+/* Search panel inside one chat (⌘F), before typing, with no recent searches. */
+"Search this chat’s messages." = "Search this chat’s messages.";
+
+/* Search panel while a search takes longer than a moment. */
+"Searching…" = "Searching…";
+
+/* Search found nothing. The argument is what was typed. */
+"No matches for “%@”" = "No matches for “%@”";
+
+/* Under No matches in search. */
+"Check the spelling, or try fewer words." = "Check the spelling, or try fewer words.";
+
+/* Search found nothing, and filters narrow it. */
+"Nothing matches these filters." = "Nothing matches these filters.";
+
+/* Button under Nothing matches these filters: turns every search filter off. */
+"Clear Filters" = "Clear Filters";
+
+/* Search, when only emoji or punctuation were typed. */
+"Search for a word or a name. Emoji and punctuation aren’t searched." = "Search for a word or a name. Emoji and punctuation aren’t searched.";
+
+/* Search failed. */
+"Search isn’t working right now." = "Search isn’t working right now.";
+
+/* Button under Search isn’t working right now. */
+"Try Again" = "Try Again";
+
+/* VoiceOver: a photo in search's Media section. The argument is who sent it. */
+"Photo from %@" = "Photo from %@";
+
+/* VoiceOver: a video in search's Media section. The argument is who sent it. */
+"Video from %@" = "Video from %@";
+
+/* Search filter: which networks. */
+"Accounts" = "Accounts";
+
+/* Search filter: which kinds of message. */
+"Type" = "Type";
+
+/* Search filter: messages I sent, or received. */
+"Sent / Received" = "Sent / Received";
+
+/* Sent / Received search filter: both. */
+"Anyone" = "Anyone";
+
+/* Chats search filter: direct messages and groups. */
+"All chats" = "All chats";
+
+/* Search filter: how long ago. */
+"Time" = "Time";
+
+/* An active Accounts search filter, when its networks' names aren't known. The argument is how many. */
+"%lld accounts" = "%lld accounts";
+
+/* An active search filter with many choices: the first one's name and how many others. */
+"%@ and %lld more" = "%@ and %lld more";
+
+/* Type search filter: text messages. */
+"Text" = "Text";
+
+/* Type search filter. */
+"Photos" = "Photos";
+
+/* Type search filter. */
+"Videos" = "Videos";
+
+/* Type search filter. */
+"Voice and audio" = "Voice and audio";
+
+/* Type search filter. */
+"Files" = "Files";
+
+/* Type search filter: messages with a web link. */
+"Links" = "Links";
+
+/* Type search filter. */
+"Stickers" = "Stickers";
+
+/* Sent / Received search filter. */
+"Sent by me" = "Sent by me";
+
+/* Sent / Received search filter. */
+"Received" = "Received";
+
+/* Chats search filter: one-to-one chats. */
+"Direct messages" = "Direct messages";
+
+/* Time search filter: no limit. */
+"Any time" = "Any time";
+
+/* Time search filter. */
+"Last hour" = "Last hour";
+
+/* Time search filter: the last seven days. */
+"Last week" = "Last week";
+
+/* Time search filter. */
+"Last 30 days" = "Last 30 days";
+
+/* Time search filter: the last 365 days. */
+"Last year" = "Last year";
+
+/* Tooltip of the × on an active search filter. */
+"Clear this filter" = "Clear this filter";
+
+/* VoiceOver: the × on an active search filter. The argument is the filter's name. */
+"Clear %@" = "Clear %@";
+
+/* The button that leaves a chat opened at a search result for its newest messages. */
+"Jump to latest" = "Jump to latest";
+
+/* Tag on a search result whose chat is in Low Priority. */
+"Low priority" = "Low priority";
+
+/* Tag on a search result whose chat is a message request. */
+"Request" = "Request";
+
+/* A person found in search: the group they share with me. The argument is the group's name. */
+"In %@" = "In %@";
+
+/* A person found in search who shares two groups with me. The argument is the newest one's name. */
+"In %@ and 1 other group" = "In %@ and 1 other group";
+
+/* A person found in search who shares several groups with me: the newest one's name, and how many others. */
+"In %@ and %lld other groups" = "In %@ and %lld other groups";
+
+/* An error: an edit or unsend past what the chat's network allows (too old, or edited as often as it allows). Nothing was sent. */
+"That message can’t be changed any more." = "That message can’t be changed any more.";
+
+/* An error: Undo on a message that is no longer held. Neutral on purpose: the message may have gone, or failed to. */
+"Too late to undo. Check the message in the chat." = "Too late to undo. Check the message in the chat.";
+
+/* An error: an edit or unsend of someone else's message. */
+"You can only change your own messages." = "You can only change your own messages.";
+
+/* Message menu: Delete for Me, in a chat whose network also deletes it from the phone's own app (Google Messages). */
+"Delete from This Mac and Your Phone…" = "Delete from This Mac and Your Phone…";
+
+/* Message menu: deletes a message on this Mac only. */
+"Delete for Me…" = "Delete for Me…";
+
+/* A greyed message action, while Vitruvian Courier can't tell what the chat allows. The argument is the network's name. */
+"Not available until %@ connects" = "Not available until %@ connects";
+
+/* A greyed Edit. The argument is the network's name. */
+"%@ can’t edit messages" = "%@ can’t edit messages";
+
+/* A greyed Edit on a message older than the network allows. The arguments are the network's name and how long, as "15 minutes". */
+"%@ only lets you edit for %@" = "%@ only lets you edit for %@";
+
+/* A greyed Edit on a message edited as often as the network allows. The arguments are the network's name and how many times. */
+"%@ only lets you edit a message %lld times" = "%@ only lets you edit a message %lld times";
+
+/* A greyed Unsend. The argument is the network's name. */
+"%@ can’t unsend" = "%@ can’t unsend";
+
+/* A greyed Unsend on a message older than the network allows. The arguments are the network's name and how long, as "2 days". */
+"%@ only lets you unsend for %@" = "%@ only lets you unsend for %@";
+
+/* A greyed Create Poll. The argument is the network's name. */
+"Polls aren’t available on %@" = "Polls aren’t available on %@";
+
+/* The line under a message held for undo send. */
+"Queued" = "Queued";
+
+/* Why a held message was never sent: it came due while Vitruvian Courier was closed. */
+"Vitruvian Courier was closed when this was due to go. Nothing was sent." = "Vitruvian Courier was closed when this was due to go. Nothing was sent.";
+
+/* Why a held or scheduled message was never sent: its network wasn't connected when it was due. */
+"The network wasn’t connected when this was due to go. Nothing was sent." = "The network wasn’t connected when this was due to go. Nothing was sent.";
+
+/* Greyed message actions in a chat whose network Vitruvian Courier doesn't know by name. */
+"Not available until this network connects" = "Not available until this network connects";
+"This network can’t edit messages" = "This network can’t edit messages";
+"This network only lets you edit for %@" = "This network only lets you edit for %@";
+"This network only lets you edit a message %lld times" = "This network only lets you edit a message %lld times";
+"This network can’t unsend" = "This network can’t unsend";
+"This network only lets you unsend for %@" = "This network only lets you unsend for %@";
+"Polls aren’t available on this network" = "Polls aren’t available on this network";
+
+/* Under the message box: the text is longer than the chat's network takes. Nothing was sent, and the text stays. */
+"This message is too long for this chat. Shorten it, or send it in parts." = "This message is too long for this chat. Shorten it, or send it in parts.";
+
+/* A toast: a message held for undo send was taken back, and its text is in the message box again. */
+"Message unsent from Vitruvian Courier" = "Message unsent from Vitruvian Courier";
+
+/* A toast: Undo came too late, and the message did go. */
+"Already sent" = "Already sent";
+
+/* A toast: Undo came too late, but the message didn't go (its network wasn't connected, say). The chat offers Retry. */
+"Too late to undo, and it wasn’t sent. Retry it in the chat." = "Too late to undo, and it wasn’t sent. Retry it in the chat.";
+
+/* A toast: Undo of a held message failed for a reason Vitruvian Courier has no words for. */
+"The message couldn’t be unsent." = "The message couldn’t be unsent.";
+
+/* New Poll: what stops the poll from being sent. The question is empty. */
+"Ask a question" = "Ask a question";
+
+/* New Poll: the question is longer than the engine takes. The argument is the most characters. */
+"Questions can be up to %lld characters" = "Questions can be up to %lld characters";
+
+/* New Poll: fewer than two options are filled in. */
+"Add at least two options" = "Add at least two options";
+
+/* New Poll: an option repeats an earlier one (ignoring case). */
+"This option already exists" = "This option already exists";
+
+/* New Poll: as many options as the chat's network takes (WhatsApp 12, Signal 10). */
+"You have added the maximum number of options" = "You have added the maximum number of options";
+
+/* New Poll: an option is longer than the chat's network takes. The argument is the most characters. */
+"Options can be up to %lld characters" = "Options can be up to %lld characters";
+
+/* Asked before Unsend. */
+"Unsend this message? It’s removed for everyone in the chat." = "Unsend this message? It’s removed for everyone in the chat.";
+
+/* Asked before Delete for Me, in a chat whose network also deletes it from the phone's own app (Google Messages). */
+"Delete this message from this Mac and your phone?" = "Delete this message from this Mac and your phone?";
+
+/* Asked before Delete for Me. */
+"Delete this message from this Mac?" = "Delete this message from this Mac?";
+
+/* A toast: Forward (⌘⇧F) with no message selected. */
+"Select a message to forward" = "Select a message to forward";
+
+/* A toast: Forward didn't reach these chats. The argument is their names, as a list ("Ann and Book club"). */
+"Couldn’t forward to %@" = "Couldn’t forward to %@";
+
+/* A toast: the engine didn't answer a forward (it timed out, or the connection ended), so the copies may have gone. The argument is the chats' names, as a list ("Ann and Book club"). */
+"Vitruvian Courier’s engine did not answer. The message may have been forwarded to %@: check before forwarding it again." = "Vitruvian Courier’s engine did not answer. The message may have been forwarded to %@: check before forwarding it again.";
+
+/* A toast: Forward didn't reach some chats (the first argument) and the engine didn't answer for others (the second), whose copies may have gone. Both are chats' names, as lists ("Ann and Book club"). */
+"Couldn’t forward to %@. The message may have been forwarded to %@: check before forwarding it again." = "Couldn’t forward to %1$@. The message may have been forwarded to %2$@: check before forwarding it again.";
+
+/* A toast: Forward sent a copy to one chat. */
+"Forwarded to 1 chat" = "Forwarded to 1 chat";
+
+/* A toast: Forward sent a copy to each of these chats. */
+"Forwarded to %lld chats" = "Forwarded to %lld chats";
+
+/* A toast: a poll vote was refused. */
+"Your vote wasn’t counted. Try again." = "Your vote wasn’t counted. Try again.";
+
+/* A toast: a new poll was refused. */
+"The poll couldn’t be sent." = "The poll couldn’t be sent.";
+
+/* In a toast's list of chats, one Vitruvian Courier has no name for. */
+"a chat" = "a chat";
+
+/* A toast: the network refused an unsend the engine had taken; the message is back. The argument is the network's name. */
+"Couldn’t unsend: %@ said no." = "Couldn’t unsend: %@ said no.";
+"Couldn’t unsend: the network said no." = "Couldn’t unsend: the network said no.";
+
+/* A toast: the network refused an edit; the message reads as before. The argument is the network's name. */
+"Couldn’t edit: %@ said no." = "Couldn’t edit: %@ said no.";
+"Couldn’t edit: the network said no." = "Couldn’t edit: the network said no.";
+
+/* Why a quick reply made from the draft wasn't saved. */
+"You have as many quick replies as Vitruvian Courier keeps. Delete one to add another." = "You have as many quick replies as Vitruvian Courier keeps. Delete one to add another.";
+"Give the quick reply a title." = "Give the quick reply a title.";
+"Titles can be up to %lld characters." = "Titles can be up to %lld characters.";
+"Type the quick reply’s text first." = "Type the quick reply’s text first.";
+"That’s too long for a quick reply." = "That’s too long for a quick reply.";
+"A quick reply already has that title." = "A quick reply already has that title.";
+
+/* Command bar (⌘J): message commands, by the inventory ledger's names. */
+"Send later" = "Send later";
+"Create quick reply from draft" = "Create quick reply from draft";
+"Edit" = "Edit";
+"Forward" = "Forward";
+"Unsend" = "Unsend";
+"Delete for me" = "Delete for me";
+"Reply in thread" = "Reply in thread";
+
+/* A notification about a scheduled message, in a chat Vitruvian Courier has no name for. */
+"the chat" = "the chat";
+
+/* A notification: a message scheduled with "If no reply" was canceled because someone wrote first. The argument is the chat's name. */
+"A scheduled message to %@ wasn’t sent: they wrote first." = "A scheduled message to %@ wasn’t sent: they wrote first.";
+
+/* A notification: a scheduled message came due over an hour before Vitruvian Courier could send it, and waits. The argument is the chat's name. */
+"A scheduled message to %@ missed its time while Vitruvian Courier was closed." = "A scheduled message to %@ missed its time while Vitruvian Courier was closed.";
+
+/* ⌘K: the section of bookmarked messages. */
+"Bookmarks" = "Bookmarks";
+
+/* The chat header: the chat's disappearing-message timer is running. The argument is its length ("7 days"). */
+"Messages disappear after %@" = "Messages disappear after %@";
+
+/* The header menu's choice that turns disappearing messages off. */
+"Off" = "Off";
+
+/* Under a message with a disappearing timer running, counted down by the minute. The argument is the time left ("1 hour, 30 minutes"). */
+"Disappears in %@" = "Disappears in %@";
+
+/* A note in the chat: someone set the disappearing timer. The arguments are who ("You", or a name) and the length ("7 days"). */
+"%@ set messages to disappear after %@." = "%@ set messages to disappear after %@.";
+
+/* A note in the chat: someone turned the disappearing timer off. The argument is who ("You", or a name). */
+"%@ turned off disappearing messages." = "%@ turned off disappearing messages.";
+
+/* A note in the chat: the network turned the timer on by itself, because a message arrived with one. The argument is its length. */
+"Messages now disappear after %@." = "Messages now disappear after %@.";
+
+/* A note in the chat: the network turned the timer off by itself. */
+"Disappearing messages were turned off." = "Disappearing messages were turned off.";
+
+/* In a note about the timer, for a person who has no name. */
+"Someone" = "Someone";
+
+/* The button on a note about the disappearing timer: opens the timer menu. */
+"Change Setting" = "Change Setting";
+
+/* A toast: the disappearing timer could not be changed. */
+"Couldn’t change the timer." = "Couldn’t change the timer.";
+
+/* A toast: the network refused a new disappearing timer; the chat keeps its old one. The argument is the network's name. */
+"Couldn’t change the timer: %@ said no." = "Couldn’t change the timer: %@ said no.";
+"Couldn’t change the timer: the network said no." = "Couldn’t change the timer: the network said no.";
+
+/* Strings from earlier parts that had no entry. */
+/* An account banner when a network stopped for a reason Vitruvian Courier can't name. The argument is the network's name. */
+"%@ stopped working." = "%@ stopped working.";
+/* Under a message of mine whose send the engine may or may not have finished. */
+"May have been sent" = "May have been sent";
+/* A toast: ⌘Z on a held message got no answer, and the message is still held. */
+"Vitruvian Courier’s engine didn’t answer. The message is still queued: undo it again." = "Vitruvian Courier’s engine didn’t answer. The message is still queued: undo it again.";
+
+/* ---- Part 4.3, Task 12: the message views ---- */
+
+/* Message menu: quotes the message in the composer (⌘R). */
+"Reply…" = "Reply…";
+/* Message menu: opens the message's thread to reply in it (Slack, and chats whose replies are thread replies). */
+"Reply in Thread…" = "Reply in Thread…";
+/* Message menu, on a thread's root: opens its replies in the thread pane (⌘↓). */
+"Show Replies" = "Show Replies";
+/* Message menu: opens the reaction picker. */
+"React…" = "React…";
+/* Message menu: keeps the message in Bookmarks, on this Mac. */
+"Bookmark" = "Bookmark";
+/* Message menu: takes the message out of Bookmarks. */
+"Remove Bookmark" = "Remove Bookmark";
+/* Message menu: copies the message with its time and sender. */
+"Copy with Timestamp" = "Copy with Timestamp";
+/* Message menu, on someone else's message: puts its text in the composer. */
+"Insert as Draft" = "Insert as Draft";
+/* Message menu: opens the message's first link in the browser (⌘⇧H). */
+"Open Link" = "Open Link";
+/* Message menu and the menu bar: opens the forward picker (⌘⇧F). */
+"Forward…" = "Forward…";
+/* Message menu, on an edited message: opens its earlier versions below it. */
+"Edit History" = "Edit History";
+/* Message menu, a greyed line: when my message was sent. The argument is the date and time. */
+"Sent at %@" = "Sent at %@";
+/* Message menu, a greyed line: when someone else's message came. The argument is the date and time. */
+"Received at %@" = "Received at %@";
+
+/* The formatting bar and its tooltips: the kinds of formatting. */
+"Bold" = "Bold";
+"Italic" = "Italic";
+"Strikethrough" = "Strikethrough";
+"Code" = "Code";
+"Code Block" = "Code Block";
+"Quote" = "Quote";
+"Bulleted List" = "Bulleted List";
+"Numbered List" = "Numbered List";
+"Spoiler" = "Spoiler";
+"Mention" = "Mention";
+/* The formatting bar's tooltip for a kind the chat's network doesn't keep. The arguments are the kind ("Spoiler") and the network's name. */
+"%@ (Unavailable for %@)" = "%@ (Unavailable for %@)";
+/* As above, for a network Vitruvian Courier doesn't know by name. The argument is the kind. */
+"%@ (Unavailable for this network)" = "%@ (Unavailable for this network)";
+/* The formatting bar, for assistive technology. */
+"Formatting" = "Formatting";
+
+/* Under a thread's root: how many replies it has. The argument is the count. */
+"%lld Reply" = "%lld Reply";
+"%lld Replies" = "%lld Replies";
+/* Under a thread's root: who wrote the newest replies. The arguments are a name and how many others. */
+"%@ & %lld other" = "%@ & %lld other";
+"%@ & %lld others" = "%@ & %lld others";
+/* Under a thread's root, beside its replies: how many of them aren't read in the thread. The argument is the count. */
+"%lld new" = "%lld new";
+/* For assistive technology: a thread's root's reply line, as a button, read as its parts joined by commas
+   ("3 Replies, 2 new, mentions you, show replies"). */
+"mentions you" = "mentions you";
+"show replies" = "show replies";
+/* The tooltip of a thread's reply line. */
+"Show Replies (⌘↓)" = "Show Replies (⌘↓)";
+/* Above the open chat's timeline while some of its threads have replies not read. The argument is how many threads. */
+"New replies in 1 thread" = "New replies in 1 thread";
+"New replies in %lld threads" = "New replies in %lld threads";
+"Show the thread with new replies" = "Show the thread with new replies";
+/* For assistive technology: what clicking the new-replies bar does. */
+"Opens the thread at its first new reply" = "Opens the thread at its first new reply";
+/* An inbox row's preview, before the text, when the chat's newest message is a reply in a thread. */
+"↳ in thread: " = "↳ in thread: ";
+
+/* Under a poll: how many people voted. The argument is the count. */
+"%lld vote" = "%lld vote";
+"%lld votes" = "%lld votes";
+/* Under a poll's question, when one answer is allowed. */
+"Select one option" = "Select one option";
+/* Under a poll's question, when several answers are allowed. */
+"Select one or more options" = "Select one or more options";
+/* Under a poll's question, once its creator ended it. */
+"Poll ended" = "Poll ended";
+
+/* Under an edited message whose versions are open: closes them. */
+"Hide Edits" = "Hide Edits";
+/* The tooltip of "Edited": what the message first said. The argument is its first text. */
+"Originally: %@" = "Originally: %@";
+/* The tooltip of "Edited" before its versions are read. */
+"Show the earlier versions" = "Show the earlier versions";
+/* Edit history: the first version. The argument is when it was sent. */
+"Original, %@" = "Original, %@";
+/* Edit history: the newest version. The argument is when it was written. */
+"Current, %@" = "Current, %@";
+/* Edit history: a version between. The argument is when it was written. */
+"Edited %@" = "Edited %@";
+/* Edit history, for assistive technology. */
+"Edit history" = "Edit history";
+/* Under a message of mine whose newest edit the network refused: it still reads as before. Retry and Discard follow. */
+"Edit not sent" = "Edit not sent";
+/* The tooltip of "Edit not sent" when the network gave no reason. */
+"The network didn’t take this edit. The message still reads as before." = "The network didn’t take this edit. The message still reads as before.";
+/* "Edit not sent": drops the refused edit. */
+"Discard" = "Discard";
+/* The tooltip of a held (queued) message when clicking it undoes it. */
+"Click to unsend" = "Click to unsend";
+/* A small mark beside a bookmarked message, and on a Bookmarks row in search. */
+"Bookmarked" = "Bookmarked";
+/* The tooltip of a message with a hidden spoiler. */
+"Click to show the spoiler" = "Click to show the spoiler";
+
+/* The composer's bar while a message is being edited. */
+"Edit Message" = "Edit Message";
+/* The edit bar's close button: tooltip, and for assistive technology. */
+"Cancel editing (Esc)" = "Cancel editing (Esc)";
+"Cancel editing" = "Cancel editing";
+/* The composer's plus menu: picks files to send. */
+"Add Attachment…" = "Add Attachment…";
+/* The composer's plus and send menus, and the Message menu: opens the Send Later picker (⌘⇧L). */
+"Send Later…" = "Send Later…";
+/* The composer's plus menu: opens New Poll. */
+"Create Poll…" = "Create Poll…";
+/* The tooltip of the composer's plus menu. */
+"Attach files, send later, or create a poll" = "Attach files, send later, or create a poll";
+/* The composer's send menu (a right click on Send): sends, then archives the chat (⌘↩). */
+"Send and Archive" = "Send and Archive";
+/* The tooltip of the composer's send button. */
+"Send (Return). Right-click for Send Later and Send and Archive." = "Send (Return). Right-click for Send Later and Send and Archive.";
+/* The thread pane composer's placeholder. */
+"Reply in thread…" = "Reply in thread…";
+
+/* The link dialog: its address field. */
+"URL" = "URL";
+/* The link dialog, for an address Vitruvian Courier won't send (not a web or email address). */
+"Enter a web address (https://…) or an email address (mailto:…)." = "Enter a web address (https://…) or an email address (mailto:…).";
+
+/* The mention picker: @room, which reaches everyone (Slack). */
+"Everyone in this chat" = "Everyone in this chat";
+/* The mention picker, for assistive technology. */
+"People to mention" = "People to mention";
+/* The quick-reply picker, for assistive technology. */
+"Quick replies" = "Quick replies";
+/* The quick-reply title sheet and editor. */
+"New Quick Reply" = "New Quick Reply";
+"Edit Quick Reply" = "Edit Quick Reply";
+"Type ; and the title in a chat to put the text in." = "Type ; and the title in a chat to put the text in.";
+
+/* The Send Later picker: its suggested times are Remind Me's. The condition is "If no reply" or "Regardless". */
+"Send it" = "Send it";
+"Regardless" = "Regardless";
+"Schedule" = "Schedule";
+"“If no reply” doesn’t send it when someone else writes in the chat first." = "“If no reply” doesn’t send it when someone else writes in the chat first.";
+/* The Send Later picker's footer: Vitruvian Courier, not the network, sends a scheduled message. */
+"Vitruvian Courier sends it from this Mac. It needs to be running, and your Mac awake, at that time." = "Vitruvian Courier sends it from this Mac. It needs to be running, and your Mac awake, at that time.";
+/* The Send Later picker, when the engine refused the time. */
+"The message couldn’t be scheduled." = "The message couldn’t be scheduled.";
+
+/* Above the composer: the chat's messages scheduled to send later. The argument is how many. */
+"%lld Message to Send Later" = "%lld Message to Send Later";
+"%lld Messages to Send Later" = "%lld Messages to Send Later";
+/* The scheduled strip, for assistive technology: one needs a look (canceled or missed). */
+"Needs attention" = "Needs attention";
+/* A scheduled message's buttons. */
+"Send Now" = "Send Now";
+"Reschedule" = "Reschedule";
+"Delete Without Sending" = "Delete Without Sending";
+/* A scheduled message with "If no reply" that someone answered first. */
+"Canceled: they wrote first" = "Canceled: they wrote first";
+/* A scheduled message that came due over an hour before Vitruvian Courier could send it. */
+"Missed its time while Vitruvian Courier was closed" = "Missed its time while Vitruvian Courier was closed";
+/* The sheet that changes a scheduled message's words. */
+"Edit Scheduled Message" = "Edit Scheduled Message";
+
+/* New Poll. */
+"New Poll" = "New Poll";
+"Question" = "Question";
+"Ask a question…" = "Ask a question…";
+"Options" = "Options";
+"Option" = "Option";
+"Add an option" = "Add an option";
+"Remove option" = "Remove option";
+"Allow multiple answers" = "Allow multiple answers";
+"Create Poll" = "Create Poll";
+/* New Poll: how many more options the chat's network takes. The argument is the count. */
+"You can enter %lld more option" = "You can enter %lld more option";
+"You can enter %lld more options" = "You can enter %lld more options";
+/* Closing New Poll with something written in it. */
+"Discard poll?" = "Discard poll?";
+"Your poll will be deleted." = "Your poll will be deleted.";
+"Keep Editing" = "Keep Editing";
+
+/* The forward picker. */
+"Forward message" = "Forward message";
+"The people you forward to won’t see who it came from." = "The people you forward to won’t see who it came from.";
+"Vitruvian Courier couldn’t search your chats. Try again." = "Vitruvian Courier couldn’t search your chats. Try again.";
+/* The forward picker: how many chats are chosen. The argument is the count. */
+"%lld selected" = "%lld selected";
+/* The forward picker at its limit. The argument is the most (20). */
+"You can forward to %lld chats at most" = "You can forward to %lld chats at most";
+/* The reaction picker. */
+"Other emoji" = "Other emoji";
+"Emoji & Symbols" = "Emoji & Symbols";
+
+/* The thread pane. */
+"Thread" = "Thread";
+"Close (Esc)" = "Close (Esc)";
+"Close thread" = "Close thread";
+"Vitruvian Courier could not read this thread." = "Vitruvian Courier could not read this thread.";
+"Load older replies" = "Load older replies";
+
+/* The chat header's disappearing-messages menu: its title, and the line under its choices. */
+"Disappearing Messages" = "Disappearing Messages";
+"For added privacy, new messages disappear after the set time." = "For added privacy, new messages disappear after the set time.";
+
+/* The Message menu in the menu bar. */
+"Quick React" = "Quick React";
+"Open First Link" = "Open First Link";
+"Send Message and Archive" = "Send Message and Archive";
+"Create Quick Reply from Draft…" = "Create Quick Reply from Draft…";
+
+/* Settings ▸ Messages. */
+"Sending" = "Sending";
+"Composer" = "Composer";
+"Allow undo send (⌘Z) for" = "Allow undo send (⌘Z) for";
+"Each message waits this long before it goes, so ⌘Z can take it back." = "Each message waits this long before it goes, so ⌘Z can take it back.";
+"0.75 seconds" = "0.75 seconds";
+"1 second" = "1 second";
+/* Settings ▸ Messages: an undo-send window. The argument is whole seconds. */
+"%lld seconds" = "%lld seconds";
+"Click pending messages to undo send" = "Click pending messages to undo send";
+"Default for send later" = "Default for send later";
+"Press ↑ in the composer to" = "Press ↑ in the composer to";
+"Move focus to the message list" = "Move focus to the message list";
+"Edit your last message" = "Edit your last message";
+"Show formatting menu" = "Show formatting menu";
+"A bar of formatting buttons over the text you select." = "A bar of formatting buttons over the text you select.";
+"Enable emoji autocomplete" = "Enable emoji autocomplete";
+"Disable automatic replacement of emoticons with emojis" = "Disable automatic replacement of emoticons with emojis";
+"Automatically send GIFs after selection" = "Automatically send GIFs after selection";
+"On double-clicking a message" = "On double-clicking a message";
+"Show the reaction picker" = "Show the reaction picker";
+"Show the menu" = "Show the menu";
+"Do nothing" = "Do nothing";
+"Quick reaction emoji" = "Quick reaction emoji";
+"⌘⇧R reacts with it to the selected message." = "⌘⇧R reacts with it to the selected message.";
+"Include timestamps when copying messages with ⌘C" = "Include timestamps when copying messages with ⌘C";
+"Hide deleted messages" = "Hide deleted messages";
+"Off, a deleted message leaves a line saying it was deleted." = "Off, a deleted message leaves a line saying it was deleted.";
+"Quick Replies" = "Quick Replies";
+"No quick replies yet." = "No quick replies yet.";
+"Add…" = "Add…";
+"Type ; and the title in a chat. {first_name}, {last_name} and {full_name} fill in the other person’s name." = "Type ; and the title in a chat. {first_name}, {last_name} and {full_name} fill in the other person’s name.";
+
+/* ---- Part 4.3, Task 12, fix round 1 ---- */
+
+/* The Message menu's submenu of the formatting keys. */
+"Format" = "Format";
+/* Send Later and Reschedule, when the time chosen has passed (a suggestion left open a while). */
+"That time has passed. Choose a later one." = "That time has passed. Choose a later one.";
+/* Send Later and Reschedule, for a time more than five years ahead. */
+"Choose a time within 5 years." = "Choose a time within 5 years.";
+
+/* ---- Part 4.3, Task 12, fix round 2 ---- */
+
+/* Send Later and Reschedule, for a time less than a minute ahead. */
+"Pick a time at least a minute from now." = "Pick a time at least a minute from now.";
+
+
+/* ---- Call notices ---- */
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. Someone called, and the network didn't say whether it was a voice or a video call. */
+"Incoming call" = "Incoming call";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. Someone called: a voice call. */
+"Incoming voice call" = "Incoming voice call";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. Someone called: a video call. */
+"Incoming video call" = "Incoming video call";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. I called, and the network didn't say whether it was a voice or a video call. */
+"Outgoing call" = "Outgoing call";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. I made a voice call. */
+"Outgoing voice call" = "Outgoing voice call";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. I made a video call. */
+"Outgoing video call" = "Outgoing video call";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A group's call started, and the network didn't say whether it was a voice or a video call. */
+"Call started" = "Call started";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A group's voice call started. */
+"Voice call started" = "Voice call started";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A group's video call started. */
+"Video call started" = "Video call started";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. Someone called and no one answered; the network didn't say whether it was a voice or a video call. */
+"Missed call" = "Missed call";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. Someone made a voice call and no one answered. */
+"Missed voice call" = "Missed voice call";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. Someone made a video call and no one answered. */
+"Missed video call" = "Missed video call";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. I called and they didn't answer; the network didn't say whether it was a voice or a video call. */
+"Call not answered" = "Call not answered";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. I made a voice call and they didn't answer. */
+"Voice call not answered" = "Voice call not answered";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. I made a video call and they didn't answer. */
+"Video call not answered" = "Video call not answered";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A call is over; the network didn't say whether it was a voice or a video call. */
+"Call ended" = "Call ended";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A voice call is over. */
+"Voice call ended" = "Voice call ended";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A video call is over. */
+"Video call ended" = "Video call ended";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A call was turned down; the network didn't say whether it was a voice or a video call. */
+"Call declined" = "Call declined";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A voice call was turned down. */
+"Voice call declined" = "Voice call declined";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A video call was turned down. */
+"Video call declined" = "Video call declined";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A call's connection was lost; the network didn't say whether it was a voice or a video call. */
+"Call dropped" = "Call dropped";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A voice call's connection was lost. */
+"Voice call dropped" = "Voice call dropped";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A video call's connection was lost. */
+"Video call dropped" = "Video call dropped";
+
+/* Under a message of mine waiting for its network to be back (it is starting, down or signing in). */
+"Waiting to send" = "Waiting to send";
+/* The help under "Waiting to send", for a network Vitruvian Courier doesn't know by name. */
+"It goes when the network is back online." = "It goes when the network is back online.";
+/* The help under "Waiting to send". The argument is the network's name ("WhatsApp"). */
+"It goes when %@ is back online." = "It goes when %@ is back online.";
+/* Under a message of mine that is waiting, when none of my accounts is in the chat any more (the one that was is signed out). */
+"Can’t send: none of your accounts is in this chat" = "Can’t send: none of your accounts is in this chat";
+/* The button on a waiting message's line: it takes the message back, and what was typed goes back into the box. */
+"Don’t Send" = "Don’t Send";
+/* Under my newest message: someone's phone has it (one-to-one chats). */
+"Delivered" = "Delivered";
+/* Under my newest message in a one-to-one chat: the other person read it. */
+"Seen" = "Seen";
+/* Under my newest message in a one-to-one chat: the other person read it, at this time ("10:42"). */
+"Seen %@" = "Seen %@";
+/* Under my newest message in a group: who read it. The argument is the newest reader's name. */
+"Seen by %@" = "Seen by %@";
+/* Under my newest message in a group: the newest reader's name and how many others read it. */
+"Seen by %@ & %lld other" = "Seen by %@ & %lld other";
+"Seen by %@ & %lld others" = "Seen by %@ & %lld others";
+
+/* A message's menu: a one-to-one chat with the message's sender, the message quoted in it. */
+"Reply Privately…" = "Reply Privately…";
+/* A message's menu: the help of Mark as Unread on a message. */
+"From this message. On this Mac only." = "From this message. On this Mac only.";
+/* A toast: Mark as Unread on a message didn't work. */
+"Couldn’t mark the chat unread." = "Couldn’t mark the chat unread.";
+/* A toast: Reply Privately, when the network can't start a chat with the person, for a network Vitruvian Courier doesn't know by name. */
+"The network can’t start a chat with this person." = "The network can’t start a chat with this person.";
+/* A toast: Reply Privately, when the network can't start a chat with the person. The argument is the network's name. */
+"%@ can’t start a chat with this person." = "%@ can’t start a chat with this person.";
+/* A toast: Reply Privately, when the person isn't in the group any more as far as Vitruvian Courier knows. */
+"That person isn’t in this chat any more." = "That person isn’t in this chat any more.";
+/* A toast: Reply Privately didn't work, for a reason Vitruvian Courier has no words of its own for. */
+"Couldn’t open a private chat." = "Couldn’t open a private chat.";
+/* A toast: Don't Send on a waiting message, when Vitruvian Courier's engine didn't answer and the message is still waiting. */
+"Vitruvian Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again." = "Vitruvian Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again.";
+/* A toast: Undo or Don't Send on a message that is being sent now (Sending…), so it can't be taken back. If its network goes down again it comes back as waiting, and Don't Send can take it back then. */
+"It’s on its way. If it comes back as waiting, try again." = "It’s on its way. If it comes back as waiting, try again.";
+/* A toast: Don't Send on a waiting message couldn't take it back (it was taken back already, or is being). */
+"Couldn’t take the message back. Try again." = "Couldn’t take the message back. Try again.";
+
+/* Task 9: Incognito, typing and accounts. */
+/* Turning Incognito on, while the person's typing shows: whether to also hide that they are typing. Inferred wording. */
+"Also hide that you’re typing?" = "Also hide that you’re typing?";
+/* The incognito question's button that turns "Show recipients I'm typing" off. */
+"Hide Typing" = "Hide Typing";
+/* The incognito question's button that leaves typing showing. */
+"Keep Showing" = "Keep Showing";
+/* A banner's title names the network and, when the network has more than one, the account: the network's name, then the account's (a phone number, a workspace). */
+"%@ (%@)" = "%1$@ (%2$@)";
+/* Under "Linked as …": Reconnect on one account was answered by signing in another account; both are kept. */
+"That signed in a different account, so both are now linked." = "That signed in a different account, so both are now linked.";
+/* Reconnect on an account that doesn't need signing in again. The argument is the network's name. */
+"That %@ account is already signed in." = "That %@ account is already signed in.";
+/* Signing in to a network the engine hasn't started yet this session. The argument is the network's name. */
+"%@ is still starting. Try again in a moment." = "%@ is still starting. Try again in a moment.";
+/* Command bar: turns Incognito on. */
+"Turn on incognito mode" = "Turn on incognito mode";
+/* Command bar: turns Incognito off. */
+"Turn off incognito mode" = "Turn off incognito mode";
+/* Command bar: opens Add a Network to add an account. */
+"Add Account" = "Add Account";
+/* Command bar: on a message in a group, opens a one-to-one chat with its sender, the message quoted. */
+"Reply privately" = "Reply privately";
+/* Command bar: marks the chat unread from the selected message on, on this Mac only. */
+"Mark as unread" = "Mark as unread";
+/* Under "Linked as …": Reconnect on one account was answered by signing in another; both are kept. The arguments are the account signed in, then the one asked for (phone numbers, workspace names). */
+"That signed in %@ instead of %@. Both are linked now." = "That signed in %1$@ instead of %2$@. Both are linked now.";
+
+/* Task 10: the views for receipts, typing, Incognito and accounts. */
+/* The help on Don't Send, on a message waiting for its network. */
+"Takes the message back. It isn’t sent." = "Takes the message back. It isn’t sent.";
+/* The composer's mark while Incognito is on. */
+"Incognito" = "Incognito";
+/* The help on the composer's Incognito mark. */
+"Read receipts are off until you reply." = "Read receipts are off until you reply.";
+/* The help on a chat row's account tag, while its network has more than one account. The argument is the account's name (a phone number, a workspace). */
+"On your %@ account" = "On your %@ account";
+/* The Add a Network picker, beside a linked network with two accounts. The arguments are the accounts' names (phone numbers, workspaces). */
+"Linked as %@ and %@" = "Linked as %1$@ and %2$@";
+/* The Add a Network picker, beside a linked network with several accounts, or two of which one has no name yet. */
+"Linked: %lld accounts" = "Linked: %lld accounts";
+/* The Add a Network picker's button beside a linked network: signs in a second account beside those linked. */
+"Add Another Account…" = "Add Another Account…";
+/* Beside a network the engine hasn't started yet this session: in the Add a Network picker, the status strip and the space bar's tooltip. */
+"Starting…" = "Starting…";
+/* The status strip's tooltip for an account that is starting or reconnecting. The arguments are the network's name (with the account's, when it has more than one) and the status. */
+"account-status-tooltip" = "%1$@: %2$@";
+/* An account space's menu, with more than one account on the network: signs that account in again. The argument is the account's name. */
+"Reconnect %@" = "Reconnect %@";
+/* Settings ▸ Messages: the section for Incognito and typing. */
+"Privacy" = "Privacy";
+/* Settings ▸ Messages ▸ Privacy: the Incognito toggle. */
+"Incognito mode" = "Incognito mode";
+/* The help on Settings ▸ Messages ▸ Incognito mode. */
+"Chats stay unread when you open them, and no one is told you read their messages, until you reply or mark the chat read (⌘⇧U)." = "Chats stay unread when you open them, and no one is told you read their messages, until you reply or mark the chat read (⌘⇧U).";
+/* Settings ▸ Messages ▸ Privacy: whether my typing goes out. */
+"Show recipients I’m typing" = "Show recipients I’m typing";
+/* The help on Settings ▸ Messages ▸ Show recipients I'm typing. */
+"Networks that show typing are told while you write." = "Networks that show typing are told while you write.";
+/* Settings ▸ Messages ▸ Privacy: whether the composer shows the Incognito mark while Incognito is on. */
+"Show the incognito mark in the message box" = "Show the incognito mark in the message box";
+/* Settings ▸ Inbox: the notifications section. */
+"Notifications" = "Notifications";
+/* Settings ▸ Inbox ▸ Notifications: a notification when someone starts typing. */
+"Notify me when someone starts typing" = "Notify me when someone starts typing";
+/* The help on Settings ▸ Inbox ▸ Notify me when someone starts typing. */
+"Only on networks that send typing. Off, you’re told when the message arrives." = "Only on networks that send typing. Off, you’re told when the message arrives.";
+
+/* ---- Milestone 4.5: People, groups, chat info and merged chats ---- */
+/* Toast or error when a network refused a group or profile change (-32027). The argument is the network's name. */
+"%@ didn’t accept that change." = "%@ didn’t accept that change.";
+/* Toast or error when a network Vitruvian Courier doesn't know by name refused a group or profile change (-32027). */
+"The network didn’t accept that change." = "The network didn’t accept that change.";
+/* Command bar: shows or hides the chat info pane. */
+"Toggle chat info" = "Toggle chat info";
+/* Command bar: focuses the search field in the chat info pane. */
+"Search in chat info" = "Search in chat info";
+/* Command bar: opens the calendar date jumper in the chat info pane. */
+"Jump to date in chat" = "Jump to date in chat";
+/* Command bar: opens the sender's profile card for the selected message. */
+"Show sender profile" = "Show sender profile";
+/* Command bar: opens New Chat to create a group or blast chat. */
+"New group or blast chat" = "New group or blast chat";
+/* Settings ▸ Messages ▸ Messages: whether membership/chat update events show in the timeline. */
+"Show chat updates in timeline" = "Show chat updates in timeline";
+/* Chat Info right pane and standalone window. */
+"Chat Info" = "Chat Info";
+"Show Chat Info" = "Show Chat Info";
+"Hide Chat Info" = "Hide Chat Info";
+"Chat Info (⌘⇧I)" = "Chat Info (⌘⇧I)";
+"Close Chat Info (⌘⇧I)" = "Close Chat Info (⌘⇧I)";
+"Close chat info" = "Close chat info";
+"Open Chat Info in Separate Window" = "Open Chat Info in Separate Window";
+"Edit chat name or avatar" = "Edit chat name or avatar";
+"On %@: %@" = "On %1$@: %2$@";
+"1 member" = "1 member";
+"%lld members" = "%lld members";
+"Filter chat info…" = "Filter chat info…";
+"Clear filter" = "Clear filter";
+"Participants" = "Participants";
+"Add Participants…" = "Add Participants…";
+"Admin" = "Admin";
+"Bot" = "Bot";
+"Pinned" = "Pinned";
+"Pinned message" = "Pinned message";
+"Shared Media" = "Shared Media";
+"Encrypted" = "Encrypted";
+"Transport TLS" = "Transport TLS";
+"Refresh Chat Info" = "Refresh Chat Info";
+"Export Chat…" = "Export Chat…";
+"Exported %lld messages" = "Exported %lld messages";
+"Couldn’t export the chat." = "Couldn’t export the chat.";
+"%@ local time" = "%@ local time";
+
+/* Task 10: Edit Group / Chat, Add Participants, Report Spam, Participant Context Menu, Leave & Delete. */
+"Edit Group" = "Edit Group";
+"Edit Chat" = "Edit Chat";
+"Edit Group…" = "Edit Group…";
+"Edit Chat…" = "Edit Chat…";
+"On %@" = "On %@";
+"Scope" = "Scope";
+"For Everyone" = "For Everyone";
+"Just for Me" = "Just for Me";
+"Changes apply only on this Mac." = "Changes apply only on this Mac.";
+"Changes are visible to everyone on %@." = "Changes are visible to everyone on %@.";
+"Choose Photo…" = "Choose Photo…";
+"Reset to network name" = "Reset to network name";
+"Reset to Network Default" = "Reset to Network Default";
+"Network name: %@" = "Network name: %@";
+"Name" = "Name";
+"Chat name" = "Chat name";
+"Topic" = "Topic";
+"Add a group topic or description…" = "Add a group topic or description…";
+"Add Participants" = "Add Participants";
+"%@ · %@" = "%1$@ · %2$@";
+"Search contacts or people in groups…" = "Search contacts or people in groups…";
+"Remove %@" = "Remove %@";
+"No matching contacts found" = "No matching contacts found";
+"1 selected" = "1 selected";
+"%lld selected" = "%lld selected";
+"Add" = "Add";
+"Report as Spam" = "Report as Spam";
+"Report as Spam…" = "Report as Spam…";
+"Hide this chat on this Mac and mark it as spam?" = "Hide this chat on this Mac and mark it as spam?";
+"Also leave the group on %@" = "Also leave the group on %@";
+"Also leave the group" = "Also leave the group";
+"Also delete the chat on %@" = "Also delete the chat on %@";
+"Also delete the chat" = "Also delete the chat";
+"Report Spam" = "Report Spam";
+"Message %@" = "Message %@";
+"Make Admin" = "Make Admin";
+"Remove Admin" = "Remove Admin";
+"Remove from Group" = "Remove from Group";
+"Copy User ID" = "Copy User ID";
+"Leave Group…" = "Leave Group…";
+"Leave Group" = "Leave Group";
+"Delete Chat…" = "Delete Chat…";
+"Delete Chat" = "Delete Chat";
+"Remove" = "Remove";
+"Confirm" = "Confirm";
+"this participant" = "this participant";
+"this group" = "this group";
+"this chat" = "this chat";
+"Remove %@ from “%@”?" = "Remove %1$@ from “%2$@”?";
+"Leave “%@”?" = "Leave “%@”?";
+"You won’t receive new messages from this group unless someone adds you back." = "You won’t receive new messages from this group unless someone adds you back.";
+"Delete “%@”?" = "Delete “%@”?";
+"This also leaves the group." = "This also leaves the group.";
+"This permanently deletes the chat on the connected network." = "This permanently deletes the chat on the connected network.";
+"Couldn’t save chat changes." = "Couldn’t save chat changes.";
+"Couldn’t reset the chat name." = "Couldn’t reset the chat name.";
+"Couldn’t report the chat as spam." = "Couldn’t report the chat as spam.";
+"Couldn’t add participants." = "Couldn’t add participants.";
+"Couldn’t change admin status." = "Couldn’t change admin status.";
+"Couldn’t remove participant." = "Couldn’t remove participant.";
+"Couldn’t leave the group." = "Couldn’t leave the group.";
+"Couldn’t delete the chat." = "Couldn’t delete the chat.";
+"Contacts access is turned off in System Settings." = "Contacts access is turned off in System Settings.";
+"Open System Settings" = "Open System Settings";
+"In Contacts: %@" = "In Contacts: %@";
+"Save to Contacts…" = "Save to Contacts…";
+"Given Name" = "Given Name";
+"Family Name" = "Family Name";
+"Phone" = "Phone";
+"Email" = "Email";
+"Shared Groups" = "Shared Groups";
+"Copy Handle" = "Copy Handle";
+"Show Sender Profile" = "Show Sender Profile";
+
+/* Task 13: Calendar Right Pane & Detected Dates. */
+"Calendar" = "Calendar";
+"Show Calendar" = "Show Calendar";
+"Hide Calendar" = "Hide Calendar";
+"Close Calendar (⌘⌥K)" = "Close Calendar (⌘⌥K)";
+"Close calendar" = "Close calendar";
+"Previous Day" = "Previous Day";
+"Next Day" = "Next Day";
+"Calendar access is turned off in System Settings." = "Calendar access is turned off in System Settings.";
+"No writable calendar is available in Calendar." = "No writable calendar is available in Calendar.";
+"Show your macOS Calendar schedule here." = "Show your macOS Calendar schedule here.";
+"Allow Calendar Access" = "Allow Calendar Access";
+"No events scheduled" = "No events scheduled";
+"Untitled Event" = "Untitled Event";
+"All day" = "All day";
+"Join" = "Join";
+"New Calendar Event" = "New Calendar Event";
+"Event title" = "Event title";
+"Add to Calendar" = "Add to Calendar";
+
+/* Milestone 4.5c: Emoji autocomplete, Stickers, and GIFs. */
+"Custom" = "Custom";
+"Add :%@: to Custom Emoji" = "Add :%@: to Custom Emoji";
+"Recent" = "Recent";
+"Imported" = "Imported";
+"Search stickers" = "Search stickers";
+"No stickers yet" = "No stickers yet";
+"No matching stickers" = "No matching stickers";
+"Import a PNG, WebP, or GIF image, or sync packs from a connected network." = "Import a PNG, WebP, or GIF image, or sync packs from a connected network.";
+"Import Sticker…" = "Import Sticker…";
+"Sync Packs" = "Sync Packs";
+"Choose a PNG, WebP, or GIF image to import as a sticker" = "Choose a PNG, WebP, or GIF image to import as a sticker";
+"Stickers must be PNG, WebP, GIF, or JPEG images." = "Stickers must be PNG, WebP, GIF, or JPEG images.";
+"The sticker could not be imported." = "The sticker could not be imported.";
+"Stickers are not supported on %@." = "Stickers are not supported on %@.";
+"this chat" = "this chat";
+"GIFs are not supported on %@." = "GIFs are not supported on %@.";
+"GIFs must be GIF or MP4 files." = "GIFs must be GIF or MP4 files.";
+"Choose a GIF or short loop to send" = "Choose a GIF or short loop to send";
+"Choose GIF" = "Choose GIF";
+"Search recent GIFs" = "Search recent GIFs";
+"Online GIF search is disabled so nothing leaves your Mac. Choose a GIF file or pick a recent GIF below." = "Online GIF search is disabled so nothing leaves your Mac. Choose a GIF file or pick a recent GIF below.";
+"No recent GIFs" = "No recent GIFs";
+"No matching GIFs" = "No matching GIFs";
+"Choose a GIF or MP4 loop from your Mac below." = "Choose a GIF or MP4 loop from your Mac below.";
+"Choose GIF from Mac…" = "Choose GIF from Mac…";
+"Press Return to send with your caption" = "Press Return to send with your caption";
+"Remove GIF" = "Remove GIF";
+"Add Emoji…" = "Add Emoji…";
+"Add GIF…" = "Add GIF…";
+"Add Sticker…" = "Add Sticker…";
+"Send GIF" = "Send GIF";
+"Send GIF…" = "Send GIF…";
+"Send Sticker" = "Send Sticker";
+"Send Sticker…" = "Send Sticker…";
+"Send GIF (⌘⇧G)" = "Send GIF (⌘⇧G)";
+"Send Sticker (⌘⌥⇧S)" = "Send Sticker (⌘⌥⇧S)";
+
+/* Talk to Type & Voice-Note Transcription. */
+"Talk to Type" = "Talk to Type";
+"Talk to Type & Voice Transcription" = "Talk to Type & Voice Transcription";
+"Message: Talk to Type" = "Message: Talk to Type";
+"Dictation / voice transcription" = "Dictation / voice transcription";
+"Use OpenAI's Whisper model for Talk to Type and transcribing" = "Use OpenAI's Whisper model for Talk to Type and transcribing";
+"Automatically transcribe incoming voice notes" = "Automatically transcribe incoming voice notes";
+"Transcription language" = "Transcription language";
+"Auto-Detect" = "Auto-Detect";
+"On this Mac" = "On this Mac";
+"Sent to OpenAI" = "Sent to OpenAI";
+"On this Mac · Ready" = "On this Mac · Ready";
+"On this Mac · Speech model will download on first use" = "On this Mac · Speech model will download on first use";
+"On this Mac · Not available for %@" = "On this Mac · Not available for %@";
+"OpenAI Whisper · audio is sent to OpenAI" = "OpenAI Whisper · audio is sent to OpenAI";
+"Listening…" = "Listening…";
+"Waiting for permission…" = "Waiting for permission…";
+"Finishing…" = "Finishing…";
+"Transcribing…" = "Transcribing…";
+"Downloading speech model…" = "Downloading speech model…";
+"Stop" = "Stop";
+"Transcribe" = "Transcribe";
+"Transcribe voice message" = "Transcribe voice message";
+"Transcript" = "Transcript";
+"Copy transcript" = "Copy transcript";
+"Copied to clipboard" = "Copied to clipboard";
+"Transcribed on this Mac" = "Transcribed on this Mac";
+"Transcribed by OpenAI" = "Transcribed by OpenAI";
+"No speech detected." = "No speech detected.";
+"Voice-note transcription failed." = "Voice-note transcription failed.";
+"Download the voice note first." = "Download the voice note first.";
+"Add an OpenAI key in the Cloud section to use Whisper." = "Add an OpenAI key in the Cloud section to use Whisper.";
+"Vitruvian Courier needs microphone access for Talk to Type." = "Vitruvian Courier needs microphone access for Talk to Type.";
+"Vitruvian Courier needs speech recognition access for Talk to Type." = "Vitruvian Courier needs speech recognition access for Talk to Type.";
+"Speech recognition for %@ isn’t available on this Mac." = "Speech recognition for %@ isn’t available on this Mac.";
+"Speech recognition failed on this Mac." = "Speech recognition failed on this Mac.";
+"Speech recognition failed. Try again." = "Speech recognition failed. Try again.";
+"Couldn’t download the speech model on this Mac." = "Couldn’t download the speech model on this Mac.";
+"Couldn’t access an audio input format on this Mac." = "Couldn’t access an audio input format on this Mac.";
+"Couldn’t start speech recognition on this Mac." = "Couldn’t start speech recognition on this Mac.";
+"Couldn’t start microphone capture on this Mac." = "Couldn’t start microphone capture on this Mac.";
+"Couldn’t start microphone recording." = "Couldn’t start microphone recording.";
+"Couldn’t finish microphone recording." = "Couldn’t finish microphone recording.";
+"Couldn’t read the audio recording." = "Couldn’t read the audio recording.";
+"OpenAI returned an unreadable transcription response." = "OpenAI returned an unreadable transcription response.";
+"OpenAI transcription failed (HTTP %lld)." = "OpenAI transcription failed (HTTP %lld).";
+"OpenAI rejected the API key. Check it in Settings ▸ AI." = "OpenAI rejected the API key. Check it in Settings ▸ AI.";
+"OpenAI rate limit reached. Try again in a moment." = "OpenAI rate limit reached. Try again in a moment.";
+"Couldn’t reach OpenAI. Check your internet connection." = "Couldn’t reach OpenAI. Check your internet connection.";
+
+/* Read Aloud (docs/read-aloud.md): a message's menu, the buttons beside Copy, what is spoken, and Vitruvian Speaker's row. */
+"Read Aloud" = "Read Aloud";
+"Reading Aloud…" = "Reading Aloud…";
+"Read aloud" = "Read aloud";
+"You said: %@" = "You said: %@";
+"%@ says: %@" = "%1$@ says: %2$@";
+"Read Aloud on Vitruvian Speaker" = "Read Aloud on Vitruvian Speaker";
+"Every Message" = "Every Message";
+"Default" = "Default";
+"Muted chats are never read aloud." = "Muted chats are never read aloud.";
+"Vitruvian Speaker" = "Vitruvian Speaker";
+"Open Vitruvian Speaker" = "Open Vitruvian Speaker";
+"Installed" = "Installed";
+"Installed · reads Vitruvian Courier messages aloud" = "Installed · reads Vitruvian Courier messages aloud";
+"Installed · not reading Vitruvian Courier (turn it on in Vitruvian Speaker)" = "Installed · not reading Vitruvian Courier (turn it on in Vitruvian Speaker)";
+"Not installed · Read Aloud uses this Mac’s voice" = "Not installed · Read Aloud uses this Mac’s voice";
+"Vitruvian Speaker couldn’t read it aloud." = "Vitruvian Speaker couldn’t read it aloud.";
+"Vitruvian Speaker couldn’t read it aloud. %@" = "Vitruvian Speaker couldn’t read it aloud. %@";

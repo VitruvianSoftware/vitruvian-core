@@ -30,7 +30,7 @@ description: >-
   download fails the step and installs nothing. Runs
   //tools/ci:install_pinned_tool, built here from the checkout with the
   runner's rustc, because the callers (actionlint, gitops-validate,
-  chart-render, supply-chain, mcp-slack-image) set up no Bazel. Every fetch
+  chart-render, supply-chain, vitruvian-slack-mcp-image) set up no Bazel. Every fetch
   retries 6 times with curl's exponential backoff under a 180s cap. See
   tools/ci/src/install_pinned_tool/lib.rs.
 

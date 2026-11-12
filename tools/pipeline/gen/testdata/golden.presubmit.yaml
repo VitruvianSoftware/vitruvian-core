@@ -224,7 +224,7 @@ jobs:
           QUEUED: ${{ steps.queued.outputs.verdict }}
           QUEUED_RUN: ${{ steps.queued.outputs.run }}
           FAST_LANE: ${{ steps.fastlane.outputs.verdict }}
-          ALL_UNITS: '["backstage-backend","design-system","backstage-app","devx-cli","homelab","mcp-slack-service","vitruvian-code-src","vitruvian-code-macos","oauth-user-inspector","pulumi-repo-config","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web"]'
+          ALL_UNITS: '["backstage-backend","design-system","backstage-app","devx-cli","homelab","vitruvian-slack-mcp-service","vitruvian-code-src","vitruvian-code-macos","oauth-user-inspector","pulumi-repo-config","vitruvian-tabs-shared","vitruvian-tabs-api","vitruvian-tabs-cli","vitruvian-tabs-extension","vitruvian-tabs-web"]'
         run: |
           set +e -u -o pipefail
           if [ "$RELEASE_SKIP" = "true" ]; then
@@ -520,12 +520,12 @@ jobs:
           pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
-  unit-mcp-slack-service:
-    name: mcp-slack-service
+  unit-vitruvian-slack-mcp-service:
+    name: vitruvian-slack-mcp-service
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     needs: [plan]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'mcp-slack-service')) }}
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-slack-mcp-service')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -544,7 +544,7 @@ jobs:
         id: llvm-contents
         uses: ./.github/actions/llvm-cache-restore
 
-      - name: Build & Test Unit mcp-slack-service
+      - name: Build & Test Unit vitruvian-slack-mcp-service
         run: |
           set -euo pipefail
           cache_flags=()
@@ -552,7 +552,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //mcp-slack:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //mcp-slack:unit_tests; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //vitruvian-slack-mcp:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //vitruvian-slack-mcp:unit_tests; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -723,12 +723,12 @@ jobs:
           pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
-  unit-tabula-shared:
-    name: tabula-shared
+  unit-vitruvian-tabs-shared:
+    name: vitruvian-tabs-shared
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     needs: [plan]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-shared')) }}
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-tabs-shared')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -747,7 +747,7 @@ jobs:
         id: llvm-contents
         uses: ./.github/actions/llvm-cache-restore
 
-      - name: Build & Test Unit tabula-shared
+      - name: Build & Test Unit vitruvian-tabs-shared
         run: |
           set -euo pipefail
           cache_flags=()
@@ -755,7 +755,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //tabula/shared:lib || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //tabula/shared:lib; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/shared:lib || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/shared:lib; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -766,12 +766,12 @@ jobs:
           pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
-  unit-tabula-api:
-    name: tabula-api
+  unit-vitruvian-tabs-api:
+    name: vitruvian-tabs-api
     runs-on: ubuntu-26.04
     timeout-minutes: 20
-    needs: [plan, unit-tabula-shared]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-api')) }}
+    needs: [plan, unit-vitruvian-tabs-shared]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-tabs-api')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -790,7 +790,7 @@ jobs:
         id: llvm-contents
         uses: ./.github/actions/llvm-cache-restore
 
-      - name: Build & Test Unit tabula-api
+      - name: Build & Test Unit vitruvian-tabs-api
         run: |
           set -euo pipefail
           cache_flags=()
@@ -798,7 +798,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //tabula/api:integration_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //tabula/api:integration_tests; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/api:integration_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/api:integration_tests; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -809,12 +809,12 @@ jobs:
           pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
-  unit-tabula-cli:
-    name: tabula-cli
+  unit-vitruvian-tabs-cli:
+    name: vitruvian-tabs-cli
     runs-on: ubuntu-26.04
     timeout-minutes: 15
-    needs: [plan, unit-tabula-shared]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-cli')) }}
+    needs: [plan, unit-vitruvian-tabs-shared]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-tabs-cli')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -833,7 +833,7 @@ jobs:
         id: llvm-contents
         uses: ./.github/actions/llvm-cache-restore
 
-      - name: Build & Test Unit tabula-cli
+      - name: Build & Test Unit vitruvian-tabs-cli
         run: |
           set -euo pipefail
           cache_flags=()
@@ -841,7 +841,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //tabula/cli:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //tabula/cli:unit_tests; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/cli:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/cli:unit_tests; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -852,12 +852,12 @@ jobs:
           pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
-  unit-tabula-extension:
-    name: tabula-extension
+  unit-vitruvian-tabs-extension:
+    name: vitruvian-tabs-extension
     runs-on: ubuntu-26.04
     timeout-minutes: 15
-    needs: [plan, unit-tabula-shared]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-extension')) }}
+    needs: [plan, unit-vitruvian-tabs-shared]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-tabs-extension')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -876,7 +876,7 @@ jobs:
         id: llvm-contents
         uses: ./.github/actions/llvm-cache-restore
 
-      - name: Build & Test Unit tabula-extension
+      - name: Build & Test Unit vitruvian-tabs-extension
         run: |
           set -euo pipefail
           cache_flags=()
@@ -884,7 +884,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //tabula/extension:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //tabula/extension:unit_tests; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/extension:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/extension:unit_tests; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -895,12 +895,12 @@ jobs:
           pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
-  unit-tabula-web:
-    name: tabula-web
+  unit-vitruvian-tabs-web:
+    name: vitruvian-tabs-web
     runs-on: ubuntu-26.04
     timeout-minutes: 15
-    needs: [plan, unit-design-system, unit-tabula-shared]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-web')) }}
+    needs: [plan, unit-design-system, unit-vitruvian-tabs-shared]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-tabs-web')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -919,7 +919,7 @@ jobs:
         id: llvm-contents
         uses: ./.github/actions/llvm-cache-restore
 
-      - name: Build & Test Unit tabula-web
+      - name: Build & Test Unit vitruvian-tabs-web
         run: |
           set -euo pipefail
           cache_flags=()
@@ -927,7 +927,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //tabula/web:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //tabula/web:unit_tests; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/web:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/web:unit_tests; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -992,7 +992,7 @@ jobs:
 
   gate:
     name: gate/all-required-passed
-    needs: [plan, unit-backstage-backend, unit-design-system, unit-backstage-app, unit-devx-cli, unit-homelab, unit-mcp-slack-service, unit-vitruvian-code-src, unit-vitruvian-code-macos, unit-oauth-user-inspector, unit-pulumi-repo-config, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web]
+    needs: [plan, unit-backstage-backend, unit-design-system, unit-backstage-app, unit-devx-cli, unit-homelab, unit-vitruvian-slack-mcp-service, unit-vitruvian-code-src, unit-vitruvian-code-macos, unit-oauth-user-inspector, unit-pulumi-repo-config, unit-vitruvian-tabs-shared, unit-vitruvian-tabs-api, unit-vitruvian-tabs-cli, unit-vitruvian-tabs-extension, unit-vitruvian-tabs-web]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5

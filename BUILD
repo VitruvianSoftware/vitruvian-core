@@ -183,7 +183,7 @@ exports_files(
         ".github/workflows/_changelog-summary.yaml",
         ".github/workflows/_deploy-cloud-run.yaml",
         ".github/workflows/_oauth-identity-apply.yaml",
-        ".github/workflows/_tabula-identity-apply.yaml",
+        ".github/workflows/_vitruvian-tabs-identity-apply.yaml",
         ".github/workflows/release-hold.yaml",
     ],
     visibility = ["//tools/delivery/gen:__pkg__"],
@@ -192,7 +192,7 @@ exports_files(
 # The rehearsal of the standalone Vitruvian Code's release, read by the test that
 # keeps it running the same steps as the release workflow the mirror runs.
 exports_files(
-    [".github/workflows/nexus-agent-mirror-toolchain.yaml"],
+    [".github/workflows/vitruvian-code-mirror-toolchain.yaml"],
     visibility = ["//tools/ci:__pkg__"],
 )
 
@@ -240,13 +240,13 @@ exports_files(
 # as infrastructure/pulumi. Keep gazelle out of the subtree.
 # gazelle:exclude packages/pulumi/examples
 # apps contains subtrees with hand-authored BUILD files or non-Go toolchains.
-# Keep Gazelle out of non-Go app subtrees, while letting Gazelle manage apps/cli/devx
-# and apps/desktop/courier (Go modules). The other apps are listed one by one
+# Keep Gazelle out of non-Go app subtrees, while letting Gazelle manage apps/cli/vitruvian-devx
+# and apps/desktop/vitruvian-courier (Go modules). The other apps are listed one by one
 # because Gazelle cannot un-exclude a child of an excluded directory.
 # gazelle:exclude apps/antigravity
-# gazelle:exclude apps/cli/homelab
-# gazelle:exclude apps/desktop/home-speaker
-# gazelle:exclude apps/desktop/vitruvian
+# gazelle:exclude apps/cli/vitruvian-homelab
+# gazelle:exclude apps/desktop/vitruvian-speaker
+# gazelle:exclude apps/desktop/vitruvian-atrium
 # gazelle:exclude apps/desktop/vitruvian-code
 # gazelle:exclude apps/desktop/vitruvian-tool-github
 # gazelle:exclude apps/desktop/vitruvian-tool-tv
@@ -266,7 +266,7 @@ gazelle(
             # sources, and the Kotlin Gazelle extension generates a
             # kt_jvm_library named after each package directory, which collides
             # with the existing go_library/go_binary/ts_project targets in the
-            # grafted Go (homelab, devx) and TypeScript (mcp-slack) projects --
+            # grafted Go (homelab, devx) and TypeScript (vitruvian-slack-mcp) projects --
             # aborting `bazel run //:gazelle` repo-wide. Re-add it here if/when
             # actual Kotlin sources are introduced.
             "python",
@@ -366,13 +366,13 @@ doctor(
 )
 
 # Sponsor buttons (FUNDING.yml) whose folder has no BUILD of its own: the
-# monorepo's, Courier's and pulumi-library's. The stripe stack's
+# monorepo's, Vitruvian Courier's and pulumi-library's. The stripe stack's
 # donations_pages_test.go checks each opens a donate page that a Payment Link
 # backs.
 exports_files(
     [
         ".github/FUNDING.yml",
-        "apps/desktop/courier/.github/FUNDING.yml",
+        "apps/desktop/vitruvian-courier/.github/FUNDING.yml",
         "packages/pulumi/library/.github/FUNDING.yml",
     ],
     visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],

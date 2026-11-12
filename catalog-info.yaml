@@ -43,11 +43,11 @@ metadata:
 spec:
   targets:
     - ./apps/web/backstage/catalog-info.yaml
-    - ./apps/cli/devx/catalog-info.yaml
-    - ./apps/cli/homelab/catalog-info.yaml
-    - ./apps/embedded/esp32-s3/catalog-info.yaml
-    - ./apps/mcp/slack/catalog-info.yaml
-    - ./apps/mcp/roborock/catalog-info.yaml
+    - ./apps/cli/vitruvian-devx/catalog-info.yaml
+    - ./apps/cli/vitruvian-homelab/catalog-info.yaml
+    - ./apps/embedded/vitruvian-deck/catalog-info.yaml
+    - ./apps/mcp/vitruvian-slack-mcp/catalog-info.yaml
+    - ./apps/mcp/vitruvian-roborock-mcp/catalog-info.yaml
     - ./apps/desktop/vitruvian-code/catalog-info.yaml
     - ./apps/desktop/vitruvian-tool-github/catalog-info.yaml
     - ./apps/antigravity/plugins/ext-marketplace/catalog-info.yaml
@@ -62,8 +62,8 @@ spec:
     - ./apps/web/oauth-user-inspector/catalog-info.yaml
     - ./apps/web/vitruviansoftware-dev/catalog-info.yaml
     - ./apps/mobile/android-remote/catalog-info.yaml
-    - ./apps/suites/tabula/catalog-info.yaml
-    - ./apps/suites/wand/catalog-info.yaml
+    - ./apps/suites/vitruvian-tabs/catalog-info.yaml
+    - ./apps/suites/vitruvian-wand/catalog-info.yaml
     - ./packages/design-system-android/catalog-info.yaml
     - ./tools/catalog-info.yaml
     - ./infrastructure/catalog-info.yaml
@@ -231,9 +231,9 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: System
 metadata:
-  name: tabula-platform
-  title: Tabula Platform
-  description: Tabula workspace SaaS application suite (Web frontend, REST API backend, Chrome extension, CLI, and database tiers)
+  name: vitruvian-tabs-platform
+  title: Vitruvian Tabs Platform
+  description: Vitruvian Tabs workspace SaaS application suite (Web frontend, REST API backend, Chrome extension, CLI, and database tiers)
 spec:
   owner: tabula-team
   domain: products-and-services
@@ -255,14 +255,15 @@ metadata:
   title: Vitruvian Code
   description: AI desktop assistant (macOS menu bar app in Swift and Telegram bot bridge in Node.js)
 spec:
+  # legacy name: GitHub team slug in infrastructure/pulumi/platform/repo-config
   owner: nexus-agent-team
   domain: products-and-services
 ---
 apiVersion: backstage.io/v1alpha1
 kind: System
 metadata:
-  name: mcp-slack
-  title: MCP Slack Integration
+  name: vitruvian-slack-mcp
+  title: Vitruvian Slack MCP Integration
   description: Model Context Protocol server exposing Slack workspace tools, message search, and canvas operations
 spec:
   owner: mcp-slack-team
@@ -297,22 +298,22 @@ apiVersion: backstage.io/v1alpha1
 kind: API
 metadata:
   name: tabula-api
-  title: Tabula REST API
-  description: REST API specification for Tabula workspace data, document schemas, and session synchronization
+  title: Vitruvian Tabs REST API
+  description: REST API specification for Vitruvian Tabs workspace data, document schemas, and session synchronization
   links:
-    - url: https://github.com/VitruvianSoftware/tabula
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/suites/vitruvian-tabs
       title: Source Code
       icon: github
 spec:
   type: openapi
   lifecycle: production
   owner: tabula-team
-  system: tabula-platform
+  system: vitruvian-tabs-platform
   definition: |
     openapi: "3.0.0"
     info:
       version: 1.0.0
-      title: Tabula API
+      title: Vitruvian Tabs API
       description: Workspace backend and document persistence API
     paths:
       /v1/workspaces:
@@ -378,21 +379,21 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: API
 metadata:
-  name: mcp-slack-api
-  title: MCP Slack Tool Protocol
+  name: vitruvian-slack-mcp-api
+  title: Vitruvian Slack MCP Tool Protocol
   description: Model Context Protocol (MCP) JSON-RPC schema for Slack channels, messaging, and canvas tools
   links:
-    - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/mcp-slack
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/vitruvian-slack-mcp
       title: Container Image
       icon: web
 spec:
   type: mcp-jsonrpc
   lifecycle: production
   owner: mcp-slack-team
-  system: mcp-slack
+  system: vitruvian-slack-mcp
   definition: |
     jsonrpc: "2.0"
-    title: MCP Slack Tools
+    title: Vitruvian Slack MCP Tools
     tools:
       - name: slack_post_message
         description: Post a message to a Slack channel

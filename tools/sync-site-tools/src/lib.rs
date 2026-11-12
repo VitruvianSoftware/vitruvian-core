@@ -123,9 +123,9 @@ mod in_sync_tests {
             "receipts-report",
             "live-context",
             "savvy-fleet",
-            "mcp-roborock",
+            "vitruvian-roborock-mcp",
             "vitruvian-code",
-            "mcp-slack",
+            "vitruvian-slack-mcp",
             "devx",
         ] {
             assert!(ids.iter().any(|id| id == expected), "{}", expected);
@@ -140,7 +140,7 @@ mod in_sync_tests {
             .iter()
             .map(|p| p.subscript("name").unwrap().py_str().to_string_lossy())
             .collect();
-        for expected in ["ext-marketplace", "gh-watch", "mcp-roborock"] {
+        for expected in ["ext-marketplace", "gh-watch", "vitruvian-roborock-mcp"] {
             assert!(names.iter().any(|n| n == expected), "{}", expected);
         }
         let ai = registry::render_ai_catalog_json(&extensions).unwrap();

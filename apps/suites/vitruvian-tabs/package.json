@@ -1,0 +1,7 @@
+{
+  "name": "vitruvian-tabs",
+  "version": "0.1.40",
+  "private": true,
+  "description": "A lean, privacy-conscious browser tab management extension with cloud sync",
+  "license": "MIT"
+}

@@ -49,7 +49,7 @@ The agent runs on your Mac and connects to your phone over your local network or
 
 There are two ways to install and run the agent:
 
-- **As a Vitruvian desktop-app tool:** The agent ships as a built-in Vitruvian tool. In the Vitruvian desktop app (`Vitruvian.app`), open the Tools catalog and enable **Vitruvian Remote**. This runs the background daemon and provides a menu bar status app.
+- **As a Vitruvian Atrium tool:** The agent ships as a built-in Vitruvian tool. In Vitruvian Atrium (`Vitruvian Atrium.app`), open the Tools catalog and enable **Vitruvian Remote**. This runs the background daemon and provides a menu bar status app.
 - **From source with Bazel (development):** Install the agent as a user LaunchAgent:
 
   ```sh
@@ -447,11 +447,11 @@ numbers `top` uses) instead of running `top`, which walked every process on the
 Mac and cost about two CPU-seconds each time.
 
 Several files start processes (`exec.rs`, `stream.rs`, `sampler.rs`,
-`homespeaker.rs`, `antigravity.rs`, `tailnet.rs`), all with
+`speaker.rs`, `antigravity.rs`, `tailnet.rs`), all with
 `std::process::Command` and never through a shell unless the caller asked for
 `kind: "shell"`. The rule is about where the arguments come from: reading uses
 fixed argv the agent chooses itself, and any process that takes text from a
-request (exec, streamed exec, HomeSpeaker say, Antigravity resume) is on an act
+request (exec, streamed exec, Vitruvian Speaker say, Antigravity resume) is on an act
 endpoint, behind the token.
 
 An optional tool that is absent or wedged returns `available: false` with a

@@ -15,7 +15,7 @@
       }
     ]
   },
-  "description": "Production observability for internal AI assistants, multi-agent frameworks, tool servers (mcp-slack), real-time event broker/relays (buzz), developer portal automations (backstage), and distributed OpenTelemetry span metrics.",
+  "description": "Production observability for internal AI assistants, multi-agent frameworks, tool servers (vitruvian-slack-mcp), real-time event broker/relays (buzz), developer portal automations (backstage), and distributed OpenTelemetry span metrics.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -806,7 +806,7 @@
       },
       "id": 13,
       "panels": [],
-      "title": "MCP Slack Bridge & Tool Execution Details",
+      "title": "Vitruvian Slack MCP Bridge & Tool Execution Details",
       "type": "row"
     },
     {
@@ -1128,13 +1128,13 @@
             "uid": "$datasource"
           },
           "editorMode": "code",
-          "expr": "sum(rate(envoy_cluster_upstream_rq_total{envoy_cluster_name=~\"httproute/mcp-slack/.*\"}[$__rate_interval])) by (envoy_response_code_class)",
+          "expr": "sum(rate(envoy_cluster_upstream_rq_total{envoy_cluster_name=~\"httproute/vitruvian-slack-mcp/.*\"}[$__rate_interval])) by (envoy_response_code_class)",
           "legendFormat": "{{envoy_response_code_class}}xx",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "MCP Slack Gateway Ingress Traffic",
+      "title": "Vitruvian Slack MCP Gateway Ingress Traffic",
       "type": "timeseries"
     },
     {
@@ -1202,7 +1202,7 @@
             "uid": "$datasource"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(rate(envoy_cluster_upstream_rq_time_bucket{envoy_cluster_name=~\"httproute/mcp-slack/.*\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(envoy_cluster_upstream_rq_time_bucket{envoy_cluster_name=~\"httproute/vitruvian-slack-mcp/.*\"}[$__rate_interval])) by (le))",
           "legendFormat": "P99 Latency",
           "range": true,
           "refId": "A"
@@ -1213,7 +1213,7 @@
             "uid": "$datasource"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum(rate(envoy_cluster_upstream_rq_time_bucket{envoy_cluster_name=~\"httproute/mcp-slack/.*\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(envoy_cluster_upstream_rq_time_bucket{envoy_cluster_name=~\"httproute/vitruvian-slack-mcp/.*\"}[$__rate_interval])) by (le))",
           "legendFormat": "P95 Latency",
           "range": true,
           "refId": "B"
@@ -1224,13 +1224,13 @@
             "uid": "$datasource"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum(rate(envoy_cluster_upstream_rq_time_bucket{envoy_cluster_name=~\"httproute/mcp-slack/.*\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.50, sum(rate(envoy_cluster_upstream_rq_time_bucket{envoy_cluster_name=~\"httproute/vitruvian-slack-mcp/.*\"}[$__rate_interval])) by (le))",
           "legendFormat": "P50 Latency",
           "range": true,
           "refId": "C"
         }
       ],
-      "title": "MCP Slack Gateway Latency Curves",
+      "title": "Vitruvian Slack MCP Gateway Latency Curves",
       "type": "timeseries"
     },
     {
@@ -2620,7 +2620,7 @@
             "uid": "$datasource"
           },
           "editorMode": "code",
-          "expr": "sum(rate(traces_spanmetrics_calls_total{service=~\"backstage.*|antigravity|claude-code|mcp-slack|buzz\"}[$__rate_interval])) by (service, span_name)",
+          "expr": "sum(rate(traces_spanmetrics_calls_total{service=~\"backstage.*|antigravity|claude-code|vitruvian-slack-mcp|buzz\"}[$__rate_interval])) by (service, span_name)",
           "legendFormat": "{{service}} - {{span_name}}",
           "range": true,
           "refId": "A"
@@ -2694,7 +2694,7 @@
             "uid": "$datasource"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum(rate(traces_spanmetrics_latency_bucket{service=~\"backstage.*|antigravity|claude-code|mcp-slack|buzz\"}[$__rate_interval])) by (le, span_name))",
+          "expr": "histogram_quantile(0.95, sum(rate(traces_spanmetrics_latency_bucket{service=~\"backstage.*|antigravity|claude-code|vitruvian-slack-mcp|buzz\"}[$__rate_interval])) by (le, span_name))",
           "legendFormat": "{{span_name}} (P95)",
           "range": true,
           "refId": "A"
@@ -2738,7 +2738,7 @@
             "uid": "Tempo"
           },
           "limit": 50,
-          "query": "{resource.service.name=~\"antigravity|claude-code|mcp-slack|backstage|buzz\"}",
+          "query": "{resource.service.name=~\"antigravity|claude-code|vitruvian-slack-mcp|backstage|buzz\"}",
           "queryType": "traceql",
           "refId": "A",
           "tableType": "traces"

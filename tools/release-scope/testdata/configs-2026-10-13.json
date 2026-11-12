@@ -1,11 +1,11 @@
 {
-  "apps/cli/devx/release-please-config.json": {
+  "apps/cli/vitruvian-devx/release-please-config.json": {
     "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
     "bootstrap-sha": "df9b391b59b6549053583b7d0c61fcab105d098f",
     "include-component-in-tag": true,
     "include-v-in-tag": true,
     "packages": {
-      "apps/cli/devx": {
+      "apps/cli/vitruvian-devx": {
         "changelog-path": "CHANGELOG.md",
         "component": "devx",
         "package-name": "devx",
@@ -14,13 +14,13 @@
     },
     "tag-separator": "-"
   },
-  "apps/cli/homelab/release-please-config.json": {
+  "apps/cli/vitruvian-homelab/release-please-config.json": {
     "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
     "bootstrap-sha": "df9b391b59b6549053583b7d0c61fcab105d098f",
     "include-component-in-tag": true,
     "include-v-in-tag": true,
     "packages": {
-      "apps/cli/homelab": {
+      "apps/cli/vitruvian-homelab": {
         "changelog-path": "CHANGELOG.md",
         "component": "homelab",
         "package-name": "homelab",
@@ -118,14 +118,14 @@
     "release-type": "simple",
     "tag-separator": "-"
   },
-  "apps/desktop/vitruvian/release-please-config.json": {
+  "apps/desktop/vitruvian-atrium/release-please-config.json": {
     "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
     "bump-minor-pre-major": true,
     "bump-patch-for-minor-pre-major": true,
     "include-component-in-tag": true,
     "include-v-in-tag": true,
     "packages": {
-      "apps/desktop/vitruvian": {
+      "apps/desktop/vitruvian-atrium": {
         "changelog-path": "CHANGELOG.md",
         "component": "vitruvian",
         "extra-files": [
@@ -158,22 +158,22 @@
     "release-type": "simple",
     "tag-separator": "-"
   },
-  "apps/mcp/slack/release-please-config.json": {
+  "apps/mcp/vitruvian-slack-mcp/release-please-config.json": {
     "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
     "bootstrap-sha": "df9b391b59b6549053583b7d0c61fcab105d098f",
     "include-component-in-tag": true,
     "include-v-in-tag": true,
     "packages": {
-      "apps/mcp/slack": {
+      "apps/mcp/vitruvian-slack-mcp": {
         "changelog-path": "CHANGELOG.md",
-        "component": "mcp-slack",
+        "component": "vitruvian-slack-mcp",
         "extra-files": [
           {
             "path": "deploy/chart/Chart.yaml",
             "type": "generic"
           }
         ],
-        "package-name": "@vitruviansoftware/mcp-slack",
+        "package-name": "@vitruviansoftware/vitruvian-slack-mcp",
         "release-type": "node"
       }
     },

@@ -1636,8 +1636,8 @@ version = "0.1.0"
     fn hints_name_the_lock() {
         assert_eq!(relock_hint(Path::new("")), "bazel run //tools/crates:lock");
         assert_eq!(
-            relock_hint(Path::new("apps/mcp/slack/rs")),
-            "bazel run //tools/crates:lock -- --dir apps/mcp/slack/rs"
+            relock_hint(Path::new("apps/mcp/vitruvian-slack-mcp/rs")),
+            "bazel run //tools/crates:lock -- --dir apps/mcp/vitruvian-slack-mcp/rs"
         );
     }
 }

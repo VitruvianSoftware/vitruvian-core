@@ -99,12 +99,12 @@ Nobody needs to write this pull request by hand. The workflow
 runs
 
 ```sh
-bazel run //catalog:bump -- --id dev.vitruvian.homespeaker --tag home-speaker-v1.20.0
+bazel run //catalog:bump -- --id dev.vitruvian.speaker --tag vitruvian-speaker-v1.20.0
 ```
 
 and opens a pull request on `catalog/bump-<id>-<version>`.
 
-**When it runs.** For a tool released from this repository (HomeSpeaker,
+**When it runs.** For a tool released from this repository (Vitruvian Speaker,
 Vitruvian Remote), as soon as the tool's release workflow finishes: that
 workflow's last step checks the zip is on the release, so the zip is there
 when the update starts. It also runs each

@@ -27,7 +27,7 @@
 #
 # This file lands BEFORE the workload does. app-of-projects auto-syncs this
 # directory, so merging this creates a policy object with nothing referencing
-# it — inert by itself, and in place before mcp-slack.yaml.disabled is ever
+# it — inert by itself, and in place before vitruvian-slack-mcp.yaml.disabled is ever
 # enabled. The guardrail should never be the thing that arrives last.
 #
 # On adding the SealedSecret: the bot-token Secret is created out-of-band (the
@@ -44,7 +44,7 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  description: mcp-slack — scoped per-app project for the Gemini Spark MCP endpoint
+  description: vitruvian-slack-mcp — scoped per-app project for the Gemini Spark MCP endpoint
   orphanedResources:
     warn: true
   sourceRepos:

@@ -90,6 +90,7 @@ bazel run //tools/git:sync                   # fetch, rebase onto origin/main
 bazel run //tools/git:sync -- --autosquash   # ...and fold in --fixup commits
 bazel run //tools/git:sync -- --autosquash --keep-base  # fold them in where the branch is; main stays out
 bazel run //tools/git:sync -- --merge        # merge origin/main in; no force-push needed after
+bazel run //tools/git:sync -- --merge --from origin/<branch>  # merge that pushed branch in instead
 bazel run //tools/git:sync -- --abort        # give up an unfinished merge or rebase
 ```
 
@@ -106,6 +107,12 @@ Untracked files are fine; git stops on its own if one would be overwritten.
   force-pushed. On a conflict the merge is left in progress. It lists the files
   and prints how to finish (`bazel run //tools/git:commit -- <files>`) or give
   up (`bazel run //tools/git:sync -- --abort`).
+- **`--merge --from origin/<branch>`**: merge a named pushed branch instead of
+  `origin/main` (to combine branches into one). It fetches only that branch and
+  takes `origin/<branch>` only (no bare name, other remote or sha), and goes
+  with `--merge`. Every check above is unchanged: it refuses with uncommitted
+  changes, never stashes, leaves a conflicting merge in progress, and you
+  finish through `//tools/git:commit`.
 - **`--keep-base`**: rewrite the branch where it stands, without bringing in
   newer main. Use it with `--autosquash` when main now conflicts with the
   commit you are fixing up: autosquash replays that commit before its fixups,

@@ -1,0 +1,277 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+// Package networks is the list of chat networks Vitruvian Courier can bridge, and how to build each one's engine spec.
+package networks
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+
+	"github.com/rs/zerolog"
+	bluesky "go.mau.fi/mautrix-bluesky/pkg/connector"
+	discord "go.mau.fi/mautrix-discord/pkg/connector"
+	gmessages "go.mau.fi/mautrix-gmessages/pkg/connector"
+	gvoice "go.mau.fi/mautrix-gvoice/pkg/connector"
+	linkedin "go.mau.fi/mautrix-linkedin/pkg/connector"
+	facebook "go.mau.fi/mautrix-meta/pkg/connector"
+	instagram "go.mau.fi/mautrix-meta/pkg/igconnector"
+	slack "go.mau.fi/mautrix-slack/pkg/connector"
+	telegram "go.mau.fi/mautrix-telegram/pkg/connector"
+	twitter "go.mau.fi/mautrix-twitter/pkg/connector"
+	whatsapp "go.mau.fi/mautrix-whatsapp/pkg/connector"
+	"gopkg.in/yaml.v3"
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/event"
+
+	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/engine"
+	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/media"
+	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/store"
+)
+
+// Network describes one chat network.
+type Network struct {
+	Name        string   // "whatsapp", "telegram", "gmessages", "slack", "signal"
+	DisplayName string   // "WhatsApp", ...
+	ModulePath  string   // "go.mau.fi/mautrix-whatsapp", ...
+	Flows       []string // login flow IDs this CLI offers, preferred first
+	Spec        func() (engine.Spec, error)
+}
+
+// ModuleVersions returns map[modulePath]version from runtime/debug.ReadBuildInfo(),
+// plus "maunium.net/go/mautrix" version.
+func ModuleVersions() map[string]string {
+	return engine.ModuleVersions()
+}
+
+// All lists the networks in the order the CLI shows them. Names are lowercase letters only: they become
+// ghost-ID prefixes, where an underscore would break parsing.
+func All() []Network {
+	return append([]Network{
+		{
+			Name: "whatsapp", DisplayName: "WhatsApp",
+			ModulePath: "go.mau.fi/mautrix-whatsapp",
+			Flows:      []string{"qr"},
+			Spec:       whatsappSpec,
+		},
+		{
+			Name: "telegram", DisplayName: "Telegram",
+			ModulePath: "go.mau.fi/mautrix-telegram",
+			Flows:      []string{"qr", "phone"},
+			Spec:       telegramSpec,
+		},
+		{
+			Name: "gmessages", DisplayName: "Google Messages",
+			ModulePath: "go.mau.fi/mautrix-gmessages",
+			// Upstream disabled QR login ("Google has discontinued it", CHANGELOG v26.05) and no longer
+			// lists it in GetLoginFlows, though CreateLogin still accepts it. google needs a cookies step plus an emoji
+			// match on the phone.
+			Flows: []string{"google"},
+			Spec:  simpleSpec("gmessages", "Google Messages", "go.mau.fi/mautrix-gmessages", func() bridgev2.NetworkConnector { return &gmessages.GMConnector{} }),
+		},
+		{
+			Name: "slack", DisplayName: "Slack",
+			ModulePath: "go.mau.fi/mautrix-slack",
+			// email needs an emailed code (and a captcha cookies step if Slack demands one); token needs pasted
+			// browser cookies; app needs bot tokens.
+			Flows: []string{"email", "token", "app"},
+			Spec:  slackSpec,
+		},
+		{
+			Name: "discord", DisplayName: "Discord",
+			ModulePath: "go.mau.fi/mautrix-discord",
+			Flows:      []string{"token", "qr", "DEBUG_USERINPUT_token", "machine"},
+			Spec:       simpleSpec("discord", "Discord", "go.mau.fi/mautrix-discord", func() bridgev2.NetworkConnector { return &discord.DiscordConnector{} }),
+		},
+		{
+			Name: "facebook", DisplayName: "Facebook Messenger",
+			ModulePath: "go.mau.fi/mautrix-meta",
+			Flows:      []string{"facebook", "messenger", "messenger-lite", "messenger-lite-android"},
+			Spec:       simpleSpec("facebook", "Facebook Messenger", "go.mau.fi/mautrix-meta", func() bridgev2.NetworkConnector { return &facebook.MetaConnector{} }),
+		},
+		{
+			Name: "instagram", DisplayName: "Instagram",
+			ModulePath: "go.mau.fi/mautrix-meta",
+			Flows:      []string{"instagram", "instagram-password"},
+			Spec:       simpleSpec("instagram", "Instagram", "go.mau.fi/mautrix-meta", func() bridgev2.NetworkConnector { return &instagram.IGConnector{} }),
+		},
+		{
+			Name: "twitter", DisplayName: "X",
+			ModulePath: "go.mau.fi/mautrix-twitter",
+			Flows:      []string{"cookies", "password"},
+			Spec:       twitterSpec,
+		},
+		{
+			Name: "linkedin", DisplayName: "LinkedIn",
+			ModulePath: "go.mau.fi/mautrix-linkedin",
+			Flows:      []string{"cookies"},
+			Spec:       simpleSpec("linkedin", "LinkedIn", "go.mau.fi/mautrix-linkedin", func() bridgev2.NetworkConnector { return &linkedin.LinkedInConnector{} }),
+		},
+		{
+			Name: "gvoice", DisplayName: "Google Voice",
+			ModulePath: "go.mau.fi/mautrix-gvoice",
+			Flows:      []string{"cookies"},
+			Spec:       simpleSpec("gvoice", "Google Voice", "go.mau.fi/mautrix-gvoice", func() bridgev2.NetworkConnector { return &gvoice.GVConnector{} }),
+		},
+		{
+			Name: "bluesky", DisplayName: "Bluesky",
+			ModulePath: "go.mau.fi/mautrix-bluesky",
+			Flows:      []string{"password"},
+			Spec:       simpleSpec("bluesky", "Bluesky", "go.mau.fi/mautrix-bluesky", func() bridgev2.NetworkConnector { return &bluesky.BlueskyConnector{} }),
+		},
+	}, platformNetworks()...)
+}
+
+// Start starts every network in nets it can. One that can't start (Telegram without its app credentials, say) is
+// reported under its name, from its Spec or from engine.Start, and the others carry on.
+func Start(ctx context.Context, dataDir string, s *store.Store, m *media.Store, nets []Network, log zerolog.Logger) (*engine.Engine, map[string]error) {
+	return engine.Start(ctx, dataDir, s, m, Specs(nets), log)
+}
+
+// Specs is each network's engine spec, in order. A network whose spec can't be built still has one, under its name,
+// whose connector fails with that error: the engine then keeps the reason (Status.NotStarted), so the app can say
+// why that network isn't running (Ruling C30).
+func Specs(nets []Network) []engine.Spec {
+	specs := make([]engine.Spec, 0, len(nets))
+	for _, n := range nets {
+		spec, err := n.Spec()
+		if err != nil {
+			spec = engine.Spec{Name: n.Name, Connector: func() (bridgev2.NetworkConnector, error) { return nil, err }}
+		}
+		if spec.DisplayName == "" {
+			spec.DisplayName = n.DisplayName
+		}
+		if spec.ModulePath == "" {
+			spec.ModulePath = n.ModulePath
+		}
+		specs = append(specs, spec)
+	}
+	return specs
+}
+
+// Get finds a network by name.
+func Get(name string) (Network, bool) {
+	for _, n := range All() {
+		if n.Name == name {
+			return n, true
+		}
+	}
+	return Network{}, false
+}
+
+// simpleSpec is the spec of a network that needs nothing beyond its connector's own example config.
+func simpleSpec(name, displayName, modulePath string, newConnector func() bridgev2.NetworkConnector) func() (engine.Spec, error) {
+	return func() (engine.Spec, error) {
+		return engine.Spec{
+			Name:        name,
+			DisplayName: displayName,
+			ModulePath:  modulePath,
+			Connector:   func() (bridgev2.NetworkConnector, error) { return newConnector(), nil },
+		}, nil
+	}
+}
+
+// whatsappSpec is WhatsApp's example config with two changes. A chat archived on the phone is tagged
+// m.lowpriority, which the store takes in as archived: the example leaves archive_tag empty, so archived chats
+// would arrive in the inbox. And polls arrive as polls (extev_polls), not as text asking people to vote on the
+// phone.
+func whatsappSpec() (engine.Spec, error) {
+	return engine.Spec{
+		Name:        "whatsapp",
+		DisplayName: "WhatsApp",
+		ModulePath:  "go.mau.fi/mautrix-whatsapp",
+		Connector:   func() (bridgev2.NetworkConnector, error) { return &whatsapp.WhatsAppConnector{}, nil },
+		Configure: func(data any) error {
+			cfg, ok := data.(*whatsapp.Config)
+			if !ok {
+				return fmt.Errorf("unexpected WhatsApp config type %T", data)
+			}
+			cfg.ArchiveTag = event.RoomTagLowPriority
+			cfg.ExtEvPolls = true
+			return nil
+		},
+	}, nil
+}
+
+// slackSpec raises mautrix-slack's channel participant sync limit from the example config's default of 5
+// (and sync-only-on-create) so channel rosters and member counts match Slack on startup resync and refreshes.
+func slackSpec() (engine.Spec, error) {
+	return engine.Spec{
+		Name:        "slack",
+		DisplayName: "Slack",
+		ModulePath:  "go.mau.fi/mautrix-slack",
+		Connector:   func() (bridgev2.NetworkConnector, error) { return &slack.SlackConnector{}, nil },
+		Configure: func(data any) error {
+			cfg, ok := data.(*slack.Config)
+			if !ok {
+				return fmt.Errorf("unexpected Slack config type %T", data)
+			}
+			cfg.ParticipantSyncCount = 10000
+			cfg.ParticipantSyncOnlyOnCreate = false
+			return nil
+		},
+	}, nil
+}
+
+// twitterSpec enables X branding and x.com login URLs on mautrix-twitter, whose example config defaults x: false.
+func twitterSpec() (engine.Spec, error) {
+	return engine.Spec{
+		Name:        "twitter",
+		DisplayName: "X",
+		ModulePath:  "go.mau.fi/mautrix-twitter",
+		Connector: func() (bridgev2.NetworkConnector, error) {
+			return &twitter.TwitterConnector{Config: twitter.Config{X: true}}, nil
+		},
+		Configure: func(data any) error {
+			cfg, ok := data.(*twitter.Config)
+			if !ok {
+				return fmt.Errorf("unexpected X config type %T", data)
+			}
+			cfg.X = true
+			return nil
+		},
+	}, nil
+}
+
+const (
+	telegramIDEnv   = "COURIER_TELEGRAM_API_ID"
+	telegramHashEnv = "COURIER_TELEGRAM_API_HASH"
+)
+
+var telegramHashRE = regexp.MustCompile(`^[0-9a-fA-F]{32}$`)
+
+// telegramSpec reads the app credentials Telegram requires of every client. They come only from the environment
+// and are never logged: every error below names the variables, never their values.
+func telegramSpec() (engine.Spec, error) {
+	id := strings.TrimSpace(os.Getenv(telegramIDEnv))
+	hash := strings.TrimSpace(os.Getenv(telegramHashEnv))
+	if id == "" || hash == "" {
+		return engine.Spec{}, errors.New("Telegram needs its own app credentials: create an app at https://my.telegram.org " +
+			"and set " + telegramIDEnv + " and " + telegramHashEnv)
+	}
+	n, err := strconv.ParseUint(id, 10, 31)
+	if err != nil || n == 0 {
+		return engine.Spec{}, errors.New(telegramIDEnv + " must be the positive whole number shown as \"App api_id\" at https://my.telegram.org")
+	}
+	if !telegramHashRE.MatchString(hash) {
+		return engine.Spec{}, errors.New(telegramHashEnv + " must be the 32-character hex string shown as \"App api_hash\" at https://my.telegram.org")
+	}
+	return engine.Spec{
+		Name:        "telegram",
+		DisplayName: "Telegram",
+		ModulePath:  "go.mau.fi/mautrix-telegram",
+		Connector:   func() (bridgev2.NetworkConnector, error) { return &telegram.TelegramConnector{}, nil },
+		// Unmarshalling into the already decoded example config changes only these two keys; every other
+		// field keeps the default the example gave it. The hash is quoted so YAML never reads it as a number.
+		// The id is written from the parsed number: YAML reads a raw "0042" as octal, which would silently
+		// become a different (wrong) credential.
+		Configure: func(data any) error {
+			return yaml.Unmarshal([]byte(fmt.Sprintf("api_id: %s\napi_hash: %q\nmember_list:\n  max_initial_sync: 10000\n", strconv.FormatUint(n, 10), hash)), data)
+		},
+	}, nil
+}

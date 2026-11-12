@@ -559,7 +559,7 @@ export const DataCatalog: StoryObj = {
   render: () => (
     <div style={{ background: "var(--color-bg)", minHeight: "100vh" }}>
       <Nav
-        brand="VITRUVIAN · TABULA"
+        brand="VITRUVIAN · TABS"
         actions={
           <Button size="sm" variant="primary">
             + Register Dataset
@@ -799,7 +799,7 @@ export const RemoteConsole: StoryObj = {
                   </div>
                   <SegBar total={8} filled={3} warn={1} />
                   <div className="card-meta">
-                    vitruvian-core ×2 · homespeaker ×1 · 1 idle
+                    vitruvian-core ×2 · vitruvian-speaker ×1 · 1 idle
                   </div>
                 </Plate>
 
@@ -886,7 +886,7 @@ type Transmission = {
   isNew?: boolean;
 };
 
-/** Cast Controller — the Home Speaker broadcast surface. Every control here is
+/** Cast Controller — the Vitruvian Speaker broadcast surface. Every control here is
  *  live: pick a room, arm or disarm broadcasts, set volume, and each send is
  *  appended to the transmission log. Quiet hours surface as a banner, never
  *  as a silently-dropped message. */
@@ -942,7 +942,7 @@ export const CastController: StoryObj = {
     return (
       <div style={{ background: "var(--color-bg)", minHeight: "100vh" }}>
         <Nav
-          brand="VITRUVIAN · HOME SPEAKER"
+          brand="VITRUVIAN · SPEAKER"
           actions={
             <div className="flex items-center gap-3">
               <Status signal={enabled ? "ok" : "idle"}>

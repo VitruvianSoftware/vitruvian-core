@@ -15,6 +15,7 @@ Component package providing implementation for `tools/desktop-package/src`.
 - `[driver.rs:Driver]`
 - `[driver.rs:main_with]`
 - `[driver.rs:program_path]`
+- `[helpers.rs:artifact_stem]`
 - `[helpers.rs:clean_version]`
 - `[helpers.rs:cask_name_for_app]`
 - `[helpers.rs:generate_cask_ruby]`
@@ -35,7 +36,7 @@ Component package providing implementation for `tools/desktop-package/src`.
 
 ## Side Effects
 - [driver.rs:365]: `&mut cmd_quiet("find", &[bundle, "-exec", "xattr", "-c", "{}", "+"]),`
-- [helpers.rs:81]: `/// HomeSpeaker -> home-speaker, HTTPServer -> http-server.`
+- [helpers.rs:81]: `/// VitruvianSpeaker -> vitruvian-speaker, HTTPServer -> http-server.`
 - [helpers.rs:319]: `("HTTPServer", "http-server"),`
 
 ## Verification

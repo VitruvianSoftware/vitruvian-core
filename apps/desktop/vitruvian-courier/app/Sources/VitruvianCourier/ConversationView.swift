@@ -1,0 +1,1069 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import AppKit
+import VitruvianCourierCore
+import SwiftUI
+import UniformTypeIdentifiers
+
+/// The right-hand pane for an open chat: its header (with its disappearing timer), the timeline, a bar for problems,
+/// the messages scheduled to send later, and the composer; and the thread pane beside it when a thread is open. The
+/// message actions' questions and pickers (Unsend's and Delete's questions, Forward, React, Send Later, a quick
+/// reply's title, a new poll) are shown from here.
+struct ConversationView: View {
+    @ObservedObject var conversation: ConversationModel
+    let composer: ComposerModel
+    let inbox: InboxModel
+    @ObservedObject var messageActions: MessageActionsModel
+    let scheduled: ScheduledModel
+    @ObservedObject var preferences: ComposerPreferences
+    @ObservedObject var thread: ThreadModel
+    @ObservedObject var focus: MessageFocus
+    let appModel: AppModel
+    var appearance: AppearancePreferences? = nil
+    @Environment(\.controlActiveState) private var controlActiveState
+    @Environment(\.appearancePreferences) private var appearanceEnv
+    @Environment(\.themeAccentHex) private var themeAccentHex
+    @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
+    @StateObject private var ui = MessageUI()
+    @State private var isDropTargeted = false
+    /// The message that was first when older ones were asked for: the view returns to it once they are in.
+    @State private var restoreAnchor: String?
+    @State private var topInView = false
+    @State private var composerTextHeight: CGFloat = ComposerTextView.minimumHeight
+    @State private var composerChromeSignature: String = ""
+    /// Leaving the bottom is told a moment late: new content below pushes the end out of sight for an instant
+    /// before the view scrolls to it, and that is not the person scrolling up.
+    @State private var leavingBottom: Task<Void, Never>?
+    @State private var bottomInView = false
+    /// The scroll to a message (a search result) that has been made. Until it is, the bottom being in view is the
+    /// timeline starting there, not the person reaching it, and reads nothing newer.
+    @State private var scrolledToMessage: Int?
+    @State private var inviteCandidates: [ContactCandidate] = []
+    /// The thread's and Chat Info's widths, for their headers in the toolbar.
+    @State private var sidePaneWidths: [SidePane: CGFloat] = [:]
+
+    var body: some View {
+        HSplitView {
+            chat
+                .frame(minWidth: 340, maxWidth: .infinity)
+            if thread.rootID != nil, thread.roomID == conversation.roomID {
+                ThreadPane(thread: thread, conversation: conversation, composer: thread.composer,
+                           messageActions: messageActions, preferences: preferences, focus: focus,
+                           headerInToolbar: drawsLiquidGlass, chatName: chatName)
+                    .frame(minWidth: 280, idealWidth: 340, maxWidth: 560)
+                    .reportsSidePaneWidth(.thread)
+            }
+            if conversation.isShowingChatInfo, let info = conversation.chatInfo {
+                ChatInfoPane(
+                    info: info,
+                    bookmarks: conversation.chatInfoBookmarks,
+                    isRefreshing: conversation.isRefreshingChatInfo,
+                    showsCloseButton: true,
+                    focusSearchTrigger: conversation.focusChatInfoSearchRequest,
+                    now: { conversation.currentTime },
+                    timerChoices: conversation.timerChoices,
+                    onSelectTimer: { choice in Task { await conversation.setTimer(choice) } },
+                    readAloud: messageActions.readAloud.isVitruvianSpeakerInstalled
+                        ? inbox.row(of: info.roomID)?.effectiveReadAloud : nil,
+                    onSelectReadAloud: { choice in Task { await inbox.setReadAloud(choice, ids: [info.roomID]) } },
+                    onEditTitleAndAvatar: {
+                        Task { await conversation.beginEditChat(info: info) }
+                    },
+                    onAddParticipants: {
+                        Task { await conversation.beginAddParticipants(info: info) }
+                    },
+                    onMessageMember: { member in
+                        Task { _ = await conversation.messageParticipant(userID: member.userID, in: info.roomID) }
+                    },
+                    onToggleMemberAdmin: { member, makeAdmin in
+                        Task {
+                            _ = await conversation.setParticipantAdmin(
+                                userID: member.userID,
+                                isAdmin: makeAdmin,
+                                in: info.roomID
+                            )
+                        }
+                    },
+                    onRemoveMember: { member in
+                        conversation.requestRemoveParticipant(member, info: info)
+                    },
+                    onSelectEvent: { eventID in
+                        conversation.openEvent(eventID)
+                    },
+                    onRefresh: { Task { await conversation.refreshChatInfo(force: true) } },
+                    onExport: { url in
+                        guard let roomID = conversation.roomID else { return }
+                        Task {
+                            do {
+                                let count = try await conversation.exportChat(roomID: roomID, to: url)
+                                conversation.onToast(String(localized: "Exported \(count) messages"))
+                            } catch {
+                                conversation.onToast(
+                                    EngineErrorText.text(
+                                        for: error,
+                                        fallback: String(localized: "Couldn’t export the chat.")
+                                    )
+                                )
+                            }
+                        }
+                    },
+                    onMergeChat: info.isDirect ? {
+                        if let row = inbox.selectedRow {
+                            inbox.openMergeEditor(for: row)
+                        }
+                    } : nil,
+                    onLeaveGroup: {
+                        conversation.requestLeaveGroup(info: info)
+                    },
+                    onDeleteChat: {
+                        conversation.requestDeleteChat(info: info)
+                    },
+                    onReportSpam: {
+                        Task { await conversation.beginReportSpam(info: info) }
+                    },
+                    isAIAvailable: composer.aiProvider.isAvailable,
+                    onSummarizeChat: {
+                        conversation.summarizeChat()
+                    },
+                    onOpenAISettings: {
+                        conversation.onOpenAISettings()
+                    },
+                    onClose: conversation.toggleChatInfo,
+                    headerInToolbar: drawsLiquidGlass
+                )
+                .frame(minWidth: 280, idealWidth: 320, maxWidth: 420)
+                .reportsSidePaneWidth(.chatInfo)
+            }
+            if conversation.isShowingAIPane {
+                AIPane(
+                    chatTitle: chatName ?? String(localized: "Chat"),
+                    preferences: composer.aiPreferences,
+                    provider: composer.aiProvider,
+                    isSummarizing: conversation.isSummarizingChat,
+                    summarizingMessageCount: conversation.summarizingMessageCount,
+                    summary: conversation.chatSummary,
+                    summaryError: conversation.chatSummaryError,
+                    isSummaryExpanded: conversation.isChatSummaryExpanded,
+                    onSummarize: { conversation.summarizeChat() },
+                    onCancelSummarize: { conversation.cancelSummarizeChat() },
+                    onToggleSummaryExpanded: { conversation.isChatSummaryExpanded.toggle() },
+                    onCopySummary: { text in
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
+                        conversation.onToast(String(localized: "Copied summary"))
+                    },
+                    onReadAloudSummary: { text in messageActions.readAloudSummary(text) },
+                    onOpenAISettings: { conversation.onOpenAISettings() },
+                    onClose: { conversation.isShowingAIPane = false },
+                    headerInToolbar: drawsLiquidGlass
+                )
+                .reportsSidePaneWidth(.ai)
+            }
+        }
+        .onPreferenceChange(SidePaneWidthKey.self) { sidePaneWidths = $0 }
+        .environment(\.appearancePreferences, resolvedAppearance)
+        .environment(\.themeRoomID, conversation.roomID)
+        .environment(
+            \.themeAccentHex,
+            resolvedAppearance?.effectiveTheme(for: conversation.roomID).accentColorHex ?? themeAccentHex
+        )
+        .tint(
+            Color(
+                hex: resolvedAppearance?.effectiveTheme(for: conversation.roomID).accentColorHex ?? themeAccentHex
+            ) ?? .accentColor
+        )
+        .courierChatToolbar {
+            ConversationHeaderContainer(inbox: inbox, conversation: conversation, readAloud: messageActions.readAloud,
+                                        redactNamesAndPictures: redact, part: .identity)
+        } actions: {
+            ConversationHeaderContainer(inbox: inbox, conversation: conversation, readAloud: messageActions.readAloud,
+                                        redactNamesAndPictures: redact, part: .actions)
+        } panes: {
+            sidePaneHeaders
+        }
+        .onAppear { ui.history = { [messageActions] in await messageActions.history(of: $0) } }
+        .onChange(of: messageActions.request) { _, request in
+            // Edit History opens below the bubble; the other requests are sheets and questions (below).
+            if case let .history(id, .chat)? = request {
+                ui.showHistory(id)
+                messageActions.dismissRequest()
+            }
+        }
+        .sheet(item: sheetRequest) { sheet in requestSheet(sheet) }
+        .sheet(isPresented: $conversation.isCreatingPoll) {
+            if let polls = conversation.features.poll {
+                PollCreatorWindow(features: polls, create: { await messageActions.createPoll($0) },
+                                  close: { conversation.isCreatingPoll = false })
+            }
+        }
+        .sheet(item: $conversation.activeEditGroupDraft) { draft in
+            EditGroupSheet(
+                draft: draft,
+                onSave: { updated in
+                    Task { _ = await conversation.saveGroupEdit(updated) }
+                },
+                onResetLocalOverride: {
+                    Task { _ = await conversation.resetLocalOverride(roomID: draft.roomID, network: draft.network) }
+                },
+                onCancel: {
+                    conversation.activeEditGroupDraft = nil
+                }
+            )
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { conversation.activeAddParticipantsRoom != nil },
+                set: { shown in if !shown { conversation.activeAddParticipantsRoom = nil } }
+            )
+        ) {
+            if let info = conversation.activeAddParticipantsRoom {
+                let existingIDs = Set(info.members.map(\.userID))
+                AddParticipantsSheet(
+                    roomName: info.name,
+                    network: info.network,
+                    candidates: inviteCandidates,
+                    onSearch: { query in
+                        Task {
+                            inviteCandidates = await conversation.searchInviteCandidates(
+                                query: query,
+                                network: info.network,
+                                existingMemberIDs: existingIDs
+                            )
+                        }
+                    },
+                    onAdd: { userIDs in
+                        Task { _ = await conversation.inviteParticipants(userIDs: userIDs, in: info.roomID) }
+                    },
+                    onCancel: {
+                        conversation.activeAddParticipantsRoom = nil
+                    }
+                )
+                .task(id: info.roomID) {
+                    inviteCandidates = await conversation.searchInviteCandidates(
+                        query: "",
+                        network: info.network,
+                        existingMemberIDs: existingIDs
+                    )
+                }
+            }
+        }
+        .sheet(item: $conversation.activeReportSpamDraft) { draft in
+            ReportSpamSheet(
+                draft: draft,
+                onConfirm: { confirmed in
+                    Task { _ = await conversation.reportSpam(confirmed) }
+                },
+                onCancel: {
+                    conversation.activeReportSpamDraft = nil
+                }
+            )
+        }
+        .sheet(item: $conversation.activeViewOnceMessage) { msg in
+            ViewOnceSheet(
+                message: msg,
+                onMarkPlayed: {
+                    Task { await conversation.markPlayed(msg.id, roomID: msg.roomID) }
+                },
+                onDismiss: {
+                    conversation.activeViewOnceMessage = nil
+                }
+            )
+            .frame(width: 440)
+        }
+        .alert(confirmPrompt, isPresented: confirming) {
+            Button(confirmTitle, role: .destructive) { Task { await messageActions.confirm() } }
+            Button(String(localized: "Cancel"), role: .cancel) { messageActions.dismissRequest() }
+        }
+        .alert(roomConfirmTitle, isPresented: confirmingRoomAction) {
+            Button(roomConfirmButtonTitle, role: .destructive) {
+                Task { await conversation.confirmRoomAction() }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {
+                conversation.dismissRoomConfirmation()
+            }
+        } message: {
+            if !roomConfirmDetail.isEmpty {
+                Text(roomConfirmDetail)
+            }
+        }
+    }
+
+    private var resolvedAppearance: AppearancePreferences? {
+        appearance ?? appearanceEnv
+    }
+
+    private var redact: Bool { resolvedAppearance?.redactNamesAndPictures ?? false }
+
+    /// The open chat's name, under the thread's title (redacted when names are).
+    private var chatName: String? {
+        guard let row = conversation.roomID.flatMap({ inbox.row(of: $0) }) ?? inbox.selectedRow else { return nil }
+        return redact ? AppearancePreferences.redactedText(row.name, kind: .chatTitle) : row.name
+    }
+
+    /// With glass, the open side panes' headers as one toolbar item: each exactly as wide as its pane, side by side as
+    /// the panes are, so each title sits over its own pane. The toolbar lays the item against its trailing edge, where
+    /// the panes are. Nothing until the panes have been measured, so a header never shows at a guessed width.
+    @ViewBuilder
+    private var sidePaneHeaders: some View {
+        let showsThread = thread.rootID != nil && thread.roomID == conversation.roomID
+        let info = conversation.isShowingChatInfo ? conversation.chatInfo : nil
+        let showsAI = conversation.isShowingAIPane
+        let threadWidth = showsThread ? sidePaneWidths[.thread] : nil
+        let infoWidth = info != nil ? sidePaneWidths[.chatInfo] : nil
+        let aiWidth = showsAI ? sidePaneWidths[.ai] : nil
+        if threadWidth != nil || infoWidth != nil || aiWidth != nil {
+            HStack(spacing: 0) {
+                if let threadWidth {
+                    let isLast = infoWidth == nil && aiWidth == nil
+                    ThreadPaneHeader(thread: thread, focus: focus, chatName: chatName, inToolbar: true)
+                        .frame(width: max(0, threadWidth - (isLast ? PaneHeaderMetrics.toolbarItemSlack : 0)))
+                }
+                if let info, let infoWidth {
+                    let isLast = aiWidth == nil
+                    ChatInfoHeader(roomID: info.roomID, onClose: conversation.toggleChatInfo, inToolbar: true)
+                        .frame(width: max(0, infoWidth - (isLast ? PaneHeaderMetrics.toolbarItemSlack : 0)))
+                }
+                if let aiWidth {
+                    AIPaneHeader(onClose: { conversation.isShowingAIPane = false }, inToolbar: true)
+                        .frame(width: max(0, aiWidth - PaneHeaderMetrics.toolbarItemSlack))
+                }
+            }
+        }
+    }
+
+    private var chat: some View {
+        let effectiveTheme = resolvedAppearance?.effectiveTheme(for: conversation.roomID)
+        return VStack(spacing: 0) {
+            // With glass the chat's name and buttons are in the window's toolbar (courierChatToolbar), not a strip.
+            if !drawsLiquidGlass {
+                ConversationHeaderContainer(inbox: inbox, conversation: conversation, readAloud: messageActions.readAloud,
+                                            redactNamesAndPictures: redact)
+                Divider()
+            }
+            ZStack {
+                if let effectiveTheme, (effectiveTheme.wallpaper != .none || effectiveTheme.customWallpaperPath != nil) {
+                    ChatWallpaperCanvasView(
+                        preset: effectiveTheme.wallpaper,
+                        customImagePath: effectiveTheme.customWallpaperPath,
+                        opacity: effectiveTheme.wallpaperOpacity,
+                        blur: effectiveTheme.wallpaperBlur,
+                        reduceTransparency: resolvedAppearance?.reduceTransparency ?? false
+                    )
+                    .courierExtendsUnderBars()
+                }
+                timeline
+            }
+            .courierEdgeBar(.top) {
+                if let banner = conversation.unreadThreadsBanner {
+                    ThreadRepliesBanner(text: banner, mentionsMe: conversation.unreadThreadsMentionMe,
+                                        show: conversation.showNextUnreadThread)
+                }
+            }
+            // With glass the messages run under the composer, which floats over their bottom.
+            .courierEdgeBar(.bottom) {
+                VStack(spacing: 0) {
+                    if let problem = conversation.problem {
+                        ProblemBar(problem: problem, retry: conversation.reload)
+                    }
+                    ScheduledStrip(scheduled: scheduled)
+                    TypingLine(text: conversation.typingLine)
+                    ConversationComposerContainer(
+                        composer: composer,
+                        inbox: inbox,
+                        conversation: conversation,
+                        preferences: preferences,
+                        messageActions: messageActions,
+                        focus: focus,
+                        textHeight: $composerTextHeight,
+                        chromeSignature: $composerChromeSignature,
+                        closeThread: { conversation.deselectMessage() || closeThread() },
+                        upArrow: upArrow
+                    )
+                }
+            }
+        }
+        .overlay {
+            if isDropTargeted {
+                FileDropOverlayView(isShiftHeld: NSEvent.modifierFlags.contains(.shift))
+            }
+        }
+        .onDrop(of: [.fileURL, .image], isTargeted: $isDropTargeted, perform: drop)
+        .onChange(of: controlActiveState, initial: true) { _, state in
+            conversation.setWindowKey(state == .key)
+        }
+        // A window that closes (⌘W) is never told it stopped being key: going away says it.
+        .onDisappear { conversation.setWindowKey(false) }
+        // Esc leaves selection mode first, then ends an edit or clears a reply, then deselects the message, then
+        // closes the thread pane.
+        .onExitCommand { if !inbox.escape(), !composer.escape(), !conversation.deselectMessage() { _ = closeThread() } }
+    }
+
+    /// Esc's last use: the thread pane closes.
+    private func closeThread() -> Bool {
+        guard thread.rootID != nil else { return false }
+        focus.paneSelection = nil
+        focus.inPane = false
+        thread.close()
+        return true
+    }
+
+    /// ↑ in an empty composer: my last message to edit, or (Settings ▸ Messages) the message above the selected one,
+    /// the newest first, so ↑↑↑ walks up the chat.
+    private func upArrow() -> Bool {
+        if composer.editLast(in: conversation.items) { return true }
+        guard preferences.upArrow == .focusMessages else { return false }
+        focus.inPane = false
+        return conversation.selectOlderMessage()
+    }
+
+    // MARK: Requests
+
+    /// The requests shown as sheets.
+    private enum Sheet: Identifiable {
+        case forward(String), react(String), sendLater, quickReplyTitle
+
+        var id: String {
+            switch self {
+            case let .forward(id): "forward:\(id)"
+            case let .react(id): "react:\(id)"
+            case .sendLater: "sendLater"
+            case .quickReplyTitle: "quickReplyTitle"
+            }
+        }
+    }
+
+    private var sheetRequest: Binding<Sheet?> {
+        Binding(get: {
+            switch messageActions.request {
+            case let .forward(id)?: .forward(id)
+            case let .reactionPicker(id)?: .react(id)
+            case .sendLater?: .sendLater
+            case .quickReplyTitle?: .quickReplyTitle
+            default: nil
+            }
+        }, set: { value in
+            if value == nil, sheetRequestIsShown { messageActions.dismissRequest() }
+        })
+    }
+
+    private var sheetRequestIsShown: Bool {
+        switch messageActions.request {
+        case .forward?, .reactionPicker?, .sendLater?, .quickReplyTitle?: true
+        default: false
+        }
+    }
+
+    @ViewBuilder
+    private func requestSheet(_ sheet: Sheet) -> some View {
+        switch sheet {
+        case let .forward(id):
+            ForwardPicker(model: ForwardPickerModel(appModel: appModel), networkName: inbox.networkName,
+                          forward: { rooms in Task { await messageActions.forward(id, to: rooms) } },
+                          cancel: messageActions.dismissRequest)
+        case let .react(id):
+            ReactionPicker(react: { key in
+                messageActions.dismissRequest()
+                Task { await conversation.react(to: id, key: key) }
+            }, cancel: messageActions.dismissRequest)
+        case .sendLater:
+            SendLaterPicker(composer: composer, preferences: preferences, done: messageActions.dismissRequest)
+        case .quickReplyTitle:
+            QuickReplyTitleSheet(actions: messageActions)
+        }
+    }
+
+    private var confirming: Binding<Bool> {
+        Binding(get: {
+            if case .confirm? = messageActions.request { return true }
+            return false
+        }, set: { shown in
+            if !shown, case .confirm? = messageActions.request { messageActions.dismissRequest() }
+        })
+    }
+
+    private var confirmPrompt: String {
+        if case let .confirm(_, _, prompt)? = messageActions.request { return prompt }
+        return ""
+    }
+
+    private var confirmTitle: String {
+        if case let .confirm(action, _, _)? = messageActions.request, action == .unsend {
+            return String(localized: "Unsend")
+        }
+        return String(localized: "Delete")
+    }
+
+    private var confirmingRoomAction: Binding<Bool> {
+        Binding(
+            get: { conversation.pendingRoomConfirmation != nil },
+            set: { shown in
+                if !shown { conversation.dismissRoomConfirmation() }
+            }
+        )
+    }
+
+    private var roomConfirmTitle: String {
+        guard let request = conversation.pendingRoomConfirmation else { return "" }
+        switch request {
+        case let .leaveGroup(_, groupName, _):
+            return ConversationModel.leaveGroupConfirmation(groupName: groupName).title
+        case let .deleteChat(_, chatName, isDirect, features, _):
+            return ConversationModel.deleteChatConfirmation(chatName: chatName, isDirect: isDirect, features: features).title
+        case let .removeParticipant(_, member, groupName, _):
+            return ConversationModel.removeParticipantConfirmation(
+                memberName: member.name.isEmpty ? member.userID : member.name,
+                groupName: groupName
+            )
+        }
+    }
+
+    private var roomConfirmDetail: String {
+        guard let request = conversation.pendingRoomConfirmation else { return "" }
+        switch request {
+        case let .leaveGroup(_, groupName, _):
+            return ConversationModel.leaveGroupConfirmation(groupName: groupName).detail
+        case let .deleteChat(_, chatName, isDirect, features, _):
+            return ConversationModel.deleteChatConfirmation(chatName: chatName, isDirect: isDirect, features: features).detail
+        case .removeParticipant:
+            return ""
+        }
+    }
+
+    private var roomConfirmButtonTitle: String {
+        guard let request = conversation.pendingRoomConfirmation else { return String(localized: "Confirm") }
+        switch request {
+        case .leaveGroup:
+            return String(localized: "Leave Group")
+        case .deleteChat:
+            return String(localized: "Delete Chat")
+        case .removeParticipant:
+            return String(localized: "Remove")
+        }
+    }
+
+    // MARK: Timeline
+
+    @ViewBuilder
+    private var timeline: some View {
+        if conversation.isLoaded {
+            // Made only once there is something in it, so that it starts at the newest message.
+            messages
+                .id(conversation.roomID)
+                .overlay { placeholder }
+        } else {
+            Color.clear
+                .overlay { placeholder }
+        }
+    }
+
+    private var messages: some View {
+        let rowActions = actions
+        return ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    if conversation.hasOlder {
+                        if conversation.olderFailed {
+                            Button(String(localized: "Load older messages"), action: requestOlder)
+                                .padding(10)
+                        } else {
+                            // Reaching the top asks for the next page; and when a page is in and this is still
+                            // in view (it was a short one), the next.
+                            ProgressView()
+                                .controlSize(.small)
+                                .padding(10)
+                                .onAppear {
+                                    topInView = true
+                                    requestOlder()
+                                }
+                                .onDisappear { topInView = false }
+                        }
+                    }
+                    ForEach(conversation.items) { item in
+                        TimelineItemView(item: item, isSelected: conversation.selectedMessageID == item.id,
+                                         isHighlighted: conversation.highlightedMessageID == item.id,
+                                         showsSent: conversation.lastOutgoingID == item.id, actions: rowActions, ui: ui)
+                            .id(item.id)
+                            .popover(
+                                isPresented: Binding(
+                                    get: { conversation.activeSenderCard?.messageID == item.id },
+                                    set: { shown in
+                                        if !shown, conversation.activeSenderCard?.messageID == item.id {
+                                            conversation.dismissSenderCard()
+                                        }
+                                    }
+                                ),
+                                arrowEdge: .leading
+                            ) {
+                                if let card = conversation.activeSenderCard, card.messageID == item.id {
+                                    UserHoverCard(
+                                        member: card.member,
+                                        network: card.network,
+                                        sharedGroups: conversation.senderCardSharedGroups,
+                                        contactsBridge: conversation.contactsBridge,
+                                        now: conversation.currentTime,
+                                        showsMessageButton: !(conversation.isDirectChat ?? false),
+                                        onMessage: {
+                                            let userID = card.userID
+                                            conversation.dismissSenderCard()
+                                            Task { _ = await conversation.messageParticipant(userID: userID) }
+                                        },
+                                        onSelectRoom: { targetRoomID in
+                                            conversation.dismissSenderCard()
+                                            appModel.open(.chat(roomID: targetRoomID))
+                                        }
+                                    )
+                                    .onHover { hovering in
+                                        conversation.setCardHovered(hovering)
+                                    }
+                                }
+                            }
+                    }
+                    Color.clear
+                        .frame(height: 1)
+                        .id(Self.bottomID)
+                        .onAppear {
+                            leavingBottom?.cancel()
+                            bottomInView = true
+                            conversation.scrolled(toBottom: true)
+                            readNewerIfAtBottom()
+                        }
+                        .onDisappear {
+                            bottomInView = false
+                            leavingBottom?.cancel()
+                            leavingBottom = Task {
+                                try? await Task.sleep(nanoseconds: 150_000_000)
+                                if !Task.isCancelled { conversation.scrolled(toBottom: false) }
+                            }
+                        }
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 8)
+            }
+            .defaultScrollAnchor(.bottom)
+            .courierScrollEdges()
+            // A click on the timeline's empty space (not on a message, which takes its own click) deselects.
+            .deselectsOnEmptyClick { conversation.deselectMessage() }
+            .overlay(alignment: .bottomTrailing) { jumpButton }
+            .onChange(of: conversation.isLoadingOlder) { _, loading in
+                if !loading, topInView, !conversation.olderFailed { requestOlder() }
+            }
+            .onChange(of: conversation.isLoadingNewer) { _, loading in
+                // A newer page is in and the bottom is still in view (it was a short one): the next.
+                if !loading { readNewerIfAtBottom() }
+            }
+            .onChange(of: conversation.scrollToMessageRequest, initial: true) { _, request in
+                if let request { scrollToMessage(proxy, request) }
+            }
+            .onChange(of: conversation.jumpToBottomRequest) { _, _ in
+                scrollToBottom(proxy, animated: true)
+            }
+            .onChange(of: conversation.items) { _, _ in
+                // New messages, a reaction or a status line are followed only by someone already at the newest
+                // message. Away from it (opened at a search result), new messages never move the view.
+                if conversation.isAtBottom, !conversation.isAwayFromLatest { scrollToBottom(proxy) }
+            }
+            .onChange(of: bottomBarSignature) { _, _ in
+                // The bottom bar grew (a reply, files, more lines): keep the newest message in view.
+                if conversation.isAtBottom, !conversation.isAwayFromLatest { scrollToBottom(proxy) }
+            }
+            .onChange(of: firstMessageID) { _, _ in
+                // Older messages came in above: stay where the person was.
+                guard let anchor = restoreAnchor else { return }
+                restoreAnchor = nil
+                proxy.scrollTo(anchor, anchor: .top)
+            }
+        }
+    }
+
+    /// Changes when anything under the timeline changes size.
+    private var bottomBarSignature: [String] {
+        [composerChromeSignature,
+         conversation.problem == nil ? "" : "problem", String(describing: composerTextHeight),
+         conversation.typingLine == nil ? "" : "typing"]
+    }
+
+    private func requestOlder() {
+        guard conversation.hasOlder, !conversation.isLoadingOlder else { return }
+        restoreAnchor = firstMessageID
+        conversation.loadOlder()
+    }
+
+    private static let bottomID = "conversation-bottom"
+
+    private var firstMessageID: String? {
+        for item in conversation.items.prefix(3) {
+            if case let .message(message) = item { return message.id }
+        }
+        return nil
+    }
+
+    /// Opened at a message: scroll to it, in the middle. Once there, reaching the bottom reads newer messages.
+    private func scrollToMessage(_ proxy: ScrollViewProxy, _ request: ConversationModel.MessageScrollRequest) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            proxy.scrollTo(request.messageID, anchor: .center)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                scrolledToMessage = request.serial
+                readNewerIfAtBottom()
+            }
+        }
+    }
+
+    /// Away from the newest message, reaching the bottom reads the next newer page.
+    private func readNewerIfAtBottom() {
+        guard bottomInView, conversation.isAwayFromLatest, !conversation.isLoadingNewer,
+              let request = conversation.scrollToMessageRequest, scrolledToMessage == request.serial else { return }
+        conversation.loadNewer()
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = false) {
+        // A moment later, so the layout that asked for it has settled.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            if animated {
+                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+            } else {
+                proxy.scrollTo(Self.bottomID, anchor: .bottom)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var placeholder: some View {
+        if !conversation.isLoaded {
+            if conversation.problem == nil { ProgressView() }
+        } else if conversation.items.isEmpty {
+            Text(String(localized: "No messages yet"))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// The way back to the newest message. Away from it (opened at a search result) it says "Jump to latest", with
+    /// a dot once something new has come in.
+    @ViewBuilder
+    private var jumpButton: some View {
+        if !conversation.isAtBottom || conversation.isAwayFromLatest {
+            Button {
+                conversation.jumpToBottom()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "chevron.down")
+                    if conversation.isAwayFromLatest {
+                        Text(String(localized: "Jump to latest"))
+                            .font(.callout.weight(.medium))
+                        if conversation.hasNewerWhileAway {
+                            let accentHex = resolvedAppearance?.effectiveTheme(for: conversation.roomID).accentColorHex
+                                ?? CourierThemePreset.classicTeal.defaultAccentHex
+                            Circle()
+                                .fill(Color(hex: accentHex) ?? Color.accentColor)
+                                .frame(width: 7, height: 7)
+                                .accessibilityLabel(String(localized: "New messages"))
+                        }
+                    } else if conversation.newMessageCount > 0 {
+                        Text(conversation.newMessageCount == 1 ? String(localized: "1 new message")
+                            : String(localized: "\(conversation.newMessageCount) new messages"))
+                            .font(.callout.weight(.medium))
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(Capsule().fill(.regularMaterial))
+                .overlay(Capsule().strokeBorder(.quaternary))
+                .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
+            }
+            .buttonStyle(.plain)
+            .padding(14)
+            .help(String(localized: "Jump to the newest message (⌘↓)"))
+            .accessibilityLabel(String(localized: "Jump to the newest message"))
+        }
+    }
+
+    private var actions: MessageActions {
+        var base = MessageRowActions.make(
+            conversation: conversation, messageActions: messageActions, preferences: preferences,
+            composer: composer, ui: ui, source: .chat, deselect: { conversation.deselectMessage() }
+        ) { id in
+            conversation.selectedMessageID = id
+            focus.inPane = false
+        }
+        if let merged = conversation.mergedChat {
+            base.messageNetwork = { msg in
+                if let idx = merged.roomIDs.firstIndex(of: msg.roomID), idx < merged.networks.count {
+                    return merged.networks[idx]
+                }
+                return inbox.row(of: msg.roomID)?.network
+            }
+        }
+        base.appearance = resolvedAppearance
+        return base
+    }
+
+    // MARK: Dropping files
+
+    private func drop(_ providers: [NSItemProvider]) -> Bool {
+        let fileProviders = providers.filter {
+            $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+                && $0.canLoadObject(ofClass: URL.self)
+        }
+        let imageProviders = providers.filter {
+            !$0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+                && $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
+        }
+        guard !fileProviders.isEmpty || !imageProviders.isEmpty else { return false }
+        let shiftHeld = NSEvent.modifierFlags.contains(.shift)
+        let lock = NSLock()
+        var loadedURLs: [URL] = []
+        let group = DispatchGroup()
+        for provider in fileProviders {
+            group.enter()
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                if let url, url.isFileURL {
+                    lock.withLock { loadedURLs.append(url) }
+                }
+                group.leave()
+            }
+        }
+        for provider in imageProviders {
+            group.enter()
+            let preferredTypes: [(UTType, String)] = [
+                (.gif, "gif"),
+                (.png, "png"),
+                (.jpeg, "jpg"),
+                (.webP, "webp"),
+                (.tiff, "tiff"),
+                (.image, "png"),
+            ]
+            if let match = preferredTypes.first(where: {
+                provider.hasItemConformingToTypeIdentifier($0.0.identifier)
+            }) {
+                _ = provider.loadDataRepresentation(forTypeIdentifier: match.0.identifier) { data, _ in
+                    if let data,
+                       let savedURL = PasteboardAttachmentExtractor.writeImageData(
+                           data,
+                           preferredExtension: match.1
+                       ) {
+                        lock.withLock { loadedURLs.append(savedURL) }
+                    }
+                    group.leave()
+                }
+            } else {
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) {
+            MainActor.assumeIsolated {
+                guard !loadedURLs.isEmpty else { return }
+                composer.attach(loadedURLs)
+                if shiftHeld, composer.notices.isEmpty, composer.canSend {
+                    _ = composer.submit()
+                }
+            }
+        }
+        return true
+    }
+}
+
+/// Isolates `InboxModel` observation to the header bar so inbox updates in other chats do not invalidate `timeline`.
+private struct ConversationHeaderContainer: View {
+    @ObservedObject var inbox: InboxModel
+    @ObservedObject var conversation: ConversationModel
+    let readAloud: ReadAloudService
+    var redactNamesAndPictures: Bool = false
+    var part: ConversationHeader.Part = .strip
+
+    var body: some View {
+        let headerRow = conversation.roomID.flatMap { inbox.row(of: $0) } ?? inbox.selectedRow
+        ConversationHeader(
+            row: headerRow,
+            networkName: headerRow.map { inbox.networkName($0.network) },
+            conversation: conversation,
+            readAloud: readAloud.isVitruvianSpeakerInstalled ? headerRow?.effectiveReadAloud : nil,
+            onSelectReadAloud: { choice in
+                guard let roomID = headerRow?.roomID else { return }
+                Task { await inbox.setReadAloud(choice, ids: [roomID]) }
+            },
+            redactNamesAndPictures: redactNamesAndPictures,
+            part: part
+        )
+    }
+}
+
+/// Isolates `ComposerModel` and `InboxModel` observation to the composer bar so keystrokes never redraw `timeline`.
+private struct ConversationComposerContainer: View {
+    @ObservedObject var composer: ComposerModel
+    @ObservedObject var inbox: InboxModel
+    @ObservedObject var conversation: ConversationModel
+    @ObservedObject var preferences: ComposerPreferences
+    let messageActions: MessageActionsModel
+    let focus: MessageFocus
+    @Binding var textHeight: CGFloat
+    @Binding var chromeSignature: String
+    let closeThread: () -> Bool
+    let upArrow: () -> Bool
+
+    private var currentChromeSignature: String {
+        "\(composer.replyTarget?.eventID ?? "")|\(composer.attachments.count)|\(composer.notice == nil ? "" : "notice")|\(composer.isAIWriting)|\(composer.aiResult != nil)|\(composer.aiError ?? "")"
+    }
+
+    var body: some View {
+        ComposerView(
+            composer: composer,
+            preferences: preferences,
+            textHeight: $textHeight,
+            showsIncognitoMark: conversation.incognitoIsOn && preferences.showIncognitoMark,
+            mergedChat: conversation.mergedChat,
+            activeReplyRoomID: conversation.activeReplyRoomID,
+            activeReplyNetwork: conversation.activeReplyNetwork,
+            activeReplyAccountName: conversation.activeReplyRoomID.flatMap { inbox.row(of: $0)?.loginName } ?? "",
+            onCycleReplyNetwork: conversation.cycleMergedReplyNetwork,
+            menus: ComposerMenus(
+                sendLater: messageActions.requestSendLater,
+                createPoll: { conversation.isCreatingPoll = true },
+                pollsUnavailable: conversation.features.pollsUnavailableReason(network: conversation.network)
+            ),
+            escapeFirst: { inbox.escape() },
+            escapeLast: closeThread,
+            upArrow: upArrow
+        )
+        .simultaneousGesture(TapGesture().onEnded { focus.inPane = false })
+        .onChange(of: currentChromeSignature, initial: true) { _, sig in
+            if chromeSignature != sig {
+                chromeSignature = sig
+            }
+        }
+    }
+}
+
+/// The chat's picture, name and network, and with a disappearing timer running, "Messages disappear after 7 days",
+/// with the timer's menu. Without glass it is a strip over the messages; with glass its two parts go in the window's
+/// toolbar, the identity where the title was and the buttons as toolbar buttons.
+struct ConversationHeader: View {
+    enum Part { case strip, identity, actions }
+
+    let row: InboxRow?
+    let networkName: String?
+    @ObservedObject var conversation: ConversationModel
+    /// The chat's Read Aloud on Vitruvian Speaker choice; nil hides the menu (Vitruvian Speaker is not installed).
+    var readAloud: ChatReadAloud? = nil
+    var onSelectReadAloud: (ChatReadAloud) -> Void = { _ in }
+    var redactNamesAndPictures: Bool = false
+    var part: Part = .strip
+
+    var body: some View {
+        switch part {
+        case .strip:
+            HStack(spacing: 10) {
+                identity
+                Spacer(minLength: 0)
+                actions
+            }
+            // The height every column's header strip has, so the titles share a line (PaneHeader.swift).
+            .padding(.horizontal, PaneHeaderMetrics.inset)
+            .frame(height: PaneHeaderMetrics.stripHeight)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+        case .identity:
+            HStack(spacing: 10) { identity }
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isHeader)
+        case .actions:
+            actions
+        }
+    }
+
+    @ViewBuilder
+    private var identity: some View {
+        if let row {
+            AvatarView(path: row.avatarPath, initials: row.initials, seed: row.name, size: 32)
+                .blur(radius: redactNamesAndPictures ? 6 : 0)
+                .clipShape(Circle())
+                .frame(width: 32, height: 32)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(
+                    redactNamesAndPictures
+                        ? AppearancePreferences.redactedText(row.name, kind: .chatTitle)
+                        : row.name
+                )
+                    .font(.headline)
+                    .lineLimit(1)
+                if let timer = conversation.timerLine {
+                    Label(timer, systemImage: "timer")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+        }
+    }
+
+    /// The buttons: borderless in the strip; in the toolbar in the toolbar's own style, which draws them as glass.
+    @ViewBuilder
+    private var actions: some View {
+        let inToolbar = part == .actions
+        DisappearingMenu(conversation: conversation, inToolbar: inToolbar)
+        let info = Button(action: conversation.toggleChatInfo) {
+            Image(systemName: conversation.isShowingChatInfo ? "info.circle.fill" : "info.circle")
+        }
+        .contextMenu {
+            Button(String(localized: "Chat Info")) {
+                conversation.toggleChatInfo()
+            }
+            Divider()
+            Button(String(localized: "Summarize Chat")) {
+                if conversation.composer.aiProvider.isAvailable {
+                    conversation.summarizeChat()
+                } else {
+                    conversation.onOpenAISettings()
+                }
+            }
+            .disabled(!conversation.composer.aiProvider.isAvailable)
+            .help(conversation.composer.aiProvider.isAvailable ? "" : String(localized: "Set up AI in Settings"))
+            if let readAloud {
+                Divider()
+                Menu(String(localized: "Read Aloud on Vitruvian Speaker")) {
+                    Picker(
+                        String(localized: "Read Aloud on Vitruvian Speaker"),
+                        selection: Binding(get: { readAloud }, set: onSelectReadAloud)
+                    ) {
+                        ForEach(ChatReadAloud.settable, id: \.rawValue) { choice in
+                            Text(choice.displayTitle).tag(choice)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    Divider()
+                    Text(String(localized: "Muted chats are never read aloud."))
+                }
+            }
+        }
+        .help(String(localized: "Chat Info (⌘⇧I)"))
+        .accessibilityLabel(String(localized: "Chat Info"))
+        if inToolbar { info } else { info.buttonStyle(.borderless) }
+    }
+}
+
+private struct ProblemBar: View {
+    let problem: ConversationProblem
+    let retry: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(text)
+                .font(.callout)
+            Spacer(minLength: 0)
+            Button(String(localized: "Try again"), action: retry)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.orange.opacity(0.12))
+        .accessibilityElement(children: .combine)
+    }
+
+    private var text: String {
+        switch problem {
+        case .loadFailed: String(localized: "Vitruvian Courier could not read the latest messages.")
+        case let .actionFailed(reason): reason
+        case .messageGone: String(localized: "That message isn’t in this chat any more.")
+        }
+    }
+}

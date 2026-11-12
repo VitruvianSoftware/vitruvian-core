@@ -142,6 +142,7 @@ pub fn trim_space(s: &[u8]) -> &[u8] {
 /// to match the historical import rev-id label declared in copy.bara.sky.
 pub fn import_label(component: &[u8]) -> Vec<u8> {
     if component == b"vitruvian-code" {
+        // legacy name: NEXUS_AGENT_REV_ID stamp retained in copy.bara.sky
         return b"NEXUS_AGENT_REV_ID".to_vec();
     }
     let replaced: Vec<u8> = component

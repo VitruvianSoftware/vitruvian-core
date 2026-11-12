@@ -37,7 +37,7 @@ const DOCS_PREFIXES: &[&str] = &[
     ".agents/skills/",
     ".agents/rules/",
     "devx/docs/",
-    "apps/cli/devx/docs/",
+    "apps/cli/vitruvian-devx/docs/",
 ];
 const DOCS_SUFFIXES: &[&str] = &[".md", ".png", ".jpg", ".jpeg", ".svg", ".txt"];
 const DOCS_NAMES: &[&str] = &["catalog-info.yaml", "OWNERS", "CODEOWNERS"];
@@ -155,25 +155,21 @@ pub fn check_global_impact(files: &[String]) -> (bool, String) {
 
 const FRONTEND_PREFIXES: &[&str] = &[
     "packages/design-system/",
-    "tabula/web/",
-    "apps/suites/tabula/web/",
-    "tabula/extension/",
-    "apps/suites/tabula/extension/",
+    "apps/suites/vitruvian-tabs/web/",
+    "apps/suites/vitruvian-tabs/extension/",
     "backstage/packages/app/",
     "apps/web/backstage/packages/app/",
 ];
 
 const BACKEND_PREFIXES: &[&str] = &[
-    "tabula/api/",
-    "apps/suites/tabula/api/",
-    "tabula/cli/",
-    "apps/suites/tabula/cli/",
+    "apps/suites/vitruvian-tabs/api/",
+    "apps/suites/vitruvian-tabs/cli/",
     "devx/",
-    "apps/cli/devx/",
+    "apps/cli/vitruvian-devx/",
     "homelab/",
-    "apps/cli/homelab/",
-    "mcp-slack/",
-    "apps/mcp/slack/",
+    "apps/cli/vitruvian-homelab/",
+    "vitruvian-slack-mcp/",
+    "apps/mcp/vitruvian-slack-mcp/",
     "oauth-user-inspector/",
     "apps/web/oauth-user-inspector/",
     "backstage/packages/backend/",

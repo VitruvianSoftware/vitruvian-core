@@ -45,7 +45,7 @@ uppercased secret prefix.
       > [`docs/engineering/domain-zone-conventions.md`](../engineering/domain-zone-conventions.md).
       > ⚠️ If the app ships a browser extension or any client with a **compiled-in**
       > API URL, stand the custom domain up and repoint the client BEFORE cutover.
-      > Decommissioning tabula's old service while its extension still had the
+      > Decommissioning vitruvian-tabs's old service while its extension still had the
       > `run.app` URL baked into `host_permissions` took that extension offline.
 - [ ] **Pick the secret prefix** `MYAPP_` — it must be unique among co-tenants
       in the shared oss projects.
@@ -192,7 +192,7 @@ Keep the three homes straight; never commit a secret, not even Pulumi-encrypted.
       > ⚠️ Only if it is genuinely absent does the console enable apply
       > (`.../siteverification.googleapis.com?project=<PROJECT_ID>`) — it cannot always be
       > enabled via `serviceusage`/IaC. **Do not assume it is blocked; run the check.**
-      > Reporting this as a manual blocker without checking cost a whole cycle on tabula.
+      > Reporting this as a manual blocker without checking cost a whole cycle on vitruvian-tabs.
       > Per-env ownership is self-verified in CI (`//tools/ci:ensure_site_verification`).
 
 ---
@@ -245,7 +245,7 @@ repo_config (envs + WIF vars)
 > env's `<app>-deploy@…` service account — which the **identity** stack creates. On a
 > genuinely cold deploy, running build first fails with
 > `Service account <app>-deploy@… does not exist`. oauth-user-inspector never hit this
-> because its identity stacks predated its build stack; tabula did, in Phase 3.
+> because its identity stacks predated its build stack; vitruvian-tabs did, in Phase 3.
 
 ## Verify & decommission
 

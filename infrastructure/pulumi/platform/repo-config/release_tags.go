@@ -53,27 +53,27 @@ import (
 // this file does not establish it.
 
 // environmentTagPatterns are the tag patterns GitHub Environments accept
-// deploys from (the deployment policies in main.go and courier_release.go
+// deploys from (the deployment policies in main.go and vitruvian_courier_release.go
 // use these constants). TestDeployTagPatternsNeverMatchExemptTags runs the
 // whole program and fails if the patterns it registers differ from this list
 // or accept an exempt tag.
 const (
-	tabulaAPIReleaseTagPattern          = "tabula-api-v*"
-	tabulaWebReleaseTagPattern          = "tabula-web-v*"
+	vitruvianTabsAPIReleaseTagPattern   = "vitruvian-tabs-api-v*"
+	vitruvianTabsWebReleaseTagPattern   = "vitruvian-tabs-web-v*"
 	oauthUserInspectorReleaseTagPattern = "oauth-user-inspector-v*"
-	courierReleaseTagPattern            = "courier-v*"
+	vitruvianCourierReleaseTagPattern   = "vitruvian-courier-v*"
 )
 
 var environmentTagPatterns = []string{
-	tabulaAPIReleaseTagPattern,
-	tabulaWebReleaseTagPattern,
+	vitruvianTabsAPIReleaseTagPattern,
+	vitruvianTabsWebReleaseTagPattern,
 	oauthUserInspectorReleaseTagPattern,
-	courierReleaseTagPattern,
+	vitruvianCourierReleaseTagPattern,
 }
 
 // rollingTags are moved to main's HEAD by the beta/dev publishers, with the
 // GitHub Actions token, on every push to main. Exact names only: a wildcard
-// here (say "*-latest") would also exempt "tabula-api-v9-latest", which an
+// here (say "*-latest") would also exempt "vitruvian-tabs-api-v9-latest", which an
 // Environment accepts. TestRollingTagsAreExactAndUndeployable holds that,
 // and //tools/conformance:check (check_release_tag_exemptions) fails if one
 // starts with a release tag prefix derived from any release-please-config.json,
@@ -81,19 +81,19 @@ var environmentTagPatterns = []string{
 // between the markers below.
 //
 // Where each is set:
-//   - vitruvian-beta-latest: apps/desktop/vitruvian/bazel/src/publish/lib.rs
-//   - esp32-s3-beta-latest: apps/embedded/esp32-s3/host_companion/src/publish/lib.rs
+//   - vitruvian-atrium-beta-latest: apps/desktop/vitruvian-atrium/bazel/src/publish/lib.rs
+//   - vitruvian-deck-beta-latest: apps/embedded/vitruvian-deck/host_tools/src/publish/lib.rs
 //   - gravastar-mouse-beta-latest: packages/peripherals/scripts/src/lib.rs
-//   - tabula-extension-dev-latest: apps/suites/tabula/extension/scripts/src/publish_dev_latest.rs
+//   - vitruvian-tabs-extension-dev-latest: apps/suites/vitruvian-tabs/extension/scripts/src/publish_dev_latest.rs
 //
 // A new rolling tag that is not listed fails its publish job on the first
 // push (the ruleset refuses the move), which is the safe way round.
 var rollingTags = []string{
 	// rolling-tags:begin
-	"vitruvian-beta-latest",
-	"esp32-s3-beta-latest",
+	"vitruvian-atrium-beta-latest",
+	"vitruvian-deck-beta-latest",
 	"gravastar-mouse-beta-latest",
-	"tabula-extension-dev-latest",
+	"vitruvian-tabs-extension-dev-latest",
 	// rolling-tags:end
 }
 

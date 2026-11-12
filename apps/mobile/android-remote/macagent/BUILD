@@ -99,7 +99,6 @@ rust_library(
     srcs = [
         "rs/src/antigravity.rs",
         "rs/src/exec.rs",
-        "rs/src/homespeaker.rs",
         "rs/src/hook.rs",
         "rs/src/http_util.rs",
         "rs/src/lib.rs",
@@ -111,6 +110,7 @@ rust_library(
         "rs/src/phone.rs",
         "rs/src/sampler.rs",
         "rs/src/server.rs",
+        "rs/src/speaker.rs",
         "rs/src/stream.rs",
         "rs/src/tailnet.rs",
         "rs/src/tv.rs",
@@ -140,8 +140,8 @@ rust_test(
     size = "small",
     crate = ":macagent_lib",
     data = [
-        "//apps/desktop/home-speaker:testdata/controls.json",
-        "//apps/desktop/home-speaker:testdata/state_v1.json",
+        "//apps/desktop/vitruvian-speaker:testdata/controls.json",
+        "//apps/desktop/vitruvian-speaker:testdata/state_v1.json",
     ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -149,7 +149,7 @@ rust_test(
 )
 
 rust_binary(
-    name = "dump_golden_homespeaker",
+    name = "dump_golden_speaker",
     srcs = ["rs/src/dump_golden.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -157,11 +157,11 @@ rust_binary(
 )
 
 genrule(
-    name = "golden_homespeaker_v1",
+    name = "golden_speaker_v1",
     testonly = True,
-    srcs = ["//apps/desktop/home-speaker:testdata/state_v1.json"],
-    outs = ["golden_homespeaker_v1.json"],
-    cmd = "$(location :dump_golden_homespeaker) $(location //apps/desktop/home-speaker:testdata/state_v1.json) > $@",
-    tools = [":dump_golden_homespeaker"],
+    srcs = ["//apps/desktop/vitruvian-speaker:testdata/state_v1.json"],
+    outs = ["golden_speaker_v1.json"],
+    cmd = "$(location :dump_golden_speaker) $(location //apps/desktop/vitruvian-speaker:testdata/state_v1.json) > $@",
+    tools = [":dump_golden_speaker"],
     visibility = ["//apps/mobile/android-remote:__subpackages__"],
 )

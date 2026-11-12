@@ -110,7 +110,7 @@ spec:
             Where to stamp the application, relative to the repository root. Its
             last path segment MUST equal the name above. Leave blank for the
             ADR-014 default, apps/<name>. Note that vitruvian-core's EXISTING
-            applications live at the repository root (./tabula, ./devx, ...);
+            applications live at the repository root (./apps/suites/vitruvian-tabs, ./devx, ...);
             apps/ is the default for newly stamped ones, and the first stamp
             introduces that directory.
           # Deliberately no `default:`. Template parameters are a plain JSON

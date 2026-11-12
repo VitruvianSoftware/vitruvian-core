@@ -5,7 +5,7 @@
 #
 # Two sync shapes (selected per component by `is_one_way`):
 #   * ONE-WAY w/ PR-IMPORT (is_one_way=True) -- ALL current components (devx,
-#     homelab, mcp-slack, nexus-agent). The monorepo is the single source of
+#     homelab, mcp-slack, vitruvian-code). The monorepo is the single source of
 #     truth; each standalone is an EXPORT-ONLY mirror. Generates:
 #       - export_<comp>    : monorepo <comp>/ -> standalone root (push to `main`)
 #       - import_pr_<comp> : a labelled standalone PR -> a MONOREPO PR under
@@ -24,7 +24,7 @@
 #     `catalog:` -> concrete versions) so the mirror builds standalone.
 #
 # (`-` in a component name becomes `_` in the workflow name, e.g.
-#  export_nexus_agent.) The first run against a fresh destination (no rev-id
+#  export_vitruvian_code.) The first run against a fresh destination (no rev-id
 # baseline yet) needs a one-time `--force` to seed the baseline; normal runs use
 # --ignore-noop and rely on the rev-id labels below.
 #
@@ -346,7 +346,7 @@ COMPONENTS = [
     {
         "name": "mcp-roborock",
         "repo": "mcp-roborock",
-        "subtree": "apps/mcp/roborock",
+        "subtree": "apps/mcp/vitruvian-roborock-mcp",
         "standalone_rev_id": "MCP_ROBOROCK_REV_ID",
         "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,
@@ -354,7 +354,7 @@ COMPONENTS = [
     {
         "name": "mcp-slack",
         "repo": "mcp-slack",
-        "subtree": "apps/mcp/slack",
+        "subtree": "apps/mcp/vitruvian-slack-mcp",
         "standalone_rev_id": "MCP_SLACK_REV_ID",
         "standalone_only": ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,
@@ -362,7 +362,7 @@ COMPONENTS = [
     {
         "name": "devx",
         "repo": "devx",
-        "subtree": "apps/cli/devx",
+        "subtree": "apps/cli/vitruvian-devx",
         "standalone_rev_id": "DEVX_REV_ID",
         "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,
@@ -370,15 +370,16 @@ COMPONENTS = [
     {
         "name": "homelab",
         "repo": "homelab",
-        "subtree": "apps/cli/homelab",
+        "subtree": "apps/cli/vitruvian-homelab",
         "standalone_rev_id": "HOMELAB_REV_ID",
         "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,
     },
     {
-        "name": "nexus-agent",
+        "name": "vitruvian-code",
         "repo": "vitruvian-code",
         "subtree": "apps/desktop/vitruvian-code",
+        # legacy name: NEXUS_AGENT_REV_ID retained for iterative Copybara history
         "standalone_rev_id": "NEXUS_AGENT_REV_ID",
         "standalone_only": ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,
@@ -580,7 +581,7 @@ COMPONENTS = [
         "standalone_only": [],
         "export_only": True,
     },
-    # vitruvian: EXPORT-ONLY mirror of apps/desktop/vitruvian, the Vitruvian Mac
+    # vitruvian: EXPORT-ONLY mirror of apps/desktop/vitruvian-atrium, the Vitruvian Mac
     # app, a GPL-3.0-or-later fork of vorssaint-utils. The mirror is the public
     # source the GPL owes with every DMG (UPSTREAM.md); it ships LICENSE,
     # UPSTREAM.md and TRADEMARKS.md and presents nothing as a Vorssaint build.
@@ -588,51 +589,51 @@ COMPONENTS = [
     {
         "name": "vitruvian",
         "repo": "vitruvian",
-        "subtree": "apps/desktop/vitruvian",
+        "subtree": "apps/desktop/vitruvian-atrium",
         "standalone_rev_id": "VITRUVIAN_REV_ID",
         "mode": "SQUASH",
         "standalone_only": [],
         # release-please keys on monorepo paths and the mirror releases nothing.
         "origin_only_exclude": [
-            "apps/desktop/vitruvian/release-please-config.json",
-            "apps/desktop/vitruvian/.release-please-manifest.json",
+            "apps/desktop/vitruvian-atrium/release-please-config.json",
+            "apps/desktop/vitruvian-atrium/.release-please-manifest.json",
         ],
         "export_only": True,
     },
-    # courier: EXPORT-ONLY mirror of apps/desktop/courier (AGPL-3.0-or-later),
-    # the public source the AGPL owes with every Courier build.
+    # courier: EXPORT-ONLY mirror of apps/desktop/vitruvian-courier (AGPL-3.0-or-later),
+    # the public source the AGPL owes with every Vitruvian Courier build.
     {
         "name": "courier",
         "repo": "courier",
-        "subtree": "apps/desktop/courier",
+        "subtree": "apps/desktop/vitruvian-courier",
         "standalone_rev_id": "COURIER_REV_ID",
         "mode": "SQUASH",
         "standalone_only": [],
         # release-please (monorepo paths) and personal migration and acceptance
         # notes; the build files (.bzl) stay, as part of the AGPL source.
         "origin_only_exclude": [
-            "apps/desktop/courier/release-please-config.json",
-            "apps/desktop/courier/.release-please-manifest.json",
-            "apps/desktop/courier/docs/cutover.md",
-            "apps/desktop/courier/docs/*-acceptance.md",
-            "apps/desktop/courier/engine/docs/gchat-by-hand.md",
+            "apps/desktop/vitruvian-courier/release-please-config.json",
+            "apps/desktop/vitruvian-courier/.release-please-manifest.json",
+            "apps/desktop/vitruvian-courier/docs/cutover.md",
+            "apps/desktop/vitruvian-courier/docs/*-acceptance.md",
+            "apps/desktop/vitruvian-courier/engine/docs/gchat-by-hand.md",
         ],
         "export_only": True,
     },
-    # home-speaker: EXPORT-ONLY mirror of apps/desktop/home-speaker (MIT).
+    # home-speaker: EXPORT-ONLY mirror of apps/desktop/vitruvian-speaker (MIT).
     {
         "name": "home-speaker",
         "repo": "home-speaker",
-        "subtree": "apps/desktop/home-speaker",
+        "subtree": "apps/desktop/vitruvian-speaker",
         "standalone_rev_id": "HOME_SPEAKER_REV_ID",
         "mode": "SQUASH",
         "standalone_only": [],
         # release-please (monorepo paths) and the secrets sync, which writes into
         # the monorepo.
         "origin_only_exclude": [
-            "apps/desktop/home-speaker/release-please-config.json",
-            "apps/desktop/home-speaker/.release-please-manifest.json",
-            "apps/desktop/home-speaker/scripts/src/sync_secrets/**",
+            "apps/desktop/vitruvian-speaker/release-please-config.json",
+            "apps/desktop/vitruvian-speaker/.release-please-manifest.json",
+            "apps/desktop/vitruvian-speaker/scripts/src/sync_secrets/**",
         ],
         "export_only": True,
     },
@@ -655,22 +656,22 @@ COMPONENTS = [
         ],
         "export_only": True,
     },
-    # esp32-desk-companion: EXPORT-ONLY mirror of apps/embedded/esp32-s3 (MIT),
+    # esp32-desk-companion: EXPORT-ONLY mirror of apps/embedded/vitruvian-deck (MIT),
     # the Desk Companion firmware and its host companion.
     {
         "name": "esp32-desk-companion",
         "repo": "esp32-desk-companion",
-        "subtree": "apps/embedded/esp32-s3",
+        "subtree": "apps/embedded/vitruvian-deck",
         "standalone_rev_id": "ESP32_DESK_COMPANION_REV_ID",
         "mode": "SQUASH",
         "standalone_only": [],
         # release-please and the monorepo's catalog, owners and docs-site files.
         "origin_only_exclude": [
-            "apps/embedded/esp32-s3/release-please-config.json",
-            "apps/embedded/esp32-s3/.release-please-manifest.json",
-            "apps/embedded/esp32-s3/catalog-info.yaml",
-            "apps/embedded/esp32-s3/OWNERS",
-            "apps/embedded/esp32-s3/mkdocs.yml",
+            "apps/embedded/vitruvian-deck/release-please-config.json",
+            "apps/embedded/vitruvian-deck/.release-please-manifest.json",
+            "apps/embedded/vitruvian-deck/catalog-info.yaml",
+            "apps/embedded/vitruvian-deck/OWNERS",
+            "apps/embedded/vitruvian-deck/mkdocs.yml",
         ],
         "export_only": True,
     },

@@ -135,14 +135,14 @@ siblings without a documented reason is the drift signature.
 ## <a name="cicd-variable-surface-audit-blind-spot-1"></a>CI/CD variable-surface audit (blind spot #1)
 
 Ran the dimension-1 audit (`scratchpad/audit/cicd-var-surface.js`: a finder per
-app/domain — oauth, tabula, foundation — diffing every `vars.*`/`secrets.*` consumed in
+app/domain — oauth, vitruvian-tabs, foundation — diffing every `vars.*`/`secrets.*` consumed in
 the workflows against what `repo_config` declares, then adversarial verify). **12 findings,
 3 confirmed, 9 refuted.**
 
 **The headline is reassuring: no ACTIVE value drift.** Every declared `GCP_REGION`,
 `GCP_PROJECT_ID`, deploy-SA and WIF-provider value is correct — the oauth/networks/repo_config
 region-consistency work aligned them. Notably the `${{ vars.GCP_REGION || 'us-central1' }}`
-fallbacks (`tabula-deploy.yaml:148`, `oauth-user-inspector-deploy.yaml:149`,
+fallbacks (`delivery-vitruvian-tabs.yaml:148`, `oauth-user-inspector-deploy.yaml:149`,
 `_deploy-cloud-run.yaml:209`) were **refuted as a live bug**: the values behind them are
 correct, so nothing is mis-deploying. The next `us-south1` is **not** sitting here today.
 (The fallback fragility is still worth removing — a missing var would default silently rather
@@ -160,8 +160,8 @@ drift of exactly the class we care about:
    "reconcile" `repo_config`'s `GCP_REGION` to `us-west1` to match, which would relocate the
    Artifact Registry push and the DomainMapping and break the deploy (the `us-south1` hazard).
    → **comment corrected to `us-central1` in this PR.**
-2. **[fixed here] repo_config godoc example names `GCP_SERVICE_ACCOUNT` for tabula**, but the
-   tabula workflows read `GCP_DEPLOY_SERVICE_ACCOUNT` (and the yaml correctly declares that).
+2. **[fixed here] repo_config godoc example names `GCP_SERVICE_ACCOUNT` for vitruvian-tabs**, but the
+   vitruvian-tabs workflows read `GCP_DEPLOY_SERVICE_ACCOUNT` (and the yaml correctly declares that).
    No live bug, but a naming trap: an editor following the stale example would declare an unread
    `GCP_SERVICE_ACCOUNT` while `GCP_DEPLOY_SERVICE_ACCOUNT` goes missing. → **docstring corrected
    in this PR.** (Unlike region, the SA has no `|| default`, so this would fail *loudly* at auth —

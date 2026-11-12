@@ -9,7 +9,7 @@
 # calls, so the same rollout runs from a workstation when GitHub Actions is down.
 #
 # cloud_run_deploy (defs.bzl) bakes an app's fixed params into a per-app :deploy
-# target, e.g. `bazel run //tabula/infra/app:deploy -- --env development
+# target, e.g. `bazel run //apps/suites/vitruvian-tabs/infra/app:deploy -- --env development
 # --project <p> --image-digest <d>`. defs.bzl is gazelle:exclude'd (no
 # bzl_library) to match //tools/pulumi:defs.bzl and //tools/oci.
 
@@ -25,7 +25,7 @@ rust_library(
     crate_root = "src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    # tabula-deploy-preflight reuses serving_revision, so both agree on "live".
+    # vitruvian-tabs-deploy-preflight reuses serving_revision, so both agree on "live".
     visibility = ["//tools/ci:__pkg__"],
     deps = [
         "//tools/shell-compat:shell_compat",

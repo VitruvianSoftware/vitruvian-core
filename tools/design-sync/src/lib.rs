@@ -21,11 +21,11 @@
 // SOFTWARE.
 
 //! The design-sync tools (`:prepare`, `:inject-reference-fonts`) and the
-//! Rust port of `tools/test-mcp-slack-e2e.sh`.
+//! Rust port of `tools/test-vitruvian-slack-mcp-e2e.sh`.
 
 pub mod inject_reference_fonts;
-pub mod mcp_slack_e2e;
 pub mod prepare;
+pub mod vitruvian_slack_mcp_e2e;
 
 use std::path::PathBuf;
 

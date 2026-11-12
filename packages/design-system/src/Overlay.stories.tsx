@@ -119,7 +119,7 @@ export const MenusAndToasts: StoryObj = {
           <Toast
             tone="ok"
             title="Promotion complete"
-            message="tabula-web@0.14.2 is serving 100% of production traffic."
+            message="vitruvian-tabs-web@0.14.2 is serving 100% of production traffic."
           />
           <Toast
             tone="warn"

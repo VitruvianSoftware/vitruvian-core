@@ -165,7 +165,7 @@ struct SharedBuildSpec {
 
 fn shared_build(name: &str) -> Option<SharedBuildSpec> {
     match name {
-        "tabula" => Some(SharedBuildSpec {
+        "vitruvian-tabs" => Some(SharedBuildSpec {
             environment: "tabula-build",
             outputs: &["image-digest", "web-image-digest"],
             timeout_minutes: 30,
@@ -176,13 +176,13 @@ fn shared_build(name: &str) -> Option<SharedBuildSpec> {
                     DEFAULT_REGION
                 ),
             ],
-            render_steps: render_tabula_build_steps,
+            render_steps: render_vitruvian_tabs_build_steps,
         }),
         _ => None,
     }
 }
 
-fn render_tabula_build_steps(b: &mut String, opts: &Opts) -> R {
+fn render_vitruvian_tabs_build_steps(b: &mut String, opts: &Opts) -> R {
     b.push_str("    steps:\n");
     w!(b, "      - uses: {}\n", opts.pin("actions/checkout")?);
     b.push_str("        with:\n");
@@ -218,7 +218,7 @@ fn render_tabula_build_steps(b: &mut String, opts: &Opts) -> R {
     b.push_str("          set -euo pipefail\n");
     b.push_str("          IMAGE=\"${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/api\"\n");
     b.push_str("          bazel run --config=remotecache-ci --remote_header=x-buildbuddy-api-key=\"$BUILDBUDDY_API_KEY\" \\\n");
-    b.push_str("            //apps/suites/tabula/api:image_push -- \\\n");
+    b.push_str("            //apps/suites/vitruvian-tabs/api:image_push -- \\\n");
     b.push_str("            --repository \"${IMAGE}\" --tag \"${GITHUB_SHA}\" --tag latest\n");
     b.push_str("          DIGEST=\"$(gcloud artifacts docker images describe \"${IMAGE}:${GITHUB_SHA}\" \\\n");
     b.push_str("            --format='value(image_summary.digest)')\"\n");
@@ -228,7 +228,7 @@ fn render_tabula_build_steps(b: &mut String, opts: &Opts) -> R {
     b.push_str("          fi\n");
     b.push_str("          echo \"image-digest=${IMAGE}@${DIGEST}\" >> \"$GITHUB_OUTPUT\"\n");
     b.push('\n');
-    b.push_str("      # ---- tabula/web (Docker, not Bazel) ----\n");
+    b.push_str("      # ---- vitruvian-tabs/web (Docker, not Bazel) ----\n");
     b.push_str("      - name: Set up Docker Buildx\n");
     w!(
         b,
@@ -236,7 +236,7 @@ fn render_tabula_build_steps(b: &mut String, opts: &Opts) -> R {
         opts.pin("docker/setup-buildx-action")?
     );
     b.push('\n');
-    b.push_str("      - name: Build and push tabula-web image\n");
+    b.push_str("      - name: Build and push vitruvian-tabs-web image\n");
     b.push_str("        id: web-image\n");
     b.push_str("        run: |\n");
     b.push_str("          set -euo pipefail\n");
@@ -248,15 +248,15 @@ fn render_tabula_build_steps(b: &mut String, opts: &Opts) -> R {
     b.push_str("          # shipped everywhere with development's API URL frozen into it).\n");
     b.push_str("          # The API URL is now a plain runtime env var (API_URL, injected per\n");
     b.push_str(
-        "          # environment by apps/suites/tabula/infra/web/main.go from Pulumi's `apiUrl`\n",
+        "          # environment by apps/suites/vitruvian-tabs/infra/web/main.go from Pulumi's `apiUrl`\n",
     );
     b.push_str(
-        "          # config) that apps/suites/tabula/web/lib/runtime-config.ts and proxy.ts\n",
+        "          # config) that apps/suites/vitruvian-tabs/web/lib/runtime-config.ts and proxy.ts\n",
     );
     b.push_str("          # read fresh on every request instead.\n");
     b.push_str("          IMAGE=\"${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/web\"\n");
     b.push_str("          docker build \\\n");
-    b.push_str("            -f apps/suites/tabula/web/Dockerfile \\\n");
+    b.push_str("            -f apps/suites/vitruvian-tabs/web/Dockerfile \\\n");
     b.push_str("            -t \"${IMAGE}:${GITHUB_SHA}\" \\\n");
     b.push_str("            -t \"${IMAGE}:latest\" \\\n");
     b.push_str("            .\n");
@@ -289,8 +289,8 @@ fn identity_rung_inputs(u: &Unit, env: &str) -> BTreeMap<String, Value> {
 
 fn reusable_workflow(name: &str) -> Option<ReusableSpec> {
     match name {
-        "tabula-identity" => Some(ReusableSpec {
-            workflow: "./.github/workflows/_tabula-identity-apply.yaml",
+        "vitruvian-tabs-identity" => Some(ReusableSpec {
+            workflow: "./.github/workflows/_vitruvian-tabs-identity-apply.yaml",
             rung_inputs: identity_rung_inputs,
         }),
         "oauth-user-inspector-identity" => Some(ReusableSpec {
@@ -327,12 +327,12 @@ fn transcribed_job(name: &str) -> Option<TranscribedSpec> {
         chain_output: "",
     };
     match name {
-        "tabula-dev-latest" => Some(spec(
+        "vitruvian-tabs-dev-latest" => Some(spec(
             45,
             &["contents: write"],
             &[],
             "",
-            render_tabula_dev_latest_steps,
+            render_vitruvian_tabs_dev_latest_steps,
         )),
         "charts" => Some(spec(
             45,
@@ -341,14 +341,14 @@ fn transcribed_job(name: &str) -> Option<TranscribedSpec> {
             "",
             render_charts_publish_steps,
         )),
-        "esp32-s3" => Some(spec(
+        "vitruvian-deck" => Some(spec(
             30,
             &["contents: write"],
             &[],
             "",
-            render_esp32_s3_publish_steps,
+            render_vitruvian_deck_publish_steps,
         )),
-        "vitruvian" => Some(spec(
+        "vitruvian-atrium" => Some(spec(
             60,
             &["contents: write"],
             &[],
@@ -362,12 +362,12 @@ fn transcribed_job(name: &str) -> Option<TranscribedSpec> {
             "xcode-27",
             render_gravastar_mouse_publish_steps,
         )),
-        "tabula-build-stack" => Some(spec(
+        "vitruvian-tabs-build-stack" => Some(spec(
             60,
             &["contents: read", "id-token: write"],
             &["GOWORK: off", "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}"],
             "",
-            render_tabula_build_stack_steps,
+            render_vitruvian_tabs_build_stack_steps,
         )),
         // A NATIVE transcription: the Stripe stack never had a hand-written
         // workflow, so this is its job's only origin (no legacy_workflow).
@@ -388,7 +388,7 @@ fn transcribed_job(name: &str) -> Option<TranscribedSpec> {
     }
 }
 
-fn render_tabula_dev_latest_steps(b: &mut String, _u: &Unit, _env: &str, opts: &Opts) -> R {
+fn render_vitruvian_tabs_dev_latest_steps(b: &mut String, _u: &Unit, _env: &str, opts: &Opts) -> R {
     b.push_str("    steps:\n");
     w!(b, "      - uses: {}\n", opts.pin("actions/checkout")?);
     b.push_str("        with:\n");
@@ -405,9 +405,9 @@ fn render_tabula_dev_latest_steps(b: &mut String, _u: &Unit, _env: &str, opts: &
     b.push_str("          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n");
     b.push_str("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n");
     b.push_str("        run: |\n");
-    b.push_str("          # replaces apps/suites/tabula/extension/publish-dev-latest.sh\n");
-    b.push_str("          rustc --edition 2021 --crate-type lib --crate-name publish_dev_latest_lib apps/suites/tabula/extension/scripts/src/lib.rs -o \"$RUNNER_TEMP/libpublish_dev_latest_lib.rlib\"\n");
-    b.push_str("          rustc --edition 2021 apps/suites/tabula/extension/scripts/src/bin/publish_dev_latest.rs -L \"$RUNNER_TEMP\" --extern publish_dev_latest_lib=\"$RUNNER_TEMP/libpublish_dev_latest_lib.rlib\" -o \"$RUNNER_TEMP/publish-dev-latest\"\n");
+    b.push_str("          # replaces apps/suites/vitruvian-tabs/extension/publish-dev-latest.sh\n");
+    b.push_str("          rustc --edition 2021 --crate-type lib --crate-name publish_dev_latest_lib apps/suites/vitruvian-tabs/extension/scripts/src/lib.rs -o \"$RUNNER_TEMP/libpublish_dev_latest_lib.rlib\"\n");
+    b.push_str("          rustc --edition 2021 apps/suites/vitruvian-tabs/extension/scripts/src/bin/publish_dev_latest.rs -L \"$RUNNER_TEMP\" --extern publish_dev_latest_lib=\"$RUNNER_TEMP/libpublish_dev_latest_lib.rlib\" -o \"$RUNNER_TEMP/publish-dev-latest\"\n");
     b.push_str("          \"$RUNNER_TEMP/publish-dev-latest\"\n");
     Ok(())
 }
@@ -448,7 +448,7 @@ fn render_charts_publish_steps(b: &mut String, _u: &Unit, _env: &str, opts: &Opt
     Ok(())
 }
 
-fn render_esp32_s3_publish_steps(b: &mut String, _u: &Unit, env: &str, opts: &Opts) -> R {
+fn render_vitruvian_deck_publish_steps(b: &mut String, _u: &Unit, env: &str, opts: &Opts) -> R {
     b.push_str("    steps:\n");
     w!(b, "      - uses: {}\n", opts.pin("actions/checkout")?);
     b.push_str("        with:\n");
@@ -463,7 +463,7 @@ fn render_esp32_s3_publish_steps(b: &mut String, _u: &Unit, env: &str, opts: &Op
     w!(b, "        uses: {}\n", opts.pin("actions/cache")?);
     b.push_str("        with:\n");
     b.push_str("          path: ~/.platformio\n");
-    b.push_str("          key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/esp32-s3/platformio.ini') }}\n");
+    b.push_str("          key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/vitruvian-deck/platformio.ini') }}\n");
     b.push_str("          restore-keys: |\n");
     b.push_str("            platformio-${{ runner.os }}-\n");
     b.push_str("      # `uv tool install` lands `pio` in ~/.local/bin, which is where\n");
@@ -484,10 +484,10 @@ fn render_esp32_s3_publish_steps(b: &mut String, _u: &Unit, env: &str, opts: &Op
     b.push_str("          RELEASE_TAG: ${{ github.event.release.tag_name }}\n");
     b.push_str("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n");
     b.push_str("        run: |\n");
-    b.push_str("          # replaces apps/embedded/esp32-s3/publish.sh\n");
-    b.push_str("          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/esp32-s3/host_companion/src/publish/lib.rs -o \"$RUNNER_TEMP/libpublish.rlib\"\n");
-    b.push_str("          rustc --edition 2021 apps/embedded/esp32-s3/host_companion/src/publish/main.rs -L \"$RUNNER_TEMP\" --extern publish=\"$RUNNER_TEMP/libpublish.rlib\" -o \"$RUNNER_TEMP/esp32-s3-publish\"\n");
-    b.push_str("          \"$RUNNER_TEMP/esp32-s3-publish\"\n");
+    b.push_str("          # replaces apps/embedded/vitruvian-deck/publish.sh\n");
+    b.push_str("          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/vitruvian-deck/host_tools/src/publish/lib.rs -o \"$RUNNER_TEMP/libpublish.rlib\"\n");
+    b.push_str("          rustc --edition 2021 apps/embedded/vitruvian-deck/host_tools/src/publish/main.rs -L \"$RUNNER_TEMP\" --extern publish=\"$RUNNER_TEMP/libpublish.rlib\" -o \"$RUNNER_TEMP/vitruvian-deck-publish\"\n");
+    b.push_str("          \"$RUNNER_TEMP/vitruvian-deck-publish\"\n");
     Ok(())
 }
 
@@ -518,7 +518,7 @@ fn render_vitruvian_publish_steps(b: &mut String, _u: &Unit, env: &str, opts: &O
     b.push_str("        env:\n");
     b.push_str("          SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}\n");
     b.push_str("          SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}\n");
-    b.push_str("        run: bazel run //apps/desktop/vitruvian:ci_setup_signing\n");
+    b.push_str("        run: bazel run //apps/desktop/vitruvian-atrium:ci_setup_signing\n");
     b.push('\n');
     if env == "production" {
         render_tap_token_step(b);
@@ -539,7 +539,7 @@ fn render_vitruvian_publish_steps(b: &mut String, _u: &Unit, env: &str, opts: &O
         b.push_str("          NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}\n");
         b.push_str("          NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}\n");
     }
-    b.push_str("        run: bazel run //apps/desktop/vitruvian:publish\n");
+    b.push_str("        run: bazel run //apps/desktop/vitruvian-atrium:publish\n");
     Ok(())
 }
 
@@ -573,7 +573,12 @@ fn render_gravastar_mouse_publish_steps(b: &mut String, _u: &Unit, env: &str, op
     Ok(())
 }
 
-fn render_tabula_build_stack_steps(b: &mut String, _u: &Unit, _env: &str, opts: &Opts) -> R {
+fn render_vitruvian_tabs_build_stack_steps(
+    b: &mut String,
+    _u: &Unit,
+    _env: &str,
+    opts: &Opts,
+) -> R {
     b.push_str("    steps:\n");
     w!(b, "      - uses: {}\n", opts.pin("actions/checkout")?);
     b.push_str("        with:\n");
@@ -596,7 +601,7 @@ fn render_tabula_build_stack_steps(b: &mut String, _u: &Unit, _env: &str, opts: 
     b.push_str("        with:\n");
     b.push_str("          command: up\n");
     b.push_str("          stack: production\n");
-    b.push_str("          working-directory: apps/suites/tabula/infra/build\n");
+    b.push_str("          working-directory: apps/suites/vitruvian-tabs/infra/build\n");
     b.push_str("          pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}\n");
     b.push('\n');
     b.push_str(
@@ -608,7 +613,7 @@ fn render_tabula_build_stack_steps(b: &mut String, _u: &Unit, _env: &str, opts: 
     b.push_str("        if: always()\n");
     w!(b, "        uses: {}\n", PULUMI_SUMMARY_ACTION);
     b.push_str("        with:\n");
-    b.push_str("          label: tabula-build\n");
+    b.push_str("          label: vitruvian-tabs-build\n");
     b.push_str("          out-file: ${{ runner.temp }}/pulumi-out.txt\n");
     b.push_str("          exit-code: ${{ steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code }}\n");
     Ok(())
@@ -1132,7 +1137,7 @@ pub fn render(units: &[Unit], phase: i64, workflow_file: &str, pins: &Pins) -> R
     b.push_str("# WHY WORKFLOW-LEVEL AND NOT PER-UNIT (spec §4.3 asks for\n");
     b.push_str("# `delivery-<unit>-<env>` groups): every fan-out job below is a `uses:`\n");
     b.push_str("# caller, and this repo has already paid for that experiment — #1607 put a\n");
-    b.push_str("# `concurrency:` on the calling jobs in tabula-deploy.yaml and every\n");
+    b.push_str("# `concurrency:` on the calling jobs in a deploy workflow and every\n");
     b.push_str("# dispatch failed INSTANTLY with no runner assigned, reproducibly, even\n");
     b.push_str("# with a static expression-free group string; workflow-level was the only\n");
     b.push_str("# placement that worked. A per-workflow group is strictly STRONGER\n");
@@ -1157,7 +1162,7 @@ pub fn render(units: &[Unit], phase: i64, workflow_file: &str, pins: &Pins) -> R
     b.push_str("# dispatching it. That is not hypothetical: two releases published in the\n");
     b.push_str("# same minute during the Phase-2 rollout evicted each other (runs\n");
     b.push_str("# 32345258539 / 32344982262 — harmless only because both tags were infra\n");
-    b.push_str("# ones with no rung of their own; a tabula-api-v + tabula-web-v pair would\n");
+    b.push_str("# ones with no rung of their own; a vitruvian-tabs-api-v + vitruvian-tabs-web-v pair would\n");
     b.push_str("# have dropped one service's promotion). Keying release runs on the tag\n");
     b.push_str("# gives every tag its own lane: two tags never evict each other, while two\n");
     b.push_str("# runs of the SAME tag (a re-publish) still serialize, which is the case\n");

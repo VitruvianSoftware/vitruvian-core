@@ -19,7 +19,7 @@ this directory.
 ## Flow
 
 1. App Helm charts live next to each app: `<app>/deploy/chart` (e.g.
-   `apps/suites/tabula/deploy/chart`).
+   `apps/suites/vitruvian-tabs/deploy/chart`).
 2. `.github/workflows/charts-publish.yml` packages changed charts and pushes them
    as OCI artifacts to `oci://ghcr.io/vitruviansoftware/charts/<name>`.
 3. The `Application` in `argocd/applications/<app>.yaml` references that chart by
@@ -34,7 +34,7 @@ kubectl apply -f gitops/argocd/root-applications.yaml
 ```
 
 Container **images** continue to publish to GCP Artifact Registry (see
-`apps/suites/tabula/api/BUILD`); only the **charts** live in GHCR.
+`apps/suites/vitruvian-tabs/api/BUILD`); only the **charts** live in GHCR.
 
 ## Subdirectories & Boundaries
 - [argocd](./argocd/README.md): Contract for gitops/argocd

@@ -5,8 +5,8 @@ date: 2026-11-07
 
 # Vitruvian Relay: a hosted remote MCP for your own computer
 
-> **Working name.** "Vitruvian Relay" is a placeholder. The product must not use the
-> name, logo or wording of Desktop Commander (see §9).
+> **Name.** "Vitruvian Relay" (`vitruvian-relay`) is the final approved product name.
+> The product must not use the name, logo or wording of Desktop Commander (see §9).
 
 ## 1. What this is, in one paragraph
 
@@ -169,7 +169,7 @@ from 1 s up to 60 s.
 
 | Component | What it is | Builds on |
 |---|---|---|
-| **Relay** | Rust service: the MCP endpoint for AI apps, the WebSocket endpoint for connectors, a small web dashboard, the Stripe webhook | The hosted Slack MCP (`apps/mcp/slack/rs`) already has a Streamable HTTP MCP transport, `/.well-known/oauth-protected-resource` and Zitadel token checks. Pull those out into a shared crate rather than copying them. |
+| **Relay** | Rust service: the MCP endpoint for AI apps, the WebSocket endpoint for connectors, a small web dashboard, the Stripe webhook | The hosted Slack MCP (`apps/mcp/vitruvian-slack-mcp/rs`) already has a Streamable HTTP MCP transport, `/.well-known/oauth-protected-resource` and Zitadel token checks. Pull those out into a shared crate rather than copying them. |
 | **Connector** | Rust command-line app, `vrelay` (placeholder): `login`, `run`, `status`, `logout`. Installs itself as a background service: LaunchAgent on macOS, systemd user unit on Linux, scheduled task on Windows | Starts `desktop-commander` (pinned version) and any other configured stdio MCP servers. Later, a menu bar UI on the Vitruvian desktop platform |
 | **Dashboard** | Pages served by the relay: sign in, devices (online, last seen, rename, revoke), each device's connector URL and setup steps for ChatGPT and Claude, the activity log, plan and billing | Stripe Customer Portal for payment details and invoices, so we never handle cards |
 | **Infra** | Zitadel project and clients, Postgres, DNS, Stripe products | `infrastructure/pulumi/platform/zitadel-apps-*` pattern, the Stripe stack, the hosted Slack MCP's chart and route for the alpha |
@@ -332,8 +332,9 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
 
 ## 11. Open questions
 
-1. **Name.** "Vitruvian Relay" and `vrelay` are placeholders. The domain is
-   decided: production on `vitruviansoftware.dev` (§8).
+1. **CLI name.** "Vitruvian Relay" (`vitruvian-relay`) is final; `vrelay` remains a
+   placeholder for the CLI binary. The domain is decided: production on
+   `vitruviansoftware.dev` (§8).
 2. **Sign-in domain for production.** Keep `auth.ipv1337.dev`, or give Zitadel a
    `vitruviansoftware.dev` name for this product. That changes the issuer every
    token carries, so it happens before launch, not after.

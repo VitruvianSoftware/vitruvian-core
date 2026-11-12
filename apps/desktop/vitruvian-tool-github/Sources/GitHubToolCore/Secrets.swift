@@ -11,7 +11,7 @@ import Foundation
 /// release is a new program to the Keychain, which would ask the person
 /// to allow it each time, or refuse in silence. A file the person alone can
 /// read, in their own Application Support folder, is what `gh` and `gcloud`
-/// do, and what HomeSpeaker does. The app's feature kept the token in the
+/// do, and what Vitruvian Speaker does. The app's feature kept the token in the
 /// Keychain and hands it to the tool once through `storage`; the tool keeps
 /// it here from then on and clears the handed copy.
 public final class SecretStore {

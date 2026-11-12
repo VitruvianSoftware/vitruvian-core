@@ -35,7 +35,7 @@ Two transports:
 - **The menu bar app** — [`macmenu/`](macmenu/README.md), a small macOS app
   that shows whether the agent is up and a phone is linked, and pairs,
   unpairs and restarts it without a terminal. It is separate from
-  HomeSpeaker on purpose.
+  Vitruvian Speaker on purpose.
 
 The Home screen carries a tag that is never hidden: `LIVE`, `SIMULATED`
 (no agent configured — the app runs on `state/MockHost.kt` exactly as it
@@ -114,18 +114,18 @@ Releases are managed via release-please (`release-please-config.json`, `.release
 - **Module gallery.** The "Xcode builds" module was removed (it was never wired).
   "Add by URL" was removed from the module gallery. "Install guide" opens
   `apps/mobile/android-remote/macagent/README.md` on GitHub. Antigravity, Ollama,
-  Grafana, Docker, Lima, Sony TV, and HomeSpeaker are fully wired.
-- **HomeSpeaker.** (`Apps → HomeSpeaker`, backed by
-  [`macagent/rs/src/homespeaker.rs`](macagent/rs/src/homespeaker.rs) and
-  [`HomeSpeaker`](../../desktop/home-speaker/README.md)). The door row (app vs
+  Grafana, Docker, Lima, Sony TV, and Vitruvian Speaker are fully wired.
+- **Vitruvian Speaker.** (`Apps → Vitruvian Speaker`, backed by
+  [`macagent/rs/src/speaker.rs`](macagent/rs/src/speaker.rs) and
+  [`Vitruvian Speaker`](../../desktop/vitruvian-speaker/README.md)). The door row (app vs
   Vitruvian extension) is offered on the phone only when the extension is
   installed. Choosing the extension without it returns 400; switching doors
   copies nothing and repoints only stale hooks when choosing the extension.
   Google Cloud OAuth setup is always shown on the phone so credentials can be
   configured directly. Chat access (`has_chat_access`) reflects Google Chat
-  consent only. The phone can install, update, and remove HomeSpeaker hooks for
+  consent only. The phone can install, update, and remove Vitruvian Speaker hooks for
   Antigravity and OpenCode as well as Claude Code. See the
-  [HomeSpeaker docs](../../desktop/home-speaker/README.md) for available controls.
+  [Vitruvian Speaker docs](../../desktop/vitruvian-speaker/README.md) for available controls.
 
 ## Design source
 

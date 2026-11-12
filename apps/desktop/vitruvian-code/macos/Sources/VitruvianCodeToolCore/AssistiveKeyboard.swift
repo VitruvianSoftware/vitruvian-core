@@ -24,7 +24,7 @@ import Foundation
 /// Whether a click outside the Quick Prompt pressed a key of the macOS
 /// Accessibility Keyboard, which must not close the prompt: each key is a
 /// click on another process's window. As the Vitruvian app's guard
-/// (apps/desktop/vitruvian/Sources/Vitruvian/Services/AssistiveKeyboard.swift),
+/// (apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/AssistiveKeyboard.swift),
 /// the topmost window under the point decides, a fully transparent one is
 /// clicked through, and the tool's own windows never block the answer.
 public enum AssistiveKeyboard {

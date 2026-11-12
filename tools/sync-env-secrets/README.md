@@ -129,31 +129,31 @@ OAuth client in the admin console) is described in
 once you hold the values, drop each into `secrets/oauth-user-inspector-development/`
 and run `apply` + `bw-push`.
 
-## `courier-release`
+## `vitruvian-courier-release`
 
 Secrets of the GitHub Environment that
-[`courier-release.yaml`](../../.github/workflows/courier-release.yaml)'s
+[`vitruvian-courier-release.yaml`](../../.github/workflows/vitruvian-courier-release.yaml)'s
 publishing job binds. The environment itself is declared in
-[`repo-config`](../../infrastructure/pulumi/platform/repo-config/courier_release.go):
-only `main` and `courier-v*` tags may deploy to it.
+[`repo-config`](../../infrastructure/pulumi/platform/repo-config/vitruvian_courier_release.go):
+only `main` and `vitruvian-courier-v*` tags may deploy to it.
 
 | Secret | What it is |
 |---|---|
-| `COURIER_TELEGRAM_API_ID` | Courier's Telegram app `api_id` (my.telegram.org ▸ API development tools), built into the released app. |
+| `COURIER_TELEGRAM_API_ID` | Vitruvian Courier's Telegram app `api_id` (my.telegram.org ▸ API development tools), built into the released app. |
 | `COURIER_TELEGRAM_API_HASH` | Its `api_hash`, paired with the id above. |
 
-The local install reads the same two files from `secrets/courier-release/`
-(`apps/desktop/courier/app/README.md`). To set them:
-`set -- courier-release COURIER_TELEGRAM_API_ID` (and `..._HASH`), then
-`apply -- courier-release`.
+The local install reads the same two files from `secrets/vitruvian-courier-release/`
+(`apps/desktop/vitruvian-courier/app/README.md`). To set them:
+`set -- vitruvian-courier-release COURIER_TELEGRAM_API_ID` (and `..._HASH`), then
+`apply -- vitruvian-courier-release`.
 
 ## `vitruvian-code-release`
 
 Secrets of the GitHub Environment on the public mirror
 `VitruvianSoftware/vitruvian-code` that
 [`apps/desktop/vitruvian-code/.github/workflows/release.yml`](../../apps/desktop/vitruvian-code/.github/workflows/release.yml)'s
-`package` job binds to sign and notarize `Vitruvian Code.app`, the migration
-bridge `NexusAgent.app`, the standalone `vitruvian-code-tool` Mach-O, and the
+`package` job binds to sign and notarize `Vitruvian Code.app`, the standalone
+`vitruvian-code-tool` Mach-O, and the
 release `.dmg` disk images. The environment is declared in
 [`copybara_sync`](../../infrastructure/pulumi/platform/repo-config/internal/copybara_sync/vitruvian_code_release.go):
 only branch `main` may deploy to it.

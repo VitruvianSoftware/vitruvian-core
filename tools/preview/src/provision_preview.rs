@@ -35,7 +35,7 @@ use std::process::Command;
 const USAGE: &str = "Usage: {PROG} --app <name> --pr <number> [options]
 
 Required:
-  --app <name>               Application name (e.g. tabula-api, oauth-user-inspector)
+  --app <name>               Application name (e.g. vitruvian-tabs-api, oauth-user-inspector)
   --pr <number>              Pull Request number (e.g. 142)
 
 Options:

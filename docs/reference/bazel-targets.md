@@ -47,7 +47,7 @@ mindmap
 | Target | What it does |
 |---|---|
 | `//:doctor` | Verifies your core toolchain (bazel, git required; node/pnpm/go/gh/gcloud/docker/direnv advisory) |
-| `//<app>:doctor` | Same check scoped to one app's exact requirements (`//apps/suites/tabula:doctor`, `//apps/cli/devx:doctor`, …) |
+| `//<app>:doctor` | Same check scoped to one app's exact requirements (`//apps/suites/vitruvian-tabs:doctor`, `//apps/cli/vitruvian-devx:doctor`, …) |
 | `//tools/worktree -- <branch>` | Creates an isolated git worktree with its own Bazel server. `-- --detach <ref> <name>` (scratch tree, no branch), `-- --list`, `-- --remove <branch\|name> [--delete-branch]` (also removes its Bazel caches), `-- --lock [reason]` / `-- --unlock`, `-- --prune [--execute]` (removes only clean, landed, unlocked worktrees, and scratch trees unused for a day; dry run by default). Branch work in the primary checkout is blocked — this is the sanctioned path |
 | `//tools/git:commit -- -m <msg> <paths>` | Stages and commits, after a secret scan of what is staged. Refuses on `main`, in the main checkout, with nothing staged, or a non-Conventional message. `--agent <name>` (author and committer = that agent's bot), `--all`, `-F <file>`, `--fixup <sha>`; with no paths during a merge, concludes it (refusing leftover conflict markers) |
 | `//tools/git:push` | Pushes the current branch to `origin` under its own name and sets its upstream, after scanning the unpushed commits. Never `main`, never plain `--force`. `--force-with-lease`, `--agent <name>` (pushes as that agent's App via `//tools/agent-app -- env`), `--dry-run` |
@@ -113,7 +113,7 @@ Project packages include:
 - `//infrastructure/pulumi/platform/repo-config` (repository configuration, GitHub settings, sync-auth credentials)
 - `//infrastructure/pulumi/platform/{dev-local,stripe,zitadel-apps,zitadel-apps-mcp-slack,zitadel-apps-relay}`
 - `//infrastructure/pulumi/foundation/...` (all stages × environments: org-folders, gcp-projects, etc.)
-- `//apps/suites/tabula/infra/{identity,build,data,app}`
+- `//apps/suites/vitruvian-tabs/infra/{identity,build,data,app}`
 - `//apps/web/oauth-user-inspector/infra/{identity,app}`
 
 Full estate map: [infrastructure reference](../infrastructure/reference.md).
@@ -180,24 +180,24 @@ stack config) is in [CONTRIBUTING §7](../../CONTRIBUTING.md#7-secrets-handling)
 | `//tools/delivery/orchestrate` | The decision and execution engine for graph-affected deployments on push to `main` |
 | `//tools/pipeline/plan` / `//tools/pipeline/gen` | Computes affected units and generates presubmit matrix jobs from `.pipeline.json` manifests |
 | `//tools/deploy:cloud-run` | The generic blue-green sequencer (candidate at 0% → smoke → promote). The reusable deploy workflow calls exactly this, so the same rollout runs from a workstation when Actions is down |
-| `//apps/suites/tabula/infra/app:deploy`, `//apps/web/oauth-user-inspector/infra/app:deploy` | Per-app wrappers with service/region/smoke baked in; support `--dry-run` |
+| `//apps/suites/vitruvian-tabs/infra/app:deploy`, `//apps/web/oauth-user-inspector/infra/app:deploy` | Per-app wrappers with service/region/smoke baked in; support `--dry-run` |
 | `//tools/preview:provision-preview` | Provisions ephemeral PR preview environments (allocates Neon Postgres branch, provisions stack, posts PR comment) |
 | `//tools/preview:neon-branch` / `:pr-comment` | Standalone Neon database branch management and PR comment reporting for preview environments |
 | `//tools/charts:publish` | Packages and publishes changed Helm charts across apps to GitHub Container Registry (GHCR) |
-| `//apps/suites/tabula/api:image_push` | Push the API image to Artifact Registry |
-| `//apps/suites/tabula/api:migrate_deploy_bin` | Prisma migrations (`--phase expand` / `--phase contract`) |
+| `//apps/suites/vitruvian-tabs/api:image_push` | Push the API image to Artifact Registry |
+| `//apps/suites/vitruvian-tabs/api:migrate_deploy_bin` | Prisma migrations (`--phase expand` / `--phase contract`) |
 | `//tools/release:publish-local` | Break-glass local publisher for mirror releases (dry-run by default; `--execute` to publish) |
 | `//tools/copybara/sync -- export <component>` | Drive a mirror export (CI does this on push; local = break-glass) |
 | `//tools/copybara/sync -- import_pr <component> <pr>` | Import an external mirror PR as a monorepo PR |
 
 ## App binaries (inner loop)
 
-`//apps/suites/tabula/cli:tabcli` · `//apps/suites/tabula/api:api_bin` · `//apps/cli/devx:devx` ·
-`//apps/cli/homelab/cmd/homelab` · `//apps/desktop/nexus-agent:bot` · macOS apps:
-`bazel build --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgent`,
-`bazel build --config=macos-app //apps/desktop/vitruvian:Vitruvian` (tests:
-`bazel test --config=macos-app //apps/desktop/vitruvian:unit_tests //apps/desktop/vitruvian:selftest`;
-after changing its `build.sh` source lists: `bazel run //apps/desktop/vitruvian:sync_sources`).
+`//apps/suites/vitruvian-tabs/cli:vitruvian-tabs` · `//apps/suites/vitruvian-tabs/api:api_bin` · `//apps/cli/vitruvian-devx:devx` ·
+`//apps/cli/vitruvian-homelab:homelab` · `//apps/desktop/vitruvian-code:bot` · macOS apps:
+`bazel build --config=macos-app //apps/desktop/vitruvian-code/macos:VitruvianCode`,
+`bazel build --config=macos-app //apps/desktop/vitruvian-atrium:VitruvianAtrium` (tests:
+`bazel test --config=macos-app //apps/desktop/vitruvian-atrium:unit_tests //apps/desktop/vitruvian-atrium:selftest`;
+after changing its `build.sh` source lists: `bazel run //apps/desktop/vitruvian-atrium:sync_sources`).
 
 ## CI helper scripts (context, not targets)
 

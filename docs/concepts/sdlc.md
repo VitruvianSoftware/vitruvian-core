@@ -84,9 +84,9 @@ testing, fail-open deploys, the nightly safety floor) is in
 
 | App category | Ships by | Mechanism |
 |---|---|---|
-| SaaS web service (`tabula`, `oauth-user-inspector`) | **Deploy** | Cloud Run via WIF + Pulumi, blue-green |
+| SaaS web service (`vitruvian-tabs`, `oauth-user-inspector`) | **Deploy** | Cloud Run via WIF + Pulumi, blue-green |
 | CLI / developer tool (`devx`, `homelab`) | **Release** | GitHub Release + Homebrew tap from the mirror |
-| Agent / MCP service (`mcp-slack`, `nexus-agent`) | **Release** | `mcp-slack`: container image on GHCR, built on every merge to `main`; `nexus-agent`: DMG from the mirror |
+| Agent / MCP service (`vitruvian-slack-mcp`, `vitruvian-code`) | **Release** | `vitruvian-slack-mcp`: container image on GHCR, built on every merge to `main`; `vitruvian-code`: DMG from the mirror |
 | Platform service (`gitops/`) | **Merge** | ArgoCD reconciles git — merged = promoted |
 
 ### The environment ladder

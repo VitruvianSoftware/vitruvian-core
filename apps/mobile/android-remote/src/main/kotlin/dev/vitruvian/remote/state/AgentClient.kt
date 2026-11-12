@@ -387,8 +387,8 @@ public data class AgentArgoApp(
 /** `{ok, output}` -- what the PR and ArgoCD act endpoints reply with. */
 public data class AgentActionResult(val ok: Boolean, val output: String)
 
-/** `/v1/homespeaker`: what the Mac's HomeSpeaker app is doing, from its own config file. */
-public data class AgentHomeSpeaker(
+/** `/v1/speaker`: what the Mac's Vitruvian Speaker app is doing, from its own config file. */
+public data class AgentVitruvianSpeaker(
     val available: Boolean,
     val reason: String,
     val installed: Boolean,
@@ -398,7 +398,7 @@ public data class AgentHomeSpeaker(
     val defaultTarget: String,
     /** `headline`, `summary` or `full`. */
     val speechLength: String,
-    /** HomeSpeaker pauses what the Mac is playing while it announces. */
+    /** Vitruvian Speaker pauses what the Mac is playing while it announces. */
     val pauseMedia: Boolean,
     /** Seconds after the estimated end of an announcement before resuming. */
     val pauseMediaExtraSeconds: Double,
@@ -416,15 +416,15 @@ public data class AgentHomeSpeaker(
     val localVoiceName: String,
     val structureName: String,
     val quietHoursEnabled: Boolean,
-    val quietHoursStart: String = HomeSpeakerWire.DEFAULT_QUIET_START,
-    val quietHoursEnd: String = HomeSpeakerWire.DEFAULT_QUIET_END,
+    val quietHoursStart: String = VitruvianSpeakerWire.DEFAULT_QUIET_START,
+    val quietHoursEnd: String = VitruvianSpeakerWire.DEFAULT_QUIET_END,
     val snoozeUntil: String? = null,
     val targets: List<AgentSpeakerTarget>,
     val last: AgentLastBroadcast?,
     /**
-     * Which senders are spoken (agent v1.10, HomeSpeaker 1.23), each under [enabled]: the two
-     * coding agents, then the chat apps HomeSpeaker watches. Null from an older agent, which cannot
-     * switch them -- the dashboard then hides the switches rather than guessing.
+     * Which senders are spoken (agent v1.10, Vitruvian Speaker 1.23), each under [enabled]: the two
+     * coding agents, then the chat apps Vitruvian Speaker watches. Null from an older agent, which
+     * cannot switch them -- the dashboard then hides the switches rather than guessing.
      */
     val announceClaudeCode: Boolean? = null,
     val announceAntigravity: Boolean? = null,
@@ -444,18 +444,22 @@ public data class AgentHomeSpeaker(
     val announcementStyle: String = "verbatim",
     /** Model used for announcement style rewriting (`apple` or `gemini`, agent v1.11+). */
     val styleModel: String = "apple",
-    /** Which HomeSpeaker distribution is active on the Mac (`app` or `extension`, agent v1.11+). */
+    /**
+     * Which Vitruvian Speaker distribution is active on the Mac (`app` or `extension`, agent
+     * v1.11+).
+     */
     val activeDoor: String = "app",
-    /** Whether `HomeSpeaker.app` is installed on the Mac; null from an older agent. */
+    /** Whether `Vitruvian Speaker.app` is installed on the Mac; null from an older agent. */
     val appInstalled: Boolean? = null,
-    /** Whether a HomeSpeaker extension that runs alone is installed on the Mac. */
+    /** Whether a Vitruvian Speaker extension that runs alone is installed on the Mac. */
     val extensionInstalled: Boolean = false,
     /**
-     * Whether the active HomeSpeaker owner process is currently running; null from an older agent.
+     * Whether the active Vitruvian Speaker owner process is currently running; null from an older
+     * agent.
      */
     val ownerRunning: Boolean? = null,
     /**
-     * Whether Home Speaker's `--state` carried a non-empty `settings[]` catalog for generic
+     * Whether Vitruvian Speaker's `--state` carried a non-empty `settings[]` catalog for generic
      * `settings` updates; false on older agents or empty catalogs.
      */
     val genericSettings: Boolean = false,
@@ -498,12 +502,12 @@ public data class AgentHomeSpeaker(
     val gwsInstalled: Boolean = false,
     val gwsAccount: String = "",
     val googleChatSource: String = "auto",
-    val pollInterval: Int = HomeSpeakerWire.DEFAULT_POLL_INTERVAL,
+    val pollInterval: Int = VitruvianSpeakerWire.DEFAULT_POLL_INTERVAL,
     val agents: List<AgentHookStatus> = emptyList(),
     val legacyLaunchAgent: Boolean = false,
     val customOAuthClientId: String = "",
     val hasCustomOAuthSecret: Boolean = false,
-    val homeSpeakerVersion: String = "",
+    val vitruvianSpeakerVersion: String = "",
     /** Courier's switch, as Beeper's; null from an older agent, which does not know Courier. */
     val courierEnabled: Boolean? = null,
     /** Whether announcements say who they are from: `off`, `app` or `app_and_session`. */
@@ -517,13 +521,13 @@ public data class AgentHomeSpeaker(
     /** The running monitor has listed Beeper's (Courier's) networks; null from an older agent. */
     val beeperNetworksListed: Boolean? = null,
     val courierNetworksListed: Boolean? = null,
-    val catalog: HomeSpeakerCatalog = HomeSpeakerCatalog(),
+    val catalog: VitruvianSpeakerCatalog = VitruvianSpeakerCatalog(),
     val outputsLabel: String? = null,
     val outputsFooter: String? = null,
 )
 
 /**
- * `/v1/homespeaker/volume`: the default speaker's volume as HomeSpeaker reads it from Google.
+ * `/v1/speaker/volume`: the default speaker's volume as Vitruvian Speaker reads it from Google.
  * [online] false means [percent] is only the last level the speaker had.
  */
 public data class AgentSpeakerVolume(
@@ -781,16 +785,16 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
         streamLines("/v1/antigravity/resume", body, handle, onLine)
       }
 
-  // --- v1.4: HomeSpeaker ---------------------------------------------------
+  // --- v1.4: Vitruvian Speaker ---------------------------------------------------
 
-  public suspend fun homeSpeaker(): AgentHomeSpeaker =
-      withContext(Dispatchers.IO) { parseHomeSpeaker(get("/v1/homespeaker")) }
+  public suspend fun vitruvianSpeaker(): AgentVitruvianSpeaker =
+      withContext(Dispatchers.IO) { parseVitruvianSpeaker(get("/v1/speaker")) }
 
   /**
    * Changes only the fields given. The reply is the Mac's state read back from the file, which is
    * what the dashboard should show -- not what the phone asked for.
    */
-  public suspend fun setHomeSpeaker(
+  public suspend fun setVitruvianSpeaker(
       enabled: Boolean? = null,
       defaultTarget: String? = null,
       speechLength: String? = null,
@@ -858,10 +862,10 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       courierReadAnywayKey: String? = null,
       courierReadAnywayOn: Boolean? = null,
       settings: Map<String, Any>? = null,
-  ): AgentHomeSpeaker =
+  ): AgentVitruvianSpeaker =
       withContext(Dispatchers.IO) {
         val body =
-            HomeSpeakerWire.encodeUpdateBody(
+            VitruvianSpeakerWire.encodeUpdateBody(
                 enabled = enabled,
                 defaultTarget = defaultTarget,
                 speechLength = speechLength,
@@ -934,20 +938,22 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
             if (discover || structureId != null || previewVoice || speakClipboard)
                 LONG_ACTION_TIMEOUT_MS
             else ACTION_TIMEOUT_MS
-        parseHomeSpeaker(post("/v1/homespeaker", body, readTimeoutMs = timeout))
+        parseVitruvianSpeaker(post("/v1/speaker", body, readTimeoutMs = timeout))
       }
 
   /** The default speaker's volume. A round trip to Google through the Mac: seconds, not ms. */
-  public suspend fun homeSpeakerVolume(readTimeoutMs: Int = VOLUME_TIMEOUT_MS): AgentSpeakerVolume =
+  public suspend fun vitruvianSpeakerVolume(
+      readTimeoutMs: Int = VOLUME_TIMEOUT_MS
+  ): AgentSpeakerVolume =
       withContext(Dispatchers.IO) {
-        parseSpeakerVolume(get("/v1/homespeaker/volume", readTimeoutMs = readTimeoutMs))
+        parseSpeakerVolume(get("/v1/speaker/volume", readTimeoutMs = readTimeoutMs))
       }
 
   /**
    * Sets the level, or mutes / unmutes -- exactly one. Answers with what Google reports afterwards;
    * Google takes ~3 s to report a change and the Mac waits for it, so this can take ~15 s.
    */
-  public suspend fun setHomeSpeakerVolume(
+  public suspend fun setVitruvianSpeakerVolume(
       percent: Int? = null,
       muted: Boolean? = null,
       readTimeoutMs: Int = VOLUME_TIMEOUT_MS,
@@ -959,7 +965,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
               if (muted != null) put("muted", muted)
             }
         parseSpeakerVolume(
-            post("/v1/homespeaker/volume", body.toString(), readTimeoutMs = readTimeoutMs))
+            post("/v1/speaker/volume", body.toString(), readTimeoutMs = readTimeoutMs))
       }
 
   /** `GET /v1/tv`: Sony Google TV state over wireless ADB. */
@@ -988,8 +994,8 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
         parseTv(post(TvWire.ACT_PATH, body.toString(), readTimeoutMs = ACTION_TIMEOUT_MS))
       }
 
-  /** `HomeSpeaker --say` on the Mac: deliberate speech, so it overrides quiet hours. */
-  public suspend fun homeSpeakerSay(
+  /** `VitruvianSpeaker --say` on the Mac: deliberate speech, so it overrides quiet hours. */
+  public suspend fun vitruvianSpeakerSay(
       text: String = "",
       replay: Boolean = false,
       replayId: String? = null,
@@ -1004,7 +1010,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
                   if (!replayId.isNullOrBlank()) put("replay_id", replayId)
                 }
                 .toString()
-        parseAction(post("/v1/homespeaker/say", body, readTimeoutMs = readTimeoutMs))
+        parseAction(post("/v1/speaker/say", body, readTimeoutMs = readTimeoutMs))
       }
 
   /**
@@ -1340,9 +1346,14 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
 
     /** A `gh pr merge` is a network round trip on the Mac's side too. */
     private const val ACTION_TIMEOUT_MS = 30_000
-    /** Long HomeSpeaker actions (discovery, voice preview, speaking clipboard / text) take time. */
+    /**
+     * Long Vitruvian Speaker actions (discovery, voice preview, speaking clipboard / text) take
+     * time.
+     */
     private const val LONG_ACTION_TIMEOUT_MS = 100_000
-    /** The agent allows HomeSpeaker 45 s for a volume change; wait a little longer than that. */
+    /**
+     * The agent allows Vitruvian Speaker 45 s for a volume change; wait a little longer than that.
+     */
     private const val VOLUME_TIMEOUT_MS = 50_000
     private const val SCREEN_TIMEOUT_MS = 10_000
     /** `/v1/claude/permissions/decide` refuses a longer deny message. */
@@ -1468,13 +1479,13 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       )
     }
 
-    public fun parseHomeSpeaker(json: String): AgentHomeSpeaker {
+    public fun parseVitruvianSpeaker(json: String): AgentVitruvianSpeaker {
       val o = JSONObject(json)
-      // The v1.10 fields are read by the JVM-tested HomeSpeakerWire (Wire.kt).
-      val sources = HomeSpeakerWire.sources(json)
+      // The v1.10 fields are read by the JVM-tested VitruvianSpeakerWire (Wire.kt).
+      val sources = VitruvianSpeakerWire.sources(json)
       val quiet = o.optJSONObject("quiet_hours")
       val last = o.optJSONObject("last")
-      return AgentHomeSpeaker(
+      return AgentVitruvianSpeaker(
           available = o.optBoolean("available", false),
           reason = o.optString("reason"),
           installed = o.optBoolean("installed", false),
@@ -1571,7 +1582,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           legacyLaunchAgent = sources.legacyLaunchAgent,
           customOAuthClientId = sources.customOAuthClientId,
           hasCustomOAuthSecret = sources.hasCustomOAuthSecret,
-          homeSpeakerVersion = sources.homeSpeakerVersion,
+          vitruvianSpeakerVersion = sources.vitruvianSpeakerVersion,
           courierEnabled = sources.courierEnabled,
           announceSource = sources.announceSource,
           courierAnnounce = sources.courierAnnounce,

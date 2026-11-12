@@ -80,7 +80,7 @@ export const KeyValueLedgerAndAccordion: StoryObj = {
               value: "usr_01J9X7K2M8P4Q6R",
               action: <CopyButton value="usr_01J9X7K2M8P4Q6R" />,
             },
-            { key: "aud", value: "tabula-web-client" },
+            { key: "aud", value: "vitruvian-tabs-web-client" },
             { key: "amr", value: "hwk · mfa · passkey" },
           ]}
         />

@@ -22,7 +22,7 @@ name: Copybara Config Smoke Test
 
 # GUARDRAIL: Copybara evaluates the ENTIRE copy.bara.sky on every workflow run,
 # so a single load/parse error in the config breaks EVERY component's live export
-# at once (devx, homelab, mcp-slack, vitruvian-code, oauth-user-inspector, ...), not
+# at once (devx, homelab, vitruvian-slack-mcp, vitruvian-code, oauth-user-inspector, ...), not
 # just the one being edited. This job runs the SAME pinned Copybara image the
 # exports use and `validate`s the whole config on any PR that touches the copybara
 # tooling, turning "the next scheduled export silently breaks" into a red check
