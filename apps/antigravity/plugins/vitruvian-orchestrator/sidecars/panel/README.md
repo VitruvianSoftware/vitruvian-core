@@ -5,8 +5,9 @@ The **Orchestrator** sidecar panel shows live task progress, helper status, spen
 ## Views and tabs
 
 - **Flow**: Always available. Shows the flow header and phase strip, burn-down chart, numbered task board, agent run rows (`running`, `done`, `error`, plus amber `paused: <reason>` in place of `running` or red `killed`), and estimated spend.
-- **Tab bar (`Flow` · `Board` · `Members` · `Graph`)**: Hidden on plain flows. It appears as soon as the flow has at least one board post or any pause, retire, or kill event.
-- **Board**: A shared message list for the helpers and the lead, shown as numbered posts (`#1`, `#2`, and so on) with search, author/recipient/kind filters, expandable long posts, and a `Follow` / `Jump to latest` toggle. Recipients show as `@name`, `@all` shows as `everyone`, and replies show `↩ #<n>`.
+- **Tab bar (`Flow` · `Board` · `Members` · `Graph` · `Overview`)**: Hidden on plain flows. It appears as soon as the flow has at least one board post, a non-`main` channel, or any pause, retire, or kill event.
+- **Overview**: Data-only summary showing only non-empty sections: active and standing-by helpers (latest step note, else latest post), open questions (unanswered by `replyTo`), open defects (closed by a later `result` post from the same author via `replyTo` first, or as a fallback when mentioning the same worker recipient for the same unambiguous task — defects addressed only to `@lead` or ambiguous across multiple tasks are closed only by `replyTo`), and quiet or stalled runs.
+- **Board**: A shared message list for the helpers and the lead, shown as numbered posts (`#1`, `#2`, and so on) with search, author/recipient/kind filters, channel chips (`All`, `#main`, `#<name>`) once a non-`main` channel exists, expandable long posts, and a `Follow` / `Jump to latest` toggle. Recipients show as `@name`, `@all` shows as `everyone`, and replies show `↩ #<n>`.
 - **Members**: Groups helpers into **Active**, **Standing by**, and collapsed **Retired** cards, always displaying any pause detail (such as `429 Resource Exhausted`) alongside a helper's latest post preview.
 - **Graph**: Shows helpers as points on a circle, a line for each pair that mention each other (the more two helpers mention each other, the thicker their line, and the line shows the count), replay controls (play/pause, step, slider, Live), and a toggle to hide inactive helpers.
 
@@ -14,8 +15,9 @@ The **Orchestrator** sidecar panel shows live task progress, helper status, spen
 
 - **What helpers post**: Helpers post results, questions, and defect lists (as well as short notes) so the lead and other helpers can coordinate without losing context.
 - **Tools**:
-  - `post`: Writes a numbered message to the shared board.
-  - `board`: Reads numbered posts from the board (filtered by recipient, author, kind, or search text).
+  - `post`: Writes a numbered message to the shared board (with optional `channel`, default `main`).
+  - `board`: Reads numbered posts from the board (filtered by recipient, author, kind, channel, or search text).
+  - `channel`: Lists channels (`list`) or lets the lead `create` and `archive` named channels (up to 20 channels).
   - `step`: Updates a helper's step count or reports a pause reason (`quota` or `error`, with optional detail).
   - `progress`: Lead-only tool used to plan tasks, move phases, accept or return work, close the flow, and `retire` or `kill` helpers.
 
@@ -43,9 +45,13 @@ The lead can set a model on a task and put `Gemini model: <id>` in the brief; th
 
 The lead can give a task its own worktree and put `Worktree: <branch>` in the brief; the helper creates it with the repo's worktree tool (or reuses it), works there, reports the path, and the panel shows it on the helper. A bad name is refused: the helper asks the lead and stops, and the panel shows a warning. Give parallel helpers on the same repository separate worktrees.
 
+## Channels
+
+Posts default to `main`. Once the lead creates a non-`main` channel (`[a-z0-9][a-z0-9-]{0,31}`, up to 20 channels), channel chips appear above **Board** to filter posts by channel (archived channels stay readable and are marked `(archived)`, while new posts to unknown or archived channels are rejected). When the lead puts `Channel: <name>` in a task brief, the helper posts in that channel.
+
 ## Safety
 
-The model and worktree are only ever read from the lead's brief, never from board posts, and are checked before use.
+The model, worktree, and channel are only ever read from the lead's brief, never from board posts, and are checked before use.
 
 ## Subdirectories & Verification
 

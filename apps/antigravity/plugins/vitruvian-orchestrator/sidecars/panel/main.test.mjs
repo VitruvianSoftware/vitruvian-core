@@ -41,6 +41,7 @@ import {
   buildPanelState,
   checkAndWakeBoardMentions,
   checkAndWakeStalledRuns,
+  DEFAULT_STALL_MS,
   extractTranscriptRunEvents,
   foldFlowEvents,
   formatElapsed,
@@ -2911,4 +2912,309 @@ test("UAT return round 1 item 3: Graph tab polish — boundary step buttons, vis
     const titleEl = node.findAll((c) => c.tagName === "TITLE")[0];
     assert.equal(titleEl?.textContent, node.getAttribute("data-agent"));
   }
+});
+
+test("phase 3 items 2 & 3: Antigravity Overview tab shows only non-empty sections and Board shows channel chips once a non-main channel exists", () => {
+  const { byId, renderState } = createPanelDomHarness();
+  assert.ok(byId.get("tab-btn-overview"), "missing Overview tab button");
+  assert.ok(byId.get("tab-pane-overview"), "missing Overview tab pane");
+  assert.ok(byId.get("board-channels"), "missing Board channel chips bar");
+
+  const t0 = 1_762_420_000_000;
+  // 1. Flow with only main posts (no non-main channels, no defects, no stalls):
+  //    channel chips stay hidden; Overview shows Members + Open Questions, hiding Open Defects + Stalls.
+  let flow = foldFlowEvents([
+    {
+      type: "plan",
+      at: t0,
+      title: "Phase 3 Panel Flow",
+      tasks: [
+        { title: "Build UI", specialist: "wren", tier: "core", after: [] },
+        { title: "Review UI", specialist: "scout", tier: "fast", after: [] },
+      ],
+    },
+    {
+      type: "run.start",
+      at: t0 + 1000,
+      id: "run-wren",
+      harness: "antigravity",
+      agent: "wren",
+      model: "pro",
+      title: "Build UI",
+      role: "worker",
+    },
+    {
+      type: "run.progress",
+      at: t0 + 1500,
+      id: "run-wren",
+      steps: { done: 1, total: 2, note: "wiring overview tab" },
+    },
+    {
+      type: "post",
+      at: t0 + 2000,
+      from: "wren",
+      runId: "run-wren",
+      text: "Should channel chips show All? @lead",
+      kind: "question",
+    },
+  ]);
+
+  renderState(
+    buildPanelState(flow, { conversationId: "p3-cid", now: t0 + 3000 }),
+  );
+  assert.equal(byId.get("panel-tabs").hidden, false);
+  assert.equal(
+    byId.get("board-channels").hidden,
+    true,
+    "channel chips must stay hidden when only main exists",
+  );
+
+  byId.get("tab-btn-overview").dispatch("click");
+  assert.equal(byId.get("tab-pane-overview").hidden, false);
+  assert.equal(byId.get("overview-members-section").hidden, false);
+  assert.equal(byId.get("overview-questions-section").hidden, false);
+  assert.equal(byId.get("overview-defects-section").hidden, true);
+  assert.equal(byId.get("overview-stalls-section").hidden, true);
+  assert.match(byId.get("overview-members").textContent, /wiring overview tab/);
+  assert.match(
+    byId.get("overview-questions").textContent,
+    /Should channel chips show All\?/,
+  );
+
+  // 2. Add a non-main channel "review", answer the question via replyTo: 1, add an open defect in "review", and stall run-wren:
+  flow = foldFlowEvents([
+    {
+      type: "plan",
+      at: t0,
+      title: "Phase 3 Panel Flow",
+      tasks: [
+        { title: "Build UI", specialist: "wren", tier: "core", after: [] },
+        { title: "Review UI", specialist: "scout", tier: "fast", after: [] },
+      ],
+    },
+    {
+      type: "run.start",
+      at: t0 + 1000,
+      id: "run-wren",
+      harness: "antigravity",
+      agent: "wren",
+      model: "pro",
+      title: "Build UI",
+      role: "worker",
+    },
+    {
+      type: "channel",
+      at: t0 + 1800,
+      action: "create",
+      name: "review",
+    },
+    {
+      type: "post",
+      at: t0 + 2000,
+      from: "wren",
+      runId: "run-wren",
+      text: "Should channel chips show All? @lead",
+      kind: "question",
+    },
+    {
+      type: "post",
+      at: t0 + 2500,
+      from: "lead",
+      to: ["wren"],
+      replyTo: 1,
+      text: "Yes, show All plus each channel.",
+      kind: "note",
+    },
+    {
+      type: "post",
+      at: t0 + 3000,
+      from: "scout",
+      to: ["wren"],
+      channel: "review",
+      text: "Add [hidden] rule for .board-channels @wren",
+      kind: "defect",
+    },
+  ]);
+
+  renderState(
+    buildPanelState(flow, {
+      conversationId: "p3-cid",
+      now: t0 + 2000 + DEFAULT_STALL_MS + 5000,
+    }),
+  );
+
+  // Open Questions now hidden (answered by #2); Open Defects and Stalls now visible!
+  assert.equal(byId.get("overview-questions-section").hidden, true);
+  assert.equal(byId.get("overview-defects-section").hidden, false);
+  assert.equal(byId.get("overview-stalls-section").hidden, false);
+  assert.match(
+    byId.get("overview-defects").textContent,
+    /Add \[hidden\] rule for \.board-channels/,
+  );
+  assert.match(byId.get("overview-stalls").textContent, /stalled/);
+
+  // Switch to Board: channel chips are now visible and filter posts by channel!
+  byId.get("tab-btn-board").dispatch("click");
+  const chBar = byId.get("board-channels");
+  assert.equal(chBar.hidden, false);
+  const chipBtns = chBar.findAll((n) => n.tagName === "BUTTON");
+  assert.deepEqual(
+    chipBtns.map((b) => b.getAttribute("data-channel")),
+    ["", "main", "review"],
+  );
+  // Default "All" shows all 3 posts
+  assert.equal(byId.get("board-list").children.length, 3);
+
+  // Clicking #review filters to post #3 only
+  chipBtns[2].dispatch("click");
+  assert.equal(byId.get("board-list").children.length, 1);
+  assert.match(byId.get("board-list").children[0].textContent, /#3/);
+
+  // Clicking #main filters to posts #1 and #2
+  chipBtns[1].dispatch("click");
+  assert.equal(byId.get("board-list").children.length, 2);
+
+  // Also verify a flow with 0 posts and 0 member events but a non-main channel shows the tab bar
+  const channelOnlyFlow = foldFlowEvents([
+    {
+      type: "plan",
+      at: t0,
+      title: "Channel Only Flow",
+      tasks: [{ title: "Build", specialist: "wren", tier: "core" }],
+    },
+    {
+      type: "channel",
+      at: t0 + 500,
+      action: "create",
+      name: "ops",
+    },
+  ]);
+  renderState(
+    buildPanelState(channelOnlyFlow, {
+      conversationId: "chan-only-cid",
+      now: t0 + 1000,
+    }),
+  );
+  assert.equal(byId.get("panel-tabs").hidden, false);
+  assert.equal(byId.get("board-channels").hidden, false);
+});
+
+test("scout qa: stalled worker on old flow without posts, non-main channels, or member events keeps panel-tabs hidden, and archived channel chip shows (archived)", () => {
+  const { byId, renderState } = createPanelDomHarness();
+  const t0 = 1_762_369_500_000;
+  const legacyStalledFlow = foldFlowEvents([
+    {
+      type: "plan",
+      at: t0,
+      title: "Legacy Stalled Parity",
+      tasks: [{ title: "Build", specialist: "wren", tier: "core" }],
+    },
+    {
+      type: "run.start",
+      at: t0 + 1_000,
+      id: "run-wren",
+      harness: "antigravity",
+      agent: "wren",
+      model: "pro",
+      title: "Build",
+      role: "worker",
+    },
+  ]);
+
+  renderState(
+    buildPanelState(legacyStalledFlow, {
+      conversationId: "legacy-stalled-cid",
+      now: t0 + 20 * 60 * 1_000,
+    }),
+  );
+  assert.equal(byId.get("panel-tabs").hidden, true);
+  assert.equal(byId.get("board-channels").hidden, true);
+
+  const archivedChanFlow = foldFlowEvents([
+    {
+      type: "plan",
+      at: t0,
+      title: "Archived Chip Flow",
+      tasks: [{ title: "Build", specialist: "wren", tier: "core" }],
+    },
+    { type: "channel", at: t0 + 100, action: "create", name: "qa-round" },
+    {
+      type: "post",
+      at: t0 + 200,
+      from: "scout",
+      channel: "qa-round",
+      text: "Round 1 notes",
+    },
+    { type: "channel", at: t0 + 300, action: "archive", name: "qa-round" },
+  ]);
+  renderState(
+    buildPanelState(archivedChanFlow, {
+      conversationId: "arch-chip-cid",
+      now: t0 + 400,
+    }),
+  );
+  byId.get("tab-btn-board").dispatch("click");
+  const chipLabels = byId
+    .get("board-channels")
+    .findAll((n) => n.tagName === "BUTTON")
+    .map((b) => b.textContent);
+  assert.deepEqual(chipLabels, ["All", "#main", "#qa-round (archived)"]);
+});
+
+test("return round 2 acceptance 6: Board channel chip filter retains lead @all posts from main", () => {
+  const { byId, renderState } = createPanelDomHarness();
+  const t0 = 1_762_370_000_000;
+  const flow = foldFlowEvents([
+    {
+      type: "plan",
+      at: t0,
+      title: "Panel Channel Broadcast",
+      tasks: [{ title: "Audit", specialist: "aegis", tier: "core" }],
+    },
+    { type: "channel", at: t0 + 100, action: "create", name: "sec-audit" },
+    {
+      type: "post",
+      at: t0 + 200,
+      from: "wren",
+      to: ["all"],
+      text: "Worker broadcast on main @all",
+    },
+    {
+      type: "post",
+      at: t0 + 300,
+      from: "lead",
+      to: ["all"],
+      text: "Scope lock: PKCE only @all",
+    },
+    {
+      type: "post",
+      at: t0 + 400,
+      from: "aegis",
+      to: ["wren", "lead"],
+      channel: "sec-audit",
+      kind: "defect",
+      text: "Check timingSafeEqual @wren @lead",
+    },
+  ]);
+
+  renderState(
+    buildPanelState(flow, {
+      conversationId: "panel-broadcast-cid",
+      now: t0 + 500,
+    }),
+  );
+  byId.get("tab-btn-board").dispatch("click");
+  const chipBtns = byId
+    .get("board-channels")
+    .findAll((n) => n.tagName === "BUTTON");
+  const secAuditChip = chipBtns.find(
+    (b) => b.getAttribute("data-channel") === "sec-audit",
+  );
+  assert.ok(secAuditChip);
+  secAuditChip.dispatch("click");
+
+  const renderedItems = byId.get("board-list").children;
+  assert.equal(renderedItems.length, 2);
+  assert.match(renderedItems[0].textContent, /Scope lock: PKCE only/);
+  assert.match(renderedItems[1].textContent, /Check timingSafeEqual/);
 });

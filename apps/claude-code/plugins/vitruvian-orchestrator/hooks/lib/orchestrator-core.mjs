@@ -113,6 +113,42 @@ import { PRICES } from "./prices.mjs";
  */
 
 /**
+ * @typedef {Object} ChannelEntry
+ * @property {string} name
+ * @property {boolean} archived
+ */
+
+/**
+ * @typedef {Object} OverviewMember
+ * @property {string} agent
+ * @property {MemberState} state
+ * @property {string} line
+ */
+
+/**
+ * @typedef {Object} OpenQuestion
+ * @property {number} seq
+ * @property {string} from
+ * @property {string} text
+ */
+
+/**
+ * @typedef {Object} OpenDefect
+ * @property {number} seq
+ * @property {string} from
+ * @property {string[]} to
+ * @property {string} text
+ */
+
+/**
+ * @typedef {Object} OverviewView
+ * @property {OverviewMember[]} members
+ * @property {OpenQuestion[]} openQuestions
+ * @property {OpenDefect[]} openDefects
+ * @property {StallRow[]} stalls
+ */
+
+/**
  * @typedef {Object} MembersView
  * @property {MemberRow[]} active
  * @property {MemberRow[]} standingBy
@@ -232,6 +268,7 @@ import { PRICES } from "./prices.mjs";
  * @property {number} [postsDropped]
  * @property {string[]} woken
  * @property {boolean} [hasMemberEvents]
+ * @property {ChannelEntry[]} [channels]
  */
 
 /**
@@ -322,6 +359,8 @@ import { PRICES } from "./prices.mjs";
  * @property {number} [seq]
  * @property {string} [target]
  * @property {string} [worktree]
+ * @property {"create" | "archive"} [action]
+ * @property {string} [name]
  */
 
 const VALID_PHASES = new Set(["plan", "design", "delegate", "review", "close"]);
@@ -332,10 +371,13 @@ export const MAX_RAW_POST_INPUT = 8000;
 export const MAX_SHORT_TEXT = 500;
 export const MAX_FLOW_POSTS = 500;
 export const MAX_POST_RECIPIENTS = 32;
+export const MAX_CHANNELS = 20;
 const TRUNCATED_SUFFIX = "…[truncated]";
 const MAX_WAKE_EXCERPT = 140;
+const MAX_OVERVIEW_LINE = 140;
 const MENTION_RE = /(?<![\w])@([a-z0-9][a-z0-9-]{0,63})(?![a-z0-9-])/gi;
 const VALID_HANDLE_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+export const VALID_CHANNEL_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const VALID_WAKE_RUN_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9._:#-]{0,127}$/;
 const VALID_GEMINI_MODEL_RE = /^gemini-[a-z0-9.-]+$/;
 const VALID_WORKTREE_RE = /^[a-z0-9][a-z0-9._/-]{0,99}$/;
@@ -360,6 +402,162 @@ function sanitizePostText(raw) {
 }
 
 /**
+ * Sanitises untrusted agent or post text for terminal/UI display using the same
+ * ANSI, control-character, and Unicode bidi stripper as board posts.
+ *
+ * @param {unknown} raw
+ * @returns {string}
+ */
+export function sanitizeDisplayText(raw) {
+  if (typeof raw !== "string") return "";
+  return sanitizePostText(raw);
+}
+
+/**
+ * Validates a channel handle (`^[a-z0-9][a-z0-9-]{0,31}$`).
+ *
+ * @param {unknown} name
+ * @returns {boolean}
+ */
+export function isValidChannel(name) {
+  if (typeof name !== "string") return false;
+  return VALID_CHANNEL_RE.test(name.trim());
+}
+
+/**
+ * Lists all channels on `flow`, always starting with `{ name: "main", archived: false }`.
+ *
+ * @param {Flow | null | undefined} flow
+ * @returns {ChannelEntry[]}
+ */
+export function channels(flow) {
+  /** @type {ChannelEntry[]} */
+  const out = [{ name: "main", archived: false }];
+  if (!flow || !Array.isArray(flow.channels)) {
+    return out;
+  }
+  for (const entry of flow.channels) {
+    if (
+      entry &&
+      typeof entry.name === "string" &&
+      entry.name !== "main" &&
+      isValidChannel(entry.name)
+    ) {
+      out.push({ name: entry.name.trim(), archived: Boolean(entry.archived) });
+    }
+  }
+  return out;
+}
+
+/**
+ * Validates a `channel` tool action (`"create"`, `"archive"`, or `"list"`).
+ *
+ * @param {Flow | null | undefined} flow
+ * @param {{ action?: unknown, name?: unknown }} [input]
+ * @returns {{ ok: boolean, error?: string, name?: string, channels?: ChannelEntry[] }}
+ */
+export function validateChannelAction(flow, { action, name } = {}) {
+  if (action === "list") {
+    return { ok: true, channels: channels(flow) };
+  }
+  if (action !== "create" && action !== "archive") {
+    return {
+      ok: false,
+      error: 'channel action must be "create", "archive", or "list"',
+    };
+  }
+  if (!flow) {
+    return {
+      ok: false,
+      error: "no active flow — start a flow with progress first",
+    };
+  }
+  const trimmed = typeof name === "string" ? name.trim() : "";
+  if (!isValidChannel(trimmed)) {
+    return {
+      ok: false,
+      error: "invalid channel name: must match [a-z0-9][a-z0-9-]{0,31}",
+    };
+  }
+  const list = channels(flow);
+  const existing = list.find((c) => c.name === trimmed);
+
+  if (action === "create") {
+    if (existing) {
+      if (existing.archived) {
+        return {
+          ok: false,
+          error: `channel "${trimmed}" is archived and cannot be recreated`,
+        };
+      }
+      return { ok: true, name: trimmed, noop: true, channels: list };
+    }
+    if (list.length >= MAX_CHANNELS) {
+      return {
+        ok: false,
+        error: `cannot create channel "${trimmed}": limit of ${MAX_CHANNELS} channels reached`,
+      };
+    }
+    return { ok: true, name: trimmed };
+  }
+
+  if (trimmed === "main") {
+    return { ok: false, error: 'cannot archive the default "main" channel' };
+  }
+  if (!existing) {
+    return { ok: false, error: `unknown channel "${trimmed}"` };
+  }
+  if (existing.archived) {
+    return { ok: true, name: trimmed, noop: true, channels: list };
+  }
+  return { ok: true, name: trimmed };
+}
+
+/**
+ * Validates the target `channel` for a `post` tool call against `flow`.
+ *
+ * @param {Flow | null | undefined} flow
+ * @param {unknown} rawChannel
+ * @returns {{ ok: boolean, channel?: string, error?: string }}
+ */
+export function validatePostChannel(flow, rawChannel) {
+  if (rawChannel === undefined || rawChannel === null) {
+    return { ok: true, channel: "main" };
+  }
+  if (typeof rawChannel !== "string") {
+    return {
+      ok: false,
+      error: "invalid channel name: must match [a-z0-9][a-z0-9-]{0,31}",
+    };
+  }
+  const trimmed = rawChannel.trim();
+  if (trimmed.length === 0) {
+    return { ok: true, channel: "main" };
+  }
+  if (!isValidChannel(trimmed)) {
+    const safeBad = sanitizeShortText(trimmed, 40);
+    return {
+      ok: false,
+      error: `invalid channel "${safeBad}": must match [a-z0-9][a-z0-9-]{0,31}`,
+    };
+  }
+  if (trimmed === "main") {
+    return { ok: true, channel: "main" };
+  }
+  const entry = channels(flow).find((c) => c.name === trimmed);
+  if (!entry) {
+    return { ok: false, error: `unknown channel "${trimmed}"` };
+  }
+  if (entry.archived) {
+    return {
+      ok: false,
+      error: `channel "${trimmed}" is archived and accepts no posts`,
+    };
+  }
+  return { ok: true, channel: trimmed };
+}
+
+/**
  * Sanitises and caps a short display field (`step.note`, `paused.detail`,
  * `delegate`, run/task/flow titles) to `maxLen` (default 500 chars).
  *
@@ -369,7 +567,9 @@ function sanitizePostText(raw) {
  */
 function sanitizeShortText(raw, maxLen = MAX_SHORT_TEXT) {
   if (typeof raw !== "string") return "";
-  const cleaned = sanitizePostText(raw).trim();
+  const cleaned = sanitizePostText(raw)
+    .replace(/[\r\n\t]+/g, " ")
+    .trim();
   return cleaned.length > maxLen ? cleaned.slice(0, maxLen) : cleaned;
 }
 
@@ -707,6 +907,22 @@ function finalizeFlow(nextFlow, at) {
     postsDropped,
     woken,
     hasMemberEvents: Boolean(nextFlow.hasMemberEvents),
+    ...(Array.isArray(nextFlow.channels)
+      ? {
+          channels: nextFlow.channels
+            .filter(
+              (c) =>
+                c &&
+                typeof c.name === "string" &&
+                c.name !== "main" &&
+                isValidChannel(c.name),
+            )
+            .map((c) => ({
+              name: c.name.trim(),
+              archived: Boolean(c.archived),
+            })),
+        }
+      : {}),
   };
 }
 
@@ -730,8 +946,11 @@ export function reduce(flow, event) {
         const tasks = rawTasks.map((t, idx) => ({
           n: idx + 1,
           title: sanitizeShortText(t.title ?? ""),
-          specialist: t.specialist,
-          tier: t.tier,
+          specialist:
+            typeof t.specialist === "string"
+              ? sanitizeShortText(t.specialist)
+              : t.specialist,
+          tier: typeof t.tier === "string" ? sanitizeShortText(t.tier) : t.tier,
           after: Array.isArray(t.after) ? [...t.after] : [],
           state: /** @type {TaskState} */ ("waiting"),
           round: 0,
@@ -769,8 +988,11 @@ export function reduce(flow, event) {
         return {
           n: idx + 1,
           title: trimmedTitle,
-          specialist: t.specialist,
-          tier: t.tier,
+          specialist:
+            typeof t.specialist === "string"
+              ? sanitizeShortText(t.specialist)
+              : t.specialist,
+          tier: typeof t.tier === "string" ? sanitizeShortText(t.tier) : t.tier,
           after: Array.isArray(t.after) ? [...t.after] : [],
           state: /** @type {TaskState} */ (
             prevTask ? prevTask.state : "waiting"
@@ -903,13 +1125,15 @@ export function reduce(flow, event) {
         typeof event.delegate === "string"
           ? sanitizeShortText(event.delegate)
           : "";
+      const cleanEffort =
+        typeof event.effort === "string" ? sanitizeShortText(event.effort) : "";
       /** @type {Run} */
       const newRun = {
         id: event.id,
         harness: event.harness,
-        agent: event.agent,
-        model: event.model,
-        effort: event.effort ?? null,
+        agent: sanitizeShortText(event.agent ?? ""),
+        model: sanitizeShortText(event.model ?? ""),
+        effort: cleanEffort.length > 0 ? cleanEffort : null,
         delegate: cleanDelegate.length > 0 ? cleanDelegate : null,
         title: trimmedTitle,
         taskN,
@@ -1214,10 +1438,27 @@ export function reduce(flow, event) {
         event.replyTo > 0
           ? event.replyTo
           : null;
-      const channel =
-        typeof event.channel === "string" && event.channel.trim().length > 0
-          ? event.channel.trim()
-          : "main";
+      let channel = "main";
+      if (event.channel !== undefined && event.channel !== null) {
+        if (typeof event.channel !== "string") {
+          return flow;
+        }
+        const trimmedCh = event.channel.trim();
+        if (trimmedCh.length > 0) {
+          if (!isValidChannel(trimmedCh)) {
+            return flow;
+          }
+          if (trimmedCh !== "main") {
+            const chEntry = Array.isArray(flow.channels)
+              ? flow.channels.find((c) => c.name === trimmedCh)
+              : undefined;
+            if (!chEntry || chEntry.archived) {
+              return flow;
+            }
+          }
+          channel = trimmedCh;
+        }
+      }
       const runId =
         typeof event.runId === "string" && event.runId.trim().length > 0
           ? event.runId.trim()
@@ -1401,6 +1642,54 @@ export function reduce(flow, event) {
       );
     }
 
+    case "channel": {
+      if (!flow) {
+        return flow;
+      }
+      const trimmed = typeof event.name === "string" ? event.name.trim() : "";
+      if (!isValidChannel(trimmed)) {
+        return flow;
+      }
+      const prevChannels = Array.isArray(flow.channels)
+        ? flow.channels.map((c) => ({
+            name: c.name,
+            archived: Boolean(c.archived),
+          }))
+        : [];
+      if (event.action === "create") {
+        if (
+          trimmed === "main" ||
+          prevChannels.some((c) => c.name === trimmed)
+        ) {
+          return flow;
+        }
+        if (1 + prevChannels.length >= MAX_CHANNELS) {
+          return flow;
+        }
+        return finalizeFlow(
+          {
+            ...flow,
+            channels: [...prevChannels, { name: trimmed, archived: false }],
+          },
+          event.at,
+        );
+      }
+      if (event.action === "archive") {
+        if (trimmed === "main") {
+          return flow;
+        }
+        const idx = prevChannels.findIndex((c) => c.name === trimmed);
+        if (idx === -1 || prevChannels[idx].archived) {
+          return flow;
+        }
+        const nextChannels = prevChannels.map((c, i) =>
+          i === idx ? { name: c.name, archived: true } : c,
+        );
+        return finalizeFlow({ ...flow, channels: nextChannels }, event.at);
+      }
+      return flow;
+    }
+
     default:
       return flow;
   }
@@ -1464,16 +1753,19 @@ export function taskBoard(flow) {
   );
   return flow.tasks.map((t) => ({
     n: t.n,
-    title: t.title,
-    specialist: t.specialist,
-    tier: t.tier,
+    title: sanitizeShortText(t.title ?? ""),
+    specialist:
+      typeof t.specialist === "string"
+        ? sanitizeShortText(t.specialist)
+        : t.specialist,
+    tier: typeof t.tier === "string" ? sanitizeShortText(t.tier) : t.tier,
     state: t.state,
     round: t.round,
     after: [...t.after],
     waitingOn: t.after.filter((dep) => !accepted.has(dep)),
-    ...(t.model ? { model: t.model } : {}),
-    ...(t.warning ? { warning: t.warning } : {}),
-    ...(t.worktree ? { worktree: t.worktree } : {}),
+    ...(t.model ? { model: sanitizeShortText(t.model) } : {}),
+    ...(t.warning ? { warning: sanitizeShortText(t.warning) } : {}),
+    ...(t.worktree ? { worktree: sanitizeShortText(t.worktree) } : {}),
   }));
 }
 
@@ -1719,8 +2011,8 @@ export function stalls(
           : "active";
     rows.push({
       id: run.id,
-      agent: run.agent,
-      title: run.title,
+      agent: sanitizeShortText(run.agent ?? ""),
+      title: sanitizeShortText(run.title ?? ""),
       taskN: run.taskN,
       lastActivityAt: lastAt,
       idleMs,
@@ -1753,16 +2045,25 @@ function buildMemberRow(flow, run, posts) {
   } else if (run.paused) {
     state = "paused";
     reason = run.paused.reason;
-    detail = run.paused.detail;
+    const cleanPauseDetail =
+      typeof run.paused.detail === "string"
+        ? sanitizeShortText(run.paused.detail)
+        : "";
+    detail = cleanPauseDetail.length > 0 ? cleanPauseDetail : undefined;
   } else if (run.status === "running") {
     state = run.waiting === true ? "waiting" : "working";
   } else {
     state = "waiting";
   }
 
-  const agentLower = String(run.agent ?? "")
-    .trim()
-    .toLowerCase();
+  const cleanAgent = sanitizeShortText(run.agent ?? "");
+  const cleanModel = sanitizeShortText(run.model ?? "");
+  const cleanDelegate =
+    typeof run.delegate === "string" &&
+    sanitizeShortText(run.delegate).length > 0
+      ? sanitizeShortText(run.delegate)
+      : undefined;
+  const agentLower = cleanAgent.toLowerCase();
   /** @type {number | undefined} */
   let lastPostSeq;
   for (let i = posts.length - 1; i >= 0; i -= 1) {
@@ -1780,20 +2081,23 @@ function buildMemberRow(flow, run, posts) {
     run.taskN !== null && run.taskN !== undefined && Array.isArray(flow.tasks)
       ? flow.tasks.find((t) => t.n === run.taskN)
       : undefined;
-  const taskModel = matchedTask?.model;
-  const worktree = run.worktree ?? matchedTask?.worktree;
+  const taskModel = matchedTask?.model
+    ? sanitizeShortText(matchedTask.model)
+    : undefined;
+  const rawWorktree = run.worktree ?? matchedTask?.worktree;
+  const worktree = rawWorktree ? sanitizeShortText(rawWorktree) : undefined;
 
   return {
     id: run.id,
-    agent: run.agent,
+    agent: cleanAgent,
     state,
     ...(reason ? { reason } : {}),
     ...(detail ? { detail } : {}),
     ...(run.taskN !== null && run.taskN !== undefined
       ? { taskN: run.taskN }
       : {}),
-    model: run.model,
-    ...(run.delegate ? { delegate: run.delegate } : {}),
+    model: cleanModel,
+    ...(cleanDelegate ? { delegate: cleanDelegate } : {}),
     ...(taskModel ? { taskModel } : {}),
     ...(worktree ? { worktree } : {}),
     ...(lastPostSeq !== undefined ? { lastPostSeq } : {}),
@@ -1874,6 +2178,11 @@ export function board(flow, { search, from, to, kind, channel, limit } = {}) {
 
   let filtered = flow.posts.filter((p) => {
     const postChannel = String(p.channel ?? "main").toLowerCase();
+    const isLeadMainBroadcast =
+      postChannel === "main" &&
+      String(p.from ?? "").toLowerCase() === "lead" &&
+      Array.isArray(p.to) &&
+      p.to.some((t) => String(t ?? "").toLowerCase() === "all");
     if (fromNorm && p.from.toLowerCase() !== fromNorm) return false;
     if (
       toNorm &&
@@ -1885,7 +2194,9 @@ export function board(flow, { search, from, to, kind, channel, limit } = {}) {
       return false;
     }
     if (kindNorm && p.kind.toLowerCase() !== kindNorm) return false;
-    if (channelNorm && postChannel !== channelNorm) return false;
+    if (channelNorm && postChannel !== channelNorm && !isLeadMainBroadcast) {
+      return false;
+    }
     if (searchNorm) {
       const hitText = p.text.toLowerCase().includes(searchNorm);
       const hitFrom = p.from.toLowerCase().includes(searchNorm);
@@ -2163,4 +2474,387 @@ export function mentionGraph(flow, { uptoSeq = undefined } = {}) {
   });
 
   return { nodes, edges };
+}
+
+const TASK_NUMBER_RE = /\btask\s*#?(\d+)\b/gi;
+
+/**
+ * Formats untrusted text into a single sanitised line of at most 140 characters.
+ *
+ * @param {unknown} raw
+ * @returns {string}
+ */
+function formatOverviewLine(raw) {
+  const clean = sanitizeDisplayText(raw).replace(/\s+/g, " ").trim();
+  if (clean.length === 0) return "";
+  return clean.length > MAX_OVERVIEW_LINE
+    ? `${clean.slice(0, MAX_OVERVIEW_LINE - 1)}…`
+    : clean;
+}
+
+/**
+ * Finds the highest finite timestamp recorded in `flow`.
+ *
+ * @param {Flow} flow
+ * @returns {number}
+ */
+function latestFlowTimestamp(flow) {
+  let maxAt = Number.isFinite(flow.startedAt) ? flow.startedAt : 0;
+  if (typeof flow.closedAt === "number" && Number.isFinite(flow.closedAt)) {
+    maxAt = Math.max(maxAt, flow.closedAt);
+  }
+  if (Array.isArray(flow.runs)) {
+    for (const r of flow.runs) {
+      if (Number.isFinite(r.startedAt)) maxAt = Math.max(maxAt, r.startedAt);
+      if (Number.isFinite(r.lastActivityAt)) {
+        maxAt = Math.max(maxAt, r.lastActivityAt);
+      }
+      if (typeof r.endedAt === "number" && Number.isFinite(r.endedAt)) {
+        maxAt = Math.max(maxAt, r.endedAt);
+      }
+    }
+  }
+  if (Array.isArray(flow.posts)) {
+    for (const p of flow.posts) {
+      if (Number.isFinite(p.at)) maxAt = Math.max(maxAt, p.at);
+    }
+  }
+  if (Array.isArray(flow.history)) {
+    for (const h of flow.history) {
+      if (Number.isFinite(h.at)) maxAt = Math.max(maxAt, h.at);
+    }
+  }
+  if (Array.isArray(flow.replans)) {
+    for (const r of flow.replans) {
+      if (Number.isFinite(r.at)) maxAt = Math.max(maxAt, r.at);
+    }
+  }
+  return maxAt;
+}
+
+/**
+ * Returns `true` when task `startN` depends directly or transitively (via `after`)
+ * on at least one task number in `targetSet`.
+ *
+ * @param {Task[]} tasks
+ * @param {number} startN
+ * @param {Set<number>} targetSet
+ * @returns {boolean}
+ */
+function taskDependsOnAny(tasks, startN, targetSet) {
+  /** @type {Map<number, number[]>} */
+  const afterByN = new Map(
+    tasks.map((t) => [t.n, Array.isArray(t.after) ? t.after : []]),
+  );
+  /** @type {Set<number>} */
+  const visited = new Set();
+  const stack = [...(afterByN.get(startN) ?? [])];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (cur === undefined || visited.has(cur)) continue;
+    if (targetSet.has(cur)) return true;
+    visited.add(cur);
+    for (const dep of afterByN.get(cur) ?? []) {
+      if (!visited.has(dep)) stack.push(dep);
+    }
+  }
+  return false;
+}
+
+/**
+ * Resolves the task number(s) associated with a post for defect-closure fallback:
+ * 1. Explicit `task N` / `task #N` references in `post.text`.
+ * 2. When the author owns a single planned task (and either the recipient owns at
+ *    most one task, the author's task depends on a recipient task, or the re-review
+ *    is a separate run), resolves unambiguously.
+ * 3. Otherwise unambiguous single planned task when neither the target specialist
+ *    nor the post author owns multiple tasks in `flow.tasks`.
+ *
+ * @param {Flow} flow
+ * @param {Post} post
+ * @param {string[]} sharedTargets
+ * @param {boolean} [isAcrossRuns]
+ * @returns {{ tasks: Set<number> | null, ambiguous: boolean }}
+ */
+function resolvePostTaskScope(flow, post, sharedTargets, isAcrossRuns = false) {
+  /** @type {Set<number>} */
+  const explicitTasks = new Set();
+  const text = typeof post.text === "string" ? post.text : "";
+  for (const match of text.matchAll(TASK_NUMBER_RE)) {
+    const n = Number.parseInt(match[1], 10);
+    if (Number.isInteger(n) && n > 0) {
+      explicitTasks.add(n);
+    }
+  }
+  if (explicitTasks.size > 0) {
+    return { tasks: explicitTasks, ambiguous: false };
+  }
+
+  const tasks = Array.isArray(flow.tasks) ? flow.tasks : [];
+  const author = String(post.from ?? "")
+    .trim()
+    .toLowerCase();
+  /** @type {number[]} */
+  const owned = [];
+  /** @type {number[]} */
+  const authorOwned = [];
+  for (const t of tasks) {
+    const spec = String(t.specialist ?? "")
+      .trim()
+      .toLowerCase();
+    if (sharedTargets.includes(spec)) {
+      owned.push(t.n);
+    }
+    if (author.length > 0 && spec === author) {
+      authorOwned.push(t.n);
+    }
+  }
+  if (authorOwned.length > 1) {
+    return { tasks: new Set(authorOwned), ambiguous: true };
+  }
+  if (authorOwned.length === 1) {
+    if (owned.length <= 1) {
+      return {
+        tasks: new Set(owned.length === 1 ? owned : authorOwned),
+        ambiguous: false,
+      };
+    }
+    if (
+      taskDependsOnAny(tasks, authorOwned[0], new Set(owned)) ||
+      isAcrossRuns
+    ) {
+      return {
+        tasks: new Set([...owned, authorOwned[0]]),
+        ambiguous: false,
+      };
+    }
+    return { tasks: new Set(owned), ambiguous: true };
+  }
+  if (owned.length > 1) {
+    return { tasks: new Set(owned), ambiguous: true };
+  }
+  if (owned.length === 1) {
+    return { tasks: new Set([owned[0]]), ambiguous: false };
+  }
+
+  if (post.runId && Array.isArray(flow.runs)) {
+    const run = flow.runs.find((r) => r.id === post.runId);
+    if (run && typeof run.taskN === "number" && Number.isInteger(run.taskN)) {
+      return { tasks: new Set([run.taskN]), ambiguous: false };
+    }
+  }
+
+  return { tasks: null, ambiguous: false };
+}
+
+/**
+ * Checks whether a later `result` post `resultPost` by the same reviewer closes
+ * an earlier `defect` post `defectPost`:
+ * 1. `replyTo` first: `resultPost.replyTo === defectPost.seq`.
+ * 2. Fallback: `resultPost` mentions the same worker specialist (defects addressed
+ *    only to `@lead` are closed only by `replyTo`) and resolves to the same
+ *    unambiguous task scope (including when the reviewer owns only one task).
+ *
+ * @param {Flow} flow
+ * @param {Post} defectPost
+ * @param {Post} resultPost
+ * @returns {boolean}
+ */
+function defectClosedByResult(flow, defectPost, resultPost) {
+  if (resultPost.replyTo === defectPost.seq) {
+    return true;
+  }
+  const author = String(defectPost.from ?? "")
+    .trim()
+    .toLowerCase();
+  const dTo = (Array.isArray(defectPost.to) ? defectPost.to : [])
+    .map((x) =>
+      String(x ?? "")
+        .trim()
+        .toLowerCase(),
+    )
+    .filter((x) => x.length > 0 && x !== "all" && x !== author);
+  const rTo = (Array.isArray(resultPost.to) ? resultPost.to : [])
+    .map((x) =>
+      String(x ?? "")
+        .trim()
+        .toLowerCase(),
+    )
+    .filter((x) => x.length > 0 && x !== "all" && x !== author);
+  const dWorkers = dTo.filter((x) => x !== "lead");
+  const rWorkers = rTo.filter((x) => x !== "lead");
+  const shared = dWorkers.filter((x) => rWorkers.includes(x));
+  if (shared.length === 0) {
+    return false;
+  }
+
+  const isAcrossRuns = !(
+    defectPost.runId &&
+    resultPost.runId &&
+    defectPost.runId === resultPost.runId
+  );
+  const dScope = resolvePostTaskScope(flow, defectPost, shared, isAcrossRuns);
+  const rScope = resolvePostTaskScope(flow, resultPost, shared, isAcrossRuns);
+  if (dScope.ambiguous || rScope.ambiguous) {
+    return false;
+  }
+  if (dScope.tasks === null && rScope.tasks === null) {
+    return true;
+  }
+  if (dScope.tasks && rScope.tasks && dScope.tasks.size > 0) {
+    return [...dScope.tasks].every((n) => rScope.tasks.has(n));
+  }
+  return false;
+}
+
+/**
+ * Builds the data-only flow overview ("narrator"):
+ * - `members`: active and standing-by members with `line` (latest step note, else latest post, sanitised, one line, <= 140 chars)
+ * - `openQuestions`: question posts with no later post whose `replyTo === seq`
+ * - `openDefects`: defect posts with no later `result` post from the same author closing them (`replyTo` first, else same recipient + same task)
+ * - `stalls`: quiet or stalled worker runs from `stalls()`
+ *
+ * @param {Flow | null | undefined} flow
+ * @param {number | { now?: number, quietMs?: number, stallMs?: number, waitingStallMs?: number }} [nowOrOptions]
+ * @returns {OverviewView}
+ */
+export function overview(flow, nowOrOptions = undefined) {
+  if (!flow) {
+    return {
+      members: [],
+      openQuestions: [],
+      openDefects: [],
+      stalls: [],
+    };
+  }
+
+  const posts = Array.isArray(flow.posts) ? flow.posts : [];
+  /** @type {Map<number, Post>} */
+  const postBySeq = new Map();
+  /** @type {Set<number>} */
+  const repliedSeqs = new Set();
+  for (const p of posts) {
+    postBySeq.set(p.seq, p);
+    if (typeof p.replyTo === "number" && p.seq > p.replyTo) {
+      repliedSeqs.add(p.replyTo);
+    }
+  }
+
+  const m = members(flow);
+  const runs = Array.isArray(flow.runs) ? flow.runs : [];
+  /** @type {Map<string, Run>} */
+  const runById = new Map(runs.map((r) => [r.id, r]));
+  /** @type {Map<string, string>} */
+  const latestRunIdByAgent = new Map();
+  for (const r of runs) {
+    if (r.role === "lead") continue;
+    const agentKey = sanitizeShortText(r.agent ?? "").toLowerCase();
+    if (agentKey.length > 0) {
+      latestRunIdByAgent.set(agentKey, r.id);
+    }
+  }
+
+  /** @type {OverviewMember[]} */
+  const overviewMembers = [];
+  for (const row of [...m.active, ...m.standingBy]) {
+    const cleanAgent = sanitizeShortText(row.agent ?? "");
+    const agentKey = cleanAgent.toLowerCase();
+    if (agentKey.length > 0 && latestRunIdByAgent.get(agentKey) !== row.id) {
+      continue;
+    }
+    const run = runById.get(row.id);
+    const stepLine = run?.steps?.note ? formatOverviewLine(run.steps.note) : "";
+    let lastPost =
+      !stepLine && row.lastPostSeq !== undefined
+        ? postBySeq.get(row.lastPostSeq)
+        : undefined;
+    if (!stepLine && !lastPost && agentKey.length > 0) {
+      for (let i = posts.length - 1; i >= 0; i -= 1) {
+        if (sanitizeShortText(posts[i].from ?? "").toLowerCase() === agentKey) {
+          lastPost = posts[i];
+          break;
+        }
+      }
+    }
+    const postLine = lastPost ? formatOverviewLine(lastPost.text) : "";
+    overviewMembers.push({
+      agent: cleanAgent,
+      state: row.state,
+      line: stepLine || postLine,
+    });
+  }
+
+  /** @type {OpenQuestion[]} */
+  const openQuestions = [];
+  for (const p of posts) {
+    if (p.kind === "question" && !repliedSeqs.has(p.seq)) {
+      openQuestions.push({
+        seq: p.seq,
+        from: sanitizeShortText(p.from ?? ""),
+        text: sanitizeDisplayText(p.text),
+      });
+    }
+  }
+
+  /** @type {OpenDefect[]} */
+  const openDefects = [];
+  for (let i = 0; i < posts.length; i += 1) {
+    const d = posts[i];
+    if (d.kind !== "defect") continue;
+    const dAuthor = sanitizeShortText(d.from ?? "").toLowerCase();
+    let closed = false;
+    for (let j = i + 1; j < posts.length; j += 1) {
+      const r = posts[j];
+      if (r.seq <= d.seq || r.kind !== "result") continue;
+      const rAuthor = sanitizeShortText(r.from ?? "").toLowerCase();
+      if (rAuthor !== dAuthor) continue;
+      if (defectClosedByResult(flow, d, r)) {
+        closed = true;
+        break;
+      }
+    }
+    if (!closed) {
+      openDefects.push({
+        seq: d.seq,
+        from: sanitizeShortText(d.from ?? ""),
+        to: Array.isArray(d.to)
+          ? d.to.map((t) => sanitizeShortText(t ?? "")).filter(Boolean)
+          : [],
+        text: sanitizeDisplayText(d.text),
+      });
+    }
+  }
+
+  /** @type {number | undefined} */
+  let explicitNow;
+  /** @type {{ quietMs?: number, stallMs?: number, waitingStallMs?: number }} */
+  let stallOpts = {};
+  if (typeof nowOrOptions === "number" && Number.isFinite(nowOrOptions)) {
+    explicitNow = nowOrOptions;
+  } else if (nowOrOptions && typeof nowOrOptions === "object") {
+    if (
+      typeof nowOrOptions.now === "number" &&
+      Number.isFinite(nowOrOptions.now)
+    ) {
+      explicitNow = nowOrOptions.now;
+    }
+    stallOpts = nowOrOptions;
+  }
+  const maxAt = latestFlowTimestamp(flow);
+  const effectiveNow =
+    explicitNow !== undefined
+      ? explicitNow
+      : maxAt >= 1_000_000_000_000
+        ? Math.max(Date.now(), maxAt)
+        : maxAt;
+  const stallRows = stalls(flow, effectiveNow, stallOpts).filter(
+    (s) => s.state === "stalled" || s.state === "quiet",
+  );
+
+  return {
+    members: overviewMembers,
+    openQuestions,
+    openDefects,
+    stalls: stallRows,
+  };
 }

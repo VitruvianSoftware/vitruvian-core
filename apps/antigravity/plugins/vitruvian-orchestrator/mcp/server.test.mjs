@@ -187,7 +187,7 @@ test("handleJsonRpcMessage serves initialize, tools/list, and tools/call for pro
     });
     assert.deepEqual(
       listRes.result.tools.map((t) => t.name),
-      ["progress", "step", "post", "board"],
+      ["progress", "step", "post", "board", "channel"],
     );
 
     const callProgress = handleJsonRpcMessage(
@@ -1895,6 +1895,467 @@ test("return round 1 item 2: step accepts worktree alone (done/total optional) a
       { flowsDir: tempDir, now: () => 1200 },
     );
     assert.equal(badRes.error?.code, -32602);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("phase 3 item 3: channel tool enforces lead-only create/archive, open list, max 20 channels, post validation, and board channel filter", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "orch-mcp-channels-"));
+  try {
+    const rootCid = "lead-chan-conv-1";
+    const workerCid = "worker-chan-conv-1";
+    const leadMeta = {
+      "antigravity.google/root_conversation_id": rootCid,
+      "antigravity.google/conversation_id": rootCid,
+    };
+    const workerMeta = {
+      "antigravity.google/root_conversation_id": rootCid,
+      "antigravity.google/parent_conversation_id": rootCid,
+      "antigravity.google/conversation_id": workerCid,
+      "antigravity.google/agent_name": "wren",
+    };
+
+    const call = (id, name, args, meta, at = 1000 + id * 10) =>
+      handleJsonRpcMessage(
+        {
+          jsonrpc: "2.0",
+          id,
+          method: "tools/call",
+          params: { name, arguments: args, _meta: meta },
+        },
+        { flowsDir: tempDir, now: () => at },
+      );
+
+    call(
+      1,
+      "progress",
+      {
+        title: "Channel Flow",
+        phase: "delegate",
+        tasks: [{ title: "Impl", specialist: "wren", tier: "core" }],
+      },
+      leadMeta,
+    );
+
+    const flowPath = join(tempDir, `${rootCid}.jsonl`);
+    appendFileSync(
+      flowPath,
+      JSON.stringify({
+        type: "run.start",
+        at: 1015,
+        id: workerCid,
+        harness: "antigravity",
+        agent: "wren",
+        model: "pro",
+        title: "Impl",
+        role: "worker",
+      }) + "\n",
+      "utf8",
+    );
+
+    // 1. Worker cannot create or archive channels (lead-only check matches progress).
+    const workerCreate = call(
+      2,
+      "channel",
+      { action: "create", name: "review" },
+      workerMeta,
+    );
+    assert.equal(workerCreate.error?.code, -32602);
+    assert.match(workerCreate.error.message, /lead only/);
+
+    const unknownCreate = call(
+      3,
+      "channel",
+      { action: "create", name: "review" },
+      {},
+    );
+    assert.equal(unknownCreate.error?.code, -32602);
+    assert.match(unknownCreate.error.message, /lead only/);
+
+    const workerByRunIdCreate = call(
+      4,
+      "channel",
+      { action: "create", name: "review" },
+      { "antigravity.google/conversation_id": workerCid },
+    );
+    assert.equal(workerByRunIdCreate.error?.code, -32602);
+    assert.match(workerByRunIdCreate.error.message, /lead only/);
+
+    // 2. Posting to an unknown or invalid channel fails with a clear error.
+    const unknownPost = call(
+      5,
+      "post",
+      { text: "Hello @lead", channel: "review" },
+      workerMeta,
+    );
+    assert.equal(unknownPost.error?.code, -32602);
+    assert.match(unknownPost.error.message, /unknown channel "review"/);
+
+    const invalidPost = call(
+      6,
+      "post",
+      { text: "Hello @lead", channel: "Bad_Chan" },
+      workerMeta,
+    );
+    assert.equal(invalidPost.error?.code, -32602);
+    assert.match(invalidPost.error.message, /invalid channel/i);
+
+    // 3. Lead creates "review"; worker can list channels and post to "review".
+    const created = call(
+      7,
+      "channel",
+      { action: "create", name: "review" },
+      leadMeta,
+    );
+    assert.equal(created.error, undefined);
+    const createdList = JSON.parse(created.result.content[0].text);
+    assert.deepEqual(createdList, [
+      { name: "main", archived: false },
+      { name: "review", archived: false },
+    ]);
+
+    const workerList = call(8, "channel", { action: "list" }, workerMeta);
+    assert.equal(workerList.error, undefined);
+    assert.deepEqual(
+      JSON.parse(workerList.result.content[0].text),
+      createdList,
+    );
+
+    const mainPost = call(
+      9,
+      "post",
+      { text: "Main update @all", kind: "note" },
+      leadMeta,
+    );
+    assert.equal(JSON.parse(mainPost.result.content[0].text).seq, 1);
+
+    const reviewPost = call(
+      10,
+      "post",
+      {
+        text: "Ready in review @lead @wren",
+        kind: "result",
+        channel: "review",
+      },
+      workerMeta,
+    );
+    assert.equal(JSON.parse(reviewPost.result.content[0].text).seq, 2);
+
+    // 4. board filters by channel; main posts keep 7 keys and non-main posts carry channel.
+    const mainRows = JSON.parse(
+      call(11, "board", { channel: "main" }, leadMeta).result.content[0].text,
+    );
+    assert.equal(mainRows.length, 1);
+    assert.equal(mainRows[0].seq, 1);
+    assert.deepEqual(Object.keys(mainRows[0]).sort(), [
+      "at",
+      "from",
+      "kind",
+      "replyTo",
+      "seq",
+      "text",
+      "to",
+    ]);
+
+    const reviewRows = JSON.parse(
+      call(12, "board", { channel: "review" }, leadMeta).result.content[0].text,
+    );
+    assert.equal(reviewRows.length, 2);
+    assert.equal(reviewRows[0].seq, 1);
+    assert.equal(reviewRows[0].channel, undefined);
+    assert.equal(reviewRows[1].seq, 2);
+    assert.equal(reviewRows[1].channel, "review");
+
+    // 5. Archiving "main" is rejected; archiving "review" blocks further posts to "review".
+    const archiveMain = call(
+      13,
+      "channel",
+      { action: "archive", name: "main" },
+      leadMeta,
+    );
+    assert.equal(archiveMain.error?.code, -32602);
+    assert.match(archiveMain.error.message, /main/);
+
+    const workerArchive = call(
+      14,
+      "channel",
+      { action: "archive", name: "review" },
+      workerMeta,
+    );
+    assert.equal(workerArchive.error?.code, -32602);
+
+    const archived = call(
+      15,
+      "channel",
+      { action: "archive", name: "review" },
+      leadMeta,
+    );
+    assert.equal(archived.error, undefined);
+    assert.deepEqual(JSON.parse(archived.result.content[0].text), [
+      { name: "main", archived: false },
+      { name: "review", archived: true },
+    ]);
+
+    const postArchived = call(
+      16,
+      "post",
+      { text: "Late post", channel: "review" },
+      leadMeta,
+    );
+    assert.equal(postArchived.error?.code, -32602);
+    assert.match(postArchived.error.message, /archived/);
+
+    // 6. Max 20 channels total (including "main" + "review" = 2 already; 18 more succeed, 21st fails).
+    for (let i = 1; i <= 18; i += 1) {
+      const r = call(
+        20 + i,
+        "channel",
+        { action: "create", name: `ch-${i}` },
+        leadMeta,
+      );
+      assert.equal(r.error, undefined);
+    }
+    const overflow = call(
+      50,
+      "channel",
+      { action: "create", name: "ch-overflow" },
+      leadMeta,
+    );
+    assert.equal(overflow.error?.code, -32602);
+    assert.match(overflow.error.message, /20/);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("phase 3 qa: channel create/archive fails closed on empty, default, or root-only _meta and blocks re-creating archived channels", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "orch-mcp-channels-qa-"));
+  try {
+    const rootCid = "lead-qa-cid-1";
+    const leadMeta = {
+      "antigravity.google/root_conversation_id": rootCid,
+      "antigravity.google/conversation_id": rootCid,
+    };
+    const call = (id, name, args, meta, at = 2000 + id * 10) =>
+      handleJsonRpcMessage(
+        {
+          jsonrpc: "2.0",
+          id,
+          method: "tools/call",
+          params: { name, arguments: args, _meta: meta },
+        },
+        { flowsDir: tempDir, now: () => at },
+      );
+
+    let reqId = 1;
+    for (const badMeta of [
+      undefined,
+      {},
+      { "antigravity.google/conversation_id": "" },
+      {
+        "antigravity.google/root_conversation_id": "default",
+        "antigravity.google/conversation_id": "default",
+      },
+      { "antigravity.google/root_conversation_id": rootCid },
+    ]) {
+      const cRes = call(
+        reqId++,
+        "channel",
+        { action: "create", name: "triage" },
+        badMeta,
+      );
+      assert.equal(cRes.error?.code, -32602);
+      assert.match(cRes.error.message, /lead only/);
+
+      const aRes = call(
+        reqId++,
+        "channel",
+        { action: "archive", name: "main" },
+        badMeta,
+      );
+      assert.equal(aRes.error?.code, -32602);
+      assert.match(aRes.error.message, /lead only/);
+    }
+    assert.equal(readdirSync(tempDir).includes("default.jsonl"), false);
+
+    assert.equal(
+      call(
+        reqId++,
+        "progress",
+        {
+          title: "QA Channels",
+          phase: "plan",
+          tasks: [{ title: "Review", specialist: "scout", tier: "fast" }],
+        },
+        leadMeta,
+      ).error,
+      undefined,
+    );
+    assert.equal(
+      call(reqId++, "channel", { action: "create", name: "triage" }, leadMeta)
+        .error,
+      undefined,
+    );
+    assert.equal(
+      call(reqId++, "channel", { action: "archive", name: "triage" }, leadMeta)
+        .error,
+      undefined,
+    );
+    const recreate = call(
+      reqId++,
+      "channel",
+      { action: "create", name: "triage" },
+      leadMeta,
+    );
+    assert.equal(recreate.error?.code, -32602);
+    assert.match(recreate.error.message, /archived/i);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("return round 2 security 1: MCP post and board reject non-main channels before any channel exists (flow.channels undefined)", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "orch-mcp-r2-sec1-"));
+  try {
+    const leadMeta = {
+      conversation_id: "root-sec1",
+      root_conversation_id: "root-sec1",
+    };
+    const call = (id, name, args) =>
+      handleJsonRpcMessage(
+        {
+          jsonrpc: "2.0",
+          id,
+          method: "tools/call",
+          params: { name, arguments: args, _meta: leadMeta },
+        },
+        {
+          flowsDir: tempDir,
+          brainRoots: [join(tempDir, "no-brain")],
+          now: () => 5_000,
+        },
+      );
+
+    // 1. Before progress (no flow file at all)
+    const beforePlan = call(1, "post", {
+      text: "Early channel post",
+      channel: "ghost",
+    });
+    assert.equal(beforePlan.error?.code, -32602);
+    assert.match(beforePlan.error.message, /unknown channel "ghost"/i);
+
+    // 2. After progress, while flow.channels is still undefined
+    assert.equal(
+      call(2, "progress", {
+        title: "No Channels Yet",
+        phase: "delegate",
+        tasks: [{ title: "Build", specialist: "wren", tier: "core" }],
+      }).error,
+      undefined,
+    );
+    const beforeChannel = call(3, "post", {
+      text: "Still uncreated",
+      channel: "ghost",
+    });
+    assert.equal(beforeChannel.error?.code, -32602);
+    assert.match(beforeChannel.error.message, /unknown channel "ghost"/i);
+
+    // 3. Even if a raw post event with a non-main channel lands in JSONL while flow.channels is undefined, board ignores it
+    writeFileSync(
+      join(tempDir, "root-sec1.jsonl"),
+      [
+        JSON.stringify({
+          type: "plan",
+          at: 1000,
+          rootConversationId: "root-sec1",
+          title: "No Channels Yet",
+          tasks: [],
+        }),
+        JSON.stringify({
+          type: "post",
+          at: 1010,
+          rootConversationId: "root-sec1",
+          from: "wren",
+          channel: "ghost",
+          text: "Injected uncreated channel post",
+        }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+    const boardRes = call(4, "board", {});
+    assert.equal(boardRes.error, undefined);
+    assert.deepEqual(JSON.parse(boardRes.result.content[0].text), []);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("return round 2 security 3: repeated channel create or archive returns current list without appending JSONL events", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "orch-mcp-r2-sec3-"));
+  try {
+    const leadMeta = {
+      conversation_id: "root-sec3",
+      root_conversation_id: "root-sec3",
+    };
+    let nowVal = 1_000;
+    const call = (id, name, args) => {
+      nowVal += 10;
+      return handleJsonRpcMessage(
+        {
+          jsonrpc: "2.0",
+          id,
+          method: "tools/call",
+          params: { name, arguments: args, _meta: leadMeta },
+        },
+        {
+          flowsDir: tempDir,
+          brainRoots: [join(tempDir, "no-brain")],
+          now: () => nowVal,
+        },
+      );
+    };
+
+    const jsonlPath = join(tempDir, "root-sec3.jsonl");
+    const countEvents = () =>
+      readFileSync(jsonlPath, "utf8").trim().split("\n").filter(Boolean).length;
+
+    call(1, "progress", {
+      title: "No Log Growth",
+      phase: "delegate",
+      tasks: [{ title: "Audit", specialist: "aegis", tier: "core" }],
+    });
+    const afterPlanCount = countEvents();
+
+    const create1 = call(2, "channel", { action: "create", name: "sec-audit" });
+    assert.equal(create1.error, undefined);
+    assert.equal(countEvents(), afterPlanCount + 1);
+
+    const create2 = call(3, "channel", { action: "create", name: "sec-audit" });
+    assert.equal(create2.error, undefined);
+    assert.deepEqual(JSON.parse(create2.result.content[0].text), [
+      { name: "main", archived: false },
+      { name: "sec-audit", archived: false },
+    ]);
+    assert.equal(countEvents(), afterPlanCount + 1);
+
+    const archive1 = call(4, "channel", {
+      action: "archive",
+      name: "sec-audit",
+    });
+    assert.equal(archive1.error, undefined);
+    assert.equal(countEvents(), afterPlanCount + 2);
+
+    const archive2 = call(5, "channel", {
+      action: "archive",
+      name: "sec-audit",
+    });
+    assert.equal(archive2.error, undefined);
+    assert.deepEqual(JSON.parse(archive2.result.content[0].text), [
+      { name: "main", archived: false },
+      { name: "sec-audit", archived: true },
+    ]);
+    assert.equal(countEvents(), afterPlanCount + 2);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }

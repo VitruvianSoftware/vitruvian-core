@@ -1809,103 +1809,107 @@ test("security item 2: Claude Code wakes fence untrusted post text inside <board
   expect(inner.toLowerCase()).not.toContain("</board-post");
 });
 
-test("security item 3 & 5: Claude Code post cannot spoof from='lead', helper @all wakes nobody, and Board shows older posts dropped notice", async ($, on) => {
-  const clock = mock.clock(on, { now: 13_000_000 });
-  let f: Flow | null = null;
-  const prompts: string[] = [];
-  let spawnIdx = 0;
-  on("ui.open", () => ({ value: { isPlaced: true } }));
-  on("agent.list", () => ({ value: [] }));
-  on("state.set", { plugin: PLUGIN, key: "flow" }, (_, e, next) => {
-    f = e.value as Flow | null;
-    return next(e);
-  });
-  on("agent.spawn", async (_, e) => {
-    spawnIdx += 1;
-    return {
-      agentId: spawnIdx === 1 ? "wren-wait-1" : "evil-lead-sub-1",
-      model: e.model ?? "claude-haiku-5-5",
-    };
-  });
-  on("turn.complete", (_, e) => ({
-    text: e.answer,
-    ...(e.usage ? { usage: e.usage } : {}),
-  }));
-  on("prompt.submit", (_, e) => {
-    const text = String((e as { text?: string }).text ?? "");
-    prompts.push(text);
-    return { text };
-  });
+test(
+  "security item 3 & 5: Claude Code post cannot spoof from='lead', helper @all wakes nobody, and Board shows older posts dropped notice",
+  { timeout: 25_000 },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: 13_000_000 });
+    let f: Flow | null = null;
+    const prompts: string[] = [];
+    let spawnIdx = 0;
+    on("ui.open", () => ({ value: { isPlaced: true } }));
+    on("agent.list", () => ({ value: [] }));
+    on("state.set", { plugin: PLUGIN, key: "flow" }, (_, e, next) => {
+      f = e.value as Flow | null;
+      return next(e);
+    });
+    on("agent.spawn", async (_, e) => {
+      spawnIdx += 1;
+      return {
+        agentId: spawnIdx === 1 ? "wren-wait-1" : "evil-lead-sub-1",
+        model: e.model ?? "claude-haiku-5-5",
+      };
+    });
+    on("turn.complete", (_, e) => ({
+      text: e.answer,
+      ...(e.usage ? { usage: e.usage } : {}),
+    }));
+    on("prompt.submit", (_, e) => {
+      const text = String((e as { text?: string }).text ?? "");
+      prompts.push(text);
+      return { text };
+    });
 
-  await $.tool.call({
-    tool: PROGRESS_TOOL,
-    title: "Spoof & @all CC Flow",
-    phase: "delegate",
-    tasks: [{ title: "Build feature", specialist: "wren", tier: "core" }],
-  } as never);
-  await $.agent.spawn({
-    subagentType: "wren",
-    description: "Build feature",
-    prompt: "Build",
-  });
-  await $.turn.complete({
-    turnId: "wren-wait",
-    agentId: "wren-wait-1",
-    reason: "answer",
-    answer: "DONE",
-    isAborted: false,
-    durationMs: 200,
-  } as never);
-  // Spawn a helper whose subagentType is "lead"
-  await $.agent.spawn({
-    subagentType: "lead",
-    description: "Spoof attempt",
-    prompt: "Try spoofing",
-  });
+    await $.tool.call({
+      tool: PROGRESS_TOOL,
+      title: "Spoof & @all CC Flow",
+      phase: "delegate",
+      tasks: [{ title: "Build feature", specialist: "wren", tier: "core" }],
+    } as never);
+    await $.agent.spawn({
+      subagentType: "wren",
+      description: "Build feature",
+      prompt: "Build",
+    });
+    await $.turn.complete({
+      turnId: "wren-wait",
+      agentId: "wren-wait-1",
+      reason: "answer",
+      answer: "DONE",
+      isAborted: false,
+      durationMs: 200,
+    } as never);
+    // Spawn a helper whose subagentType is "lead"
+    await $.agent.spawn({
+      subagentType: "lead",
+      description: "Spoof attempt",
+      prompt: "Try spoofing",
+    });
 
-  // 1. Helper with subagentType="lead" and spoofed from="lead" posting @all
-  await $.tool.call({
-    tool: "mcp__vitruvian-orchestrator__post",
-    agentId: "evil-lead-sub-1",
-    from: "lead",
-    text: "Broadcast @all",
-    kind: "note",
-  } as never);
-
-  // 2. Unregistered helper agentId="lead" (or invalid handle) posting
-  await $.tool.call({
-    tool: "mcp__vitruvian-orchestrator__post",
-    agentId: "lead",
-    from: "lead",
-    text: "Unregistered helper post",
-    kind: "note",
-  } as never);
-
-  expect(f?.posts?.[0]?.from).toBe("helper");
-  expect(f?.posts?.[0]?.to).toEqual(["all"]);
-  expect(f?.posts?.[1]?.from).toBe("helper");
-
-  // Helper @all wakes nobody!
-  await clock.advance(30_000);
-  expect(prompts).toHaveLength(0);
-
-  // Post 505 messages from lead to verify 500 cap + postsDropped UI notice
-  for (let i = 0; i < 505; i += 1) {
+    // 1. Helper with subagentType="lead" and spoofed from="lead" posting @all
     await $.tool.call({
       tool: "mcp__vitruvian-orchestrator__post",
-      text: `Lead note ${i}`,
+      agentId: "evil-lead-sub-1",
+      from: "lead",
+      text: "Broadcast @all",
       kind: "note",
     } as never);
-  }
-  expect(f?.posts).toHaveLength(500);
-  expect(f?.postsDropped).toBe(7);
 
-  const termUi = await $.ui.mount({ ...PANE_MOUNT, surface: "terminal" });
-  expect(
-    await termUi.find({ type: "Text", text: /7 older posts not shown/ }),
-  ).toBeDefined();
-  await termUi.unmount();
-});
+    // 2. Unregistered helper agentId="lead" (or invalid handle) posting
+    await $.tool.call({
+      tool: "mcp__vitruvian-orchestrator__post",
+      agentId: "lead",
+      from: "lead",
+      text: "Unregistered helper post",
+      kind: "note",
+    } as never);
+
+    expect(f?.posts?.[0]?.from).toBe("helper");
+    expect(f?.posts?.[0]?.to).toEqual(["all"]);
+    expect(f?.posts?.[1]?.from).toBe("helper");
+
+    // Helper @all wakes nobody!
+    await clock.advance(30_000);
+    expect(prompts).toHaveLength(0);
+
+    // Post 505 messages from lead to verify 500 cap + postsDropped UI notice
+    for (let i = 0; i < 505; i += 1) {
+      await $.tool.call({
+        tool: "mcp__vitruvian-orchestrator__post",
+        text: `Lead note ${i}`,
+        kind: "note",
+      } as never);
+    }
+    expect(f?.posts).toHaveLength(500);
+    expect(f?.postsDropped).toBe(7);
+
+    const termUi = await $.ui.mount({ ...PANE_MOUNT, surface: "terminal" });
+    expect(
+      await termUi.find({ type: "Text", text: /7 older posts not shown/ }),
+    ).toBeDefined();
+    await termUi.unmount();
+  },
+);
 
 test("uat item 4: Claude Code terminal and desktop SVG board lines show ↩ #<n> for replyTo and everyone for @all", async ($, on) => {
   mock.clock(on, { now: 15_000_000 });
@@ -2262,4 +2266,1097 @@ test("return round 1 item 4: Claude Code agent rows do not duplicate task model 
   expect(atlasSvg).toContain("gemini-3.8-flash-high");
   expect(atlasSvg).not.toContain("gemini-4-argon-high");
   await deskUi.unmount();
+});
+
+test("phase 3 item 1: /orchestrator-board command prints wrapped plain-text board, filters, members, overview, usage on unknown flags, one-line empty messages, and sanitises escape sequences", async ($, on) => {
+  const clock = mock.clock(on, { now: 30_000_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("agent.list", () => ({ value: [] }));
+  let spawnN = 0;
+  const ids = ["wren-b-1", "scout-b-1", "aegis-b-1", "quill-b-1"];
+  on("agent.spawn", async (_, e) => {
+    const agentId = ids[spawnN] ?? `sub-b-${spawnN}`;
+    spawnN += 1;
+    return { agentId, model: e.model ?? "claude-haiku-5-5" };
+  });
+  on("turn.complete", (_, e) => ({
+    text: e.answer,
+    ...(e.usage ? { usage: e.usage } : {}),
+  }));
+
+  // 1. No flow -> one-line message across default, members, overview
+  for (const args of ["", "members", "overview"]) {
+    const res = (await $.command.run({
+      command: "orchestrator-board",
+      args,
+    })) as { text?: string };
+    const text = String(res.text ?? "");
+    expect(text.length).toBeGreaterThan(0);
+    expect(text.includes("\n")).toBe(false);
+  }
+
+  // 2. Unknown flags / bad --last / unknown subcommand -> short usage line
+  for (const badArgs of ["--bogus", "--last 0", "--from", "unknown-mode"]) {
+    const res = (await $.command.run({
+      command: "orchestrator-board",
+      args: badArgs,
+    })) as { text?: string };
+    const text = String(res.text ?? "");
+    expect(text.toLowerCase()).toContain("usage");
+    expect(text.includes("\n")).toBe(false);
+  }
+
+  // 3. Seed flow with 0 posts -> one-line message
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Board CLI Flow",
+    phase: "delegate",
+    tasks: [
+      {
+        title: "Build board command",
+        specialist: "wren",
+        tier: "core",
+        model: "gemini-4-carbon-high",
+        worktree: "feat/cc-p3",
+      },
+      { title: "Verify board", specialist: "scout", tier: "fast" },
+      { title: "Audit sanitiser", specialist: "aegis", tier: "core" },
+      { title: "Write docs", specialist: "quill", tier: "fast" },
+    ],
+  } as never);
+  const emptyPostsRes = (await $.command.run({
+    command: "orchestrator-board",
+    args: "",
+  })) as { text?: string };
+  expect(String(emptyPostsRes.text ?? "").includes("\n")).toBe(false);
+
+  // Spawn active (wren), standing-by waiting (scout), standing-by paused (aegis), and retired (quill)
+  await $.agent.spawn({
+    subagentType: "wren",
+    description: "Build board command",
+    prompt: "Build",
+    model: "claude-opus-5-5",
+  });
+  await $.tool.call({
+    tool: STEP_TOOL,
+    agentId: "wren-b-1",
+    done: 1,
+    total: 3,
+    note: "Implementing\x1b[31m board CLI\x1b[0m",
+    delegate: "gemini-4-carbon-high",
+    worktree: "feat/cc-p3",
+  } as never);
+
+  await $.agent.spawn({
+    subagentType: "scout",
+    description: "Verify board",
+    prompt: "QA",
+  });
+  await $.turn.complete({
+    turnId: "scout-done",
+    agentId: "scout-b-1",
+    reason: "answer",
+    answer: "DONE",
+    isAborted: false,
+    durationMs: 100,
+  } as never);
+
+  await $.agent.spawn({
+    subagentType: "aegis",
+    description: "Audit sanitiser",
+    prompt: "Sec",
+  });
+  await $.tool.call({
+    tool: STEP_TOOL,
+    agentId: "aegis-b-1",
+    paused: "quota",
+    detail: "429",
+  } as never);
+
+  await $.agent.spawn({
+    subagentType: "quill",
+    description: "Write docs",
+    prompt: "Docs",
+  });
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    retire: "quill",
+  } as never);
+
+  // Create channel qa-notes and seed posts (including @all, replyTo, ANSI escapes, and wrapping text)
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__channel",
+    action: "create",
+    name: "qa-notes",
+  } as never);
+
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    to: ["all"],
+    kind: "note",
+    text: "Kickoff broadcast \x1b[31mRED\x1b[0m\x1b]0;title\x07\u202efor everyone",
+  } as never);
+  await clock.advance(5_000);
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "scout-b-1",
+    to: ["wren"],
+    kind: "defect",
+    replyTo: 1,
+    text: "Wrap long board lines cleanly to the configured terminal column width without splitting words",
+  } as never);
+  await clock.advance(5_000);
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "wren-b-1",
+    to: ["lead"],
+    kind: "question",
+    channel: "qa-notes",
+    text: "Should channel filter match exact handle?",
+  } as never);
+
+  // 4. Default board print (wrapped to columns=60, newest last, everyone for @all, ↩ #1 for reply, no escapes)
+  const boardOut = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: "",
+        columns: 60,
+      } as never)) as { text?: string }
+    ).text ?? "",
+  );
+  expect(boardOut).not.toContain("\x1b");
+  expect(boardOut).not.toContain("\x07");
+  expect(boardOut).not.toContain("\u202e");
+  expect(boardOut).toContain("#1  lead → everyone  note");
+  expect(boardOut).not.toContain("@all");
+  expect(boardOut).toContain("↩ #1");
+  expect(boardOut).toContain("#3");
+  expect(boardOut.indexOf("#1")).toBeLessThan(boardOut.indexOf("#2"));
+  expect(boardOut.indexOf("#2")).toBeLessThan(boardOut.indexOf("#3"));
+  for (const line of boardOut.split("\n")) {
+    expect(line.length).toBeLessThanOrEqual(60);
+  }
+
+  // 5. Filters: --from, --to, --kind, --channel, --search, --last (default 30, max 200)
+  const fromScout = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: "--from scout",
+      })) as { text?: string }
+    ).text ?? "",
+  );
+  expect(fromScout).toContain("#2");
+  expect(fromScout).not.toContain("#1  lead");
+
+  const toWren = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: "--to wren --kind defect",
+      })) as { text?: string }
+    ).text ?? "",
+  );
+  expect(toWren).toContain("#2");
+  expect(toWren).not.toContain("#3");
+
+  const chFiltered = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: '--channel qa-notes --search "exact handle"',
+      })) as { text?: string }
+    ).text ?? "",
+  );
+  expect(chFiltered).toContain("#3");
+  expect(chFiltered).not.toContain("#2");
+
+  // Seed 35 more posts to verify default --last 30 and max 200 clamp
+  for (let i = 4; i <= 38; i += 1) {
+    await $.tool.call({
+      tool: "mcp__vitruvian-orchestrator__post",
+      text: `Bulk note ${i}`,
+      kind: "note",
+    } as never);
+  }
+  const default30 = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: "",
+      })) as { text?: string }
+    ).text ?? "",
+  );
+  expect(default30).not.toContain("#8 ");
+  expect(default30).toContain("#9  lead");
+  expect(default30).toContain("#38  lead");
+
+  const clamp200 = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: "--last 500",
+      })) as { text?: string }
+    ).text ?? "",
+  );
+  expect(clamp200).toContain("#1  lead");
+  expect(clamp200).toContain("#38  lead");
+
+  // 6. /orchestrator-board members prints Active / Standing by / Retired with state, task, model, worktree
+  const membersOut = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: "members",
+      })) as { text?: string }
+    ).text ?? "",
+  );
+  expect(membersOut).not.toContain("\x1b");
+  expect(membersOut).toContain("Active");
+  expect(membersOut).toContain("Standing by");
+  expect(membersOut).toContain("Retired");
+  expect(membersOut).toContain("wren");
+  expect(membersOut).toContain("working");
+  expect(membersOut).toContain("#1");
+  expect(membersOut).toContain("claude-opus-5-5 → gemini-4-carbon-high");
+  expect(membersOut).toContain("feat/cc-p3");
+  expect(membersOut).toContain("paused: quota");
+  expect(membersOut).toContain("quill");
+  expect(membersOut).toContain("retired");
+
+  // 7. /orchestrator-board overview prints only non-empty overview sections (no Stalls yet)
+  const overviewOut = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: "overview",
+      })) as { text?: string }
+    ).text ?? "",
+  );
+  expect(overviewOut).not.toContain("\x1b");
+  expect(overviewOut).toContain("Implementing board CLI");
+  expect(overviewOut).toContain("Open questions");
+  expect(overviewOut).toContain("Open defects");
+  expect(overviewOut).not.toContain("Stalls");
+
+  // 8. Boundary wrap check: 59-col continuation line + 1-char word at columns=60 must never overflow 60 cols
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    text: `ok ${"x".repeat(57)} a b`,
+    kind: "note",
+  } as never);
+  const boundaryOut = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: "--last 1",
+        columns: 60,
+      } as never)) as { text?: string }
+    ).text ?? "",
+  );
+  for (const line of boundaryOut.split("\n")) {
+    expect(line.length).toBeLessThanOrEqual(60);
+  }
+});
+
+test("phase 3 item 2: Claude Code Pane renders Overview section on desktop SVG and terminal showing only non-empty parts and hides it when empty", async ($, on) => {
+  const clock = mock.clock(on, { now: 40_000_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("agent.list", () => ({ value: [] }));
+  on("prompt.submit", (_, e) => ({
+    text: String((e as { text?: string }).text ?? ""),
+  }));
+  let idx = 0;
+  on("agent.spawn", async (_, e) => {
+    idx += 1;
+    return {
+      agentId: idx === 1 ? "wren-ov-1" : "scout-ov-1",
+      model: e.model ?? "claude-haiku-5-5",
+    };
+  });
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Pane Overview Flow",
+    phase: "delegate",
+    tasks: [
+      { title: "Build overview", specialist: "wren", tier: "core" },
+      { title: "Review overview", specialist: "scout", tier: "fast" },
+    ],
+  } as never);
+  await $.agent.spawn({
+    subagentType: "wren",
+    description: "Build overview",
+    prompt: "Work",
+  });
+  await $.tool.call({
+    tool: STEP_TOOL,
+    agentId: "wren-ov-1",
+    done: 1,
+    total: 2,
+    note: "Drafting overview layout",
+  } as never);
+
+  // 1. Zero posts / zero channels / zero member events / zero stalls -> no Overview section
+  for (const surface of ["terminal", "desktop"] as const) {
+    const ui = await $.ui.mount({ ...PANE_MOUNT, surface });
+    expect(await ui.find({ type: "Text", text: /^Overview$/ })).toBeUndefined();
+    await ui.unmount();
+  }
+
+  // 2. Open question posted -> Overview shows Members + Open questions only (no Open defects, no Stalls), fits 60 cols
+  await $.agent.spawn({
+    subagentType: "scout",
+    description: "Review overview",
+    prompt: "QA",
+  });
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "wren-ov-1",
+    to: ["lead"],
+    kind: "question",
+    text: "Should empty sections stay hidden in both SVG and terminal?",
+  } as never);
+
+  const qTerm = await $.ui.mount({ ...PANE_MOUNT, surface: "terminal" });
+  expect(await qTerm.find({ type: "Text", text: /^Overview$/ })).toBeDefined();
+  expect(
+    await qTerm.find({ type: "Text", text: /Drafting overview layout/ }),
+  ).toBeDefined();
+  expect(
+    await qTerm.find({ type: "Text", text: /Open questions \(1\)/ }),
+  ).toBeDefined();
+  expect(
+    await qTerm.find({ type: "Text", text: /Open defects/ }),
+  ).toBeUndefined();
+  expect(await qTerm.find({ type: "Text", text: /Stalls/ })).toBeUndefined();
+  for (const t of await qTerm.findAll({ type: "Text" })) {
+    expect((t.text ?? "").length).toBeLessThanOrEqual(60);
+  }
+  await qTerm.unmount();
+
+  const qDesk = await $.ui.mount({ ...PANE_MOUNT, surface: "desktop" });
+  expect(await qDesk.find({ type: "Text", text: /^Overview$/ })).toBeDefined();
+  const qOvSvg = (await qDesk.findAll({ type: "Svg" }))
+    .map((s) => String((s.props as { source?: string }).source ?? ""))
+    .find((src) => src.includes("Open questions (1)"));
+  expect(qOvSvg).toBeDefined();
+  expect(qOvSvg).toContain("Drafting overview layout");
+  expect(qOvSvg).not.toContain("Open defects");
+  expect(qOvSvg).not.toContain("Stalls");
+  await qDesk.unmount();
+
+  // 3. Answer question, post defect, and advance 20m -> Open questions gone, Open defects + Stalls shown
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    to: ["wren"],
+    kind: "note",
+    replyTo: 1,
+    text: "Yes, hide empty sections.",
+  } as never);
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "scout-ov-1",
+    to: ["wren"],
+    kind: "defect",
+    text: "Escape <svg> & entities in overview rows",
+  } as never);
+  await clock.advance(20 * 60 * 1000);
+
+  const dTerm = await $.ui.mount({ ...PANE_MOUNT, surface: "terminal" });
+  expect(
+    await dTerm.find({ type: "Text", text: /Open questions/ }),
+  ).toBeUndefined();
+  expect(
+    await dTerm.find({ type: "Text", text: /Open defects \(1\)/ }),
+  ).toBeDefined();
+  expect(await dTerm.find({ type: "Text", text: /Stalls \(/ })).toBeDefined();
+  await dTerm.unmount();
+
+  const dDesk = await $.ui.mount({ ...PANE_MOUNT, surface: "desktop" });
+  const dOvSvg = (await dDesk.findAll({ type: "Svg" }))
+    .map((s) => String((s.props as { source?: string }).source ?? ""))
+    .find((src) => src.includes("Open defects (1)"));
+  expect(dOvSvg).toBeDefined();
+  expect(dOvSvg).not.toContain("Open questions");
+  expect(dOvSvg).toContain("&lt;svg&gt; &amp; entities");
+  expect(dOvSvg).toContain("Stalls (");
+  await dDesk.unmount();
+});
+
+test("phase 3 item 3: Claude Code channel tool enforces lead-only create/archive, open list, max 20 channels, post channel validation, and board filter", async ($, on) => {
+  const clock = mock.clock(on, { now: 50_000_000 });
+  const prompts: string[] = [];
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("agent.list", () => ({ value: [] }));
+  on("turn.complete", (_, e) => ({
+    text: e.answer,
+    ...(e.usage ? { usage: e.usage } : {}),
+  }));
+  on("prompt.submit", (_, e) => {
+    const text = String((e as { text?: string }).text ?? "");
+    prompts.push(text);
+    return { text };
+  });
+  let sp = 0;
+  on("agent.spawn", async (_, e) => {
+    sp += 1;
+    return {
+      agentId: sp === 1 ? "wren-ch-1" : "scout-ch-1",
+      model: e.model ?? "claude-haiku-5-5",
+    };
+  });
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "CC Channels Flow",
+    phase: "delegate",
+    tasks: [{ title: "Build channels", specialist: "wren", tier: "core" }],
+  } as never);
+  await $.agent.spawn({
+    subagentType: "wren",
+    description: "Build channels",
+    prompt: "Build",
+  });
+  await $.turn.complete({
+    turnId: "wren-ch-done",
+    agentId: "wren-ch-1",
+    reason: "answer",
+    answer: "DONE",
+    isAborted: false,
+    durationMs: 100,
+  } as never);
+  await $.agent.spawn({
+    subagentType: "scout",
+    description: "QA channels",
+    prompt: "QA",
+  });
+
+  // 1. Subagent rejected on create/archive; list open to all
+  const helperCreate = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__channel",
+    agentId: "wren-ch-1",
+    action: "create",
+    name: "design-sync",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(helperCreate.isError).toBe(true);
+  expect(String(helperCreate.result ?? "")).toContain("for the lead only");
+
+  const helperArchive = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__channel",
+    agentId: "wren-ch-1",
+    action: "archive",
+    name: "main",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(helperArchive.isError).toBe(true);
+  expect(String(helperArchive.result ?? "")).toContain("for the lead only");
+
+  const helperList0 = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__channel",
+    agentId: "wren-ch-1",
+    action: "list",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(helperList0.isError).toBeUndefined();
+  expect(JSON.parse(String(helperList0.result ?? ""))).toEqual([
+    { name: "main", archived: false },
+  ]);
+
+  // 2. Post to unknown or invalid channel fails clearly
+  const badUnknown = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "scout-ch-1",
+    text: "Early post",
+    channel: "design-sync",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(badUnknown.isError).toBe(true);
+  expect(String(badUnknown.result ?? "")).toMatch(/unknown channel/i);
+
+  const badInvalid = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    text: "Invalid name",
+    channel: "BAD_CHANNEL!",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(badInvalid.isError).toBe(true);
+  expect(String(badInvalid.result ?? "")).toMatch(/invalid channel/i);
+
+  // 3. Lead creates design-sync; helper posts to it mentioning @wren; wake fires
+  const leadCreate = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__channel",
+    action: "create",
+    name: "design-sync",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(leadCreate.isError).toBeUndefined();
+  expect(JSON.parse(String(leadCreate.result ?? ""))).toEqual([
+    { name: "main", archived: false },
+    { name: "design-sync", archived: false },
+  ]);
+
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    text: "Main announcement",
+    kind: "note",
+  } as never);
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "scout-ch-1",
+    text: "Please check spacing @wren",
+    kind: "defect",
+    channel: "design-sync",
+  } as never);
+  await clock.advance(30_000);
+  expect(prompts).toHaveLength(1);
+  expect(prompts[0]).toContain("wren-ch-1");
+
+  // 4. board filters by channel; main rows keep 7 keys, non-main rows include channel
+  const mainBoard = JSON.parse(
+    String(
+      (
+        (await $.tool.call({
+          tool: "mcp__vitruvian-orchestrator__board",
+          channel: "main",
+        } as never)) as { result?: string }
+      ).result ?? "[]",
+    ),
+  );
+  expect(mainBoard).toHaveLength(1);
+  expect(Object.keys(mainBoard[0]).sort()).toEqual([
+    "at",
+    "from",
+    "kind",
+    "replyTo",
+    "seq",
+    "text",
+    "to",
+  ]);
+  const syncBoard = JSON.parse(
+    String(
+      (
+        (await $.tool.call({
+          tool: "mcp__vitruvian-orchestrator__board",
+          channel: "design-sync",
+        } as never)) as { result?: string }
+      ).result ?? "[]",
+    ),
+  );
+  expect(syncBoard).toHaveLength(1);
+  expect(syncBoard[0].channel).toBe("design-sync");
+
+  // 5. Archiving main fails; archiving design-sync blocks new posts while board still reads old posts
+  const archiveMain = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__channel",
+    action: "archive",
+    name: "main",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(archiveMain.isError).toBe(true);
+
+  const archiveSync = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__channel",
+    action: "archive",
+    name: "design-sync",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(archiveSync.isError).toBeUndefined();
+
+  const postArchived = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    text: "Too late",
+    channel: "design-sync",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(postArchived.isError).toBe(true);
+  expect(String(postArchived.result ?? "")).toMatch(/archived/i);
+
+  // 6. Max 20 channels total (main + design-sync + 18 more = 20; 21st rejected)
+  for (let i = 3; i <= 20; i += 1) {
+    const r = (await $.tool.call({
+      tool: "mcp__vitruvian-orchestrator__channel",
+      action: "create",
+      name: `ch-${i}`,
+    } as never)) as { isError?: boolean };
+    expect(r.isError).toBeUndefined();
+  }
+  const overCap = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__channel",
+    action: "create",
+    name: "ch-21",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(overCap.isError).toBe(true);
+  expect(String(overCap.result ?? "")).toContain("20");
+});
+
+test("phase 3 qa: /orchestrator-board validates bad flags and = syntax, strips C1/bidi/soft-hyphen/zero-width, and channel rejects re-creating archived handle", async ($, on) => {
+  mock.clock(on, { now: 55_000_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("agent.list", () => ({ value: [] }));
+  on("agent.spawn", async (_, e) => ({
+    agentId: "scout-qa-1",
+    model: e.model ?? "claude-haiku-5-5",
+  }));
+
+  for (const badArgs of [
+    "--kind bogus",
+    "--last -3",
+    "--last abc",
+    "--to",
+    "--channel",
+    "--search",
+    "members extra",
+    "overview --last 5",
+  ]) {
+    const res = (await $.command.run({
+      command: "orchestrator-board",
+      args: badArgs,
+    })) as { text?: string };
+    const text = String(res.text ?? "");
+    expect(text).toContain("Usage: /orchestrator-board");
+    expect(text.includes("\n")).toBe(false);
+  }
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "QA Board Sanitiser Flow",
+    phase: "delegate",
+    tasks: [{ title: "Audit CLI", specialist: "scout", tier: "fast" }],
+  } as never);
+  await $.agent.spawn({
+    subagentType: "scout",
+    description: "Audit CLI",
+    prompt: "Check",
+  });
+  await $.tool.call({
+    tool: STEP_TOOL,
+    agentId: "scout-qa-1",
+    done: 1,
+    total: 2,
+    note: "Clean\x1b[31m\u009b\u202e\u2066\u00ad\u200b\ufeff\x07 step",
+  } as never);
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__channel",
+    action: "create",
+    name: "qa-ch",
+  } as never);
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "scout-qa-1",
+    to: ["lead"],
+    kind: "question",
+    channel: "qa-ch",
+    text: "Clean\x1b[31m\u009b\u202e\u2066\u00ad\u200b\ufeff\x07 output?",
+  } as never);
+
+  for (const args of [
+    "--from=scout --to=lead --kind=question --channel=qa-ch --last=1",
+    "members",
+    "overview",
+  ]) {
+    const out = String(
+      (
+        (await $.command.run({
+          command: "orchestrator-board",
+          args,
+          columns: 60,
+        } as never)) as { text?: string }
+      ).text ?? "",
+    );
+    if (args === "members") {
+      expect(out).toContain("scout");
+    } else {
+      expect(out).toContain("Clean output?");
+    }
+    for (const forbidden of [
+      "\x1b",
+      "\u009b",
+      "\u202e",
+      "\u2066",
+      "\u00ad",
+      "\u200b",
+      "\ufeff",
+      "\x07",
+    ]) {
+      expect(out).not.toContain(forbidden);
+    }
+  }
+
+  const arch = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__channel",
+    action: "archive",
+    name: "qa-ch",
+  } as never)) as { isError?: boolean };
+  expect(arch.isError).toBeUndefined();
+
+  const recreate = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__channel",
+    action: "create",
+    name: "qa-ch",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(recreate.isError).toBe(true);
+  expect(String(recreate.result ?? "")).toMatch(/archived/i);
+});
+
+test("phase 3 qa: /orchestrator-board sanitises persisted flow state containing raw ESC, C1, bidi, soft-hyphen, and zero-width characters", async ($, on) => {
+  mock.clock(on, { now: 55_000_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("state.set", { plugin: PLUGIN, key: "flow" }, (_, e, next) =>
+    next({
+      ...e,
+      value: {
+        ...(e.value as Flow),
+        channels: [{ name: "qa-ch", archived: false }],
+        posts: [
+          {
+            seq: 1,
+            at: 55_000_000,
+            from: "scout\x1b[31m",
+            to: ["lead\u202e"],
+            kind: "note",
+            replyTo: null,
+            channel: "qa-ch\u200b",
+            text: "Persisted\x1b[31m\u009b\u202e\u2066\u00ad\u200b\ufeff\x07 payload",
+          },
+        ],
+      },
+    }),
+  );
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "RawState",
+    phase: "delegate",
+    tasks: [{ title: "Audit", specialist: "scout", tier: "fast" }],
+  } as never);
+  const persistedOut = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: "",
+        columns: 60,
+      } as never)) as { text?: string }
+    ).text ?? "",
+  );
+  expect(persistedOut).toContain("Persisted payload");
+  for (const forbidden of [
+    "\x1b",
+    "\u009b",
+    "\u202e",
+    "\u2066",
+    "\u00ad",
+    "\u200b",
+    "\ufeff",
+    "\x07",
+  ]) {
+    expect(persistedOut).not.toContain(forbidden);
+  }
+});
+
+test("scout qa: old flow with no posts, no non-main channels, and no member events hides Overview on terminal and desktop even when a worker is stalled", async ($, on) => {
+  const clock = mock.clock(on, { now: 60_000_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("ui.toast", () => ({ value: undefined }));
+  on("agent.list", () => ({ value: [] }));
+  on("agent.spawn", async (_, e) => ({
+    agentId: "wren-legacy-1",
+    model: e.model ?? "claude-sonnet-5-5",
+  }));
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Legacy Stalled Flow",
+    phase: "delegate",
+    tasks: [{ title: "Build feature", specialist: "wren", tier: "core" }],
+  } as never);
+  await $.agent.spawn({
+    subagentType: "wren",
+    description: "Build feature",
+    prompt: "Implement",
+  });
+
+  // Advance 20 minutes with zero posts, zero non-main channels, and zero member events.
+  await clock.advance(20 * 60 * 1000);
+
+  for (const surface of ["terminal", "desktop"] as const) {
+    const ui = await $.ui.mount({ ...PANE_MOUNT, surface });
+    expect(await ui.find({ type: "Text", text: /^Overview$/ })).toBeUndefined();
+    await ui.unmount();
+  }
+});
+
+test("scout qa: /orchestrator-board never splits the first post word mid-word after a header and rejects missing-value, whitespace-only, and invalid --channel flags with usage", async ($, on) => {
+  mock.clock(on, { now: 70_000_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("agent.list", () => ({ value: [] }));
+  on("agent.spawn", async (_, e) => ({
+    agentId: `${e.subagentType}-wrap-1`,
+    model: e.model ?? "claude-sonnet-5-5",
+  }));
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Board Flag & Wrap QA",
+    phase: "review",
+    tasks: [
+      { title: "Build", specialist: "wren", tier: "core" },
+      { title: "Review", specialist: "scout", tier: "fast" },
+    ],
+  } as never);
+  await $.agent.spawn({
+    subagentType: "scout",
+    description: "Review",
+    prompt: "QA",
+  });
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "scout-wrap-1",
+    to: ["wren", "lead"],
+    kind: "defect",
+    replyTo: 1,
+    text: "Verification failed on narrow terminal header boundary.",
+  } as never);
+
+  // Header "#1  scout → @wren, @lead ↩ #1  defect  (0s)" leaves < 12 cols at width 53;
+  // "Verification" (12 chars) must wrap cleanly onto the next line, never split mid-word.
+  const wrapped = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: "",
+        columns: 53,
+      } as never)) as { text?: string }
+    ).text ?? "",
+  );
+  expect(wrapped).toContain("defect");
+  expect(wrapped).toContain("Verification failed");
+
+  for (const badArgs of [
+    "--from --last",
+    "--to=--last",
+    '--from "   "',
+    "--from BAD_NAME!",
+    "--to @bad!",
+    "--channel BAD_CHANNEL!",
+  ]) {
+    const res = (await $.command.run({
+      command: "orchestrator-board",
+      args: badArgs,
+      columns: 60,
+    } as never)) as { text?: string };
+    const text = String(res.text ?? "");
+    expect(text).toContain("Usage: /orchestrator-board");
+    expect(text.includes("\n")).toBe(false);
+  }
+
+  // Overlong single word (> width) hard-splits within width while normal words stay whole.
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "scout-wrap-1",
+    to: ["lead"],
+    kind: "defect",
+    text: `alpha ${"z".repeat(64)} omega`,
+  } as never);
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "scout-wrap-1",
+    to: ["lead"],
+    kind: "result",
+    text: "Unthreaded @lead result must not close @lead-only defect",
+  } as never);
+  const splitOut = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: "--last 2",
+        columns: 53,
+      } as never)) as { text?: string }
+    ).text ?? "",
+  );
+  expect(splitOut).toContain("alpha");
+  expect(splitOut).toContain("omega");
+  for (const line of splitOut.split("\n")) {
+    expect(line.length).toBeLessThanOrEqual(53);
+  }
+  const ovText = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: "overview",
+        columns: 60,
+      } as never)) as { text?: string }
+    ).text ?? "",
+  );
+  expect(ovText).toContain("Open defects (2)");
+});
+
+test("return round 2 security 2: agent/specialist/tier/model with ANSI, bidi, and zero-width characters never reach /orchestrator-board or pane output", async ($, on) => {
+  const clock = mock.clock(on, { now: 10_000 });
+  const toasts: string[] = [];
+  const prompts: string[] = [];
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("ui.toast", (_, e) => {
+    toasts.push(String(e.message ?? ""));
+    return { value: undefined };
+  });
+  on("prompt.submit", (_, e) => {
+    prompts.push(String(e.text ?? ""));
+    return { text: e.text };
+  });
+
+  const dirtyAgent = "wr\x1b[31men\u202e\u200b";
+  const dirtySpec = "sc\x1b[31mout\u202e\u200b";
+  const dirtyTier = "co\x1b[31mre\u202e\u200b";
+  const dirtyModel = "claude-\x1b[31msonnet-4-6\u202e\u200b";
+  const forbiddenRe =
+    /[\x1b\u202a-\u202e\u2066-\u2069\u200b-\u200f\u2060-\u2064\ufeff]/;
+
+  on("agent.spawn", async () => ({
+    model: dirtyModel,
+    agentId: "wren-dirty-1",
+  }));
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Claude Sanitisation",
+    phase: "delegate",
+    tasks: [
+      {
+        title: "Build panel",
+        specialist: dirtySpec,
+        tier: dirtyTier,
+        after: [],
+      },
+    ],
+  } as never);
+
+  await $.agent.spawn({
+    agentType: dirtyAgent,
+    description: "Build panel",
+    prompt: "Go",
+  } as never);
+
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "wren-dirty-1",
+    to: ["lead"],
+    kind: "question",
+    text: "Is output clean?",
+  } as never);
+
+  await clock.advance(20 * 60_000);
+
+  for (const args of ["", "overview", "members"]) {
+    const out = String(
+      (
+        (await $.command.run({
+          command: "orchestrator-board",
+          args,
+          columns: 70,
+        } as never)) as { text?: string }
+      ).text ?? "",
+    );
+    expect(forbiddenRe.test(out)).toBe(false);
+  }
+
+  for (const surface of ["terminal", "desktop"] as const) {
+    const ui = await $.ui.mount({ ...PANE_MOUNT, surface });
+    const texts = await ui.findAll({ type: "Text" });
+    const svgs = await ui.findAll({ type: "Svg" });
+    const combined = [
+      ...texts.map((n) => String(n.text ?? "")),
+      ...svgs.map((s) => JSON.stringify(s.props ?? {})),
+    ].join("\n");
+    expect(forbiddenRe.test(combined)).toBe(false);
+    await ui.unmount();
+  }
+
+  expect(forbiddenRe.test(toasts.join("\n"))).toBe(false);
+  expect(forbiddenRe.test(prompts.join("\n"))).toBe(false);
+});
+
+test("return round 2 security 3: repeated channel create or archive returns current list without writing state", async ($, on) => {
+  mock.clock(on, { now: 5_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+
+  let flowWrites = 0;
+  on("state.set", { plugin: PLUGIN, key: "flow" }, (_, e, next) => {
+    flowWrites += 1;
+    return next(e);
+  });
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Claude Channel Idempotency",
+    phase: "delegate",
+    tasks: [{ title: "Audit", specialist: "aegis", tier: "core", after: [] }],
+  } as never);
+  const writesAfterPlan = flowWrites;
+
+  const c1 = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__channel",
+    action: "create",
+    name: "sec-audit",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(c1.isError).toBeUndefined();
+  expect(flowWrites).toBe(writesAfterPlan + 1);
+
+  const c2 = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__channel",
+    action: "create",
+    name: "sec-audit",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(c2.isError).toBeUndefined();
+  expect(JSON.parse(String(c2.result ?? ""))).toEqual([
+    { name: "main", archived: false },
+    { name: "sec-audit", archived: false },
+  ]);
+  expect(flowWrites).toBe(writesAfterPlan + 1);
+
+  const a1 = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__channel",
+    action: "archive",
+    name: "sec-audit",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(a1.isError).toBeUndefined();
+  expect(flowWrites).toBe(writesAfterPlan + 2);
+
+  const a2 = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__channel",
+    action: "archive",
+    name: "sec-audit",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(a2.isError).toBeUndefined();
+  expect(JSON.parse(String(a2.result ?? ""))).toEqual([
+    { name: "main", archived: false },
+    { name: "sec-audit", archived: true },
+  ]);
+  expect(flowWrites).toBe(writesAfterPlan + 2);
+});
+
+test("return round 2 acceptance 7: /orchestrator-board --channel <unknown> reports channel does not exist and lists existing ones", async ($, on) => {
+  mock.clock(on, { now: 15_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Unknown Channel CLI",
+    phase: "delegate",
+    tasks: [{ title: "Audit", specialist: "aegis", tier: "core", after: [] }],
+  } as never);
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__channel",
+    action: "create",
+    name: "sec-audit",
+  } as never);
+
+  const out = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: "--channel ghost",
+        columns: 56,
+      } as never)) as { text?: string }
+    ).text ?? "",
+  );
+  expect(out).not.toContain("No board posts match.");
+  expect(out).toMatch(/ghost.*does not exist/i);
+  expect(out).toContain("main");
+  expect(out).toContain("sec-audit");
+  for (const line of out.split("\n")) {
+    expect(line.length).toBeLessThanOrEqual(56);
+  }
 });

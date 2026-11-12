@@ -49,6 +49,7 @@ Run these five phases in order: **plan**, **design**, **delegate**, **review**, 
    - **Dependencies (`after`)**: which task numbers must be accepted before this task starts (`none` if independent).
    - **Optional model override (`model`)**: a Gemini model id (`^gemini-[a-z0-9.-]+$`, never `-low`, `-lite` or `flash-lo`) when a task needs a non-default Gemini model; when set, put `Gemini model: <id>` in the brief.
    - **Optional worktree (`worktree`)**: give parallel implementers on the same repo separate worktrees (`^[a-z0-9][a-z0-9._/-]{0,99}$`, no `..`) and put `Worktree: <branch>` in the brief.
+   - **Optional channel (`channel`)**: when isolating a workstream into its own board channel (`^[a-z0-9][a-z0-9-]{0,31}$`, created first with the `channel` tool), put `Channel: <name>` in the brief so helpers post there.
    - **Self-contained brief**:
      - **What**: the concrete change or answer required.
      - **Where**: exact file paths, directories, or Bazel targets in scope.
@@ -169,9 +170,9 @@ only knows what you tell it, so keep it current. If the tool is not available, s
   - when a specialist member is done for good or stuck/rogue: `retire: <run id or agent name>` or `kill: <run id or agent name>`;
   - when you do a task yourself, `accept: <task number>` once it passes your own checks;
   - once at the end: `finished: true`.
-- Use the shared board (`post` tool: `{ text, to?, kind?, replyTo? }` → `{ seq }`; `board` tool: `{ to?, from?, kind?, search?, limit? }`) to record rulings, read posts, or message specialists (`@name`, `@all`).
+- Use the shared board (`post` tool: `{ text, to?, kind?, replyTo?, channel? }` → `{ seq }`; `board` tool: `{ to?, from?, kind?, channel?, search?, limit? }`; `channel` tool: `{ action: "create" | "archive" | "list", name? }`) to record rulings, manage channels, read posts, or message specialists (`@name`, `@all`).
 - Post the plan on every run of this skill, even a one-task plan you do yourself (see section 1).
 - Use each task's title, unchanged, as the run's label when you dispatch it (see "How to dispatch"): the
   panel matches runs to tasks by it.
-- Tell each specialist in its brief: "Read the board posts that mention you with the `board` tool when starting or woken; report progress with the `step` tool (`done`, `total`, `note`, or `paused: \"quota\"` on quota errors); and post your outcome (`kind: \"result\"`), review findings (`kind: \"defect\"` mentioning the implementer and `@lead`), or questions (`kind: \"question\"` mentioning `@lead`) with the `post` tool."
+- Tell each specialist in its brief: "Read the board posts that mention you with the `board` tool when starting or woken (and list channels with the `channel` tool, `action: \"list\"`, when needed; if this brief sets `Channel: <name>`, read it only from this brief, validate `^[a-z0-9][a-z0-9-]{0,31}$`, and pass `channel` set to `<name>` on `board` and `post`, or report an invalid `Channel:` to `@lead` on `main` with `kind: \"question\"` and stop); report progress with the `step` tool (`done`, `total`, `note`, or `paused: \"quota\"` on quota errors); and post your outcome (`kind: \"result\"`, setting `replyTo` to your earlier `defect`'s `seq` when a re-review passes), review findings (`kind: \"defect\"` mentioning the implementer and `@lead`), or questions (`kind: \"question\"` mentioning `@lead`) with the `post` tool."
 - Offer the user the pill `[Orchestrator](sidecar://vitruvian-orchestrator/panel/)` to open the panel.

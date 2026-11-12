@@ -263,7 +263,64 @@ function OrchestratorSidebarContent(props: {
           </Show>
         </box>
 
-        {/* 6. Shared board (newest 5 single-line clipped posts) & pending wakes */}
+        {/* 6. Overview (only non-empty subsections) */}
+        <Show when={Boolean(view().overview)}>
+          <box flexDirection="column">
+            <text fg={palette().base}>Overview</text>
+            <Show when={(view().overview?.members.length ?? 0) > 0}>
+              <For each={view().overview!.members}>
+                {(m) => (
+                  <text fg={palette().base}>
+                    {m.agent}{" "}
+                    <span style={{ fg: palette().muted }}>({m.state})</span>
+                    {m.line ? `: ${m.line}` : ""}
+                  </text>
+                )}
+              </For>
+            </Show>
+            <Show when={(view().overview?.openQuestions.length ?? 0) > 0}>
+              <text fg={palette().warning}>
+                Open questions ({view().overview!.openQuestions.length})
+              </text>
+              <For each={view().overview!.openQuestions}>
+                {(q) => (
+                  <text fg={palette().base}>
+                    <span style={{ fg: palette().muted }}>#{q.seq} </span>
+                    {q.from}: {q.text}
+                  </text>
+                )}
+              </For>
+            </Show>
+            <Show when={(view().overview?.openDefects.length ?? 0) > 0}>
+              <text fg={palette().error}>
+                Open defects ({view().overview!.openDefects.length})
+              </text>
+              <For each={view().overview!.openDefects}>
+                {(d) => (
+                  <text fg={palette().base}>
+                    <span style={{ fg: palette().muted }}>#{d.seq} </span>
+                    {d.from}
+                    {d.toText}: {d.text}
+                  </text>
+                )}
+              </For>
+            </Show>
+            <Show when={(view().overview?.stalls.length ?? 0) > 0}>
+              <text fg={palette().warning}>
+                Stalls ({view().overview!.stalls.length})
+              </text>
+              <For each={view().overview!.stalls}>
+                {(s) => (
+                  <text fg={palette().warning}>
+                    {s.agent} ({s.state} · {s.idleText})
+                  </text>
+                )}
+              </For>
+            </Show>
+          </box>
+        </Show>
+
+        {/* 7. Shared board (newest 5 single-line clipped posts) & pending wakes */}
         <Show when={(view().board?.posts.length ?? 0) > 0}>
           <box flexDirection="column">
             <text fg={palette().base}>Board ({view().board!.total})</text>
@@ -281,6 +338,9 @@ function OrchestratorSidebarContent(props: {
               {(p) => (
                 <text fg={palette().base}>
                   <span style={{ fg: palette().muted }}>#{p.seq} </span>
+                  <Show when={Boolean(p.channel)}>
+                    <span style={{ fg: palette().info }}>#{p.channel} </span>
+                  </Show>
                   {p.from}
                   <Show when={Boolean(p.recipientsText)}>
                     <span style={{ fg: palette().muted }}>

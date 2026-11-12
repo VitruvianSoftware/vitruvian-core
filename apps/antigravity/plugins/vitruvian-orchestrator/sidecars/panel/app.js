@@ -570,6 +570,7 @@ function renderSpend(spendSummary) {
 let lastRenderedState = null;
 let activeTab = "flow";
 let boardFollow = true;
+let boardChannel = "";
 let lastAutoScrolledSeq = 0;
 const expandedPostSeqs = new Set();
 let graphLive = true;
@@ -681,10 +682,27 @@ function scrollBoardToLatest() {
   }
 }
 
+function getStateChannels(state) {
+  if (Array.isArray(state?.channels) && state.channels.length > 0) {
+    return state.channels;
+  }
+  if (Array.isArray(state?.flow?.channels)) {
+    return [
+      { name: "main", archived: false },
+      ...state.flow.channels.map((c) => ({
+        name: c.name,
+        archived: Boolean(c.archived),
+      })),
+    ];
+  }
+  return [{ name: "main", archived: false }];
+}
+
 function renderBoard(state, forceScroll = false) {
   const list = $("board-list");
   const empty = $("board-empty");
   const badge = $("tab-badge-board");
+  const channelsBar = $("board-channels");
   if (!list || !empty) return;
 
   const now = typeof state?.now === "number" ? state.now : Date.now();
@@ -697,6 +715,50 @@ function renderBoard(state, forceScroll = false) {
   if (badge) {
     badge.hidden = allPosts.length === 0;
     badge.textContent = String(allPosts.length);
+  }
+
+  const chList = getStateChannels(state);
+  const hasNonMainChannel = chList.some(
+    (c) => c && typeof c.name === "string" && c.name !== "main",
+  );
+  if (
+    !hasNonMainChannel ||
+    (boardChannel && !chList.some((c) => c.name === boardChannel))
+  ) {
+    boardChannel = "";
+  }
+  if (channelsBar) {
+    channelsBar.hidden = !hasNonMainChannel;
+    channelsBar.replaceChildren();
+    if (hasNonMainChannel) {
+      const items = [{ name: "", label: "All" }].concat(
+        chList.map((c) => ({
+          name: c.name,
+          label: `#${c.name}${c.archived ? " (archived)" : ""}`,
+        })),
+      );
+      for (const item of items) {
+        const isSelected = boardChannel === item.name;
+        channelsBar.append(
+          el(
+            "button",
+            {
+              type: "button",
+              class: isSelected
+                ? "control-btn small active"
+                : "control-btn small",
+              "data-channel": item.name,
+              "aria-pressed": isSelected ? "true" : "false",
+              onclick: () => {
+                boardChannel = item.name;
+                if (lastRenderedState) renderBoard(lastRenderedState, false);
+              },
+            },
+            item.label,
+          ),
+        );
+      }
+    }
   }
 
   const authors = [
@@ -731,6 +793,15 @@ function renderBoard(state, forceScroll = false) {
     .toLowerCase();
 
   const filtered = allPosts.filter((p) => {
+    const postChannel = p.channel || "main";
+    const isLeadMainBroadcast =
+      postChannel === "main" &&
+      String(p.from ?? "").toLowerCase() === "lead" &&
+      Array.isArray(p.to) &&
+      p.to.some((t) => String(t ?? "").toLowerCase() === "all");
+    if (boardChannel && postChannel !== boardChannel && !isLeadMainBroadcast) {
+      return false;
+    }
     if (fromFilter && p.from !== fromFilter) return false;
     if (toFilter && !(Array.isArray(p.to) && p.to.includes(toFilter))) {
       return false;
@@ -797,6 +868,9 @@ function renderBoard(state, forceScroll = false) {
           el("span", { class: "row-title" }, post.from || "unknown"),
           recipientsText
             ? el("span", { class: "muted small mono" }, recipientsText)
+            : null,
+          post.channel && post.channel !== "main"
+            ? el("span", { class: "meta-chip mono muted" }, `#${post.channel}`)
             : null,
           typeof post.replyTo === "number"
             ? el(
@@ -1468,9 +1542,172 @@ function renderGraph(state) {
   container.append(svg);
 }
 
+function renderOverview(state) {
+  const empty = $("overview-empty");
+  const membersSec = $("overview-members-section");
+  const membersList = $("overview-members");
+  const questionsSec = $("overview-questions-section");
+  const questionsList = $("overview-questions");
+  const defectsSec = $("overview-defects-section");
+  const defectsList = $("overview-defects");
+  const stallsSec = $("overview-stalls-section");
+  const stallsList = $("overview-stalls");
+  if (
+    !empty ||
+    !membersSec ||
+    !membersList ||
+    !questionsSec ||
+    !questionsList ||
+    !defectsSec ||
+    !defectsList ||
+    !stallsSec ||
+    !stallsList
+  ) {
+    return;
+  }
+
+  const ov = state?.overview || {};
+  const members = Array.isArray(ov.members) ? ov.members : [];
+  const openQuestions = Array.isArray(ov.openQuestions) ? ov.openQuestions : [];
+  const openDefects = Array.isArray(ov.openDefects) ? ov.openDefects : [];
+  const stallRows = Array.isArray(ov.stalls) ? ov.stalls : [];
+
+  const hasAny =
+    members.length > 0 ||
+    openQuestions.length > 0 ||
+    openDefects.length > 0 ||
+    stallRows.length > 0;
+  empty.hidden = hasAny;
+
+  membersSec.hidden = members.length === 0;
+  membersList.replaceChildren();
+  for (const m of members) {
+    const mascot = MASCOTS[m.agent] || "●";
+    membersList.append(
+      el(
+        "div",
+        { class: "row-item" },
+        el(
+          "div",
+          { class: "row-main" },
+          el("span", { class: "agent-mascot", "aria-hidden": "true" }, mascot),
+          el("span", { class: "row-title" }, m.agent || "worker"),
+          m.line ? el("span", { class: "muted small" }, `· ${m.line}`) : null,
+        ),
+        el(
+          "div",
+          { class: "row-meta" },
+          el(
+            "span",
+            { class: `status-badge ${memberStateTone(m.state)}` },
+            m.state || "working",
+          ),
+        ),
+      ),
+    );
+  }
+
+  questionsSec.hidden = openQuestions.length === 0;
+  questionsList.replaceChildren();
+  for (const q of openQuestions) {
+    questionsList.append(
+      el(
+        "div",
+        { class: "post-row" },
+        el(
+          "div",
+          { class: "post-header" },
+          el(
+            "div",
+            { class: "post-header-left" },
+            el("span", { class: "task-num mono muted" }, `#${q.seq}`),
+            el("span", { class: "row-title" }, q.from || "unknown"),
+          ),
+          el(
+            "div",
+            { class: "post-header-right" },
+            el("span", { class: "status-badge status-amber" }, "question"),
+          ),
+        ),
+        el("div", { class: "post-text" }, String(q.text ?? "")),
+      ),
+    );
+  }
+
+  defectsSec.hidden = openDefects.length === 0;
+  defectsList.replaceChildren();
+  for (const d of openDefects) {
+    const recipientsText =
+      Array.isArray(d.to) && d.to.length > 0
+        ? `→ ${d.to.map(formatRecipientLabel).join(", ")}`
+        : "";
+    defectsList.append(
+      el(
+        "div",
+        { class: "post-row" },
+        el(
+          "div",
+          { class: "post-header" },
+          el(
+            "div",
+            { class: "post-header-left" },
+            el("span", { class: "task-num mono muted" }, `#${d.seq}`),
+            el("span", { class: "row-title" }, d.from || "unknown"),
+            recipientsText
+              ? el("span", { class: "muted small mono" }, recipientsText)
+              : null,
+          ),
+          el(
+            "div",
+            { class: "post-header-right" },
+            el("span", { class: "status-badge status-red" }, "defect"),
+          ),
+        ),
+        el("div", { class: "post-text" }, String(d.text ?? "")),
+      ),
+    );
+  }
+
+  stallsSec.hidden = stallRows.length === 0;
+  stallsList.replaceChildren();
+  for (const s of stallRows) {
+    const mascot = MASCOTS[s.agent] || "●";
+    const tone = s.state === "stalled" ? "status-red" : "status-amber";
+    stallsList.append(
+      el(
+        "div",
+        { class: "row-item" },
+        el(
+          "div",
+          { class: "row-main" },
+          el("span", { class: "agent-mascot", "aria-hidden": "true" }, mascot),
+          el("span", { class: "row-title" }, s.agent || "worker"),
+          typeof s.taskN === "number"
+            ? el(
+                "span",
+                { class: "muted small" },
+                s.title ? `#${s.taskN} · ${s.title}` : `#${s.taskN}`,
+              )
+            : null,
+        ),
+        el(
+          "div",
+          { class: "row-meta" },
+          el(
+            "span",
+            { class: "meta-chip mono muted" },
+            `${formatElapsed(s.idleMs ?? 0)} idle`,
+          ),
+          el("span", { class: `status-badge ${tone}` }, s.state || "quiet"),
+        ),
+      ),
+    );
+  }
+}
+
 function setActiveTab(tab) {
   activeTab = tab;
-  const tabs = ["flow", "board", "members", "graph"];
+  const tabs = ["flow", "board", "members", "graph", "overview"];
   for (const name of tabs) {
     const btn = $(`tab-btn-${name}`);
     const pane = $(`tab-pane-${name}`);
@@ -1493,7 +1730,7 @@ function setActiveTab(tab) {
 }
 
 function wireBoardAndTabControls() {
-  for (const name of ["flow", "board", "members", "graph"]) {
+  for (const name of ["flow", "board", "members", "graph", "overview"]) {
     const btn = $(`tab-btn-${name}`);
     if (btn) {
       btn.addEventListener("click", () => setActiveTab(name));
@@ -1701,7 +1938,10 @@ function renderState(state) {
           r.memberState === "killed" ||
           r.memberState === "retired",
       ));
-  const showTabs = hasPosts || hasMemberEvents;
+  const hasNonMainChannel = getStateChannels(state).some(
+    (c) => c && typeof c.name === "string" && c.name !== "main",
+  );
+  const showTabs = hasPosts || hasMemberEvents || hasNonMainChannel;
   const tabsEl = $("panel-tabs");
   if (tabsEl) {
     tabsEl.hidden = !showTabs;
@@ -1720,6 +1960,7 @@ function renderState(state) {
   renderBoard(state);
   renderMembers(state);
   renderGraph(state);
+  renderOverview(state);
 }
 
 wireBoardAndTabControls();

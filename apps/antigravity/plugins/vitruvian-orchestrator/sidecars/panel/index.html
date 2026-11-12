@@ -63,6 +63,9 @@
         <button type="button" id="tab-btn-graph" class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-pane-graph" data-tab="graph">
           Graph
         </button>
+        <button type="button" id="tab-btn-overview" class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-pane-overview" data-tab="overview">
+          Overview
+        </button>
       </nav>
 
       <div id="tab-pane-flow" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-flow">
@@ -115,6 +118,7 @@
               <button type="button" id="board-follow" class="control-btn small active" aria-pressed="true">Follow</button>
             </div>
           </div>
+          <div id="board-channels" class="board-channels" role="group" aria-label="Filter by channel" hidden></div>
           <div class="board-controls">
             <input type="search" id="board-search" class="control-input" placeholder="Search posts…" aria-label="Search posts">
             <select id="board-filter-from" class="control-select" aria-label="Filter by author">
@@ -179,6 +183,33 @@
           <p id="graph-range-note" class="muted small" hidden></p>
           <div id="graph-container" class="graph-container"></div>
           <p id="graph-empty" class="muted small">No board mentions recorded yet.</p>
+        </section>
+      </div>
+
+      <div id="tab-pane-overview" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-overview" hidden>
+        <section class="card" aria-labelledby="overview-heading">
+          <div class="section-header">
+            <h2 id="overview-heading">Overview</h2>
+          </div>
+          <p id="overview-empty" class="muted small">Nothing to report yet.</p>
+          <div id="overview-sections" class="overview-sections">
+            <div id="overview-members-section" class="overview-section" hidden>
+              <h3 class="group-heading">Members</h3>
+              <div id="overview-members" class="list-stack"></div>
+            </div>
+            <div id="overview-questions-section" class="overview-section" hidden>
+              <h3 class="group-heading">Open Questions</h3>
+              <div id="overview-questions" class="list-stack"></div>
+            </div>
+            <div id="overview-defects-section" class="overview-section" hidden>
+              <h3 class="group-heading">Open Defects</h3>
+              <div id="overview-defects" class="list-stack"></div>
+            </div>
+            <div id="overview-stalls-section" class="overview-section" hidden>
+              <h3 class="group-heading">Stalls</h3>
+              <div id="overview-stalls" class="list-stack"></div>
+            </div>
+          </div>
         </section>
       </div>
     </div>

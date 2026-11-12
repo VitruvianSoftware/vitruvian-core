@@ -24,6 +24,7 @@ import path from "node:path";
 
 import {
   applyBoardCall,
+  applyChannelCall,
   applyPostCall,
   applyProgressCall,
   applyStepCall,
@@ -228,6 +229,11 @@ const POST_INPUT_SCHEMA = {
       minimum: 1,
       description: "Optional seq number of the post being replied to.",
     },
+    channel: {
+      type: "string",
+      description:
+        "Optional channel name (default 'main'; lowercase letters, digits, hyphens).",
+    },
   },
   required: ["text"],
   additionalProperties: false,
@@ -250,6 +256,10 @@ const BOARD_INPUT_SCHEMA = {
       enum: ["note", "question", "defect", "result"],
       description: "Optional post kind filter.",
     },
+    channel: {
+      type: "string",
+      description: "Optional channel name filter.",
+    },
     search: {
       type: "string",
       description: "Optional case-insensitive substring filter.",
@@ -262,6 +272,25 @@ const BOARD_INPUT_SCHEMA = {
         "Maximum newest matching posts to return (default 20, max 100).",
     },
   },
+  additionalProperties: false,
+};
+
+const CHANNEL_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    action: {
+      type: "string",
+      enum: ["create", "archive", "list"],
+      description:
+        "Channel action: 'create' or 'archive' (lead only), or 'list' (open to all).",
+    },
+    name: {
+      type: "string",
+      description:
+        "Channel handle ([a-z0-9][a-z0-9-]{0,31}); required for 'create' and 'archive'.",
+    },
+  },
+  required: ["action"],
   additionalProperties: false,
 };
 
@@ -857,7 +886,7 @@ export default {
         registry.add({
           name: "board",
           description:
-            "Read posts from the shared Orchestrator board with optional recipient, author, kind, substring, and limit filters.",
+            "Read posts from the shared Orchestrator board with optional recipient, author, kind, channel, substring, and limit filters.",
           options: { codemode: false },
           input: BOARD_INPUT_SCHEMA,
           execute: async (args, toolCtx) => {
@@ -872,6 +901,60 @@ export default {
               args || {},
             );
             return { content: JSON.stringify(rows) };
+          },
+        });
+
+        registry.add({
+          name: "channel",
+          description:
+            "Create, archive, or list named board channels. Create and archive are for the lead only; list is open to all.",
+          options: { codemode: false },
+          input: CHANNEL_INPUT_SCHEMA,
+          execute: async (args, toolCtx) => {
+            const now = Date.now();
+            const action =
+              typeof args?.action === "string"
+                ? args.action.trim().toLowerCase()
+                : "";
+            if (
+              action !== "create" &&
+              action !== "archive" &&
+              action !== "list"
+            ) {
+              throw new Error(
+                'channel action must be "create", "archive", or "list"',
+              );
+            }
+            const caller = await resolveToolCaller(toolCtx);
+            if (action === "list") {
+              const flow = caller.rootID
+                ? (flowsByRoot.get(caller.rootID) ?? null)
+                : null;
+              const res = applyChannelCall(flow, { action: "list" }, now);
+              return { content: JSON.stringify(res.channels) };
+            }
+            if (!caller.known) {
+              throw new Error(
+                `channel ${action} is for the lead only: caller unknown`,
+              );
+            }
+            if (caller.isHelper) {
+              throw new Error(`channel ${action} is for the lead only`);
+            }
+            const rootID = caller.rootID;
+            const prevFlow = flowsByRoot.get(rootID) ?? null;
+            const res = applyChannelCall(prevFlow, args || {}, now);
+            if (res.flow && res.flow !== prevFlow) {
+              const nextFlow = ensureLeadRun(
+                res.flow,
+                rootID,
+                caller.meta,
+                now,
+              );
+              persistFlow(rootID, nextFlow);
+              await deliverPendingWakes(rootID);
+            }
+            return { content: JSON.stringify(res.channels) };
           },
         });
       });

@@ -21,6 +21,7 @@
 import {
   board,
   burnDown,
+  channels,
   DEFAULT_QUIET_MS,
   DEFAULT_STALL_MS,
   delegateCost,
@@ -30,18 +31,23 @@ import {
   members,
   mentionGraph,
   mentions,
+  overview,
   pendingWakes,
   reduce,
   remaining,
   runCost,
+  sanitizeDisplayText,
   spend,
   stalls,
   taskBoard,
+  validateChannelAction,
+  validatePostChannel,
 } from "./orchestrator-core.mjs";
 
 export {
   board,
   burnDown,
+  channels,
   DEFAULT_QUIET_MS,
   DEFAULT_STALL_MS,
   delegateCost,
@@ -51,28 +57,24 @@ export {
   members,
   mentionGraph,
   mentions,
+  overview,
   pendingWakes,
   reduce,
   remaining,
   runCost,
+  sanitizeDisplayText,
   spend,
   stalls,
   taskBoard,
+  validateChannelAction,
+  validatePostChannel,
 };
 
 const VALID_HANDLE_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
-const SHORT_ANSI_ESCAPE_RE =
-  /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[P^_][^\x1b]*(?:\x1b\\|$)|[@-Z\\-_])/g;
-const SHORT_CONTROL_AND_BIDI_RE =
-  /[\x00-\x08\x0b-\x1f\x7f\u0080-\u009f\u202a-\u202e\u2066-\u2069]/g;
 
 function sanitizeShortField(raw, maxLen = 500) {
-  return String(raw ?? "")
-    .slice(0, 8000)
-    .replace(/\r\n?/g, "\n")
-    .replace(SHORT_ANSI_ESCAPE_RE, "")
-    .replace(SHORT_CONTROL_AND_BIDI_RE, "")
-    .replace(/[\t\n]+/g, " ")
+  return sanitizeDisplayText(String(raw ?? "").slice(0, 8000))
+    .replace(/[\r\n\t]+/g, " ")
     .trim()
     .slice(0, maxLen);
 }
@@ -172,8 +174,9 @@ export function parseModelAndEffort(modelRef, effortHint) {
  * @returns {string}
  */
 export function shortModelName(model) {
-  if (!model) return "unknown";
-  return model.replace(/^[^/]+\//, "");
+  const clean = sanitizeShortField(model, 256);
+  if (!clean) return "unknown";
+  return clean.replace(/^[^/]+\//, "");
 }
 
 /**
@@ -624,6 +627,10 @@ export function applyPostCall(
   if (typeof input?.text !== "string") {
     throw new Error("post requires string text");
   }
+  const chCheck = validatePostChannel(flow, input.channel);
+  if (!chCheck.ok) {
+    throw new Error(chCheck.error);
+  }
   if (!input.text.trim()) {
     return { flow, seq: 0 };
   }
@@ -674,6 +681,9 @@ export function applyPostCall(
     ...(Number.isInteger(input.replyTo) && Number(input.replyTo) >= 1
       ? { replyTo: Number(input.replyTo) }
       : {}),
+    ...(chCheck.channel && chCheck.channel !== "main"
+      ? { channel: chCheck.channel }
+      : {}),
     ...(matchedRun && matchedRun.role !== "lead"
       ? { runId: matchedRun.id }
       : {}),
@@ -683,6 +693,45 @@ export function applyPostCall(
   const lastSeq = posts.length > 0 ? posts[posts.length - 1].seq : 0;
   const seq = lastSeq > prevLastSeq ? lastSeq : 0;
   return { flow: next, seq };
+}
+
+/**
+ * Apply a `channel` tool call (`create`, `archive`, or `list`).
+ *
+ * @param {import('./orchestrator-core.mjs').Flow | null} flow
+ * @param {Record<string, unknown>} input
+ * @param {number} [at]
+ * @returns {{ flow: import('./orchestrator-core.mjs').Flow | null, channels: Array<{ name: string, archived: boolean }> }}
+ */
+export function applyChannelCall(flow, input, at = Date.now()) {
+  const inp = input && typeof input === "object" ? input : {};
+  const action =
+    typeof inp.action === "string" ? inp.action.trim().toLowerCase() : "";
+  if (action === "list") {
+    return { flow, channels: channels(flow) };
+  }
+  const check = validateChannelAction(flow, { action, name: inp.name });
+  if (!check.ok) {
+    throw new Error(check.error);
+  }
+  if (check.noop) {
+    return { flow, channels: check.channels ?? channels(flow) };
+  }
+  const baseFlow =
+    flow ??
+    reduce(initialFlow(), {
+      type: "plan",
+      at,
+      title: "Orchestrator flow",
+      tasks: [],
+    });
+  const next = reduce(baseFlow, {
+    type: "channel",
+    at,
+    action: /** @type {"create" | "archive"} */ (action),
+    name: check.name,
+  });
+  return { flow: next, channels: channels(next) };
 }
 
 /**
@@ -727,6 +776,7 @@ export function applyBoardCall(flow, callerAgent, isChildSession, input = {}) {
       typeof inp.kind === "string"
         ? /** @type {import('./orchestrator-core.mjs').PostKind} */ (inp.kind)
         : undefined,
+    channel: typeof inp.channel === "string" ? inp.channel : undefined,
     search: typeof inp.search === "string" ? inp.search : undefined,
     limit,
   }).map((p) => ({
@@ -737,6 +787,7 @@ export function applyBoardCall(flow, callerAgent, isChildSession, input = {}) {
     replyTo: p.replyTo,
     at: p.at,
     text: p.text,
+    ...(p.channel && p.channel !== "main" ? { channel: p.channel } : {}),
   }));
 }
 
@@ -846,9 +897,7 @@ function postKindColorToken(kind) {
 }
 
 function clipSingleLine(text, maxLen = 72) {
-  const clean = String(text ?? "")
-    .replace(/\s+/g, " ")
-    .trim();
+  const clean = sanitizeShortField(text, 8000);
   if (clean.length <= maxLen) return clean;
   return `${clean.slice(0, maxLen - 1)}…`;
 }
@@ -932,14 +981,16 @@ export function formatSidebarData(flow, now = Date.now()) {
       (r.tokens?.output || 0) +
       (r.tokens?.cacheRead || 0) +
       (r.tokens?.cacheWrite || 0);
+    const safeNote = r.steps?.note ? sanitizeShortField(r.steps.note, 500) : "";
     const stepsText = r.steps
-      ? `${r.steps.done}/${r.steps.total}${r.steps.note ? ` ${r.steps.note}` : ""}`
+      ? `${r.steps.done}/${r.steps.total}${safeNote ? ` ${safeNote}` : ""}`
       : r.contextPct !== null && r.contextPct !== undefined
         ? `ctx ${Math.round(r.contextPct)}%`
         : "—";
     const endMs = r.endedAt ?? now;
     const elapsedMs = Math.max(0, endMs - (r.startedAt || endMs));
-    const baseModel = shortModelName(r.model);
+    const safeFullModel = sanitizeShortField(r.model, 256);
+    const baseModel = shortModelName(safeFullModel);
     const member = memberById.get(r.id);
     const effectiveDelegateRaw = r.delegate || member?.taskModel || null;
     const delegateModel = effectiveDelegateRaw
@@ -960,7 +1011,7 @@ export function formatSidebarData(flow, now = Date.now()) {
       member?.state === "killed"
         ? "killed"
         : member?.state === "paused"
-          ? `paused: ${member.reason || "error"}`
+          ? `paused: ${sanitizeShortField(member.reason || "error", 64)}`
           : null;
     const statusText = memberBadge
       ? memberBadge
@@ -985,15 +1036,15 @@ export function formatSidebarData(flow, now = Date.now()) {
       taskId:
         r.taskN !== null && r.taskN !== undefined ? String(r.taskN) : undefined,
       role: r.role,
-      agent: r.agent,
+      agent: sanitizeShortField(r.agent, 128),
       model: modelLabel,
-      fullModel: r.model,
-      delegate: r.delegate ?? null,
+      fullModel: safeFullModel,
+      delegate: r.delegate ? sanitizeShortField(r.delegate, 256) : null,
       ...(member?.taskModel
         ? { taskModel: sanitizeShortField(member.taskModel, 128) }
         : {}),
       ...(worktree ? { worktree } : {}),
-      effort: r.effort || "high",
+      effort: sanitizeShortField(r.effort || "high", 64) || "high",
       stepsText,
       tokens: totalTokens,
       tokensText: `${formatTokensCompact(totalTokens)} tok`,
@@ -1035,8 +1086,11 @@ export function formatSidebarData(flow, now = Date.now()) {
   const unpricedDelegatedByModel = {};
   for (const r of flow.runs) {
     if (r.delegate && delegateCost(r) === null) {
-      unpricedDelegatedByModel[r.delegate] =
-        (unpricedDelegatedByModel[r.delegate] ?? 0) + 1;
+      const cleanDel = sanitizeShortField(r.delegate, 256);
+      if (cleanDel) {
+        unpricedDelegatedByModel[cleanDel] =
+          (unpricedDelegatedByModel[cleanDel] ?? 0) + 1;
+      }
     }
   }
   const delegatedText =
@@ -1083,18 +1137,60 @@ export function formatSidebarData(flow, now = Date.now()) {
     ageText: `${formatDuration(Math.max(0, now - p.at))} ago`,
     text: clipSingleLine(p.text, 72),
     replyTo: p.replyTo,
+    ...(p.channel && p.channel !== "main" ? { channel: p.channel } : {}),
   }));
   const wakes = pendingWakes(flow).map((w) => ({
     ...w,
     excerpt: clipSingleLine(w.excerpt, 64),
   }));
+  const channelList = channels(flow);
+  const hasNonMainChannel = channelList.some((c) => c.name !== "main");
+  const ov = overview(flow, { now });
+  const hasOverviewContent =
+    ov.members.length > 0 ||
+    ov.openQuestions.length > 0 ||
+    ov.openDefects.length > 0 ||
+    ov.stalls.length > 0;
+  const showOverview =
+    hasOverviewContent &&
+    (totalPosts > 0 || postsDropped > 0 || hasNonMainChannel);
+  const overviewData = showOverview
+    ? {
+        members: ov.members.map((m) => ({
+          agent: sanitizeShortField(m.agent, 64),
+          state: m.state,
+          line: m.line,
+        })),
+        openQuestions: ov.openQuestions.map((q) => ({
+          seq: q.seq,
+          from: sanitizeShortField(q.from, 64),
+          text: clipSingleLine(q.text, 72),
+        })),
+        openDefects: ov.openDefects.map((d) => ({
+          seq: d.seq,
+          from: sanitizeShortField(d.from, 64),
+          to: d.to,
+          toText:
+            d.to.length > 0
+              ? ` → ${d.to.map((t) => (String(t).toLowerCase() === "all" ? "everyone" : `@${sanitizeShortField(t, 64)}`)).join(", ")}`
+              : "",
+          text: clipSingleLine(d.text, 72),
+        })),
+        stalls: ov.stalls.map((s) => ({
+          id: s.id,
+          agent: sanitizeShortField(s.agent, 64),
+          state: s.state,
+          idleText: formatDuration(s.idleMs),
+        })),
+      }
+    : undefined;
 
   return {
     empty: false,
     sidebarTitle: formatSidebarTitle(flow),
     header: {
-      title: flow.title,
-      phase: flow.phase,
+      title: sanitizeShortField(flow.title, 500),
+      phase: sanitizeShortField(flow.phase, 64),
       phases,
       accepted: acceptedCount,
       total: totalCount,
@@ -1117,6 +1213,8 @@ export function formatSidebarData(flow, now = Date.now()) {
     tasks,
     agents,
     members: memberGroups,
+    channels: channelList,
+    ...(overviewData ? { overview: overviewData } : {}),
     board: {
       total: totalPosts,
       postsDropped,
@@ -1134,7 +1232,15 @@ export function formatSidebarData(flow, now = Date.now()) {
       byModel: byModelRows,
       unpricedSummary: sp.unpriced,
       unpriced: unpricedRunsList,
-      delegated: sp.delegated,
+      delegated: {
+        ...sp.delegated,
+        byModel: Object.fromEntries(
+          Object.entries(sp.delegated.byModel ?? {}).map(([m, n]) => [
+            sanitizeShortField(m, 256),
+            n,
+          ]),
+        ),
+      },
       delegatedText,
     },
   };
@@ -1239,7 +1345,37 @@ export function formatSidebarLines(flow, now = Date.now()) {
     lines.push(`  ${data.spend.delegatedText}`);
   }
 
-  // 6. Shared board (newest 5 clipped single-line posts) & pending wakes
+  // 6. Overview (only non-empty subsections)
+  if (data.overview) {
+    lines.push("Overview:");
+    if (data.overview.members.length > 0) {
+      for (const m of data.overview.members) {
+        lines.push(
+          `  ${m.agent} (${m.state})${m.line ? `: ${clipSingleLine(m.line, 72)}` : ""}`,
+        );
+      }
+    }
+    if (data.overview.openQuestions.length > 0) {
+      lines.push(`  Open questions (${data.overview.openQuestions.length}):`);
+      for (const q of data.overview.openQuestions) {
+        lines.push(`    #${q.seq} ${q.from}: ${q.text}`);
+      }
+    }
+    if (data.overview.openDefects.length > 0) {
+      lines.push(`  Open defects (${data.overview.openDefects.length}):`);
+      for (const d of data.overview.openDefects) {
+        lines.push(`    #${d.seq} ${d.from}${d.toText}: ${d.text}`);
+      }
+    }
+    if (data.overview.stalls.length > 0) {
+      lines.push(`  Stalls (${data.overview.stalls.length}):`);
+      for (const s of data.overview.stalls) {
+        lines.push(`    ${s.agent} (${s.state} · ${s.idleText})`);
+      }
+    }
+  }
+
+  // 7. Shared board (newest 5 clipped single-line posts) & pending wakes
   if (data.board.total > 0 || data.board.postsDropped > 0) {
     lines.push(`Board (${data.board.total}):`);
     if (data.board.whoTalksText) {
@@ -1249,10 +1385,11 @@ export function formatSidebarLines(flow, now = Date.now()) {
       lines.push(`  ${data.board.postsDropped} older posts not shown`);
     }
     for (const p of data.board.posts) {
+      const ch = p.channel ? ` #${p.channel}` : "";
       const rec = p.recipientsText ? ` ${p.recipientsText}` : "";
       const rep = p.replyText ? ` ${p.replyText}` : "";
       lines.push(
-        `  #${p.seq} ${p.from}${rec}${rep} · ${p.ageText} [${p.kind}] ${p.text}`,
+        `  #${p.seq}${ch} ${p.from}${rec}${rep} · ${p.ageText} [${p.kind}] ${p.text}`,
       );
     }
   }

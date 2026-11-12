@@ -30,9 +30,13 @@ import serverPlugin from "../server.mjs";
 
 import {
   applyBoardCall,
+  applyChannelCall,
   applyPostCall,
   applyProgressCall,
   applyStepCall,
+  channels,
+  DEFAULT_QUIET_MS,
+  DEFAULT_STALL_MS,
   EMPTY_PANEL_MESSAGE,
   formatSidebarData,
   formatSidebarLines,
@@ -41,6 +45,7 @@ import {
   mapOpenCodeTokens,
   mapProgressInputToEvents,
   mergeTokenSnapshots,
+  overview,
   parseModelAndEffort,
   reduce,
   sparkline,
@@ -2637,5 +2642,660 @@ describe("security hardening (items 1, 2, 3, 5, 6)", () => {
     const atlasAgentLine =
       formatSidebarLines(flow, 1100).find((l) => l.includes("atlas #2")) ?? "";
     assert.doesNotMatch(atlasAgentLine, /gemini-4-argon-high/);
+  });
+
+  it("phase 3 item 2: OpenCode sidebar renders short Overview section with only non-empty parts and omits Overview on post-free/event-free/stall-free flows", () => {
+    const t0 = 100_000;
+    let { flow } = applyProgressCall(
+      null,
+      {
+        title: "Overview OC Flow",
+        phase: "delegate",
+        tasks: [
+          { title: "Build UI", specialist: "wren", tier: "core", after: [] },
+          { title: "Audit UI", specialist: "scout", tier: "fast", after: [] },
+        ],
+      },
+      t0,
+    );
+    flow = reduce(flow, {
+      type: "run.start",
+      at: t0 + 100,
+      id: "ses_wren",
+      harness: "opencode",
+      role: "worker",
+      agent: "wren",
+      title: "Build UI",
+      model: "anthropic/claude-haiku-5-5",
+      effort: "high",
+    });
+    flow = reduce(flow, {
+      type: "run.progress",
+      at: t0 + 200,
+      id: "ses_wren",
+      steps: { done: 1, total: 3, note: "wiring overview" },
+    });
+
+    // 1. Flow with 0 posts, 0 channels, 0 member events, 0 stalls omits Overview
+    const baseData = formatSidebarData(flow, t0 + 500);
+    assert.equal(baseData.overview, undefined);
+    assert.doesNotMatch(
+      formatSidebarLines(flow, t0 + 500).join("\n"),
+      /^Overview:/m,
+    );
+
+    // 2. Question posted -> Overview shows Members + Open questions only (no Open defects, no Stalls)
+    flow = applyPostCall(
+      flow,
+      "ses_wren",
+      "wren",
+      { to: ["lead"], kind: "question", text: "Should chips wrap?" },
+      t0 + 600,
+    ).flow;
+    const qData = formatSidebarData(flow, t0 + 1000);
+    assert.ok(qData.overview, "expected overview on flow with posts");
+    assert.equal(qData.overview.members.length, 1);
+    assert.equal(qData.overview.members[0].line, "wiring overview");
+    assert.equal(qData.overview.openQuestions.length, 1);
+    assert.equal(qData.overview.openDefects.length, 0);
+    assert.equal(qData.overview.stalls.length, 0);
+    const qLines = formatSidebarLines(flow, t0 + 1000).join("\n");
+    assert.match(qLines, /Overview:/);
+    assert.match(qLines, /wren \(working\): wiring overview/);
+    assert.match(qLines, /Open questions \(1\):/);
+    assert.match(qLines, /#1 wren: Should chips wrap\?/);
+    assert.doesNotMatch(qLines, /Open defects/);
+    assert.doesNotMatch(qLines, /Stalls/);
+
+    // 3. Answer question, post open defect, and advance clock past DEFAULT_STALL_MS -> Open questions omitted, Open defects + Stalls shown
+    flow = applyPostCall(
+      flow,
+      undefined,
+      "lead",
+      { to: ["wren"], kind: "note", replyTo: 1, text: "Yes, wrap chips." },
+      t0 + 1200,
+    ).flow;
+    flow = applyPostCall(
+      flow,
+      "ses_scout",
+      "scout",
+      { to: ["wren"], kind: "defect", text: "Missing aria-selected" },
+      t0 + 1300,
+    ).flow;
+    const dNow = t0 + 1300 + DEFAULT_STALL_MS + 1000;
+    const dLines = formatSidebarLines(flow, dNow).join("\n");
+    assert.doesNotMatch(dLines, /Open questions/);
+    assert.match(dLines, /Open defects \(1\):/);
+    assert.match(dLines, /#3 scout → @wren: Missing aria-selected/);
+    assert.match(dLines, /Stalls \(1\):/);
+
+    // 4. Close defect via fallback (same author result mentioning same recipient for same task) -> Open defects disappears
+    flow = applyPostCall(
+      flow,
+      "ses_scout",
+      "scout",
+      { to: ["wren"], kind: "result", text: "Verified aria-selected fixed" },
+      dNow + 100,
+    ).flow;
+    const afterCloseLines = formatSidebarLines(
+      flow,
+      dNow + DEFAULT_QUIET_MS + 500,
+    ).join("\n");
+    assert.doesNotMatch(afterCloseLines, /Open defects/);
+
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const tuiSrc = fs.readFileSync(path.join(here, "..", "tui.tsx"), "utf8");
+    assert.match(tuiSrc, /Overview/);
+    assert.match(tuiSrc, /openQuestions/);
+    assert.match(tuiSrc, /openDefects/);
+  });
+
+  it("phase 3 item 3: OpenCode channel tool enforces lead-only create/archive, open list, max 20 channels, post channel validation, and board channel filter", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "opencode-orch-phase3-ch-"),
+    );
+    const prevDir = process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+    process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = tmpDir;
+    try {
+      const promptCalls = [];
+      const tools = new Map();
+      await serverPlugin.setup({
+        session: {
+          get: async ({ sessionID }) => {
+            if (sessionID === "ses_root") {
+              return {
+                id: "ses_root",
+                title: "Root",
+                agent: "beacon",
+                model: "anthropic/claude-opus-5-5",
+              };
+            }
+            if (sessionID === "ses_wren" || sessionID === "ses_scout") {
+              return {
+                id: sessionID,
+                parentID: "ses_root",
+                title: sessionID === "ses_wren" ? "Build" : "QA",
+                agent: sessionID === "ses_wren" ? "wren" : "scout",
+                model: "anthropic/claude-haiku-5-5",
+              };
+            }
+            return null;
+          },
+          prompt: async (arg) => promptCalls.push(arg),
+        },
+        tool: {
+          transform: async (fn) => {
+            fn({ add: (def) => tools.set(def.name, def) });
+          },
+        },
+      });
+
+      assert.ok(
+        tools.has("channel"),
+        "serverPlugin must register channel tool",
+      );
+      assert.ok(
+        tools.get("post").input.properties.channel,
+        "post schema must expose channel",
+      );
+      assert.ok(
+        tools.get("board").input.properties.channel,
+        "board schema must expose channel",
+      );
+
+      // list is open to unknown, helper, and lead even before a flow exists
+      assert.deepEqual(
+        JSON.parse(
+          (await tools.get("channel").execute({ action: "list" }, {})).content,
+        ),
+        [{ name: "main", archived: false }],
+      );
+
+      await tools.get("progress").execute(
+        {
+          title: "OC Channels Flow",
+          phase: "delegate",
+          tasks: [
+            { title: "Build", specialist: "wren", tier: "core", after: [] },
+          ],
+        },
+        { sessionID: "ses_root" },
+      );
+
+      // Seed waiting worker `ses_wren` so wake delivery can be checked on custom channel
+      const statePath = path.join(tmpDir, "state.json");
+      const seeded = JSON.parse(fs.readFileSync(statePath, "utf8"));
+      let f = reduce(seeded.flows.ses_root, {
+        type: "run.start",
+        at: Date.now(),
+        id: "ses_wren",
+        harness: "opencode",
+        role: "worker",
+        agent: "wren",
+        title: "Build",
+        model: "anthropic/claude-haiku-5-5",
+        effort: "high",
+      });
+      f = reduce(f, {
+        type: "run.end",
+        at: Date.now() + 10,
+        id: "ses_wren",
+        status: "done",
+      });
+      seeded.flows.ses_root = f;
+      fs.writeFileSync(statePath, JSON.stringify(seeded, null, 2) + "\n");
+
+      const liveTools = new Map();
+      await serverPlugin.setup({
+        session: {
+          get: async ({ sessionID }) => {
+            if (sessionID === "ses_root") {
+              return {
+                id: "ses_root",
+                title: "Root",
+                agent: "beacon",
+                model: "anthropic/claude-opus-5-5",
+              };
+            }
+            if (sessionID === "ses_wren" || sessionID === "ses_scout") {
+              return {
+                id: sessionID,
+                parentID: "ses_root",
+                title: sessionID === "ses_wren" ? "Build" : "QA",
+                agent: sessionID === "ses_wren" ? "wren" : "scout",
+                model: "anthropic/claude-haiku-5-5",
+              };
+            }
+            return null;
+          },
+          prompt: async (arg) => promptCalls.push(arg),
+        },
+        tool: {
+          transform: async (fn) => {
+            fn({ add: (def) => liveTools.set(def.name, def) });
+          },
+        },
+      });
+
+      // Unknown caller and helper rejected on create/archive
+      await assert.rejects(
+        () =>
+          liveTools
+            .get("channel")
+            .execute({ action: "create", name: "ui-polish" }, {}),
+        /channel create is for the lead only: caller unknown/,
+      );
+      await assert.rejects(
+        () =>
+          liveTools
+            .get("channel")
+            .execute(
+              { action: "create", name: "ui-polish" },
+              { sessionID: "ses_wren", agent: "wren" },
+            ),
+        /channel create is for the lead only/,
+      );
+      await assert.rejects(
+        () =>
+          liveTools
+            .get("channel")
+            .execute(
+              { action: "archive", name: "main" },
+              { sessionID: "ses_wren", agent: "wren" },
+            ),
+        /channel archive is for the lead only/,
+      );
+
+      // Post to unknown or invalid channel rejected before creation
+      await assert.rejects(
+        () =>
+          liveTools
+            .get("post")
+            .execute(
+              { text: "Hello", channel: "ui-polish" },
+              { sessionID: "ses_wren", agent: "wren" },
+            ),
+        /unknown channel/i,
+      );
+      await assert.rejects(
+        () =>
+          liveTools
+            .get("post")
+            .execute(
+              { text: "Hello", channel: "BAD_NAME" },
+              { sessionID: "ses_root" },
+            ),
+        /invalid channel/i,
+      );
+
+      // Lead creates channel "ui-polish"; helper can list it and post to it; wake fires
+      const createdList = JSON.parse(
+        (
+          await liveTools
+            .get("channel")
+            .execute(
+              { action: "create", name: "ui-polish" },
+              { sessionID: "ses_root" },
+            )
+        ).content,
+      );
+      assert.deepEqual(createdList, [
+        { name: "main", archived: false },
+        { name: "ui-polish", archived: false },
+      ]);
+      assert.deepEqual(
+        JSON.parse(
+          (
+            await liveTools
+              .get("channel")
+              .execute(
+                { action: "list" },
+                { sessionID: "ses_wren", agent: "wren" },
+              )
+          ).content,
+        ),
+        createdList,
+      );
+
+      await liveTools
+        .get("post")
+        .execute(
+          { text: "Main kickoff", kind: "note" },
+          { sessionID: "ses_root" },
+        );
+      await liveTools
+        .get("post")
+        .execute(
+          { text: "Check padding @wren", kind: "defect", channel: "ui-polish" },
+          { sessionID: "ses_scout", agent: "scout" },
+        );
+      assert.equal(promptCalls.length, 1);
+      assert.equal(promptCalls[0].sessionID, "ses_wren");
+
+      // board filters by channel; main rows keep 7 keys, non-main rows include channel
+      const mainRows = JSON.parse(
+        (
+          await liveTools
+            .get("board")
+            .execute({ channel: "main" }, { sessionID: "ses_root" })
+        ).content,
+      );
+      assert.equal(mainRows.length, 1);
+      assert.deepEqual(Object.keys(mainRows[0]).sort(), [
+        "at",
+        "from",
+        "kind",
+        "replyTo",
+        "seq",
+        "text",
+        "to",
+      ]);
+      const uiRows = JSON.parse(
+        (
+          await liveTools
+            .get("board")
+            .execute({ channel: "ui-polish" }, { sessionID: "ses_root" })
+        ).content,
+      );
+      assert.equal(uiRows.length, 1);
+      assert.equal(uiRows[0].channel, "ui-polish");
+
+      // Cannot archive main; archiving ui-polish rejects new posts while board still reads old posts
+      await assert.rejects(
+        () =>
+          liveTools
+            .get("channel")
+            .execute(
+              { action: "archive", name: "main" },
+              { sessionID: "ses_root" },
+            ),
+        /main/i,
+      );
+      await liveTools
+        .get("channel")
+        .execute(
+          { action: "archive", name: "ui-polish" },
+          { sessionID: "ses_root" },
+        );
+      await assert.rejects(
+        () =>
+          liveTools
+            .get("post")
+            .execute(
+              { text: "Late post", channel: "ui-polish" },
+              { sessionID: "ses_root" },
+            ),
+        /archived/i,
+      );
+      const uiRowsAfterArchive = JSON.parse(
+        (
+          await liveTools
+            .get("board")
+            .execute({ channel: "ui-polish" }, { sessionID: "ses_root" })
+        ).content,
+      );
+      assert.equal(uiRowsAfterArchive.length, 1);
+
+      // Cap at 20 channels total (main + ui-polish + 18 more = 20; 21st rejected)
+      for (let i = 3; i <= 20; i += 1) {
+        await liveTools
+          .get("channel")
+          .execute(
+            { action: "create", name: `ch-${i}` },
+            { sessionID: "ses_root" },
+          );
+      }
+      await assert.rejects(
+        () =>
+          liveTools
+            .get("channel")
+            .execute(
+              { action: "create", name: "ch-21" },
+              { sessionID: "ses_root" },
+            ),
+        /20/,
+      );
+
+      // Unit check on applyChannelCall & channels re-export
+      const latestFlow = JSON.parse(fs.readFileSync(statePath, "utf8")).flows
+        .ses_root;
+      assert.equal(channels(latestFlow).length, 20);
+      assert.equal(overview(latestFlow).openDefects.length, 1);
+      assert.throws(
+        () => applyChannelCall(latestFlow, { action: "create", name: "ch-22" }),
+        /20/,
+      );
+    } finally {
+      if (prevDir === undefined) {
+        delete process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+      } else {
+        process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = prevDir;
+      }
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("phase 3 qa: channel create/archive fails closed without default fallback on bad caller identity and rejects re-creating archived channels", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "orch-oc-p3-qa-chan-"),
+    );
+    const prevDir = process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+    process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = tmpDir;
+    try {
+      const liveTools = new Map();
+      await serverPlugin.setup({
+        session: {
+          get: async ({ sessionID }) => {
+            if (sessionID === "ses_root") {
+              return {
+                id: "ses_root",
+                title: "Root",
+                agent: "beacon",
+                model: "anthropic/claude-opus-5-5",
+              };
+            }
+            return null;
+          },
+          prompt: async () => {},
+        },
+        tool: {
+          transform: async (fn) => {
+            fn({ add: (def) => liveTools.set(def.name, def) });
+          },
+        },
+      });
+
+      for (const badCtx of [
+        undefined,
+        {},
+        { sessionID: "" },
+        { sessionID: "   " },
+        { sessionID: "default" },
+        { sessionID: "../escape" },
+      ]) {
+        await assert.rejects(
+          () =>
+            liveTools
+              .get("channel")
+              .execute({ action: "create", name: "sec" }, badCtx),
+          /channel create is for the lead only: caller unknown/,
+        );
+        await assert.rejects(
+          () =>
+            liveTools
+              .get("channel")
+              .execute({ action: "archive", name: "main" }, badCtx),
+          /channel archive is for the lead only: caller unknown/,
+        );
+      }
+      assert.equal(
+        fs.existsSync(path.join(tmpDir, "flows", "default.json")),
+        false,
+      );
+
+      await liveTools.get("progress").execute(
+        {
+          title: "QA Channels",
+          phase: "plan",
+          tasks: [{ title: "Audit", specialist: "aegis", tier: "core" }],
+        },
+        { sessionID: "ses_root" },
+      );
+      await liveTools
+        .get("channel")
+        .execute({ action: "create", name: "sec" }, { sessionID: "ses_root" });
+      await liveTools
+        .get("channel")
+        .execute({ action: "archive", name: "sec" }, { sessionID: "ses_root" });
+      await assert.rejects(
+        () =>
+          liveTools
+            .get("channel")
+            .execute(
+              { action: "create", name: "sec" },
+              { sessionID: "ses_root" },
+            ),
+        /archived/i,
+      );
+    } finally {
+      if (prevDir === undefined) {
+        delete process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+      } else {
+        process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = prevDir;
+      }
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("scout qa: old flow with no posts, no non-main channels, and no member events keeps Overview absent even when a worker is quiet or stalled", () => {
+    const t0 = 1_762_366_000_000;
+    let legacyFlow = reduce(null, {
+      type: "plan",
+      at: t0,
+      title: "Legacy Stalled Flow",
+      tasks: [{ title: "Build UI", specialist: "wren", tier: "core" }],
+    });
+    legacyFlow = reduce(legacyFlow, {
+      type: "run.start",
+      at: t0 + 1_000,
+      id: "ses_wren",
+      harness: "opencode",
+      agent: "wren",
+      model: "anthropic/claude-sonnet-4-6",
+      title: "Build UI",
+    });
+
+    const stalledNow = t0 + DEFAULT_STALL_MS + 10_000;
+    const data = formatSidebarData(legacyFlow, stalledNow);
+    assert.equal(data.overview, undefined);
+    const lines = formatSidebarLines(legacyFlow, stalledNow);
+    assert.equal(
+      lines.some((line) => line.startsWith("Overview:")),
+      false,
+    );
+  });
+
+  it("return round 2 security 2: agent/specialist/tier/model with ANSI, bidi, and zero-width characters never reach OpenCode sidebar output", () => {
+    const t0 = 1_762_366_000_000;
+    const dirtyAgent = "wr\x1b[31men\u202e\u200b";
+    const dirtySpec = "sc\x1b[31mout\u202e\u200b";
+    const dirtyTier = "co\x1b[31mre\u202e\u200b";
+    const dirtyModel = "anthropic/claude-\x1b[31msonnet-4-6\u202e\u200b";
+    const forbiddenRe =
+      /[\x1b\u202a-\u202e\u2066-\u2069\u200b-\u200f\u2060-\u2064\ufeff]/;
+
+    let flow = reduce(null, {
+      type: "plan",
+      at: t0,
+      title: "Sidebar Sanitisation",
+      tasks: [{ title: "Build UI", specialist: dirtySpec, tier: dirtyTier }],
+    });
+    flow = reduce(flow, {
+      type: "run.start",
+      at: t0 + 1_000,
+      id: "ses_dirty",
+      harness: "opencode",
+      agent: dirtyAgent,
+      model: dirtyModel,
+      title: "Build UI",
+    });
+    flow = reduce(flow, {
+      type: "post",
+      at: t0 + 2_000,
+      from: "scout",
+      to: ["wren", "lead"],
+      kind: "defect",
+      text: "Check sidebar sanitisation",
+    });
+
+    const stalledNow = t0 + DEFAULT_STALL_MS + 10_000;
+    const data = formatSidebarData(flow, stalledNow);
+    const linesText = formatSidebarLines(flow, stalledNow).join("\n");
+    assert.equal(forbiddenRe.test(JSON.stringify(data)), false);
+    assert.equal(forbiddenRe.test(linesText), false);
+
+    // Also test an unreduced persisted flow snapshot directly
+    const rawSnapshot = {
+      ...flow,
+      tasks: [{ ...flow.tasks[0], specialist: dirtySpec, tier: dirtyTier }],
+      runs: [{ ...flow.runs[0], agent: dirtyAgent, model: dirtyModel }],
+    };
+    assert.equal(
+      forbiddenRe.test(
+        JSON.stringify(formatSidebarData(rawSnapshot, stalledNow)),
+      ),
+      false,
+    );
+    assert.equal(
+      forbiddenRe.test(formatSidebarLines(rawSnapshot, stalledNow).join("\n")),
+      false,
+    );
+  });
+
+  it("return round 2 security 3: repeated channel create or archive returns current list without mutating flow or rewriting state", () => {
+    let flow = reduce(null, {
+      type: "plan",
+      at: 1_000,
+      title: "OpenCode Channel Idempotency",
+      tasks: [{ title: "Audit", specialist: "aegis", tier: "core" }],
+    });
+
+    const c1 = applyChannelCall(
+      flow,
+      { action: "create", name: "sec-audit" },
+      1_010,
+    );
+    assert.notEqual(c1.flow, flow);
+    flow = c1.flow;
+
+    const c2 = applyChannelCall(
+      flow,
+      { action: "create", name: "sec-audit" },
+      1_020,
+    );
+    assert.equal(c2.flow, flow);
+    assert.deepEqual(c2.channels, [
+      { name: "main", archived: false },
+      { name: "sec-audit", archived: false },
+    ]);
+
+    const a1 = applyChannelCall(
+      flow,
+      { action: "archive", name: "sec-audit" },
+      1_030,
+    );
+    assert.notEqual(a1.flow, flow);
+    flow = a1.flow;
+
+    const a2 = applyChannelCall(
+      flow,
+      { action: "archive", name: "sec-audit" },
+      1_040,
+    );
+    assert.equal(a2.flow, flow);
+    assert.deepEqual(a2.channels, [
+      { name: "main", archived: false },
+      { name: "sec-audit", archived: true },
+    ]);
   });
 });
