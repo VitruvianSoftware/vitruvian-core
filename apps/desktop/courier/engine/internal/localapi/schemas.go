@@ -4,9 +4,8 @@
 package localapi
 
 // toolDef is one tool as tools/list shows it. Its name and input schema (property names, types, enums, formats,
-// required) match the reference app's tool exactly, as protocol/mcp-tools.json records it
-// (TestToolsMatchReferenceSchemas), so a client written against the reference app works unchanged. The
-// descriptions are Courier's own.
+// required) match protocol/mcp-tools.json exactly (TestToolsMatchReferenceSchemas), based on the reference
+// app plus Courier's send_file. The descriptions are Courier's own.
 type toolDef struct {
 	name        string
 	description string
@@ -103,6 +102,16 @@ var toolDefs = []toolDef{
   "replyToMessageID":{"type":"string","description":"A message in the chat to reply to."},
   "text":{"type":"string","description":"The message, in Markdown."}
 },"required":["chatID"]}`,
+	},
+	{
+		name: "send_file",
+		description: "Send a file (such as an image, video, audio or document) to a chat, through the chat's own " +
+			"account. Only works when this connection has been allowed to send messages in Courier's settings.",
+		schema: `{"type":"object","properties":{
+  "chatID":{"type":"string","description":"The chat to send to."},
+  "filePath":{"type":"string","description":"The absolute path of the file on this Mac to send."},
+  "replyToMessageID":{"type":"string","description":"A message in the chat to reply to."}
+},"required":["chatID","filePath"]}`,
 	},
 	{
 		name:        "archive_chat",

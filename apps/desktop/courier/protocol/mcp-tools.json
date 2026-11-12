@@ -1,5 +1,5 @@
 {
-  "_comment": "Tool names and input schemas of the reference MCP server, captured 2026-11-01 from the running reference app (descriptions dropped). Courier's MCP must match these exactly; see engine/internal/localapi.",
+  "_comment": "Tool names and input schemas of the reference MCP server, captured 2026-11-01 from the running reference app (descriptions dropped), plus Courier's send_file tool; see engine/internal/localapi.",
   "tools": [
     {
       "inputSchema": {
@@ -196,6 +196,24 @@
         "type": "object"
       },
       "name": "send_message"
+    },
+    {
+      "inputSchema": {
+        "properties": {
+          "chatID": {
+            "type": "string"
+          },
+          "filePath": {
+            "type": "string"
+          },
+          "replyToMessageID": {
+            "type": "string"
+          }
+        },
+        "required": ["chatID", "filePath"],
+        "type": "object"
+      },
+      "name": "send_file"
     },
     {
       "inputSchema": {

@@ -35,8 +35,8 @@ filegroup(
     ],
 )
 
-# The reference app's MCP tools (names and input schemas), which the local API's tools must match exactly
-# (engine/internal/localapi's TestToolsMatchReferenceSchemas). Never edited by hand: it is a capture.
+# The MCP tools (names and input schemas), which the local API's tools must match exactly
+# (engine/internal/localapi's TestToolsMatchReferenceSchemas). Reference capture plus Courier's send_file.
 filegroup(
     name = "mcp_tools",
     srcs = ["mcp-tools.json"],

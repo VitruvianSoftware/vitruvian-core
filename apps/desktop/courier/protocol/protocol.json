@@ -2505,7 +2505,7 @@
         },
         "canSend": {
           "type": "bool",
-          "doc": "It may send messages (send_message). Off unless turned on."
+          "doc": "It may send messages (send_message, send_file). Off unless turned on."
         },
         "createdMs": { "type": "int" },
         "lastUsedMs": {
