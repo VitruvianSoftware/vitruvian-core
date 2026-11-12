@@ -15,7 +15,7 @@
 >   everything in this guide should be actionable by every agent that reads it.
 > - **Nested `AGENTS.md` files scope to their subtree** (`apps/cli/vitruvian-devx/`, `apps/suites/vitruvian-tabs/`, `apps/suites/vitruvian-wand/`,
 >   `apps/web/oauth-user-inspector/`, `apps/web/vitruviansoftware-dev/`, `apps/mobile/android-remote/`, `apps/desktop/`, `apps/desktop/vitruvian-speaker/`,
->   `apps/desktop/vitruvian-atrium/`, `apps/embedded/esp32-s3/`) — put per-component detail there, not here. Note that an
+>   `apps/desktop/vitruvian-atrium/`, `apps/embedded/vitruvian-deck/`) — put per-component detail there, not here. Note that an
 >   `AGENTS.md` only applies to the directory it sits in and below, so one in a
 >   non-source directory silently never applies.
 

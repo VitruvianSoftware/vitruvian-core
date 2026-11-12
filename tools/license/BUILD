@@ -77,7 +77,7 @@ _IGNORE_GLOBS = [
     ".ds-sync/**",
     ".design-sync/sb-reference/**",
     ".design-sync/.cache/**",
-    # PlatformIO's downloaded framework + library deps (iot/esp32-s3/.pio):
+    # PlatformIO's downloaded framework + library deps (apps/embedded/vitruvian-deck/.pio):
     # ~1000 vendored upstream files that would otherwise fail :check on any
     # developer tree that has built the firmware once.
     "**/.pio/**",

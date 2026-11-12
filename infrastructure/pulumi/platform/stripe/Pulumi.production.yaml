@@ -75,7 +75,7 @@ config:
       - key: vitruvian-remote
         name: Vitruvian Remote
       - key: esp32-desk-companion
-        name: ESP32-S3 Desk Companion
+        name: Vitruvian Deck
       - key: nexus-agent
         name: NexusAgent
       - key: oauth-user-inspector

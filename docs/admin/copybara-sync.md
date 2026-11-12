@@ -480,7 +480,7 @@ invariants across releases, downloads, and documentation:
    - Standalone repos represent a single product, so GitHub natively resolves `/releases/latest`
      and `/releases/latest/download/<asset>`.
    - In a multi-component monorepo, releases use prefix-namespaced tags (e.g. `vitruvian-v*`,
-     `esp32-s3-v*`). GitHub supports only **one global `latest` release tag** repo-wide, so
+     `vitruvian-deck-v*`). GitHub supports only **one global `latest` release tag** repo-wide, so
      `/releases/latest` cannot route to multiple independent monorepo components.
    - For downloadable apps (DMGs, binaries, zip packages), provide permanent vanity redirect
      endpoints on `vitruviansoftware.dev` (e.g. `/downloads/latest/<component>.dmg` using HTML

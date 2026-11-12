@@ -6358,7 +6358,9 @@ public class RemoteState(
     sendHid(if (delta >= 0) HidAction.BrightnessUp else HidAction.BrightnessDown)
   }
 
-  /** Mission Control, Spaces and friends: the chords the esp32-s3 board already proves work. */
+  /**
+   * Mission Control, Spaces and friends: the chords the Vitruvian Deck board already proves work.
+   */
   public fun sendMacChord(action: HidAction) {
     sendHid(action)
     log("info", "desktop · ${desktopLabel(action)}")

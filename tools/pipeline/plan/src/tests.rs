@@ -493,8 +493,8 @@ fn test_rdeps_query_shape() {
     assert!(q.contains(r#"except attr(tags, "manual", //...)"#));
     assert!(q.find("except").unwrap() > q.find("rdeps(").unwrap());
     assert!(q.contains("rdeps(//...") && q.contains("_test"));
-    let q = build_test_rdeps_query(&v(&["//apps/embedded/esp32-s3:all"]));
-    assert!(q.contains("set(//apps/embedded/esp32-s3:*)") && !q.contains(":all"));
+    let q = build_test_rdeps_query(&v(&["//apps/embedded/vitruvian-deck:all"]));
+    assert!(q.contains("set(//apps/embedded/vitruvian-deck:*)") && !q.contains(":all"));
 }
 
 #[test]

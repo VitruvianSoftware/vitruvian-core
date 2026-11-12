@@ -33,12 +33,12 @@ use crate::unit::{self, Unit};
 
 const FIXTURES: &[&str] = &[
     "charts",
-    "esp32-s3",
     "gravastar-mouse-publish",
     "oauth-user-inspector-identity",
     "oauth-user-inspector",
     "stripe",
     "vitruvian-atrium",
+    "vitruvian-deck",
     "vitruvian-tabs-api",
     "vitruvian-tabs-build-stack",
     "vitruvian-tabs-dev-latest",
@@ -405,7 +405,6 @@ fn group_by_app_gives_every_app_its_own_workflow() {
         .collect();
     let want: Vec<(String, Vec<String>)> = vec![
         ("charts", vec!["charts"]),
-        ("esp32-s3", vec!["esp32-s3"]),
         ("gravastar-mouse", vec!["gravastar-mouse-publish"]),
         (
             "oauth-user-inspector",
@@ -417,6 +416,7 @@ fn group_by_app_gives_every_app_its_own_workflow() {
         ),
         ("stripe", vec!["stripe"]),
         ("vitruvian-atrium", vec!["vitruvian-atrium"]),
+        ("vitruvian-deck", vec!["vitruvian-deck"]),
         (
             "vitruvian-tabs",
             vec![

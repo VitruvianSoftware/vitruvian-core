@@ -43,7 +43,7 @@ vitruvian-remote:
   url: "https://donate.stripe.com/bJe7sK9whgbL1A52TVbwk0b"
 
 esp32-desk-companion:
-  name: ESP32-S3 Desk Companion
+  name: Vitruvian Deck
   repo: https://github.com/VitruvianSoftware/esp32-desk-companion
   url: "https://donate.stripe.com/7sYbJ04bXaRr0w13XZbwk03"
 

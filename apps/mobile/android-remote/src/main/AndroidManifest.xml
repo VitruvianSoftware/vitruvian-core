@@ -18,7 +18,7 @@
     <!--
       Bluetooth HID: the phone presents itself to macOS as a keyboard, which is
       how the remote drives the Mac with nothing installed on the Mac. Same
-      trick the esp32-s3 board uses.
+      trick the Vitruvian Deck board uses.
 
       BLUETOOTH_CONNECT is runtime-requested from API 31; the two legacy
       permissions below cover 26-30, where it does not exist. usesPermissionFlags

@@ -61,9 +61,9 @@ public enum class HidLinkState {
  * Presents the phone to macOS as a Bluetooth keyboard, so the remote can drive a Mac with **no
  * software installed on the Mac at all**.
  *
- * This is the ESP32's trick ported to Android: `iot/esp32-s3` already pairs to a Mac as an ordinary
- * BLE keyboard and sends the same reports. [HidCodes] is that firmware's report map and key codes;
- * this class is only the platform glue around them.
+ * This is the ESP32's trick ported to Android: `apps/embedded/vitruvian-deck` already pairs to a
+ * Mac as an ordinary BLE keyboard and sends the same reports. [HidCodes] is that firmware's report
+ * map and key codes; this class is only the platform glue around them.
  *
  * ## What it does and does not replace
  *

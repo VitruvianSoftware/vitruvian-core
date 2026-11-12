@@ -45,7 +45,7 @@ spec:
     - ./apps/web/backstage/catalog-info.yaml
     - ./apps/cli/vitruvian-devx/catalog-info.yaml
     - ./apps/cli/vitruvian-homelab/catalog-info.yaml
-    - ./apps/embedded/esp32-s3/catalog-info.yaml
+    - ./apps/embedded/vitruvian-deck/catalog-info.yaml
     - ./apps/mcp/vitruvian-slack-mcp/catalog-info.yaml
     - ./apps/mcp/vitruvian-roborock-mcp/catalog-info.yaml
     - ./apps/desktop/vitruvian-code/catalog-info.yaml

@@ -51,7 +51,7 @@ Each application type has its own conventions — see the
 │   ├── mcp/                         # Model Context Protocol servers (slack)
 │   ├── desktop/                     # Native desktop applications (vitruvian-code, vitruvian-speaker, vitruvian-atrium)
 │   ├── mobile/                      # Mobile apps (android-remote)
-│   └── embedded/                    # Embedded firmware (esp32-s3)
+│   └── embedded/                    # Embedded firmware (vitruvian-deck)
 ├── packages/                        # Shared packages (packages/pulumi, design-system)
 ├── infrastructure/pulumi/           # IaC: Cloud Run, deploy identity, repo config, dev-local bootstrap
 ├── gitops/                          # ArgoCD app-of-apps (the self-hosted platform)

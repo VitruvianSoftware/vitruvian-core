@@ -57,7 +57,7 @@ pulumi_go_test(
         "//apps/desktop/vitruvian-atrium:.github/FUNDING.yml",
         "//apps/desktop/vitruvian-code:.github/FUNDING.yml",
         "//apps/desktop/vitruvian-tool-github:.github/FUNDING.yml",
-        "//apps/embedded/esp32-s3:.github/FUNDING.yml",
+        "//apps/embedded/vitruvian-deck:.github/FUNDING.yml",
         "//apps/mcp/vitruvian-roborock-mcp:.github/FUNDING.yml",
         "//apps/mcp/vitruvian-slack-mcp:.github/FUNDING.yml",
         "//apps/mobile/android-remote:.github/FUNDING.yml",

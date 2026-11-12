@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
+  "bootstrap-sha": "a82223460d5973c7661966b3a7cf2a061bc89868",
+  "packages": {
+    "apps/embedded/vitruvian-deck": {
+      "package-name": "vitruvian-deck",
+      "component": "vitruvian-deck",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": ["include/version.h"]
+    }
+  }
+}

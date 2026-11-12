@@ -1,0 +1,162 @@
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+#include "mac_hid.h"
+#include "buzzer.h"
+#include "ble_hid.h"
+#include "packet_router.h"
+#include "pin_config.h"
+#include "USB.h"
+#include "USBHIDKeyboard.h"
+#include "USBHIDConsumerControl.h"
+
+// TinyUSB device-mounted probe (ARDUINO_USB_MODE=0 → native OTG stack).
+extern "C" bool tud_mounted(void);
+
+static USBHIDKeyboard Keyboard;
+static USBHIDConsumerControl ConsumerControl;
+
+#define HID_KEY_DWELL_MS 20
+
+void mac_hid_init() {
+    USB.productName("Vitruvian Deck");
+    USB.manufacturerName("VitruvianSoftware");
+    Keyboard.begin();
+    ConsumerControl.begin();
+    USB.begin();
+
+    // GPIO 42 is owned by buzzer_init(): a pinMode() here would drop the LEDC
+    // matrix routing and leave every tone silent.
+}
+
+void haptic_click() {
+    // Delegated to the buzzer engine so the click shares one LEDC channel with
+    // the CI chimes -- and so the Settings mute silences it too.
+    buzzer_play_click();
+}
+
+bool mac_hid_usb_ready() {
+    return tud_mounted();
+}
+
+void mac_hid_execute_action(uint8_t mod, uint8_t key, uint16_t cons) {
+    // 1. Tactile feedback pulse on every action
+    haptic_click();
+
+    // 2. Transport routing: USB wins while the cable is mounted; a wirelessly
+    //    connected Mac takes over seamlessly when the device is untethered.
+    if (packet_router_active_channel() == LINK_CHANNEL_NET || !mac_hid_usb_ready()) {
+        if (!packet_router_host_active(3000) && ble_hid_is_connected()) {
+            ble_hid_send(mod, key, cons);
+            return;
+        }
+
+        // 2b. Wi-Fi Fallback: If USB is detached (or host is streaming over Wi-Fi)
+        //     and Bluetooth is not connected, beam the action packet over Wi-Fi UDP
+        //     to the Mac helper daemon.
+        char line[96];
+        snprintf(line, sizeof(line), "{\"cmd\":\"hid_action\",\"mod\":%u,\"key\":%u,\"cons\":%u}",
+                 (unsigned int)mod, (unsigned int)key, (unsigned int)cons);
+        packet_router_emit(line);
+        return;
+    }
+
+    // 3. Consumer Multimedia Action
+    if (cons != 0) {
+        ConsumerControl.press(cons);
+        delay(HID_KEY_DWELL_MS);
+        ConsumerControl.release();
+        return;
+    }
+
+    // 4. Keyboard Key Action (with modifier bitmask decoding)
+    if (mod != 0 || key != 0) {
+        // Defensive reset: Clear any leftover modifier state from prior interruptions
+        Keyboard.releaseAll();
+
+        // Decode modifier bitmask and press modifiers
+        if (mod & MOD_CTRL)  Keyboard.press(KEY_LEFT_CTRL);
+        if (mod & MOD_SHIFT) Keyboard.press(KEY_LEFT_SHIFT);
+        if (mod & MOD_ALT)   Keyboard.press(KEY_LEFT_ALT);
+        if (mod & MOD_CMD)   Keyboard.press(KEY_LEFT_GUI);
+
+        // Press primary keycode if specified
+        if (key != 0) {
+            Keyboard.press(key);
+        }
+
+        // Dwell time ensures macOS Quartz event tap / WindowServer registers the keydown
+        delay(HID_KEY_DWELL_MS);
+
+        // Complete release to avoid stuck keys
+        Keyboard.releaseAll();
+    }
+}
+
+void trigger_mission_control() {
+    mac_hid_execute_action(MOD_CTRL, KEY_UP_ARROW, 0);
+}
+
+void trigger_show_desktop() {
+    mac_hid_execute_action(MOD_NONE, KEY_F11, 0);
+}
+
+void trigger_space_left() {
+    mac_hid_execute_action(MOD_CTRL, KEY_LEFT_ARROW, 0);
+}
+
+void trigger_space_right() {
+    mac_hid_execute_action(MOD_CTRL, KEY_RIGHT_ARROW, 0);
+}
+
+void trigger_mute() {
+    mac_hid_execute_action(MOD_NONE, 0, CONSUMER_CONTROL_MUTE);
+}
+
+// Keyboard Power: HID keyboard page (0x07) usage 0x66, expressed in the +136
+// raw-usage encoding that BOTH transports already use -- USBHIDKeyboard::press()
+// and ble_hid_send() each subtract 136 for any key >= 136.
+#define KEY_SYSTEM_POWER (0x66 + 136)  // 238
+
+void trigger_display_sleep() {
+    // Ctrl+Shift+Power, which is what Control Center's "Put Display to Sleep"
+    // does: the screen goes dark, the machine keeps running, no password on
+    // return.
+    //
+    // This used to send consumer usage 0x30. That is "Power" on the consumer
+    // page, and macOS does not act on it. The Android app
+    // (mobile/android/remote) sent the identical code to a Mac and nothing
+    // happened; James reports the button never worked on this board either,
+    // which is the simpler explanation and fits the evidence.
+    //
+    // NOT VERIFIED ON THIS BOARD: it was powered off when this was written.
+    // The chord is the one confirmed working from the phone over the same HID
+    // report layout, so this is a well-founded change rather than a guess --
+    // but press the button before trusting it.
+    mac_hid_execute_action(MOD_CTRL | MOD_SHIFT, KEY_SYSTEM_POWER, 0);
+}
+
+void trigger_vol_up() {
+    mac_hid_execute_action(MOD_NONE, 0, CONSUMER_CONTROL_VOLUME_INCREMENT);
+}
+
+void trigger_vol_down() {
+    mac_hid_execute_action(MOD_NONE, 0, CONSUMER_CONTROL_VOLUME_DECREMENT);
+}

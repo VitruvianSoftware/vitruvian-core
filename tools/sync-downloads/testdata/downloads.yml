@@ -194,15 +194,15 @@ categories:
     title: Embedded & Hardware Firmware
     blurb: Pre-compiled firmware binaries and companion controller tools for microcontroller displays and desk pads.
     items:
-      - id: esp32-s3
-        name: ESP32-S3 Desk Companion
+      - id: vitruvian-deck
+        name: Vitruvian Deck
         version: "0.1.12"
         summary: >-
           Firmware that turns a 1.69-inch ESP32-S3 touch board into a desk display for live Mac
           metrics and a USB and Bluetooth shortcut macro pad.
         platforms: ["ESP32-S3", "macOS"]
         downloads:
-          - label: Mac Controller ZIP
+          - label: Deck Bundle ZIP
             url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/esp32-s3-v0.1.12/esp32-s3-mac-controller.zip
             size: 994 KB
           - label: Firmware Binary
@@ -216,4 +216,4 @@ categories:
             size: 3 KB
         flash_command: esptool.py write_flash 0x0 bootloader.bin 0x8000 partitions.bin 0x10000 firmware.bin
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/esp32-s3-v0.1.12
-        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/embedded/esp32-s3
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/embedded/vitruvian-deck

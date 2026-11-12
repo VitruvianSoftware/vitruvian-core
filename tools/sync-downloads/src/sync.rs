@@ -476,20 +476,18 @@ pub fn sync_catalog(
         }
     }
 
-    // 7. esp32-s3
-    if let Some(rel) = get_latest_release(CORE, Some("esp32-s3-v"), token)? {
+    // 7. vitruvian-deck
+    if let Some(rel) = get_latest_release(CORE, Some("vitruvian-deck-v"), token)? {
         if rel.truthy() {
             let tag_name = str_of(&rel, "tag_name", "replace")?;
-            let ver = tag_name.replace("esp32-s3-v", "");
-            say(&format!("✓ esp32-s3: v{}", ver));
-            cat.version("esp32-s3", &ver)?;
-            cat.releases_url("esp32-s3", &tag_name)?;
+            let ver = tag_name.replace("vitruvian-deck-v", "");
+            say(&format!("✓ vitruvian-deck: v{}", ver));
+            cat.version("vitruvian-deck", &ver)?;
+            cat.releases_url("vitruvian-deck", &tag_name)?;
             for a in assets(&rel)? {
                 let asset = read_asset(&a, false)?.unwrap();
                 let label = match &asset.name {
-                    Value::Str(n) if n == "esp32-s3-mac-controller.zip" => {
-                        Some("Mac Controller ZIP")
-                    }
+                    Value::Str(n) if n == "vitruvian-deck.zip" => Some("Deck Bundle ZIP"),
                     Value::Str(n) if n == "firmware.bin" => Some("Firmware Binary"),
                     Value::Str(n) if n == "bootloader.bin" => Some("Bootloader Binary"),
                     Value::Str(n) if n == "partitions.bin" => Some("Partition Table"),
