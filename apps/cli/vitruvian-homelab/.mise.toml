@@ -20,10 +20,13 @@
 
 [env]
 BINARY = "homelab"
-CRATE = "vitruvian_homelab_rs"
+MODULE = "github.com/VitruvianSoftware/homelab"
 
 [tools]
-rust = "stable"
+go = "1.26.2"
+golangci-lint = "latest"
+goreleaser = "latest"
+"go:golang.org/x/tools/cmd/goimports" = "latest"
 
 [tasks.build]
 description = "Build the binary for the current platform"
@@ -31,38 +34,34 @@ run = """
 VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo none)
 DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-mkdir -p dist
-rustc --edition 2021 --crate-type lib --crate-name $CRATE -Copt-level=3 rs/src/lib.rs -o dist/lib${CRATE}.rlib
-HOMELAB_VERSION="$VERSION" HOMELAB_COMMIT="$COMMIT" HOMELAB_DATE="$DATE" \
-  rustc --edition 2021 -Copt-level=3 --extern ${CRATE}=dist/lib${CRATE}.rlib rs/src/main.rs -o $BINARY
+LDFLAGS="-s -w -X main.version=$VERSION -X main.commit=$COMMIT -X main.date=$DATE"
+go build -ldflags "$LDFLAGS" -o $BINARY ./cmd/homelab
 """
 
 [tasks.install]
-description = "Build and install to /usr/local/bin"
+description = "Build and install to $GOPATH/bin"
 run = """
-mise run build
-install -m 0755 $BINARY /usr/local/bin/$BINARY
+VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo none)
+DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS="-s -w -X main.version=$VERSION -X main.commit=$COMMIT -X main.date=$DATE"
+go install -ldflags "$LDFLAGS" ./cmd/homelab
 """
 
 [tasks.test]
 description = "Run all tests"
-run = """
-mkdir -p dist
-rustc --edition 2021 --test rs/src/lib.rs -o dist/vitruvian_homelab_test
-./dist/vitruvian_homelab_test
-"""
+run = "go test -race -cover ./..."
 
 [tasks.lint]
-description = "Check warnings across library and binary targets"
-run = """
-mkdir -p dist
-rustc --edition 2021 --crate-type lib --crate-name $CRATE -D warnings rs/src/lib.rs -o dist/lib${CRATE}.rlib
-rustc --edition 2021 -D warnings --extern ${CRATE}=dist/lib${CRATE}.rlib rs/src/main.rs --emit=metadata -o dist/main.rmeta
-"""
+description = "Run golangci-lint"
+run = "golangci-lint run ./..."
 
 [tasks.fmt]
-description = "Format all Rust source files"
-run = "rustfmt --edition 2021 rs/src/*.rs"
+description = "Format all Go source files"
+run = """
+gofmt -s -w .
+goimports -w .
+"""
 
 [tasks.clean]
 description = "Remove build artifacts"

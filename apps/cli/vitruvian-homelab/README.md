@@ -1,6 +1,6 @@
 # Vitruvian Homelab
 
-Declaratively provision and manage multi-node Kubernetes homelab clusters on macOS using [Lima VZ](https://lima-vm.io/) and [K3s](https://k3s.io/) with the `homelab` CLI.
+Declaratively provision and manage multi-node Kubernetes homelab clusters on macOS using [Lima VZ](https://lima-vm.io/) and [K3s](https://k3s.io/).
 
 ## Features
 
@@ -12,7 +12,7 @@ Declaratively provision and manage multi-node Kubernetes homelab clusters on mac
 - **Rolling upgrades** — upgrade K3s across the cluster with zero downtime
 - **Backup & restore** — etcd snapshot management for disaster recovery
 - **Pre-flight diagnostics** — comprehensive health checks across all nodes
-- **Homebrew distribution** — install via `brew install vitruviansoftware/tap/vitruvian-homelab`
+- **Homebrew distribution** — install via `brew install vitruviansoftware/tap/homelab`
 
 ## Installation
 
@@ -23,17 +23,17 @@ Declaratively provision and manage multi-node Kubernetes homelab clusters on mac
 # untrusted third-party tap (and brew upgrade silently skips it).
 brew tap vitruviansoftware/tap
 brew trust vitruviansoftware/tap
-brew install vitruviansoftware/tap/vitruvian-homelab
+brew install vitruviansoftware/tap/homelab
 ```
 
-> **Already installed but stuck on an old version?** Run `brew trust vitruviansoftware/tap && brew upgrade vitruviansoftware/tap/vitruvian-homelab`.
+> **Already installed but stuck on an old version?** Run `brew trust vitruviansoftware/tap && brew upgrade vitruviansoftware/tap/homelab`.
 
 ### From source
 
 ```bash
 git clone https://github.com/VitruvianSoftware/homelab.git
 cd homelab
-mise run install
+make install
 ```
 
 ### GitHub Releases
@@ -200,9 +200,9 @@ Each macOS host needs:
 
 ```bash
 mise run build    # Build binary
-mise run test     # Run unit tests
-mise run lint     # Check compiler warnings
-mise run fmt      # Format Rust source files
+mise run test     # Run tests with race detector
+mise run lint     # Run golangci-lint
+mise run fmt      # Format source files
 mise run clean    # Remove build artifacts
 ```
 

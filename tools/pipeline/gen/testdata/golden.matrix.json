@@ -35,26 +35,26 @@
       "concurrency_group": "pipeline-design-system"
     },
     {
-      "name": "vitruvian-devx",
-      "package": "apps/cli/vitruvian-devx",
-      "targets": "//apps/cli/vitruvian-devx/...",
-      "test_targets": "//apps/cli/vitruvian-devx/...",
+      "name": "devx-cli",
+      "package": "devx",
+      "targets": "//devx/...",
+      "test_targets": "//devx/...",
       "runner": "ubuntu-26.04",
       "tier": "L1",
       "persona": "backend",
       "timeout_minutes": 20,
-      "concurrency_group": "pipeline-vitruvian-devx"
+      "concurrency_group": "pipeline-devx-cli"
     },
     {
-      "name": "vitruvian-homelab",
-      "package": "apps/cli/vitruvian-homelab",
-      "targets": "//apps/cli/vitruvian-homelab/...",
-      "test_targets": "//apps/cli/vitruvian-homelab/...",
+      "name": "homelab",
+      "package": "homelab",
+      "targets": "//homelab/...",
+      "test_targets": "//homelab/...",
       "runner": "ubuntu-26.04",
       "tier": "L1",
       "persona": "infra",
       "timeout_minutes": 20,
-      "concurrency_group": "pipeline-vitruvian-homelab"
+      "concurrency_group": "pipeline-homelab"
     },
     {
       "name": "mcp-slack-service",

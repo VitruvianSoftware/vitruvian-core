@@ -19,9 +19,9 @@
 # SOFTWARE.
 
 site_name: Vitruvian Homelab
-site_description: Vitruvian Homelab k3s/Lima provisioning CLI (superseded for live cluster ops by Vitruvian DevX CLI; still released)
+site_description: Homelab k3s/Lima provisioning CLI (superseded for live cluster ops by devx; still released)
 repo_url: https://github.com/VitruvianSoftware/vitruvian-core
-edit_uri: edit/main/apps/cli/vitruvian-homelab/docs
+edit_uri: edit/main/homelab/docs
 docs_dir: docs
 plugins:
   - techdocs-core

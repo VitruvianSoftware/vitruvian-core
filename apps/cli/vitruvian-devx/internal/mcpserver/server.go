@@ -25,7 +25,7 @@ import (
 )
 
 // ServerName is the canonical name advertised to MCP hosts.
-const ServerName = "vitruvian-devx"
+const ServerName = "devx"
 
 // NewServer constructs a fully-registered MCPServer ready to be served over
 // any transport. The version is stamped onto the InitializeResult so MCP

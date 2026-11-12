@@ -19,9 +19,9 @@
 # SOFTWARE.
 
 site_name: Vitruvian DevX CLI
-site_description: Vitruvian DevX CLI — local dev orchestration (Lima VMs, devcontainers, k3s cluster join/apply, scaffolding)
+site_description: Developer-experience CLI — local dev orchestration (Lima VMs, devcontainers, k3s cluster join/apply, scaffolding)
 repo_url: https://github.com/VitruvianSoftware/vitruvian-core
-edit_uri: edit/main/apps/cli/vitruvian-devx/docs
+edit_uri: edit/main/devx/docs
 docs_dir: docs
 plugins:
   - techdocs-core

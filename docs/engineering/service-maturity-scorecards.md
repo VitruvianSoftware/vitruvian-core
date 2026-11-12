@@ -182,8 +182,8 @@ Criteria dynamically adapt based on **`spec.type`**:
 | **`backstage`** | `service` | `platform-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
 | **`buzz`** | `service` | `platform-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
 | **`mcp-slack`** | `service` | `mcp-slack-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
-| **`devx`** | `tool` | `devx-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
-| **`homelab`** | `tool` | `homelab-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
+| **`vitruvian-devx`** | `tool` | `devx-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
+| **`vitruvian-homelab`** | `tool` | `homelab-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
 | **`nexus-agent`** | `tool` | `nexus-agent-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
 | **`whoami`** | `service` | `platform-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
 | **`storybook`** | `website` | `platform-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |

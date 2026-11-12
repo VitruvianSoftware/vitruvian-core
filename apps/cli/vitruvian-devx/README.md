@@ -5,17 +5,17 @@
     <a href="https://github.com/VitruvianSoftware/devx/actions/workflows/ci.yml"><img src="https://github.com/VitruvianSoftware/devx/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://github.com/VitruvianSoftware/devx/releases/latest"><img src="https://img.shields.io/github/v/release/VitruvianSoftware/devx" alt="Release"></a>
     <a href="https://github.com/VitruvianSoftware/devx/blob/main/LICENSE"><img src="https://img.shields.io/github/license/VitruvianSoftware/devx" alt="License"></a>
-    <a href="https://goreportcard.com/report/github.com/VitruvianSoftware/vitruvian-devx"><img src="https://goreportcard.com/badge/github.com/VitruvianSoftware/vitruvian-devx" alt="Go Report Card"></a>
+    <a href="https://goreportcard.com/report/github.com/VitruvianSoftware/devx"><img src="https://goreportcard.com/badge/github.com/VitruvianSoftware/devx" alt="Go Report Card"></a>
   </p>
 </p>
 
 <p align="center">
-  <img src=".github/assets/hero.png" alt="Vitruvian DevX CLI — Supercharged Local Development" width="600">
+  <img src=".github/assets/hero.png" alt="devx — Supercharged Local Development" width="600">
 </p>
 
 ## Mission Statement
 
-**Vitruvian DevX CLI** (`devx`) exists to bring absolute joy back to local development. 
+**devx** exists to bring absolute joy back to local development. 
 We relentlessly eliminate the daily friction that pulls developers out of their flow state. From wrestling with inconsistent OS kernels to manually managing `.env` files, mocking webhooks, or resetting scrambled testing databases—we believe your tooling should work natively, instantly, and invisibly so you can just write code.
 
 ## Why `devx`? (More than just Compose or Skaffold)
@@ -69,10 +69,10 @@ We go far beyond basic container networking by natively integrating the premium 
 # brew upgrade for) formulae from untrusted third-party taps.
 brew tap vitruviansoftware/tap
 brew trust vitruviansoftware/tap
-brew install vitruviansoftware/tap/vitruvian-devx
+brew install vitruviansoftware/tap/devx
 ```
 
-> **Already installed but stuck on an old version?** Homebrew silently skips `brew upgrade` / `brew outdated` for untrusted taps, so `devx` can freeze on an old release. Run `brew trust vitruviansoftware/tap && brew upgrade vitruviansoftware/tap/vitruvian-devx` to unstick it.
+> **Already installed but stuck on an old version?** Homebrew silently skips `brew upgrade` / `brew outdated` for untrusted taps, so `devx` can freeze on an old release. Run `brew trust vitruviansoftware/tap && brew upgrade vitruviansoftware/tap/devx` to unstick it.
 
 ### From Releases
 
@@ -80,15 +80,15 @@ Download the latest binary from [GitHub Releases](https://github.com/VitruvianSo
 
 ```bash
 # macOS (Apple Silicon)
-curl -sL https://github.com/VitruvianSoftware/devx/releases/latest/download/vitruvian-devx_darwin_arm64.tar.gz | tar xz
+curl -sL https://github.com/VitruvianSoftware/devx/releases/latest/download/devx_darwin_arm64.tar.gz | tar xz
 sudo mv devx /usr/local/bin/
 
 # macOS (Intel)
-curl -sL https://github.com/VitruvianSoftware/devx/releases/latest/download/vitruvian-devx_darwin_amd64.tar.gz | tar xz
+curl -sL https://github.com/VitruvianSoftware/devx/releases/latest/download/devx_darwin_amd64.tar.gz | tar xz
 sudo mv devx /usr/local/bin/
 
 # Linux (amd64)
-curl -sL https://github.com/VitruvianSoftware/devx/releases/latest/download/vitruvian-devx_linux_amd64.tar.gz | tar xz
+curl -sL https://github.com/VitruvianSoftware/devx/releases/latest/download/devx_linux_amd64.tar.gz | tar xz
 sudo mv devx /usr/local/bin/
 ```
 

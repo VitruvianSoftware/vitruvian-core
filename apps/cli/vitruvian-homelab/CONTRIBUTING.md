@@ -1,8 +1,8 @@
-# Contributing to Vitruvian Homelab
+# Contributing to homelab
 
 ## ⚠️ This is a read-only mirror — how contributions work
 
-Vitruvian Homelab (`homelab`) is developed in the **[VitruvianSoftware/vitruvian-core](https://github.com/VitruvianSoftware/vitruvian-core)** monorepo (the single source of truth). **This repository is a read-only mirror** kept in sync by [Copybara](https://github.com/google/copybara) — you cannot merge directly here.
+`homelab` is developed in the **[VitruvianSoftware/vitruvian-core](https://github.com/VitruvianSoftware/vitruvian-core)** monorepo (the single source of truth). **This repository is a read-only mirror** kept in sync by [Copybara](https://github.com/google/copybara) — you cannot merge directly here.
 
 You contribute by opening a PR against this mirror; it is **imported back into the monorepo** for review:
 
@@ -16,6 +16,6 @@ So: *open PR → sign CLA → maintainer labels → auto-import → review/merge
 
 ## Local development
 
-Vitruvian Homelab (`homelab`) is a stdlib-only Rust CLI. Clone the mirror, build with `mise run build`,
-and run its tests with `mise run test` before opening a PR. All review and merge happens in
+`homelab` is a Go CLI. Clone the mirror, build with the repo's standard Go
+toolchain, and run its tests before opening a PR. All review and merge happens in
 the monorepo (see above) — this mirror only accepts PRs for import.

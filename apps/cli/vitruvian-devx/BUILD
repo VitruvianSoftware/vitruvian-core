@@ -18,14 +18,14 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 # conformance guard (tools/conformance/check.sh check_app_visibility) fails
 # CI on exactly that literal, so the firewall cannot silently reopen.
 
-# Inter-app boundary (#82): targets in this package default to vitruvian-devx-internal
-# visibility so other top-level apps can't depend on vitruvian-devx internals. The
+# Inter-app boundary (#82): targets in this package default to devx-internal
+# visibility so other top-level apps can't depend on devx internals. The
 # binary needs no wider visibility: `bazel run/build //apps/cli/vitruvian-devx` from the CLI,
 # workflows, and GoReleaser ignores visibility (it gates dep EDGES only).
 package(default_visibility = ["//apps/cli/vitruvian-devx:__subpackages__"])
 
 go_library(
-    name = "vitruvian-devx_lib",
+    name = "devx_lib",
     srcs = ["main.go"],
     importpath = "github.com/VitruvianSoftware/vitruvian-devx",
     visibility = ["//visibility:private"],
@@ -34,7 +34,7 @@ go_library(
 
 go_binary(
     name = "devx",
-    embed = [":vitruvian-devx_lib"],
+    embed = [":devx_lib"],
 )
 
 # Developer-environment check: `bazel run //apps/cli/vitruvian-devx:doctor`. Go is pinned to this
@@ -42,7 +42,7 @@ go_binary(
 doctor(
     name = "doctor",
     gomod = "apps/cli/vitruvian-devx/go.mod",
-    label = "vitruvian-devx",
+    label = "devx",
     optional = [
         "mage",
         "lima",
@@ -67,7 +67,7 @@ pipeline_unit(
 rust_library(
     name = "migrate_to_docker_lib",
     srcs = ["scripts/src/lib.rs"],
-    crate_name = "vitruvian_devx_migrate_to_docker",
+    crate_name = "devx_migrate_to_docker",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/cli/vitruvian-devx:__subpackages__"],

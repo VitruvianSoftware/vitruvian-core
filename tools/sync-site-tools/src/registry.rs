@@ -748,7 +748,7 @@ fn additional() -> Vec<Ext> {
             claude_marketplace_source: s(""),
         },
         Ext {
-            id: s("vitruvian-devx"),
+            id: s("devx"),
             name: s("Vitruvian DevX CLI"),
             kind: s("skill"),
             category: s("Local Dev & K3s Skills"),
@@ -762,8 +762,8 @@ fn additional() -> Vec<Ext> {
             skills: caps(&["devx"]),
             hooks: vec![],
             rules: vec![],
-            keywords: list_of_str(&["vitruvian-devx", "devx", "k3s", "lima", "skills"]),
-            needs: s("Vitruvian DevX CLI installed (`brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/vitruvian-devx`)"),
+            keywords: list_of_str(&["devx", "k3s", "lima", "skills"]),
+            needs: s("devx installed (`brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/devx`)"),
             note: s(""),
             installs: vec![
                 install("Any agent", "codex-opencode", "Add the skills to your project (Antigravity, Claude Code, Codex, OpenCode)", "devx agent init"),
@@ -1125,7 +1125,7 @@ mod tests {
                 "mcp-roborock",
                 "vitruvian-code",
                 "mcp-slack",
-                "vitruvian-devx"
+                "devx"
             ]
         );
     }

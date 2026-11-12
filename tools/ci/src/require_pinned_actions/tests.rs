@@ -157,7 +157,10 @@ fn files_outside_the_checked_directories_are_ignored() {
     let t = TempDir::new();
     workflow(&t, &format!("  - uses: a/b@{SHA}\n"));
     write(t.join(".github/dependabot.yml"), "uses: a/b@v1\n");
-    write(t.join("apps/cli/vitruvian-devx/other.yaml"), "uses: a/b@v1\n");
+    write(
+        t.join("apps/cli/vitruvian-devx/other.yaml"),
+        "uses: a/b@v1\n",
+    );
     let o = check(t.path());
     assert_eq!((o.code, o.all().as_str()), (0, ""));
 }

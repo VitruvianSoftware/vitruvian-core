@@ -30,7 +30,7 @@ import (
 )
 
 // NodeKeeperLabel is the launchd label for the per-host VM keeper LaunchAgent.
-const NodeKeeperLabel = "com.vitruviansoftware.devx.node-vm-keeper"
+const NodeKeeperLabel = "io.devx.node-vm-keeper"
 
 // nodeKeeperScript renders the keeper script. It waits (bounded) for the
 // socket_vmnet socket — whose launchd KeepAlive heals it after a reboot — then

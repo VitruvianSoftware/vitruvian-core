@@ -46,7 +46,7 @@ func init() {
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Print the Vitruvian DevX CLI version and check for updates",
+	Short: "Print the devx version and check for updates",
 	Run: func(cmd *cobra.Command, args []string) {
 		result, _ := updater.Check(version)
 

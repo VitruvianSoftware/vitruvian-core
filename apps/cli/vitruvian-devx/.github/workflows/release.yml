@@ -61,7 +61,7 @@ jobs:
             echo "No version in manifest."
             exit 0
           fi
-          if git rev-parse "v$V" >/dev/null 2>&1 || git rev-parse "vitruvian-devx-v$V" >/dev/null 2>&1; then
+          if git rev-parse "v$V" >/dev/null 2>&1; then
             echo "v$V already released -- nothing to do."
           else
             echo "version=$V" >> "$GITHUB_OUTPUT"

@@ -59,9 +59,9 @@ func TestJSONInstallCreatesNewConfig(t *testing.T) {
 		t.Fatalf("mcpServers missing: %+v", cfg)
 		return
 	}
-	entry, _ := servers["vitruvian-devx"].(map[string]any)
+	entry, _ := servers["devx"].(map[string]any)
 	if entry == nil {
-		t.Fatalf("vitruvian-devx entry missing: %+v", servers)
+		t.Fatalf("devx entry missing: %+v", servers)
 		return
 	}
 	if entry["command"] != "/usr/local/bin/devx" {
@@ -126,8 +126,8 @@ func TestJSONInstallPreservesOtherEntries(t *testing.T) {
 	if _, ok := servers["other-server"]; !ok {
 		t.Errorf("other MCP server entry was wiped: %+v", servers)
 	}
-	if _, ok := servers["vitruvian-devx"]; !ok {
-		t.Errorf("vitruvian-devx entry was not added: %+v", servers)
+	if _, ok := servers["devx"]; !ok {
+		t.Errorf("devx entry was not added: %+v", servers)
 	}
 }
 
@@ -136,7 +136,7 @@ func TestJSONUninstallRemovesOnlyDevx(t *testing.T) {
 	path := filepath.Join(dir, "config.json")
 	writeJSON(t, path, map[string]any{
 		"mcpServers": map[string]any{
-			"vitruvian-devx": map[string]any{"command": "/x", "args": []any{"mcp", "serve"}},
+			"devx": map[string]any{"command": "/x", "args": []any{"mcp", "serve"}},
 			"other-server": map[string]any{
 				"command": "/usr/bin/other",
 				"args":    []any{"--flag"},
@@ -155,8 +155,8 @@ func TestJSONUninstallRemovesOnlyDevx(t *testing.T) {
 
 	cfg := readBack(t, path)
 	servers, _ := cfg["mcpServers"].(map[string]any)
-	if _, ok := servers["vitruvian-devx"]; ok {
-		t.Errorf("vitruvian-devx entry should be removed: %+v", servers)
+	if _, ok := servers["devx"]; ok {
+		t.Errorf("devx entry should be removed: %+v", servers)
 	}
 	if _, ok := servers["other-server"]; !ok {
 		t.Errorf("other-server should be preserved: %+v", servers)

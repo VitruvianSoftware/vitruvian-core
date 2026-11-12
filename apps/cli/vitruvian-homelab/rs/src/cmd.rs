@@ -127,7 +127,7 @@ impl RootCmd {
 
     /// Formats the root help text matching the Cobra CLI layout.
     pub fn format_help() -> String {
-        r#"Vitruvian Homelab (homelab) is a CLI tool for provisioning and managing Kubernetes clusters
+        r#"homelab is a CLI tool for provisioning and managing Kubernetes clusters
 across multiple macOS machines using Lima VZ and K3s.
 
 Define your cluster topology in a YAML config file, then use homelab to

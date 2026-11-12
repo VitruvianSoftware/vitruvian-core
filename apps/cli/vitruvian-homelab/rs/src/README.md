@@ -43,4 +43,4 @@ Component package providing implementation for `apps/cli/vitruvian-homelab/rs/sr
 - [remote.rs:180]: `self.executor = Some(Arc::new(exec));`
 
 ## Verification
-- Run: `bazel test //apps/cli/vitruvian-homelab/...`
+- Run: `bazel test //apps/cli/vitruvian-homelab/rs/src/...`

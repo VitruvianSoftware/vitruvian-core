@@ -87,7 +87,7 @@ func (h *manualHost) Uninstall(_ Options) (InstallResult, error) {
 		DisplayName: h.displayName,
 		OK:          true,
 		Scope:       "manual",
-		Message:     "remove the \"vitruvian-devx\" entry from " + h.displayName + "'s MCP/plugin configuration manually",
+		Message:     "remove the \"devx\" entry from " + h.displayName + "'s MCP/plugin configuration manually",
 	}, nil
 }
 

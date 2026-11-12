@@ -224,7 +224,7 @@ jobs:
           QUEUED: ${{ steps.queued.outputs.verdict }}
           QUEUED_RUN: ${{ steps.queued.outputs.run }}
           FAST_LANE: ${{ steps.fastlane.outputs.verdict }}
-          ALL_UNITS: '["backstage-backend","design-system","backstage-app","vitruvian-devx","vitruvian-homelab","mcp-slack-service","vitruvian-code-src","vitruvian-code-macos","oauth-user-inspector","pulumi-repo-config","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web"]'
+          ALL_UNITS: '["backstage-backend","design-system","backstage-app","devx-cli","homelab","mcp-slack-service","vitruvian-code-src","vitruvian-code-macos","oauth-user-inspector","pulumi-repo-config","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web"]'
         run: |
           set +e -u -o pipefail
           if [ "$RELEASE_SKIP" = "true" ]; then
@@ -434,12 +434,12 @@ jobs:
           pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
-  unit-vitruvian-devx:
-    name: vitruvian-devx
+  unit-devx-cli:
+    name: devx-cli
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     needs: [plan]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-devx')) }}
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'devx-cli')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -458,7 +458,7 @@ jobs:
         id: llvm-contents
         uses: ./.github/actions/llvm-cache-restore
 
-      - name: Build & Test Unit vitruvian-devx
+      - name: Build & Test Unit devx-cli
         run: |
           set -euo pipefail
           cache_flags=()
@@ -466,7 +466,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/cli/vitruvian-devx/... || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/cli/vitruvian-devx/...; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //devx/... || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //devx/...; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -477,12 +477,12 @@ jobs:
           pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
-  unit-vitruvian-homelab:
-    name: vitruvian-homelab
+  unit-homelab:
+    name: homelab
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     needs: [plan]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-homelab')) }}
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'homelab')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -501,7 +501,7 @@ jobs:
         id: llvm-contents
         uses: ./.github/actions/llvm-cache-restore
 
-      - name: Build & Test Unit vitruvian-homelab
+      - name: Build & Test Unit homelab
         run: |
           set -euo pipefail
           cache_flags=()
@@ -509,7 +509,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/cli/vitruvian-homelab/... || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/cli/vitruvian-homelab/...; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //homelab/... || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //homelab/...; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -992,7 +992,7 @@ jobs:
 
   gate:
     name: gate/all-required-passed
-    needs: [plan, unit-backstage-backend, unit-design-system, unit-backstage-app, unit-vitruvian-devx, unit-vitruvian-homelab, unit-mcp-slack-service, unit-vitruvian-code-src, unit-vitruvian-code-macos, unit-oauth-user-inspector, unit-pulumi-repo-config, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web]
+    needs: [plan, unit-backstage-backend, unit-design-system, unit-backstage-app, unit-devx-cli, unit-homelab, unit-mcp-slack-service, unit-vitruvian-code-src, unit-vitruvian-code-macos, unit-oauth-user-inspector, unit-pulumi-repo-config, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5

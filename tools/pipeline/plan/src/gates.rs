@@ -36,6 +36,7 @@ const DOCS_PREFIXES: &[&str] = &[
     ".agents/agents/",
     ".agents/skills/",
     ".agents/rules/",
+    "devx/docs/",
     "apps/cli/vitruvian-devx/docs/",
 ];
 const DOCS_SUFFIXES: &[&str] = &[".md", ".png", ".jpg", ".jpeg", ".svg", ".txt"];
@@ -167,7 +168,9 @@ const BACKEND_PREFIXES: &[&str] = &[
     "apps/suites/tabula/api/",
     "tabula/cli/",
     "apps/suites/tabula/cli/",
+    "devx/",
     "apps/cli/vitruvian-devx/",
+    "homelab/",
     "apps/cli/vitruvian-homelab/",
     "mcp-slack/",
     "apps/mcp/slack/",

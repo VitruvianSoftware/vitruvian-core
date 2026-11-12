@@ -32,8 +32,8 @@ import (
 
 var upgradeCmd = &cobra.Command{
 	Use:   "upgrade",
-	Short: "Upgrade Vitruvian DevX CLI (devx) to the latest release",
-	Long: `Downloads the latest Vitruvian DevX CLI release from GitHub, verifies the SHA-256 checksum,
+	Short: "Upgrade devx to the latest release",
+	Long: `Downloads the latest devx release from GitHub, verifies the SHA-256 checksum,
 and atomically replaces the currently running binary in-place.
 
 If devx is installed in a system directory (e.g. /usr/local/bin), you may

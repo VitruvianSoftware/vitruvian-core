@@ -47,8 +47,8 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:   "devx",
-	Short: "Vitruvian DevX CLI — supercharged local dev environment",
-	Long: `Vitruvian DevX CLI (devx) is the unified orchestration layer for your modern developer lifecycle.
+	Short: "Supercharged local dev environment",
+	Long: `devx is the unified orchestration layer for your modern developer lifecycle.
 It replaces a fragmented toolchain with a single, declarative CLI.
 
 Configuration Domains:

@@ -20,10 +20,12 @@
 
 version: 2
 
-project_name: vitruvian-devx
+# The formula and archives stay "devx": the command people type is unchanged.
+# (Without this, GoReleaser takes the name from the go.mod module path.)
+project_name: devx
 
 builds:
-  - id: vitruvian-devx
+  - id: devx
     main: .
     binary: devx
     env:
@@ -41,7 +43,7 @@ builds:
 archives:
   - id: default
     format: tar.gz
-    name_template: "vitruvian-devx_{{ .Os }}_{{ .Arch }}"
+    name_template: "devx_{{ .Os }}_{{ .Arch }}"
     files:
       - LICENSE
       - README.md
@@ -65,33 +67,32 @@ release:
     name: devx
   draft: false
   prerelease: auto
-  name_template: "Vitruvian DevX CLI {{.Version}}"
+  name_template: "devx {{.Version}}"
   header: |
     ## What's Changed
 
     Install with:
     ```bash
     # macOS (Apple Silicon)
-    curl -sL https://github.com/VitruvianSoftware/devx/releases/download/v{{.Version}}/vitruvian-devx_darwin_arm64.tar.gz | tar xz
+    curl -sL https://github.com/VitruvianSoftware/devx/releases/download/v{{.Version}}/devx_darwin_arm64.tar.gz | tar xz
     sudo mv devx /usr/local/bin/
 
     # macOS (Intel)
-    curl -sL https://github.com/VitruvianSoftware/devx/releases/download/v{{.Version}}/vitruvian-devx_darwin_amd64.tar.gz | tar xz
+    curl -sL https://github.com/VitruvianSoftware/devx/releases/download/v{{.Version}}/devx_darwin_amd64.tar.gz | tar xz
     sudo mv devx /usr/local/bin/
 
     # Linux (amd64)
-    curl -sL https://github.com/VitruvianSoftware/devx/releases/download/v{{.Version}}/vitruvian-devx_linux_amd64.tar.gz | tar xz
+    curl -sL https://github.com/VitruvianSoftware/devx/releases/download/v{{.Version}}/devx_linux_amd64.tar.gz | tar xz
     sudo mv devx /usr/local/bin/
     ```
 
 brews:
-  - name: vitruvian-devx
-    repository:
+  - repository:
       owner: VitruvianSoftware
       name: homebrew-tap
     directory: Formula
     homepage: "https://github.com/VitruvianSoftware/devx"
-    description: "Vitruvian DevX CLI — local dev environment orchestrator"
+    description: "Supercharged local dev environment — Podman + Cloudflare Tunnels + Tailscale in one CLI"
     license: "MIT"
     test: |
       system "#{bin}/devx", "version"

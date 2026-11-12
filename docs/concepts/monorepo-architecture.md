@@ -135,7 +135,7 @@ vitruvian-core/
 ├── apps/
 │   ├── suites/tabula/                 # SaaS suite (with its infra/ Pulumi stacks)
 │   ├── web/oauth-user-inspector/      # SaaS web app (with its infra/ Pulumi stacks)
-│   ├── cli/vitruvian-devx/  cli/vitruvian-homelab/ # Go & Rust CLIs
+│   ├── cli/vitruvian-devx/  cli/vitruvian-homelab/        # Go CLIs
 │   └── mcp/slack/  desktop/nexus-agent/ # agent / MCP services
 ├── packages/
 │   └── pulumi/                        # shared Pulumi library + foundation examples

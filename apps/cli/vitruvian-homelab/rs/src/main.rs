@@ -20,20 +20,11 @@
 
 use std::process;
 
-use vitruvian_homelab_rs::cmd::RootCmd;
+use homelab_rs::cmd::RootCmd;
 
-const VERSION: &str = match option_env!("HOMELAB_VERSION") {
-    Some(v) => v,
-    None => "dev",
-};
-const COMMIT: &str = match option_env!("HOMELAB_COMMIT") {
-    Some(c) => c,
-    None => "none",
-};
-const DATE: &str = match option_env!("HOMELAB_DATE") {
-    Some(d) => d,
-    None => "unknown",
-};
+const VERSION: &str = "dev";
+const COMMIT: &str = "none";
+const DATE: &str = "unknown";
 
 fn main() {
     let root = RootCmd::new(VERSION, COMMIT, DATE);

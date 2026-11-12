@@ -24,14 +24,14 @@ use std::process;
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
-    let opts = match vitruvian_devx_migrate_to_docker::parse_args(&args) {
+    let opts = match devx_migrate_to_docker::parse_args(&args) {
         Ok(o) => o,
         Err(e) => {
             eprintln!("{}", e);
             process::exit(1);
         }
     };
-    match vitruvian_devx_migrate_to_docker::run_migration(&opts) {
+    match devx_migrate_to_docker::run_migration(&opts) {
         Ok(out) => print!("{}", out),
         Err(e) => {
             eprintln!("{}", e);

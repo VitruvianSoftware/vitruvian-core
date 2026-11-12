@@ -186,7 +186,7 @@ For example, to add a new component called "example-component":
 
 - [Bazel](https://bazel.build/) (via the repo's `bazelisk`) — the entry point for every command below.
 - [Pulumi CLI](https://www.pulumi.com/docs/install/) and Go — Pulumi compiles `main.go`; `bazel run //infrastructure/pulumi/platform/dev-local:setup` checks both.
-- A local **Lima + k3s** cluster (provisioned with [Vitruvian DevX CLI](https://github.com/VitruvianSoftware/devx)) whose kubeconfig context is named `default` — the program's `kubernetes_context` default (override via `monorepo:kubernetes_context`).
+- A local **Lima + k3s** cluster (provisioned with [devx](https://github.com/VitruvianSoftware/devx)) whose kubeconfig context is named `default` — the program's `kubernetes_context` default (override via `monorepo:kubernetes_context`).
 - [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/) pointed at that cluster.
 
 ### Quick Start

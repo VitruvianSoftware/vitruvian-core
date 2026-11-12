@@ -192,7 +192,7 @@ If you want to wire devx into a host devx doesn't yet support, the config snippe
 ```json
 {
   "mcpServers": {
-    "vitruvian-devx": {
+    "devx": {
       "command": "/absolute/path/to/devx",
       "args": ["mcp", "serve"]
     }
@@ -200,4 +200,4 @@ If you want to wire devx into a host devx doesn't yet support, the config snippe
 }
 ```
 
-Get the absolute path with `which devx`. The container key (`mcpServers`) varies by host — Zed uses `context_servers`, Codex uses `[mcp_servers.vitruvian-devx]` in TOML, etc. See `devx mcp install --json` output (or the table above) for the exact format your host expects.
+Get the absolute path with `which devx`. The container key (`mcpServers`) varies by host — Zed uses `context_servers`, Codex uses `[mcp_servers.devx]` in TOML, etc. See `devx mcp install --json` output (or the table above) for the exact format your host expects.

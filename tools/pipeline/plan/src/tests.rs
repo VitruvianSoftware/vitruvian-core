@@ -85,14 +85,7 @@ fn write(root: &Path, rel: &str, content: &str) {
 #[test]
 fn docs_only_fast_gate() {
     let cases: &[(&[&str], bool)] = &[
-        (
-            &[
-                "docs/index.md",
-                "README.md",
-                "apps/cli/vitruvian-devx/docs/guide.md",
-            ],
-            true,
-        ),
+        (&["docs/index.md", "README.md", "devx/docs/guide.md"], true),
         (&["gitops/argocd/app.yaml", ".agents/task.md"], true),
         (&[".agents/hooks.json"], false),
         (

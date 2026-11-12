@@ -994,8 +994,8 @@ mod tests {
             .collect();
         vec![
             Component {
-                name: PyVal::Str(py("vitruvian-homelab")),
-                package_name: PyVal::Str(py("vitruvian-homelab")),
+                name: PyVal::Str(py("homelab")),
+                package_name: PyVal::Str(py("homelab")),
                 path: py("apps/cli/vitruvian-homelab"),
                 excludes: vec![],
                 visible: vis.clone(),
@@ -1044,12 +1044,12 @@ mod tests {
         .unwrap();
         assert!(!bad.ok);
         assert_eq!(bad.unnamed.len(), 2);
-        assert!(bad.unnamed[0].py_eq(&PyVal::Str(py("vitruvian-homelab"))));
+        assert!(bad.unnamed[0].py_eq(&PyVal::Str(py("homelab"))));
         assert!(bad.unnamed[1].py_eq(&PyVal::Str(py("vitruvian"))));
 
         let scoped_ok = judge(
             &make_pr(
-                "fix(vitruvian-homelab): fix flag",
+                "fix(homelab): fix flag",
                 "",
                 &["apps/cli/vitruvian-homelab/main.go"],
             ),
@@ -1062,7 +1062,7 @@ mod tests {
         let footer_ok = judge(
             &make_pr(
                 "fix: shared update",
-                "Summary\n\nReleases: vitruvian-homelab, vitruvian\n",
+                "Summary\n\nReleases: homelab, vitruvian\n",
                 &[
                     "apps/cli/vitruvian-homelab/main.go",
                     "apps/desktop/vitruvian/Info.plist",

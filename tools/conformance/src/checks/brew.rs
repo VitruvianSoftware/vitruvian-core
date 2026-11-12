@@ -60,8 +60,6 @@ const OUR_NAMES: &[&str] = &[
     "homelab",
     "nexus-agent",
     "vitruvian",
-    "vitruvian-devx",
-    "vitruvian-homelab",
     "vitruvian-tool",
 ];
 

@@ -17,20 +17,20 @@ Both features are zero-config, respect all global flags (`--json`, `--dry-run`, 
 
 | File | Purpose |
 |------|---------|
-| [diagnose.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/internal/ai/diagnose.go) | Two-tier diagnosis engine: 16 rule-based patterns + AI-enhanced analysis |
-| [diagnose_test.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/internal/ai/diagnose_test.go) | 8 unit tests covering rule matching, case insensitivity, edge cases |
-| [query.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/internal/database/query.go) | Canned queries, read-only executor, tab-separated parser, lipgloss table renderer |
-| [query_test.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/internal/database/query_test.go) | 7 unit tests for parsing, rendering, and registry completeness |
-| [db_ask.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/cmd/db_ask.go) | Cobra command supporting `--sizes`, `--recent`, `--missing-indexes`, `--nulls`, and NL queries |
+| [diagnose.go](file:///Users/james/Workspace/gh/application/vitruvian/devx/internal/ai/diagnose.go) | Two-tier diagnosis engine: 16 rule-based patterns + AI-enhanced analysis |
+| [diagnose_test.go](file:///Users/james/Workspace/gh/application/vitruvian/devx/internal/ai/diagnose_test.go) | 8 unit tests covering rule matching, case insensitivity, edge cases |
+| [query.go](file:///Users/james/Workspace/gh/application/vitruvian/devx/internal/database/query.go) | Canned queries, read-only executor, tab-separated parser, lipgloss table renderer |
+| [query_test.go](file:///Users/james/Workspace/gh/application/vitruvian/devx/internal/database/query_test.go) | 7 unit tests for parsing, rendering, and registry completeness |
+| [db_ask.go](file:///Users/james/Workspace/gh/application/vitruvian/devx/cmd/db_ask.go) | Cobra command supporting `--sizes`, `--recent`, `--missing-indexes`, `--nulls`, and NL queries |
 
 ### Modified Files
 
 | File | Change |
 |------|--------|
-| [root.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/cmd/root.go) | Hooked `ai.DiagnoseFailure()` into `Execute()` — intercepts all command errors before exit |
-| [error.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/internal/devxerr/error.go) | Added exit codes 90-93 for diagnosis and db ask features |
-| [FEATURES.md](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/FEATURES.md) | Added Ideas 59 & 60 as shipped features |
-| [IDEAS.md](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/IDEAS.md) | Removed shipped Ideas 59 & 60 from active list |
+| [root.go](file:///Users/james/Workspace/gh/application/vitruvian/devx/cmd/root.go) | Hooked `ai.DiagnoseFailure()` into `Execute()` — intercepts all command errors before exit |
+| [error.go](file:///Users/james/Workspace/gh/application/vitruvian/devx/internal/devxerr/error.go) | Added exit codes 90-93 for diagnosis and db ask features |
+| [FEATURES.md](file:///Users/james/Workspace/gh/application/vitruvian/devx/FEATURES.md) | Added Ideas 59 & 60 as shipped features |
+| [IDEAS.md](file:///Users/james/Workspace/gh/application/vitruvian/devx/IDEAS.md) | Removed shipped Ideas 59 & 60 from active list |
 
 ---
 

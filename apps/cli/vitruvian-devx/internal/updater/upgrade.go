@@ -38,7 +38,7 @@ const releaseBaseURL = "https://github.com/" + repo + "/releases/download"
 
 // DownloadURL returns the tarball URL for a given release tag on this platform.
 func DownloadURL(tag string) string {
-	return fmt.Sprintf("%s/%s/vitruvian-devx_%s_%s.tar.gz", releaseBaseURL, tag, runtime.GOOS, runtime.GOARCH)
+	return fmt.Sprintf("%s/%s/devx_%s_%s.tar.gz", releaseBaseURL, tag, runtime.GOOS, runtime.GOARCH)
 }
 
 // ChecksumURL returns the checksums.txt URL for a given release tag.

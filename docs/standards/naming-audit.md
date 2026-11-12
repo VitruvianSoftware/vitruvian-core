@@ -108,11 +108,11 @@ The monorepo contains 22 root-level directories and 840 unique subdirectories.
 | `.vscode/` | `lower_single` | Workspace-level editor configurations |
 | `architecture/` | `lower_single` | System architectural blueprints and diagrams |
 | `apps/web/backstage/` | `lower_single` | Spotify Backstage developer portal application & plugins |
-| `apps/cli/vitruvian-devx/` | `kebab-case` | Vitruvian DevX CLI local development CLI and environment orchestrator |
+| `apps/cli/vitruvian-devx/` | `lower_single` | DevX local development CLI and environment orchestrator |
 | `docs/` | `lower_single` | Central monorepo documentation hub |
 | `tools/githooks/` | `lower_single` | Git pre-commit and pre-push hook automation |
 | `gitops/` | `lower_single` | ArgoCD application definitions & Kubernetes manifests |
-| `apps/cli/vitruvian-homelab/` | `kebab-case` | Vitruvian Homelab infrastructure management CLI |
+| `apps/cli/vitruvian-homelab/` | `lower_single` | Homelab infrastructure management Go CLI |
 | `infrastructure/` | `lower_single` | Production Pulumi GCP infrastructure stacks |
 | `apps/mcp/slack/` | `kebab-case` | Model Context Protocol Slack server application |
 | `apps/desktop/nexus-agent/` | `kebab-case` | Native macOS menu-bar agent application |

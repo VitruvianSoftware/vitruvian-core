@@ -1,10 +1,10 @@
-# Contributing to Vitruvian DevX CLI
+# Contributing to devx
 
-Thank you for your interest in contributing to Vitruvian DevX CLI (`devx`)! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to devx! This document provides guidelines and instructions for contributing.
 
 ## ⚠️ This is a read-only mirror — how contributions work
 
-Vitruvian DevX CLI (`devx`) is developed in the **[VitruvianSoftware/vitruvian-core](https://github.com/VitruvianSoftware/vitruvian-core)** monorepo (the single source of truth). **This repository is a read-only mirror** kept in sync by [Copybara](https://github.com/google/copybara) — you cannot merge directly here.
+`devx` is developed in the **[VitruvianSoftware/vitruvian-core](https://github.com/VitruvianSoftware/vitruvian-core)** monorepo (the single source of truth). **This repository is a read-only mirror** kept in sync by [Copybara](https://github.com/google/copybara) — you cannot merge directly here.
 
 You contribute by opening a PR against this mirror; it is **imported back into the monorepo** for review:
 

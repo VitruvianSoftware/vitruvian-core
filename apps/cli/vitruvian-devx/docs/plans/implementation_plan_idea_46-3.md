@@ -91,7 +91,7 @@ devx up
 
 ---
 
-#### [MODIFY] [devxconfig.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/cmd/devxconfig.go)
+#### [MODIFY] [devxconfig.go](file:///Users/james/Workspace/gh/application/vitruvian/devx/cmd/devxconfig.go)
 
 **What changes:** Add `runtime: bridge` support to `DevxConfigService` by introducing bridge-specific fields that work alongside the existing service schema.
 
@@ -176,7 +176,7 @@ type DevxConfigService struct {
 
 ---
 
-#### [MODIFY] [dag.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/internal/orchestrator/dag.go)
+#### [MODIFY] [dag.go](file:///Users/james/Workspace/gh/application/vitruvian/devx/internal/orchestrator/dag.go)
 
 **What changes:** Add `RuntimeBridge` as a new `Runtime` constant so the DAG recognizes bridge services. Add two new node fields: `BridgeMode` (connect vs intercept) and `BridgeConfig` (opaque config passed through to the bridge subsystem). Extend `Execute()` to handle `RuntimeBridge` nodes by calling a new `startBridgeNode()` function.
 
@@ -498,7 +498,7 @@ cleanupFn := func() {
 
 ---
 
-#### [MODIFY] [up.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/cmd/up.go)
+#### [MODIFY] [up.go](file:///Users/james/Workspace/gh/application/vitruvian/devx/cmd/up.go)
 
 **What changes:** When building the service DAG, detect `runtime: bridge` services and construct their `BridgeNodeConfig` from the inline `bridge_target` or `bridge_intercept` fields merged with the top-level `bridge:` config. Also generate `BRIDGE_*_URL` env vars into `~/.devx/bridge.env` after bridge services are healthy.
 
@@ -572,7 +572,7 @@ case "bridge":
 
 ---
 
-#### [MODIFY] [bridge_connect.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/cmd/bridge_connect.go)
+#### [MODIFY] [bridge_connect.go](file:///Users/james/Workspace/gh/application/vitruvian/devx/cmd/bridge_connect.go)
 
 **What changes:** No functional changes. The standalone `devx bridge connect` command continues to work independently. However, we extract `resolveBridgeConfig()` into a shared helper so `up.go` can also resolve bridge configuration without duplicating logic.
 
@@ -580,7 +580,7 @@ Actually, on re-examination, the top-level `bridge:` config is already read by `
 
 ---
 
-#### [MODIFY] [bridge_intercept.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/cmd/bridge_intercept.go)
+#### [MODIFY] [bridge_intercept.go](file:///Users/james/Workspace/gh/application/vitruvian/devx/cmd/bridge_intercept.go)
 
 **What changes:** Extract the core intercept lifecycle (steps 6-19 in `runBridgeIntercept`) into an exported function in `internal/bridge/` so the DAG orchestrator can reuse it without importing `cmd/`. This avoids circular imports and respects the established `cmd/ → internal/` dependency direction.
 
@@ -628,7 +628,7 @@ Then `cmd/bridge_intercept.go` is refactored to call `bridge.RunIntercept()` + C
 
 ---
 
-#### [MODIFY] [session.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/internal/bridge/session.go)
+#### [MODIFY] [session.go](file:///Users/james/Workspace/gh/application/vitruvian/devx/internal/bridge/session.go)
 
 **What changes:** Add an `Origin` field to `SessionEntry` and `InterceptEntry` to distinguish between standalone bridge sessions and DAG-managed sessions. This prevents `devx bridge disconnect` from accidentally tearing down DAG-managed bridges (which are owned by the `devx up` process).
 
@@ -651,7 +651,7 @@ type InterceptEntry struct {
 
 ---
 
-#### [MODIFY] [bridge_disconnect.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/cmd/bridge_disconnect.go)
+#### [MODIFY] [bridge_disconnect.go](file:///Users/james/Workspace/gh/application/vitruvian/devx/cmd/bridge_disconnect.go)
 
 **What changes:** Filter out `Origin: "dag"` entries from the disconnect operation with a descriptive warning.
 
@@ -661,7 +661,7 @@ type InterceptEntry struct {
 
 ---
 
-#### [MODIFY] [docs/guide/bridge.md](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/docs/guide/bridge.md)
+#### [MODIFY] [docs/guide/bridge.md](file:///Users/james/Workspace/gh/application/vitruvian/devx/docs/guide/bridge.md)
 
 Major additions:
 - New "Hybrid Topology (`devx up` Integration)" section explaining `runtime: bridge`
@@ -670,31 +670,31 @@ Major additions:
 - Shutdown ordering documentation
 - Interaction with profiles (e.g., `--profile staging` enables bridge services)
 
-#### [MODIFY] [docs/guide/orchestration.md](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/docs/guide/orchestration.md)
+#### [MODIFY] [docs/guide/orchestration.md](file:///Users/james/Workspace/gh/application/vitruvian/devx/docs/guide/orchestration.md)
 
 Update the service runtime table to include `bridge` with a brief explanation and link to bridge docs.
 
-#### [MODIFY] [docs/guide/architecture.md](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/docs/guide/architecture.md)
+#### [MODIFY] [docs/guide/architecture.md](file:///Users/james/Workspace/gh/application/vitruvian/devx/docs/guide/architecture.md)
 
 Update "Idea 46.3 (Future)" to "Idea 46.3 (Shipped)" with architectural notes.
 
-#### [MODIFY] [devx.yaml.example](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/devx.yaml.example)
+#### [MODIFY] [devx.yaml.example](file:///Users/james/Workspace/gh/application/vitruvian/devx/devx.yaml.example)
 
 Add full bridge service examples (both connect and intercept) with inline comments.
 
-#### [MODIFY] [FEATURES.md](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/FEATURES.md)
+#### [MODIFY] [FEATURES.md](file:///Users/james/Workspace/gh/application/vitruvian/devx/FEATURES.md)
 
 Add Idea 46.3 feature entry.
 
-#### [MODIFY] [IDEAS.md](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/IDEAS.md)
+#### [MODIFY] [IDEAS.md](file:///Users/james/Workspace/gh/application/vitruvian/devx/IDEAS.md)
 
 Mark 46.3 status as "Implemented."
 
-#### [MODIFY] [.agent/skills/devx/SKILL.md](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/.agent/skills/devx/SKILL.md) + all 5 template locations
+#### [MODIFY] [.agent/skills/devx/SKILL.md](file:///Users/james/Workspace/gh/application/vitruvian/devx/.agent/skills/devx/SKILL.md) + all 5 template locations
 
 Add `runtime: bridge` awareness to the `devx up` section.
 
-#### [MODIFY] [README.md](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-devx/README.md)
+#### [MODIFY] [README.md](file:///Users/james/Workspace/gh/application/vitruvian/devx/README.md)
 
 Update the feature list to reflect unified hybrid topology.
 

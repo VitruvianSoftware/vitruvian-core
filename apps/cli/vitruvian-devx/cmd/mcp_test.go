@@ -29,7 +29,7 @@ import (
 func TestExtractToolNamesFromStreamFindsToolsList(t *testing.T) {
 	// Simulate a stdio response stream: an initialize result followed by
 	// a tools/list result. Each line is a separate JSON-RPC message.
-	stream := []byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"vitruvian-devx","version":"0.0.0"}}}
+	stream := []byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"devx","version":"0.0.0"}}}
 {"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"devx_doctor"},{"name":"devx_db_list"}]}}
 `)
 	names, err := extractToolNamesFromStream(stream)

@@ -154,27 +154,27 @@ categories:
     title: Developer Tools & CLI
     blurb: High-performance CLI tools for local development orchestration, declarative K3s clusters, and peripheral control.
     items:
-      - id: vitruvian-devx
-        name: Vitruvian DevX CLI
+      - id: devx
+        name: devx
         version: "0.74.3"
         summary: >-
           A local development orchestrator. One CLI provisions container VMs, ephemeral
           databases and cloud emulators, local K3s clusters, and Cloudflare tunnel ingress in dependency order.
         platforms: ["macOS (arm64, amd64)", "Linux (arm64, amd64)"]
-        brew_formula: VitruvianSoftware/tap/vitruvian-devx
+        brew_formula: VitruvianSoftware/tap/devx
         releases_url: https://github.com/VitruvianSoftware/devx/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/cli/vitruvian-devx
         extensions_url: /ai/#eco-codex-opencode
         extensions_label: Agent Skills & Init
 
-      - id: vitruvian-homelab
-        name: Vitruvian Homelab
+      - id: homelab
+        name: homelab
         version: "1.6.1"
         summary: >-
           Declarative multi-node K3s clusters on macOS. Describe nodes in one file and homelab
           provisions Lima VZ virtual machines, networking, and the cluster to match.
         platforms: ["macOS (Apple Silicon, Intel)"]
-        brew_formula: VitruvianSoftware/tap/vitruvian-homelab
+        brew_formula: VitruvianSoftware/tap/homelab
         releases_url: https://github.com/VitruvianSoftware/homelab/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/cli/vitruvian-homelab
 

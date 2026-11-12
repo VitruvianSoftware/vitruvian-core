@@ -45,24 +45,24 @@ If multiple are found, you will be prompted to choose. You can override this beh
 # untrusted third-party tap (and brew upgrade silently skips it).
 brew tap vitruviansoftware/tap
 brew trust vitruviansoftware/tap
-brew install vitruviansoftware/tap/vitruvian-devx
+brew install vitruviansoftware/tap/devx
 ```
 
-> **Already installed but stuck on an old version?** Run `brew trust vitruviansoftware/tap && brew upgrade vitruviansoftware/tap/vitruvian-devx`.
+> **Already installed but stuck on an old version?** Run `brew trust vitruviansoftware/tap && brew upgrade vitruviansoftware/tap/devx`.
 
 ### From GitHub Releases
 
 ```bash
 # macOS (Apple Silicon)
-curl -sL https://github.com/VitruvianSoftware/devx/releases/latest/download/vitruvian-devx_darwin_arm64.tar.gz | tar xz
+curl -sL https://github.com/VitruvianSoftware/devx/releases/latest/download/devx_darwin_arm64.tar.gz | tar xz
 sudo mv devx /usr/local/bin/
 
 # macOS (Intel)
-curl -sL https://github.com/VitruvianSoftware/devx/releases/latest/download/vitruvian-devx_darwin_amd64.tar.gz | tar xz
+curl -sL https://github.com/VitruvianSoftware/devx/releases/latest/download/devx_darwin_amd64.tar.gz | tar xz
 sudo mv devx /usr/local/bin/
 
 # Linux (amd64)
-curl -sL https://github.com/VitruvianSoftware/devx/releases/latest/download/vitruvian-devx_linux_amd64.tar.gz | tar xz
+curl -sL https://github.com/VitruvianSoftware/devx/releases/latest/download/devx_linux_amd64.tar.gz | tar xz
 sudo mv devx /usr/local/bin/
 ```
 

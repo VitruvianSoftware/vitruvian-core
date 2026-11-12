@@ -113,14 +113,14 @@ bazel run //tools/release:publish-local -- mcp-slack --execute
 
 On the first `--execute` it **prompts you** for the npm token (a `@vitruviansoftware` automation token — the only publish cred with no local equivalent), stores it, backs it up to Bitwarden, and reuses it thereafter — no pre-setup, no hunting. GitHub-side auth is your `gh auth token`. Go-module "publishing" is just the tag `go/pkg/<name>/vX.Y.Z` (**slash** before the version — a dash is `go get`'s "unknown revision"; the tool enforces it, guarded by a test).
 
-**CLI binaries** (`vitruvian-devx`, `vitruvian-homelab`) and **nexus-agent** (macOS `.app`/DMG/cask) are Mac/toolchain-bound and stay **manual** — no tool:
+**Go binaries** (devx, homelab) and **nexus-agent** (macOS `.app`/DMG/cask) are Mac/toolchain-bound and stay **manual** — no tool:
 
 ```bash
 # clone the mirror, tag the release, run GoReleaser (needs gh token with contents:write on the
-# mirror AND the homebrew-tap repo). vitruvian-homelab is darwin-only; nexus-agent needs Swift + create-dmg.
+# mirror AND the homebrew-tap repo). homelab is darwin-only; nexus-agent needs Swift + create-dmg.
 git clone https://github.com/VitruvianSoftware/<component>.git && cd <component>
 git tag vX.Y.Z && git push origin vX.Y.Z           # nexus-agent: plain vX.Y.Z, NOT nexus-agent-vX
-GITHUB_TOKEN="$(gh auth token)" goreleaser release --clean   # apps/cli/vitruvian-devx; apps/cli/vitruvian-homelab & apps/desktop/nexus-agent: see their release.yml
+GITHUB_TOKEN="$(gh auth token)" goreleaser release --clean   # apps/cli/vitruvian-devx, apps/cli/vitruvian-homelab; apps/desktop/nexus-agent: see its release.yml
 ```
 
 ## Guardrails — do not skip

@@ -32,7 +32,7 @@ func TestNewServerDoesNotPanic(t *testing.T) {
 }
 
 func TestServerNameConstant(t *testing.T) {
-	if ServerName != "vitruvian-devx" {
-		t.Errorf("ServerName = %q, want %q", ServerName, "vitruvian-devx")
+	if ServerName != "devx" {
+		t.Errorf("ServerName = %q, want %q", ServerName, "devx")
 	}
 }

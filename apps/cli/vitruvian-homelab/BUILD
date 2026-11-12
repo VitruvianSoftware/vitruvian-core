@@ -4,19 +4,23 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
 # gazelle:exclude rs
-# Inter-app boundary (#82): any future non-internal package generating as
+# Inter-app boundary (#82) for gazelle-generated packages: the hand-set
+# app-scoped visibility on //apps/cli/vitruvian-homelab:homelab is PRESERVED by gazelle on
+# regeneration; any future non-internal package generating as
 # //visibility:public is caught by the conformance guard
 # (tools/conformance/check.sh check_app_visibility).
 
-# Inter-app boundary (#82): targets in this package default to vitruvian-homelab-internal
-# visibility so other top-level apps can't depend on vitruvian-homelab internals.
+# Inter-app boundary (#82): targets in this package default to homelab-internal
+# visibility so other top-level apps can't depend on homelab internals. Each
+# internal/* package already sets explicit //apps/cli/vitruvian-homelab:__subpackages__; this marks
+# the boundary at the app root for consistency and future root-package targets.
 package(default_visibility = ["//apps/cli/vitruvian-homelab:__subpackages__"])
 
 # Developer-environment check: `bazel run //apps/cli/vitruvian-homelab:doctor` (CLI `run` ignores
 # visibility, so the package default is wide enough).
 doctor(
     name = "doctor",
-    label = "vitruvian-homelab",
+    label = "homelab",
     optional = [
         "mise",
         "lima",
@@ -37,7 +41,7 @@ pipeline_unit(
 )
 
 rust_library(
-    name = "vitruvian_homelab_lib",
+    name = "homelab_lib",
     srcs = [
         "rs/src/cluster.rs",
         "rs/src/cmd.rs",
@@ -50,7 +54,7 @@ rust_library(
         "rs/src/prereqs.rs",
         "rs/src/remote.rs",
     ],
-    crate_name = "vitruvian_homelab_rs",
+    crate_name = "homelab_rs",
     crate_root = "rs/src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -63,13 +67,13 @@ rust_binary(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/cli/vitruvian-homelab:__subpackages__"],
-    deps = [":vitruvian_homelab_lib"],
+    deps = [":homelab_lib"],
 )
 
 rust_test(
-    name = "vitruvian_homelab_test",
+    name = "homelab_test",
     size = "small",
-    crate = ":vitruvian_homelab_lib",
+    crate = ":homelab_lib",
     data = [
         ".release-please-manifest.json",
         "CHANGELOG.md",

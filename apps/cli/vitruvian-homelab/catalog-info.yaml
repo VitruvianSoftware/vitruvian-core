@@ -27,7 +27,7 @@ kind: Component
 metadata:
   name: vitruvian-homelab
   title: Vitruvian Homelab
-  description: Vitruvian Homelab k3s/Lima provisioning CLI (superseded for live cluster ops by Vitruvian DevX CLI; still released)
+  description: Homelab k3s/Lima provisioning CLI (superseded for live cluster ops by devx; still released)
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:.
@@ -35,14 +35,14 @@ metadata:
     # Currently resolves to: Node Power
     grafana/dashboard-selector: homelab
     vitruvian.dev/release-workflow: apps-release.yaml
-    vitruvian.dev/release-model: github-releases homebrew
+    vitruvian.dev/release-model: goreleaser
     vitruvian.dev/mirror: VitruvianSoftware/homelab
   links:
     - url: https://github.com/VitruvianSoftware/homelab
       title: GitHub Mirror
       icon: github
     - url: https://github.com/VitruvianSoftware/homelab/releases
-      title: Releases
+      title: Releases (GoReleaser)
       icon: card_giftcard
     - url: https://grafana.lab.ipv1337.dev/d/homelab
       title: Grafana Node Power

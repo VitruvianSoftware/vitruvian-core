@@ -59,10 +59,10 @@ projects:
     tags: [Go, Lima, Kubernetes, Cloudflare]
     repo: https://github.com/VitruvianSoftware/devx
     source: apps/cli/vitruvian-devx
-    install: brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/vitruvian-devx
+    install: brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/devx
     extension:
       kind: skill
-      needs: Vitruvian DevX CLI installed
+      needs: devx installed
       installs:
         - tool: Any agent
           label: Add the skills to your project
@@ -74,12 +74,12 @@ projects:
     status: released
     summary: >-
       Declarative multi-node K3s clusters on macOS. Describe the nodes in one
-      file and homelab provisions Lima VZ virtual machines, networking and the
+      file and Vitruvian Homelab provisions Lima VZ virtual machines, networking and the
       cluster to match.
-    tags: [Rust, K3s, Lima VZ, macOS]
+    tags: [Go, K3s, Lima VZ, macOS]
     repo: https://github.com/VitruvianSoftware/homelab
     source: apps/cli/vitruvian-homelab
-    install: brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/vitruvian-homelab
+    install: brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/homelab
 
   - name: homebrew-tap
     group: devtools

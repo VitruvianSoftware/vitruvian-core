@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! Native Rust implementation of the Vitruvian Homelab (`homelab`) k3s cluster operations CLI.
+//! Native Rust implementation of the `homelab` k3s cluster operations CLI.
 
 pub mod cluster;
 pub mod cmd;
@@ -53,11 +53,7 @@ mod tests {
 
     fn write_temp(content: &str) -> PathBuf {
         let idx = TEMP_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let dir = env::temp_dir().join(format!(
-            "vitruvian_homelab_rs_test_{}_{}",
-            std::process::id(),
-            idx
-        ));
+        let dir = env::temp_dir().join(format!("homelab_rs_test_{}_{}", std::process::id(), idx));
         fs::create_dir_all(&dir).expect("create temp dir");
         let path = dir.join("config.yaml");
         fs::write(&path, content.as_bytes()).expect("write temp config");

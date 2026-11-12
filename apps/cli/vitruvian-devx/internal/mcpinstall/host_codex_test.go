@@ -63,9 +63,9 @@ func TestCodexInstallRoundTrip(t *testing.T) {
 		t.Fatalf("[mcp_servers] missing: %+v", cfg)
 		return
 	}
-	devx, _ := servers["vitruvian-devx"].(map[string]any)
+	devx, _ := servers["devx"].(map[string]any)
 	if devx == nil {
-		t.Fatalf("[mcp_servers.vitruvian-devx] missing: %+v", servers)
+		t.Fatalf("[mcp_servers.devx] missing: %+v", servers)
 		return
 	}
 	if devx["command"] != "/usr/local/bin/devx" {
@@ -124,8 +124,8 @@ args = ["serve"]
 	if _, ok := servers["legacy"]; !ok {
 		t.Errorf("legacy mcp server was wiped: %+v", servers)
 	}
-	if _, ok := servers["vitruvian-devx"]; !ok {
-		t.Errorf("vitruvian-devx entry was not added: %+v", servers)
+	if _, ok := servers["devx"]; !ok {
+		t.Errorf("devx entry was not added: %+v", servers)
 	}
 }
 

@@ -41,6 +41,26 @@ updates:
         update-types:
           - "minor"
           - "patch"
+  - package-ecosystem: "gomod"
+    directory: "/apps/cli/vitruvian-homelab"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "go"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      go-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+      go-security-minor-patch:
+        applies-to: "security-updates"
+        update-types:
+          - "minor"
+          - "patch"
   # ─── Root & subtree workflows (issue #814) ───
   - package-ecosystem: "github-actions"
     directories:

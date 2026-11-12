@@ -27,7 +27,7 @@ kind: Component
 metadata:
   name: vitruvian-devx
   title: Vitruvian DevX CLI
-  description: Vitruvian DevX CLI — local dev orchestration (Lima VMs, devcontainers, k3s cluster join/apply, scaffolding)
+  description: Developer-experience CLI — local dev orchestration (Lima VMs, devcontainers, k3s cluster join/apply, scaffolding)
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:.

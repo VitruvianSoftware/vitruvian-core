@@ -30,10 +30,10 @@ import (
 	"reflect"
 )
 
-// ServerEntryKey is the conventional name Vitruvian DevX CLI registers itself under in
+// ServerEntryKey is the conventional name devx registers itself under in
 // every host's MCP config. Stable string used for idempotency checks across
 // installs.
-const ServerEntryKey = "vitruvian-devx"
+const ServerEntryKey = "devx"
 
 // jsonHost is the default adapter for hosts whose MCP config is a JSON file
 // with a top-level map keyed by server name. Covers Claude Code, Cursor,

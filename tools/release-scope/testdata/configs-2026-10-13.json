@@ -7,8 +7,8 @@
     "packages": {
       "apps/cli/vitruvian-devx": {
         "changelog-path": "CHANGELOG.md",
-        "component": "vitruvian-devx",
-        "package-name": "vitruvian-devx",
+        "component": "devx",
+        "package-name": "devx",
         "release-type": "go"
       }
     },
@@ -22,9 +22,9 @@
     "packages": {
       "apps/cli/vitruvian-homelab": {
         "changelog-path": "CHANGELOG.md",
-        "component": "vitruvian-homelab",
-        "package-name": "vitruvian-homelab",
-        "release-type": "simple"
+        "component": "homelab",
+        "package-name": "homelab",
+        "release-type": "go"
       }
     },
     "tag-separator": "-"

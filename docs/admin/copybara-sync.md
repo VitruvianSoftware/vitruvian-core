@@ -536,7 +536,7 @@ gh api repos/VitruvianSoftware/mcp-slack/contents/<file>?ref=main --jq .content 
 **Context files that must NOT cross the boundary** (already configured in `copy.bara.sky`):
 - export keeps each standalone's `.github/workflows/sync-to-monorepo.yaml` (and `package-lock.json`
   for npm components: mcp-slack, nexus-agent);
-- both directions keep the monorepo-only gazelle `**/BUILD` files (vitruvian-devx alone has 57).
+- both directions keep the monorepo-only gazelle `**/BUILD` files (devx alone has 57).
 
 ---
 
@@ -583,7 +583,7 @@ Dependabot is **centralized in the monorepo** but split by what it can actually 
 to the standalones via the export. You manage every component's Dependabot config from here.
 
 ### Split model (who owns which ecosystem)
-- **The monorepo owns** `gomod` (`apps/cli/vitruvian-devx`) **+** root `github-actions` — these live in
+- **The monorepo owns** `gomod` (devx, homelab) **+** root `github-actions` — these live in
   `.github/dependabot.yml` and are scanned in-tree.
 - **Each component's OWN workflow action pins** (e.g. its `sync-to-monorepo.yaml`) and **npm** are
   updated **per-standalone** — Dependabot can't scan a *subtree's* workflows from the monorepo, so
