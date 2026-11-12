@@ -56,6 +56,7 @@ import { fileURLToPath } from "node:url";
 import {
   board as boardView,
   initialFlow,
+  isValidWorktree,
   reduce,
   remaining,
 } from "../sidecars/panel/lib/orchestrator-core.mjs";
@@ -94,6 +95,16 @@ export const TOOLS = Object.freeze([
               after: {
                 type: "array",
                 items: { type: "integer" },
+              },
+              model: {
+                type: "string",
+                description:
+                  "Optional Gemini model override for this task (e.g. gemini-4-carbon-high).",
+              },
+              worktree: {
+                type: "string",
+                description:
+                  "Optional git worktree branch name for isolating parallel edits.",
               },
             },
             required: ["title", "specialist", "tier"],
@@ -165,6 +176,11 @@ export const TOOLS = Object.freeze([
         detail: {
           type: "string",
           description: "Optional detail explaining why the member paused.",
+        },
+        worktree: {
+          type: "string",
+          description:
+            "Optional git worktree branch name created or used by this helper.",
         },
       },
     },
@@ -468,6 +484,12 @@ export function mapProgressToEvents(
       after: Array.isArray(t?.after)
         ? t.after.map((n) => Number(n)).filter((n) => Number.isInteger(n))
         : [],
+      ...(t?.model !== undefined && t?.model !== null
+        ? { model: t.model }
+        : {}),
+      ...(t?.worktree !== undefined && t?.worktree !== null
+        ? { worktree: t.worktree }
+        : {}),
     }));
     const planEvent = {
       type: "plan",
@@ -579,6 +601,13 @@ export function mapStepToEvent(
   const hasPause = inp.paused === "quota" || inp.paused === "error";
   const hasInvalidPause =
     inp.paused !== undefined && inp.paused !== null && !hasPause;
+  const rawWorktree =
+    typeof inp.worktree === "string" ? inp.worktree.trim() : "";
+  const validWorktree = isValidWorktree(rawWorktree) ? rawWorktree : undefined;
+  const hasDelegateUpdate =
+    (typeof inp.delegate === "string" && Boolean(inp.delegate.trim())) ||
+    Boolean(inp.delegateUsage && typeof inp.delegateUsage === "object");
+  const hasOtherField = hasPause || Boolean(validWorktree) || hasDelegateUpdate;
   const hasAnyStepCount = inp.done !== undefined || inp.total !== undefined;
   const hasValidStepCounts =
     typeof inp.done === "number" &&
@@ -592,10 +621,10 @@ export function mapStepToEvent(
   if (
     hasInvalidPause ||
     (hasAnyStepCount && !hasValidStepCounts) ||
-    (!hasValidStepCounts && !hasPause)
+    (!hasValidStepCounts && !hasOtherField)
   ) {
     const error =
-      "Invalid params: step requires integer done (0 <= done <= total) and total (>= 1), or paused ('quota' | 'error')";
+      "Invalid params: step requires integer done (0 <= done <= total) and total (>= 1), paused ('quota' | 'error'), or a valid worktree";
     return {
       valid: false,
       matched: false,
@@ -666,10 +695,8 @@ export function mapStepToEvent(
     ...(rawMeta && Object.keys(rawMeta).length > 0 ? { _meta: rawMeta } : {}),
   };
 
-  const hasDelegateUpdate =
-    (typeof inp.delegate === "string" && Boolean(inp.delegate.trim())) ||
-    Boolean(inp.delegateUsage && typeof inp.delegateUsage === "object");
-  const hasStepFields = hasValidStepCounts || hasDelegateUpdate;
+  const hasStepFields =
+    hasValidStepCounts || hasDelegateUpdate || Boolean(validWorktree);
 
   const events = [];
   if (hasStepFields) {
@@ -693,6 +720,7 @@ export function mapStepToEvent(
       ...(inp.delegateUsage && typeof inp.delegateUsage === "object"
         ? { delegateTokens: inp.delegateUsage }
         : {}),
+      ...(validWorktree ? { worktree: validWorktree } : {}),
     });
   }
 
@@ -724,7 +752,9 @@ export function mapStepToEvent(
     events,
     message: hasValidStepCounts
       ? `step updated: ${done}/${total}${note ? ` (${note})` : ""}${pauseSuffix}`
-      : `step paused: ${inp.paused}${inp.detail ? ` (${String(inp.detail).trim()})` : ""}`,
+      : hasPause
+        ? `step paused: ${inp.paused}${inp.detail ? ` (${String(inp.detail).trim()})` : ""}`
+        : `step updated: ${validWorktree ? `worktree ${validWorktree}` : `delegate ${String(inp.delegate ?? "").trim() || "usage"}`}${note ? ` (${note})` : ""}`,
   };
 }
 

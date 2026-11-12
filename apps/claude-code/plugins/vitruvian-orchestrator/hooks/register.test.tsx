@@ -1970,3 +1970,296 @@ test("uat item 4: Claude Code terminal and desktop SVG board lines show ↩ #<n>
   expect(boardSvg).not.toContain("@all");
   await deskUi.unmount();
 });
+
+test("phase 2 items 3, 4 & 5: Claude Code renders Who talks to whom top 5 edges (SVG + terminal) and per-task model/warning/worktree on tasks and runs", async ($, on) => {
+  let f: Flow | null = null;
+  mock.clock(on, { now: 20_000_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("agent.list", () => ({ value: [] }));
+  on("state.set", { plugin: PLUGIN, key: "flow" }, (_, e, next) => {
+    f = e.value as Flow | null;
+    return next(e);
+  });
+  let spawnCount = 0;
+  const ids = [
+    "wren-p2-1",
+    "scout-p2-1",
+    "aegis-p2-1",
+    "atlas-p2-1",
+    "forge-p2-1",
+    "quill-p2-1",
+  ];
+  on("agent.spawn", async (_, e) => {
+    const agentId = ids[spawnCount] ?? `sub-${spawnCount}`;
+    spawnCount += 1;
+    return { agentId, model: e.model ?? "claude-haiku-5-5" };
+  });
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Phase 2 CC Flow",
+    phase: "delegate",
+    tasks: [
+      {
+        title: "Build graph",
+        specialist: "wren",
+        tier: "core",
+        model: "gemini-4-carbon-high",
+        worktree: "feat/cc-graph",
+      },
+      {
+        title: "QA graph",
+        specialist: "scout",
+        tier: "fast",
+        after: [1],
+        model: "gemini-3-flash-lite",
+        worktree: "../bad-wt",
+      },
+    ],
+  } as never);
+
+  // Before any posts, "Who talks to whom" is absent on both terminal and desktop
+  const preTerm = await $.ui.mount({ ...PANE_MOUNT, surface: "terminal" });
+  expect(
+    await preTerm.find({ type: "Text", text: /Who talks to whom/ }),
+  ).toBeUndefined();
+  await preTerm.unmount();
+
+  for (const [subagentType, description] of [
+    ["wren", "Build graph"],
+    ["scout", "QA graph"],
+    ["aegis", "Sec"],
+    ["atlas", "Infra"],
+    ["forge", "Bazel"],
+    ["quill", "Docs"],
+  ] as const) {
+    await $.agent.spawn({
+      subagentType,
+      description,
+      prompt: "Work",
+    });
+  }
+
+  // Worker step updates worktree (valid kept, invalid ignored)
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__step",
+    agentId: "wren-p2-1",
+    done: 1,
+    total: 3,
+    note: "in /wt/feat-cc-graph",
+    worktree: "feat/cc-graph-step",
+  } as never);
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__step",
+    agentId: "wren-p2-1",
+    done: 2,
+    total: 3,
+    note: "testing",
+    worktree: "../escape",
+  } as never);
+
+  expect(f?.tasks[0]?.model).toBe("gemini-4-carbon-high");
+  expect(f?.tasks[0]?.worktree).toBe("feat/cc-graph");
+  expect(f?.tasks[1]?.model).toBeUndefined();
+  expect(f?.tasks[1]?.warning).toMatch(/gemini-3-flash-lite/);
+  expect(f?.tasks[1]?.worktree).toBeUndefined();
+  expect(f?.runs[0]?.worktree).toBe("feat/cc-graph-step");
+
+  // Create 6 distinct directed edges (scout->wren ×4, wren->lead ×3, aegis->wren ×2, atlas->wren ×2, forge->wren ×2, quill->wren ×1) plus @all
+  for (let i = 0; i < 4; i += 1) {
+    await $.tool.call({
+      tool: "mcp__vitruvian-orchestrator__post",
+      agentId: "scout-p2-1",
+      to: ["wren", "all"],
+      text: `Check #${i + 1} @wren @all`,
+      kind: "defect",
+    } as never);
+  }
+  for (let i = 0; i < 3; i += 1) {
+    await $.tool.call({
+      tool: "mcp__vitruvian-orchestrator__post",
+      agentId: "wren-p2-1",
+      to: ["lead"],
+      text: `Update #${i + 1} @lead`,
+      kind: "result",
+    } as never);
+  }
+  for (const [aid, count] of [
+    ["aegis-p2-1", 2],
+    ["atlas-p2-1", 2],
+    ["forge-p2-1", 2],
+    ["quill-p2-1", 1],
+  ] as const) {
+    for (let i = 0; i < count; i += 1) {
+      await $.tool.call({
+        tool: "mcp__vitruvian-orchestrator__post",
+        agentId: aid,
+        to: ["wren"],
+        text: "Note @wren",
+        kind: "note",
+      } as never);
+    }
+  }
+
+  // Terminal checks: top 5 edges shown, 6th edge (quill -> wren ×1) omitted, model/warning/worktree shown
+  const wideMount = {
+    ...PANE_MOUNT,
+    props: { ...PANE_MOUNT.props, bodyColumns: 120 },
+  };
+  const termUi = await $.ui.mount({ ...wideMount, surface: "terminal" });
+  expect(
+    await termUi.find({
+      type: "Text",
+      text: /Who talks to whom: scout → wren ×4, wren → lead ×3, aegis → wren ×2, atlas → wren ×2, forge → wren ×2$/,
+    }),
+  ).toBeDefined();
+  expect(
+    await termUi.find({ type: "Text", text: /quill → wren/ }),
+  ).toBeUndefined();
+  expect(await termUi.find({ type: "Text", text: /→ all/ })).toBeUndefined();
+
+  expect(
+    await termUi.find({ type: "Text", text: /gemini-4-carbon-high/ }),
+  ).toBeDefined();
+  expect(
+    await termUi.find({ type: "Text", text: /gemini-3-flash-lite/ }),
+  ).toBeDefined();
+  expect(
+    await termUi.find({ type: "Text", text: /feat\/cc-graph-step/ }),
+  ).toBeDefined();
+  await termUi.unmount();
+
+  // Desktop SVG checks: boardSvg contains "Who talks to whom" with top 5 edges, agentRowSvg contains model override & worktree
+  const deskUi = await $.ui.mount({ ...wideMount, surface: "desktop" });
+  const svgs = (await deskUi.findAll({ type: "Svg" })).map((s) =>
+    String((s.props as { source?: string }).source ?? ""),
+  );
+  const bSvg = svgs.find((src) => src.includes("Who talks to whom:"));
+  expect(bSvg).toBeDefined();
+  expect(bSvg).toContain("scout → wren ×4");
+  expect(bSvg).toContain("wren → lead ×3");
+  expect(bSvg).not.toContain("quill → wren");
+  expect(bSvg).not.toContain("→ all");
+
+  const wrenSvg = svgs.find((src) => src.includes("wren: Build graph"));
+  expect(wrenSvg).toBeDefined();
+  expect(wrenSvg).toContain("gemini-4-carbon-high");
+  expect(wrenSvg).toContain("feat/cc-graph-step");
+  await deskUi.unmount();
+});
+
+test("return round 1 item 2: step accepts worktree alone (and worktree + note without done/total) while keeping steps null", async ($, on) => {
+  mock.clock(on, { now: 9_000_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+
+  let f: Flow | null = null;
+  on("state.set", { plugin: PLUGIN, key: "flow" }, (_, e, next) => {
+    f = e.value as Flow | null;
+    return next(e);
+  });
+  on("agent.spawn", async () => ({
+    agentId: "wren-wt-only",
+    model: "claude-haiku-4-5",
+  }));
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "WT Only CC",
+    phase: "delegate",
+    tasks: [{ title: "Build", specialist: "wren", tier: "core" }],
+  } as never);
+
+  await $.agent.spawn({
+    subagentType: "wren",
+    description: "Build",
+    prompt: "Work",
+  });
+
+  // 1. Worktree alone sets worktree and leaves steps null
+  const r1 = await $.tool.call({
+    tool: STEP_TOOL,
+    agentId: "wren-wt-only",
+    worktree: "feat/cc-only-wt",
+  } as never);
+  expect((r1 as { result?: string }).result).toBe("ok");
+  expect(f?.runs[0]?.worktree).toBe("feat/cc-only-wt");
+  expect(f?.runs[0]?.steps).toBeNull();
+
+  // 2. Worktree + note (without done/total) updates worktree without creating 0/0 steps
+  const r2 = await $.tool.call({
+    tool: STEP_TOOL,
+    agentId: "wren-wt-only",
+    worktree: "feat/cc-only-wt-2",
+    note: "in /wt/feat-cc-only-wt-2",
+  } as never);
+  expect((r2 as { result?: string }).result).toBe("ok");
+  expect(f?.runs[0]?.worktree).toBe("feat/cc-only-wt-2");
+  expect(f?.runs[0]?.steps).toBeNull();
+});
+
+test("return round 1 item 4: Claude Code agent rows do not duplicate task model when delegate differs or model matches", async ($, on) => {
+  mock.clock(on, { now: 9_500_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  let n = 0;
+  on("agent.spawn", async () => {
+    n += 1;
+    return n === 1
+      ? { agentId: "wren-dup-1", model: "gemini-4-carbon-high" }
+      : { agentId: "atlas-dup-2", model: "claude-haiku-4-5" };
+  });
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "No Dup Model CC",
+    phase: "delegate",
+    tasks: [
+      {
+        title: "Same model",
+        specialist: "wren",
+        tier: "core",
+        model: "gemini-4-carbon-high",
+      },
+      {
+        title: "Different delegate",
+        specialist: "atlas",
+        tier: "core",
+        model: "gemini-4-argon-high",
+      },
+    ],
+  } as never);
+
+  await $.agent.spawn({
+    subagentType: "wren",
+    description: "Same model",
+    prompt: "Work",
+  });
+  await $.agent.spawn({
+    subagentType: "atlas",
+    description: "Different delegate",
+    prompt: "Work",
+  });
+  await $.tool.call({
+    tool: STEP_TOOL,
+    agentId: "atlas-dup-2",
+    done: 1,
+    total: 2,
+    note: "delegated",
+    delegate: "gemini-3.8-flash-high",
+  } as never);
+
+  const deskUi = await $.ui.mount({
+    ...PANE_MOUNT,
+    props: { ...PANE_MOUNT.props, bodyColumns: 120 },
+    surface: "desktop",
+  });
+  const svgs = (await deskUi.findAll({ type: "Svg" })).map((s) =>
+    String((s.props as { source?: string }).source ?? ""),
+  );
+  const wrenSvg = svgs.find((src) => src.includes("wren: Same model")) ?? "";
+  expect(wrenSvg).not.toContain("gemini-4-carbon-high → gemini-4-carbon-high");
+  const atlasSvg =
+    svgs.find((src) => src.includes("atlas: Different delegate")) ?? "";
+  expect(atlasSvg).toContain("gemini-3.8-flash-high");
+  expect(atlasSvg).not.toContain("gemini-4-argon-high");
+  await deskUi.unmount();
+});

@@ -87,8 +87,29 @@ import { PRICES } from "./prices.mjs";
  * @property {number} [taskN]
  * @property {string} model
  * @property {string} [delegate]
+ * @property {string} [taskModel]
+ * @property {string} [worktree]
  * @property {number} [lastPostSeq]
  * @property {number} lastActivityAt
+ */
+
+/**
+ * @typedef {Object} MentionGraphNode
+ * @property {string} id
+ * @property {number} posts
+ */
+
+/**
+ * @typedef {Object} MentionGraphEdge
+ * @property {string} from
+ * @property {string} to
+ * @property {number} count
+ */
+
+/**
+ * @typedef {Object} MentionGraph
+ * @property {MentionGraphNode[]} nodes
+ * @property {MentionGraphEdge[]} edges
  */
 
 /**
@@ -151,6 +172,9 @@ import { PRICES } from "./prices.mjs";
  * @property {number[]} after
  * @property {TaskState} state
  * @property {number} round 0 = first try
+ * @property {string} [model]
+ * @property {string} [warning]
+ * @property {string} [worktree]
  */
 
 /**
@@ -176,6 +200,7 @@ import { PRICES } from "./prices.mjs";
  * @property {RunRole} role
  * @property {PauseInfo | null} [paused]
  * @property {"killed" | "retired" | null} [memberState]
+ * @property {string} [worktree]
  */
 
 /**
@@ -215,6 +240,8 @@ import { PRICES } from "./prices.mjs";
  * @property {string} specialist
  * @property {Tier} tier
  * @property {number[]} [after]
+ * @property {string} [model]
+ * @property {string} [worktree]
  */
 
 /**
@@ -234,6 +261,9 @@ import { PRICES } from "./prices.mjs";
  * @property {number} round
  * @property {number[]} after
  * @property {number[]} waitingOn
+ * @property {string} [model]
+ * @property {string} [warning]
+ * @property {string} [worktree]
  */
 
 /**
@@ -291,6 +321,7 @@ import { PRICES } from "./prices.mjs";
  * @property {string} [detail]
  * @property {number} [seq]
  * @property {string} [target]
+ * @property {string} [worktree]
  */
 
 const VALID_PHASES = new Set(["plan", "design", "delegate", "review", "close"]);
@@ -306,6 +337,8 @@ const MAX_WAKE_EXCERPT = 140;
 const MENTION_RE = /(?<![\w])@([a-z0-9][a-z0-9-]{0,63})(?![a-z0-9-])/gi;
 const VALID_HANDLE_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const VALID_WAKE_RUN_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9._:#-]{0,127}$/;
+const VALID_GEMINI_MODEL_RE = /^gemini-[a-z0-9.-]+$/;
+const VALID_WORKTREE_RE = /^[a-z0-9][a-z0-9._/-]{0,99}$/;
 const ANSI_ESCAPE_RE =
   /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[P^_][^\x07\x1b]*\x1b\\|[@-Z\\-_])/g;
 const CONTROL_AND_BIDI_RE =
@@ -338,6 +371,90 @@ function sanitizeShortText(raw, maxLen = MAX_SHORT_TEXT) {
   if (typeof raw !== "string") return "";
   const cleaned = sanitizePostText(raw).trim();
   return cleaned.length > maxLen ? cleaned.slice(0, maxLen) : cleaned;
+}
+
+/**
+ * Validates a per-task Gemini model override: must match `^gemini-[a-z0-9.-]+$`
+ * and never contain `-low`, `-lite`, or `flash-lo`.
+ *
+ * @param {unknown} model
+ * @returns {boolean}
+ */
+export function isValidGeminiModel(model) {
+  if (typeof model !== "string") return false;
+  if (!VALID_GEMINI_MODEL_RE.test(model)) return false;
+  if (
+    model.includes("-low") ||
+    model.includes("-lite") ||
+    model.includes("flash-lo")
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Validates a per-task or per-step worktree branch name:
+ * must match `^[a-z0-9][a-z0-9._/-]{0,99}$` and contain no `..`.
+ *
+ * @param {unknown} worktree
+ * @returns {boolean}
+ */
+export function isValidWorktree(worktree) {
+  if (typeof worktree !== "string") return false;
+  if (worktree.includes("..")) return false;
+  return VALID_WORKTREE_RE.test(worktree);
+}
+
+/**
+ * Parses optional `model` and `worktree` overrides on a planned task,
+ * recording a task warning when an invalid `model` or `worktree` is dropped.
+ *
+ * @param {PlanTaskInput} t
+ * @returns {{ model?: string, warning?: string, worktree?: string }}
+ */
+function parseTaskOverrides(t) {
+  /** @type {string | undefined} */
+  let model;
+  /** @type {string[]} */
+  const warnings = [];
+  /** @type {string | undefined} */
+  let worktree;
+
+  if (t && t.model !== undefined && t.model !== null) {
+    const rawModel =
+      typeof t.model === "string" ? t.model.trim() : String(t.model).trim();
+    if (rawModel.length > 0) {
+      if (typeof t.model === "string" && isValidGeminiModel(rawModel)) {
+        model = rawModel;
+      } else {
+        const safeBad = sanitizeShortText(rawModel, 80);
+        warnings.push(`invalid model "${safeBad}" ignored`);
+      }
+    }
+  }
+
+  if (t && t.worktree !== undefined && t.worktree !== null) {
+    const rawWt =
+      typeof t.worktree === "string"
+        ? t.worktree.trim()
+        : String(t.worktree).trim();
+    if (rawWt.length > 0) {
+      if (typeof t.worktree === "string" && isValidWorktree(rawWt)) {
+        worktree = rawWt;
+      } else {
+        const safeBad = sanitizeShortText(rawWt, 80);
+        warnings.push(`invalid worktree "${safeBad}" ignored`);
+      }
+    }
+  }
+
+  const warning = warnings.length > 0 ? warnings.join("; ") : undefined;
+  return {
+    ...(model ? { model } : {}),
+    ...(warning ? { warning } : {}),
+    ...(worktree ? { worktree } : {}),
+  };
 }
 
 export const DEFAULT_QUIET_MS = 5 * 60 * 1000;
@@ -379,6 +496,9 @@ function cloneTask(task) {
     after: [...task.after],
     state: task.state,
     round: task.round,
+    ...(task.model ? { model: task.model } : {}),
+    ...(task.warning ? { warning: task.warning } : {}),
+    ...(task.worktree ? { worktree: task.worktree } : {}),
   };
 }
 
@@ -433,6 +553,7 @@ function cloneRun(run) {
         }
       : null,
     memberState: run.memberState ?? null,
+    ...(run.worktree ? { worktree: run.worktree } : {}),
   };
 }
 
@@ -614,6 +735,7 @@ export function reduce(flow, event) {
           after: Array.isArray(t.after) ? [...t.after] : [],
           state: /** @type {TaskState} */ ("waiting"),
           round: 0,
+          ...parseTaskOverrides(t),
         }));
         return finalizeFlow(
           {
@@ -654,6 +776,7 @@ export function reduce(flow, event) {
             prevTask ? prevTask.state : "waiting"
           ),
           round: prevTask ? prevTask.round : 0,
+          ...parseTaskOverrides(t),
         };
       });
 
@@ -712,6 +835,12 @@ export function reduce(flow, event) {
       // A run id the flow already has is the same agent starting again (a
       // follow-up message, or the host waking a background agent). Keep one
       // row: reopen it if it had ended, and never append a duplicate.
+      const cleanStartWt =
+        typeof event.worktree === "string" ? event.worktree.trim() : "";
+      const validStartWt = isValidWorktree(cleanStartWt)
+        ? cleanStartWt
+        : undefined;
+
       const existingRun = flow.runs.find((r) => r.id === event.id);
       if (existingRun) {
         const resumedTaskN = existingRun.taskN ?? taskN;
@@ -744,6 +873,7 @@ export function reduce(flow, event) {
                   status: /** @type {RunStatus} */ ("running"),
                   paused: null,
                   memberState: null,
+                  ...(validStartWt ? { worktree: validStartWt } : {}),
                 };
               }
               return {
@@ -755,6 +885,7 @@ export function reduce(flow, event) {
                   r.lastActivityAt ?? r.startedAt,
                   nextActivityAt,
                 ),
+                ...(validStartWt ? { worktree: validStartWt } : {}),
               };
             }),
           },
@@ -805,6 +936,7 @@ export function reduce(flow, event) {
         role: event.role ?? "worker",
         paused: null,
         memberState: null,
+        ...(validStartWt ? { worktree: validStartWt } : {}),
       };
 
       return finalizeFlow(
@@ -876,6 +1008,9 @@ export function reduce(flow, event) {
         const lastActivityAt = Number.isFinite(event.at)
           ? Math.max(r.lastActivityAt ?? r.startedAt, event.at)
           : (r.lastActivityAt ?? r.startedAt);
+        const cleanProgWt =
+          typeof event.worktree === "string" ? event.worktree.trim() : "";
+        const nextWt = isValidWorktree(cleanProgWt) ? cleanProgWt : r.worktree;
         return {
           ...cloneRun(r),
           lastActivityAt,
@@ -887,6 +1022,7 @@ export function reduce(flow, event) {
           delegateTokens,
           steps,
           contextPct,
+          ...(nextWt ? { worktree: nextWt } : {}),
         };
       });
 
@@ -1335,6 +1471,9 @@ export function taskBoard(flow) {
     round: t.round,
     after: [...t.after],
     waitingOn: t.after.filter((dep) => !accepted.has(dep)),
+    ...(t.model ? { model: t.model } : {}),
+    ...(t.warning ? { warning: t.warning } : {}),
+    ...(t.worktree ? { worktree: t.worktree } : {}),
   }));
 }
 
@@ -1637,6 +1776,12 @@ function buildMemberRow(flow, run, posts) {
   const lastActivityAt = Number.isFinite(run.lastActivityAt)
     ? run.lastActivityAt
     : run.startedAt;
+  const matchedTask =
+    run.taskN !== null && run.taskN !== undefined && Array.isArray(flow.tasks)
+      ? flow.tasks.find((t) => t.n === run.taskN)
+      : undefined;
+  const taskModel = matchedTask?.model;
+  const worktree = run.worktree ?? matchedTask?.worktree;
 
   return {
     id: run.id,
@@ -1649,6 +1794,8 @@ function buildMemberRow(flow, run, posts) {
       : {}),
     model: run.model,
     ...(run.delegate ? { delegate: run.delegate } : {}),
+    ...(taskModel ? { taskModel } : {}),
+    ...(worktree ? { worktree } : {}),
     ...(lastPostSeq !== undefined ? { lastPostSeq } : {}),
     lastActivityAt,
   };
@@ -1942,4 +2089,78 @@ export function formatWake(
     return `${block}\nWake @${target} with SendMessage to agent id ${safeRunId} and pass it this post.`;
   }
   return `${block}\nWake @${target} and pass it this post.`;
+}
+
+/**
+ * Builds the directed mention graph from board posts with `seq <= uptoSeq`
+ * (or all posts when `uptoSeq` is omitted). Nodes are lowercase post authors
+ * and recipients (`all` is never a node and counts toward no edge). Edges are
+ * sorted by `count` descending, then `from` ascending, then `to` ascending.
+ *
+ * @param {Flow | null | undefined} flow
+ * @param {{ uptoSeq?: number }} [options]
+ * @returns {MentionGraph}
+ */
+export function mentionGraph(flow, { uptoSeq = undefined } = {}) {
+  if (!flow || !Array.isArray(flow.posts) || flow.posts.length === 0) {
+    return { nodes: [], edges: [] };
+  }
+
+  const hasSeqCap = typeof uptoSeq === "number" && Number.isFinite(uptoSeq);
+  /** @type {Map<string, number>} */
+  const nodePosts = new Map();
+  /** @type {Map<string, { from: string, to: string, count: number }>} */
+  const edgeMap = new Map();
+
+  for (const post of flow.posts) {
+    if (hasSeqCap && post.seq > uptoSeq) continue;
+
+    const from = String(post.from ?? "")
+      .trim()
+      .replace(/^@+/, "")
+      .toLowerCase();
+    const validFrom = from.length > 0 && from !== "all";
+    if (validFrom) {
+      nodePosts.set(from, (nodePosts.get(from) ?? 0) + 1);
+    }
+
+    /** @type {Set<string>} */
+    const seenTo = new Set();
+    const rawTo = Array.isArray(post.to) ? post.to : [];
+    for (const item of rawTo) {
+      const to = String(item ?? "")
+        .trim()
+        .replace(/^@+/, "")
+        .toLowerCase();
+      if (to.length === 0 || to === "all" || seenTo.has(to)) {
+        continue;
+      }
+      seenTo.add(to);
+      if (!nodePosts.has(to)) {
+        nodePosts.set(to, 0);
+      }
+      if (validFrom) {
+        const key = `${from}\0${to}`;
+        const existing = edgeMap.get(key);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          edgeMap.set(key, { from, to, count: 1 });
+        }
+      }
+    }
+  }
+
+  const nodes = Array.from(nodePosts.entries())
+    .map(([id, posts]) => ({ id, posts }))
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
+  const edges = Array.from(edgeMap.values()).sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    if (a.from !== b.from) return a.from < b.from ? -1 : 1;
+    if (a.to !== b.to) return a.to < b.to ? -1 : 1;
+    return 0;
+  });
+
+  return { nodes, edges };
 }

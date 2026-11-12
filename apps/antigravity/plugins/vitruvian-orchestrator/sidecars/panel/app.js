@@ -347,6 +347,23 @@ function renderTaskBoard(rows) {
       el("span", { class: "meta-chip mono" }, row.specialist || "wren"),
       el("span", { class: "meta-chip tier-chip" }, row.tier || "core"),
     ];
+    if (row.model) {
+      metaBadges.push(el("span", { class: "meta-chip mono" }, row.model));
+    }
+    if (row.worktree) {
+      metaBadges.push(
+        el("span", { class: "meta-chip mono" }, `⎇ ${row.worktree}`),
+      );
+    }
+    if (row.warning) {
+      metaBadges.push(
+        el(
+          "span",
+          { class: "meta-chip status-amber", title: row.warning },
+          row.warning,
+        ),
+      );
+    }
     if (row.round > 0) {
       metaBadges.push(
         el("span", { class: "meta-chip status-red" }, `round ${row.round}`),
@@ -406,9 +423,15 @@ function renderAgents(runs, members) {
   for (const run of runs) {
     const mascot = MASCOTS[run.agent] || "●";
     const tone = statusTone(run.status);
-    const modelLabel = run.effort
-      ? `${run.model || "inherit"} · ${run.effort}`
-      : run.model || "inherit";
+    const member = memberById.get(run.id) || null;
+    const baseModel = run.model || "inherit";
+    const taskModel = run.taskModel || member?.taskModel || null;
+    const effectiveDelegate = run.delegate || taskModel || null;
+    const modelCore =
+      effectiveDelegate && effectiveDelegate !== baseModel
+        ? `${baseModel} → ${effectiveDelegate}`
+        : baseModel;
+    const modelLabel = run.effort ? `${modelCore} · ${run.effort}` : modelCore;
 
     let progressLabel = "—";
     if (
@@ -445,7 +468,7 @@ function renderAgents(runs, members) {
           )
         : null;
 
-    const member = memberById.get(run.id) || null;
+    const worktree = run.worktree || member?.worktree || null;
     const isPausedOrKilled =
       member?.state === "paused" || member?.state === "killed";
     const statusBadge =
@@ -478,6 +501,9 @@ function renderAgents(runs, members) {
         "div",
         { class: "row-meta" },
         el("span", { class: "meta-chip mono" }, modelLabel),
+        worktree
+          ? el("span", { class: "meta-chip mono" }, `⎇ ${worktree}`)
+          : null,
         el("span", { class: "meta-chip" }, progressLabel),
         el("span", { class: "meta-chip mono" }, tokensLabel),
         el("span", { class: "meta-chip mono" }, costLabel),
@@ -546,6 +572,11 @@ let activeTab = "flow";
 let boardFollow = true;
 let lastAutoScrolledSeq = 0;
 const expandedPostSeqs = new Set();
+let graphLive = true;
+let graphReplaySeq = 0;
+let graphPlaying = false;
+let graphPlayTimer = null;
+let graphHideInactive = false;
 
 function postKindTone(kind) {
   switch (kind) {
@@ -837,9 +868,13 @@ function renderMemberGroup(container, list, taskByN, postBySeq, now) {
           ? `#${member.taskN} · ${task.title}`
           : `#${member.taskN}`
         : null;
-    const modelText = member.delegate
-      ? `${member.model || "inherit"} → ${member.delegate}`
-      : member.model || "inherit";
+    const baseModel = member.model || "inherit";
+    const effectiveDelegate = member.delegate || member.taskModel || null;
+    const modelText =
+      effectiveDelegate && effectiveDelegate !== baseModel
+        ? `${baseModel} → ${effectiveDelegate}`
+        : baseModel;
+    const memberWorktree = member.worktree || task?.worktree || null;
     const stateLabel =
       member.state === "paused"
         ? `paused: ${member.reason || "error"}`
@@ -874,6 +909,9 @@ function renderMemberGroup(container, list, taskByN, postBySeq, now) {
             "div",
             { class: "row-meta" },
             el("span", { class: "meta-chip mono" }, modelText),
+            memberWorktree
+              ? el("span", { class: "meta-chip mono" }, `⎇ ${memberWorktree}`)
+              : null,
             el("span", { class: "meta-chip mono muted" }, activityLabel),
             el(
               "span",
@@ -952,9 +990,487 @@ function renderMembers(state) {
   renderMemberGroup($("members-retired"), retired, taskByN, postBySeq, now);
 }
 
+function getStatePosts(state) {
+  if (Array.isArray(state?.posts)) return state.posts;
+  if (Array.isArray(state?.flow?.posts)) return state.flow.posts;
+  return [];
+}
+
+function getGraphPosts(state) {
+  if (Array.isArray(state?.graphPosts)) return state.graphPosts;
+  return getStatePosts(state);
+}
+
+function stopGraphPlayback() {
+  graphPlaying = false;
+  if (graphPlayTimer !== null) {
+    if (typeof clearInterval === "function") {
+      clearInterval(graphPlayTimer);
+    }
+    graphPlayTimer = null;
+  }
+}
+
+function computeGraphFromPosts(posts, uptoSeq) {
+  const hasCap = typeof uptoSeq === "number" && Number.isFinite(uptoSeq);
+  const nodePosts = new Map();
+  const edgeMap = new Map();
+
+  for (const post of posts) {
+    if (hasCap && post.seq > uptoSeq) continue;
+    const from = String(post.from ?? "")
+      .trim()
+      .replace(/^@+/, "")
+      .toLowerCase();
+    const validFrom = from.length > 0 && from !== "all";
+    if (validFrom) {
+      nodePosts.set(from, (nodePosts.get(from) ?? 0) + 1);
+    }
+    const seenTo = new Set();
+    const rawTo = Array.isArray(post.to) ? post.to : [];
+    for (const item of rawTo) {
+      const to = String(item ?? "")
+        .trim()
+        .replace(/^@+/, "")
+        .toLowerCase();
+      if (to.length === 0 || to === "all" || seenTo.has(to)) continue;
+      seenTo.add(to);
+      if (!nodePosts.has(to)) {
+        nodePosts.set(to, 0);
+      }
+      if (validFrom) {
+        const key = `${from}\0${to}`;
+        const existing = edgeMap.get(key);
+        if (existing) existing.count += 1;
+        else edgeMap.set(key, { from, to, count: 1 });
+      }
+    }
+  }
+
+  const nodes = Array.from(nodePosts.entries())
+    .map(([id, postsCount]) => ({ id, posts: postsCount }))
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
+  const edges = Array.from(edgeMap.values()).sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    if (a.from !== b.from) return a.from < b.from ? -1 : 1;
+    if (a.to !== b.to) return a.to < b.to ? -1 : 1;
+    return 0;
+  });
+
+  return { nodes, edges };
+}
+
+function collectInactiveHandles(state) {
+  const memberById = new Map();
+  for (const group of [
+    state?.members?.active,
+    state?.members?.standingBy,
+    state?.members?.retired,
+  ]) {
+    if (!Array.isArray(group)) continue;
+    for (const m of group) {
+      if (m && typeof m.id === "string") {
+        memberById.set(m.id, m);
+      }
+    }
+  }
+
+  const runs = Array.isArray(state?.runs)
+    ? state.runs
+    : Array.isArray(state?.flow?.runs)
+      ? state.flow.runs
+      : [];
+
+  const latestStateByHandle = new Map();
+  if (runs.length > 0) {
+    for (const run of runs) {
+      if (!run || run.role === "lead") continue;
+      const h = String(run.agent ?? "")
+        .trim()
+        .toLowerCase();
+      if (!h) continue;
+      const member = memberById.get(run.id);
+      const st =
+        member?.state ??
+        (run.memberState === "killed" || run.memberState === "retired"
+          ? run.memberState
+          : run.paused
+            ? "paused"
+            : run.status === "running"
+              ? "working"
+              : run.status === "error"
+                ? "retired"
+                : "waiting");
+      latestStateByHandle.set(h, st);
+    }
+  } else {
+    for (const group of [
+      state?.members?.retired,
+      state?.members?.standingBy,
+      state?.members?.active,
+    ]) {
+      if (!Array.isArray(group)) continue;
+      for (const m of group) {
+        const h = String(m?.agent ?? "")
+          .trim()
+          .toLowerCase();
+        if (h && typeof m?.state === "string") {
+          latestStateByHandle.set(h, m.state);
+        }
+      }
+    }
+  }
+
+  const inactiveHandles = new Set();
+  for (const [h, st] of latestStateByHandle.entries()) {
+    if (st === "killed" || st === "retired") {
+      inactiveHandles.add(h);
+    }
+  }
+  return inactiveHandles;
+}
+
+function syncGraphControls(minSeq, latestSeq, effectiveSeq, hasPosts) {
+  if (!hasPosts && graphPlaying) {
+    stopGraphPlayback();
+  }
+  const slider = $("graph-seq-slider");
+  if (slider) {
+    slider.setAttribute("min", String(minSeq));
+    slider.setAttribute("max", String(latestSeq));
+    slider.setAttribute("value", String(effectiveSeq));
+    slider.value = String(effectiveSeq);
+    slider.disabled = !hasPosts;
+  }
+  const seqLabel = $("graph-seq-label");
+  if (seqLabel) {
+    seqLabel.textContent = !hasPosts
+      ? "seq 0 / 0"
+      : graphLive
+        ? `Live · seq ${effectiveSeq}/${latestSeq}`
+        : `seq ${effectiveSeq}/${latestSeq}`;
+  }
+  const stepBackBtn = $("graph-step-back");
+  if (stepBackBtn) {
+    stepBackBtn.disabled = !hasPosts || effectiveSeq <= minSeq;
+  }
+  const stepFwdBtn = $("graph-step-forward");
+  if (stepFwdBtn) {
+    stepFwdBtn.disabled = !hasPosts || effectiveSeq >= latestSeq;
+  }
+  const liveBtn = $("graph-live");
+  if (liveBtn) {
+    liveBtn.disabled = !hasPosts;
+    liveBtn.className = graphLive
+      ? "control-btn small active"
+      : "control-btn small";
+    liveBtn.setAttribute("aria-pressed", graphLive ? "true" : "false");
+  }
+  const playBtn = $("graph-play-pause");
+  if (playBtn) {
+    playBtn.disabled = !hasPosts;
+    playBtn.className = graphPlaying
+      ? "control-btn small active"
+      : "control-btn small";
+    playBtn.setAttribute("aria-pressed", graphPlaying ? "true" : "false");
+    playBtn.textContent = graphPlaying ? "Pause" : "Play";
+  }
+  const hideBtn = $("graph-hide-inactive");
+  if (hideBtn) {
+    hideBtn.className = graphHideInactive
+      ? "control-btn small active"
+      : "control-btn small";
+    hideBtn.setAttribute("aria-pressed", graphHideInactive ? "true" : "false");
+  }
+}
+
+function shortenGraphLabel(label, maxChars) {
+  const str = String(label ?? "");
+  const cap = Math.max(2, Math.floor(maxChars));
+  if (str.length <= cap) return str;
+  return `${str.slice(0, cap - 1)}…`;
+}
+
+function renderGraph(state) {
+  const container = $("graph-container");
+  const empty = $("graph-empty");
+  if (!container || !empty) return;
+
+  const allPosts = getGraphPosts(state);
+  const hasPosts = allPosts.length > 0;
+  const minSeq = hasPosts ? allPosts[0].seq : 1;
+  const latestSeq = hasPosts ? allPosts[allPosts.length - 1].seq : 1;
+  const effectiveSeq =
+    !hasPosts || graphLive
+      ? latestSeq
+      : Math.min(latestSeq, Math.max(minSeq, graphReplaySeq || latestSeq));
+  if (graphLive) {
+    graphReplaySeq = latestSeq;
+  }
+
+  syncGraphControls(minSeq, latestSeq, effectiveSeq, hasPosts);
+
+  const rangeNote = $("graph-range-note");
+  if (rangeNote) {
+    const showRangeNote =
+      hasPosts &&
+      (minSeq > 1 ||
+        (Number(state?.postsDropped) || 0) > 0 ||
+        (Array.isArray(state?.posts) && state.posts.length < allPosts.length));
+    rangeNote.hidden = !showRangeNote;
+    rangeNote.textContent = showRangeNote
+      ? `graph covers posts #${minSeq}-#${latestSeq}`
+      : "";
+  }
+
+  const canUseServerGraph =
+    graphLive &&
+    state?.mentionGraph &&
+    Array.isArray(state.mentionGraph.nodes) &&
+    Array.isArray(state.mentionGraph.edges) &&
+    (Array.isArray(state?.graphPosts) || minSeq === 1);
+  const baseGraph = canUseServerGraph
+    ? state.mentionGraph
+    : computeGraphFromPosts(allPosts, effectiveSeq);
+
+  const inactive = graphHideInactive ? collectInactiveHandles(state) : null;
+  const nodes = inactive
+    ? baseGraph.nodes.filter((n) => !inactive.has(n.id))
+    : baseGraph.nodes;
+  const edges = inactive
+    ? baseGraph.edges.filter(
+        (e) => !inactive.has(e.from) && !inactive.has(e.to),
+      )
+    : baseGraph.edges;
+
+  container.replaceChildren();
+  empty.hidden = nodes.length > 0;
+  if (nodes.length === 0) return;
+
+  const width = Math.max(200, Math.round(container.clientWidth || 360));
+  const height = 260;
+  const cx = width / 2;
+  const cy = height / 2;
+  const nodeR = 18;
+  const sideGutter = Math.min(64, Math.max(52, Math.round(width * 0.24)));
+  const baseR = Math.min(width, height) * 0.33;
+  const ringRx =
+    nodes.length <= 1
+      ? 0
+      : Math.min(baseR, Math.max(28, cx - nodeR - sideGutter));
+  const ringRy = nodes.length <= 1 ? 0 : baseR;
+
+  const posById = new Map();
+  for (let i = 0; i < nodes.length; i += 1) {
+    const angle = -Math.PI / 2 + (2 * Math.PI * i) / Math.max(1, nodes.length);
+    const x = cx + ringRx * Math.cos(angle);
+    const y = cy + ringRy * Math.sin(angle);
+    posById.set(nodes[i].id, { x, y, angle });
+  }
+
+  const svg = svgEl("svg", {
+    viewBox: `0 0 ${width} ${height}`,
+    width: String(width),
+    height: String(height),
+    class: "graph-svg",
+    role: "img",
+    "aria-label": "Mention graph",
+  });
+
+  svg.append(
+    svgEl(
+      "defs",
+      {},
+      svgEl(
+        "marker",
+        {
+          id: "graph-arrowhead",
+          viewBox: "0 0 10 10",
+          refX: "9",
+          refY: "5",
+          markerWidth: "6",
+          markerHeight: "6",
+          orient: "auto-start-reverse",
+        },
+        svgEl("path", {
+          d: "M 0 1 L 10 5 L 0 9 z",
+          class: "graph-arrow",
+        }),
+      ),
+    ),
+  );
+
+  const edgeKeys = new Set(edges.map((e) => `${e.from}\0${e.to}`));
+  const maxCount = Math.max(1, ...edges.map((e) => e.count));
+  const edgesGroup = svgEl("g", { class: "graph-layer-edges" });
+  const weightsGroup = svgEl("g", { class: "graph-layer-weights" });
+
+  for (const edge of edges) {
+    const src = posById.get(edge.from);
+    const dst = posById.get(edge.to);
+    if (!src || !dst) continue;
+    const strokeWidth =
+      maxCount <= 1 ? 2 : 1.5 + ((edge.count - 1) / (maxCount - 1)) * 3.0;
+
+    if (edge.from === edge.to) {
+      const loopR = 12;
+      const lx = src.x;
+      const ly = src.y - nodeR;
+      edgesGroup.append(
+        svgEl(
+          "path",
+          {
+            d: `M ${(lx - 6).toFixed(1)} ${ly.toFixed(1)} A ${loopR} ${loopR} 0 1 1 ${(lx + 6).toFixed(1)} ${ly.toFixed(1)}`,
+            class: "graph-edge",
+            "data-from": edge.from,
+            "data-to": edge.to,
+            "data-count": String(edge.count),
+            "stroke-width": strokeWidth.toFixed(2),
+            "marker-end": "url(#graph-arrowhead)",
+          },
+          svgEl("title", {}, `${edge.from} → ${edge.to} ×${edge.count}`),
+        ),
+      );
+      weightsGroup.append(
+        svgEl(
+          "text",
+          {
+            x: lx.toFixed(1),
+            y: Math.max(10, ly - loopR * 2 - 2).toFixed(1),
+            "text-anchor": "middle",
+            class: "graph-weight",
+            "data-from": edge.from,
+            "data-to": edge.to,
+            "data-count": String(edge.count),
+          },
+          String(edge.count),
+        ),
+      );
+      continue;
+    }
+
+    const dx = dst.x - src.x;
+    const dy = dst.y - src.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const ux = dx / dist;
+    const uy = dy / dist;
+    const hasReverse = edgeKeys.has(`${edge.to}\0${edge.from}`);
+    const perpOffset = hasReverse ? 3.5 : 0;
+    const ox = -uy * perpOffset;
+    const oy = ux * perpOffset;
+    const x1 = src.x + ux * (nodeR + 2) + ox;
+    const y1 = src.y + uy * (nodeR + 2) + oy;
+    const x2 = dst.x - ux * (nodeR + 5) + ox;
+    const y2 = dst.y - uy * (nodeR + 5) + oy;
+
+    edgesGroup.append(
+      svgEl(
+        "line",
+        {
+          x1: x1.toFixed(1),
+          y1: y1.toFixed(1),
+          x2: x2.toFixed(1),
+          y2: y2.toFixed(1),
+          class: "graph-edge",
+          "data-from": edge.from,
+          "data-to": edge.to,
+          "data-count": String(edge.count),
+          "stroke-width": strokeWidth.toFixed(2),
+          "marker-end": "url(#graph-arrowhead)",
+        },
+        svgEl("title", {}, `${edge.from} → ${edge.to} ×${edge.count}`),
+      ),
+    );
+    const labelOffset = hasReverse ? 9 : 7;
+    const wx = x1 + (x2 - x1) * 0.56 - uy * labelOffset;
+    const wy = y1 + (y2 - y1) * 0.56 + ux * labelOffset + 3;
+    weightsGroup.append(
+      svgEl(
+        "text",
+        {
+          x: wx.toFixed(1),
+          y: wy.toFixed(1),
+          "text-anchor": "middle",
+          class: "graph-weight",
+          "data-from": edge.from,
+          "data-to": edge.to,
+          "data-count": String(edge.count),
+        },
+        String(edge.count),
+      ),
+    );
+  }
+  svg.append(edgesGroup, weightsGroup);
+
+  const nodesGroup = svgEl("g", { class: "graph-layer-nodes" });
+  const pad = 6;
+  const charWidth = 6.8;
+  for (const node of nodes) {
+    const pos = posById.get(node.id);
+    if (!pos) continue;
+    const labelDist = nodeR + 10;
+    const lx = nodes.length <= 1 ? 0 : Math.cos(pos.angle) * labelDist;
+    const ly =
+      nodes.length <= 1 ? nodeR + 14 : Math.sin(pos.angle) * labelDist + 4;
+    const anchor =
+      nodes.length > 1 && Math.cos(pos.angle) > 0.35
+        ? "start"
+        : nodes.length > 1 && Math.cos(pos.angle) < -0.35
+          ? "end"
+          : "middle";
+    const absLx = pos.x + lx;
+    const availPx =
+      anchor === "start"
+        ? width - pad - absLx
+        : anchor === "end"
+          ? absLx - pad
+          : 2 * Math.min(absLx - pad, width - pad - absLx);
+    const displayLabel = shortenGraphLabel(node.id, availPx / charWidth);
+
+    nodesGroup.append(
+      svgEl(
+        "g",
+        {
+          class: "graph-node",
+          "data-agent": node.id,
+          "data-posts": String(node.posts),
+          transform: `translate(${pos.x.toFixed(1)}, ${pos.y.toFixed(1)})`,
+        },
+        svgEl("title", {}, node.id),
+        svgEl("circle", {
+          r: String(nodeR),
+          class: "graph-circle",
+        }),
+        svgEl(
+          "text",
+          {
+            y: "4",
+            "text-anchor": "middle",
+            class: "graph-count",
+          },
+          String(node.posts),
+        ),
+        svgEl(
+          "text",
+          {
+            x: lx.toFixed(1),
+            y: ly.toFixed(1),
+            "text-anchor": anchor,
+            class: "graph-label",
+          },
+          displayLabel,
+        ),
+      ),
+    );
+  }
+  svg.append(nodesGroup);
+  container.append(svg);
+}
+
 function setActiveTab(tab) {
   activeTab = tab;
-  const tabs = ["flow", "board", "members"];
+  const tabs = ["flow", "board", "members", "graph"];
   for (const name of tabs) {
     const btn = $(`tab-btn-${name}`);
     const pane = $(`tab-pane-${name}`);
@@ -971,11 +1487,13 @@ function setActiveTab(tab) {
     renderBurnDownSvg(lastRenderedState.burnDown, lastRenderedState.totalTasks);
   } else if (tab === "board" && boardFollow) {
     scrollBoardToLatest();
+  } else if (tab === "graph" && lastRenderedState?.hasFlow) {
+    renderGraph(lastRenderedState);
   }
 }
 
 function wireBoardAndTabControls() {
-  for (const name of ["flow", "board", "members"]) {
+  for (const name of ["flow", "board", "members", "graph"]) {
     const btn = $(`tab-btn-${name}`);
     if (btn) {
       btn.addEventListener("click", () => setActiveTab(name));
@@ -1028,6 +1546,114 @@ function wireBoardAndTabControls() {
         boardFollow = false;
         syncFollowControls();
       }
+    });
+  }
+
+  const graphSlider = $("graph-seq-slider");
+  if (graphSlider) {
+    const onSlider = () => {
+      const posts = getGraphPosts(lastRenderedState);
+      if (posts.length === 0) return;
+      stopGraphPlayback();
+      graphLive = false;
+      graphReplaySeq = Math.max(1, Number(graphSlider.value) || 1);
+      if (lastRenderedState) renderGraph(lastRenderedState);
+    };
+    graphSlider.addEventListener("input", onSlider);
+    graphSlider.addEventListener("change", onSlider);
+  }
+
+  const stepBackBtn = $("graph-step-back");
+  if (stepBackBtn) {
+    stepBackBtn.addEventListener("click", () => {
+      if (stepBackBtn.disabled) return;
+      const posts = getGraphPosts(lastRenderedState);
+      if (posts.length === 0) return;
+      const minSeq = posts[0].seq;
+      const latestSeq = posts[posts.length - 1].seq;
+      const cur = graphLive ? latestSeq : graphReplaySeq || latestSeq;
+      if (cur <= minSeq) return;
+      stopGraphPlayback();
+      graphLive = false;
+      graphReplaySeq = Math.max(minSeq, cur - 1);
+      if (lastRenderedState) renderGraph(lastRenderedState);
+    });
+  }
+
+  const stepFwdBtn = $("graph-step-forward");
+  if (stepFwdBtn) {
+    stepFwdBtn.addEventListener("click", () => {
+      if (stepFwdBtn.disabled) return;
+      const posts = getGraphPosts(lastRenderedState);
+      if (posts.length === 0) return;
+      const minSeq = posts[0].seq;
+      const latestSeq = posts[posts.length - 1].seq;
+      const cur = graphLive ? latestSeq : graphReplaySeq || minSeq;
+      if (cur >= latestSeq) return;
+      stopGraphPlayback();
+      graphReplaySeq = Math.min(latestSeq, cur + 1);
+      graphLive = graphReplaySeq >= latestSeq;
+      if (lastRenderedState) renderGraph(lastRenderedState);
+    });
+  }
+
+  const liveBtn = $("graph-live");
+  if (liveBtn) {
+    liveBtn.addEventListener("click", () => {
+      const posts = getGraphPosts(lastRenderedState);
+      if (posts.length === 0) return;
+      stopGraphPlayback();
+      graphLive = true;
+      graphReplaySeq = posts[posts.length - 1].seq;
+      if (lastRenderedState) renderGraph(lastRenderedState);
+    });
+  }
+
+  const playPauseBtn = $("graph-play-pause");
+  if (playPauseBtn) {
+    playPauseBtn.addEventListener("click", () => {
+      const posts = getGraphPosts(lastRenderedState);
+      if (posts.length === 0) {
+        stopGraphPlayback();
+        return;
+      }
+      if (graphPlaying) {
+        stopGraphPlayback();
+        if (lastRenderedState) renderGraph(lastRenderedState);
+        return;
+      }
+      const minSeq = posts[0].seq;
+      const latestSeq = posts[posts.length - 1].seq;
+      if (graphLive || graphReplaySeq >= latestSeq) {
+        graphReplaySeq = minSeq;
+      }
+      graphLive = false;
+      graphPlaying = true;
+      graphPlayTimer = setInterval(() => {
+        const curPosts = getGraphPosts(lastRenderedState);
+        const maxSeq =
+          curPosts.length > 0 ? curPosts[curPosts.length - 1].seq : 1;
+        if (graphReplaySeq >= maxSeq) {
+          stopGraphPlayback();
+          graphLive = true;
+        } else {
+          graphReplaySeq += 1;
+          if (graphReplaySeq >= maxSeq) {
+            stopGraphPlayback();
+            graphLive = true;
+          }
+        }
+        if (lastRenderedState) renderGraph(lastRenderedState);
+      }, 650);
+      if (lastRenderedState) renderGraph(lastRenderedState);
+    });
+  }
+
+  const hideInactiveBtn = $("graph-hide-inactive");
+  if (hideInactiveBtn) {
+    hideInactiveBtn.addEventListener("click", () => {
+      graphHideInactive = !graphHideInactive;
+      if (lastRenderedState) renderGraph(lastRenderedState);
     });
   }
 }
@@ -1093,6 +1719,7 @@ function renderState(state) {
   renderSpend(state.spend);
   renderBoard(state);
   renderMembers(state);
+  renderGraph(state);
 }
 
 wireBoardAndTabControls();
@@ -1111,6 +1738,9 @@ async function refresh() {
 window.addEventListener("resize", () => {
   if (lastRenderedState?.hasFlow) {
     renderBurnDownSvg(lastRenderedState.burnDown, lastRenderedState.totalTasks);
+    if (activeTab === "graph") {
+      renderGraph(lastRenderedState);
+    }
   }
 });
 

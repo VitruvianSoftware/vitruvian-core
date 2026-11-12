@@ -33,6 +33,8 @@ import type {
   FlowEvent,
   MemberRow,
   MembersView,
+  MentionGraph,
+  MentionGraphEdge,
   Panel,
   PauseReason,
   PendingWake,
@@ -54,7 +56,9 @@ import {
   delegateCost,
   formatWake,
   initialFlow,
+  isValidWorktree,
   members,
+  mentionGraph,
   pendingWakes,
   reduce,
   remaining,
@@ -110,6 +114,8 @@ type ProgressInput = {
     specialist?: string;
     tier?: Tier;
     after?: number[];
+    model?: string;
+    worktree?: string;
   }[];
   accept?: number;
   return?: number;
@@ -126,6 +132,7 @@ type StepInput = {
   delegateUsage?: Partial<DelegateTokenCounts>;
   paused?: PauseReason;
   detail?: string;
+  worktree?: string;
 };
 
 type PostInput = {
@@ -1792,13 +1799,29 @@ const stallHex = (
 const formatBoardRecipient = (t: string): string =>
   t.toLowerCase() === "all" ? "everyone" : `@${t}`;
 
-const boardSvg = (W: number, posts: Post[], at: number): string => {
+const formatWhoTalks = (edges: MentionGraphEdge[]): string =>
+  edges
+    .slice(0, 5)
+    .map((e) => `${e.from} → ${e.to} ×${e.count}`)
+    .join(", ");
+
+const boardSvg = (
+  W: number,
+  posts: Post[],
+  at: number,
+  topEdges: MentionGraphEdge[] = [],
+): string => {
   const rowH = 22;
   const padY = 6;
-  const H_px = padY * 2 + posts.length * rowH;
+  const whoText = topEdges.length > 0 ? formatWhoTalks(topEdges) : "";
+  const extraRows = whoText ? 1 : 0;
+  const H_px = padY * 2 + (posts.length + extraRows) * rowH;
+  const whoSvg = whoText
+    ? `<text class="s" x="8" y="${padY + 15}" font-family="${FONT}" font-size="10">${xml(fitText(`Who talks to whom: ${whoText}`, 10, Math.max(40, W - 16)))}</text>`
+    : "";
   const rows = posts
     .map((pt, idx) => {
-      const y = padY + idx * rowH + 15;
+      const y = padY + (idx + extraRows) * rowH + 15;
       const toPart =
         pt.to.length > 0
           ? ` → ${pt.to.map(formatBoardRecipient).join(", ")}`
@@ -1825,7 +1848,7 @@ const boardSvg = (W: number, posts: Post[], at: number): string => {
   return svg(
     W,
     H_px,
-    `<rect class="tile" x="0" y="0" width="${W}" height="${H_px}" rx="6"/>\n${rows}`,
+    `<rect class="tile" x="0" y="0" width="${W}" height="${H_px}" rx="6"/>\n${whoSvg ? `${whoSvg}\n` : ""}${rows}`,
   );
 };
 
@@ -1855,11 +1878,16 @@ const agentRowSvg = (
         ? Math.min(1, r.steps.done / r.steps.total)
         : Math.min(1, (r.contextPct ?? 0) / 100);
   const fillW = Math.round(textW * ratioVal);
-  const modelLabel = r.delegate
-    ? `${r.model || "—"} → ${r.delegate}`
-    : r.model || "—";
+  const baseModel = r.model || "—";
+  const effectiveDelegate = r.delegate || member?.taskModel || null;
+  const modelLabel =
+    effectiveDelegate && effectiveDelegate !== baseModel
+      ? `${baseModel} → ${effectiveDelegate}`
+      : baseModel;
+  const worktree = r.worktree || member?.worktree || null;
   const meta = [
     modelLabel,
+    ...(worktree ? [`⎇ ${worktree}`] : []),
     ...(r.effort ? [r.effort] : []),
     ...(r.role === "lead" ? ["lead"] : []),
     stallLabel(r, stall, member),
@@ -1918,6 +1946,12 @@ const cleanTasks = (raw: ProgressInput["tasks"]): PlanTaskInput[] =>
         after: Array.isArray(t.after)
           ? t.after.filter((n) => Number.isInteger(n) && n > 0)
           : [],
+        ...(t.model !== undefined && t.model !== null
+          ? { model: String(t.model) }
+          : {}),
+        ...(typeof t.worktree === "string" && t.worktree.trim().length > 0
+          ? { worktree: t.worktree.trim() }
+          : {}),
       };
     });
 
@@ -2114,6 +2148,16 @@ export const register: Register = (on) => {
                 specialist: { type: "string" },
                 tier: { type: "string", enum: [...TIERS] },
                 after: { type: "array", items: { type: "integer" } },
+                model: {
+                  type: "string",
+                  description:
+                    "Optional Gemini model override for this task (e.g. gemini-4-carbon-high).",
+                },
+                worktree: {
+                  type: "string",
+                  description:
+                    "Optional git worktree branch name for isolating parallel edits.",
+                },
               },
               required: ["title", "specialist", "tier"],
             },
@@ -2190,6 +2234,11 @@ export const register: Register = (on) => {
           detail: {
             type: "string",
             description: "Optional detail describing why the run paused.",
+          },
+          worktree: {
+            type: "string",
+            description:
+              "Optional git worktree branch name created or used by this helper.",
           },
         },
       },
@@ -2373,14 +2422,23 @@ export const register: Register = (on) => {
       if (!prev) return prev;
       const existing = prev.runs.find((r) => r.id === agentId);
       if (!existing) return prev;
+      const rawWt =
+        typeof input.worktree === "string" ? input.worktree.trim() : "";
+      const validWt = isValidWorktree(rawWt) ? rawWt : undefined;
+      const hasCounts =
+        typeof input.done === "number" &&
+        Number.isFinite(input.done) &&
+        typeof input.total === "number" &&
+        Number.isFinite(input.total) &&
+        Math.round(input.total) >= 1;
       const hasStepUpdate =
-        input.done !== undefined ||
-        input.total !== undefined ||
-        input.note !== undefined ||
+        hasCounts ||
         input.delegate !== undefined ||
-        input.delegateUsage !== undefined;
+        input.delegateUsage !== undefined ||
+        validWt !== undefined;
       let next: Flow | null = prev;
       if (hasStepUpdate) {
+        const hasCountsOrExisting = hasCounts || existing.steps !== null;
         const total = Math.max(
           0,
           Math.round(input.total ?? existing.steps?.total ?? 0),
@@ -2402,11 +2460,12 @@ export const register: Register = (on) => {
           type: "run.progress",
           at,
           id: agentId,
-          steps: { done, total, note },
+          ...(hasCountsOrExisting ? { steps: { done, total, note } } : {}),
           ...(delegate ? { delegate } : {}),
           ...(input.delegateUsage !== undefined
             ? { delegateTokens: input.delegateUsage }
             : {}),
+          ...(validWt ? { worktree: validWt } : {}),
         });
       }
       if (
@@ -2889,6 +2948,9 @@ export const register: Register = (on) => {
     const board: TaskBoardRow[] = taskBoard(f);
     const recentPosts: Post[] = boardView(f, { limit: 6 });
     const postCount = f.posts?.length ?? 0;
+    const topEdges =
+      postCount > 0 ? (mentionGraph(f) as MentionGraph).edges.slice(0, 5) : [];
+    const whoTalksSummary = topEdges.length > 0 ? formatWhoTalks(topEdges) : "";
     const bd: BurnDown = burnDown(f);
     const sp: SpendSummary = spend(f);
     const total = f.tasks.length;
@@ -2949,11 +3011,14 @@ export const register: Register = (on) => {
       const restTitles = wrappedTitle.slice(1);
       const metaSegments = [
         `${t.specialist} · ${t.tier}`,
+        ...(t.model ? [t.model] : []),
+        ...(t.worktree ? [`⎇ ${t.worktree}`] : []),
         t.state,
         `round ${t.round}`,
         ...(t.waitingOn.length > 0
           ? [`waits on ${t.waitingOn.map((n) => `#${n}`).join(", ")}`]
           : []),
+        ...(t.warning ? [`⚠ ${t.warning}`] : []),
       ];
       const metaLines = wrapSegments(metaSegments, cols, "  ", "  ");
       return (
@@ -2997,10 +3062,16 @@ export const register: Register = (on) => {
       const tokText = `${fmtTokens(runTotalTokens(r))} tok`;
       const elapsedText = fmtTime(runElapsed(r, at));
       const agentName = r.role === "lead" ? "lead" : r.agent;
-      const modelLabel = r.delegate ? `${r.model} → ${r.delegate}` : r.model;
+      const effectiveDelegate = r.delegate || member?.taskModel || null;
+      const modelLabel =
+        effectiveDelegate && effectiveDelegate !== r.model
+          ? `${r.model} → ${effectiveDelegate}`
+          : r.model;
+      const worktree = r.worktree || member?.worktree || null;
       const detailLines = wrapSegments(
         [
           modelLabel,
+          ...(worktree ? [`⎇ ${worktree}`] : []),
           ...(r.effort ? [r.effort] : []),
           stepOrCtx,
           tokText,
@@ -3159,30 +3230,44 @@ export const register: Register = (on) => {
                 )}
                 {hasDesktopSvg && "Svg" in ui ? (
                   <ui.Svg
-                    source={boardSvg(W, recentPosts, at)}
+                    source={boardSvg(W, recentPosts, at, topEdges)}
                     alt={`Board: ${recentPosts.length} of ${postCount} posts`}
                     width={W}
-                    height={12 + recentPosts.length * 22}
+                    height={
+                      12 + (recentPosts.length + (whoTalksSummary ? 1 : 0)) * 22
+                    }
                   />
                 ) : (
-                  recentPosts.map((pt) => {
-                    const toPart =
-                      pt.to.length > 0
-                        ? ` → ${pt.to.map(formatBoardRecipient).join(",")}`
-                        : "";
-                    const replyPart =
-                      typeof pt.replyTo === "number" ? ` ↩ #${pt.replyTo}` : "";
-                    const rel = fmtRelTime(pt.at, at);
-                    const head = `#${pt.seq} ${pt.from}${toPart}${replyPart} (${rel}) [${pt.kind}] `;
-                    const bodyBudget = Math.max(8, cols - head.length);
-                    const clippedBody = clipLine(pt.text, bodyBudget);
-                    return (
-                      <Text key={`post-${pt.seq}`}>
-                        <Text color={postKindTermColor(pt.kind)}>{head}</Text>
-                        <Text>{clippedBody}</Text>
+                  <>
+                    {whoTalksSummary ? (
+                      <Text dimColor>
+                        {clipLine(
+                          `Who talks to whom: ${whoTalksSummary}`,
+                          cols,
+                        )}
                       </Text>
-                    );
-                  })
+                    ) : null}
+                    {recentPosts.map((pt) => {
+                      const toPart =
+                        pt.to.length > 0
+                          ? ` → ${pt.to.map(formatBoardRecipient).join(",")}`
+                          : "";
+                      const replyPart =
+                        typeof pt.replyTo === "number"
+                          ? ` ↩ #${pt.replyTo}`
+                          : "";
+                      const rel = fmtRelTime(pt.at, at);
+                      const head = `#${pt.seq} ${pt.from}${toPart}${replyPart} (${rel}) [${pt.kind}] `;
+                      const bodyBudget = Math.max(8, cols - head.length);
+                      const clippedBody = clipLine(pt.text, bodyBudget);
+                      return (
+                        <Text key={`post-${pt.seq}`}>
+                          <Text color={postKindTermColor(pt.kind)}>{head}</Text>
+                          <Text>{clippedBody}</Text>
+                        </Text>
+                      );
+                    })}
+                  </>
                 )}
               </Box>
             )}

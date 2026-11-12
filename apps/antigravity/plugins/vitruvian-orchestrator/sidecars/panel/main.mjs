@@ -49,6 +49,7 @@ import {
   formatWake,
   initialFlow,
   members as membersView,
+  mentionGraph,
   pendingWakes,
   reduce,
   remaining,
@@ -714,6 +715,13 @@ export function buildPanelState(flow, meta = {}) {
     stallMs: meta.stallMs,
   });
   const stallMap = new Map(stallRows.map((row) => [row.id, row]));
+  const taskByN = new Map((flow?.tasks ?? []).map((t) => [t.n, t]));
+  const graph = mentionGraph(flow);
+  const graphPosts = allPosts.map((p) => ({
+    seq: p.seq,
+    from: p.from,
+    to: p.to,
+  }));
 
   const runs = flow
     ? flow.runs.map((r) => {
@@ -725,8 +733,16 @@ export function buildPanelState(flow, meta = {}) {
           (r.tokens?.output ?? 0) +
           (r.tokens?.cacheRead ?? 0) +
           (r.tokens?.cacheWrite ?? 0);
+        const matchedTask =
+          r.taskN !== null && r.taskN !== undefined
+            ? taskByN.get(r.taskN)
+            : undefined;
+        const taskModel = matchedTask?.model;
+        const worktree = r.worktree ?? matchedTask?.worktree;
         return {
           ...r,
+          ...(taskModel ? { taskModel } : {}),
+          ...(worktree ? { worktree } : {}),
           cost,
           elapsedMs,
           elapsedFormatted: formatElapsed(elapsedMs),
@@ -751,7 +767,9 @@ export function buildPanelState(flow, meta = {}) {
     burnDown: burn,
     taskBoard: board,
     posts,
+    graphPosts,
     postsDropped,
+    mentionGraph: graph,
     hasMemberEvents: Boolean(flow?.hasMemberEvents),
     members,
     runs,

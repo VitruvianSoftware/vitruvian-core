@@ -1066,6 +1066,7 @@ function createPanelDomHarness(opts = {}) {
       this.className = "";
       this.hidden = false;
       this.open = false;
+      this.disabled = false;
       this.value = "";
       this.scrollTop = 0;
       this.scrollHeight = 400;
@@ -1100,6 +1101,7 @@ function createPanelDomHarness(opts = {}) {
       if (k === "value") this.value = str;
       if (k === "hidden") this.hidden = true;
       if (k === "open") this.open = true;
+      if (k === "disabled") this.disabled = true;
     }
     getAttribute(k) {
       return this.attrs.has(k) ? this.attrs.get(k) : null;
@@ -1108,6 +1110,7 @@ function createPanelDomHarness(opts = {}) {
       this.attrs.delete(k);
       if (k === "hidden") this.hidden = false;
       if (k === "open") this.open = false;
+      if (k === "disabled") this.disabled = false;
     }
     append(...nodes) {
       for (const n of nodes) {
@@ -1155,6 +1158,7 @@ function createPanelDomHarness(opts = {}) {
     if (clsMatch) el.className = clsMatch[1];
     if (/\bhidden\b/.test(rawAttrs)) el.hidden = true;
     if (/\bopen\b/.test(rawAttrs)) el.open = true;
+    if (/\bdisabled\b/.test(rawAttrs)) el.disabled = true;
     const ariaPressed = /\baria-pressed="([^"]+)"/.exec(rawAttrs);
     if (ariaPressed) el.setAttribute("aria-pressed", ariaPressed[1]);
     const ariaSelected = /\baria-selected="([^"]+)"/.exec(rawAttrs);
@@ -2150,5 +2154,761 @@ test("uat item 5: Antigravity plugin and sidecar panel READMEs explain board, to
         `${label} missing member state ${state}`,
       );
     }
+  }
+});
+
+test("phase 2 items 2, 4 & 5: Graph tab renders SVG circle, edges, replay seq/Live, Hide inactive, and task/run model & worktree badges", () => {
+  const { byId, renderState } = createPanelDomHarness();
+  assert.ok(byId.get("tab-btn-graph"), "missing Graph tab button");
+  assert.ok(byId.get("tab-pane-graph"), "missing Graph tab pane");
+
+  const t0 = 1_762_370_000_000;
+  const flow = foldFlowEvents([
+    {
+      type: "plan",
+      at: t0,
+      title: "Phase 2 Graph Flow",
+      tasks: [
+        {
+          title: "Build graph",
+          specialist: "wren",
+          tier: "core",
+          after: [],
+          model: "gemini-4-carbon-high",
+          worktree: "feat/graph-tab",
+        },
+        {
+          title: "QA graph",
+          specialist: "scout",
+          tier: "fast",
+          after: [1],
+          model: "gemini-3-flash-lite",
+        },
+        {
+          title: "Security check",
+          specialist: "aegis",
+          tier: "core",
+          after: [1],
+        },
+      ],
+    },
+    {
+      type: "run.start",
+      at: t0 + 1000,
+      id: "run-wren",
+      harness: "antigravity",
+      agent: "wren",
+      model: "pro",
+      title: "Build graph",
+      role: "worker",
+    },
+    {
+      type: "run.progress",
+      at: t0 + 1500,
+      id: "run-wren",
+      steps: { done: 1, total: 3, note: "in /wt/feat-graph-tab" },
+      worktree: "feat/graph-tab",
+    },
+    {
+      type: "run.start",
+      at: t0 + 2000,
+      id: "run-scout",
+      harness: "antigravity",
+      agent: "scout",
+      model: "flash",
+      title: "QA graph",
+      role: "worker",
+    },
+    {
+      type: "member.retire",
+      at: t0 + 2500,
+      id: "run-scout",
+    },
+    {
+      type: "run.start",
+      at: t0 + 2600,
+      id: "run-aegis",
+      harness: "antigravity",
+      agent: "aegis",
+      model: "pro",
+      title: "Security check",
+      role: "worker",
+    },
+    {
+      type: "member.kill",
+      at: t0 + 2700,
+      id: "run-aegis",
+    },
+    // seq 1: wren -> scout
+    {
+      type: "post",
+      at: t0 + 3000,
+      from: "wren",
+      to: ["scout"],
+      text: "Ready for QA @scout",
+      kind: "result",
+    },
+    // seq 2: scout -> wren (1st)
+    {
+      type: "post",
+      at: t0 + 4000,
+      from: "scout",
+      to: ["wren"],
+      text: "Check edge stroke width @wren",
+      kind: "defect",
+    },
+    // seq 3: scout -> wren (2nd) + @lead + @all ("all" excluded from graph)
+    {
+      type: "post",
+      at: t0 + 5000,
+      from: "scout",
+      to: ["wren", "lead", "all"],
+      text: "Follow-up for @wren @lead @all",
+      kind: "note",
+    },
+    // seq 4: aegis -> wren
+    {
+      type: "post",
+      at: t0 + 6000,
+      from: "aegis",
+      to: ["wren"],
+      text: "No innerHTML found @wren",
+      kind: "result",
+    },
+  ]);
+
+  const state = buildPanelState(flow, {
+    conversationId: "phase2-cid",
+    now: t0 + 10_000,
+  });
+  renderState(state);
+
+  // Task Board shows valid model override, worktree, and invalid-model warning
+  const taskBoardText = byId.get("task-board").textContent;
+  assert.match(taskBoardText, /gemini-4-carbon-high/);
+  assert.match(taskBoardText, /feat\/graph-tab/);
+  assert.match(taskBoardText, /gemini-3-flash-lite/);
+
+  // Agents (runs) and Members show model override and worktree
+  assert.match(byId.get("agents-list").textContent, /gemini-4-carbon-high/);
+  assert.match(byId.get("agents-list").textContent, /feat\/graph-tab/);
+  assert.match(byId.get("members-active").textContent, /gemini-4-carbon-high/);
+  assert.match(byId.get("members-active").textContent, /feat\/graph-tab/);
+
+  // Switch to Graph tab
+  byId.get("tab-btn-graph").dispatch("click");
+  assert.equal(byId.get("tab-pane-graph").hidden, false);
+  assert.equal(byId.get("tab-pane-flow").hidden, true);
+
+  const getNodes = () =>
+    byId
+      .get("graph-container")
+      .findAll((n) => n.className.includes("graph-node"));
+  const getEdges = () =>
+    byId
+      .get("graph-container")
+      .findAll((n) => n.className.includes("graph-edge"));
+
+  // At Live (seq 4): nodes are aegis(1), lead(0), scout(2), wren(1); "all" is absent
+  assert.deepEqual(
+    getNodes().map((n) => ({
+      id: n.getAttribute("data-agent"),
+      posts: Number(n.getAttribute("data-posts")),
+    })),
+    [
+      { id: "aegis", posts: 1 },
+      { id: "lead", posts: 0 },
+      { id: "scout", posts: 2 },
+      { id: "wren", posts: 1 },
+    ],
+  );
+  const liveEdges = getEdges();
+  assert.equal(liveEdges.length, 4);
+  // Top edge scout -> wren has count 2 and wider stroke than count 1 edges
+  const topEdge = liveEdges.find(
+    (e) =>
+      e.getAttribute("data-from") === "scout" &&
+      e.getAttribute("data-to") === "wren",
+  );
+  const singleEdge = liveEdges.find(
+    (e) =>
+      e.getAttribute("data-from") === "wren" &&
+      e.getAttribute("data-to") === "scout",
+  );
+  assert.ok(topEdge && singleEdge);
+  assert.equal(topEdge.getAttribute("data-count"), "2");
+  assert.ok(
+    Number(topEdge.getAttribute("stroke-width")) >
+      Number(singleEdge.getAttribute("stroke-width")),
+  );
+  assert.ok(topEdge.getAttribute("marker-end")?.includes("url(#"));
+
+  // Replay slider at seq = 2: only wren(1) and scout(1), edges wren->scout(1) and scout->wren(1)
+  const slider = byId.get("graph-seq-slider");
+  slider.value = "2";
+  slider.dispatch("input");
+  assert.equal(byId.get("graph-live").getAttribute("aria-pressed"), "false");
+  assert.deepEqual(
+    getNodes().map((n) => ({
+      id: n.getAttribute("data-agent"),
+      posts: Number(n.getAttribute("data-posts")),
+    })),
+    [
+      { id: "scout", posts: 1 },
+      { id: "wren", posts: 1 },
+    ],
+  );
+  assert.equal(getEdges().length, 2);
+
+  // Step back -> seq = 1: wren(1), scout(0), 1 edge wren->scout
+  byId.get("graph-step-back").dispatch("click");
+  assert.equal(slider.value, "1");
+  assert.deepEqual(
+    getNodes().map((n) => ({
+      id: n.getAttribute("data-agent"),
+      posts: Number(n.getAttribute("data-posts")),
+    })),
+    [
+      { id: "scout", posts: 0 },
+      { id: "wren", posts: 1 },
+    ],
+  );
+  assert.equal(getEdges().length, 1);
+
+  // Step forward -> seq = 2
+  byId.get("graph-step-forward").dispatch("click");
+  assert.equal(slider.value, "2");
+  assert.equal(getEdges().length, 2);
+
+  // Play/pause toggles playback state cleanly
+  const playBtn = byId.get("graph-play-pause");
+  assert.ok(playBtn, "missing Graph play/pause button");
+  playBtn.dispatch("click");
+  assert.equal(playBtn.getAttribute("aria-pressed"), "true");
+  playBtn.dispatch("click");
+  assert.equal(playBtn.getAttribute("aria-pressed"), "false");
+
+  // Live button returns to newest (seq = 4) and tracks subsequent posts
+  byId.get("graph-live").dispatch("click");
+  assert.equal(byId.get("graph-live").getAttribute("aria-pressed"), "true");
+  assert.equal(slider.value, "4");
+  assert.equal(getNodes().length, 4);
+
+  // Hide inactive hides both retired (scout) and killed (aegis) members and their incident edges
+  byId.get("graph-hide-inactive").dispatch("click");
+  assert.equal(
+    byId.get("graph-hide-inactive").getAttribute("aria-pressed"),
+    "true",
+  );
+  assert.deepEqual(
+    getNodes().map((n) => n.getAttribute("data-agent")),
+    ["lead", "wren"],
+  );
+  assert.equal(getEdges().length, 0);
+});
+
+test("return round 1 item 3: Hide inactive decides by each agent's latest run state (retired after standingBy -> hidden; active after retired -> visible)", () => {
+  const { byId, renderState } = createPanelDomHarness();
+  const t0 = 1_762_380_000_000;
+  const flow = foldFlowEvents([
+    {
+      type: "plan",
+      at: t0,
+      title: "Multi-run Retirement Flow",
+      tasks: [
+        { title: "Impl", specialist: "wren", tier: "core" },
+        { title: "QA", specialist: "scout", tier: "fast", after: [1] },
+      ],
+    },
+    // scout run #1 finishes cleanly -> lands in members.standingBy (state: waiting)
+    {
+      type: "run.start",
+      at: t0 + 100,
+      id: "scout-1",
+      harness: "antigravity",
+      agent: "scout",
+      model: "flash",
+      title: "QA",
+      role: "worker",
+    },
+    {
+      type: "run.end",
+      at: t0 + 200,
+      id: "scout-1",
+      status: "ok",
+    },
+    // scout run #2 is later retired -> latest run is retired, so scout MUST be inactive!
+    {
+      type: "run.start",
+      at: t0 + 300,
+      id: "scout-1#2",
+      harness: "antigravity",
+      agent: "scout",
+      model: "flash",
+      title: "QA",
+      role: "worker",
+    },
+    {
+      type: "member.retire",
+      at: t0 + 400,
+      id: "scout-1#2",
+    },
+    // wren run #1 was retired earlier, then wren run #2 is active -> latest run is active, so wren stays visible!
+    {
+      type: "run.start",
+      at: t0 + 500,
+      id: "wren-1",
+      harness: "antigravity",
+      agent: "wren",
+      model: "pro",
+      title: "Impl",
+      role: "worker",
+    },
+    {
+      type: "member.retire",
+      at: t0 + 600,
+      id: "wren-1",
+    },
+    {
+      type: "run.start",
+      at: t0 + 700,
+      id: "wren-2",
+      harness: "antigravity",
+      agent: "wren",
+      model: "pro",
+      title: "Impl",
+      role: "worker",
+    },
+    {
+      type: "post",
+      at: t0 + 800,
+      from: "scout",
+      to: ["wren"],
+      text: "Checked round 1 @wren",
+      kind: "defect",
+    },
+    {
+      type: "post",
+      at: t0 + 900,
+      from: "wren",
+      to: ["lead"],
+      text: "Fixed in round 2 @lead",
+      kind: "result",
+    },
+  ]);
+
+  const state = buildPanelState(flow, {
+    conversationId: "item3-cid",
+    now: t0 + 2000,
+  });
+  // Sanity: scout-1 is still in standingBy while scout-1#2 is in retired
+  assert.equal(
+    state.members.standingBy.some((m) => m.agent === "scout"),
+    true,
+  );
+  assert.equal(
+    state.members.retired.some((m) => m.agent === "scout"),
+    true,
+  );
+
+  renderState(state);
+  byId.get("tab-btn-graph").dispatch("click");
+  byId.get("graph-hide-inactive").dispatch("click");
+
+  const visibleNodes = byId
+    .get("graph-container")
+    .findAll((n) => n.className.includes("graph-node"))
+    .map((n) => n.getAttribute("data-agent"));
+  assert.deepEqual(visibleNodes, ["lead", "wren"]);
+});
+
+test("return round 1 item 4: polish — full flow posts in graph/slider + range notice, no duplicated task model label, and replay buttons disabled with 0 posts", () => {
+  const { byId, renderState } = createPanelDomHarness();
+  const t0 = 1_762_390_000_000;
+
+  // 1. Flow with 0 posts: replay buttons & slider disabled, no range note, no duplicated model label
+  const zeroPostFlow = foldFlowEvents([
+    {
+      type: "plan",
+      at: t0,
+      title: "Polish Check Flow",
+      tasks: [
+        {
+          title: "Same model task",
+          specialist: "wren",
+          tier: "core",
+          model: "gemini-4-carbon-high",
+        },
+        {
+          title: "Delegated override task",
+          specialist: "atlas",
+          tier: "core",
+          model: "gemini-4-argon-high",
+        },
+      ],
+    },
+    {
+      type: "run.start",
+      at: t0 + 100,
+      id: "run-wren-same",
+      harness: "antigravity",
+      agent: "wren",
+      model: "gemini-4-carbon-high",
+      title: "Same model task",
+      role: "worker",
+    },
+    {
+      type: "run.start",
+      at: t0 + 200,
+      id: "run-atlas-del",
+      harness: "claude-code",
+      agent: "atlas",
+      model: "claude-haiku-5-5",
+      title: "Delegated override task",
+      role: "worker",
+    },
+    {
+      type: "run.progress",
+      at: t0 + 250,
+      id: "run-atlas-del",
+      steps: { done: 1, total: 2, note: "running" },
+      delegate: "gemini-3.8-flash-high",
+    },
+  ]);
+
+  renderState(
+    buildPanelState(zeroPostFlow, {
+      conversationId: "polish-0",
+      now: t0 + 500,
+    }),
+  );
+
+  // Replay buttons and slider are disabled when there are 0 posts
+  for (const id of [
+    "graph-play-pause",
+    "graph-step-back",
+    "graph-step-forward",
+    "graph-live",
+    "graph-seq-slider",
+  ]) {
+    assert.equal(
+      byId.get(id).disabled,
+      true,
+      `${id} must be disabled when there are 0 posts`,
+    );
+  }
+  byId.get("graph-play-pause").dispatch("click");
+  assert.equal(
+    byId.get("graph-play-pause").getAttribute("aria-pressed"),
+    "false",
+  );
+  assert.equal(byId.get("graph-range-note").hidden, true);
+
+  // No duplicated task model label on Agents or Members
+  const agentRows = byId
+    .get("agents-list")
+    .findAll((n) => n.className.includes("agent-row"));
+  assert.equal(agentRows.length, 2);
+  const wrenAgentMatches =
+    agentRows[0].textContent.match(/gemini-4-carbon-high/g) ?? [];
+  assert.equal(
+    wrenAgentMatches.length,
+    1,
+    `expected gemini-4-carbon-high once in wren agent row, got: ${agentRows[0].textContent}`,
+  );
+  assert.doesNotMatch(
+    agentRows[1].textContent,
+    /gemini-4-argon-high/,
+    "agent row with explicit delegate should not also duplicate taskModel chip",
+  );
+
+  const memberText = byId.get("members-active").textContent;
+  assert.doesNotMatch(
+    memberText,
+    /gemini-4-carbon-high → gemini-4-carbon-high/,
+  );
+  assert.doesNotMatch(memberText, /gemini-4-argon-high/);
+
+  // 2. Flow with 250 posts (> 200 panel cap): post #1 has unique edge scout -> aegis
+  let manyFlow = zeroPostFlow;
+  manyFlow = reduce(manyFlow, {
+    type: "post",
+    at: t0 + 1000,
+    from: "scout",
+    to: ["aegis"],
+    text: "Early finding in post 1 @aegis",
+    kind: "note",
+  });
+  for (let i = 2; i <= 250; i += 1) {
+    manyFlow = reduce(manyFlow, {
+      type: "post",
+      at: t0 + 1000 + i,
+      from: "wren",
+      to: ["lead"],
+      text: `Progress ${i} @lead`,
+      kind: "note",
+    });
+  }
+
+  const manyState = buildPanelState(manyFlow, {
+    conversationId: "polish-250",
+    now: t0 + 5000,
+  });
+  assert.equal(manyState.posts.length, 200);
+  // Full flow post list is used for mentionGraph (includes post #1 scout -> aegis)
+  assert.equal(
+    manyState.mentionGraph.edges.some(
+      (e) => e.from === "scout" && e.to === "aegis" && e.count === 1,
+    ),
+    true,
+    "mentionGraph must include post #1 outside the panel's newest-200 board slice",
+  );
+
+  renderState(manyState);
+  byId.get("tab-btn-graph").dispatch("click");
+
+  // Replay controls enabled at Live (250/250), except step-forward which is at newest post
+  for (const id of [
+    "graph-play-pause",
+    "graph-step-back",
+    "graph-live",
+    "graph-seq-slider",
+  ]) {
+    assert.equal(
+      byId.get(id).disabled,
+      false,
+      `${id} must be enabled when posts exist`,
+    );
+  }
+  assert.equal(
+    byId.get("graph-step-forward").disabled,
+    true,
+    "graph-step-forward must be disabled at newest post",
+  );
+
+  // Slider covers full flow #1..#250, and range note says "graph covers posts #1-#250"
+  const slider = byId.get("graph-seq-slider");
+  assert.equal(slider.getAttribute("min"), "1");
+  assert.equal(slider.getAttribute("max"), "250");
+  assert.equal(byId.get("graph-range-note").hidden, false);
+  assert.equal(
+    byId.get("graph-range-note").textContent,
+    "graph covers posts #1-#250",
+  );
+
+  // Scrubbing to seq 1 renders post #1's scout -> aegis edge and disables step-back
+  slider.value = "1";
+  slider.dispatch("input");
+  assert.equal(byId.get("graph-step-back").disabled, true);
+  assert.equal(byId.get("graph-step-forward").disabled, false);
+  const seq1Edges = byId
+    .get("graph-container")
+    .findAll((n) => n.className.includes("graph-edge"))
+    .map((e) => `${e.getAttribute("data-from")}->${e.getAttribute("data-to")}`);
+  assert.deepEqual(seq1Edges, ["scout->aegis"]);
+
+  // If state only has the newest-200 posts (#51-#250, without graphPosts), range note says "graph covers posts #51-#250"
+  const { graphPosts: _omitted, ...cappedOnlyState } = manyState;
+  renderState(cappedOnlyState);
+  assert.equal(byId.get("graph-range-note").hidden, false);
+  assert.equal(
+    byId.get("graph-range-note").textContent,
+    "graph covers posts #51-#250",
+  );
+});
+
+test("UAT return round 1 item 2: invalid task worktree records a task warning and renders in Task Board", () => {
+  const { byId, renderState } = createPanelDomHarness();
+  const t0 = 1_762_400_000_000;
+  const flow = foldFlowEvents([
+    {
+      type: "plan",
+      at: t0,
+      title: "Invalid Worktree Warning Flow",
+      tasks: [
+        {
+          title: "Valid worktree task",
+          specialist: "wren",
+          tier: "core",
+          worktree: "feat/valid-wt",
+        },
+        {
+          title: "Invalid worktree task",
+          specialist: "forge",
+          tier: "core",
+          worktree: "../escape/wt",
+        },
+      ],
+    },
+  ]);
+
+  renderState(
+    buildPanelState(flow, {
+      conversationId: "uat-r1-item2",
+      now: t0 + 1000,
+    }),
+  );
+
+  const taskBoardText = byId.get("task-board").textContent;
+  assert.match(taskBoardText, /feat\/valid-wt/);
+  assert.match(taskBoardText, /invalid worktree "\.\.\/escape\/wt" ignored/);
+});
+
+test("UAT return round 1 item 3: Graph tab polish — boundary step buttons, visible edge count labels, and narrow-panel node label ellipsis with <title>", () => {
+  const { byId, renderState } = createPanelDomHarness();
+  const t0 = 1_762_410_000_000;
+
+  let flow = foldFlowEvents([
+    {
+      type: "plan",
+      at: t0,
+      title: "Graph Polish Flow",
+      tasks: [{ title: "Polish graph", specialist: "wren", tier: "core" }],
+    },
+    // seq 1: wren -> egm-implementation-readiness (1st)
+    {
+      type: "post",
+      at: t0 + 1000,
+      from: "wren",
+      to: ["egm-implementation-readiness"],
+      text: "Please audit @egm-implementation-readiness",
+      kind: "result",
+    },
+  ]);
+
+  // Single post (seq 1/1): at both first and newest post -> both step buttons disabled
+  renderState(
+    buildPanelState(flow, { conversationId: "uat-r1-item3", now: t0 + 1500 }),
+  );
+  byId.get("tab-btn-graph").dispatch("click");
+  assert.equal(byId.get("graph-step-back").disabled, true);
+  assert.equal(byId.get("graph-step-forward").disabled, true);
+
+  // Add seq 2 (2nd post on wren -> egm-implementation-readiness + @aegis + @scout) and seq 3 (self-loop wren -> wren)
+  flow = [
+    {
+      type: "post",
+      at: t0 + 2000,
+      from: "wren",
+      to: ["egm-implementation-readiness", "aegis", "scout"],
+      text: "Updated diff @egm-implementation-readiness @aegis @scout",
+      kind: "note",
+    },
+    {
+      type: "post",
+      at: t0 + 3000,
+      from: "wren",
+      to: ["wren"],
+      text: "Self-note @wren",
+      kind: "note",
+    },
+  ].reduce((f, e) => reduce(f, e), flow);
+
+  // Narrow panel width (220px) to verify node label ellipsis + unclipped placement
+  const graphContainer = byId.get("graph-container");
+  graphContainer.clientWidth = 220;
+  renderState(
+    buildPanelState(flow, { conversationId: "uat-r1-item3", now: t0 + 4000 }),
+  );
+
+  // 1. Step button boundaries across seq 3 -> 2 -> 1 -> 2 -> 3
+  const stepBack = byId.get("graph-step-back");
+  const stepFwd = byId.get("graph-step-forward");
+  const slider = byId.get("graph-seq-slider");
+  assert.equal(slider.value, "3");
+  assert.equal(stepBack.disabled, false);
+  assert.equal(stepFwd.disabled, true);
+
+  stepBack.dispatch("click");
+  assert.equal(slider.value, "2");
+  assert.equal(stepBack.disabled, false);
+  assert.equal(stepFwd.disabled, false);
+
+  stepBack.dispatch("click");
+  assert.equal(slider.value, "1");
+  assert.equal(stepBack.disabled, true);
+  assert.equal(stepFwd.disabled, false);
+
+  // Clicking disabled step-back at seq 1 is a no-op
+  stepBack.dispatch("click");
+  assert.equal(slider.value, "1");
+
+  stepFwd.dispatch("click");
+  assert.equal(slider.value, "2");
+  assert.equal(stepBack.disabled, false);
+  assert.equal(stepFwd.disabled, false);
+
+  stepFwd.dispatch("click");
+  assert.equal(slider.value, "3");
+  assert.equal(stepBack.disabled, false);
+  assert.equal(stepFwd.disabled, true);
+
+  // 2. Visible count label on/next to every edge (not only in <title>)
+  const weightLabels = graphContainer.findAll(
+    (n) => n.tagName === "TEXT" && n.className.includes("graph-weight"),
+  );
+  const weightMap = new Map(
+    weightLabels.map((el) => [
+      `${el.getAttribute("data-from")}->${el.getAttribute("data-to")}`,
+      el.textContent,
+    ]),
+  );
+  assert.equal(weightMap.get("wren->egm-implementation-readiness"), "2");
+  assert.equal(weightMap.get("wren->scout"), "1");
+  assert.equal(weightMap.get("wren->wren"), "1");
+
+  // 3. Narrow-panel node labels: shortened with ellipsis, full name in <title>, unclipped within SVG viewBox
+  const svg = graphContainer.findAll((n) => n.tagName === "SVG")[0];
+  const svgWidth = Number(svg.getAttribute("width"));
+  const nodes = graphContainer.findAll((n) =>
+    n.className.includes("graph-node"),
+  );
+  const longNode = nodes.find(
+    (n) => n.getAttribute("data-agent") === "egm-implementation-readiness",
+  );
+  assert.ok(longNode, "expected egm-implementation-readiness node");
+
+  const longTitle = longNode.findAll((n) => n.tagName === "TITLE")[0];
+  assert.ok(longTitle, "expected <title> on node group");
+  assert.equal(longTitle.textContent, "egm-implementation-readiness");
+
+  const longLabel = longNode.findAll((n) =>
+    n.className.includes("graph-label"),
+  )[0];
+  assert.ok(longLabel, "expected .graph-label on node group");
+  assert.ok(
+    longLabel.textContent.endsWith("…") &&
+      longLabel.textContent.length < "egm-implementation-readiness".length,
+    `expected long handle to be shortened with ellipsis in narrow panel, got "${longLabel.textContent}"`,
+  );
+
+  for (const node of nodes) {
+    const m = /translate\(([-\d.]+),\s*([-\d.]+)\)/.exec(
+      node.getAttribute("transform") || "",
+    );
+    assert.ok(m, "expected translate(x, y) on node");
+    const nx = Number(m[1]);
+    const label = node.findAll((c) => c.className.includes("graph-label"))[0];
+    const lx = nx + Number(label.getAttribute("x") || 0);
+    const anchor = label.getAttribute("text-anchor");
+    const estWidth = label.textContent.length * 6.6;
+    const leftEdge =
+      anchor === "end"
+        ? lx - estWidth
+        : anchor === "middle"
+          ? lx - estWidth / 2
+          : lx;
+    const rightEdge =
+      anchor === "start"
+        ? lx + estWidth
+        : anchor === "middle"
+          ? lx + estWidth / 2
+          : lx;
+    assert.ok(
+      leftEdge >= 0 && rightEdge <= svgWidth,
+      `label "${label.textContent}" (anchor=${anchor}) overflows [0, ${svgWidth}]: [${leftEdge.toFixed(1)}, ${rightEdge.toFixed(1)}]`,
+    );
+    const titleEl = node.findAll((c) => c.tagName === "TITLE")[0];
+    assert.equal(titleEl?.textContent, node.getAttribute("data-agent"));
   }
 });

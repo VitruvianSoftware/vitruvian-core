@@ -552,6 +552,78 @@ p {
   word-break: break-word;
 }
 
+.graph-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.graph-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.55rem;
+}
+
+.graph-slider {
+  flex: 1 1 110px;
+  min-width: 90px;
+  accent-color: var(--status-blue);
+  cursor: pointer;
+}
+
+.graph-container {
+  width: 100%;
+  overflow: hidden;
+}
+
+.graph-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.graph-edge {
+  stroke: var(--status-blue);
+  stroke-opacity: 0.72;
+  fill: none;
+}
+
+.graph-arrow {
+  fill: var(--status-blue);
+}
+
+.graph-weight {
+  fill: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--card-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.graph-circle {
+  fill: var(--status-blue-bg);
+  stroke: var(--status-blue);
+  stroke-width: 1.5;
+}
+
+.graph-count {
+  fill: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.graph-label {
+  fill: var(--muted-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

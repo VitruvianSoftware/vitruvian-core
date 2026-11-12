@@ -22,6 +22,7 @@
 
 import assert from "node:assert/strict";
 import {
+  appendFileSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -1694,6 +1695,207 @@ test("round 2 item 4: queryBoard never maps a worker named 'lead' to lead (resol
     } else {
       process.env.ANTIGRAVITY_APP_DATA_DIR = prevAppData;
     }
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("phase 2 items 4 & 5: progress forwards task model and worktree, and step stores valid worktree on run", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "orch-mcp-phase2-"));
+  try {
+    const leadMeta = {
+      "antigravity.google/root_conversation_id": "conv-phase2",
+      "antigravity.google/conversation_id": "conv-phase2",
+    };
+    const workerMeta = {
+      "antigravity.google/root_conversation_id": "conv-phase2",
+      "antigravity.google/conversation_id": "worker-wren-wt",
+      "antigravity.google/parent_conversation_id": "conv-phase2",
+      "antigravity.google/agent_name": "wren",
+    };
+
+    handleJsonRpcMessage(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "progress",
+          arguments: {
+            title: "Phase 2 MCP",
+            phase: "delegate",
+            tasks: [
+              {
+                title: "Build graph",
+                specialist: "wren",
+                tier: "core",
+                after: [],
+                model: "gemini-4-carbon-high",
+                worktree: "feat/graph-ui",
+              },
+              {
+                title: "Bad model task",
+                specialist: "scout",
+                tier: "fast",
+                after: [1],
+                model: "gemini-3-flash-lite",
+                worktree: "../bad",
+              },
+            ],
+          },
+          _meta: leadMeta,
+        },
+      },
+      { flowsDir: tempDir, now: () => 1000 },
+    );
+
+    const flowPath = join(tempDir, "conv-phase2.jsonl");
+    appendFileSync(
+      flowPath,
+      JSON.stringify({
+        type: "run.start",
+        at: 1050,
+        id: "worker-wren-wt",
+        harness: "antigravity",
+        agent: "wren",
+        model: "pro",
+        title: "Build graph",
+        role: "worker",
+      }) + "\n",
+      "utf8",
+    );
+
+    const stepRes = handleJsonRpcMessage(
+      {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: {
+          name: "step",
+          arguments: {
+            done: 1,
+            total: 3,
+            note: "working in /repo-wt/feat-graph-ui",
+            worktree: "feat/graph-ui-step",
+          },
+          _meta: workerMeta,
+        },
+      },
+      { flowsDir: tempDir, now: () => 1100 },
+    );
+    assert.equal(stepRes.error, undefined);
+
+    // Invalid worktree in step is ignored without clobbering valid run worktree
+    handleJsonRpcMessage(
+      {
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: {
+          name: "step",
+          arguments: {
+            done: 2,
+            total: 3,
+            note: "testing",
+            worktree: "../escape",
+          },
+          _meta: workerMeta,
+        },
+      },
+      { flowsDir: tempDir, now: () => 1200 },
+    );
+
+    const flow = readFlowFromJsonlFile(flowPath);
+    assert.equal(flow.tasks[0].model, "gemini-4-carbon-high");
+    assert.equal(flow.tasks[0].worktree, "feat/graph-ui");
+    assert.equal("model" in flow.tasks[1], false);
+    assert.match(flow.tasks[1].warning, /gemini-3-flash-lite/);
+    assert.equal("worktree" in flow.tasks[1], false);
+
+    assert.equal(flow.runs[0].worktree, "feat/graph-ui-step");
+    assert.equal(members(flow).active[0].worktree, "feat/graph-ui-step");
+    assert.equal(members(flow).active[0].taskModel, "gemini-4-carbon-high");
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("return round 1 item 2: step accepts worktree alone (done/total optional) and rejects invalid worktree alone", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "orch-mcp-step-wt-only-"));
+  try {
+    const rootCid = "11111111-2222-3333-4444-666666666666";
+    const workerCid = "aaaaaaaa-bbbb-cccc-dddd-ffffffffffff";
+    const flowPath = join(tempDir, `${rootCid}.jsonl`);
+    writeFileSync(
+      flowPath,
+      [
+        JSON.stringify({
+          type: "plan",
+          at: 1000,
+          title: "WT Only Flow",
+          tasks: [{ title: "Build", specialist: "wren", tier: "core" }],
+        }),
+        JSON.stringify({
+          type: "run.start",
+          at: 1050,
+          id: workerCid,
+          harness: "antigravity",
+          agent: "wren",
+          model: "pro",
+          title: "Build",
+          role: "worker",
+        }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    const workerMeta = {
+      conversationId: workerCid,
+      parentConversationId: rootCid,
+      rootConversationId: rootCid,
+      agentName: "wren",
+    };
+
+    // Valid worktree alone succeeds without done/total and leaves steps null
+    const okRes = handleJsonRpcMessage(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "step",
+          arguments: { worktree: "feat/only-wt" },
+          _meta: workerMeta,
+        },
+      },
+      { flowsDir: tempDir, now: () => 1100 },
+    );
+    assert.equal(okRes.error, undefined);
+    assert.equal(okRes.result?.isError, undefined);
+    assert.doesNotMatch(
+      okRes.result?.content?.[0]?.text ?? "",
+      /undefined|paused/,
+    );
+
+    const flow = readFlowFromJsonlFile(flowPath);
+    assert.equal(flow.runs[0].worktree, "feat/only-wt");
+    assert.equal(flow.runs[0].steps, null);
+
+    // Invalid worktree alone (with no done/total/paused/delegate) is rejected
+    const badRes = handleJsonRpcMessage(
+      {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: {
+          name: "step",
+          arguments: { worktree: "../escape" },
+          _meta: workerMeta,
+        },
+      },
+      { flowsDir: tempDir, now: () => 1200 },
+    );
+    assert.equal(badRes.error?.code, -32602);
+  } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
 });

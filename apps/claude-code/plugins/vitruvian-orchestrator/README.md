@@ -32,6 +32,22 @@ Claude Code plugin for coordinating specialist helpers across a planned engineer
   - `retired`: Done with the flow — either retired by the lead with `progress` (`retire`) or finished when the flow closes. Retired helpers are no longer woken by mentions, and `retired` never appears on agent run rows.
   - `killed`: The lead marked the helper as killed with `progress` (`kill`). It shows a red `killed` badge and is no longer woken by board posts. This does not stop a helper that is still running; the lead stops it in the tool itself.
 
+## Who talks to whom
+
+The board displays a one-line list of the top five pairs (for example, `scout → wren ×4`), shown only when posts mention someone.
+
+## Choosing a Gemini model per task
+
+The lead can set a model on a task and put `Gemini model: <id>` in the brief; the helper uses it instead of its default. Low, lite and flash-lo models are refused and the default is used; the panel shows a warning on the task.
+
+## A worktree per helper
+
+The lead can give a task its own worktree and put `Worktree: <branch>` in the brief; the helper creates it with the repo's worktree tool (or reuses it), works there, reports the path, and the panel shows it on the helper. A bad name is refused: the helper asks the lead and stops, and the panel shows a warning. Give parallel helpers on the same repository separate worktrees.
+
+## Safety
+
+The model and worktree are only ever read from the lead's brief, never from board posts, and are checked before use.
+
 ## Attribution
 
 Adapted from [`savvy-progress`](https://github.com/johnnyvizz/claude-kit/tree/main/plugins/savvy-progress) by `johnnyvizz` (`johnnyvizz/claude-kit`, MIT License — see [`LICENSE-THIRD-PARTY`](./LICENSE-THIRD-PARTY)), combined with custom 30×28 chibi specialist mascots.

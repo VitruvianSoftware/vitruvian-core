@@ -2825,3 +2825,280 @@ test("uat item 5: Claude Code README explains board, tools, lead SendMessage wak
     assert.match(doc, new RegExp(`\`${state}\``));
   }
 });
+
+test("phase 2 item 1: mentionGraph computes lowercase nodes and sorted edges, excludes all, and filters by uptoSeq", () => {
+  assert.deepEqual(coreModule.mentionGraph(null), { nodes: [], edges: [] });
+
+  let flow = reduce(null, {
+    type: "plan",
+    at: 100,
+    title: "Mention graph flow",
+    tasks: [],
+  });
+  assert.deepEqual(coreModule.mentionGraph(flow), { nodes: [], edges: [] });
+
+  // seq 1: scout -> wren, lead
+  flow = reduce(flow, {
+    type: "post",
+    at: 110,
+    from: "Scout",
+    to: ["Wren"],
+    text: "Defect found, cc @Lead",
+    kind: "defect",
+  });
+  // seq 2: scout -> wren (and duplicate @wren in body)
+  flow = reduce(flow, {
+    type: "post",
+    at: 120,
+    from: "scout",
+    to: ["wren"],
+    text: "Second note for @wren",
+  });
+  // seq 3: lead -> @all (all is neither a node nor an edge) + @scout
+  flow = reduce(flow, {
+    type: "post",
+    at: 130,
+    from: "lead",
+    to: ["all", "scout"],
+    text: "Heads up @all and @scout",
+  });
+  // seq 4: wren -> scout, aegis (aegis never posts -> posts: 0)
+  flow = reduce(flow, {
+    type: "post",
+    at: 140,
+    from: "wren",
+    to: ["aegis", "scout"],
+    text: "Fixed; @aegis and @scout please verify",
+    kind: "result",
+  });
+
+  const full = coreModule.mentionGraph(flow);
+  assert.deepEqual(full.nodes, [
+    { id: "aegis", posts: 0 },
+    { id: "lead", posts: 1 },
+    { id: "scout", posts: 2 },
+    { id: "wren", posts: 1 },
+  ]);
+  // Edges sorted by count desc, then from asc, then to asc
+  assert.deepEqual(full.edges, [
+    { from: "scout", to: "wren", count: 2 },
+    { from: "lead", to: "scout", count: 1 },
+    { from: "scout", to: "lead", count: 1 },
+    { from: "wren", to: "aegis", count: 1 },
+    { from: "wren", to: "scout", count: 1 },
+  ]);
+
+  // Replay at uptoSeq = 2: only posts #1 and #2
+  const atSeq2 = coreModule.mentionGraph(flow, { uptoSeq: 2 });
+  assert.deepEqual(atSeq2.nodes, [
+    { id: "lead", posts: 0 },
+    { id: "scout", posts: 2 },
+    { id: "wren", posts: 0 },
+  ]);
+  assert.deepEqual(atSeq2.edges, [
+    { from: "scout", to: "wren", count: 2 },
+    { from: "scout", to: "lead", count: 1 },
+  ]);
+
+  // Replay at uptoSeq = 3: lead posted @all + @scout; "all" still absent
+  const atSeq3 = coreModule.mentionGraph(flow, { uptoSeq: 3 });
+  assert.equal(
+    atSeq3.nodes.some((n) => n.id === "all"),
+    false,
+  );
+  assert.equal(
+    atSeq3.edges.some((e) => e.from === "all" || e.to === "all"),
+    false,
+  );
+});
+
+test("phase 2 item 4: per-task Gemini model validation stores valid overrides and drops invalid ones with a task warning", () => {
+  assert.equal(coreModule.isValidGeminiModel("gemini-4-carbon-high"), true);
+  assert.equal(coreModule.isValidGeminiModel("gemini-3.8-flash-high"), true);
+  assert.equal(coreModule.isValidGeminiModel("gemini-2.5-pro"), true);
+  assert.equal(coreModule.isValidGeminiModel("gemini-4-carbon-low"), false);
+  assert.equal(coreModule.isValidGeminiModel("gemini-2.5-flash-lite"), false);
+  assert.equal(coreModule.isValidGeminiModel("gemini-3-flash-lo"), false);
+  assert.equal(coreModule.isValidGeminiModel("claude-opus-4-6"), false);
+  assert.equal(coreModule.isValidGeminiModel("Gemini-4-Pro"), false);
+  assert.equal(coreModule.isValidGeminiModel("gemini-"), false);
+
+  let flow = reduce(null, {
+    type: "plan",
+    at: 100,
+    title: "Per-task model",
+    tasks: [
+      {
+        title: "Default model task",
+        specialist: "wren",
+        tier: "core",
+        after: [],
+      },
+      {
+        title: "High reasoning task",
+        specialist: "atlas",
+        tier: "core",
+        after: [],
+        model: "gemini-4-carbon-high",
+      },
+      {
+        title: "Forbidden low model",
+        specialist: "scout",
+        tier: "fast",
+        after: [],
+        model: "gemini-4-carbon-low",
+      },
+      {
+        title: "Forbidden lite model",
+        specialist: "quill",
+        tier: "fast",
+        after: [],
+        model: "gemini-2.5-flash-lite",
+      },
+      {
+        title: "Forbidden flash-lo model",
+        specialist: "forge",
+        tier: "core",
+        after: [],
+        model: "gemini-3-flash-lo",
+      },
+    ],
+  });
+
+  // Unset model adds no extra keys
+  assert.equal("model" in flow.tasks[0], false);
+  assert.equal("warning" in flow.tasks[0], false);
+
+  // Valid model stored on task and surfaced on taskBoard + member row
+  assert.equal(flow.tasks[1].model, "gemini-4-carbon-high");
+  assert.equal("warning" in flow.tasks[1], false);
+
+  // Invalid models dropped and recorded as task warnings
+  for (const idx of [2, 3, 4]) {
+    assert.equal("model" in flow.tasks[idx], false);
+    assert.equal(typeof flow.tasks[idx].warning, "string");
+    assert.ok(flow.tasks[idx].warning.length > 0);
+  }
+
+  const rows = taskBoard(flow);
+  assert.equal("model" in rows[0], false);
+  assert.equal(rows[1].model, "gemini-4-carbon-high");
+  assert.equal("model" in rows[2], false);
+  assert.match(rows[2].warning, /gemini-4-carbon-low/);
+
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 110,
+    id: "run-atlas",
+    harness: "claude-code",
+    agent: "atlas",
+    model: "claude-haiku-5-5",
+    title: "High reasoning task",
+    role: "worker",
+  });
+  const m = members(flow);
+  assert.equal(m.active[0].taskModel, "gemini-4-carbon-high");
+});
+
+test("phase 2 item 5: worktree validation on tasks and runs stores valid branches and rejects path traversal or invalid names", () => {
+  assert.equal(coreModule.isValidWorktree("feat/orchestrator-graph"), true);
+  assert.equal(coreModule.isValidWorktree("fix/bug_1.2-a"), true);
+  assert.equal(coreModule.isValidWorktree("a"), true);
+  assert.equal(coreModule.isValidWorktree(`a${"b".repeat(99)}`), true);
+  assert.equal(coreModule.isValidWorktree(`a${"b".repeat(100)}`), false);
+  assert.equal(coreModule.isValidWorktree("feat/../main"), false);
+  assert.equal(coreModule.isValidWorktree("../escape"), false);
+  assert.equal(coreModule.isValidWorktree("/abs/path"), false);
+  assert.equal(coreModule.isValidWorktree("-leading-dash"), false);
+  assert.equal(coreModule.isValidWorktree("Upper/Case"), false);
+
+  let flow = reduce(null, {
+    type: "plan",
+    at: 100,
+    title: "Worktree flow",
+    tasks: [
+      {
+        title: "Parallel worker A",
+        specialist: "wren",
+        tier: "core",
+        worktree: "feat/worker-a",
+      },
+      {
+        title: "Bad worktree task",
+        specialist: "forge",
+        tier: "core",
+        worktree: "../bad/worktree",
+      },
+      {
+        title: "Both invalid overrides",
+        specialist: "scout",
+        tier: "fast",
+        model: "gemini-4-carbon-low",
+        worktree: "/abs/path",
+      },
+      {
+        title: "Blank worktree",
+        specialist: "quill",
+        tier: "fast",
+        worktree: "   ",
+      },
+    ],
+  });
+
+  assert.equal(flow.tasks[0].worktree, "feat/worker-a");
+  assert.equal("warning" in flow.tasks[0], false);
+  assert.equal("worktree" in flow.tasks[1], false);
+  assert.equal(
+    flow.tasks[1].warning,
+    'invalid worktree "../bad/worktree" ignored',
+  );
+  assert.equal(taskBoard(flow)[0].worktree, "feat/worker-a");
+  assert.equal("warning" in taskBoard(flow)[0], false);
+  assert.equal("worktree" in taskBoard(flow)[1], false);
+  assert.equal(
+    taskBoard(flow)[1].warning,
+    'invalid worktree "../bad/worktree" ignored',
+  );
+  assert.equal("model" in flow.tasks[2], false);
+  assert.equal("worktree" in flow.tasks[2], false);
+  assert.match(
+    flow.tasks[2].warning,
+    /invalid model "gemini-4-carbon-low" ignored/,
+  );
+  assert.match(flow.tasks[2].warning, /invalid worktree "\/abs\/path" ignored/);
+  assert.equal("worktree" in flow.tasks[3], false);
+  assert.equal("warning" in flow.tasks[3], false);
+
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 110,
+    id: "run-forge",
+    harness: "claude-code",
+    agent: "forge",
+    model: "claude-haiku-5-5",
+    title: "Bad worktree task",
+    role: "worker",
+  });
+  assert.equal("worktree" in flow.runs[0], false);
+
+  // Invalid worktree on run.progress is ignored
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 120,
+    id: "run-forge",
+    steps: { done: 1, total: 3, note: "starting" },
+    worktree: "feat/../escape",
+  });
+  assert.equal("worktree" in flow.runs[0], false);
+
+  // Valid worktree on run.progress is stored on the run and surfaced on members()
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 130,
+    id: "run-forge",
+    steps: { done: 2, total: 3, note: "in ../wt/feat-forge" },
+    worktree: "feat/forge-helper",
+  });
+  assert.equal(flow.runs[0].worktree, "feat/forge-helper");
+  assert.equal(members(flow).active[0].worktree, "feat/forge-helper");
+});
