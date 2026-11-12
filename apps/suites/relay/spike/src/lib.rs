@@ -29,6 +29,8 @@
 //!
 //! Not the relay. No device routing, no billing, no persistence.
 
+pub mod client;
+
 use serde_json::{json, Value};
 
 /// MCP protocol revisions this server will agree to. The methods it serves

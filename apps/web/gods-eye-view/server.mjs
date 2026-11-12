@@ -47,7 +47,15 @@ import { fileURLToPath } from 'node:url';
 import { localProviderPlugins } from './server/providers/local.js';
 import { apiNotFoundPlugin } from './server/standalone/api-not-found.js';
 import { googleTokenUnavailablePlugin } from './server/standalone/google-token-unavailable.js';
+import {
+  initServerSentry,
+  captureServerException,
+  sentryDiagnosticPlugin,
+} from './server/standalone/sentry.js';
 import { standaloneVoiceTools } from './server/standalone/voiceTools.js';
+
+// Early initialization of server-side Sentry error monitoring
+initServerSentry();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -225,6 +233,7 @@ const server = http.createServer((req, res) => {
   middlewares.handle(req, res, (error) => {
     if (error) {
       console.error('[Server] Unhandled request error:', error);
+      captureServerException(error, { url: req.url, method: req.method });
       if (!res.headersSent) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Internal server error' }));
@@ -235,6 +244,7 @@ const server = http.createServer((req, res) => {
     }
     serveStatic(req, res, pathname).catch((err) => {
       console.error('[Server] Static serving error:', err);
+      captureServerException(err, { url: req.url, pathname, source: 'serveStatic' });
       if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'text/plain' });
       res.end();
     });
@@ -253,6 +263,7 @@ function appliesToPreview(plugin) {
 // an unknown API path answers 404 JSON instead of the app's index.html.
 const previewServer = { middlewares, httpServer: server };
 for (const plugin of [
+  sentryDiagnosticPlugin(),
   ...localProviderPlugins({ realtime: { tools: standaloneVoiceTools() } }),
   googleTokenUnavailablePlugin(),
   apiNotFoundPlugin(),
@@ -263,9 +274,13 @@ for (const plugin of [
 // A provider fault must not take the whole server down.
 process.on('uncaughtException', (err) => {
   console.error('[Process] Uncaught exception trapped:', err);
+  captureServerException(err, { source: 'uncaughtException' });
 });
 process.on('unhandledRejection', (reason) => {
   console.error('[Process] Unhandled promise rejection trapped:', reason);
+  captureServerException(reason instanceof Error ? reason : new Error(String(reason)), {
+    source: 'unhandledRejection',
+  });
 });
 
 server.on('error', (err) => {

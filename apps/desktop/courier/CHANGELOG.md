@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.17](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.16...courier-v0.3.17) (2026-11-12)
+
+
+### Features
+
+* **courier:** add send_file MCP tool for image and file attachments ([#4596](https://github.com/VitruvianSoftware/vitruvian-core/issues/4596)) ([a5ed1db](https://github.com/VitruvianSoftware/vitruvian-core/commit/a5ed1dbcad95cee936d932fb377d16cacdc42664))
+
 ## [0.3.16](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.15...courier-v0.3.16) (2026-11-11)
 
 

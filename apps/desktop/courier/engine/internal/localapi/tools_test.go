@@ -159,6 +159,8 @@ func TestUnknownIDsAndBadCursorsAreToolErrors(t *testing.T) {
 	w := newWorld(t, 1)
 	sess := w.session(t, true)
 	const nope = "!nope:courier.local"
+	filePath := filepath.Join(t.TempDir(), "dummy.txt")
+	require.NoError(t, os.WriteFile(filePath, []byte("x"), 0o600))
 	for _, c := range []struct {
 		tool string
 		args map[string]any
@@ -176,6 +178,8 @@ func TestUnknownIDsAndBadCursorsAreToolErrors(t *testing.T) {
 		{"archive_chat", map[string]any{"chatID": nope}, "No chat or message with that ID"},
 		{"send_message", map[string]any{"chatID": nope, "text": "hi"}, "No chat or message with that ID"},
 		{"send_message", map[string]any{"chatID": w.room, "text": "hi", "replyToMessageID": "$nope"}, "No chat or message with that ID"},
+		{"send_file", map[string]any{"chatID": nope, "filePath": filePath}, "No chat or message with that ID"},
+		{"send_file", map[string]any{"chatID": w.room, "filePath": filePath, "replyToMessageID": "$nope"}, "No chat or message with that ID"},
 		{"set_chat_reminder", map[string]any{"chatID": nope, "reminder": map[string]any{"remindAtMs": time.Now().Add(time.Hour).UnixMilli()}}, "No chat or message with that ID"},
 		{"clear_chat_reminder", map[string]any{"chatID": nope}, "No chat or message with that ID"},
 		{"focus_app", map[string]any{"chatID": nope}, "No chat"},
@@ -392,6 +396,78 @@ func TestSendMessageNeedsPermission(t *testing.T) {
 
 	require.Contains(t, fails(t, sess, "send_message", map[string]any{"chatID": w.room}), "text is required")
 	require.Contains(t, fails(t, sess, "send_message", map[string]any{"chatID": w.room, "text": "  "}), "text is required")
+}
+
+func TestSendFileNeedsPermission(t *testing.T) {
+	w := newWorld(t, 1)
+	tok, secret := w.token(t, false)
+	sess := w.connect(t, secret)
+	filePath := filepath.Join(t.TempDir(), "meme.png")
+	require.NoError(t, os.WriteFile(filePath, []byte("fake image data"), 0o600))
+
+	msg := fails(t, sess, "send_file", map[string]any{"chatID": w.room, "filePath": filePath})
+	require.Contains(t, msg, "isn't allowed to send messages")
+	select {
+	case f := <-w.wa.Files:
+		t.Fatalf("nothing should have been sent, got %q", f.FileName)
+	default:
+	}
+
+	// Allowed from the next request on.
+	require.NoError(t, w.s.SetAPITokenCanSend(context.Background(), tok.ID, true))
+	var sent struct {
+		MessageID string `json:"messageID"`
+		ChatID    string `json:"chatID"`
+		Deeplink  string `json:"deeplink"`
+	}
+	// With replyToMessageID:
+	ok(t, sess, "send_file", map[string]any{"chatID": w.room, "filePath": filePath, "replyToMessageID": w.events[0]}, &sent)
+	require.Equal(t, w.room, sent.ChatID)
+	require.Equal(t, "courier://chat/"+w.room, sent.Deeplink)
+	require.NotEmpty(t, sent.MessageID)
+	got := <-w.wa.Files
+	require.Equal(t, "meme.png", got.FileName)
+	require.Equal(t, "m0", got.ReplyTo)
+	_, found, err := w.s.GetEvent(context.Background(), sent.MessageID)
+	require.NoError(t, err)
+	require.True(t, found)
+
+	// Without replyToMessageID (optional):
+	ok(t, sess, "send_file", map[string]any{"chatID": w.room, "filePath": filePath}, &sent)
+	got = <-w.wa.Files
+	require.Equal(t, "meme.png", got.FileName)
+	require.Empty(t, got.ReplyTo)
+
+	require.Contains(t, fails(t, sess, "send_file", map[string]any{"chatID": w.room}), "filePath is required")
+	require.Contains(t, fails(t, sess, "send_file", map[string]any{"chatID": w.room, "filePath": "  "}), "filePath is required")
+	require.Contains(t, fails(t, sess, "send_file", map[string]any{"filePath": filePath}), "chatID is required")
+}
+
+func TestSendFileBadFileErrorsAndOrdering(t *testing.T) {
+	w := newWorld(t, 1)
+	sess := w.session(t, true)
+	dir := t.TempDir()
+	locked := filepath.Join(dir, "locked.txt")
+	require.NoError(t, os.WriteFile(locked, []byte("x"), 0o000))
+
+	bad := []string{filepath.Join(dir, "missing.txt"), dir, "notes.txt", "/dev/null"}
+	if os.Geteuid() != 0 {
+		bad = append(bad, locked)
+	}
+	for _, path := range bad {
+		msg := fails(t, sess, "send_file", map[string]any{"chatID": w.room, "filePath": path})
+		require.Equal(t, "Courier can't send that file.", msg, path)
+	}
+	select {
+	case f := <-w.wa.Files:
+		t.Fatalf("nothing should have been sent, got %q", f.FileName)
+	default:
+	}
+
+	// Everything that needs no file is checked first: bad chat ID or reply ID fails before looking at the file.
+	missing := filepath.Join(dir, "missing.txt")
+	require.Equal(t, "No chat or message with that ID.", fails(t, sess, "send_file", map[string]any{"chatID": "!nope:courier.local", "filePath": missing}))
+	require.Equal(t, "No chat or message with that ID.", fails(t, sess, "send_file", map[string]any{"chatID": w.room, "filePath": missing, "replyToMessageID": "$nope"}))
 }
 
 func TestArchiveChat(t *testing.T) {

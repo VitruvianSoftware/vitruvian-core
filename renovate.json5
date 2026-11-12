@@ -105,6 +105,15 @@
       dependencyDashboardApproval: true,
       labels: ["dependencies", "gitops", "helm", "cluster-critical"],
     },
+    // Sentry Helm chart: held on major and minor upgrades because Sentry requires
+    // sequential self-hosted schema migration milestones before jumping versions.
+    {
+      matchManagers: ["argocd"],
+      matchPackageNames: ["sentry"],
+      matchUpdateTypes: ["major", "minor"],
+      dependencyDashboardApproval: true,
+      labels: ["dependencies", "gitops", "helm", "sentry"],
+    },
     {
       matchManagers: ["argocd"],
       matchRegistryUrls: ["https://cloudnative-pg.github.io/charts"],

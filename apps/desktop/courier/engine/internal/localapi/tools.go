@@ -102,6 +102,7 @@ func (s *Server) addTools() {
 		"get_chat":            s.getChat,
 		"list_messages":       s.listMessages,
 		"send_message":        s.sendMessage,
+		"send_file":           s.sendFile,
 		"archive_chat":        s.archiveChat,
 		"set_chat_reminder":   s.setChatReminder,
 		"clear_chat_reminder": s.clearChatReminder,
@@ -1416,6 +1417,61 @@ func (s *Server) sendMessage(ctx context.Context, req *mcp.CallToolRequest, raw 
 	}
 	return map[string]string{"messageID": sent.EventID, "chatID": *a.ChatID, "deeplink": "courier://chat/" + *a.ChatID}, nil
 }
+
+func (s *Server) sendFile(ctx context.Context, req *mcp.CallToolRequest, raw json.RawMessage) (any, error) {
+	if !canSend(req) {
+		return nil, fail("This connection isn't allowed to send messages. Turn on \"Can send messages\" for it in Courier's Settings → Integrations.")
+	}
+	var a struct {
+		ChatID           *string `json:"chatID"`
+		FilePath         *string `json:"filePath"`
+		ReplyToMessageID *string `json:"replyToMessageID"`
+	}
+	if err := args(raw, &a); err != nil {
+		return nil, err
+	}
+	if a.ChatID == nil || *a.ChatID == "" {
+		return nil, fail("chatID is required.")
+	}
+	if a.FilePath == nil || strings.TrimSpace(*a.FilePath) == "" {
+		return nil, fail("filePath is required: there is nothing to send.")
+	}
+	// Everything that needs no file is checked first, so a call that would fail anyway never looks at the disk:
+	// the chat and reply targets are checked first, and every way a file can be wrong reads the same
+	// (sendFileError), so the tool can't be used to learn what exists on this Mac.
+	if _, ok, err := s.store.GetRoom(ctx, *a.ChatID); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, fail("No chat or message with that ID.")
+	}
+	if a.ReplyToMessageID != nil && *a.ReplyToMessageID != "" {
+		e, ok, err := s.store.GetEvent(ctx, *a.ReplyToMessageID)
+		if err != nil {
+			return nil, err
+		}
+		if !ok || e.RoomID != *a.ChatID {
+			return nil, fail("No chat or message with that ID.")
+		}
+	}
+	path, ok := readableFile(*a.FilePath)
+	if !ok {
+		return nil, fail(sendFileError)
+	}
+	params := map[string]any{"room_id": *a.ChatID, "path": path}
+	if a.ReplyToMessageID != nil && *a.ReplyToMessageID != "" {
+		params["reply_to"] = *a.ReplyToMessageID
+	}
+	var sent struct {
+		EventID string `json:"event_id"`
+	}
+	if err := s.call(ctx, "message.sendFile", params, &sent); err != nil {
+		return nil, err
+	}
+	return map[string]string{"messageID": sent.EventID, "chatID": *a.ChatID, "deeplink": "courier://chat/" + *a.ChatID}, nil
+}
+
+// sendFileError is send_file's one answer for a file it won't take, whatever is wrong with it.
+const sendFileError = "Courier can't send that file."
 
 func (s *Server) archiveChat(ctx context.Context, _ *mcp.CallToolRequest, raw json.RawMessage) (any, error) {
 	var a struct {

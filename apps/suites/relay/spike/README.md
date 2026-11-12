@@ -57,6 +57,28 @@ Settings come from the environment: `PUBLIC_URL`, `ISSUER`, `PROJECT_ID`,
 `PORT` (default 3000). `JWKS_URI` points the key fetch at a local key set for
 testing with self-minted tokens. It is never set in the cluster.
 
+## The test client
+
+`relay-spike-client` signs in the way the connector will and holds `/connect`
+open. It runs on a Mac or Linux box; it is not in the image.
+
+```bash
+# Spike B: device-flow sign-in. Prints a code; approve it in the browser.
+bazel run //apps/suites/relay/spike:relay-spike-client -- login
+# Who the saved token belongs to, and whether it passes the relay's checks.
+bazel run //apps/suites/relay/spike:relay-spike-client -- whoami
+# Spike C: hold /connect open, reconnecting on drops (default 24 hours).
+bazel run //apps/suites/relay/spike:relay-spike-client -- hold --hours 24
+```
+
+The token is saved to `~/.config/relay-spike/token.json` (mode 600) and
+refreshed five minutes before it expires. `hold` sends a probe every 30
+seconds, counts the server's pings, treats 90 seconds of silence as a dead
+socket, and ends with one `summary` line: time connected, drops, longest
+connection, reconnect gaps and round-trip percentiles. Everything prints as
+JSON lines. Defaults point at the homelab spike; `RELAY_ISSUER`, `RELAY_URL`,
+`RELAY_CLIENT_ID`, `RELAY_PROJECT_ID` and `RELAY_TOKEN_FILE` override them.
+
 ## Not the relay
 
 No device routing, no billing, no storage, one replica. It gets deleted, or
