@@ -840,7 +840,7 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		w.s.SetTyping(w.room, "@whatsapp_contact:courier.local", time.Now().Add(time.Minute))
 	case "inbox.list-first-page":
 		addRooms(t, w.s, "whatsapp", "second", 1)
-	case "inbox.list-room-ids", "room.setArchived", "room.setLowPriority", "room.setHidden", "room.setMarkedUnread",
+	case "inbox.list-room-ids", "room.setArchived", "room.setLowPriority", "room.setReadAloud", "room.setHidden", "room.setMarkedUnread",
 		"inbox.archiveMatching":
 		if _, ok := params["room_ids"]; ok {
 			params["room_ids"] = one

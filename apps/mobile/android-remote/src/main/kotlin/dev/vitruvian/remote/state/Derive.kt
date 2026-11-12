@@ -2586,14 +2586,124 @@ public object Derive {
   )
 
   /**
-   * True when the user denied notification permission and Android will not prompt again
-   * (`[shouldShowRationale] == false`). A first denial (`[shouldShowRationale] == true`) can still
-   * prompt next time, so it is not treated as permanently blocked.
+   * True when the user denied notification permission and Android will not prompt again (`[asked]
+   * == true` and `[shouldShowRationale] == false`). Before the app has ever asked (`[asked] ==
+   * false`) or after a first denial (`[shouldShowRationale] == true`), Android can still prompt, so
+   * it is not treated as permanently blocked.
    */
   public fun isNotificationPermissionBlocked(
       granted: Boolean,
       shouldShowRationale: Boolean,
-  ): Boolean = !granted && !shouldShowRationale
+      asked: Boolean = true,
+  ): Boolean = !granted && asked && !shouldShowRationale
+
+  /** Action offered by a contextual notification-permission row. */
+  public enum class NotificationPermissionAction {
+    None,
+    Allow,
+    OpenSettings,
+  }
+
+  /** Specification for the Settings screen's "Notifications" row. */
+  public data class NotificationsRowSpec(
+      val title: String,
+      val subtitle: String,
+      val statusLabel: String?,
+      val action: NotificationPermissionAction,
+      val actionLabel: String?,
+      val permanentlyBlocked: Boolean,
+  )
+
+  /**
+   * Pure decision logic for the Settings screen's "Notifications" row across all four permission
+   * states: granted, not asked, denied once, and permanently blocked.
+   */
+  public fun notificationsRowSpec(
+      granted: Boolean,
+      asked: Boolean,
+      shouldShowRationale: Boolean,
+  ): NotificationsRowSpec {
+    val title = "Notifications"
+    val subtitle = "Mac offline/back alerts and finished commands"
+    if (granted) {
+      return NotificationsRowSpec(
+          title = title,
+          subtitle = subtitle,
+          statusLabel = "On",
+          action = NotificationPermissionAction.None,
+          actionLabel = null,
+          permanentlyBlocked = false,
+      )
+    }
+    val blocked =
+        isNotificationPermissionBlocked(
+            granted = false,
+            shouldShowRationale = shouldShowRationale,
+            asked = asked,
+        )
+    return if (blocked) {
+      NotificationsRowSpec(
+          title = title,
+          subtitle = subtitle,
+          statusLabel = null,
+          action = NotificationPermissionAction.OpenSettings,
+          actionLabel = "Open settings",
+          permanentlyBlocked = true,
+      )
+    } else {
+      NotificationsRowSpec(
+          title = title,
+          subtitle = subtitle,
+          statusLabel = null,
+          action = NotificationPermissionAction.Allow,
+          actionLabel = "Allow",
+          permanentlyBlocked = false,
+      )
+    }
+  }
+
+  /** Inline note shown under Phone Bridge when enabled while notifications are off. */
+  public data class BridgeNotificationSpec(
+      val note: String,
+      val action: NotificationPermissionAction,
+      val actionLabel: String,
+      val permanentlyBlocked: Boolean,
+  )
+
+  /**
+   * Pure decision logic for the Phone Bridge row's notification-permission note across bridge off,
+   * granted, not asked, denied once, and permanently blocked.
+   */
+  public fun bridgeNotificationSpec(
+      bridgeEnabled: Boolean,
+      granted: Boolean,
+      asked: Boolean,
+      shouldShowRationale: Boolean,
+  ): BridgeNotificationSpec? {
+    if (!bridgeEnabled || granted) return null
+    val note = "Approvals can't pop up while notifications are off"
+    val blocked =
+        isNotificationPermissionBlocked(
+            granted = false,
+            shouldShowRationale = shouldShowRationale,
+            asked = asked,
+        )
+    return if (blocked) {
+      BridgeNotificationSpec(
+          note = note,
+          action = NotificationPermissionAction.OpenSettings,
+          actionLabel = "Open settings",
+          permanentlyBlocked = true,
+      )
+    } else {
+      BridgeNotificationSpec(
+          note = note,
+          action = NotificationPermissionAction.Allow,
+          actionLabel = "Allow",
+          permanentlyBlocked = false,
+      )
+    }
+  }
 
   /**
    * Pure decision logic for the HomeSpeaker phone notification mirror row.

@@ -32,6 +32,7 @@
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_command_line_application")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("//tools/apple:defs.bzl", "APPLE_TOOLCHAIN_ONLY")
 load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load("//tools/swift-test-preferences:defs.bzl", "swift_test")
@@ -41,7 +42,7 @@ swift_library(
     name = "CompXProtocol",
     srcs = glob(["Sources/CompXProtocol/**/*.swift"]),
     module_name = "CompXProtocol",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     visibility = ["//visibility:public"],
 )
 
@@ -50,7 +51,7 @@ swift_library(
     name = "CompXHID",
     srcs = glob(["Sources/CompXHID/**/*.swift"]),
     module_name = "CompXHID",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     visibility = ["//visibility:public"],
     deps = [":CompXProtocol"],
 )
@@ -61,7 +62,7 @@ swift_library(
     name = "StatusSignals",
     srcs = glob(["Sources/StatusSignals/**/*.swift"]),
     module_name = "StatusSignals",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     visibility = ["//visibility:public"],
     deps = [
         ":CompXHID",
@@ -76,7 +77,7 @@ swift_library(
     name = "GravaStarCLI",
     srcs = glob(["Sources/GravaStarCLI/**/*.swift"]),
     module_name = "GravaStarCLI",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":CompXHID",
         ":CompXProtocol",
@@ -91,7 +92,7 @@ swift_library(
     name = "GravaStarMouseTool",
     srcs = glob(["Sources/gravastar-mouse/**/*.swift"]),
     module_name = "GravaStarMouseTool",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":GravaStarCLI"],
 )
 
@@ -108,7 +109,7 @@ macos_command_line_application(
     # toolchain before target_compatible_with can skip it, so a Linux
     # `bazel build //...` would fail on it. The app and :publish name it.
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     visibility = ["//visibility:public"],
     deps = [":GravaStarMouseTool"],
 )
@@ -121,7 +122,7 @@ swift_test(
     size = "small",
     srcs = glob(["Tests/PeripheralsTests/**/*.swift"]),
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":CompXHID",
         ":CompXProtocol",

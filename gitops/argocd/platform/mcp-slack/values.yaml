@@ -37,5 +37,6 @@ slack:
   channelIds: "" # empty string = unrestricted (all channels, DMs, and groups)
   userTokenEnabled: true # impersonation mode — posts as the human
   writeMode: "user" # "user" = impersonate, "bot" = post as bot
+  httpAllowDestructive: true
 networkPolicy:
   enabled: true

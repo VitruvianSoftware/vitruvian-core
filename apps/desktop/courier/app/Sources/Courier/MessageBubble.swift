@@ -69,6 +69,8 @@ struct MessageActions {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
     }
+    /// Reads a voice-note transcript aloud (`"<Sender> says: <transcript>"` or `"You said: <transcript>"`).
+    var readAloudTranscript: (TimelineMessage, String) -> Void = { _, _ in }
     /// Title of the chat a message belongs to, for `VoiceNoteView` and `GlobalAudioPlayerBar`.
     var chatTitle: (TimelineMessage) -> String = { _ in "" }
     /// Consecutive voice-note queue starting at the given message ID in the same chat.
@@ -890,7 +892,8 @@ struct MessageRowView: View {
                     audioPlayer: actions.audioPlayer ?? AudioPlayerModel(),
                     queueInRoom: actions.voiceNoteQueue(message.id),
                     transcriptStore: actions.voiceNoteTranscripts ?? VoiceNoteTranscriptStore(),
-                    onCopyTranscript: actions.copyPlainText
+                    onCopyTranscript: actions.copyPlainText,
+                    onReadAloudTranscript: { text in actions.readAloudTranscript(message, text) }
                 )
                 caption
             case .file:

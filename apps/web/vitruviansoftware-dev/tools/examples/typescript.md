@@ -79,4 +79,7 @@ function page(app) {
   ]);
 }
 ```
+
+## Subdirectories & Boundaries
+- [bin](https://github.com/VitruvianSoftware/vitruvian-sdk/blob/main/samples/hello-typescript/bin/README.md): Component package providing implementation for packages/vitruvian-sdk/samples/hello-typ...
 {% endraw %}
