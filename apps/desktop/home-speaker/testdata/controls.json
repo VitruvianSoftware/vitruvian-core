@@ -170,7 +170,7 @@
   {
     "id": "voice-preview",
     "label": "Preview Mac voice",
-    "via": "say -v",
+    "via": "helper:preview-voice",
     "phone": "supported"
   },
   {
