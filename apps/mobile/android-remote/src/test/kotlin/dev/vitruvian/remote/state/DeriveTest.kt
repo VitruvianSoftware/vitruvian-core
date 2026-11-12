@@ -2765,6 +2765,12 @@ public class DeriveTest {
             what = "grant Google Chat",
             reason = "✗ homespeaker · grant Google Chat: error: access denied (HTTP 400)"),
     )
+    // UAT 2026-11-12: any helper "<action> failed:" wrapper is technical, not just sign-in's.
+    assertEquals(
+        "Couldn't choose home: the Mac returned an error",
+        Derive.homeSpeakerInlineError(
+            what = "choose home", reason = "set structure failed: exit status 1"),
+    )
     // UAT 2026-11-10: the agent's own "sign out failed:" prefix reached the row.
     assertEquals(
         "Couldn't sign out: the Mac returned an error",
@@ -3180,5 +3186,427 @@ public class DeriveTest {
     // "snooze" is the phone's own Now-strip control, not a Home Speaker field.
     val notInCatalog = keys.filter { it !in catalogKeys && it != "snooze" }
     assertTrue("error keys that are not catalog keys: $notInCatalog", notInCatalog.isEmpty())
+  }
+
+  @Test
+  public fun `genericKeys returns undrawn keys in catalog order and placed refuses duplicates`() {
+    // Missing / unplaced key falls through to generic.
+    assertEquals(listOf("a", "c"), Derive.genericKeys(listOf("a", "b", "c"), setOf("b")))
+    // All drawn gives none.
+    assertEquals(emptyList<String>(), Derive.genericKeys(listOf("a", "b"), setOf("a", "b")))
+    // Catalog order is preserved.
+    assertEquals(
+        listOf("z", "m", "b"),
+        Derive.genericKeys(listOf("z", "a", "m", "b"), setOf("a")),
+    )
+
+    // placed() records on first call and refuses duplicates without running the second builder.
+    val placement = Derive.CatalogPlacement()
+    var duplicateInvoked = false
+    assertEquals("first-row", placement.placed("enabled") { "first-row" })
+    assertNull(
+        placement.placed("enabled") {
+          duplicateInvoked = true
+          "duplicate-row"
+        })
+    assertFalse("duplicate placed() must not invoke its builder", duplicateInvoked)
+    assertEquals(setOf("enabled"), placement.drawnKeys)
+  }
+
+  @Test
+  public fun `every catalog setting in golden payload is either hand-placed or gets a generic row exactly once`() {
+    val goldenJson = readRunfile("apps/mobile/android-remote/macagent/golden_homespeaker_v1.json")
+    val sources = HomeSpeakerWire.sources(goldenJson)
+    val catalog = sources.catalog
+    assertTrue(sources.genericSettings)
+    val catalogKeys = catalog.settings.map { it.key }
+    assertEquals("duplicate keys in golden catalog", catalogKeys.toSet().size, catalogKeys.size)
+
+    val remoteText =
+        readRunfile(
+            "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
+    assertFalse(
+        "placedHomeSpeakerKeys constant must stay deleted",
+        remoteText.contains("placedHomeSpeakerKeys"),
+    )
+    assertTrue(
+        "Other settings must read placement.drawnKeys",
+        remoteText.contains("drawnKeys = placement.drawnKeys"),
+    )
+
+    val placedCalls =
+        Regex("""\bplaced\("([a-z][a-z_]+)"\)""")
+            .findAll(remoteText)
+            .map { it.groupValues[1] }
+            .toList()
+    assertTrue("expected hand-placed catalog keys in RemoteState.kt", placedCalls.isNotEmpty())
+
+    val placement = Derive.CatalogPlacement()
+    val duplicatePlaced = mutableListOf<String>()
+    for (key in placedCalls) {
+      if (placement.placed(key) { key } == null) {
+        duplicatePlaced.add(key)
+      }
+    }
+    assertTrue(
+        "duplicate placed() calls in RemoteState.kt: $duplicatePlaced", duplicatePlaced.isEmpty())
+
+    val drawn = placement.drawnKeys
+    val stalePlaced = drawn - catalogKeys.toSet()
+    assertTrue("placed() has keys absent from golden catalog: $stalePlaced", stalePlaced.isEmpty())
+
+    // Any catalog key directly read by a hand row in RemoteState.kt must go through placed().
+    val handReferencedKeys =
+        Regex(
+                """\b(?:lbl|shown|sourceRow)\(\s*"([a-z][a-z_]+)"|catalog(?:Shown|Label)\([^,]+,\s*"([a-z][a-z_]+)"\)""")
+            .findAll(remoteText)
+            .map { it.groupValues[1].ifEmpty { it.groupValues[2] } }
+            .filter { it in catalogKeys }
+            .toSet()
+    val unplacedHandKeys = handReferencedKeys - drawn
+    assertTrue(
+        "hand-rendered catalog keys missing placed() wrapper (would double-render): $unplacedHandKeys",
+        unplacedHandKeys.isEmpty(),
+    )
+
+    val generic =
+        Derive.genericHomeSpeakerRows(
+                catalog,
+                drawnKeys = drawn,
+                includeHidden = true,
+                genericSettingsSupported = sources.genericSettings,
+            )
+            .map { it.key }
+    assertEquals(Derive.genericKeys(catalogKeys, drawn), generic)
+
+    val overlap = drawn.intersect(generic.toSet())
+    assertTrue("keys both hand-placed and generic: $overlap", overlap.isEmpty())
+
+    val dropped = catalogKeys.filter { it !in drawn && it !in generic }
+    assertTrue("catalog keys dropped (neither placed nor generic): $dropped", dropped.isEmpty())
+
+    assertEquals(catalogKeys.size, drawn.size + generic.size)
+    // Today every golden key has a hand-designed home, so "Other settings" is empty. A key
+    // Home Speaker adds later lands here and shows on the phone with no phone release; this
+    // line then names it, which is the prompt to decide whether it deserves a hand-made row.
+    assertEquals(emptyList<String>(), generic)
+  }
+
+  @Test
+  public fun `controls manifest supported ids match HomeSpeakerControls constants one to one`() {
+    val raw = readRunfile("apps/desktop/home-speaker/testdata/controls.json")
+    val entries = JsonReader(raw).readValue() as List<*>
+    val allManifestIds = mutableSetOf<String>()
+    val supportedManifestIds = mutableSetOf<String>()
+    for (item in entries) {
+      val obj = item as Map<*, *>
+      val id = obj["id"] as String
+      val phone = obj["phone"] as String
+      assertTrue("duplicate id in controls.json: $id", allManifestIds.add(id))
+      if (phone == "supported") {
+        supportedManifestIds.add(id)
+      }
+    }
+    assertTrue("no supported controls parsed from controls.json", supportedManifestIds.isNotEmpty())
+
+    val constFields =
+        HomeSpeakerControls::class.java.declaredFields.filter {
+          java.lang.reflect.Modifier.isStatic(it.modifiers) && it.type == String::class.java
+        }
+    val phoneIds = constFields.map { it.get(null) as String }
+    assertEquals(
+        "duplicate constant values in HomeSpeakerControls", phoneIds.toSet().size, phoneIds.size)
+
+    val phoneIdSet = phoneIds.toSet()
+    val missingFromPhone = supportedManifestIds - phoneIdSet
+    assertTrue(
+        "supported controls.json ids missing from HomeSpeakerControls: $missingFromPhone",
+        missingFromPhone.isEmpty(),
+    )
+    val notInManifest = phoneIdSet - allManifestIds
+    assertTrue(
+        "HomeSpeakerControls ids missing from controls.json: $notInManifest",
+        notInManifest.isEmpty(),
+    )
+    val excludedInPhone = phoneIdSet - supportedManifestIds
+    assertTrue(
+        "excluded controls.json ids present in HomeSpeakerControls: $excludedInPhone",
+        excludedInPhone.isEmpty(),
+    )
+
+    val remoteText =
+        readRunfile(
+            "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
+    assertFalse("dead manifestId plumbing must stay removed", remoteText.contains("manifestId"))
+    assertFalse(
+        "dead resolvedManifestId plumbing must stay removed",
+        remoteText.contains("resolvedManifestId"),
+    )
+    val unwiredControls =
+        constFields
+            .map { it.name }
+            .filter { name ->
+              !Regex("""controlId\s*=\s*HomeSpeakerControls\.${Regex.escape(name)}\b""")
+                  .containsMatchIn(remoteText)
+            }
+    assertTrue(
+        "HomeSpeakerControls constants missing `controlId = HomeSpeakerControls.X` in RemoteState.kt: $unwiredControls",
+        unwiredControls.isEmpty(),
+    )
+  }
+
+  @Test
+  public fun `hookWithoutHomeSpeaker matches Pages swift`() {
+    val pagesSwift =
+        readRunfile("apps/desktop/home-speaker/Sources/HomeSpeakerToolCore/Pages.swift")
+    val match =
+        Regex("""public static let hookWithoutHomeSpeaker\s*=\s*"([^"]+)"""").find(pagesSwift)
+    assertTrue("hookWithoutHomeSpeaker constant not found in Pages.swift", match != null)
+    assertEquals(match!!.groupValues[1], Derive.HOOK_WITHOUT_HOMESPEAKER)
+  }
+
+  @Test
+  public fun `generic renderer maps toggle choice number text and time kinds and honors shown`() {
+    val catalog =
+        HomeSpeakerCatalog(
+            listOf(
+                HomeSpeakerSetting(
+                    key = "future_toggle",
+                    kind = "toggle",
+                    label = "Chime on Your phone",
+                    boolValue = true,
+                    shown = true,
+                ),
+                HomeSpeakerSetting(
+                    key = "future_choice",
+                    kind = "choice",
+                    label = "Tone",
+                    stringValue = "warm",
+                    shown = true,
+                    choices =
+                        listOf(
+                            HomeSpeakerChoice("warm", "Warm on Your phone"),
+                            HomeSpeakerChoice("crisp", "Crisp"),
+                        ),
+                ),
+                HomeSpeakerSetting(
+                    key = "future_number",
+                    kind = "number",
+                    label = "Ducking",
+                    numberValue = 95.0,
+                    shown = true,
+                    limits =
+                        HomeSpeakerLimits(min = 0.0, max = 100.0, step = 10.0, defaultValue = 50.0),
+                ),
+                HomeSpeakerSetting(
+                    key = "future_text",
+                    kind = "text",
+                    label = "Prefix",
+                    stringValue = "Heads up:",
+                    shown = true,
+                ),
+                HomeSpeakerSetting(
+                    key = "future_time",
+                    kind = "time",
+                    label = "Wake at",
+                    stringValue = "07:15",
+                    shown = true,
+                ),
+                HomeSpeakerSetting(
+                    key = "future_hidden",
+                    kind = "toggle",
+                    label = "Hidden",
+                    boolValue = false,
+                    shown = false,
+                ),
+            ))
+
+    val visible =
+        Derive.genericHomeSpeakerRows(
+            catalog = catalog,
+            canAct = true,
+            errors = mapOf("future_text" to "Refused"),
+            drawnKeys = emptySet(),
+        )
+    assertEquals(
+        listOf("future_toggle", "future_choice", "future_number", "future_text", "future_time"),
+        visible.map { it.key },
+    )
+
+    val toggleRow = visible[0]
+    assertEquals("Chime on This phone", toggleRow.title)
+    assertEquals(
+        Derive.GenericSettingControl.Toggle(checked = true, enabled = true), toggleRow.control)
+
+    val choiceRow = visible[1]
+    assertEquals("Warm on This phone", choiceRow.trailing)
+    val choiceCtrl = choiceRow.control as Derive.GenericSettingControl.Choices
+    assertEquals("Warm on This phone", choiceCtrl.options.first().label)
+
+    val numRow = visible[2]
+    val numCtrl = numRow.control as Derive.GenericSettingControl.NumberStepper
+    assertEquals(100.0, numCtrl.stepper!!.plusNext, 0.0)
+    assertEquals(85.0, numCtrl.stepper!!.minusNext, 0.0)
+    assertTrue(numCtrl.isInteger)
+
+    val textRow = visible[3]
+    assertEquals("Heads up:", textRow.subtitle)
+    assertEquals("Refused", textRow.error)
+    assertEquals(
+        Derive.GenericSettingControl.TextPrompt(
+            value = "Heads up:", hasValue = true, enabled = true),
+        textRow.control,
+    )
+
+    val timeRow = visible[4]
+    val timeCtrl = timeRow.control as Derive.GenericSettingControl.Choices
+    // 48 half-hours + custom off-half-hour 07:15 preserved first.
+    assertEquals(49, timeCtrl.options.size)
+    assertEquals("07:15", timeCtrl.options.first().value)
+    assertEquals("00:00", timeCtrl.options[1].value)
+    assertEquals("23:30", timeCtrl.options.last().value)
+
+    assertNull(
+        Derive.genericHomeSpeakerRow(
+            HomeSpeakerSetting(key = "unknown", kind = "curve", label = "Curve")))
+  }
+
+  @Test
+  public fun `home picker speaker remove door copy stale hook remove and visibility parity`() {
+    // Home picker: empty degrades quietly; non-empty shows selected and lets user pick others.
+    assertNull(Derive.homePickerSpec(emptyList()))
+    val homes =
+        listOf(
+            AgentHome("home-1", "Apartment", selected = false),
+            AgentHome("home-2", "Cabin", selected = true),
+        )
+    val picker = Derive.homePickerSpec(homes, structureId = "home-1", canAct = true)!!
+    assertEquals("home-2", picker.selectedId)
+    assertEquals("Cabin", picker.trailing)
+    assertEquals(listOf("Apartment", "Cabin"), picker.choices.map { it.name })
+    assertTrue(picker.choices[0].enabled && !picker.choices[0].selected)
+    assertTrue(!picker.choices[1].enabled && picker.choices[1].selected)
+
+    // Remove any speaker: every speaker row gets Remove, not only default.
+    val speakers =
+        Derive.speakerRowSpecs(
+            listOf(
+                HomeSpeakerTargetWire("office", "Office Mini", "Office", "Mini", selected = true),
+                HomeSpeakerTargetWire("kitchen", "Kitchen Hub", "Kitchen", "Hub", selected = false),
+            ),
+            canAct = true,
+        )
+    assertEquals(2, speakers.size)
+    assertTrue(speakers.all { it.removeEnabled })
+    assertEquals("default", speakers[0].trailing)
+    assertEquals("", speakers[1].trailing)
+
+    // Door switch: offers "Copy settings from the <current>" with copy = true, gated on version.
+    assertTrue(Derive.supportsDoorCopy("1.41.0"))
+    assertTrue(Derive.supportsDoorCopy("1.42.0"))
+    assertFalse(Derive.supportsDoorCopy("1.40.9"))
+    assertFalse(Derive.supportsDoorCopy(""))
+    val fromApp =
+        Derive.doorSwitchOptions(
+            activeDoor = "app", appInstalled = true, extensionInstalled = true, canAct = true)
+    assertEquals(3, fromApp.size)
+    val copyFromApp = fromApp.single { it.copy }
+    assertEquals("extension", copyFromApp.targetDoor)
+    assertEquals("Copy settings from the app", copyFromApp.label)
+
+    val fromExtNoApp =
+        Derive.doorSwitchOptions(
+            activeDoor = "extension",
+            appInstalled = false,
+            extensionInstalled = true,
+            canAct = true)
+    assertEquals(1, fromExtNoApp.size)
+    assertTrue(fromExtNoApp.single().selected)
+
+    // Stale hook: missing target HomeSpeaker offers both Update hook and Remove when active is
+    // installed.
+    val staleTrashedApp =
+        AgentHookStatus(
+            agent = "Claude Code",
+            agentSlug = "claude-code",
+            hookState = "stale",
+            staleCommand =
+                "'/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker' --claude-stop-hook",
+            hookProgram = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
+        )
+    val bothInstalled =
+        Derive.agentHookRowSpec(
+            staleTrashedApp, installed = true, appInstalled = true, extensionInstalled = true)
+    assertTrue(bothInstalled.showUpdate)
+    assertFalse(bothInstalled.showRemove)
+
+    val appGoneExtActive =
+        Derive.agentHookRowSpec(
+            staleTrashedApp, installed = true, appInstalled = false, extensionInstalled = true)
+    assertTrue(appGoneExtActive.showUpdate)
+    assertTrue(appGoneExtActive.showRemove)
+    assertEquals("Remove", appGoneExtActive.removeLabel)
+    assertEquals(Derive.HOOK_WITHOUT_HOMESPEAKER, appGoneExtActive.subtitle)
+
+    val neitherInstalled =
+        Derive.agentHookRowSpec(
+            staleTrashedApp, installed = false, appInstalled = false, extensionInstalled = false)
+    assertFalse(neitherInstalled.showUpdate)
+    assertTrue(neitherInstalled.showRemove)
+
+    // Older helper (no generic_settings / copy support): hides generic rows and copy-on-switch.
+    assertTrue(
+        Derive.genericHomeSpeakerRows(
+                catalog =
+                    HomeSpeakerCatalog(
+                        listOf(
+                            HomeSpeakerSetting(
+                                key = "beeper_address",
+                                kind = "text",
+                                label = "Address",
+                                stringValue = "http://127.0.0.1:23373",
+                                shown = true,
+                            ))),
+                genericSettingsSupported = false,
+            )
+            .isEmpty())
+    val olderDoor =
+        Derive.doorSwitchOptions(
+            activeDoor = "app",
+            appInstalled = null,
+            extensionInstalled = true,
+            canAct = true,
+            copySupported = false,
+        )
+    assertEquals(listOf("App", "Extension"), olderDoor.map { it.label })
+    assertFalse(olderDoor.any { it.copy })
+
+    // Older helper (no stale_command / hook_program): degrades quietly to Update hook only.
+    val olderStale = AgentHookStatus(agent = "Claude Code", hookState = "stale")
+    val olderSpec = Derive.agentHookRowSpec(olderStale, installed = true)
+    assertTrue(olderSpec.showUpdate)
+    assertFalse(olderSpec.showRemove)
+
+    // Chat monitor Start/Stop: hidden when ownerRunning is explicitly false; shown on older
+    // helpers where ownerRunning is null; gated on anySourceEnabled when ownerRunning is true.
+    assertTrue(Derive.showsChatMonitorControl(ownerRunning = true, anySourceEnabled = true))
+    assertFalse(Derive.showsChatMonitorControl(ownerRunning = true, anySourceEnabled = false))
+    assertFalse(Derive.showsChatMonitorControl(ownerRunning = false, anySourceEnabled = true))
+    assertFalse(Derive.showsChatMonitorControl(ownerRunning = false, anySourceEnabled = false))
+    assertTrue(Derive.showsChatMonitorControl(ownerRunning = null, anySourceEnabled = true))
+    assertTrue(Derive.showsChatMonitorControl(ownerRunning = null, anySourceEnabled = false))
+
+    // Visibility parity in RemoteState.kt: Coding agents and Chat apps are not gated on hs.enabled,
+    // while Poll interval and Skip messages I sent stay gated on anyChat.
+    val remoteSrc =
+        readRunfile(
+            "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
+    assertFalse(remoteSrc.contains("if (hs.enabled && claude != null"))
+    assertFalse(remoteSrc.contains("if (hs.enabled && slack != null"))
+    assertTrue(
+        remoteSrc.contains(
+            """if (anyChat && Derive.catalogShown(hs.catalog, "poll_interval_seconds"))"""))
+    assertTrue(
+        Regex("""placed\("mute_own_messages"\)\s*\{\s*if \(anyChat\)""").containsMatchIn(remoteSrc))
   }
 }

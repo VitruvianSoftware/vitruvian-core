@@ -511,9 +511,13 @@ public enum HomeSpeakerStateContract {
             ]
         }
 
-        let homesArray: [[String: Any]] = config.structureId.isEmpty
-            ? []
-            : [["id": config.structureId, "name": config.structureName ?? config.structureId]]
+        let homesArray: [[String: Any]] = Self.knownHomes(for: config).map { home in
+            [
+                "id": home.id,
+                "name": home.name,
+                "selected": !config.structureId.isEmpty && home.id == config.structureId,
+            ]
+        }
 
         let recentArray: [[String: Any]] = seam.history.load().map { item in
             [
@@ -560,6 +564,25 @@ public enum HomeSpeakerStateContract {
             "recent": recentArray,
             "last": recentArray.first ?? NSNull(),
         ]
+    }
+
+    /// Every Google Home structure Home Speaker knows: the list from the last
+    /// saved discovery (`config.homes`), falling back to the saved home when
+    /// older configs carry only `structureId` / `structureName`. If `config`
+    /// names a `structureId` absent from `config.homes`, it is appended so the
+    /// active home is always represented.
+    public static func knownHomes(for config: SpeakerConfig) -> [HomeStructure] {
+        var seen = Set<String>()
+        var result: [HomeStructure] = []
+        for home in config.homes ?? [] where !home.id.isEmpty && seen.insert(home.id).inserted {
+            let name = (home.id == config.structureId ? config.structureName : nil) ?? home.name
+            result.append(HomeStructure(id: home.id, name: name.isEmpty ? home.id : name))
+        }
+        if !config.structureId.isEmpty, seen.insert(config.structureId).inserted {
+            let fallbackName = config.structureName ?? config.structureId
+            result.append(HomeStructure(id: config.structureId, name: fallbackName.isEmpty ? config.structureId : fallbackName))
+        }
+        return result
     }
 
     // MARK: - `--apply --json '<changes>'`

@@ -45,6 +45,12 @@ pub const VOLUME_LIMIT: Duration = Duration::from_secs(45);
 /// The oldest Home Speaker that answers `--state` and `--apply`. Older programs would take them
 /// for unknown arguments and start their menu-bar app.
 pub const MIN_HOME_SPEAKER_VERSION: &str = "1.41.0";
+/// The oldest Home Speaker whose `--apply` `switchTo` operation accepts `copy: true`.
+pub const MIN_DOOR_COPY_VERSION: &str = "1.41.0";
+
+pub fn supports_door_copy(version: &str) -> bool {
+    version_at_least(version, MIN_DOOR_COPY_VERSION)
+}
 /// Bounds on `--version` and `--state`.
 pub const VERSION_LIMIT: Duration = Duration::from_secs(15);
 pub const STATE_LIMIT: Duration = Duration::from_secs(15);
@@ -101,6 +107,7 @@ impl HomeSpeakerVoice {
 pub struct HomeSpeakerHome {
     pub id: String,
     pub name: String,
+    pub selected: bool,
 }
 
 impl HomeSpeakerHome {
@@ -108,6 +115,7 @@ impl HomeSpeakerHome {
         let mut m = JsonObject::new();
         m.insert("id".to_string(), JsonValue::String(self.id.clone()));
         m.insert("name".to_string(), JsonValue::String(self.name.clone()));
+        m.insert("selected".to_string(), JsonValue::Bool(self.selected));
         JsonValue::Object(m)
     }
 }
@@ -117,6 +125,8 @@ pub struct HomeSpeakerAgentHook {
     pub agent: String,
     pub agent_slug: String,
     pub hook_state: String,
+    pub stale_command: Option<String>,
+    pub hook_program: Option<String>,
     pub speaks_twice: bool,
     pub configured_by_instruction: bool,
 }
@@ -132,6 +142,20 @@ impl HomeSpeakerAgentHook {
         m.insert(
             "hook_state".to_string(),
             JsonValue::String(self.hook_state.clone()),
+        );
+        m.insert(
+            "stale_command".to_string(),
+            match self.stale_command {
+                Some(ref s) => JsonValue::String(s.clone()),
+                None => JsonValue::Null,
+            },
+        );
+        m.insert(
+            "hook_program".to_string(),
+            match self.hook_program {
+                Some(ref s) => JsonValue::String(s.clone()),
+                None => JsonValue::Null,
+            },
         );
         m.insert(
             "speaks_twice".to_string(),
@@ -327,7 +351,9 @@ pub struct HomeSpeakerState {
     pub available: bool,
     pub reason: String,
     pub installed: bool,
+    pub app_installed: Option<bool>,
     pub app_running: bool,
+    pub owner_running: Option<bool>,
     pub signed_in: bool,
     pub active_door: String,
     pub extension_installed: bool,
@@ -421,7 +447,9 @@ impl Default for HomeSpeakerState {
             available: false,
             reason: String::new(),
             installed: false,
+            app_installed: None,
             app_running: false,
+            owner_running: None,
             signed_in: false,
             active_door: String::new(),
             extension_installed: false,
@@ -516,7 +544,13 @@ impl HomeSpeakerState {
             m.insert("reason".to_string(), JsonValue::String(self.reason.clone()));
         }
         m.insert("installed".to_string(), JsonValue::Bool(self.installed));
+        if let Some(app_installed) = self.app_installed {
+            m.insert("app_installed".to_string(), JsonValue::Bool(app_installed));
+        }
         m.insert("app_running".to_string(), JsonValue::Bool(self.app_running));
+        if let Some(owner_running) = self.owner_running {
+            m.insert("owner_running".to_string(), JsonValue::Bool(owner_running));
+        }
         m.insert("signed_in".to_string(), JsonValue::Bool(self.signed_in));
         m.insert(
             "active_door".to_string(),
@@ -862,6 +896,7 @@ impl HomeSpeakerState {
                 "settings".to_string(),
                 JsonValue::Array(self.settings.clone()),
             );
+            m.insert("generic_settings".to_string(), JsonValue::Bool(true));
         }
         if let Some(ref s) = self.outputs_label {
             m.insert("outputs_label".to_string(), JsonValue::String(s.clone()));
@@ -902,6 +937,7 @@ pub struct HomeSpeakerUpdate {
     pub style_model: Option<String>,
     pub home_cast_voice: Option<bool>,
     pub active_door: Option<String>,
+    pub copy: Option<bool>,
     pub discover: bool,
     pub structure_id: Option<String>,
     pub remove_target: Option<String>,
@@ -937,6 +973,7 @@ pub struct HomeSpeakerUpdate {
     pub courier_network: Option<HomeSpeakerBeeperNetworkUpdate>,
     pub courier_read_anyway: Option<HomeSpeakerReadAnywayUpdate>,
     pub mute_own_messages: Option<bool>,
+    pub settings: Vec<(String, JsonValue)>,
 }
 
 impl HomeSpeakerUpdate {
@@ -968,6 +1005,7 @@ impl HomeSpeakerUpdate {
             && self.style_model.is_none()
             && self.home_cast_voice.is_none()
             && self.active_door.is_none()
+            && self.copy.is_none()
             && !self.discover
             && self.structure_id.is_none()
             && self.remove_target.is_none()
@@ -1003,6 +1041,7 @@ impl HomeSpeakerUpdate {
             && self.courier_network.is_none()
             && self.courier_read_anyway.is_none()
             && self.mute_own_messages.is_none()
+            && self.settings.is_empty()
     }
 
     pub fn from_json(v: &JsonValue) -> Result<Self, String> {
@@ -1076,8 +1115,9 @@ impl HomeSpeakerUpdate {
         u.style_model = opt_str(obj, "style_model")?;
         u.home_cast_voice = opt_bool(obj, "home_cast_voice")?;
         u.active_door = opt_str(obj, "active_door")?;
+        u.copy = opt_bool(obj, "copy")?;
         u.discover = opt_bool(obj, "discover")?.unwrap_or(false);
-        u.structure_id = opt_str(obj, "structure_id")?;
+        u.structure_id = opt_str(obj, "structure_id")?.or(opt_str(obj, "home_id")?);
         u.remove_target = opt_str(obj, "remove_target")?;
         u.sign_in = opt_bool(obj, "sign_in")?.unwrap_or(false);
         u.sign_out = opt_bool(obj, "sign_out")?.unwrap_or(false);
@@ -1135,8 +1175,121 @@ impl HomeSpeakerUpdate {
         u.courier_read_anyway = opt_network(obj, "courier_read_anyway", "on")?
             .map(|(key, on)| HomeSpeakerReadAnywayUpdate { key, on });
         u.mute_own_messages = opt_bool(obj, "mute_own_messages")?;
+        if let Some(sv) = obj.get("settings") {
+            if !sv.is_null() {
+                let so = sv
+                    .as_object()
+                    .ok_or_else(|| "cannot unmarshal settings into object".to_string())?;
+                for (k, val) in so.iter() {
+                    if k.trim().is_empty() {
+                        return Err("settings key cannot be empty".to_string());
+                    }
+                    u.settings.push((k.clone(), val.clone()));
+                }
+            }
+        }
         Ok(u)
     }
+}
+
+/// `--apply` operations the helper sends to Home Speaker.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ApplyOp {
+    Set,
+    Snooze,
+    ImportAntigravity,
+    SetSecret,
+    ClearChatToken,
+    SetNetwork,
+    SetReadAnyway,
+    SetDefaultSpeaker,
+    RemoveSpeaker,
+    AgentHook,
+    RemoveLegacyAgent,
+    SaveOAuthClient,
+    SwitchTo,
+    Reset,
+}
+
+impl ApplyOp {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ApplyOp::Set => "set",
+            ApplyOp::Snooze => "snooze",
+            ApplyOp::ImportAntigravity => "importAntigravity",
+            ApplyOp::SetSecret => "setSecret",
+            ApplyOp::ClearChatToken => "clearChatToken",
+            ApplyOp::SetNetwork => "setNetwork",
+            ApplyOp::SetReadAnyway => "setReadAnyway",
+            ApplyOp::SetDefaultSpeaker => "setDefaultSpeaker",
+            ApplyOp::RemoveSpeaker => "removeSpeaker",
+            ApplyOp::AgentHook => "agentHook",
+            ApplyOp::RemoveLegacyAgent => "removeLegacyAgent",
+            ApplyOp::SaveOAuthClient => "saveOAuthClient",
+            ApplyOp::SwitchTo => "switchTo",
+            ApplyOp::Reset => "reset",
+        }
+    }
+}
+
+/// Command-line invocations the helper runs on Home Speaker's binary.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CliAction {
+    Say { text: String, no_history: bool },
+    Mute(bool),
+    SetVolume(i64),
+    SignIn { chat: bool },
+    SignOut { chat: bool },
+    Discover { home: Option<String> },
+    ChatMonitor { start: bool },
+    TestMediaPause,
+}
+
+impl CliAction {
+    pub fn args(&self) -> Vec<String> {
+        match self {
+            CliAction::Say { text, no_history } => {
+                let mut a = vec!["--say".to_string(), text.clone()];
+                if *no_history {
+                    a.push("--no-history".to_string());
+                }
+                a
+            }
+            CliAction::Mute(true) => vec!["--mute".to_string()],
+            CliAction::Mute(false) => vec!["--unmute".to_string()],
+            CliAction::SetVolume(p) => vec!["--set-volume".to_string(), p.to_string()],
+            CliAction::SignIn { chat: false } => vec!["--sign-in".to_string()],
+            CliAction::SignIn { chat: true } => {
+                vec!["--sign-in".to_string(), "--chat".to_string()]
+            }
+            CliAction::SignOut { chat: false } => vec!["--sign-out".to_string()],
+            CliAction::SignOut { chat: true } => {
+                vec!["--sign-out".to_string(), "--chat".to_string()]
+            }
+            CliAction::Discover { home: None } => {
+                vec!["--discover".to_string(), "--save".to_string()]
+            }
+            CliAction::Discover { home: Some(h) } => vec![
+                "--discover".to_string(),
+                "--save".to_string(),
+                "--home".to_string(),
+                h.clone(),
+            ],
+            CliAction::ChatMonitor { start: true } => {
+                vec!["--chat-monitor".to_string(), "start".to_string()]
+            }
+            CliAction::ChatMonitor { start: false } => {
+                vec!["--chat-monitor".to_string(), "stop".to_string()]
+            }
+            CliAction::TestMediaPause => vec!["--test-media-pause".to_string()],
+        }
+    }
+}
+
+/// Actions the helper performs itself without calling Home Speaker's `--apply` or CLI.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HelperAction {
+    PreviewVoice,
 }
 
 #[derive(Clone, Debug)]
@@ -1495,14 +1648,11 @@ impl HomeSpeaker {
     /// Asks `program` for its version, once per request (`verified` remembers who has answered).
     /// Below `MIN_HOME_SPEAKER_VERSION` nothing else may be run on it: an old program would
     /// read `--state` as an unknown argument and start its menu-bar app.
-    fn check_version(
+    fn read_verified_version(
         &self,
         program: &HomeSpeakerProgram,
         verified: &mut Vec<PathBuf>,
-    ) -> Result<(), VersionProblem> {
-        if verified.contains(&program.binary) {
-            return Ok(());
-        }
+    ) -> Result<String, VersionProblem> {
         let args = vec!["--version".to_string()];
         let (stdout, _, code) = self
             .call_program(VERSION_LIMIT, program, &args)
@@ -1518,13 +1668,26 @@ impl HomeSpeaker {
             ));
         };
         if version_at_least(&have, MIN_HOME_SPEAKER_VERSION) {
-            verified.push(program.binary.clone());
-            return Ok(());
+            if !verified.contains(&program.binary) {
+                verified.push(program.binary.clone());
+            }
+            return Ok(have);
         }
         Err(VersionProblem::TooOld(format!(
             "Update Home Speaker on {} (have {have}, need {MIN_HOME_SPEAKER_VERSION})",
             crate::sampler::get_hostname()
         )))
+    }
+
+    fn check_version(
+        &self,
+        program: &HomeSpeakerProgram,
+        verified: &mut Vec<PathBuf>,
+    ) -> Result<(), VersionProblem> {
+        if verified.contains(&program.binary) {
+            return Ok(());
+        }
+        self.read_verified_version(program, verified).map(|_| ())
     }
 
     /// `--state --json` from `program`, after the version gate.
@@ -1614,6 +1777,28 @@ impl HomeSpeaker {
         )))
     }
 
+    fn run_helper_action(
+        &self,
+        action: HelperAction,
+        program: &HomeSpeakerProgram,
+        verified: &mut Vec<PathBuf>,
+    ) -> Result<&'static str, ApplyError> {
+        match action {
+            HelperAction::PreviewVoice => {
+                let doc = self
+                    .fetch_state_doc(program, verified)
+                    .map_err(ApplyError::Conflict)?;
+                let voice = doc
+                    .as_object()
+                    .map(|d| DocSettings::of(d).str("local_voice"))
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or_else(|| DEFAULT_LOCAL_VOICE.to_string());
+                self.say_preview_voice(&voice)?;
+                Ok("preview_voice")
+            }
+        }
+    }
+
     /// Applies one phone update: Home Speaker's own `--apply` for settings, secrets, snooze, chat
     /// networks, hooks and the door; its command-line flags for sign-in, discovery, speech and the
     /// chat monitor. Order: the plain batch, the flag commands, then `agentHook`, then `switchTo`
@@ -1627,16 +1812,80 @@ impl HomeSpeaker {
         u: HomeSpeakerUpdate,
         verified: &mut Vec<PathBuf>,
     ) -> Result<String, ApplyError> {
-        let current_id = if u.oauth_client_id.is_none() && u.oauth_client_secret.is_some() {
-            let doc = self
-                .fetch_state_doc(&self.active_program(), verified)
-                .map_err(ApplyError::Conflict)?;
-            doc.get("sign_in")
+        let needs_oauth_doc = u.oauth_client_id.is_none() && u.oauth_client_secret.is_some();
+        let needs_catalog_doc = !u.settings.is_empty();
+        let pre_doc = if needs_oauth_doc || needs_catalog_doc {
+            let active = self.active_program();
+            if !file_exists(&active.binary) {
+                return Err(ApplyError::Conflict(format!(
+                    "HomeSpeaker is not installed at {}",
+                    active.binary.display()
+                )));
+            }
+            Some(
+                self.fetch_state_doc(&active, verified)
+                    .map_err(ApplyError::Conflict)?,
+            )
+        } else {
+            None
+        };
+        if needs_catalog_doc {
+            let known: Vec<&str> = pre_doc
+                .as_ref()
+                .and_then(|d| d.get_array("settings"))
+                .map(|arr| {
+                    arr.iter()
+                        .map(|s| s.get_str("key"))
+                        .filter(|k| !k.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default();
+            for (k, _) in &u.settings {
+                if !known.iter().any(|valid| *valid == k.as_str()) {
+                    return Err(ApplyError::BadRequest(format!(
+                        "unknown Home Speaker setting: {k}"
+                    )));
+                }
+            }
+        }
+        let current_id = if needs_oauth_doc {
+            pre_doc
+                .as_ref()
+                .and_then(|doc| doc.get("sign_in"))
                 .map(|s| s.get_str("custom_oauth_client_id").to_string())
         } else {
             None
         };
-        let plan = plan_ops_with(&u, current_id.as_deref())?;
+        let copy_version = if u.copy == Some(true) && u.active_door.is_some() {
+            let from_doc = pre_doc
+                .as_ref()
+                .map(|doc| doc.get_str("home_speaker_version").to_string())
+                .filter(|v| !v.is_empty());
+            match from_doc {
+                Some(v) => Some(v),
+                None => {
+                    let active = self.active_program();
+                    if !file_exists(&active.binary) {
+                        return Err(ApplyError::Conflict(format!(
+                            "HomeSpeaker is not installed at {}",
+                            active.binary.display()
+                        )));
+                    }
+                    let have =
+                        self.read_verified_version(&active, verified)
+                            .map_err(|p| match p {
+                                VersionProblem::TooOld(sentence) => ApplyError::Conflict(sentence),
+                                VersionProblem::Unreadable(e) => ApplyError::Internal(format!(
+                                    "Could not read the Home Speaker version: {e}"
+                                )),
+                            })?;
+                    Some(have)
+                }
+            }
+        } else {
+            None
+        };
+        let plan = plan_ops_with(&u, current_id.as_deref(), copy_version.as_deref())?;
         let mut changed = Vec::new();
         if !plan.plain.is_empty() {
             self.run_apply(&plan.plain, verified)?;
@@ -1646,13 +1895,13 @@ impl HomeSpeaker {
         let program = self.active_program();
         let bin_str = program.binary.to_string_lossy().into_owned();
         if u.test_media_pause {
-            let args = vec!["--test-media-pause".to_string()];
+            let args = CliAction::TestMediaPause.args();
             (self.run)(Duration::from_secs(30), &bin_str, &args)
                 .map_err(|e| ApplyError::Internal(format!("test media pause failed: {e}")))?;
             changed.push("test_media_pause".to_string());
         }
         if u.discover {
-            let args = vec!["--discover".to_string(), "--save".to_string()];
+            let args = CliAction::Discover { home: None }.args();
             (self.run)(Duration::from_secs(60), &bin_str, &args)
                 .map_err(|e| ApplyError::Internal(format!("discover failed: {e}")))?;
             changed.push("discover".to_string());
@@ -1664,12 +1913,10 @@ impl HomeSpeaker {
                     "structure_id cannot be empty".to_string(),
                 ));
             }
-            let args = vec![
-                "--discover".to_string(),
-                "--save".to_string(),
-                "--home".to_string(),
-                sid.to_string(),
-            ];
+            let args = CliAction::Discover {
+                home: Some(sid.to_string()),
+            }
+            .args();
             (self.run)(Duration::from_secs(60), &bin_str, &args)
                 .map_err(|e| ApplyError::Internal(format!("set structure failed: {e}")))?;
             changed.push(format!("structure_id={sid}"));
@@ -1682,13 +1929,13 @@ impl HomeSpeaker {
                 )));
             }
             let _busy = self.acquire_sign_in_busy()?;
-            let args = vec!["--sign-in".to_string()];
+            let args = CliAction::SignIn { chat: false }.args();
             self.launch_or_run(Duration::from_secs(300), &bin_str, &args)
                 .map_err(|e| ApplyError::Internal(format!("sign in failed: {e}")))?;
             changed.push("sign_in".to_string());
         }
         if u.sign_out {
-            let args = vec!["--sign-out".to_string()];
+            let args = CliAction::SignOut { chat: false }.args();
             (self.run)(Duration::from_secs(30), &bin_str, &args)
                 .map_err(|e| ApplyError::Internal(format!("sign out failed: {e}")))?;
             changed.push("sign_out".to_string());
@@ -1701,14 +1948,14 @@ impl HomeSpeaker {
                 )));
             }
             let _busy = self.acquire_sign_in_busy()?;
-            let args = vec!["--sign-in".to_string(), "--chat".to_string()];
+            let args = CliAction::SignIn { chat: true }.args();
             self.launch_or_run(Duration::from_secs(300), &bin_str, &args)
                 .map_err(|e| ApplyError::Internal(format!("grant chat failed: {e}")))?;
             changed.push("grant_chat".to_string());
         }
         if u.disconnect_chat {
             let _busy = self.acquire_sign_in_busy()?;
-            let args = vec!["--sign-out".to_string(), "--chat".to_string()];
+            let args = CliAction::SignOut { chat: true }.args();
             (self.run)(Duration::from_secs(30), &bin_str, &args)
                 .map_err(|e| ApplyError::Internal(format!("disconnect chat failed: {e}")))?;
             changed.push("disconnect_chat".to_string());
@@ -1724,33 +1971,33 @@ impl HomeSpeaker {
                 return Err(ApplyError::BadRequest("clipboard is empty".to_string()));
             }
             let run_say = self.say.as_ref().unwrap_or(&self.run);
-            let args = vec!["--say".to_string(), clip_text.trim().to_string()];
+            let args = CliAction::Say {
+                text: clip_text.trim().to_string(),
+                no_history: false,
+            }
+            .args();
             run_say(SAY_LIMIT, &bin_str, &args).map_err(ApplyError::Internal)?;
             changed.push("speak_clipboard".to_string());
         }
         if let Some(ref cma) = u.chat_monitor_action {
             let action = cma.trim().to_lowercase();
-            if action != "start" && action != "stop" {
-                return Err(ApplyError::BadRequest(
-                    "chat_monitor_action must be 'start' or 'stop'".to_string(),
-                ));
-            }
-            let args = vec!["--chat-monitor".to_string(), action.clone()];
+            let start = match action.as_str() {
+                "start" => true,
+                "stop" => false,
+                _ => {
+                    return Err(ApplyError::BadRequest(
+                        "chat_monitor_action must be 'start' or 'stop'".to_string(),
+                    ))
+                }
+            };
+            let args = CliAction::ChatMonitor { start }.args();
             (self.run)(Duration::from_secs(30), &bin_str, &args)
                 .map_err(|e| ApplyError::Internal(format!("chat monitor {action} failed: {e}")))?;
             changed.push(format!("chat_monitor_action={action}"));
         }
         if u.preview_voice {
-            let doc = self
-                .fetch_state_doc(&program, verified)
-                .map_err(ApplyError::Conflict)?;
-            let voice = doc
-                .as_object()
-                .map(|d| DocSettings::of(d).str("local_voice"))
-                .filter(|v| !v.trim().is_empty())
-                .unwrap_or_else(|| DEFAULT_LOCAL_VOICE.to_string());
-            self.say_preview_voice(&voice)?;
-            changed.push("preview_voice".to_string());
+            let label = self.run_helper_action(HelperAction::PreviewVoice, &program, verified)?;
+            changed.push(label.to_string());
         }
 
         if let Some(hook) = plan.hook {
@@ -2015,11 +2262,12 @@ impl HomeSpeaker {
 
         let run = self.say.as_ref().unwrap_or(&self.run);
         let bin_str = p.binary.to_string_lossy().into_owned();
-        let mut args = vec!["--say".to_string(), text];
-        if is_replay {
-            // A replay is not a new announcement: keep it out of the history.
-            args.push("--no-history".to_string());
+        // A replay is not a new announcement: keep it out of the history.
+        let args = CliAction::Say {
+            text,
+            no_history: is_replay,
         }
+        .args();
         let res = run(SAY_LIMIT, &bin_str, &args);
         let mut resp = JsonObject::new();
         match res {
@@ -2186,10 +2434,9 @@ impl HomeSpeaker {
                 if !(0..=100).contains(&p) {
                     return HttpResponse::error(400, "percent must be between 0 and 100");
                 }
-                vec!["--set-volume".to_string(), p.to_string()]
+                CliAction::SetVolume(p).args()
             }
-            (None, Some(true)) => vec!["--mute".to_string()],
-            (None, Some(false)) => vec!["--unmute".to_string()],
+            (None, Some(m)) => CliAction::Mute(m).args(),
         };
         log_act("homespeaker", &format!("volume {}", args.join(" ")));
         let v = self.run_volume(&args);
@@ -2391,6 +2638,8 @@ fn map_state_doc(
     st.installed = true;
     st.active_door = doc_str(d, "active_door");
     st.extension_installed = doc_bool(d, "extension_installed");
+    st.app_installed = d.get_opt_bool("app_installed");
+    st.owner_running = d.get_opt_bool("owner_running");
     st.app_running = match d.get("chosen").and_then(|v| v.as_str()) {
         Some(_) => doc_bool(d, "chosen_running"),
         None if program.door == "extension" => doc_bool(d, "extension_running"),
@@ -2469,9 +2718,14 @@ fn map_state_doc(
     st.structure_name = doc_str(d, "structure_name");
     if let Some(homes) = d.get("homes").and_then(|v| v.as_array()) {
         for h in homes.iter().filter_map(|h| h.as_object()) {
+            let id = doc_str(h, "id");
+            let selected = h
+                .get_opt_bool("selected")
+                .unwrap_or_else(|| !st.structure_id.is_empty() && id == st.structure_id);
             st.homes.push(HomeSpeakerHome {
-                id: doc_str(h, "id"),
+                id,
                 name: doc_str(h, "name"),
+                selected,
             });
         }
     }
@@ -2557,6 +2811,8 @@ fn map_state_doc(
                     hook_state: doc_str(h, "hook_state"),
                     speaks_twice: doc_bool(h, "speaks_twice"),
                     configured_by_instruction: doc_bool(h, "configured_by_instruction"),
+                    stale_command: h.get_opt_str("stale_command").filter(|s| !s.is_empty()),
+                    hook_program: h.get_opt_str("hook_program").filter(|s| !s.is_empty()),
                 });
             }
         }
@@ -2599,14 +2855,14 @@ pub struct OpPlan {
     pub switch: Option<JsonValue>,
 }
 
-fn op_object(name: &str) -> JsonObject {
+fn op_object(op: ApplyOp) -> JsonObject {
     let mut o = JsonObject::new();
-    o.insert("op", JsonValue::String(name.to_string()));
+    o.insert("op", JsonValue::String(op.as_str().to_string()));
     o
 }
 
 fn set_op(key: &str, value: JsonValue) -> JsonValue {
-    let mut o = op_object("set");
+    let mut o = op_object(ApplyOp::Set);
     o.insert("key", JsonValue::String(key.to_string()));
     o.insert("value", value);
     JsonValue::Object(o)
@@ -2615,7 +2871,7 @@ fn set_op(key: &str, value: JsonValue) -> JsonValue {
 /// An operation as a log line: its name and what it touches, never a value.
 fn op_summary(op: &JsonValue) -> String {
     let name = op.get_str("op");
-    let target = ["key", "name", "agent", "side", "app"]
+    let target = ["key", "name", "token", "agent", "side", "app"]
         .iter()
         .map(|k| op.get_str(k))
         .find(|s| !s.is_empty());
@@ -2646,7 +2902,7 @@ fn agent_hook_op(action: &str) -> Result<JsonValue, ApplyError> {
     };
     let norm = act.to_lowercase().replace('_', "-");
     if norm == "remove-legacy-agent" {
-        return Ok(JsonValue::Object(op_object("removeLegacyAgent")));
+        return Ok(JsonValue::Object(op_object(ApplyOp::RemoveLegacyAgent)));
     }
     if norm == "disable-rival" || norm == "disable-rival-hook" || norm.starts_with("disable-rival:")
     {
@@ -2655,7 +2911,7 @@ fn agent_hook_op(action: &str) -> Result<JsonValue, ApplyError> {
             Some((_, slug)) => agent_for_slug(slug).ok_or_else(unsupported)?,
             None => "claude_code",
         };
-        let mut o = op_object("agentHook");
+        let mut o = op_object(ApplyOp::AgentHook);
         o.insert("agent", JsonValue::String(agent.to_string()));
         o.insert("action", JsonValue::String("disableRival".to_string()));
         return Ok(JsonValue::Object(o));
@@ -2670,7 +2926,7 @@ fn agent_hook_op(action: &str) -> Result<JsonValue, ApplyError> {
         _ => return Err(unsupported()),
     };
     let agent = agent_for_slug(slug).ok_or_else(unsupported)?;
-    let mut o = op_object("agentHook");
+    let mut o = op_object(ApplyOp::AgentHook);
     o.insert("agent", JsonValue::String(agent.to_string()));
     o.insert("action", JsonValue::String(verb.to_string()));
     Ok(JsonValue::Object(o))
@@ -2679,18 +2935,32 @@ fn agent_hook_op(action: &str) -> Result<JsonValue, ApplyError> {
 /// Turns the phone's update into `--apply` operations. No checking of values here: Home
 /// Speaker's own rules are the one rule, and it answers a refusal.
 pub fn plan_ops(u: &HomeSpeakerUpdate) -> Result<OpPlan, ApplyError> {
-    plan_ops_with(u, None)
+    plan_ops_with(u, None, Some(MIN_DOOR_COPY_VERSION))
 }
 
-/// `plan_ops`, given the custom OAuth client id Home Speaker has now, for an update that
-/// carries a secret without an id (the phone does).
+/// `plan_ops`, given the custom OAuth client id Home Speaker has now (for an update that
+/// carries a secret without an id) and the active Home Speaker version (when gating `copy`).
 pub fn plan_ops_with(
     u: &HomeSpeakerUpdate,
     current_oauth_id: Option<&str>,
+    home_speaker_version: Option<&str>,
 ) -> Result<OpPlan, ApplyError> {
+    if u.copy.is_some() && u.active_door.is_none() {
+        return Err(ApplyError::BadRequest(
+            "copy requires active_door".to_string(),
+        ));
+    }
+    if u.copy == Some(true) {
+        let have = home_speaker_version.unwrap_or("");
+        if !supports_door_copy(have) {
+            return Err(ApplyError::Conflict(format!(
+                "copy requires Home Speaker {MIN_DOOR_COPY_VERSION} or newer"
+            )));
+        }
+    }
     let mut plain = Vec::new();
     if u.reset_settings {
-        plain.push(JsonValue::Object(op_object("reset")));
+        plain.push(JsonValue::Object(op_object(ApplyOp::Reset)));
     }
     // Secrets first, so a token and "turn Courier on" can travel in one update.
     if u.oauth_client_id.is_some() || u.oauth_client_secret.is_some() {
@@ -2703,7 +2973,7 @@ pub fn plan_ops_with(
                 ))
             }
         };
-        let mut o = op_object("saveOAuthClient");
+        let mut o = op_object(ApplyOp::SaveOAuthClient);
         o.insert("client_id", JsonValue::String(id.to_string()));
         if let Some(ref secret) = u.oauth_client_secret {
             o.insert("client_secret", JsonValue::String(secret.clone()));
@@ -2714,14 +2984,25 @@ pub fn plan_ops_with(
         ("slack", &u.slack_token),
         ("beeper", &u.beeper_token),
         ("courier", &u.courier_token),
-        ("geminiKey", &u.gemini_api_key),
     ] {
         if let Some(v) = value {
-            let mut o = op_object("setSecret");
-            o.insert("name", JsonValue::String(name.to_string()));
-            o.insert("value", JsonValue::String(v.clone()));
-            plain.push(JsonValue::Object(o));
+            if v.trim().is_empty() {
+                let mut o = op_object(ApplyOp::ClearChatToken);
+                o.insert("token", JsonValue::String(name.to_string()));
+                plain.push(JsonValue::Object(o));
+            } else {
+                let mut o = op_object(ApplyOp::SetSecret);
+                o.insert("name", JsonValue::String(name.to_string()));
+                o.insert("value", JsonValue::String(v.clone()));
+                plain.push(JsonValue::Object(o));
+            }
         }
+    }
+    if let Some(ref v) = u.gemini_api_key {
+        let mut o = op_object(ApplyOp::SetSecret);
+        o.insert("name", JsonValue::String("geminiKey".to_string()));
+        o.insert("value", JsonValue::String(v.clone()));
+        plain.push(JsonValue::Object(o));
     }
 
     let bools = [
@@ -2782,24 +3063,27 @@ pub fn plan_ops_with(
     if let Some(n) = u.poll_interval {
         plain.push(set_op("poll_interval_seconds", JsonValue::from_i64(n)));
     }
+    for (key, value) in &u.settings {
+        plain.push(set_op(key, value.clone()));
+    }
 
     if let Some(ref key) = u.default_target {
-        let mut o = op_object("setDefaultSpeaker");
+        let mut o = op_object(ApplyOp::SetDefaultSpeaker);
         o.insert("key", JsonValue::String(key.clone()));
         plain.push(JsonValue::Object(o));
     }
     if let Some(ref key) = u.remove_target {
-        let mut o = op_object("removeSpeaker");
+        let mut o = op_object(ApplyOp::RemoveSpeaker);
         o.insert("key", JsonValue::String(key.clone()));
         plain.push(JsonValue::Object(o));
     }
 
     if let Some(minutes) = u.snooze_minutes {
-        let mut o = op_object("snooze");
+        let mut o = op_object(ApplyOp::Snooze);
         o.insert("minutes", JsonValue::from_i64(minutes));
         plain.push(JsonValue::Object(o));
     } else if let Some(ref until) = u.snooze_until {
-        let mut o = op_object("snooze");
+        let mut o = op_object(ApplyOp::Snooze);
         if until.trim().is_empty() {
             o.insert("clear", JsonValue::Bool(true));
         } else {
@@ -2821,7 +3105,7 @@ pub fn plan_ops_with(
         ("courier", &u.courier_network),
     ] {
         if let Some(n) = update {
-            let mut o = op_object("setNetwork");
+            let mut o = op_object(ApplyOp::SetNetwork);
             o.insert("app", JsonValue::String(app.to_string()));
             o.insert("key", JsonValue::String(n.key.clone()));
             o.insert("reading", JsonValue::Bool(n.reading));
@@ -2829,13 +3113,13 @@ pub fn plan_ops_with(
         }
     }
     if let Some(ref ra) = u.courier_read_anyway {
-        let mut o = op_object("setReadAnyway");
+        let mut o = op_object(ApplyOp::SetReadAnyway);
         o.insert("key", JsonValue::String(ra.key.clone()));
         o.insert("on", JsonValue::Bool(ra.on));
         plain.push(JsonValue::Object(o));
     }
     if u.import_antigravity {
-        plain.push(JsonValue::Object(op_object("importAntigravity")));
+        plain.push(JsonValue::Object(op_object(ApplyOp::ImportAntigravity)));
     }
 
     let hook = match u.agent_hook_action {
@@ -2843,8 +3127,11 @@ pub fn plan_ops_with(
         None => None,
     };
     let switch = u.active_door.as_ref().map(|door| {
-        let mut o = op_object("switchTo");
+        let mut o = op_object(ApplyOp::SwitchTo);
         o.insert("side", JsonValue::String(door.trim().to_lowercase()));
+        if u.copy == Some(true) {
+            o.insert("copy", JsonValue::Bool(true));
+        }
         JsonValue::Object(o)
     });
     Ok(OpPlan {
@@ -3047,7 +3334,7 @@ mod tests {
         // Home, quiet hours, snooze.
         assert_eq!(b.get_str("structure_name"), "Home");
         assert_eq!(b.get_str("structure_id"), "home-structure-1");
-        assert_eq!(b.get_array("homes").unwrap().len(), 1);
+        assert_eq!(b.get_array("homes").unwrap().len(), 2);
         assert_eq!(
             b.get_array("homes").unwrap()[0].get_str("id"),
             "home-structure-1"
@@ -3264,7 +3551,72 @@ mod tests {
 
     #[test]
     fn test_every_catalog_setting_maps_to_a_set_op_with_the_catalog_key() {
-        let bools = [
+        let doc = JsonValue::parse(&golden_state()).unwrap();
+        let catalog = doc
+            .get_array("settings")
+            .expect("golden state_v1.json must contain settings[]");
+        assert!(!catalog.is_empty());
+
+        let (h, _d, calls) = relay_speaker("generic_catalog", state_and_apply(golden_state()));
+        let phone = PhoneBridge::new();
+        for entry in catalog {
+            let key = entry.get_str("key");
+            assert!(!key.is_empty(), "catalog entry missing key: {entry:?}");
+            let sample = match entry.get_str("kind") {
+                "toggle" => JsonValue::Bool(true),
+                "number" => {
+                    let min = entry.get("limits").map(|l| l.get_i64("min")).unwrap_or(1);
+                    JsonValue::from_i64(min)
+                }
+                "choice" | "time" => entry
+                    .get_array("choices")
+                    .and_then(|c| c.first())
+                    .map(|c| JsonValue::String(c.get_str("value").to_string()))
+                    .unwrap_or_else(|| JsonValue::String("x".to_string())),
+                "text" => JsonValue::String("sample".to_string()),
+                other => panic!("unexpected catalog kind {other:?} for {key}"),
+            };
+            calls.lock().unwrap().clear();
+            let mut settings_obj = JsonObject::new();
+            settings_obj.insert(key, sample.clone());
+            let mut req_obj = JsonObject::new();
+            req_obj.insert("settings", JsonValue::Object(settings_obj));
+            let body = JsonValue::Object(req_obj).to_json_string();
+
+            let resp = h.handle_set(&post_req("/v1/homespeaker", &body), &phone);
+            assert_eq!(
+                resp.status,
+                200,
+                "generic settings update failed for {key}: {}",
+                resp.body_string()
+            );
+            let sent = applies(&calls);
+            assert_eq!(sent.len(), 1, "expected exactly one --apply for {key}");
+            let want_op = set_op(key, sample).to_json_string();
+            assert_eq!(
+                sent[0],
+                format!(r#"{{"contract_version":1,"operations":[{want_op}]}}"#),
+                "generic set op mismatch for {key}"
+            );
+        }
+
+        // Unknown catalog keys are rejected with 400 and never forwarded to --apply.
+        calls.lock().unwrap().clear();
+        let bad = h.handle_set(
+            &post_req(
+                "/v1/homespeaker",
+                r#"{"settings":{"not_a_catalog_key":true}}"#,
+            ),
+            &phone,
+        );
+        assert_eq!(bad.status, 400, "{}", bad.body_string());
+        assert!(bad.body_string().contains("not_a_catalog_key"));
+        assert!(applies(&calls).is_empty());
+    }
+
+    #[test]
+    fn test_legacy_per_field_updates_continue_to_work() {
+        for key in [
             "enabled",
             "quiet_hours_enabled",
             "pause_media",
@@ -3283,15 +3635,14 @@ mod tests {
             "beeper_enabled",
             "courier_enabled",
             "mute_own_messages",
-        ];
-        for key in bools {
+        ] {
             assert_eq!(
                 plain_json(&format!("{{\"{key}\":true}}")),
                 format!("[{{\"op\":\"set\",\"key\":\"{key}\",\"value\":true}}]"),
                 "{key}"
             );
         }
-        let strings = [
+        for key in [
             "speech_length",
             "quiet_hours_start",
             "quiet_hours_end",
@@ -3306,15 +3657,13 @@ mod tests {
             "announce_source",
             "beeper_announce",
             "courier_announce",
-        ];
-        for key in strings {
+        ] {
             assert_eq!(
                 plain_json(&format!("{{\"{key}\":\"x\"}}")),
                 format!("[{{\"op\":\"set\",\"key\":\"{key}\",\"value\":\"x\"}}]"),
                 "{key}"
             );
         }
-        // The phone's name differs from the catalog key for the poll interval.
         assert_eq!(
             plain_json(r#"{"poll_interval":45}"#),
             r#"[{"op":"set","key":"poll_interval_seconds","value":45}]"#
@@ -3327,6 +3676,569 @@ mod tests {
             plain_json(r#"{"pause_media_extra_seconds":2.5}"#),
             r#"[{"op":"set","key":"pause_media_extra_seconds","value":3}]"#
         );
+    }
+
+    #[test]
+    fn test_passthrough_homes_selected_stale_hook_owner_running_and_door_copy() {
+        let state = golden_state().replace(
+            r#""opencode": {
+      "agent": "opencode",
+      "configured_by_instruction": false,
+      "display_name": "OpenCode",
+      "hook_program": null,
+      "hook_state": "not_installed",
+      "is_installed": false,
+      "speaks_twice": false,
+      "speaks_twice_warning": null,
+      "stale_command": null
+    }"#,
+            r#""opencode": {
+      "agent": "opencode",
+      "configured_by_instruction": false,
+      "display_name": "OpenCode",
+      "hook_program": "/Users/j/.Trash/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
+      "hook_state": "stale",
+      "is_installed": false,
+      "speaks_twice": false,
+      "speaks_twice_warning": null,
+      "stale_command": "/Users/j/.Trash/HomeSpeaker.app/Contents/MacOS/HomeSpeaker --hook opencode"
+    }"#,
+        );
+        let (h, _d, calls) = relay_speaker("passthrough_parity", state_and_apply(state));
+        let phone = PhoneBridge::new();
+        let b = body_of(&h.handle_get(&phone));
+        assert_eq!(b.get_opt_bool("app_installed"), Some(true));
+        assert_eq!(b.get_opt_bool("owner_running"), Some(true));
+
+        let homes = b.get_array("homes").unwrap();
+        assert_eq!(homes.len(), 2);
+        assert_eq!(homes[0].get_str("id"), "home-structure-1");
+        assert_eq!(homes[0].get_str("name"), "Home");
+        assert!(homes[0].get_bool("selected"));
+        assert_eq!(homes[1].get_str("id"), "home-structure-2");
+        assert_eq!(homes[1].get_str("name"), "Lake Cabin");
+        assert!(!homes[1].get_bool("selected"));
+
+        let agents = b.get_array("agents").unwrap();
+        let claude = agents
+            .iter()
+            .find(|a| a.get_str("agent_slug") == "claude-code")
+            .unwrap();
+        assert_eq!(
+            claude.get_str("hook_program"),
+            "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
+        );
+        assert!(claude.get("stale_command").unwrap().is_null());
+        let opencode = agents
+            .iter()
+            .find(|a| a.get_str("agent_slug") == "opencode")
+            .unwrap();
+        assert_eq!(opencode.get_str("hook_state"), "stale");
+        assert_eq!(
+            opencode.get_str("hook_program"),
+            "/Users/j/.Trash/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
+        );
+        assert_eq!(
+            opencode.get_str("stale_command"),
+            "/Users/j/.Trash/HomeSpeaker.app/Contents/MacOS/HomeSpeaker --hook opencode"
+        );
+
+        // Door switch with copy: true emits "copy": true on switchTo.
+        calls.lock().unwrap().clear();
+        let sw = h.handle_set(
+            &post_req(
+                "/v1/homespeaker",
+                r#"{"active_door":"extension","copy":true}"#,
+            ),
+            &phone,
+        );
+        assert_eq!(sw.status, 200, "{}", sw.body_string());
+        assert_eq!(
+            applies(&calls),
+            vec![
+                r#"{"contract_version":1,"operations":[{"op":"switchTo","side":"extension","copy":true}]}"#
+            ]
+        );
+        assert!(matches!(
+            plan_for(r#"{"copy":true}"#),
+            Err(ApplyError::BadRequest(_))
+        ));
+
+        // Clearing chat tokens maps to clearChatToken.
+        assert_eq!(
+            plain_json(r#"{"slack_token":"","beeper_token":"","courier_token":""}"#),
+            r#"[{"op":"clearChatToken","token":"slack"},{"op":"clearChatToken","token":"beeper"},{"op":"clearChatToken","token":"courier"}]"#
+        );
+
+        // Choosing a home accepts home_id as well as structure_id.
+        let (h_flags, _d2, flag_calls) =
+            relay_speaker("home_id_flag", |_n, _a| Ok((String::new(), String::new())));
+        let _ = h_flags.handle_set(
+            &post_req("/v1/homespeaker", r#"{"home_id":"home-structure-2"}"#),
+            &phone,
+        );
+        assert_eq!(
+            flag_calls.lock().unwrap().first(),
+            Some(&vec![
+                "--discover".to_string(),
+                "--save".to_string(),
+                "--home".to_string(),
+                "home-structure-2".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn test_controls_manifest_every_supported_entry_dispatches_real_op_or_cli_flag() {
+        enum ManifestEndpoint {
+            Set(&'static str),
+            Say(&'static str),
+            Volume(&'static str),
+        }
+
+        enum ExpectedDispatch {
+            Apply {
+                op: &'static str,
+                must_contain: &'static str,
+            },
+            Cli(&'static [&'static str]),
+            HelperSay(&'static [&'static str]),
+        }
+
+        let cases: &[(&str, ManifestEndpoint, ExpectedDispatch)] = &[
+            (
+                "catalog-setting",
+                ManifestEndpoint::Set(r#"{"settings":{"speech_length":"headline"}}"#),
+                ExpectedDispatch::Apply {
+                    op: "set",
+                    must_contain: r#""key":"speech_length""#,
+                },
+            ),
+            (
+                "say",
+                ManifestEndpoint::Say(r#"{"text":"hello"}"#),
+                ExpectedDispatch::Cli(&["--say", "hello"]),
+            ),
+            (
+                "speak-clipboard",
+                ManifestEndpoint::Set(r#"{"speak_clipboard":true}"#),
+                ExpectedDispatch::Cli(&["--say", "clipboard announcement text"]),
+            ),
+            (
+                "snooze",
+                ManifestEndpoint::Set(r#"{"snooze_minutes":30}"#),
+                ExpectedDispatch::Apply {
+                    op: "snooze",
+                    must_contain: r#""minutes":30"#,
+                },
+            ),
+            (
+                "mute",
+                ManifestEndpoint::Volume(r#"{"muted":true}"#),
+                ExpectedDispatch::Cli(&["--mute"]),
+            ),
+            (
+                "volume",
+                ManifestEndpoint::Volume(r#"{"percent":50}"#),
+                ExpectedDispatch::Cli(&["--set-volume", "50"]),
+            ),
+            (
+                "sign-in",
+                ManifestEndpoint::Set(r#"{"sign_in":true}"#),
+                ExpectedDispatch::Cli(&["--sign-in"]),
+            ),
+            (
+                "sign-out",
+                ManifestEndpoint::Set(r#"{"sign_out":true}"#),
+                ExpectedDispatch::Cli(&["--sign-out"]),
+            ),
+            (
+                "import-antigravity",
+                ManifestEndpoint::Set(r#"{"import_antigravity":true}"#),
+                ExpectedDispatch::Apply {
+                    op: "importAntigravity",
+                    must_contain: r#""op":"importAntigravity""#,
+                },
+            ),
+            (
+                "find-speakers",
+                ManifestEndpoint::Set(r#"{"discover":true}"#),
+                ExpectedDispatch::Cli(&["--discover", "--save"]),
+            ),
+            (
+                "choose-home",
+                ManifestEndpoint::Set(r#"{"structure_id":"home-structure-2"}"#),
+                ExpectedDispatch::Cli(&["--discover", "--save", "--home", "home-structure-2"]),
+            ),
+            (
+                "save-gemini-key",
+                ManifestEndpoint::Set(r#"{"gemini_api_key":"AIza-test"}"#),
+                ExpectedDispatch::Apply {
+                    op: "setSecret",
+                    must_contain: r#""value":"AIza-test""#,
+                },
+            ),
+            (
+                "clear-gemini-key",
+                ManifestEndpoint::Set(r#"{"gemini_api_key":""}"#),
+                ExpectedDispatch::Apply {
+                    op: "setSecret",
+                    must_contain: r#""value":"""#,
+                },
+            ),
+            (
+                "save-slack-token",
+                ManifestEndpoint::Set(r#"{"slack_token":"xoxp-1"}"#),
+                ExpectedDispatch::Apply {
+                    op: "setSecret",
+                    must_contain: r#""name":"slack""#,
+                },
+            ),
+            (
+                "clear-slack-token",
+                ManifestEndpoint::Set(r#"{"slack_token":""}"#),
+                ExpectedDispatch::Apply {
+                    op: "clearChatToken",
+                    must_contain: r#""token":"slack""#,
+                },
+            ),
+            (
+                "save-beeper-token",
+                ManifestEndpoint::Set(r#"{"beeper_token":"bp-1"}"#),
+                ExpectedDispatch::Apply {
+                    op: "setSecret",
+                    must_contain: r#""name":"beeper""#,
+                },
+            ),
+            (
+                "clear-beeper-token",
+                ManifestEndpoint::Set(r#"{"beeper_token":""}"#),
+                ExpectedDispatch::Apply {
+                    op: "clearChatToken",
+                    must_contain: r#""token":"beeper""#,
+                },
+            ),
+            (
+                "save-courier-token",
+                ManifestEndpoint::Set(r#"{"courier_token":"cr-1"}"#),
+                ExpectedDispatch::Apply {
+                    op: "setSecret",
+                    must_contain: r#""name":"courier""#,
+                },
+            ),
+            (
+                "clear-courier-token",
+                ManifestEndpoint::Set(r#"{"courier_token":""}"#),
+                ExpectedDispatch::Apply {
+                    op: "clearChatToken",
+                    must_contain: r#""token":"courier""#,
+                },
+            ),
+            (
+                "grant-google-chat",
+                ManifestEndpoint::Set(r#"{"grant_chat":true}"#),
+                ExpectedDispatch::Cli(&["--sign-in", "--chat"]),
+            ),
+            (
+                "disconnect-google-chat",
+                ManifestEndpoint::Set(r#"{"disconnect_chat":true}"#),
+                ExpectedDispatch::Cli(&["--sign-out", "--chat"]),
+            ),
+            (
+                "beeper-network",
+                ManifestEndpoint::Set(r#"{"beeper_network":{"key":"signal","reading":false}}"#),
+                ExpectedDispatch::Apply {
+                    op: "setNetwork",
+                    must_contain: r#""app":"beeper""#,
+                },
+            ),
+            (
+                "courier-network",
+                ManifestEndpoint::Set(r#"{"courier_network":{"key":"imessage","reading":true}}"#),
+                ExpectedDispatch::Apply {
+                    op: "setNetwork",
+                    must_contain: r#""app":"courier""#,
+                },
+            ),
+            (
+                "courier-read-anyway",
+                ManifestEndpoint::Set(r#"{"courier_read_anyway":{"key":"slack","on":true}}"#),
+                ExpectedDispatch::Apply {
+                    op: "setReadAnyway",
+                    must_contain: r#""key":"slack""#,
+                },
+            ),
+            (
+                "start-chat-monitor",
+                ManifestEndpoint::Set(r#"{"chat_monitor_action":"start"}"#),
+                ExpectedDispatch::Cli(&["--chat-monitor", "start"]),
+            ),
+            (
+                "stop-chat-monitor",
+                ManifestEndpoint::Set(r#"{"chat_monitor_action":"stop"}"#),
+                ExpectedDispatch::Cli(&["--chat-monitor", "stop"]),
+            ),
+            (
+                "replay",
+                ManifestEndpoint::Say(r#"{"text":"hello","replay":true}"#),
+                ExpectedDispatch::Cli(&["--say", "hello", "--no-history"]),
+            ),
+            (
+                "test-media-pause",
+                ManifestEndpoint::Set(r#"{"test_media_pause":true}"#),
+                ExpectedDispatch::Cli(&["--test-media-pause"]),
+            ),
+            (
+                "voice-preview",
+                ManifestEndpoint::Set(r#"{"preview_voice":true}"#),
+                ExpectedDispatch::HelperSay(&[
+                    "say",
+                    "-v",
+                    "Ava",
+                    "This is how announcements will sound.",
+                ]),
+            ),
+            (
+                "set-default-speaker",
+                ManifestEndpoint::Set(r#"{"default_target":"kitchen"}"#),
+                ExpectedDispatch::Apply {
+                    op: "setDefaultSpeaker",
+                    must_contain: r#""key":"kitchen""#,
+                },
+            ),
+            (
+                "remove-speaker",
+                ManifestEndpoint::Set(r#"{"remove_target":"bedroom"}"#),
+                ExpectedDispatch::Apply {
+                    op: "removeSpeaker",
+                    must_contain: r#""key":"bedroom""#,
+                },
+            ),
+            (
+                "hook-install",
+                ManifestEndpoint::Set(r#"{"agent_hook_action":"install:claude-code"}"#),
+                ExpectedDispatch::Apply {
+                    op: "agentHook",
+                    must_contain: r#""action":"install""#,
+                },
+            ),
+            (
+                "hook-update",
+                ManifestEndpoint::Set(r#"{"agent_hook_action":"install:opencode"}"#),
+                ExpectedDispatch::Apply {
+                    op: "agentHook",
+                    must_contain: r#""agent":"opencode""#,
+                },
+            ),
+            (
+                "hook-remove",
+                ManifestEndpoint::Set(r#"{"agent_hook_action":"remove:claude-code"}"#),
+                ExpectedDispatch::Apply {
+                    op: "agentHook",
+                    must_contain: r#""action":"remove""#,
+                },
+            ),
+            (
+                "hook-add-instruction",
+                ManifestEndpoint::Set(r#"{"agent_hook_action":"add-instruction:antigravity"}"#),
+                ExpectedDispatch::Apply {
+                    op: "agentHook",
+                    must_contain: r#""action":"addInstruction""#,
+                },
+            ),
+            (
+                "hook-turn-off-rival",
+                ManifestEndpoint::Set(r#"{"agent_hook_action":"disable-rival:claude-code"}"#),
+                ExpectedDispatch::Apply {
+                    op: "agentHook",
+                    must_contain: r#""action":"disableRival""#,
+                },
+            ),
+            (
+                "remove-legacy-agent",
+                ManifestEndpoint::Set(r#"{"agent_hook_action":"remove-legacy-agent"}"#),
+                ExpectedDispatch::Apply {
+                    op: "removeLegacyAgent",
+                    must_contain: r#""op":"removeLegacyAgent""#,
+                },
+            ),
+            (
+                "save-oauth-client",
+                ManifestEndpoint::Set(r#"{"oauth_client_id":"cid","oauth_client_secret":"sec"}"#),
+                ExpectedDispatch::Apply {
+                    op: "saveOAuthClient",
+                    must_contain: r#""client_id":"cid""#,
+                },
+            ),
+            (
+                "clear-oauth-client",
+                ManifestEndpoint::Set(r#"{"oauth_client_id":""}"#),
+                ExpectedDispatch::Apply {
+                    op: "saveOAuthClient",
+                    must_contain: r#""client_id":"""#,
+                },
+            ),
+            (
+                "door-switch",
+                ManifestEndpoint::Set(r#"{"active_door":"extension"}"#),
+                ExpectedDispatch::Apply {
+                    op: "switchTo",
+                    must_contain: r#""side":"extension""#,
+                },
+            ),
+            (
+                "door-copy-settings",
+                ManifestEndpoint::Set(r#"{"active_door":"extension","copy":true}"#),
+                ExpectedDispatch::Apply {
+                    op: "switchTo",
+                    must_contain: r#""copy":true"#,
+                },
+            ),
+            (
+                "reset",
+                ManifestEndpoint::Set(r#"{"reset_settings":true}"#),
+                ExpectedDispatch::Apply {
+                    op: "reset",
+                    must_contain: r#""op":"reset""#,
+                },
+            ),
+        ];
+
+        let raw = fs::read_to_string("apps/desktop/home-speaker/testdata/controls.json")
+            .expect("controls.json must be in macagent_test data");
+        let manifest = JsonValue::parse(&raw).expect("controls.json must parse as JSON");
+        let entries = manifest
+            .as_array()
+            .expect("controls.json must be a JSON array");
+        assert!(!entries.is_empty());
+
+        let state = golden_state();
+        let (h, _dir, calls) = relay_speaker(
+            "manifest_real_dispatch",
+            move |name: &str, args: &[String]| {
+                if name == "say" {
+                    return Ok((String::new(), String::new()));
+                }
+                match args {
+                [f] if f == "--version" => Ok(("HomeSpeaker 1.41.0\n".to_string(), String::new())),
+                [a, b] if a == "--state" && b == "--json" => Ok((state.clone(), String::new())),
+                [a, b, _] if a == "--apply" && b == "--json" => {
+                    Ok((format!(r#"{{"ok":true,"results":[],"state":{state}}}"#), String::new()))
+                }
+                [f] if f == "--mute" || f == "--unmute" => Ok((
+                    r#"{"available":true,"online":true,"percent":50,"muted":true,"speaker":"Office Mini"}"#
+                        .to_string(),
+                    String::new(),
+                )),
+                [a, _] if a == "--set-volume" => Ok((
+                    r#"{"available":true,"online":true,"percent":50,"muted":false,"speaker":"Office Mini"}"#
+                        .to_string(),
+                    String::new(),
+                )),
+                _ => Ok((String::new(), String::new())),
+            }
+            },
+        );
+        let phone = PhoneBridge::new();
+
+        let mut supported_ids = Vec::new();
+        for item in entries {
+            let id = item.get_str("id");
+            let via = item.get_str("via");
+            let phone_status = item.get_str("phone");
+            assert!(!id.is_empty() && !via.is_empty(), "bad entry: {item:?}");
+            if phone_status != "supported" {
+                continue;
+            }
+            supported_ids.push(id.to_string());
+            let (_, endpoint, expected) = cases
+                .iter()
+                .find(|(cid, _, _)| *cid == id)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "supported control {id:?} (via {via:?}) has no phone request in test map"
+                    )
+                });
+
+            calls.lock().unwrap().clear();
+            let resp = match endpoint {
+                ManifestEndpoint::Set(body) => {
+                    // Also check pure planner directly for `--apply` ops so planner output is verified directly.
+                    let update = HomeSpeakerUpdate::from_json(&JsonValue::parse(body).unwrap())
+                        .unwrap_or_else(|e| panic!("invalid HomeSpeakerUpdate for {id}: {e}"));
+                    if let ExpectedDispatch::Apply { op, must_contain } = expected {
+                        let plan = plan_ops_with(&update, None, Some(MIN_HOME_SPEAKER_VERSION))
+                            .unwrap_or_else(|e| {
+                                panic!("plan_ops_with failed for {id}: {}", e.message())
+                            });
+                        let all_ops: Vec<&JsonValue> = plan
+                            .plain
+                            .iter()
+                            .chain(plan.hook.iter())
+                            .chain(plan.switch.iter())
+                            .collect();
+                        assert!(
+                            all_ops.iter().any(|o| o.get_str("op") == *op
+                                && o.to_json_string().contains(must_contain)),
+                            "plan_ops_with for {id} (via {via}) did not produce op={op:?} with {must_contain}: got {all_ops:?}"
+                        );
+                    }
+                    h.handle_set(&post_req("/v1/homespeaker", body), &phone)
+                }
+                ManifestEndpoint::Say(body) => h.handle_say(&post_req("/v1/homespeaker/say", body)),
+                ManifestEndpoint::Volume(body) => {
+                    h.handle_set_volume(&post_req("/v1/homespeaker/volume", body))
+                }
+            };
+            assert_eq!(
+                resp.status,
+                200,
+                "control {id} failed HTTP dispatch: {}",
+                resp.body_string()
+            );
+
+            let recorded = calls.lock().unwrap().clone();
+            match expected {
+                ExpectedDispatch::Apply { op, must_contain } => {
+                    assert_eq!(
+                        *op, via,
+                        "test map op for {id} must match controls.json via"
+                    );
+                    let batches = applies(&calls);
+                    assert!(
+                        batches
+                            .iter()
+                            .any(|b| b.contains(&format!(r#""op":"{op}""#)) && b.contains(must_contain)),
+                        "control {id} did not emit --apply op {op:?} containing {must_contain}; batches={batches:?}"
+                    );
+                }
+                ExpectedDispatch::Cli(expected_args) => {
+                    let expected_vec: Vec<String> =
+                        expected_args.iter().map(|s| (*s).to_string()).collect();
+                    assert!(
+                        recorded.contains(&expected_vec),
+                        "control {id} (via {via}) did not invoke CLI {expected_vec:?}; calls={recorded:?}"
+                    );
+                }
+                ExpectedDispatch::HelperSay(expected_cmd) => {
+                    assert_eq!(via, "helper:preview-voice");
+                    let expected_vec: Vec<String> =
+                        expected_cmd.iter().map(|s| (*s).to_string()).collect();
+                    assert!(
+                        recorded.contains(&expected_vec),
+                        "control {id} did not invoke helper command {expected_vec:?}; calls={recorded:?}"
+                    );
+                }
+            }
+        }
+
+        assert!(!supported_ids.is_empty());
+        for (cid, _, _) in cases {
+            assert!(
+                supported_ids.iter().any(|s| s == cid),
+                "stale test map entry {cid:?} is not a supported control in controls.json"
+            );
+        }
     }
 
     #[test]
@@ -4635,20 +5547,49 @@ mod tests {
         assert_eq!(resp.status, 200, "{}", resp.body_string());
         let b = body_of(&resp);
         assert_eq!(b.get_array("settings").unwrap().len(), 39);
+        assert!(b.get_bool("generic_settings"));
         assert_eq!(
             b.get_str("outputs_label"),
             "Office Mini + This Mac + Your phone"
         );
         assert!(!b.get_str("outputs_footer").is_empty());
 
-        // If a `--state` document carries `"settings": []`, the helper omits `settings` so the
-        // phone treats the catalog as absent rather than rendering empty choices.
+        // If a `--state` document carries `"settings": []`, the helper omits `settings` and
+        // `generic_settings` so the phone treats the catalog as absent rather than rendering empty choices.
         let empty_doc = r#"{"contract_version":1,"config_initialized":true,"program":{"version":"1.41.0","door":"app","active_door":"app","extension_installed":false},"settings":[],"speakers":[],"available_voices":[],"homes":[],"recent":[],"warnings":[]}"#;
         let mapped = JsonValue::parse(&state_from_doc_json(empty_doc).unwrap()).unwrap();
         assert!(mapped.get("available").unwrap().as_bool().unwrap());
         assert!(mapped.get("settings").is_none());
+        assert!(mapped.get("generic_settings").is_none());
         assert!(mapped.get("outputs_label").is_none());
         assert!(mapped.get("outputs_footer").is_none());
+
+        let uninit_doc = r#"{"contract_version":1,"config_initialized":false,"config_problem":"Not configured","settings":[{"key":"enabled","kind":"toggle","label":"Enabled","value":true,"shown":true}]}"#;
+        let uninit_mapped = JsonValue::parse(&state_from_doc_json(uninit_doc).unwrap()).unwrap();
+        assert!(uninit_mapped.get("generic_settings").is_none());
+    }
+
+    #[test]
+    fn test_door_copy_is_gated_on_its_own_homespeaker_version() {
+        assert!(supports_door_copy("1.41.0"));
+        assert!(supports_door_copy("1.42.0"));
+        assert!(!supports_door_copy("1.40.9"));
+        assert!(!supports_door_copy(""));
+
+        let u = HomeSpeakerUpdate::from_json(
+            &JsonValue::parse(r#"{"active_door":"extension","copy":true}"#).unwrap(),
+        )
+        .unwrap();
+        let err_old = plan_ops_with(&u, None, Some("1.40.9")).unwrap_err();
+        assert!(err_old.message().contains(MIN_DOOR_COPY_VERSION));
+        let err_none = plan_ops_with(&u, None, None).unwrap_err();
+        assert!(err_none.message().contains(MIN_DOOR_COPY_VERSION));
+        let ok = plan_ops_with(&u, None, Some("1.41.0")).unwrap();
+        assert!(ok
+            .switch
+            .unwrap()
+            .to_json_string()
+            .contains(r#""copy":true"#));
     }
 
     // ---- The helper no longer reads or writes Home Speaker's files. ----

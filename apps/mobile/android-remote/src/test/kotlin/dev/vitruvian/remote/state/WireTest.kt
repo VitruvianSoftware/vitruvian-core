@@ -913,4 +913,104 @@ public class WireTest {
     assertEquals(listOf(HomeSpeakerChoice("soft", "soft")), curve.choices)
     assertNull(curve.limits)
   }
+
+  @Test
+  public fun `homespeaker parses homes selected stale hook fields appInstalled and ownerRunning and degrades quietly on older payloads`() {
+    val golden =
+        HomeSpeakerWire.sources(
+            readRunfile("apps/mobile/android-remote/macagent/golden_homespeaker_v1.json"))
+    assertEquals(true, golden.appInstalled)
+    assertEquals(true, golden.ownerRunning)
+    assertEquals(
+        listOf(
+            AgentHome("home-structure-1", "Home", selected = true),
+            AgentHome("home-structure-2", "Lake Cabin", selected = false),
+        ),
+        golden.homes,
+    )
+    val claude = golden.agents.single { it.canonicalSlug == "claude-code" }
+    assertEquals("installed", claude.hookState)
+    assertNull(claude.staleCommand)
+    assertEquals(
+        "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
+        claude.hookProgram,
+    )
+
+    val stalePayload =
+        HomeSpeakerWire.sources(
+            """
+            {
+              "app_installed": false,
+              "owner_running": false,
+              "agents": [
+                {
+                  "agent": "Antigravity",
+                  "agent_slug": "antigravity",
+                  "hook_state": "stale",
+                  "stale_command": "'/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker' --antigravity-hook",
+                  "hook_program": "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
+                }
+              ]
+            }
+            """
+                .trimIndent())
+    assertEquals(false, stalePayload.appInstalled)
+    assertEquals(false, stalePayload.ownerRunning)
+    val staleAgent = stalePayload.agents.single()
+    assertEquals("stale", staleAgent.hookState)
+    assertEquals(
+        "'/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker' --antigravity-hook",
+        staleAgent.staleCommand,
+    )
+    assertEquals(
+        "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
+        staleAgent.hookProgram,
+    )
+
+    val older =
+        HomeSpeakerWire.sources("""{"available":true,"homes":[{"id":"h1","name":"Home"}]}""")
+    assertNull(older.appInstalled)
+    assertNull(older.ownerRunning)
+    assertFalse(older.genericSettings)
+    assertEquals(listOf(AgentHome("h1", "Home", selected = false)), older.homes)
+  }
+
+  @Test
+  public fun `encodeUpdateBody serialises generic settings toggle number and text values`() {
+    val body =
+        HomeSpeakerWire.encodeUpdateBody(
+            settings =
+                linkedMapOf(
+                    "future_toggle" to true,
+                    "future_int" to 65,
+                    "future_decimal" to 1.5,
+                    "future_text" to "http://127.0.0.1:23373/\"api\"",
+                ))
+    assertEquals(
+        """{"settings":{"future_toggle":true,"future_int":65,"future_decimal":1.5,"future_text":"http://127.0.0.1:23373/\"api\""}}""",
+        body,
+    )
+    val parsed = JsonReader(body).readValue() as Map<*, *>
+    val settings = parsed["settings"] as Map<*, *>
+    assertEquals(true, settings["future_toggle"])
+    assertEquals(65.0, settings["future_int"])
+    assertEquals(1.5, settings["future_decimal"])
+    assertEquals("http://127.0.0.1:23373/\"api\"", settings["future_text"])
+  }
+
+  @Test
+  public fun `encodeUpdateBody serialises stale hook remove request body`() {
+    val body = HomeSpeakerWire.encodeUpdateBody(agentHookAction = "remove:claude-code")
+    assertEquals("""{"agent_hook_action":"remove:claude-code"}""", body)
+    val parsed = JsonReader(body).readValue() as Map<*, *>
+    assertEquals(mapOf("agent_hook_action" to "remove:claude-code"), parsed)
+  }
+
+  @Test
+  public fun `encodeUpdateBody serialises door switch with copy true`() {
+    val body = HomeSpeakerWire.encodeUpdateBody(activeDoor = "extension", copy = true)
+    assertEquals("""{"active_door":"extension","copy":true}""", body)
+    val parsed = JsonReader(body).readValue() as Map<*, *>
+    assertEquals(mapOf("active_door" to "extension", "copy" to true), parsed)
+  }
 }

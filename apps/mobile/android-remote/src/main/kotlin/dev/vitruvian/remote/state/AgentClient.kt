@@ -446,8 +446,19 @@ public data class AgentHomeSpeaker(
     val styleModel: String = "apple",
     /** Which HomeSpeaker distribution is active on the Mac (`app` or `extension`, agent v1.11+). */
     val activeDoor: String = "app",
+    /** Whether `HomeSpeaker.app` is installed on the Mac; null from an older agent. */
+    val appInstalled: Boolean? = null,
     /** Whether a HomeSpeaker extension that runs alone is installed on the Mac. */
     val extensionInstalled: Boolean = false,
+    /**
+     * Whether the active HomeSpeaker owner process is currently running; null from an older agent.
+     */
+    val ownerRunning: Boolean? = null,
+    /**
+     * Whether Home Speaker's `--state` carried a non-empty `settings[]` catalog for generic
+     * `settings` updates; false on older agents or empty catalogs.
+     */
+    val genericSettings: Boolean = false,
     /** Which Beeper messages are spoken (`direct_and_mentions` or `all`, agent v1.11+). */
     val beeperAnnounce: String = "direct_and_mentions",
     /** Whether messages sent by the user's own account are skipped (agent v1.11+). */
@@ -804,6 +815,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       styleModel: String? = null,
       homeCastVoice: Boolean? = null,
       activeDoor: String? = null,
+      copy: Boolean? = null,
       discover: Boolean = false,
       structureId: String? = null,
       removeTarget: String? = null,
@@ -845,93 +857,84 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       courierNetworkReading: Boolean? = null,
       courierReadAnywayKey: String? = null,
       courierReadAnywayOn: Boolean? = null,
+      settings: Map<String, Any>? = null,
   ): AgentHomeSpeaker =
       withContext(Dispatchers.IO) {
         val body =
-            JSONObject().apply {
-              if (speakHome != null) put("speak_home", speakHome)
-              if (speakLocal != null) put("speak_local", speakLocal)
-              if (speakPhone != null) put("speak_phone", speakPhone)
-              if (phonePauseMedia != null) put("phone_pause_media", phonePauseMedia)
-              if (phoneHeadphonesOnly != null) put("phone_headphones_only", phoneHeadphonesOnly)
-              if (localEngine != null) put("local_engine", localEngine)
-              if (geminiVoice != null) put("gemini_voice", geminiVoice)
-              if (announcementStyle != null) put("announcement_style", announcementStyle)
-              if (styleModel != null) put("style_model", styleModel)
-              if (homeCastVoice != null) put("home_cast_voice", homeCastVoice)
-              if (announceClaudeCode != null) put("announce_claude_code", announceClaudeCode)
-              if (announceAntigravity != null) put("announce_antigravity", announceAntigravity)
-              if (announceOpenCode != null) put("announce_opencode", announceOpenCode)
-              if (slackEnabled != null) put("slack_enabled", slackEnabled)
-              if (googleChatEnabled != null) put("google_chat_enabled", googleChatEnabled)
-              if (beeperEnabled != null) put("beeper_enabled", beeperEnabled)
-              if (beeperAnnounce != null) put("beeper_announce", beeperAnnounce)
-              if (muteOwnMessages != null) put("mute_own_messages", muteOwnMessages)
-              if (beeperNetworkKey != null && beeperNetworkReading != null) {
-                put(
-                    "beeper_network",
-                    JSONObject().put("key", beeperNetworkKey).put("reading", beeperNetworkReading))
-              }
-              if (courierEnabled != null) put("courier_enabled", courierEnabled)
-              if (announceSource != null) put("announce_source", announceSource)
-              if (courierAnnounce != null) put("courier_announce", courierAnnounce)
-              if (courierNetworkKey != null && courierNetworkReading != null) {
-                put(
-                    "courier_network",
-                    JSONObject()
-                        .put("key", courierNetworkKey)
-                        .put("reading", courierNetworkReading))
-              }
-              if (courierReadAnywayKey != null && courierReadAnywayOn != null) {
-                put(
-                    "courier_read_anyway",
-                    JSONObject().put("key", courierReadAnywayKey).put("on", courierReadAnywayOn))
-              }
-              if (enabled != null) put("enabled", enabled)
-              if (defaultTarget != null) put("default_target", defaultTarget)
-              if (speechLength != null) put("speech_length", speechLength)
-              if (quietHoursEnabled != null) put("quiet_hours_enabled", quietHoursEnabled)
-              if (quietHoursStart != null) put("quiet_hours_start", quietHoursStart)
-              if (quietHoursEnd != null) put("quiet_hours_end", quietHoursEnd)
-              if (snoozeUntil != null) put("snooze_until", snoozeUntil)
-              if (snoozeMinutes != null) put("snooze_minutes", snoozeMinutes)
-              if (customStylePrompt != null) put("custom_style_prompt", customStylePrompt)
-              if (localVoice != null) put("local_voice", localVoice)
-              if (previewVoice) put("preview_voice", true)
-              if (pauseMedia != null) put("pause_media", pauseMedia)
-              if (pauseMediaExtraSeconds != null)
-                  put("pause_media_extra_seconds", pauseMediaExtraSeconds)
-              if (testMediaPause) put("test_media_pause", true)
-              if (announceVolumeEnabled != null)
-                  put("announce_volume_enabled", announceVolumeEnabled)
-              if (announceVolume != null) put("announce_volume", announceVolume)
-              if (activeDoor != null) put("active_door", activeDoor)
-              if (discover) put("discover", true)
-              if (structureId != null) put("structure_id", structureId)
-              if (removeTarget != null) put("remove_target", removeTarget)
-              if (signIn) put("sign_in", true)
-              if (signOut) put("sign_out", true)
-              if (importAntigravity) put("import_antigravity", true)
-              if (grantChat) put("grant_chat", true)
-              if (disconnectChat) put("disconnect_chat", true)
-              if (speakClipboard) put("speak_clipboard", true)
-              if (googleChatSource != null) put("google_chat_source", googleChatSource)
-              if (gwsAccount != null) put("gws_account", gwsAccount)
-              if (pollInterval != null) put("poll_interval", pollInterval)
-              if (slackToken != null) put("slack_token", slackToken)
-              if (beeperToken != null) put("beeper_token", beeperToken)
-              if (courierToken != null) put("courier_token", courierToken)
-              if (geminiApiKey != null) put("gemini_api_key", geminiApiKey)
-              if (chatMonitorAction != null) put("chat_monitor_action", chatMonitorAction)
-              if (agentHookAction != null) put("agent_hook_action", agentHookAction)
-              if (oauthClientId != null) put("oauth_client_id", oauthClientId)
-              if (oauthClientSecret != null) put("oauth_client_secret", oauthClientSecret)
-              if (resetSettings) put("reset_settings", true)
-            }
+            HomeSpeakerWire.encodeUpdateBody(
+                enabled = enabled,
+                defaultTarget = defaultTarget,
+                speechLength = speechLength,
+                quietHoursEnabled = quietHoursEnabled,
+                quietHoursStart = quietHoursStart,
+                quietHoursEnd = quietHoursEnd,
+                snoozeUntil = snoozeUntil,
+                snoozeMinutes = snoozeMinutes,
+                customStylePrompt = customStylePrompt,
+                localVoice = localVoice,
+                previewVoice = previewVoice,
+                pauseMedia = pauseMedia,
+                pauseMediaExtraSeconds = pauseMediaExtraSeconds,
+                testMediaPause = testMediaPause,
+                announceVolumeEnabled = announceVolumeEnabled,
+                announceVolume = announceVolume,
+                speakHome = speakHome,
+                speakLocal = speakLocal,
+                localEngine = localEngine,
+                geminiVoice = geminiVoice,
+                announcementStyle = announcementStyle,
+                styleModel = styleModel,
+                homeCastVoice = homeCastVoice,
+                activeDoor = activeDoor,
+                copy = copy,
+                discover = discover,
+                structureId = structureId,
+                removeTarget = removeTarget,
+                signIn = signIn,
+                signOut = signOut,
+                importAntigravity = importAntigravity,
+                grantChat = grantChat,
+                disconnectChat = disconnectChat,
+                speakClipboard = speakClipboard,
+                googleChatSource = googleChatSource,
+                gwsAccount = gwsAccount,
+                pollInterval = pollInterval,
+                slackToken = slackToken,
+                beeperToken = beeperToken,
+                courierToken = courierToken,
+                geminiApiKey = geminiApiKey,
+                chatMonitorAction = chatMonitorAction,
+                agentHookAction = agentHookAction,
+                oauthClientId = oauthClientId,
+                oauthClientSecret = oauthClientSecret,
+                resetSettings = resetSettings,
+                announceClaudeCode = announceClaudeCode,
+                announceAntigravity = announceAntigravity,
+                announceOpenCode = announceOpenCode,
+                slackEnabled = slackEnabled,
+                googleChatEnabled = googleChatEnabled,
+                beeperEnabled = beeperEnabled,
+                beeperAnnounce = beeperAnnounce,
+                muteOwnMessages = muteOwnMessages,
+                beeperNetworkKey = beeperNetworkKey,
+                beeperNetworkReading = beeperNetworkReading,
+                speakPhone = speakPhone,
+                phonePauseMedia = phonePauseMedia,
+                phoneHeadphonesOnly = phoneHeadphonesOnly,
+                courierEnabled = courierEnabled,
+                courierAnnounce = courierAnnounce,
+                courierNetworkKey = courierNetworkKey,
+                courierNetworkReading = courierNetworkReading,
+                courierReadAnywayKey = courierReadAnywayKey,
+                courierReadAnywayOn = courierReadAnywayOn,
+                announceSource = announceSource,
+                settings = settings,
+            )
         val timeout =
-            if (discover || previewVoice || speakClipboard) LONG_ACTION_TIMEOUT_MS
+            if (discover || structureId != null || previewVoice || speakClipboard)
+                LONG_ACTION_TIMEOUT_MS
             else ACTION_TIMEOUT_MS
-        parseHomeSpeaker(post("/v1/homespeaker", body.toString(), readTimeoutMs = timeout))
+        parseHomeSpeaker(post("/v1/homespeaker", body, readTimeoutMs = timeout))
       }
 
   /** The default speaker's volume. A round trip to Google through the Mac: seconds, not ms. */
@@ -1530,7 +1533,10 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           announcementStyle = sources.announcementStyle,
           styleModel = sources.styleModel,
           activeDoor = sources.activeDoor,
+          appInstalled = sources.appInstalled,
           extensionInstalled = sources.extensionInstalled,
+          ownerRunning = sources.ownerRunning,
+          genericSettings = sources.genericSettings,
           beeperAnnounce = sources.beeperAnnounce,
           muteOwnMessages = sources.muteOwnMessages,
           beeperNetworks = sources.beeperNetworks,

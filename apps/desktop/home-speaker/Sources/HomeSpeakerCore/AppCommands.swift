@@ -262,6 +262,26 @@ public enum AppCommandRunner {
         save: Bool, home wanted: String?, client: HomeDiscovering, currentStructureId: String,
         apply: @MainActor @Sendable (HomeStructure, [String: SpeakerDevice]) throws -> Void
     ) async -> CLIOutput {
+        await discover(
+            save: save,
+            home: wanted,
+            client: client,
+            currentStructureId: currentStructureId,
+            applyWithHomes: { home, targets, _ in
+                try apply(home, targets)
+            }
+        )
+    }
+
+    /// Lists homes and their broadcast targets; with `save`, records the
+    /// account's full `[HomeStructure]` list alongside the chosen home's
+    /// targets through `applyWithHomes` (or `rememberHomes` when the chosen
+    /// home has no speakers yet, leaving the saved speaker list untouched).
+    public static func discover(
+        save: Bool, home wanted: String?, client: HomeDiscovering, currentStructureId: String,
+        rememberHomes: (@MainActor @Sendable ([HomeStructure]) throws -> Void)? = nil,
+        applyWithHomes: @MainActor @Sendable (HomeStructure, [String: SpeakerDevice], [HomeStructure]) throws -> Void
+    ) async -> CLIOutput {
         var out = CLIOutput()
         do {
             let homes = try await client.listHomes()
@@ -289,11 +309,12 @@ public enum AppCommandRunner {
             }
             guard save, let home = shown.first else { return out }
             guard !lastTargets.isEmpty else {
+                try? await rememberHomes?(homes)
                 out.stderr.append("error: no speakers or displays found in \(home.name); the saved speaker list is unchanged")
                 out.exitCode = AppCommandParser.failureExitCode
                 return out
             }
-            try await apply(home, lastTargets)
+            try await applyWithHomes(home, lastTargets, homes)
             out.stdout.append("saved \(lastTargets.count) target(s) from \(home.name)")
             return out
         } catch {

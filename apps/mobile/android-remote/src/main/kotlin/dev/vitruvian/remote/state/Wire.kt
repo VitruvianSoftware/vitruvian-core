@@ -271,24 +271,23 @@ public object HostCodec {
 
   private fun StringBuilder.field(key: String, value: String) {
     append('"').append(key).append("\":")
-    quote(value)
+    jsonQuote(value)
   }
+}
 
-  private fun StringBuilder.quote(value: String) {
-    append('"')
-    for (c in value) {
-      when (c) {
-        '"' -> append("\\\"")
-        '\\' -> append("\\\\")
-        '\n' -> append("\\n")
-        '\r' -> append("\\r")
-        '\t' -> append("\\t")
-        else ->
-            if (c < ' ') append("\\u").append(c.code.toString(16).padStart(4, '0')) else append(c)
-      }
+private fun StringBuilder.jsonQuote(value: String) {
+  append('"')
+  for (c in value) {
+    when (c) {
+      '"' -> append("\\\"")
+      '\\' -> append("\\\\")
+      '\n' -> append("\\n")
+      '\r' -> append("\\r")
+      '\t' -> append("\\t")
+      else -> if (c < ' ') append("\\u").append(c.code.toString(16).padStart(4, '0')) else append(c)
     }
-    append('"')
   }
+  append('"')
 }
 
 // --- HomeSpeaker's sources and recent broadcasts ------------------------
@@ -313,6 +312,7 @@ public data class AgentVoice(
 public data class AgentHome(
     val id: String,
     val name: String,
+    val selected: Boolean = false,
 )
 
 /** One coding agent's hook and instruction status reported by `GET /v1/homespeaker`. */
@@ -322,6 +322,8 @@ public data class AgentHookStatus(
     val speaksTwice: Boolean = false,
     val configuredByInstruction: Boolean = false,
     val agentSlug: String = "",
+    val staleCommand: String? = null,
+    val hookProgram: String? = null,
 ) {
   val canonicalSlug: String
     get() =
@@ -432,7 +434,10 @@ public data class HomeSpeakerSources(
     val announcementStyle: String = "verbatim",
     val styleModel: String = "apple",
     val activeDoor: String = "app",
+    val appInstalled: Boolean? = null,
     val extensionInstalled: Boolean = false,
+    val ownerRunning: Boolean? = null,
+    val genericSettings: Boolean = false,
     val beeperAnnounce: String = "direct_and_mentions",
     val muteOwnMessages: Boolean? = null,
     val beeperNetworks: List<AgentBeeperNetwork> = emptyList(),
@@ -562,6 +567,7 @@ public object HomeSpeakerWire {
           AgentHome(
               id = id,
               name = (it["name"] as? String)?.takeIf { n -> n.isNotBlank() } ?: id,
+              selected = (it["selected"] as? Boolean) ?: false,
           )
         }
     val agents =
@@ -575,6 +581,8 @@ public object HomeSpeakerWire {
               speaksTwice = (it["speaks_twice"] as? Boolean) ?: false,
               configuredByInstruction = (it["configured_by_instruction"] as? Boolean) ?: false,
               agentSlug = (it["agent_slug"] as? String).orEmpty(),
+              staleCommand = (it["stale_command"] as? String)?.takeIf { s -> s.isNotBlank() },
+              hookProgram = (it["hook_program"] as? String)?.takeIf { s -> s.isNotBlank() },
           )
         }
     val quiet = o["quiet_hours"] as? Map<*, *>
@@ -661,7 +669,10 @@ public object HomeSpeakerWire {
         announcementStyle = str("announcement_style", "verbatim"),
         styleModel = str("style_model", "apple"),
         activeDoor = str("active_door", "app"),
+        appInstalled = flag("app_installed"),
         extensionInstalled = flag("extension_installed") ?: false,
+        ownerRunning = flag("owner_running"),
+        genericSettings = flag("generic_settings") ?: false,
         beeperAnnounce = str("beeper_announce", "direct_and_mentions"),
         muteOwnMessages = flag("mute_own_messages"),
         beeperNetworks = beeperNetworks,
@@ -721,6 +732,246 @@ public object HomeSpeakerWire {
         outputsFooter = outputsFooter,
         targets = targets,
     )
+  }
+
+  /**
+   * Encodes a `POST /v1/homespeaker` update body without `org.json`, so
+   * `AgentClient.setHomeSpeaker` and JVM unit tests exercise the exact same wire serialiser.
+   */
+  public fun encodeUpdateBody(
+      enabled: Boolean? = null,
+      defaultTarget: String? = null,
+      speechLength: String? = null,
+      quietHoursEnabled: Boolean? = null,
+      quietHoursStart: String? = null,
+      quietHoursEnd: String? = null,
+      snoozeUntil: String? = null,
+      snoozeMinutes: Int? = null,
+      customStylePrompt: String? = null,
+      localVoice: String? = null,
+      previewVoice: Boolean = false,
+      pauseMedia: Boolean? = null,
+      pauseMediaExtraSeconds: Double? = null,
+      testMediaPause: Boolean = false,
+      announceVolumeEnabled: Boolean? = null,
+      announceVolume: Int? = null,
+      speakHome: Boolean? = null,
+      speakLocal: Boolean? = null,
+      localEngine: String? = null,
+      geminiVoice: String? = null,
+      announcementStyle: String? = null,
+      styleModel: String? = null,
+      homeCastVoice: Boolean? = null,
+      activeDoor: String? = null,
+      copy: Boolean? = null,
+      discover: Boolean = false,
+      structureId: String? = null,
+      removeTarget: String? = null,
+      signIn: Boolean = false,
+      signOut: Boolean = false,
+      importAntigravity: Boolean = false,
+      grantChat: Boolean = false,
+      disconnectChat: Boolean = false,
+      speakClipboard: Boolean = false,
+      googleChatSource: String? = null,
+      gwsAccount: String? = null,
+      pollInterval: Int? = null,
+      slackToken: String? = null,
+      beeperToken: String? = null,
+      courierToken: String? = null,
+      geminiApiKey: String? = null,
+      chatMonitorAction: String? = null,
+      agentHookAction: String? = null,
+      oauthClientId: String? = null,
+      oauthClientSecret: String? = null,
+      resetSettings: Boolean = false,
+      announceClaudeCode: Boolean? = null,
+      announceAntigravity: Boolean? = null,
+      announceOpenCode: Boolean? = null,
+      slackEnabled: Boolean? = null,
+      googleChatEnabled: Boolean? = null,
+      beeperEnabled: Boolean? = null,
+      beeperAnnounce: String? = null,
+      muteOwnMessages: Boolean? = null,
+      beeperNetworkKey: String? = null,
+      beeperNetworkReading: Boolean? = null,
+      speakPhone: Boolean? = null,
+      phonePauseMedia: Boolean? = null,
+      phoneHeadphonesOnly: Boolean? = null,
+      courierEnabled: Boolean? = null,
+      courierAnnounce: String? = null,
+      courierNetworkKey: String? = null,
+      courierNetworkReading: Boolean? = null,
+      courierReadAnywayKey: String? = null,
+      courierReadAnywayOn: Boolean? = null,
+      announceSource: String? = null,
+      settings: Map<String, Any>? = null,
+  ): String = buildString {
+    append('{')
+    var first = true
+    fun sep(key: String) {
+      if (!first) append(',')
+      first = false
+      jsonQuote(key)
+      append(':')
+    }
+    fun putBool(key: String, v: Boolean?) {
+      if (v != null) {
+        sep(key)
+        append(v)
+      }
+    }
+    fun putTrue(key: String, v: Boolean) {
+      if (v) {
+        sep(key)
+        append(true)
+      }
+    }
+    fun putStr(key: String, v: String?) {
+      if (v != null) {
+        sep(key)
+        jsonQuote(v)
+      }
+    }
+    fun putInt(key: String, v: Int?) {
+      if (v != null) {
+        sep(key)
+        append(v)
+      }
+    }
+    fun putDouble(key: String, v: Double?) {
+      if (v != null) {
+        require(v.isFinite()) { "non-finite JSON number for $key: $v" }
+        sep(key)
+        if (v % 1.0 == 0.0 && v >= Long.MIN_VALUE && v <= Long.MAX_VALUE) {
+          append(v.toLong())
+        } else {
+          append(v)
+        }
+      }
+    }
+
+    putBool("speak_home", speakHome)
+    putBool("speak_local", speakLocal)
+    putBool("speak_phone", speakPhone)
+    putBool("phone_pause_media", phonePauseMedia)
+    putBool("phone_headphones_only", phoneHeadphonesOnly)
+    putStr("local_engine", localEngine)
+    putStr("gemini_voice", geminiVoice)
+    putStr("announcement_style", announcementStyle)
+    putStr("style_model", styleModel)
+    putBool("home_cast_voice", homeCastVoice)
+    putBool("announce_claude_code", announceClaudeCode)
+    putBool("announce_antigravity", announceAntigravity)
+    putBool("announce_opencode", announceOpenCode)
+    putBool("slack_enabled", slackEnabled)
+    putBool("google_chat_enabled", googleChatEnabled)
+    putBool("beeper_enabled", beeperEnabled)
+    putStr("beeper_announce", beeperAnnounce)
+    putBool("mute_own_messages", muteOwnMessages)
+    if (beeperNetworkKey != null && beeperNetworkReading != null) {
+      sep("beeper_network")
+      append("{\"key\":")
+      jsonQuote(beeperNetworkKey)
+      append(",\"reading\":")
+      append(beeperNetworkReading)
+      append('}')
+    }
+    putBool("courier_enabled", courierEnabled)
+    putStr("announce_source", announceSource)
+    putStr("courier_announce", courierAnnounce)
+    if (courierNetworkKey != null && courierNetworkReading != null) {
+      sep("courier_network")
+      append("{\"key\":")
+      jsonQuote(courierNetworkKey)
+      append(",\"reading\":")
+      append(courierNetworkReading)
+      append('}')
+    }
+    if (courierReadAnywayKey != null && courierReadAnywayOn != null) {
+      sep("courier_read_anyway")
+      append("{\"key\":")
+      jsonQuote(courierReadAnywayKey)
+      append(",\"on\":")
+      append(courierReadAnywayOn)
+      append('}')
+    }
+    putBool("enabled", enabled)
+    putStr("default_target", defaultTarget)
+    putStr("speech_length", speechLength)
+    putBool("quiet_hours_enabled", quietHoursEnabled)
+    putStr("quiet_hours_start", quietHoursStart)
+    putStr("quiet_hours_end", quietHoursEnd)
+    putStr("snooze_until", snoozeUntil)
+    putInt("snooze_minutes", snoozeMinutes)
+    putStr("custom_style_prompt", customStylePrompt)
+    putStr("local_voice", localVoice)
+    putTrue("preview_voice", previewVoice)
+    putBool("pause_media", pauseMedia)
+    putDouble("pause_media_extra_seconds", pauseMediaExtraSeconds)
+    putTrue("test_media_pause", testMediaPause)
+    putBool("announce_volume_enabled", announceVolumeEnabled)
+    putInt("announce_volume", announceVolume)
+    putStr("active_door", activeDoor)
+    putBool("copy", copy)
+    putTrue("discover", discover)
+    putStr("structure_id", structureId)
+    putStr("remove_target", removeTarget)
+    putTrue("sign_in", signIn)
+    putTrue("sign_out", signOut)
+    putTrue("import_antigravity", importAntigravity)
+    putTrue("grant_chat", grantChat)
+    putTrue("disconnect_chat", disconnectChat)
+    putTrue("speak_clipboard", speakClipboard)
+    putStr("google_chat_source", googleChatSource)
+    putStr("gws_account", gwsAccount)
+    putInt("poll_interval", pollInterval)
+    putStr("slack_token", slackToken)
+    putStr("beeper_token", beeperToken)
+    putStr("courier_token", courierToken)
+    putStr("gemini_api_key", geminiApiKey)
+    putStr("chat_monitor_action", chatMonitorAction)
+    putStr("agent_hook_action", agentHookAction)
+    putStr("oauth_client_id", oauthClientId)
+    putStr("oauth_client_secret", oauthClientSecret)
+    putTrue("reset_settings", resetSettings)
+    if (!settings.isNullOrEmpty()) {
+      sep("settings")
+      append('{')
+      var firstSetting = true
+      for ((k, v) in settings) {
+        if (!firstSetting) append(',')
+        firstSetting = false
+        jsonQuote(k)
+        append(':')
+        when (v) {
+          is Boolean -> append(v)
+          is Int -> append(v)
+          is Long -> append(v)
+          is Double -> {
+            require(v.isFinite()) { "non-finite JSON number for settings.$k: $v" }
+            if (v % 1.0 == 0.0 && v >= Long.MIN_VALUE && v <= Long.MAX_VALUE) {
+              append(v.toLong())
+            } else {
+              append(v)
+            }
+          }
+          is Number -> {
+            val d = v.toDouble()
+            require(d.isFinite()) { "non-finite JSON number for settings.$k: $d" }
+            if (d % 1.0 == 0.0 && d >= Long.MIN_VALUE && d <= Long.MAX_VALUE) {
+              append(d.toLong())
+            } else {
+              append(d)
+            }
+          }
+          is String -> jsonQuote(v)
+          else -> jsonQuote(v.toString())
+        }
+      }
+      append('}')
+    }
+    append('}')
   }
 }
 

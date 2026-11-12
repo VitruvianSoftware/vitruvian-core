@@ -556,7 +556,9 @@ public struct MenuBarView: View {
                 }
                 let targets = try await GoogleHomeClient.shared.discoverBroadcastTargets(structureId: home.id)
                 if !targets.isEmpty {
-                    configManager.applyDiscovery(structure: home, targets: targets)
+                    configManager.applyDiscovery(structure: home, targets: targets, homes: homes)
+                } else {
+                    configManager.rememberHomes(homes)
                 }
                 viewModel.setFeedback(targets.isEmpty ? "No speakers or displays found in \(home.name)." : nil,
                                       isError: targets.isEmpty, autoClearAfter: 8)

@@ -320,9 +320,9 @@ contract version answers `{available:false, reason:"…"}` with the cause, not a
 - Every setting comes from `settings[]` by its key (`enabled`, `speech_length`,
   `announce_volume`, `speak_phone`, …; the phone's `poll_interval` is the program's
   `poll_interval_seconds`). `targets` is `speakers` (`selected` is `is_default`); `quiet_hours`,
-  `snooze_until`, `structure_*`, `homes`, `available_voices` (`language` → `lang`),
-  `custom_voices`, `local_voice_name`, `agents` (from `hooks`), `legacy_launch_agent`,
-  `home_speaker_version`, the `has_*` flags and monitor fields (from `sign_in` and `chat`) and
+  `snooze_until`, `structure_*`, `homes` (`id`, `name`, `selected`), `available_voices` (`language` → `lang`),
+  `custom_voices`, `local_voice_name`, `agents` (from `hooks`, including `stale_command` and `hook_program`), `legacy_launch_agent`,
+  `home_speaker_version`, `app_installed`, `owner_running`, `generic_settings` (`true` when `--state` carries a non-empty `settings[]` catalog), the `has_*` flags and monitor fields (from `sign_in` and `chat`) and
   `recent` (the newest 5) / `last` come from the document under the same names.
 - `warnings` (`[string]`) is the program's own list of setup problems. It is new; older phones
   ignore it.
@@ -336,17 +336,18 @@ by HomeSpeaker, not by the agent, and the reply is the `GET` shape read back aft
 
 | Request field | Operation |
 |---|---|
+| `settings` (`{ "<catalog key>": <value>, … }`) | `set` for each entry after verifying the key exists in the current `--state` `settings[]` (unknown key → `400`) |
 | any setting (`enabled`, `speech_length`, `quiet_hours_*`, `pause_media*`, `announce_volume*`, `speak_*`, `phone_*`, `local_*`, `gemini_voice`, `announcement_style`, `style_model`, `home_cast_voice`, `announce_*`, `*_enabled`, `*_announce`, `google_chat_source`, `gws_account`, `mute_own_messages`, `custom_style_prompt`, `poll_interval`) | `set` with the program's key (`poll_interval` → `poll_interval_seconds`) |
 | `default_target` / `remove_target` | `setDefaultSpeaker` / `removeSpeaker` |
 | `reset_settings` | `reset` |
 | `oauth_client_id` (+ `oauth_client_secret`) | one `saveOAuthClient`; a secret without an id uses the custom client id from `--state` (none saved: 400 "Enter the client ID first.") |
-| `slack_token`, `beeper_token`, `courier_token`, `gemini_api_key` | `setSecret` `slack` / `beeper` / `courier` / `geminiKey` (empty clears) |
+| `slack_token`, `beeper_token`, `courier_token`, `gemini_api_key` | `setSecret` `slack` / `beeper` / `courier` / `geminiKey` (empty chat token sends `clearChatToken`; empty `gemini_api_key` sends `setSecret` `""`) |
 | `snooze_minutes`, `snooze_until` | `snooze` (`minutes`, or `clear` for `""`; a future `snooze_until` is counted in minutes) |
 | `beeper_network`, `courier_network` | `setNetwork` |
 | `courier_read_anyway` | `setReadAnyway` |
 | `import_antigravity` | `importAntigravity` |
 | `agent_hook_action` `install:` / `remove:` / `add-instruction:` + agent | `agentHook` (`install`, `remove`, `addInstruction`) |
-| `active_door` | `switchTo` |
+| `active_door` (+ optional `copy: true`) | `switchTo` (`copy: true` copies settings from the current door) |
 
 The program refuses a batch that mixes `switchTo` or `agentHook` with anything else, so an update
 that carries several kinds is sent as **separate `--apply` calls, in this order: the plain batch,

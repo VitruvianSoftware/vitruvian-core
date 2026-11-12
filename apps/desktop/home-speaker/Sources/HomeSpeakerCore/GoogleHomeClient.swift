@@ -39,9 +39,14 @@ public enum BroadcastError: LocalizedError, Equatable {
     }
 }
 
-public struct HomeStructure: Identifiable, Equatable, Hashable, Sendable {
+public struct HomeStructure: Codable, Identifiable, Equatable, Hashable, Sendable {
     public let id: String
     public let name: String
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case id
+        case name
+    }
 
     public init(id: String, name: String) {
         self.id = id

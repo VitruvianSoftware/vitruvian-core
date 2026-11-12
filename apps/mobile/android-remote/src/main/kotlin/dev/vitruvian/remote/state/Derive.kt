@@ -456,12 +456,35 @@ public object Derive {
   /** Coding agents HomeSpeaker installs a hook for (Swift `CodingAgent.supportsHook`). */
   public val hookAgentSlugs: Set<String> = setOf("claude-code", "antigravity", "opencode")
 
+  /**
+   * True when the active HomeSpeaker owner process is running on the Mac and at least one chat
+   * source is enabled (`Pages.swift` `chat.ownerRunning && anySourceEnabled`). When an older helper
+   * omits `owner_running` (`null`), keeps the Start/Stop toggle visible as before for backward
+   * compatibility; hides it when `owner_running` is explicitly `false`.
+   */
+  public fun showsChatMonitorControl(
+      ownerRunning: Boolean?,
+      anySourceEnabled: Boolean,
+  ): Boolean =
+      when (ownerRunning) {
+        false -> false
+        null -> true
+        true -> anySourceEnabled
+      }
+
   /** Subtitle for the Chat monitor row, surfacing the last poll relative time when running. */
-  public fun chatMonitorSubtitle(running: Boolean, lastPollRelative: String = ""): String =
+  public fun chatMonitorSubtitle(
+      running: Boolean,
+      lastPollRelative: String = "",
+      ownerRunning: Boolean? = null,
+      anySourceEnabled: Boolean = true,
+  ): String =
       when {
         running && lastPollRelative.isNotBlank() ->
             "Monitoring chat apps · last checked $lastPollRelative"
         running -> "Monitoring chat apps in background"
+        ownerRunning == false && anySourceEnabled ->
+            "Stopped · open HomeSpeaker on the Mac to start"
         else -> "Stopped · background monitor is not running"
       }
 
@@ -1650,7 +1673,7 @@ public object Derive {
   private val LEAKED_PATH_OR_CODE_REGEX = Regex("""(?:/v\d+/|https?://)""", RegexOption.IGNORE_CASE)
   private val TECHNICAL_PREFIX_REGEX =
       Regex(
-          """^(?:[✗✓!]\s*|(?:agent|homespeaker|google\s+home|google\s+chat|gws|oauth)\s*(?:·\s*[^:]+)?:\s*|(?:error|failed|failure)\s*:\s*|(?:sign\s+(?:in|out)|disconnect|grant(?:\s+chat)?|import(?:\s+login)?)\s+(?:failed|error)\s*:\s*|http\s+\d{3}(?:\s+[a-z][a-z ]*)?\s*:\s*)+""",
+          """^(?:[✗✓!]\s*|(?:agent|homespeaker|google\s+home|google\s+chat|gws|oauth)\s*(?:·\s*[^:]+)?:\s*|(?:error|failed|failure)\s*:\s*|[a-z][a-z ]{0,40}?\s+(?:failed|error)\s*:\s*|http\s+\d{3}(?:\s+[a-z][a-z ]*)?\s*:\s*)+""",
           RegexOption.IGNORE_CASE,
       )
   private val TRAILING_HTTP_REGEX =
@@ -2798,9 +2821,561 @@ public object Derive {
    */
   public fun showsCourierRow(courierEnabled: Boolean?): Boolean = courierEnabled != null
 
+  /**
+   * Every catalog key in [catalogKeys] that was not claimed by a hand-designed row in [drawnKeys],
+   * preserving catalog order so `"Other settings"` draws every unplaced key in order and nothing is
+   * dropped.
+   */
+  public fun genericKeys(
+      catalogKeys: List<String>,
+      drawnKeys: Set<String>,
+  ): List<String> = catalogKeys.filter { it !in drawnKeys }
+
+  /**
+   * Per-build tracker for hand-placed catalog settings in `homeSpeakerModule`. Calling [placed]
+   * records `key` once and returns `null` (draws nothing) if `key` was already recorded in this
+   * build; any catalog key not recorded falls through to [genericKeys] / [genericHomeSpeakerRows].
+   */
+  public class CatalogPlacement {
+    private val recorded = LinkedHashSet<String>()
+
+    public val drawnKeys: Set<String>
+      get() = recorded
+
+    public fun <T> placed(key: String, build: () -> T): T? {
+      if (!recorded.add(key)) return null
+      return build()
+    }
+  }
+
+  /** Pure control model for a row in the generic `"Other settings"` group. */
+  public sealed interface GenericSettingControl {
+    public data class Toggle(
+        val checked: Boolean,
+        val enabled: Boolean,
+    ) : GenericSettingControl
+
+    public data class Choices(
+        val current: String,
+        val options: List<HomeSpeakerChoice>,
+        val enabled: Boolean,
+    ) : GenericSettingControl
+
+    public data class NumberStepper(
+        val current: Double,
+        val stepper: StepperSpec?,
+        val options: List<HomeSpeakerChoice>,
+        val isInteger: Boolean,
+        val enabled: Boolean,
+    ) : GenericSettingControl
+
+    public data class TextPrompt(
+        val value: String,
+        val hasValue: Boolean,
+        val enabled: Boolean,
+    ) : GenericSettingControl
+  }
+
+  /** Pure row model for a catalog setting rendered by the generic `"Other settings"` section. */
+  public data class GenericSettingRow(
+      val key: String,
+      val kind: String,
+      val title: String,
+      val subtitle: String,
+      val trailing: String,
+      val healthy: Boolean,
+      val shown: Boolean,
+      val error: String?,
+      val control: GenericSettingControl,
+  )
+
+  private fun halfHourTimeOptions(keeping: String): List<HomeSpeakerChoice> {
+    val base =
+        (0..23).flatMap { hour ->
+          listOf(0, 30).map { minute ->
+            val slot = String.format(Locale.ROOT, "%02d:%02d", hour, minute)
+            HomeSpeakerChoice(value = slot, label = slot)
+          }
+        }
+    val trimmed = keeping.trim()
+    return if (trimmed.isNotEmpty() && base.none { it.value == trimmed }) {
+      listOf(HomeSpeakerChoice(value = trimmed, label = trimmed)) + base
+    } else {
+      base
+    }
+  }
+
+  /**
+   * Maps one [HomeSpeakerSetting] to its pure generic row model, or `null` if `kind` is unknown.
+   * Applies [phoneWording] to labels and choice labels and honors catalog `choices` and `limits`.
+   */
+  public fun genericHomeSpeakerRow(
+      setting: HomeSpeakerSetting,
+      canAct: Boolean = true,
+      error: String? = null,
+  ): GenericSettingRow? {
+    val title = phoneWording(setting.label).ifBlank { setting.key }
+    return when (setting.kind) {
+      "toggle" -> {
+        val checked = setting.boolValue == true
+        GenericSettingRow(
+            key = setting.key,
+            kind = setting.kind,
+            title = title,
+            subtitle = "",
+            trailing = if (checked) "on" else "off",
+            healthy = checked,
+            shown = setting.shown,
+            error = error,
+            control = GenericSettingControl.Toggle(checked = checked, enabled = canAct),
+        )
+      }
+      "choice" -> {
+        val options = setting.choices.map { it.copy(label = phoneWording(it.label)) }
+        val current = setting.stringValue
+        val currentLabel =
+            options.firstOrNull { it.value == current }?.label ?: phoneWording(current)
+        GenericSettingRow(
+            key = setting.key,
+            kind = setting.kind,
+            title = title,
+            subtitle = "",
+            trailing = currentLabel,
+            healthy = false,
+            shown = setting.shown,
+            error = error,
+            control =
+                GenericSettingControl.Choices(
+                    current = current,
+                    options = options,
+                    enabled = canAct,
+                ),
+        )
+      }
+      "time" -> {
+        val current = setting.stringValue
+        val rawOptions =
+            if (setting.choices.isNotEmpty()) {
+              val mapped = setting.choices.map { it.copy(label = phoneWording(it.label)) }
+              if (current.isNotBlank() && mapped.none { it.value == current }) {
+                listOf(HomeSpeakerChoice(current, current)) + mapped
+              } else {
+                mapped
+              }
+            } else {
+              halfHourTimeOptions(current)
+            }
+        val currentLabel = rawOptions.firstOrNull { it.value == current }?.label ?: current
+        GenericSettingRow(
+            key = setting.key,
+            kind = setting.kind,
+            title = title,
+            subtitle = "",
+            trailing = currentLabel,
+            healthy = false,
+            shown = setting.shown,
+            error = error,
+            control =
+                GenericSettingControl.Choices(
+                    current = current,
+                    options = rawOptions,
+                    enabled = canAct,
+                ),
+        )
+      }
+      "number" -> {
+        val current = setting.numberValue ?: setting.limits?.defaultValue ?: 0.0
+        val stepper =
+            setting.limits?.let { catalogStepper(current = current, limits = it, canAct = canAct) }
+        val options = setting.choices.map { it.copy(label = phoneWording(it.label)) }
+        val trailing =
+            options.firstOrNull { it.value.toDoubleOrNull() == current }?.label ?: decimal(current)
+        val isInt = (setting.limits?.step ?: 1.0) % 1.0 == 0.0 && current % 1.0 == 0.0
+        GenericSettingRow(
+            key = setting.key,
+            kind = setting.kind,
+            title = title,
+            subtitle = "",
+            trailing = trailing,
+            healthy = false,
+            shown = setting.shown,
+            error = error,
+            control =
+                GenericSettingControl.NumberStepper(
+                    current = current,
+                    stepper = stepper,
+                    options = options,
+                    isInteger = isInt,
+                    enabled = canAct,
+                ),
+        )
+      }
+      "text" -> {
+        val value = setting.stringValue
+        val hasValue = value.isNotEmpty()
+        GenericSettingRow(
+            key = setting.key,
+            kind = setting.kind,
+            title = title,
+            subtitle = value.ifBlank { "Not set" },
+            trailing = if (hasValue) "set" else "none",
+            healthy = hasValue,
+            shown = setting.shown,
+            error = error,
+            control =
+                GenericSettingControl.TextPrompt(
+                    value = value,
+                    hasValue = hasValue,
+                    enabled = canAct,
+                ),
+        )
+      }
+      else -> null
+    }
+  }
+
+  /**
+   * Returns generic `"Other settings"` rows for every catalog entry in [catalog] not claimed by
+   * [drawnKeys] (via [genericKeys]). Returns an empty list when [genericSettingsSupported] is
+   * `false` so older Mac helpers without `POST` `settings` support never show a control that would
+   * fail. By default filters to `setting.shown == true`; pass `includeHidden = true` to audit full
+   * catalog coverage regardless of current visibility state.
+   */
+  public fun genericHomeSpeakerRows(
+      catalog: HomeSpeakerCatalog,
+      canAct: Boolean = true,
+      errors: Map<String, String> = emptyMap(),
+      drawnKeys: Set<String> = emptySet(),
+      includeHidden: Boolean = false,
+      genericSettingsSupported: Boolean = true,
+  ): List<GenericSettingRow> {
+    if (!genericSettingsSupported) return emptyList()
+    val byKey = catalog.settings.associateBy { it.key }
+    return genericKeys(catalog.settings.map { it.key }, drawnKeys).mapNotNull { key ->
+      val setting = byKey[key] ?: return@mapNotNull null
+      if (!includeHidden && !setting.shown) return@mapNotNull null
+      genericHomeSpeakerRow(
+          setting = setting,
+          canAct = canAct,
+          error = settingError(errors, setting.key),
+      )
+    }
+  }
+
+  /** One selectable Google Home structure in the Home picker. */
+  public data class HomeChoiceSpec(
+      val id: String,
+      val name: String,
+      val selected: Boolean,
+      val enabled: Boolean,
+  )
+
+  /** Pure specification for the Google Home picker row (`homes[]`). */
+  public data class HomePickerSpec(
+      val selectedId: String?,
+      val trailing: String,
+      val choices: List<HomeChoiceSpec>,
+  )
+
+  /**
+   * Lists every home from [homes] and marks the selected one (`h.selected`, falling back to
+   * [structureId] for older payloads without `selected`). Returns `null` when [homes] is empty so
+   * older helpers degrade quietly.
+   */
+  public fun homePickerSpec(
+      homes: List<AgentHome>,
+      structureId: String = "",
+      structureName: String = "",
+      canAct: Boolean = true,
+  ): HomePickerSpec? {
+    if (homes.isEmpty()) return null
+    val selectedHome =
+        homes.firstOrNull { it.selected }
+            ?: homes.firstOrNull { structureId.isNotBlank() && it.id == structureId }
+    val selectedId = selectedHome?.id
+    val trailing =
+        selectedHome?.name?.takeIf { it.isNotBlank() }
+            ?: structureName.takeIf { it.isNotBlank() }
+            ?: "None"
+    return HomePickerSpec(
+        selectedId = selectedId,
+        trailing = trailing,
+        choices =
+            homes.map { h ->
+              val current = selectedId != null && h.id == selectedId
+              HomeChoiceSpec(
+                  id = h.id,
+                  name = h.name.ifBlank { h.id },
+                  selected = current,
+                  enabled = canAct && !current,
+              )
+            },
+    )
+  }
+
+  /** Pure specification for one discovered speaker row, each with its own Remove action. */
+  public data class SpeakerRowSpec(
+      val key: String,
+      val name: String,
+      val title: String,
+      val subtitle: String,
+      val trailing: String,
+      val selected: Boolean,
+      val removeEnabled: Boolean,
+  )
+
+  /** Builds a speaker row with a Remove action for every speaker in [targets], not only default. */
+  public fun speakerRowSpecs(
+      targets: List<HomeSpeakerTargetWire>,
+      canAct: Boolean = true,
+  ): List<SpeakerRowSpec> =
+      targets.map { t ->
+        val title = phoneWording(t.displayLine.ifBlank { t.name }.ifBlank { t.key })
+        val subtitle =
+            if (t.type == "Structure") "every speaker at once"
+            else listOf(t.room, t.type).filter { it.isNotBlank() }.joinToString(" · ")
+        SpeakerRowSpec(
+            key = t.key,
+            name = t.name.ifBlank { title },
+            title = title,
+            subtitle = subtitle,
+            trailing = if (t.selected) "default" else "",
+            selected = t.selected,
+            removeEnabled = canAct && t.key.isNotBlank(),
+        )
+      }
+
+  /** First Home Speaker release supporting `switchTo` with `copy: true`. */
+  public const val MIN_DOOR_COPY_HOMESPEAKER_VERSION: String = "1.41.0"
+
+  /**
+   * True when [homeSpeakerVersion] is at least [MIN_DOOR_COPY_HOMESPEAKER_VERSION], the version
+   * where `--apply {"op":"switchTo","door":...,"copy":true}` shipped. Blank or unparseable versions
+   * return `false` so older Home Speaker installations never offer a `copy` option that ignores or
+   * rejects `copy`.
+   */
+  public fun supportsDoorCopy(homeSpeakerVersion: String): Boolean {
+    val clean = homeSpeakerVersion.trim().removePrefix("v").substringBefore('-')
+    if (clean.isEmpty()) return false
+    val actual = clean.split('.').map { it.toIntOrNull() ?: return false }
+    val required = MIN_DOOR_COPY_HOMESPEAKER_VERSION.split('.').map { it.toInt() }
+    val len = maxOf(actual.size, required.size)
+    for (i in 0 until len) {
+      val a = actual.getOrElse(i) { 0 }
+      val b = required.getOrElse(i) { 0 }
+      if (a != b) return a > b
+    }
+    return true
+  }
+
+  /** Pure choice option on the `"HomeSpeaker door"` row, including copy-on-switch. */
+  public data class DoorSwitchOptionSpec(
+      val targetDoor: String,
+      val label: String,
+      val copy: Boolean,
+      val selected: Boolean,
+      val enabled: Boolean,
+  )
+
+  /**
+   * Builds the door switch choices when both doors are relevant. When switching to the other door
+   * (if installed), offers both switching as-is (`copy = false`) and `"Copy settings from the
+   * <current>"` (`copy = true`, matching `DoorPages.swift` / `DoorWords.copySettingsFrom`).
+   */
+  public fun doorSwitchOptions(
+      activeDoor: String,
+      appInstalled: Boolean? = null,
+      extensionInstalled: Boolean,
+      canAct: Boolean = true,
+      copySupported: Boolean = true,
+  ): List<DoorSwitchOptionSpec> {
+    if (!extensionInstalled && activeDoor != "extension") return emptyList()
+    val current = if (activeDoor == "extension") "extension" else "app"
+    val other = if (current == "app") "extension" else "app"
+    val otherInstalled = if (other == "extension") extensionInstalled else appInstalled != false
+    val currentTitle = if (current == "app") "App" else "Extension"
+    val otherTitle = if (other == "app") "App" else "Extension"
+    val currentWord = if (current == "app") "the app" else "the extension"
+    return buildList {
+      add(
+          DoorSwitchOptionSpec(
+              targetDoor = current,
+              label = currentTitle,
+              copy = false,
+              selected = true,
+              enabled = false,
+          ))
+      if (otherInstalled) {
+        add(
+            DoorSwitchOptionSpec(
+                targetDoor = other,
+                label = otherTitle,
+                copy = false,
+                selected = false,
+                enabled = canAct,
+            ))
+        if (copySupported) {
+          add(
+              DoorSwitchOptionSpec(
+                  targetDoor = other,
+                  label = "Copy settings from $currentWord",
+                  copy = true,
+                  selected = false,
+                  enabled = canAct,
+              ))
+        }
+      }
+    }
+  }
+
+  /** Subtitle matching `Pages.hookWithoutHomeSpeaker` when a stale hook's target binary is gone. */
+  public const val HOOK_WITHOUT_HOMESPEAKER: String =
+      "Points at HomeSpeaker, which isn't installed — it can't speak"
+
+  /**
+   * True when [hookState] is `"stale"` and [staleCommand] / [hookProgram] points at a Home Speaker
+   * that is no longer installed (for instance `/.Trash/`, an uninstalled `HomeSpeaker.app`, an
+   * uninstalled Vitruvian extension, or `!installed`). Returns `false` for older helpers that send
+   * neither `stale_command` nor `hook_program` while Home Speaker is installed.
+   */
+  public fun staleHookPointsAtMissingHomeSpeaker(
+      hookState: String,
+      staleCommand: String?,
+      hookProgram: String?,
+      installed: Boolean = true,
+      appInstalled: Boolean? = null,
+      extensionInstalled: Boolean = false,
+  ): Boolean {
+    if (hookState != "stale") return false
+    if (!installed) return true
+    val target =
+        hookProgram?.trim()?.takeIf { it.isNotEmpty() }
+            ?: staleCommand?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return false
+    if (target.contains("/.Trash/")) return true
+    if (target.contains("dev.vitruvian.homespeaker")) return !extensionInstalled
+    val pointsAtApp =
+        target.contains("HomeSpeaker.app") ||
+            target.endsWith("/HomeSpeaker") ||
+            target.contains("/HomeSpeaker ") ||
+            target.contains("/HomeSpeaker'") ||
+            target.contains("/HomeSpeaker\"")
+    if (pointsAtApp) return appInstalled == false
+    return hookProgram.isNullOrBlank()
+  }
+
+  /** Pure specification for a coding-agent hook row in `"Coding agents"`. */
+  public data class AgentHookRowSpec(
+      val subtitle: String,
+      val trailing: String,
+      val healthy: Boolean,
+      val warn: Boolean,
+      val showDisableRival: Boolean,
+      val showInstall: Boolean,
+      val showUpdate: Boolean,
+      val showRemove: Boolean,
+      val removeLabel: String,
+      val installOrUpdateEnabled: Boolean,
+      val removeOrRivalEnabled: Boolean,
+  )
+
+  /**
+   * Derives a coding-agent hook row. When a stale hook points at a Home Speaker that is no longer
+   * installed, offers `"Remove"` alongside `"Update hook"` (or `"Remove"` alone when no Home
+   * Speaker is installed, matching `Pages.swift`).
+   */
+  public fun agentHookRowSpec(
+      status: AgentHookStatus,
+      installed: Boolean = true,
+      appInstalled: Boolean? = null,
+      extensionInstalled: Boolean = false,
+      canAct: Boolean = true,
+      busy: Boolean = false,
+  ): AgentHookRowSpec {
+    val isInstalled = status.hookState == "installed"
+    val isStale = status.hookState == "stale"
+    val missingTarget =
+        staleHookPointsAtMissingHomeSpeaker(
+            hookState = status.hookState,
+            staleCommand = status.staleCommand,
+            hookProgram = status.hookProgram,
+            installed = installed,
+            appInstalled = appInstalled,
+            extensionInstalled = extensionInstalled,
+        )
+    val subtitle =
+        if (isStale && missingTarget && !status.speaksTwice) {
+          HOOK_WITHOUT_HOMESPEAKER
+        } else {
+          agentHookStatusLabel(status.hookState, status.speaksTwice, status.configuredByInstruction)
+        }
+    return AgentHookRowSpec(
+        subtitle = subtitle,
+        trailing = if (isInstalled) "installed" else if (isStale) "outdated" else "none",
+        healthy = isInstalled && !status.speaksTwice,
+        warn = status.speaksTwice || isStale,
+        showDisableRival = status.speaksTwice,
+        showInstall = !isInstalled && !isStale,
+        showUpdate = isStale && installed,
+        showRemove = isInstalled || (isStale && missingTarget),
+        removeLabel = if (isInstalled) "Remove hook" else "Remove",
+        installOrUpdateEnabled = canAct && !busy && installed,
+        removeOrRivalEnabled = canAct && !busy,
+    )
+  }
+
   /** `0`, `6.4`, `31.6` -- `Format.decimal`'s shape; this library cannot depend on :format. */
   private fun decimal(value: Double): String {
     val rounded = Math.round(value * 10) / 10.0
     return String.format(Locale.ROOT, "%.1f", rounded).removeSuffix(".0")
   }
+}
+
+/**
+ * Manifest IDs for every phone-supported Home Speaker control, matching
+ * `apps/desktop/home-speaker/testdata/controls.json`.
+ */
+public object HomeSpeakerControls {
+  public const val CATALOG_SETTING: String = "catalog-setting"
+  public const val SAY: String = "say"
+  public const val SPEAK_CLIPBOARD: String = "speak-clipboard"
+  public const val SNOOZE: String = "snooze"
+  public const val MUTE: String = "mute"
+  public const val VOLUME: String = "volume"
+  public const val SIGN_IN: String = "sign-in"
+  public const val SIGN_OUT: String = "sign-out"
+  public const val IMPORT_ANTIGRAVITY: String = "import-antigravity"
+  public const val FIND_SPEAKERS: String = "find-speakers"
+  public const val CHOOSE_HOME: String = "choose-home"
+  public const val SAVE_GEMINI_KEY: String = "save-gemini-key"
+  public const val CLEAR_GEMINI_KEY: String = "clear-gemini-key"
+  public const val SAVE_SLACK_TOKEN: String = "save-slack-token"
+  public const val CLEAR_SLACK_TOKEN: String = "clear-slack-token"
+  public const val SAVE_BEEPER_TOKEN: String = "save-beeper-token"
+  public const val CLEAR_BEEPER_TOKEN: String = "clear-beeper-token"
+  public const val SAVE_COURIER_TOKEN: String = "save-courier-token"
+  public const val CLEAR_COURIER_TOKEN: String = "clear-courier-token"
+  public const val GRANT_GOOGLE_CHAT: String = "grant-google-chat"
+  public const val DISCONNECT_GOOGLE_CHAT: String = "disconnect-google-chat"
+  public const val BEEPER_NETWORK: String = "beeper-network"
+  public const val COURIER_NETWORK: String = "courier-network"
+  public const val COURIER_READ_ANYWAY: String = "courier-read-anyway"
+  public const val START_CHAT_MONITOR: String = "start-chat-monitor"
+  public const val STOP_CHAT_MONITOR: String = "stop-chat-monitor"
+  public const val REPLAY: String = "replay"
+  public const val TEST_MEDIA_PAUSE: String = "test-media-pause"
+  public const val VOICE_PREVIEW: String = "voice-preview"
+  public const val REMOVE_SPEAKER: String = "remove-speaker"
+  public const val SET_DEFAULT_SPEAKER: String = "set-default-speaker"
+  public const val HOOK_INSTALL: String = "hook-install"
+  public const val HOOK_UPDATE: String = "hook-update"
+  public const val HOOK_REMOVE: String = "hook-remove"
+  public const val HOOK_ADD_INSTRUCTION: String = "hook-add-instruction"
+  public const val HOOK_TURN_OFF_RIVAL: String = "hook-turn-off-rival"
+  public const val REMOVE_LEGACY_AGENT: String = "remove-legacy-agent"
+  public const val SAVE_OAUTH_CLIENT: String = "save-oauth-client"
+  public const val CLEAR_OAUTH_CLIENT: String = "clear-oauth-client"
+  public const val DOOR_SWITCH: String = "door-switch"
+  public const val DOOR_COPY_SETTINGS: String = "door-copy-settings"
+  public const val RESET: String = "reset"
 }

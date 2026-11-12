@@ -529,6 +529,8 @@ public class RemoteState(
 
   /** Monotonic/wall timestamp when "Reset settings" was first tapped (5 s confirmation window). */
   private var homeSpeakerResetArmedAtMs: Long? by mutableStateOf(null)
+  /** The speaker whose Remove was tapped once, and when; a second tap within the window removes. */
+  private var speakerRemoveArmed: Pair<String, Long>? by mutableStateOf(null)
 
   private fun applyAgentHomeSpeaker(
       hs: AgentHomeSpeaker,
@@ -2501,6 +2503,7 @@ public class RemoteState(
     val newest = Derive.newestBroadcast(hs?.recent.orEmpty(), hs?.last)
     val canSpeak = homeSpeakerCanAct && available && hs!!.installed
     val canReplay = canSpeak && Derive.isReplayable(newest)
+    val placement = Derive.CatalogPlacement()
     return ModuleDashboard(
         id = "homespeaker",
         name = "HomeSpeaker",
@@ -2573,18 +2576,22 @@ public class RemoteState(
                           tone = StatusTone.Warn,
                           titleLines = 3,
                       ))
-              else -> homeSpeakerRows(hs)
+              else -> homeSpeakerRows(hs, placement)
             },
         extraLists =
             if (!hasCatalog) emptyList()
             else
-                homeSpeakerExtraLists(hs!!).map { list ->
-                  list.copy(
-                      rows =
-                          list.rows.map { r ->
-                            r.copy(error = homeSpeakerErrors[r.title] ?: r.error)
-                          })
-                },
+                homeSpeakerExtraLists(hs!!, placement)
+                    // Every list is still built (so placement sees every drawn key), but with
+                    // Settings collapsed only the broadcasts stay on screen (UAT 2026-11-12).
+                    .filter { homeSpeakerSettingsExpanded || it.label == RECENT_BROADCASTS_LABEL }
+                    .map { list ->
+                      list.copy(
+                          rows =
+                              list.rows.map { r ->
+                                r.copy(error = homeSpeakerErrors[r.title] ?: r.error)
+                              })
+                    },
         composer =
             ModuleComposer(
                 placeholder = "Announce on ${selectedDisplay ?: "the speaker"}…",
@@ -2593,16 +2600,27 @@ public class RemoteState(
                 enabled = homeSpeakerCanAct && available && announceDraft.isNotBlank(),
                 onValueChange = ::updateAnnounceDraft,
                 onSubmit = ::announce,
+                controlId = HomeSpeakerControls.SAY,
             ),
         quick = homeSpeakerQuick(hs),
         streamActions =
             listOf(
-                RowAction("Replay", enabled = canReplay, error = homeSpeakerErrors["replay"]) {
+                RowAction(
+                    "Replay",
+                    enabled = canReplay,
+                    error = homeSpeakerErrors["replay"],
+                    controlId = HomeSpeakerControls.REPLAY,
+                ) {
                   if (newest != null) {
                     replayAnnouncement(newest.text, newest.id, controlId = "replay")
                   }
                 },
-                RowAction("Test", enabled = canSpeak, error = homeSpeakerErrors["test"]) {
+                RowAction(
+                    "Test",
+                    enabled = canSpeak,
+                    error = homeSpeakerErrors["test"],
+                    controlId = HomeSpeakerControls.SAY,
+                ) {
                   testHomeSpeaker()
                 },
             ),
@@ -2623,22 +2641,32 @@ public class RemoteState(
 
   private fun speakerTargetChoices(
       hs: AgentHomeSpeaker,
-      controlId: String = "default_target",
+      errorKey: String = "default_target",
   ): List<RowAction> {
     val catalogChoices = Derive.catalogChoices(hs.catalog, "default_target")
     if (catalogChoices.isNotEmpty()) {
       val selectedKey = hs.targets.firstOrNull { it.selected }?.key ?: hs.defaultTarget
       return catalogChoices.map { ch ->
         val isSelected = ch.value == selectedKey
-        RowAction(ch.label, enabled = homeSpeakerCanAct && !isSelected, selected = isSelected) {
-          setHomeSpeaker("speaker ${ch.label}", defaultTarget = ch.value, controlId = controlId)
+        RowAction(
+            ch.label,
+            enabled = homeSpeakerCanAct && !isSelected,
+            selected = isSelected,
+            controlId = HomeSpeakerControls.SET_DEFAULT_SPEAKER,
+        ) {
+          setHomeSpeaker("speaker ${ch.label}", defaultTarget = ch.value, controlId = errorKey)
         }
       }
     }
     return hs.targets.map { t ->
       val label = Derive.phoneWording(t.displayLine.ifBlank { t.name })
-      RowAction(label, enabled = homeSpeakerCanAct && !t.selected, selected = t.selected) {
-        setHomeSpeaker("speaker $label", defaultTarget = t.key, controlId = controlId)
+      RowAction(
+          label,
+          enabled = homeSpeakerCanAct && !t.selected,
+          selected = t.selected,
+          controlId = HomeSpeakerControls.SET_DEFAULT_SPEAKER,
+      ) {
+        setHomeSpeaker("speaker $label", defaultTarget = t.key, controlId = errorKey)
       }
     }
   }
@@ -2650,8 +2678,7 @@ public class RemoteState(
     val v = agentSpeakerVolume
     val selected = hs?.targets?.firstOrNull { it.selected }
     val newest = Derive.newestBroadcast(hs?.recent.orEmpty(), hs?.last)
-    val roomChoices =
-        if (hasCatalog) speakerTargetChoices(hs!!, controlId = "room") else emptyList()
+    val roomChoices = if (hasCatalog) speakerTargetChoices(hs!!, errorKey = "room") else emptyList()
     val specs =
         Derive.homeSpeakerQuickActions(
             hasCatalog = hasCatalog,
@@ -2687,6 +2714,7 @@ public class RemoteState(
                 onClick = { setSpeakerVolume(muted = !(v?.muted == true), controlId = "mute") },
                 contentDescription = spec.contentDescription,
                 error = homeSpeakerErrors["mute"],
+                controlId = HomeSpeakerControls.MUTE,
             )
         "quiet_hours" ->
             QuickAction(
@@ -2703,6 +2731,7 @@ public class RemoteState(
                 },
                 contentDescription = spec.contentDescription,
                 error = homeSpeakerErrors["quiet_hours"],
+                controlId = HomeSpeakerControls.CATALOG_SETTING,
             )
         "room" ->
             QuickAction(
@@ -2719,6 +2748,7 @@ public class RemoteState(
                         ?.let { Derive.catalogLabel(it, "default_target") }
                         .orEmpty()
                         .ifBlank { "Speaker" },
+                controlId = HomeSpeakerControls.SET_DEFAULT_SPEAKER,
             )
         "replay" ->
             QuickAction(
@@ -2733,6 +2763,7 @@ public class RemoteState(
                 },
                 contentDescription = spec.contentDescription,
                 error = homeSpeakerErrors["replay"],
+                controlId = HomeSpeakerControls.REPLAY,
             )
         "snooze" ->
             QuickAction(
@@ -2749,6 +2780,7 @@ public class RemoteState(
                 },
                 contentDescription = spec.contentDescription,
                 error = homeSpeakerErrors["snooze"],
+                controlId = HomeSpeakerControls.SNOOZE,
             )
         else ->
             QuickAction(
@@ -2763,7 +2795,10 @@ public class RemoteState(
     }
   }
 
-  private fun homeSpeakerRows(hs: AgentHomeSpeaker): List<ModuleRow> {
+  private fun homeSpeakerRows(
+      hs: AgentHomeSpeaker,
+      placement: Derive.CatalogPlacement,
+  ): List<ModuleRow> {
     val disclosure =
         ModuleRow(
             title = "Settings",
@@ -2772,11 +2807,10 @@ public class RemoteState(
             tone = StatusTone.Neutral,
             onSelect = ::toggleHomeSpeakerSettings,
         )
+    val settingsRows = homeSpeakerSettingsRows(hs, placement)
     if (!homeSpeakerSettingsExpanded) return listOf(disclosure)
     return listOf(disclosure) +
-        homeSpeakerSettingsRows(hs).map { row ->
-          row.copy(error = homeSpeakerErrors[row.title] ?: row.error)
-        }
+        settingsRows.map { row -> row.copy(error = homeSpeakerErrors[row.title] ?: row.error) }
   }
 
   private fun homeSpeakerMirrorRow(): ModuleRow {
@@ -2817,7 +2851,12 @@ public class RemoteState(
   ): List<RowAction> =
       Derive.catalogChoices(hs.catalog, key).map { ch ->
         val isCurrent = ch.value == current
-        RowAction(ch.label, enabled = homeSpeakerCanAct && !isCurrent, selected = isCurrent) {
+        RowAction(
+            ch.label,
+            enabled = homeSpeakerCanAct && !isCurrent,
+            selected = isCurrent,
+            controlId = HomeSpeakerControls.CATALOG_SETTING,
+        ) {
           apply(ch.value, ch.label)
         }
       }
@@ -2828,332 +2867,440 @@ public class RemoteState(
       key: String,
       current: Double,
       enabled: Boolean = true,
+      controlId: String = HomeSpeakerControls.CATALOG_SETTING,
       apply: (Double) -> Unit,
   ): List<RowAction> {
     val limits = Derive.catalogLimits(hs.catalog, key) ?: return emptyList()
     val spec = Derive.catalogStepper(current, limits, homeSpeakerCanAct && enabled)
     return listOf(
-        RowAction(spec.minusLabel, enabled = spec.minusEnabled) { apply(spec.minusNext) },
-        RowAction(spec.plusLabel, enabled = spec.plusEnabled) { apply(spec.plusNext) },
+        RowAction(spec.minusLabel, enabled = spec.minusEnabled, controlId = controlId) {
+          apply(spec.minusNext)
+        },
+        RowAction(spec.plusLabel, enabled = spec.plusEnabled, controlId = controlId) {
+          apply(spec.plusNext)
+        },
     )
   }
 
-  private fun homeSpeakerSettingsRows(hs: AgentHomeSpeaker): List<ModuleRow> = buildList {
+  private fun homeSpeakerSettingsRows(
+      hs: AgentHomeSpeaker,
+      placement: Derive.CatalogPlacement,
+  ): List<ModuleRow> {
     // Every label, choice list, limit and show/hide rule below is Home Speaker's own, from the
     // catalog it sent (`settings[]`); the phone keeps none of them.
     val catalog = hs.catalog
     fun shown(key: String) = Derive.catalogShown(catalog, key)
     fun lbl(key: String) = Derive.catalogLabel(catalog, key).ifBlank { key }
     fun err(key: String) = Derive.settingError(homeSpeakerErrors, key)
-    // Broadcasting off: nothing else on this plate changes what is heard, so
-    // the master switch is the whole plate.
-    if (!hs.enabled) {
-      add(
-          ModuleRow(
-              title = lbl("enabled"),
-              error = err("enabled"),
-              subtitle = "replies stay silent · automatic broadcasts are off",
-              trailing = "off",
-              tone = StatusTone.Neutral,
-              toggle =
-                  RowToggle(checked = false, enabled = homeSpeakerCanAct) {
-                    setHomeSpeaker("broadcasting on", enabled = true)
-                  },
-          ))
-      // A phone-side setting: it shows announcements made with broadcasting back on, so it stays
-      // reachable while broadcasting is off.
-      add(homeSpeakerMirrorRow())
-      return@buildList
-    }
-    add(
-        ModuleRow(
-            title = lbl("enabled"),
-            error = err("enabled"),
-            subtitle = "replies are read aloud",
-            trailing = "on",
-            tone = StatusTone.Ok,
-            toggle =
-                RowToggle(checked = true, enabled = homeSpeakerCanAct) {
-                  setHomeSpeaker("broadcasting off", enabled = false)
-                },
-        ))
-    val geminiVoiceName = Derive.catalogChoiceLabel(catalog, "gemini_voice", hs.geminiVoice)
-    // Which speaker: one dropdown rather than a row per speaker.
-    fun addSpeakerRow() {
-      if (hs.targets.isEmpty()) {
-        add(
+    fun <T> placed(key: String, build: () -> T): T? = placement.placed(key, build)
+
+    val enabledRow =
+        placed("enabled") {
+          if (!hs.enabled) {
             ModuleRow(
-                "No speakers found yet",
-                "open HomeSpeaker on the Mac and run Find speakers",
-                "",
-                StatusTone.Warn))
-        return
-      }
-      val current = hs.targets.firstOrNull { it.selected }
-      add(
-          ModuleRow(
-              title = lbl("default_target"),
-              error = err("default_target"),
-              subtitle =
-                  current?.let {
-                    if (it.type == "Structure") "every speaker at once"
-                    else "${it.room} · ${it.type}"
-                  } ?: "no speaker picked",
-              trailing =
-                  current?.let { Derive.phoneWording(it.displayLine.ifBlank { it.name }) }
-                      ?: "None",
-              tone = if (current != null) StatusTone.Ok else StatusTone.Neutral,
-              actions =
-                  if (current != null)
-                      listOf(
-                          RowAction("Remove", enabled = homeSpeakerCanAct) {
-                            setHomeSpeaker(
-                                "remove speaker ${current.name}", removeTarget = current.key)
-                          })
-                  else emptyList(),
-              choices = speakerTargetChoices(hs),
-          ))
-    }
-    // The outputs, from an agent that can switch them (v1.8+); an older
-    // one gets no switches rather than ones that would be refused. All off
-    // is kept -- the user asked for it -- and the rows turn amber to say
-    // nothing will be spoken.
-    val speakHome = hs.speakHome
-    val speakLocal = hs.speakLocal
-    val voiceSectionShown = shown("gemini_voice")
-    fun addGeminiApiKeyRow() {
-      val hasKey = hs.hasGeminiKey
-      add(
-          ModuleRow(
-              title = "Gemini API key",
-              subtitle = if (hasKey) "API key saved on Mac" else "Tap to paste Gemini API key",
-              trailing = if (hasKey) "saved" else "missing",
-              tone = if (hasKey) StatusTone.Ok else StatusTone.Warn,
-              textPrompt =
-                  RowTextPrompt(
-                      title = "Gemini API key",
-                      hasValue = hasKey,
-                      placeholder = "AIzaSy...",
-                      secret = true,
-                      submitLabel = "Save Key",
-                      clearLabel = if (hasKey) "Clear Key" else null,
-                      enabled = homeSpeakerCanAct,
-                      onClear =
-                          if (hasKey) {
-                            { setHomeSpeaker("clear Gemini API key", geminiApiKey = "") }
-                          } else null,
-                      onSubmit = { key ->
-                        setHomeSpeaker("save Gemini API key", geminiApiKey = key)
-                      },
-                  ),
-          ))
-    }
-    if (speakHome != null && speakLocal != null) {
-      val silent = !speakHome && !speakLocal && hs.speakPhone != true
-      if (shown("speak_home"))
-          add(
-              ModuleRow(
-                  title = lbl("speak_home"),
-                  error = err("speak_home"),
-                  subtitle =
-                      if (speakHome) "announcements play on Google Home"
-                      else "Google Home stays quiet",
-                  trailing = if (speakHome) "on" else "off",
-                  tone =
-                      when {
-                        silent -> StatusTone.Warn
-                        speakHome -> StatusTone.Ok
-                        else -> StatusTone.Neutral
-                      },
-                  toggle =
-                      RowToggle(checked = speakHome, enabled = homeSpeakerCanAct) { next ->
-                        setHomeSpeaker(
-                            "home speakers ${if (next) "on" else "off"}", speakHome = next)
-                      },
-              ))
-      if (speakHome) {
-        val accountSpec =
-            Derive.googleHomeAccountRow(
-                signedIn = hs.signedIn,
-                accountEmail = hs.accountEmail,
-                hasAntigravityTokens = hs.hasAntigravityTokens,
-                signInPending = homeSpeakerSignInPending,
-                canAct = homeSpeakerCanAct,
-                installed = hs.installed,
-                signInPendingSinceMs = homeSpeakerSignInPendingSinceMs,
-                nowMs = System.currentTimeMillis(),
-            )
-        add(
-            ModuleRow(
-                title = "Google Home account",
-                subtitle = accountSpec.subtitle,
-                trailing = accountSpec.trailing,
-                tone = if (accountSpec.healthy) StatusTone.Ok else StatusTone.Neutral,
-                error = homeSpeakerErrors["Google Home account"] ?: accountSpec.inlineNote,
-                actions =
-                    buildList {
-                      if (accountSpec.showSignOut) {
-                        add(
-                            RowAction("Sign out", enabled = accountSpec.signOutEnabled) {
-                              setHomeSpeaker(
-                                  "sign out", signOut = true, controlId = "Google Home account")
-                            })
-                      }
-                      if (accountSpec.showSignIn) {
-                        add(
-                            RowAction("Sign in on Mac", enabled = accountSpec.signInEnabled) {
-                              setHomeSpeaker(
-                                  "sign in on Mac",
-                                  signIn = true,
-                                  controlId = "Google Home account")
-                            })
-                      }
-                      if (accountSpec.showImportLogin) {
-                        add(
-                            RowAction("Import login", enabled = accountSpec.importLoginEnabled) {
-                              setHomeSpeaker(
-                                  "import antigravity",
-                                  importAntigravity = true,
-                                  controlId = "Google Home account")
-                            })
-                      }
+                title = lbl("enabled"),
+                error = err("enabled"),
+                subtitle = "replies stay silent · automatic broadcasts are off",
+                trailing = "off",
+                tone = StatusTone.Neutral,
+                controlId = HomeSpeakerControls.CATALOG_SETTING,
+                toggle =
+                    RowToggle(checked = false, enabled = homeSpeakerCanAct) {
+                      setHomeSpeaker("broadcasting on", enabled = true)
                     },
-            ))
-        add(
+            )
+          } else {
             ModuleRow(
-                title = "Find speakers",
-                subtitle =
-                    if (hs.targets.isEmpty()) "0 speakers discovered"
-                    else "${hs.targets.size} speakers discovered",
-                // The button says it; "discover" beside it only narrowed the title.
-                trailing = "",
-                actions =
-                    listOf(
-                        RowAction("Find speakers", enabled = homeSpeakerCanAct) {
-                          setHomeSpeaker("discover", discover = true)
-                        }),
-            ))
-        if (hs.homes.isNotEmpty()) {
+                title = lbl("enabled"),
+                error = err("enabled"),
+                subtitle = "replies are read aloud",
+                trailing = "on",
+                tone = StatusTone.Ok,
+                controlId = HomeSpeakerControls.CATALOG_SETTING,
+                toggle =
+                    RowToggle(checked = true, enabled = homeSpeakerCanAct) {
+                      setHomeSpeaker("broadcasting off", enabled = false)
+                    },
+            )
+          }
+        }
+    val detailRows = buildList {
+      val geminiVoiceName = Derive.catalogChoiceLabel(catalog, "gemini_voice", hs.geminiVoice)
+      // Which speaker: default picker plus a row per speaker so any speaker can be removed.
+      fun addSpeakerRow(visible: Boolean = true) {
+        val defaultTargetRow =
+            placed("default_target") {
+              if (!visible || hs.targets.isEmpty()) null
+              else {
+                val current = hs.targets.firstOrNull { it.selected }
+                ModuleRow(
+                    title = lbl("default_target"),
+                    error = err("default_target"),
+                    subtitle =
+                        current?.let {
+                          if (it.type == "Structure") "every speaker at once"
+                          else "${it.room} · ${it.type}"
+                        } ?: "no speaker picked",
+                    trailing =
+                        current?.let { Derive.phoneWording(it.displayLine.ifBlank { it.name }) }
+                            ?: "None",
+                    tone = if (current != null) StatusTone.Ok else StatusTone.Neutral,
+                    controlId = HomeSpeakerControls.SET_DEFAULT_SPEAKER,
+                    choices = speakerTargetChoices(hs),
+                )
+              }
+            }
+        if (!visible) return
+        if (hs.targets.isEmpty()) {
           add(
               ModuleRow(
-                  title = "Home structure",
-                  subtitle = "Google Home structure",
-                  trailing = hs.structureName.ifBlank { "Home" },
-                  choices =
-                      hs.homes.map { h ->
-                        val current = h.id == hs.structureId
-                        RowAction(
-                            h.name, enabled = homeSpeakerCanAct && !current, selected = current) {
-                              setHomeSpeaker("home ${h.name}", structureId = h.id)
-                            }
-                      },
+                  "No speakers found yet",
+                  "open HomeSpeaker on the Mac and run Find speakers",
+                  "",
+                  StatusTone.Warn))
+          return
+        }
+        defaultTargetRow?.let(::add)
+        val wireTargets =
+            hs.targets.map { t ->
+              HomeSpeakerTargetWire(
+                  key = t.key,
+                  name = t.name,
+                  room = t.room,
+                  type = t.type,
+                  selected = t.selected,
+                  displayLine = t.displayLine,
+              )
+            }
+        Derive.speakerRowSpecs(wireTargets, canAct = homeSpeakerCanAct).forEach { spec ->
+          add(
+              ModuleRow(
+                  title = spec.title,
+                  subtitle = spec.subtitle,
+                  trailing = spec.trailing,
+                  tone = if (spec.selected) StatusTone.Ok else StatusTone.Neutral,
+                  selected = spec.selected,
+                  actions =
+                      listOf(
+                          RowAction(
+                              if (isSpeakerRemoveArmed(spec.key)) "Confirm" else "Remove",
+                              enabled = spec.removeEnabled,
+                              danger = isSpeakerRemoveArmed(spec.key),
+                              controlId = HomeSpeakerControls.REMOVE_SPEAKER,
+                          ) {
+                            onTapRemoveSpeaker(spec.key, spec.name, spec.title)
+                          }),
               ))
         }
-        addSpeakerRow()
       }
-      if (shown("home_cast_voice")) {
+      // The outputs, from an agent that can switch them (v1.8+); an older
+      // one gets no switches rather than ones that would be refused. All off
+      // is kept -- the user asked for it -- and the rows turn amber to say
+      // nothing will be spoken.
+      val speakHome = hs.speakHome
+      val speakLocal = hs.speakLocal
+      val voiceSectionShown = shown("gemini_voice")
+      fun addGeminiApiKeyRow() {
+        val hasKey = hs.hasGeminiKey
         add(
             ModuleRow(
-                title = lbl("home_cast_voice"),
-                error = err("home_cast_voice"),
-                subtitle =
-                    if (hs.homeCastVoice) "streams Gemini voice to Google Home"
-                    else "Google Home speaks with its own cloud voice",
-                trailing = if (hs.homeCastVoice) "on" else "off",
-                tone = if (hs.homeCastVoice) StatusTone.Ok else StatusTone.Neutral,
-                toggle =
-                    RowToggle(checked = hs.homeCastVoice, enabled = homeSpeakerCanAct) { next ->
-                      setHomeSpeaker(
-                          "cast selected voice ${if (next) "on" else "off"}", homeCastVoice = next)
-                    },
+                title = "Gemini API key",
+                subtitle = if (hasKey) "API key saved on Mac" else "Tap to paste Gemini API key",
+                trailing = if (hasKey) "saved" else "missing",
+                tone = if (hasKey) StatusTone.Ok else StatusTone.Warn,
+                controlId = HomeSpeakerControls.SAVE_GEMINI_KEY,
+                textPrompt =
+                    RowTextPrompt(
+                        title = "Gemini API key",
+                        hasValue = hasKey,
+                        placeholder = "AIzaSy...",
+                        secret = true,
+                        submitLabel = "Save Key",
+                        enabled = homeSpeakerCanAct,
+                        clearAction =
+                            if (hasKey) {
+                              RowAction(
+                                  "Clear Key",
+                                  enabled = homeSpeakerCanAct,
+                                  danger = true,
+                                  controlId = HomeSpeakerControls.CLEAR_GEMINI_KEY,
+                              ) {
+                                setHomeSpeaker("clear Gemini API key", geminiApiKey = "")
+                              }
+                            } else null,
+                        onSubmit = { key ->
+                          setHomeSpeaker("save Gemini API key", geminiApiKey = key)
+                        },
+                    ),
             ))
       }
-      if (shown("speak_local"))
+      if (speakHome != null && speakLocal != null) {
+        val silent = !speakHome && !speakLocal && hs.speakPhone != true
+        placed("speak_home") {
+              if (shown("speak_home"))
+                  ModuleRow(
+                      title = lbl("speak_home"),
+                      error = err("speak_home"),
+                      subtitle =
+                          if (speakHome) "announcements play on Google Home"
+                          else "Google Home stays quiet",
+                      trailing = if (speakHome) "on" else "off",
+                      tone =
+                          when {
+                            silent -> StatusTone.Warn
+                            speakHome -> StatusTone.Ok
+                            else -> StatusTone.Neutral
+                          },
+                      controlId = HomeSpeakerControls.CATALOG_SETTING,
+                      toggle =
+                          RowToggle(checked = speakHome, enabled = homeSpeakerCanAct) { next ->
+                            setHomeSpeaker(
+                                "home speakers ${if (next) "on" else "off"}", speakHome = next)
+                          },
+                  )
+              else null
+            }
+            ?.let(::add)
+        if (speakHome) {
+          val accountSpec =
+              Derive.googleHomeAccountRow(
+                  signedIn = hs.signedIn,
+                  accountEmail = hs.accountEmail,
+                  hasAntigravityTokens = hs.hasAntigravityTokens,
+                  signInPending = homeSpeakerSignInPending,
+                  canAct = homeSpeakerCanAct,
+                  installed = hs.installed,
+                  signInPendingSinceMs = homeSpeakerSignInPendingSinceMs,
+                  nowMs = System.currentTimeMillis(),
+              )
           add(
               ModuleRow(
-                  title = lbl("speak_local"),
-                  error = err("speak_local"),
-                  // The Apple voice is chosen on the Mac; Gemini TTS voice can be switched below.
-                  subtitle =
-                      Derive.macVoiceLabel(
-                          hs.localVoiceName,
-                          hs.localVoice,
-                          hs.localEngine,
-                          geminiVoiceName,
-                          hs.hasGeminiKey),
-                  trailing = if (speakLocal) "on" else "off",
-                  tone =
-                      when {
-                        silent -> StatusTone.Warn
-                        speakLocal -> StatusTone.Ok
-                        else -> StatusTone.Neutral
-                      },
-                  toggle =
-                      RowToggle(checked = speakLocal, enabled = homeSpeakerCanAct) { next ->
-                        setHomeSpeaker("this Mac ${if (next) "on" else "off"}", speakLocal = next)
+                  title = "Google Home account",
+                  subtitle = accountSpec.subtitle,
+                  trailing = accountSpec.trailing,
+                  tone = if (accountSpec.healthy) StatusTone.Ok else StatusTone.Neutral,
+                  error = homeSpeakerErrors["Google Home account"] ?: accountSpec.inlineNote,
+                  actions =
+                      buildList {
+                        if (accountSpec.showSignOut) {
+                          add(
+                              RowAction(
+                                  "Sign out",
+                                  enabled = accountSpec.signOutEnabled,
+                                  controlId = HomeSpeakerControls.SIGN_OUT,
+                              ) {
+                                setHomeSpeaker(
+                                    "sign out", signOut = true, controlId = "Google Home account")
+                              })
+                        }
+                        if (accountSpec.showSignIn) {
+                          add(
+                              RowAction(
+                                  "Sign in on Mac",
+                                  enabled = accountSpec.signInEnabled,
+                                  controlId = HomeSpeakerControls.SIGN_IN,
+                              ) {
+                                setHomeSpeaker(
+                                    "sign in on Mac",
+                                    signIn = true,
+                                    controlId = "Google Home account")
+                              })
+                        }
+                        if (accountSpec.showImportLogin) {
+                          add(
+                              RowAction(
+                                  "Import login",
+                                  enabled = accountSpec.importLoginEnabled,
+                                  controlId = HomeSpeakerControls.IMPORT_ANTIGRAVITY,
+                              ) {
+                                setHomeSpeaker(
+                                    "import antigravity",
+                                    importAntigravity = true,
+                                    controlId = "Google Home account")
+                              })
+                        }
                       },
               ))
-      if (shown("local_voice")) {
-        add(
-            ModuleRow(
-                title = lbl("local_voice"),
-                error = err("local_voice"),
-                subtitle = hs.localVoiceName.ifBlank { "System default" },
-                trailing = hs.localVoiceName.ifBlank { "default" },
-                actions =
-                    listOf(
-                        RowAction("Preview", enabled = homeSpeakerCanAct) {
-                          setHomeSpeaker("preview voice", previewVoice = true)
-                        }),
-                choices =
-                    // Home Speaker's catalog lists the voices itself. Only a catalog entry with
-                    // no choices falls back to `available_voices` (the same list, older shape).
-                    if (Derive.catalogChoices(catalog, "local_voice").isNotEmpty())
-                        catalogChoiceActions(hs, "local_voice", hs.localVoice) { id, label ->
-                          setHomeSpeaker("Mac voice $label", localVoice = id)
-                        }
-                    else
-                        hs.availableVoices.map { v ->
-                          val current = v.id == hs.localVoice
+          add(
+              ModuleRow(
+                  title = "Find speakers",
+                  subtitle =
+                      if (hs.targets.isEmpty()) "0 speakers discovered"
+                      else "${hs.targets.size} speakers discovered",
+                  // The button says it; "discover" beside it only narrowed the title.
+                  trailing = "",
+                  actions =
+                      listOf(
                           RowAction(
-                              v.name, enabled = homeSpeakerCanAct && !current, selected = current) {
-                                setHomeSpeaker("Mac voice ${v.name}", localVoice = v.id)
+                              "Find speakers",
+                              enabled = homeSpeakerCanAct,
+                              controlId = HomeSpeakerControls.FIND_SPEAKERS,
+                          ) {
+                            setHomeSpeaker("discover", discover = true)
+                          }),
+              ))
+          Derive.homePickerSpec(
+                  homes = hs.homes,
+                  structureId = hs.structureId,
+                  structureName = hs.structureName,
+                  canAct = homeSpeakerCanAct,
+              )
+              ?.let { homeSpec ->
+                add(
+                    ModuleRow(
+                        title = "Home structure",
+                        subtitle = "Google Home structure",
+                        trailing = homeSpec.trailing,
+                        controlId = HomeSpeakerControls.CHOOSE_HOME,
+                        choices =
+                            homeSpec.choices.map { h ->
+                              RowAction(
+                                  h.name,
+                                  enabled = h.enabled,
+                                  selected = h.selected,
+                                  controlId = HomeSpeakerControls.CHOOSE_HOME,
+                              ) {
+                                setHomeSpeaker(
+                                    "switch to ${h.name}",
+                                    structureId = h.id,
+                                    controlId = "Home structure",
+                                )
                               }
-                        },
-            ))
-      }
-      val speakPhone = hs.speakPhone
-      if (speakPhone != null) {
+                            },
+                    ))
+              }
+          addSpeakerRow(visible = true)
+        } else {
+          addSpeakerRow(visible = false)
+        }
+        placed("home_cast_voice") {
+              if (shown("home_cast_voice"))
+                  ModuleRow(
+                      title = lbl("home_cast_voice"),
+                      error = err("home_cast_voice"),
+                      subtitle =
+                          if (hs.homeCastVoice) "streams Gemini voice to Google Home"
+                          else "Google Home speaks with its own cloud voice",
+                      trailing = if (hs.homeCastVoice) "on" else "off",
+                      tone = if (hs.homeCastVoice) StatusTone.Ok else StatusTone.Neutral,
+                      controlId = HomeSpeakerControls.CATALOG_SETTING,
+                      toggle =
+                          RowToggle(checked = hs.homeCastVoice, enabled = homeSpeakerCanAct) { next
+                            ->
+                            setHomeSpeaker(
+                                "cast selected voice ${if (next) "on" else "off"}",
+                                homeCastVoice = next)
+                          },
+                  )
+              else null
+            }
+            ?.let(::add)
+        placed("speak_local") {
+              if (shown("speak_local"))
+                  ModuleRow(
+                      title = lbl("speak_local"),
+                      error = err("speak_local"),
+                      // The Apple voice is chosen on the Mac; Gemini TTS voice can be switched
+                      // below.
+                      subtitle =
+                          Derive.macVoiceLabel(
+                              hs.localVoiceName,
+                              hs.localVoice,
+                              hs.localEngine,
+                              geminiVoiceName,
+                              hs.hasGeminiKey),
+                      trailing = if (speakLocal) "on" else "off",
+                      tone =
+                          when {
+                            silent -> StatusTone.Warn
+                            speakLocal -> StatusTone.Ok
+                            else -> StatusTone.Neutral
+                          },
+                      controlId = HomeSpeakerControls.CATALOG_SETTING,
+                      toggle =
+                          RowToggle(checked = speakLocal, enabled = homeSpeakerCanAct) { next ->
+                            setHomeSpeaker(
+                                "this Mac ${if (next) "on" else "off"}", speakLocal = next)
+                          },
+                  )
+              else null
+            }
+            ?.let(::add)
+        placed("local_voice") {
+              if (shown("local_voice"))
+                  ModuleRow(
+                      title = lbl("local_voice"),
+                      error = err("local_voice"),
+                      subtitle = hs.localVoiceName.ifBlank { "System default" },
+                      trailing = hs.localVoiceName.ifBlank { "default" },
+                      controlId = HomeSpeakerControls.CATALOG_SETTING,
+                      actions =
+                          listOf(
+                              RowAction(
+                                  "Preview",
+                                  enabled = homeSpeakerCanAct,
+                                  controlId = HomeSpeakerControls.VOICE_PREVIEW,
+                              ) {
+                                setHomeSpeaker("preview voice", previewVoice = true)
+                              }),
+                      choices =
+                          // Home Speaker's catalog lists the voices itself. Only a catalog entry
+                          // with no choices falls back to `available_voices` (the same list, older
+                          // shape).
+                          if (Derive.catalogChoices(catalog, "local_voice").isNotEmpty())
+                              catalogChoiceActions(hs, "local_voice", hs.localVoice) { id, label ->
+                                setHomeSpeaker("Mac voice $label", localVoice = id)
+                              }
+                          else
+                              hs.availableVoices.map { v ->
+                                val current = v.id == hs.localVoice
+                                RowAction(
+                                    v.name,
+                                    enabled = homeSpeakerCanAct && !current,
+                                    selected = current,
+                                    controlId = HomeSpeakerControls.CATALOG_SETTING,
+                                ) {
+                                  setHomeSpeaker("Mac voice ${v.name}", localVoice = v.id)
+                                }
+                              },
+                  )
+              else null
+            }
+            ?.let(::add)
+        val speakPhone = hs.speakPhone
         val phoneConnected = hs.phoneConnected || bridgeLinked
-        if (shown("speak_phone"))
-            add(
-                ModuleRow(
-                    title = lbl("speak_phone"),
-                    error = err("speak_phone"),
-                    subtitle =
-                        Derive.phoneVoiceLabel(
-                            hs.localEngine,
-                            geminiVoiceName,
-                            hs.hasGeminiKey,
-                            phoneConnected,
-                            hs.phoneHeadphonesOnly),
-                    trailing = if (speakPhone) "on" else "off",
-                    tone =
-                        when {
-                          silent -> StatusTone.Warn
-                          speakPhone && !phoneConnected -> StatusTone.Warn
-                          speakPhone -> StatusTone.Ok
-                          else -> StatusTone.Neutral
-                        },
-                    toggle =
-                        RowToggle(checked = speakPhone, enabled = homeSpeakerCanAct) { next ->
-                          setHomeSpeaker(
-                              "this phone ${if (next) "on" else "off"}", speakPhone = next)
-                        },
-                ))
-        if (speakPhone) {
-          if (shown("phone_pause_media"))
-              add(
+        placed("speak_phone") {
+              if (speakPhone != null && shown("speak_phone"))
+                  ModuleRow(
+                      title = lbl("speak_phone"),
+                      error = err("speak_phone"),
+                      subtitle =
+                          Derive.phoneVoiceLabel(
+                              hs.localEngine,
+                              geminiVoiceName,
+                              hs.hasGeminiKey,
+                              phoneConnected,
+                              hs.phoneHeadphonesOnly),
+                      trailing = if (speakPhone) "on" else "off",
+                      tone =
+                          when {
+                            silent -> StatusTone.Warn
+                            speakPhone && !phoneConnected -> StatusTone.Warn
+                            speakPhone -> StatusTone.Ok
+                            else -> StatusTone.Neutral
+                          },
+                      controlId = HomeSpeakerControls.CATALOG_SETTING,
+                      toggle =
+                          RowToggle(checked = speakPhone, enabled = homeSpeakerCanAct) { next ->
+                            setHomeSpeaker(
+                                "this phone ${if (next) "on" else "off"}", speakPhone = next)
+                          },
+                  )
+              else null
+            }
+            ?.let(::add)
+        placed("phone_pause_media") {
+              if (speakPhone == true && shown("phone_pause_media"))
                   ModuleRow(
                       title = lbl("phone_pause_media"),
                       error = err("phone_pause_media"),
@@ -3162,6 +3309,7 @@ public class RemoteState(
                           else "phone media keeps playing",
                       trailing = if (hs.phonePauseMedia) "on" else "off",
                       tone = if (hs.phonePauseMedia) StatusTone.Ok else StatusTone.Neutral,
+                      controlId = HomeSpeakerControls.CATALOG_SETTING,
                       toggle =
                           RowToggle(checked = hs.phonePauseMedia, enabled = homeSpeakerCanAct) {
                               next ->
@@ -3169,9 +3317,12 @@ public class RemoteState(
                                 "phone pause media ${if (next) "on" else "off"}",
                                 phonePauseMedia = next)
                           },
-                  ))
-          if (shown("phone_headphones_only"))
-              add(
+                  )
+              else null
+            }
+            ?.let(::add)
+        placed("phone_headphones_only") {
+              if (speakPhone == true && shown("phone_headphones_only"))
                   ModuleRow(
                       title = lbl("phone_headphones_only"),
                       error = err("phone_headphones_only"),
@@ -3181,6 +3332,7 @@ public class RemoteState(
                           else "speaks on phone speaker or headphones",
                       trailing = if (hs.phoneHeadphonesOnly) "on" else "off",
                       tone = if (hs.phoneHeadphonesOnly) StatusTone.Ok else StatusTone.Neutral,
+                      controlId = HomeSpeakerControls.CATALOG_SETTING,
                       toggle =
                           RowToggle(
                               checked = hs.phoneHeadphonesOnly, enabled = homeSpeakerCanAct) { next
@@ -3189,391 +3341,529 @@ public class RemoteState(
                                     "phone headphones only ${if (next) "on" else "off"}",
                                     phoneHeadphonesOnly = next)
                               },
-                  ))
-        }
-      }
-      // The local engine and its voice only matter when something speaks with them.
-      if (shown("local_engine")) {
-        add(
-            ModuleRow(
-                title = lbl("local_engine"),
-                error = err("local_engine"),
-                subtitle =
-                    if (hs.localEngine == "gemini" && !hs.hasGeminiKey)
-                        "needs Gemini API key on the Mac"
-                    else "how This Mac synthesizes speech",
-                trailing = Derive.catalogChoiceLabel(catalog, "local_engine", hs.localEngine),
-                tone =
-                    if (hs.localEngine == "gemini" && !hs.hasGeminiKey) StatusTone.Warn
-                    else StatusTone.Neutral,
-                choices =
-                    catalogChoiceActions(hs, "local_engine", hs.localEngine) { wire, label ->
-                      setHomeSpeaker("local engine $label", localEngine = wire)
-                    },
-            ))
-        if (voiceSectionShown) {
-          add(
-              ModuleRow(
-                  title = lbl("gemini_voice"),
-                  error = err("gemini_voice"),
-                  subtitle = "Gemini TTS voice",
-                  trailing = geminiVoiceName,
-                  tone = StatusTone.Neutral,
-                  choices =
-                      catalogChoiceActions(hs, "gemini_voice", hs.geminiVoice) { voice, label ->
-                        setHomeSpeaker("Gemini voice $label", geminiVoice = voice)
-                      },
-              ))
+                  )
+              else null
+            }
+            ?.let(::add)
+        // The local engine and its voice only matter when something speaks with them.
+        val engineShown = shown("local_engine")
+        placed("local_engine") {
+              if (engineShown)
+                  ModuleRow(
+                      title = lbl("local_engine"),
+                      error = err("local_engine"),
+                      subtitle =
+                          if (hs.localEngine == "gemini" && !hs.hasGeminiKey)
+                              "needs Gemini API key on the Mac"
+                          else "how This Mac synthesizes speech",
+                      trailing = Derive.catalogChoiceLabel(catalog, "local_engine", hs.localEngine),
+                      tone =
+                          if (hs.localEngine == "gemini" && !hs.hasGeminiKey) StatusTone.Warn
+                          else StatusTone.Neutral,
+                      controlId = HomeSpeakerControls.CATALOG_SETTING,
+                      choices =
+                          catalogChoiceActions(hs, "local_engine", hs.localEngine) { wire, label ->
+                            setHomeSpeaker("local engine $label", localEngine = wire)
+                          },
+                  )
+              else null
+            }
+            ?.let(::add)
+        placed("gemini_voice") {
+              if (engineShown && voiceSectionShown)
+                  ModuleRow(
+                      title = lbl("gemini_voice"),
+                      error = err("gemini_voice"),
+                      subtitle = "Gemini TTS voice",
+                      trailing = geminiVoiceName,
+                      tone = StatusTone.Neutral,
+                      controlId = HomeSpeakerControls.CATALOG_SETTING,
+                      choices =
+                          catalogChoiceActions(hs, "gemini_voice", hs.geminiVoice) { voice, label ->
+                            setHomeSpeaker("Gemini voice $label", geminiVoice = voice)
+                          },
+                  )
+              else null
+            }
+            ?.let(::add)
+        if (engineShown && voiceSectionShown) {
           addGeminiApiKeyRow()
         }
+      } else {
+        // An agent too old to switch outputs always speaks on the home speaker.
+        addSpeakerRow(visible = true)
       }
-    } else {
-      // An agent too old to switch outputs always speaks on the home speaker.
-      addSpeakerRow()
-    }
-    // Home Speaker's own explanation of where it speaks and how, word for word.
-    Derive.outputsSummary(hs.outputsFooter)?.let { footer ->
-      add(
-          ModuleRow(
-              title = footer,
-              subtitle = Derive.outputsSummary(hs.outputsLabel).orEmpty(),
-              trailing = "",
-              tone = StatusTone.Neutral,
-              titleLines = 6,
-          ))
-    }
-    // How much to say bounds chat announcements and typed announcements as well as coding agents.
-    if (shown("speech_length")) {
-      add(
-          ModuleRow(
-              title = lbl("speech_length"),
-              error = err("speech_length"),
-              subtitle = "of each reply, read aloud",
-              trailing = Derive.catalogChoiceLabel(catalog, "speech_length", hs.speechLength),
-              tone = StatusTone.Neutral,
-              choices =
-                  catalogChoiceActions(hs, "speech_length", hs.speechLength) { wire, label ->
-                    setHomeSpeaker("say $label", speechLength = wire)
-                  },
-          ))
-    }
-    // How announcements are phrased: only coding-agent replies are rewritten,
-    // so with every coding agent off these shape nothing.
-    if (shown("announcement_style")) {
-      add(
-          ModuleRow(
-              title = lbl("announcement_style"),
-              error = err("announcement_style"),
-              subtitle =
-                  if (hs.announcementStyle == "custom")
-                      Format.clip(
-                          hs.customStylePrompt.ifBlank { "no instruction set on the Mac" }, 60)
-                  else "how announcements are phrased before speaking",
-              trailing =
-                  Derive.catalogChoiceLabel(catalog, "announcement_style", hs.announcementStyle),
-              tone =
-                  if (hs.announcementStyle == "custom" && hs.customStylePrompt.isBlank())
-                      StatusTone.Warn
-                  else StatusTone.Neutral,
-              choices =
-                  catalogChoiceActions(hs, "announcement_style", hs.announcementStyle) { wire, label
-                    ->
-                    setHomeSpeaker("style $label", announcementStyle = wire)
-                  },
-          ))
-    }
-    // Each row below is shown by its own key, not by the row above it.
-    if (shown("custom_style_prompt")) {
-      run {
+      // Home Speaker's own explanation of where it speaks and how, word for word.
+      Derive.outputsSummary(hs.outputsFooter)?.let { footer ->
         add(
             ModuleRow(
-                title = lbl("custom_style_prompt"),
-                error = err("custom_style_prompt"),
-                subtitle = hs.customStylePrompt.ifBlank { "Tap to set rewrite prompt" },
-                trailing = if (hs.customStylePrompt.isNotBlank()) "set" else "none",
-                textPrompt =
-                    RowTextPrompt(
-                        title = lbl("custom_style_prompt"),
-                        initialValue = hs.customStylePrompt,
-                        placeholder = "e.g. Speak like a pirate.",
-                        clearLabel = if (hs.customStylePrompt.isNotBlank()) "Clear" else null,
-                        enabled = homeSpeakerCanAct,
-                        onClear =
-                            if (hs.customStylePrompt.isNotBlank()) {
-                              {
-                                setHomeSpeaker("clear custom style prompt", customStylePrompt = "")
-                              }
-                            } else null,
-                        onSubmit = { text ->
-                          setHomeSpeaker("custom style prompt", customStylePrompt = text)
-                        },
-                    ),
+                title = footer,
+                subtitle = Derive.outputsSummary(hs.outputsLabel).orEmpty(),
+                trailing = "",
+                tone = StatusTone.Neutral,
+                titleLines = 6,
             ))
       }
-    }
-    if (shown("style_model")) {
-      add(
-          ModuleRow(
-              title = lbl("style_model"),
-              error = err("style_model"),
-              subtitle =
-                  if (hs.styleModel == "gemini" && !hs.hasGeminiKey)
-                      "needs Gemini API key on the Mac"
-                  else
-                      "rewrites announcements into ${Derive.catalogChoiceLabel(catalog, "announcement_style", hs.announcementStyle)}",
-              trailing = Derive.catalogChoiceLabel(catalog, "style_model", hs.styleModel),
-              tone =
-                  if (hs.styleModel == "gemini" && !hs.hasGeminiKey) StatusTone.Warn
-                  else StatusTone.Neutral,
-              choices =
-                  catalogChoiceActions(hs, "style_model", hs.styleModel) { wire, label ->
-                    setHomeSpeaker("style model $label", styleModel = wire)
-                  },
-          ))
+      // How much to say bounds chat announcements and typed announcements as well as coding agents.
+      placed("speech_length") {
+            if (shown("speech_length"))
+                ModuleRow(
+                    title = lbl("speech_length"),
+                    error = err("speech_length"),
+                    subtitle = "of each reply, read aloud",
+                    trailing = Derive.catalogChoiceLabel(catalog, "speech_length", hs.speechLength),
+                    tone = StatusTone.Neutral,
+                    controlId = HomeSpeakerControls.CATALOG_SETTING,
+                    choices =
+                        catalogChoiceActions(hs, "speech_length", hs.speechLength) { wire, label ->
+                          setHomeSpeaker("say $label", speechLength = wire)
+                        },
+                )
+            else null
+          }
+          ?.let(::add)
+      // How announcements are phrased: only coding-agent replies are rewritten,
+      // so with every coding agent off these shape nothing.
+      placed("announcement_style") {
+            if (shown("announcement_style"))
+                ModuleRow(
+                    title = lbl("announcement_style"),
+                    error = err("announcement_style"),
+                    subtitle =
+                        if (hs.announcementStyle == "custom")
+                            Format.clip(
+                                hs.customStylePrompt.ifBlank { "no instruction set on the Mac" },
+                                60)
+                        else "how announcements are phrased before speaking",
+                    trailing =
+                        Derive.catalogChoiceLabel(
+                            catalog, "announcement_style", hs.announcementStyle),
+                    tone =
+                        if (hs.announcementStyle == "custom" && hs.customStylePrompt.isBlank())
+                            StatusTone.Warn
+                        else StatusTone.Neutral,
+                    controlId = HomeSpeakerControls.CATALOG_SETTING,
+                    choices =
+                        catalogChoiceActions(hs, "announcement_style", hs.announcementStyle) {
+                            wire,
+                            label ->
+                          setHomeSpeaker("style $label", announcementStyle = wire)
+                        },
+                )
+            else null
+          }
+          ?.let(::add)
+      // Each row below is shown by its own key, not by the row above it.
+      placed("custom_style_prompt") {
+            if (shown("custom_style_prompt"))
+                ModuleRow(
+                    title = lbl("custom_style_prompt"),
+                    error = err("custom_style_prompt"),
+                    subtitle = hs.customStylePrompt.ifBlank { "Tap to set rewrite prompt" },
+                    trailing = if (hs.customStylePrompt.isNotBlank()) "set" else "none",
+                    controlId = HomeSpeakerControls.CATALOG_SETTING,
+                    textPrompt =
+                        RowTextPrompt(
+                            title = lbl("custom_style_prompt"),
+                            initialValue = hs.customStylePrompt,
+                            placeholder = "e.g. Speak like a pirate.",
+                            clearLabel = if (hs.customStylePrompt.isNotBlank()) "Clear" else null,
+                            enabled = homeSpeakerCanAct,
+                            onClear =
+                                if (hs.customStylePrompt.isNotBlank()) {
+                                  {
+                                    setHomeSpeaker(
+                                        "clear custom style prompt", customStylePrompt = "")
+                                  }
+                                } else null,
+                            onSubmit = { text ->
+                              setHomeSpeaker("custom style prompt", customStylePrompt = text)
+                            },
+                        ),
+                )
+            else null
+          }
+          ?.let(::add)
+      val styleModelShown = shown("style_model")
+      placed("style_model") {
+            if (styleModelShown)
+                ModuleRow(
+                    title = lbl("style_model"),
+                    error = err("style_model"),
+                    subtitle =
+                        if (hs.styleModel == "gemini" && !hs.hasGeminiKey)
+                            "needs Gemini API key on the Mac"
+                        else
+                            "rewrites announcements into ${Derive.catalogChoiceLabel(catalog, "announcement_style", hs.announcementStyle)}",
+                    trailing = Derive.catalogChoiceLabel(catalog, "style_model", hs.styleModel),
+                    tone =
+                        if (hs.styleModel == "gemini" && !hs.hasGeminiKey) StatusTone.Warn
+                        else StatusTone.Neutral,
+                    controlId = HomeSpeakerControls.CATALOG_SETTING,
+                    choices =
+                        catalogChoiceActions(hs, "style_model", hs.styleModel) { wire, label ->
+                          setHomeSpeaker("style model $label", styleModel = wire)
+                        },
+                )
+            else null
+          }
+          ?.let(::add)
       // The key row is the phone's own (Home Speaker never lists it); it appears when Gemini
       // does the rewriting and the voice section has not already shown it.
-      if (hs.styleModel == "gemini" && !voiceSectionShown) {
+      if (styleModelShown && hs.styleModel == "gemini" && !voiceSectionShown) {
         addGeminiApiKeyRow()
       }
-    }
-    run {
       // The speaker's own volume. −10 / +10 rather than a slider: each change
       // is a round trip to Google that takes seconds to confirm.
-      agentSpeakerVolume
-          ?.takeIf { shown("speaker_volume") }
-          ?.let { v ->
+      placed("speaker_volume") {
+            val v = agentSpeakerVolume?.takeIf { shown("speaker_volume") } ?: return@placed null
             val usable = homeSpeakerCanAct && v.available && v.online && !speakerVolumeBusy
-            add(
-                ModuleRow(
-                    title = lbl("speaker_volume"),
-                    error = err("speaker_volume"),
-                    subtitle =
-                        when {
-                          speakerVolumeBusy -> "changing… Google confirms in a few seconds"
-                          !v.available -> Format.clip(v.reason, 60)
-                          !v.online -> "${v.speaker} is offline"
-                          else -> v.speaker
-                        },
-                    // "…" while changing, like the Volume plate: the old level is
-                    // not the answer any more, and the new one is not confirmed yet.
-                    trailing =
-                        if (speakerVolumeBusy) "…"
-                        else Derive.speakerVolumeLabel(v.available, v.online, v.muted, v.percent),
-                    tone = if (v.available && v.online) StatusTone.Ok else StatusTone.Neutral,
-                    actions =
-                        if (!v.available) emptyList()
-                        else
-                            catalogStepActions(
-                                hs,
-                                "speaker_volume",
-                                v.percent.toDouble(),
-                                enabled = usable && !v.muted) { next ->
-                                  setSpeakerVolume(percent = next.toInt())
-                                } +
-                                RowAction(if (v.muted) "Unmute" else "Mute", enabled = usable) {
-                                  setSpeakerVolume(muted = !v.muted)
-                                },
-                    choices =
-                        if (usable)
-                            Derive.catalogChoices(catalog, "speaker_volume").map { ch ->
-                              val current = ch.value.toIntOrNull() == v.percent
-                              RowAction(
-                                  ch.label,
-                                  enabled = homeSpeakerCanAct && !current,
-                                  selected = current) {
-                                    ch.value.toIntOrNull()?.let { setSpeakerVolume(percent = it) }
-                                  }
-                            }
-                        else emptyList(),
-                ))
-          }
-      // Announce at a set volume: the speaker is set to one level for each
-      // announcement and put back after, on the Mac.
-      if (shown("announce_volume_enabled"))
-          add(
-              ModuleRow(
-                  title = lbl("announce_volume_enabled"),
-                  error = err("announce_volume_enabled"),
-                  subtitle =
-                      if (hs.announceVolumeEnabled)
-                          "each announcement at ${hs.announceVolume}%, then back"
-                      else "announcements use the speaker's own volume",
-                  trailing = if (hs.announceVolumeEnabled) "${hs.announceVolume}%" else "off",
-                  tone = if (hs.announceVolumeEnabled) StatusTone.Ok else StatusTone.Neutral,
-                  toggle =
-                      RowToggle(checked = hs.announceVolumeEnabled, enabled = homeSpeakerCanAct) {
-                          next ->
-                        setHomeSpeaker(
-                            "announce volume ${if (next) "on" else "off"}",
-                            announceVolumeEnabled = next)
-                      },
-                  actions =
-                      if (hs.announceVolumeEnabled && shown("announce_volume"))
-                          catalogStepActions(hs, "announce_volume", hs.announceVolume.toDouble()) {
-                              next ->
-                            setHomeSpeaker(
-                                "announce at ${next.toInt()}%", announceVolume = next.toInt())
-                          }
-                      else emptyList(),
-                  choices =
-                      if (hs.announceVolumeEnabled)
-                          Derive.catalogChoices(catalog, "announce_volume").map { ch ->
-                            val current = ch.value.toIntOrNull() == hs.announceVolume
-                            RowAction(
-                                ch.label,
-                                enabled = homeSpeakerCanAct && !current,
-                                selected = current) {
-                                  ch.value.toIntOrNull()?.let {
-                                    setHomeSpeaker(
-                                        "announce volume ${ch.label}", announceVolume = it)
-                                  }
-                                }
-                          }
-                      else emptyList(),
-              ))
-    }
-    // Pause what the Mac is playing while the speaker talks. The margin is
-    // the one knob worth having here: whether it resumes too early is heard
-    // in the room, not seen at the Mac.
-    if (shown("pause_media"))
-        add(
             ModuleRow(
-                title = lbl("pause_media"),
-                error = err("pause_media"),
-                // One line on a folded phone: the margin is the part worth
-                // reading, so it is the whole subtitle. "YouTube and other players
-                // on the Mac · " in front of it pushed the number into an ellipsis.
+                title = lbl("speaker_volume"),
+                error = err("speaker_volume"),
                 subtitle =
-                    if (hs.pauseMedia)
-                        "${lbl("pause_media_extra_seconds")} ${Format.decimal(hs.pauseMediaExtraSeconds)} s"
-                    else "Mac media keeps playing over the speaker",
-                trailing = if (hs.pauseMedia) "on" else "off",
-                tone = if (hs.pauseMedia) StatusTone.Ok else StatusTone.Neutral,
-                toggle =
-                    RowToggle(checked = hs.pauseMedia, enabled = homeSpeakerCanAct) { next ->
-                      setHomeSpeaker("pause media ${if (next) "on" else "off"}", pauseMedia = next)
+                    when {
+                      speakerVolumeBusy -> "changing… Google confirms in a few seconds"
+                      !v.available -> Format.clip(v.reason, 60)
+                      !v.online -> "${v.speaker} is offline"
+                      else -> v.speaker
                     },
+                // "…" while changing, like the Volume plate: the old level is
+                // not the answer any more, and the new one is not confirmed yet.
+                trailing =
+                    if (speakerVolumeBusy) "…"
+                    else Derive.speakerVolumeLabel(v.available, v.online, v.muted, v.percent),
+                tone = if (v.available && v.online) StatusTone.Ok else StatusTone.Neutral,
+                controlId = HomeSpeakerControls.VOLUME,
                 actions =
-                    buildList {
-                      if (hs.pauseMedia) {
-                        addAll(
-                            catalogStepActions(
-                                hs, "pause_media_extra_seconds", hs.pauseMediaExtraSeconds) { next
-                                  ->
-                                  setHomeSpeaker(
-                                      "${lbl("pause_media_extra_seconds")} ${Format.decimal(next)} s",
-                                      pauseMediaExtraSeconds = next)
-                                })
-                        add(
-                            RowAction("Test", enabled = homeSpeakerCanAct) {
-                              setHomeSpeaker("test media pause", testMediaPause = true)
-                            })
-                      }
-                    },
+                    if (!v.available) emptyList()
+                    else
+                        catalogStepActions(
+                            hs,
+                            "speaker_volume",
+                            v.percent.toDouble(),
+                            enabled = usable && !v.muted,
+                            controlId = HomeSpeakerControls.VOLUME,
+                        ) { next ->
+                          setSpeakerVolume(percent = next.toInt())
+                        } +
+                            RowAction(
+                                if (v.muted) "Unmute" else "Mute",
+                                enabled = usable,
+                                controlId = HomeSpeakerControls.MUTE,
+                            ) {
+                              setSpeakerVolume(muted = !v.muted)
+                            },
                 choices =
-                    if (hs.pauseMedia)
-                        Derive.catalogChoices(catalog, "pause_media_extra_seconds").map { ch ->
-                          val current = ch.value.toDoubleOrNull() == hs.pauseMediaExtraSeconds
+                    if (usable)
+                        Derive.catalogChoices(catalog, "speaker_volume").map { ch ->
+                          val current = ch.value.toIntOrNull() == v.percent
                           RowAction(
                               ch.label,
                               enabled = homeSpeakerCanAct && !current,
-                              selected = current) {
-                                ch.value.toDoubleOrNull()?.let {
-                                  setHomeSpeaker(
-                                      "${lbl("pause_media_extra_seconds")} ${ch.label}",
-                                      pauseMediaExtraSeconds = it)
-                                }
-                              }
+                              selected = current,
+                              controlId = HomeSpeakerControls.VOLUME,
+                          ) {
+                            ch.value.toIntOrNull()?.let { setSpeakerVolume(percent = it) }
+                          }
                         }
                     else emptyList(),
-            ))
-    if (shown("quiet_hours_enabled"))
+            )
+          }
+          ?.let(::add)
+      // Announce at a set volume: the speaker is set to one level for each
+      // announcement and put back after, on the Mac.
+      val announceVolInline =
+          placed("announce_volume") {
+            if (hs.announceVolumeEnabled && shown("announce_volume")) {
+              val step =
+                  catalogStepActions(hs, "announce_volume", hs.announceVolume.toDouble()) { next ->
+                    setHomeSpeaker("announce at ${next.toInt()}%", announceVolume = next.toInt())
+                  }
+              val choices =
+                  Derive.catalogChoices(catalog, "announce_volume").map { ch ->
+                    val current = ch.value.toIntOrNull() == hs.announceVolume
+                    RowAction(
+                        ch.label,
+                        enabled = homeSpeakerCanAct && !current,
+                        selected = current,
+                        controlId = HomeSpeakerControls.CATALOG_SETTING,
+                    ) {
+                      ch.value.toIntOrNull()?.let {
+                        setHomeSpeaker("announce volume ${ch.label}", announceVolume = it)
+                      }
+                    }
+                  }
+              step to choices
+            } else {
+              emptyList<RowAction>() to emptyList<RowAction>()
+            }
+          }
+      placed("announce_volume_enabled") {
+            if (shown("announce_volume_enabled"))
+                ModuleRow(
+                    title = lbl("announce_volume_enabled"),
+                    error = err("announce_volume_enabled"),
+                    subtitle =
+                        if (hs.announceVolumeEnabled)
+                            "each announcement at ${hs.announceVolume}%, then back"
+                        else "announcements use the speaker's own volume",
+                    trailing = if (hs.announceVolumeEnabled) "${hs.announceVolume}%" else "off",
+                    tone = if (hs.announceVolumeEnabled) StatusTone.Ok else StatusTone.Neutral,
+                    controlId = HomeSpeakerControls.CATALOG_SETTING,
+                    toggle =
+                        RowToggle(
+                            checked = hs.announceVolumeEnabled, enabled = homeSpeakerCanAct) { next
+                              ->
+                              setHomeSpeaker(
+                                  "announce volume ${if (next) "on" else "off"}",
+                                  announceVolumeEnabled = next)
+                            },
+                    actions = announceVolInline?.first.orEmpty(),
+                    choices = announceVolInline?.second.orEmpty(),
+                )
+            else null
+          }
+          ?.let(::add)
+      // Pause what the Mac is playing while the speaker talks. The margin is
+      // the one knob worth having here: whether it resumes too early is heard
+      // in the room, not seen at the Mac.
+      val pauseMarginInline =
+          placed("pause_media_extra_seconds") {
+            if (hs.pauseMedia && shown("pause_media_extra_seconds")) {
+              val step =
+                  catalogStepActions(hs, "pause_media_extra_seconds", hs.pauseMediaExtraSeconds) {
+                      next ->
+                    setHomeSpeaker(
+                        "${lbl("pause_media_extra_seconds")} ${Format.decimal(next)} s",
+                        pauseMediaExtraSeconds = next)
+                  }
+              val choices =
+                  Derive.catalogChoices(catalog, "pause_media_extra_seconds").map { ch ->
+                    val current = ch.value.toDoubleOrNull() == hs.pauseMediaExtraSeconds
+                    RowAction(
+                        ch.label,
+                        enabled = homeSpeakerCanAct && !current,
+                        selected = current,
+                        controlId = HomeSpeakerControls.CATALOG_SETTING,
+                    ) {
+                      ch.value.toDoubleOrNull()?.let {
+                        setHomeSpeaker(
+                            "${lbl("pause_media_extra_seconds")} ${ch.label}",
+                            pauseMediaExtraSeconds = it)
+                      }
+                    }
+                  }
+              step to choices
+            } else {
+              emptyList<RowAction>() to emptyList<RowAction>()
+            }
+          }
+      placed("pause_media") {
+            if (shown("pause_media"))
+                ModuleRow(
+                    title = lbl("pause_media"),
+                    error = err("pause_media"),
+                    // One line on a folded phone: the margin is the part worth
+                    // reading, so it is the whole subtitle. "YouTube and other players
+                    // on the Mac · " in front of it pushed the number into an ellipsis.
+                    subtitle =
+                        if (hs.pauseMedia)
+                            "${lbl("pause_media_extra_seconds")} ${Format.decimal(hs.pauseMediaExtraSeconds)} s"
+                        else "Mac media keeps playing over the speaker",
+                    trailing = if (hs.pauseMedia) "on" else "off",
+                    tone = if (hs.pauseMedia) StatusTone.Ok else StatusTone.Neutral,
+                    controlId = HomeSpeakerControls.CATALOG_SETTING,
+                    toggle =
+                        RowToggle(checked = hs.pauseMedia, enabled = homeSpeakerCanAct) { next ->
+                          setHomeSpeaker(
+                              "pause media ${if (next) "on" else "off"}", pauseMedia = next)
+                        },
+                    actions =
+                        buildList {
+                          addAll(pauseMarginInline?.first.orEmpty())
+                          if (hs.pauseMedia) {
+                            add(
+                                RowAction(
+                                    "Test",
+                                    enabled = homeSpeakerCanAct,
+                                    controlId = HomeSpeakerControls.TEST_MEDIA_PAUSE,
+                                ) {
+                                  setHomeSpeaker("test media pause", testMediaPause = true)
+                                })
+                          }
+                        },
+                    choices = pauseMarginInline?.second.orEmpty(),
+                )
+            else null
+          }
+          ?.let(::add)
+      placed("quiet_hours_enabled") {
+            if (shown("quiet_hours_enabled"))
+                ModuleRow(
+                    title = lbl("quiet_hours_enabled"),
+                    error = err("quiet_hours_enabled"),
+                    subtitle =
+                        Derive.quietHoursSubtitle(
+                            enabled = hs.quietHoursEnabled,
+                            active = hs.quietHoursActive,
+                            start = hs.quietHoursStart,
+                            end = hs.quietHoursEnd),
+                    trailing = if (hs.quietHoursEnabled) "on" else "off",
+                    tone =
+                        if (hs.quietHoursEnabled && hs.quietHoursActive) StatusTone.Warn
+                        else if (hs.quietHoursEnabled) StatusTone.Ok else StatusTone.Neutral,
+                    controlId = HomeSpeakerControls.CATALOG_SETTING,
+                    toggle =
+                        RowToggle(checked = hs.quietHoursEnabled, enabled = homeSpeakerCanAct) {
+                            next ->
+                          setHomeSpeaker(
+                              "quiet hours ${if (next) "on" else "off"}", quietHoursEnabled = next)
+                        },
+                )
+            else null
+          }
+          ?.let(::add)
+      placed("quiet_hours_start") {
+            if (shown("quiet_hours_start"))
+                ModuleRow(
+                    title = lbl("quiet_hours_start"),
+                    error = err("quiet_hours_start"),
+                    subtitle = "starts at ${hs.quietHoursStart}",
+                    trailing = hs.quietHoursStart,
+                    controlId = HomeSpeakerControls.CATALOG_SETTING,
+                    choices =
+                        catalogChoiceActions(hs, "quiet_hours_start", hs.quietHoursStart) { t, label
+                          ->
+                          setHomeSpeaker("quiet hours from $label", quietHoursStart = t)
+                        },
+                )
+            else null
+          }
+          ?.let(::add)
+      placed("quiet_hours_end") {
+            if (shown("quiet_hours_end"))
+                ModuleRow(
+                    title = lbl("quiet_hours_end"),
+                    error = err("quiet_hours_end"),
+                    subtitle = "ends at ${hs.quietHoursEnd}",
+                    trailing = hs.quietHoursEnd,
+                    controlId = HomeSpeakerControls.CATALOG_SETTING,
+                    choices =
+                        catalogChoiceActions(hs, "quiet_hours_end", hs.quietHoursEnd) { t, label ->
+                          setHomeSpeaker("quiet hours until $label", quietHoursEnd = t)
+                        },
+                )
+            else null
+          }
+          ?.let(::add)
+      add(
+          ModuleRow(
+              title = "Speak clipboard",
+              subtitle = "reads text on the Mac clipboard aloud",
+              trailing = "",
+              actions =
+                  listOf(
+                      RowAction(
+                          "Speak",
+                          enabled = homeSpeakerCanAct,
+                          controlId = HomeSpeakerControls.SPEAK_CLIPBOARD,
+                      ) {
+                        setHomeSpeaker("speak clipboard", speakClipboard = true)
+                      }),
+          ))
+      add(homeSpeakerMirrorRow())
+      val doorOptions =
+          Derive.doorSwitchOptions(
+              activeDoor = hs.activeDoor,
+              appInstalled = hs.appInstalled,
+              extensionInstalled = hs.extensionInstalled,
+              canAct = homeSpeakerCanAct,
+              copySupported = Derive.supportsDoorCopy(hs.homeSpeakerVersion),
+          )
+      if (doorOptions.isNotEmpty()) {
         add(
             ModuleRow(
-                title = lbl("quiet_hours_enabled"),
-                error = err("quiet_hours_enabled"),
+                title = "HomeSpeaker door",
                 subtitle =
-                    Derive.quietHoursSubtitle(
-                        enabled = hs.quietHoursEnabled,
-                        active = hs.quietHoursActive,
-                        start = hs.quietHoursStart,
-                        end = hs.quietHoursEnd),
-                trailing = if (hs.quietHoursEnabled) "on" else "off",
-                tone =
-                    if (hs.quietHoursEnabled && hs.quietHoursActive) StatusTone.Warn
-                    else if (hs.quietHoursEnabled) StatusTone.Ok else StatusTone.Neutral,
-                toggle =
-                    RowToggle(checked = hs.quietHoursEnabled, enabled = homeSpeakerCanAct) { next ->
-                      setHomeSpeaker(
-                          "quiet hours ${if (next) "on" else "off"}", quietHoursEnabled = next)
+                    if (hs.activeDoor == "extension") "running as Vitruvian extension"
+                    else "running as standalone app",
+                trailing = hs.activeDoor,
+                controlId = HomeSpeakerControls.DOOR_SWITCH,
+                choices =
+                    doorOptions.map { opt ->
+                      if (opt.copy) {
+                        RowAction(
+                            opt.label,
+                            enabled = opt.enabled,
+                            selected = opt.selected,
+                            controlId = HomeSpeakerControls.DOOR_COPY_SETTINGS,
+                        ) {
+                          setHomeSpeaker(
+                              "door ${opt.targetDoor} (copy)",
+                              activeDoor = opt.targetDoor,
+                              copy = true,
+                              controlId = "HomeSpeaker door",
+                          )
+                        }
+                      } else {
+                        RowAction(
+                            opt.label,
+                            enabled = opt.enabled,
+                            selected = opt.selected,
+                            controlId = HomeSpeakerControls.DOOR_SWITCH,
+                        ) {
+                          setHomeSpeaker(
+                              "door ${opt.targetDoor}",
+                              activeDoor = opt.targetDoor,
+                              controlId = "HomeSpeaker door",
+                          )
+                        }
+                      }
                     },
             ))
-    if (shown("quiet_hours_start")) {
+      }
       add(
           ModuleRow(
-              title = lbl("quiet_hours_start"),
-              error = err("quiet_hours_start"),
-              subtitle = "starts at ${hs.quietHoursStart}",
-              trailing = hs.quietHoursStart,
-              choices =
-                  catalogChoiceActions(hs, "quiet_hours_start", hs.quietHoursStart) { t, label ->
-                    setHomeSpeaker("quiet hours from $label", quietHoursStart = t)
-                  },
-          ))
-    }
-    if (shown("quiet_hours_end")) {
-      add(
-          ModuleRow(
-              title = lbl("quiet_hours_end"),
-              error = err("quiet_hours_end"),
-              subtitle = "ends at ${hs.quietHoursEnd}",
-              trailing = hs.quietHoursEnd,
-              choices =
-                  catalogChoiceActions(hs, "quiet_hours_end", hs.quietHoursEnd) { t, label ->
-                    setHomeSpeaker("quiet hours until $label", quietHoursEnd = t)
-                  },
-          ))
-    }
-    add(
-        ModuleRow(
-            title = "Speak clipboard",
-            subtitle = "reads text on the Mac clipboard aloud",
-            trailing = "",
-            actions =
-                listOf(
-                    RowAction("Speak", enabled = homeSpeakerCanAct) {
-                      setHomeSpeaker("speak clipboard", speakClipboard = true)
-                    }),
-        ))
-    add(homeSpeakerMirrorRow())
-    if (hs.extensionInstalled || hs.activeDoor == "extension") {
-      add(
-          ModuleRow(
-              title = "HomeSpeaker door",
+              title = "Settings & diagnostics",
               subtitle =
-                  if (hs.activeDoor == "extension") "running as Vitruvian extension"
-                  else "running as standalone app",
-              trailing = hs.activeDoor,
-              choices =
-                  listOf("app", "extension").map { d ->
-                    val current = d == hs.activeDoor
-                    RowAction(
-                        if (d == "app") "App" else "Extension",
-                        enabled = homeSpeakerCanAct && !current,
-                        selected = current) {
-                          setHomeSpeaker("door $d", activeDoor = d)
-                        }
-                  },
+                  if (hs.homeSpeakerVersion.isNotBlank()) "HomeSpeaker v${hs.homeSpeakerVersion}"
+                  else "HomeSpeaker",
+              trailing = "",
           ))
     }
-    add(
-        ModuleRow(
-            title = "Settings & diagnostics",
-            subtitle =
-                if (hs.homeSpeakerVersion.isNotBlank()) "HomeSpeaker v${hs.homeSpeakerVersion}"
-                else "HomeSpeaker",
-            trailing = "",
-        ))
+    // Broadcasting off: nothing else on this plate changes what is heard, so
+    // the master switch (plus phone-side notification mirror) is the whole plate.
+    if (!hs.enabled) {
+      return listOfNotNull(enabledRow, homeSpeakerMirrorRow())
+    }
+    return listOfNotNull(enabledRow) + detailRows
+  }
+
+  private fun isSpeakerRemoveArmed(key: String, nowMs: Long = System.currentTimeMillis()): Boolean =
+      speakerRemoveArmed?.takeIf { it.first == key }?.let { Derive.isResetArmed(it.second, nowMs) }
+          ?: false
+
+  /** Remove asks twice, like Reset: removing a speaker can't be undone from the phone. */
+  public fun onTapRemoveSpeaker(
+      key: String,
+      name: String,
+      rowTitle: String,
+      nowMs: Long = System.currentTimeMillis(),
+  ) {
+    val armedAt = speakerRemoveArmed?.takeIf { it.first == key }?.second
+    val result = Derive.tapReset(armedAt, nowMs)
+    if (result.shouldReset) {
+      speakerRemoveArmed = null
+      setHomeSpeaker("remove speaker $name", removeTarget = key, controlId = rowTitle)
+    } else {
+      val stamp = result.nextArmedAtMs ?: nowMs
+      speakerRemoveArmed = key to stamp
+      scope.launch {
+        delay(Derive.RESET_CONFIRM_WINDOW_MS)
+        if (speakerRemoveArmed == key to stamp) speakerRemoveArmed = null
+      }
+    }
   }
 
   public fun onTapResetHomeSpeaker(nowMs: Long = System.currentTimeMillis()) {
@@ -3611,6 +3901,7 @@ public class RemoteState(
                     label = spec.actionLabel,
                     enabled = spec.enabled,
                     danger = spec.danger,
+                    controlId = HomeSpeakerControls.RESET,
                 ) {
                   onTapResetHomeSpeaker()
                 }),
@@ -3637,7 +3928,7 @@ public class RemoteState(
   ): List<ModuleRow> = buildList {
     networks.forEach { net ->
       val row = Derive.chatNetworkRow(app, net)
-      add(
+      val baseRow =
           ModuleRow(
               title = row.title,
               subtitle = row.subtitle,
@@ -3664,7 +3955,17 @@ public class RemoteState(
                               courierReadAnywayOn = next)
                         }
                   },
-          ))
+          )
+      add(
+          when {
+            row.switch == Derive.NetworkSwitch.Mute && app == "Courier" ->
+                baseRow.copy(controlId = HomeSpeakerControls.COURIER_NETWORK)
+            row.switch == Derive.NetworkSwitch.Mute ->
+                baseRow.copy(controlId = HomeSpeakerControls.BEEPER_NETWORK)
+            row.switch == Derive.NetworkSwitch.ReadAnyway ->
+                baseRow.copy(controlId = HomeSpeakerControls.COURIER_READ_ANYWAY)
+            else -> baseRow
+          })
     }
     Derive.networksLaterLine(app, listed)?.let {
       add(
@@ -3673,9 +3974,13 @@ public class RemoteState(
     }
   }
 
-  private fun homeSpeakerExtraLists(hs: AgentHomeSpeaker): List<ModuleList> = buildList {
+  private fun homeSpeakerExtraLists(
+      hs: AgentHomeSpeaker,
+      placement: Derive.CatalogPlacement,
+  ): List<ModuleList> = buildList {
     val catalog = hs.catalog
     fun lbl(key: String) = Derive.catalogLabel(catalog, key).ifBlank { key }
+    fun <T> placed(key: String, build: () -> T): T? = placement.placed(key, build)
 
     // A switch for the Home Speaker setting [key]: titled with the catalog's label, its inline
     // error read by that key, and null (so not added) when the catalog says it is not shown.
@@ -3694,6 +3999,7 @@ public class RemoteState(
                 subtitle = if (on) onLine else offLine,
                 trailing = if (on) "on" else "off",
                 tone = if (on) StatusTone.Ok else StatusTone.Neutral,
+                controlId = HomeSpeakerControls.CATALOG_SETTING,
                 toggle = RowToggle(checked = on, enabled = homeSpeakerCanAct) { next -> set(next) },
             )
 
@@ -3705,60 +4011,67 @@ public class RemoteState(
     val claude = hs.announceClaudeCode
     val antigravity = hs.announceAntigravity
     val opencode = hs.announceOpenCode
-    // Broadcasting off holds every sender: the switches would only say "held".
-    if (hs.enabled && claude != null && antigravity != null) {
+    if (claude != null && antigravity != null) {
       add(
           ModuleList(
               "Coding agents",
               buildList {
                 add(
-                    sourceRow(
-                        "announce_claude_code",
-                        claude,
-                        "its replies are read aloud",
-                        "its replies stay silent") {
-                          setHomeSpeaker(
-                              "Claude Code ${if (it) "on" else "off"}", announceClaudeCode = it)
-                        })
-                add(
-                    sourceRow(
-                        "announce_antigravity",
-                        antigravity,
-                        "its replies are read aloud",
-                        "its replies stay silent") {
-                          setHomeSpeaker(
-                              "Antigravity ${if (it) "on" else "off"}", announceAntigravity = it)
-                        })
-                if (opencode != null) {
-                  add(
+                    placed("announce_claude_code") {
                       sourceRow(
-                          "announce_opencode",
-                          opencode,
+                          "announce_claude_code",
+                          claude,
                           "its replies are read aloud",
                           "its replies stay silent") {
                             setHomeSpeaker(
-                                "OpenCode ${if (it) "on" else "off"}", announceOpenCode = it)
-                          })
+                                "Claude Code ${if (it) "on" else "off"}", announceClaudeCode = it)
+                          }
+                    })
+                add(
+                    placed("announce_antigravity") {
+                      sourceRow(
+                          "announce_antigravity",
+                          antigravity,
+                          "its replies are read aloud",
+                          "its replies stay silent") {
+                            setHomeSpeaker(
+                                "Antigravity ${if (it) "on" else "off"}", announceAntigravity = it)
+                          }
+                    })
+                if (opencode != null) {
+                  add(
+                      placed("announce_opencode") {
+                        sourceRow(
+                            "announce_opencode",
+                            opencode,
+                            "its replies are read aloud",
+                            "its replies stay silent") {
+                              setHomeSpeaker(
+                                  "OpenCode ${if (it) "on" else "off"}", announceOpenCode = it)
+                            }
+                      })
                 }
                 // Hidden on a Mac too old to label announcements (the catalog lacks it).
                 if (Derive.catalogShown(hs.catalog, "announce_source")) {
                   add(
-                      ModuleRow(
-                          title = lbl("announce_source"),
-                          error = Derive.settingError(homeSpeakerErrors, "announce_source"),
-                          subtitle =
-                              "starts each announcement with the app, or app and session, it came from",
-                          trailing =
-                              Derive.catalogChoiceLabel(
-                                  hs.catalog, "announce_source", hs.announceSource),
-                          tone = StatusTone.Neutral,
-                          choices =
-                              catalogChoiceActions(hs, "announce_source", hs.announceSource) {
-                                  wire,
-                                  label ->
-                                setHomeSpeaker("Say who it's from: $label", announceSource = wire)
-                              },
-                      ))
+                      placed("announce_source") {
+                        ModuleRow(
+                            title = lbl("announce_source"),
+                            error = Derive.settingError(homeSpeakerErrors, "announce_source"),
+                            subtitle =
+                                "starts each announcement with the app, or app and session, it came from",
+                            trailing =
+                                Derive.catalogChoiceLabel(
+                                    hs.catalog, "announce_source", hs.announceSource),
+                            tone = StatusTone.Neutral,
+                            choices =
+                                catalogChoiceActions(hs, "announce_source", hs.announceSource) {
+                                    wire,
+                                    label ->
+                                  setHomeSpeaker("Say who it's from: $label", announceSource = wire)
+                                },
+                        )
+                      })
                 }
                 hs.agents.forEach { a ->
                   val slug = a.canonicalSlug
@@ -3773,56 +4086,82 @@ public class RemoteState(
                       }
                   val actions = mutableListOf<RowAction>()
                   if (supportsHook) {
-                    val installed = a.hookState == "installed"
-                    val stale = a.hookState == "stale"
-                    if (a.speaksTwice) {
+                    val hookSpec =
+                        Derive.agentHookRowSpec(
+                            status = a,
+                            installed = hs.installed,
+                            appInstalled = hs.appInstalled,
+                            extensionInstalled = hs.extensionInstalled,
+                            canAct = homeSpeakerCanAct,
+                            busy = homeSpeakerBusy != null,
+                        )
+                    if (hookSpec.showDisableRival) {
                       actions.add(
                           RowAction(
                               "Turn off duplicate",
-                              enabled = homeSpeakerCanAct && homeSpeakerBusy == null) {
-                                setHomeSpeaker(
-                                    "turn off duplicate $agentName hook",
-                                    agentHookAction = "disable-rival:claude-code")
-                              })
+                              enabled = hookSpec.removeOrRivalEnabled,
+                              controlId = HomeSpeakerControls.HOOK_TURN_OFF_RIVAL,
+                          ) {
+                            setHomeSpeaker(
+                                "turn off duplicate $agentName hook",
+                                agentHookAction = "disable-rival:$slug",
+                                controlId = "$agentName hook",
+                            )
+                          })
                     }
-                    if (installed) {
-                      actions.add(
-                          RowAction(
-                              "Remove hook",
-                              enabled = homeSpeakerCanAct && homeSpeakerBusy == null) {
-                                setHomeSpeaker(
-                                    "remove $agentName hook", agentHookAction = "remove:$slug")
-                              })
-                    } else if (stale) {
+                    if (hookSpec.showUpdate) {
                       actions.add(
                           RowAction(
                               "Update hook",
-                              enabled = homeSpeakerCanAct && homeSpeakerBusy == null) {
-                                setHomeSpeaker(
-                                    "update $agentName hook", agentHookAction = "install:$slug")
-                              })
-                    } else {
+                              enabled = hookSpec.installOrUpdateEnabled,
+                              controlId = HomeSpeakerControls.HOOK_UPDATE,
+                          ) {
+                            setHomeSpeaker(
+                                "update $agentName hook",
+                                agentHookAction = "install:$slug",
+                                controlId = "$agentName hook",
+                            )
+                          })
+                    }
+                    if (hookSpec.showInstall) {
                       actions.add(
                           RowAction(
                               "Install hook",
-                              enabled = homeSpeakerCanAct && homeSpeakerBusy == null) {
-                                setHomeSpeaker(
-                                    "install $agentName hook", agentHookAction = "install:$slug")
-                              })
+                              enabled = hookSpec.installOrUpdateEnabled,
+                              controlId = HomeSpeakerControls.HOOK_INSTALL,
+                          ) {
+                            setHomeSpeaker(
+                                "install $agentName hook",
+                                agentHookAction = "install:$slug",
+                                controlId = "$agentName hook",
+                            )
+                          })
                     }
-                    val statusLabel =
-                        Derive.agentHookStatusLabel(
-                            a.hookState, a.speaksTwice, a.configuredByInstruction)
+                    if (hookSpec.showRemove) {
+                      actions.add(
+                          RowAction(
+                              hookSpec.removeLabel,
+                              enabled = hookSpec.removeOrRivalEnabled,
+                              controlId = HomeSpeakerControls.HOOK_REMOVE,
+                          ) {
+                            setHomeSpeaker(
+                                "remove $agentName hook",
+                                agentHookAction = "remove:$slug",
+                                controlId = "$agentName hook",
+                            )
+                          })
+                    }
                     add(
                         ModuleRow(
                             title = "$agentName hook",
-                            subtitle = statusLabel,
-                            trailing =
-                                if (installed) "installed" else if (stale) "outdated" else "none",
+                            subtitle = hookSpec.subtitle,
+                            trailing = hookSpec.trailing,
                             tone =
-                                if (a.speaksTwice) StatusTone.Warn
-                                else if (installed) StatusTone.Ok
-                                else if (stale) StatusTone.Warn else StatusTone.Neutral,
+                                when {
+                                  hookSpec.warn -> StatusTone.Warn
+                                  hookSpec.healthy -> StatusTone.Ok
+                                  else -> StatusTone.Neutral
+                                },
                             actions = actions,
                         ))
                   } else {
@@ -3830,11 +4169,15 @@ public class RemoteState(
                       actions.add(
                           RowAction(
                               "Add instruction",
-                              enabled = homeSpeakerCanAct && homeSpeakerBusy == null) {
-                                setHomeSpeaker(
-                                    "add instruction to $agentName",
-                                    agentHookAction = "add-instruction:$slug")
-                              })
+                              enabled = homeSpeakerCanAct && homeSpeakerBusy == null,
+                              controlId = HomeSpeakerControls.HOOK_ADD_INSTRUCTION,
+                          ) {
+                            setHomeSpeaker(
+                                "add instruction to $agentName",
+                                agentHookAction = "add-instruction:$slug",
+                                controlId = "$agentName instruction",
+                            )
+                          })
                       add(
                           ModuleRow(
                               title = "$agentName instruction",
@@ -3868,12 +4211,16 @@ public class RemoteState(
                           actions =
                               listOf(
                                   RowAction(
-                                      legacySpec.actionLabel, enabled = legacySpec.actionEnabled) {
-                                        setHomeSpeaker(
-                                            "remove legacy agent",
-                                            agentHookAction = "remove-legacy-agent",
-                                            controlId = legacySpec.title)
-                                      }),
+                                      legacySpec.actionLabel,
+                                      enabled = legacySpec.actionEnabled,
+                                      controlId = HomeSpeakerControls.REMOVE_LEGACY_AGENT,
+                                  ) {
+                                    setHomeSpeaker(
+                                        "remove legacy agent",
+                                        agentHookAction = "remove-legacy-agent",
+                                        controlId = legacySpec.title,
+                                    )
+                                  }),
                       ))
                 }
               }))
@@ -3881,18 +4228,31 @@ public class RemoteState(
     val slack = hs.slackEnabled
     val googleChat = hs.googleChatEnabled
     val beeper = hs.beeperEnabled
-    if (hs.enabled && slack != null && googleChat != null && beeper != null) {
+    if (slack != null && googleChat != null && beeper != null) {
       add(
           ModuleList(
               "Chat apps",
               buildList {
+                val courier = hs.courierEnabled
+                val anyChat = slack || googleChat || beeper || courier == true
                 val monitorRunning = hs.monitorRunning
                 val runtimeError = Derive.chatDiagnosticError(hs.chatRuntimeError)
                 val pollRel = Format.relativeTime(hs.lastPollAt, System.currentTimeMillis())
-                add(
+                val showMonitorToggle =
+                    Derive.showsChatMonitorControl(
+                        ownerRunning = hs.ownerRunning,
+                        anySourceEnabled = anyChat,
+                    )
+                val monitorRow =
                     ModuleRow(
                         title = "Chat monitor",
-                        subtitle = Derive.chatMonitorSubtitle(monitorRunning, pollRel),
+                        subtitle =
+                            Derive.chatMonitorSubtitle(
+                                monitorRunning,
+                                pollRel,
+                                ownerRunning = hs.ownerRunning,
+                                anySourceEnabled = anyChat,
+                            ),
                         trailing = if (monitorRunning) "running" else "stopped",
                         tone =
                             when {
@@ -3901,13 +4261,23 @@ public class RemoteState(
                               else -> StatusTone.Neutral
                             },
                         toggle =
-                            RowToggle(checked = monitorRunning, enabled = homeSpeakerCanAct) { next
-                              ->
-                              setHomeSpeaker(
-                                  "${if (next) "Start" else "Stop"} chat monitor",
-                                  chatMonitorAction = if (next) "start" else "stop")
-                            },
-                    ))
+                            if (showMonitorToggle) {
+                              RowToggle(checked = monitorRunning, enabled = homeSpeakerCanAct) {
+                                  next ->
+                                setHomeSpeaker(
+                                    "${if (next) "Start" else "Stop"} chat monitor",
+                                    chatMonitorAction = if (next) "start" else "stop",
+                                )
+                              }
+                            } else null,
+                    )
+                add(
+                    when {
+                      !showMonitorToggle -> monitorRow
+                      monitorRunning ->
+                          monitorRow.copy(controlId = HomeSpeakerControls.STOP_CHAT_MONITOR)
+                      else -> monitorRow.copy(controlId = HomeSpeakerControls.START_CHAT_MONITOR)
+                    })
                 if (runtimeError != null) {
                   add(
                       ModuleRow(
@@ -3918,10 +4288,12 @@ public class RemoteState(
                       ))
                 }
                 add(
-                    sourceRow(
-                        "slack_enabled", slack, "new messages are read aloud", "not watched") {
-                          setHomeSpeaker("Slack ${if (it) "on" else "off"}", slackEnabled = it)
-                        })
+                    placed("slack_enabled") {
+                      sourceRow(
+                          "slack_enabled", slack, "new messages are read aloud", "not watched") {
+                            setHomeSpeaker("Slack ${if (it) "on" else "off"}", slackEnabled = it)
+                          }
+                    })
                 if (slack) {
                   val hasToken = hs.hasSlackToken == true
                   add(
@@ -3930,6 +4302,7 @@ public class RemoteState(
                           subtitle = Derive.slackTokenSubtitle(hasToken, hs.slackIdentity),
                           trailing = if (hasToken) "saved" else "missing",
                           tone = if (hasToken) StatusTone.Ok else StatusTone.Warn,
+                          controlId = HomeSpeakerControls.SAVE_SLACK_TOKEN,
                           textPrompt =
                               RowTextPrompt(
                                   title = "Slack User Token",
@@ -3937,11 +4310,17 @@ public class RemoteState(
                                   placeholder = "xoxp-...",
                                   secret = true,
                                   submitLabel = "Save Token",
-                                  clearLabel = if (hasToken) "Clear Token" else null,
                                   enabled = homeSpeakerCanAct,
-                                  onClear =
+                                  clearAction =
                                       if (hasToken) {
-                                        { setHomeSpeaker("clear Slack token", slackToken = "") }
+                                        RowAction(
+                                            "Clear Token",
+                                            enabled = homeSpeakerCanAct,
+                                            danger = true,
+                                            controlId = HomeSpeakerControls.CLEAR_SLACK_TOKEN,
+                                        ) {
+                                          setHomeSpeaker("clear Slack token", slackToken = "")
+                                        }
                                       } else null,
                                   onSubmit = { token ->
                                     setHomeSpeaker("save Slack token", slackToken = token)
@@ -3950,18 +4329,20 @@ public class RemoteState(
                       ))
                 }
                 add(
-                    sourceRow(
-                        "google_chat_enabled",
-                        googleChat,
-                        "new messages are read aloud",
-                        "not watched") {
-                          setHomeSpeaker(
-                              "Google Chat ${if (it) "on" else "off"}", googleChatEnabled = it)
-                        })
-                if (googleChat) {
-                  val currentSource = hs.googleChatSource ?: "auto"
-                  if (Derive.catalogShown(hs.catalog, "google_chat_source"))
-                      add(
+                    placed("google_chat_enabled") {
+                      sourceRow(
+                          "google_chat_enabled",
+                          googleChat,
+                          "new messages are read aloud",
+                          "not watched") {
+                            setHomeSpeaker(
+                                "Google Chat ${if (it) "on" else "off"}", googleChatEnabled = it)
+                          }
+                    })
+                val currentSource = hs.googleChatSource ?: "auto"
+                add(
+                    placed("google_chat_source") {
+                      if (googleChat && Derive.catalogShown(hs.catalog, "google_chat_source"))
                           ModuleRow(
                               title = lbl("google_chat_source"),
                               error = Derive.settingError(homeSpeakerErrors, "google_chat_source"),
@@ -3978,6 +4359,7 @@ public class RemoteState(
                                   Derive.catalogChoiceLabel(
                                       hs.catalog, "google_chat_source", currentSource),
                               tone = StatusTone.Neutral,
+                              controlId = HomeSpeakerControls.CATALOG_SETTING,
                               choices =
                                   catalogChoiceActions(hs, "google_chat_source", currentSource) {
                                       src,
@@ -3985,21 +4367,60 @@ public class RemoteState(
                                     setHomeSpeaker(
                                         "Google Chat source $label", googleChatSource = src)
                                   },
-                          ))
-                  val chatDiag =
-                      Derive.googleChatAccountDiag(
-                          source = currentSource,
-                          activeBackend = hs.activeGoogleChatBackend,
-                          accountEmail = hs.accountEmail,
-                          gwsAccount = hs.gwsAccount,
-                          hasChatAccess = hs.hasChatAccess,
-                          gwsInstalled = hs.gwsInstalled,
-                          grantPending = homeSpeakerChatGrantPending,
-                          canAct = homeSpeakerCanAct,
-                          installed = hs.installed,
-                          grantPendingSinceMs = homeSpeakerChatGrantPendingSinceMs,
-                          nowMs = System.currentTimeMillis(),
-                      )
+                          )
+                      else null
+                    })
+                val chatDiag =
+                    if (googleChat)
+                        Derive.googleChatAccountDiag(
+                            source = currentSource,
+                            activeBackend = hs.activeGoogleChatBackend,
+                            accountEmail = hs.accountEmail,
+                            gwsAccount = hs.gwsAccount,
+                            hasChatAccess = hs.hasChatAccess,
+                            gwsInstalled = hs.gwsInstalled,
+                            grantPending = homeSpeakerChatGrantPending,
+                            canAct = homeSpeakerCanAct,
+                            installed = hs.installed,
+                            grantPendingSinceMs = homeSpeakerChatGrantPendingSinceMs,
+                            nowMs = System.currentTimeMillis(),
+                        )
+                    else null
+                val gwsPrompt =
+                    placed("gws_account") {
+                      if (chatDiag != null &&
+                          chatDiag.showGwsPrompt &&
+                          Derive.catalogShown(hs.catalog, "gws_account")) {
+                        RowTextPrompt(
+                            title = lbl("gws_account"),
+                            initialValue = hs.gwsAccount,
+                            placeholder = "you@gmail.com",
+                            submitLabel = "Save account",
+                            enabled = chatDiag.gwsPromptEnabled,
+                            clearAction =
+                                if (hs.gwsAccount.isNotBlank()) {
+                                  RowAction(
+                                      "Clear",
+                                      enabled = chatDiag.gwsPromptEnabled,
+                                      danger = true,
+                                      controlId = HomeSpeakerControls.CATALOG_SETTING,
+                                  ) {
+                                    setHomeSpeaker(
+                                        "clear gws account",
+                                        gwsAccount = "",
+                                        controlId = "Google Chat account")
+                                  }
+                                } else null,
+                            onSubmit = { acct ->
+                              setHomeSpeaker(
+                                  "gws account $acct",
+                                  gwsAccount = acct,
+                                  controlId = "Google Chat account")
+                            },
+                        )
+                      } else null
+                    }
+                if (chatDiag != null) {
                   add(
                       ModuleRow(
                           title = "Google Chat account",
@@ -4007,11 +4428,17 @@ public class RemoteState(
                           trailing = chatDiag.trailing,
                           tone = if (chatDiag.healthy) StatusTone.Ok else StatusTone.Warn,
                           error = homeSpeakerErrors["Google Chat account"] ?: chatDiag.inlineNote,
+                          controlId =
+                              if (gwsPrompt != null) HomeSpeakerControls.CATALOG_SETTING else null,
                           actions =
                               buildList {
                                 if (chatDiag.showGrant) {
                                   add(
-                                      RowAction("Grant…", enabled = chatDiag.grantEnabled) {
+                                      RowAction(
+                                          "Grant…",
+                                          enabled = chatDiag.grantEnabled,
+                                          controlId = HomeSpeakerControls.GRANT_GOOGLE_CHAT,
+                                      ) {
                                         setHomeSpeaker(
                                             "grant Google Chat",
                                             grantChat = true,
@@ -4021,47 +4448,27 @@ public class RemoteState(
                                 if (chatDiag.showDisconnect) {
                                   add(
                                       RowAction(
-                                          "Disconnect", enabled = chatDiag.disconnectEnabled) {
-                                            setHomeSpeaker(
-                                                "disconnect Google Chat",
-                                                disconnectChat = true,
-                                                controlId = "Google Chat account")
-                                          })
+                                          "Disconnect",
+                                          enabled = chatDiag.disconnectEnabled,
+                                          controlId = HomeSpeakerControls.DISCONNECT_GOOGLE_CHAT,
+                                      ) {
+                                        setHomeSpeaker(
+                                            "disconnect Google Chat",
+                                            disconnectChat = true,
+                                            controlId = "Google Chat account")
+                                      })
                                 }
                               },
-                          textPrompt =
-                              if (chatDiag.showGwsPrompt) {
-                                RowTextPrompt(
-                                    title = lbl("gws_account"),
-                                    initialValue = hs.gwsAccount,
-                                    placeholder = "you@gmail.com",
-                                    submitLabel = "Save account",
-                                    clearLabel = if (hs.gwsAccount.isNotBlank()) "Clear" else null,
-                                    enabled = chatDiag.gwsPromptEnabled,
-                                    onClear =
-                                        if (hs.gwsAccount.isNotBlank()) {
-                                          {
-                                            setHomeSpeaker(
-                                                "clear gws account",
-                                                gwsAccount = "",
-                                                controlId = "Google Chat account")
-                                          }
-                                        } else null,
-                                    onSubmit = { acct ->
-                                      setHomeSpeaker(
-                                          "gws account $acct",
-                                          gwsAccount = acct,
-                                          controlId = "Google Chat account")
-                                    },
-                                )
-                              } else null,
+                          textPrompt = gwsPrompt,
                       ))
                 }
                 add(
-                    sourceRow(
-                        "beeper_enabled", beeper, "new messages are read aloud", "not watched") {
-                          setHomeSpeaker("Beeper ${if (it) "on" else "off"}", beeperEnabled = it)
-                        })
+                    placed("beeper_enabled") {
+                      sourceRow(
+                          "beeper_enabled", beeper, "new messages are read aloud", "not watched") {
+                            setHomeSpeaker("Beeper ${if (it) "on" else "off"}", beeperEnabled = it)
+                          }
+                    })
                 if (beeper) {
                   val hasToken = hs.hasBeeperToken == true
                   add(
@@ -4072,6 +4479,7 @@ public class RemoteState(
                               else "Tap to paste Beeper access token",
                           trailing = if (hasToken) "saved" else "missing",
                           tone = if (hasToken) StatusTone.Ok else StatusTone.Warn,
+                          controlId = HomeSpeakerControls.SAVE_BEEPER_TOKEN,
                           textPrompt =
                               RowTextPrompt(
                                   title = "Beeper Access Token",
@@ -4079,61 +4487,85 @@ public class RemoteState(
                                   placeholder = "Paste access token",
                                   secret = true,
                                   submitLabel = "Save Token",
-                                  clearLabel = if (hasToken) "Clear Token" else null,
                                   enabled = homeSpeakerCanAct,
-                                  onClear =
+                                  clearAction =
                                       if (hasToken) {
-                                        { setHomeSpeaker("clear Beeper token", beeperToken = "") }
+                                        RowAction(
+                                            "Clear Token",
+                                            enabled = homeSpeakerCanAct,
+                                            danger = true,
+                                            controlId = HomeSpeakerControls.CLEAR_BEEPER_TOKEN,
+                                        ) {
+                                          setHomeSpeaker("clear Beeper token", beeperToken = "")
+                                        }
                                       } else null,
                                   onSubmit = { token ->
                                     setHomeSpeaker("save Beeper token", beeperToken = token)
                                   },
                               ),
                       ))
-                  add(
-                      ModuleRow(
-                          title = lbl("beeper_announce"),
-                          error = Derive.settingError(homeSpeakerErrors, "beeper_announce"),
-                          subtitle = "which Beeper messages are read aloud",
-                          trailing =
-                              Derive.catalogChoiceLabel(
-                                  hs.catalog, "beeper_announce", hs.beeperAnnounce),
-                          tone = StatusTone.Neutral,
-                          choices =
-                              catalogChoiceActions(hs, "beeper_announce", hs.beeperAnnounce) {
-                                  wire,
-                                  label ->
-                                setHomeSpeaker("Beeper announce $label", beeperAnnounce = wire)
-                              },
-                      ))
+                }
+                add(
+                    placed("beeper_announce") {
+                      if (beeper && Derive.catalogShown(hs.catalog, "beeper_announce"))
+                          ModuleRow(
+                              title = lbl("beeper_announce"),
+                              error = Derive.settingError(homeSpeakerErrors, "beeper_announce"),
+                              subtitle = "which Beeper messages are read aloud",
+                              trailing =
+                                  Derive.catalogChoiceLabel(
+                                      hs.catalog, "beeper_announce", hs.beeperAnnounce),
+                              tone = StatusTone.Neutral,
+                              controlId = HomeSpeakerControls.CATALOG_SETTING,
+                              choices =
+                                  catalogChoiceActions(hs, "beeper_announce", hs.beeperAnnounce) {
+                                      wire,
+                                      label ->
+                                    setHomeSpeaker("Beeper announce $label", beeperAnnounce = wire)
+                                  },
+                          )
+                      else null
+                    })
+                if (beeper) {
                   addAll(chatNetworkRows("Beeper", hs.beeperNetworks, hs.beeperNetworksListed))
                 }
-                val courier = hs.courierEnabled
+                // Placed here, not in "Other settings": two rows both titled "Address" there
+                // gave no clue which app each belonged to (UAT 2026-11-12).
+                add(
+                    placed("beeper_address") {
+                      catalogRowFor(hs, "beeper_address", "where Beeper Desktop's API answers")
+                    })
                 if (Derive.showsCourierRow(courier)) {
                   val courierOn = courier == true
                   val hasToken = hs.hasCourierToken
                   add(
-                      ModuleRow(
-                          title = lbl("courier_enabled"),
-                          error = Derive.settingError(homeSpeakerErrors, "courier_enabled"),
-                          subtitle =
-                              when {
-                                courierOn -> "new messages are read aloud"
-                                hasToken -> "not watched"
-                                else -> "needs a token on the Mac first"
-                              },
-                          trailing = if (courierOn) "on" else "off",
-                          tone = if (courierOn) StatusTone.Ok else StatusTone.Neutral,
-                          toggle =
-                              RowToggle(
-                                  checked = courierOn,
-                                  enabled =
-                                      homeSpeakerCanAct &&
-                                          Derive.courierSwitchEnabled(hasToken, courierOn)) {
-                                    setHomeSpeaker(
-                                        "Courier ${if (it) "on" else "off"}", courierEnabled = it)
-                                  },
-                      ))
+                      placed("courier_enabled") {
+                        if (Derive.catalogShown(hs.catalog, "courier_enabled"))
+                            ModuleRow(
+                                title = lbl("courier_enabled"),
+                                error = Derive.settingError(homeSpeakerErrors, "courier_enabled"),
+                                subtitle =
+                                    when {
+                                      courierOn -> "new messages are read aloud"
+                                      hasToken -> "not watched"
+                                      else -> "needs a token on the Mac first"
+                                    },
+                                trailing = if (courierOn) "on" else "off",
+                                tone = if (courierOn) StatusTone.Ok else StatusTone.Neutral,
+                                controlId = HomeSpeakerControls.CATALOG_SETTING,
+                                toggle =
+                                    RowToggle(
+                                        checked = courierOn,
+                                        enabled =
+                                            homeSpeakerCanAct &&
+                                                Derive.courierSwitchEnabled(hasToken, courierOn)) {
+                                          setHomeSpeaker(
+                                              "Courier ${if (it) "on" else "off"}",
+                                              courierEnabled = it)
+                                        },
+                            )
+                        else null
+                      })
                   if (courierOn || !hasToken) {
                     val courierSpec =
                         Derive.courierTokenRow(hasToken = hasToken, canAct = homeSpeakerCanAct)
@@ -4143,6 +4575,7 @@ public class RemoteState(
                             subtitle = courierSpec.subtitle,
                             trailing = courierSpec.trailing,
                             tone = if (courierSpec.healthy) StatusTone.Ok else StatusTone.Warn,
+                            controlId = HomeSpeakerControls.SAVE_COURIER_TOKEN,
                             textPrompt =
                                 RowTextPrompt(
                                     title = courierSpec.promptTitle,
@@ -4150,17 +4583,21 @@ public class RemoteState(
                                     placeholder = courierSpec.placeholder,
                                     secret = true,
                                     submitLabel = courierSpec.submitLabel,
-                                    clearLabel = courierSpec.clearLabel,
                                     enabled = courierSpec.promptEnabled,
-                                    onClear =
-                                        if (hasToken) {
-                                          {
+                                    clearAction =
+                                        courierSpec.clearLabel?.let { clearLbl ->
+                                          RowAction(
+                                              clearLbl,
+                                              enabled = courierSpec.promptEnabled,
+                                              danger = true,
+                                              controlId = HomeSpeakerControls.CLEAR_COURIER_TOKEN,
+                                          ) {
                                             setHomeSpeaker(
                                                 "clear Courier token",
                                                 courierToken = "",
                                                 controlId = courierSpec.title)
                                           }
-                                        } else null,
+                                        },
                                     onSubmit = { token ->
                                       setHomeSpeaker(
                                           "save Courier token",
@@ -4170,62 +4607,77 @@ public class RemoteState(
                                 ),
                         ))
                   }
+                  add(
+                      placed("courier_announce") {
+                        if (courierOn && Derive.catalogShown(hs.catalog, "courier_announce"))
+                            ModuleRow(
+                                title = lbl("courier_announce"),
+                                error = Derive.settingError(homeSpeakerErrors, "courier_announce"),
+                                subtitle = "which Courier messages are read aloud",
+                                trailing =
+                                    Derive.catalogChoiceLabel(
+                                        hs.catalog, "courier_announce", hs.courierAnnounce),
+                                tone = StatusTone.Neutral,
+                                controlId = HomeSpeakerControls.CATALOG_SETTING,
+                                choices =
+                                    catalogChoiceActions(
+                                        hs, "courier_announce", hs.courierAnnounce) { wire, label ->
+                                          setHomeSpeaker(
+                                              "Courier announce $label", courierAnnounce = wire)
+                                        },
+                            )
+                        else null
+                      })
                   if (courierOn) {
-                    add(
-                        ModuleRow(
-                            title = lbl("courier_announce"),
-                            error = Derive.settingError(homeSpeakerErrors, "courier_announce"),
-                            subtitle = "which Courier messages are read aloud",
-                            trailing =
-                                Derive.catalogChoiceLabel(
-                                    hs.catalog, "courier_announce", hs.courierAnnounce),
-                            tone = StatusTone.Neutral,
-                            choices =
-                                catalogChoiceActions(hs, "courier_announce", hs.courierAnnounce) {
-                                    wire,
-                                    label ->
-                                  setHomeSpeaker("Courier announce $label", courierAnnounce = wire)
-                                },
-                        ))
                     addAll(chatNetworkRows("Courier", hs.courierNetworks, hs.courierNetworksListed))
                   }
-                }
-                val anyChat = slack || googleChat || beeper || courier == true
-                if (anyChat && Derive.catalogShown(hs.catalog, "poll_interval_seconds")) {
-                  val interval =
-                      hs.pollInterval
-                          ?: Derive.catalogLimits(hs.catalog, "poll_interval_seconds")
-                              ?.defaultValue
-                              ?.toInt()
-                          ?: 0
                   add(
-                      ModuleRow(
-                          title = lbl("poll_interval_seconds"),
-                          error = Derive.settingError(homeSpeakerErrors, "poll_interval_seconds"),
-                          subtitle = "how often chat apps are checked",
-                          trailing = "$interval s",
-                          tone = StatusTone.Neutral,
-                          actions =
-                              catalogStepActions(
-                                  hs, "poll_interval_seconds", interval.toDouble()) { next ->
-                                    setHomeSpeaker(
-                                        "poll interval ${next.toInt()}s",
-                                        pollInterval = next.toInt())
-                                  },
-                      ))
+                      placed("courier_address") {
+                        catalogRowFor(hs, "courier_address", "where Courier's API answers")
+                      })
                 }
+                add(
+                    placed("poll_interval_seconds") {
+                      if (anyChat && Derive.catalogShown(hs.catalog, "poll_interval_seconds")) {
+                        val interval =
+                            hs.pollInterval
+                                ?: Derive.catalogLimits(hs.catalog, "poll_interval_seconds")
+                                    ?.defaultValue
+                                    ?.toInt()
+                                ?: 0
+                        ModuleRow(
+                            title = lbl("poll_interval_seconds"),
+                            error = Derive.settingError(homeSpeakerErrors, "poll_interval_seconds"),
+                            subtitle = "how often chat apps are checked",
+                            trailing = "$interval s",
+                            tone = StatusTone.Neutral,
+                            controlId = HomeSpeakerControls.CATALOG_SETTING,
+                            actions =
+                                catalogStepActions(
+                                    hs, "poll_interval_seconds", interval.toDouble()) { next ->
+                                      setHomeSpeaker(
+                                          "poll interval ${next.toInt()}s",
+                                          pollInterval = next.toInt())
+                                    },
+                        )
+                      } else null
+                    })
                 val muteOwn = hs.muteOwnMessages
-                if (anyChat && muteOwn != null) {
+                if (muteOwn != null) {
                   add(
-                      sourceRow(
-                          "mute_own_messages",
-                          muteOwn,
-                          "messages from your own account stay silent",
-                          "your own messages are read aloud too") {
-                            setHomeSpeaker(
-                                "skip own messages ${if (it) "on" else "off"}",
-                                muteOwnMessages = it)
-                          })
+                      placed("mute_own_messages") {
+                        if (anyChat)
+                            sourceRow(
+                                "mute_own_messages",
+                                muteOwn,
+                                "messages from your own account stay silent",
+                                "your own messages are read aloud too") {
+                                  setHomeSpeaker(
+                                      "skip own messages ${if (it) "on" else "off"}",
+                                      muteOwnMessages = it)
+                                }
+                        else null
+                      })
                 }
               }))
     }
@@ -4259,17 +4711,24 @@ public class RemoteState(
                     subtitle = clientIdSpec.subtitle,
                     trailing = clientIdSpec.trailing,
                     tone = if (clientIdSpec.healthy) StatusTone.Ok else StatusTone.Neutral,
+                    controlId = HomeSpeakerControls.SAVE_OAUTH_CLIENT,
                     textPrompt =
                         RowTextPrompt(
                             title = clientIdSpec.title,
                             initialValue = clientId,
                             placeholder = "...apps.googleusercontent.com",
                             submitLabel = "Save Client ID",
-                            clearLabel = if (clientIdSpec.hasValue) "Clear" else null,
                             enabled = homeSpeakerCanAct && clientIdSpec.enabled,
-                            onClear =
+                            clearAction =
                                 if (clientIdSpec.hasValue) {
-                                  { setHomeSpeaker("clear OAuth client ID", oauthClientId = "") }
+                                  RowAction(
+                                      "Clear",
+                                      enabled = homeSpeakerCanAct && clientIdSpec.enabled,
+                                      danger = true,
+                                      controlId = HomeSpeakerControls.CLEAR_OAUTH_CLIENT,
+                                  ) {
+                                    setHomeSpeaker("clear OAuth client ID", oauthClientId = "")
+                                  }
                                 } else null,
                             onSubmit = { text ->
                               setHomeSpeaker("save OAuth client ID", oauthClientId = text)
@@ -4281,6 +4740,7 @@ public class RemoteState(
                     subtitle = secretSpec.subtitle,
                     trailing = secretSpec.trailing,
                     tone = if (secretSpec.healthy) StatusTone.Ok else StatusTone.Neutral,
+                    controlId = HomeSpeakerControls.SAVE_OAUTH_CLIENT,
                     textPrompt =
                         RowTextPrompt(
                             title = secretSpec.title,
@@ -4288,11 +4748,15 @@ public class RemoteState(
                             placeholder = "Paste client secret",
                             secret = true,
                             submitLabel = "Save Secret",
-                            clearLabel = if (secretSpec.hasValue) "Clear Secret" else null,
                             enabled = homeSpeakerCanAct && secretSpec.enabled,
-                            onClear =
+                            clearAction =
                                 if (secretSpec.hasValue) {
-                                  {
+                                  RowAction(
+                                      "Clear Secret",
+                                      enabled = homeSpeakerCanAct && secretSpec.enabled,
+                                      danger = true,
+                                      controlId = HomeSpeakerControls.CLEAR_OAUTH_CLIENT,
+                                  ) {
                                     setHomeSpeaker(
                                         "clear OAuth client secret", oauthClientSecret = "")
                                   }
@@ -4303,6 +4767,17 @@ public class RemoteState(
                         ),
                 ),
             )))
+    val genericRows =
+        Derive.genericHomeSpeakerRows(
+            catalog = hs.catalog,
+            canAct = homeSpeakerCanAct,
+            errors = homeSpeakerErrors,
+            drawnKeys = placement.drawnKeys,
+            genericSettingsSupported = hs.genericSettings,
+        )
+    if (genericRows.isNotEmpty()) {
+      add(ModuleList("Other settings", genericRows.map(::genericSettingModuleRow)))
+    }
     // An agent older than v1.10 sends only `last`: a one-row list, still replayable.
     val recent = hs.recent.ifEmpty { listOfNotNull(hs.last) }
     if (recent.isNotEmpty()) {
@@ -4310,7 +4785,7 @@ public class RemoteState(
       val canReplay = homeSpeakerCanAct && hs.installed
       add(
           ModuleList(
-              "Recent broadcasts",
+              RECENT_BROADCASTS_LABEL,
               recent.map { b ->
                 ModuleRow(
                     title = b.text,
@@ -4324,7 +4799,11 @@ public class RemoteState(
                     titleLines = 2,
                     actions =
                         listOf(
-                            RowAction("Replay", enabled = canReplay) {
+                            RowAction(
+                                "Replay",
+                                enabled = canReplay,
+                                controlId = HomeSpeakerControls.REPLAY,
+                            ) {
                               replayAnnouncement(b.text, b.id)
                             }),
                     onSelect = if (canReplay) ({ replayAnnouncement(b.text, b.id) }) else null,
@@ -4332,6 +4811,165 @@ public class RemoteState(
               }))
     }
     add(ModuleList("Reset HomeSpeaker", listOf(resetHomeSpeakerModuleRow())))
+  }
+
+  /**
+   * The generic control for one catalog setting, drawn inside a hand-designed section with a
+   * subtitle that gives it context. Null when the catalog hides it or the helper can't set it.
+   */
+  private fun catalogRowFor(hs: AgentHomeSpeaker, key: String, subtitle: String): ModuleRow? =
+      Derive.genericHomeSpeakerRows(
+              catalog = hs.catalog,
+              canAct = homeSpeakerCanAct,
+              errors = homeSpeakerErrors,
+              drawnKeys = hs.catalog.settings.map { it.key }.toSet() - key,
+              genericSettingsSupported = hs.genericSettings,
+          )
+          .firstOrNull()
+          ?.let { genericSettingModuleRow(it.copy(subtitle = subtitle)) }
+
+  private fun genericSettingModuleRow(row: Derive.GenericSettingRow): ModuleRow {
+    val tone = if (row.healthy) StatusTone.Ok else StatusTone.Neutral
+    return when (val c = row.control) {
+      is Derive.GenericSettingControl.Toggle ->
+          ModuleRow(
+              title = row.title,
+              subtitle = row.subtitle,
+              trailing = row.trailing,
+              tone = tone,
+              error = row.error,
+              controlId = HomeSpeakerControls.CATALOG_SETTING,
+              toggle =
+                  RowToggle(checked = c.checked, enabled = c.enabled) { next ->
+                    setHomeSpeaker(
+                        "set ${row.key}",
+                        settings = mapOf(row.key to next),
+                        controlId = row.key,
+                    )
+                  },
+          )
+      is Derive.GenericSettingControl.Choices ->
+          ModuleRow(
+              title = row.title,
+              subtitle = row.subtitle,
+              trailing = row.trailing,
+              tone = tone,
+              error = row.error,
+              controlId = HomeSpeakerControls.CATALOG_SETTING,
+              choices =
+                  c.options.map { opt ->
+                    val current = opt.value == c.current
+                    RowAction(
+                        opt.label,
+                        enabled = c.enabled && !current,
+                        selected = current,
+                        controlId = HomeSpeakerControls.CATALOG_SETTING,
+                    ) {
+                      setHomeSpeaker(
+                          "set ${row.key} ${opt.label}",
+                          settings = mapOf(row.key to opt.value),
+                          controlId = row.key,
+                      )
+                    }
+                  },
+          )
+      is Derive.GenericSettingControl.NumberStepper -> {
+        fun wireNumber(v: Double): Any = if (c.isInteger && v % 1.0 == 0.0) v.toLong() else v
+        ModuleRow(
+            title = row.title,
+            subtitle = row.subtitle,
+            trailing = row.trailing,
+            tone = tone,
+            error = row.error,
+            controlId = HomeSpeakerControls.CATALOG_SETTING,
+            actions =
+                c.stepper
+                    ?.let { s ->
+                      listOf(
+                          RowAction(
+                              s.minusLabel,
+                              enabled = s.minusEnabled,
+                              controlId = HomeSpeakerControls.CATALOG_SETTING,
+                          ) {
+                            setHomeSpeaker(
+                                "set ${row.key}",
+                                settings = mapOf(row.key to wireNumber(s.minusNext)),
+                                controlId = row.key,
+                            )
+                          },
+                          RowAction(
+                              s.plusLabel,
+                              enabled = s.plusEnabled,
+                              controlId = HomeSpeakerControls.CATALOG_SETTING,
+                          ) {
+                            setHomeSpeaker(
+                                "set ${row.key}",
+                                settings = mapOf(row.key to wireNumber(s.plusNext)),
+                                controlId = row.key,
+                            )
+                          },
+                      )
+                    }
+                    .orEmpty(),
+            choices =
+                c.options.map { opt ->
+                  val current = opt.value.toDoubleOrNull() == c.current
+                  RowAction(
+                      opt.label,
+                      enabled = c.enabled && !current,
+                      selected = current,
+                      controlId = HomeSpeakerControls.CATALOG_SETTING,
+                  ) {
+                    opt.value.toDoubleOrNull()?.let { next ->
+                      setHomeSpeaker(
+                          "set ${row.key} ${opt.label}",
+                          settings = mapOf(row.key to wireNumber(next)),
+                          controlId = row.key,
+                      )
+                    }
+                  }
+                },
+        )
+      }
+      is Derive.GenericSettingControl.TextPrompt ->
+          ModuleRow(
+              title = row.title,
+              subtitle = row.subtitle,
+              trailing = row.trailing,
+              tone = tone,
+              error = row.error,
+              controlId = HomeSpeakerControls.CATALOG_SETTING,
+              textPrompt =
+                  RowTextPrompt(
+                      title = row.title,
+                      initialValue = c.value,
+                      submitLabel = "Save",
+                      enabled = c.enabled,
+                      clearAction =
+                          if (c.hasValue) {
+                            RowAction(
+                                "Clear",
+                                enabled = c.enabled,
+                                danger = true,
+                                controlId = HomeSpeakerControls.CATALOG_SETTING,
+                            ) {
+                              setHomeSpeaker(
+                                  "clear ${row.key}",
+                                  settings = mapOf(row.key to ""),
+                                  controlId = row.key,
+                              )
+                            }
+                          } else null,
+                      onSubmit = { text ->
+                        setHomeSpeaker(
+                            "set ${row.key}",
+                            settings = mapOf(row.key to text),
+                            controlId = row.key,
+                        )
+                      },
+                  ),
+          )
+    }
   }
 
   // The same status, health and outputs line on Home's "Running now" row and
@@ -4553,6 +5191,7 @@ public class RemoteState(
       styleModel: String? = null,
       homeCastVoice: Boolean? = null,
       activeDoor: String? = null,
+      copy: Boolean? = null,
       discover: Boolean = false,
       structureId: String? = null,
       removeTarget: String? = null,
@@ -4594,11 +5233,13 @@ public class RemoteState(
       courierNetworkReading: Boolean? = null,
       courierReadAnywayKey: String? = null,
       courierReadAnywayOn: Boolean? = null,
+      settings: Map<String, Any>? = null,
       controlId: String? = null,
   ) {
     val key =
         controlId
             ?: when {
+              !settings.isNullOrEmpty() -> settings.keys.first()
               enabled != null -> "enabled"
               defaultTarget != null || removeTarget != null -> "default_target"
               discover -> "Find speakers"
@@ -4682,6 +5323,7 @@ public class RemoteState(
                   styleModel = styleModel,
                   homeCastVoice = homeCastVoice,
                   activeDoor = activeDoor,
+                  copy = copy,
                   discover = discover,
                   structureId = structureId,
                   removeTarget = removeTarget,
@@ -4723,6 +5365,7 @@ public class RemoteState(
                   courierNetworkReading = courierNetworkReading,
                   courierReadAnywayKey = courierReadAnywayKey,
                   courierReadAnywayOn = courierReadAnywayOn,
+                  settings = settings,
               )
             }
             .onSuccess {
@@ -4763,11 +5406,15 @@ public class RemoteState(
               val isSignInGrantOrDisconnect =
                   signIn || signOut || importAntigravity || grantChat || disconnectChat
               if (!isSignInGrantOrDisconnect) {
+                // The same plain sentence the row shows, not the helper's raw wrapper
+                // ("agent: set structure failed: exit status 1"); the log keeps the raw text.
                 homeSpeakerNotice =
-                    "✗ homespeaker · $what: ${
-                      if (it is AgentAuthException) failureText(it) else it.message ?: "failed"
-                    }" to
-                        StatusTone.Crit
+                    "✗ " +
+                        Derive.homeSpeakerInlineError(
+                            what = what,
+                            reason = it.message,
+                            authFailed = it is AgentAuthException,
+                        ) to StatusTone.Crit
               }
               actFailed("homespeaker · $what", it)
             }
@@ -8137,6 +8784,9 @@ public class RemoteState(
   private fun plural(count: Int): String = if (count == 1) "" else "s"
 
   private companion object {
+    /** The one HomeSpeaker list that stays visible with Settings collapsed. */
+    const val RECENT_BROADCASTS_LABEL = "Recent broadcasts"
+
     /** How `AgentAuthException` words a refusal, and so how the bridge's link status reads one. */
     const val LINK_REFUSED_PREFIX = "not paired (HTTP"
 

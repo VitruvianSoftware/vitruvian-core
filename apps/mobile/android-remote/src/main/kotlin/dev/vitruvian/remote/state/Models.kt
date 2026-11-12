@@ -194,6 +194,8 @@ public data class ModuleRow(
     val toggle: RowToggle? = null,
     /** One-line inline error shown under the row when its last toggle or action failed. */
     val error: String? = null,
+    /** Manifest control ID (`HomeSpeakerControls`) for this row's primary control, if any. */
+    val controlId: String? = null,
 )
 
 /**
@@ -216,6 +218,7 @@ public data class RowTextPrompt(
     val submitLabel: String = "Save",
     val clearLabel: String? = null,
     val onClear: (() -> Unit)? = null,
+    val clearAction: RowAction? = null,
     val onSubmit: (String) -> Unit,
     /**
      * Whether something is saved. A secret never comes back to the phone, so its [initialValue] is
@@ -240,6 +243,7 @@ public data class RowAction(
     /** The current value, when this action is one of a row's [ModuleRow.choices]. */
     val selected: Boolean = false,
     val error: String? = null,
+    val controlId: String? = null,
     val onClick: () -> Unit,
 )
 
@@ -254,6 +258,7 @@ public data class QuickAction(
     val error: String? = null,
     val choices: List<RowAction> = emptyList(),
     val choiceTitle: String = label,
+    val controlId: String? = null,
 )
 
 /**
@@ -270,6 +275,7 @@ public data class ModuleComposer(
     val enabled: Boolean,
     val onValueChange: (String) -> Unit,
     val onSubmit: () -> Unit,
+    val controlId: String? = null,
 )
 
 /** An installed module's dashboard. */

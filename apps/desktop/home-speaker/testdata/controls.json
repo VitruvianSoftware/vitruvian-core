@@ -1,0 +1,303 @@
+[
+  {
+    "id": "catalog-setting",
+    "label": "Catalog setting",
+    "via": "set",
+    "phone": "supported"
+  },
+  {
+    "id": "say",
+    "label": "Say",
+    "via": "--say",
+    "phone": "supported"
+  },
+  {
+    "id": "speak-clipboard",
+    "label": "Speak clipboard",
+    "via": "--say",
+    "phone": "supported"
+  },
+  {
+    "id": "snooze",
+    "label": "Snooze 30 min / Resume",
+    "via": "snooze",
+    "phone": "supported"
+  },
+  {
+    "id": "mute",
+    "label": "Mute / Unmute speaker",
+    "via": "--mute",
+    "phone": "supported"
+  },
+  {
+    "id": "volume",
+    "label": "Speaker volume",
+    "via": "--set-volume",
+    "phone": "supported"
+  },
+  {
+    "id": "sign-in",
+    "label": "Sign in with Google",
+    "via": "--sign-in",
+    "phone": "supported"
+  },
+  {
+    "id": "sign-out",
+    "label": "Sign out",
+    "via": "--sign-out",
+    "phone": "supported"
+  },
+  {
+    "id": "import-antigravity",
+    "label": "Import Antigravity login",
+    "via": "importAntigravity",
+    "phone": "supported"
+  },
+  {
+    "id": "find-speakers",
+    "label": "Find Speakers / Refresh from Google Home",
+    "via": "--discover --save",
+    "phone": "supported"
+  },
+  {
+    "id": "choose-home",
+    "label": "Choose Google Home",
+    "via": "--discover --save --home",
+    "phone": "supported"
+  },
+  {
+    "id": "save-gemini-key",
+    "label": "Save Gemini API key",
+    "via": "setSecret",
+    "phone": "supported"
+  },
+  {
+    "id": "clear-gemini-key",
+    "label": "Clear Gemini API key",
+    "via": "setSecret",
+    "phone": "supported"
+  },
+  {
+    "id": "save-slack-token",
+    "label": "Save Slack token",
+    "via": "setSecret",
+    "phone": "supported"
+  },
+  {
+    "id": "clear-slack-token",
+    "label": "Clear Slack token",
+    "via": "clearChatToken",
+    "phone": "supported"
+  },
+  {
+    "id": "save-beeper-token",
+    "label": "Save Beeper token",
+    "via": "setSecret",
+    "phone": "supported"
+  },
+  {
+    "id": "clear-beeper-token",
+    "label": "Clear Beeper token",
+    "via": "clearChatToken",
+    "phone": "supported"
+  },
+  {
+    "id": "save-courier-token",
+    "label": "Save Courier token",
+    "via": "setSecret",
+    "phone": "supported"
+  },
+  {
+    "id": "clear-courier-token",
+    "label": "Clear Courier token",
+    "via": "clearChatToken",
+    "phone": "supported"
+  },
+  {
+    "id": "grant-google-chat",
+    "label": "Grant Google Chat access",
+    "via": "--sign-in --chat",
+    "phone": "supported"
+  },
+  {
+    "id": "disconnect-google-chat",
+    "label": "Disconnect Google Chat",
+    "via": "--sign-out --chat",
+    "phone": "supported"
+  },
+  {
+    "id": "beeper-network",
+    "label": "Beeper network switch",
+    "via": "setNetwork",
+    "phone": "supported"
+  },
+  {
+    "id": "courier-network",
+    "label": "Courier network switch",
+    "via": "setNetwork",
+    "phone": "supported"
+  },
+  {
+    "id": "courier-read-anyway",
+    "label": "Read through Courier too",
+    "via": "setReadAnyway",
+    "phone": "supported"
+  },
+  {
+    "id": "start-chat-monitor",
+    "label": "Start chat monitor",
+    "via": "--chat-monitor start",
+    "phone": "supported"
+  },
+  {
+    "id": "stop-chat-monitor",
+    "label": "Stop chat monitor",
+    "via": "--chat-monitor stop",
+    "phone": "supported"
+  },
+  {
+    "id": "replay",
+    "label": "Replay recent announcement",
+    "via": "--say --no-history",
+    "phone": "supported"
+  },
+  {
+    "id": "test-media-pause",
+    "label": "Test media pause",
+    "via": "--test-media-pause",
+    "phone": "supported"
+  },
+  {
+    "id": "voice-preview",
+    "label": "Preview Mac voice",
+    "via": "helper:preview-voice",
+    "phone": "supported"
+  },
+  {
+    "id": "set-default-speaker",
+    "label": "Set default speaker",
+    "via": "setDefaultSpeaker",
+    "phone": "supported"
+  },
+  {
+    "id": "remove-speaker",
+    "label": "Remove speaker",
+    "via": "removeSpeaker",
+    "phone": "supported"
+  },
+  {
+    "id": "hook-install",
+    "label": "Install coding-agent hook",
+    "via": "agentHook",
+    "phone": "supported"
+  },
+  {
+    "id": "hook-update",
+    "label": "Update coding-agent hook",
+    "via": "agentHook",
+    "phone": "supported"
+  },
+  {
+    "id": "hook-remove",
+    "label": "Remove coding-agent hook",
+    "via": "agentHook",
+    "phone": "supported"
+  },
+  {
+    "id": "hook-add-instruction",
+    "label": "Add broadcast instruction",
+    "via": "agentHook",
+    "phone": "supported"
+  },
+  {
+    "id": "hook-turn-off-rival",
+    "label": "Turn off duplicate hook",
+    "via": "agentHook",
+    "phone": "supported"
+  },
+  {
+    "id": "remove-legacy-agent",
+    "label": "Remove legacy LaunchAgent",
+    "via": "removeLegacyAgent",
+    "phone": "supported"
+  },
+  {
+    "id": "save-oauth-client",
+    "label": "Save OAuth client",
+    "via": "saveOAuthClient",
+    "phone": "supported"
+  },
+  {
+    "id": "clear-oauth-client",
+    "label": "Clear OAuth client",
+    "via": "saveOAuthClient",
+    "phone": "supported"
+  },
+  {
+    "id": "door-switch",
+    "label": "Switch active HomeSpeaker (App / Extension)",
+    "via": "switchTo",
+    "phone": "supported"
+  },
+  {
+    "id": "door-copy-settings",
+    "label": "Copy settings from other HomeSpeaker",
+    "via": "switchTo",
+    "phone": "supported"
+  },
+  {
+    "id": "reset",
+    "label": "Reset settings",
+    "via": "reset",
+    "phone": "supported"
+  },
+  {
+    "id": "door-quit-other",
+    "label": "Quit other HomeSpeaker",
+    "via": "extension-ui",
+    "phone": "excluded",
+    "reason": "Acts on another app's process on the Mac."
+  },
+  {
+    "id": "door-login-item",
+    "label": "Turn off HomeSpeaker app login item",
+    "via": "--login-item disable",
+    "phone": "excluded",
+    "reason": "Acts on another app's login item and files on the Mac."
+  },
+  {
+    "id": "door-trash",
+    "label": "Move HomeSpeaker.app to Trash",
+    "via": "extension-ui",
+    "phone": "excluded",
+    "reason": "Acts on another app's files on the Mac; moving to Trash from a phone is destructive and hard to undo."
+  },
+  {
+    "id": "files-rows",
+    "label": "Files paths (settings, secrets, history)",
+    "via": "extension-ui",
+    "phone": "excluded",
+    "reason": "Settings, secrets, and history paths are Mac file paths, meaningless on a phone."
+  },
+  {
+    "id": "section-picker",
+    "label": "Settings section picker",
+    "via": "extension-ui",
+    "phone": "excluded",
+    "reason": "Extension-only navigation within the Vitruvian settings panel."
+  },
+  {
+    "id": "more-settings",
+    "label": "More settings… / Open chat settings",
+    "via": "extension-ui",
+    "phone": "excluded",
+    "reason": "Extension-only navigation from the island to the Vitruvian settings panel."
+  },
+  {
+    "id": "open-google-cloud",
+    "label": "Open Google Cloud Console",
+    "via": "extension-ui",
+    "phone": "excluded",
+    "reason": "Extension-only navigation link to Google Cloud Console on the Mac."
+  }
+]
