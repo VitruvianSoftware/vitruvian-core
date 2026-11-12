@@ -445,7 +445,7 @@ another branch; until one lands, the refusal says so and points to James.
 | `go` | `go test/vet/build/run/install/mod/get/fmt` | `bazel test`, `bazel build`, `//tools/gomod:tidy`, `//tools/format` |
 | `swift` | `swift build/test/run/package`, `swiftc` | `bazel test //apps/desktop/<app>:<Tests>` |
 | `xcode` | `xcodebuild`, `xcrun notarytool/stapler/altool` | the app's `bazel build`/`test` and packaging targets |
-| `node` | `npm`/`pnpm`/`yarn`/`bun` install, test, run, exec; `npx` | `bazel test` / `bazel run`; Bazel installs node_modules itself |
+| `node` | `npm`/`pnpm`/`yarn`/`bun` install, test, run, exec; `npx` | `bazel test` / `bazel run`; Bazel installs node_modules itself; edit `package.json`, then `bazel run //tools/pnpm:lock` to re-lock |
 | `cargo` | `cargo build/test/run/check/clippy/publish`; `cargo update/generate-lockfile/add/remove` (also with `+toolchain`, global flags or `rustup run <toolchain>`) | `bazel test` / `bazel build`; `bazel run //tools/crates:lock` (after editing `Cargo.toml` by hand for add/remove) |
 | `gradle` | `gradle`, `./gradlew` | `bazel build //apps/mobile/<app>:app` |
 | `pytest` | `pytest`, `python -m pytest`, `uv run pytest` | `bazel test` |

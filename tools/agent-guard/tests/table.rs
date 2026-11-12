@@ -198,6 +198,10 @@ fn messages_name_the_replacement() {
         ("cargo generate-lockfile", "bazel run //tools/crates:lock"),
         ("cargo add serde", "bazel run //tools/crates:lock"),
         ("cargo remove serde", "bazel run //tools/crates:lock"),
+        ("pnpm add zod", "bazel run //tools/pnpm:lock"),
+        ("pnpm install", "bazel run //tools/pnpm:lock"),
+        ("npm install left-pad", "bazel run //tools/pnpm:lock"),
+        ("pnpm remove zod", "bazel run //tools/pnpm:lock"),
         ("prettier --write .", "bazel run //tools/format"),
         ("kubectl apply -f x.yaml", "//tools/gitops"),
         (

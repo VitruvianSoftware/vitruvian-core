@@ -182,6 +182,8 @@ pub const T_CRATES_LOCK: Target = t(
     "bazel run //tools/crates:lock (add -- --dir <path> for an app with its own Cargo.lock)",
     None,
 );
+pub const T_PNPM_LOCK: Target = t("bazel run //tools/pnpm:lock", None);
+pub const PNPM_EDIT_NOTE: &str = "Bazel (rules_js) installs node_modules itself when you bazel build or bazel test. To change a dependency, edit the package.json by hand first; the target then re-locks pnpm-lock.yaml.";
 pub const CRATES_EDIT_NOTE: &str =
     "Edit the dependency in Cargo.toml by hand first; the target then re-locks for the Bazel Rust toolchain.";
 pub const T_PULUMI: Target = t(
@@ -1790,8 +1792,8 @@ pub fn classify_tool(inv: &Invocation, ctx: &Context) -> (Option<Verdict>, Strin
             return here(Some(v(
                 "node",
                 &format!("{} {}", prog, if sub.is_empty() { "install" } else { sub }),
-                None,
-                "Bazel (rules_js) installs node_modules itself when you bazel build or bazel test.",
+                Some(T_PNPM_LOCK),
+                PNPM_EDIT_NOTE,
             )));
         }
         if inl(
@@ -2579,6 +2581,7 @@ mod tests {
         ("T_BAZEL_TEST", T_BAZEL_TEST),
         ("T_BAZEL_BUILD", T_BAZEL_BUILD),
         ("T_CRATES_LOCK", T_CRATES_LOCK),
+        ("T_PNPM_LOCK", T_PNPM_LOCK),
         ("T_PULUMI", T_PULUMI),
         ("T_GITOPS", T_GITOPS),
         ("T_HELM", T_HELM),
