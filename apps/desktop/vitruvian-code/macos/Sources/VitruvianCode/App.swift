@@ -43,8 +43,28 @@ class AppState: ObservableObject {
     let configManager: ConfigManager
     let updateChecker: UpdateChecker
 
-    init() {
-        let bot = BotManager()
+    init(arguments: [String] = ProcessInfo.processInfo.arguments) {
+        let stateDirectoryOverride: String?
+        do {
+            stateDirectoryOverride = try VitruvianCodeSupport.stateDirectoryOverride(arguments: arguments)
+        } catch {
+            // A bad `--state-dir` stops the launch, before anything is read or written.
+            FileHandle.standardError.write(Data("VitruvianCode: \(error)\n".utf8))
+            exit(2)
+        }
+        if let stateDirectoryOverride {
+            // An isolated test copy keeps its bot folder, state folder, logs
+            // and settings apart from the real app's.
+            AppPreferences.useSuite(forStateDirectory: stateDirectoryOverride)
+            let paths = VitruvianCodeSupport.statePaths(
+                home: NSHomeDirectory(),
+                stateDirectoryOverride: stateDirectoryOverride
+            )
+            for directory in [paths.botDirectory, paths.stateDirectory, paths.logsDirectory] {
+                try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+            }
+        }
+        let bot = BotManager(stateDirectoryOverride: stateDirectoryOverride)
         // The bot manager owns the shared engine; settings are read and saved through it.
         let config = ConfigManager(engine: bot.engine, host: bot.host)
         let updater = UpdateChecker()

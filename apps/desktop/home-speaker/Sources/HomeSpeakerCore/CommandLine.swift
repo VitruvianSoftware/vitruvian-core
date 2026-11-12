@@ -34,9 +34,10 @@ public enum HomeSpeakerCommandLine {
     /// One run of the command line, parsed. Anything else is not the
     /// command line's: the app's program starts the menu bar app.
     public enum Command: Equatable, Sendable {
-        /// `--announce <text> [--source <agent>]`: an end-of-turn hook's
-        /// detached announcement, for the agent it ran for.
-        case announce(String, CodingAgent)
+        /// `--announce <text> [--source <agent>] [--session <id>
+        /// [--session-name <name>]]`: an end-of-turn hook's detached
+        /// announcement, for the agent and session it ran for.
+        case announce(String, CodingAgent, SessionOrigin? = nil)
         /// `--claude-stop-hook`, `--antigravity-hook` or `--opencode-hook`,
         /// with the hook's JSON on standard input.
         case stopHook(CodingAgent)
@@ -85,6 +86,30 @@ public enum HomeSpeakerCommandLine {
     public static let noHistoryFlag = "--no-history"
     static let volumeFlags = ["--volume", "--set-volume", "--mute", "--unmute"]
 
+    /// What follows `--announce <text>`: flag and value pairs, each at most
+    /// once. Anything else, and it is not the hook's announcement.
+    static func parseAnnounceOptions(_ rest: ArraySlice<String>) -> (agent: CodingAgent, session: SessionOrigin?)? {
+        guard rest.count.isMultiple(of: 2) else { return nil }
+        var values: [String: String] = [:]
+        var i = rest.startIndex
+        while i < rest.endIndex {
+            let flag = rest[i], value = rest[rest.index(after: i)]
+            guard [BroadcastSource.flag, SessionOrigin.idFlag, SessionOrigin.nameFlag].contains(flag),
+                  values[flag] == nil else { return nil }
+            values[flag] = value
+            i = rest.index(i, offsetBy: 2)
+        }
+        var agent = CodingAgent.claudeCode
+        if let name = values[BroadcastSource.flag] {
+            guard let named = BroadcastSource(name: name)?.agent else { return nil }
+            agent = named
+        }
+        guard let id = values[SessionOrigin.idFlag] else {
+            return values[SessionOrigin.nameFlag] == nil ? (agent, nil) : nil
+        }
+        return (agent, SessionOrigin(id: id, name: values[SessionOrigin.nameFlag]))
+    }
+
     /// The command in `arguments` (the program's, without its own path), in
     /// the order the app's program has always tried them; nil when there is
     /// none.
@@ -92,12 +117,9 @@ public enum HomeSpeakerCommandLine {
         // The Stop hook's detached announcement: exactly `--announce <text>`,
         // so a reply that happens to contain a flag name is never mistaken
         // for one.
-        if arguments.first == ClaudeStopHook.announceArgument {
-            if arguments.count == 2 { return .announce(arguments[1], .claudeCode) }
-            if arguments.count == 4, arguments[2] == BroadcastSource.flag,
-               let agent = BroadcastSource(name: arguments[3])?.agent {
-                return .announce(arguments[1], agent)
-            }
+        if arguments.first == ClaudeStopHook.announceArgument, arguments.count >= 2,
+           let parsed = parseAnnounceOptions(arguments.dropFirst(2)) {
+            return .announce(arguments[1], parsed.agent, parsed.session)
         }
         // `--no-history` belongs to `--say` alone; anywhere else it is a
         // usage error, not a command that falls through to the menu bar app.
@@ -344,12 +366,12 @@ public enum HomeSpeakerCommandLine {
         }
 
         switch command {
-        case .announce(let text, let agent):
+        case .announce(let text, let agent, let session):
             // Automated, so quiet hours hold.
             return headless {
                 let settings = await MainActor.run { engine.config.config }
                 return await announce(
-                    text, for: agent, config: settings, announcer: announcer, history: history,
+                    text, for: agent, session: session, config: settings, announcer: announcer, history: history,
                     standsAside: standsAside())
             }
         case .stopHook(let agent):
@@ -415,7 +437,8 @@ public enum HomeSpeakerCommandLine {
                 return await say(
                     text, config: settings, announcer: activeAnnouncer, history: activeHistory,
                     standsAside: standsAside(), door: profile.door, note: asideNote(),
-                    source: source, inUse: inUseSettings(), records: records)
+                    source: source, session: SessionOrigin.fromEnvironment(environment, agent: source.agent),
+                    inUse: inUseSettings(), records: records)
             }
         case .volume(.invalidLevel):
             return .now(volumeFailure(badLevelReason))
@@ -477,7 +500,7 @@ public enum HomeSpeakerCommandLine {
     public static func timeLimit(for command: Command, settings: () -> SpeakerConfig) -> TimeLimit? {
         let timedOut = CLIOutput.failure("timed out")
         switch command {
-        case .announce(let text, _):
+        case .announce(let text, _, _):
             return TimeLimit(
                 seconds: announceTimeout(text, config: settings(), restyle: true),
                 timedOut: timedOut, extendsForSpeechQueue: true)
@@ -579,15 +602,21 @@ public enum HomeSpeakerCommandLine {
     public static func say(
         _ text: String, config: SpeakerConfig, announcer: Announcer, history: BroadcastHistory,
         standsAside: Bool, door: HomeSpeakerProfile.Door, note: String? = nil,
-        source: BroadcastSource = .user, inUse: SpeakerConfig? = nil, records: Bool = true, at date: Date = Date()
+        source: BroadcastSource = .user, session: SessionOrigin? = nil, inUse: SpeakerConfig? = nil,
+        records: Bool = true, at date: Date = Date()
     ) async -> CLIOutput {
         let active = inUse ?? config
         if let agent = source.agent, let refusal = agentRefusal(agent, config: active) {
             return refusal
         }
+        // A person's own `--say` is never labelled; an agent's is, by its
+        // switch, the same as its end-of-turn announcements.
+        let lead = source.agent.flatMap {
+            SourceLabel.lead(active.effectiveAnnounceSource, agent: $0, session: session, history: history.load(), now: date)
+        }
         var out = await announcement(
-            text, force: true, source: source.historyLabel, records: records, config: active, announcer: announcer,
-            history: history, at: date)
+            text, force: true, source: source.historyLabel, records: records, lead: lead, session: session,
+            config: active, announcer: announcer, history: history, at: date)
         if standsAside {
             let other = door == .app ? "extension" : "app"
             out.stderr.insert(note ?? "note: the HomeSpeaker \(other) is the one in use", at: 0)
@@ -599,15 +628,17 @@ public enum HomeSpeakerCommandLine {
     /// automated, so quiet hours hold. Prints nothing and says nothing when
     /// this side stands aside.
     public static func announce(
-        _ text: String, for agent: CodingAgent = .claudeCode, config: SpeakerConfig, announcer: Announcer,
-        history: BroadcastHistory, standsAside: Bool, at date: Date = Date()
+        _ text: String, for agent: CodingAgent = .claudeCode, session: SessionOrigin? = nil, config: SpeakerConfig,
+        announcer: Announcer, history: BroadcastHistory, standsAside: Bool, at date: Date = Date()
     ) async -> CLIOutput {
         guard !standsAside else { return CLIOutput() }
         // Switched off since the hook handed it over: nothing is said.
         if let refusal = agentRefusal(agent, config: config) { return refusal }
+        let lead = SourceLabel.lead(
+            config.effectiveAnnounceSource, agent: agent, session: session, history: history.load(), now: date)
         return await announcement(
-            text, force: false, source: agent.displayName, restyle: true, config: config, announcer: announcer,
-            history: history, at: date)
+            text, force: false, source: agent.displayName, restyle: true, lead: lead, session: session,
+            config: config, announcer: announcer, history: history, at: date)
     }
 
     /// Speaks `text` on the home speakers and/or this Mac, as `config`
@@ -617,6 +648,7 @@ public enum HomeSpeakerCommandLine {
     /// `history` under `source`, so the menu bar's Recent Broadcasts shows it.
     static func announcement(
         _ text: String, force: Bool, source: String, records: Bool = true, restyle: Bool = false,
+        lead: String? = nil, session: SessionOrigin? = nil,
         config: SpeakerConfig, announcer: Announcer, history: BroadcastHistory, at date: Date
     ) async -> CLIOutput {
         guard config.enabled else { return CLIOutput(stderr: ["broadcasting is switched off"], exitCode: 1) }
@@ -625,9 +657,12 @@ public enum HomeSpeakerCommandLine {
             return CLIOutput(stderr: ["no default speaker; open HomeSpeaker and pick one"], exitCode: 1)
         }
         let (outcome, spoken) = await announcer.announceReporting(
-            text, config: config, force: force, restyle: restyle, at: date)
-        // A reworded reply is listed as it was heard.
-        let heardText = restyle && AnnouncementStylist.rewrites(config) ? (spoken ?? text) : text
+            text, config: config, force: force, restyle: restyle, lead: lead, at: date)
+        // A reworded reply is listed as it was heard; the label is not
+        // listed, Recent Broadcasts names the source already.
+        let reworded = restyle && AnnouncementStylist.rewrites(config)
+        let heard = spoken.map { said in lead.flatMap { said.hasPrefix($0) ? String(said.dropFirst($0.count)) : nil } ?? said }
+        let heardText = reworded ? (heard ?? text) : text
         // With no long-lived HomeSpeaker alive, this process paused the
         // media itself: stay until it is resumed, never exit holding it.
         await announcer.media.waitUntilReleased()
@@ -650,7 +685,7 @@ public enum HomeSpeakerCommandLine {
             if outcome.anySpoke, records {
                 let heardOn = outcome.spokenLabel(homeName: config.defaultDevice?.name ?? "Home speakers")
                 do {
-                    try history.append(BroadcastLogItem(text: heardText, targetName: heardOn, source: source))
+                    try history.append(BroadcastLogItem(text: heardText, targetName: heardOn, source: source, session: session))
                 } catch {
                     out.stderr.append("warning: could not record the broadcast: \(error.localizedDescription)")
                 }
@@ -714,7 +749,7 @@ public enum HomeSpeakerCommandLine {
         input: Data, config: @escaping @MainActor @Sendable () -> ConfigManager, history: BroadcastHistory,
         standsAside: Bool,
         lockDirectory: URL = ClaudeStopHook.lockDirectory,
-        launchDetached: @escaping @Sendable (String) -> Void = { DetachedAnnouncement.launch(text: $0) },
+        launchDetached: (@Sendable (String) -> Void)? = nil,
         broadcaster: @escaping ClaudeStopHook.Broadcaster
     ) async -> CLIOutput {
         await stopHook(
@@ -736,7 +771,8 @@ public enum HomeSpeakerCommandLine {
         broadcaster: @escaping ClaudeStopHook.Broadcaster
     ) async -> CLIOutput {
         guard !standsAside else { return CLIOutput(stdout: ["{}"]) }
-        let detached = launchDetached ?? { DetachedAnnouncement.launch(text: $0, agent: agent) }
+        // Each hook starts its own `--announce`, for its agent and session.
+        let detached = launchDetached
         switch agent {
         case .claudeCode:
             await ClaudeStopHook.run(

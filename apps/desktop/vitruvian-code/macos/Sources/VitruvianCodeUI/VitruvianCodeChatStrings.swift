@@ -230,6 +230,7 @@ public struct VitruvianCodeChatStrings: Sendable, Equatable {
     public var approvalAutoEdit = "Auto-Edit"
     public var approvalAsk = "Ask"
     public var approvalPlan = "Plan"
+    public var approvalAuto = "Auto"
     /// A drawer row's menu, and the tooltip of a row whose session runs now.
     public var pinSession = "Pin"
     public var unpinSession = "Unpin"
@@ -271,6 +272,13 @@ public struct VitruvianCodeChatStrings: Sendable, Equatable {
     /// The rail's menu: move it to the other edge.
     public var timelineMoveLeft = "Move timeline to left edge"
     public var timelineMoveRight = "Move timeline to right edge"
+    /// The hidden per-provider connection picker in Settings and its choices.
+    public var connectionPreviewLabel = "Connection (preview)"
+    public var connectionDefault = "Default"
+    public var connectionCommandLine = "Command line"
+    public var connectionACP = "ACP"
+    public var connectionClaudeSDK = "Claude SDK"
+    public var connectionClaudeACP = "Claude ACP"
 
     public init(
         quickPromptTitle: String = "Agent Quick Prompt",

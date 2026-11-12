@@ -77,12 +77,13 @@ public final class ToolSettings: VitruvianCodeHost {
         /// The model chosen for each provider, by the provider's id as text.
         public var chosenModels: [String: String] = [:]
         public var sessionPreferences = VitruvianCodeSessionPreferences()
+        public var chatModes: [String: String] = [:]
 
         public init() {}
 
         private enum CodingKeys: String, CodingKey {
             case botDirectory, autoStart, planMode, worktreeMode, timelineOnLeft, chosenProvider, savedProviders, promptHistory
-            case hiddenClaudeSessions, chosenModels, sessionPreferences
+            case hiddenClaudeSessions, chosenModels, sessionPreferences, chatModes
         }
 
         /// Every key may be missing: a file an earlier version wrote lacks
@@ -102,6 +103,7 @@ public final class ToolSettings: VitruvianCodeHost {
             chosenModels = try container.decodeIfPresent([String: String].self, forKey: .chosenModels) ?? [:]
             sessionPreferences = try container.decodeIfPresent(VitruvianCodeSessionPreferences.self,
                                                                forKey: .sessionPreferences) ?? VitruvianCodeSessionPreferences()
+            chatModes = try container.decodeIfPresent([String: String].self, forKey: .chatModes) ?? [:]
         }
     }
 
@@ -295,6 +297,19 @@ public final class ToolSettings: VitruvianCodeHost {
             save()
         }
     }
+
+    public var chatModes: [String: String] {
+        get { values.chatModes }
+        set {
+            guard values.chatModes != newValue else { return }
+            values.chatModes = newValue
+            save()
+        }
+    }
+
+    /// In memory only, never saved: the hidden Connection picker belongs to
+    /// the standalone app, and this is off at every launch.
+    public var showsConnectionSetting = false
 
     public var chosenProviderID: UUID? {
         get { UUID(uuidString: values.chosenProvider) }

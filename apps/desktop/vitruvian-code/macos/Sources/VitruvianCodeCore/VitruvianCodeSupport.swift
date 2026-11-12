@@ -26,11 +26,15 @@ import Foundation
 
 /// How much the agent may do without asking, as the bot's `AGY_APPROVAL_MODE`
 /// spells it. The raw values are what the bot reads.
-public enum VitruvianCodeApprovalMode: String, CaseIterable, Identifiable {
+public enum VitruvianCodeApprovalMode: String, CaseIterable, Identifiable, Sendable {
     case yolo
     case acceptEdits = "accept-edits"
     case plan
     case standard = "default"
+    case auto = "auto"
+
+    /// Modes offered as the global `.env` default; `.auto` is per-chat only.
+    public static let globalChoices: [VitruvianCodeApprovalMode] = [.yolo, .acceptEdits, .plan, .standard]
 
     public var id: String { rawValue }
 
@@ -60,7 +64,7 @@ public enum VitruvianCodeApprovalMode: String, CaseIterable, Identifiable {
         case .yolo: return ["--dangerously-skip-permissions"]
         case .acceptEdits: return ["--mode", "accept-edits"]
         case .plan: return ["--mode", "plan"]
-        case .standard: return []
+        case .standard, .auto: return []
         }
     }
 
@@ -71,12 +75,13 @@ public enum VitruvianCodeApprovalMode: String, CaseIterable, Identifiable {
         case .acceptEdits: return "acceptEdits"
         case .plan: return "plan"
         case .standard: return "default"
+        case .auto: return "auto"
         }
     }
 }
 
 /// agy's `--effort`; `automatic` leaves the choice to agy.
-public enum VitruvianCodeEffort: String, CaseIterable, Identifiable {
+public enum VitruvianCodeEffort: String, CaseIterable, Identifiable, Sendable {
     case automatic = ""
     case low, medium, high, max
 
@@ -233,6 +238,20 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
     public var supportsWorktree: Bool {
         route == .claude || route == .ollama
     }
+
+    /// The connection choices offered in Settings for this provider, starting
+    /// with Default (`nil`) and Command line. ACP is offered only for agy;
+    /// Claude SDK and Claude ACP only for Claude.
+    public var availableConnections: [AgentConnectionKind?] {
+        switch route {
+        case .antigravity:
+            return [nil, .commandLine, .acp]
+        case .claude:
+            return [nil, .commandLine, .claudeSDK, .claudeACP]
+        case .ollama, .opencode, .custom:
+            return [nil, .commandLine]
+        }
+    }
 }
 
 /// The ways a provider's turn can be run.
@@ -264,7 +283,7 @@ public enum VitruvianCodeCommandOutcome: Equatable, Sendable {
 
 /// The part of the bot's `.env` the Settings page edits. Everything else in
 /// the file (the timeout, a custom provider, comments) is left as it was.
-public struct VitruvianCodeConfiguration: Equatable {
+public struct VitruvianCodeConfiguration: Equatable, Sendable {
     public var botToken: String
     public var allowedUserIDs: String
     public var workingDirectory: String
@@ -476,7 +495,7 @@ public enum VitruvianCodeEnvFile {
     /// lacks is added at the end. With no file yet, the bot's template is
     /// written, so the result matches what the standalone app produced.
     public static func render(_ configuration: VitruvianCodeConfiguration, over existing: String?) -> String {
-        var wanted = assignments(for: configuration)
+        var wanted = assignments(for: configuration, over: existing)
         guard let existing, !existing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             // An effort word read from a file that has since gone is still
             // the effort: the new file gets it as it was written.
@@ -724,12 +743,23 @@ public enum VitruvianCodeEnvFile {
         return spellings.first(where: readsBack) ?? spellings[0]
     }
 
-    private static func assignments(for configuration: VitruvianCodeConfiguration) -> [String: String] {
+    private static func assignments(for configuration: VitruvianCodeConfiguration, over existing: String?) -> [String: String] {
+        let envApprovalMode: String = {
+            guard configuration.approvalMode == .auto else {
+                return configuration.approvalMode.rawValue
+            }
+            if let existing,
+               let current = values(in: existing)[approvalModeKey],
+               current.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != VitruvianCodeApprovalMode.auto.rawValue {
+                return current
+            }
+            return VitruvianCodeApprovalMode.standard.rawValue
+        }()
         var wanted = [
             tokenKey: configuration.botToken.trimmingCharacters(in: .whitespaces),
             allowedUsersKey: configuration.allowedUserIDList.joined(separator: ","),
             workingDirectoryKey: configuration.workingDirectory.trimmingCharacters(in: .whitespaces),
-            approvalModeKey: configuration.approvalMode.rawValue,
+            approvalModeKey: envApprovalMode,
             modelKey: configuration.model.trimmingCharacters(in: .whitespaces),
             effortKey: configuration.effort.rawValue,
         ]
@@ -777,21 +807,185 @@ public enum VitruvianCodeEnvFile {
     }
 }
 
+/// All folders and files derived for the bot, app state and logs. When
+/// `stateDirectoryOverride` (`--state-dir <path>`) is set, every derived path
+/// sits under that override so an isolated test copy never touches the user's
+/// real folders.
+public struct VitruvianCodeStatePaths: Equatable, Sendable {
+    public let stateDirectoryOverride: String?
+    public let botDirectory: String
+    public let envFilePath: String
+    public let envExamplePath: String
+    public let botEntryPointPath: String
+    public let stateDirectory: String
+    public let pidFilePath: String
+    public let logsDirectory: String
+    public let logPath: String
+    public let worktreesDirectory: String
+
+    public init(
+        stateDirectoryOverride: String?,
+        botDirectory: String,
+        envFilePath: String,
+        envExamplePath: String,
+        botEntryPointPath: String,
+        stateDirectory: String,
+        pidFilePath: String,
+        logsDirectory: String,
+        logPath: String,
+        worktreesDirectory: String
+    ) {
+        self.stateDirectoryOverride = stateDirectoryOverride
+        self.botDirectory = botDirectory
+        self.envFilePath = envFilePath
+        self.envExamplePath = envExamplePath
+        self.botEntryPointPath = botEntryPointPath
+        self.stateDirectory = stateDirectory
+        self.pidFilePath = pidFilePath
+        self.logsDirectory = logsDirectory
+        self.logPath = logPath
+        self.worktreesDirectory = worktreesDirectory
+    }
+}
+
 /// Where the bot and the agent CLI live, and how the agent is asked.
 public enum VitruvianCodeSupport {
+    /// Why a `--state-dir` argument cannot be used.
+    public enum StateDirectoryError: Error, Equatable, CustomStringConvertible {
+        case missingValue
+        case notAbsolute(String)
+
+        /// What the app prints on standard error before it exits.
+        public var description: String {
+            switch self {
+            case .missingValue:
+                return "--state-dir needs a folder: pass an absolute path, for example --state-dir /tmp/vitruvian-code-test"
+            case .notAbsolute(let path):
+                return "--state-dir needs an absolute path, but \"\(path)\" is not one. Pass a full path starting with /, for example --state-dir /tmp/vitruvian-code-test"
+            }
+        }
+    }
+
+    /// Reads `--state-dir <path>` or `--state-dir=<path>` from the launch
+    /// arguments: nil when absent, the path (without a trailing `/`) when it
+    /// is an absolute one, and an error for anything else. A relative path is
+    /// refused rather than guessed at, since it would land under whatever the
+    /// launching folder happens to be.
+    public static func stateDirectoryOverride(arguments: [String]) throws -> String? {
+        var found: String?
+        var index = 0
+        while index < arguments.count {
+            let argument = arguments[index]
+            var candidate: String?
+            if argument == "--state-dir" {
+                guard index + 1 < arguments.count else { throw StateDirectoryError.missingValue }
+                candidate = arguments[index + 1]
+                index += 1
+            } else if argument.hasPrefix("--state-dir=") {
+                candidate = String(argument.dropFirst("--state-dir=".count))
+            }
+            if let candidate {
+                let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { throw StateDirectoryError.missingValue }
+                guard let normalized = normalizedStateDirectoryOverride(trimmed) else {
+                    throw StateDirectoryError.notAbsolute(trimmed)
+                }
+                found = normalized
+            }
+            index += 1
+        }
+        return found
+    }
+
+    /// An absolute override without its trailing slashes; nil for anything
+    /// that is not an absolute path.
+    public static func normalizedStateDirectoryOverride(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("/") else { return nil }
+        var cleaned = trimmed
+        while cleaned.count > 1 && cleaned.hasSuffix("/") {
+            cleaned.removeLast()
+        }
+        return cleaned
+    }
+
+    /// The name of the preferences suite a `--state-dir` copy keeps its
+    /// settings in, so that it never reads or changes the real app's:
+    /// `<bundle id>.statedir.<hash of the absolute path>`. The hash is FNV-1a,
+    /// which is the same on every launch (Swift's own `hashValue` is not).
+    public static func preferencesSuiteName(bundleIdentifier: String, stateDirectory: String) -> String {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in stateDirectory.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
+        }
+        let digits = String(hash, radix: 16)
+        return bundleIdentifier + ".statedir." + String(repeating: "0", count: 16 - digits.count) + digits
+    }
+
+    /// Computes all bot, state, log and worktree paths through one override.
+    public static func statePaths(
+        configuredBotDirectory: String = "",
+        home: String,
+        defaultStateDirectory: String? = nil,
+        stateDirectoryOverride: String? = nil
+    ) -> VitruvianCodeStatePaths {
+        let override = normalizedStateDirectoryOverride(stateDirectoryOverride)
+        let botDir = botDirectory(
+            configured: configuredBotDirectory,
+            home: home,
+            stateDirectoryOverride: override
+        )
+        let stateDir: String
+        let logsDir: String
+        let worktreesDir: String
+        if let override {
+            stateDir = (override as NSString).appendingPathComponent("state")
+            logsDir = (override as NSString).appendingPathComponent("logs")
+            worktreesDir = (override as NSString).appendingPathComponent("worktrees")
+        } else {
+            stateDir = defaultStateDirectory ?? Self.defaultStateDirectory(home: home)
+            logsDir = stateDir
+            worktreesDir = (home as NSString).appendingPathComponent(".vitruvian-code/worktrees")
+        }
+        return VitruvianCodeStatePaths(
+            stateDirectoryOverride: override,
+            botDirectory: botDir,
+            envFilePath: (botDir as NSString).appendingPathComponent(".env"),
+            envExamplePath: (botDir as NSString).appendingPathComponent(".env.example"),
+            botEntryPointPath: (botDir as NSString).appendingPathComponent(botEntryPoint),
+            stateDirectory: stateDir,
+            pidFilePath: (stateDir as NSString).appendingPathComponent(".bot.pid"),
+            logsDirectory: logsDir,
+            logPath: (logsDir as NSString).appendingPathComponent("bot.log"),
+            worktreesDirectory: worktreesDir
+        )
+    }
+
     /// Where the app keeps its own files (the bot's log, the automations, the
     /// accounts), as the folder people see in Application Support.
-    public static func defaultStateDirectory(home: String) -> String {
-        (home as NSString).appendingPathComponent("Library/Application Support/Vitruvian Code")
+    public static func defaultStateDirectory(home: String, stateDirectoryOverride: String? = nil) -> String {
+        if let override = normalizedStateDirectoryOverride(stateDirectoryOverride) {
+            return (override as NSString).appendingPathComponent("state")
+        }
+        return (home as NSString).appendingPathComponent("Library/Application Support/Vitruvian Code")
     }
 
     /// The bot's standard home, shared with the standalone app.
-    public static func defaultBotDirectory(home: String) -> String {
-        (home as NSString).appendingPathComponent(".config/vitruvian-code")
+    public static func defaultBotDirectory(home: String, stateDirectoryOverride: String? = nil) -> String {
+        if let override = normalizedStateDirectoryOverride(stateDirectoryOverride) {
+            return (override as NSString).appendingPathComponent("bot")
+        }
+        return (home as NSString).appendingPathComponent(".config/vitruvian-code")
     }
 
-    /// A configured folder, with `~` expanded, or the standard home.
-    public static func botDirectory(configured: String, home: String) -> String {
+    /// A configured folder, with `~` expanded, or the standard home. When
+    /// `stateDirectoryOverride` is set, the bot folder always stays under it.
+    public static func botDirectory(configured: String, home: String, stateDirectoryOverride: String? = nil) -> String {
+        if let override = normalizedStateDirectoryOverride(stateDirectoryOverride) {
+            return (override as NSString).appendingPathComponent("bot")
+        }
         let trimmed = configured.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return defaultBotDirectory(home: home) }
         if trimmed == "~" { return home }
@@ -1085,7 +1279,7 @@ public enum VitruvianCodeSupport {
     public static func asksOverStandardInput(configuration: VitruvianCodeConfiguration, planMode: Bool) -> Bool {
         guard configuration.activeProvider.route == .claude, !planMode else { return false }
         switch configuration.approvalMode {
-        case .standard, .acceptEdits: return true
+        case .standard, .acceptEdits, .auto: return true
         case .yolo, .plan: return false
         }
     }

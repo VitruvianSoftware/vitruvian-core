@@ -62,6 +62,26 @@ final class CommandAnswerTests: XCTestCase {
         }
     }
 
+    /// The slot notice comes before the first command (the app docks the chat
+    /// as it greets the tool), and the kit reads one message at a time: a slot
+    /// that waited for the chat window to be built held that command back.
+    func testASlotNoticeDoesNotHoldTheKitsThreadWhileTheMainThreadIsBusy() {
+        XCTAssertTrue(Thread.isMainThread, "the test holds the main thread itself")
+        let outcome = Outcome()
+        let started = Date()
+        Thread.detachNewThread {
+            CommandAnswer.slotChanged { outcome.ran("slot") }
+            try? CommandAnswer.handle(VitruvianCodeTool.Command.quickPrompt) { outcome.ran($0) }
+            outcome.record(Date().timeIntervalSince(started))
+        }
+        Thread.sleep(forTimeInterval: 1.5)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        let (after, ran) = outcome.snapshot
+        XCTAssertLessThan(after ?? .infinity, 0.5, "the command behind the slot notice waited for the busy main thread")
+        XCTAssertEqual(ran, ["slot", VitruvianCodeTool.Command.quickPrompt],
+                       "both run once the main thread is free, the slot first")
+    }
+
     func testACommandThatCanBeRefusedRunsBeforeItIsAnswered() {
         let (after, ran) = answer(VitruvianCodeTool.Command.startBot, mainBusyFor: 0.8).snapshot
         XCTAssertGreaterThanOrEqual(after ?? 0, 0.8,

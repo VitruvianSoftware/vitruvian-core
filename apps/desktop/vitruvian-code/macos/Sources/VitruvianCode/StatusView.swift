@@ -217,20 +217,34 @@ class KeyablePanel: NSPanel {
 private var _settingsWindow: NSWindow?
 private var _settingsConfigManager: ConfigManager?
 private var _settingsBotManager: BotManager?
+private var _settingsCloseObserver: NSObjectProtocol?
 
+@MainActor
 func openSettingsWindow(configManager: ConfigManager, botManager: BotManager, updateChecker: UpdateChecker) {
+    let optionHeld = NSEvent.modifierFlags.union(NSApp?.currentEvent?.modifierFlags ?? []).contains(.option)
+
     // Reuse existing window if open
     if let existing = _settingsWindow, existing.isVisible {
+        if optionHeld {
+            botManager.host.showsConnectionSetting = true
+        }
         existing.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         return
     }
 
+    botManager.host.showsConnectionSetting = optionHeld
+
     // Keep strong references so they aren't deallocated
     _settingsConfigManager = configManager
     _settingsBotManager = botManager
 
-    let settingsView = SettingsView(configManager: configManager, botManager: botManager, updateChecker: updateChecker)
+    let settingsView = SettingsView(
+        configManager: configManager,
+        botManager: botManager,
+        host: botManager.host,
+        updateChecker: updateChecker
+    )
     let hostingView = NSHostingView(rootView: settingsView)
 
     let window = KeyablePanel(
@@ -264,6 +278,19 @@ func openSettingsWindow(configManager: ConfigManager, botManager: BotManager, up
     window.makeKeyAndOrderFront(nil)
     window.level = .floating
     NSApp.activate(ignoringOtherApps: true)
+
+    if let observer = _settingsCloseObserver {
+        NotificationCenter.default.removeObserver(observer)
+    }
+    _settingsCloseObserver = NotificationCenter.default.addObserver(
+        forName: NSWindow.willCloseNotification,
+        object: window,
+        queue: .main
+    ) { [weak host = botManager.host] _ in
+        MainActor.assumeIsolated {
+            host?.showsConnectionSetting = false
+        }
+    }
 
     _settingsWindow = window
 }

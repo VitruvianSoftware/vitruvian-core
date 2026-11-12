@@ -294,10 +294,11 @@ final class VitruvianCodeToolTests: XCTestCase {
         XCTAssertEqual(tool.draft.botToken, "2:other")
         XCTAssertTrue(engine.session.planMode)
         XCTAssertEqual(link.rendered.last?.panel, "settings")
-        // The chat turns plan mode off: the app's copy follows.
+        // The chat turns plan mode off: that is this chat's own switch, and the
+        // app's copy (the starting value for new chats) is left as it was.
         engine.session.planMode = false
-        XCTAssertEqual(link.written.last?.key, "planMode")
-        XCTAssertEqual(link.written.last?.value, .bool(false))
+        XCTAssertEqual(engine.session.chatPlanMode, false)
+        XCTAssertFalse(link.written.contains { $0.key == "planMode" }, "the chat's switch does not write the app's setting")
     }
 
     func testTheTimelinesEdgeReachesTheChatAndTheChatsChoiceReachesTheApp() {

@@ -50,6 +50,8 @@ final class EngineHostTests: XCTestCase {
         var promptHistoryWrites = 0
         var worktreeMode = false
         var timelineOnLeft = false
+        var chatModes: [String: String] = [:]
+        var showsConnectionSetting = false
         var strings = VitruvianCodeHostStrings()
         var approvals: [VitruvianCodeTurnNotice] = []
         var finished: [(notice: VitruvianCodeTurnNotice, isChatVisible: Bool)] = []
@@ -440,11 +442,21 @@ final class EngineHostTests: XCTestCase {
         host.planMode = true
         let session = VitruvianCodeQuickPromptSession(environment: rig.environment, host: host)
 
-        XCTAssertTrue(session.planMode)
-        session.planMode = false
-        XCTAssertFalse(host.planMode, "the choice is remembered by the host, not by the session")
-        session.planMode = true
-        XCTAssertTrue(host.planMode)
+        XCTAssertTrue(session.planMode, "a new chat starts from the host's plan mode")
+        XCTAssertNil(session.chatPlanMode)
+
+        session.draft = "/plan"
+        XCTAssertEqual(
+            session.submitDraft(configuration: VitruvianCodeConfiguration(), agentPath: "/fake/agy"),
+            .command(.planMode(false))
+        )
+        XCTAssertFalse(session.planMode, "/plan toggles this chat's plan mode")
+        XCTAssertEqual(session.chatPlanMode, false)
+        XCTAssertTrue(host.planMode, "/plan changes only this chat and leaves the host's plan mode untouched")
+
+        session.newChat()
+        XCTAssertNil(session.chatPlanMode)
+        XCTAssertTrue(session.planMode, "a new chat starts from the host's plan mode again")
     }
 
     func testStartingWithoutABotReportsTheProblem() {

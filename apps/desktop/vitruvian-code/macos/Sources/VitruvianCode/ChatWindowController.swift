@@ -112,8 +112,8 @@ final class QuickPromptWindowController: NSObject, NSWindowDelegate {
     private var presentation = 0
 
     private override init() {
-        let savedKey = UserDefaults.standard.string(forKey: "hotkeyKey") ?? "g"
-        let savedMods = UserDefaults.standard.integer(forKey: "hotkeyModifiers")
+        let savedKey = AppPreferences.defaults.string(forKey: "hotkeyKey") ?? "g"
+        let savedMods = AppPreferences.defaults.integer(forKey: "hotkeyModifiers")
         expectedKey = savedKey
         if savedMods != 0 {
             expectedModifiers = NSEvent.ModifierFlags(rawValue: UInt(savedMods))
