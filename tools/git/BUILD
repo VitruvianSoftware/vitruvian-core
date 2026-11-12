@@ -2,7 +2,7 @@
 
   bazel run //tools/git:commit -- -m "fix(scope): what changed" <paths>...
   bazel run //tools/git:push [-- --agent <name>] [-- --force-with-lease]
-  bazel run //tools/git:sync [-- --autosquash | --merge | --abort]
+  bazel run //tools/git:sync [-- --autosquash | --merge [--from origin/<branch>] | --abort]
 
 Agents are about to be blocked from raw `git commit`, `git push`, `git rebase`
 and friends (a hook reads their commands; `bazel run` is what it lets through).

@@ -62,13 +62,15 @@ const GIT_SH_HEADER: &str = r#"# git.sh — the git writes agents make, with the
 #   bazel run //tools/git:sync -- --autosquash    # ...and fold in --fixup commits
 #   bazel run //tools/git:sync -- --autosquash --keep-base  # fold them in where the branch is; main stays out
 #   bazel run //tools/git:sync -- --merge         # merge origin/main in instead (no force-push needed)
+#   bazel run //tools/git:sync -- --merge --from origin/<branch>  # merge that pushed branch in, not main
 #   bazel run //tools/git:sync -- --abort         # give up an unfinished merge or rebase
 #
 #   It refuses when you have uncommitted changes (it never stashes: the stash is
 #   shared by every worktree). A rebase that hits a conflict is undone and the
 #   files listed. A merge that hits one is left for you to finish. A branch
 #   that already has merge commits is never rebased (that would drop them):
-#   keep using --merge.
+#   keep using --merge. --from origin/<branch> (with --merge only) merges that
+#   pushed branch instead of origin/main, with every check above unchanged.
 #
 # Exit codes: 0 done, 1 refused or failed (the reason and what to run instead
 # are printed), 2 bad arguments.
@@ -2189,13 +2191,36 @@ fn cmd_push(state: &EnvState, args: &[OsString]) -> i32 {
     0
 }
 
+/// Checks the value of `sync --merge --from <ref>` and returns the branch name.
+/// Only a branch on origin is accepted (`origin/<branch>`): the fetch that
+/// precedes the merge is `fetch origin <branch>`, so nothing else can be named.
+fn parse_merge_source(value: &[u8]) -> Result<Vec<u8>, &'static str> {
+    let branch = match value.strip_prefix(b"origin/") {
+        Some(b) => b,
+        None => return Err("--from takes a pushed branch, written origin/<branch>"),
+    };
+    if branch.is_empty() {
+        return Err("--from origin/ names no branch: --from origin/<branch>");
+    }
+    if branch.starts_with(b"-")
+        || branch
+            .iter()
+            .any(|&b| b.is_ascii_whitespace() || b.is_ascii_control() || b == b':')
+    {
+        return Err("--from origin/<branch>: that is not a branch name");
+    }
+    Ok(branch.to_vec())
+}
+
 fn cmd_sync(state: &EnvState, args: &[OsString]) -> i32 {
     let mut mode = "rebase";
     let mut autosquash = false;
     let mut abort = false;
     let mut keep_base = false;
 
-    for os_arg in args {
+    let mut from: Option<Vec<u8>> = None;
+    let mut arg_iter = args.iter();
+    while let Some(os_arg) = arg_iter.next() {
         let arg = os_arg.as_bytes();
         match arg {
             b"-h" | b"--help" => {
@@ -2205,6 +2230,17 @@ fn cmd_sync(state: &EnvState, args: &[OsString]) -> i32 {
             b"--keep-base" => keep_base = true,
             b"--merge" => mode = "merge",
             b"--abort" => abort = true,
+            b"--from" => match arg_iter.next() {
+                Some(v) => from = Some(v.as_bytes().to_vec()),
+                None => {
+                    return bad_args_bytes(
+                        &state.prog,
+                        &state.name,
+                        b"--from needs a branch: --from origin/<branch>",
+                    );
+                }
+            },
+            _ if arg.starts_with(b"--from=") => from = Some(arg[b"--from=".len()..].to_vec()),
             _ if arg.starts_with(b"-") => {
                 return bad_args_bytes(
                     &state.prog,
@@ -2216,8 +2252,29 @@ fn cmd_sync(state: &EnvState, args: &[OsString]) -> i32 {
                 return bad_args_bytes(
                     &state.prog,
                     &state.name,
-                    b"sync takes no branch: it always brings origin/main into the current branch",
+                    b"sync takes no branch name: it brings in origin/main, or with --merge --from origin/<branch> that pushed branch",
                 );
+            }
+        }
+    }
+    if from.is_some() && mode != "merge" {
+        return bad_args_bytes(
+            &state.prog,
+            &state.name,
+            b"--from names the branch to merge in, so it goes with --merge",
+        );
+    }
+    // The ref to bring in, and the branch to fetch for it. Defaults to main.
+    let mut merge_ref: Vec<u8> = b"origin/main".to_vec();
+    let mut fetch_branch: Vec<u8> = b"main".to_vec();
+    if let Some(f) = &from {
+        match parse_merge_source(f) {
+            Ok(branch) => {
+                merge_ref = bconcat(&[b"origin/", &branch]);
+                fetch_branch = branch;
+            }
+            Err(why) => {
+                return bad_args_bytes(&state.prog, &state.name, why.as_bytes());
             }
         }
     }
@@ -2379,7 +2436,7 @@ fn cmd_sync(state: &EnvState, args: &[OsString]) -> i32 {
     if git_status_bytes(
         &state.prog,
         493,
-        &[b"fetch", b"-q", b"origin", b"main"],
+        &[b"fetch", b"-q", b"origin", &fetch_branch],
         &[],
         false,
         false,
@@ -2388,7 +2445,11 @@ fn cmd_sync(state: &EnvState, args: &[OsString]) -> i32 {
         return refuse_bytes(
             &state.prog,
             &state.name,
-            b"could not fetch origin/main (git's reason is above); nothing changed",
+            &bconcat(&[
+                b"could not fetch ",
+                &merge_ref,
+                b" (git's reason is above); nothing changed",
+            ]),
             &[b"check the network, then retry"],
         );
     }
@@ -2399,7 +2460,7 @@ fn cmd_sync(state: &EnvState, args: &[OsString]) -> i32 {
     let (rc_o, onto) = git_output_bytes(
         &state.prog,
         497,
-        &[b"rev-parse", b"--short", b"origin/main"],
+        &[b"rev-parse", b"--short", &merge_ref],
         &[],
         false,
     );
@@ -2417,7 +2478,7 @@ fn cmd_sync(state: &EnvState, args: &[OsString]) -> i32 {
                 b"merge",
                 b"-q",
                 b"--no-edit",
-                b"origin/main",
+                &merge_ref,
             ],
             &[("GIT_EDITOR", ":")],
             false,
@@ -2429,7 +2490,9 @@ fn cmd_sync(state: &EnvState, args: &[OsString]) -> i32 {
                 501,
                 &bconcat(&[
                     &state.name,
-                    b": merged origin/main (",
+                    b": merged ",
+                    &merge_ref,
+                    b" (",
                     &onto,
                     b") into ",
                     &state.branch,
@@ -2472,7 +2535,9 @@ fn cmd_sync(state: &EnvState, args: &[OsString]) -> i32 {
             512,
             &bconcat(&[
                 &state.name,
-                b": merging origin/main (",
+                b": merging ",
+                &merge_ref,
+                b" (",
                 &onto,
                 b") into ",
                 &state.branch,
@@ -2930,6 +2995,30 @@ export GIT_COMMITTER_EMAIL='4521094+vitruvian-wren-agent[bot]@users.noreply.gith
         assert_eq!(clamp_wd_to_here("/repo/wt/sub", "/repo/wt"), "/repo/wt/sub");
         assert_eq!(clamp_wd_to_here("/repo/wt_other", "/repo/wt"), "/repo/wt");
         assert_eq!(clamp_wd_to_here("/other", "/repo/wt"), "/repo/wt");
+    }
+
+    #[test]
+    fn test_parse_merge_source() {
+        assert_eq!(
+            parse_merge_source(b"origin/rename/wand-watch-cutover"),
+            Ok(b"rename/wand-watch-cutover".to_vec())
+        );
+        assert_eq!(parse_merge_source(b"origin/main"), Ok(b"main".to_vec()));
+        // Only a branch on origin; a bare name, another remote, a sha or a
+        // path must not slip through to `git fetch` / `git merge`.
+        assert!(parse_merge_source(b"main").is_err());
+        assert!(parse_merge_source(b"upstream/foo").is_err());
+        assert!(parse_merge_source(b"origin/").is_err());
+        assert!(parse_merge_source(b"origin/--upload-pack=x").is_err());
+        assert!(parse_merge_source(b"origin/a b").is_err());
+        assert!(parse_merge_source(b"origin/a:b").is_err());
+        assert!(parse_merge_source(b"").is_err());
+    }
+
+    #[test]
+    fn test_usage_text_mentions_merge_from() {
+        let text = usage_text();
+        assert!(text.contains("sync -- --merge --from origin/<branch>"));
     }
 
     #[test]
