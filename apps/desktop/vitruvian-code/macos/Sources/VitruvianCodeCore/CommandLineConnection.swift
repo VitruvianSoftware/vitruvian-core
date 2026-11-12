@@ -27,24 +27,28 @@ import Foundation
 /// Runs an agent as one command-line process per prompt, turning its output
 /// into `AgentEvent` values and forwarding stream-json input and termination.
 @MainActor
-public final class CommandLineConnection: AgentConnection {
+public final class CommandLineConnection: AgentConnection, _ImmediateAgentConnection {
     public let capabilities = AgentCapabilities()
-    /// Bounded with `.bufferingNewest(256)` so events nobody reads yet in
-    /// step 1a cannot pile up in memory.
+    /// Bounded with `.bufferingNewest(256)` so unread events cannot pile up in memory.
     public let events: AsyncStream<AgentEvent>
+    public let spec: AgentConnectionSpec
 
     private let eventContinuation: AsyncStream<AgentEvent>.Continuation
     private let environment: VitruvianCodeEngine.Environment
     private(set) var sessionRequest: AgentSessionRequest?
+    public private(set) var noiseLines: [String] = []
     private var running: VitruvianCodeRunningAgent?
     private var lineBuffer = VitruvianCodeLineBuffer()
     private var commandOutput = Data()
     private var commandErrors = Data()
+    private var emittedCommandText = ""
+    private var wasCancelled = false
+    private var lastFinishedStatus: String?
+    private var hadErrorEvent = false
 
-    public init(environment: VitruvianCodeEngine.Environment) {
+    public init(spec: AgentConnectionSpec, environment: VitruvianCodeEngine.Environment) {
+        self.spec = spec
         self.environment = environment
-        // Step 1a still delivers events through the session's callbacks, so bound
-        // the stream with `.bufferingNewest(256)` so events nobody reads cannot pile up.
         let (stream, continuation) = AsyncStream.makeStream(
             of: AgentEvent.self,
             bufferingPolicy: .bufferingNewest(256)
@@ -53,21 +57,63 @@ public final class CommandLineConnection: AgentConnection {
         self.eventContinuation = continuation
     }
 
+    public convenience init(environment: VitruvianCodeEngine.Environment) {
+        self.init(
+            spec: AgentConnectionSpec(
+                provider: .antigravity,
+                workingDirectory: environment.home,
+                environment: environment.processEnvironment
+            ),
+            environment: environment
+        )
+    }
+
     public func start(_ request: AgentSessionRequest) async throws -> String {
-        sessionRequest = request
-        return request.resumeSessionID ?? ""
+        beginImmediateSession(request)
     }
 
     public func prompt(_ blocks: [PromptBlock]) async throws -> AgentStopReason {
-        throw AgentConnectionError.notSupportedYet
+        try await withCheckedThrowingContinuation { continuation in
+            var didResume = false
+            func resumeOnce(_ result: Result<AgentStopReason, any Error>) {
+                guard !didResume else { return }
+                didResume = true
+                continuation.resume(with: result)
+            }
+            do {
+                try beginImmediatePrompt(
+                    blocks,
+                    onEvent: { _ in },
+                    onNoise: { _ in },
+                    onAgentExit: { [weak self] status in
+                        let reason = self?.stopReasonForAgentExit(status: status)
+                            ?? (status == 0 ? .endTurn : .error)
+                        // One process per prompt: the turn is over, so the
+                        // events stream ends here, after everything buffered.
+                        self?.eventContinuation.finish()
+                        resumeOnce(.success(reason))
+                    },
+                    onCommandPartial: { _ in },
+                    onCommandExit: { [weak self] status, outcome, _ in
+                        let reason = self?.stopReasonForCommandExit(status: status, outcome: outcome)
+                            ?? (status == 0 ? .endTurn : .error)
+                        self?.eventContinuation.finish()
+                        resumeOnce(.success(reason))
+                    }
+                )
+            } catch {
+                eventContinuation.finish()
+                resumeOnce(.failure(error))
+            }
+        }
     }
 
     public func cancel() async {
-        terminate()
+        cancelImmediateTurn()
     }
 
     public func answer(_ requestID: String, _ choice: AgentAnswer) async throws {
-        throw AgentConnectionError.notSupportedYet
+        sendImmediateAnswer(requestID, choice)
     }
 
     public func setConfigOption(_ id: String, _ value: AgentConfigValue) async throws -> [AgentConfigOption] {
@@ -75,8 +121,134 @@ public final class CommandLineConnection: AgentConnection {
     }
 
     public func stop() async {
-        terminate()
+        cancelImmediateTurn()
         eventContinuation.finish()
+    }
+
+    // MARK: - Immediate main-actor hooks
+
+    @discardableResult
+    func beginImmediateSession(_ request: AgentSessionRequest) -> String {
+        sessionRequest = request
+        return request.resumeSessionID ?? ""
+    }
+
+    func beginImmediatePrompt(
+        _ blocks: [PromptBlock],
+        onEvent: @escaping (AgentEvent) -> Void,
+        onNoise: @escaping (String) -> Void,
+        onAgentExit: @escaping (Int32) -> Void,
+        onCommandPartial: @escaping (String) -> Void,
+        onCommandExit: @escaping (Int32, VitruvianCodeCommandOutcome, String) -> Void
+    ) throws {
+        wasCancelled = false
+        lastFinishedStatus = nil
+        hadErrorEvent = false
+        noiseLines = []
+
+        var turnConfig = spec.configuration
+        turnConfig.activeProvider = spec.provider
+        if spec.turnModes.plan {
+            turnConfig.approvalMode = .plan
+        }
+
+        var baseEnvironment = environment.processEnvironment
+        for (key, value) in spec.environment {
+            baseEnvironment[key] = value
+        }
+
+        let directory = sessionRequest?.workingDirectory ?? spec.workingDirectory
+        let resumeID = sessionRequest?.resumeSessionID.flatMap { $0.isEmpty ? nil : $0 }
+        let (promptText, attachments) = Self.unpackPromptBlocks(
+            blocks,
+            fallbackAttachments: spec.turnModes.attachments
+        )
+
+        if spec.provider.route == .custom {
+            let fullPrompt = VitruvianCodeSupport.promptWithAttachments(promptText, attachments)
+            let effectivePrompt = spec.turnModes.plan
+                ? VitruvianCodeSupport.planModePrompt(fullPrompt)
+                : fullPrompt
+            guard let command = VitruvianCodeSupport.providerCommand(
+                template: spec.provider.commandTemplate,
+                prompt: effectivePrompt,
+                model: turnConfig.model
+            ), !command.executable.isEmpty else {
+                throw CocoaError(.fileNoSuchFile)
+            }
+            let resolvedPath: String
+            if let explicit = spec.agentPath, !explicit.isEmpty {
+                resolvedPath = explicit
+            } else if let found = VitruvianCodeSupport.executablePath(
+                named: command.executable,
+                pathVariable: baseEnvironment["PATH"] ?? "",
+                isExecutable: environment.isExecutable,
+                fileExists: environment.fileExists
+            ) {
+                resolvedPath = found
+            } else {
+                throw CocoaError(.fileNoSuchFile)
+            }
+            try startCommandTurn(
+                executablePath: resolvedPath,
+                arguments: command.arguments,
+                workingDirectory: directory,
+                baseEnvironment: baseEnvironment,
+                onPartialOutput: onCommandPartial,
+                onExit: onCommandExit
+            )
+            return
+        }
+
+        let resolvedAgentPath: String
+        if let explicit = spec.agentPath, !explicit.isEmpty {
+            resolvedAgentPath = explicit
+        } else if let found = VitruvianCodeSupport.locateChatProgram(
+            named: spec.provider.executableName,
+            environment: baseEnvironment,
+            home: environment.home,
+            isExecutable: environment.isExecutable,
+            fileExists: environment.fileExists
+        ) {
+            resolvedAgentPath = found
+        } else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+
+        try startAgentTurn(
+            prompt: promptText,
+            configuration: turnConfig,
+            agentPath: resolvedAgentPath,
+            workingDirectory: directory,
+            conversationID: resumeID,
+            planMode: spec.turnModes.plan,
+            worktreeMode: spec.turnModes.worktree,
+            ollamaDefaultModel: spec.ollamaDefaultModel,
+            attachments: attachments,
+            forkSession: spec.turnModes.fork,
+            baseEnvironment: baseEnvironment,
+            onEvent: onEvent,
+            onNoise: onNoise,
+            onExit: onAgentExit
+        )
+    }
+
+    func sendImmediateAnswer(_ requestID: String, _ choice: AgentAnswer) {
+        let decision = Self.approvalDecision(for: choice)
+        let request = VitruvianCodeApprovalRequest(
+            toolName: "",
+            commandOrPath: "",
+            requestID: requestID
+        )
+        guard let line = VitruvianCodeSupport.approvalResponseJSON(for: request, decision: decision) else {
+            return
+        }
+        sendInput(line)
+    }
+
+    func cancelImmediateTurn() {
+        wasCancelled = true
+        terminate()
     }
 
     // MARK: - Synchronous session turn hooks
@@ -94,6 +266,7 @@ public final class CommandLineConnection: AgentConnection {
         ollamaDefaultModel: String,
         attachments: [VitruvianCodeAttachment] = [],
         forkSession: Bool = false,
+        baseEnvironment: [String: String]? = nil,
         onEvent: ((AgentEvent) -> Void)? = nil,
         onNoise: ((String) -> Void)? = nil,
         onExit: @escaping (Int32) -> Void
@@ -109,7 +282,7 @@ public final class CommandLineConnection: AgentConnection {
             forkSession: forkSession
         )
         let childEnvironment = VitruvianCodeSupport.childEnvironment(
-            base: environment.processEnvironment,
+            base: baseEnvironment ?? environment.processEnvironment,
             home: environment.home
         )
         lineBuffer = VitruvianCodeLineBuffer()
@@ -142,15 +315,17 @@ public final class CommandLineConnection: AgentConnection {
         executablePath: String,
         arguments: [String],
         workingDirectory: String,
+        baseEnvironment: [String: String]? = nil,
         onPartialOutput: @escaping (String) -> Void,
         onExit: @escaping (Int32, VitruvianCodeCommandOutcome, String) -> Void
     ) throws {
         let childEnvironment = VitruvianCodeSupport.commandEnvironment(
-            base: environment.processEnvironment,
+            base: baseEnvironment ?? environment.processEnvironment,
             fileExists: environment.fileExists
         )
         commandOutput = Data()
         commandErrors = Data()
+        emittedCommandText = ""
         var exited = false
         let handle = try environment.launchCommand(
             executablePath,
@@ -161,6 +336,11 @@ public final class CommandLineConnection: AgentConnection {
                 guard let self else { return }
                 self.commandOutput.append(data)
                 if let printed = String(data: self.commandOutput, encoding: .utf8) {
+                    if printed.count > self.emittedCommandText.count {
+                        let delta = String(printed.dropFirst(self.emittedCommandText.count))
+                        self.emittedCommandText = printed
+                        self.eventContinuation.yield(.text(delta))
+                    }
                     onPartialOutput(printed)
                 }
             },
@@ -180,6 +360,19 @@ public final class CommandLineConnection: AgentConnection {
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 self.commandOutput = Data()
                 self.commandErrors = Data()
+                self.emittedCommandText = ""
+                switch outcome {
+                case .reply(let text):
+                    self.eventContinuation.yield(
+                        .finished(status: "end_turn", response: text, error: nil, conversationID: nil)
+                    )
+                case .failed(_, let errors):
+                    self.eventContinuation.yield(
+                        .finished(status: "error", response: nil, error: errors.isEmpty ? nil : errors, conversationID: nil)
+                    )
+                case .noOutput, .stopped:
+                    break
+                }
                 onExit(status, outcome, printed)
             }
         )
@@ -204,6 +397,104 @@ public final class CommandLineConnection: AgentConnection {
     }
 
     // MARK: - Private helpers
+
+    private static func approvalDecision(for choice: AgentAnswer) -> VitruvianCodeApprovalRequest.Status {
+        switch choice {
+        case .option(let optionID):
+            let lowered = optionID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if lowered == "deny" || lowered == "reject" || lowered == "reject_once" || lowered == "reject_always" {
+                return .denied
+            }
+            if lowered == "allow_always" || lowered == "session_allowed" {
+                return .sessionAllowed
+            }
+            return .approved
+        case .form:
+            return .approved
+        case .cancelled:
+            return .denied
+        }
+    }
+
+    static func unpackPromptBlocks(
+        _ blocks: [PromptBlock],
+        fallbackAttachments: [VitruvianCodeAttachment]
+    ) -> (prompt: String, attachments: [VitruvianCodeAttachment]) {
+        if !fallbackAttachments.isEmpty,
+           blocks.count == fallbackAttachments.count + 1,
+           case .text(let lastText) = blocks.last {
+            let expectedPrefix: [PromptBlock] = fallbackAttachments.map { attachment in
+                attachment.isImage ? .image(path: attachment.url.path) : .text("@" + attachment.url.path)
+            }
+            if Array(blocks.dropLast()) == expectedPrefix {
+                return (lastText, fallbackAttachments)
+            }
+        }
+
+        if fallbackAttachments.isEmpty, blocks.count == 1, case .text(let single) = blocks[0] {
+            return (single, [])
+        }
+
+        var attachments = fallbackAttachments
+        var seenPaths = Set(fallbackAttachments.map { $0.url.standardizedFileURL.path })
+        var textParts: [String] = []
+        let lastTextIndex = blocks.lastIndex {
+            if case .text = $0 { return true }
+            return false
+        }
+
+        for (index, block) in blocks.enumerated() {
+            switch block {
+            case .image(let path):
+                let url = URL(fileURLWithPath: path)
+                if seenPaths.insert(url.standardizedFileURL.path).inserted {
+                    attachments.append(VitruvianCodeAttachment(url: url, isImage: true))
+                }
+            case .text(let value):
+                if index != lastTextIndex,
+                   value.hasPrefix("@/"),
+                   !value.contains(where: \.isNewline) {
+                    let path = String(value.dropFirst())
+                    let url = URL(fileURLWithPath: path)
+                    if seenPaths.insert(url.standardizedFileURL.path).inserted {
+                        attachments.append(VitruvianCodeAttachment(url: url, isImage: false))
+                    }
+                } else {
+                    textParts.append(value)
+                }
+            }
+        }
+        return (textParts.joined(separator: "\n\n"), attachments)
+    }
+
+    private func stopReasonForAgentExit(status: Int32) -> AgentStopReason {
+        if wasCancelled || status == 15 || status == 9 {
+            return .cancelled
+        }
+        if hadErrorEvent || status != 0 {
+            return .error
+        }
+        switch lastFinishedStatus {
+        case "max_tokens": return .maxTokens
+        case "max_turn_requests": return .maxTurnRequests
+        case "refusal": return .refusal
+        default: return .endTurn
+        }
+    }
+
+    private func stopReasonForCommandExit(status: Int32, outcome: VitruvianCodeCommandOutcome) -> AgentStopReason {
+        if wasCancelled {
+            return .cancelled
+        }
+        switch outcome {
+        case .reply:
+            return .endTurn
+        case .stopped:
+            return .cancelled
+        case .failed, .noOutput:
+            return .error
+        }
+    }
 
     private func receiveAgentOutput(
         _ data: Data,
@@ -237,11 +528,19 @@ public final class CommandLineConnection: AgentConnection {
         guard !parsed.isEmpty else {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
+                noiseLines = Array((noiseLines + [trimmed]).suffix(5))
                 onNoise?(trimmed)
             }
             return
         }
         for event in parsed {
+            if case .finished(let status, _, let error, _, _) = event {
+                lastFinishedStatus = status
+                if error != nil {
+                    hadErrorEvent = true
+                }
+                closeInput()
+            }
             eventContinuation.yield(event)
             onEvent?(event)
         }

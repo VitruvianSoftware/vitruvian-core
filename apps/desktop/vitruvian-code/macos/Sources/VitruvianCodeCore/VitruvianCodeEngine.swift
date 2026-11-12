@@ -52,6 +52,9 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         public var processEnvironment: [String: String]
         /// Shared with the standalone app: its PID file and log live here.
         public var stateDirectory: String
+        /// Optional `--state-dir <path>` override that moves the bot folder,
+        /// the app's state folder and the logs under `<path>`.
+        public var stateDirectoryOverride: String?
         public var isExecutable: (String) -> Bool
         public var fileExists: (String) -> Bool
         public var readFile: (String) -> String?
@@ -77,6 +80,19 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                                   _ environment: [String: String],
                                   _ onOutput: @escaping @MainActor @Sendable (Data) -> Void,
                                   _ onExit: @escaping @MainActor @Sendable (Int32) -> Void) throws -> VitruvianCodeRunningAgent
+        private var customMakeConnection: ((AgentConnectionSpec) -> any AgentConnection)?
+        /// Builds the `AgentConnection` for a turn. Defaults to `CommandLineConnection`
+        /// backed by this `Environment` as it stands when the turn starts.
+        public var makeConnection: (AgentConnectionSpec) -> any AgentConnection {
+            get {
+                if let customMakeConnection { return customMakeConnection }
+                let current = self
+                return { spec in CommandLineConnection(spec: spec, environment: current) }
+            }
+            set {
+                customMakeConnection = newValue
+            }
+        }
         /// agy's or claude's recent conversations for a folder, newest first.
         /// The last argument is the app's list of archived Claude sessions.
         public var listSessions: (_ directory: String, _ provider: VitruvianCodeCLIProvider,
@@ -121,6 +137,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                      home: String,
                      processEnvironment: [String: String],
                      stateDirectory: String,
+                     stateDirectoryOverride: String? = nil,
                      isExecutable: @escaping (String) -> Bool,
                      fileExists: @escaping (String) -> Bool,
                      readFile: @escaping (String) -> String?,
@@ -136,6 +153,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                      launchAgent: @escaping (String, [String], String, [String: String],
                                              @escaping @MainActor @Sendable (Data) -> Void,
                                              @escaping @MainActor @Sendable (Int32) -> Void) throws -> VitruvianCodeRunningAgent,
+                     makeConnection: ((AgentConnectionSpec) -> any AgentConnection)? = nil,
                      listSessions: @escaping (String, VitruvianCodeCLIProvider, [String]) -> [VitruvianCodeSessionSummary] = { _, _, _ in [] },
                      readTranscript: @escaping (String, VitruvianCodeCLIProvider) -> [VitruvianCodeChatMessage]? = { _, _ in nil },
                      transcriptPath: @escaping (String, VitruvianCodeCLIProvider) -> String? = { _, _ in nil },
@@ -156,7 +174,11 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
             self.defaults = defaults
             self.home = home
             self.processEnvironment = processEnvironment
-            self.stateDirectory = stateDirectory
+            let normalizedOverride = VitruvianCodeSupport.normalizedStateDirectoryOverride(stateDirectoryOverride)
+            self.stateDirectoryOverride = normalizedOverride
+            self.stateDirectory = normalizedOverride != nil
+                ? VitruvianCodeSupport.defaultStateDirectory(home: home, stateDirectoryOverride: normalizedOverride)
+                : stateDirectory
             self.isExecutable = isExecutable
             self.fileExists = fileExists
             self.readFile = readFile
@@ -169,6 +191,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
             self.schedule = schedule
             self.openFile = openFile
             self.launchAgent = launchAgent
+            self.customMakeConnection = makeConnection
             self.listSessions = listSessions
             self.readTranscript = readTranscript
             self.transcriptPath = transcriptPath
@@ -180,12 +203,28 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         }
 
         public static var live: Environment {
+            live(stateDirectoryOverride: nil)
+        }
+
+        public static func live(stateDirectoryOverride: String? = nil) -> Environment {
             let home = NSHomeDirectory()
+            // A `--state-dir` copy keeps its settings in a suite of its own,
+            // so it never reads or changes the real app's.
+            let suiteName = VitruvianCodeSupport.normalizedStateDirectoryOverride(stateDirectoryOverride).map {
+                VitruvianCodeSupport.preferencesSuiteName(
+                    bundleIdentifier: Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.vitruvian-code",
+                    stateDirectory: $0
+                )
+            }
             return Environment(
-                defaults: .standard,
+                defaults: suiteName.flatMap { .init(suiteName: $0) } ?? .standard,
                 home: home,
                 processEnvironment: ProcessInfo.processInfo.environment,
-                stateDirectory: VitruvianCodeSupport.defaultStateDirectory(home: home),
+                stateDirectory: VitruvianCodeSupport.defaultStateDirectory(
+                    home: home,
+                    stateDirectoryOverride: stateDirectoryOverride
+                ),
+                stateDirectoryOverride: stateDirectoryOverride,
                 isExecutable: { FileManager.default.isExecutableFile(atPath: $0) },
                 fileExists: { FileManager.default.fileExists(atPath: $0) },
                 readFile: { try? String(contentsOfFile: $0, encoding: .utf8) },
@@ -327,17 +366,23 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
 
     // MARK: - Paths
 
-    public var botDirectory: String {
-        VitruvianCodeSupport.botDirectory(configured: host.configuredBotDirectory,
-                                       home: environment.home)
+    public var statePaths: VitruvianCodeStatePaths {
+        VitruvianCodeSupport.statePaths(
+            configuredBotDirectory: host.configuredBotDirectory,
+            home: environment.home,
+            defaultStateDirectory: environment.stateDirectory,
+            stateDirectoryOverride: environment.stateDirectoryOverride
+        )
     }
 
-    public var envFilePath: String { (botDirectory as NSString).appendingPathComponent(".env") }
-    public var logPath: String { (environment.stateDirectory as NSString).appendingPathComponent("bot.log") }
-    public var pidFilePath: String { (environment.stateDirectory as NSString).appendingPathComponent(".bot.pid") }
-    private var entryPointPath: String {
-        (botDirectory as NSString).appendingPathComponent(VitruvianCodeSupport.botEntryPoint)
-    }
+    public var botDirectory: String { statePaths.botDirectory }
+    public var envFilePath: String { statePaths.envFilePath }
+    public var envExamplePath: String { statePaths.envExamplePath }
+    public var stateDirectory: String { statePaths.stateDirectory }
+    public var logsDirectory: String { statePaths.logsDirectory }
+    public var logPath: String { statePaths.logPath }
+    public var pidFilePath: String { statePaths.pidFilePath }
+    private var entryPointPath: String { statePaths.botEntryPointPath }
 
     public var isBotInstalled: Bool { environment.fileExists(entryPointPath) }
 

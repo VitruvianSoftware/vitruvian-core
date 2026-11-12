@@ -148,31 +148,66 @@ public struct AgentConfigOption: Identifiable, Equatable, Sendable, Codable {
     }
 }
 
-/// Which agent connection to build and how its process should be started.
+/// The per-turn switches and attachments captured when a prompt is sent.
+public struct AgentTurnModes: Equatable, Sendable {
+    public var plan: Bool
+    public var worktree: Bool
+    public var attachments: [VitruvianCodeAttachment]
+    public var fork: Bool
+
+    public init(
+        plan: Bool = false,
+        worktree: Bool = false,
+        attachments: [VitruvianCodeAttachment] = [],
+        fork: Bool = false
+    ) {
+        self.plan = plan
+        self.worktree = worktree
+        self.attachments = attachments
+        self.fork = fork
+    }
+}
+
+/// Which agent connection to build and what its turn needs to run.
 public struct AgentConnectionSpec: Equatable, Sendable {
     public var kind: AgentConnectionKind
     public var provider: VitruvianCodeCLIProvider
-    public var executablePath: String?
+    public var configuration: VitruvianCodeConfiguration
+    public var agentPath: String?
     public var workingDirectory: String
+    public var ollamaDefaultModel: String
+    public var turnModes: AgentTurnModes
     public var environment: [String: String]
 
+    public var executablePath: String? {
+        get { agentPath }
+        set { agentPath = newValue }
+    }
+
     public init(
-        kind: AgentConnectionKind,
+        kind: AgentConnectionKind = .commandLine,
         provider: VitruvianCodeCLIProvider,
-        executablePath: String? = nil,
+        configuration: VitruvianCodeConfiguration = VitruvianCodeConfiguration(),
+        agentPath: String? = nil,
         workingDirectory: String,
+        ollamaDefaultModel: String = VitruvianCodeSupport.ollamaFallbackModel,
+        turnModes: AgentTurnModes = AgentTurnModes(),
         environment: [String: String] = [:]
     ) {
+        var resolvedConfiguration = configuration
+        resolvedConfiguration.activeProvider = provider
         self.kind = kind
         self.provider = provider
-        self.executablePath = executablePath
+        self.configuration = resolvedConfiguration
+        self.agentPath = agentPath
         self.workingDirectory = workingDirectory
+        self.ollamaDefaultModel = ollamaDefaultModel
+        self.turnModes = turnModes
         self.environment = environment
     }
 }
 
 /// Errors thrown by an `AgentConnection` before a transport method is wired up.
-/// Step 1b wires the session through `prompt`, `answer` and `setConfigOption`.
 public enum AgentConnectionError: Error, Equatable, Sendable {
     case notSupportedYet
 }
@@ -190,4 +225,23 @@ public protocol AgentConnection: AnyObject {
     func answer(_ requestID: String, _ choice: AgentAnswer) async throws
     func setConfigOption(_ id: String, _ value: AgentConfigValue) async throws -> [AgentConfigOption]
     func stop() async
+}
+
+/// Internal fast-path adopted by `CommandLineConnection` so main-actor callers
+/// and synchronous test rigs receive process callbacks inline in order without
+/// duplicating any argument, stdin, or parsing logic.
+@MainActor
+protocol _ImmediateAgentConnection: AgentConnection {
+    @discardableResult
+    func beginImmediateSession(_ request: AgentSessionRequest) -> String
+    func beginImmediatePrompt(
+        _ blocks: [PromptBlock],
+        onEvent: @escaping (AgentEvent) -> Void,
+        onNoise: @escaping (String) -> Void,
+        onAgentExit: @escaping (Int32) -> Void,
+        onCommandPartial: @escaping (String) -> Void,
+        onCommandExit: @escaping (Int32, VitruvianCodeCommandOutcome, String) -> Void
+    ) throws
+    func sendImmediateAnswer(_ requestID: String, _ choice: AgentAnswer)
+    func cancelImmediateTurn()
 }

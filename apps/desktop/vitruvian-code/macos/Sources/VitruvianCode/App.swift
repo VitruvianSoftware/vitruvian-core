@@ -68,9 +68,33 @@ class AppState: ObservableObject {
     /// Nil only while that is still being done.
     @Published private(set) var loaded: Loaded?
 
-    private let migration: VitruvianCodeLegacyMigration
+    private let migration: VitruvianCodeLegacyMigration?
 
-    init() {
+    init(arguments: [String] = ProcessInfo.processInfo.arguments) {
+        let stateDirectoryOverride: String?
+        do {
+            stateDirectoryOverride = try VitruvianCodeSupport.stateDirectoryOverride(arguments: arguments)
+        } catch {
+            // A bad `--state-dir` stops the launch, before anything is read or written.
+            FileHandle.standardError.write(Data("VitruvianCode: \(error)\n".utf8))
+            exit(2)
+        }
+        if let stateDirectoryOverride {
+            // An isolated test copy keeps its bot folder, state folder, logs
+            // and settings apart from the real app's.
+            AppPreferences.useSuite(forStateDirectory: stateDirectoryOverride)
+            self.migration = nil
+            let paths = VitruvianCodeSupport.statePaths(
+                home: NSHomeDirectory(),
+                stateDirectoryOverride: stateDirectoryOverride
+            )
+            for directory in [paths.botDirectory, paths.stateDirectory, paths.logsDirectory] {
+                try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+            }
+            start(migrated: nil, stateDirectoryOverride: stateDirectoryOverride)
+            return
+        }
+
         // Before anything reads the settings or the folders: a person who
         // used Nexus Agent finds their things here, not an empty app.
         let executable = Bundle.main.executablePath ?? "/Applications/Vitruvian Code.app/Contents/MacOS/VitruvianCode"
@@ -84,21 +108,23 @@ class AppState: ObservableObject {
         // when it is finished: they read the bot's folder as they start too.
         let prelude = migration.begin()
         if prelude.alreadyDone {
-            start(migrated: migration.finish(prelude))
+            start(migrated: migration.finish(prelude), stateDirectoryOverride: nil)
         } else {
             let work = Handoff((migration, prelude))
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 let outcome = Handoff(work.value.0.finish(work.value.1))
                 DispatchQueue.main.async {
-                    MainActor.assumeIsolated { self?.start(migrated: outcome.value) }
+                    MainActor.assumeIsolated {
+                        self?.start(migrated: outcome.value, stateDirectoryOverride: nil)
+                    }
                 }
             }
         }
     }
 
-    private func start(migrated: VitruvianCodeLegacyMigration.Outcome) {
+    private func start(migrated: VitruvianCodeLegacyMigration.Outcome?, stateDirectoryOverride: String?) {
         let migration = self.migration
-        let bot = BotManager()
+        let bot = BotManager(stateDirectoryOverride: stateDirectoryOverride)
         // The bot manager owns the shared engine; settings are read and saved through it.
         let config = ConfigManager(engine: bot.engine, host: bot.host)
         let updater = UpdateChecker()
@@ -125,7 +151,7 @@ class AppState: ObservableObject {
 
         // Tell the person what moved over and what macOS will ask again, once;
         // or what did not move, which the next launch tries again.
-        if migrated.needsNotice {
+        if let migrated, let migration, migrated.needsNotice {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 openLegacyMigrationWindow(outcome: migrated) {
                     if migrated.completed { migration.markPermissionsExplained() }

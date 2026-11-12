@@ -43,6 +43,8 @@ final class PermissionArgumentsTests: XCTestCase {
         var promptHistory: [String] = []
         var worktreeMode = false
         var timelineOnLeft = false
+        var chatModes: [String: String] = [:]
+        var showsConnectionSetting = false
         var strings = VitruvianCodeHostStrings()
         func turnNeedsApproval(_ notice: VitruvianCodeTurnNotice) {}
         func turnFinished(_ notice: VitruvianCodeTurnNotice, isChatVisible: Bool) {}
@@ -160,7 +162,7 @@ final class PermissionArgumentsTests: XCTestCase {
 
     private static let plan = ["--permission-mode", "plan"]
 
-    /// Every cell, written out. Plan mode on is the same for all four
+    /// Every cell, written out. Plan mode on is the same for all five
     /// approval modes, which is the point of it.
     private static let expected: [(route: String, provider: VitruvianCodeCLIProvider,
                                    planOff: [VitruvianCodeApprovalMode: [String]], planOn: [String])] = [
@@ -168,7 +170,8 @@ final class PermissionArgumentsTests: XCTestCase {
          [.yolo: ["--dangerously-skip-permissions"],
           .acceptEdits: ["--mode", "accept-edits"],
           .plan: ["--mode", "plan"],
-          .standard: []],
+          .standard: [],
+          .auto: []],
          ["--mode", "plan"]),
         // The modes that ask send the question to the app (`stdio`), which
         // asks the user and answers on standard input.
@@ -176,25 +179,28 @@ final class PermissionArgumentsTests: XCTestCase {
          [.yolo: ["--permission-mode", "bypassPermissions", "--dangerously-skip-permissions"],
           .acceptEdits: ["--permission-prompt-tool", "stdio", "--permission-mode", "acceptEdits"],
           .plan: plan,
-          .standard: ["--permission-prompt-tool", "stdio", "--permission-mode", "default"]],
+          .standard: ["--permission-prompt-tool", "stdio", "--permission-mode", "default"],
+          .auto: ["--permission-prompt-tool", "stdio", "--permission-mode", "auto"]],
          plan),
         ("Ollama", .ollama,
          [.yolo: ["--permission-mode", "bypassPermissions", "--dangerously-skip-permissions"],
           .acceptEdits: ["--permission-mode", "acceptEdits"],
           .plan: plan,
-          .standard: ["--permission-mode", "default"]],
+          .standard: ["--permission-mode", "default"],
+          .auto: ["--permission-mode", "auto"]],
          plan),
         // OpenCode plans with its own agent, and skips its prompts only with `--auto`.
         ("OpenCode", .opencode,
          [.yolo: ["--auto"],
           .acceptEdits: [],
           .plan: ["--agent", "plan"],
-          .standard: []],
+          .standard: [],
+          .auto: []],
          ["--agent", "plan"]),
         // A command of the user's own is run as its template is written:
         // the approval mode adds nothing to it and takes nothing away.
         ("own command", own("llm -m {model} \"{prompt}\""),
-         [.yolo: [], .acceptEdits: [], .plan: [], .standard: []],
+         [.yolo: [], .acceptEdits: [], .plan: [], .standard: [], .auto: []],
          []),
     ]
 
@@ -222,7 +228,7 @@ final class PermissionArgumentsTests: XCTestCase {
                 }
             }
         }
-        XCTAssertEqual(cells, 40, "five ways to run, four modes, plan mode on and off")
+        XCTAssertEqual(cells, 50, "five ways to run, five modes, plan mode on and off")
     }
 
     /// The two things a turn can carry besides its approval mode. Each adds

@@ -831,6 +831,7 @@ struct ChatApprovalModeBadge: View {
         case .acceptEdits: return strings.approvalAutoEdit
         case .standard: return strings.approvalAsk
         case .plan: return strings.approvalPlan
+        case .auto: return strings.approvalAuto
         }
     }
 
@@ -839,8 +840,14 @@ struct ChatApprovalModeBadge: View {
         planMode ? .plan : saved
     }
 
+    /// The chat's own mode (its override, else the saved one), with plan on top.
+    static func current(session: VitruvianCodeQuickPromptSession,
+                        configuration: VitruvianCodeConfiguration) -> VitruvianCodeApprovalMode {
+        effective(saved: session.effectiveApprovalMode(for: configuration), planMode: session.planMode)
+    }
+
     private var current: VitruvianCodeApprovalMode {
-        Self.effective(saved: engine.configuration.approvalMode, planMode: session.planMode)
+        Self.current(session: session, configuration: engine.configuration)
     }
 
     var body: some View {
@@ -877,6 +884,7 @@ struct ChatApprovalModeBadge: View {
             case .acceptEdits: Image(systemName: "pencil")
             case .standard: Image(systemName: "hand.raised.fill")
             case .plan: Image(systemName: "doc.text")
+            case .auto: Image(systemName: "sparkles")
             }
         }
         .font(.system(size: 8))
@@ -886,7 +894,7 @@ struct ChatApprovalModeBadge: View {
         switch current {
         case .plan: return VitruvianCodeTheme.warmCoral
         case .yolo: return .orange
-        case .acceptEdits, .standard: return nil
+        case .acceptEdits, .standard, .auto: return nil
         }
     }
 
