@@ -27,7 +27,7 @@ import VitruvianCodeCore
 /// one into a program and its arguments, for choosing how a provider is run,
 /// and for reading what a command printed. The standalone app's own chat,
 /// removed in step 3c (`QuickPromptWindow.swift`; last shipped in
-/// nexus-agent-v1.19.0), was the specification, and "the standalone" below means
+/// v1.19.0), was the specification, and "the standalone" below means
 /// that chat as it was; where the shared code departs from it, the test
 /// says so.
 final class ProviderCommandTests: XCTestCase {
@@ -178,7 +178,7 @@ final class ProviderCommandTests: XCTestCase {
     /// For the templates the app ships and a plain one-word prompt, the
     /// arguments are the ones the standalone's parser gave. Worked out by
     /// hand from `parseProviderTemplate` in the removed
-    /// `QuickPromptWindow.swift` (last shipped in nexus-agent-v1.19.0).
+    /// `QuickPromptWindow.swift` (last shipped in v1.19.0).
     func testOrdinaryTemplatesGiveWhatTheStandaloneGives() {
         assertCommand(VitruvianCodeCLIProvider.antigravity.commandTemplate, runs: "agy",
                       ["-p", "hello", "--output-format", "stream-json", "--dangerously-skip-permissions"])

@@ -28,29 +28,30 @@ categories:
     items:
       - id: vitruvian-code
         name: Vitruvian Code
-        version: "1.32.7"
+        version: "1.34.0"
         summary: >-
           macOS menu bar companion for AI coding assistants. Bridges Claude Code,
           Gemini Antigravity, and local LLMs to your phone via Telegram, with
           native toast notifications and streaming output.
         platforms: ["macOS Universal", "Apple Silicon", "Intel"]
+        # legacy name: Homebrew cask token in VitruvianSoftware/homebrew-tap
         brew_cask: vitruviansoftware/tap/nexus-agent
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.32.5/NexusAgent-1.32.5-universal.dmg
-            size: 8.5 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.34.0/VitruvianCode-1.34.0-macos.dmg
+            size: 9.8 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.32.7/NexusAgent-1.32.7-arm64.dmg
-            size: 5.6 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.34.0/VitruvianCode-1.34.0-arm64.dmg
+            size: 6.4 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.32.7/NexusAgent-1.32.7-x86_64.dmg
-            size: 5.7 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.34.0/VitruvianCode-1.34.0-x86_64.dmg
+            size: 6.6 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.32.5/NexusAgent-1.32.5-universal.zip
-            size: 8.5 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.34.0/VitruvianCode-1.34.0-macos.zip
+            size: 8.6 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-code/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-code
@@ -171,7 +172,7 @@ categories:
     items:
       - id: devx
         name: devx
-        version: "0.74.4"
+        version: "0.74.5"
         summary: >-
           A local development orchestrator. One CLI provisions container VMs, ephemeral
           databases and cloud emulators, local K3s clusters, and Cloudflare tunnel ingress in dependency order.

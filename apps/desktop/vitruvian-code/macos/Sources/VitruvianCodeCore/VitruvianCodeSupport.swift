@@ -200,7 +200,7 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
     }
 
     /// How this provider's turns are run, decided as the standalone app's
-    /// own chat decided it (removed in step 3c; last shipped in nexus-agent-v1.19.0). The built-in Antigravity provider is always agy,
+    /// own chat decided it (removed in step 3c; last shipped in v1.19.0). The built-in Antigravity provider is always agy,
     /// whatever its template says. Any other is Ollama, OpenCode or Claude
     /// if it is that built-in provider or the first word of its template
     /// ends in `ollama`, `opencode` or `claude` (so a full path counts, and
@@ -1056,7 +1056,7 @@ public enum VitruvianCodeSupport {
     }
 
     /// Where a program is, as the standalone app's own chat found one
-    /// (removed in step 3c; last shipped in nexus-agent-v1.19.0). A full
+    /// (removed in step 3c; last shipped in v1.19.0). A full
     /// path is taken as given if anything is there. A bare name is looked
     /// for in the usual install folders and then in the folders of
     /// `pathVariable` (the PATH an app launched from Finder has is short),

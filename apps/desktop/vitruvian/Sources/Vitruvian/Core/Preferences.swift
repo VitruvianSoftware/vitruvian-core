@@ -385,22 +385,6 @@ package enum Preferences {
     package static let recorderSharingEnabled = Preference(DefaultsKey.recorderSharingEnabled, default: true)
     package static let panelUtilityScreenRecorder = Preference(DefaultsKey.panelUtilityScreenRecorder, default: true)
     package static let panelUtilityPortManager = Preference(DefaultsKey.panelUtilityPortManager, default: true)
-    package static let nexusAgentShortcutEnabled = Preference(DefaultsKey.nexusAgentShortcutEnabled, default: false)
-    package static let nexusAgentAutoStart = Preference(DefaultsKey.nexusAgentAutoStart, default: false)
-    package static let nexusAgentPlanMode = Preference(DefaultsKey.nexusAgentPlanMode, default: false)
-    /// Empty means no provider was ever chosen, which runs Antigravity.
-    package static let nexusAgentChosenProvider = Preference(DefaultsKey.nexusAgentChosenProvider, default: "")
-    /// Empty means none saved: the three built-in providers as they ship.
-    package static let nexusAgentSavedProviders = Preference(DefaultsKey.nexusAgentSavedProviders, default: Data())
-    package static let nexusAgentWorktreeMode = Preference(DefaultsKey.nexusAgentWorktreeMode, default: false)
-    /// The last prompts sent from the Quick Prompt, oldest first, for the up and down arrows.
-    package static let nexusAgentPromptHistory = Preference(DefaultsKey.nexusAgentPromptHistory, default: [String]())
-    /// Empty means the bot's standard home, `~/.config/nexus-agent`.
-    package static let nexusAgentBotDirectory = Preference(DefaultsKey.nexusAgentBotDirectory, default: "")
-    /// True once the Nexus Agent tool from the catalog (`dev.vitruvian.code`)
-    /// has been handed the old feature's settings, so they are handed once;
-    /// cleared when the tool is removed (`NexusAgentHandoff`).
-    package static let nexusAgentReplacedByTool = Preference(DefaultsKey.nexusAgentReplacedByTool, default: false)
     package static let screenshotShowCaptureMenuOnShortcut = Preference(DefaultsKey.screenshotShowCaptureMenuOnShortcut, default: true)
     package static let recorderShowCaptureMenuOnShortcut = Preference(DefaultsKey.recorderShowCaptureMenuOnShortcut, default: true)
     package static let screenOCRShowCaptureMenuOnShortcut = Preference(DefaultsKey.screenOCRShowCaptureMenuOnShortcut, default: true)
@@ -803,8 +787,6 @@ package enum Preferences {
         DefaultsKey.scratchpadShortcut, default: GlobalShortcut.scratchpadDefault.storageValue)
     package static let notchShortcut = Preference(
         DefaultsKey.notchShortcut, default: GlobalShortcut.notchDefault.storageValue)
-    package static let nexusAgentShortcut = Preference(
-        DefaultsKey.nexusAgentShortcut, default: GlobalShortcut.nexusAgentDefault.storageValue)
     package static let commandBarShortcut = Preference(
         DefaultsKey.commandBarShortcut, default: GlobalShortcut.commandBarDefault.storageValue)
     package static let quickLauncherShortcut = Preference(

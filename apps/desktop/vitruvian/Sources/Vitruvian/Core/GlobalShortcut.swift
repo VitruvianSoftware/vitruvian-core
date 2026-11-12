@@ -237,9 +237,6 @@ package struct GlobalShortcut: Equatable, Hashable {
     // layer, matching how the system numbers its own capture keys.
     package static let screenRecorderDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_5),
                                                       modifiers: [.control, .option, .command])
-    // Control-Space for the Quick Prompt spotlight HUD.
-    package static let nexusAgentDefault = GlobalShortcut(keyCode: Int64(kVK_Space),
-                                                  modifiers: [.control])
 
     package static func saved(for key: String, fallback: GlobalShortcut) -> GlobalShortcut {
         if let raw = UserDefaults.standard.string(forKey: key),

@@ -535,7 +535,7 @@ gh api repos/VitruvianSoftware/mcp-slack/contents/<file>?ref=main --jq .content 
 
 **Context files that must NOT cross the boundary** (already configured in `copy.bara.sky`):
 - export keeps each standalone's `.github/workflows/sync-to-monorepo.yaml` (and `package-lock.json`
-  for npm components: mcp-slack, nexus-agent);
+  for npm components: mcp-slack, vitruvian-code);
 - both directions keep the monorepo-only gazelle `**/BUILD` files (devx alone has 57).
 
 ---
@@ -661,7 +661,7 @@ places**, both `addlicense@v1.2.0` with `-c "VitruvianSoftware" -l mit`:
   is caught on the PR, *before* fan-out. The binary lands in `GOPATH/bin` (not on the runner PATH), so
   it's invoked as `"$(go env GOPATH)/bin/addlicense"`.
 - **Each standalone's OWN CI.** devx checks in its `lint` job; homelab and mcp-slack each have a
-  `license-check` job; nexus-agent (which had no CI) gets a dedicated `license-check.yml`. This is the
+  `license-check` job; vitruvian-code (which had no CI) gets a dedicated `license-check.yml`. This is the
   only check that covers **standalone-only** files (e.g. `sync-to-monorepo.yaml`) the monorepo never sees.
 
 **Generated / tool-managed files are NEVER headered** — addlicense would fight their regeneration
@@ -683,7 +683,7 @@ Per-standalone ignore sets (no `**/BUILD` — standalones have no Bazel files):
 | devx | `docs/**`, `internal/scaffold/templates/**` |
 | homelab | *(none)* |
 | mcp-slack | `package-lock.json`, `node_modules/**` |
-| nexus-agent | `package-lock.json`, `node_modules/**`, `.release-please-manifest.json` |
+| vitruvian-code | `package-lock.json`, `node_modules/**`, `.release-please-manifest.json` |
 
 **Bulk-header many files:** run add-mode (drop `-check`) from the repo root with the monorepo ignore
 list, then confirm `bazel run //:gazelle` is still a no-op and `git status` shows no generated file

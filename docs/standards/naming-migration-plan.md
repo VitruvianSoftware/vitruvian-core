@@ -76,7 +76,7 @@ This document establishes the **authoritative, phased migration and refactoring 
    - *Contract Phase*: Migrate consumers, verify zero traffic on legacy identifiers, and sunset deprecated interfaces.
 3. **Preserve Git Lineage**: All file and directory relocations MUST use `git mv` in dedicated atomic commits to preserve `git blame`, log history, and PR diff traceability.
 4. **Zero Infrastructure Resource Recreation**: Pulumi project and stack renames MUST use explicit state migration protocols (`pulumi stack export` / `import`) to ensure cloud resources (Cloud Run services, VPCs, IAM roles, DNS records) are NEVER destroyed and recreated during naming refactoring.
-5. **No Regressions in Standalone Component Mirrors**: Monorepo-to-standalone export pipelines managed by Copybara (`devx`, `homelab`, `mcp-slack`, `nexus-agent`, `oauth-user-inspector`) MUST retain continuous sync capability via transformation shims.
+5. **No Regressions in Standalone Component Mirrors**: Monorepo-to-standalone export pipelines managed by Copybara (`devx`, `homelab`, `mcp-slack`, `vitruvian-code`, `oauth-user-inspector`) MUST retain continuous sync capability via transformation shims.
 6. **Every Phase Ships with Validation Gates**: A phase cannot be declared complete until its machine-automated validation commands pass cleanly.
 
 ### 1.3 Scope & Target Metrics
@@ -116,7 +116,7 @@ This section provides the complete, authoritative mapping of every inconsistency
 | S2 | `infrastructure/pulumi/foundation/gcp-networks/envs/shared/net-hubs-transitivity.go` | `infrastructure/pulumi/foundation/gcp-networks/envs/shared/net_hubs_transitivity.go` | `RULE_FILE_GO` | Go filenames must use `snake_case.go`. |
 | S3 | `pulumi/examples/go-foundation/3-networks-hub-and-spoke/envs/shared/net-hubs.go` | `pulumi/examples/go-foundation/3-networks-hub-and-spoke/envs/shared/net_hubs.go` | `RULE_FILE_GO` | Foundation example Go file alignment. |
 | S4 | `pulumi/examples/go-foundation/3-networks-hub-and-spoke/envs/shared/net-hubs-transitivity.go` | `pulumi/examples/go-foundation/3-networks-hub-and-spoke/envs/shared/net_hubs_transitivity.go` | `RULE_FILE_GO` | Foundation example Go file alignment. |
-| S5 | `nexus-agent/hooks/stream-hook.py` | `nexus-agent/hooks/stream_hook.py` | `RULE_FILE_PY` | Python files must use `snake_case.py`. `import stream-hook` triggers `SyntaxError`. |
+| S5 | `vitruvian-code/hooks/stream-hook.py` | `vitruvian-code/hooks/stream_hook.py` | `RULE_FILE_PY` | Python files must use `snake_case.py`. `import stream-hook` triggers `SyntaxError`. |
 | S6 | `tabula/web/__tests__/relay-landing.test.tsx` | `tabula/web/__tests__/RelayLanding.test.tsx` | `RULE_FILE_TSX` | React component tests must use `PascalCase.test.tsx` to match component. |
 | S7 | `tabula/web/__tests__/space-detail.test.tsx` | `tabula/web/__tests__/SpaceDetail.test.tsx` | `RULE_FILE_TSX` | React component tests must use `PascalCase.test.tsx` to match component. |
 
@@ -146,9 +146,9 @@ This section provides the complete, authoritative mapping of every inconsistency
 | T3 | `//tools/gcp-token:gcp_token_test` | `//tools/gcp-token:gcp-token_test` | `tools/gcp-token/BUILD:43` | Rename target to `<binary>_test`. Add `alias` for `gcp_token_test`. |
 | T4 | `//tools/gcp-secrets:gcp_secrets_test` | `//tools/gcp-secrets:gcp-secrets_test` | `tools/gcp-secrets/BUILD:46` | Rename target to `<pkg>_test`. Add `alias` for `gcp_secrets_test`. |
 | T5 | `//tools/saas-cli:saas_cli_test` | `//tools/saas-cli:saas-cli_test` | `tools/saas-cli/BUILD:55` | Rename target to `<pkg>_test`. Add `alias` for `saas_cli_test`. |
-| T6 | `//nexus-agent/macos:NexusAgent_lib` | `//nexus-agent/macos:NexusAgentLib` | `nexus-agent/macos/BUILD:20` | Swift library targets use `PascalCase`. Remove snake suffix. |
-| T7 | `//nexus-agent/macos:NexusAgent_tests` | `//nexus-agent/macos:NexusAgentTests` | `nexus-agent/macos/BUILD:32` | Swift test targets use `PascalCase`. Remove snake suffix. |
-| T8 | `//nexus-agent/hooks:stream-hook` | `//nexus-agent/hooks:stream_hook` | `nexus-agent/hooks/BUILD:4` | Python binary rule must use `snake_case` matching `stream_hook.py`. |
+| T6 | `//vitruvian-code/macos:VitruvianCode_lib` | `//vitruvian-code/macos:VitruvianCodeLib` | `vitruvian-code/macos/BUILD:20` | Swift library targets use `PascalCase`. Remove snake suffix. |
+| T7 | `//vitruvian-code/macos:VitruvianCode_tests` | `//vitruvian-code/macos:VitruvianCodeTests` | `vitruvian-code/macos/BUILD:32` | Swift test targets use `PascalCase`. Remove snake suffix. |
+| T8 | `//vitruvian-code/hooks:stream-hook` | `//vitruvian-code/hooks:stream_hook` | `vitruvian-code/hooks/BUILD:4` | Python binary rule must use `snake_case` matching `stream_hook.py`. |
 
 ---
 
@@ -273,7 +273,7 @@ All workflow files must strictly use `.yaml`:
 | # | Boundary Interface | Upstream Layer Standard | Downstream Layer Standard | Invariant / Preservation Guarantee |
 |---|---|---|---|---|
 | B1 | Tabula Persistence vs. API | PostgreSQL / Prisma: `snake_case` (`password_hash`, `user_id`) | OpenAPI / TypeScript: `camelCase` (`passwordHash`, `userId`) | Prisma `@map` annotations MUST be preserved to maintain SQL column stability while exposing camelCase to TypeScript. |
-| B2 | Monorepo → Standalone Mirrors | Monorepo Paths (`devx/`, `homelab/`, `mcp-slack/`, `nexus-agent/`) | Standalone Root Repositories | Copybara transformation rules in `copy.bara.sky` MUST be preserved and verified via dry-run before and after any directory rename. |
+| B2 | Monorepo → Standalone Mirrors | Monorepo Paths (`devx/`, `homelab/`, `mcp-slack/`, `vitruvian-code/`) | Standalone Root Repositories | Copybara transformation rules in `copy.bara.sky` MUST be preserved and verified via dry-run before and after any directory rename. |
 | B3 | Kubernetes / GitOps Manifests | Kubernetes DNS-1123: `kebab-case` (`opentelemetry-collector`) | Helm Specs / CRDs: `camelCase` (`imagePullPolicy`) | Kubernetes metadata names strictly use `kebab-case`; spec fields strictly use `camelCase`. |
 
 ---
@@ -323,7 +323,7 @@ To ensure zero downtime and prevent cascading failures across build graphs, CI r
 |---|---|---|---|
 | **Bazel Build Graph** | Missing target label after rename | Local developer build failure, CI test failure | Register Bazel `alias(name = "old_name", actual = ":new-name", deprecation = "...")` in `BUILD`. |
 | **Go Compiler** | Import path missing after Go file rename | Compilation failure in Pulumi or internal package | All Go package directory renames trigger synchronous `go mod tidy` + `bazel run //:gazelle`. |
-| **Python Runtime** | `SyntaxError: invalid syntax` on hyphen | Runtime crash when importing hook module | Rename `stream-hook.py` → `stream_hook.py` and update `py_binary` in `nexus-agent/hooks/BUILD`. |
+| **Python Runtime** | `SyntaxError: invalid syntax` on hyphen | Runtime crash when importing hook module | Rename `stream-hook.py` → `stream_hook.py` and update `py_binary` in `vitruvian-code/hooks/BUILD`. |
 | **GitHub Actions** | Required input missing in reusable workflow | Blocked deployment pipeline, failed releases | Reusable workflows accept both `working-directory` and `working_directory` concurrently during transition. |
 | **Pulumi IaC** | Stack name mismatch leading to resource recreate | Outage of Cloud Run service or VPC destruction | Execute offline `pulumi stack export`, rewrite project metadata, and `pulumi stack import` before `pulumi preview`. |
 | **Copybara Sync** | Monorepo source path missing during hourly sync | Export pipeline crash; standalone repo drift | Dry-run `tools/copybara/conflict-precheck` and verify `copy.bara.sky` transformations before merging path renames. |
@@ -475,8 +475,8 @@ bazel test //...
    - `pulumi/examples/go-foundation/3-networks-hub-and-spoke/envs/shared/net-hubs.go` → `net_hubs.go`
    - `pulumi/examples/go-foundation/3-networks-hub-and-spoke/envs/shared/net-hubs-transitivity.go` → `net_hubs_transitivity.go`
 2. **Batch 2.2: Python Module & Target**:
-   - Rename `nexus-agent/hooks/stream-hook.py` → `stream_hook.py`.
-   - Update `nexus-agent/hooks/BUILD` to declare `py_binary(name = "stream_hook", srcs = ["stream_hook.py"])`.
+   - Rename `vitruvian-code/hooks/stream-hook.py` → `stream_hook.py`.
+   - Update `vitruvian-code/hooks/BUILD` to declare `py_binary(name = "stream_hook", srcs = ["stream_hook.py"])`.
    - Add backwards-compatible alias: `alias(name = "stream-hook", actual = ":stream_hook")`.
 3. **Batch 2.3: Bazel Package Directory Renames**:
    - `tools/copybara/conflict_precheck/` → `tools/copybara/conflict-precheck/`
@@ -491,7 +491,7 @@ bazel test //...
    - Update `tools/gcp-secrets/BUILD`: rename `gcp_secrets_test` → `gcp-secrets_test`. Add `alias(name = "gcp_secrets_test", actual = ":gcp-secrets_test")`.
    - Update `tools/saas-cli/BUILD`: rename `saas_cli_test` → `saas-cli_test`. Add `alias(name = "saas_cli_test", actual = ":saas-cli_test")`.
 5. **Batch 2.5: Swift Bazel Targets**:
-   - Update `nexus-agent/macos/BUILD`: rename `NexusAgent_lib` → `NexusAgentLib`, `NexusAgent_tests` → `NexusAgentTests`. Add aliases for legacy target names.
+   - Update `vitruvian-code/macos/BUILD`: rename `VitruvianCode_lib` → `VitruvianCodeLib`, `VitruvianCode_tests` → `VitruvianCodeTests`. Add aliases for legacy target names.
 6. **Batch 2.6: TypeScript Services & Utility Harmonization**:
    - Harmonize `tabula/extension/src/services/` to `kebab-case.ts`.
    - Harmonize `tabula/web/lib/safeHref.ts` → `safe-href.ts`.
@@ -509,7 +509,7 @@ git mv pulumi/examples/go-foundation/3-networks-hub-and-spoke/envs/shared/net-hu
        pulumi/examples/go-foundation/3-networks-hub-and-spoke/envs/shared/net_hubs_transitivity.go
 
 # 2. Rename Python module
-git mv nexus-agent/hooks/stream-hook.py nexus-agent/hooks/stream_hook.py
+git mv vitruvian-code/hooks/stream-hook.py vitruvian-code/hooks/stream_hook.py
 
 # 3. Rename package directories
 git mv tools/copybara/conflict_precheck tools/copybara/conflict-precheck
@@ -610,7 +610,7 @@ bazel run //oauth-user-inspector/infra/app:preview
 1. **Batch 4.1: Copybara Transformation Verification**:
    - Inspect `tools/copybara/` configuration files.
    - Verify that all internal path relocations (e.g. `tools/copybara/conflict-precheck`) are accounted for in `copy.bara.sky`.
-   - Execute Copybara conflict pre-check dry run to ensure standalone exports for `devx`, `homelab`, `mcp-slack`, `nexus-agent`, and `oauth-user-inspector` operate without error.
+   - Execute Copybara conflict pre-check dry run to ensure standalone exports for `devx`, `homelab`, `mcp-slack`, `vitruvian-code`, and `oauth-user-inspector` operate without error.
 2. **Batch 4.2: Environment Variable Fallback Ladders**:
    - Ensure all shell scripts and Go tools implement canonical environment variable ladders:
      ```bash

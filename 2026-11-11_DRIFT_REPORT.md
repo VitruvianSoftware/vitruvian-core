@@ -1270,10 +1270,6 @@ No drift detected.
 
 No drift detected.
 
-## apps/desktop/vitruvian/Sources/Vitruvian/Services/NexusAgent/README.md
-
-No drift detected.
-
 ## apps/desktop/vitruvian/Sources/Vitruvian/Services/Notch/README.md
 
 No drift detected.

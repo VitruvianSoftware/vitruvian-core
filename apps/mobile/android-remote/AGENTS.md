@@ -61,7 +61,7 @@ no design value of its own.
   `MIN_HOME_SPEAKER_VERSION`) and never reads or writes its settings, secrets, history, status or
   hook files; the one file it reads is `~/.gemini/speaker_door.json`, to learn which program (app or
   Vitruvian extension) is chosen. Its test is the golden `apps/desktop/home-speaker/testdata/state_v1.json`.
-- **Not mirrored.** Unlike `devx`, `mcp-slack` and `nexus-agent` there is no Copybara export;
+- **Not mirrored.** Unlike `devx`, `mcp-slack` and `vitruvian-code` there is no Copybara export;
   this directory is the only place the app is edited.
 
 ## HomeSpeaker Parity Checklist

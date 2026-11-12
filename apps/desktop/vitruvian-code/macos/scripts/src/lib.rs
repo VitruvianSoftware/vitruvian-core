@@ -412,60 +412,6 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    // --- the bridge --------------------------------------------------------------
-
-    /// The bridge is bundled as NexusAgent.app under the old bundle ID, with no
-    /// chat view in it: old installs swap that app in place.
-    #[test]
-    fn bundle_makes_the_bridge_app() {
-        let dir = std::env::temp_dir().join("bundle_bridge_test");
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        let fake_bin = dir.join("fake_bin");
-        fs::create_dir_all(&fake_bin).unwrap();
-        make_fake_tool(&fake_bin, "codesign", "#!/bin/sh\nexit 0\n");
-
-        let exe = dir.join("NexusAgent");
-        fs::write(&exe, b"fake-bridge").unwrap();
-        fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).unwrap();
-        let output = dir.join("output");
-        fs::create_dir_all(&output).unwrap();
-
-        let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let orig_path = std::env::var("PATH").unwrap_or_default();
-        std::env::set_var("PATH", format!("{}:{}", fake_bin.display(), orig_path));
-        let args: Vec<String> = vec![
-            "bundle-app".into(),
-            exe.to_str().unwrap().into(),
-            "1.33.0".into(),
-            output.to_str().unwrap().into(),
-            "--bridge".into(),
-        ];
-        let rc = bundle::run(&args);
-        std::env::set_var("PATH", &orig_path);
-
-        assert_eq!(
-            rc, 0,
-            "the bridge bundles without the chat view's resources"
-        );
-        let app = output.join("NexusAgent.app");
-        assert!(app.join("Contents/MacOS/NexusAgent").exists());
-        assert!(!output.join("Vitruvian Code.app").exists());
-        assert!(!app
-            .join("Contents/Resources/VitruvianCode_VitruvianCodeUI.bundle")
-            .exists());
-        let plist = fs::read_to_string(app.join("Contents/Info.plist")).unwrap();
-        assert!(plist.contains("<string>com.vitruviansoftware.nexusagent</string>"));
-        assert!(plist.contains("<string>NexusAgent</string>"));
-        // The version is how the bridge knows which release to fetch.
-        assert!(
-            plist.contains("<key>CFBundleShortVersionString</key>\n    <string>1.33.0</string>")
-        );
-        assert!(plist.contains("<key>LSUIElement</key>"));
-        assert!(!plist.contains("<key>NSAppleEventsUsageDescription</key>"));
-        let _ = fs::remove_dir_all(&dir);
-    }
-
     #[test]
     fn check_packaged_app_notarized_runs_spctl() {
         let dir = std::env::temp_dir().join("check_notarized_test");
@@ -477,15 +423,30 @@ mod tests {
         make_fake_tool(&fake_bin, "codesign", "#!/bin/sh\nexit 0\n");
         make_fake_tool(&fake_bin, "spctl", "#!/bin/sh\nexit 1\n");
 
-        let app = dir.join("NexusAgent.app");
+        let app = dir.join("Vitruvian Code.app");
+        let ui_bundle = app.join("Contents/Resources/VitruvianCode_VitruvianCodeUI.bundle");
+        fs::create_dir_all(&ui_bundle).unwrap();
         fs::create_dir_all(app.join("Contents/MacOS")).unwrap();
-        let exe = app.join("Contents/MacOS/NexusAgent");
+
+        let mermaid_content = b"mermaid-js-content";
+        fs::write(ui_bundle.join("mermaid.min.js"), mermaid_content).unwrap();
+        fs::write(ui_bundle.join("mermaid-LICENSE.txt"), b"licence").unwrap();
+        let sha = sha256_hex(mermaid_content);
+        fs::write(
+            dir.join("THIRD_PARTY_NOTICES.md"),
+            format!("| SHA-256 of the file | `{}` |\n", sha),
+        )
+        .unwrap();
+
+        let exe = app.join("Contents/MacOS/VitruvianCode");
         fs::write(&exe, b"fake").unwrap();
         fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).unwrap();
 
         let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let orig_path = std::env::var("PATH").unwrap_or_default();
+        let orig_cwd = std::env::current_dir().unwrap();
         std::env::set_var("PATH", format!("{}:{}", fake_bin.display(), orig_path));
+        std::env::set_current_dir(&dir).unwrap();
 
         let rejected = check_packaged_app::run(&[
             "check-packaged-app".into(),
@@ -504,46 +465,11 @@ mod tests {
             "x86_64".into(),
         ]);
 
+        std::env::set_current_dir(&orig_cwd).unwrap();
         std::env::set_var("PATH", &orig_path);
 
         assert_eq!(rejected, 1, "--notarized must fail when spctl rejects");
         assert_eq!(accepted, 0, "--notarized must pass when spctl accepts");
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn the_bridge_is_checked_for_its_program_and_signature_only() {
-        let dir = std::env::temp_dir().join("check_bridge_test");
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        let fake_bin = dir.join("fake_bin");
-        fs::create_dir_all(&fake_bin).unwrap();
-        make_fake_tool(&fake_bin, "lipo", "#!/bin/sh\necho \"arm64 x86_64\"\n");
-        make_fake_tool(&fake_bin, "codesign", "#!/bin/sh\nexit 0\n");
-        let app = dir.join("NexusAgent.app");
-        fs::create_dir_all(app.join("Contents/MacOS")).unwrap();
-        let exe = app.join("Contents/MacOS/NexusAgent");
-        fs::write(&exe, b"fake").unwrap();
-        fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).unwrap();
-
-        let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let orig_path = std::env::var("PATH").unwrap_or_default();
-        std::env::set_var("PATH", format!("{}:{}", fake_bin.display(), orig_path));
-        let ok = check_packaged_app::run(&[
-            "check-packaged-app".into(),
-            app.to_str().unwrap().into(),
-            "arm64".into(),
-            "x86_64".into(),
-        ]);
-        let wrong = check_packaged_app::run(&[
-            "check-packaged-app".into(),
-            app.to_str().unwrap().into(),
-            "arm64".into(),
-        ]);
-        std::env::set_var("PATH", &orig_path);
-
-        assert_eq!(ok, 0, "no Mermaid and no notices are asked of the bridge");
-        assert_eq!(wrong, 1, "but its processors are");
         let _ = fs::remove_dir_all(&dir);
     }
 }

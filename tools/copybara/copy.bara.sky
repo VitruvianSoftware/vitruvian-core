@@ -5,7 +5,7 @@
 #
 # Two sync shapes (selected per component by `is_one_way`):
 #   * ONE-WAY w/ PR-IMPORT (is_one_way=True) -- ALL current components (devx,
-#     homelab, mcp-slack, nexus-agent). The monorepo is the single source of
+#     homelab, mcp-slack, vitruvian-code). The monorepo is the single source of
 #     truth; each standalone is an EXPORT-ONLY mirror. Generates:
 #       - export_<comp>    : monorepo <comp>/ -> standalone root (push to `main`)
 #       - import_pr_<comp> : a labelled standalone PR -> a MONOREPO PR under
@@ -24,7 +24,7 @@
 #     `catalog:` -> concrete versions) so the mirror builds standalone.
 #
 # (`-` in a component name becomes `_` in the workflow name, e.g.
-#  export_nexus_agent.) The first run against a fresh destination (no rev-id
+#  export_vitruvian_code.) The first run against a fresh destination (no rev-id
 # baseline yet) needs a one-time `--force` to seed the baseline; normal runs use
 # --ignore-noop and rely on the rev-id labels below.
 #
@@ -376,9 +376,10 @@ COMPONENTS = [
         "is_one_way": True,
     },
     {
-        "name": "nexus-agent",
+        "name": "vitruvian-code",
         "repo": "vitruvian-code",
         "subtree": "apps/desktop/vitruvian-code",
+        # legacy name: NEXUS_AGENT_REV_ID retained for iterative Copybara history
         "standalone_rev_id": "NEXUS_AGENT_REV_ID",
         "standalone_only": ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,

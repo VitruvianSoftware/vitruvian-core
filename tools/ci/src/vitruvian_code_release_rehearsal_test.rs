@@ -25,7 +25,7 @@
 //! - apps/desktop/vitruvian-code/.github/workflows/release.yml is exported to the
 //!   public mirror and builds, packages and publishes a release there. It never
 //!   runs in this repository, and the mirror tags a release before it builds.
-//! - .github/workflows/nexus-agent-mirror-toolchain.yaml rehearses its build and
+//! - .github/workflows/vitruvian-code-mirror-toolchain.yaml rehearses its build and
 //!   packaging here, on pull requests.
 //!
 //! A rehearsal of different steps proves nothing about the release, and nothing
@@ -45,7 +45,7 @@ Two workflows hold the same steps:\n\
 - apps/desktop/vitruvian-code/.github/workflows/release.yml is exported to the\n\
   public mirror and builds, packages and publishes a release there. It never\n\
   runs in this repository, and the mirror tags a release before it builds.\n\
-- .github/workflows/nexus-agent-mirror-toolchain.yaml rehearses its build and\n\
+- .github/workflows/vitruvian-code-mirror-toolchain.yaml rehearses its build and\n\
   packaging here, on pull requests.\n\
 \n\
 A rehearsal of different steps proves nothing about the release, and nothing\n\
@@ -71,8 +71,6 @@ const REHEARSAL_ONLY: &[&str] = &[
     "Show the toolchain the mirror builds with",
     "Run the tests",
     "Show what was downloaded",
-    // The bridge is a package of its own: its tests are run apart.
-    "Run the bridge's tests",
     // The rehearsal starts the app it packaged; a release starts nothing.
     "Start the packaged app",
     "Check the app inside the ZIP",
@@ -118,16 +116,10 @@ const CHECKOUTS: &str = ".build/checkouts";
 
 fn shared_steps(release_job: &str) -> &'static [&'static str] {
     match release_job {
-        "build-macos" => &[
-            "Build for ${{ matrix.arch }}",
-            "Upload arch binary",
-            "Build the bridge for ${{ matrix.arch }}",
-            "Upload bridge binary",
-        ],
+        "build-macos" => &["Build for ${{ matrix.arch }}", "Upload arch binary"],
         "package" => &[
             "Download arm64 binary",
             "Download x86_64 binary",
-            "Download the bridge binaries",
             "Create universal binary",
             "Assemble .app bundles",
             "Sign and notarize apps and tool",
@@ -576,20 +568,18 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
         .filter(|l| l.starts_with("\"$RUNNER_TEMP/bundle-app\" "))
         .count();
     expect(
-        "four bundle-app calls: the three apps and the bridge",
-        calls == 4,
-    );
-    expect(
-        "the bridge bundled with --bridge",
-        body("Assemble .app bundles")
-            .iter()
-            .any(|l| l.starts_with("\"$RUNNER_TEMP/bundle-app\" ") && l.ends_with(" --bridge")),
+        "three bundle-app calls: universal, arm64 and x86_64",
+        calls == 3,
     );
     let sign_apps = body("Sign and notarize apps and tool");
     expect(
-        "explicit --entitlements-app, --plain-app, and --macho paths on `Sign and notarize apps and tool`",
-        sign_apps.iter().filter(|l| l.contains("--entitlements-app ")).count() == 3
-            && sign_apps.iter().any(|l| l.contains("--plain-app "))
+        "explicit --entitlements-app and --macho paths on `Sign and notarize apps and tool`",
+        sign_apps
+            .iter()
+            .filter(|l| l.contains("--entitlements-app "))
+            .count()
+            == 3
+            && !sign_apps.iter().any(|l| l.contains("--plain-app "))
             && sign_apps.iter().any(|l| l.contains("--macho ")),
     );
     let dmgs = body("Create DMGs");
@@ -602,19 +592,11 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
     );
     let zips = body("Create ZIP for auto-updater");
     expect(
-        "the new app's zip built with `ditto -c -k --keepParent`, saying macos and never universal",
+        "the app's zip built with `ditto -c -k --keepParent`, saying macos and never universal",
         zips.iter().any(|l| {
             l.starts_with("ditto -c -k --keepParent ")
                 && l.contains("Vitruvian Code.app\"")
                 && l.contains("VitruvianCode-${VERSION}-macos.zip\"")
-        }),
-    );
-    expect(
-        "the bridge's zip built with `ditto -c -k --keepParent`, the one asset that says universal",
-        zips.iter().any(|l| {
-            l.starts_with("ditto -c -k --keepParent ")
-                && l.contains("NexusAgent.app")
-                && l.contains("NexusAgent-${VERSION}-universal.zip\"")
         }),
     );
     expect(

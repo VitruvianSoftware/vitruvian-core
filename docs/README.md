@@ -26,7 +26,7 @@ mirrored one-way to standalone repos — **all development happens here**.
 flowchart TB
     subgraph repo["vitruvian-core (the single source of truth)"]
         direction TB
-        apps["<b>Applications</b><br/>tabula · oauth-user-inspector (SaaS)<br/>devx · homelab (CLIs)<br/>mcp-slack · nexus-agent (agents)"]
+        apps["<b>Applications</b><br/>tabula · oauth-user-inspector (SaaS)<br/>devx · homelab (CLIs)<br/>mcp-slack · vitruvian-code (agents)"]
         iac["<b>IaC — Pulumi in Go</b><br/>infrastructure/pulumi/<br/>(foundation, per-app stacks,<br/>repo self-governance)"]
         gitops["<b>GitOps — ArgoCD</b><br/>gitops/argocd/<br/>(dev-local k3s platform)"]
         tools["<b>Tooling</b><br/>tools/ — Bazel wrappers for<br/>pulumi, gitops, secrets, deploy,<br/>copybara, CI helpers"]

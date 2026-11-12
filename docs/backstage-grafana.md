@@ -144,8 +144,8 @@ git-managed in `gitops/argocd/platform/grafana-dashboards/`.
 
 Six catalog components have no dashboard card, and none of it is an oversight:
 
-- **`tabula`, `nexus-agent`, `mcp-slack`, `oauth-user-inspector`** run on Cloud
-  Run, not in the homelab cluster. This Grafana has no data for them at all, so
+- **`tabula`, `vitruvian-code`, `mcp-slack`, `oauth-user-inspector`** run on Cloud
+  Run or the user's Mac, not in the homelab cluster. This Grafana has no data for them at all, so
   there is nothing to point a selector at.
 - **`backstage`** runs here but is not scraped, and exposes no metrics endpoint —
   `/metrics` returns the frontend's `index.html`, because the SPA catch-all

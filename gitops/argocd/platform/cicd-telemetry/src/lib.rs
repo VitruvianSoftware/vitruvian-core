@@ -37,6 +37,7 @@ pub const WORKFLOW_NAMES: &[&str] = &[
     "Copybara Export (devx)",
     "Copybara Export (homelab)",
     "Copybara Export (mcp-slack)",
+    // legacy name: matches .github/workflows/copybara-export-nexus-agent.yaml workflow name
     "Copybara Export (nexus-agent)",
     "Copybara Export (oauth-user-inspector)",
     "Copybara Export (pulumi-library)",

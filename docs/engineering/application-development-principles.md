@@ -264,7 +264,7 @@ Pick the category that matches the artifact you are shipping. Each section is se
 | **Environments & promotion** | None — distribution-only. |
 | **Secrets & config** | Tokens read from `process.env` with a clear required-vars error; ship a committed `.env.example` documenting the keys **(target)** (some servers lack one). |
 | **Observability** | Structured logger and a minimal unit suite wired as a Bazel test target so the app enters the test sweep **(target)** — several agents have zero tests and only `console`/`stderr` output today. MCP stdio transports legitimately log to stderr, but the logs should still be structured. |
-| **Example apps** | `mcp-slack` (MCP server, dual-token), `nexus-agent` (Telegram→CLI bridge; also ships a Swift macOS client — see §3.5). |
+| **Example apps** | `mcp-slack` (MCP server, dual-token), `vitruvian-code` (Telegram→CLI bridge; also ships a Swift macOS client — see §3.5). |
 
 ---
 
@@ -298,7 +298,7 @@ Pick the category that matches the artifact you are shipping. Each section is se
 | **Environments & promotion** | Use **artifact release channels** (alpha/beta/stable) — this is a *distribution train*, orthogonal to server environments. Rolling beta releases update on push to `main`; production releases promote via release-please GitHub Release tags. |
 | **Secrets & config** | Client-side config only; backend secrets stay in the backend. Signing certificates (`SIGNING_CERT_P12`) and Apple Notary credentials (`NOTARY_API_KEY_P8`) injected via pipeline secrets into dedicated macOS runners (`runs-on: xcode-27`). |
 | **Observability** | App-appropriate client logging; a lightweight Playwright smoke for the critical render+auth path **(target)**. |
-| **Example apps** | `apps/desktop/home-speaker` (menu bar speech broadcaster), `apps/desktop/vitruvian` (agent control hub), `apps/desktop/nexus-agent/macos` (Swift menu bar bridge), `apps/suites/tabula/extension` (MV3 Chrome/Edge/Firefox). |
+| **Example apps** | `apps/desktop/home-speaker` (menu bar speech broadcaster), `apps/desktop/vitruvian` (agent control hub), `apps/desktop/vitruvian-code/macos` (Swift menu bar bridge), `apps/suites/tabula/extension` (MV3 Chrome/Edge/Firefox). |
 
 ---
 

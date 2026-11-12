@@ -61,7 +61,7 @@ class UpdateChecker: ObservableObject {
                   let tagName = json["tag_name"] as? String,
                   let htmlURL = json["html_url"] as? String else { return }
 
-            // Extract just the semantic version from tags like "nexus-agent-v1.4.0"
+            // Extract just the semantic version from tags like "vitruvian-code-v1.4.0"
             let remoteVersion = VersionCompare.extractVersion(from: tagName)
 
             if VersionCompare.isNewerVersion(remote: remoteVersion, current: appVersion) {
@@ -71,8 +71,7 @@ class UpdateChecker: ObservableObject {
                 dismissed = false
 
                 // Find the app's ZIP for auto-update: exactly
-                // VitruvianCode-<version>-macos.zip. The release's "universal"
-                // zip is the bridge for old Nexus Agent installs, not this app.
+                // VitruvianCode-<version>-macos.zip.
                 downloadAssetURL = nil
                 if let assets = json["assets"] as? [[String: Any]] {
                     let names = assets.compactMap { $0["name"] as? String }

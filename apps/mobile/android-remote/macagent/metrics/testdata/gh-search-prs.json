@@ -122,12 +122,12 @@
   {
     "number": 29,
     "repository": {
-      "name": "nexus-agent",
-      "nameWithOwner": "VitruvianSoftware/nexus-agent"
+      "name": "vitruvian-code",
+      "nameWithOwner": "VitruvianSoftware/vitruvian-code"
     },
-    "title": "chore(main): release nexus-agent 1.11.0",
+    "title": "chore(main): release vitruvian-code 1.11.0",
     "updatedAt": "2026-06-26T17:15:07Z",
-    "url": "https://github.com/VitruvianSoftware/nexus-agent/pull/29"
+    "url": "https://github.com/VitruvianSoftware/vitruvian-code/pull/29"
   },
   {
     "number": 22,

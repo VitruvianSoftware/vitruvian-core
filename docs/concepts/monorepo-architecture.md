@@ -15,7 +15,7 @@ flowchart TB
         subgraph appsg["Applications (by category)"]
             saas["SaaS web services<br/>tabula · oauth-user-inspector"]
             clis["CLIs / dev tools<br/>devx · homelab"]
-            agents["Agent / MCP services<br/>mcp-slack · nexus-agent"]
+            agents["Agent / MCP services<br/>mcp-slack · vitruvian-code"]
         end
         subgraph infra["infrastructure/pulumi (IaC, Go)"]
             found["GCP foundation<br/>bootstrap → org → environments<br/>→ networks → projects → app-infra"]
@@ -43,7 +43,7 @@ Six first-party apps in three categories (full taxonomy + per-category standards
 |---|---|---|---|
 | SaaS web service | `tabula`, `oauth-user-inspector` | GCP Cloud Run (per-app project) | deploy pipeline (blue-green) |
 | CLI / developer tool | `devx`, `homelab` | user's machine | GitHub Releases + Homebrew (mirror) |
-| Agent / MCP service | `mcp-slack`, `nexus-agent` | user's machine (`mcp-slack` also hosted on the homelab cluster) | container image on GHCR (`mcp-slack`) / DMG (mirror) |
+| Agent / MCP service | `mcp-slack`, `vitruvian-code` | user's machine (`mcp-slack` also hosted on the homelab cluster) | container image on GHCR (`mcp-slack`) / DMG (mirror) |
 
 The category determines the hosting target, build shape, secrets model, and release
 mechanics — there is no free choice
@@ -136,7 +136,7 @@ vitruvian-core/
 │   ├── suites/tabula/                 # SaaS suite (with its infra/ Pulumi stacks)
 │   ├── web/oauth-user-inspector/      # SaaS web app (with its infra/ Pulumi stacks)
 │   ├── cli/devx/  cli/homelab/        # Go CLIs
-│   └── mcp/slack/  desktop/nexus-agent/ # agent / MCP services
+│   └── mcp/slack/  desktop/vitruvian-code/ # agent / MCP services
 ├── packages/
 │   └── pulumi/                        # shared Pulumi library + foundation examples
 ├── infrastructure/

@@ -95,8 +95,7 @@ package final class CatalogueWatch: ObservableObject {
     }
 
     /// The list kept from the last launch, verified again, or nil when none
-    /// is kept or it no longer verifies. For what must know the catalog
-    /// before the watch has started (`ToolIDMigration`).
+    /// is kept or it no longer verifies.
     package static func keptCatalogue(at kept: URL?, source: CatalogueSource) -> Catalogue? {
         readKept(at: kept, source: source)?.1
     }

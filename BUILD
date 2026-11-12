@@ -183,7 +183,7 @@ exports_files(
 # The rehearsal of the standalone Vitruvian Code's release, read by the test that
 # keeps it running the same steps as the release workflow the mirror runs.
 exports_files(
-    [".github/workflows/nexus-agent-mirror-toolchain.yaml"],
+    [".github/workflows/vitruvian-code-mirror-toolchain.yaml"],
     visibility = ["//tools/ci:__pkg__"],
 )
 

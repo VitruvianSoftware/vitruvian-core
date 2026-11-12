@@ -24,7 +24,7 @@ import VitruvianCodeCore
 
 final class VersionCompareTests: XCTestCase {
     func testExtractVersionFromComponentPrefixedTag() {
-        XCTAssertEqual(VersionCompare.extractVersion(from: "nexus-agent-v1.10.2"), "1.10.2")
+        XCTAssertEqual(VersionCompare.extractVersion(from: "vitruvian-code-v1.34.0"), "1.34.0")
     }
 
     func testExtractVersionFromVPrefixedTag() {
@@ -37,11 +37,10 @@ final class VersionCompareTests: XCTestCase {
 
     func testTheUpdateAssetIsExactlyTheMacosZip() {
         XCTAssertEqual(VersionCompare.updateAssetName(version: "1.33.0"), "VitruvianCode-1.33.0-macos.zip")
-        let names = ["NexusAgent-1.33.0-universal.zip", "VitruvianCode-1.33.0-macos.dmg", "VitruvianCode-1.33.0-macos.zip.sha256",
+        let names = ["vitruvian-code-tool-1.33.0.zip", "VitruvianCode-1.33.0-macos.dmg", "VitruvianCode-1.33.0-macos.zip.sha256",
                      "VitruvianCode-1.33.0-macos.zip", "VitruvianCode-1.32.0-macos.zip"]
         XCTAssertEqual(VersionCompare.updateAsset(in: names, version: "1.33.0"), "VitruvianCode-1.33.0-macos.zip")
-        // The bridge's zip is the one that says "universal", and is never the update.
-        XCTAssertNil(VersionCompare.updateAsset(in: ["NexusAgent-1.33.0-universal.zip"], version: "1.33.0"))
+        XCTAssertNil(VersionCompare.updateAsset(in: ["vitruvian-code-tool-1.33.0.zip"], version: "1.33.0"))
         XCTAssertNil(VersionCompare.updateAsset(in: names, version: "1.34.0"))
         XCTAssertFalse(VersionCompare.updateAssetName(version: "1.33.0").contains("universal"))
     }

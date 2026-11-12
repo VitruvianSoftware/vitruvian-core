@@ -21,7 +21,7 @@ filegroup(
 
 # The mirror's release workflow. It never runs in this repository, so
 # //tools/ci:vitruvian_code_release_rehearsal_test reads it to keep the rehearsal
-# (.github/workflows/nexus-agent-mirror-toolchain.yaml) running the same steps.
+# (.github/workflows/vitruvian-code-mirror-toolchain.yaml) running the same steps.
 #
 # A filegroup, not exports_files, on purpose: CI picks the tests to run by
 # asking what depends on the rules of each changed package

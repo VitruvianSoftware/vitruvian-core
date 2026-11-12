@@ -6,8 +6,7 @@ load("//tools/apple:defs.bzl", "APPLE_TOOLCHAIN_ONLY")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load("//tools/swift-test-preferences:defs.bzl", "swift_test")
 
-# The shared core: built into this app AND into the Vitruvian desktop app
-# (docs/superpowers/specs/2026-10-08-nexus-agent-shared-library-design.md).
+# The shared core: built into this app AND into the Vitruvian desktop app (#1851).
 # Swift 6 mode because Vitruvian's Core module is. Nothing here may import a
 # Vitruvian module: the dependency runs one way, MIT into GPL.
 # It is a module of its own because the app target has `@main`: linking that

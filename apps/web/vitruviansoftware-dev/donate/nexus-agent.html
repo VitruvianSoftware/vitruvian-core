@@ -9,10 +9,8 @@ description: >-
   Payments are handled by Stripe.
 ---
 {%- comment -%}
-  The address the Sponsor button on the app's mirror opens (the mirror was
-  called NexusAgent; /donate/vitruvian-code/ is the same page under its new name).
-  Its donations go to the `nexus-agent` Payment Link (_data/donations.yml), so
-  Stripe attributes them to Vitruvian Code. The page itself is
-  _includes/donate-app.html.
+  The donate page keyed to Stripe's `nexus-agent` Payment Link (_data/donations.yml)
+  until infrastructure renames the Stripe product key (/donate/vitruvian-code/
+  renders the same Payment Link). The page itself is _includes/donate-app.html.
 {%- endcomment -%}
 {%- include donate-app.html key="nexus-agent" -%}

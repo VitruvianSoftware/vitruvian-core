@@ -955,7 +955,7 @@ final class EngineHostTests: XCTestCase {
 
     /// Where a program named without a folder is looked for, as the
     /// standalone app's own chat looked (removed in step 3c; last shipped in
-    /// nexus-agent-v1.19.0): the usual install folders first, then
+    /// v1.19.0): the usual install folders first, then
     /// the folders on PATH, the first executable one winning.
     func testAProgramIsFoundWhereTheStandaloneLooks() {
         func find(_ name: String, path: String, executables: Set<String>, files: Set<String> = []) -> String? {

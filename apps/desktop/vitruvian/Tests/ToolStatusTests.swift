@@ -254,7 +254,7 @@ extension ToolStatusTests {
     static func secondsCountFromSince(_ suite: TestSuite) {
         let now = start.addingTimeInterval(754.6)
         suite.expect(RestingStatus.seconds(since: start, now: now, language: .enUS) == "754s",
-                     "the seconds since the start, whole, written as Nexus Agent writes them in English")
+                     "the seconds since the start, whole, written as Vitruvian Code writes them in English")
         suite.expect(RestingStatus.seconds(since: start, now: now, language: .ja) == "754秒",
                      "and as the person's language writes them")
     }

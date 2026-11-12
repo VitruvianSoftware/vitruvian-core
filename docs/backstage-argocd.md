@@ -180,8 +180,8 @@ are therefore checked by a test.
   looks up. ArgoCD itself has none either — it is not an ArgoCD Application, it
   is the Pulumi bootstrap that manages everything else.
 - **`tabula` and `oauth-user-inspector`** deploy to Cloud Run, and `devx`,
-  `homelab`, `nexus-agent` and `vitruviansoftware-dev` are CLIs and a static
-  site. None are ArgoCD Applications, so none are annotated.
+  `homelab`, `vitruvian-code` and `vitruviansoftware-dev` are CLIs, a desktop app
+  and a static site. None are ArgoCD Applications, so none are annotated.
 
 ## Verifying the annotations
 

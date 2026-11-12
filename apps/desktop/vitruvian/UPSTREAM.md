@@ -3056,6 +3056,9 @@ is that notice. Add an entry for every change to upstream files.
   - `Core/NexusAgentStrings.swift` (written by VitruvianSoftware): a translated `effortMax` for all 15 languages. The chat's 55 new strings are English for now.
   - `Tests/NexusAgentTests.swift` (written by VitruvianSoftware): three checks now expect the new behaviour: a tool start is activity and not an approval, OpenCode reasoning is thinking, and the Settings page's unknown-effort case uses `xhigh`, since `max` is now known.
 - **2026-10-22**: `Services/Notch/AgentsSlotReporter.swift` watches `ToolRegistry.shared.$revision` and checks `ExternalToolStore.shared.slotToolRunning(.agents)` so a slot tool that finishes `initialize` after the Agents Chat tab is already open receives its initial `ui/slot` frame immediately.
+- **2026-11-11**: Complete the Vitruvian Code cutover by removing retired built-in feature preference keys and updating comment wording:
+  - `UI/Notch/NotchAgentStrip.swift` (upstream file) and `Tests/ToolStatusTests.swift`: update doc/assertion comments to `Vitruvian Code`.
+  - `Core/Defaults.swift`, `Core/DefaultsKey.swift`, `Core/Preferences.swift`, `Core/GlobalShortcut.swift`, `Core/SettingsBackupSupport.swift`, and `Services/FeatureRuntime.swift` (upstream files): delete the retired `nexusAgent*` preference keys, shortcut default, and hand-off comment, and delete `Services/NexusAgent/NexusAgentHandoff.swift` and `Services/Platform/External/ToolIDMigration.swift`.
 
 ## Tracking and porting upstream
 
