@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: completed
 ---
 
 # Home Speaker on the phone: every extension option, and no drift
