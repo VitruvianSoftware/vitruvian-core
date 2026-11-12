@@ -26,6 +26,7 @@
 # gazelle:ignore
 
 load("@rules_cc//cc:defs.bzl", "cc_library")
+load("//tools/apple:defs.bzl", "APPLE_TOOLCHAIN_ONLY")
 load(":defs.bzl", "swift_test")
 
 cc_library(
@@ -51,5 +52,5 @@ swift_test(
     size = "small",
     srcs = ["Tests/TestPreferencesTests.swift"],
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
 )

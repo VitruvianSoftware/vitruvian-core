@@ -174,7 +174,7 @@ tool.onStart = { app in
     }
 }
 // The app's slot for the chat showed, moved or went.
-tool.onSlot = { _, slot in onMain { codeTool.slotChanged(slot) } }
+tool.onSlot = { _, slot in CommandAnswer.slotChanged { codeTool.slotChanged(slot) } }
 tool.onPreferencesChanged = { _, values in onMain { codeTool.preferencesChanged(values) } }
 tool.onLanguageChanged = { app in
     let language = app.language

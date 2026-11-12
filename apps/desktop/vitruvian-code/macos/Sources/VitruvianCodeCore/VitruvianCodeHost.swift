@@ -53,6 +53,10 @@ public protocol VitruvianCodeHost: AnyObject {
     /// Sessions the user pinned or renamed in the drawer, remembered
     /// between launches. Defaults to nothing kept.
     var sessionPreferences: VitruvianCodeSessionPreferences { get set }
+    /// Approval mode and plan switch saved per conversation ID (`"<mode>"` or `"<mode>|plan"`).
+    var chatModes: [String: String] { get set }
+    /// Whether the hidden per-provider Connection picker is shown in Settings.
+    var showsConnectionSetting: Bool { get set }
     /// User-facing text, in the app's language right now.
     var strings: VitruvianCodeHostStrings { get }
     /// A turn paused for the user to approve a tool.
@@ -69,6 +73,16 @@ public extension VitruvianCodeHost {
 
     var sessionPreferences: VitruvianCodeSessionPreferences {
         get { VitruvianCodeSessionPreferences() }
+        set {}
+    }
+
+    var chatModes: [String: String] {
+        get { [:] }
+        set {}
+    }
+
+    var showsConnectionSetting: Bool {
+        get { false }
         set {}
     }
 }

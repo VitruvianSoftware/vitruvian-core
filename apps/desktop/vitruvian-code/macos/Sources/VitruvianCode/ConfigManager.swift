@@ -32,6 +32,7 @@ struct CLIProvider: Codable, Identifiable, Equatable {
     var name: String
     var commandTemplate: String
     var isBuiltIn: Bool
+    var connection: AgentConnectionKind?
 
     /// Same id the Gemini CLI provider used, so a saved selection carries over.
     static let antigravity = CLIProvider(
@@ -62,21 +63,39 @@ struct CLIProvider: Codable, Identifiable, Equatable {
         isBuiltIn: true
     )
 
-    init(id: UUID, name: String, commandTemplate: String, isBuiltIn: Bool) {
+    init(
+        id: UUID,
+        name: String,
+        commandTemplate: String,
+        isBuiltIn: Bool,
+        connection: AgentConnectionKind? = nil
+    ) {
         self.id = id
         self.name = name
         self.commandTemplate = commandTemplate
         self.isBuiltIn = isBuiltIn
+        self.connection = connection
     }
 
     /// The same provider as the shared code holds it: field for field.
     init(_ shared: VitruvianCodeCLIProvider) {
-        self.init(id: shared.id, name: shared.name,
-                  commandTemplate: shared.commandTemplate, isBuiltIn: shared.isBuiltIn)
+        self.init(
+            id: shared.id,
+            name: shared.name,
+            commandTemplate: shared.commandTemplate,
+            isBuiltIn: shared.isBuiltIn,
+            connection: shared.connection
+        )
     }
 
     var shared: VitruvianCodeCLIProvider {
-        VitruvianCodeCLIProvider(id: id, name: name, commandTemplate: commandTemplate, isBuiltIn: isBuiltIn)
+        VitruvianCodeCLIProvider(
+            id: id,
+            name: name,
+            commandTemplate: commandTemplate,
+            isBuiltIn: isBuiltIn,
+            connection: connection
+        )
     }
 }
 
@@ -231,9 +250,9 @@ class ConfigManager: ObservableObject {
         self.host = host
 
         // Load preferences from UserDefaults
-        autoStart = UserDefaults.standard.bool(forKey: "autoStart")
-        hotkeyKey = UserDefaults.standard.string(forKey: "hotkeyKey") ?? "g"
-        hotkeyModifiers = UserDefaults.standard.integer(forKey: "hotkeyModifiers")
+        autoStart = AppPreferences.defaults.bool(forKey: "autoStart")
+        hotkeyKey = AppPreferences.defaults.string(forKey: "hotkeyKey") ?? "g"
+        hotkeyModifiers = AppPreferences.defaults.integer(forKey: "hotkeyModifiers")
         if hotkeyModifiers == 0 {
             // Default: ⌘+Shift
             hotkeyModifiers = Int(NSEvent.ModifierFlags([.command, .shift]).rawValue)
@@ -241,15 +260,15 @@ class ConfigManager: ObservableObject {
 
 
         // Update preferences
-        if UserDefaults.standard.object(forKey: "autoCheckUpdates") != nil {
-            autoCheckUpdates = UserDefaults.standard.bool(forKey: "autoCheckUpdates")
+        if AppPreferences.defaults.object(forKey: "autoCheckUpdates") != nil {
+            autoCheckUpdates = AppPreferences.defaults.bool(forKey: "autoCheckUpdates")
         }
 
         // A built-in list from before the Gemini CLI became Antigravity
         // holds the retired `gemini -p …` template for the same provider.
         // The list's key was bumped to v3 to drop those once; the old one is
         // removed here. The user's own providers are under another key.
-        UserDefaults.standard.removeObject(forKey: "builtInProviders_v2")
+        AppPreferences.defaults.removeObject(forKey: "builtInProviders_v2")
 
         // The chat chooses a provider through the engine, not through this
         // class, and Settings must show it. The publisher fires just before
@@ -350,7 +369,7 @@ class ConfigManager: ObservableObject {
             show(engine.configuration)
         } else {
             // No .env yet: try .env.example as a template
-            let examplePath = (engine.botDirectory as NSString).appendingPathComponent(".env.example")
+            let examplePath = engine.envExamplePath
             if let example = try? String(contentsOfFile: examplePath, encoding: .utf8) {
                 show(VitruvianCodeEnvFile.parse(example))
             }
@@ -392,9 +411,7 @@ class ConfigManager: ObservableObject {
         // handed over on every save: the engine does not keep it, and forgets
         // it each time it reads the file.
         let provider = activeProvider
-        configuration.botProvider = VitruvianCodeCLIProvider(
-            id: provider.id, name: provider.name,
-            commandTemplate: provider.commandTemplate, isBuiltIn: provider.isBuiltIn)
+        configuration.botProvider = provider.shared
         // A save that fails leaves the reason with the engine, which the log
         // panel shows.
         let saved = engine.save(configuration)
@@ -406,13 +423,13 @@ class ConfigManager: ObservableObject {
         }
 
         // Save all UserDefaults preferences
-        UserDefaults.standard.set(autoStart, forKey: "autoStart")
-        UserDefaults.standard.set(autoCheckUpdates, forKey: "autoCheckUpdates")
-        UserDefaults.standard.set(hotkeyKey, forKey: "hotkeyKey")
-        UserDefaults.standard.set(hotkeyModifiers, forKey: "hotkeyModifiers")
+        AppPreferences.defaults.set(autoStart, forKey: "autoStart")
+        AppPreferences.defaults.set(autoCheckUpdates, forKey: "autoCheckUpdates")
+        AppPreferences.defaults.set(hotkeyKey, forKey: "hotkeyKey")
+        AppPreferences.defaults.set(hotkeyModifiers, forKey: "hotkeyModifiers")
 
         saveProviders()
-        UserDefaults.standard.synchronize()
+        AppPreferences.defaults.synchronize()
 
         // Notify hotkey controller to re-register
         QuickPromptWindowController.shared.updateHotkey(

@@ -7,7 +7,7 @@ Custom Slack MCP server with **dual-token support** — reads via Bot Token, wri
 The official `@modelcontextprotocol/server-slack` provides a great foundation, but this repository was built to solve two major limitations for advanced AI agents:
 
 1. **User Impersonation (Dual-Token Architecture):** The official server uses only a Bot Token, meaning every message the AI sends appears as a generic "Bot" user. This implementation uses a **Dual-Token** architecture. Read-only and infrastructure tasks use the Bot token, while write operations (posting messages, reacting, pinning, editing) and searches use the User token. This allows the AI agent to truly act *as you*, preserving your identity in threads and direct messages.
-2. **Expanded Capabilities (41 Tools vs 9 Tools):** The official server is limited to basic read/reply functions. This server expands the toolkit to 41 specialized tools, adding native support for:
+2. **Expanded Capabilities (43 Tools vs 9 Tools):** The official server is limited to basic read/reply functions. This server expands the toolkit to 43 specialized tools, adding native support for:
    - **Canvas Management:** Full CRUD operations for Slack Canvases (create, read, edit sections, delete).
    - **Workspace Orchestration:** Read and manage channel pins, bookmarks, and topics.
    - **Advanced Search:** Utilize user-context search modifiers for both messages and files across the workspace.
@@ -24,8 +24,8 @@ flowchart TD
     subgraph Service["mcp-slack HTTP Server"]
         B --> C["Validate JWT against Zitadel JWKS"]
         C --> D{"User Token Present?"}
-        D -->|Yes - Impersonation Mode| E["Expose 40 Tools (all but local download) + Unrestricted Channels/DMs"]
-        D -->|No - Bot Only| F["Expose 10 Bot Tools + Enforce Allowlist"]
+        D -->|Yes - Impersonation Mode| E["Expose 42 Tools (39 if destructive withheld) + Unrestricted Channels/DMs"]
+        D -->|No - Bot Only| F["Expose 21 Bot Tools + Enforce Allowlist"]
     end
 
     subgraph Slack["Slack API Integration"]
@@ -47,12 +47,14 @@ flowchart TD
 | `slack_set_channel_topic` | User | Set channel topic |
 | `slack_get_users` | Bot | List workspace users |
 | `slack_get_user_profile` | Bot | Get user profile details |
+| `slack_whoami` | Bot/User | Who the server is acting as |
 | `slack_search_messages` | **User** | Search messages (modifiers supported) |
 | `slack_search_files` | **User** | Search files |
 | `slack_post_message` | **User** | Post a message as the authenticated user |
 | `slack_reply_to_thread` | **User** | Reply to a thread as the authenticated user |
 | `slack_update_message` | **User** | Edit a sent message |
 | `slack_add_reaction` | **User** | React to a message |
+| `slack_remove_reaction` | **User** | Remove a reaction emoji from a message |
 | `slack_list_pins` | Bot | List pinned items |
 | `slack_pin_message` | **User** | Pin a message |
 | `slack_unpin_message` | **User** | Unpin a message |
@@ -72,7 +74,7 @@ flowchart TD
 | `slack_mark_read` | **User** | Mark a conversation as read up to a message (clears the unread badge) |
 | `slack_list_emoji` | Bot | List custom emoji, optionally filtered by name |
 | `slack_get_file_info` | Bot | File metadata by ID or file URL (no private URLs) |
-| `slack_read_file` | Bot | Read a text file's content |
+| `slack_read_file` | Bot | Read a text file or canvas content |
 | `slack_upload_file` | Write token | Upload a file into a channel or thread |
 | `slack_download_file` | Bot | Save a file to local disk — **stdio only** |
 | `slack_list_user_groups` | Bot | List @handle user groups |
@@ -91,6 +93,17 @@ flowchart TD
 > with the read scopes every install has, and needs `im:read` and `mpim:read`
 > to include DMs; without them it lists the channels and names the DM types
 > it had to skip.
+
+### Tool Arguments & Ergonomics
+
+All 43 tools accept an optional `compact` boolean (default `false` unless `SLACK_COMPACT_OUTPUT` is enabled). Setting `compact: true` returns compact JSON with Slack UI blocks, client IDs, and avatar noise stripped out.
+
+- **`slack_get_channel_history`**: optional `limit`, `oldest`, `latest` (Slack timestamps), `since` (relative duration like `30m`, `24h`, or `7d`), `cursor` (pagination cursor), and `include_activity` (boolean, default `true` to include join/leave notices). The next page's cursor is in `response_metadata.next_cursor`.
+- **`slack_get_thread_replies`**: optional `limit` (max 200), `cursor`, `oldest`, and `latest`. The next page's cursor is in `response_metadata.next_cursor`.
+- **`slack_search_messages` & `slack_search_files`**: optional `page` (1-based) and `sort_dir` (`asc` or `desc`). When an allow-list is set, search results from disallowed channels are filtered out and reported under `filtered_out`.
+- **`slack_post_message`**: optional `thread_ts` (reply in thread), `reply_broadcast` (also post to channel), and `unfurl_links` (boolean).
+- **`slack_reply_to_thread`**: optional `reply_broadcast` (also post to channel) and `unfurl_links` (boolean).
+- **`slack_read_file`**: reads both text files and Slack canvases (files with type `canvas` or `quip`, or mime type `application/vnd.slack-docs`), returning text content marked with `format: "html"`. If the bot cannot see the file, the user token is tried (when one is set); the allow-list still applies.
 
 ## 🤖 For AI Agents: Auto-Configuration Instructions
 
@@ -184,11 +197,14 @@ manifest first.
 **User-token impersonation mode.** The HTTP transport supports an optional
 `SLACK_USER_TOKEN` for impersonation mode, where operations act as the
 authenticated human rather than the bot. When the user token is available,
-**40 of the 41 tools** are unlocked on HTTP — including workspace message & file search,
-canvases, user directory lookup, pins, bookmarks, topics, user groups, and direct
-messages (DMs). The one exception is `slack_download_file`, which writes to the
-local disk and is never offered on HTTP under any credential.
-`SLACK_CHANNEL_IDS` also becomes optional, allowing full unrestricted conversation access.
+**42 of the 43 tools** are offered on HTTP — including workspace message & file search,
+canvases, user directory lookup, pins, bookmarks, topics, user groups, direct
+messages (DMs), and reaction removal. The one exception is `slack_download_file`,
+which writes to local disk and is never offered on HTTP under any credential.
+On fresh installs, destructive tools are withheld by default (39 tools offered)
+unless `SLACK_HTTP_ALLOW_DESTRUCTIVE` is enabled.
+`SLACK_CHANNEL_IDS` is optional in impersonation mode (omitted = unrestricted
+access). When configured, the allow-list strictly restricts all access.
 
 ## Manual Setup
 
@@ -212,17 +228,20 @@ After creating the app, click **Install to Workspace**. Then navigate to **OAuth
 | `SLACK_TEAM_ID` | ✅ | Workspace Team ID |
 | `SLACK_CHANNEL_IDS` | ❌ | Comma-separated **public** channel IDs. Optional in impersonation mode (empty = unrestricted access to all channels, DMs, and groups); required only in bot-only HTTP mode |
 | `SLACK_PRIVATE_CHANNEL_IDS` | ❌ | Comma-separated **private** channel IDs, declared separately from the public ones |
+| `SLACK_COMPACT_OUTPUT` | ❌ | *(Optional)* Set to `true` or `1` to enable compact JSON output across all tools by default (default `false`) |
 
-`SLACK_CHANNEL_IDS` used to filter only `slack_list_channels`; a caller who knew
-an ID could still read or write any conversation the bot belonged to. It is now
-enforced on every call. On stdio that is the only difference — visibility is not
-checked, because stdio users were never asked to declare it and a private channel
-in an existing `SLACK_CHANNEL_IDS` would otherwise start failing on upgrade.
+`SLACK_CHANNEL_IDS` is enforced on every call. The allow-list now holds even
+when a user token is set:
+- **No silent bot-to-user fallback:** If the bot cannot access a channel, the bot's error is returned directly rather than silently retrying with the user token. If you get `not_in_channel` for a listed channel, invite the bot to it.
+- **Search filtering:** Search queries automatically filter out matches outside allowed channels and report the count of removed items under `filtered_out`.
+- **Canvas operations:** Canvas tools (`slack_edit_canvas`, `slack_lookup_canvas_sections`, `slack_delete_canvas`) enforce channel share checks before acting.
+- **Enforced visibility:** Visibility is enforced whenever `SLACK_CHANNEL_IDS` is set, on both transports, regardless of the user token.
 
-Both lists are required to be accurate on the HTTP transport, where the server
-verifies each one against Slack at startup and **refuses to start** on a
-disagreement. The split exists for exactly that check: with one list, "is this
-channel allowed" and "is it listed as private" are the same question, so nothing
+Both lists must accurately reflect channel privacy whenever an allow-list is configured.
+The startup check and refusal to start on a disagreement are HTTP only; on stdio
+there is no startup check. On both transports, visibility is enforced on each call
+whenever an allow-list is set. The split exists for exactly that check: with one list,
+"is this channel allowed" and "is it listed as private" are the same question, so nothing
 can contradict it. With two, pasting a private channel ID into the public list —
 the mistake an allow-list structurally cannot catch, since the ID *is* on the
 list — becomes a contradiction the server can see.
@@ -242,24 +261,29 @@ shared nowhere the server may see is refused, including one shared nowhere.
 > listener — so add-then-deploy-then-invite does not start at all, and looks like
 > a broken deploy rather than a skipped step. The startup error names the remedy.
 
+#### Rate Limiting
+
+Slack API calls handle HTTP 429 rate limit responses automatically. Calls retry up to 2 times, waiting at most 10s (`min(Retry-After, 10s)`) between attempts.
+
 #### HTTP transport only
 
 Set `MCP_TRANSPORT=http` and the server becomes a network listener instead of a
-stdio child process. Every variable below is **required**, and the server
+stdio child process. The OIDC settings below are **required**, and the server
 refuses to start without them — there is no permissive default anywhere in this
 branch, because a misconfigured public endpoint that starts anyway is the whole
-failure mode.
+failure mode. `PORT` is optional and defaults to `3000`.
 
 | Variable | Description |
 |---|---|
 | `MCP_TRANSPORT` | `http` to switch transports; omit for stdio |
-| `PORT` | Listener port (default `3000`) |
+| `PORT` | *(Optional)* Listener port (default `3000`) |
 | `OIDC_ISSUER` | Issuer whose tokens are accepted, e.g. `https://auth.ipv1337.dev` |
 | `OIDC_PROJECT_ID` | Zitadel project that must appear in each token's `aud` |
 | `OIDC_ALLOWED_SUBJECTS` | Comma-separated `sub` values this endpoint serves |
 | `OIDC_ALLOWED_CLIENT_ID` | OIDC client this server pins itself to (#1491) |
 | `SLACK_USER_TOKEN` | *(Optional)* User OAuth Token (`xoxp-...`). When set, enables impersonation mode |
 | `SLACK_WRITE_MODE` | *(Optional)* `user` (default when `SLACK_USER_TOKEN` is set) or `bot`. Controls whether writes post as the human or as the bot |
+| `SLACK_HTTP_ALLOW_DESTRUCTIVE` | *(Optional)* Set to `true` or `1` to expose destructive tools on HTTP (`slack_delete_canvas`, `slack_set_user_group_enabled`, `slack_set_user_group_members`). Default `false` on new installs |
 
 **Impersonation mode.** When `SLACK_USER_TOKEN` is set on the HTTP transport,
 write operations (`post_message`, `reply_to_thread`, `update_message`) default
@@ -267,6 +291,11 @@ to posting as the authenticated human — matching the stdio transport's
 behaviour. Set `SLACK_WRITE_MODE=bot` to override this and post as the bot even
 when the user token is available. When `SLACK_USER_TOKEN` is absent, the server
 runs in bot-only mode with no config change required (backwards compatible).
+
+**Destructive tools on HTTP.** By default on new installs, destructive tools
+(`slack_delete_canvas`, `slack_set_user_group_enabled`, and `slack_set_user_group_members`)
+are withheld on the HTTP transport. Set `SLACK_HTTP_ALLOW_DESTRUCTIVE=true` (or `1`) to expose
+and allow calling them. Stdio is unaffected.
 
 **`OIDC_ALLOWED_SUBJECTS` is not redundant with the audience check**, and it is
 worth being clear about why, because the two look like they overlap. Zitadel
@@ -395,7 +424,7 @@ To connect your hosted `mcp-slack` server to Gemini Spark as a Custom MCP App:
 | **Authentication** | Local process environment variables | RFC 9728 metadata discovery + Zitadel OAuth (JWT) |
 | **Identity & Writes** | Dual-Token: Posts *as you* (User Token `xoxp-...`) | Configurable: Posts *as you* (default, `SLACK_WRITE_MODE=user`) or as bot (`SLACK_WRITE_MODE=bot`) |
 | **Security Controls** | Local machine boundary; optional channel filter | Strict per-request Zitadel `sub` allowlist + channel allowlist |
-| **Tool Surface** | All 41 tools (messaging, search, canvases, pins, files, user groups) | 40 tools with user token (everything but local file download) or 20 without |
+| **Tool Surface** | All 43 tools (messaging, search, canvases, pins, files, user groups) | 42 tools with user token when `SLACK_HTTP_ALLOW_DESTRUCTIVE` is on (39 when off; all but local file download) or 21 bot-only tools (no user token) |
 
 ---
 

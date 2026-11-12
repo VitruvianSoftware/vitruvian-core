@@ -179,12 +179,12 @@ public enum Pages {
             if !supportsSections { text(UIText.plain(word("workingFolderCaption")), style: .caption) }
             if supportsChoice {
                 choice(Block.approval, title: UIText.plain(word("approvalMode")), value: draft.approvalMode.rawValue,
-                       options: VitruvianCodeApprovalMode.allCases.map { mode in
+                       options: VitruvianCodeApprovalMode.globalChoices.map { mode in
                            UIChoiceOption(value: mode.rawValue, title: UIText.plain(approvalName(mode, language: language)))
                        })
             } else {
                 text(UIText.plain(word("approvalMode")), style: .secondary)
-                list(Block.approval, VitruvianCodeApprovalMode.allCases.map { mode in
+                list(Block.approval, VitruvianCodeApprovalMode.globalChoices.map { mode in
                     UIListRow(id: mode.rawValue, title: UIText.plain(approvalName(mode, language: language)),
                               trailing: mode == draft.approvalMode ? "✓" : nil)
                 })
@@ -208,7 +208,7 @@ public enum Pages {
         case .yolo: return Words.text("approvalYolo", language)
         case .acceptEdits: return Words.text("approvalAcceptEdits", language)
         case .plan: return Words.text("approvalPlan", language)
-        case .standard: return Words.text("approvalDefault", language)
+        case .standard, .auto: return Words.text("approvalDefault", language)
         }
     }
 

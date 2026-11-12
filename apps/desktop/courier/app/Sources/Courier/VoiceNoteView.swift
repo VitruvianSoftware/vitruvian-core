@@ -18,6 +18,7 @@ struct VoiceNoteView: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
     }
+    var onReadAloudTranscript: (String) -> Void = { _ in }
 
     private static let defaultWaveform: [Int] = [
         18, 32, 48, 70, 54, 36, 62, 88, 74, 46, 28, 58,
@@ -35,6 +36,7 @@ struct VoiceNoteView: View {
             String(localized: "Transcribe"),
             String(localized: "Transcribing…"),
             String(localized: "Transcript"),
+            String(localized: "Read aloud"),
             String(localized: "Copy"),
             SpeechProvenance.onThisMac.transcriptFooter,
             SpeechProvenance.openAIWhisper.transcriptFooter,
@@ -220,6 +222,16 @@ struct VoiceNoteView: View {
                     .buttonStyle(.plain)
 
                     Spacer(minLength: 4)
+
+                    Button {
+                        onReadAloudTranscript(text)
+                    } label: {
+                        Text(String(localized: "Read aloud"))
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(secondaryColor)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(localized: "Read aloud"))
 
                     Button {
                         onCopyTranscript(text)

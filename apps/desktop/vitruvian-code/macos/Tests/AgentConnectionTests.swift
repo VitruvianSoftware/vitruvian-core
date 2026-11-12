@@ -235,7 +235,7 @@ final class AgentConnectionTests: XCTestCase {
         await connection.stop()
     }
 
-    func testMinimalAgentConnectionMethodsStoreRequestAndThrowNotSupportedYet() async throws {
+    func testStartStoresTheRequestAndSetConfigOptionIsNotSupportedYet() async throws {
         let rig = ComposerRig()
         let connection = CommandLineConnection(environment: rig.environment)
 
@@ -250,22 +250,8 @@ final class AgentConnectionTests: XCTestCase {
         XCTAssertEqual(connection.sessionRequest, resumeRequest)
 
         do {
-            _ = try await connection.prompt([.text("hi")])
-            XCTFail("expected prompt(_:) to throw notSupportedYet in step 1a")
-        } catch let error as AgentConnectionError {
-            XCTAssertEqual(error, .notSupportedYet)
-        }
-
-        do {
-            try await connection.answer("r1", .cancelled)
-            XCTFail("expected answer(_:_:) to throw notSupportedYet in step 1a")
-        } catch let error as AgentConnectionError {
-            XCTAssertEqual(error, .notSupportedYet)
-        }
-
-        do {
             _ = try await connection.setConfigOption("model", .string("sonnet"))
-            XCTFail("expected setConfigOption(_:_:) to throw notSupportedYet in step 1a")
+            XCTFail("expected setConfigOption(_:_:) to throw notSupportedYet")
         } catch let error as AgentConnectionError {
             XCTAssertEqual(error, .notSupportedYet)
         }
@@ -372,5 +358,819 @@ final class AgentConnectionTests: XCTestCase {
 
         let aider = listed.first(where: { $0.name == "Aider" })
         XCTAssertEqual(aider?.connection, .commandLine)
+    }
+
+    // MARK: - (e) Step 1b: CommandLineConnection.prompt, answer, cancel and session wiring
+
+    func testCommandLineConnectionPromptMatchesArgumentsEnvironmentAndFirstStdinMessage() async throws {
+        let imageAttachment = VitruvianCodeAttachment(url: URL(fileURLWithPath: "/tmp/screen.png"), isImage: true)
+        let fileAttachment = VitruvianCodeAttachment(url: URL(fileURLWithPath: "/tmp/notes.md"), isImage: false)
+        let attachments = [imageAttachment, fileAttachment]
+        let blocks = VitruvianCodeQuickPromptSession.promptBlocks(text: "inspect files", attachments: attachments)
+        let baseEnv = ["PATH": "/usr/bin:/bin", "CUSTOM_FLAG": "yes"]
+
+        // 1. agy: same arguments & childEnvironment, no stdin user message, closes input on .finished, collects noise.
+        do {
+            let rig = LaunchCaptureRig(baseEnvironment: baseEnv)
+            let config = VitruvianCodeConfiguration(
+                approvalMode: .auto,
+                model: "gemini-4-argon-high",
+                effort: .high,
+                activeProvider: .antigravity
+            )
+            let spec = AgentConnectionSpec(
+                provider: .antigravity,
+                configuration: config,
+                agentPath: "/fake/agy",
+                workingDirectory: "/Users/rig/project",
+                ollamaDefaultModel: VitruvianCodeSupport.ollamaFallbackModel,
+                turnModes: AgentTurnModes(plan: false, worktree: false, attachments: attachments, fork: false),
+                environment: baseEnv
+            )
+            let connection = CommandLineConnection(spec: spec, environment: rig.environment)
+            let started = try await connection.start(
+                AgentSessionRequest(workingDirectory: "/Users/rig/project", resumeSessionID: "agy-conv-1")
+            )
+            XCTAssertEqual(started, "agy-conv-1")
+
+            let promptTask = Task { try await connection.prompt(blocks) }
+            guard await rig.waitForAgentLaunch() else {
+                XCTFail("Timed out waiting for agy launch")
+                return
+            }
+
+            let expectedArguments = VitruvianCodeSupport.agentArguments(
+                prompt: "inspect files",
+                configuration: config,
+                conversationID: "agy-conv-1",
+                planMode: false,
+                worktreeMode: false,
+                ollamaDefaultModel: VitruvianCodeSupport.ollamaFallbackModel,
+                attachments: attachments,
+                forkSession: false
+            )
+            let expectedEnv = VitruvianCodeSupport.childEnvironment(base: baseEnv, home: "/Users/rig")
+            XCTAssertEqual(rig.agentPath, "/fake/agy")
+            XCTAssertEqual(rig.agentDirectory, "/Users/rig/project")
+            XCTAssertEqual(rig.agentArguments, expectedArguments)
+            XCTAssertEqual(rig.agentEnvironment, expectedEnv)
+            XCTAssertTrue(rig.inputs.isEmpty, "agy does not receive a stream-json user message on stdin")
+
+            rig.agentOutput?(Data("agy warning: transient retry\n".utf8))
+            rig.agentOutput?(Data(#"{"type":"result","stop_reason":"end_turn","session_id":"agy-conv-1","result":"done"}"#.utf8 + Data("\n".utf8)))
+            XCTAssertEqual(rig.inputCloses, 1, "stdin closes when .finished arrives")
+            rig.agentExit?(0)
+
+            let stopReason = try await promptTask.value
+            XCTAssertEqual(stopReason, .endTurn)
+            XCTAssertEqual(connection.noiseLines, ["agy warning: transient retry"])
+            await connection.stop()
+        }
+
+        // 2. Claude with stream-json approvals (.standard, .acceptEdits, .auto): same arguments, environment and first stdin message.
+        for mode in [VitruvianCodeApprovalMode.standard, .acceptEdits, .auto] {
+            let rig = LaunchCaptureRig(baseEnvironment: baseEnv)
+            let config = VitruvianCodeConfiguration(
+                approvalMode: mode,
+                model: "claude-sonnet-4-6",
+                effort: .medium,
+                activeProvider: .claude
+            )
+            let spec = AgentConnectionSpec(
+                provider: .claude,
+                configuration: config,
+                agentPath: "/fake/claude",
+                workingDirectory: "/Users/rig/claude-repo",
+                ollamaDefaultModel: VitruvianCodeSupport.ollamaFallbackModel,
+                turnModes: AgentTurnModes(plan: false, worktree: true, attachments: attachments, fork: true),
+                environment: baseEnv
+            )
+            let connection = CommandLineConnection(spec: spec, environment: rig.environment)
+            _ = try await connection.start(
+                AgentSessionRequest(workingDirectory: "/Users/rig/claude-repo", resumeSessionID: "claude-conv-9")
+            )
+            let promptTask = Task { try await connection.prompt(blocks) }
+            guard await rig.waitForAgentLaunch() else {
+                XCTFail("Timed out waiting for Claude launch in mode \(mode)")
+                return
+            }
+
+            let expectedArguments = VitruvianCodeSupport.agentArguments(
+                prompt: "inspect files",
+                configuration: config,
+                conversationID: "claude-conv-9",
+                planMode: false,
+                worktreeMode: true,
+                ollamaDefaultModel: VitruvianCodeSupport.ollamaFallbackModel,
+                attachments: attachments,
+                forkSession: true
+            )
+            let expectedStdin = VitruvianCodeSupport.stdinUserMessage(
+                VitruvianCodeSupport.promptWithAttachments("inspect files", attachments)
+            )
+            XCTAssertEqual(rig.agentArguments, expectedArguments, "mode=\(mode)")
+            XCTAssertEqual(rig.agentEnvironment, VitruvianCodeSupport.childEnvironment(base: baseEnv, home: "/Users/rig"))
+            XCTAssertEqual(rig.inputs, [expectedStdin], "first stdin message matches stdinUserMessage in mode \(mode)")
+
+            rig.agentOutput?(Data(#"{"type":"result","stop_reason":"end_turn","session_id":"claude-conv-9","result":"ok"}"#.utf8 + Data("\n".utf8)))
+            XCTAssertEqual(rig.inputCloses, 1, "stdin closes on .finished in mode \(mode)")
+            rig.agentExit?(0)
+            let reason = try await promptTask.value
+            XCTAssertEqual(reason, .endTurn)
+            await connection.stop()
+        }
+
+        // 3. Custom command: launchCommand path, commandEnvironment, stdout reply and stderr failure outcome.
+        let customProvider = VitruvianCodeCLIProvider(
+            id: UUID(uuidString: "77777777-0000-0000-0000-000000000001")!,
+            name: "Custom Runner",
+            commandTemplate: "/usr/local/bin/custom-runner --model {model} \"{prompt}\"",
+            isBuiltIn: false
+        )
+        do {
+            let rig = LaunchCaptureRig(baseEnvironment: baseEnv, existingFiles: ["/usr/local/bin/custom-runner"])
+            let config = VitruvianCodeConfiguration(model: "custom-v1", activeProvider: customProvider)
+            let spec = AgentConnectionSpec(
+                provider: customProvider,
+                configuration: config,
+                agentPath: "/usr/local/bin/custom-runner",
+                workingDirectory: "/Users/rig/custom",
+                turnModes: AgentTurnModes(plan: false, worktree: false, attachments: [], fork: false),
+                environment: baseEnv
+            )
+            let connection = CommandLineConnection(spec: spec, environment: rig.environment)
+            _ = try await connection.start(AgentSessionRequest(workingDirectory: "/Users/rig/custom"))
+            let promptTask = Task { try await connection.prompt([.text("hello custom")]) }
+            guard await rig.waitForCommandLaunch() else {
+                XCTFail("Timed out waiting for custom command launch")
+                return
+            }
+
+            let expectedCommand = try XCTUnwrap(
+                VitruvianCodeSupport.providerCommand(
+                    template: customProvider.commandTemplate,
+                    prompt: "hello custom",
+                    model: "custom-v1"
+                )
+            )
+            let expectedEnv = VitruvianCodeSupport.commandEnvironment(
+                base: baseEnv,
+                fileExists: { path in path == "/usr/local/bin/custom-runner" }
+            )
+            XCTAssertEqual(rig.commandPath, "/usr/local/bin/custom-runner")
+            XCTAssertEqual(rig.commandArguments, expectedCommand.arguments)
+            XCTAssertEqual(rig.commandEnvironment, expectedEnv)
+
+            rig.commandOutput?(Data("custom answer\n".utf8))
+            rig.commandExit?(0)
+            let reason = try await promptTask.value
+            XCTAssertEqual(reason, .endTurn)
+            await connection.stop()
+
+            var streamed: [AgentEvent] = []
+            for await event in connection.events {
+                streamed.append(event)
+            }
+            XCTAssertEqual(streamed, [
+                .text("custom answer\n"),
+                .finished(status: "end_turn", response: "custom answer", error: nil, conversationID: nil),
+            ])
+        }
+
+        do {
+            let rig = LaunchCaptureRig(baseEnvironment: baseEnv, existingFiles: ["/usr/local/bin/custom-runner"])
+            let config = VitruvianCodeConfiguration(model: "custom-v1", activeProvider: customProvider)
+            let spec = AgentConnectionSpec(
+                provider: customProvider,
+                configuration: config,
+                agentPath: "/usr/local/bin/custom-runner",
+                workingDirectory: "/Users/rig/custom",
+                environment: baseEnv
+            )
+            let connection = CommandLineConnection(spec: spec, environment: rig.environment)
+            _ = try await connection.start(AgentSessionRequest(workingDirectory: "/Users/rig/custom"))
+            let promptTask = Task { try await connection.prompt([.text("boom")]) }
+            guard await rig.waitForCommandLaunch() else {
+                XCTFail("Timed out waiting for failing custom command launch")
+                return
+            }
+            rig.commandErrors?(Data("fatal custom failure\n".utf8))
+            rig.commandExit?(2)
+            let reason = try await promptTask.value
+            XCTAssertEqual(reason, .error)
+            await connection.stop()
+
+            var streamed: [AgentEvent] = []
+            for await event in connection.events {
+                streamed.append(event)
+            }
+            XCTAssertEqual(streamed, [
+                .finished(status: "error", response: nil, error: "fatal custom failure", conversationID: nil),
+            ])
+        }
+    }
+
+    func testCommandLineConnectionAnswerWritesSameApprovalJSON() async throws {
+        let rig = LaunchCaptureRig(baseEnvironment: ["PATH": "/usr/bin"])
+        let config = VitruvianCodeConfiguration(approvalMode: .standard, activeProvider: .claude)
+        let spec = AgentConnectionSpec(
+            provider: .claude,
+            configuration: config,
+            agentPath: "/fake/claude",
+            workingDirectory: "/Users/rig",
+            environment: ["PATH": "/usr/bin"]
+        )
+        let connection = CommandLineConnection(spec: spec, environment: rig.environment)
+        _ = try await connection.start(AgentSessionRequest(workingDirectory: "/Users/rig"))
+        let promptTask = Task { try await connection.prompt([.text("run tool")]) }
+        guard await rig.waitForAgentLaunch() else {
+            XCTFail("Timed out waiting for Claude launch")
+            return
+        }
+        rig.inputs.removeAll()
+
+        let cases: [(id: String, choice: AgentAnswer, status: VitruvianCodeApprovalRequest.Status)] = [
+            ("req-allow", .option("allow"), .approved),
+            ("req-session", .option("allow_always"), .sessionAllowed),
+            ("req-deny", .option("deny"), .denied),
+            ("req-cancel", .cancelled, .denied),
+        ]
+        for entry in cases {
+            try await connection.answer(entry.id, entry.choice)
+            let expected = try XCTUnwrap(
+                VitruvianCodeSupport.approvalResponseJSON(
+                    for: VitruvianCodeApprovalRequest(toolName: "Bash", commandOrPath: "ls", requestID: entry.id),
+                    decision: entry.status
+                )
+            )
+            XCTAssertEqual(rig.inputs.last, expected, "mismatch for \(entry.id)")
+        }
+
+        rig.agentExit?(0)
+        _ = try await promptTask.value
+        await connection.stop()
+    }
+
+    func testCommandLineConnectionCancelTerminatesProcessAndPromptReturnsCancelled() async throws {
+        let rig = LaunchCaptureRig(baseEnvironment: ["PATH": "/usr/bin"])
+        let config = VitruvianCodeConfiguration(approvalMode: .yolo, activeProvider: .claude)
+        let spec = AgentConnectionSpec(
+            provider: .claude,
+            configuration: config,
+            agentPath: "/fake/claude",
+            workingDirectory: "/Users/rig",
+            environment: ["PATH": "/usr/bin"]
+        )
+        let connection = CommandLineConnection(spec: spec, environment: rig.environment)
+        _ = try await connection.start(AgentSessionRequest(workingDirectory: "/Users/rig"))
+        let promptTask = Task { try await connection.prompt([.text("long work")]) }
+        guard await rig.waitForAgentLaunch() else {
+            XCTFail("Timed out waiting for launch before cancel")
+            return
+        }
+        XCTAssertEqual(rig.terminations, 0)
+
+        await connection.cancel()
+        XCTAssertEqual(rig.terminations, 1)
+
+        rig.agentExit?(15)
+        let reason = try await promptTask.value
+        XCTAssertEqual(reason, .cancelled)
+        await connection.stop()
+    }
+
+    func testSessionDrivesFakeAgentConnectionThroughMakeConnection() async throws {
+        let rig = ComposerRig()
+        var capturedSpecs: [AgentConnectionSpec] = []
+        var createdConnections: [FakeAgentConnection] = []
+
+        var env = rig.environment
+        env.makeConnection = { spec in
+            capturedSpecs.append(spec)
+            let fake = FakeAgentConnection()
+            createdConnections.append(fake)
+            return fake
+        }
+
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: rig.host)
+        session.takeCheckpoint = { _ in nil }
+
+        let imageAttachment = VitruvianCodeAttachment(url: URL(fileURLWithPath: "/tmp/shot.png"), isImage: true)
+        let fileAttachment = VitruvianCodeAttachment(url: URL(fileURLWithPath: "/tmp/doc.txt"), isImage: false)
+        session.attachments = [imageAttachment, fileAttachment]
+
+        let config = VitruvianCodeConfiguration(approvalMode: .auto, model: "claude-sonnet-4-6", activeProvider: .claude)
+        session.send("explain both", configuration: config, agentPath: "/fake/claude")
+
+        XCTAssertEqual(capturedSpecs.count, 1)
+        let firstSpec = try XCTUnwrap(capturedSpecs.first)
+        XCTAssertEqual(firstSpec.provider, .claude)
+        XCTAssertEqual(firstSpec.configuration.approvalMode, .auto)
+        XCTAssertEqual(firstSpec.agentPath, "/fake/claude")
+        XCTAssertEqual(firstSpec.workingDirectory, "/Users/rig")
+        XCTAssertEqual(firstSpec.turnModes.attachments, [imageAttachment, fileAttachment])
+
+        let fake1 = try XCTUnwrap(createdConnections.first)
+        for _ in 0..<1000 where fake1.promptBlocks.isEmpty {
+            await Task.yield()
+        }
+        XCTAssertEqual(fake1.startRequests, [AgentSessionRequest(workingDirectory: "/Users/rig", resumeSessionID: nil)])
+        XCTAssertEqual(fake1.promptBlocks, [[
+            .image(path: "/tmp/shot.png"),
+            .text("@/tmp/doc.txt"),
+            .text("explain both"),
+        ]])
+
+        fake1.emit(.started(conversationID: "fake-conv-77"))
+        fake1.emit(.approval(VitruvianCodeApprovalRequest(
+            toolName: "Bash",
+            commandOrPath: "git status",
+            requestID: "perm-77"
+        )))
+        for _ in 0..<1000 where !session.hasPendingApproval {
+            await Task.yield()
+        }
+        XCTAssertEqual(session.conversationID, "fake-conv-77")
+        XCTAssertTrue(session.hasPendingApproval)
+
+        let approvalMsg = try XCTUnwrap(session.messages.first { $0.approvalRequest?.requestID == "perm-77" })
+        session.decideApproval(messageID: approvalMsg.id, decision: .approved)
+        for _ in 0..<1000 where fake1.answers.isEmpty {
+            await Task.yield()
+        }
+        XCTAssertEqual(fake1.answers.count, 1)
+        XCTAssertEqual(fake1.answers.first?.0, "perm-77")
+        XCTAssertEqual(fake1.answers.first?.1, .option("allow"))
+
+        fake1.emit(.text("Reply through AgentConnection"))
+        fake1.emit(.finished(
+            status: "end_turn",
+            response: "Reply through AgentConnection",
+            error: nil,
+            conversationID: "fake-conv-77"
+        ))
+        fake1.finishPrompt(with: .endTurn)
+        for _ in 0..<1000 where session.isRunning {
+            await Task.yield()
+        }
+        XCTAssertFalse(session.isRunning)
+        XCTAssertEqual(session.messages.last?.text, "Reply through AgentConnection")
+        XCTAssertEqual(session.messages.last?.isError, false)
+
+        // Second turn resumes the conversation ID and `stop()` calls `cancel()`.
+        session.send("second turn", configuration: config, agentPath: "/fake/claude")
+        XCTAssertEqual(createdConnections.count, 2)
+        let fake2 = createdConnections[1]
+        for _ in 0..<1000 where fake2.promptBlocks.isEmpty {
+            await Task.yield()
+        }
+        XCTAssertEqual(
+            fake2.startRequests,
+            [AgentSessionRequest(workingDirectory: "/Users/rig", resumeSessionID: "fake-conv-77")]
+        )
+        session.stop()
+        for _ in 0..<1000 where fake2.cancelCount == 0 {
+            await Task.yield()
+        }
+        XCTAssertEqual(fake2.cancelCount, 1)
+        fake2.finishPrompt(with: .cancelled)
+        for _ in 0..<1000 where session.isRunning {
+            await Task.yield()
+        }
+    }
+
+    // MARK: - The plain-protocol path completes deterministically
+
+    /// What the chat shows and tells the app when a turn ends.
+    private struct Observed: Equatable {
+        var lastText: String?
+        var lastIsError: Bool?
+        var messageCount: Int
+        var failed: Bool?
+        var endedCleanly: Bool?
+        var failureDetail: String?
+        var noticeText: String?
+        var running: Bool
+    }
+
+    private func observe(_ session: VitruvianCodeQuickPromptSession, _ notices: [VitruvianCodeTurnNotice]) -> Observed {
+        Observed(
+            lastText: session.messages.last?.text,
+            lastIsError: session.messages.last?.isError,
+            messageCount: session.messages.count,
+            failed: notices.last?.failed,
+            endedCleanly: notices.last?.endedCleanly,
+            failureDetail: notices.last?.failureDetail,
+            noticeText: notices.last?.text,
+            running: session.isRunning
+        )
+    }
+
+    /// One turn of a built-in agent as a command-line process: the lines it
+    /// prints, then its exit.
+    private func commandLineTurn(lines: [String], exit status: Int32,
+                                 launchFails: Bool = false) -> Observed {
+        let rig = ComposerRig()
+        var environment = rig.environment
+        if launchFails {
+            environment.launchAgent = { _, _, _, _, _, _ in throw CocoaError(.fileNoSuchFile) }
+        }
+        let session = VitruvianCodeQuickPromptSession(environment: environment, host: rig.host)
+        session.takeCheckpoint = { _ in nil }
+        var notices: [VitruvianCodeTurnNotice] = []
+        session.onTurnFinished = { notices.append($0) }
+        session.send("go", configuration: VitruvianCodeConfiguration(approvalMode: .yolo, activeProvider: .claude),
+                     agentPath: "/fake/claude")
+        for line in lines { rig.agentOutput?(Data((line + "\n").utf8)) }
+        if !launchFails { rig.agentExit?(status) }
+        return observe(session, notices)
+    }
+
+    /// The same turn through a fake connection: the events it sends, then
+    /// how `prompt` ends. Everything is sent back to back, with no pause
+    /// between the last event and the end of the turn.
+    private func fakeTurn(events: [AgentEvent], reason: AgentStopReason = .endTurn,
+                          throwing error: (any Error)? = nil,
+                          trailing: [AgentEvent] = [],
+                          onCompletion: ((VitruvianCodeQuickPromptSession) -> Void)? = nil) async -> Observed {
+        let rig = ComposerRig()
+        var environment = rig.environment
+        let fake = FakeAgentConnection()
+        fake.promptError = error
+        environment.makeConnection = { _ in fake }
+        let session = VitruvianCodeQuickPromptSession(environment: environment, host: rig.host)
+        session.takeCheckpoint = { _ in nil }
+        var notices: [VitruvianCodeTurnNotice] = []
+        session.onTurnFinished = { notice in
+            notices.append(notice)
+            onCompletion?(session)
+        }
+        session.send("go", configuration: VitruvianCodeConfiguration(approvalMode: .yolo, activeProvider: .claude),
+                     agentPath: "/fake/claude")
+        for _ in 0..<1000 where fake.promptBlocks.isEmpty { await Task.yield() }
+        if error == nil {
+            for event in events { fake.emit(event) }
+            if trailing.isEmpty {
+                fake.finishPrompt(with: reason)
+            } else {
+                fake.finishPromptThenStreamEnds(with: reason, trailing: trailing, afterYields: 25)
+            }
+        }
+        for _ in 0..<1000 where session.isRunning { await Task.yield() }
+        return observe(session, notices)
+    }
+
+    func testEventsSentBeforePromptReturnsAreAllHandledInOrderAndFinishedComesFirst() async throws {
+        // Many events sent back to back with the end of the turn: a consumer
+        // that is stopped after a pause would lose the tail of them.
+        let pieces = (0..<400).map { String($0 % 10) }
+        var events: [AgentEvent] = pieces.map { .text($0) }
+        events.append(.finished(status: "end_turn", response: nil, error: nil, conversationID: "c-1"))
+        var atCompletion: (reply: String?, stopReason: String?)?
+        let seen = await fakeTurn(
+            events: events,
+            onCompletion: { session in
+                atCompletion = (session.messages.last?.text, session.messages.last?.stopReason)
+            }
+        )
+        let expected = pieces.joined()
+        XCTAssertEqual(seen.lastText, expected, "every event, in the order sent")
+        XCTAssertEqual(atCompletion?.reply, expected, "all of it was shown before the turn completed")
+        XCTAssertEqual(atCompletion?.stopReason, "end_turn", ".finished was handled before the turn completed")
+        XCTAssertEqual(seen.noticeText, expected)
+        XCTAssertFalse(seen.running)
+    }
+
+    func testEventsStillOnTheirWayWhenPromptReturnsAreHandledBeforeTheTurnCompletes() async throws {
+        var atCompletion: (reply: String?, stopReason: String?)?
+        let seen = await fakeTurn(
+            events: [.text("early ")],
+            trailing: [
+                .text("late"),
+                .finished(status: "end_turn", response: nil, error: nil, conversationID: "c-2"),
+            ],
+            onCompletion: { session in
+                atCompletion = (session.messages.last?.text, session.messages.last?.stopReason)
+            }
+        )
+        XCTAssertEqual(atCompletion?.reply, "early late", "the turn waited for the end of the stream")
+        XCTAssertEqual(atCompletion?.stopReason, "end_turn")
+        XCTAssertEqual(seen.lastText, "early late")
+        XCTAssertEqual(seen.failed, false)
+    }
+
+    func testEveryStopReasonShowsWhatTheCommandLineCaseShows() async throws {
+        let refusal = #"{"type":"result","stop_reason":"refusal","session_id":"s1","result":"I cannot help with that"}"#
+        let apiError = #"{"type":"result","is_error":true,"stop_reason":"error","session_id":"s1","result":"API Error: Overloaded"}"#
+        let ok = #"{"type":"result","stop_reason":"end_turn","session_id":"s1","result":"all done"}"#
+
+        // end_turn
+        let okEvents = AgentEvent.parseAll(ok)
+        XCTAssertFalse(okEvents.isEmpty)
+        let endTurnFake = await fakeTurn(events: okEvents, reason: .endTurn)
+        XCTAssertEqual(endTurnFake, commandLineTurn(lines: [ok], exit: 0))
+        XCTAssertEqual(endTurnFake.lastText, "all done")
+        XCTAssertEqual(endTurnFake.failed, false)
+
+        // refusal: the agent ended its turn, as exit 0 does for a command line.
+        let refusalFake = await fakeTurn(events: AgentEvent.parseAll(refusal), reason: .refusal)
+        XCTAssertEqual(refusalFake, commandLineTurn(lines: [refusal], exit: 0))
+        XCTAssertEqual(refusalFake.lastText, "I cannot help with that")
+        XCTAssertEqual(refusalFake.failed, false)
+
+        // error, with the agent saying what went wrong.
+        let errorFake = await fakeTurn(events: AgentEvent.parseAll(apiError), reason: .error)
+        XCTAssertEqual(errorFake, commandLineTurn(lines: [apiError], exit: 0))
+        XCTAssertEqual(errorFake.failed, true)
+        XCTAssertEqual(errorFake.failureDetail, "API Error: Overloaded")
+
+        // error with nothing printed: a bad exit, with the shared words.
+        let silentFake = await fakeTurn(events: [], reason: .error)
+        XCTAssertEqual(silentFake, commandLineTurn(lines: [], exit: 1))
+        XCTAssertEqual(silentFake.failed, true)
+        XCTAssertEqual(silentFake.lastIsError, true)
+        XCTAssertEqual(silentFake.lastText, VitruvianCodeHostStrings().agentFailed)
+    }
+
+    func testAPromptThatThrowsShowsWhatACommandThatCannotStartShows() async throws {
+        let thrown = await fakeTurn(events: [], throwing: CocoaError(.fileNoSuchFile))
+        let launchFailed = commandLineTurn(lines: [], exit: 0, launchFails: true)
+        XCTAssertEqual(thrown, launchFailed)
+        XCTAssertEqual(thrown.lastIsError, true)
+        XCTAssertEqual(thrown.lastText, VitruvianCodeHostStrings().agentFailed)
+        XCTAssertEqual(thrown.failed, true)
+        XCTAssertFalse(thrown.running)
+    }
+
+    // A custom command on the plain-protocol path ends as its own kind of turn.
+    private func customTurn(viaFake events: [AgentEvent]?, reason: AgentStopReason = .endTurn,
+                            stdout: String = "", stderr: String = "", exit status: Int32 = 0) async -> Observed {
+        let provider = VitruvianCodeCLIProvider(
+            id: UUID(uuidString: "77777777-0000-0000-0000-000000000009")!,
+            name: "Custom Runner",
+            commandTemplate: "/usr/local/bin/custom-runner \"{prompt}\"",
+            isBuiltIn: false
+        )
+        let rig = LaunchCaptureRig(baseEnvironment: ["PATH": "/usr/local/bin:/usr/bin"],
+                                   existingFiles: ["/usr/local/bin/custom-runner"])
+        var environment = rig.environment
+        let fake = FakeAgentConnection()
+        if events != nil { environment.makeConnection = { _ in fake } }
+        let session = VitruvianCodeQuickPromptSession(environment: environment, host: ComposerQuietHost())
+        session.takeCheckpoint = { _ in nil }
+        var notices: [VitruvianCodeTurnNotice] = []
+        session.onTurnFinished = { notices.append($0) }
+        session.send("go", configuration: VitruvianCodeConfiguration(activeProvider: provider), agentPath: nil)
+        if let events {
+            for _ in 0..<1000 where fake.promptBlocks.isEmpty { await Task.yield() }
+            for event in events { fake.emit(event) }
+            fake.finishPrompt(with: reason)
+        } else {
+            for _ in 0..<1000 where rig.commandOutput == nil { await Task.yield() }
+            if !stdout.isEmpty { rig.commandOutput?(Data(stdout.utf8)) }
+            if !stderr.isEmpty { rig.commandErrors?(Data(stderr.utf8)) }
+            rig.commandExit?(status)
+        }
+        for _ in 0..<1000 where session.isRunning { await Task.yield() }
+        return observe(session, notices)
+    }
+
+    func testACustomCommandOnTheProtocolPathCompletesLikeACommandDoes() async throws {
+        // It printed an answer.
+        let replyFake = await customTurn(viaFake: [
+            .text("hello "), .text("there\n"),
+            .finished(status: "end_turn", response: "hello there", error: nil, conversationID: nil),
+        ])
+        let replyCommand = await customTurn(viaFake: nil, stdout: "hello there\n")
+        XCTAssertEqual(replyFake, replyCommand)
+        XCTAssertEqual(replyFake.lastText, "hello there")
+        XCTAssertEqual(replyFake.endedCleanly, true)
+
+        // It failed and said why on standard error.
+        let failedFake = await customTurn(viaFake: [
+            .finished(status: "error", response: nil, error: "no such model", conversationID: nil),
+        ], reason: .error)
+        let failedCommand = await customTurn(viaFake: nil, stderr: "no such model\n", exit: 2)
+        XCTAssertEqual(failedFake.lastText, failedCommand.lastText)
+        XCTAssertEqual(failedFake.lastIsError, true)
+        XCTAssertEqual(failedFake.failed, true)
+        XCTAssertEqual(failedFake.failureDetail, "no such model")
+        XCTAssertEqual(failedFake.messageCount, failedCommand.messageCount)
+
+        // It printed nothing.
+        let silentFake = await customTurn(viaFake: [], reason: .endTurn)
+        let silentCommand = await customTurn(viaFake: nil)
+        XCTAssertEqual(silentFake, silentCommand)
+        XCTAssertEqual(silentFake.lastText, VitruvianCodeHostStrings().commandNoOutput)
+    }
+
+    /// Events of a turn that has since been replaced (here by New chat) must not
+    /// reach the screen, the same rule the callback path has.
+    func testSessionDropsEventsOfAReplacedTurnFromAFakeConnection() async throws {
+        let rig = ComposerRig()
+        var created: [FakeAgentConnection] = []
+        var env = rig.environment
+        env.makeConnection = { _ in
+            let fake = FakeAgentConnection()
+            created.append(fake)
+            return fake
+        }
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: rig.host)
+        session.takeCheckpoint = { _ in nil }
+        let config = VitruvianCodeConfiguration(approvalMode: .yolo, activeProvider: .claude)
+        session.send("first", configuration: config, agentPath: "/fake/claude")
+        let stale = try XCTUnwrap(created.first)
+        for _ in 0..<1000 where stale.promptBlocks.isEmpty {
+            await Task.yield()
+        }
+        XCTAssertTrue(session.isRunning)
+
+        session.newChat()
+        XCTAssertTrue(session.messages.isEmpty)
+
+        stale.emit(.started(conversationID: "stale-conv"))
+        stale.emit(.text("stale words"))
+        stale.emit(.finished(status: "end_turn", response: "stale words", error: nil, conversationID: "stale-conv"))
+        stale.finishPrompt(with: .endTurn)
+        for _ in 0..<50 {
+            await Task.yield()
+        }
+        XCTAssertTrue(session.messages.isEmpty, "a replaced turn's events are dropped")
+        XCTAssertNil(session.conversationID)
+        XCTAssertFalse(session.isRunning)
+    }
+}
+
+@MainActor
+private final class LaunchCaptureRig {
+    let defaults: UserDefaults
+    let baseEnvironment: [String: String]
+    let existingFiles: Set<String>
+
+    var agentPath: String?
+    var agentArguments: [String] = []
+    var agentDirectory: String?
+    var agentEnvironment: [String: String] = [:]
+    var agentOutput: (@MainActor @Sendable (Data) -> Void)?
+    var agentExit: (@MainActor @Sendable (Int32) -> Void)?
+
+    var commandPath: String?
+    var commandArguments: [String] = []
+    var commandDirectory: String?
+    var commandEnvironment: [String: String] = [:]
+    var commandOutput: (@MainActor @Sendable (Data) -> Void)?
+    var commandErrors: (@MainActor @Sendable (Data) -> Void)?
+    var commandExit: (@MainActor @Sendable (Int32) -> Void)?
+
+    var inputs: [Data] = []
+    var inputCloses = 0
+    var terminations = 0
+
+    init(baseEnvironment: [String: String], existingFiles: Set<String> = []) {
+        let suite = "com.vitruviansoftware.vitruvian-code.tests.launch-capture.\(UUID().uuidString)"
+        defaults = ScratchDefaults.suite(named: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        self.baseEnvironment = baseEnvironment
+        self.existingFiles = existingFiles
+    }
+
+    var environment: VitruvianCodeEngine.Environment {
+        VitruvianCodeEngine.Environment(
+            defaults: defaults,
+            home: "/Users/rig",
+            processEnvironment: baseEnvironment,
+            stateDirectory: "/Users/rig/state",
+            isExecutable: { [existingFiles] path in existingFiles.contains(path) },
+            fileExists: { [existingFiles] path in existingFiles.contains(path) },
+            readFile: { _ in nil },
+            readTail: { _, _ in nil },
+            writePrivateFile: { _, _ in false },
+            removeFile: { _ in },
+            isBotProcess: { _ in false },
+            signal: { _, _ in },
+            launchBot: { _, _, _, _, _ in throw CocoaError(.fileWriteUnknown) },
+            schedule: { _, _ in },
+            openFile: { _ in },
+            launchAgent: { [unowned self] path, arguments, directory, env, onOutput, onExit in
+                agentPath = path
+                agentArguments = arguments
+                agentDirectory = directory
+                agentEnvironment = env
+                agentOutput = onOutput
+                agentExit = onExit
+                return VitruvianCodeRunningAgent(
+                    terminate: { [unowned self] in terminations += 1 },
+                    sendInput: { [unowned self] data in inputs.append(data) },
+                    closeInput: { [unowned self] in inputCloses += 1 }
+                )
+            },
+            launchCommand: { [unowned self] path, arguments, directory, env, onOutput, onErrors, onExit in
+                commandPath = path
+                commandArguments = arguments
+                commandDirectory = directory
+                commandEnvironment = env
+                commandOutput = onOutput
+                commandErrors = onErrors
+                commandExit = onExit
+                return VitruvianCodeRunningAgent(
+                    terminate: { [unowned self] in terminations += 1 }
+                )
+            }
+        )
+    }
+
+    func waitForAgentLaunch() async -> Bool {
+        for _ in 0..<1000 {
+            if agentOutput != nil { return true }
+            await Task.yield()
+        }
+        return false
+    }
+
+    func waitForCommandLaunch() async -> Bool {
+        for _ in 0..<1000 {
+            if commandOutput != nil { return true }
+            await Task.yield()
+        }
+        return false
+    }
+}
+
+@MainActor
+private final class FakeAgentConnection: AgentConnection {
+    let capabilities = AgentCapabilities(resumeSession: true, images: true)
+    let events: AsyncStream<AgentEvent>
+    private let eventContinuation: AsyncStream<AgentEvent>.Continuation
+    private var promptContinuation: CheckedContinuation<AgentStopReason, any Error>?
+
+    var startRequests: [AgentSessionRequest] = []
+    var promptBlocks: [[PromptBlock]] = []
+    var answers: [(String, AgentAnswer)] = []
+    var cancelCount = 0
+    var stopCount = 0
+    var promptError: (any Error)?
+
+    init() {
+        let (stream, continuation) = AsyncStream.makeStream(of: AgentEvent.self)
+        self.events = stream
+        self.eventContinuation = continuation
+    }
+
+    func start(_ request: AgentSessionRequest) async throws -> String {
+        startRequests.append(request)
+        return request.resumeSessionID ?? ""
+    }
+
+    func prompt(_ blocks: [PromptBlock]) async throws -> AgentStopReason {
+        promptBlocks.append(blocks)
+        if let promptError {
+            eventContinuation.finish()
+            throw promptError
+        }
+        return try await withCheckedThrowingContinuation { continuation in
+            self.promptContinuation = continuation
+        }
+    }
+
+    func cancel() async {
+        cancelCount += 1
+    }
+
+    func answer(_ requestID: String, _ choice: AgentAnswer) async throws {
+        answers.append((requestID, choice))
+    }
+
+    func setConfigOption(_ id: String, _ value: AgentConfigValue) async throws -> [AgentConfigOption] {
+        throw AgentConnectionError.notSupportedYet
+    }
+
+    func stop() async {
+        stopCount += 1
+        eventContinuation.finish()
+    }
+
+    func emit(_ event: AgentEvent) {
+        eventContinuation.yield(event)
+    }
+
+    /// Ends the turn, then sends `trailing` a little later and ends the stream:
+    /// what a connection whose last events are still on their way when its
+    /// prompt returns does.
+    func finishPromptThenStreamEnds(with reason: AgentStopReason, trailing: [AgentEvent], afterYields: Int) {
+        promptContinuation?.resume(returning: reason)
+        promptContinuation = nil
+        Task { @MainActor in
+            for _ in 0..<afterYields { await Task.yield() }
+            for event in trailing { eventContinuation.yield(event) }
+            eventContinuation.finish()
+        }
+    }
+
+    /// Ends the turn: the stream ends too, after what was sent, as a
+    /// per-turn connection does.
+    func finishPrompt(with reason: AgentStopReason) {
+        eventContinuation.finish()
+        promptContinuation?.resume(returning: reason)
+        promptContinuation = nil
     }
 }

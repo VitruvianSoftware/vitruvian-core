@@ -13,6 +13,16 @@
           "description": "Entity refs (users or groups) granted unrestricted access by the Vitruvian permission policy. Every other signed-in user is read-only.\n\nDefaults to `['group:default/platform-team']` when unset."
         }
       }
+    },
+    "sentry": {
+      "type": "object",
+      "properties": {
+        "dsn": {
+          "type": "string",
+          "description": "Sentry DSN for error reporting.",
+          "visibility": "frontend"
+        }
+      }
     }
   }
 }

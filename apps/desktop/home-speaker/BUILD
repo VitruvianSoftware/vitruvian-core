@@ -2,20 +2,21 @@ load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("//tools/apple:defs.bzl", "APPLE_TOOLCHAIN_ONLY")
 load("//tools/swift-test-preferences:defs.bzl", "swift_test")
 
 swift_library(
     name = "HomeSpeakerCore",
     srcs = glob(["Sources/HomeSpeakerCore/**/*.swift"]),
     module_name = "HomeSpeakerCore",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
 )
 
 swift_library(
     name = "HomeSpeakerLib",
     srcs = glob(["Sources/HomeSpeaker/**/*.swift"]),
     module_name = "HomeSpeaker",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":HomeSpeakerCore"],
 )
 
@@ -43,7 +44,7 @@ swift_test(
         "HOMESPEAKER_COURIER_URL": "http://localhost:9",
     },
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":HomeSpeakerCore"],
 )
 
@@ -60,7 +61,7 @@ swift_library(
     features = ["swift.enable_testing"],
     module_name = "HomeSpeaker",
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":HomeSpeakerCore"],
 )
 
@@ -79,7 +80,7 @@ swift_test(
         "HOMESPEAKER_COURIER_URL": "http://localhost:9",
     },
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":HomeSpeakerCore",
         ":HomeSpeakerViews",
@@ -98,7 +99,7 @@ swift_library(
     features = ["swift.enable_v6"],
     module_name = "HomeSpeakerToolCore",
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":HomeSpeakerCore",
         "//packages/vitruvian-sdk:VitruvianToolKit",
@@ -118,7 +119,7 @@ swift_test(
         "HOMESPEAKER_COURIER_URL": "http://localhost:9",
     },
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":HomeSpeakerCore",
         ":HomeSpeakerToolCore",
@@ -135,7 +136,7 @@ swift_binary(
     features = ["swift.enable_v6"],
     module_name = "HomeSpeakerToolProgram",
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":HomeSpeakerCore",
         ":HomeSpeakerToolCore",

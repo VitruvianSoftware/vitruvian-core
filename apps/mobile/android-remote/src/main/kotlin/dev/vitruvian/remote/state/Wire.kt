@@ -478,6 +478,8 @@ public data class HomeSpeakerSources(
     val homeSpeakerVersion: String = "",
     /** Courier's switch; null from an older agent, which does not know Courier. */
     val courierEnabled: Boolean? = null,
+    /** Whether announcements say who they are from: `off`, `app` or `app_and_session`. */
+    val announceSource: String = "off",
     val courierAnnounce: String = "direct_and_mentions",
     val courierNetworks: List<AgentBeeperNetwork> = emptyList(),
     /** Whether a Courier token is saved on the Mac. The token itself never comes to the phone. */
@@ -718,6 +720,7 @@ public object HomeSpeakerWire {
             } else {
               null
             },
+        announceSource = str("announce_source", "off"),
         courierAnnounce = str("courier_announce", "direct_and_mentions"),
         courierNetworks = networks("courier_networks"),
         hasCourierToken = flag("has_courier_token") ?: false,
@@ -801,6 +804,7 @@ public object HomeSpeakerWire {
       courierNetworkReading: Boolean? = null,
       courierReadAnywayKey: String? = null,
       courierReadAnywayOn: Boolean? = null,
+      announceSource: String? = null,
       settings: Map<String, Any>? = null,
   ): String = buildString {
     append('{')
@@ -874,6 +878,7 @@ public object HomeSpeakerWire {
       append('}')
     }
     putBool("courier_enabled", courierEnabled)
+    putStr("announce_source", announceSource)
     putStr("courier_announce", courierAnnounce)
     if (courierNetworkKey != null && courierNetworkReading != null) {
       sep("courier_network")

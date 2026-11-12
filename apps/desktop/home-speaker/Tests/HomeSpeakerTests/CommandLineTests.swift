@@ -265,7 +265,7 @@ private func announcement(_ arguments: [String], _ config: SpeakerConfig, _ rig:
         return await HomeSpeakerCommandLine.say(
             text, config: config, announcer: rig.announcer, history: rig.history,
             standsAside: false, door: rig.profile.door, records: records, at: date)
-    case .announce(let text, let agent):
+    case .announce(let text, let agent, _):
         return await HomeSpeakerCommandLine.announce(
             text, for: agent, config: config, announcer: rig.announcer, history: rig.history, standsAside: false, at: date)
     default:
@@ -1017,5 +1017,38 @@ private let unreadableSettings = "{ not json"
         // `--source` first is a --say line, never "must be the first argument".
         #expect(AppCommandParser.parse(["--source", "claude-code", "--say", "hi"]) == nil)
         #expect(HomeSpeakerCommandLine.recognizes(["--source", "claude-code", "--say", "hi"]))
+    }
+}
+
+/// `--announce` and an agent's `--say` say who they are from; a person's
+/// own `--say` never does.
+@Suite struct SourceLabelCommandLineTests {
+    @Test func theDetachedAnnouncementSpeaksTheLabelFirst() async throws {
+        let rig = try Rig()
+        var config = settings()
+        config.effectiveAnnouncementStyle = .verbatim
+        config.effectiveAnnounceSource = .appAndSession
+        _ = try rig.history.append(BroadcastLogItem(
+            text: "x", targetName: "Office", source: "Claude Code", session: SessionOrigin(id: "other", name: "Dedupe")))
+        let out = await HomeSpeakerCommandLine.announce(
+            "The build is green.", session: SessionOrigin(id: "mine", name: "repo: Courier"), config: config,
+            announcer: rig.announcer, history: rig.history, standsAside: false)
+        #expect(out.exitCode == 0)
+        #expect(rig.home.calls.all == ["Claude, Courier: The build is green."])
+        #expect(rig.history.load().first?.text == "The build is green.")
+        #expect(rig.history.load().first?.session == "mine")
+    }
+
+    @Test func aPersonsSayIsNeverLabelled() async throws {
+        let rig = try Rig()
+        var config = settings()
+        config.effectiveAnnounceSource = .app
+        _ = await HomeSpeakerCommandLine.say(
+            "Dinner is ready.", config: config, announcer: rig.announcer, history: rig.history,
+            standsAside: false, door: .app)
+        _ = await HomeSpeakerCommandLine.say(
+            "Tests pass.", config: config, announcer: rig.announcer, history: rig.history,
+            standsAside: false, door: .app, source: .antigravity)
+        #expect(rig.home.calls.all == ["Dinner is ready.", "Antigravity: Tests pass."])
     }
 }

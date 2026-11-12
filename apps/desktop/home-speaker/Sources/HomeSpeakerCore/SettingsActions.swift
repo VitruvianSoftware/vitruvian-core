@@ -395,6 +395,7 @@ public enum SettingsActions {
         case .announceClaudeCode: return .bool(config.announces(.claudeCode))
         case .announceAntigravity: return .bool(config.announces(.antigravity))
         case .announceOpenCode: return .bool(config.announces(.opencode))
+        case .announceSource: return .string(config.effectiveAnnounceSource.rawValue)
         case .slackEnabled: return .bool(config.effectiveChatMonitor.slackEnabled)
         case .googleChatEnabled: return .bool(config.effectiveChatMonitor.googleChatEnabled)
         case .beeperEnabled: return .bool(config.effectiveChatMonitor.beeperEnabled)
@@ -470,6 +471,8 @@ public enum SettingsActions {
         switch key {
         case .speechLength:
             if let v = SpeechLength(rawValue: choice) { config.speechLength = v }
+        case .announceSource:
+            if let v = AnnounceSourceLabel(rawValue: choice) { config.announceSource = v }
         case .announcementStyle:
             if let v = AnnouncementStyle(rawValue: choice) { config.announcementStyle = v }
         case .styleModel:

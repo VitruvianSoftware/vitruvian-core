@@ -25,6 +25,9 @@ app:
 organization:
   name: Vitruvian Software
 
+sentry:
+  dsn: ${SENTRY_DSN}
+
 backend:
   baseUrl: https://backstage.vitruviansoftware.dev
   listen:

@@ -210,6 +210,7 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
         (\.timelineLabel, "timelineLabel"), (\.timelinePromptPrefix, "timelinePromptPrefix"),
         (\.timelineOf, "timelineOf"), (\.timelineWaitingForReply, "timelineWaitingForReply"),
         (\.timelineMoveLeft, "timelineMoveLeft"), (\.timelineMoveRight, "timelineMoveRight"),
+        (\.approvalAuto, "approvalAuto"),
     ]
 
     private func ensurePanel() -> NSPanel {

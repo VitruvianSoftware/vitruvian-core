@@ -1004,16 +1004,26 @@ private final class SlowGoogle: URLProtocol {
         var config = SpeakerConfig(enabled: true, defaultTarget: "lake", structureId: "structure@s",
                                    targets: ["lake": SpeakerDevice(id: "d1", type: "SPEAKER", name: "Lake")])
         config.pauseMedia = true
-        config.pauseMediaExtraSeconds = 0
+        // A hold far longer than the 2 s network delay, so its own timer
+        // cannot run out before the extend lands, even on a loaded machine.
+        // This test checks where the hold ends; it does not wait for it.
+        // (It used to sleep to 4 s and check: a 1 s margin between two
+        // main-actor timers, which a full parallel test run ate.)
+        config.pauseMediaExtraSeconds = 30
+        let hold = AnnouncementTiming.seconds(for: "hi", extra: 30)
         SlowGoogle.delay = 2
         let started = Date()
         let sent = try await client.broadcast(
             text: "hi", target: config.defaultDevice!, structureId: config.structureId, config: config)
+        let accepted = Date()
         #expect(sent)
-        #expect(Date().timeIntervalSince(started) >= 1.9)
-        // 3 s from the pause would end at ~3 s; from the broadcast, ~5 s.
-        try await Task.sleep(until: .now + .seconds(max(0, 4 - Date().timeIntervalSince(started))), clock: .continuous)
-        #expect(coordinator.isHolding, "the media came back while the speaker was still talking")
+        #expect(accepted.timeIntervalSince(started) >= 1.9)
+        await coordinator.settle()
+        let ends = try #require(coordinator.holdEndsAt, "nothing was held")
+        // Counted from the pause, the hold ends at least 2 s before
+        // `accepted + hold`; counted from the broadcast, at about that time.
+        #expect(ends.timeIntervalSince(accepted) >= hold - 1,
+                "the hold was counted from the pause, so the media comes back while the speaker is talking")
         await coordinator.resumeNow()
     }
 }

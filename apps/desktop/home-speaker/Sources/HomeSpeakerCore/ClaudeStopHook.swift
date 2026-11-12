@@ -269,7 +269,7 @@ public enum ClaudeStopHook {
         history: BroadcastHistory = .shared,
         lockDirectory: URL = ClaudeStopHook.lockDirectory,
         speechLockURL: URL? = nil,
-        launchDetached: @Sendable (String) -> Void = { DetachedAnnouncement.launch(text: $0) },
+        launchDetached: (@Sendable (String) -> Void)? = nil,
         broadcaster: Broadcaster = ClaudeStopHook.googleHomeBroadcaster
     ) async {
         await run(
@@ -286,12 +286,14 @@ public enum ClaudeStopHook {
         history: BroadcastHistory = .shared,
         lockDirectory: URL = ClaudeStopHook.lockDirectory,
         speechLockURL: URL? = nil,
-        launchDetached: @Sendable (String) -> Void = { DetachedAnnouncement.launch(text: $0) },
+        launchDetached: (@Sendable (String) -> Void)? = nil,
         broadcaster: Broadcaster = ClaudeStopHook.googleHomeBroadcaster
     ) async {
         guard let payload = try? JSONSerialization.jsonObject(with: input) as? [String: Any],
               let transcriptPath = payload["transcript_path"] as? String,
               !transcriptPath.contains("/subagents/") else { return }
+        let session = SessionOrigin.claudeCode(
+            sessionID: payload["session_id"] as? String ?? "", transcriptPath: transcriptPath, cwd: payload["cwd"] as? String)
         let transcriptURL = URL(fileURLWithPath: transcriptPath)
         guard let tail = AntigravityHook.readTailWithTruncation(of: transcriptURL, bytes: AntigravityHook.tailBytes) else { return }
         var entries = parseTranscript(tail.text)
@@ -301,9 +303,10 @@ public enum ClaudeStopHook {
             entries.insert(Entry(role: "user", isPlainUserPrompt: true), at: 0)
         }
         await speakTurn(
-            entries, agent: .claudeCode, config: makeConfig, history: history,
+            entries, agent: .claudeCode, session: session, config: makeConfig, history: history,
             lockDirectory: lockDirectory, speechLockURL: speechLockURL,
-            launchDetached: launchDetached, broadcaster: broadcaster)
+            launchDetached: launchDetached ?? { DetachedAnnouncement.launch(text: $0, session: session) },
+            broadcaster: broadcaster)
     }
 
     /// What every agent's end-of-turn hook does once it has read the turn:
@@ -313,6 +316,7 @@ public enum ClaudeStopHook {
     public static func speakTurn(
         _ entries: [Entry],
         agent: CodingAgent,
+        session: SessionOrigin? = nil,
         config makeConfig: @MainActor @Sendable () -> ConfigManager,
         history: BroadcastHistory = .shared,
         lockDirectory: URL = ClaudeStopHook.lockDirectory,
@@ -363,11 +367,14 @@ public enum ClaudeStopHook {
             lease?.release()
             return
         }
-        let sent = (try? await broadcaster(spoken, target, config.structureId, config)) ?? false
+        let lead = SourceLabel.lead(
+            config.effectiveAnnounceSource, agent: agent, session: session, history: history.load())
+        let sent = (try? await broadcaster((lead ?? "") + spoken, target, config.structureId, config)) ?? false
         let cooldown = sent ? AnnouncementTiming.seconds(for: spoken, extra: 0) : 0
         lease?.release(cooldownUntil: cooldown > 0 ? Date().addingTimeInterval(cooldown) : nil)
         if sent {
-            _ = try? history.append(BroadcastLogItem(text: spoken, targetName: target.name, source: agent.displayName))
+            _ = try? history.append(BroadcastLogItem(
+                text: spoken, targetName: target.name, source: agent.displayName, session: session))
         }
     }
 }
@@ -387,18 +394,21 @@ public enum DetachedAnnouncement {
     /// their own `spawn`, so nothing is started.
     @discardableResult
     public static func launch(
-        text: String, agent: CodingAgent = .claudeCode, executable: String? = DetachedAnnouncement.defaultExecutable,
+        text: String, agent: CodingAgent = .claudeCode, session: SessionOrigin? = nil,
+        executable: String? = DetachedAnnouncement.defaultExecutable,
         spawn: Spawner = DetachedAnnouncement.spawnDetached
     ) -> Bool {
         guard let executable else { return false }
-        return spawn(executable, [executable] + arguments(text: text, agent: agent))
+        return spawn(executable, [executable] + arguments(text: text, agent: agent, session: session))
     }
 
     /// `--announce <text>` for Claude Code (the form every release has
-    /// used), `--announce <text> --source <agent>` for the others.
-    public static func arguments(text: String, agent: CodingAgent) -> [String] {
-        guard agent != .claudeCode else { return [ClaudeStopHook.announceArgument, text] }
-        return [ClaudeStopHook.announceArgument, text, BroadcastSource.flag, BroadcastSource.from(agent).rawValue]
+    /// used), `--announce <text> --source <agent>` for the others; then
+    /// `--session <id> [--session-name <name>]` when the hook knew it.
+    public static func arguments(text: String, agent: CodingAgent, session: SessionOrigin? = nil) -> [String] {
+        var out = [ClaudeStopHook.announceArgument, text]
+        if agent != .claudeCode { out += [BroadcastSource.flag, BroadcastSource.from(agent).rawValue] }
+        return out + (session?.arguments ?? [])
     }
 
     /// `posix_spawn` in a session of its own, with no terminal.

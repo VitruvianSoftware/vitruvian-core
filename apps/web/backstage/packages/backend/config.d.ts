@@ -28,4 +28,12 @@ export interface Config {
      */
     adminEntityRefs?: string[];
   };
+
+  sentry?: {
+    /**
+     * Sentry DSN for error reporting.
+     * @visibility frontend
+     */
+    dsn?: string;
+  };
 }

@@ -506,6 +506,8 @@ public data class AgentHomeSpeaker(
     val homeSpeakerVersion: String = "",
     /** Courier's switch, as Beeper's; null from an older agent, which does not know Courier. */
     val courierEnabled: Boolean? = null,
+    /** Whether announcements say who they are from: `off`, `app` or `app_and_session`. */
+    val announceSource: String = "off",
     /** Which Courier messages are spoken (`direct_and_mentions` or `all`). */
     val courierAnnounce: String = "direct_and_mentions",
     /** Courier's networks merged with `courier_muted_networks` and `courier_read_anyway`. */
@@ -849,6 +851,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       phonePauseMedia: Boolean? = null,
       phoneHeadphonesOnly: Boolean? = null,
       courierEnabled: Boolean? = null,
+      announceSource: String? = null,
       courierAnnounce: String? = null,
       courierNetworkKey: String? = null,
       courierNetworkReading: Boolean? = null,
@@ -924,6 +927,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
                 courierNetworkReading = courierNetworkReading,
                 courierReadAnywayKey = courierReadAnywayKey,
                 courierReadAnywayOn = courierReadAnywayOn,
+                announceSource = announceSource,
                 settings = settings,
             )
         val timeout =
@@ -1569,6 +1573,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           hasCustomOAuthSecret = sources.hasCustomOAuthSecret,
           homeSpeakerVersion = sources.homeSpeakerVersion,
           courierEnabled = sources.courierEnabled,
+          announceSource = sources.announceSource,
           courierAnnounce = sources.courierAnnounce,
           courierNetworks = sources.courierNetworks,
           hasCourierToken = sources.hasCourierToken,
