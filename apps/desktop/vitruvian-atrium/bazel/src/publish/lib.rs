@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 VitruvianSoftware
 
-//! Builds, packages and publishes the Vitruvian DMGs to a GitHub Release.
+//! Builds, packages and publishes the Vitruvian Atrium DMGs to a GitHub Release.
 //!
 //! ONE program, TWO triggers (delivery-orchestrator spec §4.1): the generated
-//! .github/workflows/delivery-vitruvian.yaml runs it for the `vitruvian`
+//! .github/workflows/delivery-vitruvian-atrium.yaml runs it for the `vitruvian-atrium`
 //! unit, and the break-glass path is the same command,
-//! `bazel run //apps/desktop/vitruvian:publish`. The rung selects the grade:
+//! `bazel run //apps/desktop/vitruvian-atrium:publish`. The rung selects the grade:
 //!
-//!   GRADE=beta        (push to main)  rolling prerelease `vitruvian-beta-latest`;
-//!                     its Vitruvian-beta*.dmg are overwritten and the tag
+//!   GRADE=beta        (push to main)  rolling prerelease `vitruvian-atrium-beta-latest`;
+//!                     its VitruvianAtrium-beta*.dmg are overwritten and the tag
 //!                     moved to this commit.
-//!   GRADE=production  (release event) attach Vitruvian-X.Y.Z*.dmg to the
+//!   GRADE=production  (release event) attach VitruvianAtrium-X.Y.Z*.dmg to the
 //!                     release-please release named by RELEASE_TAG
-//!                     (vitruvian-vX.Y.Z), and point the Homebrew cask at it
+//!                     (vitruvian-atrium-vX.Y.Z), and point the Homebrew cask at it
 //!                     when HOMEBREW_TAP_TOKEN is set.
 //!
 //! macOS only: it builds the app with --config=macos-app and packages it with
@@ -21,7 +21,7 @@
 //! the keychain (ad-hoc otherwise) and notarizes when NOTARY_* are set.
 //!
 //! Break-glass for production, on a Mac: check out the release tag, then
-//!   GRADE=production RELEASE_TAG=vitruvian-vX.Y.Z bazel run //apps/desktop/vitruvian:publish
+//!   GRADE=production RELEASE_TAG=vitruvian-atrium-vX.Y.Z bazel run //apps/desktop/vitruvian-atrium:publish
 
 use release_exec::{
     capture, make_temp_dir, redact_args, report_redacted, run, Cmd, Runner, PKG_REL,
@@ -30,11 +30,11 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const TAG_PREFIX: &str = "vitruvian-v";
-pub const DEFAULT_BETA_TAG: &str = "vitruvian-beta-latest";
+pub const TAG_PREFIX: &str = "vitruvian-atrium-v";
+pub const DEFAULT_BETA_TAG: &str = "vitruvian-atrium-beta-latest";
 pub const TAP: &str = "VitruvianSoftware/homebrew-tap";
 pub const USAGE: &str =
-    "usage: publish [--dry-run] (env: GRADE=beta|production, RELEASE_TAG=vitruvian-vX.Y.Z)";
+    "usage: publish [--dry-run] (env: GRADE=beta|production, RELEASE_TAG=vitruvian-atrium-vX.Y.Z)";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PublishGrade {
@@ -99,7 +99,7 @@ pub fn resolve_publish_plan(
                 .cloned()
                 .unwrap_or_else(|| DEFAULT_BETA_TAG.to_string()),
             format!("{}-beta.{}", app_version, short_sha),
-            "Vitruvian-beta.dmg".to_string(),
+            "VitruvianAtrium-beta.dmg".to_string(),
         ),
         "production" => {
             // A dispatch of the production rung carries no release event.
@@ -143,7 +143,7 @@ pub fn resolve_publish_plan(
                 PublishGrade::Production,
                 tag.clone(),
                 ver.clone(),
-                format!("Vitruvian-{}.dmg", ver),
+                format!("VitruvianAtrium-{}.dmg", ver),
             )
         }
         other => {
@@ -167,8 +167,8 @@ pub fn resolve_publish_plan(
     }
 
     let uploaded = |suffix: &str| match grade {
-        PublishGrade::Beta => format!("Vitruvian-beta{}", suffix),
-        PublishGrade::Production => format!("Vitruvian-{}{}", version, suffix),
+        PublishGrade::Beta => format!("VitruvianAtrium-beta{}", suffix),
+        PublishGrade::Production => format!("VitruvianAtrium-{}{}", version, suffix),
     };
     let staged_assets = [
         "-universal.dmg",
@@ -180,7 +180,7 @@ pub fn resolve_publish_plan(
     .iter()
     .map(|suffix| {
         (
-            format!("Vitruvian-{}{}", app_version, suffix),
+            format!("VitruvianAtrium-{}{}", app_version, suffix),
             uploaded(suffix),
         )
     })
@@ -202,16 +202,16 @@ pub fn resolve_publish_plan(
 
 pub fn render_homebrew_cask(version: &str, universal_dmg_sha256: &str) -> String {
     [
-        "cask \"vitruvian\" do".to_string(),
+        "cask \"vitruvian-atrium\" do".to_string(),
         format!("  version \"{}\"", version),
         format!("  sha256 \"{}\"", universal_dmg_sha256),
         String::new(),
-        format!("  url \"https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v{v}/Vitruvian-{v}-universal.dmg\"", v = version),
-        "  name \"Vitruvian\"".to_string(),
+        format!("  url \"https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v{v}/VitruvianAtrium-{v}-universal.dmg\"", v = version),
+        "  name \"Vitruvian Atrium\"".to_string(),
         "  desc \"Desktop control hub for Vitruvian and AI coding sessions\"".to_string(),
-        "  homepage \"https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian\"".to_string(),
+        "  homepage \"https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-atrium\"".to_string(),
         String::new(),
-        "  app \"Vitruvian.app\"".to_string(),
+        "  app \"Vitruvian Atrium.app\"".to_string(),
         "end".to_string(),
         String::new(),
     ]
@@ -224,7 +224,7 @@ pub fn render_beta_release_notes(version: &str, sha: &str, iso_timestamp: &str) 
 Commit: {sha}\n\
 Built: {iso_timestamp}\n\
 \n\
-Vitruvian is built from main and is not a release. It is signed ad-hoc unless a Developer ID is configured, so macOS asks you to approve it on first launch (see the README's Install section)."
+Vitruvian Atrium is built from main and is not a release. It is signed ad-hoc unless a Developer ID is configured, so macOS asks you to approve it on first launch (see the README's Install section)."
     )
 }
 
@@ -334,7 +334,7 @@ pub fn publish(
 ) -> Result<(), i32> {
     let pkg = root.join(PKG_REL);
     println!(
-        "=== vitruvian publish: grade={} version={} tag={} commit={} ===",
+        "=== vitruvian-atrium publish: grade={} version={} tag={} commit={} ===",
         plan.grade.as_str(),
         plan.version,
         plan.tag,
@@ -365,7 +365,7 @@ pub fn publish(
         }
     }
 
-    let target = format!("//{}:Vitruvian", PKG_REL);
+    let target = format!("//{}:VitruvianAtrium", PKG_REL);
     run(
         r,
         &Cmd::new("bazel")
@@ -386,17 +386,17 @@ pub fn publish(
         .find(|l| l.ends_with(".zip"))
         .map(|l| root.join(l));
     let Some(archive) = archive.filter(|a| a.is_file()) else {
-        eprintln!("publish: bazel produced no Vitruvian.zip for {}", target);
+        eprintln!("publish: bazel produced no VitruvianAtrium.zip for {}", target);
         return Err(1);
     };
 
     let dist = pkg.join("dist");
     let _ = fs::remove_dir_all(&dist);
     packager.package(r, &archive)?;
-    let universal = dist.join(format!("Vitruvian-{}-universal.dmg", plan.app_version));
+    let universal = dist.join(format!("VitruvianAtrium-{}-universal.dmg", plan.app_version));
     if !universal.is_file() {
         eprintln!(
-            "publish: package_release did not produce Vitruvian-{}-universal.dmg",
+            "publish: package_release did not produce VitruvianAtrium-{}-universal.dmg",
             plan.app_version
         );
         return Err(1);
@@ -404,9 +404,9 @@ pub fn publish(
 
     let base = match runner_temp {
         Some(t) => t.to_path_buf(),
-        None => io_step("mktemp", make_temp_dir(tmp_root, "vitruvian-publish"))?,
+        None => io_step("mktemp", make_temp_dir(tmp_root, "vitruvian-atrium-publish"))?,
     };
-    let work = base.join("vitruvian-dist");
+    let work = base.join("vitruvian-atrium-dist");
     let _ = fs::remove_dir_all(&work);
     io_step("mkdir", fs::create_dir_all(&work))?;
     for (src, dst) in &plan.staged_assets {
@@ -436,7 +436,7 @@ pub fn publish(
                 "--target",
                 &plan.sha,
                 "--title",
-                "Vitruvian (Beta Rolling Release)",
+                "Vitruvian Atrium (Beta Rolling Release)",
                 "--notes",
                 "Rolling pre-release built automatically from commits landing on main.",
             ]),
@@ -503,7 +503,7 @@ pub fn publish(
     }
 
     println!(
-        "=== vitruvian publish complete: {} ({}, {}) ===",
+        "=== vitruvian-atrium publish complete: {} ({}, {}) ===",
         plan.tag,
         plan.version,
         plan.grade.as_str()
@@ -525,7 +525,7 @@ fn update_tap(r: &mut dyn Runner, work: &Path, version: &str, token: &str) -> Re
             .path(&tap_dir),
     )?;
     io_step("mkdir Casks", fs::create_dir_all(tap_dir.join("Casks")))?;
-    let dmg = work.join(format!("Vitruvian-{}-universal.dmg", version));
+    let dmg = work.join(format!("VitruvianAtrium-{}-universal.dmg", version));
     let sum = capture(r, &Cmd::new("shasum").args(["-a", "256"]).path(&dmg))?;
     let sha = sum
         .split_whitespace()
@@ -533,16 +533,16 @@ fn update_tap(r: &mut dyn Runner, work: &Path, version: &str, token: &str) -> Re
         .unwrap_or_default()
         .to_string();
     io_step(
-        "write Casks/vitruvian.rb",
+        "write Casks/vitruvian-atrium.rb",
         fs::write(
-            tap_dir.join("Casks/vitruvian.rb"),
+            tap_dir.join("Casks/vitruvian-atrium.rb"),
             render_homebrew_cask(version, &sha),
         ),
     )?;
     let git = |args: &[&str]| Cmd::new("git").arg("-C").path(&tap_dir).args(args);
-    run(r, &git(&["add", "Casks/vitruvian.rb"]))?;
+    run(r, &git(&["add", "Casks/vitruvian-atrium.rb"]))?;
     if r.status(&git(&["diff", "--cached", "--quiet"])) == 0 {
-        println!("publish: {} already has vitruvian {}", TAP, version);
+        println!("publish: {} already has vitruvian-atrium {}", TAP, version);
     } else {
         run(
             r,
@@ -554,11 +554,11 @@ fn update_tap(r: &mut dyn Runner, work: &Path, version: &str, token: &str) -> Re
                 "commit",
                 "-q",
                 "-m",
-                &format!("vitruvian {}", version),
+                &format!("vitruvian-atrium {}", version),
             ]),
         )?;
         run(r, &git(&["push", "-q", "origin", "HEAD"]))?;
-        println!("publish: {} Casks/vitruvian.rb is now {}", TAP, version);
+        println!("publish: {} Casks/vitruvian-atrium.rb is now {}", TAP, version);
     }
     Ok(())
 }
@@ -567,14 +567,14 @@ fn update_tap(r: &mut dyn Runner, work: &Path, version: &str, token: &str) -> Re
 pub fn dry_run_lines(plan: &PublishPlan) -> Vec<String> {
     let mut lines = vec![
         format!(
-            "=== vitruvian publish (dry run): grade={} version={} tag={} commit={} ===",
+            "=== vitruvian-atrium publish (dry run): grade={} version={} tag={} commit={} ===",
             plan.grade.as_str(),
             plan.version,
             plan.tag,
             plan.sha
         ),
         format!(
-            "dry-run: bazel build {} //{}:Vitruvian",
+            "dry-run: bazel build {} //{}:VitruvianAtrium",
             redact_args("bazel", &plan.bazel_flags).join(" "),
             PKG_REL
         ),
@@ -673,9 +673,9 @@ mod tests {
         )
         .unwrap();
         assert_eq!(plan.grade, PublishGrade::Beta);
-        assert_eq!(plan.tag, "vitruvian-beta-latest");
+        assert_eq!(plan.tag, "vitruvian-atrium-beta-latest");
         assert_eq!(plan.version, "3.86.0-beta.abcdef1");
-        assert_eq!(plan.primary_asset, "Vitruvian-beta.dmg");
+        assert_eq!(plan.primary_asset, "VitruvianAtrium-beta.dmg");
         assert_eq!(
             plan.bazel_flags,
             vec![
@@ -689,22 +689,22 @@ mod tests {
             plan.staged_assets,
             vec![
                 (
-                    "Vitruvian-3.86.0-universal.dmg".into(),
-                    "Vitruvian-beta-universal.dmg".into()
+                    "VitruvianAtrium-3.86.0-universal.dmg".into(),
+                    "VitruvianAtrium-beta-universal.dmg".into()
                 ),
                 (
-                    "Vitruvian-3.86.0-arm64.dmg".into(),
-                    "Vitruvian-beta-arm64.dmg".into()
+                    "VitruvianAtrium-3.86.0-arm64.dmg".into(),
+                    "VitruvianAtrium-beta-arm64.dmg".into()
                 ),
                 (
-                    "Vitruvian-3.86.0-x86_64.dmg".into(),
-                    "Vitruvian-beta-x86_64.dmg".into()
+                    "VitruvianAtrium-3.86.0-x86_64.dmg".into(),
+                    "VitruvianAtrium-beta-x86_64.dmg".into()
                 ),
                 (
-                    "Vitruvian-3.86.0-universal.zip".into(),
-                    "Vitruvian-beta-universal.zip".into()
+                    "VitruvianAtrium-3.86.0-universal.zip".into(),
+                    "VitruvianAtrium-beta-universal.zip".into()
                 ),
-                ("Vitruvian-3.86.0.dmg".into(), "Vitruvian-beta.dmg".into()),
+                ("VitruvianAtrium-3.86.0.dmg".into(), "VitruvianAtrium-beta.dmg".into()),
             ]
         );
         let local =
@@ -720,41 +720,41 @@ mod tests {
         let mut e = env(&[("GRADE", "production")]);
         let err = resolve_publish_plan(&[], &e, "3.86.0", SHA).unwrap_err();
         assert_eq!(err.0, 2);
-        assert!(err.1.contains("needs RELEASE_TAG=vitruvian-vX.Y.Z"));
+        assert!(err.1.contains("needs RELEASE_TAG=vitruvian-atrium-vX.Y.Z"));
 
         e.insert("RELEASE_TAG".into(), "tabula-v1.0.0".into());
         let err = resolve_publish_plan(&[], &e, "3.86.0", SHA).unwrap_err();
-        assert_eq!(err, (2, "publish: RELEASE_TAG=tabula-v1.0.0 is not a vitruvian-v* release; another component's release reached this rung".to_string()));
+        assert_eq!(err, (2, "publish: RELEASE_TAG=tabula-v1.0.0 is not a vitruvian-atrium-v* release; another component's release reached this rung".to_string()));
 
-        e.insert("RELEASE_TAG".into(), "vitruvian-v3.85.0".into());
+        e.insert("RELEASE_TAG".into(), "vitruvian-atrium-v3.85.0".into());
         let err = resolve_publish_plan(&[], &e, "3.86.0", SHA).unwrap_err();
-        assert_eq!(err, (2, "publish: vitruvian-v3.85.0 is version 3.85.0, but this checkout builds 3.86.0; check out the release tag first".to_string()));
+        assert_eq!(err, (2, "publish: vitruvian-atrium-v3.85.0 is version 3.85.0, but this checkout builds 3.86.0; check out the release tag first".to_string()));
 
-        e.insert("RELEASE_TAG".into(), "vitruvian-v3.86.0".into());
+        e.insert("RELEASE_TAG".into(), "vitruvian-atrium-v3.86.0".into());
         let plan = resolve_publish_plan(&[], &e, "3.86.0", SHA).unwrap();
         assert_eq!(
             (plan.version.as_str(), plan.primary_asset.as_str()),
-            ("3.86.0", "Vitruvian-3.86.0.dmg")
+            ("3.86.0", "VitruvianAtrium-3.86.0.dmg")
         );
-        assert_eq!(plan.staged_assets[0].1, "Vitruvian-3.86.0-universal.dmg");
-        assert_eq!(plan.staged_assets[4].1, "Vitruvian-3.86.0.dmg");
+        assert_eq!(plan.staged_assets[0].1, "VitruvianAtrium-3.86.0-universal.dmg");
+        assert_eq!(plan.staged_assets[4].1, "VitruvianAtrium-3.86.0.dmg");
 
         // A dispatch from the release tag names the release.
         let tagged = env(&[
             ("GRADE", "production"),
             ("GITHUB_REF_TYPE", "tag"),
-            ("GITHUB_REF_NAME", "vitruvian-v3.86.0"),
+            ("GITHUB_REF_NAME", "vitruvian-atrium-v3.86.0"),
         ]);
         assert_eq!(
             resolve_publish_plan(&[], &tagged, "3.86.0", SHA)
                 .unwrap()
                 .tag,
-            "vitruvian-v3.86.0"
+            "vitruvian-atrium-v3.86.0"
         );
         let branch = env(&[
             ("GRADE", "production"),
             ("GITHUB_REF_TYPE", "branch"),
-            ("GITHUB_REF_NAME", "vitruvian-v3.86.0"),
+            ("GITHUB_REF_NAME", "vitruvian-atrium-v3.86.0"),
         ]);
         assert_eq!(
             resolve_publish_plan(&[], &branch, "3.86.0", SHA)
@@ -779,7 +779,7 @@ mod tests {
         let cask = render_homebrew_cask("3.86.0", "deadbeef");
         assert_eq!(
             cask,
-            "cask \"vitruvian\" do\n  version \"3.86.0\"\n  sha256 \"deadbeef\"\n\n  url \"https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.86.0/Vitruvian-3.86.0-universal.dmg\"\n  name \"Vitruvian\"\n  desc \"Desktop control hub for Vitruvian and AI coding sessions\"\n  homepage \"https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian\"\n\n  app \"Vitruvian.app\"\nend\n"
+            "cask \"vitruvian-atrium\" do\n  version \"3.86.0\"\n  sha256 \"deadbeef\"\n\n  url \"https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.86.0/VitruvianAtrium-3.86.0-universal.dmg\"\n  name \"Vitruvian Atrium\"\n  desc \"Desktop control hub for Vitruvian and AI coding sessions\"\n  homepage \"https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-atrium\"\n\n  app \"Vitruvian Atrium.app\"\nend\n"
         );
     }
 
@@ -808,7 +808,7 @@ mod tests {
         fs::write(
             root.join("bazel-out/darwin/bin")
                 .join(PKG_REL)
-                .join("Vitruvian.zip"),
+                .join("VitruvianAtrium.zip"),
             b"zip",
         )
         .unwrap();
@@ -841,7 +841,7 @@ mod tests {
                 ".dmg",
             ] {
                 fs::write(
-                    dist.join(format!("Vitruvian-{}{}", self.app_version, suffix)),
+                    dist.join(format!("VitruvianAtrium-{}{}", self.app_version, suffix)),
                     suffix,
                 )
                 .unwrap();
@@ -895,7 +895,7 @@ mod tests {
                     }
                 }
                 ("bazel", ["cquery", ..]) => Out::ok(&format!(
-                    "bazel-out/darwin/bin/{}/Vitruvian.zip\nbazel-out/darwin/bin/{}/Vitruvian.app\n",
+                    "bazel-out/darwin/bin/{}/VitruvianAtrium.zip\nbazel-out/darwin/bin/{}/Vitruvian Atrium.app\n",
                     PKG_REL, PKG_REL
                 )),
                 ("date", _) => Out::ok("2026-10-31T12:00:00Z\n"),
@@ -968,10 +968,10 @@ mod tests {
         let c = &r.calls;
         assert_eq!(
             c[0],
-            "gh api repos/{owner}/{repo}/git/ref/tags/vitruvian-beta-latest --jq .object.type + \" \" + .object.sha"
+            "gh api repos/{owner}/{repo}/git/ref/tags/vitruvian-atrium-beta-latest --jq .object.type + \" \" + .object.sha"
         );
-        assert_eq!(c[1], "bazel build --config=macos-app --macos_cpus=arm64,x86_64 //apps/desktop/vitruvian:Vitruvian");
-        assert_eq!(c[2], "bazel cquery --config=macos-app --macos_cpus=arm64,x86_64 --output=files //apps/desktop/vitruvian:Vitruvian");
+        assert_eq!(c[1], "bazel build --config=macos-app --macos_cpus=arm64,x86_64 //apps/desktop/vitruvian-atrium:VitruvianAtrium");
+        assert_eq!(c[2], "bazel cquery --config=macos-app --macos_cpus=arm64,x86_64 --output=files //apps/desktop/vitruvian-atrium:VitruvianAtrium");
         assert_eq!(
             c[3],
             format!(
@@ -979,17 +979,17 @@ mod tests {
                 s.root
                     .join("bazel-out/darwin/bin")
                     .join(PKG_REL)
-                    .join("Vitruvian.zip")
+                    .join("VitruvianAtrium.zip")
                     .display()
             )
         );
-        let work = s.runner_temp.join("vitruvian-dist");
+        let work = s.runner_temp.join("vitruvian-atrium-dist");
         let names = [
-            "Vitruvian-beta-arm64.dmg",
-            "Vitruvian-beta-universal.dmg",
-            "Vitruvian-beta-universal.zip",
-            "Vitruvian-beta-x86_64.dmg",
-            "Vitruvian-beta.dmg",
+            "VitruvianAtrium-beta-arm64.dmg",
+            "VitruvianAtrium-beta-universal.dmg",
+            "VitruvianAtrium-beta-universal.zip",
+            "VitruvianAtrium-beta-x86_64.dmg",
+            "VitruvianAtrium-beta.dmg",
         ];
         for (i, n) in names.iter().enumerate() {
             assert_eq!(
@@ -997,25 +997,25 @@ mod tests {
                 format!("shasum -a 256 {}", work.join(n).display())
             );
         }
-        assert_eq!(c[9], "gh release view vitruvian-beta-latest");
-        assert_eq!(c[10], format!("gh release create vitruvian-beta-latest --prerelease --target {} --title Vitruvian (Beta Rolling Release) --notes Rolling pre-release built automatically from commits landing on main.", SHA));
+        assert_eq!(c[9], "gh release view vitruvian-atrium-beta-latest");
+        assert_eq!(c[10], format!("gh release create vitruvian-atrium-beta-latest --prerelease --target {} --title Vitruvian Atrium (Beta Rolling Release) --notes Rolling pre-release built automatically from commits landing on main.", SHA));
         for (i, n) in names.iter().enumerate() {
             assert_eq!(
                 c[11 + i],
                 format!(
-                    "gh release upload vitruvian-beta-latest {} --clobber",
+                    "gh release upload vitruvian-atrium-beta-latest {} --clobber",
                     work.join(n).display()
                 )
             );
         }
-        assert_eq!(c[16], format!("gh api -X PATCH repos/{{owner}}/{{repo}}/git/refs/tags/vitruvian-beta-latest -f sha={} -F force=true", SHA));
+        assert_eq!(c[16], format!("gh api -X PATCH repos/{{owner}}/{{repo}}/git/refs/tags/vitruvian-atrium-beta-latest -f sha={} -F force=true", SHA));
         assert_eq!(c[17], "date -u +%Y-%m-%dT%H:%M:%SZ");
         assert_eq!(
             r.cmds[18].args,
             vec![
                 "release".to_string(),
                 "edit".into(),
-                "vitruvian-beta-latest".into(),
+                "vitruvian-atrium-beta-latest".into(),
                 "--notes".into(),
                 render_beta_release_notes("3.86.0-beta.abcdef1", SHA, "2026-10-31T12:00:00Z"),
             ]
@@ -1023,11 +1023,11 @@ mod tests {
         assert_eq!(c.len(), 19);
         // The staged files are package_release's, renamed.
         assert_eq!(
-            fs::read_to_string(work.join("Vitruvian-beta.dmg")).unwrap(),
+            fs::read_to_string(work.join("VitruvianAtrium-beta.dmg")).unwrap(),
             ".dmg"
         );
         assert_eq!(
-            fs::read_to_string(work.join("Vitruvian-beta-universal.zip")).unwrap(),
+            fs::read_to_string(work.join("VitruvianAtrium-beta-universal.zip")).unwrap(),
             "-universal.zip"
         );
     }
@@ -1154,11 +1154,11 @@ mod tests {
         let out = dry_run_lines(&plan).join("\n");
         assert!(!out.contains("bb_SECRET_value"), "{}", out);
         assert!(
-            out.contains("--config=remotecache-ci --remote_header=x-buildbuddy-api-key=<redacted> //apps/desktop/vitruvian:Vitruvian"),
+            out.contains("--config=remotecache-ci --remote_header=x-buildbuddy-api-key=<redacted> //apps/desktop/vitruvian-atrium:VitruvianAtrium"),
             "{}",
             out
         );
-        assert!(out.contains("dry-run: upload dist/Vitruvian-3.86.0.dmg as Vitruvian-beta.dmg"));
+        assert!(out.contains("dry-run: upload dist/VitruvianAtrium-3.86.0.dmg as VitruvianAtrium-beta.dmg"));
     }
 
     #[test]
@@ -1166,7 +1166,7 @@ mod tests {
         let s = scene("publish_production");
         let e = env(&[
             ("GRADE", "production"),
-            ("RELEASE_TAG", "vitruvian-v3.86.0"),
+            ("RELEASE_TAG", "vitruvian-atrium-v3.86.0"),
         ]);
         let plan = resolve_publish_plan(&[], &e, "3.86.0", SHA).unwrap();
         let mut r = world_runner(beta_world(Ok(""), ""));
@@ -1188,9 +1188,9 @@ mod tests {
         assert_eq!(uploads.len(), 5);
         assert!(uploads
             .iter()
-            .all(|u| u.starts_with("gh release upload vitruvian-v3.86.0 ")));
-        assert!(uploads[0].contains("/Vitruvian-3.86.0-arm64.dmg "));
-        assert!(uploads[4].contains("/Vitruvian-3.86.0.dmg "));
+            .all(|u| u.starts_with("gh release upload vitruvian-atrium-v3.86.0 ")));
+        assert!(uploads[0].contains("/VitruvianAtrium-3.86.0-arm64.dmg "));
+        assert!(uploads[4].contains("/VitruvianAtrium-3.86.0.dmg "));
     }
 
     #[test]
@@ -1199,7 +1199,7 @@ mod tests {
             let s = scene("publish_tap");
             let e = env(&[
                 ("GRADE", "production"),
-                ("RELEASE_TAG", "vitruvian-v3.86.0"),
+                ("RELEASE_TAG", "vitruvian-atrium-v3.86.0"),
                 ("HOMEBREW_TAP_TOKEN", "tok"),
             ]);
             let plan = resolve_publish_plan(&[], &e, "3.86.0", SHA).unwrap();
@@ -1207,7 +1207,7 @@ mod tests {
             w.tap_has_it = tap_has_it;
             let mut r = world_runner(w);
             assert_eq!(go(&s, &mut r, &plan), Ok(()));
-            let work = s.runner_temp.join("vitruvian-dist");
+            let work = s.runner_temp.join("vitruvian-atrium-dist");
             let tap = work.join("tap");
             let at = r.position("git clone").unwrap();
             assert!(
@@ -1219,25 +1219,25 @@ mod tests {
                 r.calls[at + 1],
                 format!(
                     "shasum -a 256 {}",
-                    work.join("Vitruvian-3.86.0-universal.dmg").display()
+                    work.join("VitruvianAtrium-3.86.0-universal.dmg").display()
                 )
             );
             assert_eq!(
                 r.calls[at + 2],
-                format!("git -C {} add Casks/vitruvian.rb", tap.display())
+                format!("git -C {} add Casks/vitruvian-atrium.rb", tap.display())
             );
             assert_eq!(
                 r.calls[at + 3],
                 format!("git -C {} diff --cached --quiet", tap.display())
             );
             assert_eq!(
-                fs::read_to_string(tap.join("Casks/vitruvian.rb")).unwrap(),
+                fs::read_to_string(tap.join("Casks/vitruvian-atrium.rb")).unwrap(),
                 render_homebrew_cask("3.86.0", "cafef00d")
             );
             if tap_has_it {
                 assert_eq!(r.calls.len(), at + 4);
             } else {
-                assert_eq!(r.calls[at + 4], format!("git -C {} -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -q -m vitruvian 3.86.0", tap.display()));
+                assert_eq!(r.calls[at + 4], format!("git -C {} -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -q -m vitruvian-atrium 3.86.0", tap.display()));
                 assert_eq!(
                     r.calls[at + 5],
                     format!("git -C {} push -q origin HEAD", tap.display())
@@ -1251,7 +1251,7 @@ mod tests {
         let s = scene("publish_no_zip");
         let mut r = FakeRunner::new(|c| {
             if c.program == "bazel" && c.args[0] == "cquery" {
-                Out::ok("bazel-out/darwin/bin/apps/desktop/vitruvian/Vitruvian.app\n")
+                Out::ok("bazel-out/darwin/bin/apps/desktop/vitruvian-atrium/Vitruvian Atrium.app\n")
             } else {
                 Out::ok("")
             }
@@ -1260,7 +1260,7 @@ mod tests {
             &[],
             &env(&[
                 ("GRADE", "production"),
-                ("RELEASE_TAG", "vitruvian-v3.86.0"),
+                ("RELEASE_TAG", "vitruvian-atrium-v3.86.0"),
             ]),
             "3.86.0",
             SHA,
@@ -1303,7 +1303,7 @@ mod tests {
             &[],
             &env(&[
                 ("GRADE", "production"),
-                ("RELEASE_TAG", "vitruvian-v3.86.0"),
+                ("RELEASE_TAG", "vitruvian-atrium-v3.86.0"),
             ]),
             "3.86.0",
             SHA,

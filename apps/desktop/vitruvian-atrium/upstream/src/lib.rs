@@ -12,8 +12,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub const UPSTREAM_URL: &str = "https://github.com/vorssaint/vorssaint-utils";
 pub const UPSTREAM_BRANCH: &str = "main";
 pub const IMPORT_COMMIT: &str = "05ee8be1f69849d0f219d44f32de932bba1a3454";
-pub const APP_DIR: &str = "apps/desktop/vitruvian";
-pub const LEDGER: &str = "apps/desktop/vitruvian/upstream/ledger.tsv";
+pub const APP_DIR: &str = "apps/desktop/vitruvian-atrium";
+pub const LEDGER: &str = "apps/desktop/vitruvian-atrium/upstream/ledger.tsv";
 
 pub const UPSTREAM_ONLY: &[&str] = &[
     ".github/",
@@ -45,7 +45,7 @@ pub const LEDGER_PREAMBLE: &str = "\
 # Copyright (C) 2026 VitruvianSoftware
 #
 # Upstream vorssaint-utils commits since the import, oldest first, and what this
-# fork did with each. `bazel run //apps/desktop/vitruvian:track_upstream -- triage`
+# fork did with each. `bazel run //apps/desktop/vitruvian-atrium:track_upstream -- triage`
 # adds new commits; set status and ref by hand when you port or skip one.
 #   status: pending | ported | skipped
 #   ref:    ported -> the PR that ported it (#1234); skipped -> why; pending -> -
@@ -53,8 +53,9 @@ pub const LEDGER_PREAMBLE: &str = "\
 ";
 
 pub const BRAND_SUBSTITUTIONS: &[(&str, &str)] = &[
-    ("com.vorssaint.utils", "com.vitruviansoftware.vitruvian"),
-    ("com.vorssaint.", "com.vitruviansoftware.vitruvian."),
+    ("com.vorssaint.utils", "com.vitruviansoftware.atrium"),
+    ("com.vorssaint.", "com.vitruviansoftware.atrium."),
+    ("import Vorssaint", "import VitruvianAtrium"),
     ("Vorssaint", "Vitruvian"),
     ("vorssaint", "vitruvian"),
     ("VORSSAINT", "VITRUVIAN"),
@@ -790,38 +791,55 @@ pub struct PathMap {
 
 impl PathMap {
     pub fn new(root: &Path, import_commit: &str) -> Result<Self, String> {
+        let desktop_tree = out(
+            &["ls-tree", "-r", "--name-only", import_commit, "--", "apps/desktop"],
+            Some(root),
+            None,
+        )
+        .unwrap_or_default();
+        let import_app_dir = desktop_tree
+            .lines()
+            .find_map(|p| p.strip_suffix("/UPSTREAM.md"))
+            .unwrap_or(APP_DIR)
+            .to_string();
+        let import_prefix = format!("{}/", import_app_dir);
         let prefix = format!("{}/", APP_DIR);
         let mut renamed = HashMap::new();
         let mut deleted = HashSet::new();
 
-        let raw_str = out(
-            &[
-                "diff",
-                "-M50%",
-                "--name-status",
-                "-z",
-                import_commit,
-                "HEAD",
-                "--",
-                APP_DIR,
-            ],
-            Some(root),
-            None,
-        )?;
+        let mut diff_args = vec![
+            "diff",
+            "-M50%",
+            "--name-status",
+            "-z",
+            import_commit,
+            "HEAD",
+            "--",
+        ];
+        if import_app_dir != APP_DIR {
+            diff_args.push(&import_app_dir);
+        }
+        diff_args.push(APP_DIR);
+        let raw_str = out(&diff_args, Some(root), None)?;
+        let strip_app = |p: &str| {
+            p.strip_prefix(&prefix)
+                .or_else(|| p.strip_prefix(&import_prefix))
+                .unwrap_or(p)
+        };
         let raw: Vec<&str> = raw_str.split('\0').filter(|x| !x.is_empty()).collect();
         let mut i = 0;
         while i < raw.len() {
             let status = raw[i];
             if status.starts_with('R') {
                 if i + 2 < raw.len() {
-                    let old = raw[i + 1].strip_prefix(&prefix).unwrap_or(raw[i + 1]);
-                    let new = raw[i + 2].strip_prefix(&prefix).unwrap_or(raw[i + 2]);
+                    let old = strip_app(raw[i + 1]);
+                    let new = strip_app(raw[i + 2]);
                     renamed.insert(old.to_string(), new.to_string());
                 }
                 i += 3;
             } else {
                 if status.starts_with('D') && i + 1 < raw.len() {
-                    let old = raw[i + 1].strip_prefix(&prefix).unwrap_or(raw[i + 1]);
+                    let old = strip_app(raw[i + 1]);
                     deleted.insert(old.to_string());
                 }
                 i += 2;
@@ -829,19 +847,19 @@ impl PathMap {
         }
 
         let ls_tree = out(
-            &["ls-tree", "-r", "--name-only", import_commit, "--", APP_DIR],
+            &["ls-tree", "-r", "--name-only", import_commit, "--", &import_app_dir],
             Some(root),
             None,
         )?;
         let at_import: HashSet<String> = ls_tree
             .lines()
-            .map(|p| p.strip_prefix(&prefix).unwrap_or(p).to_string())
+            .map(|p| strip_app(p).to_string())
             .collect();
 
         let ls_files = out(&["ls-files", "--", APP_DIR], Some(root), None)?;
         let current: BTreeSet<String> = ls_files
             .lines()
-            .map(|p| p.strip_prefix(&prefix).unwrap_or(p).to_string())
+            .map(|p| strip_app(p).to_string())
             .collect();
 
         let mut by_name: HashMap<String, Vec<String>> = HashMap::new();
@@ -1429,7 +1447,7 @@ fn merge_file(
     labels: (&str, &str, &str),
 ) -> Result<(Vec<u8>, i32), String> {
     let id = MERGE_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let tmp = env::temp_dir().join(format!("vitruvian-merge3-{}-{}", std::process::id(), id));
+    let tmp = env::temp_dir().join(format!("vitruvian-atrium-merge3-{}-{}", std::process::id(), id));
     fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
     let ours_p = tmp.join("ours");
     let base_p = tmp.join("base");
@@ -1840,7 +1858,7 @@ pub fn port_commit(
     let parent = parent_list.get(1).copied();
     let label_base = format!("upstream {}^", short);
     let label_theirs = format!("upstream {}", short);
-    let labels = ("vitruvian", label_base.as_str(), label_theirs.as_str());
+    let labels = ("vitruvian-atrium", label_base.as_str(), label_theirs.as_str());
 
     let changes = upstream.changes(sha)?;
     if !(allow_dirty || dry_run) {
@@ -2006,7 +2024,7 @@ pub fn port_commit(
         let result_str = String::from_utf8_lossy(&result);
         let prefs_path = root
             .join(APP_DIR)
-            .join("Sources/Vitruvian/Core/Preferences.swift");
+            .join("Sources/VitruvianAtrium/Core/Preferences.swift");
         let prefs_text = fs::read_to_string(&prefs_path).unwrap_or_default();
         for (n, key) in preference_review(&result_str, &before_text, &prefs_text) {
             clean = false;
@@ -2087,7 +2105,7 @@ pub fn status_markdown(t: &Triage, previous_body: Option<&Path>) -> String {
             t.pending.len()
         ),
         String::new(),
-        "Triage: `bazel run //apps/desktop/vitruvian:track_upstream -- triage`, then decide each pending row (UPSTREAM.md, \"Tracking and porting upstream\").".into(),
+        "Triage: `bazel run //apps/desktop/vitruvian-atrium:track_upstream -- triage`, then decide each pending row (UPSTREAM.md, \"Tracking and porting upstream\").".into(),
         String::new(),
     ];
     if t.reanchored {
@@ -2216,7 +2234,7 @@ fn run_cli_inner(args: &[String]) -> Result<i32, String> {
             let home = env::var("HOME").unwrap_or_else(|_| ".".into());
             format!("{}/.cache", home)
         });
-        PathBuf::from(base).join("vitruvian-upstream")
+        PathBuf::from(base).join("vitruvian-atrium-upstream")
     });
 
     match cmd.as_str() {
@@ -2397,7 +2415,7 @@ fn run_cli_inner(args: &[String]) -> Result<i32, String> {
             let upstream = Upstream::new(&upstream_url, &cache, !no_fetch)?;
             let pathmap = PathMap::new(&root, &import_commit)?;
             let report_dir = report_dir_arg.unwrap_or_else(|| {
-                env::temp_dir().join(format!("vitruvian-upstream-port-{}", std::process::id()))
+                env::temp_dir().join(format!("vitruvian-atrium-upstream-port-{}", std::process::id()))
             });
             fs::create_dir_all(&report_dir).map_err(|e| e.to_string())?;
             let mut report = vec!["# Upstream port report".to_string(), String::new()];
@@ -2444,11 +2462,11 @@ mod tests {
     fn test_rewrites_identifiers_and_bundle_ids() {
         assert_eq!(
             to_fork_line("import VorssaintCore\n"),
-            "import VitruvianCore\n"
+            "import VitruvianAtriumCore\n"
         );
         assert_eq!(
             to_fork_line("let id = \"com.vorssaint.utils.helper\"\n"),
-            "let id = \"com.vitruviansoftware.vitruvian.helper\"\n"
+            "let id = \"com.vitruviansoftware.atrium.helper\"\n"
         );
         assert_eq!(
             to_fork_line("let s = \"vorssaint://x\" // VORSSAINT\n"),
@@ -2624,7 +2642,7 @@ package enum Preferences {
         let ours = "let ok = service.run()\n";
         let merged = "\
 let ok = service.run()
-let src = try String(contentsOfFile: \"Sources/Vitruvian/X.swift\")
+let src = try String(contentsOfFile: \"Sources/VitruvianAtrium/X.swift\")
 suite.expect(switcherSource.contains(\"orderOut\"))
 suite.expect(holdLines[0] == \"import AppKit\")
 suite.expect(keyCode == 53)
@@ -2634,7 +2652,7 @@ suite.expect(keyCode == 53)
             vec![
                 (
                     2,
-                    "let src = try String(contentsOfFile: \"Sources/Vitruvian/X.swift\")"
+                    "let src = try String(contentsOfFile: \"Sources/VitruvianAtrium/X.swift\")"
                         .to_string()
                 ),
                 (
@@ -2651,7 +2669,7 @@ suite.expect(keyCode == 53)
 
     #[test]
     fn test_validates_committed_ledger() {
-        let path = Path::new("apps/desktop/vitruvian/upstream/ledger.tsv");
+        let path = Path::new("apps/desktop/vitruvian-atrium/upstream/ledger.tsv");
         let ledger_path = if path.exists() {
             path.to_path_buf()
         } else {
@@ -2665,7 +2683,7 @@ suite.expect(keyCode == 53)
 
     #[test]
     fn test_rejects_bad_rows() {
-        let tmp = env::temp_dir().join("test_vitruvian_bad_ledger.tsv");
+        let tmp = env::temp_dir().join("test_vitruvian_atrium_bad_ledger.tsv");
         let sha1 = "a".repeat(40);
         let sha2 = "b".repeat(40);
         let sha3 = "c".repeat(40);
@@ -2749,12 +2767,12 @@ suite.expect(keyCode == 53)
             let _ = fs::remove_file(&old_sib);
             Self::write(
                 &mono,
-                &format!("{}/Sources/Vitruvian/Core/App.swift", APP_DIR),
-                "// Copyright (C) 2026 Vorssaint\nimport Foundation\npackage struct VitruvianApp {\n    package let forkOnly = true\n    package let id = \"com.vitruviansoftware.vitruvian\"\n    package let count = 1\n}\n",
+                &format!("{}/Sources/VitruvianAtrium/Core/App.swift", APP_DIR),
+                "// Copyright (C) 2026 Vorssaint\nimport Foundation\npackage struct VitruvianApp {\n    package let forkOnly = true\n    package let id = \"com.vitruviansoftware.atrium\"\n    package let count = 1\n}\n",
             );
             Self::write(
                 &mono,
-                &format!("{}/Sources/Vitruvian/Core/Sibling.swift", APP_DIR),
+                &format!("{}/Sources/VitruvianAtrium/Core/Sibling.swift", APP_DIR),
                 "package struct Sibling {}\n",
             );
             let ledger_path = mono.join(LEDGER);
@@ -2958,7 +2976,7 @@ suite.expect(keyCode == 53)
         let merged = fs::read_to_string(
             f.mono
                 .join(APP_DIR)
-                .join("Sources/Vitruvian/Core/App.swift"),
+                .join("Sources/VitruvianAtrium/Core/App.swift"),
         )
         .unwrap();
         assert!(merged.contains("// Copyright (C) 2026 Vorssaint\n"));
@@ -2996,7 +3014,7 @@ suite.expect(keyCode == 53)
         let placed = f
             .mono
             .join(APP_DIR)
-            .join("Sources/Vitruvian/Core/VitruvianHelper.swift");
+            .join("Sources/VitruvianAtrium/Core/VitruvianHelper.swift");
         assert!(placed.exists());
         assert_eq!(
             fs::read_to_string(&placed).unwrap(),

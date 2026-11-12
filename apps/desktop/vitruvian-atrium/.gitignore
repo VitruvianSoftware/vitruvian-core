@@ -20,3 +20,8 @@ dist/
 *.xcodeproj
 xcuserdata/
 .swiftpm/
+
+# Root .gitignore ignores `scratchpad/`, which matches `Scratchpad/` on case-insensitive APFS
+!Sources/VitruvianAtrium/UI/Scratchpad/
+!Sources/VitruvianAtrium/UI/Scratchpad/**
+

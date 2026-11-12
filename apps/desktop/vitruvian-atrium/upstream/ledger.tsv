@@ -2,7 +2,7 @@
 # Copyright (C) 2026 VitruvianSoftware
 #
 # Upstream vorssaint-utils commits since the import, oldest first, and what this
-# fork did with each. `bazel run //apps/desktop/vitruvian:track_upstream -- triage`
+# fork did with each. `bazel run //apps/desktop/vitruvian-atrium:track_upstream -- triage`
 # adds new commits; set status and ref by hand when you port or skip one.
 #   status: pending | ported | skipped
 #   ref:    ported -> the PR that ported it (#1234); skipped -> why; pending -> -

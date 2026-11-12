@@ -6,13 +6,13 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const APP_PREFIX: &str = "Sources/Vitruvian/";
-pub const UI_PREFIX: &str = "Sources/Vitruvian/UI/";
-pub const PREFERENCES_PATH: &str = "Sources/Vitruvian/Core/Preferences.swift";
-pub const AGREEMENT_SHEET: &str = "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift";
-pub const TOOLS_SECTION: &str = "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift";
-pub const BROKER_PREFIX: &str = "Sources/Vitruvian/Services/Platform/Broker/";
-pub const RUNTIME_PREFIX: &str = "Sources/Vitruvian/Services/Platform/External/";
+pub const APP_PREFIX: &str = "Sources/VitruvianAtrium/";
+pub const UI_PREFIX: &str = "Sources/VitruvianAtrium/UI/";
+pub const PREFERENCES_PATH: &str = "Sources/VitruvianAtrium/Core/Preferences.swift";
+pub const AGREEMENT_SHEET: &str = "Sources/VitruvianAtrium/UI/Settings/ExternalToolAgreementSheet.swift";
+pub const TOOLS_SECTION: &str = "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift";
+pub const BROKER_PREFIX: &str = "Sources/VitruvianAtrium/Services/Platform/Broker/";
+pub const RUNTIME_PREFIX: &str = "Sources/VitruvianAtrium/Services/Platform/External/";
 pub const MODIFICATION_LOG_FLOOR: usize = 260;
 
 /// The release tools' sources, scanned for relative paths that are a case
@@ -40,25 +40,25 @@ pub const RUNNER_SOURCES: &[&str] = &[
 ];
 
 pub const SESSION_TAP_OWNERS: &[&str] = &[
-    "Sources/Vitruvian/Services/ScrollInverter.swift",
-    "Sources/Vitruvian/Services/SmoothScrollService.swift",
-    "Sources/Vitruvian/Services/MouseNavigation/MouseNavigationService.swift",
-    "Sources/Vitruvian/Services/MouseButtons/MouseButtonShortcutService.swift",
-    "Sources/Vitruvian/Services/MiddleClick/MiddleClickService.swift",
-    "Sources/Vitruvian/Services/QuitProtection/QuitProtectionService.swift",
-    "Sources/Vitruvian/Services/RadialMenu/RadialMenuService.swift",
-    "Sources/Vitruvian/Services/WindowLayout/WindowLayoutService.swift",
-    "Sources/Vitruvian/Services/WindowMaximizer.swift",
-    "Sources/Vitruvian/Services/Finder/FinderCutPaste.swift",
-    "Sources/Vitruvian/Services/Finder/FinderRenameService.swift",
-    "Sources/Vitruvian/Services/KeyboardDebounce/KeyboardDebounceService.swift",
-    "Sources/Vitruvian/Services/SuperKey/SuperKeyService.swift",
-    "Sources/Vitruvian/Services/ShortcutRecordingTap.swift",
-    "Sources/Vitruvian/Services/Switcher/AppSwitcher.swift",
-    "Sources/Vitruvian/Services/Snippets/TextSnippetService.swift",
-    "Sources/Vitruvian/Services/Audio/PreciseVolumeRollerService.swift",
-    "Sources/Vitruvian/Services/DockClick/DockClickService.swift",
-    "Sources/Vitruvian/Services/Display/BrightnessService.swift",
+    "Sources/VitruvianAtrium/Services/ScrollInverter.swift",
+    "Sources/VitruvianAtrium/Services/SmoothScrollService.swift",
+    "Sources/VitruvianAtrium/Services/MouseNavigation/MouseNavigationService.swift",
+    "Sources/VitruvianAtrium/Services/MouseButtons/MouseButtonShortcutService.swift",
+    "Sources/VitruvianAtrium/Services/MiddleClick/MiddleClickService.swift",
+    "Sources/VitruvianAtrium/Services/QuitProtection/QuitProtectionService.swift",
+    "Sources/VitruvianAtrium/Services/RadialMenu/RadialMenuService.swift",
+    "Sources/VitruvianAtrium/Services/WindowLayout/WindowLayoutService.swift",
+    "Sources/VitruvianAtrium/Services/WindowMaximizer.swift",
+    "Sources/VitruvianAtrium/Services/Finder/FinderCutPaste.swift",
+    "Sources/VitruvianAtrium/Services/Finder/FinderRenameService.swift",
+    "Sources/VitruvianAtrium/Services/KeyboardDebounce/KeyboardDebounceService.swift",
+    "Sources/VitruvianAtrium/Services/SuperKey/SuperKeyService.swift",
+    "Sources/VitruvianAtrium/Services/ShortcutRecordingTap.swift",
+    "Sources/VitruvianAtrium/Services/Switcher/AppSwitcher.swift",
+    "Sources/VitruvianAtrium/Services/Snippets/TextSnippetService.swift",
+    "Sources/VitruvianAtrium/Services/Audio/PreciseVolumeRollerService.swift",
+    "Sources/VitruvianAtrium/Services/DockClick/DockClickService.swift",
+    "Sources/VitruvianAtrium/Services/Display/BrightnessService.swift",
 ];
 
 pub const MODIFYING_TAP_OWNERS: &[&str] = &[
@@ -71,8 +71,8 @@ pub const MODIFYING_TAP_OWNERS: &[&str] = &[
 ];
 
 pub const POINTER_THREAD_TAP_OWNERS: &[&str] = &[
-    "Sources/Vitruvian/Services/ScrollInverter.swift",
-    "Sources/Vitruvian/Services/MiddleClick/MiddleClickService.swift",
+    "Sources/VitruvianAtrium/Services/ScrollInverter.swift",
+    "Sources/VitruvianAtrium/Services/MiddleClick/MiddleClickService.swift",
 ];
 
 pub const THREAD_SERVED_TAP_OWNERS: &[&str] = &[
@@ -1123,7 +1123,7 @@ fn tap_owners_invalidate_their_ports(repo: &Repository) -> Vec<String> {
 
 fn app_rows_hide_whatever_hide_returns(repo: &Repository) -> Vec<String> {
     let code = code_without_comments(
-        &repo.lines_at("Sources/Vitruvian/Services/CommandBar/CommandBarService.swift"),
+        &repo.lines_at("Sources/VitruvianAtrium/Services/CommandBar/CommandBarService.swift"),
     );
     if !code.contains("running.hide()") {
         return vec!["the Command Bar's app rows hide the app in front of them".into()];
@@ -1140,8 +1140,8 @@ fn keychain_is_never_touched(repo: &Repository) -> Vec<String> {
         if !path.starts_with("Sources/") {
             continue;
         }
-        let command_bar = path.starts_with("Sources/Vitruvian/Core/CommandBar/")
-            || path.starts_with("Sources/Vitruvian/Services/CommandBar/");
+        let command_bar = path.starts_with("Sources/VitruvianAtrium/Core/CommandBar/")
+            || path.starts_with("Sources/VitruvianAtrium/Services/CommandBar/");
         let needles: &[&str] = if command_bar {
             &["SecItem", "import Security"]
         } else {
@@ -1197,7 +1197,7 @@ fn the_app_never_asks_the_github_api(repo: &Repository) -> Vec<String> {
     for path in repo.app_sources() {
         if code_without_comments(&repo.lines_at(&path)).contains("api.github.com") {
             problems.push(format!(
-                "{} asks api.github.com; use git or a release download link (VitruvianReleases)",
+                "{} asks api.github.com; use git or a release download link (VitruvianAtriumReleases)",
                 path
             ));
         }
@@ -1212,7 +1212,7 @@ fn visible_text_curls_its_apostrophes(repo: &Repository) -> Vec<String> {
         .filter(|path| {
             let d = dirname(path);
             let b = basename(path);
-            (d == "Sources/Vitruvian/Core" || d == "Sources/Vitruvian/Core/Localizations")
+            (d == "Sources/VitruvianAtrium/Core" || d == "Sources/VitruvianAtrium/Core/Localizations")
                 && (b.ends_with("Strings.swift")
                     || b.starts_with("Strings+")
                     || b == "Localization.swift")
@@ -1251,8 +1251,8 @@ fn french_punctuation_stays_on_its_line(repo: &Repository) -> Vec<String> {
         .swift_paths
         .iter()
         .filter(|path| {
-            *path == "Sources/Vitruvian/Core/Localizations/Strings+French.swift"
-                || (dirname(path) == "Sources/Vitruvian/Core" && path.ends_with("Strings.swift"))
+            *path == "Sources/VitruvianAtrium/Core/Localizations/Strings+French.swift"
+                || (dirname(path) == "Sources/VitruvianAtrium/Core" && path.ends_with("Strings.swift"))
         })
         .collect();
     let breaks = [" ;", " :", " !", " ?", " »", "« "];
@@ -1489,9 +1489,9 @@ fn stores_delete_only_what_they_own(repo: &Repository) -> Vec<String> {
     let mut problems = Vec::new();
     let mut found = Vec::new();
     for path in [
-        "Sources/Vitruvian/Services/Shelf/ShelfService.swift",
-        "Sources/Vitruvian/Services/QuickTools/RecentCaptureService.swift",
-        "Sources/Vitruvian/Services/QuickTools/RecentCaptureStore.swift",
+        "Sources/VitruvianAtrium/Services/Shelf/ShelfService.swift",
+        "Sources/VitruvianAtrium/Services/QuickTools/RecentCaptureService.swift",
+        "Sources/VitruvianAtrium/Services/QuickTools/RecentCaptureStore.swift",
     ] {
         let lines = repo.lines_at(path);
         if lines.is_empty() {
@@ -1592,7 +1592,7 @@ fn pointer_taps_run_off_the_main_thread(repo: &Repository) -> Vec<String> {
 
 fn inverter_does_not_yield_to_the_switcher(repo: &Repository) -> Vec<String> {
     let code =
-        code_without_comments(&repo.lines_at("Sources/Vitruvian/Services/ScrollInverter.swift"));
+        code_without_comments(&repo.lines_at("Sources/VitruvianAtrium/Services/ScrollInverter.swift"));
     if code.is_empty()
         || code.contains("scrollNavigationActive")
         || code.contains("switcherNavigatesByWheel")
@@ -1607,7 +1607,7 @@ fn inverter_does_not_yield_to_the_switcher(repo: &Repository) -> Vec<String> {
 
 fn cleaning_mode_never_synthesizes_mouse_events(repo: &Repository) -> Vec<String> {
     let code = code_without_comments(
-        &repo.lines_at("Sources/Vitruvian/Services/CleaningMode/CleaningModeManager.swift"),
+        &repo.lines_at("Sources/VitruvianAtrium/Services/CleaningMode/CleaningModeManager.swift"),
     );
     let mut problems = Vec::new();
     if code.is_empty() {
@@ -1625,7 +1625,7 @@ fn cleaning_mode_never_synthesizes_mouse_events(repo: &Repository) -> Vec<String
 }
 
 fn brightness_work_queue_never_touches_nsscreen(repo: &Repository) -> Vec<String> {
-    let source = repo.source("Sources/Vitruvian/Services/Display/BrightnessService.swift");
+    let source = repo.source("Sources/VitruvianAtrium/Services/Display/BrightnessService.swift");
     let marker = "// MARK: - Rebuild (work queue)";
     let half = if source.contains(marker) {
         source.rsplit(marker).next().unwrap_or("")
@@ -1645,7 +1645,7 @@ fn brightness_work_queue_never_touches_nsscreen(repo: &Repository) -> Vec<String
 fn click_debounce_schedules_nothing(repo: &Repository) -> Vec<String> {
     let code =
         code_without_comments(&repo.lines_at(
-            "Sources/Vitruvian/Services/MouseClickDebounce/MouseClickDebounceService.swift",
+            "Sources/VitruvianAtrium/Services/MouseClickDebounce/MouseClickDebounceService.swift",
         ));
     if code.is_empty() || code.contains("Timer(") || code.contains("asyncAfter") {
         return vec![
@@ -1657,7 +1657,7 @@ fn click_debounce_schedules_nothing(repo: &Repository) -> Vec<String> {
 
 fn smooth_scroll_disabled_tap_rearms_only_when_wanted(repo: &Repository) -> Vec<String> {
     let code = code_without_comments(
-        &repo.lines_at("Sources/Vitruvian/Services/SmoothScrollService.swift"),
+        &repo.lines_at("Sources/VitruvianAtrium/Services/SmoothScrollService.swift"),
     );
     let branch = if let Some((_, after)) = code.split_once("tapDisabledByTimeout") {
         after.split("return").next().unwrap_or("")
@@ -1683,7 +1683,7 @@ fn smooth_scroll_disabled_tap_rearms_only_when_wanted(repo: &Repository) -> Vec<
 
 fn menu_panel_switches_have_names(repo: &Repository) -> Vec<String> {
     let code =
-        code_without_comments(&repo.lines_at("Sources/Vitruvian/UI/MenuPanel/MenuPanelView.swift"));
+        code_without_comments(&repo.lines_at("Sources/VitruvianAtrium/UI/MenuPanel/MenuPanelView.swift"));
     if code.is_empty() {
         return vec!["the menu panel source reads back".into()];
     }
@@ -1721,8 +1721,8 @@ fn modifier_chain(lines: &[String], index: usize) -> Vec<String> {
 fn tool_screen_controls_have_names(repo: &Repository) -> Vec<String> {
     let mut found = Vec::new();
     for path in [
-        "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
-        "Sources/Vitruvian/UI/ToolPanels/BlockTreeView.swift",
+        "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
+        "Sources/VitruvianAtrium/UI/ToolPanels/BlockTreeView.swift",
     ] {
         let lines = repo.lines_at(path);
         if lines.is_empty() {
@@ -1910,11 +1910,11 @@ fn build_signs_with_a_stable_identity(repo: &Repository) -> Vec<String> {
                 }
             }
         }
-        t.starts_with("bazel run //apps/desktop/vitruvian:setup_signing")
+        t.starts_with("bazel run //apps/desktop/vitruvian-atrium:setup_signing")
     });
     if !has_setup_call {
         problems.push(
-            "an identity-less build that installs runs //apps/desktop/vitruvian:setup_signing itself".into(),
+            "an identity-less build that installs runs //apps/desktop/vitruvian-atrium:setup_signing itself".into(),
         );
     }
     let code: Vec<&str> = lines
@@ -2236,7 +2236,7 @@ fn names_use_the_apps_identifier(repo: &Repository) -> Vec<String> {
     let mut problems = Vec::new();
     let sample = [
         "let a = DispatchQueue(label: \"com.vitruvian.spaces\")",
-        "let b = DispatchQueue(label: \"com.vitruviansoftware.vitruvian.spaces\")",
+        "let b = DispatchQueue(label: \"com.vitruviansoftware.atrium.spaces\")",
         "let own = id.hasPrefix(\"com.vitruvian\")",
     ]
     .join("\n");
@@ -2253,7 +2253,7 @@ fn names_use_the_apps_identifier(repo: &Repository) -> Vec<String> {
     }
     if !problems.is_empty() {
         return vec![format!(
-            "name them under com.vitruviansoftware.vitruvian: {:?}",
+            "name them under com.vitruviansoftware.atrium: {:?}",
             problems
         )];
     }
@@ -2282,9 +2282,9 @@ pub fn source_reads(path: &str, text: &str) -> Vec<String> {
 fn unit_tests_read_no_source_text(repo: &Repository) -> Vec<String> {
     let mut problems = Vec::new();
     let sample = [
-        "let text = try? String(contentsOfFile: \"Sources/Vitruvian/App/AppDelegate.swift\")",
+        "let text = try? String(contentsOfFile: \"Sources/VitruvianAtrium/App/AppDelegate.swift\")",
         "let files = FileManager.default.enumerator(atPath: \"Sources\")",
-        "// a comment naming \"Sources/Vitruvian\" reads nothing",
+        "// a comment naming \"Sources/VitruvianAtrium\" reads nothing",
         "suite.expect(true, \"a message about contentsOfFile reads nothing\")",
     ]
     .join("\n");
@@ -2464,7 +2464,7 @@ pub fn hotkey_id_claims(path: &str, text: &str) -> (Vec<(u32, Option<u32>, Strin
                             where_str, arg
                         ));
                     }
-                } else if path == "Sources/Vitruvian/Services/QuickTools/ScreenCaptureService.swift"
+                } else if path == "Sources/VitruvianAtrium/Services/QuickTools/ScreenCaptureService.swift"
                 {
                     if let Some(first) = extract_uint32_after(text, "var next: UInt32 = ") {
                         claims.push((first, Some(first + 15 - 1), where_str));
@@ -2474,7 +2474,7 @@ pub fn hotkey_id_claims(path: &str, text: &str) -> (Vec<(u32, Option<u32>, Strin
                             where_str
                         ));
                     }
-                } else if path == "Sources/Vitruvian/Services/Platform/ToolShortcutRegistrar.swift"
+                } else if path == "Sources/VitruvianAtrium/Services/Platform/ToolShortcutRegistrar.swift"
                 {
                     if let Some(first) =
                         extract_uint32_after(text, "static let firstHotkeyID: UInt32 = ")
@@ -2570,16 +2570,16 @@ fn hotkey_ids_are_unique(repo: &Repository) -> Vec<String> {
 fn migrated_tools_reach_services_through_the_broker(repo: &Repository) -> Vec<String> {
     let mut problems = Vec::new();
     let files = [
-        "Sources/Vitruvian/Services/PortManager/PortManagerService.swift",
-        "Sources/Vitruvian/Services/PortManager/PortManagerSupport.swift",
-        "Sources/Vitruvian/UI/PortManager/PortManagerView.swift",
-        "Sources/Vitruvian/UI/MenuPanel/PanelPortManagerView.swift",
-        "Sources/Vitruvian/Services/URLCleanerService.swift",
-        "Sources/Vitruvian/Core/URLCleaning.swift",
-        "Sources/Vitruvian/UI/Settings/URLCleanerSettings.swift",
-        "Sources/Vitruvian/UI/MenuPanel/PanelURLCleanerView.swift",
-        "Sources/Vitruvian/Services/QuickTools/PastePlainService.swift",
-        "Sources/Vitruvian/UI/Settings/PastePlainSettingsSection.swift",
+        "Sources/VitruvianAtrium/Services/PortManager/PortManagerService.swift",
+        "Sources/VitruvianAtrium/Services/PortManager/PortManagerSupport.swift",
+        "Sources/VitruvianAtrium/UI/PortManager/PortManagerView.swift",
+        "Sources/VitruvianAtrium/UI/MenuPanel/PanelPortManagerView.swift",
+        "Sources/VitruvianAtrium/Services/URLCleanerService.swift",
+        "Sources/VitruvianAtrium/Core/URLCleaning.swift",
+        "Sources/VitruvianAtrium/UI/Settings/URLCleanerSettings.swift",
+        "Sources/VitruvianAtrium/UI/MenuPanel/PanelURLCleanerView.swift",
+        "Sources/VitruvianAtrium/Services/QuickTools/PastePlainService.swift",
+        "Sources/VitruvianAtrium/UI/Settings/PastePlainSettingsSection.swift",
     ];
     for f in files {
         if !repo.sources.contains_key(f) {
@@ -2739,11 +2739,11 @@ fn only_a_by_hand_build_rehearses_the_catalog(repo: &Repository) -> Vec<String> 
     .join("\n");
     if catalog_rehearsals(&main_path, &sample)
         != vec![format!("{}:4", main_path), format!("{}:7", main_path)]
-        || catalog_rehearsals("Sources/Vitruvian/Other.swift", &sample)
+        || catalog_rehearsals("Sources/VitruvianAtrium/Other.swift", &sample)
             != vec![
-                "Sources/Vitruvian/Other.swift:2",
-                "Sources/Vitruvian/Other.swift:4",
-                "Sources/Vitruvian/Other.swift:7",
+                "Sources/VitruvianAtrium/Other.swift:2",
+                "Sources/VitruvianAtrium/Other.swift:4",
+                "Sources/VitruvianAtrium/Other.swift:7",
             ]
     {
         problems.push(
@@ -2885,9 +2885,9 @@ pub fn run_cli(args: &[String]) -> i32 {
 
     let resolved_dir = app_dir.unwrap_or_else(|| {
         if let Ok(ws) = env::var("BUILD_WORKSPACE_DIRECTORY") {
-            PathBuf::from(ws).join("apps/desktop/vitruvian")
+            PathBuf::from(ws).join("apps/desktop/vitruvian-atrium")
         } else {
-            let candidate = Path::new("apps/desktop/vitruvian");
+            let candidate = Path::new("apps/desktop/vitruvian-atrium");
             if candidate.join("Sources").is_dir() {
                 candidate.to_path_buf()
             } else {
@@ -3043,8 +3043,8 @@ let other = SystemRunnerish::default();
     }
 
     #[test]
-    fn test_live_vitruvian_repository_passes_all_57_rules() {
-        let candidate = Path::new("apps/desktop/vitruvian");
+    fn test_live_vitruvian_atrium_repository_passes_all_57_rules() {
+        let candidate = Path::new("apps/desktop/vitruvian-atrium");
         let app_dir = if candidate.join("Sources").is_dir() {
             candidate.to_path_buf()
         } else {

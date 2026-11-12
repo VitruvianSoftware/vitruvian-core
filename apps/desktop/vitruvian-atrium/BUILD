@@ -16,7 +16,7 @@
 #   :source_lints_test    the rules over how the sources, build scripts and
 #                         tests are written (Linux-safe)
 #   :publish              builds the DMG and attaches it to a GitHub Release
-#                         (the `vitruvian` delivery unit below)
+#                         (the `vitruvian-atrium` delivery unit below)
 #
 # Swift has no Gazelle, so this file is hand-written. Everything that needs an
 # Apple toolchain is `manual` + macOS-constrained so a Linux `bazel build //...`
@@ -358,7 +358,7 @@ swift_binary(
     target_compatible_with = MACOS_ONLY,
 )
 
-# Looks at, and presses, the controls of the running Vitruvian app from the
+# Looks at, and presses, the controls of the running Vitruvian Atrium app from the
 # shell, through the macOS Accessibility API: how the checks by hand of the
 # tools from outside are done. AGENTS.md says how to use it.
 #   bazel run --config=macos-app //apps/desktop/vitruvian-atrium:by-hand -- <command>
@@ -1050,7 +1050,7 @@ rust_library(
 )
 
 # Build + package + upload: what the generated delivery workflow runs for the
-# `vitruvian` unit (delivery() below names it as `run`), and the break-glass
+# `vitruvian-atrium` unit (delivery() below names it as `run`), and the break-glass
 # path the README points at. It builds the app itself with --config=macos-app,
 # so it only does anything useful on a Mac.
 rust_binary(

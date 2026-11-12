@@ -1725,7 +1725,7 @@ pub fn plist_short_version(r: &mut dyn Runner, plist: &Path) -> Result<String, i
     Ok(v)
 }
 
-/// The package folder (`apps/desktop/vitruvian`) under the workspace that
+/// The package folder (`apps/desktop/vitruvian-atrium`) under the workspace that
 /// `bazel run` was started in, else the git checkout, else the current
 /// folder.
 pub fn workspace_root() -> PathBuf {
