@@ -24,7 +24,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
-  name: vitruvian-relay-spike-project
+  name: relay-spike-project
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -35,7 +35,7 @@ spec:
   sourceRepos:
     - 'https://github.com/VitruvianSoftware/vitruvian-core.git'
   destinations:
-    - namespace: vitruvian-relay-spike
+    - namespace: relay-spike
       server: 'https://kubernetes.default.svc'
   clusterResourceWhitelist:
     - group: ''

@@ -18,9 +18,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# Watches vitruvian-slack-mcp's floating `main` tag (ghcr.io/vitruviansoftware/vitruvian-slack-mcp)
+# Watches vitruvian-slack-mcp's floating `main` tag (ghcr.io/vitruviansoftware/mcp-slack)
 # for a new digest and writes the resolved `main@sha256:...` back into
-# gitops/argocd/platform/vitruvian-slack-mcp/values.yaml's `image.digest`.
+# gitops/argocd/platform/mcp-slack/values.yaml's `image.digest`.
 #
 # Why this exists: vitruvian-slack-mcp is built from this repo on every merge and pushed to
 # the same mutable `main` tag. A tag push never changes a committed manifest,
@@ -28,7 +28,7 @@
 # digest in git makes an image change an ordinary git change: ArgoCD rolls it out,
 # and a rollback is a revert.
 #
-# Namespace MUST be `argocd`, matching the `vitruvian-slack-mcp` Application: an
+# Namespace MUST be `argocd`, matching the `mcp-slack` Application: an
 # ImageUpdater CR only lists Applications in its own namespace.
 #
 # Credentials: reuses the existing argocd/buzz-image-updater-git-creds SSH deploy
@@ -49,12 +49,12 @@ spec:
     gitConfig:
       repository: "git@github.com:VitruvianSoftware/vitruvian-core.git"
       branch: "main:image-updates/vitruvian-slack-mcp"
-      writeBackTarget: "helmvalues:../../../../../gitops/argocd/platform/vitruvian-slack-mcp/values.yaml"
+      writeBackTarget: "helmvalues:../../../../../gitops/argocd/platform/mcp-slack/values.yaml"
   applicationRefs:
-    - namePattern: "vitruvian-slack-mcp"
+    - namePattern: "mcp-slack"
       images:
         - alias: "vitruvian-slack-mcp"
-          imageName: "ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main"
+          imageName: "ghcr.io/vitruviansoftware/mcp-slack:main"
           commonUpdateSettings:
             updateStrategy: "digest"
             forceUpdate: true

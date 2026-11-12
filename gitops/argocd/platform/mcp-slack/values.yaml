@@ -26,9 +26,11 @@
 
 image:
   # Updated automatically by argocd-image-updater when a new digest lands
-  # behind ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main.
+  # behind ghcr.io/vitruviansoftware/mcp-slack:main.
   digest: "main@sha256:7e4c0e084fd88f846d41f152c5a34b163a39eb4ba0c39209dd5a586dff26e842"
-  repository: ghcr.io/vitruviansoftware/vitruvian-slack-mcp
+  # OLD image name on purpose: ghcr.io/vitruviansoftware/vitruvian-slack-mcp does not exist yet.
+  # After the first vitruvian-slack-mcp-image run, switch this and the ImageUpdater imageName together.
+  repository: ghcr.io/vitruviansoftware/mcp-slack
 oidc:
   projectId: "385463212784486211" # pulumi stack output projectId — REQUIRED
   allowedSubjects: "378818267051722263,379361013981513322" # numeric Zitadel user ids — REQUIRED

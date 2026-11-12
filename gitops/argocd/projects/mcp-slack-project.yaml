@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# vitruvian-slack-mcp-project — per-app AppProject, following the scoped pattern
+# mcp-slack-project — per-app AppProject, following the scoped pattern
 # whoami-project established (issue #459) rather than the shared
 # applications-project. This is the first INTERNET-FACING workload to use it,
 # which is the reason it gets the tighter of the two available patterns: this
@@ -39,7 +39,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
-  name: vitruvian-slack-mcp-project
+  name: mcp-slack-project
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io

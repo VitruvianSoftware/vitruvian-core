@@ -253,7 +253,7 @@ jobs:
             echo "${IMAGE}@${DIGEST}"
             echo '```'
             echo
-            echo "Pin this in \`gitops/argocd/platform/vitruvian-relay-spike/values.yaml\` as \`image.digest\`."
+            echo "Pin this in \`gitops/argocd/platform/relay-spike/values.yaml\` as \`image.digest\`."
             echo "Tie it back to this commit via the \`org.opencontainers.image.revision\` label, never the tag —"
             echo "no AR or GHCR repository in this org sets immutable tags."
           } >> "$GITHUB_STEP_SUMMARY"

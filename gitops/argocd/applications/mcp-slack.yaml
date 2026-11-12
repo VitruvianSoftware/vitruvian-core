@@ -341,7 +341,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: vitruvian-slack-mcp
+  name: mcp-slack
   namespace: argocd
   annotations:
     # Wave 2, same as cloudflared/whoami/ntfy: the Gateway (envoy-gateway) and
@@ -350,7 +350,7 @@ metadata:
 spec:
   # Scoped per-app project, not the shared applications-project — see
   # gitops/argocd/projects/vitruvian-slack-mcp-project.yaml.
-  project: vitruvian-slack-mcp-project
+  project: mcp-slack-project
   sources:
     # Source 1: The co-located Helm chart from this repo.
     - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
@@ -392,7 +392,7 @@ spec:
   #
   #   kubectl patch application app-of-applications -n argocd --type=json \
   #     -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
-  #   kubectl patch application vitruvian-slack-mcp -n argocd --type=json \
+  #   kubectl patch application mcp-slack -n argocd --type=json \
   #     -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
   #   kubectl scale deploy/vitruvian-slack-mcp -n mcp-slack --replicas=0
   #

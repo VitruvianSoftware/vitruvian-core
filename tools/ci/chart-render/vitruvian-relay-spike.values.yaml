@@ -21,7 +21,7 @@
 # RENDER-GATE VALUES. NOT A DEPLOYMENT, AND NOTHING HERE IS REAL.
 # //tools/ci:chart_render renders apps/suites/vitruvian-relay/spike/deploy/chart with
 # this file so its templates are executed in CI. Live values are in
-# gitops/argocd/platform/vitruvian-relay-spike/values.yaml.
+# gitops/argocd/platform/relay-spike/values.yaml.
 
 image:
   # A syntactically valid digest that is deliberately not a real image.

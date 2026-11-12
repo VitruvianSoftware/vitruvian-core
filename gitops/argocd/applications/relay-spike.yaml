@@ -18,15 +18,35 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Live values for the Vitruvian Relay spike chart (apps/suites/vitruvian-relay/spike/deploy/chart).
-# The digest is pinned by hand: a spike doesn't get an image updater. Take a new
-# one from the vitruvian-relay-spike-image run's summary.
-image:
-  digest: "main@sha256:f6a488ce2934cfbc517ff1ec42e0d260c399f20dfc0cd2fa5dd06d3b7917b3cb"
-  repository: ghcr.io/vitruviansoftware/vitruvian-relay-spike
-# From the zitadel-apps-relay stack's outputs (zitadel-apps-relay-apply run).
-oidc:
-  projectId: "398912441632687930"
-  mcpClientIds: "398912442404439866" # claudeClientId (add chatgptClientId later)
-  connectorClientId: "398912442404505402"
-  allowedSubjects: "378818267051722263" # James (the stack's only grant)
+# vitruvian-relay-spike: the Vitruvian Relay P0 spike server, public at relay-spike.ipv1337.dev.
+# Plan: docs/superpowers/plans/2026-11-09-relay-p0-spikes.md. Delete this app
+# (and its project and values) when P0 is done.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: relay-spike
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: relay-spike-project
+  sources:
+    - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
+      targetRevision: main
+      path: apps/suites/vitruvian-relay/spike/deploy/chart
+      helm:
+        valueFiles:
+          - $values/gitops/argocd/platform/vitruvian-relay-spike/values.yaml
+    - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: relay-spike
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

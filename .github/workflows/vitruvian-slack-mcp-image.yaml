@@ -19,7 +19,7 @@
 # SOFTWARE.
 
 # Builds and publishes the vitruvian-slack-mcp container image to GHCR, and produces the
-# sha256 digest that gitops/argocd/platform/vitruvian-slack-mcp/values.yaml pins as
+# sha256 digest that gitops/argocd/platform/mcp-slack/values.yaml pins as
 # `image.digest`.
 #
 # WHY GHCR AND NOT ARTIFACT REGISTRY, since the repo's other image build
@@ -261,7 +261,7 @@ jobs:
             echo "${IMAGE}@${DIGEST}"
             echo '```'
             echo
-            echo "Pin this in \`gitops/argocd/platform/vitruvian-slack-mcp/values.yaml\` as \`image.digest\`."
+            echo "Pin this in \`gitops/argocd/platform/mcp-slack/values.yaml\` as \`image.digest\`."
             echo "Tie it back to this commit via the \`org.opencontainers.image.revision\` label, never the tag —"
             echo "no AR or GHCR repository in this org sets immutable tags."
           } >> "$GITHUB_STEP_SUMMARY"
