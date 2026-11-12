@@ -70,7 +70,7 @@ public enum Pages {
     public static func island(_ status: Status, language: String) -> UITree {
         let word = { (key: String) in Words.text(key, language) }
         return UITree {
-            heading("Code")
+            heading("Vitruvian Code")
             button(Block.open, UIText.plain(word("openQuickPrompt")), style: .prominent)
             button(Block.newChat, UIText.plain(word("newChat")))
             if status.awaitingApproval {
