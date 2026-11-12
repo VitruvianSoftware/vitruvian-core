@@ -50,44 +50,137 @@
         <nav id="phase-pills" class="phase-pills" aria-label="Flow phases"></nav>
       </header>
 
-      <!-- 2. Burn-down -->
-      <section class="card" aria-labelledby="burndown-heading">
-        <div class="section-header">
-          <h2 id="burndown-heading">Burn-down</h2>
-          <span id="burndown-caption" class="muted small"></span>
-        </div>
-        <div id="burndown-container" class="burndown-container"></div>
-      </section>
+      <nav id="panel-tabs" class="panel-tabs" role="tablist" aria-label="Orchestrator views" hidden>
+        <button type="button" id="tab-btn-flow" class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-pane-flow" data-tab="flow">
+          Flow
+        </button>
+        <button type="button" id="tab-btn-board" class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-pane-board" data-tab="board">
+          Board <span id="tab-badge-board" class="tab-badge" hidden>0</span>
+        </button>
+        <button type="button" id="tab-btn-members" class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-pane-members" data-tab="members">
+          Members <span id="tab-badge-members" class="tab-badge" hidden>0</span>
+        </button>
+        <button type="button" id="tab-btn-graph" class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-pane-graph" data-tab="graph">
+          Graph
+        </button>
+      </nav>
 
-      <!-- 3. Task board -->
-      <section class="card" aria-labelledby="tasks-heading">
-        <div class="section-header">
-          <h2 id="tasks-heading">Task Board</h2>
-          <span id="tasks-caption" class="muted small"></span>
-        </div>
-        <div id="task-board" class="list-stack"></div>
-      </section>
+      <div id="tab-pane-flow" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-flow">
+        <!-- 2. Burn-down -->
+        <section class="card" aria-labelledby="burndown-heading">
+          <div class="section-header">
+            <h2 id="burndown-heading">Burn-down</h2>
+            <span id="burndown-caption" class="muted small"></span>
+          </div>
+          <div id="burndown-container" class="burndown-container"></div>
+        </section>
 
-      <!-- 4. Agents -->
-      <section class="card" aria-labelledby="agents-heading">
-        <div class="section-header">
-          <h2 id="agents-heading">Agents</h2>
-          <span id="agents-caption" class="muted small"></span>
-        </div>
-        <div id="agents-list" class="list-stack"></div>
-        <p id="agents-empty" class="muted small">No runs recorded yet.</p>
-      </section>
+        <!-- 3. Task board -->
+        <section class="card" aria-labelledby="tasks-heading">
+          <div class="section-header">
+            <h2 id="tasks-heading">Task Board</h2>
+            <span id="tasks-caption" class="muted small"></span>
+          </div>
+          <div id="task-board" class="list-stack"></div>
+        </section>
 
-      <!-- 5. Spend -->
-      <section class="card" aria-labelledby="spend-heading">
-        <div class="section-header">
-          <h2 id="spend-heading">Spend</h2>
-          <span id="spend-total" class="mono small muted"></span>
-        </div>
-        <div id="spend-roles" class="spend-roles"></div>
-        <div id="spend-models" class="spend-models"></div>
-        <p id="spend-unpriced" class="muted small" hidden></p>
-      </section>
+        <!-- 4. Agents -->
+        <section class="card" aria-labelledby="agents-heading">
+          <div class="section-header">
+            <h2 id="agents-heading">Agents</h2>
+            <span id="agents-caption" class="muted small"></span>
+          </div>
+          <div id="agents-list" class="list-stack"></div>
+          <p id="agents-empty" class="muted small">No runs recorded yet.</p>
+        </section>
+
+        <!-- 5. Spend -->
+        <section class="card" aria-labelledby="spend-heading">
+          <div class="section-header">
+            <h2 id="spend-heading">Spend</h2>
+            <span id="spend-total" class="mono small muted"></span>
+          </div>
+          <div id="spend-roles" class="spend-roles"></div>
+          <div id="spend-models" class="spend-models"></div>
+          <p id="spend-unpriced" class="muted small" hidden></p>
+        </section>
+      </div>
+
+      <div id="tab-pane-board" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-board" hidden>
+        <section class="card" aria-labelledby="board-heading">
+          <div class="section-header">
+            <h2 id="board-heading">Board</h2>
+            <div class="board-follow-bar">
+              <button type="button" id="board-jump-latest" class="control-btn small" hidden>Jump to latest</button>
+              <button type="button" id="board-follow" class="control-btn small active" aria-pressed="true">Follow</button>
+            </div>
+          </div>
+          <div class="board-controls">
+            <input type="search" id="board-search" class="control-input" placeholder="Search posts…" aria-label="Search posts">
+            <select id="board-filter-from" class="control-select" aria-label="Filter by author">
+              <option value="">All authors</option>
+            </select>
+            <select id="board-filter-to" class="control-select" aria-label="Filter by recipient">
+              <option value="">All recipients</option>
+            </select>
+            <select id="board-filter-kind" class="control-select" aria-label="Filter by kind">
+              <option value="">All kinds</option>
+              <option value="note">note</option>
+              <option value="question">question</option>
+              <option value="defect">defect</option>
+              <option value="result">result</option>
+            </select>
+          </div>
+          <div id="board-list" class="board-list list-stack"></div>
+          <p id="board-empty" class="muted small">No board posts yet.</p>
+        </section>
+      </div>
+
+      <div id="tab-pane-members" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-members" hidden>
+        <section class="card" aria-labelledby="members-heading">
+          <div class="section-header">
+            <h2 id="members-heading">Members</h2>
+            <span id="members-caption" class="muted small"></span>
+          </div>
+          <p id="members-empty" class="muted small">No members recorded yet.</p>
+          <div id="members-groups" class="members-groups" hidden>
+            <div class="member-group">
+              <h3 class="group-heading">Active <span id="members-active-count" class="muted small">(0)</span></h3>
+              <div id="members-active" class="list-stack"></div>
+            </div>
+            <div class="member-group">
+              <h3 class="group-heading">Standing by <span id="members-standing-count" class="muted small">(0)</span></h3>
+              <div id="members-standing" class="list-stack"></div>
+            </div>
+            <details id="members-retired-details" class="member-group member-retired">
+              <summary class="group-heading">Retired <span id="members-retired-count" class="muted small">(0)</span></summary>
+              <div id="members-retired" class="list-stack member-retired-list"></div>
+            </details>
+          </div>
+        </section>
+      </div>
+
+      <div id="tab-pane-graph" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-graph" hidden>
+        <section class="card" aria-labelledby="graph-heading">
+          <div class="section-header">
+            <h2 id="graph-heading">Mention Graph</h2>
+            <div class="graph-header-actions">
+              <button type="button" id="graph-hide-inactive" class="control-btn small" aria-pressed="false">Hide inactive</button>
+              <button type="button" id="graph-live" class="control-btn small active" aria-pressed="true" disabled>Live</button>
+            </div>
+          </div>
+          <div class="graph-controls">
+            <button type="button" id="graph-play-pause" class="control-btn small" aria-pressed="false" aria-label="Play or pause replay" disabled>Play</button>
+            <button type="button" id="graph-step-back" class="control-btn small" aria-label="Step back" disabled>◀</button>
+            <button type="button" id="graph-step-forward" class="control-btn small" aria-label="Step forward" disabled>▶</button>
+            <input type="range" id="graph-seq-slider" class="graph-slider" min="1" max="1" value="1" aria-label="Replay post sequence" disabled>
+            <span id="graph-seq-label" class="mono small muted">seq 0 / 0</span>
+          </div>
+          <p id="graph-range-note" class="muted small" hidden></p>
+          <div id="graph-container" class="graph-container"></div>
+          <p id="graph-empty" class="muted small">No board mentions recorded yet.</p>
+        </section>
+      </div>
     </div>
   </main>
 

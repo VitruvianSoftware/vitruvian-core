@@ -33,6 +33,75 @@ export type RunStatus = "running" | "done" | "error";
 
 export type RunRole = "lead" | "worker";
 
+export type PostKind = "note" | "question" | "defect" | "result";
+
+export type PauseReason = "quota" | "error";
+
+export type PauseInfo = {
+  reason: PauseReason;
+  detail?: string;
+};
+
+export type MemberState =
+  "working" | "waiting" | "paused" | "killed" | "retired";
+
+export type Post = {
+  seq: number;
+  at: number;
+  from: string;
+  text: string;
+  to: string[];
+  kind: PostKind;
+  replyTo: number | null;
+  channel: string;
+  runId?: string;
+};
+
+export type MemberRow = {
+  id: string;
+  agent: string;
+  state: MemberState;
+  reason?: PauseReason;
+  detail?: string;
+  taskN?: number;
+  model: string;
+  delegate?: string;
+  taskModel?: string;
+  worktree?: string;
+  lastPostSeq?: number;
+  lastActivityAt: number;
+};
+
+export type MentionGraphNode = {
+  id: string;
+  posts: number;
+};
+
+export type MentionGraphEdge = {
+  from: string;
+  to: string;
+  count: number;
+};
+
+export type MentionGraph = {
+  nodes: MentionGraphNode[];
+  edges: MentionGraphEdge[];
+};
+
+export type MembersView = {
+  active: MemberRow[];
+  standingBy: MemberRow[];
+  retired: MemberRow[];
+};
+
+export type PendingWake = {
+  seq: number;
+  target: string;
+  runId?: string;
+  from: string;
+  excerpt: string;
+};
+
 export type TokenCounts = {
   input: number;
   output: number;
@@ -71,6 +140,9 @@ export type Task = {
   after: number[];
   state: TaskState;
   round: number;
+  model?: string;
+  warning?: string;
+  worktree?: string;
 };
 
 export type Run = {
@@ -80,6 +152,7 @@ export type Run = {
   model: string;
   effort: string | null;
   delegate: string | null;
+  worktree?: string;
   title: string;
   taskN: number | null;
   startedAt: number;
@@ -94,6 +167,8 @@ export type Run = {
   steps: StepProgress | null;
   contextPct: number | null;
   role: RunRole;
+  paused?: PauseInfo | null;
+  memberState?: "killed" | "retired" | null;
 };
 
 export type Flow = {
@@ -105,6 +180,10 @@ export type Flow = {
   runs: Run[];
   replans: ReplanPoint[];
   history: HistoryPoint[];
+  posts?: Post[];
+  postsDropped?: number;
+  woken?: string[];
+  hasMemberEvents?: boolean;
 };
 
 export type PlanTaskInput = {
@@ -112,6 +191,8 @@ export type PlanTaskInput = {
   specialist: string;
   tier: Tier;
   after?: number[];
+  model?: string;
+  worktree?: string;
 };
 
 export type BurnDown = {
@@ -129,6 +210,9 @@ export type TaskBoardRow = {
   round: number;
   after: number[];
   waitingOn: number[];
+  model?: string;
+  warning?: string;
+  worktree?: string;
 };
 
 export type UnpricedSummary = {
@@ -163,6 +247,7 @@ export type FlowEvent = {
   model?: string;
   effort?: string | null;
   delegate?: string | null;
+  worktree?: string;
   role?: RunRole;
   tokens?: Partial<TokenCounts>;
   delegateTokens?: Partial<DelegateTokenCounts> | null;
@@ -171,6 +256,17 @@ export type FlowEvent = {
   status?: RunStatus;
   n?: number;
   waiting?: boolean;
+  from?: string;
+  text?: string;
+  to?: string[];
+  kind?: PostKind;
+  replyTo?: number;
+  channel?: string;
+  runId?: string;
+  reason?: PauseReason;
+  detail?: string;
+  seq?: number;
+  target?: string;
 };
 
 export type StallState = "active" | "quiet" | "waiting" | "stalled";

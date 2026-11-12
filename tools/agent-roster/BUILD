@@ -73,6 +73,11 @@ rust_test(
     name = "agent_roster_lib_test",
     size = "small",
     crate = ":agent_roster_lib",
+    data = [
+        "//:.agents/roster/skills/orchestrate/antigravity.md",
+        "//:.agents/roster/skills/orchestrate/claude-code.md",
+        "//:.agents/roster/skills/orchestrate/opencode.md",
+    ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )

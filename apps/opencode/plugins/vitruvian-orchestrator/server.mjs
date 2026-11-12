@@ -23,15 +23,28 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  applyBoardCall,
+  applyPostCall,
   applyProgressCall,
   applyStepCall,
+  formatWake,
   mapOpenCodeTokens,
   mergeTokenSnapshots,
   parseModelAndEffort,
+  pendingWakes,
   reduce,
 } from "./lib/adapter.mjs";
 
 export const PLUGIN_ID = "vitruvian-orchestrator";
+
+const VALID_SESSION_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
+
+export function isValidSessionId(raw) {
+  if (typeof raw !== "string") return false;
+  const id = raw.trim();
+  if (!id || id === "." || id === ".." || id.includes("..")) return false;
+  return VALID_SESSION_ID_RE.test(id);
+}
 
 export function getStateDir() {
   return (
@@ -96,20 +109,42 @@ const PROGRESS_INPUT_SCHEMA = {
             type: "array",
             items: { type: "number" },
           },
+          model: {
+            type: "string",
+            description:
+              "Optional Gemini model override for this task (e.g. gemini-4-carbon-high).",
+          },
+          worktree: {
+            type: "string",
+            description:
+              "Optional git worktree branch name for isolating parallel edits.",
+          },
         },
         required: ["title", "specialist", "tier"],
         additionalProperties: false,
       },
     },
     accept: {
-      type: "array",
-      items: { type: "number" },
-      description: "1-based task numbers accepted after adversarial review.",
+      anyOf: [
+        { type: "integer", minimum: 1 },
+        { type: "array", items: { type: "number" } },
+      ],
+      description: "1-based task number(s) accepted after adversarial review.",
     },
     return: {
-      type: "array",
-      items: { type: "number" },
-      description: "1-based task numbers returned for rework.",
+      anyOf: [
+        { type: "integer", minimum: 1 },
+        { type: "array", items: { type: "number" } },
+      ],
+      description: "1-based task number(s) returned for rework.",
+    },
+    retire: {
+      type: "string",
+      description: "Run id or specialist agent name to retire.",
+    },
+    kill: {
+      type: "string",
+      description: "Run id or specialist agent name to kill.",
     },
     finished: {
       type: "boolean",
@@ -153,8 +188,80 @@ const STEP_INPUT_SCHEMA = {
       },
       additionalProperties: false,
     },
+    paused: {
+      type: "string",
+      enum: ["quota", "error"],
+      description: "Optional pause reason when blocked ('quota' or 'error').",
+    },
+    detail: {
+      type: "string",
+      description: "Optional detail explaining why the member paused.",
+    },
+    worktree: {
+      type: "string",
+      description:
+        "Optional git worktree branch name created or used by this helper.",
+    },
   },
-  required: ["done", "total"],
+  additionalProperties: false,
+};
+
+const POST_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    text: {
+      type: "string",
+      description: "Post body text (capped at 4000 characters).",
+    },
+    to: {
+      type: "array",
+      items: { type: "string" },
+      description: "Optional explicit recipient agent names.",
+    },
+    kind: {
+      type: "string",
+      enum: ["note", "question", "defect", "result"],
+      description: "Post kind: note, question, defect, or result.",
+    },
+    replyTo: {
+      type: "integer",
+      minimum: 1,
+      description: "Optional seq number of the post being replied to.",
+    },
+  },
+  required: ["text"],
+  additionalProperties: false,
+};
+
+const BOARD_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    to: {
+      type: "string",
+      description:
+        "Optional recipient handle filter (e.g. 'wren', or 'me' for posts mentioning the caller; includes @all broadcasts).",
+    },
+    from: {
+      type: "string",
+      description: "Optional author handle filter.",
+    },
+    kind: {
+      type: "string",
+      enum: ["note", "question", "defect", "result"],
+      description: "Optional post kind filter.",
+    },
+    search: {
+      type: "string",
+      description: "Optional case-insensitive substring filter.",
+    },
+    limit: {
+      type: "integer",
+      minimum: 1,
+      maximum: 100,
+      description:
+        "Maximum newest matching posts to return (default 20, max 100).",
+    },
+  },
   additionalProperties: false,
 };
 
@@ -215,7 +322,7 @@ export default {
     }
 
     function persistFlow(rootID, flow) {
-      if (!rootID || !flow) return;
+      if (!isValidSessionId(rootID) || !flow) return;
       flowsByRoot.set(rootID, flow);
       activeRootSessionID = rootID;
       const now = Date.now();
@@ -237,19 +344,15 @@ export default {
     }
 
     function upsertSessionMeta(sessionID, patch = {}) {
-      if (!sessionID) {
-        return {
-          id: "default",
-          rootID: "default",
-          model: "unknown",
-          effort: /** @type {const} */ ("high"),
-        };
+      if (!isValidSessionId(sessionID) || sessionID.trim() === "default") {
+        return null;
       }
-      const prev = sessionMeta.get(sessionID);
+      const id = sessionID.trim();
+      const prev = sessionMeta.get(id);
       const parentID = patch.parentID ?? prev?.parentID ?? undefined;
-      let rootID = parentID
+      const rootID = parentID
         ? sessionMeta.get(parentID)?.rootID || parentID
-        : sessionID;
+        : prev?.rootID || id;
       const parsedModel =
         patch.modelRef !== undefined
           ? parseModelAndEffort(patch.modelRef, patch.effortHint)
@@ -259,7 +362,7 @@ export default {
             };
 
       const next = {
-        id: sessionID,
+        id,
         ...(parentID ? { parentID } : {}),
         rootID,
         title: patch.title ?? prev?.title,
@@ -269,49 +372,165 @@ export default {
             ? parsedModel.model
             : prev?.model || "unknown",
         effort: parsedModel.effort || prev?.effort || "high",
+        verified: patch.verified === true || prev?.verified === true,
       };
-      sessionMeta.set(sessionID, next);
+      sessionMeta.set(id, next);
       return next;
     }
 
     async function resolveSessionMeta(sessionID) {
-      if (!sessionID) {
-        return upsertSessionMeta("default");
+      if (!isValidSessionId(sessionID) || sessionID.trim() === "default") {
+        return null;
       }
-      const cached = sessionMeta.get(sessionID);
-      if (
-        cached &&
-        (cached.parentID !== undefined || cached.model !== "unknown")
-      ) {
+      const id = sessionID.trim();
+      const cached = sessionMeta.get(id);
+      if (cached?.verified && cached.model !== "unknown") {
         if (cached.parentID && sessionMeta.has(cached.parentID)) {
-          cached.rootID = sessionMeta.get(cached.parentID).rootID;
+          cached.rootID =
+            sessionMeta.get(cached.parentID).rootID || cached.parentID;
         }
         return cached;
       }
-      if (ctx?.session?.get) {
+      if (typeof ctx?.session?.get === "function") {
         try {
-          const info = await ctx.session.get({ sessionID });
+          const info = await ctx.session.get({ sessionID: id });
           if (info && typeof info === "object") {
-            let rootID = info.parentID || sessionID;
-            if (info.parentID) {
+            let rootID = info.parentID || id;
+            if (info.parentID && isValidSessionId(info.parentID)) {
               const parentMeta = await resolveSessionMeta(info.parentID);
-              rootID = parentMeta.rootID || info.parentID;
+              rootID = parentMeta?.rootID || info.parentID.trim();
             }
-            const meta = upsertSessionMeta(sessionID, {
+            const meta = upsertSessionMeta(id, {
               parentID: info.parentID,
               title: info.title,
               agent: info.agent,
               modelRef: info.model,
+              verified: true,
             });
-            meta.rootID = rootID;
-            sessionMeta.set(sessionID, meta);
-            return meta;
+            if (meta) {
+              meta.rootID = rootID;
+              sessionMeta.set(id, meta);
+              return meta;
+            }
           }
         } catch {
-          // Fall back to cached or default metadata
+          // Fall back to verified cached metadata if any
         }
       }
-      return upsertSessionMeta(sessionID);
+      if (cached?.verified) {
+        if (cached.parentID && sessionMeta.has(cached.parentID)) {
+          cached.rootID =
+            sessionMeta.get(cached.parentID).rootID || cached.parentID;
+        }
+        return cached;
+      }
+      return null;
+    }
+
+    function resolveFallbackRootID() {
+      if (activeRootSessionID && flowsByRoot.has(activeRootSessionID)) {
+        return activeRootSessionID;
+      }
+      const keys = [...flowsByRoot.keys()];
+      return keys.length > 0 ? keys[keys.length - 1] : null;
+    }
+
+    function findWorkerRunEntry(callerID) {
+      if (!callerID) return null;
+      for (const [rID, f] of flowsByRoot.entries()) {
+        if (!Array.isArray(f?.runs)) continue;
+        const run = f.runs.findLast(
+          (r) =>
+            r.role !== "lead" &&
+            (r.id === callerID || r.id.startsWith(`${callerID}#`)),
+        );
+        if (run) {
+          return { rootID: rID, flow: f, run };
+        }
+      }
+      return null;
+    }
+
+    const VALID_HANDLE_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
+    async function resolveToolCaller(toolCtx) {
+      const rawID =
+        typeof toolCtx?.sessionID === "string" ? toolCtx.sessionID.trim() : "";
+      const validID =
+        isValidSessionId(rawID) && rawID !== "default" ? rawID : "";
+      if (!validID) {
+        return {
+          known: false,
+          isHelper: true,
+          callerID: "",
+          rootID: resolveFallbackRootID(),
+          meta: null,
+          workerRun: null,
+          callerAgent: "helper",
+        };
+      }
+      const meta = await resolveSessionMeta(validID);
+      if (!meta) {
+        return {
+          known: false,
+          isHelper: true,
+          callerID: validID,
+          rootID: resolveFallbackRootID(),
+          meta: null,
+          workerRun: null,
+          callerAgent: "helper",
+        };
+      }
+      if (toolCtx?.agent && !meta.agent) {
+        meta.agent = toolCtx.agent;
+      }
+      const workerEntry = findWorkerRunEntry(validID);
+      const isHelper = Boolean(meta.parentID) || Boolean(workerEntry);
+      const rootID = meta.parentID
+        ? meta.rootID
+        : workerEntry?.rootID || meta.rootID || validID;
+      if (!isHelper) {
+        return {
+          known: true,
+          isHelper: false,
+          callerID: validID,
+          rootID,
+          meta,
+          workerRun: null,
+          callerAgent: "lead",
+        };
+      }
+      const norm = (s) =>
+        String(s ?? "")
+          .trim()
+          .replace(/^@+/, "")
+          .toLowerCase();
+      const runAgent = norm(workerEntry?.run?.agent);
+      const metaAgent = norm(meta.agent);
+      const ctxAgent = norm(toolCtx?.agent);
+      let callerAgent = "";
+      if (VALID_HANDLE_RE.test(runAgent) && runAgent !== "lead") {
+        callerAgent = runAgent;
+      } else if (VALID_HANDLE_RE.test(metaAgent) && metaAgent !== "lead") {
+        callerAgent = metaAgent;
+      } else if (VALID_HANDLE_RE.test(ctxAgent) && ctxAgent !== "lead") {
+        callerAgent = ctxAgent;
+      } else if (
+        runAgent === "lead" ||
+        metaAgent === "lead" ||
+        ctxAgent === "lead"
+      ) {
+        callerAgent = "helper";
+      }
+      return {
+        known: true,
+        isHelper: true,
+        callerID: validID,
+        rootID,
+        meta,
+        workerRun: workerEntry?.run ?? null,
+        callerAgent,
+      };
     }
 
     function ensureLeadRun(flow, rootID, meta, at = Date.now()) {
@@ -413,7 +632,115 @@ export default {
       return next;
     }
 
-    // 1. Register `progress` and `step` tools
+    /** @type {Set<string>} */
+    const wokenMentions = new Set();
+
+    async function isKnownChildSession(sessionID) {
+      if (!sessionID) return false;
+      const cached = sessionMeta.get(sessionID);
+      if (cached?.parentID) return true;
+      if (typeof ctx?.session?.get === "function") {
+        try {
+          const info = await ctx.session.get({ sessionID });
+          if (info && typeof info === "object" && info.parentID) {
+            let rootID = info.parentID;
+            const parentCached = sessionMeta.get(info.parentID);
+            if (parentCached?.rootID) {
+              rootID = parentCached.rootID;
+            }
+            const meta = upsertSessionMeta(sessionID, {
+              parentID: info.parentID,
+              title: info.title,
+              agent: info.agent,
+              modelRef: info.model,
+              verified: true,
+            });
+            if (meta) {
+              meta.rootID = rootID;
+              sessionMeta.set(meta.id, meta);
+            }
+            return true;
+          }
+        } catch {
+          return false;
+        }
+      }
+      return false;
+    }
+
+    async function deliverPendingWakes(rootID) {
+      if (!rootID || typeof ctx?.session?.prompt !== "function") return;
+      const initial = flowsByRoot.get(rootID);
+      if (!initial || initial.closedAt) return;
+
+      const wakes = pendingWakes(initial);
+      for (const wake of wakes) {
+        const current = flowsByRoot.get(rootID);
+        if (!current || current.closedAt) break;
+        const wakeKey = `${wake.seq}:${wake.target}`;
+        const scopedKey = `${rootID}:${current.startedAt}:${wakeKey}`;
+        if (
+          wokenMentions.has(scopedKey) ||
+          (Array.isArray(current.woken) && current.woken.includes(wakeKey))
+        ) {
+          continue;
+        }
+
+        wokenMentions.add(scopedKey);
+        try {
+          const post = Array.isArray(current.posts)
+            ? current.posts.find((p) => p.seq === wake.seq)
+            : undefined;
+
+          let targetSessionID = rootID;
+          let text;
+          if (wake.target === "lead") {
+            targetSessionID = rootID;
+            text = formatWake(wake, post, {
+              mode: "worker",
+              harness: "opencode",
+            });
+          } else {
+            const baseRunId = wake.runId
+              ? String(wake.runId).split("#")[0]
+              : "";
+            const candidateChildID = baseRunId || wake.runId || "";
+            const knownChild =
+              candidateChildID && (await isKnownChildSession(candidateChildID));
+            if (knownChild) {
+              targetSessionID = candidateChildID;
+              text = formatWake(wake, post, {
+                mode: "worker",
+                harness: "opencode",
+              });
+            } else {
+              targetSessionID = rootID;
+              text = formatWake(wake, post, {
+                mode: "lead",
+                harness: "opencode",
+              });
+            }
+          }
+
+          await ctx.session.prompt({ sessionID: targetSessionID, text });
+          const latest = flowsByRoot.get(rootID);
+          if (latest) {
+            const wokenFlow = reduce(latest, {
+              type: "wake",
+              at: Date.now(),
+              seq: wake.seq,
+              target: wake.target,
+            });
+            persistFlow(rootID, wokenFlow);
+          }
+        } catch {
+          // Swallow prompt errors; remove in-flight key so a later pass retries.
+          wokenMentions.delete(scopedKey);
+        }
+      }
+    }
+
+    // 1. Register `progress`, `step`, `post`, and `board` tools
     if (ctx?.tool?.transform) {
       await ctx.tool.transform((registry) => {
         registry.add({
@@ -424,12 +751,14 @@ export default {
           input: PROGRESS_INPUT_SCHEMA,
           execute: async (args, toolCtx) => {
             const now = Date.now();
-            const callerSessionID = toolCtx?.sessionID || "default";
-            const meta = await resolveSessionMeta(callerSessionID);
-            if (toolCtx?.agent && !meta.agent) {
-              meta.agent = toolCtx.agent;
+            const caller = await resolveToolCaller(toolCtx);
+            if (!caller.known) {
+              throw new Error("progress is for the lead only: caller unknown");
             }
-            const rootID = meta.rootID || callerSessionID;
+            if (caller.isHelper) {
+              throw new Error("progress is for the lead only");
+            }
+            const rootID = caller.rootID;
             const prevFlow = flowsByRoot.get(rootID) ?? null;
 
             const { flow: updatedFlow, summary } = applyProgressCall(
@@ -437,7 +766,7 @@ export default {
               args || {},
               now,
             );
-            let nextFlow = ensureLeadRun(updatedFlow, rootID, meta, now);
+            let nextFlow = ensureLeadRun(updatedFlow, rootID, caller.meta, now);
             if (args?.finished === true) {
               nextFlow = reduce(nextFlow, {
                 type: "run.end",
@@ -448,6 +777,7 @@ export default {
               });
             }
             persistFlow(rootID, nextFlow);
+            await deliverPendingWakes(rootID);
             return { content: summary };
           },
         });
@@ -455,33 +785,93 @@ export default {
         registry.add({
           name: "step",
           description:
-            "Report subagent step progress (done of total, plus optional short note) to the live Orchestrator panel.",
+            "Report subagent step progress (done of total, plus optional short note) or pause status (paused: 'quota' | 'error') to the live Orchestrator panel.",
           options: { codemode: false },
           input: STEP_INPUT_SCHEMA,
           execute: async (args, toolCtx) => {
             const now = Date.now();
-            const callerSessionID = toolCtx?.sessionID || "default";
-            const meta = await resolveSessionMeta(callerSessionID);
-            if (toolCtx?.agent && !meta.agent) {
-              meta.agent = toolCtx.agent;
-            }
-            const rootID = meta.rootID || callerSessionID;
-            let flow = flowsByRoot.get(rootID) ?? null;
+            const caller = await resolveToolCaller(toolCtx);
+            const rootID = caller.rootID;
+            let flow =
+              caller.callerID && rootID
+                ? (flowsByRoot.get(rootID) ?? null)
+                : null;
 
-            if (flow && meta.parentID) {
-              flow = ensureWorkerRun(flow, meta, now);
+            if (flow && caller.known && caller.meta?.parentID) {
+              flow = ensureWorkerRun(flow, caller.meta, now);
             }
 
             const { flow: nextFlow, summary } = applyStepCall(
               flow,
-              callerSessionID,
+              caller.callerID,
               args || {},
               now,
             );
-            if (nextFlow) {
+            if (nextFlow && caller.callerID && rootID) {
               persistFlow(rootID, nextFlow);
+              await deliverPendingWakes(rootID);
             }
             return { content: summary };
+          },
+        });
+
+        registry.add({
+          name: "post",
+          description:
+            "Post a message to the shared Orchestrator board (results, defect lists, questions, or notes). Supports @name, @all, and @lead mentions.",
+          options: { codemode: false },
+          input: POST_INPUT_SCHEMA,
+          execute: async (args, toolCtx) => {
+            const now = Date.now();
+            const caller = await resolveToolCaller(toolCtx);
+            const rootID = caller.rootID;
+            let flow = rootID ? (flowsByRoot.get(rootID) ?? null) : null;
+
+            if (flow && caller.known && caller.meta?.parentID) {
+              flow = ensureWorkerRun(flow, caller.meta, now);
+            }
+
+            const postRunId = caller.isHelper
+              ? caller.known && caller.callerID
+                ? caller.callerID
+                : "_unknown"
+              : undefined;
+            const postAgent = caller.isHelper
+              ? caller.callerAgent || "helper"
+              : "lead";
+            const { flow: nextFlow, seq } = applyPostCall(
+              flow,
+              postRunId,
+              postAgent,
+              args || {},
+              now,
+            );
+            if (nextFlow && rootID) {
+              persistFlow(rootID, nextFlow);
+              await deliverPendingWakes(rootID);
+            }
+            return { content: JSON.stringify({ seq }) };
+          },
+        });
+
+        registry.add({
+          name: "board",
+          description:
+            "Read posts from the shared Orchestrator board with optional recipient, author, kind, substring, and limit filters.",
+          options: { codemode: false },
+          input: BOARD_INPUT_SCHEMA,
+          execute: async (args, toolCtx) => {
+            const caller = await resolveToolCaller(toolCtx);
+            const flow = caller.rootID
+              ? (flowsByRoot.get(caller.rootID) ?? null)
+              : null;
+            const rows = applyBoardCall(
+              flow,
+              caller.callerAgent,
+              caller.isHelper,
+              args || {},
+            );
+            return { content: JSON.stringify(rows) };
           },
         });
       });
@@ -510,11 +900,13 @@ export default {
                 title,
                 agent,
                 modelRef,
+                verified: true,
               });
+              if (!meta) continue;
               if (parentID) {
                 const parentMeta = await resolveSessionMeta(parentID);
-                meta.rootID = parentMeta.rootID || parentID;
-                sessionMeta.set(sessionID, meta);
+                meta.rootID = parentMeta?.rootID || parentID;
+                sessionMeta.set(meta.id, meta);
                 const flow = flowsByRoot.get(meta.rootID);
                 if (flow) {
                   const nextFlow = ensureWorkerRun(flow, meta, now);
@@ -538,12 +930,15 @@ export default {
               const sessionID = data.sessionID;
               if (!sessionID) continue;
               const existingMeta = await resolveSessionMeta(sessionID);
+              if (!existingMeta) continue;
               const meta = upsertSessionMeta(sessionID, {
                 parentID: existingMeta.parentID,
                 title: existingMeta.title,
                 agent: data.agent ?? existingMeta.agent,
                 modelRef: data.model ?? existingMeta.model,
+                verified: true,
               });
+              if (!meta) continue;
               meta.rootID = existingMeta.rootID;
               const flow = flowsByRoot.get(meta.rootID);
               if (flow) {
@@ -561,6 +956,7 @@ export default {
                 data.tokens,
               );
               const meta = await resolveSessionMeta(sessionID);
+              if (!meta) continue;
               let flow = flowsByRoot.get(meta.rootID);
               if (flow) {
                 flow = meta.parentID
@@ -583,6 +979,7 @@ export default {
               if (!sessionID) continue;
               const tokens = recordUsageTokens(sessionID, data.tokens);
               const meta = await resolveSessionMeta(sessionID);
+              if (!meta) continue;
               let flow = flowsByRoot.get(meta.rootID);
               if (flow) {
                 flow = meta.parentID
@@ -604,7 +1001,7 @@ export default {
               const sessionID = data.sessionID;
               if (!sessionID) continue;
               const meta = await resolveSessionMeta(sessionID);
-              if (meta.parentID) {
+              if (meta?.parentID) {
                 let flow = flowsByRoot.get(meta.rootID);
                 if (flow) {
                   flow = ensureWorkerRun(flow, meta, now);
@@ -616,6 +1013,7 @@ export default {
                     tokens: getSessionTokens(sessionID),
                   });
                   persistFlow(meta.rootID, flow);
+                  await deliverPendingWakes(meta.rootID);
                 }
               }
             } else if (
@@ -626,7 +1024,7 @@ export default {
               const sessionID = data.sessionID;
               if (!sessionID) continue;
               const meta = await resolveSessionMeta(sessionID);
-              if (meta.parentID) {
+              if (meta?.parentID) {
                 let flow = flowsByRoot.get(meta.rootID);
                 if (flow) {
                   flow = ensureWorkerRun(flow, meta, now);
@@ -638,6 +1036,7 @@ export default {
                     tokens: getSessionTokens(sessionID),
                   });
                   persistFlow(meta.rootID, flow);
+                  await deliverPendingWakes(meta.rootID);
                 }
               }
             }
@@ -646,6 +1045,10 @@ export default {
           // Stream closed on shutdown
         }
       })();
+    }
+
+    for (const rootID of flowsByRoot.keys()) {
+      await deliverPendingWakes(rootID);
     }
   },
 };

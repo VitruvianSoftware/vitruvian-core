@@ -45,6 +45,12 @@ js_library(
 js_test(
     name = "core_test",
     size = "small",
-    data = [":lib"],
+    data = [
+        ":lib",
+        "//apps/claude-code/plugins/vitruvian-orchestrator:README.md",
+    ],
     entry_point = "src/core.test.mjs",
+    no_copy_to_bin = [
+        "//apps/claude-code/plugins/vitruvian-orchestrator:README.md",
+    ],
 )

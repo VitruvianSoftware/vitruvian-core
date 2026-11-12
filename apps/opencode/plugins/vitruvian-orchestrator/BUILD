@@ -36,7 +36,11 @@ js_library(
 
 js_test(
     name = "adapter_test",
-    data = [":adapter"],
+    data = [
+        "README.md",
+        "tui.tsx",
+        ":adapter",
+    ],
     entry_point = "lib/adapter.test.mjs",
     node_options = ["--test"],
 )

@@ -56,7 +56,9 @@ function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [name, value] of Object.entries(attrs)) {
     if (name === "class") node.className = value;
-    else if (value !== false && value !== undefined && value !== null) {
+    else if (name === "onclick" && typeof value === "function") {
+      node.addEventListener("click", value);
+    } else if (value !== false && value !== undefined && value !== null) {
       node.setAttribute(name, value === true ? "" : String(value));
     }
   }
@@ -345,6 +347,23 @@ function renderTaskBoard(rows) {
       el("span", { class: "meta-chip mono" }, row.specialist || "wren"),
       el("span", { class: "meta-chip tier-chip" }, row.tier || "core"),
     ];
+    if (row.model) {
+      metaBadges.push(el("span", { class: "meta-chip mono" }, row.model));
+    }
+    if (row.worktree) {
+      metaBadges.push(
+        el("span", { class: "meta-chip mono" }, `⎇ ${row.worktree}`),
+      );
+    }
+    if (row.warning) {
+      metaBadges.push(
+        el(
+          "span",
+          { class: "meta-chip status-amber", title: row.warning },
+          row.warning,
+        ),
+      );
+    }
     if (row.round > 0) {
       metaBadges.push(
         el("span", { class: "meta-chip status-red" }, `round ${row.round}`),
@@ -380,19 +399,39 @@ function renderTaskBoard(rows) {
   }
 }
 
-function renderAgents(runs) {
+function renderAgents(runs, members) {
   const container = $("agents-list");
   container.replaceChildren();
   $("agents-empty").hidden = runs.length > 0;
   $("agents-caption").textContent =
     `${runs.length} run${runs.length === 1 ? "" : "s"}`;
 
+  const memberById = new Map();
+  for (const group of [
+    members?.active,
+    members?.standingBy,
+    members?.retired,
+  ]) {
+    if (!Array.isArray(group)) continue;
+    for (const m of group) {
+      if (m && typeof m.id === "string") {
+        memberById.set(m.id, m);
+      }
+    }
+  }
+
   for (const run of runs) {
     const mascot = MASCOTS[run.agent] || "●";
     const tone = statusTone(run.status);
-    const modelLabel = run.effort
-      ? `${run.model || "inherit"} · ${run.effort}`
-      : run.model || "inherit";
+    const member = memberById.get(run.id) || null;
+    const baseModel = run.model || "inherit";
+    const taskModel = run.taskModel || member?.taskModel || null;
+    const effectiveDelegate = run.delegate || taskModel || null;
+    const modelCore =
+      effectiveDelegate && effectiveDelegate !== baseModel
+        ? `${baseModel} → ${effectiveDelegate}`
+        : baseModel;
+    const modelLabel = run.effort ? `${modelCore} · ${run.effort}` : modelCore;
 
     let progressLabel = "—";
     if (
@@ -429,6 +468,23 @@ function renderAgents(runs) {
           )
         : null;
 
+    const worktree = run.worktree || member?.worktree || null;
+    const isPausedOrKilled =
+      member?.state === "paused" || member?.state === "killed";
+    const statusBadge =
+      member?.state === "paused"
+        ? el(
+            "span",
+            {
+              class: "status-badge status-amber",
+              title: member.detail || undefined,
+            },
+            `paused: ${member.reason || "error"}`,
+          )
+        : member?.state === "killed"
+          ? el("span", { class: "status-badge status-red" }, "killed")
+          : el("span", { class: `status-badge ${tone}` }, run.status);
+
     const row = el(
       "div",
       { class: "row-item agent-row" },
@@ -445,12 +501,15 @@ function renderAgents(runs) {
         "div",
         { class: "row-meta" },
         el("span", { class: "meta-chip mono" }, modelLabel),
+        worktree
+          ? el("span", { class: "meta-chip mono" }, `⎇ ${worktree}`)
+          : null,
         el("span", { class: "meta-chip" }, progressLabel),
         el("span", { class: "meta-chip mono" }, tokensLabel),
         el("span", { class: "meta-chip mono" }, costLabel),
         el("span", { class: "meta-chip mono muted" }, elapsedLabel),
-        el("span", { class: `status-badge ${tone}` }, run.status),
-        stallBadge,
+        statusBadge,
+        isPausedOrKilled ? null : stallBadge,
       ),
     );
     container.append(row);
@@ -509,6 +568,1095 @@ function renderSpend(spendSummary) {
 }
 
 let lastRenderedState = null;
+let activeTab = "flow";
+let boardFollow = true;
+let lastAutoScrolledSeq = 0;
+const expandedPostSeqs = new Set();
+let graphLive = true;
+let graphReplaySeq = 0;
+let graphPlaying = false;
+let graphPlayTimer = null;
+let graphHideInactive = false;
+
+function postKindTone(kind) {
+  switch (kind) {
+    case "question":
+      return "status-amber";
+    case "defect":
+      return "status-red";
+    case "result":
+      return "status-green";
+    default:
+      return "status-neutral";
+  }
+}
+
+function memberStateTone(state) {
+  switch (state) {
+    case "working":
+      return "status-blue";
+    case "waiting":
+    case "paused":
+      return "status-amber";
+    case "killed":
+      return "status-red";
+    default:
+      return "status-neutral";
+  }
+}
+
+function exceedsSixLines(text) {
+  const str = String(text ?? "");
+  const lines = str.split("\n");
+  if (lines.length > 6) return true;
+  let visualLines = 0;
+  for (const line of lines) {
+    visualLines += Math.max(1, Math.ceil(line.length / 68));
+    if (visualLines > 6) return true;
+  }
+  return false;
+}
+
+function clipSingleLine(text, maxLen = 96) {
+  const clean = String(text ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (clean.length <= maxLen) return clean;
+  return `${clean.slice(0, maxLen - 1)}…`;
+}
+
+function formatRecipientLabel(raw) {
+  const s = String(raw ?? "").trim();
+  return s.toLowerCase() === "all" ? "everyone" : `@${s}`;
+}
+
+function syncSelectOptions(
+  selectNode,
+  defaultLabel,
+  values,
+  formatLabel = (v) => v,
+) {
+  if (!selectNode) return "";
+  const current = String(selectNode.value ?? "");
+  const preserved = values.includes(current) ? current : "";
+  selectNode.replaceChildren(
+    el(
+      "option",
+      { value: "", selected: preserved === "" ? true : false },
+      defaultLabel,
+    ),
+    ...values.map((v) =>
+      el(
+        "option",
+        { value: v, selected: preserved === v ? true : false },
+        formatLabel(v),
+      ),
+    ),
+  );
+  selectNode.value = preserved;
+  return preserved;
+}
+
+function syncFollowControls() {
+  const followBtn = $("board-follow");
+  const jumpBtn = $("board-jump-latest");
+  if (followBtn) {
+    followBtn.className = boardFollow
+      ? "control-btn small active"
+      : "control-btn small";
+    followBtn.setAttribute("aria-pressed", boardFollow ? "true" : "false");
+  }
+  if (jumpBtn) {
+    jumpBtn.hidden = boardFollow;
+  }
+}
+
+function scrollBoardToLatest() {
+  const list = $("board-list");
+  if (!list) return;
+  list.scrollTop = list.scrollHeight;
+  const last = list.children?.[list.children.length - 1];
+  if (last && typeof last.scrollIntoView === "function") {
+    last.scrollIntoView({ block: "end" });
+  }
+}
+
+function renderBoard(state, forceScroll = false) {
+  const list = $("board-list");
+  const empty = $("board-empty");
+  const badge = $("tab-badge-board");
+  if (!list || !empty) return;
+
+  const now = typeof state?.now === "number" ? state.now : Date.now();
+  const allPosts = Array.isArray(state?.posts)
+    ? state.posts
+    : Array.isArray(state?.flow?.posts)
+      ? state.flow.posts
+      : [];
+
+  if (badge) {
+    badge.hidden = allPosts.length === 0;
+    badge.textContent = String(allPosts.length);
+  }
+
+  const authors = [
+    ...new Set(
+      allPosts.map((p) => String(p.from ?? "").trim()).filter(Boolean),
+    ),
+  ].sort();
+  const recipients = [
+    ...new Set(
+      allPosts.flatMap((p) =>
+        Array.isArray(p.to)
+          ? p.to.map((r) => String(r ?? "").trim()).filter(Boolean)
+          : [],
+      ),
+    ),
+  ].sort();
+
+  const fromFilter = syncSelectOptions(
+    $("board-filter-from"),
+    "All authors",
+    authors,
+  );
+  const toFilter = syncSelectOptions(
+    $("board-filter-to"),
+    "All recipients",
+    recipients,
+    (v) => (String(v).toLowerCase() === "all" ? "everyone" : v),
+  );
+  const kindFilter = String($("board-filter-kind")?.value ?? "");
+  const query = String($("board-search")?.value ?? "")
+    .trim()
+    .toLowerCase();
+
+  const filtered = allPosts.filter((p) => {
+    if (fromFilter && p.from !== fromFilter) return false;
+    if (toFilter && !(Array.isArray(p.to) && p.to.includes(toFilter))) {
+      return false;
+    }
+    if (kindFilter && p.kind !== kindFilter) return false;
+    if (query) {
+      const inText = String(p.text ?? "")
+        .toLowerCase()
+        .includes(query);
+      const inFrom = String(p.from ?? "")
+        .toLowerCase()
+        .includes(query);
+      const inTo = Array.isArray(p.to)
+        ? p.to.some((r) => {
+            const rl = String(r ?? "").toLowerCase();
+            return (
+              rl.includes(query) || (rl === "all" && "everyone".includes(query))
+            );
+          })
+        : false;
+      if (!inText && !inFrom && !inTo) return false;
+    }
+    return true;
+  });
+
+  list.replaceChildren();
+  empty.hidden = filtered.length > 0;
+  empty.textContent =
+    allPosts.length === 0 ? "No board posts yet." : "No matching posts.";
+
+  const postsDropped = Number(
+    state?.postsDropped ?? state?.flow?.postsDropped ?? 0,
+  );
+  if (postsDropped > 0 && filtered.length > 0) {
+    list.append(
+      el(
+        "div",
+        { class: "muted small mono" },
+        `${postsDropped} older posts not shown`,
+      ),
+    );
+  }
+
+  for (const post of filtered) {
+    const kind = post.kind || "note";
+    const rel = `${formatElapsed(Math.max(0, now - (post.at ?? now)))} ago`;
+    const recipientsText =
+      Array.isArray(post.to) && post.to.length > 0
+        ? `→ ${post.to.map(formatRecipientLabel).join(", ")}`
+        : "";
+    const isLong = exceedsSixLines(post.text);
+    const isExpanded = expandedPostSeqs.has(post.seq);
+
+    const row = el(
+      "div",
+      { class: "post-row" },
+      el(
+        "div",
+        { class: "post-header" },
+        el(
+          "div",
+          { class: "post-header-left" },
+          el("span", { class: "task-num mono muted" }, `#${post.seq}`),
+          el("span", { class: "row-title" }, post.from || "unknown"),
+          recipientsText
+            ? el("span", { class: "muted small mono" }, recipientsText)
+            : null,
+          typeof post.replyTo === "number"
+            ? el(
+                "span",
+                { class: "meta-chip mono muted" },
+                `↩ #${post.replyTo}`,
+              )
+            : null,
+        ),
+        el(
+          "div",
+          { class: "post-header-right" },
+          el("span", { class: "muted small mono" }, rel),
+          el("span", { class: `status-badge ${postKindTone(kind)}` }, kind),
+        ),
+      ),
+      el(
+        "div",
+        {
+          class: isLong && !isExpanded ? "post-text clamped" : "post-text",
+        },
+        String(post.text ?? ""),
+      ),
+      isLong
+        ? el(
+            "button",
+            {
+              type: "button",
+              class: "link-btn",
+              onclick: () => {
+                if (expandedPostSeqs.has(post.seq)) {
+                  expandedPostSeqs.delete(post.seq);
+                } else {
+                  expandedPostSeqs.add(post.seq);
+                }
+                if (lastRenderedState) renderBoard(lastRenderedState, false);
+              },
+            },
+            isExpanded ? "Show less" : "Show more",
+          )
+        : null,
+    );
+    list.append(row);
+  }
+
+  syncFollowControls();
+  const maxSeq = allPosts.length > 0 ? allPosts[allPosts.length - 1].seq : 0;
+  if (boardFollow && (forceScroll || maxSeq > lastAutoScrolledSeq)) {
+    lastAutoScrolledSeq = maxSeq;
+    scrollBoardToLatest();
+  }
+}
+
+function renderMemberGroup(container, list, taskByN, postBySeq, now) {
+  if (!container) return;
+  container.replaceChildren();
+  if (list.length === 0) {
+    container.append(el("p", { class: "muted small" }, "None."));
+    return;
+  }
+
+  for (const member of list) {
+    const mascot = MASCOTS[member.agent] || "●";
+    const task =
+      typeof member.taskN === "number" ? taskByN.get(member.taskN) : null;
+    const taskLabel =
+      typeof member.taskN === "number"
+        ? task?.title
+          ? `#${member.taskN} · ${task.title}`
+          : `#${member.taskN}`
+        : null;
+    const baseModel = member.model || "inherit";
+    const effectiveDelegate = member.delegate || member.taskModel || null;
+    const modelText =
+      effectiveDelegate && effectiveDelegate !== baseModel
+        ? `${baseModel} → ${effectiveDelegate}`
+        : baseModel;
+    const memberWorktree = member.worktree || task?.worktree || null;
+    const stateLabel =
+      member.state === "paused"
+        ? `paused: ${member.reason || "error"}`
+        : member.state;
+    const activityLabel = member.lastActivityAt
+      ? `${formatElapsed(Math.max(0, now - member.lastActivityAt))} ago`
+      : "—";
+    const latestPost =
+      typeof member.lastPostSeq === "number"
+        ? postBySeq.get(member.lastPostSeq)
+        : null;
+
+    container.append(
+      el(
+        "div",
+        { class: "member-card" },
+        el(
+          "div",
+          { class: "member-top" },
+          el(
+            "div",
+            { class: "row-main" },
+            el(
+              "span",
+              { class: "agent-mascot", "aria-hidden": "true" },
+              mascot,
+            ),
+            el("span", { class: "row-title" }, member.agent || "worker"),
+            taskLabel ? el("span", { class: "muted small" }, taskLabel) : null,
+          ),
+          el(
+            "div",
+            { class: "row-meta" },
+            el("span", { class: "meta-chip mono" }, modelText),
+            memberWorktree
+              ? el("span", { class: "meta-chip mono" }, `⎇ ${memberWorktree}`)
+              : null,
+            el("span", { class: "meta-chip mono muted" }, activityLabel),
+            el(
+              "span",
+              {
+                class: `status-badge ${memberStateTone(member.state)}`,
+                title: member.detail || undefined,
+              },
+              stateLabel,
+            ),
+          ),
+        ),
+        member.detail
+          ? el("div", { class: "muted small member-post" }, member.detail)
+          : null,
+        latestPost
+          ? el(
+              "div",
+              { class: "muted small member-post" },
+              `Latest #${latestPost.seq}: ${clipSingleLine(latestPost.text)}`,
+            )
+          : null,
+      ),
+    );
+  }
+}
+
+function renderMembers(state) {
+  const groups = $("members-groups");
+  const empty = $("members-empty");
+  const caption = $("members-caption");
+  const badge = $("tab-badge-members");
+  if (!groups || !empty) return;
+
+  const now = typeof state?.now === "number" ? state.now : Date.now();
+  const active = Array.isArray(state?.members?.active)
+    ? state.members.active
+    : [];
+  const standingBy = Array.isArray(state?.members?.standingBy)
+    ? state.members.standingBy
+    : [];
+  const retired = Array.isArray(state?.members?.retired)
+    ? state.members.retired
+    : [];
+  const total = active.length + standingBy.length + retired.length;
+
+  if (badge) {
+    badge.hidden = total === 0;
+    badge.textContent = String(total);
+  }
+  if (caption) {
+    caption.textContent = `${total} member${total === 1 ? "" : "s"}`;
+  }
+  empty.hidden = total > 0;
+  groups.hidden = total === 0;
+  if (total === 0) return;
+
+  $("members-active-count").textContent = `(${active.length})`;
+  $("members-standing-count").textContent = `(${standingBy.length})`;
+  $("members-retired-count").textContent = `(${retired.length})`;
+
+  const taskByN = new Map(
+    (Array.isArray(state?.taskBoard) ? state.taskBoard : []).map((t) => [
+      t.n,
+      t,
+    ]),
+  );
+  const allPosts = Array.isArray(state?.posts)
+    ? state.posts
+    : Array.isArray(state?.flow?.posts)
+      ? state.flow.posts
+      : [];
+  const postBySeq = new Map(allPosts.map((p) => [p.seq, p]));
+
+  renderMemberGroup($("members-active"), active, taskByN, postBySeq, now);
+  renderMemberGroup($("members-standing"), standingBy, taskByN, postBySeq, now);
+  renderMemberGroup($("members-retired"), retired, taskByN, postBySeq, now);
+}
+
+function getStatePosts(state) {
+  if (Array.isArray(state?.posts)) return state.posts;
+  if (Array.isArray(state?.flow?.posts)) return state.flow.posts;
+  return [];
+}
+
+function getGraphPosts(state) {
+  if (Array.isArray(state?.graphPosts)) return state.graphPosts;
+  return getStatePosts(state);
+}
+
+function stopGraphPlayback() {
+  graphPlaying = false;
+  if (graphPlayTimer !== null) {
+    if (typeof clearInterval === "function") {
+      clearInterval(graphPlayTimer);
+    }
+    graphPlayTimer = null;
+  }
+}
+
+function computeGraphFromPosts(posts, uptoSeq) {
+  const hasCap = typeof uptoSeq === "number" && Number.isFinite(uptoSeq);
+  const nodePosts = new Map();
+  const edgeMap = new Map();
+
+  for (const post of posts) {
+    if (hasCap && post.seq > uptoSeq) continue;
+    const from = String(post.from ?? "")
+      .trim()
+      .replace(/^@+/, "")
+      .toLowerCase();
+    const validFrom = from.length > 0 && from !== "all";
+    if (validFrom) {
+      nodePosts.set(from, (nodePosts.get(from) ?? 0) + 1);
+    }
+    const seenTo = new Set();
+    const rawTo = Array.isArray(post.to) ? post.to : [];
+    for (const item of rawTo) {
+      const to = String(item ?? "")
+        .trim()
+        .replace(/^@+/, "")
+        .toLowerCase();
+      if (to.length === 0 || to === "all" || seenTo.has(to)) continue;
+      seenTo.add(to);
+      if (!nodePosts.has(to)) {
+        nodePosts.set(to, 0);
+      }
+      if (validFrom) {
+        const key = `${from}\0${to}`;
+        const existing = edgeMap.get(key);
+        if (existing) existing.count += 1;
+        else edgeMap.set(key, { from, to, count: 1 });
+      }
+    }
+  }
+
+  const nodes = Array.from(nodePosts.entries())
+    .map(([id, postsCount]) => ({ id, posts: postsCount }))
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
+  const edges = Array.from(edgeMap.values()).sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    if (a.from !== b.from) return a.from < b.from ? -1 : 1;
+    if (a.to !== b.to) return a.to < b.to ? -1 : 1;
+    return 0;
+  });
+
+  return { nodes, edges };
+}
+
+function collectInactiveHandles(state) {
+  const memberById = new Map();
+  for (const group of [
+    state?.members?.active,
+    state?.members?.standingBy,
+    state?.members?.retired,
+  ]) {
+    if (!Array.isArray(group)) continue;
+    for (const m of group) {
+      if (m && typeof m.id === "string") {
+        memberById.set(m.id, m);
+      }
+    }
+  }
+
+  const runs = Array.isArray(state?.runs)
+    ? state.runs
+    : Array.isArray(state?.flow?.runs)
+      ? state.flow.runs
+      : [];
+
+  const latestStateByHandle = new Map();
+  if (runs.length > 0) {
+    for (const run of runs) {
+      if (!run || run.role === "lead") continue;
+      const h = String(run.agent ?? "")
+        .trim()
+        .toLowerCase();
+      if (!h) continue;
+      const member = memberById.get(run.id);
+      const st =
+        member?.state ??
+        (run.memberState === "killed" || run.memberState === "retired"
+          ? run.memberState
+          : run.paused
+            ? "paused"
+            : run.status === "running"
+              ? "working"
+              : run.status === "error"
+                ? "retired"
+                : "waiting");
+      latestStateByHandle.set(h, st);
+    }
+  } else {
+    for (const group of [
+      state?.members?.retired,
+      state?.members?.standingBy,
+      state?.members?.active,
+    ]) {
+      if (!Array.isArray(group)) continue;
+      for (const m of group) {
+        const h = String(m?.agent ?? "")
+          .trim()
+          .toLowerCase();
+        if (h && typeof m?.state === "string") {
+          latestStateByHandle.set(h, m.state);
+        }
+      }
+    }
+  }
+
+  const inactiveHandles = new Set();
+  for (const [h, st] of latestStateByHandle.entries()) {
+    if (st === "killed" || st === "retired") {
+      inactiveHandles.add(h);
+    }
+  }
+  return inactiveHandles;
+}
+
+function syncGraphControls(minSeq, latestSeq, effectiveSeq, hasPosts) {
+  if (!hasPosts && graphPlaying) {
+    stopGraphPlayback();
+  }
+  const slider = $("graph-seq-slider");
+  if (slider) {
+    slider.setAttribute("min", String(minSeq));
+    slider.setAttribute("max", String(latestSeq));
+    slider.setAttribute("value", String(effectiveSeq));
+    slider.value = String(effectiveSeq);
+    slider.disabled = !hasPosts;
+  }
+  const seqLabel = $("graph-seq-label");
+  if (seqLabel) {
+    seqLabel.textContent = !hasPosts
+      ? "seq 0 / 0"
+      : graphLive
+        ? `Live · seq ${effectiveSeq}/${latestSeq}`
+        : `seq ${effectiveSeq}/${latestSeq}`;
+  }
+  const stepBackBtn = $("graph-step-back");
+  if (stepBackBtn) {
+    stepBackBtn.disabled = !hasPosts || effectiveSeq <= minSeq;
+  }
+  const stepFwdBtn = $("graph-step-forward");
+  if (stepFwdBtn) {
+    stepFwdBtn.disabled = !hasPosts || effectiveSeq >= latestSeq;
+  }
+  const liveBtn = $("graph-live");
+  if (liveBtn) {
+    liveBtn.disabled = !hasPosts;
+    liveBtn.className = graphLive
+      ? "control-btn small active"
+      : "control-btn small";
+    liveBtn.setAttribute("aria-pressed", graphLive ? "true" : "false");
+  }
+  const playBtn = $("graph-play-pause");
+  if (playBtn) {
+    playBtn.disabled = !hasPosts;
+    playBtn.className = graphPlaying
+      ? "control-btn small active"
+      : "control-btn small";
+    playBtn.setAttribute("aria-pressed", graphPlaying ? "true" : "false");
+    playBtn.textContent = graphPlaying ? "Pause" : "Play";
+  }
+  const hideBtn = $("graph-hide-inactive");
+  if (hideBtn) {
+    hideBtn.className = graphHideInactive
+      ? "control-btn small active"
+      : "control-btn small";
+    hideBtn.setAttribute("aria-pressed", graphHideInactive ? "true" : "false");
+  }
+}
+
+function shortenGraphLabel(label, maxChars) {
+  const str = String(label ?? "");
+  const cap = Math.max(2, Math.floor(maxChars));
+  if (str.length <= cap) return str;
+  return `${str.slice(0, cap - 1)}…`;
+}
+
+function renderGraph(state) {
+  const container = $("graph-container");
+  const empty = $("graph-empty");
+  if (!container || !empty) return;
+
+  const allPosts = getGraphPosts(state);
+  const hasPosts = allPosts.length > 0;
+  const minSeq = hasPosts ? allPosts[0].seq : 1;
+  const latestSeq = hasPosts ? allPosts[allPosts.length - 1].seq : 1;
+  const effectiveSeq =
+    !hasPosts || graphLive
+      ? latestSeq
+      : Math.min(latestSeq, Math.max(minSeq, graphReplaySeq || latestSeq));
+  if (graphLive) {
+    graphReplaySeq = latestSeq;
+  }
+
+  syncGraphControls(minSeq, latestSeq, effectiveSeq, hasPosts);
+
+  const rangeNote = $("graph-range-note");
+  if (rangeNote) {
+    const showRangeNote =
+      hasPosts &&
+      (minSeq > 1 ||
+        (Number(state?.postsDropped) || 0) > 0 ||
+        (Array.isArray(state?.posts) && state.posts.length < allPosts.length));
+    rangeNote.hidden = !showRangeNote;
+    rangeNote.textContent = showRangeNote
+      ? `graph covers posts #${minSeq}-#${latestSeq}`
+      : "";
+  }
+
+  const canUseServerGraph =
+    graphLive &&
+    state?.mentionGraph &&
+    Array.isArray(state.mentionGraph.nodes) &&
+    Array.isArray(state.mentionGraph.edges) &&
+    (Array.isArray(state?.graphPosts) || minSeq === 1);
+  const baseGraph = canUseServerGraph
+    ? state.mentionGraph
+    : computeGraphFromPosts(allPosts, effectiveSeq);
+
+  const inactive = graphHideInactive ? collectInactiveHandles(state) : null;
+  const nodes = inactive
+    ? baseGraph.nodes.filter((n) => !inactive.has(n.id))
+    : baseGraph.nodes;
+  const edges = inactive
+    ? baseGraph.edges.filter(
+        (e) => !inactive.has(e.from) && !inactive.has(e.to),
+      )
+    : baseGraph.edges;
+
+  container.replaceChildren();
+  empty.hidden = nodes.length > 0;
+  if (nodes.length === 0) return;
+
+  const width = Math.max(200, Math.round(container.clientWidth || 360));
+  const height = 260;
+  const cx = width / 2;
+  const cy = height / 2;
+  const nodeR = 18;
+  const sideGutter = Math.min(64, Math.max(52, Math.round(width * 0.24)));
+  const baseR = Math.min(width, height) * 0.33;
+  const ringRx =
+    nodes.length <= 1
+      ? 0
+      : Math.min(baseR, Math.max(28, cx - nodeR - sideGutter));
+  const ringRy = nodes.length <= 1 ? 0 : baseR;
+
+  const posById = new Map();
+  for (let i = 0; i < nodes.length; i += 1) {
+    const angle = -Math.PI / 2 + (2 * Math.PI * i) / Math.max(1, nodes.length);
+    const x = cx + ringRx * Math.cos(angle);
+    const y = cy + ringRy * Math.sin(angle);
+    posById.set(nodes[i].id, { x, y, angle });
+  }
+
+  const svg = svgEl("svg", {
+    viewBox: `0 0 ${width} ${height}`,
+    width: String(width),
+    height: String(height),
+    class: "graph-svg",
+    role: "img",
+    "aria-label": "Mention graph",
+  });
+
+  svg.append(
+    svgEl(
+      "defs",
+      {},
+      svgEl(
+        "marker",
+        {
+          id: "graph-arrowhead",
+          viewBox: "0 0 10 10",
+          refX: "9",
+          refY: "5",
+          markerWidth: "6",
+          markerHeight: "6",
+          orient: "auto-start-reverse",
+        },
+        svgEl("path", {
+          d: "M 0 1 L 10 5 L 0 9 z",
+          class: "graph-arrow",
+        }),
+      ),
+    ),
+  );
+
+  const edgeKeys = new Set(edges.map((e) => `${e.from}\0${e.to}`));
+  const maxCount = Math.max(1, ...edges.map((e) => e.count));
+  const edgesGroup = svgEl("g", { class: "graph-layer-edges" });
+  const weightsGroup = svgEl("g", { class: "graph-layer-weights" });
+
+  for (const edge of edges) {
+    const src = posById.get(edge.from);
+    const dst = posById.get(edge.to);
+    if (!src || !dst) continue;
+    const strokeWidth =
+      maxCount <= 1 ? 2 : 1.5 + ((edge.count - 1) / (maxCount - 1)) * 3.0;
+
+    if (edge.from === edge.to) {
+      const loopR = 12;
+      const lx = src.x;
+      const ly = src.y - nodeR;
+      edgesGroup.append(
+        svgEl(
+          "path",
+          {
+            d: `M ${(lx - 6).toFixed(1)} ${ly.toFixed(1)} A ${loopR} ${loopR} 0 1 1 ${(lx + 6).toFixed(1)} ${ly.toFixed(1)}`,
+            class: "graph-edge",
+            "data-from": edge.from,
+            "data-to": edge.to,
+            "data-count": String(edge.count),
+            "stroke-width": strokeWidth.toFixed(2),
+            "marker-end": "url(#graph-arrowhead)",
+          },
+          svgEl("title", {}, `${edge.from} → ${edge.to} ×${edge.count}`),
+        ),
+      );
+      weightsGroup.append(
+        svgEl(
+          "text",
+          {
+            x: lx.toFixed(1),
+            y: Math.max(10, ly - loopR * 2 - 2).toFixed(1),
+            "text-anchor": "middle",
+            class: "graph-weight",
+            "data-from": edge.from,
+            "data-to": edge.to,
+            "data-count": String(edge.count),
+          },
+          String(edge.count),
+        ),
+      );
+      continue;
+    }
+
+    const dx = dst.x - src.x;
+    const dy = dst.y - src.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const ux = dx / dist;
+    const uy = dy / dist;
+    const hasReverse = edgeKeys.has(`${edge.to}\0${edge.from}`);
+    const perpOffset = hasReverse ? 3.5 : 0;
+    const ox = -uy * perpOffset;
+    const oy = ux * perpOffset;
+    const x1 = src.x + ux * (nodeR + 2) + ox;
+    const y1 = src.y + uy * (nodeR + 2) + oy;
+    const x2 = dst.x - ux * (nodeR + 5) + ox;
+    const y2 = dst.y - uy * (nodeR + 5) + oy;
+
+    edgesGroup.append(
+      svgEl(
+        "line",
+        {
+          x1: x1.toFixed(1),
+          y1: y1.toFixed(1),
+          x2: x2.toFixed(1),
+          y2: y2.toFixed(1),
+          class: "graph-edge",
+          "data-from": edge.from,
+          "data-to": edge.to,
+          "data-count": String(edge.count),
+          "stroke-width": strokeWidth.toFixed(2),
+          "marker-end": "url(#graph-arrowhead)",
+        },
+        svgEl("title", {}, `${edge.from} → ${edge.to} ×${edge.count}`),
+      ),
+    );
+    const labelOffset = hasReverse ? 9 : 7;
+    const wx = x1 + (x2 - x1) * 0.56 - uy * labelOffset;
+    const wy = y1 + (y2 - y1) * 0.56 + ux * labelOffset + 3;
+    weightsGroup.append(
+      svgEl(
+        "text",
+        {
+          x: wx.toFixed(1),
+          y: wy.toFixed(1),
+          "text-anchor": "middle",
+          class: "graph-weight",
+          "data-from": edge.from,
+          "data-to": edge.to,
+          "data-count": String(edge.count),
+        },
+        String(edge.count),
+      ),
+    );
+  }
+  svg.append(edgesGroup, weightsGroup);
+
+  const nodesGroup = svgEl("g", { class: "graph-layer-nodes" });
+  const pad = 6;
+  const charWidth = 6.8;
+  for (const node of nodes) {
+    const pos = posById.get(node.id);
+    if (!pos) continue;
+    const labelDist = nodeR + 10;
+    const lx = nodes.length <= 1 ? 0 : Math.cos(pos.angle) * labelDist;
+    const ly =
+      nodes.length <= 1 ? nodeR + 14 : Math.sin(pos.angle) * labelDist + 4;
+    const anchor =
+      nodes.length > 1 && Math.cos(pos.angle) > 0.35
+        ? "start"
+        : nodes.length > 1 && Math.cos(pos.angle) < -0.35
+          ? "end"
+          : "middle";
+    const absLx = pos.x + lx;
+    const availPx =
+      anchor === "start"
+        ? width - pad - absLx
+        : anchor === "end"
+          ? absLx - pad
+          : 2 * Math.min(absLx - pad, width - pad - absLx);
+    const displayLabel = shortenGraphLabel(node.id, availPx / charWidth);
+
+    nodesGroup.append(
+      svgEl(
+        "g",
+        {
+          class: "graph-node",
+          "data-agent": node.id,
+          "data-posts": String(node.posts),
+          transform: `translate(${pos.x.toFixed(1)}, ${pos.y.toFixed(1)})`,
+        },
+        svgEl("title", {}, node.id),
+        svgEl("circle", {
+          r: String(nodeR),
+          class: "graph-circle",
+        }),
+        svgEl(
+          "text",
+          {
+            y: "4",
+            "text-anchor": "middle",
+            class: "graph-count",
+          },
+          String(node.posts),
+        ),
+        svgEl(
+          "text",
+          {
+            x: lx.toFixed(1),
+            y: ly.toFixed(1),
+            "text-anchor": anchor,
+            class: "graph-label",
+          },
+          displayLabel,
+        ),
+      ),
+    );
+  }
+  svg.append(nodesGroup);
+  container.append(svg);
+}
+
+function setActiveTab(tab) {
+  activeTab = tab;
+  const tabs = ["flow", "board", "members", "graph"];
+  for (const name of tabs) {
+    const btn = $(`tab-btn-${name}`);
+    const pane = $(`tab-pane-${name}`);
+    const isActive = name === tab;
+    if (btn) {
+      btn.className = isActive ? "tab-btn active" : "tab-btn";
+      btn.setAttribute("aria-selected", isActive ? "true" : "false");
+    }
+    if (pane) {
+      pane.hidden = !isActive;
+    }
+  }
+  if (tab === "flow" && lastRenderedState?.hasFlow) {
+    renderBurnDownSvg(lastRenderedState.burnDown, lastRenderedState.totalTasks);
+  } else if (tab === "board" && boardFollow) {
+    scrollBoardToLatest();
+  } else if (tab === "graph" && lastRenderedState?.hasFlow) {
+    renderGraph(lastRenderedState);
+  }
+}
+
+function wireBoardAndTabControls() {
+  for (const name of ["flow", "board", "members", "graph"]) {
+    const btn = $(`tab-btn-${name}`);
+    if (btn) {
+      btn.addEventListener("click", () => setActiveTab(name));
+    }
+  }
+
+  const search = $("board-search");
+  if (search) {
+    search.addEventListener("input", () => {
+      if (lastRenderedState) renderBoard(lastRenderedState, false);
+    });
+  }
+  for (const id of [
+    "board-filter-from",
+    "board-filter-to",
+    "board-filter-kind",
+  ]) {
+    const sel = $(id);
+    if (sel) {
+      sel.addEventListener("change", () => {
+        if (lastRenderedState) renderBoard(lastRenderedState, false);
+      });
+    }
+  }
+
+  const followBtn = $("board-follow");
+  if (followBtn) {
+    followBtn.addEventListener("click", () => {
+      boardFollow = !boardFollow;
+      syncFollowControls();
+      if (boardFollow) scrollBoardToLatest();
+    });
+  }
+
+  const jumpBtn = $("board-jump-latest");
+  if (jumpBtn) {
+    jumpBtn.addEventListener("click", () => {
+      boardFollow = true;
+      syncFollowControls();
+      scrollBoardToLatest();
+    });
+  }
+
+  const boardList = $("board-list");
+  if (boardList) {
+    boardList.addEventListener("scroll", () => {
+      const distanceFromBottom =
+        boardList.scrollHeight - boardList.scrollTop - boardList.clientHeight;
+      if (distanceFromBottom > 24 && boardFollow) {
+        boardFollow = false;
+        syncFollowControls();
+      }
+    });
+  }
+
+  const graphSlider = $("graph-seq-slider");
+  if (graphSlider) {
+    const onSlider = () => {
+      const posts = getGraphPosts(lastRenderedState);
+      if (posts.length === 0) return;
+      stopGraphPlayback();
+      graphLive = false;
+      graphReplaySeq = Math.max(1, Number(graphSlider.value) || 1);
+      if (lastRenderedState) renderGraph(lastRenderedState);
+    };
+    graphSlider.addEventListener("input", onSlider);
+    graphSlider.addEventListener("change", onSlider);
+  }
+
+  const stepBackBtn = $("graph-step-back");
+  if (stepBackBtn) {
+    stepBackBtn.addEventListener("click", () => {
+      if (stepBackBtn.disabled) return;
+      const posts = getGraphPosts(lastRenderedState);
+      if (posts.length === 0) return;
+      const minSeq = posts[0].seq;
+      const latestSeq = posts[posts.length - 1].seq;
+      const cur = graphLive ? latestSeq : graphReplaySeq || latestSeq;
+      if (cur <= minSeq) return;
+      stopGraphPlayback();
+      graphLive = false;
+      graphReplaySeq = Math.max(minSeq, cur - 1);
+      if (lastRenderedState) renderGraph(lastRenderedState);
+    });
+  }
+
+  const stepFwdBtn = $("graph-step-forward");
+  if (stepFwdBtn) {
+    stepFwdBtn.addEventListener("click", () => {
+      if (stepFwdBtn.disabled) return;
+      const posts = getGraphPosts(lastRenderedState);
+      if (posts.length === 0) return;
+      const minSeq = posts[0].seq;
+      const latestSeq = posts[posts.length - 1].seq;
+      const cur = graphLive ? latestSeq : graphReplaySeq || minSeq;
+      if (cur >= latestSeq) return;
+      stopGraphPlayback();
+      graphReplaySeq = Math.min(latestSeq, cur + 1);
+      graphLive = graphReplaySeq >= latestSeq;
+      if (lastRenderedState) renderGraph(lastRenderedState);
+    });
+  }
+
+  const liveBtn = $("graph-live");
+  if (liveBtn) {
+    liveBtn.addEventListener("click", () => {
+      const posts = getGraphPosts(lastRenderedState);
+      if (posts.length === 0) return;
+      stopGraphPlayback();
+      graphLive = true;
+      graphReplaySeq = posts[posts.length - 1].seq;
+      if (lastRenderedState) renderGraph(lastRenderedState);
+    });
+  }
+
+  const playPauseBtn = $("graph-play-pause");
+  if (playPauseBtn) {
+    playPauseBtn.addEventListener("click", () => {
+      const posts = getGraphPosts(lastRenderedState);
+      if (posts.length === 0) {
+        stopGraphPlayback();
+        return;
+      }
+      if (graphPlaying) {
+        stopGraphPlayback();
+        if (lastRenderedState) renderGraph(lastRenderedState);
+        return;
+      }
+      const minSeq = posts[0].seq;
+      const latestSeq = posts[posts.length - 1].seq;
+      if (graphLive || graphReplaySeq >= latestSeq) {
+        graphReplaySeq = minSeq;
+      }
+      graphLive = false;
+      graphPlaying = true;
+      graphPlayTimer = setInterval(() => {
+        const curPosts = getGraphPosts(lastRenderedState);
+        const maxSeq =
+          curPosts.length > 0 ? curPosts[curPosts.length - 1].seq : 1;
+        if (graphReplaySeq >= maxSeq) {
+          stopGraphPlayback();
+          graphLive = true;
+        } else {
+          graphReplaySeq += 1;
+          if (graphReplaySeq >= maxSeq) {
+            stopGraphPlayback();
+            graphLive = true;
+          }
+        }
+        if (lastRenderedState) renderGraph(lastRenderedState);
+      }, 650);
+      if (lastRenderedState) renderGraph(lastRenderedState);
+    });
+  }
+
+  const hideInactiveBtn = $("graph-hide-inactive");
+  if (hideInactiveBtn) {
+    hideInactiveBtn.addEventListener("click", () => {
+      graphHideInactive = !graphHideInactive;
+      if (lastRenderedState) renderGraph(lastRenderedState);
+    });
+  }
+}
 
 function renderState(state) {
   lastRenderedState = state;
@@ -537,14 +1685,44 @@ function renderState(state) {
 
   renderPhasePills(state.phase || flow.phase || "plan", Boolean(flow.closedAt));
 
+  const postCount = Array.isArray(state.posts)
+    ? state.posts.length
+    : Array.isArray(flow.posts)
+      ? flow.posts.length
+      : 0;
+  const hasPosts =
+    postCount > 0 || (state.postsDropped ?? flow.postsDropped ?? 0) > 0;
+  const hasMemberEvents =
+    Boolean(state.hasMemberEvents || flow.hasMemberEvents) ||
+    (Array.isArray(flow.runs) &&
+      flow.runs.some(
+        (r) =>
+          Boolean(r.paused) ||
+          r.memberState === "killed" ||
+          r.memberState === "retired",
+      ));
+  const showTabs = hasPosts || hasMemberEvents;
+  const tabsEl = $("panel-tabs");
+  if (tabsEl) {
+    tabsEl.hidden = !showTabs;
+  }
+  if (!showTabs && activeTab !== "flow") {
+    setActiveTab("flow");
+  }
+
   const replanCount = state.burnDown?.replans?.length ?? 0;
   $("burndown-caption").textContent =
     `${state.remaining ?? 0} remaining${replanCount > 0 ? ` · ${replanCount} re-plan${replanCount === 1 ? "" : "s"}` : ""}`;
   renderBurnDownSvg(state.burnDown, state.totalTasks);
   renderTaskBoard(Array.isArray(state.taskBoard) ? state.taskBoard : []);
-  renderAgents(Array.isArray(state.runs) ? state.runs : []);
+  renderAgents(Array.isArray(state.runs) ? state.runs : [], state.members);
   renderSpend(state.spend);
+  renderBoard(state);
+  renderMembers(state);
+  renderGraph(state);
 }
+
+wireBoardAndTabControls();
 
 async function refresh() {
   const cid = sidecar?.conversationId || "";
@@ -560,6 +1738,9 @@ async function refresh() {
 window.addEventListener("resize", () => {
   if (lastRenderedState?.hasFlow) {
     renderBurnDownSvg(lastRenderedState.burnDown, lastRenderedState.totalTasks);
+    if (activeTab === "graph") {
+      renderGraph(lastRenderedState);
+    }
   }
 });
 

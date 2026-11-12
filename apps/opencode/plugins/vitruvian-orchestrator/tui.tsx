@@ -189,7 +189,9 @@ function OrchestratorSidebarContent(props: {
               <text fg={colorForToken(palette(), t.color)}>
                 #{t.id} {t.title}{" "}
                 <span style={{ fg: palette().muted }}>
-                  [{t.specialist}/{t.tier}]
+                  [{t.specialist}/{t.tier}
+                  {t.model ? ` · ${t.model}` : ""}
+                  {t.worktree ? ` · ⎇ ${t.worktree}` : ""}]
                 </span>{" "}
                 {t.state}
                 <Show when={Boolean(t.roundText)}>
@@ -199,6 +201,12 @@ function OrchestratorSidebarContent(props: {
                   <span style={{ fg: palette().warning }}>
                     {" "}
                     ({t.waitsOnText})
+                  </span>
+                </Show>
+                <Show when={Boolean(t.warning)}>
+                  <span style={{ fg: palette().warning }}>
+                    {" "}
+                    (⚠ {t.warning})
                   </span>
                 </Show>
               </text>
@@ -215,8 +223,9 @@ function OrchestratorSidebarContent(props: {
                 {a.agent}
                 {a.taskId ? ` #${a.taskId}` : ""}{" "}
                 <span style={{ fg: palette().muted }}>
-                  ({a.model} · {a.effort}) · {a.stepsText} · {a.tokensText} ·{" "}
-                  {a.costText} · {a.elapsedText} ·
+                  ({a.model} · {a.effort}
+                  {a.worktree ? ` · ⎇ ${a.worktree}` : ""}) · {a.stepsText} ·{" "}
+                  {a.tokensText} · {a.costText} · {a.elapsedText} ·
                 </span>{" "}
                 {a.status}
               </text>
@@ -253,6 +262,60 @@ function OrchestratorSidebarContent(props: {
             </text>
           </Show>
         </box>
+
+        {/* 6. Shared board (newest 5 single-line clipped posts) & pending wakes */}
+        <Show when={(view().board?.posts.length ?? 0) > 0}>
+          <box flexDirection="column">
+            <text fg={palette().base}>Board ({view().board!.total})</text>
+            <Show when={Boolean(view().board?.whoTalksText)}>
+              <text fg={palette().muted}>
+                Who talks to whom: {view().board!.whoTalksText}
+              </text>
+            </Show>
+            <Show when={(view().board?.postsDropped ?? 0) > 0}>
+              <text fg={palette().muted}>
+                {view().board!.postsDropped} older posts not shown
+              </text>
+            </Show>
+            <For each={view().board!.posts}>
+              {(p) => (
+                <text fg={palette().base}>
+                  <span style={{ fg: palette().muted }}>#{p.seq} </span>
+                  {p.from}
+                  <Show when={Boolean(p.recipientsText)}>
+                    <span style={{ fg: palette().muted }}>
+                      {" "}
+                      {p.recipientsText}
+                    </span>
+                  </Show>
+                  <Show when={Boolean(p.replyText)}>
+                    <span style={{ fg: palette().muted }}> {p.replyText}</span>
+                  </Show>
+                  <span style={{ fg: palette().muted }}> · {p.ageText} </span>
+                  <span style={{ fg: colorForToken(palette(), p.color) }}>
+                    [{p.kind}]
+                  </span>{" "}
+                  {p.text}
+                </text>
+              )}
+            </For>
+          </box>
+        </Show>
+
+        <Show when={(view().pendingWakes?.length ?? 0) > 0}>
+          <box flexDirection="column">
+            <text fg={palette().warning}>
+              Pending wakes ({view().pendingWakes!.length})
+            </text>
+            <For each={view().pendingWakes}>
+              {(w) => (
+                <text fg={palette().warning}>
+                  #{w.seq} {w.from} → @{w.target}: "{w.excerpt}"
+                </text>
+              )}
+            </For>
+          </box>
+        </Show>
       </Show>
     </box>
   );
