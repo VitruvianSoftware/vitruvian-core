@@ -529,6 +529,8 @@ public class RemoteState(
 
   /** Monotonic/wall timestamp when "Reset settings" was first tapped (5 s confirmation window). */
   private var homeSpeakerResetArmedAtMs: Long? by mutableStateOf(null)
+  /** The speaker whose Remove was tapped once, and when; a second tap within the window removes. */
+  private var speakerRemoveArmed: Pair<String, Long>? by mutableStateOf(null)
 
   private fun applyAgentHomeSpeaker(
       hs: AgentHomeSpeaker,
@@ -2579,13 +2581,17 @@ public class RemoteState(
         extraLists =
             if (!hasCatalog) emptyList()
             else
-                homeSpeakerExtraLists(hs!!, placement).map { list ->
-                  list.copy(
-                      rows =
-                          list.rows.map { r ->
-                            r.copy(error = homeSpeakerErrors[r.title] ?: r.error)
-                          })
-                },
+                homeSpeakerExtraLists(hs!!, placement)
+                    // Every list is still built (so placement sees every drawn key), but with
+                    // Settings collapsed only the broadcasts stay on screen (UAT 2026-11-12).
+                    .filter { homeSpeakerSettingsExpanded || it.label == RECENT_BROADCASTS_LABEL }
+                    .map { list ->
+                      list.copy(
+                          rows =
+                              list.rows.map { r ->
+                                r.copy(error = homeSpeakerErrors[r.title] ?: r.error)
+                              })
+                    },
         composer =
             ModuleComposer(
                 placeholder = "Announce on ${selectedDisplay ?: "the speaker"}…",
@@ -2977,15 +2983,13 @@ public class RemoteState(
                   actions =
                       listOf(
                           RowAction(
-                              "Remove",
+                              if (isSpeakerRemoveArmed(spec.key)) "Tap again to remove"
+                              else "Remove",
                               enabled = spec.removeEnabled,
+                              danger = isSpeakerRemoveArmed(spec.key),
                               controlId = HomeSpeakerControls.REMOVE_SPEAKER,
                           ) {
-                            setHomeSpeaker(
-                                "remove speaker ${spec.name}",
-                                removeTarget = spec.key,
-                                controlId = spec.title,
-                            )
+                            onTapRemoveSpeaker(spec.key, spec.name, spec.title)
                           }),
               ))
         }
@@ -3837,6 +3841,32 @@ public class RemoteState(
     return listOfNotNull(enabledRow) + detailRows
   }
 
+  private fun isSpeakerRemoveArmed(key: String, nowMs: Long = System.currentTimeMillis()): Boolean =
+      speakerRemoveArmed?.takeIf { it.first == key }?.let { Derive.isResetArmed(it.second, nowMs) }
+          ?: false
+
+  /** Remove asks twice, like Reset: removing a speaker can't be undone from the phone. */
+  public fun onTapRemoveSpeaker(
+      key: String,
+      name: String,
+      rowTitle: String,
+      nowMs: Long = System.currentTimeMillis(),
+  ) {
+    val armedAt = speakerRemoveArmed?.takeIf { it.first == key }?.second
+    val result = Derive.tapReset(armedAt, nowMs)
+    if (result.shouldReset) {
+      speakerRemoveArmed = null
+      setHomeSpeaker("remove speaker $name", removeTarget = key, controlId = rowTitle)
+    } else {
+      val stamp = result.nextArmedAtMs ?: nowMs
+      speakerRemoveArmed = key to stamp
+      scope.launch {
+        delay(Derive.RESET_CONFIRM_WINDOW_MS)
+        if (speakerRemoveArmed == key to stamp) speakerRemoveArmed = null
+      }
+    }
+  }
+
   public fun onTapResetHomeSpeaker(nowMs: Long = System.currentTimeMillis()) {
     val result = Derive.tapReset(homeSpeakerResetArmedAtMs, nowMs)
     homeSpeakerResetArmedAtMs = result.nextArmedAtMs
@@ -4500,6 +4530,12 @@ public class RemoteState(
                 if (beeper) {
                   addAll(chatNetworkRows("Beeper", hs.beeperNetworks, hs.beeperNetworksListed))
                 }
+                // Placed here, not in "Other settings": two rows both titled "Address" there
+                // gave no clue which app each belonged to (UAT 2026-11-12).
+                add(
+                    placed("beeper_address") {
+                      catalogRowFor(hs, "beeper_address", "where Beeper Desktop's API answers")
+                    })
                 if (Derive.showsCourierRow(courier)) {
                   val courierOn = courier == true
                   val hasToken = hs.hasCourierToken
@@ -4596,6 +4632,10 @@ public class RemoteState(
                   if (courierOn) {
                     addAll(chatNetworkRows("Courier", hs.courierNetworks, hs.courierNetworksListed))
                   }
+                  add(
+                      placed("courier_address") {
+                        catalogRowFor(hs, "courier_address", "where Courier's API answers")
+                      })
                 }
                 add(
                     placed("poll_interval_seconds") {
@@ -4746,7 +4786,7 @@ public class RemoteState(
       val canReplay = homeSpeakerCanAct && hs.installed
       add(
           ModuleList(
-              "Recent broadcasts",
+              RECENT_BROADCASTS_LABEL,
               recent.map { b ->
                 ModuleRow(
                     title = b.text,
@@ -4773,6 +4813,21 @@ public class RemoteState(
     }
     add(ModuleList("Reset HomeSpeaker", listOf(resetHomeSpeakerModuleRow())))
   }
+
+  /**
+   * The generic control for one catalog setting, drawn inside a hand-designed section with a
+   * subtitle that gives it context. Null when the catalog hides it or the helper can't set it.
+   */
+  private fun catalogRowFor(hs: AgentHomeSpeaker, key: String, subtitle: String): ModuleRow? =
+      Derive.genericHomeSpeakerRows(
+              catalog = hs.catalog,
+              canAct = homeSpeakerCanAct,
+              errors = homeSpeakerErrors,
+              drawnKeys = hs.catalog.settings.map { it.key }.toSet() - key,
+              genericSettingsSupported = hs.genericSettings,
+          )
+          .firstOrNull()
+          ?.let { genericSettingModuleRow(it.copy(subtitle = subtitle)) }
 
   private fun genericSettingModuleRow(row: Derive.GenericSettingRow): ModuleRow {
     val tone = if (row.healthy) StatusTone.Ok else StatusTone.Neutral
@@ -8726,6 +8781,9 @@ public class RemoteState(
   private fun plural(count: Int): String = if (count == 1) "" else "s"
 
   private companion object {
+    /** The one HomeSpeaker list that stays visible with Settings collapsed. */
+    const val RECENT_BROADCASTS_LABEL = "Recent broadcasts"
+
     /** How `AgentAuthException` words a refusal, and so how the bridge's link status reads one. */
     const val LINK_REFUSED_PREFIX = "not paired (HTTP"
 

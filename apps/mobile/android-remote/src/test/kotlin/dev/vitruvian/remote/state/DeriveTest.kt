@@ -2765,6 +2765,12 @@ public class DeriveTest {
             what = "grant Google Chat",
             reason = "✗ homespeaker · grant Google Chat: error: access denied (HTTP 400)"),
     )
+    // UAT 2026-11-12: any helper "<action> failed:" wrapper is technical, not just sign-in's.
+    assertEquals(
+        "Couldn't choose home: the Mac returned an error",
+        Derive.homeSpeakerInlineError(
+            what = "choose home", reason = "set structure failed: exit status 1"),
+    )
     // UAT 2026-11-10: the agent's own "sign out failed:" prefix reached the row.
     assertEquals(
         "Couldn't sign out: the Mac returned an error",
@@ -3280,7 +3286,10 @@ public class DeriveTest {
     assertTrue("catalog keys dropped (neither placed nor generic): $dropped", dropped.isEmpty())
 
     assertEquals(catalogKeys.size, drawn.size + generic.size)
-    assertEquals(listOf("beeper_address", "courier_address"), generic)
+    // Today every golden key has a hand-designed home, so "Other settings" is empty. A key
+    // Home Speaker adds later lands here and shows on the phone with no phone release; this
+    // line then names it, which is the prompt to decide whether it deserves a hand-made row.
+    assertEquals(emptyList<String>(), generic)
   }
 
   @Test
