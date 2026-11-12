@@ -313,6 +313,7 @@ public data class AgentVoice(
 public data class AgentHome(
     val id: String,
     val name: String,
+    val selected: Boolean = false,
 )
 
 /** One coding agent's hook and instruction status reported by `GET /v1/homespeaker`. */
@@ -322,6 +323,8 @@ public data class AgentHookStatus(
     val speaksTwice: Boolean = false,
     val configuredByInstruction: Boolean = false,
     val agentSlug: String = "",
+    val staleCommand: String? = null,
+    val hookProgram: String? = null,
 ) {
   val canonicalSlug: String
     get() =
@@ -432,7 +435,10 @@ public data class HomeSpeakerSources(
     val announcementStyle: String = "verbatim",
     val styleModel: String = "apple",
     val activeDoor: String = "app",
+    val appInstalled: Boolean? = null,
     val extensionInstalled: Boolean = false,
+    val ownerRunning: Boolean? = null,
+    val genericSettings: Boolean = false,
     val beeperAnnounce: String = "direct_and_mentions",
     val muteOwnMessages: Boolean? = null,
     val beeperNetworks: List<AgentBeeperNetwork> = emptyList(),
@@ -560,6 +566,7 @@ public object HomeSpeakerWire {
           AgentHome(
               id = id,
               name = (it["name"] as? String)?.takeIf { n -> n.isNotBlank() } ?: id,
+              selected = (it["selected"] as? Boolean) ?: false,
           )
         }
     val agents =
@@ -573,6 +580,8 @@ public object HomeSpeakerWire {
               speaksTwice = (it["speaks_twice"] as? Boolean) ?: false,
               configuredByInstruction = (it["configured_by_instruction"] as? Boolean) ?: false,
               agentSlug = (it["agent_slug"] as? String).orEmpty(),
+              staleCommand = (it["stale_command"] as? String)?.takeIf { s -> s.isNotBlank() },
+              hookProgram = (it["hook_program"] as? String)?.takeIf { s -> s.isNotBlank() },
           )
         }
     val quiet = o["quiet_hours"] as? Map<*, *>
@@ -659,7 +668,10 @@ public object HomeSpeakerWire {
         announcementStyle = str("announcement_style", "verbatim"),
         styleModel = str("style_model", "apple"),
         activeDoor = str("active_door", "app"),
+        appInstalled = flag("app_installed"),
         extensionInstalled = flag("extension_installed") ?: false,
+        ownerRunning = flag("owner_running"),
+        genericSettings = flag("generic_settings") ?: false,
         beeperAnnounce = str("beeper_announce", "direct_and_mentions"),
         muteOwnMessages = flag("mute_own_messages"),
         beeperNetworks = beeperNetworks,

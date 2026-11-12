@@ -901,4 +901,65 @@ public class WireTest {
     assertEquals(listOf(HomeSpeakerChoice("soft", "soft")), curve.choices)
     assertNull(curve.limits)
   }
+
+  @Test
+  public fun `homespeaker parses homes selected stale hook fields appInstalled and ownerRunning and degrades quietly on older payloads`() {
+    val golden =
+        HomeSpeakerWire.sources(
+            readRunfile("apps/mobile/android-remote/macagent/golden_homespeaker_v1.json"))
+    assertEquals(true, golden.appInstalled)
+    assertEquals(true, golden.ownerRunning)
+    assertEquals(
+        listOf(
+            AgentHome("home-structure-1", "Home", selected = true),
+            AgentHome("home-structure-2", "Lake Cabin", selected = false),
+        ),
+        golden.homes,
+    )
+    val claude = golden.agents.single { it.canonicalSlug == "claude-code" }
+    assertEquals("installed", claude.hookState)
+    assertNull(claude.staleCommand)
+    assertEquals(
+        "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
+        claude.hookProgram,
+    )
+
+    val stalePayload =
+        HomeSpeakerWire.sources(
+            """
+            {
+              "app_installed": false,
+              "owner_running": false,
+              "agents": [
+                {
+                  "agent": "Antigravity",
+                  "agent_slug": "antigravity",
+                  "hook_state": "stale",
+                  "stale_command": "'/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker' --antigravity-hook",
+                  "hook_program": "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
+                }
+              ]
+            }
+            """
+                .trimIndent())
+    assertEquals(false, stalePayload.appInstalled)
+    assertEquals(false, stalePayload.ownerRunning)
+    val staleAgent = stalePayload.agents.single()
+    assertEquals("stale", staleAgent.hookState)
+    assertEquals(
+        "'/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker' --antigravity-hook",
+        staleAgent.staleCommand,
+    )
+    assertEquals(
+        "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
+        staleAgent.hookProgram,
+    )
+
+    val older =
+        HomeSpeakerWire.sources("""{"available":true,"homes":[{"id":"h1","name":"Home"}]}""")
+    assertNull(older.appInstalled)
+    assertNull(older.ownerRunning)
+    assertFalse(older.genericSettings)
+    assertEquals(listOf(AgentHome("h1", "Home", selected = false)), older.homes)
+  }
 }

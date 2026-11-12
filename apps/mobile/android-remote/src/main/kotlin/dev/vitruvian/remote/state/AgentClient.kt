@@ -446,8 +446,19 @@ public data class AgentHomeSpeaker(
     val styleModel: String = "apple",
     /** Which HomeSpeaker distribution is active on the Mac (`app` or `extension`, agent v1.11+). */
     val activeDoor: String = "app",
+    /** Whether `HomeSpeaker.app` is installed on the Mac; null from an older agent. */
+    val appInstalled: Boolean? = null,
     /** Whether a HomeSpeaker extension that runs alone is installed on the Mac. */
     val extensionInstalled: Boolean = false,
+    /**
+     * Whether the active HomeSpeaker owner process is currently running; null from an older agent.
+     */
+    val ownerRunning: Boolean? = null,
+    /**
+     * Whether the Mac agent accepts generic `settings` and door `copy` updates; false on older
+     * agents.
+     */
+    val genericSettings: Boolean = false,
     /** Which Beeper messages are spoken (`direct_and_mentions` or `all`, agent v1.11+). */
     val beeperAnnounce: String = "direct_and_mentions",
     /** Whether messages sent by the user's own account are skipped (agent v1.11+). */
@@ -802,6 +813,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       styleModel: String? = null,
       homeCastVoice: Boolean? = null,
       activeDoor: String? = null,
+      copy: Boolean? = null,
       discover: Boolean = false,
       structureId: String? = null,
       removeTarget: String? = null,
@@ -842,6 +854,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       courierNetworkReading: Boolean? = null,
       courierReadAnywayKey: String? = null,
       courierReadAnywayOn: Boolean? = null,
+      settings: Map<String, Any>? = null,
   ): AgentHomeSpeaker =
       withContext(Dispatchers.IO) {
         val body =
@@ -902,6 +915,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
                   put("announce_volume_enabled", announceVolumeEnabled)
               if (announceVolume != null) put("announce_volume", announceVolume)
               if (activeDoor != null) put("active_door", activeDoor)
+              if (copy != null) put("copy", copy)
               if (discover) put("discover", true)
               if (structureId != null) put("structure_id", structureId)
               if (removeTarget != null) put("remove_target", removeTarget)
@@ -923,9 +937,27 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
               if (oauthClientId != null) put("oauth_client_id", oauthClientId)
               if (oauthClientSecret != null) put("oauth_client_secret", oauthClientSecret)
               if (resetSettings) put("reset_settings", true)
+              if (!settings.isNullOrEmpty()) {
+                val settingsObj = JSONObject()
+                for ((k, v) in settings) {
+                  when (v) {
+                    is Boolean -> settingsObj.put(k, v)
+                    is Int -> settingsObj.put(k, v)
+                    is Long -> settingsObj.put(k, v)
+                    is Double ->
+                        if (v % 1.0 == 0.0) settingsObj.put(k, v.toLong())
+                        else settingsObj.put(k, v)
+                    is Number -> settingsObj.put(k, v.toDouble())
+                    is String -> settingsObj.put(k, v)
+                    else -> settingsObj.put(k, v.toString())
+                  }
+                }
+                put("settings", settingsObj)
+              }
             }
         val timeout =
-            if (discover || previewVoice || speakClipboard) LONG_ACTION_TIMEOUT_MS
+            if (discover || structureId != null || previewVoice || speakClipboard)
+                LONG_ACTION_TIMEOUT_MS
             else ACTION_TIMEOUT_MS
         parseHomeSpeaker(post("/v1/homespeaker", body.toString(), readTimeoutMs = timeout))
       }
@@ -1526,7 +1558,10 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           announcementStyle = sources.announcementStyle,
           styleModel = sources.styleModel,
           activeDoor = sources.activeDoor,
+          appInstalled = sources.appInstalled,
           extensionInstalled = sources.extensionInstalled,
+          ownerRunning = sources.ownerRunning,
+          genericSettings = sources.genericSettings,
           beeperAnnounce = sources.beeperAnnounce,
           muteOwnMessages = sources.muteOwnMessages,
           beeperNetworks = sources.beeperNetworks,
