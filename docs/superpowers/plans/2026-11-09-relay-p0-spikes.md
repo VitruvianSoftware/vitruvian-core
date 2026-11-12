@@ -10,10 +10,48 @@ Each spike ends in a written yes or no with evidence. This file is the record.
 
 | Spike | Question | Status |
 |---|---|---|
-| A | Can ChatGPT and Claude add an OAuth-protected MCP on our domain, with Zitadel sign-in? | Claude: yes on paper. ChatGPT: yes for one user, needs open registration for many. Live test waits on B's stack and a spike server |
-| B | Does Zitadel's device flow work from a command-line app? | Endpoint confirmed live. End-to-end test waits on the stack being applied |
-| C | Does a WebSocket through the Cloudflare Tunnel stay up for 24 hours? | Not started. Needs a spike server on the homelab |
+| A | Can ChatGPT and Claude add an OAuth-protected MCP on our domain, with Zitadel sign-in? | **Claude: yes, live** (2026-11-11, claude.ai). ChatGPT: yes on paper for one user, needs open registration for many; not tried live |
+| B | Does Zitadel's device flow work from a command-line app? | **Yes** (2026-11-11), with `relay-spike-client login` |
+| C | Does a WebSocket through the Cloudflare Tunnel stay up for 24 hours? | **Running.** `relay-spike-client hold` started 2026-11-11 18:15 PST, ends 2026-11-12 18:15 PST |
 | D | Can a connector drive unmodified `desktop-commander` over stdio? | **Blocked.** The repo guard refuses `npm`/`npx`, and no Bazel target exists. Answered from source code where possible |
+
+## Live results (2026-11-11)
+
+### A (Claude): yes
+
+- Added in claude.ai as a custom connector: URL `https://relay-spike.ipv1337.dev/mcp`,
+  client id `398912442404439866`. Claude read the server's metadata and picked
+  "Sign in now" and "Use your own OAuth client" by itself.
+- Sign-in went through Zitadel and back to Claude. Both tools ran from a chat:
+  `whoami` returned `subject 378818267051722263 via client 398912442404439866`,
+  `echo` returned its input.
+- The server log shows every request (initialize, tools/list, tools/call)
+  carrying that subject and client id, so each call was a verified token.
+- Claude also sends `server/discover`, which the spike doesn't implement. Claude
+  carried on without it; the relay should answer it.
+- Not yet tried: the Claude phone app.
+
+### B: yes
+
+- `bazel run //apps/suites/relay/spike:relay-spike-client -- login` asked
+  Zitadel for a device code with the relay project's audience scope, James
+  approved it in the browser, and a token came back 97 seconds later, with a
+  refresh token.
+- The access token is a JWT: `sub` 378818267051722263, `client_id`
+  398912442404505402 (the connector), and the relay project
+  398912441632687930 in `aud`. **`azp` is absent**; Zitadel puts the issuing
+  client in `client_id`. The verifier pins `client_id`, so this passes.
+- `aud` also lists the Claude client id (398912442404439866), though the
+  connector asked for nothing of Claude's. This repeats the earlier finding:
+  audience is not proof of which app a token is for. Pin the client id.
+- The access token lives 12 hours.
+- One snag: the device-approval page uses Zitadel's older login screen, which
+  doesn't share the session of the newer one Claude's sign-in used, so James
+  signed in twice. Worth fixing before real users see it.
+
+### C: running
+
+Results land here when the hold ends.
 
 ## Evidence so far (2026-11-09)
 
@@ -100,13 +138,13 @@ subject.
       (device flow) and Claude clients, role check limited to James, apply workflow
 - [ ] James dispatches `zitadel-apps-relay-apply.yaml` (`preview`, then `up`) and
       notes the client ids. Agents can't dispatch it (README explains why)
-- [ ] **B:** run the device flow from a terminal against `relay-connector`, James
+- [x] **B:** run the device flow from a terminal against `relay-connector`, James
       approves in the browser, and the access token decodes as a JWT with the
       expected `azp` and `sub`
 - [ ] Spike server on the homelab (one small service, chart, image build, GitOps
       app): `/mcp` behind OAuth with one echo tool, protected-resource metadata,
       and `/connect` as a WebSocket with ping/pong
-- [ ] **A (Claude):** James adds `https://<spike-host>/mcp` in Claude with the
+- [x] **A (Claude, web; phone app still to try):** James adds `https://<spike-host>/mcp` in Claude with the
       `relay-claude` client id, signs in, and the echo tool runs from claude.ai
       and from the Claude phone app
 - [ ] **A (ChatGPT):** James starts adding the connector in ChatGPT and copies its
