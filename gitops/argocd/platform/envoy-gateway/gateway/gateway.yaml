@@ -122,3 +122,19 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    # Internal-only Sentry dashboard (sentry.lab.ipv1337.dev resolves to this
+    # Gateway's private LB IP; see gitops/argocd/platform/sentry/).
+    - name: https-sentry
+      protocol: HTTPS
+      port: 443
+      hostname: "sentry.lab.ipv1337.dev"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: sentry-tls
+            namespace: sentry
+      allowedRoutes:
+        namespaces:
+          from: All
