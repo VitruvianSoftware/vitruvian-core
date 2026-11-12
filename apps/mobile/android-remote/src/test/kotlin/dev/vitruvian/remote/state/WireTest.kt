@@ -794,7 +794,7 @@ public class WireTest {
     val json = readRunfile("apps/mobile/android-remote/macagent/golden_homespeaker_v1.json")
     val s = HomeSpeakerWire.sources(json)
 
-    assertEquals(38, s.settings.size)
+    assertEquals(39, s.settings.size)
     assertFalse(s.catalog.isEmpty)
 
     val speech = s.catalog["speech_length"]!!
