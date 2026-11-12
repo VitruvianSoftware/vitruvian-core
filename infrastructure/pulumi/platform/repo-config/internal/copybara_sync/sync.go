@@ -353,7 +353,7 @@ var syncedProjects = []syncedProject{
 		Description:    "Vitruvian Remote: an Android remote control and observability console for a Mac",
 	},
 	{
-		// The ESP32-S3 Desk Companion firmware (apps/embedded/vitruvian-deck), MIT.
+		// The ESP32-S3 Desk Companion firmware (apps/embedded/esp32-s3), MIT.
 		// Export-only. ESP32_DESK_COMPANION_SYNC_SSH_KEY, consumed by
 		// copybara-export-esp32-desk-companion.yaml.
 		Name:           "esp32-desk-companion",

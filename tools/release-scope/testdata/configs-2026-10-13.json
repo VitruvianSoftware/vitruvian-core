@@ -141,14 +141,14 @@
     "release-type": "simple",
     "tag-separator": "-"
   },
-  "apps/embedded/vitruvian-deck/release-please-config.json": {
+  "apps/embedded/esp32-s3/release-please-config.json": {
     "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
     "bump-minor-pre-major": true,
     "bump-patch-for-minor-pre-major": true,
     "include-component-in-tag": true,
     "include-v-in-tag": true,
     "packages": {
-      "apps/embedded/vitruvian-deck": {
+      "apps/embedded/esp32-s3": {
         "changelog-path": "CHANGELOG.md",
         "component": "esp32-s3",
         "extra-files": ["include/version.h"],
