@@ -120,3 +120,13 @@ reason = "PERMANENT: no fixed version exists in any range ('zbus_names is unmain
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0372"
 reason = "PERMANENT: no fixed version exists in any range ('zvariant_derive is unmaintained', a notice, not a flaw). crates.io zvariant_derive 5.15.1, proc macro of zvariant in zbus 5.19.0 (latest) <- accesskit_unix and ksni, Linux only (apps/suites/wand/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when eframe/tray-icon move off zbus or apps/suites/wand is re-locked."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0486"
+ignoreUntil = 2026-11-26
+reason = "TIME-BOXED, SHORT: crates.io rustix 1.1.4 in the Courier libsignal tree (apps/desktop/courier/libsignal/Cargo.lock; moving to apps/desktop/vitruvian-courier). A same-major fix exists (1.1.6), so this must be UPGRADED, not renewed: that lockfile is re-locked by hand (libsignal/README.md) because //tools/crates:lock refuses its edition-2024 workspace. Added 2026-11-12 because the advisory began failing every PR that touches a lockfile."
+
+[[IgnoredVulns]]
+id = "GHSA-474x-hrwr-fgx4"
+ignoreUntil = 2026-11-26
+reason = "TIME-BOXED, SHORT: npm fast-xml-parser 5.11.2 in pnpm-lock.yaml, CVSS 3.7. A same-major fix exists (5.12.0), so this must be UPGRADED (dependabot or the repo's pnpm lock target), not renewed. Added 2026-11-12 because the advisory began failing every PR that touches a lockfile."
