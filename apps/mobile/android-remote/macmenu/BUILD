@@ -33,6 +33,7 @@ load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("//tools/apple:defs.bzl", "APPLE_TOOLCHAIN_ONLY")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load("//tools/swift-test-preferences:defs.bzl", "swift_test")
 
@@ -40,14 +41,14 @@ swift_library(
     name = "RemoteMenuCore",
     srcs = glob(["Sources/RemoteMenuCore/**/*.swift"]),
     module_name = "RemoteMenuCore",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
 )
 
 swift_library(
     name = "RemoteMenuLib",
     srcs = glob(["Sources/RemoteMenu/**/*.swift"]),
     module_name = "RemoteMenu",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":RemoteMenuCore"],
 )
 
@@ -60,7 +61,7 @@ swift_test(
         exclude = ["Tests/RemoteToolTests/**"],
     ),
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":RemoteMenuCore"],
 )
 
@@ -74,7 +75,7 @@ swift_library(
     features = ["swift.enable_v6"],
     module_name = "RemoteToolCore",
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":RemoteMenuCore",
         "//packages/vitruvian-sdk:VitruvianToolKit",
@@ -87,7 +88,7 @@ swift_test(
     size = "small",
     srcs = glob(["Tests/RemoteToolTests/**/*.swift"]),
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":RemoteMenuCore",
         ":RemoteToolCore",
@@ -102,7 +103,7 @@ swift_binary(
     features = ["swift.enable_v6"],
     module_name = "RemoteToolProgram",
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":RemoteMenuCore",
         ":RemoteToolCore",

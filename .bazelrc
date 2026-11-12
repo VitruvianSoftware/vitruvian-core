@@ -72,6 +72,9 @@ common --workspace_status_command="./tools/workspace-status.sh --check-only"
 # instead of registering it globally in MODULE.bazel -- keeps plain C++/Rust/cgo
 # builds on the hermetic LLVM toolchain by default.
 # Usage: bazel build --config=macos-app //apps/desktop/vitruvian-code/macos:VitruvianCode
+# Swift and Mac-app targets use APPLE_TOOLCHAIN_ONLY (//tools/apple:defs.bzl): without
+# this config they are skipped as incompatible, so a plain `bazel build //...` on a
+# Mac builds everything else instead of failing in swiftc.
 build:macos-app --extra_toolchains=@local_config_apple_cc_toolchains//:all
 
 common:lint --aspects=//tools/lint:linters.bzl%shellcheck
