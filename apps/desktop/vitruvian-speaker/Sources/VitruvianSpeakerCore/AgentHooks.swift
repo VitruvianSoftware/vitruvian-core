@@ -130,7 +130,7 @@ public enum AntigravityHook {
         history: BroadcastHistory = .shared,
         lockDirectory: URL = ClaudeStopHook.lockDirectory,
         speechLockURL: URL? = nil,
-        launchDetached: @Sendable (String) -> Void = { DetachedAnnouncement.launch(text: $0, agent: .antigravity) },
+        launchDetached: (@Sendable (String) -> Void)? = nil,
         broadcaster: ClaudeStopHook.Broadcaster = ClaudeStopHook.googleHomeBroadcaster
     ) async {
         guard let payload = try? JSONSerialization.jsonObject(with: input) as? [String: Any], isTurnEnd(payload),
@@ -145,10 +145,12 @@ public enum AntigravityHook {
                 entries.insert(.init(role: "user", isPlainUserPrompt: true), at: 0)
             }
         }
+        let session = SessionOrigin.antigravity(transcriptPath: path, cwd: FileManager.default.currentDirectoryPath)
         await ClaudeStopHook.speakTurn(
-            entries, agent: .antigravity, config: makeConfig, history: history,
+            entries, agent: .antigravity, session: session, config: makeConfig, history: history,
             lockDirectory: lockDirectory, speechLockURL: speechLockURL,
-            launchDetached: launchDetached, broadcaster: broadcaster)
+            launchDetached: launchDetached ?? { DetachedAnnouncement.launch(text: $0, agent: .antigravity, session: session) },
+            broadcaster: broadcaster)
     }
 
     /// The last `bytes` of a file as whole lines; nil when it cannot be read.
@@ -270,14 +272,18 @@ public enum OpenCodeHook {
         history: BroadcastHistory = .shared,
         lockDirectory: URL = ClaudeStopHook.lockDirectory,
         speechLockURL: URL? = nil,
-        launchDetached: @Sendable (String) -> Void = { DetachedAnnouncement.launch(text: $0, agent: .opencode) },
+        launchDetached: (@Sendable (String) -> Void)? = nil,
         broadcaster: ClaudeStopHook.Broadcaster = ClaudeStopHook.googleHomeBroadcaster
     ) async {
         guard let payload = try? JSONSerialization.jsonObject(with: input) as? [String: Any],
               let messages = payload["messages"] as? [[String: Any]] else { return }
+        let session = (payload["sessionID"] as? String).flatMap {
+            $0.isEmpty ? nil : SessionOrigin(id: $0, name: SourceLabel.folderName(FileManager.default.currentDirectoryPath))
+        }
         await ClaudeStopHook.speakTurn(
-            parseMessages(messages), agent: .opencode, config: makeConfig, history: history,
+            parseMessages(messages), agent: .opencode, session: session, config: makeConfig, history: history,
             lockDirectory: lockDirectory, speechLockURL: speechLockURL,
-            launchDetached: launchDetached, broadcaster: broadcaster)
+            launchDetached: launchDetached ?? { DetachedAnnouncement.launch(text: $0, agent: .opencode, session: session) },
+            broadcaster: broadcaster)
     }
 }

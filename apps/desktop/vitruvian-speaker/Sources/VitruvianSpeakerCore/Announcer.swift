@@ -249,11 +249,15 @@ public struct Announcer: Sendable {
         await announceReporting(text, config: config, force: force, restyle: restyle, at: date).outcome
     }
 
+    /// `lead` is said first, after the cleaning and rewording, so neither
+    /// changes it: where the announcement came from (`SourceLabel`).
+
     /// `announce`, also saying the words spoken (nil when nothing was
     /// meant to be), for a history that lists what was heard rather than
     /// the reply it was made from.
     public func announceReporting(
-        _ text: String, config: SpeakerConfig, force: Bool, restyle: Bool = false, at date: Date = Date()
+        _ text: String, config: SpeakerConfig, force: Bool, restyle: Bool = false, lead: String? = nil,
+        at date: Date = Date()
     ) async -> (outcome: AnnounceOutcome, spoken: String?) {
         // 1. The master switch.
         guard config.enabled else { return (.disabled, nil) }
@@ -273,12 +277,14 @@ public struct Announcer: Sendable {
         // 7. One cleaning (and, for an agent's reply, one rewording) for
         // both outputs.
         let styled = restyle && AnnouncementStylist.rewrites(config)
-        let spoken = styled
+        let message = styled
             ? await stylist.style(text, config: config)
             : GoogleHomeClient.cleanForSpeech(text, length: config.effectiveSpeechLength)
-        guard !spoken.isEmpty else { return (.nothingToSay, nil) }
-        // The speaker cleans again; reworded text goes as it was reworded.
-        let homeText = styled ? spoken : text
+        guard !message.isEmpty else { return (.nothingToSay, nil) }
+        let lead = lead.flatMap { $0.isEmpty ? nil : $0 }
+        let spoken = (lead ?? "") + message
+        // The speaker cleans again; reworded or labelled text goes as it is.
+        let homeText = styled || lead != nil ? spoken : text
 
         let homeSpeakerHold = home.speakerHoldSeconds(for: spoken)
 

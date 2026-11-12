@@ -288,6 +288,9 @@ public struct SpeakerConfig: Codable, Equatable {
     public var announceClaudeCode: Bool?
     public var announceAntigravity: Bool?
     public var announceOpenCode: Bool?
+    /// Say which app (and session) an agent's announcement came from:
+    /// `AnnounceSourceLabel`, read through `effectiveAnnounceSource`.
+    public var announceSource: AnnounceSourceLabel?
     /// How announcements are worded (`AnnouncementStylist`). All five are
     /// optional so an older file speaks as written, in the system voice:
     /// read through the `effective…` accessors.
@@ -337,6 +340,7 @@ public struct SpeakerConfig: Codable, Equatable {
         case geminiVoice = "gemini_voice"
         case customVoices = "custom_voices"
         case homeCastVoice = "home_cast_voice"
+        case announceSource = "announce_source"
     }
 
     /// The Mac voice when `local_voice` is absent: a natural Siri voice.
@@ -419,6 +423,8 @@ public struct SpeakerConfig: Codable, Equatable {
         self.geminiVoice = try container.decodeIfPresent(String.self, forKey: .geminiVoice)
         self.customVoices = try container.decodeIfPresent([CustomVoice].self, forKey: .customVoices)
         self.homeCastVoice = try container.decodeIfPresent(Bool.self, forKey: .homeCastVoice)
+        // A value a newer version wrote reads as off, not as a broken file.
+        self.announceSource = (try? container.decodeIfPresent(AnnounceSourceLabel.self, forKey: .announceSource)) ?? nil
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -456,6 +462,7 @@ public struct SpeakerConfig: Codable, Equatable {
         try container.encodeIfPresent(geminiVoice, forKey: .geminiVoice)
         try container.encodeIfPresent(customVoices, forKey: .customVoices)
         try container.encodeIfPresent(homeCastVoice, forKey: .homeCastVoice)
+        try container.encodeIfPresent(announceSource, forKey: .announceSource)
     }
 
     /// Summary, not headline: a config written before this key existed was
@@ -607,6 +614,12 @@ public struct SpeakerConfig: Codable, Equatable {
     public var effectiveHomeCastVoice: Bool {
         get { homeCastVoice ?? false }
         set { homeCastVoice = newValue }
+    }
+
+    /// Off unless chosen: an older file speaks without a label, as it did.
+    public var effectiveAnnounceSource: AnnounceSourceLabel {
+        get { announceSource ?? .off }
+        set { announceSource = newValue }
     }
 
     /// Whether the voice engine choice matters anywhere: this Mac, the
@@ -904,13 +917,22 @@ public struct BroadcastLogItem: Identifiable, Codable, Equatable {
     public let text: String
     public let targetName: String
     public let source: String
+    /// The agent session it came from, when an agent sent it: how
+    /// `SourceLabel` knows another session of the same app spoke lately.
+    public let session: String?
+    public let sessionName: String?
 
-    public init(id: UUID = UUID(), timestamp: Date = Date(), text: String, targetName: String, source: String) {
+    public init(
+        id: UUID = UUID(), timestamp: Date = Date(), text: String, targetName: String, source: String,
+        session: SessionOrigin? = nil
+    ) {
         self.id = id
         self.timestamp = timestamp
         self.text = text
         self.targetName = targetName
         self.source = source
+        self.session = session?.id
+        self.sessionName = session?.name
     }
 }
 

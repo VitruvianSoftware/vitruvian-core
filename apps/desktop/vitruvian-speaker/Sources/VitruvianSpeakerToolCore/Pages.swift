@@ -313,6 +313,7 @@ public enum Pages {
         public static let signOut = "signOut"
         public static let importAntigravity = "importAntigravity"
         public static let speechLength = "speechLength"
+        public static let announceSource = "announceSource"
         public static let announcementStyle = "announcementStyle"
         public static let customStylePrompt = "customStylePrompt"
         public static let styleModel = "styleModel"
@@ -1762,6 +1763,11 @@ public enum Pages {
                        isOn: status.config.announces(agent))
             }
             text(UIText.plain(agentSwitchesHelp), style: .caption)
+            picker(Block.announceSource, title: SettingsCatalog.Key.announceSource.label(),
+                   value: status.config.effectiveAnnounceSource.rawValue,
+                   options: SettingsCatalog.announceSourceChoices.map { UIChoiceOption(value: $0.value, title: UIText.plain($0.label)) },
+                   choice: status.offersChoice)
+            text(UIText.plain(SourceLabel.settingHelp), style: .caption)
             for agent in status.agents.statuses {
                 agentBlocks(agent, status)
             }

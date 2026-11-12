@@ -922,10 +922,16 @@ public struct SettingsView: View {
                         set: { configManager.setAnnounces(agent, $0) }
                     ))
                 }
+                Picker(SettingsCatalog.Key.announceSource.label(), selection: Binding(
+                    get: { configManager.config.effectiveAnnounceSource.rawValue },
+                    set: { configManager.applySetting(.announceSource, .string($0)) }
+                )) {
+                    ForEach(SettingsCatalog.announceSourceChoices, id: \.value) { Text($0.label).tag($0.value) }
+                }
             } header: {
                 Text("Announcements")
             } footer: {
-                Text("Off, the hook or instruction stays as it is and nothing is spoken.")
+                Text("Off, the hook or instruction stays as it is and nothing is spoken. \(SourceLabel.settingHelp)")
             }
 
             ForEach(viewModel.agents, id: \.agent) { st in

@@ -101,6 +101,7 @@ public struct SettingsCatalog: Sendable, Equatable {
         case announceClaudeCode = "announce_claude_code"
         case announceAntigravity = "announce_antigravity"
         case announceOpenCode = "announce_opencode"
+        case announceSource = "announce_source"
         case slackEnabled = "slack_enabled"
         case googleChatEnabled = "google_chat_enabled"
         case googleChatSource = "google_chat_source"
@@ -162,6 +163,10 @@ public struct SettingsCatalog: Sendable, Equatable {
     }
 
     // MARK: - Choice Lists (from model enums)
+
+    public static var announceSourceChoices: [Choice] {
+        AnnounceSourceLabel.allCases.map { Choice(value: $0.rawValue, label: $0.label) }
+    }
 
     public static var speechLengthChoices: [Choice] {
         SpeechLength.allCases.map { Choice(value: $0.rawValue, label: $0.label) }
@@ -475,6 +480,13 @@ public struct SettingsCatalog: Sendable, Equatable {
                 id: .announceOpenCode,
                 label: "Announce \(CodingAgent.opencode.displayName) replies",
                 kind: .toggle,
+                shown: true
+            ),
+            Entry(
+                id: .announceSource,
+                label: "Say who it's from",
+                kind: .choice,
+                choices: Self.announceSourceChoices,
                 shown: true
             ),
             Entry(

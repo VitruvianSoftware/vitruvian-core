@@ -933,6 +933,27 @@
       "value": false
     },
     {
+      "choices": [
+        {
+          "label": "Off",
+          "value": "off"
+        },
+        {
+          "label": "App name",
+          "value": "app"
+        },
+        {
+          "label": "App and session name",
+          "value": "app_and_session"
+        }
+      ],
+      "key": "announce_source",
+      "kind": "choice",
+      "label": "Say who it's from",
+      "shown": true,
+      "value": "off"
+    },
+    {
       "key": "slack_enabled",
       "kind": "toggle",
       "label": "Announce Slack messages",
