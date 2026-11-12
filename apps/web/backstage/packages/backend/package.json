@@ -41,6 +41,7 @@
     "@backstage/plugin-search-backend-module-catalog": "^0.3.19",
     "@backstage/plugin-search-backend-module-techdocs": "^0.4.18",
     "@backstage/plugin-techdocs-backend": "^2.3.0",
+    "@sentry/node": "^11.12.0",
     "@vitruviansoftware/backstage-app": "workspace:*",
     "better-sqlite3": "^13.0.3",
     "express-promise-router": "^4.1.1",
