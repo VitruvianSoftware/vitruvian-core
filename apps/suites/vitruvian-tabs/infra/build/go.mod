@@ -1,4 +1,4 @@
-module tabula-build
+module vitruvian-tabs-build
 
 go 1.26.10
 

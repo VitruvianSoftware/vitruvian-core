@@ -28,7 +28,7 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/tabula/revision"
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/vitruvian-tabs/revision"
 )
 
 func writeConfig(t *testing.T, body string) string {

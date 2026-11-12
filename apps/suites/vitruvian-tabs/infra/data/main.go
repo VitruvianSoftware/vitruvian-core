@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// Package main is tabula's stateful tier: the Neon Postgres projects and the
+// Package main is vitruvian-tabs's stateful tier: the Neon Postgres projects and the
 // Upstash Redis the app runs on, plus the Secret Manager versions that carry
 // their connection strings into each environment.
 //
@@ -26,7 +26,7 @@
 // Neon projects and Upstash databases are not GCP resources: they live in one
 // Neon organization and one Upstash account, so splitting them across three
 // per-env stacks would give three stacks partial views of the same external
-// account and no single place that says what tabula's data tier IS. This
+// account and no single place that says what vitruvian-tabs's data tier IS. This
 // mirrors apps/suites/vitruvian-tabs/infra/build, the other cross-environment singleton.
 //
 // The GCP side is still per-env: each environment's connection string is
@@ -49,7 +49,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
-// env is one tabula environment and the GCP project its secrets live in.
+// env is one vitruvian-tabs environment and the GCP project its secrets live in.
 type env struct {
 	// name is the Pulumi/GitHub environment name, and the suffix of the Neon
 	// project so the Neon console is readable at a glance.
@@ -145,7 +145,7 @@ func main() {
 		// --- Cache: ONE Upstash Redis shared by all three environments ---------
 		//
 		// Deliberate, not an oversight. The Upstash account's free tier caps at a
-		// single database, and tabula is pre-launch, so the isolation this gives
+		// single database, and vitruvian-tabs is pre-launch, so the isolation this gives
 		// up is accepted for now. The cost is real and worth stating: the three
 		// environments share a keyspace, so a dev flush or a key collision
 		// reaches production. Sessions and cache both live here.

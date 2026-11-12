@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// Package main is the tabula shared build stack.
+// Package main is the vitruvian-tabs shared build stack.
 //
 // It owns the cross-environment singletons that live in the foundation's
 // infra-pipeline project (prj-c-bu2-infra-pipeline-*): the Artifact Registry
@@ -181,9 +181,9 @@ func main() {
 			}
 		}
 
-		// 4. Management credentials for tabula's external SaaS dependencies.
+		// 4. Management credentials for vitruvian-tabs's external SaaS dependencies.
 		//
-		// tabula's stateful tier is NOT in GCP: Postgres is Neon (one project per
+		// vitruvian-tabs's stateful tier is NOT in GCP: Postgres is Neon (one project per
 		// env) and the cache is Upstash Redis. Both are provisioned as code by
 		// apps/suites/vitruvian-tabs/infra/data, which resolves the Neon ORG from this API key at
 		// apply time rather than pinning one — the org belongs to whichever
@@ -270,7 +270,7 @@ func main() {
 		}
 
 		// Credentials for Claude Code cloud sessions (tools/cloud-bootstrap). Not
-		// tabula's, but they live in this project because it is where the profiles
+		// vitruvian-tabs's, but they live in this project because it is where the profiles
 		// in tools/cloud-bootstrap/profiles.tsv already point (sa_project), and
 		// this stack is the one that deploys here.
 		//

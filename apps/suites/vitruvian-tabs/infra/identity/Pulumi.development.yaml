@@ -1,4 +1,4 @@
-# Per-env deploy/runtime identity for tabula on the development oss project.
+# Per-env deploy/runtime identity for vitruvian-tabs on the development oss project.
 # Federates the shared foundation-pool (gcp-bootstrap); no per-app WIF pool.
 config:
   tabula-deploy-identity:project: "prj-d-bu2-oss-floating-c3d1"

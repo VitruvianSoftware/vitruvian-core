@@ -1,4 +1,4 @@
-module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/tabula-deploy-identity
+module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/vitruvian-tabs-deploy-identity
 
 go 1.26.10
 

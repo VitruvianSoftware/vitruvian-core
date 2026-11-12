@@ -20,7 +20,7 @@
 
 # ONE stack for the whole data tier (see main.go): Neon and Upstash live in a
 # single external account each, not per GCP project, so "production" here is the
-# stack name of the singleton — not the tabula environment. All three tabula
+# stack name of the singleton — not the vitruvian-tabs environment. All three vitruvian-tabs
 # environments are provisioned by this one stack, mirroring apps/suites/vitruvian-tabs/infra/build.
 config:
   # neonOrgId is deliberately NOT set: the deploy workflow resolves it from the

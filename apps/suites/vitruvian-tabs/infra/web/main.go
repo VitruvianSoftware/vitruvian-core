@@ -27,7 +27,7 @@ import (
 	"strings"
 
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run"
-	"github.com/VitruvianSoftware/vitruvian-core/tabula/infra/web/revision"
+	"github.com/VitruvianSoftware/vitruvian-core/apps/suites/vitruvian-tabs/infra/web/revision"
 	"github.com/pulumi/pulumi-cloudflare/sdk/v5/go/cloudflare"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/cloudrun"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/cloudrunv2"
@@ -268,7 +268,7 @@ func main() {
 			//     the API, so the advisory preview (placeholder token) can't use it.
 			//  3. otherwise a placeholder id that keeps the record in the plan
 			//     without an API call (advisory preview of an un-pinned zone only).
-			// tabula is a COMMERCIAL app and lives on vitruviansoftware.dev;
+			// vitruvian-tabs is a COMMERCIAL app and lives on vitruviansoftware.dev;
 			// ipv1337.dev is reserved for the open-source apps. The default
 			// matters: a config miss must not silently publish a paid-tier
 			// hostname into the OSS zone.

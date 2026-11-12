@@ -1,4 +1,4 @@
-module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/tabula
+module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/vitruvian-tabs
 
 go 1.26.10
 

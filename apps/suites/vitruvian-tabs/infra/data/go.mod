@@ -1,4 +1,4 @@
-module github.com/VitruvianSoftware/vitruvian-core/tabula/infra/data
+module github.com/VitruvianSoftware/vitruvian-core/apps/suites/vitruvian-tabs/infra/data
 
 go 1.26.10
 

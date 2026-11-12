@@ -1,4 +1,4 @@
-# tabula per-app Pulumi stacks (moved from infrastructure/pulumi/
+# vitruvian-tabs per-app Pulumi stacks (moved from infrastructure/pulumi/
 # apps/ — repo-wide convention: <app>/infra/ holds the app's own deployment
 # infra; shared/foundation-owned infra stays centralized).
 #
@@ -29,8 +29,8 @@ Pulumi.*.yaml
 
 # Compiled Go pulumi-program binary left behind by a stray `go build .` (named
 # after each module's last path element) — never track.
-/app/tabula
-/identity/tabula-deploy-identity
-/build/tabula-build
+/app/vitruvian-tabs
+/identity/vitruvian-tabs-deploy-identity
+/build/vitruvian-tabs-build
 /data/data
 /web/web

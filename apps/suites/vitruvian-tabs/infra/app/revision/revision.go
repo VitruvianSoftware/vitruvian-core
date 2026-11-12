@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-// Package revision derives tabula's Cloud Run revision name from an image
+// Package revision derives vitruvian-tabs's Cloud Run revision name from an image
 // digest and the rendered service environment.
 //
 // It is deliberately its ONE home for that logic. The app stack (../main.go)
@@ -40,7 +40,7 @@ import (
 	"strings"
 )
 
-// SecretPrefix namespaces tabula's Secret Manager reads so co-tenant OSS apps
+// SecretPrefix namespaces vitruvian-tabs's Secret Manager reads so co-tenant OSS apps
 // in a shared project cannot collide, and is injected as SECRET_PREFIX so the
 // running container reads its own secrets. It is part of the rendered env, so
 // changing it changes the revision hash.

@@ -19,7 +19,7 @@
 // SOFTWARE.
 
 // Package main is the per-environment deploy/runtime identity stack for
-// tabula on the vitruviansoftware.dev foundation.
+// vitruvian-tabs on the vitruviansoftware.dev foundation.
 //
 // This stack owns only what the APPLICATION may grant itself: the RUNTIME
 // service account in the env's oss project (prj-{env}-bu2-oss-floating), its
@@ -117,7 +117,7 @@ func main() {
 		// with PERMISSION_DENIED on exactly that permission while the condition
 		// itself was verified correct in the live policy.
 		//
-		// Unlike oauth-user-inspector, tabula's DEPLOY SA must read a secret from
+		// Unlike oauth-user-inspector, vitruvian-tabs's DEPLOY SA must read a secret from
 		// CI (`prisma migrate deploy --phase expand` against TABULA_DATABASE_URL)
 		// and its runtime SA reads the rest at boot — so both get an explicit,
 		// unconditioned binding scoped to each individual secret. Same construct

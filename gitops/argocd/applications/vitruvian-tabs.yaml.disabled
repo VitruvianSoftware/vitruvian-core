@@ -29,7 +29,9 @@ spec:
     # Public package, so no repo credential is required. If you make it private,
     # register the repo in ArgoCD with enableOCI=true + a pull secret.
     repoURL: ghcr.io/vitruviansoftware/charts
-    chart: vitruvian-tabs
+    # The published GHCR chart keeps its old name until the first vitruvian-tabs chart
+    # is pushed; switch this to `vitruvian-tabs` then.
+    chart: tabula
     targetRevision: 0.1.0
     helm:
       values: |

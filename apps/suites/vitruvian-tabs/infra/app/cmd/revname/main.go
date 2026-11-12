@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-// Command revname prints the Cloud Run revision name the tabula app stack WOULD
+// Command revname prints the Cloud Run revision name the vitruvian-tabs app stack WOULD
 // deploy for a given env config + image digest, WITHOUT running Pulumi.
 //
 // The deploy preflight (tools/ci/tabula-deploy-preflight.sh) compares this to
@@ -42,7 +42,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/tabula/revision"
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/vitruvian-tabs/revision"
 	"gopkg.in/yaml.v3"
 )
 

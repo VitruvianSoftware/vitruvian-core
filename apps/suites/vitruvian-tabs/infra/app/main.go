@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// Package main is the per-environment tabula app stack on the
+// Package main is the per-environment vitruvian-tabs app stack on the
 // vitruviansoftware.dev foundation (stage-5 "application stage", spec
 // docs/superpowers/specs/2026-07-10-oss-application-stage-design.md).
 //
@@ -52,7 +52,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/tabula/revision"
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/vitruvian-tabs/revision"
 
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run"
 	"github.com/pulumi/pulumi-cloudflare/sdk/v5/go/cloudflare"
@@ -322,7 +322,7 @@ func main() {
 			//     the API, so the advisory preview (placeholder token) can't use it.
 			//  3. otherwise a placeholder id that keeps the record in the plan
 			//     without an API call (advisory preview of an un-pinned zone only).
-			// tabula is a COMMERCIAL app and lives on vitruviansoftware.dev;
+			// vitruvian-tabs is a COMMERCIAL app and lives on vitruviansoftware.dev;
 			// ipv1337.dev is reserved for the open-source apps. The default
 			// matters: a config miss must not silently publish a paid-tier
 			// hostname into the OSS zone.
