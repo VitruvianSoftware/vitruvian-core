@@ -213,6 +213,10 @@ struct StateContractTests {
                 )
             )
             config.speakHome = true
+            config.homes = [
+                HomeStructure(id: "home-structure-1", name: "Home"),
+                HomeStructure(id: "home-structure-2", name: "Lake Cabin"),
+            ]
             config.homeCastVoice = true
             config.speakLocal = true
             config.speakPhone = true
@@ -2216,5 +2220,158 @@ struct StateContractTests {
         let missingErr = try #require((JSONSerialization.jsonObject(with: Data(missingKeyOut.stdout[0].utf8)) as? [String: Any])?["error"] as? [String: Any])
         #expect(missingErr["code"] as? String == "no_antigravity_tokens")
         #expect(try Data(contentsOf: rig.secrets.fileURL) == secretsBefore)
+    }
+
+    @Test("--state lists every discovered home with selected flag, keeps legacy configs readable, and switches via --discover --save --home")
+    func stateListsAllDiscoveredHomesAndSwitchesViaDiscoverSaveHome() async throws {
+        struct MultiHomeFakeClient: HomeDiscovering {
+            let homes: [HomeStructure] = [
+                HomeStructure(id: "home-structure-1", name: "Home"),
+                HomeStructure(id: "home-structure-2", name: "Lake Cabin"),
+                HomeStructure(id: "home-structure-3", name: "Studio"),
+            ]
+            func listHomes() async throws -> [HomeStructure] { homes }
+            func discoverBroadcastTargets(structureId: String) async throws -> [String: SpeakerDevice] {
+                switch structureId {
+                case "home-structure-1":
+                    return ["kitchen": SpeakerDevice(id: "dev-k", type: "sdm.devices.types.SPEAKER", name: "Kitchen", room: "Kitchen")]
+                case "home-structure-2":
+                    return ["cabin": SpeakerDevice(id: "dev-c", type: "sdm.devices.types.SPEAKER", name: "Cabin Speaker", room: "Loft")]
+                default:
+                    return ["desk": SpeakerDevice(id: "dev-s", type: "sdm.devices.types.SPEAKER", name: "Studio Mini", room: "Desk")]
+                }
+            }
+        }
+
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        let seam = rig.makeSeam(program: .app)
+
+        // 1. Empty config -> homes is [].
+        _ = try rig.configFile.modify { $0 = SpeakerConfig() }
+        let emptyParsed = try #require(
+            JSONSerialization.jsonObject(with: Data(HomeSpeakerCommandLine.state(seam: seam).stdout[0].utf8)) as? [String: Any]
+        )
+        let emptyHomes = try #require(emptyParsed["homes"] as? [[String: Any]])
+        #expect(emptyHomes.isEmpty)
+
+        // 2. Legacy config JSON without "homes" key still decodes and emits single home with selected: true.
+        let legacyJSON = """
+        {
+          "default_target": "kitchen",
+          "enabled": true,
+          "structure_id": "home-structure-1",
+          "structure_name": "Home",
+          "targets": {
+            "kitchen": {
+              "id": "dev-k",
+              "name": "Kitchen",
+              "room": "Kitchen",
+              "type": "sdm.devices.types.SPEAKER"
+            }
+          }
+        }
+        """
+        try Data(legacyJSON.utf8).write(to: rig.configFile.url)
+        let legacyParsed = try #require(
+            JSONSerialization.jsonObject(with: Data(HomeSpeakerCommandLine.state(seam: seam).stdout[0].utf8)) as? [String: Any]
+        )
+        let legacyHomes = try #require(legacyParsed["homes"] as? [[String: Any]])
+        #expect(legacyHomes.count == 1)
+        #expect(legacyHomes[0]["id"] as? String == "home-structure-1")
+        #expect(legacyHomes[0]["name"] as? String == "Home")
+        #expect(legacyHomes[0]["selected"] as? Bool == true)
+
+        // 3. --discover --save records all homes on the account; --state marks only the saved one selected.
+        let client = MultiHomeFakeClient()
+        let initialStructureId: String = {
+            if case .loaded(let cfg) = rig.configFile.read() { return cfg.structureId }
+            return ""
+        }()
+        let initialDiscover = await AppCommandRunner.discover(
+            save: true,
+            home: nil,
+            client: client,
+            currentStructureId: initialStructureId,
+            rememberHomes: { homes in
+                _ = try rig.configFile.modify { _ = $0.rememberHomes(homes) }
+            },
+            applyWithHomes: { home, targets, homes in
+                _ = try rig.configFile.modify {
+                    _ = $0.applyDiscovery(
+                        structureId: home.id,
+                        structureName: home.name,
+                        targets: targets,
+                        homes: homes
+                    )
+                }
+            }
+        )
+        #expect(initialDiscover.exitCode == 0)
+
+        let afterDiscoverParsed = try #require(
+            JSONSerialization.jsonObject(with: Data(HomeSpeakerCommandLine.state(seam: seam).stdout[0].utf8)) as? [String: Any]
+        )
+        let discoveredHomes = try #require(afterDiscoverParsed["homes"] as? [[String: Any]])
+        #expect(discoveredHomes.count == 3)
+        #expect(discoveredHomes[0]["id"] as? String == "home-structure-1")
+        #expect(discoveredHomes[0]["selected"] as? Bool == true)
+        #expect(discoveredHomes[1]["id"] as? String == "home-structure-2")
+        #expect(discoveredHomes[1]["name"] as? String == "Lake Cabin")
+        #expect(discoveredHomes[1]["selected"] as? Bool == false)
+        #expect(discoveredHomes[2]["id"] as? String == "home-structure-3")
+        #expect(discoveredHomes[2]["selected"] as? Bool == false)
+
+        // 4. Choosing another home via `--discover --save --home home-structure-2` flips `selected` and preserves all homes.
+        guard case .app(.success(.discover(let saveFlag, let homeArg))) =
+            try #require(HomeSpeakerCommandLine.parse(["--discover", "--save", "--home", "home-structure-2"])) else {
+            Issue.record("--discover --save --home did not parse")
+            return
+        }
+        let beforeSwitchStructureId: String = {
+            if case .loaded(let cfg) = rig.configFile.read() { return cfg.structureId }
+            return ""
+        }()
+        let chooseOut = await AppCommandRunner.discover(
+            save: saveFlag,
+            home: homeArg,
+            client: client,
+            currentStructureId: beforeSwitchStructureId,
+            rememberHomes: { homes in
+                _ = try rig.configFile.modify { _ = $0.rememberHomes(homes) }
+            },
+            applyWithHomes: { home, targets, homes in
+                _ = try rig.configFile.modify {
+                    _ = $0.applyDiscovery(
+                        structureId: home.id,
+                        structureName: home.name,
+                        targets: targets,
+                        homes: homes
+                    )
+                }
+            }
+        )
+        #expect(chooseOut.exitCode == 0)
+
+        let afterSwitchParsed = try #require(
+            JSONSerialization.jsonObject(with: Data(HomeSpeakerCommandLine.state(seam: seam).stdout[0].utf8)) as? [String: Any]
+        )
+        #expect(afterSwitchParsed["structure_id"] as? String == "home-structure-2")
+        #expect(afterSwitchParsed["structure_name"] as? String == "Lake Cabin")
+        let switchedHomes = try #require(afterSwitchParsed["homes"] as? [[String: Any]])
+        #expect(switchedHomes.count == 3)
+        #expect(switchedHomes[0]["selected"] as? Bool == false)
+        #expect(switchedHomes[1]["selected"] as? Bool == true)
+        #expect(switchedHomes[2]["selected"] as? Bool == false)
+
+        // 5. Reset preserves known homes alongside structure_id and targets.
+        let resetOut = HomeSpeakerCommandLine.apply(#"{"contract_version":1,"operations":[{"op":"reset"}]}"#, seam: seam)
+        #expect(resetOut.exitCode == 0)
+        let afterResetState = try #require(
+            (JSONSerialization.jsonObject(with: Data(resetOut.stdout[0].utf8)) as? [String: Any])?["state"] as? [String: Any]
+        )
+        let resetHomes = try #require(afterResetState["homes"] as? [[String: Any]])
+        #expect(resetHomes.count == 3)
+        #expect(resetHomes[1]["selected"] as? Bool == true)
     }
 }

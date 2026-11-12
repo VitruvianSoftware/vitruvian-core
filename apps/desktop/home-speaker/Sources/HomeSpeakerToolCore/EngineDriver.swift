@@ -190,9 +190,14 @@ public final class EngineDriver: SpeakerDriver, Sendable {
             let current = await settings(of: engine).structureId
             return await AppCommandRunner.discover(
                 save: save, home: wanted, client: parts.homes, currentStructureId: current,
-                apply: { home, targets in
+                rememberHomes: { homes in
+                    if engine.config.config.rememberHomes(homes) {
+                        try engine.config.trySaveConfig()
+                    }
+                },
+                applyWithHomes: { home, targets, homes in
                     engine.config.config.applyDiscovery(
-                        structureId: home.id, structureName: home.name, targets: targets)
+                        structureId: home.id, structureName: home.name, targets: targets, homes: homes)
                     try engine.config.trySaveConfig()
                 })
         case .app(.loginItem(let action)):

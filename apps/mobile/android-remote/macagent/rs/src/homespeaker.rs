@@ -3033,7 +3033,7 @@ mod tests {
         // Home, quiet hours, snooze.
         assert_eq!(b.get_str("structure_name"), "Home");
         assert_eq!(b.get_str("structure_id"), "home-structure-1");
-        assert_eq!(b.get_array("homes").unwrap().len(), 1);
+        assert_eq!(b.get_array("homes").unwrap().len(), 2);
         assert_eq!(
             b.get_array("homes").unwrap()[0].get_str("id"),
             "home-structure-1"

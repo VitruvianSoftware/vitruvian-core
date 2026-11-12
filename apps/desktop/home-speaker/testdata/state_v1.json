@@ -104,7 +104,13 @@
   "homes": [
     {
       "id": "home-structure-1",
-      "name": "Home"
+      "name": "Home",
+      "selected": true
+    },
+    {
+      "id": "home-structure-2",
+      "name": "Lake Cabin",
+      "selected": false
     }
   ],
   "hooks": {
