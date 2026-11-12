@@ -3621,10 +3621,7 @@ mod tests {
         // Unknown catalog keys are rejected with 400 and never forwarded to --apply.
         calls.lock().unwrap().clear();
         let bad = h.handle_set(
-            &post_req(
-                "/v1/speaker",
-                r#"{"settings":{"not_a_catalog_key":true}}"#,
-            ),
+            &post_req("/v1/speaker", r#"{"settings":{"not_a_catalog_key":true}}"#),
             &phone,
         );
         assert_eq!(bad.status, 400, "{}", bad.body_string());
@@ -3764,10 +3761,7 @@ mod tests {
         // Door switch with copy: true emits "copy": true on switchTo.
         calls.lock().unwrap().clear();
         let sw = h.handle_set(
-            &post_req(
-                "/v1/speaker",
-                r#"{"active_door":"extension","copy":true}"#,
-            ),
+            &post_req("/v1/speaker", r#"{"active_door":"extension","copy":true}"#),
             &phone,
         );
         assert_eq!(sw.status, 200, "{}", sw.body_string());
@@ -4182,8 +4176,11 @@ mod tests {
             let resp = match endpoint {
                 ManifestEndpoint::Set(body) => {
                     // Also check pure planner directly for `--apply` ops so planner output is verified directly.
-                    let update = VitruvianSpeakerUpdate::from_json(&JsonValue::parse(body).unwrap())
-                        .unwrap_or_else(|e| panic!("invalid VitruvianSpeakerUpdate for {id}: {e}"));
+                    let update =
+                        VitruvianSpeakerUpdate::from_json(&JsonValue::parse(body).unwrap())
+                            .unwrap_or_else(|e| {
+                                panic!("invalid VitruvianSpeakerUpdate for {id}: {e}")
+                            });
                     if let ExpectedDispatch::Apply { op, must_contain } = expected {
                         let plan = plan_ops_with(&update, None, Some(MIN_SPEAKER_VERSION))
                             .unwrap_or_else(|e| {

@@ -483,15 +483,15 @@ public class RemoteState(
     private set
 
   /**
-   * Epoch ms when "Grant…" was tapped; cleared once a poll reports [AgentVitruvianSpeaker.hasChatAccess]
-   * or after [Derive.SIGN_IN_TIMEOUT_MS].
+   * Epoch ms when "Grant…" was tapped; cleared once a poll reports
+   * [AgentVitruvianSpeaker.hasChatAccess] or after [Derive.SIGN_IN_TIMEOUT_MS].
    */
   public var vitruvianSpeakerChatGrantPendingSinceMs: Long? by mutableStateOf(null)
     private set
 
   /**
-   * True after tapping "Sign in on Mac" until the next poll reports [AgentVitruvianSpeaker.signedIn] or
-   * the 5-minute timeout elapses.
+   * True after tapping "Sign in on Mac" until the next poll reports
+   * [AgentVitruvianSpeaker.signedIn] or the 5-minute timeout elapses.
    */
   public val vitruvianSpeakerSignInPending: Boolean
     get() =
@@ -503,8 +503,8 @@ public class RemoteState(
             .pending
 
   /**
-   * True after tapping "Grant…" until the next poll reports [AgentVitruvianSpeaker.hasChatAccess] or the
-   * 5-minute timeout elapses.
+   * True after tapping "Grant…" until the next poll reports [AgentVitruvianSpeaker.hasChatAccess]
+   * or the 5-minute timeout elapses.
    */
   public val vitruvianSpeakerChatGrantPending: Boolean
     get() =
@@ -2584,7 +2584,9 @@ public class RemoteState(
                 vitruvianSpeakerExtraLists(hs!!, placement)
                     // Every list is still built (so placement sees every drawn key), but with
                     // Settings collapsed only the broadcasts stay on screen (UAT 2026-11-12).
-                    .filter { vitruvianSpeakerSettingsExpanded || it.label == RECENT_BROADCASTS_LABEL }
+                    .filter {
+                      vitruvianSpeakerSettingsExpanded || it.label == RECENT_BROADCASTS_LABEL
+                    }
                     .map { list ->
                       list.copy(
                           rows =
@@ -2773,7 +2775,8 @@ public class RemoteState(
                 active = spec.active,
                 onClick = {
                   if (spec.active) {
-                    setVitruvianSpeaker("resume announcements", snoozeUntil = "", controlId = "snooze")
+                    setVitruvianSpeaker(
+                        "resume announcements", snoozeUntil = "", controlId = "snooze")
                   } else {
                     setVitruvianSpeaker("snooze 30m", snoozeMinutes = 30, controlId = "snooze")
                   }
@@ -3185,8 +3188,8 @@ public class RemoteState(
                       tone = if (hs.homeCastVoice) StatusTone.Ok else StatusTone.Neutral,
                       controlId = VitruvianSpeakerControls.CATALOG_SETTING,
                       toggle =
-                          RowToggle(checked = hs.homeCastVoice, enabled = vitruvianSpeakerCanAct) { next
-                            ->
+                          RowToggle(checked = hs.homeCastVoice, enabled = vitruvianSpeakerCanAct) {
+                              next ->
                             setVitruvianSpeaker(
                                 "cast selected voice ${if (next) "on" else "off"}",
                                 homeCastVoice = next)
@@ -3218,7 +3221,8 @@ public class RemoteState(
                           },
                       controlId = VitruvianSpeakerControls.CATALOG_SETTING,
                       toggle =
-                          RowToggle(checked = speakLocal, enabled = vitruvianSpeakerCanAct) { next ->
+                          RowToggle(checked = speakLocal, enabled = vitruvianSpeakerCanAct) { next
+                            ->
                             setVitruvianSpeaker(
                                 "this Mac ${if (next) "on" else "off"}", speakLocal = next)
                           },
@@ -3244,7 +3248,8 @@ public class RemoteState(
                                 setVitruvianSpeaker("preview voice", previewVoice = true)
                               }),
                       choices =
-                          // Vitruvian Speaker's catalog lists the voices itself. Only a catalog entry
+                          // Vitruvian Speaker's catalog lists the voices itself. Only a catalog
+                          // entry
                           // with no choices falls back to `available_voices` (the same list, older
                           // shape).
                           if (Derive.catalogChoices(catalog, "local_voice").isNotEmpty())
@@ -3291,7 +3296,8 @@ public class RemoteState(
                           },
                       controlId = VitruvianSpeakerControls.CATALOG_SETTING,
                       toggle =
-                          RowToggle(checked = speakPhone, enabled = vitruvianSpeakerCanAct) { next ->
+                          RowToggle(checked = speakPhone, enabled = vitruvianSpeakerCanAct) { next
+                            ->
                             setVitruvianSpeaker(
                                 "this phone ${if (next) "on" else "off"}", speakPhone = next)
                           },
@@ -3311,12 +3317,13 @@ public class RemoteState(
                       tone = if (hs.phonePauseMedia) StatusTone.Ok else StatusTone.Neutral,
                       controlId = VitruvianSpeakerControls.CATALOG_SETTING,
                       toggle =
-                          RowToggle(checked = hs.phonePauseMedia, enabled = vitruvianSpeakerCanAct) {
-                              next ->
-                            setVitruvianSpeaker(
-                                "phone pause media ${if (next) "on" else "off"}",
-                                phonePauseMedia = next)
-                          },
+                          RowToggle(
+                              checked = hs.phonePauseMedia, enabled = vitruvianSpeakerCanAct) { next
+                                ->
+                                setVitruvianSpeaker(
+                                    "phone pause media ${if (next) "on" else "off"}",
+                                    phonePauseMedia = next)
+                              },
                   )
               else null
             }
@@ -3335,8 +3342,8 @@ public class RemoteState(
                       controlId = VitruvianSpeakerControls.CATALOG_SETTING,
                       toggle =
                           RowToggle(
-                              checked = hs.phoneHeadphonesOnly, enabled = vitruvianSpeakerCanAct) { next
-                                ->
+                              checked = hs.phoneHeadphonesOnly, enabled = vitruvianSpeakerCanAct) {
+                                  next ->
                                 setVitruvianSpeaker(
                                     "phone headphones only ${if (next) "on" else "off"}",
                                     phoneHeadphonesOnly = next)
@@ -3578,7 +3585,8 @@ public class RemoteState(
             if (hs.announceVolumeEnabled && shown("announce_volume")) {
               val step =
                   catalogStepActions(hs, "announce_volume", hs.announceVolume.toDouble()) { next ->
-                    setVitruvianSpeaker("announce at ${next.toInt()}%", announceVolume = next.toInt())
+                    setVitruvianSpeaker(
+                        "announce at ${next.toInt()}%", announceVolume = next.toInt())
                   }
               val choices =
                   Derive.catalogChoices(catalog, "announce_volume").map { ch ->
@@ -3613,8 +3621,8 @@ public class RemoteState(
                     controlId = VitruvianSpeakerControls.CATALOG_SETTING,
                     toggle =
                         RowToggle(
-                            checked = hs.announceVolumeEnabled, enabled = vitruvianSpeakerCanAct) { next
-                              ->
+                            checked = hs.announceVolumeEnabled, enabled = vitruvianSpeakerCanAct) {
+                                next ->
                               setVitruvianSpeaker(
                                   "announce volume ${if (next) "on" else "off"}",
                                   announceVolumeEnabled = next)
@@ -3675,7 +3683,8 @@ public class RemoteState(
                     tone = if (hs.pauseMedia) StatusTone.Ok else StatusTone.Neutral,
                     controlId = VitruvianSpeakerControls.CATALOG_SETTING,
                     toggle =
-                        RowToggle(checked = hs.pauseMedia, enabled = vitruvianSpeakerCanAct) { next ->
+                        RowToggle(checked = hs.pauseMedia, enabled = vitruvianSpeakerCanAct) { next
+                          ->
                           setVitruvianSpeaker(
                               "pause media ${if (next) "on" else "off"}", pauseMedia = next)
                         },
@@ -3715,11 +3724,13 @@ public class RemoteState(
                         else if (hs.quietHoursEnabled) StatusTone.Ok else StatusTone.Neutral,
                     controlId = VitruvianSpeakerControls.CATALOG_SETTING,
                     toggle =
-                        RowToggle(checked = hs.quietHoursEnabled, enabled = vitruvianSpeakerCanAct) {
-                            next ->
-                          setVitruvianSpeaker(
-                              "quiet hours ${if (next) "on" else "off"}", quietHoursEnabled = next)
-                        },
+                        RowToggle(
+                            checked = hs.quietHoursEnabled, enabled = vitruvianSpeakerCanAct) { next
+                              ->
+                              setVitruvianSpeaker(
+                                  "quiet hours ${if (next) "on" else "off"}",
+                                  quietHoursEnabled = next)
+                            },
                 )
             else null
           }
@@ -3827,7 +3838,8 @@ public class RemoteState(
           ModuleRow(
               title = "Settings & diagnostics",
               subtitle =
-                  if (hs.vitruvianSpeakerVersion.isNotBlank()) "Vitruvian Speaker v${hs.vitruvianSpeakerVersion}"
+                  if (hs.vitruvianSpeakerVersion.isNotBlank())
+                      "Vitruvian Speaker v${hs.vitruvianSpeakerVersion}"
                   else "Vitruvian Speaker",
               trailing = "",
           ))
@@ -3870,7 +3882,8 @@ public class RemoteState(
     val result = Derive.tapReset(vitruvianSpeakerResetArmedAtMs, nowMs)
     vitruvianSpeakerResetArmedAtMs = result.nextArmedAtMs
     if (result.shouldReset) {
-      setVitruvianSpeaker("reset settings", resetSettings = true, controlId = "Reset Vitruvian Speaker")
+      setVitruvianSpeaker(
+          "reset settings", resetSettings = true, controlId = "Reset Vitruvian Speaker")
     } else {
       val armedStamp = result.nextArmedAtMs
       scope.launch {
@@ -4000,7 +4013,8 @@ public class RemoteState(
                 trailing = if (on) "on" else "off",
                 tone = if (on) StatusTone.Ok else StatusTone.Neutral,
                 controlId = VitruvianSpeakerControls.CATALOG_SETTING,
-                toggle = RowToggle(checked = on, enabled = vitruvianSpeakerCanAct) { next -> set(next) },
+                toggle =
+                    RowToggle(checked = on, enabled = vitruvianSpeakerCanAct) { next -> set(next) },
             )
 
     // Lets `add(sourceRow(...))` skip a switch the catalog hides.
@@ -4068,7 +4082,8 @@ public class RemoteState(
                                 catalogChoiceActions(hs, "announce_source", hs.announceSource) {
                                     wire,
                                     label ->
-                                  setVitruvianSpeaker("Say who it's from: $label", announceSource = wire)
+                                  setVitruvianSpeaker(
+                                      "Say who it's from: $label", announceSource = wire)
                                 },
                         )
                       })
@@ -4262,13 +4277,14 @@ public class RemoteState(
                             },
                         toggle =
                             if (showMonitorToggle) {
-                              RowToggle(checked = monitorRunning, enabled = vitruvianSpeakerCanAct) {
-                                  next ->
-                                setVitruvianSpeaker(
-                                    "${if (next) "Start" else "Stop"} chat monitor",
-                                    chatMonitorAction = if (next) "start" else "stop",
-                                )
-                              }
+                              RowToggle(
+                                  checked = monitorRunning, enabled = vitruvianSpeakerCanAct) { next
+                                    ->
+                                    setVitruvianSpeaker(
+                                        "${if (next) "Start" else "Stop"} chat monitor",
+                                        chatMonitorAction = if (next) "start" else "stop",
+                                    )
+                                  }
                             } else null,
                     )
                 add(
@@ -4276,7 +4292,8 @@ public class RemoteState(
                       !showMonitorToggle -> monitorRow
                       monitorRunning ->
                           monitorRow.copy(controlId = VitruvianSpeakerControls.STOP_CHAT_MONITOR)
-                      else -> monitorRow.copy(controlId = VitruvianSpeakerControls.START_CHAT_MONITOR)
+                      else ->
+                          monitorRow.copy(controlId = VitruvianSpeakerControls.START_CHAT_MONITOR)
                     })
                 if (runtimeError != null) {
                   add(
@@ -4291,7 +4308,8 @@ public class RemoteState(
                     placed("slack_enabled") {
                       sourceRow(
                           "slack_enabled", slack, "new messages are read aloud", "not watched") {
-                            setVitruvianSpeaker("Slack ${if (it) "on" else "off"}", slackEnabled = it)
+                            setVitruvianSpeaker(
+                                "Slack ${if (it) "on" else "off"}", slackEnabled = it)
                           }
                     })
                 if (slack) {
@@ -4345,7 +4363,8 @@ public class RemoteState(
                       if (googleChat && Derive.catalogShown(hs.catalog, "google_chat_source"))
                           ModuleRow(
                               title = lbl("google_chat_source"),
-                              error = Derive.settingError(vitruvianSpeakerErrors, "google_chat_source"),
+                              error =
+                                  Derive.settingError(vitruvianSpeakerErrors, "google_chat_source"),
                               subtitle =
                                   Derive.googleChatSourceSubtitle(
                                       Derive.catalogChoiceLabel(
@@ -4427,9 +4446,11 @@ public class RemoteState(
                           subtitle = chatDiag.subtitle,
                           trailing = chatDiag.trailing,
                           tone = if (chatDiag.healthy) StatusTone.Ok else StatusTone.Warn,
-                          error = vitruvianSpeakerErrors["Google Chat account"] ?: chatDiag.inlineNote,
+                          error =
+                              vitruvianSpeakerErrors["Google Chat account"] ?: chatDiag.inlineNote,
                           controlId =
-                              if (gwsPrompt != null) VitruvianSpeakerControls.CATALOG_SETTING else null,
+                              if (gwsPrompt != null) VitruvianSpeakerControls.CATALOG_SETTING
+                              else null,
                           actions =
                               buildList {
                                 if (chatDiag.showGrant) {
@@ -4450,7 +4471,8 @@ public class RemoteState(
                                       RowAction(
                                           "Disconnect",
                                           enabled = chatDiag.disconnectEnabled,
-                                          controlId = VitruvianSpeakerControls.DISCONNECT_GOOGLE_CHAT,
+                                          controlId =
+                                              VitruvianSpeakerControls.DISCONNECT_GOOGLE_CHAT,
                                       ) {
                                         setVitruvianSpeaker(
                                             "disconnect Google Chat",
@@ -4466,7 +4488,8 @@ public class RemoteState(
                     placed("beeper_enabled") {
                       sourceRow(
                           "beeper_enabled", beeper, "new messages are read aloud", "not watched") {
-                            setVitruvianSpeaker("Beeper ${if (it) "on" else "off"}", beeperEnabled = it)
+                            setVitruvianSpeaker(
+                                "Beeper ${if (it) "on" else "off"}", beeperEnabled = it)
                           }
                     })
                 if (beeper) {
@@ -4496,7 +4519,8 @@ public class RemoteState(
                                             danger = true,
                                             controlId = VitruvianSpeakerControls.CLEAR_BEEPER_TOKEN,
                                         ) {
-                                          setVitruvianSpeaker("clear Beeper token", beeperToken = "")
+                                          setVitruvianSpeaker(
+                                              "clear Beeper token", beeperToken = "")
                                         }
                                       } else null,
                                   onSubmit = { token ->
@@ -4510,7 +4534,8 @@ public class RemoteState(
                       if (beeper && Derive.catalogShown(hs.catalog, "beeper_announce"))
                           ModuleRow(
                               title = lbl("beeper_announce"),
-                              error = Derive.settingError(vitruvianSpeakerErrors, "beeper_announce"),
+                              error =
+                                  Derive.settingError(vitruvianSpeakerErrors, "beeper_announce"),
                               subtitle = "which Beeper messages are read aloud",
                               trailing =
                                   Derive.catalogChoiceLabel(
@@ -4521,7 +4546,8 @@ public class RemoteState(
                                   catalogChoiceActions(hs, "beeper_announce", hs.beeperAnnounce) {
                                       wire,
                                       label ->
-                                    setVitruvianSpeaker("Beeper announce $label", beeperAnnounce = wire)
+                                    setVitruvianSpeaker(
+                                        "Beeper announce $label", beeperAnnounce = wire)
                                   },
                           )
                       else null
@@ -4543,7 +4569,8 @@ public class RemoteState(
                         if (Derive.catalogShown(hs.catalog, "courier_enabled"))
                             ModuleRow(
                                 title = lbl("courier_enabled"),
-                                error = Derive.settingError(vitruvianSpeakerErrors, "courier_enabled"),
+                                error =
+                                    Derive.settingError(vitruvianSpeakerErrors, "courier_enabled"),
                                 subtitle =
                                     when {
                                       courierOn -> "new messages are read aloud"
@@ -4590,7 +4617,8 @@ public class RemoteState(
                                               clearLbl,
                                               enabled = courierSpec.promptEnabled,
                                               danger = true,
-                                              controlId = VitruvianSpeakerControls.CLEAR_COURIER_TOKEN,
+                                              controlId =
+                                                  VitruvianSpeakerControls.CLEAR_COURIER_TOKEN,
                                           ) {
                                             setVitruvianSpeaker(
                                                 "clear Courier token",
@@ -4612,7 +4640,8 @@ public class RemoteState(
                         if (courierOn && Derive.catalogShown(hs.catalog, "courier_announce"))
                             ModuleRow(
                                 title = lbl("courier_announce"),
-                                error = Derive.settingError(vitruvianSpeakerErrors, "courier_announce"),
+                                error =
+                                    Derive.settingError(vitruvianSpeakerErrors, "courier_announce"),
                                 subtitle = "which Courier messages are read aloud",
                                 trailing =
                                     Derive.catalogChoiceLabel(
@@ -4647,7 +4676,9 @@ public class RemoteState(
                                 ?: 0
                         ModuleRow(
                             title = lbl("poll_interval_seconds"),
-                            error = Derive.settingError(vitruvianSpeakerErrors, "poll_interval_seconds"),
+                            error =
+                                Derive.settingError(
+                                    vitruvianSpeakerErrors, "poll_interval_seconds"),
                             subtitle = "how often chat apps are checked",
                             trailing = "$interval s",
                             tone = StatusTone.Neutral,
@@ -4762,7 +4793,8 @@ public class RemoteState(
                                   }
                                 } else null,
                             onSubmit = { secret ->
-                              setVitruvianSpeaker("save OAuth client secret", oauthClientSecret = secret)
+                              setVitruvianSpeaker(
+                                  "save OAuth client secret", oauthClientSecret = secret)
                             },
                         ),
                 ),
@@ -5161,9 +5193,9 @@ public class RemoteState(
   }
 
   /**
-   * One change to Vitruvian Speaker's settings. The reply is the Mac's state read back, so the dashboard
-   * shows what the file now says; a refused change (an unknown speaker, say) surfaces as a log line
-   * and leaves the plate as it was.
+   * One change to Vitruvian Speaker's settings. The reply is the Mac's state read back, so the
+   * dashboard shows what the file now says; a refused change (an unknown speaker, say) surfaces as
+   * a log line and leaves the plate as it was.
    */
   private fun setVitruvianSpeaker(
       what: String,
@@ -5398,7 +5430,8 @@ public class RemoteState(
               log("info", "speaker · $what")
               // A different speaker has a different volume; show it now.
               if (defaultTarget != null && !speakerVolumeBusy) {
-                runCatching { client.vitruvianSpeakerVolume() }.onSuccess { v -> agentSpeakerVolume = v }
+                runCatching { client.vitruvianSpeakerVolume() }
+                    .onSuccess { v -> agentSpeakerVolume = v }
               }
             }
             .onFailure {
@@ -5433,7 +5466,8 @@ public class RemoteState(
       muted: Boolean? = null,
       controlId: String = "speaker_volume",
   ) {
-    // The speaker's live volume is the device's 0-100, not a Vitruvian Speaker setting: clamp it here.
+    // The speaker's live volume is the device's 0-100, not a Vitruvian Speaker setting: clamp it
+    // here.
     val sent = percent?.let(Derive::clampSpeakerVolume)
     val what = if (sent != null) "volume $sent%" else if (muted == true) "mute" else "unmute"
     val client = actClient("speaker · $what") ?: return
@@ -5482,9 +5516,7 @@ public class RemoteState(
               // waiting for the slow poll.
               runCatching { client.vitruvianSpeaker() }.onSuccess { applyAgentVitruvianSpeaker(it) }
             } else {
-              log(
-                  "warn",
-                  "speaker · not spoken · ${result.output.ifBlank { "no reason given" }}")
+              log("warn", "speaker · not spoken · ${result.output.ifBlank { "no reason given" }}")
             }
           }
           .onFailure { actFailed("speaker · say", it) }
@@ -5507,9 +5539,7 @@ public class RemoteState(
                   Derive.vitruvianSpeakerInlineError(
                       what = "test", reason = result.output.ifBlank { "not spoken" })
               vitruvianSpeakerErrors = vitruvianSpeakerErrors + (controlId to err)
-              log(
-                  "warn",
-                  "speaker · not spoken · ${result.output.ifBlank { "no reason given" }}")
+              log("warn", "speaker · not spoken · ${result.output.ifBlank { "no reason given" }}")
             }
           }
           .onFailure {
@@ -5545,9 +5575,7 @@ public class RemoteState(
                   Derive.vitruvianSpeakerInlineError(
                       what = "replay", reason = result.output.ifBlank { "not spoken" })
               vitruvianSpeakerErrors = vitruvianSpeakerErrors + (controlId to err)
-              log(
-                  "warn",
-                  "speaker · not replayed · ${result.output.ifBlank { "no reason given" }}")
+              log("warn", "speaker · not replayed · ${result.output.ifBlank { "no reason given" }}")
             }
           }
           .onFailure {
@@ -7001,7 +7029,9 @@ public class RemoteState(
     sendHid(if (delta >= 0) HidAction.BrightnessUp else HidAction.BrightnessDown)
   }
 
-  /** Mission Control, Spaces and friends: the chords the Vitruvian Deck board already proves work. */
+  /**
+   * Mission Control, Spaces and friends: the chords the Vitruvian Deck board already proves work.
+   */
   public fun sendMacChord(action: HidAction) {
     sendHid(action)
     log("info", "desktop · ${desktopLabel(action)}")

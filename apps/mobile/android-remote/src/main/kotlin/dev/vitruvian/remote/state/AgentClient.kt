@@ -423,8 +423,8 @@ public data class AgentVitruvianSpeaker(
     val last: AgentLastBroadcast?,
     /**
      * Which senders are spoken (agent v1.10, Vitruvian Speaker 1.23), each under [enabled]: the two
-     * coding agents, then the chat apps Vitruvian Speaker watches. Null from an older agent, which cannot
-     * switch them -- the dashboard then hides the switches rather than guessing.
+     * coding agents, then the chat apps Vitruvian Speaker watches. Null from an older agent, which
+     * cannot switch them -- the dashboard then hides the switches rather than guessing.
      */
     val announceClaudeCode: Boolean? = null,
     val announceAntigravity: Boolean? = null,
@@ -444,14 +444,18 @@ public data class AgentVitruvianSpeaker(
     val announcementStyle: String = "verbatim",
     /** Model used for announcement style rewriting (`apple` or `gemini`, agent v1.11+). */
     val styleModel: String = "apple",
-    /** Which Vitruvian Speaker distribution is active on the Mac (`app` or `extension`, agent v1.11+). */
+    /**
+     * Which Vitruvian Speaker distribution is active on the Mac (`app` or `extension`, agent
+     * v1.11+).
+     */
     val activeDoor: String = "app",
     /** Whether `Vitruvian Speaker.app` is installed on the Mac; null from an older agent. */
     val appInstalled: Boolean? = null,
     /** Whether a Vitruvian Speaker extension that runs alone is installed on the Mac. */
     val extensionInstalled: Boolean = false,
     /**
-     * Whether the active Vitruvian Speaker owner process is currently running; null from an older agent.
+     * Whether the active Vitruvian Speaker owner process is currently running; null from an older
+     * agent.
      */
     val ownerRunning: Boolean? = null,
     /**
@@ -938,7 +942,9 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       }
 
   /** The default speaker's volume. A round trip to Google through the Mac: seconds, not ms. */
-  public suspend fun vitruvianSpeakerVolume(readTimeoutMs: Int = VOLUME_TIMEOUT_MS): AgentSpeakerVolume =
+  public suspend fun vitruvianSpeakerVolume(
+      readTimeoutMs: Int = VOLUME_TIMEOUT_MS
+  ): AgentSpeakerVolume =
       withContext(Dispatchers.IO) {
         parseSpeakerVolume(get("/v1/speaker/volume", readTimeoutMs = readTimeoutMs))
       }
@@ -1340,9 +1346,14 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
 
     /** A `gh pr merge` is a network round trip on the Mac's side too. */
     private const val ACTION_TIMEOUT_MS = 30_000
-    /** Long Vitruvian Speaker actions (discovery, voice preview, speaking clipboard / text) take time. */
+    /**
+     * Long Vitruvian Speaker actions (discovery, voice preview, speaking clipboard / text) take
+     * time.
+     */
     private const val LONG_ACTION_TIMEOUT_MS = 100_000
-    /** The agent allows Vitruvian Speaker 45 s for a volume change; wait a little longer than that. */
+    /**
+     * The agent allows Vitruvian Speaker 45 s for a volume change; wait a little longer than that.
+     */
     private const val VOLUME_TIMEOUT_MS = 50_000
     private const val SCREEN_TIMEOUT_MS = 10_000
     /** `/v1/claude/permissions/decide` refuses a longer deny message. */

@@ -291,13 +291,17 @@ public object Derive {
    */
   public fun phoneWording(text: String): String = text.replace("Your phone", THIS_PHONE)
 
-  /** Relayed `outputs_label` from Vitruvian Speaker with [phoneWording] applied, or null when blank. */
+  /**
+   * Relayed `outputs_label` from Vitruvian Speaker with [phoneWording] applied, or null when blank.
+   */
   public fun outputsSummary(outputsLabel: String?): String? =
       outputsLabel?.trim()?.takeIf { it.isNotEmpty() }?.let(::phoneWording)
 
   /** True only when Vitruvian Speaker is available and sent a non-empty `settings[]` catalog. */
-  public fun hasVitruvianSpeakerCatalog(available: Boolean, catalog: VitruvianSpeakerCatalog): Boolean =
-      available && !catalog.isEmpty
+  public fun hasVitruvianSpeakerCatalog(
+      available: Boolean,
+      catalog: VitruvianSpeakerCatalog
+  ): Boolean = available && !catalog.isEmpty
 
   /**
    * The single sentence shown when `settings[]` is missing: the helper's own [reason] when present,
@@ -315,12 +319,18 @@ public object Derive {
       catalog[key]?.shown == true
 
   /** Selectable choices for catalog setting [key], with [phoneWording] applied to labels. */
-  public fun catalogChoices(catalog: VitruvianSpeakerCatalog, key: String): List<VitruvianSpeakerChoice> =
+  public fun catalogChoices(
+      catalog: VitruvianSpeakerCatalog,
+      key: String
+  ): List<VitruvianSpeakerChoice> =
       catalog[key]?.choices.orEmpty().map { it.copy(label = phoneWording(it.label)) }
 
   /** Display label for [value] in catalog setting [key]'s choices, or [value] if unlisted. */
-  public fun catalogChoiceLabel(catalog: VitruvianSpeakerCatalog, key: String, value: String): String =
-      catalogChoices(catalog, key).firstOrNull { it.value == value }?.label ?: value
+  public fun catalogChoiceLabel(
+      catalog: VitruvianSpeakerCatalog,
+      key: String,
+      value: String
+  ): String = catalogChoices(catalog, key).firstOrNull { it.value == value }?.label ?: value
 
   /** Numeric limits (`min`, `max`, `step`, `defaultValue`) for catalog setting [key]. */
   public fun catalogLimits(catalog: VitruvianSpeakerCatalog, key: String): VitruvianSpeakerLimits? =
@@ -337,8 +347,8 @@ public object Derive {
   )
 
   /**
-   * Builds − / + stepper buttons from [limits]. The next value stops at Vitruvian Speaker's own min and
-   * max, so the phone never sends one outside them.
+   * Builds − / + stepper buttons from [limits]. The next value stops at Vitruvian Speaker's own min
+   * and max, so the phone never sends one outside them.
    */
   public fun catalogStepper(
       current: Double,
@@ -359,8 +369,8 @@ public object Derive {
   }
 
   /**
-   * The speaker's live volume is the device's 0-100 range, not a Vitruvian Speaker setting, so the phone
-   * keeps it inside that range before sending.
+   * The speaker's live volume is the device's 0-100 range, not a Vitruvian Speaker setting, so the
+   * phone keeps it inside that range before sending.
    */
   public fun clampSpeakerVolume(percent: Int): Int = percent.coerceIn(0, 100)
 
@@ -457,10 +467,10 @@ public object Derive {
   public val hookAgentSlugs: Set<String> = setOf("claude-code", "antigravity", "opencode")
 
   /**
-   * True when the active Vitruvian Speaker owner process is running on the Mac and at least one chat
-   * source is enabled (`Pages.swift` `chat.ownerRunning && anySourceEnabled`). When an older helper
-   * omits `owner_running` (`null`), keeps the Start/Stop toggle visible as before for backward
-   * compatibility; hides it when `owner_running` is explicitly `false`.
+   * True when the active Vitruvian Speaker owner process is running on the Mac and at least one
+   * chat source is enabled (`Pages.swift` `chat.ownerRunning && anySourceEnabled`). When an older
+   * helper omits `owner_running` (`null`), keeps the Start/Stop toggle visible as before for
+   * backward compatibility; hides it when `owner_running` is explicitly `false`.
    */
   public fun showsChatMonitorControl(
       ownerRunning: Boolean?,
@@ -676,8 +686,8 @@ public object Derive {
 
   /**
    * Derives the "Google Home account" row state. When not signed in, offers "Sign in on Mac"
-   * (`VitruvianSpeaker --sign-in`) and, if Antigravity tokens exist, "Import login". After tapping "Sign
-   * in on Mac", [signInPending] (or [signInPendingSinceMs] before [SIGN_IN_TIMEOUT_MS]) shows
+   * (`VitruvianSpeaker --sign-in`) and, if Antigravity tokens exist, "Import login". After tapping
+   * "Sign in on Mac", [signInPending] (or [signInPendingSinceMs] before [SIGN_IN_TIMEOUT_MS]) shows
    * [FINISH_SIGN_IN_ON_MAC] until the next poll reports [signedIn] or 5 minutes elapse.
    */
   public fun googleHomeAccountRow(
@@ -1023,8 +1033,8 @@ public object Derive {
     Mute,
 
     /**
-     * Courier only: a network Vitruvian Speaker's own Slack or Google Chat reader covers. On reads it
-     * through Courier as well (`courier_read_anyway`); off leaves it to that reader.
+     * Courier only: a network Vitruvian Speaker's own Slack or Google Chat reader covers. On reads
+     * it through Courier as well (`courier_read_anyway`); off leaves it to that reader.
      */
     ReadAnyway,
 
@@ -1043,8 +1053,8 @@ public object Derive {
 
   /**
    * [network] of chat app [app] ("Beeper" or "Courier") as Vitruvian Speaker's Settings shows it. A
-   * network Vitruvian Speaker reads itself is greyed for Beeper; for Courier its switch reads it through
-   * Courier as well, since Courier cannot say which Slack workspace an account is.
+   * network Vitruvian Speaker reads itself is greyed for Beeper; for Courier its switch reads it
+   * through Courier as well, since Courier cannot say which Slack workspace an account is.
    */
   public fun chatNetworkRow(app: String, network: AgentBeeperNetwork): ChatNetworkRow {
     val title = "$app · ${network.name}"
@@ -1078,15 +1088,15 @@ public object Derive {
   }
 
   /**
-   * Under an app's networks before the running monitor has listed them, in Vitruvian Speaker's words.
-   * Null when it has, or when an older agent cannot say ([listed] null).
+   * Under an app's networks before the running monitor has listed them, in Vitruvian Speaker's
+   * words. Null when it has, or when an older agent cannot say ([listed] null).
    */
   public fun networksLaterLine(app: String, listed: Boolean?): String? =
       if (listed == false) "Other networks show here once $app is being read." else null
 
   /**
-   * Where Courier's token comes from. The phone never carries it: it is pasted into Vitruvian Speaker on
-   * the Mac, where Courier runs.
+   * Where Courier's token comes from. The phone never carries it: it is pasted into Vitruvian
+   * Speaker on the Mac, where Courier runs.
    */
   public val courierTokenSteps: String =
       "In Courier: Settings › Integrations › New connection…, then paste the token into Vitruvian Speaker on your Mac"
@@ -1328,8 +1338,8 @@ public object Derive {
   }
 
   /**
-   * Sentinel stored as the previously observed announcement id when Vitruvian Speaker is reachable and
-   * has no latest announcement yet (`recent` and `last` both empty), so that the very next real
+   * Sentinel stored as the previously observed announcement id when Vitruvian Speaker is reachable
+   * and has no latest announcement yet (`recent` and `last` both empty), so that the very next real
    * announcement triggers a notification.
    */
   public const val NO_ANNOUNCEMENT_ID: String = "__none__"
@@ -1368,11 +1378,11 @@ public object Derive {
 
   /**
    * Resolves the announcement id to record as the baseline for future comparisons:
-   * - `null` when Vitruvian Speaker is not available yet (so the first reachable poll still counts as
-   *   first load and does not notify).
+   * - `null` when Vitruvian Speaker is not available yet (so the first reachable poll still counts
+   *   as first load and does not notify).
    * - The newest broadcast's trimmed `id` when non-blank.
-   * - [NO_ANNOUNCEMENT_ID] when Vitruvian Speaker is available but has no broadcast with a non-blank id
-   *   (so the very next real announcement triggers a notification).
+   * - [NO_ANNOUNCEMENT_ID] when Vitruvian Speaker is available but has no broadcast with a
+   *   non-blank id (so the very next real announcement triggers a notification).
    */
   public fun mirrorBaselineId(
       available: Boolean,
@@ -1385,7 +1395,8 @@ public object Derive {
   }
 
   /**
-   * Pure decision for whether to post a phone notification when Vitruvian Speaker state is observed:
+   * Pure decision for whether to post a phone notification when Vitruvian Speaker state is
+   * observed:
    * - Never notifies when `enabled` is false.
    * - Never notifies on first load or when the setting was just turned on (`previousId == null` or
    *   blank).
@@ -1411,8 +1422,8 @@ public object Derive {
    * - Turning the toggle OFF, or requesting ON when `POST_NOTIFICATIONS` is denied, disables the
    *   setting and cancels any active announcement notification.
    * - Turning the toggle ON with permission granted enables the setting, seeds `baselineId` from
-   *   the current Vitruvian Speaker snapshot so the already-latest announcement is never notified, and
-   *   emits [MirrorNotificationAction.None].
+   *   the current Vitruvian Speaker snapshot so the already-latest announcement is never notified,
+   *   and emits [MirrorNotificationAction.None].
    */
   public fun mirrorToggle(
       requestedOn: Boolean,
@@ -1443,9 +1454,9 @@ public object Derive {
   /**
    * Pure decision when a Vitruvian Speaker status snapshot is observed:
    * - Picks the newest announcement from `recent` (falling back to `last`).
-   * - When Vitruvian Speaker is unavailable (`!available`), preserves `baselineId` so the first reachable
-   *   poll will not notify, while still cancelling an active notification if mirroring was disabled
-   *   or lost permission.
+   * - When Vitruvian Speaker is unavailable (`!available`), preserves `baselineId` so the first
+   *   reachable poll will not notify, while still cancelling an active notification if mirroring
+   *   was disabled or lost permission.
    * - When mirroring is disabled or lacks permission, updates `baselineId` and cancels any active
    *   notification.
    * - When a new announcement id arrives after an established baseline (`shouldNotifyAnnouncement`)
@@ -1685,8 +1696,8 @@ public object Derive {
       )
 
   /**
-   * Strips raw tool/agent/HTTP prefixes (e.g. `"agent: speaker: error: ..."`, `"✗ speaker ·
-   * sign in on Mac: ..."`, `"HTTP 400: ..."`) leaving the human-readable reason.
+   * Strips raw tool/agent/HTTP prefixes (e.g. `"agent: speaker: error: ..."`, `"✗ speaker · sign in
+   * on Mac: ..."`, `"HTTP 400: ..."`) leaving the human-readable reason.
    */
   public fun stripVitruvianSpeakerErrorPrefixes(raw: String): String {
     var cleaned = raw.trim()
@@ -1716,9 +1727,9 @@ public object Derive {
   }
 
   /**
-   * One-line inline error shown directly under a Vitruvian Speaker Now strip control, stream plate, or
-   * Settings row when an action fails. Uses plain words rather than exception class names, paths,
-   * or raw HTTP codes.
+   * One-line inline error shown directly under a Vitruvian Speaker Now strip control, stream plate,
+   * or Settings row when an action fails. Uses plain words rather than exception class names,
+   * paths, or raw HTTP codes.
    */
   public fun vitruvianSpeakerInlineError(
       what: String,
@@ -2832,9 +2843,10 @@ public object Derive {
   ): List<String> = catalogKeys.filter { it !in drawnKeys }
 
   /**
-   * Per-build tracker for hand-placed catalog settings in `vitruvianSpeakerModule`. Calling [placed]
-   * records `key` once and returns `null` (draws nothing) if `key` was already recorded in this
-   * build; any catalog key not recorded falls through to [genericKeys] / [genericVitruvianSpeakerRows].
+   * Per-build tracker for hand-placed catalog settings in `vitruvianSpeakerModule`. Calling
+   * [placed] records `key` once and returns `null` (draws nothing) if `key` was already recorded in
+   * this build; any catalog key not recorded falls through to [genericKeys] /
+   * [genericVitruvianSpeakerRows].
    */
   public class CatalogPlacement {
     private val recorded = LinkedHashSet<String>()
@@ -2906,8 +2918,9 @@ public object Derive {
   }
 
   /**
-   * Maps one [VitruvianSpeakerSetting] to its pure generic row model, or `null` if `kind` is unknown.
-   * Applies [phoneWording] to labels and choice labels and honors catalog `choices` and `limits`.
+   * Maps one [VitruvianSpeakerSetting] to its pure generic row model, or `null` if `kind` is
+   * unknown. Applies [phoneWording] to labels and choice labels and honors catalog `choices` and
+   * `limits`.
    */
   public fun genericVitruvianSpeakerRow(
       setting: VitruvianSpeakerSetting,
@@ -3151,8 +3164,8 @@ public object Derive {
   /**
    * True when [vitruvianSpeakerVersion] is at least [MIN_DOOR_COPY_SPEAKER_VERSION], the version
    * where `--apply {"op":"switchTo","door":...,"copy":true}` shipped. Blank or unparseable versions
-   * return `false` so older Vitruvian Speaker installations never offer a `copy` option that ignores or
-   * rejects `copy`.
+   * return `false` so older Vitruvian Speaker installations never offer a `copy` option that
+   * ignores or rejects `copy`.
    */
   public fun supportsDoorCopy(vitruvianSpeakerVersion: String): Boolean {
     val clean = vitruvianSpeakerVersion.trim().removePrefix("v").substringBefore('-')
@@ -3228,15 +3241,19 @@ public object Derive {
     }
   }
 
-  /** Subtitle matching `Pages.hookWithoutVitruvianSpeaker` when a stale hook's target binary is gone. */
+  /**
+   * Subtitle matching `Pages.hookWithoutVitruvianSpeaker` when a stale hook's target binary is
+   * gone.
+   */
   public const val HOOK_WITHOUT_VITRUVIANSPEAKER: String =
       "Points at Vitruvian Speaker, which isn't installed — it can't speak"
 
   /**
-   * True when [hookState] is `"stale"` and [staleCommand] / [hookProgram] points at a Vitruvian Speaker
-   * that is no longer installed (for instance `/.Trash/`, an uninstalled `Vitruvian Speaker.app`, an
-   * uninstalled Vitruvian extension, or `!installed`). Returns `false` for older helpers that send
-   * neither `stale_command` nor `hook_program` while Vitruvian Speaker is installed.
+   * True when [hookState] is `"stale"` and [staleCommand] / [hookProgram] points at a Vitruvian
+   * Speaker that is no longer installed (for instance `/.Trash/`, an uninstalled `Vitruvian
+   * Speaker.app`, an uninstalled Vitruvian extension, or `!installed`). Returns `false` for older
+   * helpers that send neither `stale_command` nor `hook_program` while Vitruvian Speaker is
+   * installed.
    */
   public fun staleHookPointsAtMissingVitruvianSpeaker(
       hookState: String,
@@ -3280,8 +3297,8 @@ public object Derive {
   )
 
   /**
-   * Derives a coding-agent hook row. When a stale hook points at a Vitruvian Speaker that is no longer
-   * installed, offers `"Remove"` alongside `"Update hook"` (or `"Remove"` alone when no Home
+   * Derives a coding-agent hook row. When a stale hook points at a Vitruvian Speaker that is no
+   * longer installed, offers `"Remove"` alongside `"Update hook"` (or `"Remove"` alone when no Home
    * Speaker is installed, matching `Pages.swift`).
    */
   public fun agentHookRowSpec(

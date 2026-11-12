@@ -3329,7 +3329,9 @@ public class DeriveTest {
         }
     val phoneIds = constFields.map { it.get(null) as String }
     assertEquals(
-        "duplicate constant values in VitruvianSpeakerControls", phoneIds.toSet().size, phoneIds.size)
+        "duplicate constant values in VitruvianSpeakerControls",
+        phoneIds.toSet().size,
+        phoneIds.size)
 
     val phoneIdSet = phoneIds.toSet()
     val missingFromPhone = supportedManifestIds - phoneIdSet
@@ -3410,7 +3412,8 @@ public class DeriveTest {
                     numberValue = 95.0,
                     shown = true,
                     limits =
-                        VitruvianSpeakerLimits(min = 0.0, max = 100.0, step = 10.0, defaultValue = 50.0),
+                        VitruvianSpeakerLimits(
+                            min = 0.0, max = 100.0, step = 10.0, defaultValue = 50.0),
                 ),
                 VitruvianSpeakerSetting(
                     key = "future_text",
@@ -3505,8 +3508,10 @@ public class DeriveTest {
     val speakers =
         Derive.speakerRowSpecs(
             listOf(
-                VitruvianSpeakerTargetWire("office", "Office Mini", "Office", "Mini", selected = true),
-                VitruvianSpeakerTargetWire("kitchen", "Kitchen Hub", "Kitchen", "Hub", selected = false),
+                VitruvianSpeakerTargetWire(
+                    "office", "Office Mini", "Office", "Mini", selected = true),
+                VitruvianSpeakerTargetWire(
+                    "kitchen", "Kitchen Hub", "Kitchen", "Hub", selected = false),
             ),
             canAct = true,
         )
@@ -3537,7 +3542,8 @@ public class DeriveTest {
     assertEquals(1, fromExtNoApp.size)
     assertTrue(fromExtNoApp.single().selected)
 
-    // Stale hook: missing target Vitruvian Speaker offers both Update hook and Remove when active is
+    // Stale hook: missing target Vitruvian Speaker offers both Update hook and Remove when active
+    // is
     // installed.
     val staleTrashedApp =
         AgentHookStatus(
