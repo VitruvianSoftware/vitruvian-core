@@ -3,4 +3,4 @@
 
 """Vitruvian Courier's one version: the app's CFBundleShortVersionString (app/BUILD) and the engine's hello (engine/cmd/vitruvian-courier-engine/BUILD) both read it."""
 
-VITRUVIAN_COURIER_VERSION = "0.3.18"  # x-release-please-version
+VITRUVIAN_COURIER_VERSION = "0.3.19"  # x-release-please-version
