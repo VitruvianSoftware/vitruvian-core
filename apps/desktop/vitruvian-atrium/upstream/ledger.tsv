@@ -496,7 +496,7 @@ c007f6af59a30ce47997d2264398298fa363fb88	4d8ebaf0eef52a9e1df59c23bfedad00be2b7cd
 6f41522ff15a9ec72c563e0df280d700d608eeb8	e9018a241cf50605cfb8d2a3856828c16e86600e	2026-10-28	pending	-	feat(notch): let the event countdown start earlier or later (#2167)
 1d46b933539efb785b45c667c79cbea72a643be2	807daf60452bca4661c1c9857dab819e65fc8c3c	2026-10-28	pending	-	feat(quick-toggles): add a Quit apps window (#3300)
 f1d115ae51933d21a5d6a4b5060f78c29aaf88b7	d6840e5e05939ae0075c17bdc95bac0191dd9678	2026-10-28	pending	-	feat(settings): add configurable scroll zoom (#2104)
-97a7d2141447ae8202e46a682d9f721eb3aa83a1	52f18d42c67f2dafe0962aa2e532f869f2a368d9	2026-10-28	pending	-	Document new controls and align quit-app test cleanup
+97a7d2141447ae8202e46a682d9f721eb3aa83a1	52f18d42c67f2dafe0962aa2e532f869f2a368d9	2026-10-28	skipped	only the changelog and a fix to QuitAppsRuntimeTests, a generated-copy test this fork left out	Document new controls and align quit-app test cleanup
 db0a245ee3316a2dc2305d7043f6a4d5358bd177	8af88392c4651c37eb82f123f2b124224aafaca5	2026-10-29	pending	-	feat(switcher): allow up to ten columns (#3410)
 3cca99e044283795a67638baa72a7531778bc2a7	31254aeb9dda79aec0b8a863d1ec089c1a1c9b51	2026-10-28	skipped	touches only upstream-only paths	docs: note expanded switcher column options
 92e479545dc385e66cdbf4a3c2735855b003d96f	ac9d1080c8e202dc0b2ded25aa3f093e554e77b1	2026-10-28	pending	-	fix(agents): illustrate limits in the settings preview (#3421)
