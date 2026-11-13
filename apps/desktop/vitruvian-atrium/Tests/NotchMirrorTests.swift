@@ -38,6 +38,9 @@ enum NotchMirrorContract {
         }
         func hideCopy() { hides += 1; panelIsVisible = false }
         func close() { closes += 1; panelIsVisible = false }
+        /// Whether the point a click lands on is over this copy's window.
+        var covers = false
+        func contains(_ screenPoint: CGPoint) -> Bool { covers }
         func setOutline(enabled: Bool, color: NSColor) { outline = (enabled, color) }
         func setActivationArea(_ rect: CGRect, title: String, willPress: @escaping () -> Void, activate: @escaping () -> Void) {
             activationRect = rect
@@ -179,6 +182,10 @@ enum NotchMirrorContract {
                      && capsule?.host.panelIsVisible == true && capsule?.model.activity == nil
                      && mirrors.showsAny,
                      "every display but the island's own shows a copy, at once")
+        suite.expect(!mirrors.showsCopy(at: .zero), "a click beside every copy is not on one")
+        capsule?.host.covers = true
+        suite.expect(mirrors.showsCopy(at: .zero), "a click on a copy that is up lands on a copy of the island")
+        capsule?.host.covers = false
         let external2 = world.baseGeometry(for: external)
         suite.expect(capsule?.model.geometry.floats == true && capsule?.model.geometry.screen == external.frame
                      && capsule?.model.size == external2.restingSize(showsContent: false)
@@ -252,6 +259,9 @@ enum NotchMirrorContract {
         mirrors.sync()
         suite.expect(notch?.model.shown == false && notch?.host.hides == 1 && !mirrors.showsAny,
                      "an island hidden until the pointer reaches it hides its copies too")
+        notch?.host.covers = true
+        suite.expect(!mirrors.showsCopy(at: .zero), "a hidden copy does not hold a click at its old position")
+        notch?.host.covers = false
         world.hidesUntilHover = false
         mirrors.sync()
         suite.expect(notch?.model.shown == true, "a copy returns with the island at rest")

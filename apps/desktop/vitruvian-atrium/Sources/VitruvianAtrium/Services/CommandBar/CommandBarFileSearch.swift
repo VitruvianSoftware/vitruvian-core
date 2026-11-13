@@ -40,7 +40,7 @@ package final class CommandBarFileSearch: @unchecked Sendable {
     private var pendingWorkItem: DispatchWorkItem?
     private var generation = 0
     private var currentQuery: String?
-    private let searchQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.commandbar.files",
+    private let searchQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.commandbar.files",
                                             qos: .userInitiated)
     private let activeQueryLock = NSLock()
     private var cancellationGeneration = 0

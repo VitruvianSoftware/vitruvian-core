@@ -29,6 +29,11 @@ package struct ToolOffer: Equatable, Sendable {
     /// folder: that folder, as the agreement remembers it. Agreeing moves the
     /// tool onto the catalog, so the sheet says so. Nil otherwise.
     package let movesFromFolder: String?
+    /// For a tool from the catalog that was renamed: the id the person added
+    /// it under, which this replaces. Agreeing moves that tool's files,
+    /// what it saved and its settings to the new id (`ExternalToolStore.add`).
+    /// Nil otherwise.
+    package internal(set) var renames: ToolID? = nil
 
     /// True when this would replace a tool whose manifest was not these
     /// bytes when the person agreed to it. That is all "changed" means: one

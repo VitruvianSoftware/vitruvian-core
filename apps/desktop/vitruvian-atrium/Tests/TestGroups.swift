@@ -223,6 +223,7 @@ enum TestGroups {
                 CatalogueListTests.run(suite)
                 CatalogueInstallerTests.run(suite)
                 CatalogueWatchTests.run(suite)
+                ToolRenameTests.run(suite)
                 CatalogueScreensTests.run(suite)
                 ExtensionsPageTests.run(suite)
                 NotchExtensionPaneTests.run(suite)
@@ -307,7 +308,10 @@ enum TestGroups {
                 KeepAwakeLidSleepTests.run { suite.expect($0, $1) }
                 KeepAwakeTimerHandoffTests.run { suite.expect($0, $1) }
             }),
-            ("wallpaper", { WallpaperContract.run(suite) }),
+            ("wallpaper", {
+                WallpaperContract.run(suite)
+                WallpaperThumbnailTests.run(suite)
+            }),
             ("emoji", { CommandBarEmojiContract.run(suite) }),
         ]
     }

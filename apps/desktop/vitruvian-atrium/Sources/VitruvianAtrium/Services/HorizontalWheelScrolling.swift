@@ -5,6 +5,12 @@ import AppKit
 import VitruvianAtriumCore
 import VitruvianAtriumDesign
 
+/// Enabled level controls receive the wheel before an enclosing horizontal strip.
+@MainActor
+package protocol SliderScrollTarget: AnyObject {
+    var acceptsSliderScroll: Bool { get }
+}
+
 /// Lets a mouse wheel move the strips that only scroll sideways: the island's
 /// mixer and rails, the switcher, wallpaper and chip rows. Without it their
 /// hidden items could only be reached with a trackpad or Shift.
@@ -64,7 +70,9 @@ package enum HorizontalWheelScrolling {
     /// The strip holding `view`, when it scrolls only sideways and nothing
     /// around it scrolls down.
     package static func sidewaysStrip(at view: NSView) -> NSScrollView? {
-        guard let strip = (view as? NSScrollView) ?? view.enclosingScrollView else { return nil }
+        guard !sequence(first: view, next: { $0.superview }).contains(where: {
+            ($0 as? SliderScrollTarget)?.acceptsSliderScroll == true
+        }), let strip = (view as? NSScrollView) ?? view.enclosingScrollView else { return nil }
         var enclosing = strip.superview?.enclosingScrollView
         var enclosingScrollsVertically = false
         while let outer = enclosing, !enclosingScrollsVertically {

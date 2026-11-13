@@ -84,6 +84,8 @@ enum ExternalToolStoreTests {
         /// been started by then, and each it said it removed.
         var added: [(id: ToolID, programStarted: Bool)] = []
         var removed: [ToolID] = []
+        /// Each rename the store said it made, old id then new.
+        var renamed: [(from: ToolID, to: ToolID)] = []
         /// What the store waits for before it adds a tool, when a test
         /// stands in for it; nothing otherwise.
         var beforeAdding: ((ToolID, @escaping @MainActor () -> Void) -> Void)?
@@ -149,7 +151,8 @@ enum ExternalToolStoreTests {
                 added: { [unowned self] installed, _ in
                     added.append((installed.tool.manifest.id, !started.isEmpty))
                 },
-                removed: { [unowned self] in removed.append($0) }))
+                removed: { [unowned self] in removed.append($0) },
+                renamed: { [unowned self] in renamed.append(($0, $1)) }))
             panels = ToolPanelHost(parts: .init(
                 clock: clock, limits: limits,
                 tool: { [unowned self] in store.tool($0) },
@@ -737,7 +740,7 @@ enum ExternalToolStoreTests {
                          && after.store.listed.isEmpty && !after.exists(after.files) && !after.exists(after.data),
                      "a tool that is held back is removed like any other")
 
-        let domain = "com.vitruviansoftware.atrium.tests.tool-store"
+        let domain = "com.vitruviansoftware.vitruvian.tests.tool-store"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

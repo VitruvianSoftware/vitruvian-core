@@ -642,7 +642,7 @@ package enum WallpaperThumbnailCache {
     nonisolated(unsafe) private static var generation = UUID()
 
     private static let prefetchQueue = DispatchQueue(
-        label: "com.vitruviansoftware.atrium.wallpaper-thumbs",
+        label: "com.vitruviansoftware.vitruvian.wallpaper-thumbs",
         qos: .utility,
         attributes: .concurrent
     )

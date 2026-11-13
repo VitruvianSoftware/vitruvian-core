@@ -386,6 +386,9 @@ delivery(
         "//apps/suites/vitruvian-tabs/extension:chrome_zip",
     ],
     kind = "publish",
+    # Called tabula-dev-latest (app tabula) until #4631; its earlier deploys ran under that name.
+    renamed_from = "tabula-dev-latest",
+    renamed_from_app = "tabula",
     render = "transcribed",
     run = "//apps/suites/vitruvian-tabs/extension:publish-dev-latest",
 )

@@ -30,7 +30,7 @@ package enum UpdateShowcaseInfo {
     package static var cacheDirectory: URL {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
-        let bundleID = Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.atrium"
+        let bundleID = Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.vitruvian"
         return base
             .appendingPathComponent(bundleID, isDirectory: true)
             .appendingPathComponent("UpdateShowcase", isDirectory: true)

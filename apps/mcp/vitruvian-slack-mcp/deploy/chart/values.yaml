@@ -150,8 +150,9 @@ slack:
   # Only meaningful when userTokenEnabled is true; ignored otherwise.
   writeMode: "user"
   # Set true to expose destructive workspace/canvas tools (slack_delete_canvas,
-  # slack_set_user_group_enabled, slack_set_user_group_members) on the HTTP
-  # transport. Default: false — withheld on HTTP unless explicitly enabled.
+  # slack_set_user_group_enabled, slack_set_user_group_members,
+  # slack_delete_scheduled_message) on the HTTP transport.
+  # Default: false — withheld on HTTP unless explicitly enabled.
   httpAllowDestructive: false
 
 # Hosts this pod may reach. Anything not listed is denied by the

@@ -128,7 +128,7 @@ read `packages/vitruvian-sdk/docs/writing-a-tool.md`. There is no development
 switch and no build define for it: every build adds a tool the same way. The
 tool is a separate program with every permission the app has. The app keeps
 a copy in
-`~/Library/Application Support/com.vitruviansoftware.atrium/Tools/<id>/`,
+`~/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/<id>/`,
 what the tool saves in `ToolData/<id>/` beside it, and the list of added
 tools in `InstalledTools.json` there. That a tool stopped working is said
 once on screen, and is in the system log:

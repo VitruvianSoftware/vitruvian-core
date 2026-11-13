@@ -466,7 +466,7 @@ package final class WindowPreviewProvider: @unchecked Sendable {
     /// The activated app's windows are listed here, off the main thread. A
     /// slow app can hold that Accessibility walk for seconds, which must not
     /// tie up a thread Swift's tasks share.
-    package static let warmEnumerationQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.preview.warm-enumeration",
+    package static let warmEnumerationQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.preview.warm-enumeration",
                                                             qos: .utility)
 
     /// Runs a warming walk on `warmEnumerationQueue` and waits for its list

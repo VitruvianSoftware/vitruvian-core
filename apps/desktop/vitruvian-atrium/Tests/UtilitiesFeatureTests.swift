@@ -648,11 +648,36 @@ enum UtilitiesFeatureTests {
                "library folders come alphabetically with loose snippets closing the list")
         suite.expect(allSections.last?.snippets == [loose],
                "disabled and hidden snippets never reach the library")
-        suite.expect(allSections[1].snippets == [workMail, workSig],
-               "snippets keep their stored order inside a folder")
+        suite.expect(allSections[1].snippets == [workSig, workMail],
+               "snippets inside a folder come alphabetically, not in creation order")
         suite.expect(TextSnippetSupport.libraryRows(allSections).map(\.name)
-                == ["Address", "Work mail", "Signature", "Loose"],
+                == ["Address", "Signature", "Work mail", "Loose"],
                "the flat row list walks the sections in reading order")
+
+        // MARK: Snippet display order (issue #3291)
+
+        let zebra = TextSnippet(name: "Zebra", trigger: ";z", replacement: "z",
+                                expansion: .afterDelimiter, enabled: true)
+        let lowerApple = TextSnippet(name: "apple", trigger: ";a", replacement: "a",
+                                     expansion: .afterDelimiter, enabled: true)
+        let unnamed = TextSnippet(name: "", trigger: ";mango", replacement: "m",
+                                  expansion: .afterDelimiter, enabled: true)
+        let item10 = TextSnippet(name: "Item 10", trigger: ";i10", replacement: "10",
+                                 expansion: .afterDelimiter, enabled: true)
+        let item2 = TextSnippet(name: "Item 2", trigger: ";i2", replacement: "2",
+                                expansion: .afterDelimiter, enabled: true)
+        let firstTwin = TextSnippet(name: "Twin", trigger: ";t1", replacement: "1",
+                                    expansion: .afterDelimiter, enabled: true)
+        let secondTwin = TextSnippet(name: "Twin", trigger: ";t2", replacement: "2",
+                                     expansion: .afterDelimiter, enabled: true)
+        let displayed = TextSnippetSupport.sortedForDisplay(
+            [zebra, secondTwin, unnamed, item10, lowerApple, firstTwin, item2])
+        suite.expect(displayed.map(\.trigger) == [";mango", ";a", ";i2", ";i10", ";t2", ";t1", ";z"],
+               "snippet lists sort by shown title ignoring case, numbers in numeric order, the trigger standing in for a missing name")
+        suite.expect(displayed.firstIndex(of: secondTwin)! < displayed.firstIndex(of: firstTwin)!,
+               "snippets with the same title keep their stored order")
+        suite.expect(TextSnippetSupport.sortedForDisplay([]).isEmpty,
+               "an empty snippet list stays empty")
 
         suite.expect(TextSnippetSupport.librarySections(libraryPool, query: "WORK").flatMap(\.snippets).count == 2,
                "searching matches the folder name regardless of casing")
@@ -1027,8 +1052,8 @@ enum UtilitiesFeatureTests {
         suite.expect(RadialMenuSupport.needsAccessibility([shortcutProfile]),
                "profile with keyboard shortcut slice needs Accessibility")
 
-        let profileTestDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.atrium.tests.radialProfiles")!
-        profileTestDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.radialProfiles")
+        let profileTestDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.radialProfiles")!
+        profileTestDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.radialProfiles")
         profileTestDefaults.set(true, forKey: AppFeature.radialMenu.availabilityKey)
         profileTestDefaults.set(true, forKey: DefaultsKey.radialMenuEnabled)
 
@@ -1105,7 +1130,7 @@ enum UtilitiesFeatureTests {
         profileTestDefaults.removeObject(forKey: DefaultsKey.radialMenuProfiles)
         suite.expect(wheelShortcuts() == [seedShortcut],
                "until a wheel is saved the role key is the shortcut the page lists")
-        profileTestDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.radialProfiles")
+        profileTestDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.radialProfiles")
 
         let testImage = NSImage(size: NSSize(width: 16, height: 16))
         testImage.lockFocus()
@@ -1134,8 +1159,8 @@ enum UtilitiesFeatureTests {
                 && RadialMenuSupport.claimedMouseButtons(iconProfilesData) == fullyDecodedButtons,
                "claimed mouse buttons read without the items match the full profile decode")
 
-        let legacyButtonDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.atrium.tests.radialLegacyButton")!
-        legacyButtonDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.radialLegacyButton")
+        let legacyButtonDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.radialLegacyButton")!
+        legacyButtonDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.radialLegacyButton")
         legacyButtonDefaults.set(RadialMenuMouseTrigger.forward.rawValue,
                                  forKey: DefaultsKey.radialMenuMouseButton)
         suite.expect(RadialMenuSupport.claimedMouseButtons(nil, defaults: legacyButtonDefaults)
@@ -1144,7 +1169,7 @@ enum UtilitiesFeatureTests {
                                                          defaults: legacyButtonDefaults)
                 == [MouseButtonShortcutSupport.forwardButtonNumber],
                "claimed mouse buttons fall back to the legacy button key like the full decode")
-        legacyButtonDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.radialLegacyButton")
+        legacyButtonDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.radialLegacyButton")
 
         var reorderItems = [
             RadialMenuItem(kind: .app, name: "A"),

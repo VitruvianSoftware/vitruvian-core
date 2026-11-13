@@ -32,7 +32,7 @@ enum NotchMusicVisibilityTests {
     }
 
     static func run(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-music-visibility"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-music-visibility"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         var islands: [NotchIslandFixture] = []

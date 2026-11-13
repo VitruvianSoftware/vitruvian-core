@@ -42,11 +42,13 @@ package struct NotchNotice: Equatable {
                                     trailing: max(minimumWings.trailing, fitted.trailing))
         }
         let font = NotchNoticeLayout.font
-        let leading = ((level == nil ? title : detail) as NSString).size(withAttributes: [.font: font]).width
-        // A level's wings are as wide as its mark and its reading; the meter
-        // takes the same width on the other side.
+        func measured(_ text: String) -> CGFloat { (text as NSString).size(withAttributes: [.font: font]).width }
+        let leading = measured(level == nil ? title : detail)
+        // A level's wings are as wide as its mark and its widest reading, so
+        // the island holds still as the value gains or loses a digit; the
+        // meter takes the same width on the other side.
         if level != nil, event != .accessory {
-            let wing = ceil(NotchNoticeLayout.levelInset + NotchNoticeLayout.symbolWidth + NotchNoticeLayout.spacing + leading)
+            let wing = ceil(NotchNoticeLayout.levelInset + NotchNoticeLayout.symbolWidth + NotchNoticeLayout.spacing + max(leading, measured("100%")))
             return NotchNoticeWings(leading: wing, trailing: wing)
         }
         // Long accessory names still use bounded truncation.
@@ -542,6 +544,7 @@ package final class NotchService: ObservableObject {
     private var captureID: UUID?
     private var captureFallback: (() -> Void)?
     private var captureClose: (() -> Void)?
+    private var captureDismiss: (() -> Void)?
     private var captureHover: ((Bool) -> Void)?
     private var captureClosesOnCollapse = false
     private var inside = false
@@ -565,7 +568,10 @@ package final class NotchService: ObservableObject {
     /// the preferences: the open page's geometry is read on every layout pass.
     private var homeControls: [NotchControlItem] = []
     private var fileInteractionActive = false
-    private var keepsWorkingSurface: Bool {
+    /// A screenshot preview stays when the pointer leaves or another app
+    /// activates. It leaves on its own timer or on a click elsewhere.
+    private var keepsWorkingSurface: Bool { keepsSurfaceOnClick || showsCapturePreview }
+    private var keepsSurfaceOnClick: Bool {
         pinned || trackingMenu || services.hasModalWindow || panel?.attachedSheet != nil
             || services.importingLyrics
             // Like the lyrics chooser, these panels stand beside the island
@@ -577,12 +583,14 @@ package final class NotchService: ObservableObject {
             || (expanded && !showingSections && selected == .calendar && services.keepsCalendarPrompt)
             || (expanded && !showingSections && selected == .files && fileInteractionActive)
             || services.keepsCameraPrompt
-            || (expanded && !showingSections && selected == .captures && captureContent != nil)
             || (expanded && !showingSections && selected == .tools
                 && (services.activeUtility != nil || services.editingTools))
             // Dragging a section, or a tool's own page, is work in the island.
             || (expanded && showingSections && editingSections)
             || (expanded && !showingSections && services.showsToolPanel)
+    }
+    private var showsCapturePreview: Bool {
+        expanded && !showingSections && selected == .captures && captureContent != nil
     }
     /// Up and measuring its display. Settings previews read the island's
     /// size only then.
@@ -3216,7 +3224,8 @@ package final class NotchService: ObservableObject {
 
     package func presentCapture(id: UUID, content: AnyView, actions: AnyView? = nil, height: CGFloat,
                         takeFocus: Bool, closeOnCollapse: Bool, fallback: @escaping () -> Void,
-                        close: @escaping () -> Void, hover: @escaping (Bool) -> Void) -> Bool {
+                        close: @escaping () -> Void, dismiss: (() -> Void)? = nil,
+                        hover: @escaping (Bool) -> Void) -> Bool {
         guard acceptsSystemFeedback, NotchSupport.routes(.capture, in: defaults) else { return false }
         let keepOpen = expanded && pinned
         captureID = id
@@ -3225,6 +3234,7 @@ package final class NotchService: ObservableObject {
         captureActions = actions
         captureFallback = fallback
         captureClose = close
+        captureDismiss = dismiss
         captureHover = hover
         captureClosesOnCollapse = closeOnCollapse
         open(.captures, pinned: keepOpen,
@@ -3307,6 +3317,7 @@ package final class NotchService: ObservableObject {
         captureContentHeight = nil
         captureFallback = nil
         captureClose = nil
+        captureDismiss = nil
         captureHover = nil
         captureClosesOnCollapse = false
     }
@@ -4077,8 +4088,7 @@ package final class NotchService: ObservableObject {
         guard eventMonitors.isEmpty else { return }
         clickedSinceOpening = false
         eventMonitors = parts.openEvents.addMonitors({ [weak self] in
-            guard let self, self.clickIsAway() else { return }
-            self.collapse()
+            self?.clickedElsewhere()
         }, { [weak self] event in self?.localEvents.handle(event) == true })
     }
 
@@ -4088,13 +4098,32 @@ package final class NotchService: ObservableObject {
         if !showsKeyboardFocus { showsKeyboardFocus = true }
     }
 
-    /// A click lands away from the island: not on it, its status item or the
-    /// Accessibility Keyboard, while nothing keeps its working surface open.
-    private func clickIsAway() -> Bool {
-        !keepsWorkingSurface
-            && windowHost?.contains(pointer()) != true
-            && !services.isOverStatusItem(pointer())
-            && !services.assistiveKeyboardOwns(pointer())
+    /// What a click away from the island's window does (`NotchClickElsewhere`):
+    /// nothing on the island, a visible copy of it, its status item or the
+    /// Accessibility Keyboard, or while something keeps its surface open; a
+    /// screenshot preview goes to its controller; anything else collapses.
+    private func clickElsewhereOutcome() -> NotchClickElsewhere.Outcome {
+        let point = pointer()
+        return NotchClickElsewhere.outcome(
+            keepsSurface: keepsSurfaceOnClick,
+            overIsland: windowHost?.contains(point) == true,
+            overVisibleCopy: mirrors.showsCopy(at: point),
+            overStatusItem: services.isOverStatusItem(point),
+            overAssistiveKeyboard: services.assistiveKeyboardOwns(point),
+            showsCapturePreview: showsCapturePreview)
+    }
+
+    private func clickIsAway() -> Bool { clickElsewhereOutcome() != .keep }
+
+    /// A screenshot preview closes through its controller, which keeps it
+    /// while a share link is still being made.
+    private func clickedElsewhere() {
+        switch clickElsewhereOutcome() {
+        case .keep: return
+        case .collapse: collapse()
+        case .dismissPreview:
+            if let captureDismiss { captureDismiss() } else { collapse() }
+        }
     }
 
     /// The island's own keys and the clicks that close it (`NotchLocalEventRoute`).
@@ -4115,6 +4144,7 @@ package final class NotchService: ObservableObject {
         tools: { [services] in (services.editingTools, services.visibleToolCount) },
         ownsWindow: { [weak self] in self?.ownsWindow($0 as? NSWindow) ?? false },
         clickIsAway: { [weak self] in self?.clickIsAway() ?? false },
+        clickedElsewhere: { [weak self] in self?.clickedElsewhere() },
         toggleSections: { [weak self] in self?.toggleSections() },
         select: { [weak self] in self?.select($0) },
         sectionKey: { [weak self] in self?.handleSectionKey($0) ?? false },

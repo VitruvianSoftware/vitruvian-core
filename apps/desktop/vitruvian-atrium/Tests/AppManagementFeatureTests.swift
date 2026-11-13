@@ -363,15 +363,23 @@ enum AppManagementFeatureTests {
                                                    engaged: false, disengagedTicks: 1) == 1.10,
                "grace never lifts a factor that had no boost to protect")
         suite.expect(ExtraBrightnessSupport.canReuseSpaceWindows(
-                   sameDisplay: true, overlayOnActiveSpace: true, triggerOnActiveSpace: true),
+                   sameDisplay: true, inOwnSpace: false, overlayOnActiveSpace: true, triggerOnActiveSpace: true),
                "fullscreen handoff keeps the live overlay pair when both windows followed")
         suite.expect(!ExtraBrightnessSupport.canReuseSpaceWindows(
-                   sameDisplay: false, overlayOnActiveSpace: true, triggerOnActiveSpace: true)
+                   sameDisplay: false, inOwnSpace: false, overlayOnActiveSpace: true, triggerOnActiveSpace: true)
                && !ExtraBrightnessSupport.canReuseSpaceWindows(
-                   sameDisplay: true, overlayOnActiveSpace: false, triggerOnActiveSpace: true)
+                   sameDisplay: true, inOwnSpace: false, overlayOnActiveSpace: false, triggerOnActiveSpace: true)
                && !ExtraBrightnessSupport.canReuseSpaceWindows(
-                   sameDisplay: true, overlayOnActiveSpace: true, triggerOnActiveSpace: false),
+                   sameDisplay: true, inOwnSpace: false, overlayOnActiveSpace: true, triggerOnActiveSpace: false),
                "display changes and incomplete Space handoffs still rebuild the overlay pair")
+        // AppKit never reports windows of the overlay's own Space as on the
+        // active Space; rebuilding on that blinked the boost on every switch.
+        suite.expect(ExtraBrightnessSupport.canReuseSpaceWindows(
+                   sameDisplay: true, inOwnSpace: true, overlayOnActiveSpace: false, triggerOnActiveSpace: false),
+               "the overlay's own Space keeps the live windows across desktop switches")
+        suite.expect(!ExtraBrightnessSupport.canReuseSpaceWindows(
+                   sameDisplay: false, inOwnSpace: true, overlayOnActiveSpace: false, triggerOnActiveSpace: false),
+               "a different display still rebuilds the overlay in its own Space")
         for ebScreen in [CGRect(x: 0, y: 0, width: 1512, height: 982),
                          CGRect(x: 0, y: 0, width: 1728, height: 1117),
                          CGRect(x: -1800, y: 140, width: 1800, height: 1169)] {
@@ -388,9 +396,7 @@ enum AppManagementFeatureTests {
                    "the extra brightness overlay windows tile \(ebScreen) on whole points")
             // AppKit reports a window above the main menu whose frame contains
             // the screen's safe area (the screen below the camera housing) as a
-            // full screen window, which left only the wallpaper in Mission
-            // Control's desktop thumbnails (#3292). A generous 64 pt housing
-            // covers every notch.
+            // full screen window. A generous 64 pt housing covers every notch.
             let ebSafeArea = CGRect(x: ebScreen.minX, y: ebScreen.minY,
                                     width: ebScreen.width, height: ebScreen.height - 64)
             suite.expect(!ebFrames.contains { $0.contains(ebSafeArea) },
@@ -439,7 +445,7 @@ enum AppManagementFeatureTests {
         suite.expect(CleanerSupport.isProtectedBundleID("com.apple.Music")
                && CleanerSupport.isProtectedBundleID("com.apple")
                && CleanerSupport.isProtectedBundleID("group.com.apple.notes")
-               && CleanerSupport.isProtectedBundleID("com.vitruviansoftware.atrium"),
+               && CleanerSupport.isProtectedBundleID("com.vitruviansoftware.vitruvian"),
                "system domains and this app can never be junk owners")
         suite.expect(!CleanerSupport.isProtectedBundleID("com.vendor.editor"),
                "third party identifiers are eligible for the leftover check")
@@ -452,7 +458,7 @@ enum AppManagementFeatureTests {
                && UninstallerSupport.verifiedBundleID("") == nil
                && UninstallerSupport.verifiedBundleID("plain-name") == nil
                && UninstallerSupport.verifiedBundleID("com.vendor../escape") == nil
-               && UninstallerSupport.verifiedBundleID("com.vitruviansoftware.atrium") == nil
+               && UninstallerSupport.verifiedBundleID("com.vitruviansoftware.vitruvian") == nil
                && UninstallerSupport.verifiedBundleID("com.apple.system") == nil,
                "malformed, protected and current app identifiers never enter uninstall paths")
         let selectionFixture = FileManager.default.temporaryDirectory
@@ -601,7 +607,7 @@ enum AppManagementFeatureTests {
             if case let .failure(reason) = UninstallerSupport.evaluate(url) { return reason }
             return nil
         }
-        let ownApp = selectionBundle("Copy.app", bundleID: "com.vitruviansoftware.atrium.dev")
+        let ownApp = selectionBundle("Copy.app", bundleID: "com.vitruviansoftware.vitruvian.dev")
         let plainFolder = selectionFixture.appendingPathComponent("Folder", isDirectory: true)
         try? FileManager.default.createDirectory(at: plainFolder, withIntermediateDirectories: true)
         let document = selectionFixture.appendingPathComponent("Notes.txt")

@@ -224,7 +224,7 @@ package final class BrightnessService: ObservableObject {
 
         /// Main-actor: it hands over the island.
         @MainActor package static var live: Environment {
-            let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.brightness", qos: .userInitiated)
+            let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.brightness", qos: .userInitiated)
             return Environment(
                 work: { queue.async(execute: $0) },
                 workSync: { work in queue.sync { work() } },

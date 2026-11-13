@@ -254,31 +254,88 @@ func TestARenamedMirrorIsRenamedInPlaceNeverReplaced(t *testing.T) {
 	}
 }
 
-// devx, homelab and mcp-slack are adopted into Pulumi at their live names
-// first (no rename in the same change: an import must be a zero-diff), with
-// the live settings spelled out and the repository protected.
-func TestTheTwoWayMirrorsAreAdoptedAtTheirLiveNamesBeforeAnyRename(t *testing.T) {
+// devx, homelab and mcp-slack were adopted into Pulumi at their live names in
+// #4651 and are now renamed in place to vitruvian-devx, vitruvian-homelab and
+// vitruvian-slack-mcp: each Repository keeps its logical name and original
+// importID while name moves to the target repo, sync keys rotate to
+// <new>-sync-key, and secret prefixes stay unchanged.
+func TestTheAdoptedTwoWayMirrorsAreRenamedInPlace(t *testing.T) {
 	got := run(t)
-	for _, repo := range []string{"devx", "homelab", "mcp-slack"} {
-		t.Run(repo, func(t *testing.T) {
-			r, ok := got[repo]
+	for _, tc := range []struct {
+		oldName string
+		newName string
+		prefix  string
+	}{
+		{"devx", "vitruvian-devx", "DEVX"},
+		{"homelab", "vitruvian-homelab", "HOMELAB"},
+		{"mcp-slack", "vitruvian-slack-mcp", "MCP_SLACK"},
+	} {
+		t.Run(tc.newName, func(t *testing.T) {
+			r, ok := got[tc.oldName]
 			if !ok || r.typeToken != "github:index/repository:Repository" {
-				t.Fatalf("%s is not declared as a github repository", repo)
+				t.Fatalf("%s is not declared as a github repository", tc.oldName)
 			}
-			if r.importID != repo {
-				t.Errorf("importID = %q, want %q", r.importID, repo)
+			if r.importID != tc.oldName {
+				t.Errorf("importID = %q, want %q", r.importID, tc.oldName)
 			}
 			if !r.protect {
 				t.Error("an adopted repository must be protected")
 			}
-			if v := text(t, got, repo, "name"); v != repo {
-				t.Errorf("name = %q, want the live name %q: renaming in the same change as the import fails the import", v, repo)
+			for _, mutable := range []string{"name", "description", "topics"} {
+				if slices.Contains(r.ignoreChanges, mutable) {
+					t.Errorf("%s ignoreChanges contains %q; in-place rename must be able to update it", tc.oldName, mutable)
+				}
+			}
+			if v := text(t, got, tc.oldName, "name"); v != tc.newName {
+				t.Errorf("name = %q, want %q", v, tc.newName)
 			}
 			if _, autoInit := r.inputs["autoInit"]; autoInit {
 				t.Error("an imported repository must not set autoInit")
 			}
-			if v := text(t, got, repo, "visibility"); v != "public" {
+			if v := text(t, got, tc.oldName, "visibility"); v != "public" {
 				t.Errorf("visibility = %q, want public", v)
+			}
+			if _, newURN := got[tc.newName]; newURN {
+				t.Errorf("%s must not be registered as a new Repository logical name; URN must stay %s", tc.newName, tc.oldName)
+			}
+
+			// Sync-auth resources follow StandaloneRepo: fresh key pair
+			// <new>-sync-key, old <old>-sync-key retired, deploy key and dispatch
+			// secrets target the new repo, and secret names keep the old prefix.
+			if k, ok := got[tc.newName+"-sync-key"]; !ok || k.typeToken != "tls:index/privateKey:PrivateKey" {
+				t.Fatalf("%s-sync-key = %v, want tls:index/privateKey:PrivateKey", tc.newName, k.typeToken)
+			}
+			if _, legacyKey := got[tc.oldName+"-sync-key"]; legacyKey {
+				t.Errorf("%s-sync-key must be retired so the ForceNew deploy key rotates onto a fresh key pair", tc.oldName)
+			}
+			if dk := got[tc.oldName+"-standalone-deploy-key"]; dk.deleteBeforeReplace {
+				t.Error("deploy key must use create-before-delete (deleteBeforeReplace: false)")
+			}
+			if v := text(t, got, tc.oldName+"-standalone-deploy-key", "repository"); v != tc.newName {
+				t.Errorf("deploy key repository = %q, want %q", v, tc.newName)
+			}
+			if v := text(t, got, tc.oldName+"-sync-ssh-key-secret", "secretName"); v != tc.prefix+"_SYNC_SSH_KEY" {
+				t.Errorf("sync ssh secret = %q, want %s_SYNC_SSH_KEY", v, tc.prefix)
+			}
+			if v := text(t, got, tc.oldName+"-sync-ssh-key-secret", "repository"); v != "vitruvian-core" {
+				t.Errorf("sync ssh secret repository = %q, want vitruvian-core", v)
+			}
+			if v := text(t, got, tc.oldName+"-dispatch-app-id-secret", "secretName"); v != tc.prefix+"_DISPATCH_APP_ID" {
+				t.Errorf("dispatch app id secret = %q, want %s_DISPATCH_APP_ID", v, tc.prefix)
+			}
+			if v := text(t, got, tc.oldName+"-dispatch-app-id-secret", "repository"); v != tc.newName {
+				t.Errorf("dispatch app id repository = %q, want %q", v, tc.newName)
+			}
+			if v := text(t, got, tc.oldName+"-dispatch-app-private-key-secret", "secretName"); v != tc.prefix+"_DISPATCH_APP_PRIVATE_KEY" {
+				t.Errorf("dispatch app key secret = %q, want %s_DISPATCH_APP_PRIVATE_KEY", v, tc.prefix)
+			}
+			if v := text(t, got, tc.oldName+"-dispatch-app-private-key-secret", "repository"); v != tc.newName {
+				t.Errorf("dispatch app key repository = %q, want %q", v, tc.newName)
+			}
+			for name, res := range got {
+				if repoVal, hasRepo := res.inputs["repository"]; hasRepo && repoVal.IsString() && repoVal.StringValue() == tc.oldName {
+					t.Errorf("resource %s (%s) still targets legacy repository name %q; want %q", name, res.typeToken, repoVal.StringValue(), tc.newName)
+				}
 			}
 		})
 	}

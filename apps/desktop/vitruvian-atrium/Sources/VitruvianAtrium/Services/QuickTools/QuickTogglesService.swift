@@ -36,7 +36,7 @@ package final class QuickTogglesService: ObservableObject {
 
     @Published package private(set) var states: [QuickToggleAction: RunState] = [:]
 
-    private let workQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.quick-toggles", qos: .userInitiated)
+    private let workQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.quick-toggles", qos: .userInitiated)
 
     private init() {}
 

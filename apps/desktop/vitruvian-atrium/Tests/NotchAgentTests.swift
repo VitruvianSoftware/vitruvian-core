@@ -2864,7 +2864,7 @@ enum NotchAgentTests {
     // MARK: Preferences and layout
 
     private static func agentDefaults(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.agent-defaults.\(UUID().uuidString)"
+        let domain = "com.vitruviansoftware.vitruvian.tests.agent-defaults.\(UUID().uuidString)"
         let defaults = ScratchDefaults.suite(named: domain)!
         defer { defaults.removePersistentDomain(forName: domain) }
 
@@ -2911,7 +2911,7 @@ enum NotchAgentTests {
 
     /// Only what the person shows or is alerted about asks for the limits.
     private static func limitUse(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-agent-limits"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-agent-limits"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -2937,7 +2937,7 @@ enum NotchAgentTests {
     }
 
     private static func preferences(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-agents"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-agents"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

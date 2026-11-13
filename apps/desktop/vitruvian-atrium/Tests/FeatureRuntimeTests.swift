@@ -17,7 +17,7 @@ enum FeatureRuntimeContract {
     }
 
     static func run(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.feature-runtime"
+        let domain = "com.vitruviansoftware.vitruvian.tests.feature-runtime"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

@@ -62,7 +62,7 @@ package enum SettingsDirectory {
                             if feature == .clipboardHistory {
                                 return FeatureStrings.commandBar(language).sourceClipboard
                             }
-                            return feature.hubTitle(s, hub: hub)
+                            return feature.hubTitle(s, hub: hub, language: language)
                         }
                     if pageItem.page == .general {
                         rows.insert(SettingsSidebarItem(
@@ -155,7 +155,7 @@ package enum SettingsDirectory {
             }
         let hub = FeatureStrings.hub(language)
         let featureItems = SettingsSearchSupport.featureItems(language: language) { feature in
-            feature.hubTitle(s, hub: hub)
+            feature.hubTitle(s, hub: hub, language: language)
         }
         var items = SettingsSearchSupport.combinedItems(pageItems: pageItems,
                                                         featureItems: featureItems)
@@ -192,7 +192,7 @@ package enum SettingsDirectory {
                 SettingsDirectoryItem(page: .features, title: FeatureStrings.hub(language).pageTitle,
                                        icon: "square.grid.2x2",
                                        featureKeywords: AppFeature.allCases.map {
-                                        ($0, [$0.hubTitle(s, hub: FeatureStrings.hub(language))])
+                                        ($0, [$0.hubTitle(s, hub: FeatureStrings.hub(language), language: language)])
                                        }),
                 // The tools that run as their own programs, and the catalog.
                 SettingsDirectoryItem(page: .extensions, title: FeatureStrings.externalTools(language).pageTitle,

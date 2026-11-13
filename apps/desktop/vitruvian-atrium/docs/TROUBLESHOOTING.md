@@ -2,7 +2,7 @@
 
 A quick guide to the snags people hit most. If none of it helps, jump to [reporting a useful bug](#reporting-a-useful-bug) at the end.
 
-The permission and uninstall commands below all point at Vitruvian Atrium's bundle identifier, `com.vitruviansoftware.atrium`.
+The permission and uninstall commands below all point at Vitruvian Atrium's bundle identifier, `com.vitruviansoftware.vitruvian`.
 
 ## The app will not open
 
@@ -39,7 +39,7 @@ This permission is used by the mixer, the optional live equalizer and system aud
 
 ### Automation
 
-Finder cut and paste, the uninstaller and Homebrew's Terminal handoff may ask for Automation. If a Finder move or Terminal handoff does nothing after a denial, open System Settings, Privacy and Security, Automation, and allow Vitruvian Atrium for the app it needs to control.
+Finder cut and paste and the uninstaller may ask for Automation. If a Finder move does nothing after a denial, open System Settings, Privacy and Security, Automation, and allow Vitruvian Atrium for Finder.
 
 ## Clipboard history does not copy or paste
 
@@ -83,18 +83,18 @@ To wipe Vitruvian Atrium's granted permissions and let macOS ask again from scra
 - **From Terminal.** Reset all of Vitruvian Atrium's privacy permissions at once.
 
   ```sh
-  tccutil reset All com.vitruviansoftware.atrium
+  tccutil reset All com.vitruviansoftware.vitruvian
   ```
 
   Or reset a single kind, for example.
 
   ```sh
-  tccutil reset Accessibility com.vitruviansoftware.atrium
-  tccutil reset ScreenCapture com.vitruviansoftware.atrium
+  tccutil reset Accessibility com.vitruviansoftware.vitruvian
+  tccutil reset ScreenCapture com.vitruviansoftware.vitruvian
   ```
 
   A self-built Developer variant has its own grants under
-  `com.vitruviansoftware.atrium.dev`. Resetting is the way out when System Settings
+  `com.vitruviansoftware.vitruvian.dev`. Resetting is the way out when System Settings
   shows the permission as granted but the app disagrees — that happens when a
   grant was given to an earlier ad-hoc build whose signature no longer matches.
 
@@ -109,7 +109,7 @@ The bundled script takes out everything Vitruvian Atrium added, the app itself, 
 Run it from a clone of the repository, or download the single script from the repo. Would you rather do it by hand? Quit Vitruvian Atrium, drag it from Applications to the Trash, then clear its permissions.
 
 ```sh
-tccutil reset All com.vitruviansoftware.atrium
+tccutil reset All com.vitruviansoftware.vitruvian
 ```
 
 ## Reporting a useful bug

@@ -10,7 +10,7 @@ use std::path::Path;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-pub const TEST_PREF_PREFIXES: &[&str] = &["vitru.tests.", "com.vitruviansoftware.atrium.tests."];
+pub const TEST_PREF_PREFIXES: &[&str] = &["vitru.tests.", "com.vitruviansoftware.vitruvian.tests."];
 pub const METRICS_TESTS_PLIST: &str = "metrics-tests.plist";
 
 pub fn is_test_preference_filename(name: &str) -> bool {
@@ -123,7 +123,7 @@ pub fn run_preference_cleanup_test_suite() -> Result<(), String> {
         discard_test_preferences_with_sleep(&cleanup_test_dir, |dir| {
             if remaining_writes > 0 {
                 let _ = fs::write(
-                    dir.join("com.vitruviansoftware.atrium.tests.delayed.plist"),
+                    dir.join("com.vitruviansoftware.vitruvian.tests.delayed.plist"),
                     "{}\n",
                 );
                 remaining_writes -= 1;
@@ -131,7 +131,7 @@ pub fn run_preference_cleanup_test_suite() -> Result<(), String> {
         })?;
 
         if cleanup_test_dir
-            .join("com.vitruviansoftware.atrium.tests.delayed.plist")
+            .join("com.vitruviansoftware.vitruvian.tests.delayed.plist")
             .exists()
         {
             return Err("delayed test plist still exists".into());
@@ -153,7 +153,7 @@ pub fn run_preference_cleanup_test_suite() -> Result<(), String> {
         let persistent_res = discard_test_preferences_with_sleep(&cleanup_test_dir, |dir| {
             if remaining_writes > 0 {
                 let _ = fs::write(
-                    dir.join("com.vitruviansoftware.atrium.tests.delayed.plist"),
+                    dir.join("com.vitruviansoftware.vitruvian.tests.delayed.plist"),
                     "{}\n",
                 );
                 remaining_writes -= 1;
@@ -173,7 +173,7 @@ pub fn run_preference_cleanup_test_suite() -> Result<(), String> {
         discard_test_preferences_with_sleep(&cleanup_test_dir, |dir| {
             if remaining_writes > 0 {
                 let _ = fs::write(
-                    dir.join("com.vitruviansoftware.atrium.tests.delayed.plist"),
+                    dir.join("com.vitruviansoftware.vitruvian.tests.delayed.plist"),
                     "{}\n",
                 );
                 remaining_writes -= 1;
@@ -213,12 +213,12 @@ mod tests {
     fn test_filename_matching() {
         assert!(is_test_preference_filename("vitru.tests.first.plist"));
         assert!(is_test_preference_filename(
-            "com.vitruviansoftware.atrium.tests.delayed.plist"
+            "com.vitruviansoftware.vitruvian.tests.delayed.plist"
         ));
         assert!(is_test_preference_filename("metrics-tests.plist"));
         assert!(!is_test_preference_filename("unrelated.plist"));
         assert!(!is_test_preference_filename(
-            "com.vitruviansoftware.atrium.plist"
+            "com.vitruviansoftware.vitruvian.plist"
         ));
     }
 }

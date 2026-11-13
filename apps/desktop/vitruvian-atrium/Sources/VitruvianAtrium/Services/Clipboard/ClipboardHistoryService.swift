@@ -170,7 +170,7 @@ package final class ClipboardHistoryService: ObservableObject {
     /// Writes coalesce per mutation cycle; the JSON encode and the disk write
     /// stay off the main thread (a full history of long texts is real work),
     /// serialized so blobs land in mutation order.
-    nonisolated private static let persistQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.clipboard-persist",
+    nonisolated private static let persistQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.clipboard-persist",
                                                     qos: .utility)
     private var persistScheduled = false
     private var persistenceGeneration = 0
@@ -1923,7 +1923,7 @@ package enum ClipboardImageStore {
     /// full size screenshots in memory at once.
     private static let thumbnailQueue: OperationQueue = {
         let queue = OperationQueue()
-        queue.name = "com.vitruviansoftware.atrium.clipboard-thumbnails"
+        queue.name = "com.vitruviansoftware.vitruvian.clipboard-thumbnails"
         queue.maxConcurrentOperationCount = 2
         queue.qualityOfService = .userInitiated
         return queue

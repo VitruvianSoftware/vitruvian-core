@@ -772,4 +772,34 @@ mod tests {
             "Undocumented environment variables: {undocumented:?}"
         );
     }
+
+    #[test]
+    fn readme_documents_restricted_open_dm_never_opens_new_conversations() {
+        let readme = std::fs::read_to_string("apps/mcp/vitruvian-slack-mcp/README.md")
+            .or_else(|_| std::fs::read_to_string("README.md"))
+            .expect("README.md must be readable");
+
+        let table_row = readme
+            .lines()
+            .find(|l| l.starts_with("| `slack_open_dm` |"))
+            .expect("README tools table must include slack_open_dm row");
+        assert!(
+            table_row.contains("never opens") && table_row.contains("SLACK_CHANNEL_IDS"),
+            "slack_open_dm table row must describe restricted no-open behaviour, got: {table_row}"
+        );
+
+        let bullet = readme
+            .lines()
+            .find(|l| l.starts_with("- **`slack_open_dm`**:"))
+            .expect("README ergonomics section must include slack_open_dm bullet");
+        assert!(
+            bullet.contains("never opens a new conversation")
+                && bullet.contains("exactly those users"),
+            "slack_open_dm paragraph must describe restricted exact-member lookup without opening, got: {bullet}"
+        );
+
+        assert!(readme.contains("All 47 tools"));
+        assert!(readme.contains("Expose 46 Tools (42 if destructive withheld)"));
+        assert!(readme.contains("Expose 21 Bot Tools"));
+    }
 }

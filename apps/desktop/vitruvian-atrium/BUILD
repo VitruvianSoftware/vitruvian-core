@@ -52,7 +52,7 @@ MACOS_ONLY = ["@platforms//os:macos"]
 # Bundle identity: Vitruvian Atrium's own, never upstream's (TRADEMARKS.md). Nothing
 # built here is published yet -- CI builds and tests only; see UPSTREAM.md for
 # what has to exist before a first release.
-BUNDLE_ID = "com.vitruviansoftware.atrium"
+BUNDLE_ID = "com.vitruviansoftware.vitruvian"
 
 FAN_HELPER_ID = BUNDLE_ID + ".fan-control"
 
@@ -483,10 +483,10 @@ genrule(
     name = "fan_helper_version_plist",
     srcs = [
         ":" + FAN_HELPER_ID,
-        "Resources/com.vitruviansoftware.atrium.fan-control.plist",
+        "Resources/com.vitruviansoftware.vitruvian.fan-control.plist",
     ],
     outs = ["fan_helper_version/Info.plist"],
-    cmd = "$(execpath :helper_version_plist_tool) $(location :" + FAN_HELPER_ID + ") $(location Resources/com.vitruviansoftware.atrium.fan-control.plist) $@",
+    cmd = "$(execpath :helper_version_plist_tool) $(location :" + FAN_HELPER_ID + ") $(location Resources/com.vitruviansoftware.vitruvian.fan-control.plist) $@",
     tags = ["manual"],
     target_compatible_with = MACOS_ONLY,
     tools = [":helper_version_plist_tool"],
@@ -537,7 +537,7 @@ macos_application(
     name = "VitruvianAtrium",
     additional_contents = {
         ":" + FAN_HELPER_ID: "Library/LaunchServices",
-        "Resources/com.vitruviansoftware.atrium.fan-control.plist": "Library/LaunchDaemons",
+        "Resources/com.vitruviansoftware.vitruvian.fan-control.plist": "Library/LaunchDaemons",
         ":libVitruvianAtriumNowPlaying": "Frameworks",
         # The GravaStar mouse command (MIT, packages/peripherals), which the
         # GitHub tool from the catalog finds here for its status light.

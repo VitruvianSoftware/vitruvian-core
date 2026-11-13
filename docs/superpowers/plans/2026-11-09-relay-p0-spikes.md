@@ -12,8 +12,8 @@ Each spike ends in a written yes or no with evidence. This file is the record.
 |---|---|---|
 | A | Can ChatGPT and Claude add an OAuth-protected MCP on our domain, with Zitadel sign-in? | **Claude: yes, live** (2026-11-11, claude.ai). ChatGPT: yes on paper for one user, needs open registration for many; not tried live |
 | B | Does Zitadel's device flow work from a command-line app? | **Yes** (2026-11-11), with `relay-spike-client login` |
-| C | Does a WebSocket through the Cloudflare Tunnel stay up for 24 hours? | **Running.** `relay-spike-client hold` started 2026-11-11 18:15 PST, ends 2026-11-12 18:15 PST |
-| D | Can a connector drive unmodified `desktop-commander` over stdio? | **Blocked.** The repo guard refuses `npm`/`npx`, and no Bazel target exists. Answered from source code where possible |
+| C | Does a WebSocket through the Cloudflare Tunnel stay up for 24 hours? | **No for one connection, yes for the service** (2026-11-12). 10 drops in 24 hours, connected 99.3% of the time; reconnecting is mandatory |
+| D | Can a connector drive unmodified `desktop-commander` over stdio? | **Yes** (2026-11-12), version 0.3.1 run through Bazel. The connector must kill the whole process group, turn telemetry off and redirect its feature-flag fetch |
 
 ## Live results (2026-11-11)
 
@@ -49,9 +49,48 @@ Each spike ends in a written yes or no with evidence. This file is the record.
   doesn't share the session of the newer one Claude's sign-in used, so James
   signed in twice. Worth fixing before real users see it.
 
-### C: running
+### C: no for one connection, yes with reconnects
 
-Results land here when the hold ends.
+`relay-spike-client hold --hours 24` (now `bazel run //apps/suites/vitruvian-relay/spike:vitruvian-relay-spike-client -- hold`) ran
+from 2026-11-11 18:15 to 2026-11-12 18:15 PST from James's MacBook, over home
+Wi-Fi, to `wss://relay-spike.ipv1337.dev/connect`. It sent a probe every 30 s
+and reconnected with backoff.
+
+| | |
+|---|---|
+| Time connected | 85,836 of 86,400 s (**99.3%**) |
+| Connections | 11 (**10 drops**) |
+| Longest single connection | 45,836 s (12.7 h) |
+| Probe round trip | p50 62 ms, p95 152 ms, max 462 ms (2,814 probes) |
+| Longest gap | 352 s |
+
+The 10 drops had three causes:
+
+- **8 resets from the network**, between 06:59 and 15:06, after 5 minutes to
+  12.7 hours. They were TCP resets or closes without a WebSocket close frame.
+  Each time, the client was back in about 1 s. Which hop reset them (home
+  network, Cloudflare's edge, or `cloudflared`) is **not established**: nothing
+  on the server side was logged for these.
+- **2 server outages, 17:36 and 17:59.** The client heard nothing for 90 s,
+  then Cloudflare answered 503 or 504 for up to 6 minutes. The relay-spike pod
+  was running on the node `james-mbp16`, a laptop, which went `NotReady` twice
+  in that window. The pod was then evicted and rescheduled on `nuc9i9` (cluster
+  events, 18:04). These are the gaps of 3 to 6 minutes.
+- **1 token refresh failed** on a reset (06:59, same moment as a drop) and
+  succeeded on the next try a second later.
+
+What this means for the relay:
+
+- **The connector must reconnect by itself, quietly and quickly.** A drop every
+  few hours is normal, and the backoff used here was enough.
+- Calls in flight when a connection drops are lost, so the relay has to fail
+  them cleanly and Claude has to be able to retry them.
+- **Production relay pods must not run on laptop nodes.** Pin them to always-on
+  nodes, and run more than one replica so a node going away isn't an outage.
+- The test client and the laptop node may be the same machine. Repeating the
+  test from an always-on host would tell home-network resets apart from
+  Cloudflare ones. That isn't needed for P0: the design has to reconnect either
+  way.
 
 ## Evidence so far (2026-11-09)
 
@@ -107,7 +146,7 @@ read-only request:
 - The docs don't say which version first shipped it, so whether our running
   Zitadel has it is unknown. Enabling it would show.
 
-### Desktop Commander, read from its source (spike D, partial)
+### Desktop Commander, read from its source (spike D)
 
 These came from reading code at `d05721a`, not from running it:
 
@@ -121,9 +160,59 @@ These came from reading code at `d05721a`, not from running it:
 - It needs Node 22.12 or newer. The latest published version is 0.3.1
   (`sha512-cx7KTscLF951adHmDLVCDIVTqJ/Bg1LtdRILZoo5wa/UMeyOfMAuOJOEBulNMKBKb5Xd3nHDQnB9aXroN9Fw5A==`).
 
-What still needs a run: start-up time, whether stdout carries only JSON-RPC,
-streamed process output, and behaviour on a crash. That needs the package
-installed, which needs an `npm` route.
+### D: yes (live run, 2026-11-12)
+
+Unmodified `@wonderwhy-er/desktop-commander` 0.3.1, pinned by checksum (the one
+above) and built by rules_js on macOS with Node 22.21.1. A Python driver ran it
+over stdio with `HOME` set to a throwaway folder. It ran four times. Start-up,
+stdout, polling and shutdown came out the same each time. The crash result is
+from the last run, after the driver was fixed to kill Node itself rather than
+Bazel's launcher.
+
+- **Start-up:** the first `initialize` answer came 340–550 ms after spawn
+  (cold), 250–360 ms on a restart. It reports protocol `2025-06-18`, has 25
+  tools, and declares the capabilities `logging`, `prompts`, `resources` and
+  `tools`.
+- **stdout is clean.** Every line was a JSON-RPC 2.0 message: no stray output
+  in four runs, and nothing on stderr. Its own logs go out as
+  `notifications/message` (about a dozen at start-up, more during calls). The
+  connector should forward or drop those, not treat them as replies.
+- **Command output is polled, not pushed.** `start_process` waits up to
+  `timeout_ms`, then returns the output so far and a PID. After that, the client
+  calls `read_process_output` each time it wants more. Each call returned only
+  the new lines, about one second apart, and the last one gave the exit code. The
+  relay needs no streaming of its own for this: it forwards each call.
+- **Shutdown:** closing stdin makes it exit cleanly (code 0) within 40 ms.
+- **Crash:** when the Node process was killed mid-call, stdout closed within
+  5 ms and the pending call got no answer. **The command it had started
+  (`sleep 30`) kept running.** Commands are its children, so the connector must
+  start it in its own process group and kill the group, not just the PID.
+- **Wrapper trap (Bazel only):** `bazel run`'s launcher is a shell script with
+  Node underneath. Killing only the launcher left Node running with stdout open,
+  so no EOF arrived. A connector that starts it through a wrapper must kill the
+  group for the same reason.
+- **Telemetry:** `DESKTOP_COMMANDER_DISABLE_TELEMETRY=1` stops every event
+  before one is built (`utils/capture.js`). The connector should set it, not
+  rely on the shared config file.
+- **It phones home for feature flags even with telemetry off.** At start-up and
+  every 30 minutes it fetches `https://desktopcommander.app/flags/v2/production.json`
+  and caches it in `feature-flags.json`. The only way to change this is to
+  redirect it with `DC_FLAG_URL`. The connector should point that at a local
+  file or an address that refuses the connection.
+- **Its install script reports the install** (`postinstall` runs
+  `track-installation.js`, which uses HTTPS). rules_js ran no install scripts:
+  the build had only extract and symlink actions.
+- **Files it wrote** under `~/.claude-server-commander/`: `config.json`,
+  `feature-flags.json`, `tool-history.jsonl` and `claude_tool_call.log`. The log
+  records every call with its full arguments. `HOME` controls where these go.
+
+Not committed: pinning it changed how some unrelated Backstage webpack packages
+resolve in `pnpm-lock.yaml`. That's too much reach for a spike, so the run was
+made from a local branch. To repeat it:
+1. Add a workspace package with `"@wonderwhy-er/desktop-commander": "0.3.1"`.
+2. Run `bazel run //tools/pnpm:lock`.
+3. Add a BUILD file with `npm_link_all_packages` and the package's
+   `desktop_commander_binary`.
 
 ### One correction to the spec, recorded there too
 
@@ -150,8 +239,8 @@ subject.
 - [ ] **A (ChatGPT):** James starts adding the connector in ChatGPT and copies its
       callback into `chatgptRedirectUris`, then re-apply, then finish. Only if his
       plan allows custom MCP servers
-- [ ] **C:** a WebSocket client on this Mac holds `/connect` open for 24 hours,
+- [x] **C:** a WebSocket client on this Mac holds `/connect` open for 24 hours,
       logging drops, reconnect times and ping round trips
-- [ ] **D:** add a Bazel route for running an npm package (or settle another way
-      to get `desktop-commander` onto the machine for the spike), then run it
+- [x] **D:** add a Bazel route for running an npm package (`//tools/pnpm:lock`,
+      #4663), then run it
 - [ ] Write the yes or no for each spike here and update spec §10 and §11

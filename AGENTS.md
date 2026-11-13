@@ -268,7 +268,7 @@ Run every change to completion — an unmerged branch is unfinished work, not a 
   `docs/dependency-versioning/`.
 - **Dependency changes** = edit the manifest, then re-lock, then gazelle:
   - Python: `pyproject.toml` → `./tools/repin` → `bazel run //:gazelle`
-  - JS/TS: `pnpm add …` (one pnpm workspace / `pnpm-lock.yaml`)
+  - JS/TS: edit the `package.json` → `bazel run //tools/pnpm:lock` (one pnpm workspace / `pnpm-lock.yaml`; `-- --check` reports drift)
   - Go: `go mod tidy` → `bazel mod tidy` → `bazel run //:gazelle` (multi-module `go.work`: `.`, `apps/cli/vitruvian-homelab`, `apps/cli/vitruvian-devx`)
   - JVM: edit `maven.install` in `MODULE.bazel` → `bazel run @maven//:pin`; Rust: `Cargo.toml` → `bazel run //tools/crates:lock` (resolves for the Bazel toolchain's Rust version); Ruby: `Gemfile`
   - GitOps Helm chart pins (`gitops/argocd/**` `Application`/`ApplicationSet` `targetRevision`): tracked by Renovate

@@ -505,6 +505,9 @@ struct Meta {
     extra: String,
     exclude: String,
     targets: String,
+    /// The unit's old name and old app, for a renamed unit (both may be empty).
+    renamed_from: String,
+    renamed_from_app: String,
 }
 
 fn read_meta(path: &[u8]) -> Option<Meta> {
@@ -546,6 +549,8 @@ fn read_meta(path: &[u8]) -> Option<Meta> {
         extra: list("extra_paths", "|")?,
         exclude: list("exclude_paths", "|")?,
         targets: list("graph_targets", " ")?,
+        renamed_from: s(d.get("renamed_from")),
+        renamed_from_app: s(d.get("renamed_from_app")),
     })
 }
 
@@ -1323,11 +1328,62 @@ pub fn run_with_engine(_args: &[Vec<u8>], default_engine: Option<Vec<u8>>) -> i3
         }
 
         // Only a unit that WAS looked up in the legacy history names it.
-        let wf_display = if fell_back && ld.state != b"found" {
+        let mut wf_display = if fell_back && ld.state != b"found" {
             cat(&[&unit.wf, b" or ", &legacy_workflow_file])
         } else {
             unit.wf.clone()
         };
+
+        // A renamed unit: every deploy before the rename ran as a job named
+        // after its OLD name, usually in its old app's workflow. Look there
+        // (then in its own and the legacy workflow, under the old name) before
+        // calling it UNKNOWN; otherwise a rename alone reads as drift until the
+        // unit next happens to deploy.
+        let old_name = unit.meta.renamed_from.as_bytes();
+        if ld.state == b"absent" && !old_name.is_empty() {
+            let old_app = if unit.meta.renamed_from_app.is_empty() {
+                unit.meta.app.as_bytes()
+            } else {
+                unit.meta.renamed_from_app.as_bytes()
+            };
+            let old_prefix = cat(&[old_name, b"-", &unit.first_env]);
+            let mut tried: Vec<Vec<u8>> = Vec::new();
+            for wf in [
+                cat(&[b"delivery-", old_app, b".yaml"]),
+                unit.wf.clone(),
+                legacy_workflow_file.clone(),
+            ] {
+                if wf.is_empty() || tried.contains(&wf) {
+                    continue;
+                }
+                tried.push(wf.clone());
+                ld = last_delivered(
+                    &mut page_cache,
+                    &wf,
+                    &old_prefix,
+                    &branch,
+                    &gh,
+                    &repo,
+                    &page_size,
+                    run_scan_limit,
+                );
+                if ld.state == b"found" {
+                    log(&cat(&[
+                        &unit.name,
+                        b": no delivery under this name; last delivered as ",
+                        old_name,
+                        b" by ",
+                        &wf,
+                    ]));
+                }
+                if ld.state != b"absent" {
+                    break;
+                }
+            }
+            if ld.state != b"found" {
+                wf_display = cat(&[&wf_display, b" (nor as ", old_name, b")"]);
+            }
+        }
 
         if ld.state != b"found" {
             why_unknown(

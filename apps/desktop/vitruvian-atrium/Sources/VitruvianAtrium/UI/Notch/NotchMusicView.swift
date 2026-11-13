@@ -707,6 +707,7 @@ package struct NotchMusicTimeline: View {
                 range: 0...playback.duration,
                 tint: tint,
                 valueLabel: timestamp(position),
+                scrollable: false,
                 onEditingChanged: { editing in
                     if editing {
                         pendingSeek = nil

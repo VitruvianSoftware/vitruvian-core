@@ -808,7 +808,7 @@ enum ToolPlatformTests {
         suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.toolCommandShortcuts),
                      "tool command shortcuts travel with a settings backup")
 
-        let domain = "com.vitruviansoftware.atrium.tests.toolCommandShortcuts"
+        let domain = "com.vitruviansoftware.vitruvian.tests.toolCommandShortcuts"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -1366,7 +1366,7 @@ enum ToolPlatformTests {
         let optionN = GlobalShortcut(keyCode: 45, modifiers: [.option])
         let optionM = GlobalShortcut(keyCode: 46, modifiers: [.option])
         let optionK = GlobalShortcut(keyCode: 40, modifiers: [.option])
-        let domain = "com.vitruviansoftware.atrium.tests.toolShortcutRegistrar"
+        let domain = "com.vitruviansoftware.vitruvian.tests.toolShortcutRegistrar"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

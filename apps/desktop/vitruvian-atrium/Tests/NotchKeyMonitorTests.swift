@@ -49,6 +49,9 @@ enum NotchKeyMonitorTests {
                                      safeAreaTop: 32, cameraWidth: 180)
         var tools = (editing: false, count: 3)
         var clickIsAway = true
+        /// Whether the island hands a click away to its own handler, as the
+        /// real one does for a screenshot preview, instead of collapsing.
+        var handlesClickElsewhere = false
         /// The keys the section, Scratchpad and clipboard handlers take.
         var taken: Set<String> = []
         var actions: [String] = []
@@ -69,6 +72,7 @@ enum NotchKeyMonitorTests {
                 tools: { [unowned self] in self.tools },
                 ownsWindow: { [unowned self] in $0 === self.panel || $0 === self.popover },
                 clickIsAway: { [unowned self] in self.clickIsAway },
+                clickedElsewhere: handlesClickElsewhere ? { [unowned self] in self.actions.append("elsewhere") } : nil,
                 toggleSections: { [unowned self] in self.actions.append("sections") },
                 select: { [unowned self] in self.actions.append("select \($0.rawValue)") },
                 sectionKey: { [unowned self] _ in self.takes("section") },
@@ -326,6 +330,14 @@ enum NotchKeyMonitorTests {
             let away = island.send(Event(type: type, targetWindow: Window()))
             suite.expect(!away.taken && away.actions == ["collapse"], "a click away closes the island and still lands")
         }
+        island.handlesClickElsewhere = true
+        let handed = island.send(Event(type: .leftMouseDown, targetWindow: Window()))
+        suite.expect(!handed.taken && handed.actions == ["elsewhere"],
+                     "a click away goes to the island's click-elsewhere handler when it has one")
+        let handedInside = island.send(Event(type: .leftMouseDown, targetWindow: island.panel))
+        suite.expect(handedInside.actions == ["clicked"],
+                     "a click in the island never reaches the click-elsewhere handler")
+        island.handlesClickElsewhere = false
         island.clickIsAway = false
         let kept = island.send(Event(type: .leftMouseDown, targetWindow: nil))
         suite.expect(!kept.taken && kept.actions.isEmpty,

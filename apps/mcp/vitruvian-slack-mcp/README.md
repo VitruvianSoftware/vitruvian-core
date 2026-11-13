@@ -7,11 +7,11 @@ Custom Slack MCP server with **dual-token support** — reads via Bot Token, wri
 The official `@modelcontextprotocol/server-slack` provides a great foundation, but this repository was built to solve two major limitations for advanced AI agents:
 
 1. **User Impersonation (Dual-Token Architecture):** The official server uses only a Bot Token, meaning every message the AI sends appears as a generic "Bot" user. This implementation uses a **Dual-Token** architecture. Read-only and infrastructure tasks use the Bot token, while write operations (posting messages, reacting, pinning, editing) and searches use the User token. This allows the AI agent to truly act *as you*, preserving your identity in threads and direct messages.
-2. **Expanded Capabilities (43 Tools vs 9 Tools):** The official server is limited to basic read/reply functions. This server expands the toolkit to 43 specialized tools, adding native support for:
+2. **Expanded Capabilities (47 Tools vs 9 Tools):** The official server is limited to basic read/reply functions. This server expands the toolkit to 47 specialized tools, adding native support for:
    - **Canvas Management:** Full CRUD operations for Slack Canvases (create, read, edit sections, delete).
-   - **Workspace Orchestration:** Read and manage channel pins, bookmarks, and topics.
+   - **Workspace Orchestration:** Read and manage channel pins, bookmarks, topics, direct messages, and scheduled messages.
    - **Advanced Search:** Utilize user-context search modifiers for both messages and files across the workspace.
-   - **Permalinks, Files, Membership & User Groups:** Resolve a pasted permalink to its message, read and upload files, join channels, list custom emoji, and manage @handle user groups — the gaps between this server and the `slackcli` command surface.
+   - **Names, Permalinks, Files, Membership & User Groups:** Pass `#channel` names or `@user` handles anywhere an ID is accepted, resolve a pasted permalink to its message, open DMs/group DMs, schedule messages, read and upload files, join channels, list custom emoji, and manage @handle user groups — the gaps between this server and the `slackcli` command surface.
 
 ## Architecture & Authentication Model
 
@@ -24,7 +24,7 @@ flowchart TD
     subgraph Service["Vitruvian Slack MCP HTTP Server"]
         B --> C["Validate JWT against Zitadel JWKS"]
         C --> D{"User Token Present?"}
-        D -->|Yes - Impersonation Mode| E["Expose 42 Tools (39 if destructive withheld) + Unrestricted Channels/DMs"]
+        D -->|Yes - Impersonation Mode| E["Expose 46 Tools (42 if destructive withheld) + Unrestricted Channels/DMs"]
         D -->|No - Bot Only| F["Expose 21 Bot Tools + Enforce Allowlist"]
     end
 
@@ -83,21 +83,28 @@ flowchart TD
 | `slack_update_user_group` | **User** | Rename or re-describe a user group |
 | `slack_set_user_group_members` | **User** | Replace a user group's member list |
 | `slack_set_user_group_enabled` | **User** | Enable or disable a user group |
+| `slack_open_dm` | **User** | Open or retrieve a 1:1 DM or group DM (1–8 users) and return its channel ID (when `SLACK_CHANNEL_IDS` restricts access, never opens a new conversation; matches only existing allow-listed DMs/group DMs) |
+| `slack_schedule_message` | **User** | Schedule a message up to 120 days ahead (Unix seconds or ISO 8601 with offset) |
+| `slack_list_scheduled_messages` | **User** | List pending scheduled messages created by the authenticated user |
+| `slack_delete_scheduled_message` | **User** | Cancel a pending scheduled message before it is sent |
 
 > **Adding a tool that needs a new scope means reinstalling the app.** A Slack
 > token keeps the scopes it was issued with; editing `manifest.json` changes
 > nothing until the app is reinstalled to the workspace and the new `xoxp-`
-> token is put in the config. `slack_mark_read` needs `channels:write` and
-> `groups:write` for channels, plus `im:write` and `mpim:write` for DMs, and
-> returns `missing_scope` without them. `slack_list_unread` covers channels
-> with the read scopes every install has, and needs `im:read` and `mpim:read`
-> to include DMs; without them it lists the channels and names the DM types
-> it had to skip.
+> token is put in the config. `slack_mark_read` and `slack_open_dm` need
+> `channels:write` and `groups:write` for channels, plus `im:write` and
+> `mpim:write` for DMs, and return `missing_scope` without them.
+> `slack_list_unread` covers channels with the read scopes every install has,
+> and needs `im:read` and `mpim:read` to include DMs; without them it lists the
+> channels and names the DM types it had to skip.
 
 ### Tool Arguments & Ergonomics
 
-All 43 tools accept an optional `compact` boolean (default `false` unless `SLACK_COMPACT_OUTPUT` is enabled). Setting `compact: true` returns compact JSON with Slack UI blocks, client IDs, and avatar noise stripped out.
+All 47 tools accept an optional `compact` boolean (default `false` unless `SLACK_COMPACT_OUTPUT` is enabled). Setting `compact: true` returns compact JSON with Slack UI blocks, client IDs, and avatar noise stripped out.
 
+- **Channel names (`#channel`) & user handles (`@user`)**: Wherever a tool takes `channel_id` (or `channel_ids`), `#name` (e.g. `#general`, case-insensitive) is accepted alongside bare IDs (`C…`, `G…`, `D…`), resolved and cached in-process before the allow-list guard runs. When `SLACK_CHANNEL_IDS` restricts access, `#name` resolves strictly against the allow-listed IDs (never listing the workspace) and returns the identical allow-list refusal for anything else without hinting whether the channel exists. Wherever a tool takes `user_id`, `user_ids`, or `users`, `@handle` resolves case-insensitively against `name`, then `profile.display_name`, then `profile.real_name` (failing explicitly with matching IDs if ambiguous). Bare IDs never trigger extra lookup calls.
+- **`slack_open_dm`**: accepts 1–8 user IDs or `@handles` (`users`) and returns `channel_id` for the DM or group DM. When `SLACK_CHANNEL_IDS` restricts access, it never opens a new conversation; it returns the ID only if an existing allow-listed DM or group DM with exactly those users is found, otherwise the standard refusal without exposing any DM ID.
+- **`slack_schedule_message`, `slack_list_scheduled_messages` & `slack_delete_scheduled_message`**: `post_at` accepts a Unix timestamp in seconds or an ISO 8601 date-time with timezone offset (`Z` or `±HH:MM`) strictly in the future and at most 120 days ahead. When restricted, `slack_list_scheduled_messages` drops entries outside the allow-list and sets `filtered_out` (with pagination in `response_metadata.next_cursor`).
 - **`slack_get_channel_history`**: optional `limit`, `oldest`, `latest` (Slack timestamps), `since` (relative duration like `30m`, `24h`, or `7d`), `cursor` (pagination cursor), and `include_activity` (boolean, default `true` to include join/leave notices). The next page's cursor is in `response_metadata.next_cursor`.
 - **`slack_get_thread_replies`**: optional `limit` (max 200), `cursor`, `oldest`, and `latest`. The next page's cursor is in `response_metadata.next_cursor`.
 - **`slack_search_messages` & `slack_search_files`**: optional `page` (1-based) and `sort_dir` (`asc` or `desc`). When an allow-list is set, search results from disallowed channels are filtered out and reported under `filtered_out`.
@@ -197,11 +204,11 @@ manifest first.
 **User-token impersonation mode.** The HTTP transport supports an optional
 `SLACK_USER_TOKEN` for impersonation mode, where operations act as the
 authenticated human rather than the bot. When the user token is available,
-**42 of the 43 tools** are offered on HTTP — including workspace message & file search,
+**46 of the 47 tools** are offered on HTTP — including workspace message & file search,
 canvases, user directory lookup, pins, bookmarks, topics, user groups, direct
-messages (DMs), and reaction removal. The one exception is `slack_download_file`,
+messages (DMs), scheduled messages, and reaction removal. The one exception is `slack_download_file`,
 which writes to local disk and is never offered on HTTP under any credential.
-On fresh installs, destructive tools are withheld by default (39 tools offered)
+On fresh installs, destructive tools are withheld by default (42 tools offered)
 unless `SLACK_HTTP_ALLOW_DESTRUCTIVE` is enabled.
 `SLACK_CHANNEL_IDS` is optional in impersonation mode (omitted = unrestricted
 access). When configured, the allow-list strictly restricts all access.
@@ -283,7 +290,7 @@ failure mode. `PORT` is optional and defaults to `3000`.
 | `OIDC_ALLOWED_CLIENT_ID` | OIDC client this server pins itself to (#1491) |
 | `SLACK_USER_TOKEN` | *(Optional)* User OAuth Token (`xoxp-...`). When set, enables impersonation mode |
 | `SLACK_WRITE_MODE` | *(Optional)* `user` (default when `SLACK_USER_TOKEN` is set) or `bot`. Controls whether writes post as the human or as the bot |
-| `SLACK_HTTP_ALLOW_DESTRUCTIVE` | *(Optional)* Set to `true` or `1` to expose destructive tools on HTTP (`slack_delete_canvas`, `slack_set_user_group_enabled`, `slack_set_user_group_members`). Default `false` on new installs |
+| `SLACK_HTTP_ALLOW_DESTRUCTIVE` | *(Optional)* Set to `true` or `1` to expose destructive tools on HTTP (`slack_delete_canvas`, `slack_set_user_group_enabled`, `slack_set_user_group_members`, `slack_delete_scheduled_message`). Default `false` on new installs |
 
 **Impersonation mode.** When `SLACK_USER_TOKEN` is set on the HTTP transport,
 write operations (`post_message`, `reply_to_thread`, `update_message`) default
@@ -293,7 +300,7 @@ when the user token is available. When `SLACK_USER_TOKEN` is absent, the server
 runs in bot-only mode with no config change required (backwards compatible).
 
 **Destructive tools on HTTP.** By default on new installs, destructive tools
-(`slack_delete_canvas`, `slack_set_user_group_enabled`, and `slack_set_user_group_members`)
+(`slack_delete_canvas`, `slack_set_user_group_enabled`, `slack_set_user_group_members`, and `slack_delete_scheduled_message`)
 are withheld on the HTTP transport. Set `SLACK_HTTP_ALLOW_DESTRUCTIVE=true` (or `1`) to expose
 and allow calling them. Stdio is unaffected.
 
@@ -423,7 +430,7 @@ To connect your hosted Vitruvian Slack MCP server to Gemini Spark as a Custom MC
 | **Authentication** | Local process environment variables | RFC 9728 metadata discovery + Zitadel OAuth (JWT) |
 | **Identity & Writes** | Dual-Token: Posts *as you* (User Token `xoxp-...`) | Configurable: Posts *as you* (default, `SLACK_WRITE_MODE=user`) or as bot (`SLACK_WRITE_MODE=bot`) |
 | **Security Controls** | Local machine boundary; optional channel filter | Strict per-request Zitadel `sub` allowlist + channel allowlist |
-| **Tool Surface** | All 43 tools (messaging, search, canvases, pins, files, user groups) | 42 tools with user token when `SLACK_HTTP_ALLOW_DESTRUCTIVE` is on (39 when off; all but local file download) or 21 bot-only tools (no user token) |
+| **Tool Surface** | All 47 tools (messaging, DMs, scheduled messages, search, canvases, pins, files, user groups) | 46 tools with user token when `SLACK_HTTP_ALLOW_DESTRUCTIVE` is on (42 when off; all but local file download) or 21 bot-only tools (no user token) |
 
 ---
 

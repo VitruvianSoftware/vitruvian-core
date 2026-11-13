@@ -863,7 +863,7 @@ package enum UninstallerSupport {
     /// Vitruvian Atrium's own identifiers, among the protected ones.
     private static func isOwnBundleID(_ id: String) -> Bool {
         let lowered = id.lowercased()
-        return lowered == "com.vitruvian" || lowered.hasPrefix("com.vitruviansoftware.atrium.")
+        return lowered == "com.vitruvian" || lowered.hasPrefix("com.vitruviansoftware.vitruvian.")
             || lowered.hasPrefix("vorss.")
     }
 

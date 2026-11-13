@@ -1205,7 +1205,7 @@ package final class ScreenshotService: ObservableObject {
 /// without holding a full-resolution screenshot in memory while the app rests.
 package enum ScreenshotLastCaptureStore {
     private static let writeQueue = DispatchQueue(
-        label: "com.vitruviansoftware.atrium.latest-screenshot",
+        label: "com.vitruviansoftware.vitruvian.latest-screenshot",
         qos: .utility)
     private static let stateLock = NSLock()
     // Both guarded by stateLock.

@@ -60,7 +60,7 @@ private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate, @u
     private let streamHeardSinceTap = RecorderAudioFlag()
     private let pointer: RecorderPointerSampler
     private let typing: RecorderTypingSampler
-    private let writerQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.recorder.writer",
+    private let writerQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recorder.writer",
                                             qos: .userInitiated)
     private let startGate = RecorderStartGate()
     /// Immutable for the whole session, which is what makes it safe to touch

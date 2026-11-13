@@ -28,7 +28,7 @@ enum NotchTests {
     }
 
     private static func sectionOrderContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-section-order"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-section-order"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -81,7 +81,7 @@ enum NotchTests {
     }
 
     private static func sectionVisibilityContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-section-visibility"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-section-visibility"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -132,7 +132,7 @@ enum NotchTests {
     }
 
     private static func extensionQuickActionContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-extension-action"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-extension-action"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -228,7 +228,7 @@ enum NotchTests {
     /// What a quick-access button that opens a tool's island page says and
     /// whether the island shows it, from the page's declaration.
     private static func extensionActionLookupContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-extension-lookup"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-extension-lookup"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -269,7 +269,7 @@ enum NotchTests {
     }
 
     private static func railContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-fan-only"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-fan-only"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -1269,14 +1269,18 @@ enum NotchTests {
             }
         }
         for event in [NotchEvent.volume, .brightness, .keyboardLight] {
+            let widest = NotchNotice(event: event, title: "Level", detail: "100%",
+                                     symbol: "speaker.wave.2", level: 1).preferredWingWidth
             for percent in 0...100 {
                 let notice = NotchNotice(event: event, title: "Level", detail: "\(percent)%",
                                          symbol: "speaker.wave.2", level: Double(percent) / 100)
                 let wing = notice.preferredWingWidth
-                let content = width(notice.detail) + 18 + 8
+                let content = width("100%") + 18 + 8
                 suite.expect(content + NotchNoticeLayout.levelInset <= wing && wing < content + NotchNoticeLayout.levelInset + 1
                              && notice.inset(wing: wing) == NotchNoticeLayout.levelInset,
-                             "a level's wings fit its mark and reading, with no empty black at the end")
+                             "a level's wings fit its mark and widest reading, with no empty black at the end")
+                suite.expect(wing == widest,
+                             "a level's wings hold still as its reading gains or loses a digit")
                 suite.expect(wing - NotchNoticeLayout.levelInset >= 40,
                              "the opposite meter remains readable beside the shortest reading")
             }
@@ -1629,7 +1633,7 @@ enum NotchTests {
         suite.expect(extreme.width == 10 && extreme.height == -6, "a fit stays within its ranges")
         suite.expect(NotchCameraFit(width: .nan, height: .infinity) == .zero, "an unreadable fit means none")
 
-        let domain = "com.vitruviansoftware.atrium.tests.notch-camera-fit"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-camera-fit"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -1925,7 +1929,7 @@ enum NotchTests {
         suite.expect(backupKeys.contains(DefaultsKey.notchShortcut)
                 && backupKeys.contains(DefaultsKey.notchShortcutEnabled),
                "the island shortcut travels with the settings backup")
-        let domain = "com.vitruviansoftware.atrium.tests.notch-shortcut-\(UUID().uuidString)"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-shortcut-\(UUID().uuidString)"
         let defaults = ScratchDefaults.suite(named: domain)!
         defer { defaults.removePersistentDomain(forName: domain) }
         func holds(installed: Bool = true, island: Bool = true, shortcut: Bool = true) -> Bool {
@@ -1998,6 +2002,7 @@ enum NotchTests {
         NotchNoticeQueueTests.run(suite)
         NotchCaptureControlsStateTests.run(suite)
         NotchScreenEdgeClickTests.run(suite)
+        NotchClickElsewhereTests.run(suite)
         NotchPresentationRefreshContract.run(suite)
         NotchScreenRefreshContract.run(suite)
         NotchMirrorContract.run(suite)
@@ -2034,7 +2039,7 @@ enum NotchTests {
             suite.expect(strings.count == 4 && strings.allSatisfy { !$0.isEmpty && !$0.contains("—") },
                          "the clipboard entry size has complete strings in \(language.rawValue)")
         }
-        let sizeDomain = "com.vitruviansoftware.atrium.tests.notch-clipboard-size"
+        let sizeDomain = "com.vitruviansoftware.vitruvian.tests.notch-clipboard-size"
         let sizeDefaults = ScratchDefaults.suite(named: sizeDomain)!
         sizeDefaults.removePersistentDomain(forName: sizeDomain)
         defer { sizeDefaults.removePersistentDomain(forName: sizeDomain) }
@@ -2085,7 +2090,7 @@ enum NotchTests {
                      "an open image keeps its proportions within a range, and one with none is taken as wide")
         suite.expect(NotchLayout.clipboardCompactCardHeight < NotchLayout.clipboardCardHeight && NotchClipboardCardSize.dwell > 0,
                      "a compact entry is shorter than an open one and opens after a pause")
-        let domain = "com.vitruviansoftware.atrium.tests.notch"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -2098,7 +2103,7 @@ enum NotchTests {
             defaults.set(value, forKey: key)
         }
         for (key, value) in AppFeature.availabilityDefaults { defaults.set(value, forKey: key) }
-        let firstInstall = "com.vitruviansoftware.atrium.tests.notch-new-\(UUID().uuidString)"
+        let firstInstall = "com.vitruviansoftware.vitruvian.tests.notch-new-\(UUID().uuidString)"
         let fresh = ScratchDefaults.suite(named: firstInstall)!
         defer { fresh.removePersistentDomain(forName: firstInstall) }
         fresh.set(NotchControlItem.defaultHidden, forKey: DefaultsKey.notchHiddenControls)
@@ -2131,7 +2136,7 @@ enum NotchTests {
         suite.expect(firstDefaults[DefaultsKey.notchIncludeOtherPlayers] as? Bool == true,
                      "new island setups follow every player unless limited to music apps")
 
-        let priorInstall = "com.vitruviansoftware.atrium.tests.notch-existing-\(UUID().uuidString)"
+        let priorInstall = "com.vitruviansoftware.vitruvian.tests.notch-existing-\(UUID().uuidString)"
         let existing = ScratchDefaults.suite(named: priorInstall)!
         defer { existing.removePersistentDomain(forName: priorInstall) }
         existing.set(true, forKey: DefaultsKey.notchEnabled)
@@ -2163,7 +2168,7 @@ enum NotchTests {
         suite.expect(!existing.bool(forKey: DefaultsKey.notchAppPanel),
                      "the one-time migration does not run again after a later preference change")
 
-        let priorChoice = "com.vitruviansoftware.atrium.tests.notch-choice-\(UUID().uuidString)"
+        let priorChoice = "com.vitruviansoftware.vitruvian.tests.notch-choice-\(UUID().uuidString)"
         let configured = ScratchDefaults.suite(named: priorChoice)!
         defer { configured.removePersistentDomain(forName: priorChoice) }
         configured.set(true, forKey: DefaultsKey.notchReturnHome)
@@ -3797,9 +3802,9 @@ enum NotchTests {
                && !NotchSupport.keepsPermissionSurface(requesting: false, resolvedAt: 10, now: 11)
                && !NotchSupport.keepsPermissionSurface(requesting: false, resolvedAt: 10, now: 9),
                "permission resolution protects only the short reactivation interval")
-        let defaults = ScratchDefaults.suite(named: "com.vitruviansoftware.atrium.tests.notch-calendar")!
-        defaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.notch-calendar")
-        defer { defaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.notch-calendar") }
+        let defaults = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.notch-calendar")!
+        defaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.notch-calendar")
+        defer { defaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.notch-calendar") }
         for (key, value) in Defaults.registeredDefaults where key.hasPrefix("notch") { defaults.set(value, forKey: key) }
         for (key, value) in AppFeature.availabilityDefaults { defaults.set(value, forKey: key) }
         suite.expect(!NotchCalendarSupport.isEnabled(in: defaults), "calendar starts off")

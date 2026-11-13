@@ -368,9 +368,9 @@ pub const MUTATIONS: &[Mutation] = &[
         name: "levels return to a fixed wing with empty black at the end",
         group: "notch",
         relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
-        before: "let wing = ceil(NotchNoticeLayout.levelInset + NotchNoticeLayout.symbolWidth + NotchNoticeLayout.spacing + leading)",
+        before: "let wing = ceil(NotchNoticeLayout.levelInset + NotchNoticeLayout.symbolWidth + NotchNoticeLayout.spacing + max(leading, measured(\"100%\")))",
         after: "let wing: CGFloat = 80",
-        diagnostic: "a level's wings fit its mark and reading, with no empty black at the end",
+        diagnostic: "a level's wings fit its mark and widest reading, with no empty black at the end",
     },
     Mutation {
         name: "a banner's short side takes its longer side's width",
@@ -4483,6 +4483,14 @@ pub const MUTATIONS: &[Mutation] = &[
         before: "        return [lower, upper]\n",
         after: "        return [lower.union(upper)]\n",
         diagnostic: "no extra brightness overlay window reads as a full screen window",
+    },
+    Mutation {
+        name: "Extra Brightness rebuilds its own Space overlay on every desktop switch",
+        group: "app-management",
+        relative: "Sources/VitruvianAtrium/Services/Display/ExtraBrightnessSupport.swift",
+        before: "        sameDisplay && (inOwnSpace || (overlayOnActiveSpace && triggerOnActiveSpace))\n",
+        after: "        sameDisplay && ((inOwnSpace && false) || (overlayOnActiveSpace && triggerOnActiveSpace))\n",
+        diagnostic: "the overlay's own Space keeps the live windows across desktop switches",
     },
     Mutation {
         name: "the opening island starts a further resize again from rest",

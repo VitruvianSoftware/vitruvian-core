@@ -206,7 +206,7 @@ package final class AppSwitcher: ObservableObject {
 
     /// Enumeration touches every regular app through Accessibility, so it runs
     /// away from the event tap on one serial queue.
-    private let enumerationQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.switcher.enumeration",
+    private let enumerationQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.switcher.enumeration",
                                                   qos: .userInitiated)
     private var pendingShow: DispatchWorkItem?
     /// True once the user moved the selection themselves.

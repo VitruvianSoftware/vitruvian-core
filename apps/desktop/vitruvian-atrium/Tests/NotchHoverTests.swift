@@ -195,7 +195,7 @@ enum NotchHoverTests {
     }
 
     static func run(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-hover"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-hover"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         Self.defaults = defaults

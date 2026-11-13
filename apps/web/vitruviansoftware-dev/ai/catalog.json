@@ -714,8 +714,8 @@
       "category": "Team Communication MCP",
       "status": "mirror",
       "summary": "A Slack MCP server with dual-token auth: around forty tools covering channels, threads, search, files, user groups and Canvas editing, acting as the bot or as you.",
-      "repo": "https://github.com/VitruvianSoftware/mcp-slack",
-      "mirrorRepo": "https://github.com/VitruvianSoftware/mcp-slack",
+      "repo": "https://github.com/VitruvianSoftware/vitruvian-slack-mcp",
+      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-slack-mcp",
       "source": "apps/mcp/vitruvian-slack-mcp",
       "ecosystems": [
         "claude-code",
@@ -761,8 +761,8 @@
       "category": "Local Dev & K3s Skills",
       "status": "released",
       "summary": "A local development orchestrator. One CLI provisions container VMs, ephemeral databases and cloud emulators, local K3s clusters and Cloudflare tunnel ingress, and starts everything in dependency order.",
-      "repo": "https://github.com/VitruvianSoftware/devx",
-      "mirrorRepo": "https://github.com/VitruvianSoftware/devx",
+      "repo": "https://github.com/VitruvianSoftware/vitruvian-devx",
+      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-devx",
       "source": "apps/cli/vitruvian-devx",
       "ecosystems": [
         "antigravity",

@@ -368,8 +368,8 @@ mod tests {
     fn mutations_count() {
         assert_eq!(
             MUTATIONS.len(),
-            571,
-            "expected 571 mutations from the Python source"
+            572,
+            "expected 572 mutations from the Python source"
         );
     }
 

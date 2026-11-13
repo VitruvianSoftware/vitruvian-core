@@ -27,6 +27,29 @@ enum SettingsFeatureTests {
             renamePattern: MediaImageRenamePattern("{name}-{index}"))
         // MARK: Settings backup
 
+        suite.expect(SettingsBackupSupport.command(in: ["VitruvianAtrium", "--export-settings", "out.plist"])
+                == .export(path: "out.plist")
+                && SettingsBackupSupport.command(in: ["VitruvianAtrium", "--import-settings", "./-in.plist"])
+                == .import(path: "./-in.plist"),
+               "the backup flags take the file that follows them")
+        suite.expect(SettingsBackupSupport.command(in: ["VitruvianAtrium", "--import-settings"])
+                == .missingFile(flag: "--import-settings")
+                && SettingsBackupSupport.command(in: ["VitruvianAtrium", "--export-settings", "--selftest"])
+                == .missingFile(flag: "--export-settings"),
+               "a backup flag without a file is reported rather than treated as one")
+        suite.expect(SettingsBackupSupport.command(in: ["VitruvianAtrium"]) == nil
+                && SettingsBackupSupport.command(in: ["VitruvianAtrium", "--selftest"]) == nil,
+               "a normal launch is not a backup command")
+
+        for flags in [
+            ["--import-settings", "--export-settings", "backup.plist"],
+            ["--export-settings", "--import-settings", "backup.plist"],
+            ["--export-settings", "one.plist", "--export-settings", "two.plist"],
+        ] {
+            suite.expect(SettingsBackupSupport.command(in: ["VitruvianAtrium"] + flags) == .conflictingFlags,
+                         "conflicting or repeated backup flags cannot choose an operation")
+        }
+
         let backupKeys = SettingsBackupSupport.exportKeys()
         for reserved in [false, true] {
             let backup = SettingsBackupSupport.payload(appVersion: "test") { key in

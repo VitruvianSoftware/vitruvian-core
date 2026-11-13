@@ -398,7 +398,7 @@ package enum RadialNowPlayingApplication {
 /// missing script or library, a failed run, a timeout and malformed output
 /// all read as an empty playback session.
 private final class MediaRemoteNowPlayingBridge {
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.radial-now-playing", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.radial-now-playing", qos: .userInitiated)
     /// 2 s: a cold perl load measured 500 ms with no session playing, and a
     /// real reply adds the MediaRemote round trip plus up to 16 MB of base64
     /// artwork through the pipe. A kill reads as nothing playing, so a deadline

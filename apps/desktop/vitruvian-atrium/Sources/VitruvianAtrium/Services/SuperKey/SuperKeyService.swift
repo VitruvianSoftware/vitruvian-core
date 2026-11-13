@@ -141,7 +141,7 @@ package final class SuperKeyService: ObservableObject {
     private var exceptionObservation: AnyCancellable?
     /// The mapping is written off the main thread, and in the order it was
     /// asked for: a queue of one keeps an apply and a clear from crossing.
-    private let mappingQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.superkey-mapping")
+    private let mappingQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.superkey-mapping")
     /// Lives only while the mapping is owned and clears it if this process is
     /// killed before applicationWillTerminate can run.
     /// Touched only on `mappingQueue`.

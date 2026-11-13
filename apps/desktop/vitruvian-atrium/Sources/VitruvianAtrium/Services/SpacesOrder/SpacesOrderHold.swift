@@ -227,7 +227,7 @@ package protocol SpacesOrderScheduler: AnyObject, Sendable {
 /// overlap. Its queue and key are set at init and never change, so it is
 /// `@unchecked Sendable`.
 package final class SpacesOrderQueues: SpacesOrderScheduler, @unchecked Sendable {
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.spaces-order")
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.spaces-order")
     private let queueKey = DispatchSpecificKey<Bool>()
 
     package init() {

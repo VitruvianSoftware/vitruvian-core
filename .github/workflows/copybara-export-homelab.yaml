@@ -20,7 +20,7 @@
 
 name: Copybara Export (homelab)
 
-# Exports vitruvian-core/apps/cli/vitruvian-homelab/ to VitruvianSoftware/homelab on every push under
+# Exports vitruvian-core/apps/cli/vitruvian-homelab/ to VitruvianSoftware/vitruvian-homelab on every push under
 # apps/cli/vitruvian-homelab/**. Thin caller — logic lives in _copybara-export.yaml.
 on:
     push:
@@ -44,7 +44,7 @@ jobs:
     export:
         uses: ./.github/workflows/_copybara-export.yaml
         with:
-            component: homelab
+            component: vitruvian-homelab
             standalone-only: ".github/workflows/sync-to-monorepo.yaml"
             copybara-options: ${{ inputs['copybara-options'] || github.event.inputs['copybara-options'] || '--force --ignore-noop' }}
         secrets:

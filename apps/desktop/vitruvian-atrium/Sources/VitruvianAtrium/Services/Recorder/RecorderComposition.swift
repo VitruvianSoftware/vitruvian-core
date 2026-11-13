@@ -12,7 +12,7 @@ package enum RecorderAudioSource: String, CaseIterable, Hashable {
     case microphone
 
     private var contentIdentifier: String {
-        "com.vitruviansoftware.atrium.recorder.audio." + rawValue
+        "com.vitruviansoftware.vitruvian.recorder.audio." + rawValue
     }
 
     package var trackMetadata: [AVMetadataItem] {

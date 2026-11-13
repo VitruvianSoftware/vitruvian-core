@@ -69,6 +69,9 @@ delivery(
     # Own tag, not the union legacy used -- see apps/suites/vitruvian-tabs/infra/app/BUILD's note
     # on the one sanctioned divergence from the legacy deploy workflow.
     promotion = "release:vitruvian-tabs-web-v",
+    # Called tabula-web (app tabula) until #4631; its earlier deploys ran under that name.
+    renamed_from = "tabula-web",
+    renamed_from_app = "tabula",
     run = "//apps/suites/vitruvian-tabs/infra/web:deploy",
     shared_build = "vitruvian-tabs",
     soak = True,
