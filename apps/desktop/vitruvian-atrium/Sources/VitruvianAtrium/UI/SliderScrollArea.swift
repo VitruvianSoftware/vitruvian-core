@@ -5,6 +5,8 @@ import AppKit
 import SwiftUI
 import VitruvianAtriumServices
 
+// Main actor: it reads and forwards AppKit events (Swift 6).
+@MainActor
 extension SliderScroll {
     mutating func handle(_ event: NSEvent, current: Double, range: ClosedRange<Double>) -> Outcome {
         let phase: Phase
