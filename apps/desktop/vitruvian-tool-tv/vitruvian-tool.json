@@ -6,7 +6,7 @@
   "description": {
     "en": "Controls your Sony Google TV over ADB: power, 4K Aerial screensaver, SmartTube, Projectivy Launcher, volume, and clipboard video casting."
   },
-  "version": "0.1.0",
+  "version": "0.1.1",
   "protocol": "2",
   "publisher": "VitruvianSoftware",
   "license": "MIT",
