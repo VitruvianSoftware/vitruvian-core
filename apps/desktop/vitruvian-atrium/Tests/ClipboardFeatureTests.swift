@@ -19,12 +19,16 @@ import VitruvianAtriumUI
 enum ClipboardFeatureTests {
     /// Runs the production `pasteIntoPreviousApp` with a target app, the
     /// Accessibility grant, the beep and the paste all recorded as events.
-    struct QuickPasteTarget { let isTerminated: Bool }
+    struct QuickPasteTarget {
+        let isTerminated: Bool
+        var bundleIdentifier: String? = "com.example.writer"
+    }
 
     static func quickPaste(_ app: QuickPasteTarget?, trusted: Bool, prompted: inout Bool) -> [String] {
         var events: [String] = []
         ClipboardHistoryService.pasteIntoPreviousApp(app,
                                                      isTerminated: \.isTerminated,
+                                                     bundleID: \.bundleIdentifier,
                                                      activate: { _ in events.append("activate") },
                                                      isTrusted: { trusted },
                                                      promptedForAccessibility: &prompted,
@@ -1522,6 +1526,20 @@ enum ClipboardFeatureTests {
             suite.expect(events == expected,
                    "quick paste beeps or asks for Accessibility when it cannot paste, found \(events)")
         }
+        for bundleID in ["com.microsoft.rdc.macos", "com.microsoft.rdc.mac"] {
+            for trusted in [true, false] {
+                var prompted = false
+                let events = quickPaste(QuickPasteTarget(isTerminated: false, bundleIdentifier: bundleID),
+                                        trusted: trusted, prompted: &prompted)
+                suite.expect(events == ["activate"] && !prompted,
+                       "quick paste into a remote desktop session leaves the pick on the clipboard, found \(events)")
+            }
+        }
+        var unnamedPrompted = false
+        let unnamed = quickPaste(QuickPasteTarget(isTerminated: false, bundleIdentifier: nil),
+                                 trusted: true, prompted: &unnamedPrompted)
+        suite.expect(unnamed == ["activate", "paste"],
+               "quick paste still pastes into an app without a bundle identifier, found \(unnamed)")
         for trusted in [true, false] {
             var prompted = false
             let events = quickPaste(nil, trusted: trusted, prompted: &prompted)

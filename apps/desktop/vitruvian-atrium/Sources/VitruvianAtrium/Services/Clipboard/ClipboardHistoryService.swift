@@ -1442,6 +1442,7 @@ package final class ClipboardHistoryService: ObservableObject {
     private func pasteIntoPreviousApp(_ app: NSRunningApplication?) {
         Self.pasteIntoPreviousApp(app,
                                   isTerminated: { $0.isTerminated },
+                                  bundleID: { $0.bundleIdentifier },
                                   activate: { $0.activate(options: []) },
                                   isTrusted: { AXIsProcessTrusted() },
                                   promptedForAccessibility: &promptedForAccessibility,
@@ -1459,6 +1460,7 @@ package final class ClipboardHistoryService: ObservableObject {
     /// tests pass recorders (REFACTOR.md step 4b).
     package static func pasteIntoPreviousApp<App>(_ app: App?,
                                                   isTerminated: (App) -> Bool,
+                                                  bundleID: (App) -> String?,
                                                   activate: (App) -> Void,
                                                   isTrusted: () -> Bool,
                                                   promptedForAccessibility: inout Bool,
@@ -1471,6 +1473,7 @@ package final class ClipboardHistoryService: ObservableObject {
             return
         }
         activate(app)
+        guard ClipboardHistoryPasteTarget.acceptsSyntheticPaste(bundleID: bundleID(app)) else { return }
         guard isTrusted() else {
             if promptedForAccessibility {
                 beep()
