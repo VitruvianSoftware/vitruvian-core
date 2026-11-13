@@ -617,6 +617,7 @@ package enum Defaults {
         DefaultsKey.panelUtilityURLCleaner: Preferences.panelUtilityURLCleaner.defaultValue,
         DefaultsKey.panelUtilityUninstaller: Preferences.panelUtilityUninstaller.defaultValue,
         DefaultsKey.uninstallerCommandBarEnabled: Preferences.uninstallerCommandBarEnabled.defaultValue,
+        DefaultsKey.uninstallerWatchesTrash: Preferences.uninstallerWatchesTrash.defaultValue,
         DefaultsKey.killProcessCommandBarEnabled: Preferences.killProcessCommandBarEnabled.defaultValue,
         DefaultsKey.killProcessGroupRelated: Preferences.killProcessGroupRelated.defaultValue,
         DefaultsKey.killProcessSortBy: Preferences.killProcessSortBy.defaultValue,

@@ -331,6 +331,7 @@ package enum DefaultsKey {
     package static let panelUtilityURLCleaner = "panelUtilityURLCleaner"
     package static let panelUtilityUninstaller = "panelUtilityUninstaller"
     package static let uninstallerCommandBarEnabled = "uninstallerCommandBarEnabled"
+    package static let uninstallerWatchesTrash = "uninstallerWatchesTrash"
     package static let killProcessCommandBarEnabled = "killProcessCommandBarEnabled"
     package static let killProcessGroupRelated = "killProcessGroupRelated"
     package static let killProcessSortBy = "killProcessSortBy" // cpu | memory | name | pid
