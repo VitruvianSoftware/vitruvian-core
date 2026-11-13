@@ -417,6 +417,10 @@ pub struct StandardTokenVerifier {
     jwks: Mutex<Option<CachedJwks>>,
     cache_max_age: Duration,
     cooldown: Duration,
+    /// Seconds since the epoch, read once per token for the `nbf`/`exp`
+    /// checks. Always the wall clock in production; tests pin it so the
+    /// tolerance boundaries do not depend on when the second ticks over.
+    clock: fn() -> f64,
 }
 
 pub fn create_token_verifier(config: TokenVerifierConfig) -> Result<StandardTokenVerifier, String> {
@@ -465,6 +469,7 @@ this check exists to enforce."
         jwks: Mutex::new(None),
         cache_max_age: JWKS_CACHE_MAX_AGE,
         cooldown: JWKS_COOLDOWN,
+        clock: unix_now,
     })
 }
 
@@ -633,7 +638,7 @@ impl StandardTokenVerifier {
                 )
             })?;
 
-        self.validate_claims(&claims, unix_now())?;
+        self.validate_claims(&claims, (self.clock)())?;
         Ok(claims)
     }
 
@@ -766,6 +771,12 @@ impl StandardTokenVerifier {
     fn with_cache_timing(mut self, cache_max_age: Duration, cooldown: Duration) -> Self {
         self.cache_max_age = cache_max_age;
         self.cooldown = cooldown;
+        self
+    }
+
+    #[cfg(test)]
+    fn with_clock(mut self, clock: fn() -> f64) -> Self {
+        self.clock = clock;
         self
     }
 }
@@ -1513,8 +1524,17 @@ mod tests {
 
     #[test]
     fn issuer_and_time_claims_are_checked_like_jose() {
+        // The verifier reads this same instant, so the boundaries below are
+        // exact: with the wall clock, a second ticking over between here and
+        // the check made `nbf = now + 31` acceptable and failed the test.
+        const NOW: f64 = 1_800_000_000.0;
         let (a, verifier) = verifier_a();
-        let now = unix_now();
+        let verifier = verifier.with_clock(|| NOW);
+        let now = NOW;
+        let claims = || {
+            let claims = with(claims(), "iat", JsonValue::number(now));
+            with(claims, "exp", JsonValue::number(now + 300.0))
+        };
         let check =
             |claims: JsonValue| refusal(verifier.verify_token(&mint(&a, header("a"), &claims)));
         assert_eq!(
@@ -1564,6 +1584,9 @@ mod tests {
                 .verify_token(&mint(&a, header("a"), &claims))
                 .is_ok()
         };
+        // jose accepts nbf <= now + tolerance and exp > now - tolerance.
+        assert!(ok(with(claims(), "nbf", JsonValue::number(now + 30.0))));
+        assert!(ok(with(claims(), "exp", JsonValue::number(now - 29.0))));
         assert!(ok(with(claims(), "exp", JsonValue::number(now - 25.0))));
         assert!(ok(with(claims(), "nbf", JsonValue::number(now + 25.0))));
         assert!(ok(without(without(claims(), "exp"), "iat")));
