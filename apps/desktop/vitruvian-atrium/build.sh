@@ -445,6 +445,8 @@ if (( TEST )); then
         Sources/VitruvianAtrium/Services/SpacesOrder/SpacesOrderHold.swift
         Sources/VitruvianAtrium/Core/Homebrew/HomebrewSupport.swift
         Sources/VitruvianAtrium/Services/Homebrew/HomebrewEnvironment.swift
+        Sources/VitruvianAtrium/Services/Homebrew/HomebrewManager.swift
+        Sources/VitruvianAtrium/UI/HomebrewOperationStatusView.swift
         Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift
         Sources/VitruvianAtrium/Core/AppUpdates/AppUpdateFeedSupport.swift
         Sources/VitruvianAtrium/Core/AppUpdateStrings.swift

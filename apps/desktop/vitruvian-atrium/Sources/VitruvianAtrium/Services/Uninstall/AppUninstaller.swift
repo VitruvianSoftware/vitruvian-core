@@ -117,8 +117,9 @@ package final class AppUninstaller: ObservableObject {
         var operationStatuses: AnyPublisher<HomebrewOperationStatus?, Never> { get }
         func packageManagingApplication(at url: URL,
                                         completion: @escaping (Result<HomebrewPackage?, HomebrewOwnershipError>) -> Void)
-        func clearLog()
-        func uninstall(_ package: HomebrewPackage)
+        /// `fromUninstaller` marks the run as this window's, so its log can
+        /// be reopened from the uninstaller once its card has closed.
+        func uninstall(_ package: HomebrewPackage, fromUninstaller: Bool)
     }
 
     /// What a scan reads, captured on the main thread before it leaves.
@@ -606,11 +607,11 @@ package final class AppUninstaller: ObservableObject {
         let package = confirmation.package
         let manager = environment.packages
         guard manager.operation == nil else { return }
-        // Cleared before subscribing: the last finished status would
-        // otherwise arrive at once and read as this removal's result.
-        manager.clearLog()
         homebrewRemovalObservation?.cancel()
+        // The last finished run keeps its log, so its status is still the
+        // current value: skip it, or it would read as this removal's result.
         homebrewRemovalObservation = manager.operationStatuses
+            .dropFirst()
             .compactMap { $0 }
             .filter { $0.action == .uninstall && $0.package?.id == package.id }
             .sink { [weak self] status in
@@ -621,7 +622,8 @@ package final class AppUninstaller: ObservableObject {
                     self?.finishRemovalAfterHomebrew(package: package)
                 }
             }
-        manager.uninstall(package)
+        manager.uninstall(package, fromUninstaller: true)
+        if manager.operation == nil { homebrewRemovalObservation = nil }
     }
 
     private func finishRemovalAfterHomebrew(package: HomebrewPackage) {
