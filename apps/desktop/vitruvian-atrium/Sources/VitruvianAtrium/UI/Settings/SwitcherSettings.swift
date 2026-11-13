@@ -13,6 +13,7 @@ package struct SwitcherSettings: View {
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var secureInput = SecureInputMonitor.shared
+    @State private var switcherCoversSecureInput = AppSwitcher.shared.coversSecureInput
     @AppStorage(Preferences.switcherEnabled) private var switcherEnabled: Bool
     @AppStorage(Preferences.switcherShortcut) private var switcherShortcutStorage: String
     @AppStorage(Preferences.switcherAllWindowsShortcutEnabled) private var allWindowsShortcutEnabled: Bool
@@ -94,6 +95,7 @@ package struct SwitcherSettings: View {
         }
         .toggleStyle(.switch)
         .observesSecureInput(isActive: switcherReplacesSystemShortcuts)
+        .onReceive(AppSwitcher.shared.$coversSecureInput) { switcherCoversSecureInput = $0 }
     }
 
     // MARK: - App switcher
@@ -187,10 +189,11 @@ package struct SwitcherSettings: View {
                             AppSwitcher.shared.syncWithPreferences()
                         }
                 }
-                // Secure input hides every key from the switcher, which hands
-                // ⌘Tab back to macOS until it ends. Without a word here the
-                // macOS switcher looks like the replacement stopped working.
-                if switcherReplacesSystemShortcuts, secureInput.holder != .off {
+                // Secure input hides every key from the switcher's tap. When
+                // its Carbon stand-ins cannot register, ⌘Tab goes back to macOS
+                // until it ends, and without a word here the macOS switcher
+                // looks like the replacement stopped working.
+                if switcherReplacesSystemShortcuts, secureInput.holder != .off, !switcherCoversSecureInput {
                     SecureInputRow(blocking: .switcher)
                         .padding(.leading, settingsRowTextInset)
                 }
