@@ -44,6 +44,8 @@ def _make_server(testcase):
         "NTFY_PASSWORD_FILE": str(pw),
         "NTFY_BASE_URL": "https://ntfy.example",
         "NTFY_TOPIC": "alerts",
+        # Not created unless a test writes it: "not configured yet" by default.
+        "HEARTBEAT_URL_FILE": str(pathlib.Path(tmp.name) / "ping-url"),
     }
     saved = {k: os.environ.get(k) for k in env}
     os.environ.update(env)
@@ -97,7 +99,12 @@ def _group(status, alerts, key='{}/{}:{alertname="CNPGBackupStale", namespace="b
 def _alert(status, pod, severity="warning"):
     return {
         "status": status,
-        "labels": {"alertname": "CNPGBackupStale", "namespace": "buzz", "pod": pod, "severity": severity},
+        "labels": {
+            "alertname": "CNPGBackupStale",
+            "namespace": "buzz",
+            "pod": pod,
+            "severity": severity,
+        },
         "annotations": {"summary": f"stale {pod}"},
     }
 
@@ -107,13 +114,14 @@ class BridgeTest(unittest.TestCase):
         server = _make_server(self)
         a = _group("firing", [_alert("firing", "p1")])
         b = _group("resolved", [_alert("resolved", "p1")])
-        other = _group("firing", [_alert("firing", "p1")], key='{}/{}:{alertname="Other"}')
+        other = _group(
+            "firing", [_alert("firing", "p1")], key='{}/{}:{alertname="Other"}'
+        )
         assert server.sequence_id(a) == server.sequence_id(b)
         assert server.sequence_id(a) != server.sequence_id(other)
         sid = server.sequence_id(a)
         assert sid.startswith("am-") and len(sid) == 35
         assert all(c.isalnum() or c == "-" for c in sid)
-
 
     def test_firing_publishes_json_with_the_group_sequence_id(self):
         server = _make_server(self)
@@ -129,7 +137,6 @@ class BridgeTest(unittest.TestCase):
         assert body["title"].startswith("[app] firing: CNPGBackupStale (1)")
         assert req.get_header("Authorization").startswith("Basic ")
 
-
     def test_refire_reuses_the_same_id_so_ntfy_replaces_it(self):
         server = _make_server(self)
         first = _group("firing", [_alert("firing", "p1")])
@@ -139,7 +146,6 @@ class BridgeTest(unittest.TestCase):
         ids = [json.loads(r.data)["sequence_id"] for r in server.sent]
         assert ids[0] == ids[1]
 
-
     def test_partial_resolve_lists_only_alerts_still_firing(self):
         server = _make_server(self)
         payload = _group("firing", [_alert("resolved", "p1"), _alert("firing", "p2")])
@@ -148,28 +154,56 @@ class BridgeTest(unittest.TestCase):
         assert "p2" in body["message"] and "p1" not in body["message"]
         assert body["title"].endswith("(1)")
 
-
     def test_whole_group_resolved_deletes_that_notification(self):
         server = _make_server(self)
         payload = _group("resolved", [_alert("resolved", "p1")])
         assert server.handle_alertmanager(payload) == 200
         (req,) = server.sent
         assert req.get_method() == "DELETE"
-        assert req.full_url == f"https://ntfy.example/alerts/{server.sequence_id(payload)}"
+        assert (
+            req.full_url == f"https://ntfy.example/alerts/{server.sequence_id(payload)}"
+        )
         assert req.data is None
-
 
     def test_delete_of_an_already_gone_notification_counts_as_success(self):
         server = _make_server(self)
         server.next_status = 404
-        assert server.handle_alertmanager(_group("resolved", [_alert("resolved", "p1")])) == 200
-
+        assert (
+            server.handle_alertmanager(_group("resolved", [_alert("resolved", "p1")]))
+            == 200
+        )
 
     def test_delete_server_error_propagates_so_alertmanager_retries(self):
         server = _make_server(self)
         server.next_status = 500
         with self.assertRaises(urllib.error.HTTPError):
             server.handle_alertmanager(_group("resolved", [_alert("resolved", "p1")]))
+
+    def test_heartbeat_pings_the_sealed_url(self):
+        server = _make_server(self)
+        pathlib.Path(server.HEARTBEAT_URL_FILE).write_text(
+            "https://hc-ping.example/uuid-123\n"
+        )
+        assert server.ping_heartbeat() == 200
+        (req,) = server.sent
+        assert req.get_method() == "GET"
+        assert req.full_url == "https://hc-ping.example/uuid-123"
+        # The ping must not carry the ntfy login.
+        assert req.get_header("Authorization") is None
+
+    def test_heartbeat_without_a_url_is_a_quiet_no_op(self):
+        server = _make_server(self)
+        assert server.ping_heartbeat() == 200
+        assert server.sent == []
+
+    def test_heartbeat_failure_raises_so_alertmanager_retries(self):
+        server = _make_server(self)
+        pathlib.Path(server.HEARTBEAT_URL_FILE).write_text(
+            "https://hc-ping.example/uuid-123"
+        )
+        server.next_status = 503
+        with self.assertRaises(urllib.error.HTTPError):
+            server.ping_heartbeat()
 
 
 if __name__ == "__main__":
