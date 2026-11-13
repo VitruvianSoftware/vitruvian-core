@@ -10,7 +10,9 @@ import VitruvianAtriumUI
 /// The real reader runs on controlled trees. Opening and opted-in closing are
 /// scoped to the original notification; there is no text mutation interface.
 enum NotchNotificationReaderTests {
-    private final class Node {
+    // Nonisolated: one case runs the reader's queued move on a background
+    // queue, as the service does, so the fakes it reads cannot be main-actor.
+    nonisolated private final class Node: @unchecked Sendable {
         let id = UUID()
         var strings: [String: String]
         var children: [Node]
@@ -27,7 +29,7 @@ enum NotchNotificationReaderTests {
         }
     }
 
-    private final class Access: NotchNotificationAccess {
+    nonisolated private final class Access: NotchNotificationAccess, @unchecked Sendable {
         enum Failure: Error { case unavailable }
         var roots: [Node] = []
         var focused = false
@@ -84,7 +86,7 @@ enum NotchNotificationReaderTests {
     }
 
     /// A built-in display with a larger one to its right.
-    private static let displays = [CGRect(x: 0, y: 0, width: 1470, height: 956), CGRect(x: 1470, y: 0, width: 1920, height: 1080)]
+    nonisolated private static let displays = [CGRect(x: 0, y: 0, width: 1470, height: 956), CGRect(x: 1470, y: 0, width: 1920, height: 1080)]
     private static let screens = CGRect(x: 0, y: 0, width: 3390, height: 1080)
 
     private static func card(identity: String = "request." + UUID().uuidString,
@@ -569,8 +571,9 @@ enum NotchNotificationReaderTests {
             let moved = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
             // The native move completed, but its result has not reached the
             // main thread. The service uses this same unconditional drain.
+            nonisolated(unsafe) let queuedReader = reader
             queue.async {
-                reader.prehide(window)
+                queuedReader.prehide(window)
                 moved.signal()
                 release.wait()
             }
