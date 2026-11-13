@@ -158,6 +158,7 @@ enum UninstallerFlowTests {
 
     static func run(_ suite: TestSuite) {
         finderConsent(suite)
+        trashCleanupChecks(suite)
         let fm = FileManager.default
         let root = fm.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("uninstaller-flow-\(UUID())")
         let suiteName = "vitru.tests.uninstaller-flow-\(UUID())"
@@ -234,7 +235,7 @@ enum UninstallerFlowTests {
             _ = uninstaller.select(appURL: a)
             queue.drain()
             disk.onScan = nil
-            suite.expect(disk.scans == 1 && brew.lookup == nil && uninstaller.phase == .empty,
+            suite.expect(disk.scans == 1 && uninstaller.phase == .empty && uninstaller.items.isEmpty,
                          "a scan canceled while it runs delivers nothing")
             disk.scans = 0
             _ = uninstaller.select(appURL: a)
@@ -255,7 +256,8 @@ enum UninstallerFlowTests {
             queue.step()
             _ = uninstaller.select(appURL: a)
             queue.step()
-            suite.expect(brew.lookup == nil, "a scan superseded on its way back asks for no package")
+            suite.expect(uninstaller.phase == .scanning && uninstaller.items.isEmpty,
+                         "a scan superseded on its way back hands nothing to the newer one")
             uninstaller.reset()
             queue.pending = []
             _ = uninstaller.select(appURL: a)
@@ -272,8 +274,11 @@ enum UninstallerFlowTests {
             _ = uninstaller.select(appURL: b)
             try writeInfo("Second", to: b.appendingPathComponent("Contents/Info.plist"))
             queue.drain()
-            suite.expect(brew.lookup == nil && uninstaller.phase == .empty && uninstaller.target == nil,
-                         "a bundle replaced while it was scanned is dropped before its package is asked")
+            suite.expect(uninstaller.phase == .scanning && uninstaller.items.isEmpty,
+                         "a review waits for the package answer as well as the scan")
+            brew.lookup?(.success(nil))
+            suite.expect(uninstaller.phase == .empty && uninstaller.target == nil,
+                         "a bundle replaced while it was scanned is dropped instead of shown")
             _ = uninstaller.select(appURL: b)
             queue.drain()
             try writeInfo("Second", to: b.appendingPathComponent("Contents/Info.plist"))
@@ -551,8 +556,161 @@ enum UninstallerFlowTests {
                          "the integration starts off")
             suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.uninstallerCommandBarEnabled),
                          "backup includes the command-bar preference")
+            suite.expect(Defaults.registeredDefaults[DefaultsKey.uninstallerWatchesTrash] as? Bool == false
+                            && SettingsBackupSupport.exportKeys().contains(DefaultsKey.uninstallerWatchesTrash),
+                         "the Trash cleanup offer starts off and travels with settings backup")
         } catch {
             suite.expect(false, "uninstaller fixture failed: \(error)")
+        }
+    }
+
+    /// What the uninstaller makes of an app Finder moved to the Trash. The
+    /// home, its Applications folder and its Trash are a disposable fixture,
+    /// so nothing here reads or writes the real Trash.
+    private static func trashCleanupChecks(_ suite: TestSuite) {
+        let fm = FileManager.default
+        let home = fm.temporaryDirectory.resolvingSymlinksInPath()
+            .appendingPathComponent("uninstaller-trash-\(UUID())", isDirectory: true)
+        let apps = home.appendingPathComponent("Applications", isDirectory: true)
+        let trash = UninstallerSupport.trashURL(home: home)
+        defer { try? fm.removeItem(at: home) }
+        func writeApp(_ name: String, in folder: URL, id: String) throws -> URL {
+            let app = folder.appendingPathComponent(name + ".app", isDirectory: true)
+            let contents = app.appendingPathComponent("Contents", isDirectory: true)
+            try fm.createDirectory(at: contents, withIntermediateDirectories: true)
+            let plist = try PropertyListSerialization.data(fromPropertyList: [
+                "CFBundleIdentifier": id, "CFBundlePackageType": "APPL", "CFBundleName": name,
+            ], format: .xml, options: 0)
+            try plist.write(to: contents.appendingPathComponent("Info.plist"), options: .atomic)
+            return app
+        }
+        do {
+            try fm.createDirectory(at: apps, withIntermediateDirectories: true)
+            try fm.createDirectory(at: trash, withIntermediateDirectories: true)
+            let bundleID = "org.vitruvian.fixture.trashed"
+            let installed = try writeApp("Trashed", in: apps, id: bundleID)
+            guard let inode = UninstallerSupport.fileIdentity(at: installed)?.inode else {
+                suite.expect(false, "the fixture app has a file identity")
+                return
+            }
+            let trashed = trash.appendingPathComponent("Trashed.app", isDirectory: true)
+            try fm.moveItem(at: installed, to: trashed)
+            guard let move = UninstallerSupport.TrashMove(from: installed, to: trashed,
+                                                          inode: inode, home: home) else {
+                suite.expect(false, "a move from an Applications folder to the Trash is witnessed")
+                return
+            }
+            suite.expect(move.originalURL == installed.standardizedFileURL
+                         && move.selection.url == trashed.standardizedFileURL
+                         && move.selection.bundleID == bundleID && move.isCurrent,
+                         "a witnessed move remembers where the app came from, and that it is still in the Trash")
+            suite.expect(UninstallerSupport.TrashMove(from: installed, to: trashed,
+                                                      inode: inode &+ 1, home: home) == nil,
+                         "a rename of some other file into the same name is not this app's move")
+            suite.expect(UninstallerSupport.TrashMove(from: trash.appendingPathComponent("Elsewhere.app"),
+                                                      to: trashed, inode: inode, home: home) == nil,
+                         "an app that was already in the Trash was never installed, so no move is witnessed")
+            suite.expect(UninstallerSupport.isInTrash(trashed, home: home)
+                         && !UninstallerSupport.isInTrash(trash.appendingPathComponent("Old/Trashed.app"), home: home),
+                         "only a direct child of the Trash takes part in a cleanup offer")
+
+            // Whether this was the last installed copy decides the offer.
+            let keptFolder = apps.appendingPathComponent("Kept", isDirectory: true)
+            try fm.createDirectory(at: keptFolder, withIntermediateDirectories: true)
+            let sibling = try writeApp("Trashed", in: keptFolder, id: bundleID)
+            let other = try writeApp("Other", in: keptFolder, id: "org.vitruvian.fixture.other")
+            suite.expect(move.isLastCopy(registered: [], running: false, home: home)
+                         && move.isLastCopy(registered: [other, trashed], running: false, home: home),
+                         "a copy in the Trash, a missing one and another app all leave this the last copy")
+            suite.expect(!move.isLastCopy(registered: [sibling], running: false, home: home),
+                         "an app still installed elsewhere keeps its data")
+            suite.expect(!move.isLastCopy(registered: [], running: true, home: home),
+                         "an app still running is not an app that was just uninstalled")
+
+            // FSEvents reports both halves of a rename; only a consecutive
+            // pair of records for the same file witnesses a move.
+            var renames = UninstallerSupport.TrashRenames()
+            suite.expect(renames.accept(installed, inode: inode, eventID: 10, home: home) == nil,
+                         "the departure from an Applications folder is remembered, not offered")
+            suite.expect(renames.accept(trashed, inode: inode, eventID: 11, home: home) == move,
+                         "the arrival in the Trash right after it completes the move")
+            _ = renames.accept(installed, inode: inode, eventID: 20, home: home)
+            suite.expect(renames.accept(trashed, inode: inode, eventID: 22, home: home) == nil,
+                         "an event in between leaves the move unwitnessed")
+            _ = renames.accept(installed, inode: inode, eventID: 30, home: home)
+            suite.expect(renames.accept(trashed, inode: inode &+ 1, eventID: 31, home: home) == nil,
+                         "two different files are never one move")
+            suite.expect(renames.accept(trashed, inode: inode, eventID: 40, home: home) == nil,
+                         "an arrival in the Trash with no witnessed departure is not a move")
+
+            // The uninstaller's own side, over the recorded doubles.
+            let queue = Queue()
+            let disk = Disk()
+            let brew = Brew()
+            let uninstaller = AppUninstaller(environment: .init(
+                background: { _, work in queue.pending.append(work) },
+                main: { work in queue.pending.append { MainActor.assumeIsolated { work() } } },
+                scan: { disk.leftovers($0) },
+                remove: { disk.remove($0) },
+                quit: { _ in },
+                packages: brew,
+                notify: { _, _ in }))
+            defer { queue.pending = [] }
+            let otherInstalled = try writeApp("Moved", in: apps, id: "org.vitruvian.fixture.moved")
+            guard let otherInode = UninstallerSupport.fileIdentity(at: otherInstalled)?.inode else {
+                suite.expect(false, "the second fixture app has a file identity")
+                return
+            }
+            let otherTrashed = trash.appendingPathComponent("Moved.app", isDirectory: true)
+            try fm.moveItem(at: otherInstalled, to: otherTrashed)
+            let otherMove = UninstallerSupport.TrashMove(from: otherInstalled, to: otherTrashed,
+                                                         inode: otherInode, home: home)
+            suite.expect(otherMove != nil && !uninstaller.select(appURL: trashed, trashMove: otherMove)
+                         && uninstaller.target == nil
+                         && uninstaller.refusal?.refusal == .unverifiedTrashMove
+                         && uninstaller.refusal?.message(L10n.shared.s) == L10n.shared.s.uninstallerTrashUnavailable,
+                         "a cleanup offer for one app can never review another, and says why")
+
+            // An unsolicited offer never replaces a review already open.
+            let open = try writeApp("Open", in: apps, id: "org.vitruvian.fixture.open")
+            suite.expect(uninstaller.select(appURL: open) && uninstaller.phase == .scanning
+                         && !uninstaller.canOfferTrashCleanup(of: move),
+                         "a scan in progress refuses an unsolicited cleanup offer")
+            queue.drain()
+            brew.lookup?(.success(nil))
+            suite.expect(uninstaller.phase == .results && !uninstaller.canOfferTrashCleanup(of: move),
+                         "a checklist in use refuses an unsolicited cleanup offer")
+            uninstaller.reset()
+
+            // The live removal gate: a cleanup owns the app's data, never the
+            // app, and a selection that is no longer current owns nothing.
+            let dataRow = AppUninstaller.Leftover(
+                url: home.appendingPathComponent("Library/Preferences/\(bundleID).plist"),
+                category: .preferences, size: 1, ownerBundleID: bundleID, ownerGroupID: nil,
+                evidenceBundleID: nil, confidence: .exact, fileIdentity: .init(device: 0, inode: 9))
+            let appRow = AppUninstaller.Leftover(
+                url: trashed, category: .app, size: 10, ownerBundleID: bundleID, ownerGroupID: nil,
+                evidenceBundleID: nil, confidence: .exact, fileIdentity: .init(device: 0, inode: 8))
+            let cleanup = AppUninstaller.remove(
+                AppUninstaller.Removal(chosen: [appRow, dataRow], allowedPaths: [],
+                                       selection: move.selection, trashMove: move,
+                                       alreadyFreed: 0, packageRemovedApplication: false),
+                roster: { _ in [] })
+            suite.expect(cleanup.failed.contains { $0.id == appRow.id },
+                         "a Trash cleanup leaves the app's own bundle to Finder")
+            let stale = UninstallerSupport.Selection(
+                bundleID: bundleID, url: trashed.standardizedFileURL,
+                identity: UninstallerSupport.FileIdentity(device: 0, inode: 0),
+                infoIdentity: move.selection.infoIdentity)
+            let staleRemoval = AppUninstaller.remove(
+                AppUninstaller.Removal(chosen: [dataRow], allowedPaths: [], selection: stale,
+                                       alreadyFreed: 0, packageRemovedApplication: false),
+                roster: { _ in [] })
+            suite.expect(staleRemoval.failed.map(\.id) == [dataRow.id] && staleRemoval.freed == 0,
+                         "a removal whose app is no longer the one that was reviewed takes nothing")
+            suite.expect(disk.removals.isEmpty, "none of these checks ran the uninstaller's own removal")
+        } catch {
+            suite.expect(false, "uninstaller trash fixture failed: \(error)")
         }
     }
 

@@ -235,7 +235,8 @@ final class NotchIslandFixture {
                 frontmostBundleID: { nil }, ownBundleID: nil, mouseLocation: { [unowned self] in self.pointer }),
             fullscreen: NotchFullscreenVisibility.Environment(
                 hidesInFullscreen: { [unowned self] in self.defaults.bool(forKey: DefaultsKey.notchHideInFullscreen) },
-                showsFullscreen: { [unowned self] in self.fullscreen.contains($0) || self.appFullscreen.contains($0) }),
+                showsFullscreenSpace: { [unowned self] in self.fullscreen.contains($0) },
+                showsAppFullscreen: { [unowned self] in self.appFullscreen.contains($0) }),
             screenEdges: { [unowned self] _ in
                 NotchScreenEdgeClicks.Environment(addMonitors: { [unowned self] _ in
                     self.edgeMonitors += 1
@@ -255,6 +256,7 @@ final class NotchIslandFixture {
                 self.localEvent = nil
             }),
             fullscreenDisplays: { [unowned self] ids in Set(ids).intersection(self.fullscreen.union(self.appFullscreen)) },
+            fullscreenSpaceDisplays: { [unowned self] ids in Set(ids).intersection(self.fullscreen) },
             notifications: notifications, workspaceNotifications: workspace, sessionNotifications: session,
             currentSession: { [unowned self] in self.currentSession },
             makeHotkey: { [unowned self] in self.hotkey },
@@ -321,6 +323,8 @@ final class RecordingIslandHost: NotchIslandHost {
     var hasKeyboard = false
     private(set) var keyboardRequests = 0
     private(set) var presents = 0
+    /// Whether each presentation was animated, in order.
+    private(set) var presentAnimations: [Bool] = []
     /// Whether each hide was animated, in order.
     private(set) var hideAnimations: [Bool] = []
     private(set) var transitions: [NotchContentTransition] = []
@@ -380,6 +384,7 @@ final class RecordingIslandHost: NotchIslandHost {
                  quickAccess: NotchQuickAccessConfiguration?, revealFromHidden: Bool,
                  hideWhenSettled: Bool, usesGlass: Bool, steady: Bool) {
         presents += 1
+        presentAnimations.append(animated)
         steadies.append(steady)
         let ignoresMouse = input.present(hidingWhenSettled: hideWhenSettled, panelIgnores: panel.ignoresMouseEvents)
         if panel.ignoresMouseEvents != ignoresMouse { panel.ignoresMouseEvents = ignoresMouse }
@@ -460,12 +465,20 @@ nonisolated final class RecordingMirrorHost: NotchMirrorHost {
     func holdWave() {}
     func keepWave() {}
     func releaseWave() {}
+    /// Whether each presentation came in from the screen edge, in order.
+    private(set) var copyReveals: [Bool] = []
+    /// Whether each hide was animated, in order.
+    private(set) var copyHideAnimations: [Bool] = []
     func presentCopy(size: CGSize, geometry: NotchGeometry, animated: Bool,
-                     transitionContent: NotchContentTransition) {
+                     transitionContent: NotchContentTransition, revealFromHidden: Bool) {
         frame = geometry.frame(for: size)
         panelIsVisible = true
+        copyReveals.append(revealFromHidden)
     }
-    func hideCopy() { panelIsVisible = false }
+    func hideCopy(animated: Bool) {
+        panelIsVisible = false
+        copyHideAnimations.append(animated)
+    }
     func close() {
         closed = true
         panelIsVisible = false

@@ -207,9 +207,182 @@ enum SwitcherModelFeatureTests {
         // in bazel/source_lints.py.
     }
 
+    private static func secureInputRegressionChecks(_ suite: TestSuite) {
+        let optionTab = GlobalShortcut(keyCode: Int64(kVK_Tab), modifiers: [.option])
+        let commandTab = GlobalShortcut.switcherDefault
+        let commandShiftTab = GlobalShortcut(keyCode: Int64(kVK_Tab), modifiers: [.command, .shift])
+        let shortcuts = SwitcherSupport.secureInputHotKeyShortcuts(
+            appsShortcut: optionTab, windowShortcut: .switcherWindowDefault,
+            allWindowsShortcut: commandTab)
+        let native: [SwitcherNativeSymbolicHotKey: GlobalShortcut] = [
+            .commandTab: commandTab, .commandShiftTab: commandShiftTab,
+            .nextWindow: .switcherWindowDefault,
+            .previousWindow: GlobalShortcut(keyCode: Int64(kVK_ANSI_Grave), modifiers: [.command, .shift]),
+        ]
+        let suppressed = SwitcherSupport.nativeHotkeysToSuppress(
+            takeOverSystemShortcuts: true, appsShortcut: optionTab,
+            windowShortcut: .switcherWindowDefault, allWindowsShortcut: commandTab,
+            nativeShortcuts: native)
+        suite.expect(suppressed == Set(native.keys)
+            && suppressed.allSatisfy { shortcuts.contains(native[$0]!) },
+            "every suppressed native key has a Carbon replacement when all windows owns Command-Tab")
+        suite.expect(!SwitcherSupport.secureInputHotKeyShortcuts(
+            appsShortcut: commandTab, windowShortcut: .switcherWindowDefault).contains(optionTab),
+            "a disabled all-windows shortcut never claims its default Option-Tab")
+        let duplicates = SwitcherSupport.secureInputHotKeyShortcuts(
+            appsShortcut: commandTab, windowShortcut: commandTab, allWindowsShortcut: commandShiftTab)
+        suite.expect(duplicates == [commandTab, commandShiftTab],
+            "shared all-windows and Shift combinations register exactly once")
+        let grave = Int64(kVK_ANSI_Grave)
+        suite.expect(SwitcherSupport.secureInputHotKeyShortcuts(appsShortcut: .switcherDefault,
+                                                                windowShortcut: .switcherWindowDefault)
+            == [.switcherDefault, commandShiftTab, .switcherWindowDefault,
+                GlobalShortcut(keyCode: grave, modifiers: [.command, .shift])],
+            "under secure input Carbon stands in for Command-Tab, Shift-Command-Tab, Command-` and Shift-Command-`")
+        let shiftedApps = GlobalShortcut(keyCode: Int64(kVK_Tab), modifiers: [.option, .shift])
+        suite.expect(SwitcherSupport.secureInputHotKeyShortcuts(appsShortcut: shiftedApps,
+                                                                windowShortcut: shiftedApps) == [shiftedApps],
+            "a shortcut that already uses Shift gets no backward variant, and a shared combination registers once")
+
+        let registrationCases: [(canStart: Bool, capturing: Bool, takeOver: Bool, secure: Bool, failed: Bool, wanted: Bool)] = [
+            (true, false, true, true, false, true),
+            (true, true, true, true, false, false),
+            (false, false, true, true, false, false),
+            (true, false, false, true, false, false),
+            (true, false, true, false, false, false),
+            (true, false, true, true, true, false),
+        ]
+        for scenario in registrationCases {
+            suite.expect(SwitcherSupport.secureInputHotKeysWanted(
+                canStartSession: scenario.canStart, capturingShortcut: scenario.capturing,
+                takeOverSystemShortcuts: scenario.takeOver, secureInputEnabled: scenario.secure,
+                registrationFailed: scenario.failed) == scenario.wanted,
+                "Carbon yields during recording, disablement and failed registration, and resumes only when usable")
+        }
+
+        var delayed = SwitcherPendingSessionStart(generation: 7, shortcut: commandTab,
+            scope: .allApps, reversed: false, additionalNavigation: 2, isSecureInputReplay: true)
+        delayed.reconcileReplayedModifiers([])
+        suite.expect(delayed.commitWhenReady && delayed.additionalNavigation == 2,
+            "a delayed Carbon press commits without showing a panel after modifier-up preceded replay")
+        var held = SwitcherPendingSessionStart(generation: 8, shortcut: commandTab,
+            scope: .allApps, reversed: true, isSecureInputReplay: true)
+        held.reconcileReplayedModifiers([.maskCommand, .maskShift])
+        suite.expect(!held.commitWhenReady && held.reversed,
+            "holding Command still opens the reversed Carbon session normally")
+        held.observeModifiers([])
+        held.reconcileReplayedModifiers(.maskCommand)
+        suite.expect(held.commitWhenReady,
+            "a modifier release after replay stays latched even when a new chord is held")
+        var shifted = SwitcherPendingSessionStart(generation: 9, shortcut: commandShiftTab,
+            scope: .allWindows, reversed: false, isSecureInputReplay: true)
+        shifted.reconcileReplayedModifiers(.maskCommand)
+        suite.expect(shifted.commitWhenReady,
+            "releasing a required Shift commits a Carbon session as well as releasing Command")
+        var flagReads = 0
+        func readFlags() -> CGEventFlags { flagReads += 1; return [] }
+        var tapped = SwitcherPendingSessionStart(generation: 10, shortcut: commandTab,
+            scope: .allApps, reversed: false)
+        tapped.reconcileReplayedModifiers(readFlags())
+        suite.expect(!tapped.commitWhenReady && flagReads == 0,
+            "ordinary tap sessions keep event ordering without polling physical modifiers")
+
+        var queued = SwitcherSecureInputReplayState()
+        let firstReplay = queued.enqueue(shortcut: commandTab)
+        let nextReplay = queued.enqueue(shortcut: optionTab)
+        suite.expect(firstReplay == nextReplay && queued.hasPending && queued.pendingCount == 2
+            && queued.shortcut == commandTab,
+            "queued Carbon presses own input and preserve their first session's guarded modifiers")
+        queued.finish(firstReplay)
+        suite.expect(queued.hasPending && queued.pendingCount == 1,
+            "Q/W guards remain needed until every queued Carbon press reaches the tap")
+        queued.invalidate()
+        suite.expect(!queued.hasPending && !queued.contains(nextReplay) && queued.shortcut == nil,
+            "a cancelling click or failure invalidates queued Carbon presses before opening")
+        let replacement = queued.enqueue(shortcut: optionTab)
+        queued.finish(nextReplay)
+        suite.expect(queued.contains(replacement) && queued.pendingCount == 1 && queued.shortcut == optionTab,
+            "completion of a cancelled replay never releases a newer session's guards")
+        queued.finish(replacement)
+        suite.expect(!queued.hasPending && queued.shortcut == nil,
+            "the final replay releases queued ownership when no session claimed it")
+
+        let guarded = SwitcherSupport.secureInputActionShortcuts(for: commandTab, keyLabel: { _, _, _ in nil })
+        let guardedModifiers: [GlobalShortcutModifiers] = [[.command], [.command, .shift], [.command, .option],
+                                                           [.command, .control, .option, .shift]]
+        for modifiers in guardedModifiers {
+            for keyCode in [Int64(kVK_ANSI_Q), Int64(kVK_ANSI_W)] {
+                suite.expect(guarded.contains(GlobalShortcut(keyCode: keyCode, modifiers: modifiers)),
+                    "secure sessions swallow Q/W including shifted and extra-modifier combinations")
+            }
+        }
+        suite.expect(guarded.count == 16 && Set(guarded).count == guarded.count
+            && guarded.allSatisfy { $0.modifiers.contains(.command) }
+            && !guarded.contains(GlobalShortcut(keyCode: Int64(kVK_ANSI_Q), modifiers: [])),
+            "session guards are bounded and never claim bare password letters")
+        var labelReads = 0
+        let localized = SwitcherSupport.secureInputActionShortcuts(for: commandTab, keyLabel: { code, command, shift in
+            labelReads += 1
+            if command && code == 0 { return shift ? "Q" : "q" }
+            if command && code == 6 { return "W" }
+            return nil
+        })
+        suite.expect(localized.contains(GlobalShortcut(keyCode: 0, modifiers: [.command, .shift]))
+            && localized.contains(GlobalShortcut(keyCode: 6, modifiers: [.command])),
+            "secure action guards follow the layout's Command Q/W positions")
+        suite.expect(labelReads <= 2 * 128,
+            "opening Command-Tab under secure input scans each Command/Shift table at most once")
+        let optionGuards = SwitcherSupport.secureInputActionShortcuts(for: optionTab, keyLabel: { _, _, _ in nil })
+        suite.expect(optionGuards.allSatisfy { $0.modifiers.contains(.option) }
+            && optionGuards.contains(GlobalShortcut(keyCode: Int64(kVK_ANSI_Q), modifiers: [.option, .command])),
+            "custom session modifiers remain required while extra Command cannot leak a quit")
+
+        // Modifier-up may precede or follow the second Carbon callback. Both
+        // openings must be protected before either replay reaches the tap.
+        let existingGuards = Set(optionGuards)
+        let commandGuards = SwitcherSupport.secureInputActionShortcuts(
+            for: commandTab, excluding: existingGuards, keyLabel: { _, _, _ in nil })
+        let combinedGuards = existingGuards.union(commandGuards)
+        suite.expect(Set(commandGuards).isDisjoint(with: existingGuards)
+            && combinedGuards == existingGuards.union(guarded),
+            "a replacement Command trigger adds its guards without unregistering or duplicating the Option guards")
+        for modifiers: GlobalShortcutModifiers in [[.command], [.option], [.command, .option, .shift]] {
+            for keyCode in [Int64(kVK_ANSI_Q), Int64(kVK_ANSI_W)] {
+                suite.expect(combinedGuards.contains(GlobalShortcut(keyCode: keyCode, modifiers: modifiers)),
+                    "Q/W stay protected across a queued Option-to-Command replacement, before or after modifier-up")
+            }
+        }
+        suite.expect(SwitcherSupport.secureInputActionShortcuts(
+            for: commandTab, excluding: combinedGuards, keyLabel: { _, _, _ in nil }).isEmpty,
+            "a repeated replacement never registers the same Carbon action twice")
+        let commandQ = GlobalShortcut(keyCode: Int64(kVK_ANSI_Q), modifiers: [.command])
+        suite.expect(!SwitcherSupport.secureInputActionShortcuts(
+            for: commandTab, excluding: [commandQ], keyLabel: { _, _, _ in nil }).contains(commandQ),
+            "an action already consumed by an opening shortcut needs no duplicate Carbon registration")
+
+        for failureIndex in shortcuts.indices {
+            var registered: [Int] = []
+            var released: [Int] = []
+            let result = SwitcherSupport.registerSecureInputHotKeys(shortcuts, register: { _, id -> Int? in
+                guard Int(id) != failureIndex + 1 else { return nil }
+                registered.append(Int(id))
+                return Int(id)
+            }, unregister: { released.append($0) })
+            suite.expect(result == nil && registered.count == failureIndex && Set(released) == Set(registered),
+                "a failed Carbon registration releases every earlier reference and reports no coverage")
+        }
+        var released: [Int] = []
+        let successful = SwitcherSupport.registerSecureInputHotKeys(shortcuts,
+            register: { _, id in Int(id) }, unregister: { released.append($0) })
+        suite.expect(successful?.count == shortcuts.count && released.isEmpty
+            && successful?[1]?.shortcut == shortcuts[0],
+            "successful Carbon registration retains the exact shortcut-to-reference mapping")
+    }
+
     static func run(_ suite: TestSuite) {
         ScrollingTitleMotionTests.run(suite)
         scrollNavigationChecks(suite)
+        secureInputRegressionChecks(suite)
         func expectEqual(_ actual: String, _ expected: String, _ label: String,
                          file: StaticString = #filePath, line: UInt = #line) {
             suite.expect(actual == expected, "\(label): got \(actual), expected \(expected)",

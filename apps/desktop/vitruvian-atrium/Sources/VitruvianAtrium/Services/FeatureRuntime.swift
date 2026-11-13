@@ -437,9 +437,12 @@ package final class FeatureRuntime: ObservableObject {
             let hasRegisteredHelper = !(defaults[Preferences.fanControlHelperVersion]).isEmpty
             let syncsHelper = needsRecovery || (!AppFeature.fanControl.isAvailable(in: defaults) && hasRegisteredHelper)
             return syncsHelper ? [.monitorPlan, .fanControl] : [.monitorPlan]
+        // Its watch on the Trash, which offers a leftovers review when
+        // Finder moves an app there.
+        case .uninstaller: return [.trashAppWatcher]
         // On-demand tools: they check what they need each time they run, so
         // there is nothing to start, stop or re-evaluate.
-        case .cleaningMode, .uninstaller, .homebrew, .killProcess, .portManager:
+        case .cleaningMode, .homebrew, .killProcess, .portManager:
             return []
         }
     }
@@ -519,6 +522,7 @@ package final class FeatureRuntime: ObservableObject {
         case .resetWhatsAppDownloads: WhatsAppDownloadManager.shared.reset()
         case .stopWhatsAppOrganizer: WhatsAppDownloadOrganizer.shared.stop()
         case .appUpdates: AppUpdatesService.shared.syncWithPreferences()
+        case .trashAppWatcher: TrashAppWatcher.shared.syncWithPreferences()
         case .monitorPlan: SystemMonitor.shared.planDidChange()
         case .monitorAlerts: MonitorAlertService.shared.syncWithPreferences()
         case .fanControl: FanControlService.shared.syncWithPreferences()
@@ -548,7 +552,7 @@ package enum FeatureBindingAction: Hashable {
     case stopNotchNotifications, stopNotchDownloads, stopNotchCalendar, stopAgentUsage, stopNotchWatch
     case scratchpad, commandBar
     case cleanerScheduler, whatsAppScheduler, whatsAppOrganizer, resetWhatsAppDownloads, stopWhatsAppOrganizer
-    case appUpdates, monitorPlan, monitorAlerts, fanControl
+    case appUpdates, trashAppWatcher, monitorPlan, monitorAlerts, fanControl
     /// A feature that has become a tool: the tool host starts or stops it.
     case tool(ToolID)
 }

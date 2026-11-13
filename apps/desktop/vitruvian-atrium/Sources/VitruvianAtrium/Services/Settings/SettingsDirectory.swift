@@ -561,7 +561,7 @@ package enum SettingsDirectory {
                                                  FeatureStrings.whatsAppDownloads(language).fileTypes]),
                 SettingsDirectoryItem(page: .homebrew, title: s.homebrewName, icon: "shippingbox"),
                 SettingsDirectoryItem(page: .uninstaller, title: s.uninstallerName, icon: "trash",
-                                      keywords: [s.uninstallerCommandBarToggle]),
+                                      keywords: [s.uninstallerCommandBarToggle, s.uninstallerWatchTrashToggle]),
                 SettingsDirectoryItem(page: .killProcess,
                                       title: FeatureStrings.killProcess(language).pageTitle,
                                       icon: "xmark.octagon",
