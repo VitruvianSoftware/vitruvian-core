@@ -363,7 +363,7 @@ jobs:
           VERSION="0.0.0-rehearsal"
           folder="/tmp/tool/vitruvian-code"
           mkdir -p "$folder/bin"
-          cp apps/desktop/vitruvian-code/macos/tool/vitruvian-tool.json "$folder/"
+          cp apps/desktop/vitruvian-code/macos/atrium-extension/vitruvian-tool.json "$folder/"
           cp /tmp/universal/vitruvian-code-tool "$folder/bin/tool"
           chmod 755 "$folder/bin/tool"
           cp apps/desktop/vitruvian-code/macos/Sources/VitruvianCodeUI/Resources/mermaid.min.js "$folder/bin/"

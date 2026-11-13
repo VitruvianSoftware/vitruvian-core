@@ -156,14 +156,14 @@ swift_binary(
 genrule(
     name = "tool-folder",
     srcs = [
-        "tool/vitruvian-tool.json",
+        "atrium-extension/vitruvian-tool.json",
         ":vitruvian-speaker-tool",
     ],
     outs = [
         "built/vitruvian-speaker/vitruvian-tool.json",
         "built/vitruvian-speaker/bin/tool",
     ],
-    cmd = "cp $(location tool/vitruvian-tool.json) $(RULEDIR)/built/vitruvian-speaker/vitruvian-tool.json && cp $(location :vitruvian-speaker-tool) $(RULEDIR)/built/vitruvian-speaker/bin/tool",
+    cmd = "cp $(location atrium-extension/vitruvian-tool.json) $(RULEDIR)/built/vitruvian-speaker/vitruvian-tool.json && cp $(location :vitruvian-speaker-tool) $(RULEDIR)/built/vitruvian-speaker/bin/tool",
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
 )
@@ -187,7 +187,7 @@ genrule(
 rust_test(
     name = "tool_conformance_test",
     size = "medium",
-    srcs = ["tool/src/conformance_test.rs"],
+    srcs = ["atrium-extension/src/conformance_test.rs"],
     data = [
         "built/vitruvian-speaker/vitruvian-tool.json",
         ":tool-folder",
@@ -216,13 +216,13 @@ rust_test(
 rust_test(
     name = "tool_version_test",
     size = "small",
-    srcs = ["tool/src/version_test.rs"],
+    srcs = ["atrium-extension/src/version_test.rs"],
     data = [
         "Package.swift",
         "Sources/VitruvianSpeakerCore/Version.swift",
         "Sources/VitruvianSpeakerToolCore/Version.swift",
+        "atrium-extension/vitruvian-tool.json",
         "release-please-config.json",
-        "tool/vitruvian-tool.json",
     ],
     edition = "2021",
     deps = [

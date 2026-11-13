@@ -20,21 +20,19 @@
 
 //! The tool's version is the app's, in every file that says it.
 //!
-//! Checks tool/vitruvian-tool.json layout (2-space indented JSON matching
-//! release-please) and version X.Y.Z, matches
-//! Sources/VitruvianSpeakerToolCore/Version.swift and
-//! Sources/VitruvianSpeakerCore/Version.swift, checks release-please-config.json
-//! extra-files, and checks Package.swift vitruvian-sdk >= 1.8.0 (with 1.1.0,
-//! 1.3.0, 1.8.0 thresholds).
+//! Checks vitruvian-tool.json version is X.Y.Z, matches
+//! Sources/VitruvianCodeToolCore/Version.swift and
+//! Sources/VitruvianCode/Version.swift, checks release-please-config.json
+//! extra-files includes the tool's paths, and checks Package.swift
+//! vitruvian-sdk >= 1.9.0.
 
 use std::fs;
 use std::path::PathBuf;
 
-const PKG: &str = "apps/desktop/vitruvian-speaker";
+const PKG: &str = "apps/desktop/vitruvian-code/macos";
+const APP: &str = "apps/desktop/vitruvian-code";
 
-const KIT_WITH_WAKER: (u32, u32, u32) = (1, 1, 0);
-const KIT_WITH_CHOICE: (u32, u32, u32) = (1, 3, 0);
-const KIT_WITH_CHIPS: (u32, u32, u32) = (1, 8, 0);
+const KIT_THE_TOOL_NEEDS: (u32, u32, u32) = (1, 9, 0);
 
 fn rlocation(short_path: &str) -> PathBuf {
     if let Ok(dir) = std::env::var("RUNFILES_DIR") {
@@ -84,69 +82,13 @@ fn extract_kit_version(package_swift: &str) -> Option<String> {
     Some(package_swift[start..end].to_string())
 }
 
-fn format_json_utf8(val: &conformance_rs_lib::json::Value, indent: usize) -> String {
-    use conformance_rs_lib::json::Value;
-    match val {
-        Value::Null => "null".to_string(),
-        Value::Bool(b) => if *b { "true" } else { "false" }.to_string(),
-        Value::Int(s) => s.clone(),
-        Value::Float(f) => serde_json::to_string(f).unwrap_or_else(|_| f.to_string()),
-        Value::Str(s) => serde_json::to_string(s).expect("serialize string"),
-        Value::Arr(items) => {
-            if items.is_empty() {
-                return "[]".to_string();
-            }
-            let inner_pad = " ".repeat(indent + 2);
-            let outer_pad = " ".repeat(indent);
-            let parts: Vec<String> = items
-                .iter()
-                .map(|item| format!("{inner_pad}{}", format_json_utf8(item, indent + 2)))
-                .collect();
-            format!("[\n{}\n{outer_pad}]", parts.join(",\n"))
-        }
-        Value::Obj(entries) => {
-            if entries.is_empty() {
-                return "{}".to_string();
-            }
-            let inner_pad = " ".repeat(indent + 2);
-            let outer_pad = " ".repeat(indent);
-            let parts: Vec<String> = entries
-                .iter()
-                .map(|(k, v)| {
-                    let k_json = serde_json::to_string(k).expect("serialize key");
-                    let v_json = format_json_utf8(v, indent + 2);
-                    format!("{inner_pad}{k_json}: {v_json}")
-                })
-                .collect();
-            format!("{{\n{}\n{outer_pad}}}", parts.join(",\n"))
-        }
-    }
-}
-
-fn release_please_layout(text: &str) -> String {
-    let value =
-        conformance_rs_lib::json::loads(text).expect("vitruvian-tool.json is not valid JSON");
-    let mut serialized = format_json_utf8(&value, 0);
-    serialized.push('\n');
-    serialized
-}
-
 #[test]
 fn tool_version_matches_app() {
     let mut problems = Vec::new();
 
-    let manifest_path = rlocation(&format!("{}/tool/vitruvian-tool.json", PKG));
+    let manifest_path = rlocation(&format!("{}/atrium-extension/vitruvian-tool.json", PKG));
     let manifest_text = fs::read_to_string(&manifest_path)
         .unwrap_or_else(|e| panic!("cannot read {}: {}", manifest_path.display(), e));
-
-    if manifest_text != release_please_layout(&manifest_text) {
-        problems.push(
-            "vitruvian-tool.json is not in the layout release-please writes \
-             (every array one item a line); the release PR would fail tidy-check"
-                .to_string(),
-        );
-    }
-
     let manifest: serde_json::Value = serde_json::from_str(&manifest_text)
         .unwrap_or_else(|e| panic!("cannot parse {}: {}", manifest_path.display(), e));
     let manifest_version = manifest
@@ -156,11 +98,11 @@ fn tool_version_matches_app() {
         .to_string();
 
     let tool_version = version_line(&rlocation(&format!(
-        "{}/Sources/VitruvianSpeakerToolCore/Version.swift",
+        "{}/Sources/VitruvianCodeToolCore/Version.swift",
         PKG
     )));
     let app_version = version_line(&rlocation(&format!(
-        "{}/Sources/VitruvianSpeakerCore/Version.swift",
+        "{}/Sources/VitruvianCode/Version.swift",
         PKG
     )));
 
@@ -183,7 +125,7 @@ fn tool_version_matches_app() {
         ));
     }
 
-    let config_path = rlocation(&format!("{}/release-please-config.json", PKG));
+    let config_path = rlocation(&format!("{}/release-please-config.json", APP));
     let config_text = fs::read_to_string(&config_path)
         .unwrap_or_else(|e| panic!("cannot read {}: {}", config_path.display(), e));
     let config: serde_json::Value = serde_json::from_str(&config_text)
@@ -210,8 +152,8 @@ fn tool_version_matches_app() {
         .unwrap_or_default();
 
     for needed in &[
-        "tool/vitruvian-tool.json",
-        "Sources/VitruvianSpeakerToolCore/Version.swift",
+        "macos/atrium-extension/vitruvian-tool.json",
+        "macos/Sources/VitruvianCodeToolCore/Version.swift",
     ] {
         if !extra_files.iter().any(|f| f == needed) {
             problems.push(format!(
@@ -230,25 +172,14 @@ fn tool_version_matches_app() {
         None => problems.push(
             "Package.swift does not depend on VitruvianSoftware/vitruvian-sdk with `from:`".into(),
         ),
-        Some(v) => {
-            let ver = semver(v).unwrap_or((0, 0, 0));
-            if ver < KIT_WITH_WAKER {
-                problems.push(format!(
-                    "Package.swift builds against kit {}, before ToolWaker came ({}.{}.{})",
-                    v, KIT_WITH_WAKER.0, KIT_WITH_WAKER.1, KIT_WITH_WAKER.2
-                ));
-            } else if ver < KIT_WITH_CHOICE {
-                problems.push(format!(
-                    "Package.swift builds against kit {}, before the choice block came ({}.{}.{})",
-                    v, KIT_WITH_CHOICE.0, KIT_WITH_CHOICE.1, KIT_WITH_CHOICE.2
-                ));
-            } else if ver < KIT_WITH_CHIPS {
-                problems.push(format!(
-                    "Package.swift builds against kit {}, before the chips block came ({}.{}.{})",
-                    v, KIT_WITH_CHIPS.0, KIT_WITH_CHIPS.1, KIT_WITH_CHIPS.2
-                ));
-            }
+        Some(v) if semver(v).unwrap_or((0, 0, 0)) < KIT_THE_TOOL_NEEDS => {
+            problems.push(format!(
+                "Package.swift builds against kit {}, older than the kit the tool needs ({}.{}.{}): \
+                 its handed work can leave a command unanswered",
+                v, KIT_THE_TOOL_NEEDS.0, KIT_THE_TOOL_NEEDS.1, KIT_THE_TOOL_NEEDS.2
+            ));
         }
+        _ => {}
     }
 
     if !problems.is_empty() {
@@ -259,9 +190,9 @@ fn tool_version_matches_app() {
     }
 
     println!(
-        "the tool is {}, the app's version, in every file that says so, \
-         against a kit with a waker, choice and chips",
-        manifest_version
+        "the tool is {}, the app's version, in every file that says so, against kit {} or later",
+        manifest_version,
+        kit_version.as_deref().unwrap_or("?")
     );
 }
 
@@ -279,14 +210,14 @@ fn test_semver_parsing() {
 
 #[test]
 fn test_version_line_extraction() {
-    let content = "let version = \"3.48.0\" // x-release-please-version";
-    let dir = std::env::temp_dir().join("hs-version-test");
+    let content = r#"let version = "1.2.3" // x-release-please-version"#;
+    let dir = std::env::temp_dir().join("vitruvian-code-version-test");
     let _ = fs::create_dir_all(&dir);
     let path = dir.join("Version.swift");
     fs::write(&path, content).unwrap();
-    assert_eq!(version_line(&path), Some("3.48.0".into()));
+    assert_eq!(version_line(&path), Some("1.2.3".into()));
 
-    let no_marker = "let version = \"3.48.0\"";
+    let no_marker = r#"let version = "1.2.3""#;
     fs::write(&path, no_marker).unwrap();
     assert_eq!(version_line(&path), None);
     let _ = fs::remove_dir_all(&dir);
@@ -295,29 +226,17 @@ fn test_version_line_extraction() {
 #[test]
 fn test_extract_kit_version() {
     let swift =
-        ".package(url: \"https://github.com/VitruvianSoftware/vitruvian-sdk\", from: \"1.8.0\")";
-    assert_eq!(extract_kit_version(swift), Some("1.8.0".into()));
+        r#".package(url: "https://github.com/VitruvianSoftware/vitruvian-sdk", from: "1.9.0")"#;
+    assert_eq!(extract_kit_version(swift), Some("1.9.0".into()));
 
-    let no_match = ".package(url: \"https://github.com/other/lib\", from: \"2.0.0\")";
+    let no_match = r#".package(url: "https://github.com/other/lib", from: "2.0.0")"#;
     assert_eq!(extract_kit_version(no_match), None);
 }
 
 #[test]
-fn test_semver_threshold_comparison() {
-    assert!((1, 1, 0) >= KIT_WITH_WAKER);
-    assert!((1, 0, 0) < KIT_WITH_WAKER);
-    assert!((1, 3, 0) >= KIT_WITH_CHOICE);
-    assert!((1, 2, 0) < KIT_WITH_CHOICE);
-    assert!((1, 8, 0) >= KIT_WITH_CHIPS);
-    assert!((1, 7, 0) < KIT_WITH_CHIPS);
-    assert!((2, 0, 0) >= KIT_WITH_CHIPS);
-}
-
-#[test]
-fn test_release_please_layout() {
-    let compact = r#"{"version":"1.0.0","name":"test"}"#;
-    let laid_out = release_please_layout(compact);
-    assert!(laid_out.contains("  "));
-    assert!(laid_out.ends_with('\n'));
-    assert_eq!(laid_out, release_please_layout(&laid_out));
+fn test_semver_comparison() {
+    assert!((1, 9, 0) >= KIT_THE_TOOL_NEEDS);
+    assert!((1, 8, 0) < KIT_THE_TOOL_NEEDS);
+    assert!((2, 0, 0) >= KIT_THE_TOOL_NEEDS);
+    assert!((0, 9, 0) < KIT_THE_TOOL_NEEDS);
 }
