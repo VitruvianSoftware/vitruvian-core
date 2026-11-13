@@ -147,6 +147,7 @@ TEST_PRODUCTION_SOURCES = [
     "Sources/VitruvianAtrium/Services/Recorder/RecorderExporter.swift",
     "Sources/VitruvianAtrium/Services/Recorder/RecorderGIFClipboard.swift",
     "Sources/VitruvianAtrium/Services/Recorder/RecorderGIFWriter.swift",
+    "Sources/VitruvianAtrium/Services/Recorder/RecorderFastGIFWriter.swift",
     "Sources/VitruvianAtrium/Services/Recorder/RecorderGIFWorkspace.swift",
     "Sources/VitruvianAtrium/Services/Recorder/RecorderComposition.swift",
     "Sources/VitruvianAtrium/Services/Recorder/RecordingSharingSupport.swift",
