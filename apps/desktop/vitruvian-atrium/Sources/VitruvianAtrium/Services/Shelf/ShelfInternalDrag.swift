@@ -87,6 +87,9 @@ package final class ShelfInternalDrag {
     package private(set) var ids: [UUID] = []
     /// A drop inside the shelf took the items in already.
     package var wasMerged = false
+    /// The drag holds a file stored inside a package, which only a copy may
+    /// take out of the Shelf. Read once when the drag begins.
+    package private(set) var holdsPackageContent = false
     private weak var window: AnyObject?
     private let host: Host
 
@@ -96,13 +99,14 @@ package final class ShelfInternalDrag {
         self.host = host
     }
 
-    package func begin(ids: [UUID], from window: AnyObject?) {
+    package func begin(ids: [UUID], from window: AnyObject?, holdsPackageContent: Bool = false) {
         self.window = window
         if let window, window === host.island().window {
             host.holdIsland(true)
         }
         self.ids = ids
         wasMerged = false
+        self.holdsPackageContent = holdsPackageContent
     }
 
     /// Where the drag is now. Only a drag from the island tells it.
@@ -115,6 +119,7 @@ package final class ShelfInternalDrag {
         defer {
             ids = []
             wasMerged = false
+            holdsPackageContent = false
             if let window, window === host.island().window {
                 host.holdIsland(false)
             }
