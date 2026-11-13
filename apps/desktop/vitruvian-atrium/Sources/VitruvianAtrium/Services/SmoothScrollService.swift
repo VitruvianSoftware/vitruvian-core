@@ -279,12 +279,14 @@ package final class SmoothScrollService: ObservableObject {
         // loupe already took the raw event above.
         guard let processID = pid_t(exactly: event.getIntegerValueField(.eventTargetUnixProcessID)),
               processID > 0,
-              let windowNumber = NSEvent(cgEvent: event)?.windowNumber, windowNumber > 0,
+              // AppKit translates Shift-wheel to horizontal on the CGEvent it wraps.
+              // Read the window from the replay copy so the modifier sees the original axes.
+              let template = event.copy(),
+              let windowNumber = NSEvent(cgEvent: template)?.windowNumber, windowNumber > 0,
               SmoothScrollSupport.glides(targetProcessID: Int64(processID), ownProcessID: Self.ownProcessID,
                                          isActiveLoupeWindow: {
                                              ScreenshotSelectionController.isActiveLoupeWindow(windowNumber)
-                                         }),
-              let template = event.copy() else {
+                                         }) else {
             stopGlide()
             return Unmanaged.passUnretained(event)
         }
@@ -297,17 +299,25 @@ package final class SmoothScrollService: ObservableObject {
         // the inverter's tap running with the direction features uninstalled
         // and their switches left on, so the flip itself comes from
         // ScrollDirectionPreferences, which reads each one's availability.
-        let adjustDirectionHere = ScrollInverter.shared.isRunning && !scrollTargetExcluded
+        let wheelTapRunning = ScrollInverter.shared.isRunning
+        let adjustDirectionHere = wheelTapRunning && !scrollTargetExcluded
+        let horizontalModifier = adjustDirectionHere ? direction.horizontalModifier : nil
+        let speed = ScrollSpeedPreferences(defaults: defaults)
+        let speedKey = wheelTapRunning ? speed.matchingModifier(for: event, horizontalModifier: horizontalModifier,
+            isExcepted: exceptions.excludesPointerTarget(.scrollSpeed, at: event.location, sourceProcessID: sourceProcessID),
+            targetsOwnWindow: ScrollWheelTarget.shared.contains(event.location)) : nil
         let redirected: Bool
-        if adjustDirectionHere, let modifier = direction.horizontalModifier {
+        if let modifier = horizontalModifier {
             redirected = ScrollWheelSupport.redirectVerticalScroll(event, modifier: modifier,
                 targetsOwnWindow: ScrollWheelTarget.shared.contains(event.location))
         } else {
             redirected = false
         }
-        // Control-scroll keeps its native zoom unless explicitly used by the
-        // horizontal-scroll setting, which consumes Control above.
-        guard !event.flags.contains(.maskControl) else {
+        // A tick with no glide distance still goes through the raw wheel tap.
+        // Keep its speed key on the original; only the replay consumes it.
+        var glideFlags = event.flags
+        if let speedKey { glideFlags.remove(speedKey.flag) }
+        guard !glideFlags.contains(.maskControl) else {
             stopGlide()
             return Unmanaged.passUnretained(event)
         }
@@ -325,7 +335,7 @@ package final class SmoothScrollService: ObservableObject {
                     at: event.location,
                     sourceProcessID: sourceProcessID)
             })
-        let shiftPressed = event.flags.contains(.maskShift)
+        let shiftPressed = glideFlags.contains(.maskShift)
         let vertical: Double
         let horizontal: Double
         let step: Double
@@ -400,8 +410,10 @@ package final class SmoothScrollService: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
-        glide.feed(vertical: vertical, horizontal: horizontal, step: step,
-                   flags: event.flags, redirected: redirected, continuous: traits.isContinuous,
+        // The speed key's multiplier scales the step; its flag is not replayed.
+        let speedScale = speedKey == nil ? 1.0 : Double(speed.multiplier)
+        glide.feed(vertical: vertical, horizontal: horizontal, step: step * speedScale,
+                   flags: glideFlags, redirected: redirected, continuous: traits.isContinuous,
                    target: SmoothScrollSupport.Target(point: event.location, processID: processID,
                                                       windowNumber: windowNumber),
                    template: template,

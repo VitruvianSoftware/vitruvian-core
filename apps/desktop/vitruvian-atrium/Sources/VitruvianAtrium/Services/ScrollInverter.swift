@@ -98,10 +98,16 @@ package final class ScrollInverter: ObservableObject {
     package func syncWithPreferences() {
         let direction = ScrollDirectionPreferences()
         pinchZoom.update(direction.zoom)
-        if SessionActivitySupport.tapShouldRun(featureWanted: direction.isEnabled || Self.linearScrollWanted,
-                                               accessibilityGranted: Permissions.shared.accessibility,
-                                               sessionIsActive: SessionActivity.shared.isActive) {
-            ScrollWheelTarget.shared.setEnabled(direction.horizontalModifier != nil || direction.zoom.isEnabled)
+        let speedWanted = Self.scrollSpeedWanted
+        if SessionActivitySupport.tapShouldRun(
+            featureWanted: direction.isEnabled || Self.linearScrollWanted || speedWanted,
+            accessibilityGranted: Permissions.shared.accessibility,
+            sessionIsActive: SessionActivity.shared.isActive
+        ) {
+            ScrollWheelTarget.shared.setEnabled(
+                direction.horizontalModifier != nil
+                    || direction.zoom.isEnabled
+                    || speedWanted)
             start()
         } else {
             stop()
@@ -120,12 +126,20 @@ package final class ScrollInverter: ObservableObject {
             && UserDefaults.standard[Preferences.linearScrollEnabled]
     }
 
+    /// Modifier-held speed likewise keeps the tap alive when direction and
+    /// linear scrolling are both off or uninstalled.
+    private static var scrollSpeedWanted: Bool {
+        AppFeature.scrollSpeed.isAvailable
+            && UserDefaults.standard[Preferences.scrollSpeedEnabled]
+    }
+
     /// Each list's source apps are tracked only while its feature is one the
     /// tap is up for, so a list left behind by the other feature costs nothing.
     private func setSourceTracking(_ running: Bool) {
         let exceptions = MouseAppExceptions.shared
         exceptions.setSourceTracking(running && ScrollDirectionPreferences().isEnabled, for: .scrollDirection)
         exceptions.setSourceTracking(running && Self.linearScrollWanted, for: .linearScroll)
+        exceptions.setSourceTracking(running && Self.scrollSpeedWanted, for: .scrollSpeed)
     }
 
     private func start() {
@@ -329,35 +343,39 @@ package final class ScrollInverter: ObservableObject {
             case .declined, .notZoom: break
             }
         }
-        // Control-wheel is native zoom. Only the explicit Control-to-horizontal
-        // shortcut turns it into scrolling; a direction exception or one of
-        // our own windows leaves it as zoom too.
-        let controlRedirects = directionApplies
-            && direction.horizontalModifier == .control
-            && event.flags.intersection([.maskShift, .maskAlternate, .maskControl, .maskCommand]) == .maskControl
+        let horizontalModifier = directionApplies ? direction.horizontalModifier : nil
+        // Modifier-held speed: the speed key's flag comes off the event, so
+        // the app sees a plain, farther wheel.
+        let speed = ScrollSpeedPreferences(defaults: defaults)
+        let speedKey = speed.matchingModifier(for: event, horizontalModifier: horizontalModifier,
+            isExcepted: targets.excludes(.scrollSpeed, event.location, sourceProcessID),
+            targetsOwnWindow: targets.isOwnWindow(event.location))
+        let speedMultiplier = speedKey == nil ? 1 : speed.multiplier
+        if let speedKey { event.flags.remove(speedKey.flag) }
+        // Control-wheel is native zoom. A Control speed claim already consumed
+        // its flag. Otherwise only a real Control-to-horizontal tick can take
+        // priority over native zoom; a direction exception or one of our own
+        // windows leaves it as zoom too.
+        let controlRedirects = horizontalModifier == .control
+            && ScrollHorizontalModifier.control.isHeldAlone(in: event.flags)
             && ScrollWheelSupport.isVerticalOnly(event)
             && !targets.isOwnWindow(event.location)
         let nativeZoom = event.flags.contains(.maskControl) && !controlRedirects
-        if let linesPerNotch = nativeZoom ? nil : ScrollWheelSupport.linearLinesPerNotch(
+        let linesPerNotch = nativeZoom ? nil : ScrollWheelSupport.linearLinesPerNotch(
             defaults: defaults,
             isAvailable: AppFeature.linearScroll.isAvailable(in: defaults),
-            isExcepted: { targets.excludes(.linearScroll, event.location, sourceProcessID) }) {
+            isExcepted: { targets.excludes(.linearScroll, event.location, sourceProcessID) })
+        if let linesPerNotch {
             // Capture both axes before any set: writing a line delta makes the
             // system rederive its point and fixed-point fields.
-            let rawVertical = ScrollWheelAxisDelta(
-                line: event.getIntegerValueField(.scrollWheelEventDeltaAxis1),
-                point: event.getIntegerValueField(.scrollWheelEventPointDeltaAxis1),
-                fixedPoint: event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1))
-            let rawHorizontal = ScrollWheelAxisDelta(
-                line: event.getIntegerValueField(.scrollWheelEventDeltaAxis2),
-                point: event.getIntegerValueField(.scrollWheelEventPointDeltaAxis2),
-                fixedPoint: event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2))
+            let rawVertical = ScrollWheelAxisDelta(event, axis: .vertical)
+            let rawHorizontal = ScrollWheelAxisDelta(event, axis: .horizontal)
             let linearVertical = ScrollWheelSupport.linearDelta(
                 rawVertical, isContinuous: traits.isContinuous,
-                linesPerNotch: linesPerNotch, carry: state.linearCarryVertical)
+                linesPerNotch: linesPerNotch, speedMultiplier: speedMultiplier, carry: state.linearCarryVertical)
             let linearHorizontal = ScrollWheelSupport.linearDelta(
                 rawHorizontal, isContinuous: traits.isContinuous,
-                linesPerNotch: linesPerNotch, carry: state.linearCarryHorizontal)
+                linesPerNotch: linesPerNotch, speedMultiplier: speedMultiplier, carry: state.linearCarryHorizontal)
             state.linearCarryVertical = linearVertical.carry
             state.linearCarryHorizontal = linearHorizontal.carry
             // A fraction of a notch is carried into the next event rather
@@ -384,12 +402,16 @@ package final class ScrollInverter: ObservableObject {
         // The direction features read their own availability here: linear
         // scrolling may be what keeps this tap alive, so the tap running says
         // nothing about whether the wheel should be turned or redirected.
-        if directionApplies {
+        // Linear scrolling already scaled the distance before rounding. A
+        // plain wheel is scaled together with its direction, preserving both
+        // precise fields through the line writes.
+        let rawMultiplier = linesPerNotch == nil ? speedMultiplier : 1
+        if directionApplies || rawMultiplier != 1 {
             ScrollWheelSupport.applyDirection(
                 to: event, isContinuous: traits.isContinuous,
-                invertVertical: direction.invertVertical,
-                invertHorizontal: direction.invertHorizontal,
-                horizontalModifier: direction.horizontalModifier,
+                invertVertical: directionApplies && direction.invertVertical,
+                invertHorizontal: directionApplies && direction.invertHorizontal,
+                horizontalModifier: horizontalModifier, speedMultiplier: rawMultiplier,
                 targetsOwnWindow: targets.isOwnWindow(event.location)
             )
         }

@@ -19,6 +19,7 @@ enum TestGroups {
         "pointer-input",
         "scroll-modifier",
         "linear-scroll",
+        "scroll-speed",
         "preferences",
         "app-management",
         "window-layout",
@@ -102,6 +103,7 @@ enum TestGroups {
             }),
             ("scroll-modifier", { ScrollHorizontalModifierTests.run(suite) }),
             ("linear-scroll", { LinearScrollTapTests.run(suite) }),
+            ("scroll-speed", { ScrollSpeedTests.run(suite) }),
             ("preferences", { PreferencesFeatureTests.run(suite); PreferenceTests.run(suite) }),
             ("app-management", {
                 AppManagementFeatureTests.run(suite)
