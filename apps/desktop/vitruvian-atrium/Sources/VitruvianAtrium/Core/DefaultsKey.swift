@@ -659,6 +659,7 @@ package enum DefaultsKey {
     package static let panelUtilityCameraPreview = "panelUtilityCameraPreview"
     package static let panelUtilityScratchpad = "panelUtilityScratchpad"
     package static let clipboardHistoryShortcutEnabled = "clipboardHistoryShortcutEnabled"
+    package static let clipboardHistoryShowSourceAppIcons = "clipboardHistoryShowSourceAppIcons" // source app icons beside list entries
     package static let clipboardHistoryShortcut = "clipboardHistoryShortcut"
     // Mode chooser visibility for dedicated capture shortcuts.
     package static let screenshotShowCaptureMenuOnShortcut = "screenshotShowCaptureMenuOnShortcut"

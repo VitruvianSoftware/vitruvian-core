@@ -890,6 +890,7 @@ package enum Defaults {
         DefaultsKey.panelUtilityCameraPreview: Preferences.panelUtilityCameraPreview.defaultValue,
         DefaultsKey.panelUtilityScratchpad: Preferences.panelUtilityScratchpad.defaultValue,
         DefaultsKey.clipboardHistoryShortcutEnabled: Preferences.clipboardHistoryShortcutEnabled.defaultValue,
+        DefaultsKey.clipboardHistoryShowSourceAppIcons: Preferences.clipboardHistoryShowSourceAppIcons.defaultValue,
         DefaultsKey.clipboardHistoryShortcut: Preferences.clipboardHistoryShortcut.defaultValue,
         DefaultsKey.recorderShortcutEnabled: Preferences.recorderShortcutEnabled.defaultValue,
         DefaultsKey.recorderShortcut: Preferences.recorderShortcut.defaultValue,

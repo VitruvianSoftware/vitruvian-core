@@ -383,6 +383,7 @@ package enum Preferences {
     package static let panelUtilityCameraPreview = Preference(DefaultsKey.panelUtilityCameraPreview, default: true)
     package static let panelUtilityScratchpad = Preference(DefaultsKey.panelUtilityScratchpad, default: true)
     package static let clipboardHistoryShortcutEnabled = Preference(DefaultsKey.clipboardHistoryShortcutEnabled, default: true)
+    package static let clipboardHistoryShowSourceAppIcons = Preference(DefaultsKey.clipboardHistoryShowSourceAppIcons, default: false)
     package static let recorderShortcutEnabled = Preference(DefaultsKey.recorderShortcutEnabled, default: false)
     package static let recorderSystemAudio = Preference(DefaultsKey.recorderSystemAudio, default: true)
     package static let recorderMicrophone = Preference(DefaultsKey.recorderMicrophone, default: false)
