@@ -4609,11 +4609,11 @@ pub const MUTATIONS: &[Mutation] = &[
         name: "a silent callback keeps the last audible gain",
         group: "mixer",
         relative: "Sources/VitruvianAtrium/Services/Audio/MixerRender.swift",
-        before: "        func reset() {
+        before: "        package func reset() {
             value = nil
         }
 ",
-        after: "        func reset() {}
+        after: "        package func reset() {}
 ",
         diagnostic: "muting during a missing tap keeps resumed audio silent",
     },

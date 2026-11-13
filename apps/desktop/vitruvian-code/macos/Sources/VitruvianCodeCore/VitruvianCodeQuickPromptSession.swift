@@ -1136,9 +1136,11 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                     case .text(let delta):
                         drained.printed += delta
                         self.replace(reply: drained.printed, isError: false)
+                    case .connectionFailed(let failure):
+                        drained.error = failure.message
                     case .finished(_, let response, let error, _, _):
                         drained.response = response
-                        drained.error = error
+                        drained.error = error ?? drained.error
                     default:
                         break
                     }
@@ -1201,10 +1203,11 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                 }
             } catch {
                 await turnConnection.stop()
-                _ = await drain.value
+                let drained = await drain.value
                 guard current == self.turn else { return }
                 self.launchDidFail(
                     error: error,
+                    drained: drained,
                     isCustomCommand: isCustomCommand,
                     fullPromptForFailure: fullPromptForFailure
                 )
@@ -1221,6 +1224,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
 
     private func launchDidFail(
         error: any Error,
+        drained: DrainedTurn? = nil,
         isCustomCommand: Bool,
         fullPromptForFailure: String?
     ) {
@@ -1231,10 +1235,28 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         }
         elapsedTimer?.invalidate()
         elapsedTimer = nil
-        let reason = isCustomCommand ? error.localizedDescription : strings.agentFailed
-        replace(reply: reason, isError: true)
-        if isCustomCommand, let fullPromptForFailure {
-            lastFailedPrompt = fullPromptForFailure
+        let reason: String
+        if isCustomCommand {
+            reason = drained?.error
+                ?? (error as? LocalizedError)?.errorDescription
+                ?? error.localizedDescription
+            replace(reply: reason, isError: true)
+            if let fullPromptForFailure {
+                lastFailedPrompt = fullPromptForFailure
+            }
+        } else if reportedError {
+            // The connection already emitted `.connectionFailed(failure)` with its
+            // original `failure.message` in a bubble of its own; remove the empty
+            // placeholder reply rather than appending a generic second error bubble.
+            if currentReplyText.isEmpty {
+                removeReply()
+            }
+            reason = reportedErrorText ?? strings.agentFailed
+            lastFailedPrompt = messages.last(where: { $0.role == .user })?.text
+        } else {
+            reason = strings.agentFailed
+            replace(reply: reason, isError: true)
+            lastFailedPrompt = messages.last(where: { $0.role == .user })?.text
         }
         replyID = nil
         // A turn that could not start is a failed turn to the host, in
@@ -1504,11 +1526,36 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                 messages[idx].toolCalls = currentToolCalls
                 messages[idx].stopReason = status
             }
-            if let error {
+            if let error, !reportedError {
                 reportedError = true
                 reportedErrorText = error
                 messages.append(VitruvianCodeChatMessage(role: .agent, text: error, isError: true, createdAt: Date()))
             }
+        case .connectionFailed(let failure):
+            finishThinkingIfNeeded()
+            activity = nil
+            turnInputClosed = true
+            awaitingAnswers = []
+            for index in messages.indices where messages[index].approvalRequest?.status == .pending {
+                messages[index].approvalRequest?.status = .denied
+            }
+            refreshPendingApproval()
+            if !reportedError {
+                reportedError = true
+                reportedErrorText = failure.message
+                messages.append(
+                    VitruvianCodeChatMessage(role: .agent, text: failure.message, isError: true, createdAt: Date())
+                )
+            }
+        case .planReplaced,
+             .subagent,
+             .question,
+             .configOptions,
+             .compaction,
+             .notice,
+             .sessionInfo,
+             .usageLimit:
+            break
         }
     }
 

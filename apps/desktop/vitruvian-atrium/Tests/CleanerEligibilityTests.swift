@@ -270,10 +270,10 @@ enum CleanerEligibilityTests {
                     try manager.createDirectory(at: folder, withIntermediateDirectories: true)
                     try Data(repeating: 1, count: 4096).write(to: folder.appendingPathComponent("data"))
                 }
-                var leftovers: [Item] = []
+                var scanned: [Item] = []
                 JunkCleaner.appendLeftovers(in: dir.path, usesContainerMetadata: false,
-                                            installed: [], places: places, fm: manager, into: &leftovers)
-                let claimed = Set(leftovers.map { $0.url.standardizedFileURL.path })
+                                            installed: [], places: places, fm: manager, into: &scanned)
+                let claimed = Set(scanned.map { $0.url.standardizedFileURL.path })
                 let found = category == .caches ? JunkCleaner.scanCaches(excluding: claimed, places: places)
                     : JunkCleaner.scanLogs(excluding: claimed, places: places)
                 suite.expect(found.isEmpty,
