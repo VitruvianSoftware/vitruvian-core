@@ -93,6 +93,22 @@ func TestClientSpecsGemini(t *testing.T) {
 	}
 }
 
+func TestGeminiCallbackPathIsPinned(t *testing.T) {
+	bad := []string{
+		"https://oauth-redirect.googleusercontent.com/",                                      // no path
+		"https://oauth-redirect.googleusercontent.com/r/",                                    // another redirector entry
+		"https://oauth-redirect.googleusercontent.com/r/someone-elses-app",                   // another Google client
+		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-",              // prefix only, no id
+		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x/../evil",     // path traversal
+		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x%2F..%2Fevil", // encoded traversal
+	}
+	for _, raw := range bad {
+		if _, err := clientSpecs("", raw); err == nil {
+			t.Errorf("%q: want refusal, got none", raw)
+		}
+	}
+}
+
 func TestParseRedirectURIsRefusesWrongTargets(t *testing.T) {
 	bad := []string{
 		"http://chatgpt.com/connector/oauth/x",        // not https
@@ -101,13 +117,16 @@ func TestParseRedirectURIsRefusesWrongTargets(t *testing.T) {
 		"https://chatgpt.com/connector/oauth/x?y=1",   // query
 		"https://chatgpt.com/connector/oauth/x#frag",  // fragment
 		"not a url at all",
+		"https://chatgpt.com/",                       // right host, wrong path
+		"https://chatgpt.com/share/abc",              // right host, wrong path
+		"https://user@chatgpt.com/connector/oauth/x", // userinfo
 	}
 	for _, raw := range bad {
-		if _, err := parseRedirectURIs(raw, "chatgpt.com"); err == nil {
+		if _, err := parseRedirectURIs(raw, chatgptCallbackHost, chatgptCallbackPathPrefix); err == nil {
 			t.Errorf("%q: want refusal, got none", raw)
 		}
 	}
-	if got, err := parseRedirectURIs(" , ", "chatgpt.com"); err != nil || len(got) != 0 {
+	if got, err := parseRedirectURIs(" , ", chatgptCallbackHost, chatgptCallbackPathPrefix); err != nil || len(got) != 0 {
 		t.Errorf("separators only: want empty and no error, got %v %v", got, err)
 	}
 }

@@ -113,7 +113,9 @@ jobs:
 
           # Report what is live. Refresh first so ignored fields show Zitadel's
           # current values, not the last ones Pulumi wrote. Nothing printed here
-          # is secret: every client is public (no client secret exists).
+          # is secret: client ids are not credentials, and geminiClientSecret
+          # (the one confidential client's secret) is never printed. Read it
+          # locally with the :stack target (see the stack's README).
           "$retry" pulumi refresh --yes
           for o in projectId projectRoleCheck scopes connectorClientId claudeClientId; do
             v="$(pulumi stack output "$o")"
@@ -123,14 +125,17 @@ jobs:
             fi
             printf '%-26s %s\n' "$o" "$v"
           done
-          if pulumi stack output chatgptClientId >/dev/null 2>&1; then
-            printf '%-26s %s\n' chatgptClientId "$(pulumi stack output chatgptClientId)"
-          fi
+          for c in chatgpt gemini; do
+            if pulumi stack output "${c}ClientId" >/dev/null 2>&1; then
+              printf '%-26s %s\n' "${c}ClientId" "$(pulumi stack output "${c}ClientId")"
+            fi
+          done
           # The relay validates JWTs locally; an opaque token on any client would
           # fail every request while the stack reports clean.
-          for c in connector claude chatgpt; do
+          for c in connector claude chatgpt gemini; do
             att="$(pulumi stack output "${c}AccessTokenType" 2>/dev/null || true)"
-            [ -z "$att" ] && [ "$c" = chatgpt ] && continue
+            # chatgpt and gemini exist only when their callbacks are configured.
+            [ -z "$att" ] && { [ "$c" = chatgpt ] || [ "$c" = gemini ]; } && continue
             if [ "$att" != "OIDC_TOKEN_TYPE_JWT" ]; then
               echo "::error::${c} access token type is '${att}', not OIDC_TOKEN_TYPE_JWT" >&2
               exit 1

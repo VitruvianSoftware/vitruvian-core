@@ -73,9 +73,17 @@ const cfgNamespace = "zitadel-apps-relay"
 // manually registered client (claude.com/docs/connectors/building/authentication).
 const claudeCallback = "https://claude.ai/api/mcp/auth_callback"
 
-// geminiCallbackHost is where the Gemini app's custom connectors receive the
-// authorization code (https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-...).
-const geminiCallbackHost = "oauth-redirect.googleusercontent.com"
+// Where each app may receive the authorization code. Host AND path prefix are
+// pinned: the host alone would accept any path on a shared Google redirector.
+const (
+	chatgptCallbackHost = "chatgpt.com"
+	// Covers both https://chatgpt.com/connector/oauth/{id} and
+	// https://chatgpt.com/connector_platform_oauth_redirect.
+	chatgptCallbackPathPrefix = "/connector"
+	geminiCallbackHost        = "oauth-redirect.googleusercontent.com"
+	// The Gemini app's custom connectors: /r/user_bound_custom-mcp-<id>.
+	geminiCallbackPathPrefix = "/r/user_bound_custom-mcp-"
+)
 
 // clientSpec is everything about one OIDC client that this stack decides.
 // Built by pure functions so the decisions are unit-tested; main only turns
@@ -115,7 +123,7 @@ func clientSpecs(chatgptRaw, geminiRaw string) ([]clientSpec, error) {
 			AuthMethod:   authNone,
 		},
 	}
-	chatgpt, err := parseRedirectURIs(chatgptRaw, "chatgpt.com")
+	chatgpt, err := parseRedirectURIs(chatgptRaw, chatgptCallbackHost, chatgptCallbackPathPrefix)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +136,7 @@ func clientSpecs(chatgptRaw, geminiRaw string) ([]clientSpec, error) {
 			AuthMethod:   authNone,
 		})
 	}
-	gemini, err := parseRedirectURIs(geminiRaw, geminiCallbackHost)
+	gemini, err := parseRedirectURIs(geminiRaw, geminiCallbackHost, geminiCallbackPathPrefix)
 	if err != nil {
 		return nil, err
 	}
@@ -145,9 +153,10 @@ func clientSpecs(chatgptRaw, geminiRaw string) ([]clientSpec, error) {
 }
 
 // parseRedirectURIs splits a comma-separated list and refuses anything that is
-// not an exact https URL on wantHost. A redirect URI on the wrong host would
-// hand an authorization code to someone else, so a typo is an apply error.
-func parseRedirectURIs(raw, wantHost string) ([]string, error) {
+// not an exact https URL on wantHost whose path starts with wantPathPrefix and
+// goes on past it. A redirect URI on the wrong host or path would hand an
+// authorization code to someone else, so a typo is an apply error.
+func parseRedirectURIs(raw, wantHost, wantPathPrefix string) ([]string, error) {
 	var out []string
 	for _, part := range strings.Split(raw, ",") {
 		s := strings.TrimSpace(part)
@@ -155,8 +164,9 @@ func parseRedirectURIs(raw, wantHost string) ([]string, error) {
 			continue
 		}
 		u, err := url.Parse(s)
-		if err != nil || u.Scheme != "https" || u.Host != wantHost || u.RawQuery != "" || u.Fragment != "" {
-			return nil, fmt.Errorf("%s: redirect URI %q must be an https URL on %s with no query or fragment", cfgNamespace, s, wantHost)
+		if err != nil || u.Scheme != "https" || u.Host != wantHost || u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
+			!strings.HasPrefix(u.Path, wantPathPrefix) || len(u.Path) == len(wantPathPrefix) || u.RawPath != "" || strings.Contains(u.Path, "/..") {
+			return nil, fmt.Errorf("%s: redirect URI %q must be an https URL on %s under %s, with no query or fragment", cfgNamespace, s, wantHost, wantPathPrefix)
 		}
 		out = append(out, s)
 	}
