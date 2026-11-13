@@ -86,6 +86,7 @@ enum TestGroups {
             ("clipboard", {
                 ClipboardFeatureTests.run(suite)
                 URLCleanerTests.run(suite)
+                URLCleanerMetadataTests.run(suite)
                 PastePlainTests.run(suite)
                 TransientPasteTests.run(suite)
                 ClipboardSensitiveTextPreferenceTests.run(suite)

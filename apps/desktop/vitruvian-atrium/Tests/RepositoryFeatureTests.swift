@@ -593,6 +593,9 @@ enum RepositoryFeatureTests {
             "org.chromium.web-custom-data", "com.apple.WebKit.custom-pasteboard-data",
             "dyn.ah62d4rv4gu8y6y4grf0gn5xbrzw1gydcr7u1e3cytf2gn",
         ]), "a browser's or a messaging app's private notes about the copy do not block the rewrite")
+        suite.expect(URLCleaning.canRewritePasteboard(types: [
+            "public.utf8-plain-text", "public.url", "com.apple.linkpresentation.metadata",
+        ]), "Safari's rich-link metadata can be rewritten with the link")
         suite.expect(!URLCleaning.canRewritePasteboard(types: [
             "public.utf8-plain-text", "public.url", "public.tiff", "public.png",
         ]), "a copied picture with its source link as text is left alone")

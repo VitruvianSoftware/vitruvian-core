@@ -418,6 +418,21 @@ package enum URLCleaning {
 
     // MARK: - Automatic rewrite
 
+    /// A link as an address to compare. Browsers write the address they
+    /// resolved, percent-encoded and with a slash for an empty path. Only the
+    /// scheme and host ignore case: paths and query values can identify
+    /// different resources when their case differs.
+    package static func address(_ string: String) -> String {
+        guard let url = URL(string: string),
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return string
+        }
+        components.scheme = components.scheme?.lowercased()
+        components.host = components.host?.lowercased()
+        if components.path.isEmpty { components.path = "/" }
+        return components.string ?? string
+    }
+
     /// Whether a copy's HTML adds nothing to the link `text` but formatting,
     /// so a rewrite that drops it loses nothing. When every anchor leads to
     /// this link, whatever the copy shows, such as the page title, goes like
@@ -428,20 +443,6 @@ package enum URLCleaning {
         // A copy of one link is a few hundred bytes. Far larger markup is
         // left alone rather than searched on the shared pasteboard queue.
         guard rawHTML.utf8.count <= 64 * 1024 else { return false }
-        // Browsers write the address they resolved, percent-encoded and
-        // with a slash for an empty path, so links compare as addresses.
-        // Only the scheme and host ignore case. Paths and query values
-        // can identify different resources when their case differs.
-        func address(_ string: String) -> String {
-            guard let url = URL(string: string),
-                  var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
-                return string
-            }
-            components.scheme = components.scheme?.lowercased()
-            components.host = components.host?.lowercased()
-            if components.path.isEmpty { components.path = "/" }
-            return components.string ?? string
-        }
         let link = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let linkAddress = address(link)
         // Head, style, script and title are never shown, and a head links
@@ -473,10 +474,10 @@ package enum URLCleaning {
     }
 
     /// Whether the clipboard can be rewritten with a cleaned link without
-    /// losing anything the user copied. The rewrite keeps only the text and
-    /// the URL, so it is allowed when every type on the pasteboard is text, a
-    /// link, or an app's private note about the copy, and refused when the
-    /// pasteboard also carries content of its own: a picture, a file or a
+    /// losing anything the user copied. The rewrite keeps the text, the URL
+    /// and a supported link preview. Other types must be text, a link, or an
+    /// app's private note about the copy. Refuse a pasteboard that also carries
+    /// content of its own: a picture, a file or a
     /// promise to deliver one, a document. A link next to such content is only
     /// its textual fallback (a browser's "Copy Image" also carries the image
     /// URL as text). A copy an app marked concealed or transient is not an
@@ -508,6 +509,9 @@ package enum URLCleaning {
 
     private static func typeSurvivesRewrite(_ rawValue: String) -> Bool {
         if plainPasteboardTypes.contains(rawValue) { return true }
+        // Safari's preview is declared data, not text or a URL. Its navigation
+        // addresses are rewritten separately before the copy is replaced.
+        if rawValue == "com.apple.linkpresentation.metadata" { return true }
         if untouchablePasteboardTypes.contains(rawValue) || filePasteboardTypes.contains(rawValue) {
             return false
         }
