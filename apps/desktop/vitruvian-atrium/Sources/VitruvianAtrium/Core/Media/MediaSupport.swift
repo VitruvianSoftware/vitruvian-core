@@ -60,6 +60,15 @@ package enum MediaImageFormat: String, CaseIterable, Codable, Identifiable {
 
     package var id: String { rawValue }
 
+    package var contentType: UTType {
+        switch self {
+        case .jpeg: return .jpeg
+        case .heic: return .heic
+        case .png: return .png
+        case .pdf: return .pdf
+        }
+    }
+
     package var fileExtension: String {
         switch self {
         case .jpeg: return "jpg"

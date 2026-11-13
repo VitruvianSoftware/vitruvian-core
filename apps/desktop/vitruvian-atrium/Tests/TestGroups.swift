@@ -157,6 +157,8 @@ enum TestGroups {
                 ScreenshotPreviewHoverTests.run(suite)
                 ScreenshotWatermarkTests.run(suite)
                 ScreenshotFeatureTests.run(suite)
+                ScreenshotImageImportTests.run(suite)
+                ScreenshotImageFileTests.run(suite)
                 ScreenshotShareCompletionTests.run(suite)
                 ScreenshotScrollingCaptureTests.run(suite)
                 ScreenCaptureToolPickerTests.run(suite)

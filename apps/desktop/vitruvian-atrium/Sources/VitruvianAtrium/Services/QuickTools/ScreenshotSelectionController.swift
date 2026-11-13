@@ -25,12 +25,15 @@ package final class ScreenshotSelectionController {
         package let scale: CGFloat
         /// The captured area in Cocoa global coordinates.
         package let anchorRect: CGRect
+        /// The format it came in, which the editor's file outputs keep.
+        package var sourceFormat: MediaImageFormat = .png
 
         // Spelled out because a memberwise initializer never leaves its module.
-        package init(image: CGImage, scale: CGFloat, anchorRect: CGRect) {
+        package init(image: CGImage, scale: CGFloat, anchorRect: CGRect, sourceFormat: MediaImageFormat = .png) {
             self.image = image
             self.scale = scale
             self.anchorRect = anchorRect
+            self.sourceFormat = sourceFormat
         }
     }
 
