@@ -109,7 +109,7 @@ package final class MicMuteService: ObservableObject {
     /// the mute and returns. Handing a closure back to be removed never
     /// matches the one that was registered, so the plain callback is what
     /// makes stopping work.
-    private static let listenerCallback: AudioObjectPropertyListenerProc = { _, _, _, client in
+    nonisolated private static let listenerCallback: AudioObjectPropertyListenerProc = { _, _, _, client in
         guard let client else { return noErr }
         let service = Unmanaged<MicMuteService>.fromOpaque(client).takeUnretainedValue()
         service.environment.main { service.reapplyIfNeeded() }
@@ -902,7 +902,7 @@ package final class MicMuteService: ObservableObject {
     /// The controls an app can move to raise gain again while we are muted.
     /// The virtual main volume is a master-only control; mute and per-channel
     /// volume are watched on every input element we write.
-    private static let watchedDeviceSelectors: [AudioObjectPropertySelector] = [
+    nonisolated private static let watchedDeviceSelectors: [AudioObjectPropertySelector] = [
         kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
         kAudioDevicePropertyMute,
         kAudioDevicePropertyVolumeScalar,
