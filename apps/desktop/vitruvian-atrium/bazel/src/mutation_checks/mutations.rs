@@ -368,9 +368,9 @@ pub const MUTATIONS: &[Mutation] = &[
         name: "levels return to a fixed wing with empty black at the end",
         group: "notch",
         relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
-        before: "let wing = ceil(NotchNoticeLayout.levelInset + NotchNoticeLayout.symbolWidth + NotchNoticeLayout.spacing + leading)",
+        before: "let wing = ceil(NotchNoticeLayout.levelInset + NotchNoticeLayout.symbolWidth + NotchNoticeLayout.spacing + max(leading, measured(\"100%\")))",
         after: "let wing: CGFloat = 80",
-        diagnostic: "a level's wings fit its mark and reading, with no empty black at the end",
+        diagnostic: "a level's wings fit its mark and widest reading, with no empty black at the end",
     },
     Mutation {
         name: "a banner's short side takes its longer side's width",
