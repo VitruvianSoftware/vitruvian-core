@@ -60,7 +60,12 @@ package struct UninstallerView: View {
     @ViewBuilder
     private var content: some View {
         switch uninstaller.phase {
-        case .empty: emptyState
+        case .empty:
+            GeometryReader { viewport in
+                ScrollView {
+                    emptyState.frame(maxWidth: .infinity, minHeight: viewport.size.height)
+                }
+            }
         case .scanning: busyState(l10n.s.uninstallerScanning)
         case .results: resultsState
         case .removing: busyState(l10n.s.uninstallerRemoving)
