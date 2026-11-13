@@ -1122,6 +1122,26 @@ public class JsonReader(private val text: String) {
  * lives in one place rather than being spelled out at each end. Returned as a plain lower-case key
  * rather than a `Screen`: this file is deliberately free of the Compose-side model.
  */
+/**
+ * Module ids a rename retired, and the id each one became.
+ *
+ * The phone saves module ids (the installed list, hidden widgets) and old notifications carry them
+ * in links. A rename that only changes the code leaves every phone that updates with an id nothing
+ * knows: HomeSpeaker's module vanished from the dashboard when it became Vitruvian Speaker. So the
+ * old id is kept here and mapped forward wherever a saved or linked id is read.
+ */
+public object RenamedModules {
+  /** Old id to new id. Never remove an entry: a phone may update from any older version. */
+  public val ids: Map<String, String> = mapOf("homespeaker" to "speaker")
+
+  /** The id [id] goes by now: itself unless a rename retired it. */
+  public fun current(id: String): String = ids[id] ?: id
+
+  /** [saved] with every retired id replaced by its new one, or null when nothing changes. */
+  public fun migrate(saved: Set<String>): Set<String>? =
+      saved.map(::current).toSet().takeIf { it != saved }
+}
+
 public object DeepLink {
   public const val SCHEME: String = "vitruvian-remote"
 
@@ -1171,7 +1191,9 @@ public object DeepLink {
             .split('/')
             .getOrNull(1)
             .orEmpty()
-    return module.takeIf { it.isNotEmpty() && it.all { c -> c.isLetterOrDigit() || c == '-' } }
+    return module
+        .takeIf { it.isNotEmpty() && it.all { c -> c.isLetterOrDigit() || c == '-' } }
+        ?.let(RenamedModules::current)
   }
 
   /** The link that opens [screen]. */

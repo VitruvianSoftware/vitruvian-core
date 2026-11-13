@@ -50,6 +50,13 @@ private const val KEY_SPEAKER_SETTINGS_EXPANDED = "vitruvianSpeakerSettingsExpan
 private const val KEY_SPEAKER_MIRROR = "vitruvianSpeakerMirror"
 private const val KEY_ASKED_NOTIFICATIONS = "askedForNotifications"
 
+/** Keys the HomeSpeaker to Vitruvian Speaker rename retired, and the key each one became. */
+private val RENAMED_BOOLEAN_KEYS: Map<String, String> =
+    mapOf(
+        "homeSpeakerSettingsExpanded" to KEY_SPEAKER_SETTINGS_EXPANDED,
+        "homeSpeakerMirror" to KEY_SPEAKER_MIRROR,
+    )
+
 /** How many console commands are remembered. Beyond this the oldest fall off. */
 private const val RECENT_COMMAND_LIMIT = 20
 
@@ -73,7 +80,31 @@ public class Persistence(context: Context) {
 
   init {
     migrateSingleHost()
+    migrateRenamedModules()
     seedPullRequestsModule()
+  }
+
+  /**
+   * Moves what a phone saved under a renamed module to its new name, so updating keeps it.
+   *
+   * Runs every start and does nothing once moved: the old ids and keys are gone by then. A value
+   * already saved under the new key wins, since it can only have been set after the update.
+   */
+  private fun migrateRenamedModules() {
+    val edit = prefs.edit()
+    var changed = false
+    for (key in listOf(KEY_INSTALLED, KEY_HIDDEN)) {
+      val moved = prefs.getStringSet(key, null)?.let(RenamedModules::migrate) ?: continue
+      edit.putStringSet(key, moved)
+      changed = true
+    }
+    for ((old, new) in RENAMED_BOOLEAN_KEYS) {
+      if (!prefs.contains(old)) continue
+      if (!prefs.contains(new)) edit.putBoolean(new, prefs.getBoolean(old, false))
+      edit.remove(old)
+      changed = true
+    }
+    if (changed) edit.apply()
   }
 
   /**
