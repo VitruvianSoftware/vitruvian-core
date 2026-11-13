@@ -35,6 +35,12 @@ metadata:
     app: ntfy
 spec:
   replicas: 1
+  # Stop the old pod before starting the new one. ntfy keeps its message
+  # cache and its users (auth.db) in SQLite files on one RWO volume. The
+  # default RollingUpdate would start the new version, and run its schema
+  # migrations, while the old one still has those files open.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: ntfy
@@ -52,7 +58,13 @@ spec:
           type: RuntimeDefault
       containers:
         - name: ntfy
-          image: binwiederhier/ntfy:v2.26.3
+          # Pinned by digest (checked on Docker Hub 2026-11-12). Going back to
+          # an older ntfy after this is NOT a plain image revert: v2.31.1
+          # moved the message cache schema 16 -> 17, and older versions need
+          # `UPDATE schemaVersion SET version = 16 WHERE id = 1` in cache.db
+          # first (ntfy release notes). The cache only holds 12h of messages,
+          # so deleting cache.db is the simpler way back.
+          image: binwiederhier/ntfy:v2.37.2@sha256:1875ddcf815c8a3c981d6d78c67a93452d0abba79b1ab9520b1f5f5238902bd7
           args: ["serve", "--config", "/etc/ntfy/server.yml"]
           ports:
             - name: http
