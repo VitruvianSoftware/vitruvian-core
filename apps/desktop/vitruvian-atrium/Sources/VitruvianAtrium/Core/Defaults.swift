@@ -400,6 +400,8 @@ package enum Defaults {
         DefaultsKey.brightnessControlEnabled: Preferences.brightnessControlEnabled.defaultValue,
         DefaultsKey.brightnessKeysEnabled: Preferences.brightnessKeysEnabled.defaultValue,
         DefaultsKey.brightnessOSDEnabled: Preferences.brightnessOSDEnabled.defaultValue,
+        DefaultsKey.displayVolumeEnabled: Preferences.displayVolumeEnabled.defaultValue,
+        DefaultsKey.displayVolumeKeysEnabled: Preferences.displayVolumeKeysEnabled.defaultValue,
         DefaultsKey.brightnessKeyStep: Preferences.brightnessKeyStep.defaultValue,
         DefaultsKey.displayBrightnessShortcutsEnabled: Preferences.displayBrightnessShortcutsEnabled.defaultValue,
         DefaultsKey.displayBrightnessDecreaseShortcut: Preferences.displayBrightnessDecreaseShortcut.defaultValue,

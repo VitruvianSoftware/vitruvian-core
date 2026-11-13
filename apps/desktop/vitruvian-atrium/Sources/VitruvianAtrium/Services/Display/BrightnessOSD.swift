@@ -6,7 +6,7 @@ import SwiftUI
 import VitruvianAtriumCore
 import VitruvianAtriumDesign
 
-/// A brief percentage overlay for every brightness route. The disabled
+/// A brief percentage overlay for brightness and monitor speaker presses. The disabled
 /// feature owns no window, observer or timer.
 ///
 /// Main actor: `show`, `teardown` and `dismiss` take any thread and hop to
@@ -18,18 +18,20 @@ package enum BrightnessOSD {
     private static var dismissWork: DispatchWorkItem?
     private static var generation = 0
 
-    nonisolated package static func show(displayID: CGDirectDisplayID, brightness: Double) {
+    /// Volume presses skip the island's brightness face, which is for brightness only.
+    nonisolated package static func show(displayID: CGDirectDisplayID, level: Double,
+                                         kind: BrightnessOSDView.Kind = .brightness) {
         guard Thread.isMainThread else {
             DispatchQueue.main.async {
-                show(displayID: displayID, brightness: brightness)
+                show(displayID: displayID, level: level, kind: kind)
             }
             return
         }
-        MainActor.assumeIsolated { showOnMain(displayID: displayID, brightness: brightness) }
+        MainActor.assumeIsolated { showOnMain(displayID: displayID, level: level, kind: kind) }
     }
 
-    private static func showOnMain(displayID: CGDirectDisplayID, brightness: Double) {
-        if NotchSupport.routes(.brightness), NotchService.shared.showBrightness(brightness) {
+    private static func showOnMain(displayID: CGDirectDisplayID, level: Double, kind: BrightnessOSDView.Kind) {
+        if kind == .brightness, NotchSupport.routes(.brightness), NotchService.shared.showBrightness(level) {
             return
         }
         // A display mirroring another has no screen of its own; the overlay
@@ -47,10 +49,10 @@ package enum BrightnessOSD {
         let panel = ensurePanel()
         let host: NSHostingController<BrightnessOSDView>
         if let existing = Self.host {
-            existing.rootView = BrightnessOSDView(brightness: brightness)
+            existing.rootView = BrightnessOSDView(level: level, kind: kind)
             host = existing
         } else {
-            host = NSHostingController(rootView: BrightnessOSDView(brightness: brightness))
+            host = NSHostingController(rootView: BrightnessOSDView(level: level, kind: kind))
             Self.host = host
             panel.contentViewController = host
         }
@@ -160,19 +162,34 @@ package enum BrightnessOSD {
 /// Kept separate from the transient panel so the mandatory UI preview can
 /// host and inspect the exact shipped surface.
 package struct BrightnessOSDView: View {
-    package let brightness: Double
+    package enum Kind: Equatable, Sendable {
+        case brightness
+        case volume
+        case mutedVolume
+    }
+
+    package let level: Double
+    package var kind: Kind = .brightness
 
     private var percentage: Int {
-        BrightnessSupport.wholePercent(brightness)
+        BrightnessSupport.wholePercent(level)
     }
 
     private var filledSegments: Int {
-        BrightnessSupport.filledBrightnessSegments(brightness)
+        BrightnessSupport.filledBrightnessSegments(level)
+    }
+
+    private var symbol: String {
+        switch kind {
+        case .brightness: "sun.max.fill"
+        case .volume: "speaker.wave.2.fill"
+        case .mutedVolume: "speaker.slash.fill"
+        }
     }
 
     package var body: some View {
         VStack(spacing: 11) {
-            Image(systemName: "sun.max.fill")
+            Image(systemName: symbol)
                 .font(.system(size: 39, weight: .regular))
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(.white.opacity(0.82))

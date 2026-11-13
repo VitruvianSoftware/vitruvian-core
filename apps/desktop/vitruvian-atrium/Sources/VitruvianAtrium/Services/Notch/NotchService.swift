@@ -4357,7 +4357,9 @@ package final class NotchService: ObservableObject {
         }
     }
 
-    package func showCurrentVolume() {
+    /// Shows the output's current level. False when there is no level to show.
+    @discardableResult
+    package func showCurrentVolume() -> Bool {
         volumeFeedback.showCurrentVolume()
     }
 
