@@ -352,6 +352,7 @@ package enum DefaultsKey {
     package static let panelControlRadialMenu = "panelControlRadialMenu"
     package static let panelControlMouseButtonShortcuts = "panelControlMouseButtonShortcuts"
     package static let panelControlMouseAcceleration = "panelControlMouseAcceleration"
+    package static let panelControlSmoothScroll = "panelControlSmoothScroll"
     package static let panelControlLinearScroll = "panelControlLinearScroll"
     package static let panelControlMouseClickDebounce = "panelControlMouseClickDebounce"
     package static let panelControlSpacesOrder = "panelControlSpacesOrder"

@@ -647,6 +647,7 @@ package enum Defaults {
         DefaultsKey.panelControlRadialMenu: Preferences.panelControlRadialMenu.defaultValue,
         DefaultsKey.panelControlMouseButtonShortcuts: Preferences.panelControlMouseButtonShortcuts.defaultValue,
         DefaultsKey.panelControlMouseAcceleration: Preferences.panelControlMouseAcceleration.defaultValue,
+        DefaultsKey.panelControlSmoothScroll: Preferences.panelControlSmoothScroll.defaultValue,
         DefaultsKey.panelControlLinearScroll: Preferences.panelControlLinearScroll.defaultValue,
         DefaultsKey.panelControlMouseClickDebounce: Preferences.panelControlMouseClickDebounce.defaultValue,
         DefaultsKey.panelControlSpacesOrder: Preferences.panelControlSpacesOrder.defaultValue,

@@ -293,6 +293,10 @@ enum SettingsFeatureTests {
                 && backupKeys.contains(DefaultsKey.linearScrollLines)
                 && backupKeys.contains(DefaultsKey.panelControlLinearScroll),
                "linear scrolling preferences travel with the settings backup")
+        suite.expect(Defaults.registeredDefaults[DefaultsKey.panelControlSmoothScroll] as? Bool == true
+                && backupKeys.contains(DefaultsKey.smoothScrollEnabled)
+                && backupKeys.contains(DefaultsKey.panelControlSmoothScroll),
+               "smooth scrolling is visible when installed and its panel visibility travels with settings backups")
         suite.expect(backupKeys.contains(DefaultsKey.spacesOrderEnabled)
                 && backupKeys.contains(DefaultsKey.panelControlSpacesOrder)
                 && !backupKeys.contains(DefaultsKey.spacesOrderRestore)

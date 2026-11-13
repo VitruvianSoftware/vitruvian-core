@@ -250,6 +250,7 @@ package enum Preferences {
     package static let panelControlRadialMenu = Preference(DefaultsKey.panelControlRadialMenu, default: true)
     package static let panelControlMouseButtonShortcuts = Preference(DefaultsKey.panelControlMouseButtonShortcuts, default: true)
     package static let panelControlMouseAcceleration = Preference(DefaultsKey.panelControlMouseAcceleration, default: true)
+    package static let panelControlSmoothScroll = Preference(DefaultsKey.panelControlSmoothScroll, default: true)
     package static let panelControlLinearScroll = Preference(DefaultsKey.panelControlLinearScroll, default: true)
     package static let panelControlMouseClickDebounce = Preference(DefaultsKey.panelControlMouseClickDebounce, default: true)
     package static let panelControlSpacesOrder = Preference(DefaultsKey.panelControlSpacesOrder, default: true)

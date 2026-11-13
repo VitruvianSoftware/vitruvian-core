@@ -13,6 +13,15 @@ import VitruvianAtriumUI
 /// rows are the shipped enums.
 enum MenuPanelSectionGateContract {
     static func run(_ suite: TestSuite) {
+        suite.expect(MenuPanelRowFeatures.controls.contains(.smoothScroll),
+                     "installed smooth scrolling has a menu bar control")
+        suite.expect(PanelSectionID.controls.featureGate.contains(.smoothScroll),
+                     "smooth scrolling alone keeps the Controls tab available")
+        let controlOrder = MenuPanelRowFeatures.controls.map(\.rawValue)
+        let savedOrder = controlOrder.filter { $0 != AppFeature.smoothScroll.rawValue }
+        suite.expect(Defaults.sanitizedPanelItemOrder(savedOrder.joined(separator: ","), defaultOrder: savedOrder
+                         + [AppFeature.smoothScroll.rawValue]) == savedOrder + [AppFeature.smoothScroll.rawValue],
+                     "existing custom control orders gain a new control without losing their order")
         func expectGate(_ section: PanelSectionID, keeps features: [AppFeature], _ rows: String) {
             let missing = features.filter { !section.featureGate.contains($0) }.map(\.rawValue)
             suite.expect(missing.isEmpty,
