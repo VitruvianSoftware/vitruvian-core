@@ -474,14 +474,19 @@ private class ShadeNotifier(
       channel.description = "Your Mac going quiet, and commands that finish in the background."
       manager?.createNotificationChannel(channel)
 
+      // The channel HomeSpeaker announcements used before the rename. Its importance is the
+      // person's choice in Android's settings, so the new channel starts from it; then the old one
+      // goes, or Settings would keep listing "HomeSpeaker" next to the new name.
+      val legacy = manager?.getNotificationChannel(LEGACY_CHANNEL_HOMESPEAKER_ID)
       val vitruvianSpeakerChannel =
           NotificationChannel(
               CHANNEL_SPEAKER_ID,
               CHANNEL_SPEAKER_NAME,
-              NotificationManager.IMPORTANCE_DEFAULT,
+              legacy?.importance ?: NotificationManager.IMPORTANCE_DEFAULT,
           )
       vitruvianSpeakerChannel.description = "Announcements spoken by Vitruvian Speaker on your Mac."
       manager?.createNotificationChannel(vitruvianSpeakerChannel)
+      if (legacy != null) manager.deleteNotificationChannel(LEGACY_CHANNEL_HOMESPEAKER_ID)
     }
   }
 
@@ -630,6 +635,9 @@ private class ShadeNotifier(
     const val CHANNEL_ID = "vitruvian-remote"
     const val CHANNEL_NAME = "Vitruvian Remote"
     const val CHANNEL_SPEAKER_ID = "vitruvian-speaker-announcements"
+
+    /** The announcements channel before the rename; removed when the app starts. */
+    const val LEGACY_CHANNEL_HOMESPEAKER_ID = "vitruvian-homespeaker-announcements"
     const val CHANNEL_SPEAKER_NAME = "Vitruvian Speaker announcements"
   }
 }
