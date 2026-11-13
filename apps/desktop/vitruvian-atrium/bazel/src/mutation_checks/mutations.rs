@@ -4536,8 +4536,8 @@ pub const MUTATIONS: &[Mutation] = &[
         name: "a backup carries app volumes as slider positions",
         group: "mixer",
         relative: "Sources/VitruvianAtrium/Core/SettingsBackupSupport.swift",
-        before: "        settings = exportedAppVolumes(settings)\n",
-        after: "",
+        before: "return exportedAppVolumes(portableThumbnailPauseLists(exceptions))",
+        after: "return portableThumbnailPauseLists(exceptions)",
         diagnostic: "a backup saves app volumes as the gains older versions play, at the same loudness",
     },
     Mutation {
