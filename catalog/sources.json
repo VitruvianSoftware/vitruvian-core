@@ -15,7 +15,7 @@
     "//catalog:release_trigger_test fails when a row released from here has",
     "none, or when catalog-bump's workflow_run list differs from this column.",
     "manual: entries that are only ever changed by hand, and why.",
-    "//catalog:bump_test fails when an entry is in neither list."
+    "//catalog:catalog_test fails when an entry is in neither list, or a row or a manual name is no entry."
   ],
   "sources": [
     {

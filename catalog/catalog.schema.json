@@ -54,6 +54,16 @@
           "maxLength": 128,
           "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)+$"
         },
+        "replaces": {
+          "description": "The ids this tool was listed under before it was renamed. An app that has the tool under one of them offers this entry as its update and moves what it saved to the new id. None may be an id the catalog still lists.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)+$"
+          }
+        },
         "name": {
           "description": "The manifest's name, copied.",
           "$ref": "#/$defs/localizedText"

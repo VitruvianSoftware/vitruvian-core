@@ -331,6 +331,10 @@ pub fn problems(catalog: &Value) -> Res<Vec<String>> {
     }
     let mut seen: Vec<Value> = Vec::new();
     let tools = py::get_or(catalog, "tools", Value::List(vec![]))?;
+    let mut ids: Vec<Value> = Vec::new();
+    for tool in py::iterate(&tools)? {
+        ids.push(py::get_null(&tool, "id")?);
+    }
     for (index, tool) in py::iterate(&tools)?.iter().enumerate() {
         let id = py::get_null(tool, "id")?;
         let place = format!("tools[{}] ({})", index, id.py_str());
@@ -352,6 +356,18 @@ pub fn problems(catalog: &Value) -> Res<Vec<String>> {
         }
         if commands.len() != py::set_len(&commands)? {
             found.push(format!("{}: two commands share an id", place));
+        }
+        // A former id the catalog still lists would be two entries' tool.
+        for former in py::iterate(&py::get_or(tool, "replaces", Value::List(vec![]))?)? {
+            if py::eq(&former, &id) {
+                found.push(format!("{}: replaces its own id", place));
+            } else if ids.iter().any(|other| py::eq(other, &former)) {
+                found.push(format!(
+                    "{}: replaces {}, which the catalog still lists",
+                    place,
+                    former.py_str()
+                ));
+            }
         }
     }
     Ok(found)

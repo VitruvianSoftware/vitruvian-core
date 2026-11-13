@@ -95,7 +95,7 @@ description: >-
     <div class="grid grid-2">
       {%- for tool in tool_catalog.tools -%}
       {%- assign tool_ecosystems = "all vitruvian-atrium" -%}
-      {%- if tool.id == "dev.vitruvian.remote" or tool.id == "dev.vitruvian.tv" or tool.id == "dev.vitruvian.homespeaker" -%}
+      {%- if tool.id == "dev.vitruvian.remote" or tool.id == "dev.vitruvian.tv" or tool.id == "dev.vitruvian.speaker" or tool.id == "dev.vitruvian.homespeaker" -%}
         {%- assign tool_ecosystems = "all vitruvian-atrium vitruvian-remote" -%}
       {%- endif -%}
       <article class="plate plate-live card extension-card" id="{{ tool.id }}" data-extension-card data-ecosystems="{{ tool_ecosystems }}">
