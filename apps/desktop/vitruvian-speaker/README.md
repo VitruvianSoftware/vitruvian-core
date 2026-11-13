@@ -20,11 +20,11 @@ to local Chromecast speakers on your LAN), and needs nothing else installed.
 
 ## How it works at a glance
 
-### 1. Control Surfaces, Mac Agent & Audio Outputs (Including Android Remote)
+### 1. Control Surfaces, Mac Agent & Audio Outputs (Including Vitruvian Remote)
 
 Vitruvian Speaker can be controlled from **five UI surfaces**—two in the standalone
 macOS app, two in the Vitruvian desktop extension, and **from your phone via
-[Vitruvian Remote (`android-remote`)](../../mobile/android-remote/README.md)**—and
+[Vitruvian Remote](../../mobile/vitruvian-remote/README.md)**—and
 can speak across **three independent audio outputs** (Google Home speakers, this
 Mac, and your paired Android phone):
 
@@ -35,7 +35,7 @@ flowchart LR
         S2["macOS Settings Window\n(SettingsView.swift)"]
         S3["Vitruvian Dynamic Island\n(Pages.swift · island)"]
         S4["Vitruvian Extension Settings\n(Pages.swift · settings)"]
-        S5["Android Remote App\n(Apps → Vitruvian Speaker\nRemoteState.kt / AppsScreen.kt)"]
+        S5["Vitruvian Remote App\n(Apps → Vitruvian Speaker\nRemoteState.kt / AppsScreen.kt)"]
     end
 
     subgraph Agent["Mac Agent Bridge"]
@@ -66,14 +66,14 @@ flowchart LR
 ### 2. Progressive-Disclosure Configuration Hierarchy
 
 Across all five surfaces (macOS menu-bar popover, macOS Settings window,
-Vitruvian Dynamic Island, Vitruvian Extension Settings, and **Android Remote**),
+Vitruvian Dynamic Island, Vitruvian Extension Settings, and **Vitruvian Remote**),
 settings follow a single **progressive-disclosure hierarchy**—every dashed
 branch stays hidden until its parent toggle is switched on, and single-select
 lists render as compact dropdown selectors:
 
 ```mermaid
 flowchart TD
-    Surfaces["All 5 Control Surfaces\n(macOS Menu Bar · macOS Settings · Vitruvian Island · Vitruvian Settings · Android Remote)"] --> Master["Broadcasting (enabled)"]
+    Surfaces["All 5 Control Surfaces\n(macOS Menu Bar · macOS Settings · Vitruvian Island · Vitruvian Settings · Vitruvian Remote)"] --> Master["Broadcasting (enabled)"]
     Master -- "OFF" --> Collapsed["Collapsed State: 'Broadcasting is off' + Quick Announce & Recent"]
     Master -- "ON" --> Outputs["Where to Speak (Outputs)"]
     Master -- "ON" --> Sources["What Speaks (Sources)"]
@@ -81,7 +81,7 @@ flowchart TD
 
     Outputs --> SpeakHome["Home speakers (speak_home)"]
     Outputs --> SpeakMac["This Mac (speak_local)"]
-    Outputs --> SpeakPhone["Your phone (speak_phone · Android Remote)"]
+    Outputs --> SpeakPhone["Your phone (speak_phone · Vitruvian Remote)"]
 
     SpeakHome -. "ON" .-> HomeControls["• Speaker Dropdown (1 row, not N rows)\n• Volume & Set Announce Volume\n• Cast Selected Voice (when Gemini TTS)\n• Manage Discovered Speakers (collapsible)"]
     SpeakMac -. "ON" .-> MacControls["• Pause Mac Media (+ Extra Seconds when ON)"]
@@ -155,10 +155,10 @@ Optional, only for the features you turn on:
 
 ## From your phone (Vitruvian Remote on Android)
 
-If you also run [Vitruvian Remote](../../mobile/android-remote/README.md), its
+If you also run [Vitruvian Remote](../../mobile/vitruvian-remote/README.md), its
 **Vitruvian Speaker** module (`Apps → Vitruvian Speaker`) is a first-class remote control
 and audio endpoint for Vitruvian Speaker through the paired Mac agent
-([`macagent/vitruvian-speaker.go`](../../mobile/android-remote/macagent/vitruvian-speaker.go)):
+([`macagent/vitruvian-speaker.go`](../../mobile/vitruvian-remote/macagent/vitruvian-speaker.go)):
 
 - **Full remote configuration with dropdowns & progressive disclosure**: toggle
   master `Broadcasting`, switch outputs (`Home speakers`, `This Mac`, `Your

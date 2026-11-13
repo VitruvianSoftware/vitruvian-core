@@ -55,7 +55,7 @@ const EXEMPT_PREFIXES: &[&str] = &[
     // an imported GPL-3.0-or-later fork, kept with its upstream headers
     "apps/desktop/vitruvian-atrium/",
     // carries code from that fork, so GPL-3.0-or-later too
-    "apps/desktop/vitruvian-tool-github/",
+    "apps/desktop/vitruvian-github/",
     // Vitruvian Code's unmodified vendored Mermaid (another holder's MIT)
     "apps/desktop/vitruvian-code/macos/Sources/VitruvianCodeUI/Resources/",
     // AGPL-3.0-or-later, with SPDX AGPL headers

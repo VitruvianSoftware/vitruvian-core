@@ -119,6 +119,7 @@ fn import_label_cases() {
         ("vitruvian-slack-mcp", "MCP_SLACK_REV_ID"),
         ("vitruvian-devx", "DEVX_REV_ID"),
         ("vitruvian-homelab", "HOMELAB_REV_ID"),
+        ("vitruvian-github", "VITRUVIAN_TOOL_GITHUB_REV_ID"),
         ("vitruvian-remote", "VITRUVIAN_REMOTE_REV_ID"),
     ] {
         assert_eq!(import_label(c.as_bytes()), want.as_bytes());

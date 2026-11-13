@@ -33,11 +33,11 @@
 /apps/cli/vitruvian-devx/ @VitruvianSoftware/devx-team @VitruvianSoftware/platform-team
 /apps/cli/vitruvian-homelab/ @VitruvianSoftware/homelab-team @VitruvianSoftware/platform-team
 /apps/desktop/vitruvian-code/ @VitruvianSoftware/nexus-agent-team @VitruvianSoftware/platform-team
-/apps/desktop/vitruvian-tool-github/ @VitruvianSoftware/platform-team
+/apps/desktop/vitruvian-github/ @VitruvianSoftware/platform-team
 /apps/embedded/vitruvian-deck/ @VitruvianSoftware/platform-team
 /apps/mcp/vitruvian-roborock-mcp/ @VitruvianSoftware/platform-team
 /apps/mcp/vitruvian-slack-mcp/ @VitruvianSoftware/mcp-slack-team @VitruvianSoftware/platform-team
-/apps/mobile/android-remote/ @VitruvianSoftware/platform-team
+/apps/mobile/vitruvian-remote/ @VitruvianSoftware/platform-team
 /apps/mobile/vitruvian-watch/ @VitruvianSoftware/platform-team
 /apps/suites/vitruvian-tabs/ @VitruvianSoftware/tabula-team @VitruvianSoftware/platform-team
 /apps/suites/vitruvian-wand/ @VitruvianSoftware/platform-team

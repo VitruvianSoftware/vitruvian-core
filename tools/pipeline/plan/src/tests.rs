@@ -96,7 +96,7 @@ fn docs_only_fast_gate() {
         (
             &[
                 "catalog-info.yaml",
-                "apps/mobile/android-remote/catalog-info.yaml",
+                "apps/mobile/vitruvian-remote/catalog-info.yaml",
             ],
             true,
         ),
@@ -114,8 +114,8 @@ fn docs_only_fast_gate() {
         ),
         (
             &[
-                "apps/mobile/android-remote/catalog-info.yaml",
-                "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/MainActivity.kt",
+                "apps/mobile/vitruvian-remote/catalog-info.yaml",
+                "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/MainActivity.kt",
             ],
             false,
         ),
@@ -489,7 +489,7 @@ fn degraded_query_is_distinguishable_from_real_global_impact() {
 
 #[test]
 fn test_rdeps_query_shape() {
-    let q = build_test_rdeps_query(&v(&["//apps/mobile/android-remote:all"]));
+    let q = build_test_rdeps_query(&v(&["//apps/mobile/vitruvian-remote:all"]));
     assert!(q.contains(r#"except attr(tags, "manual", //...)"#));
     assert!(q.find("except").unwrap() > q.find("rdeps(").unwrap());
     assert!(q.contains("rdeps(//...") && q.contains("_test"));

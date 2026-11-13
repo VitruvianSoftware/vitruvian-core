@@ -137,7 +137,7 @@ jobs:
             VitruvianSoftware/pulumi_ts-example-foundation
             VitruvianSoftware/site-vitruviansoftware-dev
             VitruvianSoftware/vitruvian-sdk
-            VitruvianSoftware/vitruvian-tool-github
+            VitruvianSoftware/vitruvian-github
             VitruvianSoftware/vitruvian-atrium
             VitruvianSoftware/vitruvian-courier
             VitruvianSoftware/vitruvian-speaker

@@ -796,7 +796,7 @@ public enum VitruvianSpeakerCommandLine {
     }
 
     /// The default speaker's volume, as JSON on stdout: the contract the
-    /// Mac agent (android-remote) relies on. `--set-volume N`, `--mute` and
+    /// Mac agent (vitruvian-remote) relies on. `--set-volume N`, `--mute` and
     /// `--unmute` change it and answer with the level read back afterwards.
     /// Failures are still JSON (available:false + reason) and exit 1.
     public static func volume(

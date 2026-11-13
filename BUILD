@@ -248,8 +248,8 @@ exports_files(
 # gazelle:exclude apps/desktop/vitruvian-speaker
 # gazelle:exclude apps/desktop/vitruvian-atrium
 # gazelle:exclude apps/desktop/vitruvian-code
-# gazelle:exclude apps/desktop/vitruvian-tool-github
-# gazelle:exclude apps/desktop/vitruvian-tool-tv
+# gazelle:exclude apps/desktop/vitruvian-github
+# gazelle:exclude apps/desktop/vitruvian-tv
 # gazelle:exclude apps/embedded
 # gazelle:exclude apps/mcp
 # gazelle:exclude apps/mobile

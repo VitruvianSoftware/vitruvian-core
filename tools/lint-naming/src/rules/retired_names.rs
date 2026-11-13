@@ -187,6 +187,80 @@ const RETIRED_RULES: &[RetiredRule] = &[
         replacement: "Vitruvian Atrium / vitruvian-atrium / VitruvianAtrium",
         path_fix: "vitruvian-atrium",
     },
+    // Vitruvian GitHub retired folder/component/mirror variants
+    RetiredRule {
+        needle: concat!("vitruvian", "-tool-github"),
+        case_sensitive: false,
+        word_stem_only: false,
+        replacement: "Vitruvian GitHub / vitruvian-github",
+        path_fix: "vitruvian-github",
+    },
+    RetiredRule {
+        needle: concat!("vitruvian", "_tool_github"),
+        case_sensitive: false,
+        word_stem_only: false,
+        replacement: "Vitruvian GitHub / vitruvian-github",
+        path_fix: "vitruvian-github",
+    },
+    RetiredRule {
+        needle: concat!("vitruvian", "toolgithub"),
+        case_sensitive: false,
+        word_stem_only: false,
+        replacement: "Vitruvian GitHub / vitruvian-github",
+        path_fix: "vitruvian-github",
+    },
+    // Vitruvian TV retired folder/component variants
+    RetiredRule {
+        needle: concat!("vitruvian", "-tool-tv"),
+        case_sensitive: false,
+        word_stem_only: false,
+        replacement: "Vitruvian TV / vitruvian-tv",
+        path_fix: "vitruvian-tv",
+    },
+    RetiredRule {
+        needle: concat!("vitruvian", "_tool_tv"),
+        case_sensitive: false,
+        word_stem_only: false,
+        replacement: "Vitruvian TV / vitruvian-tv",
+        path_fix: "vitruvian-tv",
+    },
+    RetiredRule {
+        needle: concat!("vitruvian", "tooltv"),
+        case_sensitive: false,
+        word_stem_only: false,
+        replacement: "Vitruvian TV / vitruvian-tv",
+        path_fix: "vitruvian-tv",
+    },
+    // Vitruvian Remote retired folder/component/brand variants (space-separated
+    // lowercase "Android remote" is allowed when describing what the app is)
+    RetiredRule {
+        needle: concat!("Android", " Remote"),
+        case_sensitive: true,
+        word_stem_only: false,
+        replacement: "Vitruvian Remote / vitruvian-remote / VitruvianRemote",
+        path_fix: "vitruvian-remote",
+    },
+    RetiredRule {
+        needle: concat!("android", "-remote"),
+        case_sensitive: false,
+        word_stem_only: false,
+        replacement: "Vitruvian Remote / vitruvian-remote / VitruvianRemote",
+        path_fix: "vitruvian-remote",
+    },
+    RetiredRule {
+        needle: concat!("android", "_remote"),
+        case_sensitive: false,
+        word_stem_only: false,
+        replacement: "Vitruvian Remote / vitruvian-remote / VitruvianRemote",
+        path_fix: "vitruvian-remote",
+    },
+    RetiredRule {
+        needle: concat!("android", "remote"),
+        case_sensitive: false,
+        word_stem_only: false,
+        replacement: "Vitruvian Remote / vitruvian-remote / VitruvianRemote",
+        path_fix: "vitruvian-remote",
+    },
 ];
 
 const FAST_CANDIDATE_ROOTS: &[&[u8]] = &[
@@ -197,6 +271,8 @@ const FAST_CANDIDATE_ROOTS: &[&[u8]] = &[
     b"roborock",
     b"companion",
     b"desktop",
+    b"tool",
+    b"remote",
 ];
 
 const BINARY_EXTENSIONS: &[&str] = &[
@@ -327,6 +403,11 @@ pub fn is_allowlisted_path(rel_path: &str) -> bool {
             )
         || norm
             == concat!(
+                ".github/workflows/copybara-export-vitruvian",
+                "-tool-github.yaml"
+            )
+        || norm
+            == concat!(
                 ".github/workflows/zitadel-apps-",
                 "mcp",
                 "-slack-apply.yaml"
@@ -334,7 +415,9 @@ pub fn is_allowlisted_path(rel_path: &str) -> bool {
     {
         return true;
     }
-    if norm == "apps/web/vitruviansoftware-dev/tools/catalog/tools.json" {
+    if norm == "apps/web/vitruviansoftware-dev/tools/catalog/tools.json"
+        || norm == "apps/desktop/vitruvian-atrium/Tests/Fixtures/release-feed/ls-refs-vitruvian-atrium.pkt"
+    {
         return true;
     }
     matches!(
@@ -395,20 +478,72 @@ fn allowed_line_tokens(norm: &str) -> &'static [&'static str] {
             concat!("cask \"", "nexus", "-agent\""),
             concat!("nexus", "-agent Cask"),
         ],
-        "apps/web/vitruviansoftware-dev/_data/downloads.yml" => {
-            &[concat!("vitruviansoftware/tap/", "nexus", "-agent")]
-        }
+        "apps/web/vitruviansoftware-dev/_data/downloads.yml" => &[
+            concat!("vitruviansoftware/tap/", "nexus", "-agent"),
+            concat!("releases/download/android", "-remote-v0.1.37/"),
+            concat!("releases/tag/android", "-remote-v0.1.37"),
+        ],
         "tools/conformance/src/checks/brew.rs" => &[concat!("\"", "nexus", "-agent\"")],
-        // Catalog handover `replaces` IDs & historical tag provenance
+        // Catalog handover `replaces` IDs & frozen pre-cutover release download URLs
         "catalog/tools.json" => &[
             concat!("\"replaces\": [\"dev.vitruvian.", "nexus", "-agent\"]"),
             concat!("\"replaces\": [\"dev.vitruvian.", "home", "speaker\"]"),
+            concat!(
+                "VitruvianSoftware/vitruvian",
+                "-tool-github/releases/download/v1.6.0/"
+            ),
+            concat!("releases/download/android", "-remote-v0.1.39/"),
+            concat!("releases/download/vitruvian", "-tool-tv-v0.1.0/"),
+        ],
+        "apps/web/vitruviansoftware-dev/_data/tools.yml" => &[
+            concat!(
+                "VitruvianSoftware/vitruvian",
+                "-tool-github/releases/download/v1.6.0/"
+            ),
+            concat!("releases/download/android", "-remote-v0.1.39/"),
+            concat!("releases/download/vitruvian", "-tool-tv-v0.1.0/"),
         ],
         "catalog/src/catalog_test.rs" => &[concat!("Home", "Speaker 1.41.0")],
         "apps/desktop/vitruvian-speaker/README.md" => &[
             concat!("Formerly **Home", "Speaker**"),
             concat!("`home", "-speaker-v*`"),
         ],
+        "apps/desktop/vitruvian-github/README.md" => &[
+            concat!("Formerly **vitruvian", "-tool-github**"),
+            concat!("`vitruvian", "-tool-github-v*`"),
+        ],
+        "apps/desktop/vitruvian-tv/README.md" => &[
+            concat!("Formerly **vitruvian", "-tool-tv**"),
+            concat!("`vitruvian", "-tool-tv-v*`"),
+        ],
+        "apps/mobile/vitruvian-remote/README.md" => &[
+            concat!("Formerly **android", "-remote**"),
+            concat!("`android", "-remote-v*`"),
+        ],
+        // Kept on-device legacy Speaker migration keys in Vitruvian Remote (#4703)
+        "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/MainActivity.kt" => &[
+            concat!("Home", "Speaker"),
+            concat!("LEGACY_CHANNEL_HOME", "SPEAKER_ID"),
+            concat!("vitruvian-home", "speaker-announcements"),
+        ],
+        "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/Persistence.kt" => {
+            &[
+                concat!("Home", "Speaker"),
+                concat!("\"home", "SpeakerSettingsExpanded\""),
+                concat!("\"home", "SpeakerMirror\""),
+            ]
+        }
+        "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/Wire.kt" => {
+            &[concat!("Home", "Speaker"), concat!("\"home", "speaker\"")]
+        }
+        "apps/mobile/vitruvian-remote/src/test/kotlin/dev/vitruvian/remote/state/WireTest.kt" => &[
+            concat!("Home", "Speaker"),
+            concat!("\"home", "speaker\""),
+            concat!("apps/home", "speaker"),
+        ],
+        "apps/desktop/vitruvian-atrium/Tests/AboutAndReleaseFeedTests.swift" => {
+            &[concat!("vitruvian", "-tool-github-v")]
+        }
         // Google Home cast speaker hold duration (not the retired product name)
         "apps/desktop/vitruvian-speaker/Sources/VitruvianSpeakerCore/Announcer.swift" => {
             &[concat!("home", "SpeakerHold")]
@@ -427,10 +562,12 @@ fn allowed_line_tokens(norm: &str) -> &'static [&'static str] {
             concat!("MCP", "_ROBOROCK_REV_ID"),
             concat!("MCP", "_SLACK_REV_ID"),
             concat!("ESP32", "_DESK_COMPANION_REV_ID"),
+            concat!("VITRUVIAN", "_TOOL_GITHUB_REV_ID"),
             concat!("mcp", "-slack"),
             concat!("mcp", "-roborock"),
             concat!("home", "-speaker"),
             concat!("esp32", "-desk-companion"),
+            concat!("vitruvian", "-tool-github"),
         ],
         "tools/copybara/conflict-precheck/src/lib.rs"
         | "tools/copybara/conflict-precheck/src/lib_test.rs" => &[
@@ -439,6 +576,7 @@ fn allowed_line_tokens(norm: &str) -> &'static [&'static str] {
             concat!("MCP", "_ROBOROCK_REV_ID"),
             concat!("MCP", "_SLACK_REV_ID"),
             concat!("ESP32", "_DESK_COMPANION_REV_ID"),
+            concat!("VITRUVIAN", "_TOOL_GITHUB_REV_ID"),
             concat!("\"", "mcp", "-slack\""),
         ],
         "tools/copybara/sync/src/lib.rs" | "tools/copybara/sync/src/lib_test.rs" => {
@@ -691,6 +829,21 @@ mod tests {
                 "vitruvian-atrium",
                 concat!("apps/desktop/", "vitruvian", "-desktop"),
             ),
+            (
+                concat!("Build //apps/desktop/vitruvian", "-tool-github:all.\n"),
+                "vitruvian-github",
+                concat!("apps/desktop/vitruvian", "-tool-github"),
+            ),
+            (
+                concat!("Build //apps/desktop/vitruvian", "-tool-tv:all.\n"),
+                "vitruvian-tv",
+                concat!("apps/desktop/vitruvian", "-tool-tv"),
+            ),
+            (
+                concat!("Open ", "Android", " Remote on your foldable.\n"),
+                "vitruvian-remote",
+                concat!("apps/mobile/android", "-remote"),
+            ),
         ];
 
         for (prose, expected_fix_substr, bad_path) in cases {
@@ -728,6 +881,9 @@ mod tests {
             concat!("class ", "Tab", "ulaClient {}\n"),
             concat!("const x = use", "Tab", "ulaStore();\n"),
             concat!("struct ", "Vitruvian", "DesktopHost {}\n"),
+            concat!("struct Vitruvian", "ToolGitHub {}\n"),
+            concat!("struct Vitruvian", "ToolTV {}\n"),
+            concat!("class Android", "RemoteActivity {}\n"),
         ] {
             let v = validate_retired_content("src/App.swift", snippet);
             assert_eq!(v.len(), 1, "expected hit for {}", snippet);
@@ -805,6 +961,7 @@ mod tests {
             "Tabular digits, tabular-nums, TABULAR layout, untabulated rows\n",
             "Speaks on your Google Home speakers over Cast\n",
             "// Vitruvian desktop app written in Swift\n",
+            "An Android remote and observability console for a Mac\n",
         );
         assert!(validate_retired_path("apps/wear/nexus-wrist").is_empty());
         assert!(validate_retired_path(".nexus.yaml").is_empty());

@@ -358,7 +358,7 @@ projects:
       foldables: trackpad, Sony Android TV over wireless ADB and Vitruvian Speaker
       controls alongside live CPU, thermals, Lima VM and K3s dashboards.
     tags: [Kotlin, Jetpack Compose, Android]
-    source: apps/mobile/android-remote
+    source: apps/mobile/vitruvian-remote
 
   - name: Vitruvian Deck
     group: lab

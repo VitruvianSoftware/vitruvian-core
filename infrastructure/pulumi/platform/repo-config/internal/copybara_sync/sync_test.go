@@ -133,11 +133,14 @@ func TestTheGitHubToolMirrorIsMadePublicWithItsExportKeyAndNoTapKey(t *testing.T
 	if r := got["vitruvian-tool-github"]; r.typeToken != "github:index/repository:Repository" {
 		t.Fatalf("vitruvian-tool-github is %q, want a github repository", r.typeToken)
 	}
+	if v := text(t, got, "vitruvian-tool-github", "name"); v != "vitruvian-github" {
+		t.Errorf("the repository is named %q, want vitruvian-github", v)
+	}
 	if v := text(t, got, "vitruvian-tool-github", "visibility"); v != "public" {
 		t.Errorf("visibility is %q, want public: the app downloads the release's zip with no account", v)
 	}
-	if v := text(t, got, "vitruvian-tool-github-standalone-deploy-key", "repository"); v != "vitruvian-tool-github" {
-		t.Errorf("the export key is on %q, want vitruvian-tool-github", v)
+	if v := text(t, got, "vitruvian-tool-github-standalone-deploy-key", "repository"); v != "vitruvian-github" {
+		t.Errorf("the export key is on %q, want vitruvian-github", v)
 	}
 	if v := text(t, got, "vitruvian-tool-github-sync-ssh-key-secret", "secretName"); v != "VITRUVIAN_TOOL_GITHUB_SYNC_SSH_KEY" {
 		t.Errorf("the export secret is %q, want VITRUVIAN_TOOL_GITHUB_SYNC_SSH_KEY", v)
@@ -249,8 +252,8 @@ func TestARenamedMirrorIsRenamedInPlaceNeverReplaced(t *testing.T) {
 			}
 		})
 	}
-	if renamed != 5 {
-		t.Errorf("%d mirrors are marked renamed, want 5 (courier, home-speaker, vitruvian, esp32-desk-companion, mcp-roborock)", renamed)
+	if renamed != 6 {
+		t.Errorf("%d mirrors are marked renamed, want 6 (courier, home-speaker, vitruvian, esp32-desk-companion, mcp-roborock, vitruvian-tool-github)", renamed)
 	}
 }
 

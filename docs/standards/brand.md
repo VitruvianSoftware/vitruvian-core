@@ -37,7 +37,7 @@ Verified against `apps/`, `packages/`, `catalog/` and `StandaloneRepo` in
 | **Vitruvian Speaker** | HomeSpeaker | `apps/desktop/vitruvian-speaker` | `com.vitruviansoftware.speaker`, `dev.vitruvian.speaker` | `vitruvian-speaker` | `vitruvian-speaker` |
 | **Vitruvian Courier** | Courier | `apps/desktop/vitruvian-courier` | `com.vitruviansoftware.courier` (kept) | `vitruvian-courier` | `vitruvian-courier` |
 | **Vitruvian Atrium** | Vitruvian (host app) | `apps/desktop/vitruvian-atrium` | `com.vitruviansoftware.vitruvian` (kept) | `vitruvian-atrium` | `vitruvian-atrium` |
-| **Vitruvian Remote** | *(already compliant)* | `apps/mobile/android-remote` (kept) | `dev.vitruvian.remote`, `com.vitruviansoftware.remote` | `android-remote` | `vitruvian-remote` |
+| **Vitruvian Remote** | *(already compliant)* | `apps/mobile/vitruvian-remote` | `dev.vitruvian.remote`, `com.vitruviansoftware.remote` | `vitruvian-remote` | `vitruvian-remote` |
 | **Vitruvian Tabs** | Tabula | `apps/suites/vitruvian-tabs` | CLI `vitruvian-tabs` | `vitruvian-tabs-{api,cli,extension,shared,web}` | — *(monorepo-only)* |
 | **Vitruvian Wand** | Wand | `apps/suites/vitruvian-wand` | `com.vitruviansoftware.wand`, CLI `vitruvian-wand` | `vitruvian-wand` | — *(monorepo-only)* |
 | **Vitruvian Watch** | Wear OS app | `apps/mobile/vitruvian-watch` | `com.vitruviansoftware.watch.{pulse,remote,home,code}` | `vitruvian-watch` | — *(monorepo-only)* |
@@ -47,8 +47,8 @@ Verified against `apps/`, `packages/`, `catalog/` and `StandaloneRepo` in
 | **Vitruvian Deck** | ESP32-S3 desk companion | `apps/embedded/vitruvian-deck` | `vitruvian-deck.local` | `vitruvian-deck` | `vitruvian-deck` |
 | **Vitruvian Roborock MCP** (`vitruvian-roborock-mcp`) | `mcp-roborock` | `apps/mcp/vitruvian-roborock-mcp` | MCP `vitruvian-roborock-mcp`, CLI `rrctl` (kept) | — *(none)* | `vitruvian-roborock-mcp` |
 | **Vitruvian Slack MCP** (`vitruvian-slack-mcp`) | `mcp-slack` | `apps/mcp/vitruvian-slack-mcp` | MCP & CLI `vitruvian-slack-mcp` | `vitruvian-slack-mcp` | `vitruvian-slack-mcp` |
-| **Vitruvian GitHub** | GitHub tool | `apps/desktop/vitruvian-tool-github` | `dev.vitruvian.github` | `vitruvian-tool-github` | `vitruvian-tool-github` |
-| **Vitruvian TV** | TV tool | `apps/desktop/vitruvian-tool-tv` | `dev.vitruvian.tv` | `vitruvian-tool-tv` | — *(monorepo-only)* |
+| **Vitruvian GitHub** | GitHub tool | `apps/desktop/vitruvian-github` | `dev.vitruvian.github` | `vitruvian-github` | `vitruvian-github` |
+| **Vitruvian TV** | TV tool | `apps/desktop/vitruvian-tv` | `dev.vitruvian.tv` | `vitruvian-tv` | — *(monorepo-only)* |
 | **Vitruvian Tool SDK** (`vitruvian-sdk`) | *(already compliant)* | `packages/vitruvian-sdk` | `VitruvianToolKit` | `vitruvian-sdk` | `vitruvian-sdk` |
 
 Unbranded mirrors in `sync.go` stay as-is: `oauth-user-inspector`, `gh-watch`,
@@ -66,8 +66,8 @@ no visible benefit:
   (`courier_enabled`) and Remote wire-protocol keys; Courier's bundle ID and Keychain
   services (`com.vitruviansoftware.courier*`); Atrium's bundle ID
   `com.vitruviansoftware.vitruvian` (plus helper IDs `.fan-control` and `.now-playing`,
-  `window.vitruvian` and `VITRUVIAN_*` env vars); Android Remote's folder/component
-  `android-remote` and Android `applicationId` `dev.vitruvian.remote`; Atrium's tool ID
+  `window.vitruvian` and `VITRUVIAN_*` env vars); Vitruvian Remote's Android `applicationId`
+  `dev.vitruvian.remote`; Atrium's tool ID
   namespace `dev.vitruvian.*` (separate from app bundle IDs `com.vitruviansoftware.*`);
   Deck's NVS namespace and `"ESP32-S3"` when naming the hardware chip.
 - **CLI commands and Homebrew tokens:** `devx`, `homelab` and `rrctl` stay short for

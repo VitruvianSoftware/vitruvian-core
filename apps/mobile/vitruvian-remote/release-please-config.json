@@ -1,0 +1,46 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
+  "bootstrap-sha": "2ed7cefd8d76ccd59454669ff32257cb9baf4272",
+  "packages": {
+    "apps/mobile/vitruvian-remote": {
+      "package-name": "vitruvian-remote",
+      "component": "vitruvian-remote",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "BUILD"
+        },
+        {
+          "type": "generic",
+          "path": "macmenu/Sources/RemoteMenuCore/Version.swift"
+        },
+        {
+          "type": "generic",
+          "path": "macagent/rs/src/server.rs"
+        },
+        {
+          "type": "json",
+          "path": "macmenu/tool/vitruvian-tool.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "xml",
+          "path": "macmenu/Resources/Info.plist",
+          "xpath": "//key[.='CFBundleShortVersionString']/following-sibling::string[1]"
+        },
+        {
+          "type": "xml",
+          "path": "macmenu/Resources/Info.plist",
+          "xpath": "//key[.='CFBundleVersion']/following-sibling::string[1]"
+        }
+      ]
+    }
+  }
+}

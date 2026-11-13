@@ -717,7 +717,7 @@ const remoteTabs = [
   { id: "agent", label: "Agent" },
 ];
 
-/** Remote Console — the Android Remote's home tab: the phone as a control
+/** Remote Console — Vitruvian Remote's home tab: the phone as a control
  *  surface for the Mac agent. Mobile shell, status signals, a telemetry grid,
  *  widget plates, and the glass tab bar. The mobile classes (`m-*`) live here. */
 export const RemoteConsole: StoryObj = {

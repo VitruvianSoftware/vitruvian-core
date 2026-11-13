@@ -500,21 +500,21 @@ pub fn sync_catalog(
         }
     }
 
-    // 8. android-remote
-    if let Some(rel) = get_latest_release(CORE, Some("android-remote-v"), token)? {
+    // 8. vitruvian-remote
+    if let Some(rel) = get_latest_release(CORE, Some("vitruvian-remote-v"), token)? {
         if rel.truthy() {
             let tag_name = str_of(&rel, "tag_name", "replace")?;
-            let ver = tag_name.replace("android-remote-v", "");
+            let ver = tag_name.replace("vitruvian-remote-v", "");
             say(&format!("✓ Vitruvian Remote: v{}", ver));
-            cat.version("android-remote", &ver)?;
-            cat.releases_url("android-remote", &tag_name)?;
+            cat.version("vitruvian-remote", &ver)?;
+            cat.releases_url("vitruvian-remote", &tag_name)?;
             for a in assets(&rel)? {
                 let Some(asset) = read_asset(&a, true)? else {
                     continue;
                 };
                 if name_str(&asset).ends_with(".apk") {
                     cat.asset(
-                        r"id:\s*android-remote[\s\S]*?",
+                        r"id:\s*vitruvian-remote[\s\S]*?",
                         "Android APK",
                         &asset.url,
                         &asset.size,

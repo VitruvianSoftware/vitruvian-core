@@ -151,6 +151,7 @@ const RENAMED_MIRROR_LABELS: &[(&[u8], &[u8])] = &[
     (b"vitruvian-slack-mcp", b"MCP_SLACK_REV_ID"),
     (b"vitruvian-devx", b"DEVX_REV_ID"),
     (b"vitruvian-homelab", b"HOMELAB_REV_ID"),
+    (b"vitruvian-github", b"VITRUVIAN_TOOL_GITHUB_REV_ID"),
 ];
 
 /// "mcp-slack" -> "MCP_SLACK_REV_ID", "devx" -> "DEVX_REV_ID".
