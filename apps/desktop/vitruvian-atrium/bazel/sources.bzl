@@ -92,6 +92,7 @@ TEST_PRODUCTION_SOURCES = [
     "Sources/VitruvianAtrium/Core/FeatureHubStrings.swift",
     "Sources/VitruvianAtrium/Core/MixerScreenSharingStrings.swift",
     "Sources/VitruvianAtrium/Core/ShortcutSettingsStrings.swift",
+    "Sources/VitruvianAtrium/Core/SwitcherShortcutStrings.swift",
     "Sources/VitruvianAtrium/Core/SettingsBackupSupport.swift",
     "Sources/VitruvianAtrium/Core/BackupStrings.swift",
     "Sources/VitruvianAtrium/Core/SnippetStrings.swift",

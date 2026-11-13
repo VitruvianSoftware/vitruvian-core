@@ -299,6 +299,8 @@ package enum Defaults {
         DefaultsKey.switcherTakeOverSystemShortcuts: Preferences.switcherTakeOverSystemShortcuts.defaultValue,
         DefaultsKey.switcherShortcut: Preferences.switcherShortcut.defaultValue,
         DefaultsKey.switcherWindowShortcut: Preferences.switcherWindowShortcut.defaultValue,
+        DefaultsKey.switcherAllWindowsShortcut: Preferences.switcherAllWindowsShortcut.defaultValue,
+        DefaultsKey.switcherAllWindowsShortcutEnabled: Preferences.switcherAllWindowsShortcutEnabled.defaultValue,
         DefaultsKey.switcherIconRowMode: Preferences.switcherIconRowMode.defaultValue,
         DefaultsKey.switcherSimpleMode: Preferences.switcherSimpleMode.defaultValue,
         DefaultsKey.switcherMergeTabs: Preferences.switcherMergeTabs.defaultValue,

@@ -101,6 +101,8 @@ package enum DefaultsKey {
     package static let systemShortcutTakeOverKeys = "systemShortcutTakeOverKeys"
     package static let switcherShortcut = "switcherShortcut"      // GlobalShortcut storage value
     package static let switcherWindowShortcut = "switcherWindowShortcut" // GlobalShortcut storage value
+    package static let switcherAllWindowsShortcut = "switcherAllWindowsShortcut"
+    package static let switcherAllWindowsShortcutEnabled = "switcherAllWindowsShortcutEnabled"
     package static let switcherIconRowMode = "switcherIconRowMode"
     package static let switcherSimpleMode = "switcherSimpleMode"  // app-only row without window captures
     package static let switcherMergeTabs = "switcherMergeTabs"     // show one switcher entry per app (collapse all of an app's windows)

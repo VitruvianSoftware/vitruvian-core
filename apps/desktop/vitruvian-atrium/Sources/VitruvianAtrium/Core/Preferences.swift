@@ -726,6 +726,10 @@ package enum Preferences {
         DefaultsKey.mouseClickDebounceWindowMs, default: Defaults.defaultMouseClickDebounceWindowMs)
     package static let switcherWindowShortcut = Preference(
         DefaultsKey.switcherWindowShortcut, default: GlobalShortcut.switcherWindowDefault.storageValue)
+    package static let switcherAllWindowsShortcut = Preference(
+        DefaultsKey.switcherAllWindowsShortcut, default: GlobalShortcut.switcherAllWindowsDefault.storageValue)
+    package static let switcherAllWindowsShortcutEnabled = Preference(
+        DefaultsKey.switcherAllWindowsShortcutEnabled, default: false)
     package static let mixerHeadphonesDisconnectVolumePercent = Preference(
         DefaultsKey.mixerHeadphonesDisconnectVolumePercent, default: Defaults.defaultMixerHeadphonesDisconnectVolumePercent)
     package static let soundOutputSwitcherShortcut = Preference(
