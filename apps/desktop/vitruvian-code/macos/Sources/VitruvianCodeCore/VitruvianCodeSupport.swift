@@ -816,7 +816,6 @@ public struct VitruvianCodeStatePaths: Equatable, Sendable {
     public let botDirectory: String
     public let envFilePath: String
     public let envExamplePath: String
-    public let botEntryPointPath: String
     public let stateDirectory: String
     public let pidFilePath: String
     public let logsDirectory: String
@@ -828,7 +827,6 @@ public struct VitruvianCodeStatePaths: Equatable, Sendable {
         botDirectory: String,
         envFilePath: String,
         envExamplePath: String,
-        botEntryPointPath: String,
         stateDirectory: String,
         pidFilePath: String,
         logsDirectory: String,
@@ -839,7 +837,6 @@ public struct VitruvianCodeStatePaths: Equatable, Sendable {
         self.botDirectory = botDirectory
         self.envFilePath = envFilePath
         self.envExamplePath = envExamplePath
-        self.botEntryPointPath = botEntryPointPath
         self.stateDirectory = stateDirectory
         self.pidFilePath = pidFilePath
         self.logsDirectory = logsDirectory
@@ -978,7 +975,6 @@ public enum VitruvianCodeSupport {
             botDirectory: botDir,
             envFilePath: (botDir as NSString).appendingPathComponent(".env"),
             envExamplePath: (botDir as NSString).appendingPathComponent(".env.example"),
-            botEntryPointPath: (botDir as NSString).appendingPathComponent(botEntryPoint),
             stateDirectory: stateDir,
             pidFilePath: (stateDir as NSString).appendingPathComponent(".bot.pid"),
             logsDirectory: logsDir,
@@ -1019,8 +1015,43 @@ public enum VitruvianCodeSupport {
         return trimmed
     }
 
-    /// The bot's entry point inside its folder.
-    public static let botEntryPoint = "src/bot.js"
+    /// The bundled Rust bot helper executable name and bundle-relative path.
+    public static let botExecutableName = "bot-engine"
+    public static let botHelperRelativePath = "Contents/Helpers/bot-engine"
+    public static let botExecutableEnvironmentKey = "VITRUVIAN_CODE_BOT_BIN"
+    public static let defaultBundledBotCandidate = "/bundled/Contents/Helpers/bot-engine"
+
+    /// Candidate locations inside the app bundle (and alongside the main
+    /// executable) where the bundled `bot-engine` helper may live.
+    public static func bundledBotCandidates(bundleURL: URL?, executableURL: URL?) -> [String] {
+        var candidates: [String] = []
+        if let bundleURL {
+            candidates.append(bundleURL.appendingPathComponent(botHelperRelativePath).standardizedFileURL.path)
+        }
+        if let executableURL {
+            let execDir = executableURL.deletingLastPathComponent()
+            candidates.append(execDir.appendingPathComponent("../Helpers/\(botExecutableName)").standardizedFileURL.path)
+            candidates.append(execDir.appendingPathComponent(botExecutableName).standardizedFileURL.path)
+        }
+        var seen = Set<String>()
+        return candidates.filter { seen.insert($0).inserted }
+    }
+
+    /// Candidate locations for the bundled `bot-engine` helper inside `bundle`.
+    public static func bundledBotCandidates(for bundle: Bundle = .main) -> [String] {
+        bundledBotCandidates(bundleURL: bundle.bundleURL, executableURL: bundle.executableURL)
+    }
+
+    /// `VITRUVIAN_CODE_BOT_BIN` override when executable, otherwise the first
+    /// executable candidate inside the app bundle.
+    public static func locateBundledBot(environment: [String: String], candidates: [String],
+                                        isExecutable: (String) -> Bool) -> String? {
+        if let explicit = environment[botExecutableEnvironmentKey]?.trimmingCharacters(in: .whitespaces),
+           !explicit.isEmpty, isExecutable(explicit) {
+            return explicit
+        }
+        return candidates.first(where: isExecutable)
+    }
 
     /// Install locations an app launched from Finder does not have on its
     /// PATH, in the order they are tried.
@@ -1051,13 +1082,6 @@ public enum VitruvianCodeSupport {
         locateAgent(named: name, environment: environment, home: home, isExecutable: isExecutable)
             ?? executablePath(named: name, pathVariable: environment["PATH"] ?? "",
                               isExecutable: isExecutable, fileExists: fileExists)
-    }
-
-    /// Node from Homebrew or the official installer. macOS ships none.
-    public static func locateNode(home: String, isExecutable: (String) -> Bool) -> String? {
-        ["/opt/homebrew/bin/node", "/usr/local/bin/node",
-         (home as NSString).appendingPathComponent(".local/bin/node")]
-            .first(where: isExecutable)
     }
 
     /// The child's environment: the app's own, the install locations put in
