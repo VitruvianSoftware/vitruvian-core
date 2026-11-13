@@ -71,6 +71,7 @@ package final class NotchNotificationReaderCore<Access: NotchNotificationAccess>
     private var deadline: TimeInterval = 0
     private var remainingNodes = 0
     private var incomplete = false
+    private var lastFocusedAt: TimeInterval?
 
     package init(access: Access,
          allowed: @escaping () -> Bool,
@@ -96,8 +97,19 @@ package final class NotchNotificationReaderCore<Access: NotchNotificationAccess>
     package func centerIsFocused() -> Bool? {
         beginRead()
         guard let focused = fetch({ try access.hasFocusedWindow() }) else { showNative(); return nil }
-        if focused { showNative() }
+        if focused {
+            lastFocusedAt = clock()
+            showNative()
+        }
         return focused
+    }
+
+    /// A quick open and close may end before the delayed check. The list
+    /// still belongs to the center if a scan saw it focused during this opening.
+    package func centerWasFocused(since opening: TimeInterval) -> Bool? {
+        let current = centerIsFocused()
+        if let lastFocusedAt, lastFocusedAt >= opening { return true }
+        return current
     }
 
     /// Measured after the actual move, not when its work entered the queue.
@@ -195,10 +207,8 @@ package final class NotchNotificationReaderCore<Access: NotchNotificationAccess>
         // read ever produced a notification target for that window.
         for window in hiddenWindows.filter(\.restoring).map(\.window) { show(window) }
         guard allowsNativeClose() else { showNative(); return [] }
-        beginRead()
         // The open center keeps its banners in the same window as its list.
-        guard let focused = fetch({ try access.hasFocusedWindow() }) else { showNative(); return [] }
-        guard !focused else { showNative(); return [] }
+        guard centerIsFocused() == false else { return [] }
         var groups: [(window: Access.Element, targets: [Target])] = []
         for target in targets where liveIDs.contains(target.item.id) {
             if let index = groups.firstIndex(where: { access.same($0.window, target.window) }) {
@@ -246,8 +256,7 @@ package final class NotchNotificationReaderCore<Access: NotchNotificationAccess>
     /// the island goes on to show never draws its first frames.
     package func prehide(_ window: Access.Element) {
         guard allowsNativeClose() else { return }
-        beginRead()
-        guard let focused = fetch({ try access.hasFocusedWindow() }), !focused else { showNative(); return }
+        guard centerIsFocused() == false else { return }
         guard allowsNativeClose(), hide(window) == true,
               hiddenWindows.contains(where: { access.same($0.window, window) }) else { return }
         prehiddenWindows.removeAll { access.same($0.window, window) }
