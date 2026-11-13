@@ -19,7 +19,7 @@
 # SOFTWARE.
 
 # release-please and asset publisher for the Vitruvian TV extension (dev.vitruvian.tv):
-# 1. Authors release PRs from conventional commits under apps/desktop/vitruvian-tv/.
+# 1. Authors release PRs from conventional commits under apps/extensions/atrium/vitruvian-tv/.
 # 2. When the release PR merges, cuts the GitHub Release (tag: vitruvian-tv-vX.Y.Z).
 # 3. Builds the self-contained Protocol 2 extension folder (its Rust program, bin/tool),
 #    zips it as VitruvianTV-X.Y.Z-tool.zip with a SHA-256 sidecar, and attaches both to
@@ -30,7 +30,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "apps/desktop/vitruvian-tv/**"
+      - "apps/extensions/atrium/vitruvian-tv/**"
       - ".github/workflows/vitruvian-tv-release.yaml"
   workflow_dispatch:
     inputs:
@@ -51,9 +51,9 @@ jobs:
       group: vitruvian-tv-release-${{ github.ref }}
       cancel-in-progress: false
     outputs:
-      release_created: ${{ steps.release.outputs['apps/desktop/vitruvian-tv--release_created'] }}
-      tag_name: ${{ steps.release.outputs['apps/desktop/vitruvian-tv--tag_name'] }}
-      version: ${{ steps.release.outputs['apps/desktop/vitruvian-tv--version'] }}
+      release_created: ${{ steps.release.outputs['apps/extensions/atrium/vitruvian-tv--release_created'] }}
+      tag_name: ${{ steps.release.outputs['apps/extensions/atrium/vitruvian-tv--tag_name'] }}
+      version: ${{ steps.release.outputs['apps/extensions/atrium/vitruvian-tv--version'] }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -70,8 +70,8 @@ jobs:
         if: ${{ inputs.tag == '' }}
         with:
           token: ${{ steps.app-token.outputs.token }}
-          config-file: apps/desktop/vitruvian-tv/release-please-config.json
-          manifest-file: apps/desktop/vitruvian-tv/.release-please-manifest.json
+          config-file: apps/extensions/atrium/vitruvian-tv/release-please-config.json
+          manifest-file: apps/extensions/atrium/vitruvian-tv/.release-please-manifest.json
           target-branch: main
 
   publish-tool:
@@ -104,7 +104,7 @@ jobs:
           VERSION: ${{ needs.release-please.outputs.version || '' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ROOT="$GITHUB_WORKSPACE" TOOL_DIR="$GITHUB_WORKSPACE/apps/desktop/vitruvian-tv" bazel run //apps/desktop/vitruvian-tv:publish-tool
+          ROOT="$GITHUB_WORKSPACE" TOOL_DIR="$GITHUB_WORKSPACE/apps/extensions/atrium/vitruvian-tv" bazel run //apps/extensions/atrium/vitruvian-tv:publish-tool
 
   check-release:
     needs: [release-please, publish-tool]

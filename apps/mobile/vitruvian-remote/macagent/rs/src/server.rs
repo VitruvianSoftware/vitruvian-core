@@ -1623,7 +1623,7 @@ mod tests {
 
     #[test]
     fn test_version_matches_vitruvian_tool_json() {
-        let manifest_raw = include_str!("../../../macmenu/tool/vitruvian-tool.json");
+        let manifest_raw = include_str!("../../../macmenu/atrium-extension/vitruvian-tool.json");
         let parsed = JsonValue::parse(manifest_raw).expect("parse vitruvian-tool.json");
         let tool_version = parsed
             .get("version")

@@ -8,6 +8,4 @@ Subsystem blueprint grouping child modules under `apps/desktop`.
 - [vitruvian-speaker](./vitruvian-speaker/README.md): Contract for apps/desktop/vitruvian-speaker
 - [vitruvian-atrium](./vitruvian-atrium/README.md): Contract for apps/desktop/vitruvian-atrium
 - [vitruvian-code](./vitruvian-code/README.md): Contract for apps/desktop/vitruvian-code
-- [vitruvian-github](./vitruvian-github/README.md): Contract for apps/desktop/vitruvian-github
-- [vitruvian-tv](./vitruvian-tv/README.md): Contract for apps/desktop/vitruvian-tv
 

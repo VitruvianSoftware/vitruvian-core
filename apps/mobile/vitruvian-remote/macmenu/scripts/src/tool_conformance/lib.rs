@@ -19,7 +19,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! Rust port of `apps/mobile/vitruvian-remote/macmenu/tool/conformance_test.py`.
+//! Rust port of `apps/mobile/vitruvian-remote/macmenu/atrium-extension/conformance_test.py`.
 //!
 //! Verifies the built Vitruvian Remote extension folder and its JSON-RPC protocol
 //! end to end using `conformance_rs_lib`.

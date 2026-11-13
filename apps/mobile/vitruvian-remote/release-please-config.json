@@ -27,7 +27,7 @@
         },
         {
           "type": "json",
-          "path": "macmenu/tool/vitruvian-tool.json",
+          "path": "macmenu/atrium-extension/vitruvian-tool.json",
           "jsonpath": "$.version"
         },
         {

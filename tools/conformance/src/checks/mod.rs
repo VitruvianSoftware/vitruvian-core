@@ -28,6 +28,7 @@ mod delivery;
 mod governance;
 mod iac;
 mod labels;
+mod layout;
 mod security;
 mod swift_tests;
 mod versions;
@@ -95,6 +96,7 @@ pub fn run_all(ctx: &Context) {
     governance::check_preview_governance(ctx);
     governance::check_lab_hostnames_served(ctx);
     brew::check_brew_tap_instructions(ctx);
+    layout::check_extension_layout(ctx);
 
     security::check_checkout_credentials(ctx);
     security::check_dependabot_action_coverage(ctx);

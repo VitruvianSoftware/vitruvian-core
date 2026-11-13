@@ -85,7 +85,7 @@ doctor(
     ],
 )
 
-# The tool's version test (macos/tool/src/version_test.rs) holds release-please
+# The tool's version test (macos/atrium-extension/src/version_test.rs) holds release-please
 # to writing the tool's version where the app's goes. A filegroup for the
 # reason release_workflow is one.
 filegroup(

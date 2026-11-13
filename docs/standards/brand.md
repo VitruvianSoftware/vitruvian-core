@@ -47,13 +47,25 @@ Verified against `apps/`, `packages/`, `catalog/` and `StandaloneRepo` in
 | **Vitruvian Deck** | ESP32-S3 desk companion | `apps/embedded/vitruvian-deck` | `vitruvian-deck.local` | `vitruvian-deck` | `vitruvian-deck` |
 | **Vitruvian Roborock MCP** (`vitruvian-roborock-mcp`) | `mcp-roborock` | `apps/mcp/vitruvian-roborock-mcp` | MCP `vitruvian-roborock-mcp`, CLI `rrctl` (kept) | — *(none)* | `vitruvian-roborock-mcp` |
 | **Vitruvian Slack MCP** (`vitruvian-slack-mcp`) | `mcp-slack` | `apps/mcp/vitruvian-slack-mcp` | MCP & CLI `vitruvian-slack-mcp` | `vitruvian-slack-mcp` | `vitruvian-slack-mcp` |
-| **Vitruvian GitHub** | GitHub tool | `apps/desktop/vitruvian-github` | `dev.vitruvian.github` | `vitruvian-github` | `vitruvian-github` |
-| **Vitruvian TV** | TV tool | `apps/desktop/vitruvian-tv` | `dev.vitruvian.tv` | `vitruvian-tv` | — *(monorepo-only)* |
+| **Vitruvian GitHub** | GitHub tool | `apps/extensions/atrium/vitruvian-github` | `dev.vitruvian.github` | `vitruvian-github` | `vitruvian-github` |
+| **Vitruvian TV** | TV tool | `apps/extensions/atrium/vitruvian-tv` | `dev.vitruvian.tv` | `vitruvian-tv` | — *(monorepo-only)* |
 | **Vitruvian Tool SDK** (`vitruvian-sdk`) | *(already compliant)* | `packages/vitruvian-sdk` | `VitruvianToolKit` | `vitruvian-sdk` | `vitruvian-sdk` |
 
 Unbranded mirrors in `sync.go` stay as-is: `oauth-user-inspector`, `gh-watch`,
 `site-vitruviansoftware-dev`, `pulumi-library`, `pulumi_go-example-foundation` and
 `pulumi_ts-example-foundation`.
+
+### Where things live
+
+The path says what kind of thing it is, and the leaf keeps the brand.
+
+| Path | Meaning |
+|---|---|
+| `apps/<platform>/vitruvian-<noun>` | A standalone app (`apps/desktop/vitruvian-atrium`, `apps/mobile/vitruvian-remote`). |
+| `apps/<platform>/vitruvian-<noun>/atrium-extension/` | The same app also plugs into Atrium. The folder is always named `atrium-extension` and holds the extension's `vitruvian-tool.json` and its other files. It sits next to the code that builds it, so Code and Remote keep it one level down (`vitruvian-code/macos/atrium-extension/`, `vitruvian-remote/macmenu/atrium-extension/`). |
+| `apps/extensions/atrium/vitruvian-<noun>` | A product that lives only inside Atrium (`vitruvian-github`, `vitruvian-tv`). |
+
+`tools/conformance` (the `LAYOUT` group) fails when a `vitruvian-tool.json` sits anywhere else; the SDK's samples and conformance tools are exempt.
 
 ## 3. Kept on purpose
 

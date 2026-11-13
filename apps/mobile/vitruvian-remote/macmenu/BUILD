@@ -121,7 +121,7 @@ swift_binary(
 genrule(
     name = "tool-folder",
     srcs = [
-        "tool/vitruvian-tool.json",
+        "atrium-extension/vitruvian-tool.json",
         ":remote-tool",
         "//apps/mobile/vitruvian-remote/macagent",
     ],
@@ -130,7 +130,7 @@ genrule(
         "built/remote/bin/tool",
         "built/remote/bin/vitruvian-remote-agent",
     ],
-    cmd = "cp $(location tool/vitruvian-tool.json) $(RULEDIR)/built/remote/vitruvian-tool.json && cp $(location :remote-tool) $(RULEDIR)/built/remote/bin/tool && cp $(location //apps/mobile/vitruvian-remote/macagent:macagent) $(RULEDIR)/built/remote/bin/vitruvian-remote-agent && chmod +x $(RULEDIR)/built/remote/bin/tool $(RULEDIR)/built/remote/bin/vitruvian-remote-agent",
+    cmd = "cp $(location atrium-extension/vitruvian-tool.json) $(RULEDIR)/built/remote/vitruvian-tool.json && cp $(location :remote-tool) $(RULEDIR)/built/remote/bin/tool && cp $(location //apps/mobile/vitruvian-remote/macagent:macagent) $(RULEDIR)/built/remote/bin/vitruvian-remote-agent && chmod +x $(RULEDIR)/built/remote/bin/tool $(RULEDIR)/built/remote/bin/vitruvian-remote-agent",
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
 )
@@ -164,7 +164,7 @@ rust_test(
 )
 
 exports_files(
-    ["tool/vitruvian-tool.json"],
+    ["atrium-extension/vitruvian-tool.json"],
     visibility = ["//apps/mobile/vitruvian-remote:__subpackages__"],
 )
 
@@ -178,7 +178,7 @@ rust_test(
     data = [
         "Resources/Info.plist",
         "Sources/RemoteMenuCore/Version.swift",
-        "tool/vitruvian-tool.json",
+        "atrium-extension/vitruvian-tool.json",
         "//apps/mobile/vitruvian-remote:BUILD",
         "//apps/mobile/vitruvian-remote:release-please-config.json",
         "//apps/mobile/vitruvian-remote/macagent:rs/src/server.rs",

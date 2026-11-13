@@ -172,7 +172,7 @@ pub fn run(args: &[String]) -> i32 {
 
     let tag = env::var("TAG").unwrap_or_default();
     let version_env = env::var("VERSION").ok();
-    let manifest_path = macmenu_dir.join("tool/vitruvian-tool.json");
+    let manifest_path = macmenu_dir.join("atrium-extension/vitruvian-tool.json");
     let manifest_content = fs::read_to_string(&manifest_path).unwrap_or_default();
 
     let version = match resolve_version(

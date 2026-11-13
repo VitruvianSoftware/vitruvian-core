@@ -565,7 +565,7 @@ COMPONENTS = [
         "standalone_only": [],
         "export_only": True,
     },
-    # vitruvian-tool-github: EXPORT-ONLY mirror of apps/desktop/vitruvian-github,
+    # vitruvian-tool-github: EXPORT-ONLY mirror of apps/extensions/atrium/vitruvian-github,
     # Vitruvian GitHub for Vitruvian Atrium. The folder becomes the mirror's
     # root, which is the shape `swift build` needs: Package.swift at the top.
     # The mirror's own release.yml (exported from the subtree) tags vX.Y.Z
@@ -575,7 +575,7 @@ COMPONENTS = [
     {
         "name": "vitruvian-tool-github",
         "repo": "vitruvian-github",
-        "subtree": "apps/desktop/vitruvian-github",
+        "subtree": "apps/extensions/atrium/vitruvian-github",
         "standalone_rev_id": "VITRUVIAN_TOOL_GITHUB_REV_ID",
         "mode": "SQUASH",
         "standalone_only": [],

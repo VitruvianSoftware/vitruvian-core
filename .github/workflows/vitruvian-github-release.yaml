@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# release-please for Vitruvian GitHub (apps/desktop/vitruvian-github):
+# release-please for Vitruvian GitHub (apps/extensions/atrium/vitruvian-github):
 # authors the release PR from conventional commits under that folder and,
 # when that PR merges, cuts the GitHub Release tagged
 # vitruvian-github-vX.Y.Z here.
@@ -27,7 +27,7 @@
 # release PR writes the version into .release-please-manifest.json,
 # CHANGELOG.md, vitruvian-tool.json and Version.swift; Copybara exports them
 # to VitruvianSoftware/vitruvian-github, whose own release.yml (exported
-# from apps/desktop/vitruvian-github/.github/workflows/) tags vX.Y.Z
+# from apps/extensions/atrium/vitruvian-github/.github/workflows/) tags vX.Y.Z
 # there and attaches the tool's zip, which catalog/tools.json then pins.
 #
 # The first release is 1.0.0: the manifest starts at 0.0.0, which release-please
@@ -41,7 +41,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "apps/desktop/vitruvian-github/**"
+      - "apps/extensions/atrium/vitruvian-github/**"
       - ".github/workflows/vitruvian-github-release.yaml"
   workflow_dispatch:
 
@@ -77,6 +77,6 @@ jobs:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ steps.app-token.outputs.token }}
-          config-file: apps/desktop/vitruvian-github/release-please-config.json
-          manifest-file: apps/desktop/vitruvian-github/.release-please-manifest.json
+          config-file: apps/extensions/atrium/vitruvian-github/release-please-config.json
+          manifest-file: apps/extensions/atrium/vitruvian-github/.release-please-manifest.json
           target-branch: main

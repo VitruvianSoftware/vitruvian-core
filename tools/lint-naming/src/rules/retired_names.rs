@@ -508,11 +508,11 @@ fn allowed_line_tokens(norm: &str) -> &'static [&'static str] {
             concat!("Formerly **Home", "Speaker**"),
             concat!("`home", "-speaker-v*`"),
         ],
-        "apps/desktop/vitruvian-github/README.md" => &[
+        "apps/extensions/atrium/vitruvian-github/README.md" => &[
             concat!("Formerly **vitruvian", "-tool-github**"),
             concat!("`vitruvian", "-tool-github-v*`"),
         ],
-        "apps/desktop/vitruvian-tv/README.md" => &[
+        "apps/extensions/atrium/vitruvian-tv/README.md" => &[
             concat!("Formerly **vitruvian", "-tool-tv**"),
             concat!("`vitruvian", "-tool-tv-v*`"),
         ],

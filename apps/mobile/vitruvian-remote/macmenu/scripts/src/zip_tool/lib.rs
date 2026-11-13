@@ -32,7 +32,7 @@
 //! With `REMOTE_TOOL_REQUIRE_UNIVERSAL=1` both programs must hold Apple silicon
 //! and Intel code. With `REMOTE_TOOL_MAX_MINOS=X.Y` every architecture of every
 //! program must say, in its `LC_BUILD_VERSION`, that it runs on macOS X.Y or
-//! older. The version must be the one `tool/vitruvian-tool.json` says.
+//! older. The version must be the one `atrium-extension/vitruvian-tool.json` says.
 //!
 //! Prints the zip's size and SHA-256, which a catalog entry pins.
 
@@ -212,7 +212,7 @@ pub fn package(opts: &Options) -> Result<PathBuf, String> {
     let said = manifest_version(&manifest_text).unwrap_or_default();
     if said != opts.version {
         return Err(format!(
-            "tool/vitruvian-tool.json says {said}, the release is {}",
+            "atrium-extension/vitruvian-tool.json says {said}, the release is {}",
             opts.version
         ));
     }
@@ -277,7 +277,7 @@ fn default_manifest() -> PathBuf {
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| env::current_dir().unwrap_or_default());
-    base.join(PKG).join("tool/vitruvian-tool.json")
+    base.join(PKG).join("atrium-extension/vitruvian-tool.json")
 }
 
 pub fn run(args: &[String]) -> i32 {

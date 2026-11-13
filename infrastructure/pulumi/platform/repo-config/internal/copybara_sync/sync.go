@@ -407,7 +407,7 @@ var syncedProjects = []syncedProject{
 		Description:    "Build tools for the Vitruvian Mac app: the protocol, the Swift kit and the vitruvian-tool command",
 	},
 	{
-		// Vitruvian GitHub for Vitruvian Atrium (apps/desktop/vitruvian-github).
+		// Vitruvian GitHub for Vitruvian Atrium (apps/extensions/atrium/vitruvian-github).
 		// Export-only: developed here, released from the mirror, whose own
 		// release.yml tags vX.Y.Z and attaches the tool's zip, which
 		// catalog/tools.json pins by checksum. No tap key: nothing of it goes

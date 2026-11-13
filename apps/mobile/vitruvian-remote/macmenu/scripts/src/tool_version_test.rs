@@ -19,9 +19,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! Rust port of `apps/mobile/vitruvian-remote/macmenu/tool/version_test.py`.
+//! Rust port of `apps/mobile/vitruvian-remote/macmenu/atrium-extension/version_test.py`.
 //!
-//! Verifies that the Vitruvian Remote extension version in `tool/vitruvian-tool.json`
+//! Verifies that the Vitruvian Remote extension version in `atrium-extension/vitruvian-tool.json`
 //! matches `Version.swift`, `Resources/Info.plist`, and `apps/mobile/vitruvian-remote/BUILD`,
 //! that `vitruvian-tool.json` is formatted in release-please's 2-space JSON layout,
 //! and that `release-please-config.json` lists all four versioned files in `extra-files`.
@@ -35,7 +35,7 @@ pub const REQUIRED_EXTRA_FILES: &[&str] = &[
     "BUILD",
     "macmenu/Sources/RemoteMenuCore/Version.swift",
     "macagent/rs/src/server.rs",
-    "macmenu/tool/vitruvian-tool.json",
+    "macmenu/atrium-extension/vitruvian-tool.json",
     "macmenu/Resources/Info.plist",
 ];
 
@@ -287,7 +287,7 @@ fn find_runfile(rel: &str) -> PathBuf {
 #[test]
 fn live_tool_versions_and_release_please_config_in_sync() {
     let manifest = fs::read_to_string(find_runfile(
-        "apps/mobile/vitruvian-remote/macmenu/tool/vitruvian-tool.json",
+        "apps/mobile/vitruvian-remote/macmenu/atrium-extension/vitruvian-tool.json",
     ))
     .unwrap();
     let swift = fs::read_to_string(find_runfile(

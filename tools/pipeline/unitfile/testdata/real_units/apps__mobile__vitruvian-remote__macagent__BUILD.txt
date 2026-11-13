@@ -115,7 +115,7 @@ rust_library(
         "rs/src/tailnet.rs",
         "rs/src/tv.rs",
     ],
-    compile_data = ["//apps/mobile/vitruvian-remote/macmenu:tool/vitruvian-tool.json"],
+    compile_data = ["//apps/mobile/vitruvian-remote/macmenu:atrium-extension/vitruvian-tool.json"],
     crate_name = "vitruvian_remote_macagent",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],

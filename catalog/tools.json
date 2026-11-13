@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-11-13T09:34:14Z",
+  "generated": "2026-11-13T17:30:39Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -380,7 +380,7 @@
       "version": "0.1.0",
       "protocol": "2",
       "minimumAppVersion": "3.48.0",
-      "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-tv",
+      "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/extensions/atrium/vitruvian-tv",
       "download": {
         "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-tool-tv-v0.1.0/VitruvianTV-0.1.0-tool.zip",
         "sha256": "f6fd4712d0c86ebee1620c8c2d4e579f496ff9b89df244c98b1b0f76705290ae",
