@@ -46,6 +46,9 @@ package final class KeepAwakeManager: ObservableObject {
         package var clamshellCausesSleep: @MainActor () -> Bool?
         /// Every process's power assertions, or nil when they cannot be read.
         package var powerAssertions: @MainActor () -> [[String: Any]]?
+        /// Whether a display other than the built-in panel is online; nil
+        /// when the display list cannot be read.
+        package var externalDisplay: @MainActor () -> Bool?
         /// Asks the system to sleep: its IOKit result, or nil without a power manager.
         package var sleepSystem: @MainActor () -> IOReturn?
         /// Runs `changed` on the main queue for each of the power manager's
@@ -74,7 +77,8 @@ package final class KeepAwakeManager: ObservableObject {
                      sleepSystem: @escaping @MainActor () -> IOReturn?,
                      watchLid: @escaping @MainActor (@escaping @MainActor @Sendable () -> Void) -> (() -> Void)?,
                      panelBrightness: @escaping @MainActor () -> Double?,
-                     setPanelBrightness: @escaping @MainActor (Double) -> Bool) {
+                     setPanelBrightness: @escaping @MainActor (Double) -> Bool,
+                     externalDisplay: (@MainActor () -> Bool?)? = nil) {
             self.defaults = defaults
             self.notificationCenter = notificationCenter
             self.sleep = sleep
@@ -96,6 +100,7 @@ package final class KeepAwakeManager: ObservableObject {
             self.watchLid = watchLid
             self.panelBrightness = panelBrightness
             self.setPanelBrightness = setPanelBrightness
+            self.externalDisplay = externalDisplay ?? { KeepAwakeManager.hasExternalDisplay() }
         }
     }
 
@@ -1011,7 +1016,9 @@ package final class KeepAwakeManager: ObservableObject {
         // change. Read live protections as well, especially display hot-plug.
         guard let assertions = system.powerAssertions() else { return false }
         return KeepAwakeAutomationSupport.lidSleepIsAllowed(
-            systemAllowsSleep: allowsSleep, assertions: assertions)
+            systemAllowsSleep: allowsSleep, externalDisplayConnected: system.externalDisplay(),
+            connectedToPower: system.battery().map { !$0.isOnBattery },
+            assertions: assertions)
     }
 
     /// If the app died unexpectedly while sleep was disabled, restores normal
