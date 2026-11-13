@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.92.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.91.0...vitruvian-atrium-v3.92.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 35, Mic Mute zeroes input gain, mixer volume slides, display stays off after wake and 12 more ([#4710](https://github.com/VitruvianSoftware/vitruvian-core/issues/4710)) ([2955e5d](https://github.com/VitruvianSoftware/vitruvian-core/commit/2955e5dc971383e04d58c667487c9521a3ad08ea))
+
 ## [3.91.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.90.1...vitruvian-atrium-v3.91.0) (2026-11-13)
 
 
