@@ -583,23 +583,23 @@ cfe4e89d035a15be42ff93b7b0e5b14170f466d1	d2a26b1e0f87f8f8ff2314b7ae7c1b3bd70d938
 f06190ceb1464a9a92661460996171657827fe5c	bbceb2cbeff57dd83fa008884c1a576f738d8089	2026-11-10	ported	#4719	fix(audio): let Vorssaint launch on early macOS Sonoma (#3982)
 86f84be1033ff23ad146228224bd121761c81beb	068ec369ba84182031e3b62118370e255d1edc6e	2026-11-10	ported	#4719	fix(mixer): resume a valid audio tap when a routine check is pending (#3990)
 b36c30107e7af82a15f3eeab0f7ef8b928b52373	5639acd54e59062a0f5ab5fe6ff011d8293180cb	2026-11-10	ported	#4719	fix(shortcuts): recognize Super Key chords while recording starts (#3994)
-03a0761d962aa3385f78f5cae4fc0f9c93f24e6e	11e5ed9a7d73a9018931a4a8fe6016ab786ed7a2	2026-11-10	pending	-	fix(command-bar): convert mixed feet and inches (#3980)
-ad1aa857571852c5c572f7ba2cc580d1d069cece	cdc000fddac185fe3167cf76fc161271d489e309	2026-11-10	pending	-	fix(notch): explain which desktop alerts the island can mirror (#3991)
+03a0761d962aa3385f78f5cae4fc0f9c93f24e6e	11e5ed9a7d73a9018931a4a8fe6016ab786ed7a2	2026-11-10	ported	#4723	fix(command-bar): convert mixed feet and inches (#3980)
+ad1aa857571852c5c572f7ba2cc580d1d069cece	cdc000fddac185fe3167cf76fc161271d489e309	2026-11-10	ported	#4723	fix(notch): explain which desktop alerts the island can mirror (#3991)
 63b2fee7eb4453c636814a88f9a17b0f5300f74e	d5d5b9e5ecb38fcf09f054fb5b11ecf02da5412a	2026-11-10	skipped	touches only upstream-only paths	docs: record integrated display, input and uninstaller changes (#3996)
-181d0d5c371fbf23877d0c1b31be28f162dadb61	45da1119ea9d9e8c56048cd41f3dc7bffcab78f9	2026-11-10	pending	-	fix(display): defer disabling the built-in panel until unlock (#4022)
-5b321192a25f48d8ffcdaec0943834cbb2ee4f89	d408d66833d0d7d67dbb31b7c7a03a6aa64a42b9	2026-11-10	pending	-	fix(mic-mute): restore channel levels across upgrades and reconnects
-a83b4eaee77a7c9e517fc085788f26540882be9c	cbceba7074154ed3c55bc9ac27e8afb587edb995	2026-11-10	pending	-	fix(display): cancel pending hardware writes when software dimming takes over
+181d0d5c371fbf23877d0c1b31be28f162dadb61	45da1119ea9d9e8c56048cd41f3dc7bffcab78f9	2026-11-10	ported	#4723	fix(display): defer disabling the built-in panel until unlock (#4022)
+5b321192a25f48d8ffcdaec0943834cbb2ee4f89	d408d66833d0d7d67dbb31b7c7a03a6aa64a42b9	2026-11-10	ported	#4723	fix(mic-mute): restore channel levels across upgrades and reconnects
+a83b4eaee77a7c9e517fc085788f26540882be9c	cbceba7074154ed3c55bc9ac27e8afb587edb995	2026-11-10	ported	#4723	fix(display): cancel pending hardware writes when software dimming takes over
 a3f776d611d7e4c79e9f2e8fe946a44c676ccf39	71a981afe7ba9fe467d766f8b4ebb8544b20706b	2026-11-10	pending	-	fix(audio): respect feature settings for monitor volume keys
-7c5a34f628151e09964e1b4776013ce431126dcf	e6d868f585476ee423385fa96b8f8fdcf360227f	2026-11-10	pending	-	fix(notch): remember notification center focus during banner detection
-d461c2edd6bcb98d5e470d35737f26ce79f7916a	c807ee467784990755f7bd52b60b1df0693d1086	2026-11-10	pending	-	fix(recorder): recheck GIF copy cancellation and reuse the export plan
-7415c09f9e629e7d286ff7da984e3a3d3e42c76d	9f338e9c6258ecd1dfbe93993b3dd28d9f98f45b	2026-11-10	pending	-	fix(window-layout): require a drag before restoring a snapped window
+7c5a34f628151e09964e1b4776013ce431126dcf	e6d868f585476ee423385fa96b8f8fdcf360227f	2026-11-10	ported	#4723	fix(notch): remember notification center focus during banner detection
+d461c2edd6bcb98d5e470d35737f26ce79f7916a	c807ee467784990755f7bd52b60b1df0693d1086	2026-11-10	ported	#4723	fix(recorder): recheck GIF copy cancellation and reuse the export plan
+7415c09f9e629e7d286ff7da984e3a3d3e42c76d	9f338e9c6258ecd1dfbe93993b3dd28d9f98f45b	2026-11-10	ported	#4723	fix(window-layout): require a drag before restoring a snapped window
 c3877576be56187c9f74e4b9735db96ca3f401b4	f416da09963d3de5970a08ddeafa14d3d48e0a69	2026-11-10	pending	-	perf(switcher): reuse key labels during secure shortcut registration
-772c8918c303eb1c96f550467bbb9acf4ae39cb5	304c3b9b29e43df518b6574d420a83e3d5632c94	2026-11-10	pending	-	test: isolate registered preferences between suites
-cb8ba92a7f36a3bf2c7c138032e3444bbf896ecf	65320ee832a6165bb8daa1df85b8909a092597e1	2026-11-10	pending	-	fix(settings): preserve local preferences when loading partial configuration
-4baad551370fb68bf3ae0ed1c7c9cfd73b564dfd	b43564d9c79be6e8deb88e58e9c5ae25bfbaee90	2026-11-10	pending	-	fix(settings): find automatic scrolling and trash cleanup controls
-b023c7707a1b3ece148821f979f28aef965e91de	50ebacece6edbafcd54b1ff677932ca07d50b615	2026-11-10	pending	-	fix(uninstaller): keep setup controls reachable in small windows
+772c8918c303eb1c96f550467bbb9acf4ae39cb5	304c3b9b29e43df518b6574d420a83e3d5632c94	2026-11-10	skipped	test-only: restores the registration domain in upstream's generated-fixture suites (QuitAppsRuntimeTests, ShortcutClearingTests) this fork does not have	test: isolate registered preferences between suites
+cb8ba92a7f36a3bf2c7c138032e3444bbf896ecf	65320ee832a6165bb8daa1df85b8909a092597e1	2026-11-10	ported	#4723	fix(settings): preserve local preferences when loading partial configuration
+4baad551370fb68bf3ae0ed1c7c9cfd73b564dfd	b43564d9c79be6e8deb88e58e9c5ae25bfbaee90	2026-11-10	ported	#4723	fix(settings): find automatic scrolling and trash cleanup controls
+b023c7707a1b3ece148821f979f28aef965e91de	50ebacece6edbafcd54b1ff677932ca07d50b615	2026-11-10	ported	#4723	fix(uninstaller): keep setup controls reachable in small windows
 172af11c9d16dbb57f6515c0580b20450b198871	833933777641ea3177a60446b92cdcd91990758a	2026-11-10	skipped	touches only upstream-only paths	docs: credit the scroll speed and monitor volume key options
 4ec0649bf914a457c4c7bf44d93f6aeeb647d757	54f0935f663d66a752c92e7ad2901dc800068f9d	2026-11-11	skipped	touches only upstream-only paths	docs: simplify the upcoming stable release notes
-83ec5e77281b571f64aae30e7b9b6ea43ca1c227	f1c303eb99c4db4efe74cdbcf28745c976c87ce3	2026-11-11	pending	-	fix(super-key): keep the HID client alive while checking keyboards
-d9c7f4a77e809405facd4d71289ec58a29e46380	9d7521623f95293c37c5d2d90552bab4fce72f98	2026-11-11	pending	-	chore: prepare 3.4.4 stable
+83ec5e77281b571f64aae30e7b9b6ea43ca1c227	f1c303eb99c4db4efe74cdbcf28745c976c87ce3	2026-11-11	ported	#4723	fix(super-key): keep the HID client alive while checking keyboards
+d9c7f4a77e809405facd4d71289ec58a29e46380	9d7521623f95293c37c5d2d90552bab4fce72f98	2026-11-11	skipped	upstream's 3.4.4 version bump, changelog and support-invitation pin; the fork versions through release-please	chore: prepare 3.4.4 stable
 ce1276470d2b1115c8c3398f34e82079905fffba	4e8dce8acc24f13e5408bb58b3c33a72e14f2ad4	2026-11-11	skipped	touches only upstream-only paths	chore: reopen changelog after 3.4.4

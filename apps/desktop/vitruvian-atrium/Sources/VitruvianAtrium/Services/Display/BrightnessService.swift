@@ -77,8 +77,8 @@ extension NotchControlItem {
 /// when turned off. Pending restores keep wake and lid observation until they
 /// succeed. Keyboard light state is read when Quick toggles opens or one of
 /// its global shortcuts is pressed.
-/// While display control is on, the standing resources are one screen change
-/// observer and sleep/wake observers, and no standing timers; everything else
+/// While display control is on, the service observes screen changes, unlock
+/// and sleep/wake events, with no standing timers. Everything else
 /// happens when a slider moves, a panel opens or the Mac wakes. All I2C work
 /// runs on a serial queue with the pacing displays need, and slider drags
 /// coalesce to the newest value per display.
@@ -174,6 +174,8 @@ package final class BrightnessService: ObservableObject {
         package var screenNotifications: NotificationCenter
         /// Where the two wake notifications are posted.
         package var wakeNotifications: NotificationCenter
+        /// Where the screen-unlocked notification is posted.
+        package var unlockNotifications: NotificationCenter
         /// Runs on the main thread after a delay, unless cancelled first.
         package var schedule: @MainActor (TimeInterval, DispatchWorkItem) -> Void
         /// Shows a level in the island; true when it did, so the system
@@ -203,7 +205,8 @@ package final class BrightnessService: ObservableObject {
                      tearDownOverlay: @escaping @MainActor () -> Void,
                      followsKeys: Bool,
                      islandIsOpen: @escaping @MainActor () -> Bool = { false },
-                     isMainThread: @escaping @Sendable () -> Bool = { Thread.isMainThread }) {
+                     isMainThread: @escaping @Sendable () -> Bool = { Thread.isMainThread },
+                     unlockNotifications: NotificationCenter = NotificationCenter()) {
             self.work = work
             self.workSync = workSync
             self.main = main
@@ -213,6 +216,7 @@ package final class BrightnessService: ObservableObject {
             self.power = power
             self.screenNotifications = screenNotifications
             self.wakeNotifications = wakeNotifications
+            self.unlockNotifications = unlockNotifications
             self.schedule = schedule
             self.showInIsland = showInIsland
             self.showOverlay = showOverlay
@@ -240,7 +244,8 @@ package final class BrightnessService: ObservableObject {
                 showOverlay: { BrightnessOSD.show(displayID: $0, brightness: $1) },
                 tearDownOverlay: { BrightnessOSD.teardown() },
                 followsKeys: true,
-                islandIsOpen: { NotchService.shared.expanded })
+                islandIsOpen: { NotchService.shared.expanded },
+                unlockNotifications: DistributedNotificationCenter.default())
         }
     }
 
@@ -424,14 +429,19 @@ package final class BrightnessService: ObservableObject {
         /// Starts calling back on the main thread when the lid may have
         /// moved; nil if it cannot, otherwise what stops it.
         package var observeLid: @MainActor (@escaping @MainActor () -> Void) -> (@MainActor () -> Void)?
+        /// Whether the lock screen is up. True when the session cannot be
+        /// read, so an unknown session never lets the built-in panel go off.
+        package var screenIsLocked: @Sendable () -> Bool
 
         // Spelled out because a memberwise initializer never leaves its module.
         package init(configure: (@MainActor (CGDirectDisplayID, Bool) -> Bool)?,
                      lidClosed: @escaping @Sendable () -> Bool?,
-                     observeLid: @escaping @MainActor (@escaping @MainActor () -> Void) -> (@MainActor () -> Void)?) {
+                     observeLid: @escaping @MainActor (@escaping @MainActor () -> Void) -> (@MainActor () -> Void)?,
+                     screenIsLocked: @escaping @Sendable () -> Bool = { false }) {
             self.configure = configure
             self.lidClosed = lidClosed
             self.observeLid = observeLid
+            self.screenIsLocked = screenIsLocked
         }
 
         private static let liveConfigure: (@MainActor (CGDirectDisplayID, Bool) -> Bool)? = {
@@ -451,13 +461,18 @@ package final class BrightnessService: ObservableObject {
         package static let live = Power(
             configure: liveConfigure,
             lidClosed: { BrightnessService.lidClosed() },
-            observeLid: { changed in LidObservation.start(changed) })
+            observeLid: { changed in LidObservation.start(changed) },
+            screenIsLocked: {
+                guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return true }
+                return KeepAwakeAutomationSupport.isScreenLocked(sessionDictionary: session)
+            })
     }
 
     private var deferredRestoration = BrightnessSupport.DeferredDisplayRestoration()
     /// Stops watching the lid; set while a restoration waits for it.
     private var stopLidObservation: (@MainActor () -> Void)?
     private var screenObserver: NSObjectProtocol?
+    private var screenUnlockObserver: NSObjectProtocol?
     private var rebuildDebounce: DispatchWorkItem?
     private var wakeObservers: [NSObjectProtocol] = []
     private var wakeRebuild: DispatchWorkItem?
@@ -906,6 +921,7 @@ package final class BrightnessService: ObservableObject {
             // Delivered on the main queue.
             MainActor.assumeIsolated { self?.screensChanged() }
         }
+        screenUnlockObserver = observeScreenUnlock(in: environment.unlockNotifications)
         installWakeObservers()
         refresh()
     }
@@ -926,6 +942,8 @@ package final class BrightnessService: ObservableObject {
         removeFunctionKeyTap()
         if let screenObserver { environment.screenNotifications.removeObserver(screenObserver) }
         screenObserver = nil
+        if let screenUnlockObserver { environment.unlockNotifications.removeObserver(screenUnlockObserver) }
+        screenUnlockObserver = nil
         removeWakeObservers()
         rebuildDebounce?.cancel()
         rebuildDebounce = nil
@@ -2171,6 +2189,22 @@ package final class BrightnessService: ObservableObject {
 
     // MARK: - Screen changes
 
+    private func observeScreenUnlock(in center: NotificationCenter) -> NSObjectProtocol {
+        center.addObserver(forName: Notification.Name("com.apple.screenIsUnlocked"),
+                           object: nil, queue: .main) { [weak self] _ in
+            // Delivered on the main queue.
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.stateLock.lock()
+                let hasDisabledPanel = self.managedDisabledDisplays.values.contains(where: \.isBuiltIn)
+                self.stateLock.unlock()
+                // Unlock can leave the display list unchanged. Retry the saved
+                // choice through the same checks as a screen change.
+                if hasDisabledPanel { self.screensChanged() }
+            }
+        }
+    }
+
     /// EDR ramps fire this notification in storms with no topology change
     /// (over a hundred times in two seconds, measured). Use one fixed settle
     /// window from the first event: resetting it for every notification made
@@ -2389,6 +2423,12 @@ package final class BrightnessService: ObservableObject {
             let topology = currentTopology()
             let drawable = drawableDisplayIDs(online: topology.online, active: topology.active)
             guard BrightnessSupport.canDisableDisplay(drawableDisplayIDs: drawable, target: id) else { continue }
+            if display.isBuiltIn {
+                // An active HDMI display may still be coming back while the
+                // lock screen is on the built-in panel. Leave that panel up
+                // until the user has unlocked, even on late topology changes.
+                guard !environment.power.screenIsLocked() else { continue }
+            }
             let result = configureDisplay(id, enabled: false)
             guard result == .success else {
                 Self.log.error("could not reapply disabled state for display \(id); keeping the saved choice")
@@ -2816,16 +2856,13 @@ package final class BrightnessService: ObservableObject {
                 }
                 let deviceValue = BrightnessSupport.deviceValue(for: value,
                                                                 maximum: route.maximum)
-                let packet = BrightnessSupport.writePacket(
-                    code: BrightnessSupport.luminanceCode,
-                    value: deviceValue)
-                writeSucceeded = ddcSend(to: id, service: service, packet: packet)
+                writeSucceeded = writeDDCLuminance(deviceValue, to: id, route: route, service: service)
             case .software:
                 writeSucceeded = applySoftwareDim(id, value: value)
             }
             Self.log.log("wrote display \(id) route \(String(describing: route.method), privacy: .public) level \(value) ok \(writeSucceeded)")
             if route.method == .ddc, !writeSucceeded, route.ddcReadable == false,
-               let pathKey = route.ddcPathKey {
+               let pathKey = route.ddcPathKey, !forcedSoftwarePaths().contains(pathKey) {
                 forgetWriteOnlyDDCPath(pathKey)
                 environment.main { [weak self] in
                     self?.refresh(force: true)
@@ -2887,23 +2924,27 @@ package final class BrightnessService: ObservableObject {
 
         let deviceValue = BrightnessSupport.deviceValue(for: components.hardware,
                                                         maximum: route.maximum)
-        var hardwareSucceeded = true
         if route.lastDDCValue != deviceValue {
-            let packet = BrightnessSupport.writePacket(code: BrightnessSupport.luminanceCode,
-                                                       value: deviceValue)
-            hardwareSucceeded = ddcSend(to: id, service: service, packet: packet)
-            if hardwareSucceeded {
-                stateLock.lock()
-                if routes[id]?.ddcPathKey == route.ddcPathKey,
-                   routes[id]?.extendedDimming == true {
-                    routes[id]?.lastDDCValue = deviceValue
-                }
-                stateLock.unlock()
+            guard writeDDCLuminance(deviceValue, to: id, route: route, service: service) else { return false }
+            stateLock.lock()
+            if routes[id]?.ddcPathKey == route.ddcPathKey,
+               routes[id]?.extendedDimming == true {
+                routes[id]?.lastDDCValue = deviceValue
             }
+            stateLock.unlock()
         }
-        let pictureSucceeded = components.picture >= 0.999
-            || applySoftwareDim(id, value: components.picture)
-        return hardwareSucceeded && pictureSucceeded
+        return components.picture >= 0.999 || applySoftwareDim(id, value: components.picture)
+    }
+
+    nonisolated private func writeDDCLuminance(_ value: UInt16, to id: CGDirectDisplayID,
+                                               route: Route, service: CFTypeRef) -> Bool {
+        let packet = BrightnessSupport.writePacket(code: BrightnessSupport.luminanceCode, value: value)
+        return ddcSend(to: id, service: service, packet: packet) {
+            // A dequeued write can still be waiting for the bus when the user
+            // switches to software dimming. Recheck before every physical send.
+            guard let path = route.ddcPathKey else { return true }
+            return !self.forcedSoftwarePaths().contains(path)
+        }
     }
 
     // MARK: - Software dimming (work queue)
@@ -2964,7 +3005,10 @@ package final class BrightnessService: ObservableObject {
         ddcCommandEnds[id] = environment.hardware.uptimeMicroseconds()
     }
 
-    nonisolated private func ddcSend(to id: CGDirectDisplayID, service: CFTypeRef, packet: [UInt8]) -> Bool {
+    /// `whileCurrent` is asked before every physical send: a write that
+    /// stopped being wanted while it waited for the bus is dropped.
+    nonisolated private func ddcSend(to id: CGDirectDisplayID, service: CFTypeRef, packet: [UInt8],
+                                     whileCurrent: () -> Bool = { true }) -> Bool {
         guard let write = environment.hardware.writeI2C else { return false }
         paceDDCCommand(for: id)
         defer { recordDDCCommandEnd(for: id) }
@@ -2973,6 +3017,7 @@ package final class BrightnessService: ObservableObject {
         for attempt in 0...BrightnessSupport.retryAttempts {
             for _ in 0..<BrightnessSupport.writeCycles {
                 environment.hardware.pause(BrightnessSupport.writePauseMicroseconds)
+                guard whileCurrent() else { return false }
                 let accepted = write(service, BrightnessSupport.chipAddress,
                                      BrightnessSupport.dataAddress,
                                      &bytes, UInt32(bytes.count)) == KERN_SUCCESS

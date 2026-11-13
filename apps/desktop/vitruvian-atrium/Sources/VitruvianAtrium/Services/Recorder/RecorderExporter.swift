@@ -612,11 +612,6 @@ package final class RecorderExporter: Sendable {
                                              outputScale: CGFloat(document.outputScale(for: .gif)),
                                              outputFormat: .gif)
         let composer = plan.map { RecorderComposer(plan: $0) }
-        // Pure resizing stays after decoding: AV video composition can replace
-        // corrupt input frames with black rather than reporting a missing frame.
-        let scaleOnly = composer != nil && RecorderComposer.makePlan(
-            document: document, track: track, sourceSize: sourceSize,
-            frameRate: RecorderSupport.sanitizedFrameRate(frameRate), duration: duration) == nil
         // GIF dimensions are independent of the video bitrate and size preset.
         let canvas = composer?.canvasSize
             ?? RecorderSupport.gifOutputSize(source: RecorderSupport.evenSize(sourceSize),
@@ -629,7 +624,8 @@ package final class RecorderExporter: Sendable {
         // Decode imports with special geometry or alpha at presentation size
         // before applying edits. A raw raster can be narrower than the plan,
         // and AV video composition flattens transparent input over black.
-        let renderAfterDecode = composer != nil && (scaleOnly || !canReadDirectly)
+        // Pure resizing also stays after decoding so missing frames are reported.
+        let renderAfterDecode = composer != nil && (plan?.isScaleOnly == true || !canReadDirectly)
         let renderContext = renderAfterDecode ? CIContext(options: [.cacheIntermediates: false]) : nil
         let generator = AVAssetImageGenerator(asset: timeline)
         defer { generator.cancelAllCGImageGeneration() }

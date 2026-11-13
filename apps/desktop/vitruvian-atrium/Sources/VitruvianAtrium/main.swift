@@ -15,11 +15,12 @@ if let command = SettingsBackupSupport.command(in: CommandLine.arguments) {
 }
 
 SuperKeyMappingGuard.runIfRequestedAndExit()
-// The optional read-only settings file (~/.config/vitruvian/settings.plist)
-// overlays its keys before defaults register and migrations run. Only a
-// plain launch reads it. Top-level code runs on the main thread.
-let configuredFeatureKeys = MainActor.assumeIsolated { SettingsBackup.applyConfigFileAtLaunch() }
 Defaults.register()
+// The optional read-only settings file (~/.config/vitruvian/settings.plist)
+// overlays its keys after defaults register and migrations run, so a
+// migration cannot copy a declared value into a key the file leaves out.
+// Only a plain launch reads it. Top-level code runs on the main thread.
+let configuredFeatureKeys = MainActor.assumeIsolated { SettingsBackup.applyConfigFileAtLaunch() }
 // The island asks the brightness service whether this Mac has a keyboard
 // light. Top-level code runs on the main thread.
 MainActor.assumeIsolated { NotchControlItem.wireKeyboardLight() }

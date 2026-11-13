@@ -233,11 +233,20 @@ enum SettingsFeatureTests {
                     && SettingsSearchSupport.route(for: search, isAvailable: { _ in false })
                         .targetFeature == .screenshot,
                          "scrolling screenshot search opens its own tool or its installation page")
+            suite.expect(search.keywords.contains(FeatureStrings.screenshot(language).scrollingAutoScrollToggle),
+                         "scrolling screenshot search finds its automatic scrolling switch")
             suite.expect(GlobalShortcutRole.captureRoles(in:
                 GlobalShortcutRole.availableRoles(isAvailable: { $0 == .screenshot }))
                     .contains(.screenshotScrolling)
                     && ScreenCaptureTool.scrolling.settingsTitle(strings, language: language) == search.title,
                          "Keyboard shortcuts includes scrolling screenshot among installed capture tools")
+        }
+        for language in AppLanguage.allCases {
+            let strings = Strings.localized(language)
+            let uninstaller = SettingsDirectory.sections(strings, language: language)
+                .flatMap(\.items).first { $0.page == .uninstaller }
+            suite.expect(uninstaller?.keywords.contains(strings.uninstallerCommandBarToggle) == true,
+                         "Settings search finds the uninstaller's Command Bar switch")
         }
         let captureRouter = SettingsRouter()
         captureRouter.request(ScreenCaptureTool.screenshot.settingsDestination)
