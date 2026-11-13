@@ -20,8 +20,10 @@ import VitruvianAtriumDesign
 /// panel's headroom, so the overlay bootstraps itself: it starts with a
 /// small boost and ramps up as the reported headroom rises.
 ///
-/// Everything is public API and macOS stays in charge of the panel: thermal
-/// or power pressure can shrink the headroom at any time and the poll adapts.
+/// Rendering uses public APIs; window placement uses the island's runtime-
+/// resolved private Space helper, with the previous placement as a fallback.
+/// macOS controls the panel: thermal or power pressure can shrink the
+/// headroom at any time and the poll adapts.
 /// The overlay dies with the app, so no display state can outlive a crash.
 /// No windows, timers or observers exist while the feature is off.
 @MainActor
