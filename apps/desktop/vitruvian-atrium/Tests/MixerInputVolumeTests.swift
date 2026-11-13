@@ -796,6 +796,71 @@ enum MixerInputVolumeContract {
         check(m.inputVolume == nil, "channel discovery failure does not guess channel addresses")
         m.stop()
         HAL.reset()
+        HAL.levels[HAL.key(10)] = 0.5
+        HAL.readOnly.insert(HAL.key(10))
+        HAL.running = [10]
+        Feedback.showsMicrophone = true
+        Feedback.microphone = []
+        Feedback.reactions = []
+        Feedback.retractions = 0
+        Feedback.messages = []
+        HAL.muteService.setMuted(true)
+        Queue.drain()
+        check(Feedback.messages == [text.micMutePartialHUD]
+                && Feedback.microphone.isEmpty
+                && Feedback.reactions.isEmpty
+                && Feedback.retractions == 1,
+              "a wholly refused mute warns and retracts an older island confirmation")
+        check(!HAL.muteService.isMuted
+                && !HAL.defaults[Preferences.micMuteActive]
+                && !HAL.muteService.hasOutstandingClaims
+                && HAL.muteService.inputVolumeAdjustmentLifetime != nil
+                && HAL.levels[HAL.key(10)] == 0.5,
+              "a wholly refused mute keeps its state off and the original gain unclaimed")
+        HAL.reset()
+        HAL.mute[10] = 0
+        HAL.muteService.setMuted(true)
+        Queue.drain()
+        HAL.writeFails.insert(HAL.key(10, 0, kAudioDevicePropertyMute))
+        Feedback.microphone = []
+        Feedback.reactions = []
+        Feedback.retractions = 0
+        Feedback.messages = []
+        HAL.muteService.setMuted(false)
+        Queue.drain()
+        check(Feedback.messages == [text.micUnmutePartialHUD]
+                && Feedback.microphone.isEmpty
+                && Feedback.reactions.isEmpty
+                && Feedback.retractions == 1,
+              "a wholly refused unmute warns without announcing that mute is off")
+        check(HAL.muteService.isMuted && HAL.muteService.hasOutstandingClaims
+                && HAL.defaults[Preferences.micMuteActive]
+                && HAL.muteService.inputVolumeAdjustmentLifetime == nil
+                && HAL.mute[10] == 1,
+              "a wholly refused unmute preserves the state and claim for retry")
+        HAL.writeFails = []
+        HAL.muteService.setMuted(false)
+        Queue.drain()
+        check(!HAL.muteService.isMuted && !HAL.muteService.hasOutstandingClaims
+                && HAL.mute[10] == 0,
+              "retrying a refused unmute releases the device still owned by the app")
+        HAL.reset()
+        HAL.mute[10] = 0
+        HAL.muteService.setMuted(true)
+        Queue.drain()
+        HAL.mute[10] = 0
+        HAL.running = [10]
+        HAL.writeFails.insert(HAL.key(10, 0, kAudioDevicePropertyMute))
+        Feedback.microphone = []
+        Feedback.retractions = 0
+        Feedback.messages = []
+        HAL.muteService.syncWithPreferences()
+        Queue.drain()
+        check(Feedback.messages.isEmpty && Feedback.microphone.isEmpty
+                && Feedback.retractions == 0,
+              "a failed background reapply stays silent instead of repeating the warning")
+        Feedback.showsMicrophone = false
+        HAL.reset()
         HAL.devices = [10, 20]
         HAL.levels[HAL.key(10)] = 0.5
         HAL.levels[HAL.key(20)] = 0.5

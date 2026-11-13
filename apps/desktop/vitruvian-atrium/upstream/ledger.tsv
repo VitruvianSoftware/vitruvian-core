@@ -480,3 +480,126 @@ cfa2486696b03d2ffe1d1f765992cd44eca18bc2	b644940f5d2243e134d2651cb67be768b8576e0
 bb4588da2d7199366233a4bffa4289fdb1196e7d	4358358f2ee40aade1b98b3b57f8d59c1c7c484a	2026-10-26	ported	#3947	fix(notch): keep the island steady when the pointer changes displays (#3401)
 ab793e36e49b7752620daa3aa0daf7f465ac37b0	f71f88847a279fb506a9aa4059f7a68138244ad9	2026-10-26	ported	#3947	fix(notch): apply each volume key on coarse USB outputs (#3408)
 746239b0220571d6694ffacae79f3eb9dcd09193	5ee8610f75ca62a20b70e14c01e65d21c4e90e96	2026-10-26	skipped	touches only upstream-only paths	docs(changelog): credit island and USB volume fixes (#3530)
+c4645f233664fd57ad36a1e00871df4fe622a7ef	f4f936649625520b45b0539d4ac4a250eff70399	2026-10-28	ported	#4682	fix(onboarding): measure the feature picker eagerly (#3535)
+1cd273b3341065119a80da01d9a3a9c21ed536a4	66a8a464f50143d8dc2a1d87516af798414e358e	2026-10-28	ported	#4682	fix(wallpaper): constrain thumbnails to their grid cells (#3557)
+17cbbfb03aebd63ff5f07183cac49746c352b426	4b39cd232f065f653f54182dd8b9c193b84e9d4c	2026-10-27	ported	#4682	fix(snippets): list snippets alphabetically in settings and the library (#3305)
+2ffc38f83900b5b6f68ee0b3024fc9d035623c54	026303985d6bbe7f48806bf259f125ba498471ee	2026-10-28	ported	#4682	fix(notch): keep a level's width steady as its reading gains a digit (#3581)
+c536753d82047ba00940d2a42c7c9926caff3a6d	ce25cb62ca80b172ccda7a76974ad3031799fc51	2026-10-28	ported	#4682	fix(command-bar): find English commands in every locale (#3447)
+f0ae4fa83a04902c3144e1de4d777fbb1552fd04	aa287643778484b502511ebd0f90051ab1c64450	2026-10-28	ported	#4682	fix(notch): dismiss capture previews on outside clicks (#3566)
+162fb8dcd178f5405b48e4cd37dee94a9c1579fe	1ed3d2eece6fae6047bdb2445b99134420c7fa96	2026-10-28	ported	#4682	feat(sliders): adjust levels with the scroll wheel and trackpad (#3584)
+12f5d7e1f6646fb1a699a579bdb9694ff996b369	9e3bbcb132c5bde50975f596da43728c6ef7e765	2026-10-28	ported	#4682	feat(homebrew): use the default terminal for commands (#3463)
+02c6469d15c503db442d535fd1bdf436cf1aba41	2ff0fd737a1053b4523b15a0fe3da3e60f45a31e	2026-10-27	ported	#4682	feat(settings): support safe command-line backups (#3168)
+0220b75e0ff457644960dd8200ae2cf0361d6f71	8f8febccb3c5019cdf8a82e44b4d58d6e50632a5	2026-10-28	ported	#4682	feat(command-bar): convert days, weeks and fixed-length years (#2855)
+c007f6af59a30ce47997d2264398298fa363fb88	4d8ebaf0eef52a9e1df59c23bfedad00be2b7cd2	2026-10-28	ported	#4682	fix(display): preserve Mission Control thumbnails with extra brightness (#3572)
+39b63cab1e46b7ce89e343377bb8e408dd92edb5	750dee6d8a7078c9fa063e707a7566c2baf5f7ad	2026-10-27	ported	#4682	docs(changelog): summarize reviewed fixes and contributor credits
+1468701709514c3a003c9cf93179c8cfc1a31de9	c77887ad526bef07b39437eef723655c8b3630e9	2026-10-28	ported	#4682	fix(mic-mute): report failures and clarify device-control limits (#3591)
+6f41522ff15a9ec72c563e0df280d700d608eeb8	e9018a241cf50605cfb8d2a3856828c16e86600e	2026-10-28	pending	-	feat(notch): let the event countdown start earlier or later (#2167)
+1d46b933539efb785b45c667c79cbea72a643be2	807daf60452bca4661c1c9857dab819e65fc8c3c	2026-10-28	pending	-	feat(quick-toggles): add a Quit apps window (#3300)
+f1d115ae51933d21a5d6a4b5060f78c29aaf88b7	d6840e5e05939ae0075c17bdc95bac0191dd9678	2026-10-28	pending	-	feat(settings): add configurable scroll zoom (#2104)
+97a7d2141447ae8202e46a682d9f721eb3aa83a1	52f18d42c67f2dafe0962aa2e532f869f2a368d9	2026-10-28	pending	-	Document new controls and align quit-app test cleanup
+db0a245ee3316a2dc2305d7043f6a4d5358bd177	8af88392c4651c37eb82f123f2b124224aafaca5	2026-10-29	pending	-	feat(switcher): allow up to ten columns (#3410)
+3cca99e044283795a67638baa72a7531778bc2a7	31254aeb9dda79aec0b8a863d1ec089c1a1c9b51	2026-10-28	skipped	touches only upstream-only paths	docs: note expanded switcher column options
+92e479545dc385e66cdbf4a3c2735855b003d96f	ac9d1080c8e202dc0b2ded25aa3f093e554e77b1	2026-10-28	pending	-	fix(agents): illustrate limits in the settings preview (#3421)
+f1621f97aa50bca69ef08d960b1e5f85beeb1690	654d60ef83b789f38c20cd9c9fdc4261b01df804	2026-10-28	skipped	touches only upstream-only paths	docs(changelog): note agent limit preview fix
+bb0c44138b7c0668cd48e56d119e073cb2df8c47	b978a54d7fd505daf820e8b0b8c45029dccce524	2026-10-29	pending	-	feat(clipboard): add optional source app icons to list view (#3446)
+77ef5e2625ec4e42a43fa1f303a54d2980d2ce03	a8ad7910a196282b177f9833bbd557e7f7d43572	2026-10-28	skipped	touches only upstream-only paths	docs: note clipboard source app icons
+a03c1e3348ba101ef9e1c7019a2861c8a1abfded	264e9cf24c4f72c38737a40f1f3b0d77d9e6bb01	2026-10-29	pending	-	fix(radial-menu): attach the action editor's file picker to the editor (#3289)
+e74c1efc9718719342f938ffe00d5ac35b30db69	dfed33cc82c2d2311f92f86b2bd8eafe4a5499ef	2026-10-28	skipped	touches only upstream-only paths	docs(changelog): note radial menu file picker fix
+eb272f6cf9c412d5b26c55eb0011d7ef69ca246c	0803a5141dba19d98230349bae6449e4ffebf460	2026-10-28	pending	-	fix(url-cleaner): keep the port and login out of a pasted site key (#3519)
+23f7153f89b6513b176c6f2d7efa4155a1dee17f	9721bd98d357f3fb945b92c6816d84560c790089	2026-10-28	skipped	touches only upstream-only paths	docs(changelog): note URL Cleaner site key correction
+b336c95930d692ce88e7c7608fd54a24818f7a58	497d3b908fac44cd26534022ba83374692869e81	2026-10-28	pending	-	fix(quit-protection): follow the live macOS switcher shortcut (#3318)
+2ab6bbac651b6242b62b8503eaff33ad14d8f83c	8619ce9663bdf0fdfa728439801af42f150cc619	2026-10-28	skipped	touches only upstream-only paths	docs: note live native switcher quit protection
+e91fb1a9efbce775a707f007615419c5e5a3c1d9	bafcadf3fce94934bc96ca89ba8ffb0f047a6a74	2026-10-28	pending	-	fix(media): keep a zero image watermark margin (#2871)
+4b27ac06fa9704708fb27716b3515ce6ecba326b	c631195a5610d19a73f030eec6d036642be2bf0f	2026-10-29	pending	-	fix(agents): say whether a limit reading is left or used (#2353)
+abf441034c3176e973b0b134b0d493bfe2852a3e	d54100fe396180cdd4315e334595b3c86e1be033	2026-10-28	skipped	touches only upstream-only paths	docs(changelog): note clearer agent limit labels
+8910f18eed027ff34d2a1e66794c34a185d4a88f	17077523c26028867be3a0c3b837977bda9a9cbd	2026-10-28	skipped	touches only upstream-only paths	docs(changelog): note zero watermark margins
+4a405fd2abd3ed312be8022e05140798961087c3	f4bde9c01a3c2045cf9b30d5f58dbebfdbd97fc8	2026-10-29	pending	-	fix(shelf): offer only a copy for files stored inside packages (#2085)
+8e2a826eca02b54a803f7eb8c4f335fccba11ca2	07d271b4b81e24593580d6729f491961c28acc88	2026-10-28	skipped	touches only upstream-only paths	docs(changelog): note safer Shelf package drags
+0121b0177a5a7075996f9d82374221383a850b09	6a316224d258d34dce9cb8281c67d97579b6f189	2026-10-28	pending	-	feat(switcher): add an optional shortcut for all windows (#3609)
+efb5e60f5445ba68b3f0ce7cbafa21fcf7375595	aee62ad86de20e44b5650f19db38bfe0ecb6ea43	2026-10-28	pending	-	feat(agents): add Claude account selection (#3610)
+4d830f42178da244166e1dd842bc2db822286249	bb7da9b0b69becc86de1626ce3288d5c36d7ab03	2026-10-28	pending	-	fix(super-key): make hotkeys independent of startup order (#3613)
+00f8386bb09c5fdb47c2b8bf260a17cfc631acfb	5edcfd44bc96175c698dc0bfd34afbcf218a97af	2026-10-28	pending	-	fix(clipboard): support control navigation in the dynamic island (#3615)
+b33607515ea4b104e818bd2f2b1e674012aa3b4e	c474b8734f060f24b997b345423c28be8c8a63f8	2026-10-28	pending	-	fix(uninstaller): stop removal when Homebrew verification fails (#3617)
+e701eddeace73a10c6b2682272855bb208aacb7e	cc4ca07ab2cef08fdd3cb4565cac994c0ac9e220	2026-10-28	pending	-	fix(url-cleaner): preserve Safari link previews when cleaning (#3618)
+d61a376097dc583291903b4fba6102279865bf6d	cfa527fb69ee43febb1448d0d0200df4a5f54355	2026-10-28	skipped	touches only upstream-only paths	docs(changelog): summarize the six reviewed improvements
+16c0b06ba17a020506733e9e8bb9602a93d4fb04	5056a9b16b31dd9a093eef7529c8fb688f756efb	2026-10-28	pending	-	fix(network): stop counting mirrored feth peers twice (#3633)
+1050eb8d38d71b2705bf97117d1ac2ec179fe503	7ec5d199259cbdb07040145a0baf814cf69459a8	2026-10-29	pending	-	fix(display): keep manually disabled displays off after wake (#3626)
+1cdbd59b1c7dccd036ec1713b2ea048334990d06	55adb680d629366fb2585514651c6393feff2450	2026-10-29	skipped	touches only upstream-only paths	docs(changelog): note display and network stability fixes
+54c1138ab66a343470733bd038ef4f1ae6ed0a20	1e3a1f4eebf1e8f6404c5b128e91ae1dbc3ed91f	2026-10-29	pending	-	docs: add sponsorship invitation and details
+c6125dfb83a991595f5f5b5c8405659ec1273b60	6e95cfc8ce6c5f7e0d858eb1e26f314d48736959	2026-10-29	pending	-	fix(notch): keep timer ruler filled at duration limits
+f89c7b5e3622b938fecc3c6ba30b980dae2fef34	1e0c473bd51976939eb16a811a8e24774978e5e2	2026-10-29	pending	-	chore: prepare next update
+7e7e4ce33b844c9c9e10c56bf0824596acab5a45	ec4eeb7934a35c62bb376dad114a22f81f3ac6cb	2026-10-29	pending	-	refactor(mouse): keep only pinch zoom
+63a57362ffe1c0f8689c8924a32fad01d40f215b	43743871e1e63d45c9687892998641083b7863a3	2026-10-29	pending	-	chore: prepare 3.4.3 stable
+e000b7d0f1fcd0a8c84aa78006ec0a25614efccf	2b8c485192875bec808efb508abe7f7e65630b53	2026-10-29	skipped	touches only upstream-only paths	chore: reopen changelog after 3.4.3
+a5da7633e09d0ebbf5b5607c0434ded28a239469	bd7eb12c8213b0def5d123d5bbbabfbaacb2881b	2026-10-29	pending	-	chore(agents): update AI price list
+4632b3a889653c7e75e8bb81b50e0cb8b38b9b9d	67483b80d0183fea6889c34664fd50e0f6432f33	2026-11-05	pending	-	fix(clipboard): copy without pasting into remote desktop sessions (#3783)
+da971fd4b7923f6db0bfced82fb25765a4ad7a61	3cb625882722e2adec5720e9bb7512c1061d3164	2026-11-04	pending	-	fix(display): include the host address in the DDC read checksum (#3708)
+5b0a8b44bd25b79aac13e20d1e955c561b5d28b2	5a2f0d4cd0aceee7e3bcbb4edb3b733e5a55d257	2026-11-05	pending	-	fix(mic-mute): zero input volume so capture actually stops (#3772)
+c5930bfc6fc64d48337c7717ddb7891826f7a54a	0efb0fdd1c20869126b6b4cf18a31ca7c9b10a97	2026-11-04	pending	-	fix(notch): hide over an app's own full screen on every display (#3686)
+3afcd0222dd1dfc8b76c8c3782599cba60e44b62	ae744230d0f8c042f5f66a72653270b34c96f6c7	2026-11-04	pending	-	fix(recorder): stop compiling GPU programs for every exported frame (#3648)
+b1ffc9d9010eb567d6ebfdd3af26224e322726b7	2cdc059fc51cc59b3eb915ca25eb5153e36fd49b	2026-11-04	pending	-	fix(mixer): slide the volume across a block instead of stepping it (#3538)
+73b4846f52a938e1b924abae285813b702459980	801eafc241a6a2ac7342bce12fcf799681878ee4	2026-11-05	pending	-	perf(switcher): reduce quick-switch latency and minimized-window flashes (#3570)
+d257dfd208634981cef9856e9bd291ec6eab7966	9eca256c08e3eb7df329dbc402a6538df4ecc3d7	2026-11-05	pending	-	fix(mouse): focus without raising again when the no-raise path fails (#3737)
+2806d2bcc11f52de78f5786d6e618df147dea414	3968aeb37e67e41b3e676f76dc46b83ab8cb4650	2026-11-05	pending	-	fix(window-layout): resolve gesture targets when child hit tests fail (#3773)
+ab7e57131ebbb86135d09917c2b81b8a165f69be	f3d73a7c17384c732a43c6b5ce580b008837fc79	2026-11-04	pending	-	fix(switcher): keep the shortcut working under secure input (#3643)
+3857e560d6e19b3170d432c2038c60b542810852	8aacbcd76b6411136e9b17d41f00af995cd6cba2	2026-11-04	skipped	touches only upstream-only paths	docs: credit the integrated fixes in unreleased notes
+cbecb6278d14d3d33791d47f71293c0709fbd58a	0a7e25290ae936b4adaad10e96c5dea573dd9d33	2026-11-04	pending	-	test(recorder): preserve fixture contrast across H.264 encoders
+da1e5d52305b9ff1481f15fb97b84ecb82039ec0	5c0b65b7b2f25677ecd63d8fbde0916cf55a4133	2026-11-06	pending	-	fix(command-bar): outline the selected row so it reads on dark surfaces (#3835)
+39230975a7ed34535a4380d8922762b631b80ef2	ec63a7e6608db9500a2eb2c4501b81fbd0d709ae	2026-11-06	pending	-	fix(notch): hide the native banner on macOS 26 as well (#3720)
+041753ad17a43fd6f3a606d825e37e033d43381e	b4433124aa70ee616e4bbc5200fe6365d0cebca4	2026-11-05	pending	-	fix(recorder): improve gif export quality and add export controls (#3766)
+b9f4ccea68638a4b1e2b8d0ff9d690584f03dc0f	334a66110bfc4e38b23a2b6b0883959765da82c3	2026-11-05	pending	-	fix(notch): show the WebKit app instead of its audio helper (#3630)
+561a9465883e40fe2fdb156b25b1ba924989f7ea	26e3085fe164ba7c515617a01d3700b22a7b959d	2026-11-06	pending	-	fix(media): use one scroll region in compact workspaces (#3822)
+debddfccbf8bfadbd1879267b8b83cf436a8e52c	d069b431b1ab500409497a9369fbbe6e51e9038f	2026-11-06	pending	-	feat(display): let readable ddc monitors dim the picture instead (#3837)
+c69bc12c421fe2f0d59ee05129eec6dd873ec35e	6a4846b03bdf9268cbb45df8e00b3398b4834b16	2026-11-05	pending	-	fix(notch): keep the scrubbed bar under the pointer (#3753)
+49281eed51fe0e0950426963cc3bdaf532906d78	b748b4bd622fd753eed3fad4a869fae051890195	2026-11-06	pending	-	fix(notch): hide mirrored banners before they draw (#3665)
+811b8a3b68d2a20cb4df0436800f0427df8c0d08	2fd9135d7895c99b7a1f9b68319b5f46fbcc75e9	2026-11-06	pending	-	feat(screenshots): resize large clipboard images before editing (#3821)
+16afaf7dbc6d502cf472371a419b205470f9b7d3	197b86a77f17dd24bdfa194c4efce2968e81ccac	2026-11-06	pending	-	fix(notch): keep the opening center's list out of the island (#3709)
+e9500e3906437f0843435116743610f564c6ed9f	71efacb91c16104684fb831351d15c65786fcb27	2026-11-05	skipped	touches only upstream-only paths	docs: record the second batch of reviewed improvements
+2a9d6b9c9ae2dca6368e3b029a2237f31320149c	5c61f061dd26e142ca8c9e326f4ffb5000945661	2026-11-05	pending	-	fix(shortcuts): allow clearing keep awake and snippet bindings (#3739)
+c9bb2c543888fd702610f7c7d5add76324056afc	48970d7a3e5d3ba0ee38eba96891f44a65432c77	2026-11-06	pending	-	feat(switcher): add option to ignore hover selection (#3731)
+b0cafdd3b15255a12f40faaa465418f525f9a6af	492333be8cffedb0d0ce16e3b53e12b4f9564ff1	2026-11-05	pending	-	feat(window-layout): restore size when dragging a snapped window away (#3653)
+eccdb2de674e0c7c1a1a655110208e0649407806	6f64a032a6025cb2f65cc6d0f748727ef4e941d0	2026-11-05	pending	-	feat(clipboard): remember the history window position (#3736)
+91d4421b12a8b35ce9b851aa48ca09a555ab4bd2	227651f4569fa5ecbb89a0525fc17effe97046bf	2026-11-06	pending	-	feat(uninstaller): add a select-all checkbox to the results (#3704)
+26d3c9e199eb3afc8f43ce8bd83210b5754421bd	ff1265a9d10556ac30382290c1b11545472a9224	2026-11-05	skipped	touches only upstream-only paths	docs: record the final batch of reviewed improvements
+4a53492e99f6300c9363ca5256e590a11811c81b	db216af2b06d41ccba49770ba39554c7b1b70bae	2026-11-09	pending	-	fix(menu-panel): show smooth scrolling in controls (#3918)
+4158fb4a21aa281bc05543c09492e7156d489957	aa1f4a3c4386a3078bf5ec4bd8dd2f1863c016c3	2026-11-09	pending	-	fix(cleaner): protect domain-named support folders of installed apps (#3857)
+a4c0b18ad7a6386ef6ee26059af2c32d727365cf	44aead7aadbf0bc66e3119bf0d6aa268ec81c75e	2026-11-09	pending	-	feat(settings): load preferences from a read-only XDG file (#3620)
+d01ea2c6b9333181899329e0dd24eb49778fe36a	a948489b34e9a46010e748d43b9618017c23e43f	2026-11-09	pending	-	perf(recorder): speed up GIF exports with sequential decoding and GPU encoding (#3859)
+b2f67d416828f60346e61d9092fe9cdca011696c	b9d6a7c150337e24914c2126cd0aa3e058b35c85	2026-11-10	pending	-	fix(agents): stop the Claude activity timer on local context resets (#3871)
+0adc546fcbd1882f5aba4411c0ccde40555c33bd	2196786377cb8b53c4cb5b0d43b9a6ac735544a1	2026-11-10	pending	-	fix(scroll): keep native wheel distance in app panels (#3872)
+c8cc63ee86c0517ff6ee9297ef28c02ec7b62bbb	05114b06a09f65b19eb2713281baa23c41e6aa5c	2026-11-10	pending	-	fix(homebrew): keep the last operation log available (#3671)
+00e6493bb36765d54747043a62673ed9ce18bdba	0bd78134254fc9d39c548ab6388e4d6215a7f483	2026-11-09	skipped	touches only upstream-only paths	docs: credit seven reviewed improvements in the changelog
+ab9f01cfbbea1f541a2726c15d4b8a95c24ac52e	cd52c1850fb2af3069e631d8e3100a1656912971	2026-11-09	pending	-	feat(display): control the speakers built into a monitor (#2927)
+d110b626f4da6ba637ee4222347058d7e857bf5f	c4baddc3082d83adf3ec3cea6aea3987715a14ae	2026-11-10	pending	-	fix(settings): find visible controls and open their settings section (#3893)
+1fca805c2d5e99607bb0d44fc493e6f6c5546f72	72aceb35d9ab5dd3c9a530784e7bd55dc1b2e63c	2026-11-10	pending	-	fix(keep-awake): respect docked sessions when restoring lid sleep (#3860)
+7980161d0c1e89c7658c30b562688d1b6a325ff8	3f220684c617571cebe69419c0dd493b33ea2a29	2026-11-10	pending	-	fix(notch): open the notice that received the click (#3927)
+b4d9318aaaa3062e0250456157a46796265154ea	cc8bae83de43e74324e2986f6a743119a1a33687	2026-11-10	pending	-	fix(notch): keep horizontal swipes from changing mixer levels (#3930)
+b891ebd4678db36d500ca7fc4a53363af9703da7	f59bbc4551b9eac3428904caa2f60e88627f8cde	2026-11-10	pending	-	fix(super-key): preserve Caps Lock after a solo tap (#3870)
+ec25fc0b91c1a58a66d8e8720ef2a7efa181063b	b25b30c0dcaee5482644425eb7aef81427b89dc7	2026-11-10	pending	-	feat(screenshot): capture a scrolling window automatically (#3798)
+cfe4e89d035a15be42ff93b7b0e5b14170f466d1	d2a26b1e0f87f8f8ff2314b7ae7c1b3bd70d9380	2026-11-10	pending	-	feat(uninstaller): offer a leftovers review after moving an app to Trash (#3879)
+15bd02d30521605b7ae592cd688b5af1f3835eb7	77a73cb4995f85bd92efa8e9273d746b22940fb1	2026-11-10	pending	-	fix(keep-awake): restore manual sessions on relaunch (#3937)
+49ffe9283676badc10b189b39817744c9c04f484	ccee56ccccb9976216f10633dc739cf3d89d443b	2026-11-10	pending	-	feat(display): configure monitor speaker volume steps and limits (#3257)
+375c57b1024a5f460c8c2c161f9153f0484c53ef	037549e1abc37ee4d98534c4cb000798e983337b	2026-11-10	pending	-	feat(scroll): speed up the mouse wheel while a modifier is held (#3769)
+f06190ceb1464a9a92661460996171657827fe5c	bbceb2cbeff57dd83fa008884c1a576f738d8089	2026-11-10	pending	-	fix(audio): let Vorssaint launch on early macOS Sonoma (#3982)
+86f84be1033ff23ad146228224bd121761c81beb	068ec369ba84182031e3b62118370e255d1edc6e	2026-11-10	pending	-	fix(mixer): resume a valid audio tap when a routine check is pending (#3990)
+b36c30107e7af82a15f3eeab0f7ef8b928b52373	5639acd54e59062a0f5ab5fe6ff011d8293180cb	2026-11-10	pending	-	fix(shortcuts): recognize Super Key chords while recording starts (#3994)
+03a0761d962aa3385f78f5cae4fc0f9c93f24e6e	11e5ed9a7d73a9018931a4a8fe6016ab786ed7a2	2026-11-10	pending	-	fix(command-bar): convert mixed feet and inches (#3980)
+ad1aa857571852c5c572f7ba2cc580d1d069cece	cdc000fddac185fe3167cf76fc161271d489e309	2026-11-10	pending	-	fix(notch): explain which desktop alerts the island can mirror (#3991)
+63b2fee7eb4453c636814a88f9a17b0f5300f74e	d5d5b9e5ecb38fcf09f054fb5b11ecf02da5412a	2026-11-10	skipped	touches only upstream-only paths	docs: record integrated display, input and uninstaller changes (#3996)
+181d0d5c371fbf23877d0c1b31be28f162dadb61	45da1119ea9d9e8c56048cd41f3dc7bffcab78f9	2026-11-10	pending	-	fix(display): defer disabling the built-in panel until unlock (#4022)
+5b321192a25f48d8ffcdaec0943834cbb2ee4f89	d408d66833d0d7d67dbb31b7c7a03a6aa64a42b9	2026-11-10	pending	-	fix(mic-mute): restore channel levels across upgrades and reconnects
+a83b4eaee77a7c9e517fc085788f26540882be9c	cbceba7074154ed3c55bc9ac27e8afb587edb995	2026-11-10	pending	-	fix(display): cancel pending hardware writes when software dimming takes over
+a3f776d611d7e4c79e9f2e8fe946a44c676ccf39	71a981afe7ba9fe467d766f8b4ebb8544b20706b	2026-11-10	pending	-	fix(audio): respect feature settings for monitor volume keys
+7c5a34f628151e09964e1b4776013ce431126dcf	e6d868f585476ee423385fa96b8f8fdcf360227f	2026-11-10	pending	-	fix(notch): remember notification center focus during banner detection
+d461c2edd6bcb98d5e470d35737f26ce79f7916a	c807ee467784990755f7bd52b60b1df0693d1086	2026-11-10	pending	-	fix(recorder): recheck GIF copy cancellation and reuse the export plan
+7415c09f9e629e7d286ff7da984e3a3d3e42c76d	9f338e9c6258ecd1dfbe93993b3dd28d9f98f45b	2026-11-10	pending	-	fix(window-layout): require a drag before restoring a snapped window
+c3877576be56187c9f74e4b9735db96ca3f401b4	f416da09963d3de5970a08ddeafa14d3d48e0a69	2026-11-10	pending	-	perf(switcher): reuse key labels during secure shortcut registration
+772c8918c303eb1c96f550467bbb9acf4ae39cb5	304c3b9b29e43df518b6574d420a83e3d5632c94	2026-11-10	pending	-	test: isolate registered preferences between suites
+cb8ba92a7f36a3bf2c7c138032e3444bbf896ecf	65320ee832a6165bb8daa1df85b8909a092597e1	2026-11-10	pending	-	fix(settings): preserve local preferences when loading partial configuration
+4baad551370fb68bf3ae0ed1c7c9cfd73b564dfd	b43564d9c79be6e8deb88e58e9c5ae25bfbaee90	2026-11-10	pending	-	fix(settings): find automatic scrolling and trash cleanup controls
+b023c7707a1b3ece148821f979f28aef965e91de	50ebacece6edbafcd54b1ff677932ca07d50b615	2026-11-10	pending	-	fix(uninstaller): keep setup controls reachable in small windows
+172af11c9d16dbb57f6515c0580b20450b198871	833933777641ea3177a60446b92cdcd91990758a	2026-11-10	skipped	touches only upstream-only paths	docs: credit the scroll speed and monitor volume key options
+4ec0649bf914a457c4c7bf44d93f6aeeb647d757	54f0935f663d66a752c92e7ad2901dc800068f9d	2026-11-11	skipped	touches only upstream-only paths	docs: simplify the upcoming stable release notes
+83ec5e77281b571f64aae30e7b9b6ea43ca1c227	f1c303eb99c4db4efe74cdbcf28745c976c87ce3	2026-11-11	pending	-	fix(super-key): keep the HID client alive while checking keyboards
+d9c7f4a77e809405facd4d71289ec58a29e46380	9d7521623f95293c37c5d2d90552bab4fce72f98	2026-11-11	pending	-	chore: prepare 3.4.4 stable
+ce1276470d2b1115c8c3398f34e82079905fffba	4e8dce8acc24f13e5408bb58b3c33a72e14f2ad4	2026-11-11	skipped	touches only upstream-only paths	chore: reopen changelog after 3.4.4

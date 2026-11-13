@@ -7,6 +7,13 @@ import VitruvianAtriumDesign
 import VitruvianAtriumServices
 import VitruvianAtriumUI
 
+// Select backup mode before cleanup and diagnostic arguments can act. Invalid
+// backup commands must leave files, input mappings and recovery journals alone.
+// Top-level code runs on the main thread.
+if let command = SettingsBackupSupport.command(in: CommandLine.arguments) {
+    MainActor.assumeIsolated { SettingsBackup.runCommandAndExit(command) }
+}
+
 SuperKeyMappingGuard.runIfRequestedAndExit()
 Defaults.register()
 // The island asks the brightness service whether this Mac has a keyboard

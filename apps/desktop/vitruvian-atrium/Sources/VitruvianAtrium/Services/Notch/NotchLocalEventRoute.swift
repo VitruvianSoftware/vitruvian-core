@@ -50,6 +50,9 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
         /// A click lands away from the island: not on it, its status item
         /// or the Accessibility Keyboard, while nothing keeps it open.
         package var clickIsAway: () -> Bool
+        /// What a click away does: collapses the island, or hands a
+        /// screenshot preview to its controller. Collapses unless given.
+        package var clickedElsewhere: () -> Void
         package var toggleSections: () -> Void
         package var select: (NotchModule) -> Void
         /// Each answers whether it took the key.
@@ -80,6 +83,7 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
                      showingSections: @escaping () -> Bool, showingAppPanel: @escaping () -> Bool,
                      geometry: @escaping () -> NotchGeometry, tools: @escaping () -> (editing: Bool, count: Int),
                      ownsWindow: @escaping (AnyObject?) -> Bool, clickIsAway: @escaping () -> Bool,
+                     clickedElsewhere: (() -> Void)? = nil,
                      toggleSections: @escaping () -> Void, select: @escaping (NotchModule) -> Void,
                      sectionKey: @escaping (Event) -> Bool, scratchpadKey: @escaping (Event) -> Bool,
                      clipboardPasteKey: @escaping (Event) -> Bool,
@@ -112,6 +116,7 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
             self.toolsKey = toolsKey
             self.stepBack = stepBack
             self.collapse = collapse
+            self.clickedElsewhere = clickedElsewhere ?? collapse
             self.clickedInside = clickedInside
             self.keyboardInput = keyboardInput
             self.showingCommandBar = showingCommandBar
@@ -200,7 +205,7 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
         let click = clicks.contains(event.type)
         let islandWindow = island.ownsWindow(event.targetWindow)
         if click, islandWindow { island.clickedInside() }
-        if click, !islandWindow, island.clickIsAway() { island.collapse() }
+        if click, !islandWindow, island.clickIsAway() { island.clickedElsewhere() }
         return false
     }
 }

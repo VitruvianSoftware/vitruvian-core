@@ -97,6 +97,9 @@ package enum CommandBarUnits {
         add(["s", "sec", "secs", "second", "seconds", "segundo", "segundos"], .duration, UnitDuration.seconds)
         add(["min", "mins", "minute", "minutes", "minuto", "minutos"], .duration, UnitDuration.minutes)
         add(["h", "hr", "hrs", "hour", "hours", "hora", "horas"], .duration, UnitDuration.hours)
+        add(["d", "day", "days", "dia", "dias"], .duration, UnitDuration.days)
+        add(["wk", "wks", "week", "weeks", "semana", "semanas"], .duration, UnitDuration.weeks)
+        add(["yr", "yrs", "year", "years", "ano", "anos"], .duration, UnitDuration.years)
         // Volume
         add(["ml", "milliliter", "milliliters", "millilitre", "millilitres", "mililitro", "mililitros"],
             .volume, UnitVolume.milliliters)
@@ -277,5 +280,17 @@ package enum CommandBarUnits {
         if magnitude < 1 { return 4 }
         if magnitude < 100 { return 2 }
         return 1
+    }
+}
+
+// ponytail: Foundation defines UnitDuration only up to .hours; larger spans
+// are fixed multipliers of seconds (365 days for year).
+// Computed, since a stored static of a type that is not Sendable does not
+// compile in Swift 6.
+private extension UnitDuration {
+    static var days: UnitDuration { UnitDuration(symbol: "d", converter: UnitConverterLinear(coefficient: 86_400)) }
+    static var weeks: UnitDuration { UnitDuration(symbol: "wk", converter: UnitConverterLinear(coefficient: 604_800)) }
+    static var years: UnitDuration {
+        UnitDuration(symbol: "yr", converter: UnitConverterLinear(coefficient: 31_536_000))
     }
 }

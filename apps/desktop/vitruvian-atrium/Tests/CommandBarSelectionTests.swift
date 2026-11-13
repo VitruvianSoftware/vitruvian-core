@@ -30,6 +30,27 @@ enum CommandBarSelectionTests {
         suite.expect(copied == ["Hello world"] && searched == ["Hello world"],
                      "copy and search continue to use the trimmed selection")
 
+        let english = FeatureStrings.commandBar(.enUS)
+        for language in [AppLanguage.zhHans, .ja, .ko] {
+            let localized = FeatureStrings.commandBar(language)
+            let rows = CommandBarCatalog.selectionEntries("Hello wORLD", bar: localized,
+                                                          typeOver: { _ in }, copy: { _ in },
+                                                          useInSearch: { _ in })
+            for (id, title, englishTitle) in [
+                ("selection.copy", localized.selectionCopy, english.selectionCopy),
+                ("selection.search", localized.selectionSearch, english.selectionSearch),
+                ("selection.upper", localized.selectionUpper, english.selectionUpper),
+                ("selection.lower", localized.selectionLower, english.selectionLower),
+                ("selection.titleCase", localized.selectionTitleCase, english.selectionTitleCase),
+                ("selection.count", localized.selectionCount, english.selectionCount),
+            ] {
+                let row = rows.first { $0.id == id }
+                suite.expect(row?.title == title && row.map {
+                    CommandBarSearch.matches(title: $0.title, keywords: $0.keywords, query: englishTitle)
+                } == true, "selection action \(id) keeps its localized title and English search in \(language)")
+            }
+        }
+
         let caseIDs: Set<String> = ["selection.upper", "selection.lower", "selection.titleCase"]
         for count in [4_999, 5_000, 100_000] {
             let exact = String(repeating: " ", count: count) + "a"
