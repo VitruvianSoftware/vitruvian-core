@@ -99,3 +99,35 @@ jobs:
           config-file: apps/desktop/vitruvian-atrium/release-please-config.json
           manifest-file: apps/desktop/vitruvian-atrium/.release-please-manifest.json
           target-branch: main
+
+      # Vitruvian 3.89.0 and earlier look for updates only under tags
+      # vitruvian-v*, and download Vitruvian-X.Y.Z-universal.dmg from them.
+      # So each release is also a release under that name: made here, by
+      # release-please's App, because the tag ruleset (release_tags.go) lets
+      # only it create tags. The delivery workflow's publish step uploads the
+      # DMG to it. Idempotent, and it fills in the current version whenever
+      # this runs, so a release whose copy is missing gets one on the next run.
+      - name: Publish the release under the name 3.89.0 and earlier update from
+        if: ${{ inputs.tag == '' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["apps/desktop/vitruvian-atrium"])' \
+            apps/desktop/vitruvian-atrium/.release-please-manifest.json)"
+          tag="vitruvian-atrium-v${version}"
+          legacy="vitruvian-v${version}"
+          if ! gh release view "$tag" -R "$REPO" >/dev/null 2>&1; then
+            echo "$tag is not released yet: nothing to copy"
+            exit 0
+          fi
+          if gh release view "$legacy" -R "$REPO" >/dev/null 2>&1; then
+            echo "$legacy is there already"
+            exit 0
+          fi
+          sha="$(gh api "repos/${REPO}/commits/${tag}" --jq .sha)"
+          gh release create "$legacy" -R "$REPO" --target "$sha" --latest=false \
+            --title "Vitruvian Atrium ${version} (update for Vitruvian 3.89.0 and earlier)" \
+            --notes "The update path for Macs on Vitruvian 3.89.0 or earlier, which look for releases under this name. The release itself is ${tag}."
+          echo "made $legacy at $sha"

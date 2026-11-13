@@ -532,7 +532,8 @@ pub fn publish(
 
 /// The same universal DMG, as a release under the name earlier releases
 /// look for (`LEGACY_TAG_PREFIX`): its own tag on this release's commit, not
-/// marked latest, holding `Vitruvian-X.Y.Z-universal.dmg`. Their updater
+/// marked latest, holding `Vitruvian-X.Y.Z-universal.dmg`. The release is
+/// vitruvian-atrium-release.yaml's to make; this uploads to it. Their updater
 /// installs it only when the app inside has their bundle id, which the app
 /// keeps for that reason.
 fn publish_legacy(r: &mut dyn Runner, work: &Path, plan: &PublishPlan) -> Result<(), i32> {
@@ -547,28 +548,17 @@ fn publish_legacy(r: &mut dyn Runner, work: &Path, plan: &PublishPlan) -> Result
             &dmg,
         ),
     )?;
+    // Made by vitruvian-atrium-release.yaml, as release-please's App: the
+    // tag ruleset lets only it create a tag, and this job's token is not it.
     if !r
         .output(&Cmd::new("gh").args(["release", "view", &tag]))
         .success()
     {
-        run(
-            r,
-            &Cmd::new("gh").args([
-                "release",
-                "create",
-                &tag,
-                "--target",
-                &plan.sha,
-                "--latest=false",
-                "--title",
-                &format!("Vitruvian Atrium {} (update for Vitruvian 3.89.0 and earlier)", plan.version),
-                "--notes",
-                &format!(
-                    "The update path for Macs on Vitruvian 3.89.0 or earlier, which look for releases under this name. The release itself is {}.",
-                    plan.tag
-                ),
-            ]),
-        )?;
+        eprintln!(
+            "publish: there is no release {} for Vitruvian 3.89.0 and earlier to update from; vitruvian-atrium-release.yaml makes it when it makes {}. Run that workflow, then run this one again",
+            tag, plan.tag
+        );
+        return Err(1);
     }
     println!(
         "Uploading {} to {}...",
@@ -1288,7 +1278,7 @@ mod tests {
     }
 
     #[test]
-    fn production_creates_the_old_name_release_when_it_is_missing() {
+    fn production_stops_when_the_old_name_release_is_missing() {
         let s = scene("publish_legacy");
         let e = env(&[
             ("GRADE", "production"),
@@ -1298,32 +1288,17 @@ mod tests {
         let mut world = beta_world(Ok(""), "");
         world.release_exists = false;
         let mut r = world_runner(world);
-        assert_eq!(go(&s, &mut r, &plan), Ok(()));
-        let created: Vec<&String> = r
-            .calls
-            .iter()
-            .filter(|c| c.starts_with("gh release create"))
-            .collect();
-        assert_eq!(created.len(), 1);
-        assert!(
-            created[0].starts_with("gh release create vitruvian-v3.86.0 --target ")
-                && created[0].contains("--latest=false"),
-            "{}",
-            created[0]
+        assert_eq!(go(&s, &mut r, &plan), Err(1));
+        assert_eq!(
+            r.count("gh release create"),
+            0,
+            "this job's token may not make a tag"
         );
-        let create_at = r
-            .calls
-            .iter()
-            .position(|c| c.starts_with("gh release create"))
-            .unwrap();
-        let upload_at = r
-            .calls
-            .iter()
-            .position(|c| c.starts_with("gh release upload vitruvian-v3.86.0"))
-            .unwrap();
-        assert!(
-            create_at < upload_at,
-            "the release is made before its DMG is uploaded"
+        assert_eq!(r.count("gh release upload vitruvian-v3.86.0"), 0);
+        assert_eq!(
+            r.count("gh release upload vitruvian-atrium-v3.86.0"),
+            5,
+            "the release's own files are up before it stops"
         );
     }
 
