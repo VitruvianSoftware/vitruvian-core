@@ -25,6 +25,18 @@
 # notification text. Stdlib-only Python (no pip deps, so a stock python:3.13
 # base image is all that's needed — no first-party image to build/publish),
 # mounted via ConfigMap in the style of ntfy's own server.yml.
+#
+# Self-clearing alerts: every Alertmanager alert GROUP maps to one ntfy
+# notification, keyed by a sequence ID derived from the group's groupKey.
+# A re-fire or a partial resolve republishes under the same ID, which REPLACES
+# the notification instead of stacking a new one. When the whole group
+# resolves, the bridge DELETEs that sequence ID, and ntfy tells every
+# subscribed client (web app, Android) to remove it, so it disappears
+# everywhere at once. Needs ntfy >= 2.16. Tests: bridge_test.py next to this
+# file (bazel test //gitops/argocd/platform/alertmanager-ntfy-bridge:bridge_test).
+#
+# Changing server.py does not restart the pod by itself (Python reads it once
+# at start): bump vitruvian.dev/bridge-code-version in deployment.yaml too.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -34,11 +46,13 @@ data:
   server.py: |
     """Alertmanager webhook -> ntfy publish-schema bridge (stdlib only)."""
     import base64
+    import hashlib
     import http.server
     import json
     import os
     import socketserver
     import sys
+    import urllib.error
     import urllib.request
 
     NTFY_BASE_URL = os.environ.get("NTFY_BASE_URL", "https://ntfy.ipv1337.dev")
@@ -105,9 +119,29 @@ data:
         return "[cluster]", "large_blue_circle"
 
 
+    def sequence_id(am_payload):
+        """One stable ntfy sequence ID per Alertmanager alert group.
+
+        groupKey is Alertmanager's own identity for a group (route + group
+        labels), identical on every fire, re-fire and resolve of that group.
+        Hashed because it contains characters ntfy's IDs don't allow; the
+        "am-" prefix keeps these apart from anything else on the topic.
+        """
+        key = am_payload.get("groupKey") or json.dumps(
+            am_payload.get("groupLabels", {}), sort_keys=True
+        )
+        return "am-" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+
+
     def build_ntfy_payload(am_payload):
         status = am_payload.get("status", "firing")
         alerts = am_payload.get("alerts", [])
+        # With send_resolved, a group that is only PARTLY resolved arrives as
+        # status=firing with the resolved alerts still listed. Show only the
+        # ones still firing, so the replaced notification says what's left.
+        if status == "firing":
+            still_firing = [a for a in alerts if a.get("status", "firing") == "firing"]
+            alerts = still_firing or alerts
         common_labels = am_payload.get("commonLabels", {})
         alertname = (
             common_labels.get("alertname")
@@ -148,22 +182,57 @@ data:
             "message": message,
             "priority": max_priority,
             "tags": [TAG_BY_STATUS.get(status, "bell"), source_tag],
+            # Same ID on every publish for this group: ntfy replaces the
+            # earlier notification rather than adding another.
+            "sequence_id": sequence_id(am_payload),
         }
 
 
-    def forward_to_ntfy(payload):
-        body = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(NTFY_BASE_URL, data=body, method="POST")
-        req.add_header("Content-Type", "application/json")
+    def _authorized_request(url, data=None, method="POST"):
+        req = urllib.request.Request(url, data=data, method=method)
         # ntfy.ipv1337.dev sits behind the Cloudflare Tunnel, and Cloudflare's
         # bot-fingerprint check 403s (error 1010) on urllib's default
         # "Python-urllib/3.x" User-Agent — confirmed live, curl with its own
         # UA was unaffected. Any real UA string clears it.
-        req.add_header("User-Agent", "alertmanager-ntfy-bridge/1.0")
+        req.add_header("User-Agent", "alertmanager-ntfy-bridge/1.1")
         auth = base64.b64encode(f"{NTFY_USERNAME}:{read_password()}".encode()).decode()
         req.add_header("Authorization", f"Basic {auth}")
+        return req
+
+
+    def forward_to_ntfy(payload):
+        body = json.dumps(payload).encode("utf-8")
+        req = _authorized_request(NTFY_BASE_URL, data=body, method="POST")
+        req.add_header("Content-Type", "application/json")
         with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.status
+
+
+    def delete_from_ntfy(seq_id):
+        """Remove the group's notification from every client.
+
+        DELETE /<topic>/<sequence_id> makes ntfy send a message_delete event,
+        which the web and Android apps act on by dropping the notification.
+        A 404 means there is nothing to delete (the firing message expired
+        from ntfy's 12h cache, or the bridge restarted between fire and
+        resolve with an older ID scheme): that is success, not an error.
+        """
+        url = f"{NTFY_BASE_URL.rstrip('/')}/{NTFY_TOPIC}/{seq_id}"
+        req = _authorized_request(url, method="DELETE")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return resp.status
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                return 200
+            raise
+
+
+    def handle_alertmanager(am_payload):
+        """Fire/re-fire -> publish (replace); whole group resolved -> delete."""
+        if am_payload.get("status") == "resolved":
+            return delete_from_ntfy(sequence_id(am_payload))
+        return forward_to_ntfy(build_ntfy_payload(am_payload))
 
 
     class Handler(http.server.BaseHTTPRequestHandler):
@@ -188,8 +257,7 @@ data:
             raw = self.rfile.read(length)
             try:
                 am_payload = json.loads(raw)
-                ntfy_payload = build_ntfy_payload(am_payload)
-                status = forward_to_ntfy(ntfy_payload)
+                status = handle_alertmanager(am_payload)
             except Exception as exc:
                 # Any failure -> 502, so Alertmanager's own webhook retry logic
                 # re-delivers instead of silently dropping the alert.
