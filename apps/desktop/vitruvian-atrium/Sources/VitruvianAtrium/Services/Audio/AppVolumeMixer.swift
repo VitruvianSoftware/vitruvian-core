@@ -3028,6 +3028,7 @@ private final class TapGainEngine: GainEngine {
         }
         self.configuration = configuration
         let ramp = TapLevelRamp()
+        let appliedGain = MixerRender.AppliedGain()
         // A boost pushes loud samples past full scale, and clamping the
         // overshoot flattens every peak into audible crackle (issue #326).
         // The limiter turns the whole signal down for just the moment a peak
@@ -3051,7 +3052,8 @@ private final class TapGainEngine: GainEngine {
                                      countCycle: { cycles.increment() },
                                      limiter: limiterBox,
                                      release: release.value,
-                                     canRender: { configuration.canRender })
+                                     canRender: { configuration.canRender },
+                                     appliedGain: appliedGain)
         }) == noErr else {
             ioProc = nil
             stop()

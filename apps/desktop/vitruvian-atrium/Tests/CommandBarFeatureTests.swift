@@ -912,7 +912,7 @@ enum CommandBarFeatureTests {
                     && uninstaller.target?.url == taken,
                    "an uninstall row opens the page on the app it was offered for")
             queue.drain()
-            brew.lookup?(nil)
+            brew.lookup?(.success(nil))
             uninstaller.removeSelected()
             suite.expect(uninstaller.isRemoving
                     && CommandBarUninstallReview.opensUninstallerPage(for: other, in: uninstaller)

@@ -518,33 +518,33 @@ abf441034c3176e973b0b134b0d493bfe2852a3e	d54100fe396180cdd4315e334595b3c86e1be03
 0121b0177a5a7075996f9d82374221383a850b09	6a316224d258d34dce9cb8281c67d97579b6f189	2026-10-28	ported	#4708	feat(switcher): add an optional shortcut for all windows (#3609)
 efb5e60f5445ba68b3f0ce7cbafa21fcf7375595	aee62ad86de20e44b5650f19db38bfe0ecb6ea43	2026-10-28	pending	-	feat(agents): add Claude account selection (#3610)
 4d830f42178da244166e1dd842bc2db822286249	bb7da9b0b69becc86de1626ce3288d5c36d7ab03	2026-10-28	ported	#4708	fix(super-key): make hotkeys independent of startup order (#3613)
-00f8386bb09c5fdb47c2b8bf260a17cfc631acfb	5edcfd44bc96175c698dc0bfd34afbcf218a97af	2026-10-28	pending	-	fix(clipboard): support control navigation in the dynamic island (#3615)
-b33607515ea4b104e818bd2f2b1e674012aa3b4e	c474b8734f060f24b997b345423c28be8c8a63f8	2026-10-28	pending	-	fix(uninstaller): stop removal when Homebrew verification fails (#3617)
-e701eddeace73a10c6b2682272855bb208aacb7e	cc4ca07ab2cef08fdd3cb4565cac994c0ac9e220	2026-10-28	pending	-	fix(url-cleaner): preserve Safari link previews when cleaning (#3618)
+00f8386bb09c5fdb47c2b8bf260a17cfc631acfb	5edcfd44bc96175c698dc0bfd34afbcf218a97af	2026-10-28	ported	#4710	fix(clipboard): support control navigation in the dynamic island (#3615)
+b33607515ea4b104e818bd2f2b1e674012aa3b4e	c474b8734f060f24b997b345423c28be8c8a63f8	2026-10-28	ported	#4710	fix(uninstaller): stop removal when Homebrew verification fails (#3617)
+e701eddeace73a10c6b2682272855bb208aacb7e	cc4ca07ab2cef08fdd3cb4565cac994c0ac9e220	2026-10-28	ported	#4710	fix(url-cleaner): preserve Safari link previews when cleaning (#3618)
 d61a376097dc583291903b4fba6102279865bf6d	cfa527fb69ee43febb1448d0d0200df4a5f54355	2026-10-28	skipped	touches only upstream-only paths	docs(changelog): summarize the six reviewed improvements
-16c0b06ba17a020506733e9e8bb9602a93d4fb04	5056a9b16b31dd9a093eef7529c8fb688f756efb	2026-10-28	pending	-	fix(network): stop counting mirrored feth peers twice (#3633)
-1050eb8d38d71b2705bf97117d1ac2ec179fe503	7ec5d199259cbdb07040145a0baf814cf69459a8	2026-10-29	pending	-	fix(display): keep manually disabled displays off after wake (#3626)
+16c0b06ba17a020506733e9e8bb9602a93d4fb04	5056a9b16b31dd9a093eef7529c8fb688f756efb	2026-10-28	ported	#4710	fix(network): stop counting mirrored feth peers twice (#3633)
+1050eb8d38d71b2705bf97117d1ac2ec179fe503	7ec5d199259cbdb07040145a0baf814cf69459a8	2026-10-29	ported	#4710	fix(display): keep manually disabled displays off after wake (#3626)
 1cdbd59b1c7dccd036ec1713b2ea048334990d06	55adb680d629366fb2585514651c6393feff2450	2026-10-29	skipped	touches only upstream-only paths	docs(changelog): note display and network stability fixes
-54c1138ab66a343470733bd038ef4f1ae6ed0a20	1e3a1f4eebf1e8f6404c5b128e91ae1dbc3ed91f	2026-10-29	pending	-	docs: add sponsorship invitation and details
-c6125dfb83a991595f5f5b5c8405659ec1273b60	6e95cfc8ce6c5f7e0d858eb1e26f314d48736959	2026-10-29	pending	-	fix(notch): keep timer ruler filled at duration limits
-f89c7b5e3622b938fecc3c6ba30b980dae2fef34	1e0c473bd51976939eb16a811a8e24774978e5e2	2026-10-29	pending	-	chore: prepare next update
+54c1138ab66a343470733bd038ef4f1ae6ed0a20	1e3a1f4eebf1e8f6404c5b128e91ae1dbc3ed91f	2026-10-29	skipped	sponsorship invitation and SPONSORS.md; the fork never shows donation or community prompts	docs: add sponsorship invitation and details
+c6125dfb83a991595f5f5b5c8405659ec1273b60	6e95cfc8ce6c5f7e0d858eb1e26f314d48736959	2026-10-29	ported	#4710	fix(notch): keep timer ruler filled at duration limits
+f89c7b5e3622b938fecc3c6ba30b980dae2fef34	1e0c473bd51976939eb16a811a8e24774978e5e2	2026-10-29	skipped	upstream release bookkeeping; bumps the support-invitation version the fork never shows and prepares the next update	chore: prepare next update
 7e7e4ce33b844c9c9e10c56bf0824596acab5a45	ec4eeb7934a35c62bb376dad114a22f81f3ac6cb	2026-10-29	pending	-	refactor(mouse): keep only pinch zoom
-63a57362ffe1c0f8689c8924a32fad01d40f215b	43743871e1e63d45c9687892998641083b7863a3	2026-10-29	pending	-	chore: prepare 3.4.3 stable
+63a57362ffe1c0f8689c8924a32fad01d40f215b	43743871e1e63d45c9687892998641083b7863a3	2026-10-29	skipped	upstream's 3.4.3 version bump and changelog; the fork versions through release-please	chore: prepare 3.4.3 stable
 e000b7d0f1fcd0a8c84aa78006ec0a25614efccf	2b8c485192875bec808efb508abe7f7e65630b53	2026-10-29	skipped	touches only upstream-only paths	chore: reopen changelog after 3.4.3
-a5da7633e09d0ebbf5b5607c0434ded28a239469	bd7eb12c8213b0def5d123d5bbbabfbaacb2881b	2026-10-29	pending	-	chore(agents): update AI price list
-4632b3a889653c7e75e8bb81b50e0cb8b38b9b9d	67483b80d0183fea6889c34664fd50e0f6432f33	2026-11-05	pending	-	fix(clipboard): copy without pasting into remote desktop sessions (#3783)
-da971fd4b7923f6db0bfced82fb25765a4ad7a61	3cb625882722e2adec5720e9bb7512c1061d3164	2026-11-04	pending	-	fix(display): include the host address in the DDC read checksum (#3708)
-5b0a8b44bd25b79aac13e20d1e955c561b5d28b2	5a2f0d4cd0aceee7e3bcbb4edb3b733e5a55d257	2026-11-05	pending	-	fix(mic-mute): zero input volume so capture actually stops (#3772)
+a5da7633e09d0ebbf5b5607c0434ded28a239469	bd7eb12c8213b0def5d123d5bbbabfbaacb2881b	2026-10-29	ported	#4710	chore(agents): update AI price list
+4632b3a889653c7e75e8bb81b50e0cb8b38b9b9d	67483b80d0183fea6889c34664fd50e0f6432f33	2026-11-05	ported	#4710	fix(clipboard): copy without pasting into remote desktop sessions (#3783)
+da971fd4b7923f6db0bfced82fb25765a4ad7a61	3cb625882722e2adec5720e9bb7512c1061d3164	2026-11-04	ported	#4710	fix(display): include the host address in the DDC read checksum (#3708)
+5b0a8b44bd25b79aac13e20d1e955c561b5d28b2	5a2f0d4cd0aceee7e3bcbb4edb3b733e5a55d257	2026-11-05	ported	#4710	fix(mic-mute): zero input volume so capture actually stops (#3772)
 c5930bfc6fc64d48337c7717ddb7891826f7a54a	0efb0fdd1c20869126b6b4cf18a31ca7c9b10a97	2026-11-04	pending	-	fix(notch): hide over an app's own full screen on every display (#3686)
-3afcd0222dd1dfc8b76c8c3782599cba60e44b62	ae744230d0f8c042f5f66a72653270b34c96f6c7	2026-11-04	pending	-	fix(recorder): stop compiling GPU programs for every exported frame (#3648)
-b1ffc9d9010eb567d6ebfdd3af26224e322726b7	2cdc059fc51cc59b3eb915ca25eb5153e36fd49b	2026-11-04	pending	-	fix(mixer): slide the volume across a block instead of stepping it (#3538)
+3afcd0222dd1dfc8b76c8c3782599cba60e44b62	ae744230d0f8c042f5f66a72653270b34c96f6c7	2026-11-04	ported	#4710	fix(recorder): stop compiling GPU programs for every exported frame (#3648)
+b1ffc9d9010eb567d6ebfdd3af26224e322726b7	2cdc059fc51cc59b3eb915ca25eb5153e36fd49b	2026-11-04	ported	#4710	fix(mixer): slide the volume across a block instead of stepping it (#3538)
 73b4846f52a938e1b924abae285813b702459980	801eafc241a6a2ac7342bce12fcf799681878ee4	2026-11-05	pending	-	perf(switcher): reduce quick-switch latency and minimized-window flashes (#3570)
-d257dfd208634981cef9856e9bd291ec6eab7966	9eca256c08e3eb7df329dbc402a6538df4ecc3d7	2026-11-05	pending	-	fix(mouse): focus without raising again when the no-raise path fails (#3737)
-2806d2bcc11f52de78f5786d6e618df147dea414	3968aeb37e67e41b3e676f76dc46b83ab8cb4650	2026-11-05	pending	-	fix(window-layout): resolve gesture targets when child hit tests fail (#3773)
+d257dfd208634981cef9856e9bd291ec6eab7966	9eca256c08e3eb7df329dbc402a6538df4ecc3d7	2026-11-05	ported	#4710	fix(mouse): focus without raising again when the no-raise path fails (#3737)
+2806d2bcc11f52de78f5786d6e618df147dea414	3968aeb37e67e41b3e676f76dc46b83ab8cb4650	2026-11-05	ported	#4710	fix(window-layout): resolve gesture targets when child hit tests fail (#3773)
 ab7e57131ebbb86135d09917c2b81b8a165f69be	f3d73a7c17384c732a43c6b5ce580b008837fc79	2026-11-04	pending	-	fix(switcher): keep the shortcut working under secure input (#3643)
 3857e560d6e19b3170d432c2038c60b542810852	8aacbcd76b6411136e9b17d41f00af995cd6cba2	2026-11-04	skipped	touches only upstream-only paths	docs: credit the integrated fixes in unreleased notes
-cbecb6278d14d3d33791d47f71293c0709fbd58a	0a7e25290ae936b4adaad10e96c5dea573dd9d33	2026-11-04	pending	-	test(recorder): preserve fixture contrast across H.264 encoders
-da1e5d52305b9ff1481f15fb97b84ecb82039ec0	5c0b65b7b2f25677ecd63d8fbde0916cf55a4133	2026-11-06	pending	-	fix(command-bar): outline the selected row so it reads on dark surfaces (#3835)
+cbecb6278d14d3d33791d47f71293c0709fbd58a	0a7e25290ae936b4adaad10e96c5dea573dd9d33	2026-11-04	skipped	only edits the oriented/edge recorder test fixtures this fork left out (generated copies)	test(recorder): preserve fixture contrast across H.264 encoders
+da1e5d52305b9ff1481f15fb97b84ecb82039ec0	5c0b65b7b2f25677ecd63d8fbde0916cf55a4133	2026-11-06	ported	#4710	fix(command-bar): outline the selected row so it reads on dark surfaces (#3835)
 39230975a7ed34535a4380d8922762b631b80ef2	ec63a7e6608db9500a2eb2c4501b81fbd0d709ae	2026-11-06	pending	-	fix(notch): hide the native banner on macOS 26 as well (#3720)
 041753ad17a43fd6f3a606d825e37e033d43381e	b4433124aa70ee616e4bbc5200fe6365d0cebca4	2026-11-05	pending	-	fix(recorder): improve gif export quality and add export controls (#3766)
 b9f4ccea68638a4b1e2b8d0ff9d690584f03dc0f	334a66110bfc4e38b23a2b6b0883959765da82c3	2026-11-05	pending	-	fix(notch): show the WebKit app instead of its audio helper (#3630)

@@ -42,6 +42,16 @@ enum DisplayRestorationTests {
         desk.runDelayed()
     }
 
+    /// The last screen comes out while the lid reads open for the recovery's
+    /// checks and closed by its transactions: the lid closing as it runs.
+    /// A lid already closed when the screens go is not a reason to bring a
+    /// switched-off monitor back, so no recovery starts then.
+    private static func unplugAsLidCloses(_ desk: Rig.Desk, _ id: CGDirectDisplayID) {
+        desk.lidClosed = true
+        desk.lidReads = [false, false, false]
+        plug(desk, id, in: false)
+    }
+
     private static func switchedOff(_ desk: Rig.Desk) -> [Int] {
         desk.defaults.array(forKey: DefaultsKey.displaysSwitchedOff) as? [Int] ?? []
     }
@@ -56,6 +66,165 @@ enum DisplayRestorationTests {
         relaunch(suite)
         lateDisconnect(suite)
         mirroring(suite)
+        sleepAndWake(suite)
+    }
+
+    /// A monitor the person switched off stays off through the lid, sleep
+    /// and wake, until they switch it back on; the last screen still comes
+    /// back when it is the only way to see anything.
+    private static func sleepAndWake(_ suite: TestSuite) {
+        func monitorOff() -> (Rig.Desk, BrightnessService) {
+            let (desk, service) = Self.desk()
+            tap(desk, service, 2)
+            desk.configurations = []
+            return (desk, service)
+        }
+        func post(_ desk: Rig.Desk, _ names: [Notification.Name]) {
+            for name in names { desk.workspace.post(name: name, object: nil) }
+        }
+        let sleep = [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification]
+        let wake = [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification]
+        func screensGo(_ desk: Rig.Desk) {
+            for id: CGDirectDisplayID in [1, 3] {
+                desk.display(id).online = false
+                desk.display(id).active = false
+            }
+        }
+        /// Runs the screen debounce alone, so its main-thread recovery waits.
+        func settleScreens(_ desk: Rig.Desk) {
+            desk.screens.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+            let items = desk.delayed
+            desk.delayed = []
+            for item in items where !item.isCancelled { item.perform() }
+        }
+
+        // Closing the lid may report no screens before the workspace sleeps.
+        var (desk, service) = monitorOff()
+        desk.lidClosed = true
+        screensGo(desk)
+        desk.screens.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        desk.runDelayed()
+        suite.expect(desk.configurations.isEmpty && switchedOff(desk) == [2],
+                     "closing the lid with no drawable screens keeps the external monitor switched off")
+        desk.tearDown()
+
+        (desk, service) = monitorOff()
+        screensGo(desk)
+        desk.screens.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        post(desk, sleep)
+        desk.runDelayed()
+        suite.expect(desk.configurations.isEmpty && switchedOff(desk) == [2],
+                     "sleep cancels a queued screen recovery before it switches a monitor on")
+        desk.tearDown()
+
+        (desk, service) = monitorOff()
+        screensGo(desk)
+        settleScreens(desk)
+        suite.expect(service.pendingDisplayIDs == [2], "the headless recovery is queued for the main thread")
+        post(desk, sleep)
+        desk.drain()
+        suite.expect(desk.configurations.isEmpty && service.pendingDisplayIDs.isEmpty && switchedOff(desk) == [2],
+                     "sleep also cancels a headless switch-on already queued for the main thread")
+        desk.tearDown()
+
+        for closingLid in [false, true] {
+            (desk, service) = monitorOff()
+            screensGo(desk)
+            settleScreens(desk)
+            if closingLid {
+                desk.lidClosed = true
+            } else {
+                desk.display(1).online = true
+                desk.display(1).active = true
+            }
+            desk.drain()
+            suite.expect(desk.configurations.isEmpty && service.pendingDisplayIDs.isEmpty && switchedOff(desk) == [2],
+                         "a queued headless recovery rechecks the lid and returning screens first (lid closing: \(closingLid))")
+            desk.tearDown()
+        }
+
+        // The monitor comes back on by itself across sleep.
+        (desk, service) = monitorOff()
+        post(desk, sleep)
+        desk.display(2).online = true
+        desk.display(2).active = true
+        post(desk, wake)
+        desk.screens.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        desk.drain()
+        suite.expect(desk.configurations.isEmpty, "the wake and screen notifications wait for the connections to settle")
+        desk.runDelayed()
+        suite.expect(desk.configurations == ["off:2"] && switchedOff(desk) == [2],
+                     "one settled wake switches the returned monitor off once and keeps its record")
+        desk.tearDown()
+
+        (desk, service) = monitorOff()
+        desk.display(2).online = true
+        desk.display(2).active = true
+        post(desk, wake)
+        post(desk, sleep)
+        desk.runDelayed()
+        suite.expect(desk.configurations.isEmpty, "another sleep cancels a wake pass still waiting")
+        desk.tearDown()
+
+        (desk, service) = monitorOff()
+        plug(desk, 2, in: true)
+        suite.expect(desk.configurations == ["off:2"] && switchedOff(desk) == [2],
+                     "a switched-off monitor that returns outside a wake is switched off again on discovery")
+        desk.tearDown()
+
+        (desk, service) = monitorOff()
+        desk.display(2).online = true
+        desk.display(2).active = true
+        desk.configureSucceeds = false
+        post(desk, wake)
+        desk.runDelayed()
+        suite.expect(desk.configurations == ["off:2"] && switchedOff(desk) == [2],
+                     "a failed switch-off after a wake keeps the record for a later try")
+        desk.configureSucceeds = true
+        desk.screens.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        desk.runDelayed()
+        suite.expect(desk.configurations == ["off:2", "off:2"],
+                     "a later screen change tries the failed switch-off again")
+        desk.tearDown()
+
+        // Only the monitor wakes: switching it off would leave nothing to see.
+        (desk, service) = monitorOff()
+        screensGo(desk)
+        desk.display(2).online = true
+        desk.display(2).active = true
+        post(desk, wake)
+        desk.runDelayed()
+        suite.expect(!desk.configurations.contains("off:2") && switchedOff(desk) == [2],
+                     "switching a monitor off again never takes the last drawable screen")
+        desk.tearDown()
+
+        for identity in ["0:0:0", "monitor-9"] {
+            (desk, service) = monitorOff()
+            desk.display(2).fingerprint = identity
+            desk.display(2).online = true
+            desk.display(2).active = true
+            post(desk, wake)
+            desk.runDelayed()
+            suite.expect(!desk.configurations.contains("off:2"),
+                         "a wake never switches off a monitor whose identity is unknown or another's: \(identity)")
+            desk.tearDown()
+        }
+
+        // The panel was switched off and the monitors left during sleep.
+        (desk, service) = Self.desk()
+        tap(desk, service, 1)
+        desk.configurations = []
+        post(desk, sleep)
+        for id: CGDirectDisplayID in [2, 3] {
+            desk.display(id).online = false
+            desk.display(id).active = false
+        }
+        post(desk, wake)
+        desk.runDelayed()
+        suite.expect(desk.configurations == ["on:1"] && switchedOff(desk).isEmpty,
+                     "a settled wake brings the switched-off panel back when the monitors left during sleep")
+        withExtendedLifetime(service) {}
+        desk.tearDown()
     }
 
     /// Measured on a MacBook whose panel (1) mirrors a monitor (2): the
@@ -472,7 +641,7 @@ enum DisplayRestorationTests {
         desk.lidClosed = true
         tap(desk, service, 1)
         tap(desk, service, 2)
-        plug(desk, 3, in: false)
+        unplugAsLidCloses(desk, 3)
         suite.expect(desk.configurations.last == "on:2" && desk.isWatchingLid && switchedOff(desk) == [1],
                      "a remembered tap outlives a headless recovery that brought another display back")
         desk.lidMoved(closed: false)
@@ -484,8 +653,7 @@ enum DisplayRestorationTests {
         (desk, service) = Self.desk()
         tap(desk, service, 1)
         plug(desk, 3, in: false)
-        desk.lidClosed = true
-        plug(desk, 2, in: false)
+        unplugAsLidCloses(desk, 2)
         suite.expect(service.displayControlFailure == .closedLid,
                      "headless restoration preserves the closed-lid denial reason")
         desk.lidMoved(closed: false)
@@ -497,8 +665,7 @@ enum DisplayRestorationTests {
         (desk, service) = Self.desk()
         tap(desk, service, 1)
         tap(desk, service, 2)
-        desk.lidClosed = true
-        plug(desk, 3, in: false)
+        unplugAsLidCloses(desk, 3)
         suite.expect(!desk.isWatchingLid && desk.configurations.last == "on:2" && switchedOff(desk) == [1],
                      "headless success cancels only the newly queued closed-lid candidate")
         let made = desk.configurations.count
@@ -516,7 +683,7 @@ enum DisplayRestorationTests {
         desk.lidClosed = true
         service.restoreDisplaysLeftOff()
         desk.drain()
-        plug(desk, 3, in: false)
+        unplugAsLidCloses(desk, 3)
         suite.expect(desk.isWatchingLid && desk.configurations.last == "on:2",
                      "headless success preserves an independently owed restoration")
         desk.lidMoved(closed: false)
@@ -528,14 +695,13 @@ enum DisplayRestorationTests {
         (desk, service) = Self.desk()
         tap(desk, service, 1)
         tap(desk, service, 2)
-        desk.lidClosed = true
         desk.configureSucceeds = false
-        plug(desk, 3, in: false)
+        unplugAsLidCloses(desk, 3)
         suite.expect(desk.isWatchingLid && service.displayControlFailure == .failed,
                      "a failed headless round keeps the closed panel's request and reports the real failure")
         desk.configureSucceeds = true
         plug(desk, 3, in: true)
-        plug(desk, 3, in: false)
+        unplugAsLidCloses(desk, 3)
         suite.expect(!desk.isWatchingLid && desk.configurations.last == "on:2",
                      "repeated headless attempts retain ownership until a later external success")
         desk.tearDown()
@@ -543,16 +709,15 @@ enum DisplayRestorationTests {
         (desk, service) = Self.desk()
         tap(desk, service, 1)
         tap(desk, service, 2)
-        desk.lidClosed = true
         desk.configureSucceeds = false
-        plug(desk, 3, in: false)
+        unplugAsLidCloses(desk, 3)
         desk.lidClosed = false
         service.restoreDisplaysBeforeTermination()
         desk.drain()
         desk.lidClosed = true
         desk.configureSucceeds = true
         plug(desk, 3, in: true)
-        plug(desk, 3, in: false)
+        unplugAsLidCloses(desk, 3)
         suite.expect(desk.isWatchingLid && desk.configurations.last == "on:2",
                      "a failed restore-all request promotes prior headless intent")
         desk.tearDown()
@@ -572,9 +737,8 @@ enum DisplayRestorationTests {
         var (desk, service) = desk()
         tap(desk, service, 1)
         tap(desk, service, 2)
-        desk.lidClosed = true
         desk.configureSucceeds = false
-        plug(desk, 3, in: false)
+        unplugAsLidCloses(desk, 3)
         suite.expect(desk.isWatchingLid, "failed headless round keeps the closed internal request queued")
         let made = desk.configurations.count
         desk.lidReads = [false, true]
@@ -584,7 +748,7 @@ enum DisplayRestorationTests {
                      "a deferred retry that closes at the transaction keeps headless ownership")
         desk.configureSucceeds = true
         plug(desk, 3, in: true)
-        plug(desk, 3, in: false)
+        unplugAsLidCloses(desk, 3)
         suite.expect(!desk.isWatchingLid && switchedOff(desk) == [1] && desk.configurations.last == "on:2",
                      "later external headless success cancels only the internal headless request")
         let afterCancel = desk.configurations.count
@@ -597,7 +761,9 @@ enum DisplayRestorationTests {
         (desk, service) = Self.desk()
         tap(desk, service, 1)
         tap(desk, service, 2)
-        desk.lidReads = [true, false]
+        // Open for the recovery's checks, then closed for the panel's
+        // transaction and open for the monitor's.
+        desk.lidReads = [false, false, false, true, false]
         plug(desk, 3, in: false)
         suite.expect(!desk.isWatchingLid && desk.configurations.last == "on:2",
                      "headless candidate retry uses the shared transaction-time lid result")

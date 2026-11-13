@@ -70,10 +70,11 @@ enum UninstallerFlowTests {
         let statuses = CurrentValueSubject<HomebrewOperationStatus?, Never>(nil)
         var operationStatus: HomebrewOperationStatus? { statuses.value }
         var operationStatuses: AnyPublisher<HomebrewOperationStatus?, Never> { statuses.eraseToAnyPublisher() }
-        var lookup: ((HomebrewPackage?) -> Void)?
+        var lookup: ((Result<HomebrewPackage?, HomebrewOwnershipError>) -> Void)?
         var uninstalled: [String] = []
 
-        func packageManagingApplication(at url: URL, completion: @escaping (HomebrewPackage?) -> Void) {
+        func packageManagingApplication(at url: URL,
+                                        completion: @escaping (Result<HomebrewPackage?, HomebrewOwnershipError>) -> Void) {
             lookup = completion
         }
         func clearLog() {
@@ -213,7 +214,7 @@ enum UninstallerFlowTests {
             queue.drain()
             let lateScan = brew.lookup
             review.stepBack()
-            lateScan?(nil)
+            lateScan?(.success(nil))
             suite.expect(lateScan != nil && uninstaller.phase == .empty && uninstaller.target == nil
                          && bar.mode == .search && bar.query == "First" && bar.returns == [nil],
                          "canceling while scanning prevents its late result from returning")
@@ -257,7 +258,7 @@ enum UninstallerFlowTests {
             let canceledScan = brew.lookup
             uninstaller.reset()
             _ = uninstaller.select(appURL: a)
-            canceledScan?(nil)
+            canceledScan?(.success(nil))
             suite.expect(uninstaller.phase == .scanning && uninstaller.items.isEmpty,
                          "a canceled scan cannot deliver into a new scan of the same app")
             uninstaller.reset()
@@ -271,15 +272,49 @@ enum UninstallerFlowTests {
             _ = uninstaller.select(appURL: b)
             queue.drain()
             try writeInfo("Second", to: b.appendingPathComponent("Contents/Info.plist"))
-            brew.lookup?(nil)
+            brew.lookup?(.success(nil))
             suite.expect(uninstaller.phase == .empty && uninstaller.target == nil,
                          "a bundle replaced while its package was asked is dropped")
             review.begin(appURL: a, entryID: "a")
             queue.drain()
-            brew.lookup?(nil)
+            brew.lookup?(.success(nil))
             suite.expect(uninstaller.phase == .results && uninstaller.items.map(\.url).first == a
                          && uninstaller.items.count == 2 && uninstaller.homebrewRemovalConfirmation == nil,
                          "current scan delivers the accepted app")
+            suite.expect(uninstaller.canRemoveSelected, "a verified unmanaged app can be removed")
+
+            // A Homebrew check that cannot answer authorizes neither removal.
+            _ = uninstaller.select(appURL: a)
+            queue.drain()
+            brew.lookup?(.failure(.unavailable))
+            suite.expect(uninstaller.phase == .results && uninstaller.homebrewCheckFailed
+                         && !uninstaller.canRemoveSelected && uninstaller.homebrewRemovalConfirmation == nil,
+                         "failed Homebrew detection preserves review but authorizes neither removal route")
+            suite.expect(review.handleKey(kVK_Return, searchFieldFocused: true) && uninstaller.phase == .results
+                         && bar.mode == .uninstallReview(entryID: "a")
+                         && brew.uninstalled.isEmpty && record.quits.isEmpty,
+                         "Command Bar confirmation cannot bypass a failed Homebrew check")
+            uninstaller.removeSelected()
+            suite.expect(uninstaller.phase == .results && record.quits.isEmpty && disk.removals.isEmpty,
+                         "ordinary removal cannot bypass a failed Homebrew check")
+            let failedScan = brew.lookup
+            uninstaller.retryHomebrewCheck()
+            suite.expect(uninstaller.phase == .scanning && !uninstaller.canRemoveSelected,
+                         "retry checks the same app again before enabling removal")
+            queue.drain()
+            brew.lookup?(.success(first))
+            failedScan?(.failure(.unavailable))
+            suite.expect(uninstaller.canRemoveSelected && !uninstaller.homebrewCheckFailed
+                         && uninstaller.homebrewRemovalConfirmation?.package == first,
+                         "a successful retry restores package confirmation and ignores late replies from the old scan")
+            uninstaller.removeSelected()
+            suite.expect(uninstaller.phase == .results && record.quits.isEmpty && disk.removals.isEmpty,
+                         "ordinary removal cannot bypass a managed package's confirmation")
+            _ = uninstaller.select(appURL: a)
+            queue.drain()
+            brew.lookup?(.success(nil))
+            suite.expect(uninstaller.phase == .results && uninstaller.homebrewRemovalConfirmation == nil,
+                         "the plain app is back under review")
 
             // A plain removal, and what it holds on to while it runs.
             for key in [kVK_Tab, kVK_Space, kVK_UpArrow, kVK_DownArrow] {
@@ -319,7 +354,7 @@ enum UninstallerFlowTests {
             // A package-managed app: its confirmation, and its cleanup.
             review.begin(appURL: a, entryID: "a")
             queue.drain()
-            brew.lookup?(first)
+            brew.lookup?(.success(first))
             suite.expect(uninstaller.phase == .results && uninstaller.selectedHomebrewPackage == first,
                          "a Homebrew-managed app offers its package")
             suite.expect(bar.warning == nil, "an accepted row clears the last refusal")
@@ -378,7 +413,7 @@ enum UninstallerFlowTests {
 
             review.begin(appURL: a, entryID: "a")
             queue.drain()
-            brew.lookup?(first)
+            brew.lookup?(.success(first))
             if let confirmation = uninstaller.homebrewRemovalConfirmation,
                let support = uninstaller.items.first(where: { $0.category == .support }) {
                 let second = HomebrewPackage(kind: .cask, name: "second", displayName: "Second")
@@ -448,7 +483,7 @@ enum UninstallerFlowTests {
             uninstaller.reset()
             review.begin(appURL: b, entryID: "b")
             queue.drain()
-            brew.lookup?(first)
+            brew.lookup?(.success(first))
             review.submit()
             review.finderRequestID = UUID()
             bar.query = "A new search"
@@ -461,7 +496,7 @@ enum UninstallerFlowTests {
             bar.query = "Second"
             review.begin(appURL: b, entryID: "b")
             queue.drain()
-            brew.lookup?(nil)
+            brew.lookup?(.success(nil))
             disk.failing = true
             review.submit()
             queue.drain()
@@ -472,7 +507,7 @@ enum UninstallerFlowTests {
             disk.failing = false
             review.begin(appURL: b, entryID: "b")
             queue.drain()
-            brew.lookup?(nil)
+            brew.lookup?(.success(nil))
             review.submit()
             queue.drain()
             try fm.removeItem(at: b)

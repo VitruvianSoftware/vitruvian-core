@@ -417,6 +417,7 @@ if (( TEST )); then
         Sources/VitruvianAtrium/Core/WhatsAppOrganizerStrings.swift
         Sources/VitruvianAtrium/Core/ReleaseNotes.swift
         Sources/VitruvianAtrium/Core/URLCleaning.swift
+        Sources/VitruvianAtrium/Services/URLCleanerLinkMetadata.swift
         Sources/VitruvianAtrium/Services/GeneralPasteboardAccess.swift
         Sources/VitruvianAtrium/Services/Clipboard/ClipboardHistoryWrite.swift
         Sources/VitruvianAtrium/Services/Audio/AirPlayRouteManager.swift

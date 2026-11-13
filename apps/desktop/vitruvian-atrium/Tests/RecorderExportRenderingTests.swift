@@ -150,6 +150,30 @@ nonisolated enum RecorderExportRenderingTests {
         input.markAsFinished()
         await writer.finishWriting()
         suite.expect(writer.status == .completed, "the synthetic 60 fps master is written")
+        // AVFoundation's Core Image handler kept compiling GPU programs for
+        // frame after frame of an export with a moving pointer (#3578), so an
+        // edited recording is drawn by a compositor of its own.
+        var edited = RecorderEditDocument()
+        edited.blurs = [RecorderBlurRegion(start: 0, end: 1, rect: CGRect(x: 0, y: 0, width: 0.5, height: 0.5))]
+        let master = AVURLAsset(url: take.videoURL)
+        if let masterTrack = try await master.loadTracks(withMediaType: .video).first,
+           let plan = RecorderComposer.makePlan(document: edited, track: RecorderPointerTrack(),
+                                                sourceSize: CGSize(width: 128, height: 128),
+                                                frameRate: 60, duration: 2) {
+            let composer = RecorderComposer(plan: plan)
+            let composition = await RecorderComposer.videoComposition(
+                track: masterTrack, asset: master, duration: CMTime(value: 2, timescale: 1), frameRate: 60,
+                composer: composer, sourceSize: CGSize(width: 128, height: 128), outputSize: composer.canvasSize)
+            let masterDuration = try await master.load(.duration)
+            // The handler's compositions name a compositor too, AVFoundation's own.
+            let compositor = composition?.customVideoCompositorClass.map { NSStringFromClass($0) } ?? "none"
+            suite.expect(compositor != "none" && !compositor.hasPrefix("AV")
+                    && composition?.instructions.count == 1
+                    && composition?.instructions.first?.timeRange.duration == masterDuration,
+                   "an edited recording is drawn by its own compositor over the whole timeline: \(compositor)")
+        } else {
+            suite.expect(false, "the edited fixture builds a plan")
+        }
         // 120 frames, each appended far sooner than the editor should redraw.
         var plainDocument = RecorderEditDocument()
         plainDocument.showsPointer = false

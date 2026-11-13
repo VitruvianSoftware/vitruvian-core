@@ -126,6 +126,23 @@ package enum ClipboardHistoryPasteRestore {
     }
 }
 
+/// Apps a history pick only copies into. Remote desktop clients rebuild the
+/// remote keyboard from the physical keys, so a synthetic ⌘V or ⌃V arrives
+/// without its modifier and types a bare "v" into the session (#3781). The
+/// pick stays on the clipboard, which the client shares with the session, for
+/// the user to paste themselves.
+package enum ClipboardHistoryPasteTarget {
+    /// Windows App keeps the bundle identifier of Microsoft Remote Desktop.
+    package static let copyOnlyBundleIDs: Set<String> = [
+        "com.microsoft.rdc.macos",
+        "com.microsoft.rdc.mac",
+    ]
+
+    package static func acceptsSyntheticPaste(bundleID: String?) -> Bool {
+        bundleID.map { !copyOnlyBundleIDs.contains($0) } ?? true
+    }
+}
+
 /// Decides whether a polled pasteboard change count is a new copy.
 ///
 /// The count normally only grows, but it lives in the pasteboard server

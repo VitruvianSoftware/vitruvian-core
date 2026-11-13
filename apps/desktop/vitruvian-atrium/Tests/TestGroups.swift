@@ -86,6 +86,7 @@ enum TestGroups {
             ("clipboard", {
                 ClipboardFeatureTests.run(suite)
                 URLCleanerTests.run(suite)
+                URLCleanerMetadataTests.run(suite)
                 PastePlainTests.run(suite)
                 TransientPasteTests.run(suite)
                 ClipboardSensitiveTextPreferenceTests.run(suite)
@@ -110,6 +111,7 @@ enum TestGroups {
             ("media", { MediaFeatureTests.run(suite) }),
             ("mixer", {
                 MixerRenderContinuityTests.run(suite)
+                MixerGainRampContract.run(suite)
                 MixerNativeDragTests.run(suite)
                 MixerOutputAdjustmentContract.run(suite)
                 MixerHeadphonesDisconnectContract.run(suite)
@@ -289,6 +291,7 @@ enum TestGroups {
                 CleanerScanFlowTests.run(suite)
             }),
             ("uninstaller", {
+                HomebrewOwnershipTests.run(suite)
                 UninstallerFlowTests.run(suite)
                 SelfUninstallContract.run(suite)
             }),

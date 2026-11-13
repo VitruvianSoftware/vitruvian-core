@@ -4560,8 +4560,8 @@ pub const MUTATIONS: &[Mutation] = &[
         name: "a cycle without tap audio skips the limiter's delay",
         group: "mixer",
         relative: "Sources/VitruvianAtrium/Services/Audio/MixerRender.swift",
-        before: "        _ = renderCycle(input: input, output: output, tapChannels: tapChannels, gain: gain, countCycle: countCycle)\n",
-        after: "        guard renderCycle(input: input, output: output, tapChannels: tapChannels, gain: gain,\n                          countCycle: countCycle) > 0 else { return }\n",
+        before: "        _ = renderCycle(input: input, output: output, tapChannels: tapChannels, gain: gain,\n                        countCycle: countCycle, appliedGain: appliedGain)\n",
+        after: "        guard renderCycle(input: input, output: output, tapChannels: tapChannels, gain: gain,\n                          countCycle: countCycle, appliedGain: appliedGain) > 0 else { return }\n",
         diagnostic: "a missing tap drains the valid lookahead tail before emitting silence",
     },
     Mutation {
@@ -4579,6 +4579,55 @@ pub const MUTATIONS: &[Mutation] = &[
         before: "        let onRight = dockPosition == \"left\" || (dockPosition != \"right\" && rightToLeft)\n",
         after: "        let onRight = dockPosition == \"left\"\n",
         diagnostic: "right-to-left desktops use the right strip unless the Dock occupies that side",
+    },
+    Mutation {
+        name: "the gain slide starts at its target",
+        group: "mixer",
+        relative: "Sources/VitruvianAtrium/Services/Audio/MixerRender.swift",
+        before: ": renderSliding(source: source, into: output, from: start, to: gain)",
+        after: ": renderSliding(source: source, into: output, from: gain, to: gain)",
+        diagnostic: "a changed gain starts from the gain the last block ended on",
+    },
+    Mutation {
+        name: "the gain slide never moves on from its first gain",
+        group: "mixer",
+        relative: "Sources/VitruvianAtrium/Services/Audio/MixerRender.swift",
+        before: "if written > 0 { applied.value = gain }",
+        after: "if written > 0 { applied.value = applied.value ?? gain }",
+        diagnostic: "the block after a slide holds the new gain from its first sample",
+    },
+    Mutation {
+        name: "the channels of a slide share one vDSP start",
+        group: "mixer",
+        relative: "Sources/VitruvianAtrium/Services/Audio/MixerRender.swift",
+        before: "                channelStart = start
+                vDSP_vrampmul(samples + sourceChannel",
+        after: "                vDSP_vrampmul(samples + sourceChannel",
+        diagnostic: "both sides of a sliding gain stay equal",
+    },
+    Mutation {
+        name: "a silent callback keeps the last audible gain",
+        group: "mixer",
+        relative: "Sources/VitruvianAtrium/Services/Audio/MixerRender.swift",
+        before: "        package func reset() {
+            value = nil
+        }
+",
+        after: "        package func reset() {}
+",
+        diagnostic: "muting during a missing tap keeps resumed audio silent",
+    },
+    Mutation {
+        name: "a gain that is not a number stays in the slide",
+        group: "mixer",
+        relative: "Sources/VitruvianAtrium/Services/Audio/MixerRender.swift",
+        before: "        guard gain.isFinite else {
+            applied.value = nil
+            return render(source: source, into: output, gain: gain)
+        }
+",
+        after: "",
+        diagnostic: "a gain that is not a number spoils only its own block",
     },
     Mutation {
         name: "capturing the Spaces drag refuses the middle button",
