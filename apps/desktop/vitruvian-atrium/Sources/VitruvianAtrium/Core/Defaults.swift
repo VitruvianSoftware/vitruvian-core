@@ -315,6 +315,7 @@ package enum Defaults {
         DefaultsKey.switcherShowShortcutHints: Preferences.switcherShowShortcutHints.defaultValue,
         DefaultsKey.switcherAppearanceDelay: Preferences.switcherAppearanceDelay.defaultValue,
         DefaultsKey.switcherInstantSelection: Preferences.switcherInstantSelection.defaultValue,
+        DefaultsKey.switcherIgnoreHoverSelection: Preferences.switcherIgnoreHoverSelection.defaultValue,
         DefaultsKey.switcherScreenPlacement: Preferences.switcherScreenPlacement.defaultValue,
         DefaultsKey.switcherCurrentDisplayOnly: Preferences.switcherCurrentDisplayOnly.defaultValue,
         DefaultsKey.switcherMaxColumns: Preferences.switcherMaxColumns.defaultValue,

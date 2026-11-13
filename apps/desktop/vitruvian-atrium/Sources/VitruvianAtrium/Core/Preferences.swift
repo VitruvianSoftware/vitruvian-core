@@ -59,6 +59,7 @@ package enum Preferences {
     package static let switcherSearchPinEnabled = Preference(DefaultsKey.switcherSearchPinEnabled, default: false)
     package static let switcherShowShortcutHints = Preference(DefaultsKey.switcherShowShortcutHints, default: true)
     package static let switcherInstantSelection = Preference(DefaultsKey.switcherInstantSelection, default: false)
+    package static let switcherIgnoreHoverSelection = Preference(DefaultsKey.switcherIgnoreHoverSelection, default: false)
     package static let switcherCurrentDisplayOnly = Preference(DefaultsKey.switcherCurrentDisplayOnly, default: false)
     package static let switcherMaxColumns = Preference(DefaultsKey.switcherMaxColumns, default: 0)
     package static let minimalWindowPreviews = Preference(DefaultsKey.minimalWindowPreviews, default: false)
