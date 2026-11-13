@@ -83,6 +83,12 @@ final class EngineHostTests: XCTestCase {
         var agentCannotStart = false
         /// Programs the rig says can be run, for the lookups that ask.
         var executables: Set<String> = []
+        var processEnvironment: [String: String] = ["PATH": "/usr/bin"]
+        var botCandidates: [String] = [VitruvianCodeSupport.defaultBundledBotCandidate]
+        var botCannotStart = false
+        var botRuns: [(executable: String, directory: String, logPath: String, environment: [String: String])] = []
+        var aliveBotPIDs: Set<Int32> = []
+        var nextBotPID: Int32 = 700
         /// A provider's own command, as the session asked for it to be run,
         /// and the three ways the pretend command talks back.
         var commandRuns: [(path: String, arguments: [String], directory: String, environment: [String: String])] = []
@@ -179,7 +185,7 @@ final class EngineHostTests: XCTestCase {
             VitruvianCodeEngine.Environment(
                 defaults: defaults,
                 home: home,
-                processEnvironment: ["PATH": "/usr/bin"],
+                processEnvironment: processEnvironment,
                 stateDirectory: state,
                 isExecutable: { [unowned self] in executables.contains($0) },
                 fileExists: { [unowned self] in files[$0] != nil },
@@ -193,9 +199,15 @@ final class EngineHostTests: XCTestCase {
                     removed.append($0)
                     files[$0] = nil
                 },
-                isBotProcess: { _ in false },
-                signal: { _, _ in },
-                launchBot: { _, _, _, _, _ in throw CocoaError(.fileWriteUnknown) },
+                isBotProcess: { [unowned self] in aliveBotPIDs.contains($0) },
+                signal: { [unowned self] pid, signal in if signal == SIGKILL { aliveBotPIDs.remove(pid) } },
+                launchBot: { [unowned self] executable, directory, logPath, environment, _ in
+                    if botCannotStart { throw CocoaError(.fileWriteUnknown) }
+                    nextBotPID += 1
+                    botRuns.append((executable, directory, logPath, environment))
+                    aliveBotPIDs.insert(nextBotPID)
+                    return nextBotPID
+                },
                 schedule: { _, _ in },
                 openFile: { _ in },
                 launchAgent: { [unowned self] path, arguments, directory, _, onOutput, onExit in
@@ -240,7 +252,8 @@ final class EngineHostTests: XCTestCase {
                     sqliteRuns.append((database, sql, readsRows))
                     return sqliteAnswer(sql, readsRows)
                 },
-                runSqliteOffMain: hasOffMainSqlite ? offMainSqlite : nil)
+                runSqliteOffMain: hasOffMainSqlite ? offMainSqlite : nil,
+                botCandidates: botCandidates)
         }
 
         /// Writes agy's transcript of a conversation under `home`, as a real file.
@@ -463,14 +476,14 @@ final class EngineHostTests: XCTestCase {
         let rig = Rig()
         defer { rig.tearDown() }
         let host = RecordingHost()
-        // The bot is installed in the standard folder only. The host points
-        // somewhere else, so if the engine looked in the standard folder
-        // (instead of asking the host) it would find a bot and not complain.
+        // Even if legacy `src/bot.js` files sit on disk, only an executable
+        // bundled `bot-engine` helper counts as installed.
         host.configuredBotDirectory = "~/elsewhere"
         rig.files[rig.defaultBot + "/src/bot.js"] = ""
-        XCTAssertNil(rig.files[rig.home + "/elsewhere/src/bot.js"])
+        rig.files[rig.home + "/elsewhere/src/bot.js"] = ""
         let engine = VitruvianCodeEngine(environment: rig.environment, host: host)
 
+        XCTAssertFalse(engine.isBotInstalled)
         engine.start()
 
         XCTAssertFalse(engine.isRunning)
@@ -3015,7 +3028,7 @@ final class EngineHostTests: XCTestCase {
     func testEveryProblemHasWords() {
         let strings = VitruvianCodeHostStrings()
         XCTAssertEqual(strings.problemMissingToken, "Add your Telegram bot token in Settings before starting the bot.")
-        XCTAssertEqual(strings.problemMissingBot, "The bot is not installed: src/bot.js was not found in the bot folder.")
+        XCTAssertEqual(strings.problemMissingBot, "The bot is not installed: bot-engine was not found in the app bundle.")
         XCTAssertEqual(strings.problemMissingNode, "Node.js was not found. Install Node, then start the bot again.")
         XCTAssertEqual(strings.problemStartFailed, "The bot could not be started.")
         XCTAssertEqual(strings.problemSaveFailed, "The settings could not be saved.")
@@ -3028,23 +3041,93 @@ final class EngineHostTests: XCTestCase {
         let engine = VitruvianCodeEngine(environment: rig.environment, host: host)
         XCTAssertNil(engine.problemDescription, "nothing has gone wrong yet")
 
-        // No bot installed.
+        // No bundled bot executable.
         engine.start()
         XCTAssertEqual(engine.problemDescription, host.strings.problemMissingBot)
 
-        // The bot is there but there is no token.
-        rig.files[rig.defaultBot + "/src/bot.js"] = ""
+        // The bundled bot is present, but there is no token.
+        rig.executables.insert(VitruvianCodeSupport.defaultBundledBotCandidate)
         engine.start()
         XCTAssertEqual(engine.problemDescription, host.strings.problemMissingToken)
 
-        // A token, but the rig has no executable Node.
+        // A token is configured, but launching the binary throws.
         rig.files[rig.defaultBot + "/.env"] = "TELEGRAM_BOT_TOKEN=1:abc\n"
+        rig.botCannotStart = true
         engine.start()
-        XCTAssertEqual(engine.problemDescription, host.strings.problemMissingNode)
+        XCTAssertEqual(engine.problemDescription, host.strings.problemStartFailed)
 
         // The words follow the host's text at the moment they are asked for.
-        host.strings.problemMissingNode = "Node fehlt."
-        XCTAssertEqual(engine.problemDescription, "Node fehlt.")
+        host.strings.problemStartFailed = "Bot konnte nicht gestartet werden."
+        XCTAssertEqual(engine.problemDescription, "Bot konnte nicht gestartet werden.")
+    }
+
+    func testStartLaunchesBundledBotDirectlyInBotDirectoryWithChildEnvironment() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        rig.processEnvironment = ["PATH": "/custom/bin", "KEEP": "yes"]
+        rig.executables.insert(VitruvianCodeSupport.defaultBundledBotCandidate)
+        rig.files[rig.defaultBot] = ""
+        rig.files[rig.defaultBot + "/.env"] = "TELEGRAM_BOT_TOKEN=1:abc\n"
+        let engine = VitruvianCodeEngine(environment: rig.environment, host: host)
+
+        XCTAssertTrue(engine.isBotInstalled)
+        engine.start()
+
+        XCTAssertTrue(engine.isRunning)
+        XCTAssertNil(engine.problem)
+        XCTAssertEqual(rig.botRuns.count, 1)
+        let run = rig.botRuns[0]
+        XCTAssertEqual(run.executable, VitruvianCodeSupport.defaultBundledBotCandidate)
+        XCTAssertFalse(run.executable.hasSuffix("/node"))
+        XCTAssertEqual(run.directory, rig.defaultBot)
+        XCTAssertEqual(run.logPath, rig.state + "/bot.log")
+        XCTAssertEqual(run.environment, VitruvianCodeSupport.childEnvironment(base: rig.processEnvironment, home: rig.home))
+    }
+
+    func testIsBotInstalledFollowsBundledBinaryAndEnvOverride() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        rig.botCandidates = ["/app/Contents/Helpers/bot-engine"]
+        rig.files[rig.defaultBot] = ""
+        rig.files[rig.defaultBot + "/src/bot.js"] = "// legacy js"
+        rig.executables.insert("/opt/homebrew/bin/node")
+        rig.files[rig.defaultBot + "/.env"] = "TELEGRAM_BOT_TOKEN=1:abc\n"
+
+        let missingEngine = VitruvianCodeEngine(environment: rig.environment, host: host)
+        XCTAssertFalse(missingEngine.isBotInstalled, "src/bot.js and node must not count as installed")
+
+        rig.executables.insert("/app/Contents/Helpers/bot-engine")
+        XCTAssertTrue(missingEngine.isBotInstalled)
+
+        rig.executables.insert("/tmp/custom/bot-engine")
+        rig.processEnvironment["VITRUVIAN_CODE_BOT_BIN"] = "/tmp/custom/bot-engine"
+        let overrideEngine = VitruvianCodeEngine(environment: rig.environment, host: host)
+        XCTAssertTrue(overrideEngine.isBotInstalled)
+        overrideEngine.start()
+        XCTAssertEqual(rig.botRuns.last?.executable, "/tmp/custom/bot-engine")
+    }
+
+    func testSaveWritesEnvFileBeforeBotDirectoryExists() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        XCTAssertNil(rig.files[rig.defaultBot])
+        let engine = VitruvianCodeEngine(environment: rig.environment, host: host)
+
+        XCTAssertTrue(engine.save(VitruvianCodeConfiguration(botToken: "1:first")))
+        XCTAssertNil(engine.problem)
+        XCTAssertEqual(rig.files[rig.defaultBot + "/.env"]?.contains("TELEGRAM_BOT_TOKEN=1:first"), true)
+    }
+
+    func testIsBotEngineProcessMatchesExecutableName() {
+        XCTAssertTrue(VitruvianCodeEngine.isBotEngineProcess("/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine --dry-run"))
+        XCTAssertTrue(VitruvianCodeEngine.isBotEngineProcess("\"/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine\" --dry-run"))
+        XCTAssertTrue(VitruvianCodeEngine.isBotEngineProcess("/usr/local/bin/bot-engine --dry-run"))
+        XCTAssertFalse(VitruvianCodeEngine.isBotEngineProcess("/opt/homebrew/bin/node src/bot.js"))
+        XCTAssertFalse(VitruvianCodeEngine.isBotEngineProcess("/opt/homebrew/bin/node /Applications/Vitruvian Code.app/Contents/Helpers/bot-engine"))
+        XCTAssertFalse(VitruvianCodeEngine.isBotEngineProcess("/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine-helper --dry-run"))
     }
 
     func testPerProviderModelSelectionAndCatalog() async {

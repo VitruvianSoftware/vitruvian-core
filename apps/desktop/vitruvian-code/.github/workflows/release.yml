@@ -106,6 +106,10 @@ jobs:
         run: |
           cd macos
           swift build -c release --arch ${{ matrix.arch }}
+          RUST_TARGET=$([ "${{ matrix.arch }}" = "arm64" ] && echo "aarch64-apple-darwin" || echo "x86_64-apple-darwin")
+          rustup target add "$RUST_TARGET"
+          rustc --edition 2021 -O --target "$RUST_TARGET" --crate-type lib --crate-name vitruvian_code_src_lib ../src/rs/lib.rs -o "$RUNNER_TEMP/libvitruvian_code_src_lib.rlib"
+          rustc --edition 2021 -O --target "$RUST_TARGET" ../src/rs/main.rs -L "$RUNNER_TEMP" --extern vitruvian_code_src_lib="$RUNNER_TEMP/libvitruvian_code_src_lib.rlib" -o .build/release/bot-engine
 
       # The executable and, beside it, the folder SwiftPM writes the chat
       # view's resources to (the copy of Mermaid that draws diagrams).
@@ -119,6 +123,7 @@ jobs:
             macos/.build/release/VitruvianCode
             macos/.build/release/VitruvianCode_VitruvianCodeUI.bundle
             macos/.build/release/vitruvian-code-tool
+            macos/.build/release/bot-engine
           if-no-files-found: error
 
   package:
@@ -165,6 +170,12 @@ jobs:
             /tmp/x86_64/vitruvian-code-tool \
             -output /tmp/universal/vitruvian-code-tool
           lipo -info /tmp/universal/vitruvian-code-tool
+          # The bundled Rust bot helper, one binary for both as well.
+          lipo -create \
+            /tmp/arm64/bot-engine \
+            /tmp/x86_64/bot-engine \
+            -output /tmp/universal/bot-engine
+          lipo -info /tmp/universal/bot-engine
 
       - name: Assemble .app bundles
         run: |

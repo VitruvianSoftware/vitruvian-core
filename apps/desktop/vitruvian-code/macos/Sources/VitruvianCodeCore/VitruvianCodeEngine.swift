@@ -40,7 +40,7 @@ import os
 open class VitruvianCodeEngine: NSObject, ObservableObject {
     /// Why the last start or save did not happen, as the page reports it.
     public enum Problem: Equatable {
-        case missingToken, missingBot, missingNode, startFailed, saveFailed
+        case missingToken, missingBot, startFailed, saveFailed
     }
 
     /// Everything the service touches outside itself. `live` is the real
@@ -63,13 +63,13 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         /// Writes atomically, readable by the user alone: the file holds a token.
         public var writePrivateFile: (_ path: String, _ content: String) -> Bool
         public var removeFile: (String) -> Void
-        /// True only for a live process whose executable is Node, so a stale
-        /// PID file reused by another program is never signalled.
+        /// True only for a live process whose executable is the bundled bot-engine,
+        /// so a stale PID file reused by another program is never signalled.
         public var isBotProcess: (Int32) -> Bool
         public var signal: (_ pid: Int32, _ signal: Int32) -> Void
-        /// Starts Node on the bot with its output appended to the log, and
-        /// reports the exit on the main actor. Returns the process id.
-        public var launchBot: (_ node: String, _ directory: String, _ logPath: String,
+        /// Starts the bundled bot-engine in `directory` with its output appended
+        /// to the log, and reports the exit on the main actor. Returns the process id.
+        public var launchBot: (_ executable: String, _ directory: String, _ logPath: String,
                                 _ environment: [String: String],
                                 _ onExit: @escaping @MainActor @Sendable (Int32) -> Void) throws -> Int32
         public var schedule: (_ delay: TimeInterval, _ work: @escaping @MainActor () -> Void) -> Void
@@ -132,6 +132,8 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         /// and the app is frozen until the last one is done. Only a test
         /// double should leave it out.
         public var runSqliteOffMain: (@Sendable (_ database: String, _ sql: String, _ readsRows: Bool) async -> Data?)?
+        /// Candidate locations for the bundled `bot-engine` executable.
+        public var botCandidates: [String]
 
         public init(defaults: UserDefaults,
                      home: String,
@@ -170,7 +172,8 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                      runSqlite: @escaping (String, String, Bool) -> Data? = { _, _, _ in nil },
                      // Left out, Clear All runs its statements through
                      // `runSqlite`, on the main thread: for test doubles only.
-                     runSqliteOffMain: (@Sendable (String, String, Bool) async -> Data?)? = nil) {
+                     runSqliteOffMain: (@Sendable (String, String, Bool) async -> Data?)? = nil,
+                     botCandidates: [String] = [VitruvianCodeSupport.defaultBundledBotCandidate]) {
             self.defaults = defaults
             self.home = home
             self.processEnvironment = processEnvironment
@@ -200,6 +203,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
             self.launchCommand = launchCommand
             self.runSqlite = runSqlite
             self.runSqliteOffMain = runSqliteOffMain
+            self.botCandidates = botCandidates
         }
 
         public static var live: Environment {
@@ -231,9 +235,9 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                 readTail: VitruvianCodeEngine.readTail,
                 writePrivateFile: VitruvianCodeEngine.writePrivateFile,
                 removeFile: { try? FileManager.default.removeItem(atPath: $0) },
-                isBotProcess: VitruvianCodeEngine.isNodeProcess,
+                isBotProcess: { VitruvianCodeEngine.isBotEngineProcess($0) },
                 signal: { pid, signal in _ = kill(pid, signal) },
-                launchBot: VitruvianCodeEngine.launchNode,
+                launchBot: VitruvianCodeEngine.launchBotEngine,
                 schedule: { delay, work in DispatchQueue.main.asyncAfter(deadline: .now() + delay) { work() } },
                 openFile: { NSWorkspace.shared.open(URL(fileURLWithPath: $0)) },
                 launchAgent: VitruvianCodeEngine.launchAgentProcess,
@@ -249,7 +253,8 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                 runSqlite: { VitruvianCodeEngine.runSqliteProcess($0, $1, $2) },
                 runSqliteOffMain: { database, sql, readsRows in
                     await VitruvianCodeEngine.offMainThread { VitruvianCodeEngine.runSqliteProcess(database, sql, readsRows) }
-                })
+                },
+                botCandidates: VitruvianCodeSupport.bundledBotCandidates(for: .main))
         }
     }
 
@@ -382,9 +387,15 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
     public var logsDirectory: String { statePaths.logsDirectory }
     public var logPath: String { statePaths.logPath }
     public var pidFilePath: String { statePaths.pidFilePath }
-    private var entryPointPath: String { statePaths.botEntryPointPath }
+    private func locateBundledBot() -> String? {
+        VitruvianCodeSupport.locateBundledBot(
+            environment: environment.processEnvironment,
+            candidates: environment.botCandidates,
+            isExecutable: environment.isExecutable
+        )
+    }
 
-    public var isBotInstalled: Bool { environment.fileExists(entryPointPath) }
+    public var isBotInstalled: Bool { locateBundledBot() != nil }
 
     /// The current problem in words, from the host's text as it is right now;
     /// nil when there is none.
@@ -393,7 +404,6 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         case nil: return nil
         case .missingToken?: return host.strings.problemMissingToken
         case .missingBot?: return host.strings.problemMissingBot
-        case .missingNode?: return host.strings.problemMissingNode
         case .startFailed?: return host.strings.problemStartFailed
         case .saveFailed?: return host.strings.problemSaveFailed
         }
@@ -611,10 +621,6 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
     /// Writes the page's values into the `.env`, keeping the rest of it.
     @discardableResult
     public func save(_ next: VitruvianCodeConfiguration) -> Bool {
-        guard environment.fileExists(botDirectory) else {
-            problem = .missingBot
-            return false
-        }
         let chosen = VitruvianCodeCLIProvider.chosen(id: host.chosenProviderID, among: providers)
         if next.model != configuration.model {
             var models = host.chosenModels
@@ -674,7 +680,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
     // MARK: - Bot
 
     /// Brings `isRunning` in line with the processes: the one this app
-    /// launched, or the one the PID file names if it is still Node.
+    /// launched, or the one the PID file names if it is still `bot-engine`.
     public func refreshStatus() {
         if let managedPID {
             setRunning(managedPID)
@@ -694,17 +700,12 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         refreshStatus()
         guard !isRunning else { return }
         load()
-        guard isBotInstalled else { problem = .missingBot; return }
+        guard let botExecutable = locateBundledBot() else { problem = .missingBot; return }
         guard configuration.isConfigured else { problem = .missingToken; return }
-        guard let node = VitruvianCodeSupport.locateNode(home: environment.home,
-                                                      isExecutable: environment.isExecutable) else {
-            problem = .missingNode
-            return
-        }
         let childEnvironment = VitruvianCodeSupport.childEnvironment(base: environment.processEnvironment,
                                                                   home: environment.home)
         do {
-            let launched = try environment.launchBot(node, botDirectory, logPath, childEnvironment) { [weak self] exited in
+            let launched = try environment.launchBot(botExecutable, botDirectory, logPath, childEnvironment) { [weak self] exited in
                 self?.botDidExit(exited)
             }
             managedPID = launched
@@ -832,19 +833,51 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         }
     }
 
-    nonisolated private static func isNodeProcess(_ pid: Int32) -> Bool {
+    nonisolated private static func isBotEngineExecutablePath(_ path: String) -> Bool {
+        (path as NSString).lastPathComponent == VitruvianCodeSupport.botExecutableName
+    }
+
+    nonisolated public static func isBotEngineProcess(_ pid: Int32) -> Bool {
         guard pid > 0, kill(pid, 0) == 0 || errno == EPERM else { return false }
         var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
         guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return false }
-        return (String(cString: buffer) as NSString).lastPathComponent == "node"
+        return isBotEngineExecutablePath(String(cString: buffer))
     }
 
-    nonisolated private static func launchNode(_ node: String, _ directory: String, _ logPath: String,
-                                               _ environment: [String: String],
-                                               _ onExit: @escaping @MainActor @Sendable (Int32) -> Void) throws -> Int32 {
+    nonisolated public static func isBotEngineProcess(_ commandLine: String) -> Bool {
+        let trimmed = commandLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        if let quote = trimmed.first, quote == "\"" || quote == "'" {
+            let rest = trimmed.dropFirst()
+            guard let endQuote = rest.firstIndex(of: quote) else { return false }
+            return isBotEngineExecutablePath(String(rest[..<endQuote]))
+        }
+        if let firstToken = trimmed.split(whereSeparator: \.isWhitespace).first,
+           isBotEngineExecutablePath(String(firstToken)) {
+            return true
+        }
+        // Unquoted `ps` command lines preserve spaces inside `.app` bundle paths.
+        let bundleMarker = ".app/"
+        let helperSuffix = "/\(VitruvianCodeSupport.botExecutableName)"
+        guard trimmed.hasPrefix("/"),
+              let appRange = trimmed.range(of: bundleMarker),
+              !trimmed[..<appRange.lowerBound].contains(" /"),
+              let exeRange = trimmed.range(of: helperSuffix, range: appRange.upperBound..<trimmed.endIndex),
+              exeRange.upperBound == trimmed.endIndex || trimmed[exeRange.upperBound].isWhitespace,
+              !trimmed[appRange.upperBound..<exeRange.lowerBound].contains(where: \.isWhitespace) else {
+            return false
+        }
+        return true
+    }
+
+    nonisolated public static func launchBotEngine(_ executable: String, _ directory: String, _ logPath: String,
+                                                   _ environment: [String: String],
+                                                   _ onExit: @escaping @MainActor @Sendable (Int32) -> Void) throws -> Int32 {
         let logURL = URL(fileURLWithPath: logPath)
         try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(),
                                                 withIntermediateDirectories: true)
+        let directoryURL = URL(fileURLWithPath: directory)
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
         // A fresh log per start, as the standalone app keeps it: bounded,
         // and the page's tail is this run's.
         guard FileManager.default.createFile(atPath: logPath, contents: nil),
@@ -852,9 +885,9 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
             throw CocoaError(.fileWriteUnknown)
         }
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: node)
-        process.arguments = [VitruvianCodeSupport.botEntryPoint]
-        process.currentDirectoryURL = URL(fileURLWithPath: directory)
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = []
+        process.currentDirectoryURL = directoryURL
         process.environment = environment
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = log
