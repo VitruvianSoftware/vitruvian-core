@@ -17,7 +17,13 @@ enum MenuPanelSectionGateContract {
                      "installed smooth scrolling has a menu bar control")
         suite.expect(PanelSectionID.controls.featureGate.contains(.smoothScroll),
                      "smooth scrolling alone keeps the Controls tab available")
+        // The panel sanitizes a layout of distinct control ids (ControlPanelItem,
+        // private here), so the saved order it merges against has no repeats;
+        // some control features map from more than one item (dockClick), so the
+        // feature list is deduplicated before standing in for that layout.
+        var seenControls = Set<String>()
         let controlOrder = MenuPanelRowFeatures.controls.map(\.rawValue)
+            .filter { seenControls.insert($0).inserted }
         let savedOrder = controlOrder.filter { $0 != AppFeature.smoothScroll.rawValue }
         suite.expect(Defaults.sanitizedPanelItemOrder(savedOrder.joined(separator: ","), defaultOrder: savedOrder
                          + [AppFeature.smoothScroll.rawValue]) == savedOrder + [AppFeature.smoothScroll.rawValue],
