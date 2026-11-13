@@ -216,7 +216,8 @@ enum RecorderFastGIFWriterTests {
         return bytes
     }
 
-    private final class CancelFlag: @unchecked Sendable {
+    // Nonisolated: the encoder reads it from its own queue.
+    nonisolated private final class CancelFlag: @unchecked Sendable {
         private let lock = NSLock()
         private var cancelled = false
         var value: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }

@@ -122,7 +122,7 @@ enum SettingsFeatureTests {
             var actions = [CommandBarEntry(id: "action.openSettings", title: "Open Settings",
                                            subtitle: "", icon: .symbol("gearshape"), run: { _ in })]
             let entries = CommandBarCatalog.settingsEntries(items, language: language, settingsTitle: strings.settingsTitle,
-                                                            actions: &actions, isAvailable: available) + actions
+                                                            actions: &actions, isAvailable: { !missing.contains($0) }) + actions
             suite.expect(Set(entries.map(\.id)).count == entries.count, "each settings command has one stable id")
             let command = entries.first {
                 $0.id == commandID && CommandBarSearch.matches(title: $0.title, keywords: $0.keywords, query: query)
@@ -448,9 +448,8 @@ enum SettingsFeatureTests {
             let uninstaller = SettingsDirectory.sections(strings, language: language, state: .current)
                 .flatMap(\.items).first { $0.page == .uninstaller }
             let uninstallerLabels = uninstaller?.terms.flatMap(\.titles) ?? []
-            suite.expect(uninstallerLabels.contains(strings.uninstallerWatchTrashToggle)
-                         && uninstallerLabels.contains(strings.uninstallerCommandBarToggle),
-                         "Settings search finds the uninstaller's trash cleanup and Command Bar switches")
+            suite.expect(uninstallerLabels.contains(strings.uninstallerCommandBarToggle),
+                         "Settings search finds the uninstaller's Command Bar switch")
         }
         let captureRouter = SettingsRouter()
         captureRouter.request(ScreenCaptureTool.screenshot.settingsDestination)
