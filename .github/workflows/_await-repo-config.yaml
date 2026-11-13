@@ -53,8 +53,8 @@ jobs:
                   GH_TOKEN: ${{ github.token }}
                   REPO: ${{ github.repository }}
                   SHA: ${{ github.sha }}
-                  # Empty on workflow_dispatch: a manual run is started after
-                  # the fact, so only the in-flight wait (step 2) applies.
+                  # Empty on workflow_dispatch: the script then compares the
+                  # head commit with its parent instead.
                   BEFORE: ${{ github.event.before }}
                   APPLY_WORKFLOW: _repo-config-apply.yaml
                   # Must match the apply's push path filter (conformance-checked).
@@ -77,6 +77,14 @@ jobs:
                   # 1. If this push changed repo-config, its apply run must
                   #    exist before "nothing in flight" means anything. GitHub
                   #    creates a push's runs together, but allow two minutes.
+                  # A manual run (workflow_dispatch) has no "before": compare
+                  # the head commit with its parent, so a run started right
+                  # after a repo-config merge still waits for that apply to
+                  # appear. A run of several commits at once is still covered
+                  # by step 2 once its apply exists.
+                  if [ -z "${BEFORE}" ]; then
+                      BEFORE="$(api "repos/${REPO}/commits/${SHA}" --jq '.parents[0].sha // ""')"
+                  fi
                   changed=false
                   if [ -n "${BEFORE}" ] && [ "${BEFORE}" != 0000000000000000000000000000000000000000 ]; then
                       files="$(api "repos/${REPO}/compare/${BEFORE}...${SHA}" --jq '.files[].filename')"
