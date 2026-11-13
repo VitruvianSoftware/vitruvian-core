@@ -2610,7 +2610,26 @@ enum NotchTests {
         suite.expect(key(126) == .move(backwards: true) && key(125) == .move(backwards: false)
                 && key(36) == .paste && key(76) == .paste,
                "the arrow keys and Return drive the list while the search field has the focus")
+        suite.expect(key(45, "n", .control) == key(125) && key(35, "p", .control) == key(126)
+                && key(0, "N", [.control, .capsLock]) == key(125) && key(2, "P", .control) == key(126),
+               "Control-N/P follow the layout's letter and move like the arrows, including with Caps Lock")
+        suite.expect(key(45, "n", .control, composing: true) == nil
+                && key(35, "p", .control, composing: true) == nil,
+               "Control-N/P stay with an input method while it composes")
+        // Real Control events carry control characters; the letter comes from the layout.
+        suite.expect(NotchSupport.clipboardKeyCharacters(characters: "\u{e}", ignoringModifiers: "n", modifiers: .control) == "n"
+                && NotchSupport.clipboardKeyCharacters(characters: "\u{10}", ignoringModifiers: "P",
+                                                       modifiers: [.control, .capsLock]) == "P"
+                && NotchSupport.clipboardKeyCharacters(characters: "ñ", ignoringModifiers: "n", modifiers: []) == "ñ"
+                && NotchSupport.clipboardKeyCharacters(characters: nil, ignoringModifiers: nil, modifiers: .control).isEmpty,
+               "the clipboard page reads Control keys by the layout's letter and ordinary typing by its text")
+        for modifiers: NSEvent.ModifierFlags in [.command, .option, [.control, .shift],
+                                                 [.control, .command], [.control, .option]] {
+            suite.expect(key(45, "n", modifiers) == nil && key(35, "p", modifiers) == nil,
+                   "other shortcuts with N/P do not move the clipboard highlight")
+        }
         suite.expect(key(0, "a") == .reveal && key(0, "Ab") == .reveal && key(0, "ñ") == .reveal && key(40, "ㅎ") == .reveal
+                && key(45, "n") == .reveal && key(35, "p") == .reveal
                 && key(49, " ") == nil && key(48, "\t") == nil && key(51, "\u{7f}") == nil
                 && key(125, "\u{F701}") == .move(backwards: false),
                "a typed letter shows the search field and goes on to it, while a space and control keys stay as they are")
