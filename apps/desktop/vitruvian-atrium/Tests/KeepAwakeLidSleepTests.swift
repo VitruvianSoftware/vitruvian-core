@@ -272,7 +272,54 @@ enum KeepAwakeLidSleepContract {
 enum KeepAwakeLidSleepTests {
     private typealias C = KeepAwakeLidSleepContract
 
+    /// A manual session survives a quit and resumes at the next launch; any
+    /// other end, and an end time that passed while the app was closed, is final.
+    static func runSessionRestore(expect: (Bool, String) -> Void) {
+        func relaunch(_ rig: C.Rig) -> KeepAwakeManager {
+            let manager = KeepAwakeManager(system: rig.machine.system(defaults: rig.defaults))
+            rig.machine.drain()
+            manager.activateOnLaunchIfNeeded()
+            rig.machine.drain()
+            return manager
+        }
+        let timed = C.make()
+        timed.manager.activate(minutes: 30)
+        timed.machine.drain()
+        let record = timed.defaults.dictionary(forKey: DefaultsKey.keepAwakeSessionEnd)
+        expect(record?["minutes"] as? Int == 30 && (record?["end"] as? Double ?? 0) > 0,
+               "a manual session records its end and its preset")
+        timed.manager.deactivate(reason: .quit)
+        timed.machine.drain()
+        expect(timed.defaults.object(forKey: DefaultsKey.keepAwakeSessionEnd) != nil,
+               "quitting keeps the record so the next launch resumes the session")
+        let resumed = relaunch(timed)
+        expect(resumed.isActive && resumed.sessionTrigger == .manual && resumed.sessionMinutes == 30
+               && resumed.endDate.map { $0 > Date() } == true,
+               "the next launch resumes the manual session with the time it has left")
+        resumed.deactivate(reason: .manual)
+        timed.machine.drain()
+        expect(timed.defaults.object(forKey: DefaultsKey.keepAwakeSessionEnd) == nil
+               && !relaunch(timed).isActive,
+               "a session the person ended stays ended after a relaunch")
+
+        let expired = C.make()
+        expired.defaults.set(["end": Date().addingTimeInterval(-60).timeIntervalSinceReferenceDate,
+                              "minutes": 15], forKey: DefaultsKey.keepAwakeSessionEnd)
+        expect(!relaunch(expired).isActive
+               && expired.defaults.object(forKey: DefaultsKey.keepAwakeSessionEnd) == nil,
+               "a session whose end passed while the app was closed stays ended")
+
+        let indefinite = C.make()
+        indefinite.defaults.set(["end": 0.0], forKey: DefaultsKey.keepAwakeSessionEnd)
+        let open = relaunch(indefinite)
+        expect(open.isActive && open.endDate == nil && open.sessionMinutes == 0,
+               "an indefinite session resumes indefinitely")
+        open.deactivate(reason: .quit)
+        indefinite.machine.drain()
+    }
+
     static func run(expect: (Bool, String) -> Void) {
+        runSessionRestore(expect: expect)
         func allowed(_ policy: Bool?, _ assertions: [[String: Any]]?,
                      external: Bool? = false, power: Bool? = true) -> Bool {
             KeepAwakeAutomationSupport.lidSleepIsAllowed(systemAllowsSleep: policy,
