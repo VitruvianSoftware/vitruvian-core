@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.94.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.93.0...vitruvian-atrium-v3.94.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 37, read-only XDG settings, scrolling screenshots, GPU GIF export and 12 more ([#4719](https://github.com/VitruvianSoftware/vitruvian-core/issues/4719)) ([6203948](https://github.com/VitruvianSoftware/vitruvian-core/commit/620394878d89f8ffab56a4c5f355f8902ec660ee))
+
 ## [3.93.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.92.0...vitruvian-atrium-v3.93.0) (2026-11-13)
 
 
