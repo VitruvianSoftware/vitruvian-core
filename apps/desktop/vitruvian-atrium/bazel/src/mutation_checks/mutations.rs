@@ -4552,8 +4552,8 @@ pub const MUTATIONS: &[Mutation] = &[
         name: "a normal window filling the display reads as a game's full screen",
         group: "notch",
         relative: "Sources/VitruvianAtrium/Services/Notch/NotchAppFullscreen.swift",
-        before: "$0.ownerPID == frontmostPID && $0.layer > 0 && $0.alpha > 0",
-        after: "$0.ownerPID == frontmostPID && $0.alpha > 0",
+        before: "(window.ownerPID == frontmostPID && menuBarHidden)",
+        after: "(window.ownerPID == frontmostPID)",
         diagnostic: "a normal window filling the display under an auto-hidden menu bar keeps the island",
     },
     Mutation {

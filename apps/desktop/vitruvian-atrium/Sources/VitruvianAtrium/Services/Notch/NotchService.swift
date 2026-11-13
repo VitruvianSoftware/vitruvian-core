@@ -181,8 +181,12 @@ package final class NotchService: ObservableObject {
             package var fileDrop: @MainActor (_ shelfAccept: @escaping (NSPasteboard) -> Bool) -> NotchFileDrop.Environment
             /// The clicks and keys the open island hears.
             package var openEvents: NotchOpenEvents
-            /// Which of these displays show a full-screen Space now.
+            /// Which of these displays are in full screen now, a Space's or
+            /// an app's own.
             package var fullscreenDisplays: @MainActor ([CGDirectDisplayID]) -> Set<CGDirectDisplayID>
+            /// The part of those that show a full-screen Space, which slides
+            /// the screen itself.
+            package var fullscreenSpaceDisplays: @MainActor ([CGDirectDisplayID]) -> Set<CGDirectDisplayID>
             /// The app's own notifications: menus, windows, screens and preferences.
             package var notifications: NotificationCenter
             /// The workspace's: Spaces, the app in front and accessibility.
@@ -210,6 +214,8 @@ package final class NotchService: ObservableObject {
                          fileDrop: @escaping @MainActor (@escaping (NSPasteboard) -> Bool) -> NotchFileDrop.Environment,
                          openEvents: NotchOpenEvents,
                          fullscreenDisplays: @escaping @MainActor ([CGDirectDisplayID]) -> Set<CGDirectDisplayID>,
+                         fullscreenSpaceDisplays: @escaping @MainActor ([CGDirectDisplayID])
+                             -> Set<CGDirectDisplayID> = { _ in [] },
                          notifications: NotificationCenter, workspaceNotifications: NotificationCenter,
                          sessionNotifications: NotificationCenter,
                          currentSession: @escaping @MainActor () -> NotchSessionState,
@@ -229,6 +235,7 @@ package final class NotchService: ObservableObject {
                 self.fileDrop = fileDrop
                 self.openEvents = openEvents
                 self.fullscreenDisplays = fullscreenDisplays
+                self.fullscreenSpaceDisplays = fullscreenSpaceDisplays
                 self.notifications = notifications
                 self.workspaceNotifications = workspaceNotifications
                 self.sessionNotifications = sessionNotifications
@@ -254,6 +261,11 @@ package final class NotchService: ObservableObject {
                           return Set(ids.filter {
                               topology.isFullscreen(on: $0, separateSpaces: separate) || covered.contains($0)
                           })
+                      },
+                      fullscreenSpaceDisplays: { ids in
+                          guard let topology = SpaceWindowBridge.topology() else { return [] }
+                          let separate = NSScreen.screensHaveSeparateSpaces
+                          return Set(ids.filter { topology.isFullscreen(on: $0, separateSpaces: separate) })
                       },
                       notifications: .default, workspaceNotifications: NSWorkspace.shared.notificationCenter,
                       sessionNotifications: DistributedNotificationCenter.default(),
@@ -621,6 +633,9 @@ package final class NotchService: ObservableObject {
     private lazy var sessionTracker = NotchSessionTracker(workspace: parts.workspaceNotifications,
                                                           distributed: parts.sessionNotifications)
     private var suspended: Bool { !session.canPresent }
+    /// Set while an app's own full screen ends, so the island that stepped
+    /// aside comes back in from the screen edge (`NotchFullscreenVisibility`).
+    private var revealingFromAppFullscreen = false
     @Published package private(set) var hiddenInFullscreen = false {
         didSet {
             guard hiddenInFullscreen != oldValue else { return }
@@ -796,6 +811,7 @@ package final class NotchService: ObservableObject {
                 return self.baseGeometry(for: display)
             },
             fullscreenDisplays: { [parts] ids in parts.fullscreenDisplays(ids) },
+            fullscreenSpaceDisplays: { [parts] ids in parts.fullscreenSpaceDisplays(ids) },
             hidesUntilHover: { [defaults] in NotchSupport.hidesUntilHover(in: defaults) },
             hiddenShowsActivity: { [defaults] in NotchSupport.hiddenShowsActivity(in: defaults) },
             coversMenus: { [defaults] in NotchSupport.coversMenus(in: defaults) },
@@ -956,7 +972,12 @@ package final class NotchService: ObservableObject {
             updateFullscreenDisplays: { [weak self] in self?.updateFullscreenDisplays() },
             syncMirrors: { [weak self] in self?.syncMirrors() },
             syncVisibleConsumers: { [weak self] in self?.syncVisibleConsumers() },
-            refreshPresentation: { [weak self] in self?.refreshPresentation(animated: false) }))
+            refreshPresentation: { [weak self] animated, revealingFromApp in
+                guard let self else { return }
+                self.revealingFromAppFullscreen = revealingFromApp
+                self.refreshPresentation(animated: animated)
+                self.revealingFromAppFullscreen = false
+            }))
 
     /// The preferences the island follows (`Environment.defaults`).
     private let defaults: UserDefaults
@@ -1970,6 +1991,7 @@ package final class NotchService: ObservableObject {
         displayID = nil
         syncPanelKey()
         hiddenInFullscreen = false
+        fullscreen.forgetHidden()
     }
 
     /// Opening without a page shows what the closed island is already
@@ -3511,13 +3533,16 @@ package final class NotchService: ObservableObject {
         }
         var presented = expanded ? expandedGeometry : geometry
         presented.surfaceShift = surfaceShift
+        // An island hidden until the pointer reaches it comes in from the
+        // screen edge, and so does one an app's own full screen withdrew.
+        let revealsFromHidden = !hiddenInFullscreen && captureControls == nil
+            && (revealingFromAppFullscreen
+                || defaults[Preferences.notchHideUntilHover] && defaults[Preferences.notchOpenOnHover])
         windowHost?.present(size: size, geometry: presented, animated: animated,
                             transitionContent: contentTransition,
                             quickAccess: expanded && captureControls == nil && !showingCommandBar && !access.buttons.isEmpty
                                 ? access : nil,
-                            revealFromHidden: !hiddenInFullscreen && captureControls == nil
-                                && defaults[Preferences.notchHideUntilHover]
-                                && defaults[Preferences.notchOpenOnHover],
+                            revealFromHidden: revealsFromHidden,
                             hideWhenSettled: false,
                             usesGlass: !fullscreenCompact && usesGlassSurface,
                             steady: fitsInPlace)
