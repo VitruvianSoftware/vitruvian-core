@@ -6,13 +6,13 @@ This directory contains comprehensive agent skills for AI agents working on the 
 
 | Skill                                                                 | Purpose                     |
 | --------------------------------------------------------------------- | --------------------------- |
-| [Frontend Extension Developer](frontend-extension-developer/SKILL.md) | React, Zustand, Chrome APIs |
-| [Backend API Developer](backend-api-developer/SKILL.md)               | Fastify, Prisma, JWT        |
-| [Infrastructure Engineer](infrastructure-engineer/SKILL.md)           | Terraform, GCP, IaC         |
-| [QA Engineer](qa-engineer/SKILL.md)                                   | Jest, Playwright, E2E       |
-| [DevOps/CLI Developer](devops-cli-developer/SKILL.md)                 | Vitruvian Tabs CLI, CI/CD, Docker       |
-| [Technical Writer](technical-writer/SKILL.md)                         | MkDocs, ADRs, changelogs    |
-| [Security Analyst](security-analyst/SKILL.md)                         | JWT, CORS, CSP, threats     |
+| [Frontend Extension Developer](frontend-extension-developer/SKILL.md) | React, Zustand, Chrome APIs       |
+| [Backend API Developer](backend-api-developer/SKILL.md)               | Rust API, Prisma, HS256 JWT       |
+| [Infrastructure Engineer](infrastructure-engineer/SKILL.md)           | Pulumi (Go), GCP, IaC             |
+| [QA Engineer](qa-engineer/SKILL.md)                                   | Jest, Playwright, Rust, Bazel     |
+| [DevOps/CLI Developer](devops-cli-developer/SKILL.md)                 | Vitruvian Tabs Rust CLI, Bazel    |
+| [Technical Writer](technical-writer/SKILL.md)                         | MkDocs, ADRs, changelogs          |
+| [Security Analyst](security-analyst/SKILL.md)                         | JWT, CORS, CSP, threats           |
 
 ## Skill Format
 

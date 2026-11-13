@@ -448,3 +448,12 @@ pipeline_unit(
     tier = "L1",
     timeout_minutes = 30,
 )
+
+filegroup(
+    name = "docs_files",
+    srcs = [
+        "README.md",
+        "Resources/VitruvianCode.entitlements",
+    ],
+    visibility = ["//apps/desktop/vitruvian-code:__pkg__"],
+)

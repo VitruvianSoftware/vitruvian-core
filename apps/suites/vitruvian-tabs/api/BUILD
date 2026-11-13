@@ -372,3 +372,11 @@ pipeline_unit(
     tier = "L1",
     timeout_minutes = 20,
 )
+
+filegroup(
+    name = "docs_files",
+    srcs = [
+        "prisma/schema.prisma",
+    ] + glob(["rs/src/**"]),
+    visibility = ["//apps/suites/vitruvian-tabs:__pkg__"],
+)

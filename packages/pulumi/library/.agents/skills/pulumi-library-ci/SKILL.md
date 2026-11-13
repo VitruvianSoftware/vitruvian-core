@@ -1,66 +1,64 @@
 ---
 name: pulumi-library-ci
-description: "Mandatory rules for contributing to pulumi-library. Covers the exact CI test command, coverage threshold verification, commit hygiene, and conventions that agents must follow to avoid breaking main."
+description: "Mandatory rules for contributing to packages/pulumi/library. Covers Bazel test commands across the multi-module go/ layout, component type token conventions, commit hygiene, and nil-guard standards."
 ---
 
 # Pulumi Library CI Skill
 
 ## Persona
 
-You are a disciplined CI-aware engineer. You never push code to any branch without first reproducing the exact CI pipeline locally. You treat `main` as sacred — broken builds on `main` are unacceptable and represent a governance failure.
+You are a disciplined CI-aware engineer. You verify builds and tests through the repository's Bazel targets before committing. You treat `main` as sacred — broken builds on `main` are unacceptable.
 
 ## Scope
 
-This skill applies to **all** changes in the `pulumi-library` repository. Every agent making changes here MUST read and follow these rules.
+This skill applies to **all** changes under `packages/pulumi/library/` (`go/` for Go component modules, `ts/` for TypeScript packages). Every agent making changes here MUST read and follow these rules.
 
 ## Critical Rules
 
-### 1. The Exact CI Command (NEVER Improvise)
+### 1. Multi-Module `go/` Layout & Bazel Test Commands
 
-The CI pipeline runs coverage using **only `./pkg/...`**, not `./...`. The `internal/testutil` package is excluded from the coverage profile. If you run `go test ./...` locally, you will get an inflated coverage number that does not match CI.
-
-**The CI-equivalent local command is:**
+The Go code lives under `go/` with 29 separate `go.mod` files (one per component under `go/pkg/*`, plus `go/` and `go/internal/testutil`), not a single root `go.mod`. In `vitruvian-core`, raw `go test` and raw `git push` are forbidden by agent-guard — run everything through Bazel:
 
 ```bash
-go test ./pkg/... -coverprofile=coverage.out -covermode=atomic -race -count=1
+# Run all Go component tests (and build)
+bazel test //packages/pulumi/library/go/...
+
+# Run a single component's tests (e.g. iam)
+bazel test //packages/pulumi/library/go/pkg/iam:iam_test
 ```
 
-**To check if coverage meets the 85% threshold:**
-
-```bash
-TOTAL=$(go tool cover -func=coverage.out | grep ^total | awk '{print $3}' | tr -d '%')
-echo "Total coverage: ${TOTAL}%"
-if (( $(echo "$TOTAL < 85" | bc -l) )); then
-  echo "FAIL: Coverage ${TOTAL}% is below the 85% threshold"
-  exit 1
-fi
-```
-
-**MANDATORY**: You MUST run this exact command sequence and verify the threshold BEFORE every push. Do NOT use `go test ./...` as your coverage check — it includes `internal/testutil` which inflates the aggregate number.
+TypeScript packages live under `ts/packages/` (`ts/`). Check `ts/vitest.config.ts` and `.github/workflows/release.yml` for release packaging details.
 
 ### 2. Never Mutate Existing Error Messages
 
 When adding nil-guards or modifying error returns, **always check if existing tests assert on the exact error string** before changing it. Use:
 
 ```bash
-grep -rn "the old error message" pkg/ internal/
+grep -rn "the old error message" packages/pulumi/library/go/pkg/ packages/pulumi/library/go/internal/
 ```
 
-If any test asserts on the string, either keep the original message or update the test in the same commit. Changing the message without updating the test will cause CI to fail.
+If any test asserts on the string, either keep the original message or update the test in the same commit.
 
 ### 3. Component Type Token Convention
 
-All Pulumi component resources in this library MUST use the `pkg:index:` prefix for their type token:
+- General/single-component packages use `pkg:index:<ComponentName>`:
 
 ```go
 ctx.RegisterComponentResource("pkg:index:ComponentName", name, component, opts...)
 ```
 
-**Do NOT** use package-specific prefixes like `pkg:networking:` or `pkg:vpc_sc:`. The `pkg:index:` convention is established across every existing component and must be maintained.
+- Domain- or scope-isolated packages deliberately use per-type tokens for state isolation and blast-radius separation (see `go/pkg/iam/README.md` for why):
+  - `pkg:iam:<Scope>IAM{Member,Binding}` (`go/pkg/iam/`)
+  - `pkg:cicd:<Component>` (`go/pkg/cicd/`)
+  - `pkg:logging:<Component>` (`go/pkg/centralized_logging/`)
+  - `pkg:storage:<Component>` (`go/pkg/cloud_storage/`)
+  - `vitruvian:security:CAIMonitoring` (`go/pkg/cai_monitoring/`)
+
+Match the existing package's token prefix when adding or updating constructors within that package.
 
 ### 4. Test File Placement
 
-Tests for a component MUST live in the same `_test.go` file as the component's other tests. Specifically:
+Tests for a component MUST live in the same `_test.go` file as the component's other tests. Under `go/pkg/network/`, for example:
 
 - Tests for `dns.go` go in `dns_test.go`
 - Tests for `firewall.go` go in `firewall_test.go`
@@ -78,24 +76,14 @@ The following files are generated artifacts and MUST NOT be committed:
 - `*.test` binaries
 - Any file matching `*.out`
 
-The `.gitignore` already excludes `*.out` and `coverage.html`. If you generate these files locally, verify they are not staged before committing:
+### 6. Pre-Commit Checklist
 
-```bash
-git status  # Review carefully — do NOT blindly `git add .`
-```
+Before committing and opening a PR:
 
-### 6. Pre-Push Checklist
-
-Before every push to this repository, execute this checklist in order:
-
-1. **Vet**: `go vet ./...`
-2. **Build**: `go build ./...`
-3. **Test + Coverage** (using the exact CI command from Rule 1)
-4. **Threshold check** (coverage must be ≥ 85.0%)
-5. **Staging review**: `git status` — only stage relevant files, never `git add .`
-6. **Artifact check**: Ensure no `.html`, `.out`, or binary files are staged
-
-If ANY step fails, fix it before pushing. Do not push hoping CI will pass.
+1. **Build**: `bazel build //packages/pulumi/library/go/...`
+2. **Test**: `bazel test //packages/pulumi/library/go/...`
+3. **Format**: `bazel run //tools/format`
+4. **Commit & Push**: Use `bazel run //tools/git:commit -- --agent <you> ...` and `bazel run //tools/git:push -- --agent <you>` (and review `git status` so no `.out`/`.html`/binary artifacts are staged)
 
 ### 7. Nil-Guard Standard
 

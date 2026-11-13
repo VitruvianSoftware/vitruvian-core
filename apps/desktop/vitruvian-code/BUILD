@@ -1,4 +1,5 @@
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/doctor:defs.bzl", "doctor")
 
 # gazelle:ignore
@@ -101,4 +102,24 @@ exports_files(
         ".github/FUNDING.yml",
     ],
     visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],
+)
+
+sh_test(
+    name = "agent_docs_test",
+    size = "small",
+    srcs = ["//tools/conformance:skill_docs_check.sh"],
+    args = [
+        "--root",
+        "apps/desktop/vitruvian-code",
+        "apps/desktop/vitruvian-code/rules/AGENTS.md",
+        "apps/desktop/vitruvian-code/README.md",
+    ],
+    data = [
+        "README.md",
+        "rules/AGENTS.md",
+        "scripts/README.md",
+        "scripts/sign-and-notarize.sh",
+        "//apps/desktop/vitruvian-code/macos:docs_files",
+        "//apps/desktop/vitruvian-code/src:docs_files",
+    ],
 )

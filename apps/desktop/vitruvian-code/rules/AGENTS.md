@@ -34,21 +34,24 @@ AGY_WORKING_DIR="<project-directory>"
 AGY_APPROVAL_MODE="yolo"
 ```
 
-### Step 4: Install Dependencies
+### Step 4: Build the Rust Bot
+
+The Telegram bot is a native Rust binary built with Bazel (`src/BUILD`: `bot-engine`, aliased as `bot`; source under `src/rs/`):
 
 ```bash
-cd <plugin-directory>
-npm install
+bazel build //apps/desktop/vitruvian-code/src:bot
 ```
 
-### Step 5: Start the Bot
+### Step 5: Run & Verify the Bot
+
+Load `.env` from the directory where you run the binary (or export its variables in your shell) and run the bot in the foreground:
 
 ```bash
-cd <plugin-directory>
-./bot.sh start
+bazel run //apps/desktop/vitruvian-code/src:bot -- --dry-run   # Verify config & command count
+bazel run //apps/desktop/vitruvian-code/src:bot               # Start polling Telegram (Ctrl+C to stop)
 ```
 
-Check status with `./bot.sh status` and logs with `./bot.sh logs`.
+Use `-- --print-agy-flags "<prompt>"` to inspect the `agy` CLI flags generated for a prompt.
 
 ### Step 6: Test It
 
@@ -77,16 +80,17 @@ a response from agy.
 
 ## Managing the Bot
 
-- **Start**: `./bot.sh start`
-- **Stop**: `./bot.sh stop`
-- **Restart**: `./bot.sh restart`
-- **Status**: `./bot.sh status`
-- **Logs**: `./bot.sh logs`
+The Rust `bot-engine` (`//apps/desktop/vitruvian-code/src:bot`) runs in the foreground (stdout/stderr):
+
+- **Start**: `bazel run //apps/desktop/vitruvian-code/src:bot` (reads `.env` from the current directory and process environment)
+- **Stop**: `Ctrl+C` in the running terminal (or `pkill -f bot-engine` if backgrounded)
+- **Verify config (dry run)**: `bazel run //apps/desktop/vitruvian-code/src:bot -- --dry-run`
+- **Inspect CLI flags**: `bazel run //apps/desktop/vitruvian-code/src:bot -- --print-agy-flags "hi"`
 
 ## How It Works
 
 ```
-Telegram → Bot (Node.js) → agy -p "prompt" --output-format json → reply
+Telegram → Bot (Rust, src/rs/) → agy -p "prompt" --output-format stream-json → reply
 ```
 
 Each Telegram message spawns `agy -p` in print mode. Conversations are tracked
@@ -98,8 +102,6 @@ splitting for long outputs.
 
 - **Empty responses**: The working directory may not have the right context. Use
   `/workdir /path/to/project` to change it.
-- **Double messages**: Make sure only one bot instance is running. Use
-  `./bot.sh status` to check and `./bot.sh stop` to clean up.
+- **Double messages**: Make sure only one `bot-engine` instance is running (`pgrep -fl bot-engine`).
 - **Auth errors**: Ensure your Telegram user ID is in `ALLOWED_USER_IDS`.
-- **Formatting issues**: If markdown doesn't render, check the bot logs with
-  `./bot.sh logs` for HTML parse warnings.
+- **Formatting issues**: If markdown doesn't render, check the bot's stderr/stdout output for HTML parse warnings.

@@ -25,31 +25,21 @@ Vitruvian Tabs follows the **Test Pyramid** approach:
 /________________\
 ```
 
-## Coverage Requirements
-
-**Minimum Threshold: 80%** (enforced in CI)
-
-- Authentication logic: 100%
-- Authorization checks: 100%
-- API routes: 80%+
-- Service layer: 80%+
-
 ## Testing Commands
 
+Run all tests through Bazel (never `vitruvian-tabs dev ...` or `npm test --workspace=...`):
+
 ```bash
-# Run all checks (lint, test, build)
-vitruvian-tabs dev check
+# Unit + hermetic Rust integration suites
+bazel test //apps/suites/vitruvian-tabs/...
 
-# E2E tests with token
-vitruvian-tabs dev e2e --e2e-test-token
+# Component-specific unit tests
+bazel test //apps/suites/vitruvian-tabs/extension:unit_tests
+bazel test //apps/suites/vitruvian-tabs/api:vitruvian_tabs_api_tools_test //apps/suites/vitruvian-tabs/api:integration_tests
+bazel test //apps/suites/vitruvian-tabs/cli:unit_tests
 
-# Coverage report (detailed breakdown)
-vitruvian-tabs dev coverage --detailed
-
-# Component-specific tests
-npm test --workspace=extension
-npm test --workspace=api
-npm test --workspace=web
+# Playwright E2E (boots Postgres, Redis, migrations, and API via rules_itest)
+bazel test --config=e2e //apps/suites/vitruvian-tabs/...
 ```
 
 ## Unit Test Patterns
@@ -100,29 +90,18 @@ global.chrome = {
 } as unknown as typeof chrome;
 ```
 
-### API Route Testing
+### API Route Testing (Rust)
 
-```typescript
-import { build } from '../helpers/testApp';
+API integration tests run in-process against `AppContext::new_test()` and `handle_request()` (`api/rs/src/tests_integration.rs`):
 
-describe('POST /api/v1/workspaces', () => {
-  const app = build();
-
-  it('should create a new workspace', async () => {
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/v1/workspaces',
-      headers: { Authorization: `Bearer ${validToken}` },
-      payload: { name: 'Work', color: '#0066CC' },
-    });
-
-    expect(response.statusCode).toBe(201);
-    expect(JSON.parse(response.body)).toMatchObject({
-      id: expect.any(String),
-      name: 'Work',
-    });
-  });
-});
+```rust
+let ctx = AppContext::new_test();
+let token = ctx.sign_user_token("user-1", "user@example.com", "free");
+let req = HttpRequest::new("POST", "/api/v1/workspaces")
+    .with_auth(&token)
+    .with_json(&json!({ "name": "Work" }));
+let resp = handle_request(&ctx, &req);
+assert_eq!(resp.status, 201);
 ```
 
 ## E2E Test Patterns (Playwright)
