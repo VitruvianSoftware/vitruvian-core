@@ -4485,6 +4485,14 @@ pub const MUTATIONS: &[Mutation] = &[
         diagnostic: "no extra brightness overlay window reads as a full screen window",
     },
     Mutation {
+        name: "Extra Brightness rebuilds its own Space overlay on every desktop switch",
+        group: "app-management",
+        relative: "Sources/VitruvianAtrium/Services/Display/ExtraBrightnessSupport.swift",
+        before: "        sameDisplay && (inOwnSpace || (overlayOnActiveSpace && triggerOnActiveSpace))\n",
+        after: "        sameDisplay && ((inOwnSpace && false) || (overlayOnActiveSpace && triggerOnActiveSpace))\n",
+        diagnostic: "the overlay's own Space keeps the live windows across desktop switches",
+    },
+    Mutation {
         name: "the opening island starts a further resize again from rest",
         group: "notch",
         relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
