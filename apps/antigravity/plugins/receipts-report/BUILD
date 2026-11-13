@@ -66,7 +66,12 @@ js_library(
 js_test(
     name = "core_test",
     size = "small",
-    data = [":lib"],
+    data = [
+        "rules/AGENTS.md",
+        "sidecars/panel/main.mjs",
+        "skills/receipts-report/SKILL.md",
+        ":lib",
+    ],
     entry_point = "sidecars/panel/lib/core.test.mjs",
 )
 
@@ -199,7 +204,10 @@ filegroup(
         ],
         allow_empty = True,
     ),
-    visibility = ["//tools/sync-site-tools:__pkg__"],
+    visibility = [
+        "//apps/antigravity/plugins/ext-marketplace:__pkg__",
+        "//tools/sync-site-tools:__pkg__",
+    ],
 )
 
 # What //apps/antigravity's cross-plugin tests read: the hooks.json

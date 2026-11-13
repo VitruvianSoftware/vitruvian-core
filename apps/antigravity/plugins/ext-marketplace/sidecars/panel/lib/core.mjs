@@ -148,6 +148,21 @@ export const MARKETPLACE_CATALOG = Object.freeze([
     ]),
   }),
   Object.freeze({
+    id: "vitruvian-orchestrator",
+    name: "Vitruvian Orchestrator",
+    version: "0.2.0",
+    description:
+      "Lead orchestrator skill and live orchestration sidecar panel for routing multi-domain work across specialist subagents in Antigravity.",
+    repo: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/vitruvian-orchestrator",
+    monorepoPath: "apps/antigravity/plugins/vitruvian-orchestrator",
+    category: "Subagents",
+    highlights: Object.freeze([
+      "5-phase orchestrate skill & shipped specialist roster",
+      "MCP progress, step, post, board & channel tools",
+      "Live burn-down, board & spend sidecar panel",
+    ]),
+  }),
+  Object.freeze({
     id: "ext-marketplace",
     name: "Extensions Marketplace",
     version: "0.1.0",
@@ -157,7 +172,7 @@ export const MARKETPLACE_CATALOG = Object.freeze([
     monorepoPath: "apps/antigravity/plugins/ext-marketplace",
     category: "Extensions",
     highlights: Object.freeze([
-      "Browse all 9 first-party Vitruvian plugins",
+      "Browse all first-party Vitruvian plugins",
       "Safe non-destructive config.json toggling",
       "One-click install, update, and capability view",
     ]),

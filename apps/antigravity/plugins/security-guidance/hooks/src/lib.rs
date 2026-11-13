@@ -1793,4 +1793,73 @@ mod tests {
             );
         }
     }
+
+    fn drift_repo_path(rel: &str) -> PathBuf {
+        let direct = PathBuf::from(rel);
+        if direct.exists() {
+            return direct;
+        }
+        if let Ok(srcdir) = std::env::var("TEST_SRCDIR") {
+            let ws = std::env::var("TEST_WORKSPACE").unwrap_or_else(|_| "_main".to_string());
+            let candidate = PathBuf::from(srcdir).join(ws).join(rel);
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+        direct
+    }
+
+    #[test]
+    fn drift_rules_and_skill_match_builtin_patterns() {
+        let rules_doc = fs::read_to_string(drift_repo_path(
+            "apps/antigravity/plugins/security-guidance/rules/AGENTS.md",
+        ))
+        .expect("read security-guidance rules/AGENTS.md");
+        let skill_doc = fs::read_to_string(drift_repo_path(
+            "apps/antigravity/plugins/security-guidance/skills/security-guidance/SKILL.md",
+        ))
+        .expect("read security-guidance SKILL.md");
+
+        let gcp = BUILTIN_PATTERNS
+            .iter()
+            .find(|p| p.id == "gcp-api-key")
+            .expect("gcp-api-key builtin pattern must exist");
+        assert_ne!(
+            gcp.severity, "critical",
+            "expected gcp-api-key to be high severity (ask), got {}",
+            gcp.severity
+        );
+
+        let deny_pos = rules_doc
+            .find("- **Critical findings (`deny`):**")
+            .expect("Critical findings (`deny`) bullet must exist");
+        let ask_pos = rules_doc
+            .find("- **High / Medium findings (`ask`):**")
+            .expect("High / Medium findings (`ask`) bullet must exist");
+        let suppress_pos = rules_doc
+            .find("- **Intentional false positives:**")
+            .expect("Intentional false positives bullet must exist");
+        let deny_section = &rules_doc[deny_pos..ask_pos];
+        let ask_section = &rules_doc[ask_pos..suppress_pos];
+
+        assert!(
+            !deny_section.contains("GCP API keys"),
+            "rules/AGENTS.md lists GCP API keys under Critical (`deny`) instead of High/Medium (`ask`): {deny_section}"
+        );
+        assert!(
+            ask_section.contains("GCP API keys"),
+            "rules/AGENTS.md should list GCP API keys under High / Medium (`ask`): {ask_section}"
+        );
+
+        // Non-secret rules documented in the safe replacements table must exist in code,
+        // and non-trivial code rules should be covered in SKILL.md.
+        let ids: Vec<&str> = BUILTIN_PATTERNS.iter().map(|p| p.id).collect();
+        for pat in BUILTIN_PATTERNS.iter().filter(|p| p.category != "secrets") {
+            assert!(
+                skill_doc.contains(&format!("`{}`", pat.id)),
+                "SKILL.md safe replacements table missing rule id `{}` (known: {ids:?})",
+                pat.id
+            );
+        }
+    }
 }

@@ -21,8 +21,12 @@
  */
 
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
+import * as core from "./core.mjs";
 import {
   aggregateProjectReceipts,
   detectTokenHotspots,
@@ -214,4 +218,55 @@ test("formatCsvReceipt and renderHtmlReceipt escape special characters", () => {
   assert.match(html, /<!DOCTYPE html>/);
   assert.ok(!html.includes("<script>bad</script>"));
   assert.match(html, /&lt;script&gt;bad&lt;\/script&gt;/);
+});
+
+test("drift: SKILL.md exported helpers and /api/* routes match code", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  let pluginDir = here;
+  for (const base of [process.cwd(), here]) {
+    let dir = resolve(base);
+    for (let i = 0; i < 8; i += 1) {
+      const cand = join(dir, "apps/antigravity/plugins/receipts-report");
+      if (existsSync(join(cand, "skills/receipts-report/SKILL.md"))) {
+        pluginDir = cand;
+        break;
+      }
+      if (existsSync(join(dir, "skills/receipts-report/SKILL.md"))) {
+        pluginDir = dir;
+        break;
+      }
+      const p = dirname(dir);
+      if (p === dir) break;
+      dir = p;
+    }
+  }
+  const skill = readFileSync(
+    join(pluginDir, "skills/receipts-report/SKILL.md"),
+    "utf8",
+  );
+  const mainJs = readFileSync(
+    join(pluginDir, "sidecars/panel/main.mjs"),
+    "utf8",
+  );
+  const codeRoutes = new Set(
+    [...mainJs.matchAll(/app\.api\(\s*["'](\/api\/[^"']+)["']/g)].map(
+      (m) => m[1],
+    ),
+  );
+  for (const m of skill.matchAll(/`(\/api\/[a-zA-Z0-9_-]+)`/g)) {
+    assert.ok(
+      codeRoutes.has(m[1]),
+      `SKILL.md route ${m[1]} missing from sidecars/panel/main.mjs`,
+    );
+  }
+  for (const fn of [
+    "parseTranscriptJsonl",
+    "aggregateProjectReceipts",
+    "detectTokenHotspots",
+    "renderHtmlReceipt",
+    "formatCsvReceipt",
+  ]) {
+    assert.ok(skill.includes(`\`${fn}`), `SKILL.md missing helper ${fn}`);
+    assert.equal(typeof core[fn], "function", `core.mjs must export ${fn}`);
+  }
 });

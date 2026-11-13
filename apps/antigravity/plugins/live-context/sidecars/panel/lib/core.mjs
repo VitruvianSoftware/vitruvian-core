@@ -36,6 +36,52 @@ export const DEFAULT_RESPONSE_CONTRACT = `RESPONSE CONTRACT: Scale to the questi
 - NEXT only when the user must do or decide something, or there is a concrete follow-up. Otherwise end after the detail. Never write 'Nothing needed from you.'`;
 
 /**
+ * Extracts `owner/repo` from a GitHub HTTPS, SSH, or `ssh://` remote URL.
+ *
+ * @param {string} [remoteUrl]
+ * @returns {string | null}
+ */
+export function parseGitHubRepoFromRemote(remoteUrl) {
+  let trimmed = String(remoteUrl ?? "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (trimmed.endsWith(".git")) trimmed = trimmed.slice(0, -4);
+  trimmed = trimmed.replace(/\/+$/, "");
+  if (!trimmed) return null;
+
+  let path = "";
+  const schemeIdx = trimmed.indexOf("://");
+  if (schemeIdx !== -1) {
+    const scheme = trimmed.slice(0, schemeIdx).toLowerCase();
+    if (scheme === "file") return null;
+    const rest = trimmed.slice(schemeIdx + 3);
+    const slashIdx = rest.indexOf("/");
+    if (slashIdx === -1) return null;
+    path = rest.slice(slashIdx + 1);
+  } else if (
+    !trimmed.startsWith("/") &&
+    !trimmed.startsWith("./") &&
+    !trimmed.startsWith("../")
+  ) {
+    const colonIdx = trimmed.indexOf(":");
+    if (colonIdx === -1) return null;
+    const host = trimmed.slice(0, colonIdx);
+    if (!host || host.includes("/") || host.includes("\\")) return null;
+    path = trimmed.slice(colonIdx + 1).replace(/^\/+/, "");
+  } else {
+    return null;
+  }
+
+  const segs = path.split("/");
+  if (segs.length !== 2) return null;
+  const [owner, repo] = segs;
+  const validPart = (s) =>
+    Boolean(s) && s !== "." && s !== ".." && /^[A-Za-z0-9._-]+$/.test(s);
+  if (!validPart(owner) || !validPart(repo)) return null;
+  return `${owner}/${repo}`;
+}
+
+/**
  * Formats live local Git state and GitHub open/merged pull requests into a
  * concise context block.
  *
@@ -61,7 +107,7 @@ export function formatLiveGitSummary(git = {}, github = {}, opts = {}) {
   }
 
   if (includeGitHub && github && typeof github === "object") {
-    const repo = github.repo || "VitruvianSoftware/vitruvian-core";
+    const repo = github.repo || "GitHub";
     if (github.unavailable) {
       sections.push(
         `GitHub state unavailable this turn (gh query failed or timed out).\nTreat all remembered PR/issue status as STALE and re-query before reporting it.`,

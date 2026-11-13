@@ -37,6 +37,7 @@ import { Response, SidecarApp } from "sidecar_sdk";
 import {
   buildEphemeralContextPayload,
   DEFAULT_RESPONSE_CONTRACT,
+  parseGitHubRepoFromRemote,
 } from "./lib/core.mjs";
 import { parseOpenUILang, toOpenUILang } from "./lib/openui.mjs";
 
@@ -75,7 +76,7 @@ function loadSettings() {
       injectGitHub: raw.injectGitHub !== false,
       injectContract: raw.injectContract !== false,
       mode: raw.mode === "enforce" ? "enforce" : "log",
-      repo: String(raw.repo || "VitruvianSoftware/vitruvian-core"),
+      repo: String(raw.repo ?? "").trim(),
       minChars: Math.max(50, Number(raw.minChars ?? 300)),
       contractText: String(raw.contractText ?? DEFAULT_RESPONSE_CONTRACT),
     };
@@ -85,7 +86,7 @@ function loadSettings() {
       injectGitHub: true,
       injectContract: true,
       mode: "log",
-      repo: "VitruvianSoftware/vitruvian-core",
+      repo: "",
       minChars: 300,
       contractText: DEFAULT_RESPONSE_CONTRACT,
     };
@@ -119,10 +120,7 @@ function saveSettings(patch = {}) {
           ? "enforce"
           : "log"
         : current.mode,
-    repo:
-      patch.repo !== undefined
-        ? String(patch.repo).trim() || current.repo
-        : current.repo,
+    repo: patch.repo !== undefined ? String(patch.repo).trim() : current.repo,
     minChars:
       patch.minChars !== undefined
         ? Math.max(50, Number(patch.minChars))
@@ -181,9 +179,24 @@ async function refreshSnapshot() {
   if (refreshBusy) return loadSnapshot();
   refreshBusy = true;
   const settings = loadSettings();
+  let effectiveRepo = settings.repo;
+  if (!effectiveRepo) {
+    try {
+      const remoteOut = await execFileAsync(
+        "git",
+        ["remote", "get-url", "origin"],
+        { timeout: 4000 },
+      );
+      effectiveRepo = parseGitHubRepoFromRemote(remoteOut.stdout) ?? "";
+    } catch {
+      effectiveRepo = "";
+    }
+  }
+  const repoArgs = effectiveRepo ? ["--repo", effectiveRepo] : [];
+
   const git = { branch: "", headSha: "", dirtyCount: 0, dirtyFiles: [] };
   const github = {
-    repo: settings.repo,
+    ...(effectiveRepo ? { repo: effectiveRepo } : {}),
     openPrs: [],
     mergedPrs: [],
     openIssues: 0,
@@ -219,8 +232,7 @@ async function refreshSnapshot() {
         [
           "pr",
           "list",
-          "--repo",
-          settings.repo,
+          ...repoArgs,
           "--state",
           "open",
           "--limit",
@@ -235,8 +247,7 @@ async function refreshSnapshot() {
         [
           "pr",
           "list",
-          "--repo",
-          settings.repo,
+          ...repoArgs,
           "--state",
           "merged",
           "--limit",
@@ -251,8 +262,7 @@ async function refreshSnapshot() {
         [
           "issue",
           "list",
-          "--repo",
-          settings.repo,
+          ...repoArgs,
           "--state",
           "open",
           "--limit",

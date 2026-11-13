@@ -32,8 +32,6 @@ pub const DEFAULT_RESPONSE_CONTRACT: &str = "RESPONSE CONTRACT: Scale to the que
 - DIAGRAM only when it earns its place: a workflow, pipeline, state machine or genuinely complex topic.\n\
 - NEXT only when the user must do or decide something, or there is a concrete follow-up. Otherwise end after the detail. Never write 'Nothing needed from you.'";
 
-pub const DEFAULT_REPO: &str = "VitruvianSoftware/vitruvian-core";
-
 /// How old the sidecar's snapshot may be before the hook stops trusting it.
 pub const SNAPSHOT_MAX_AGE_MS: f64 = 120_000.0;
 
@@ -236,7 +234,7 @@ pub fn format_live_git_summary(
             let repo = if js_truthy(gh.get("repo")) {
                 js_string(&gh["repo"])
             } else {
-                DEFAULT_REPO.to_string()
+                "GitHub".to_string()
             };
             if js_truthy(gh.get("unavailable")) {
                 sections.push(GITHUB_UNKNOWN.to_string());
@@ -459,15 +457,156 @@ pub fn probe_git(workspace: &Path, run: &Runner<'_>) -> Option<Map> {
     )
 }
 
+/// Parses `owner/repo` from a GitHub HTTPS, SSH, or `ssh://` remote URL.
+pub fn parse_github_repo_from_remote(remote_url: &str) -> Option<String> {
+    let trimmed = remote_url.trim().trim_end_matches('/');
+    let trimmed = trimmed.strip_suffix(".git").unwrap_or(trimmed);
+    let trimmed = trimmed.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let path = if let Some((scheme, rest)) = trimmed.split_once("://") {
+        if scheme.eq_ignore_ascii_case("file") {
+            return None;
+        }
+        let slash = rest.find('/')?;
+        &rest[slash + 1..]
+    } else if !trimmed.starts_with('/') && !trimmed.starts_with("./") && !trimmed.starts_with("../")
+    {
+        let (host, path) = trimmed.split_once(':')?;
+        if host.is_empty() || host.contains('/') || host.contains('\\') {
+            return None;
+        }
+        path.trim_start_matches('/')
+    } else {
+        return None;
+    };
+
+    let segs: Vec<&str> = path.split('/').collect();
+    if segs.len() != 2 {
+        return None;
+    }
+    let (owner, repo) = (segs[0], segs[1]);
+    let valid_part = |s: &str| {
+        !s.is_empty()
+            && s != "."
+            && s != ".."
+            && s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+    };
+    if !valid_part(owner) || !valid_part(repo) {
+        return None;
+    }
+    Some(format!("{owner}/{repo}"))
+}
+
+fn read_origin_url_from_git_config(workspace: &Path) -> Option<String> {
+    for dir in workspace.ancestors() {
+        let dot_git = dir.join(".git");
+        let config_path = if dot_git.is_dir() {
+            dot_git.join("config")
+        } else if dot_git.is_file() {
+            let content = fs::read_to_string(&dot_git).ok()?;
+            let raw_gitdir = content.trim().strip_prefix("gitdir:")?.trim();
+            let gitdir = if Path::new(raw_gitdir).is_absolute() {
+                PathBuf::from(raw_gitdir)
+            } else {
+                dir.join(raw_gitdir)
+            };
+            let common_path = gitdir
+                .join("commondir")
+                .exists()
+                .then(|| fs::read_to_string(gitdir.join("commondir")).ok())
+                .flatten()
+                .map(|raw| {
+                    let p = PathBuf::from(raw.trim());
+                    if p.is_absolute() {
+                        p
+                    } else {
+                        gitdir.join(p)
+                    }
+                });
+            match common_path {
+                Some(common) if common.join("config").exists() => common.join("config"),
+                _ => gitdir.join("config"),
+            }
+        } else {
+            continue;
+        };
+
+        let raw = fs::read_to_string(config_path).ok()?;
+        let mut in_origin = false;
+        for line in raw.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with(';') {
+                continue;
+            }
+            if let Some(section) = trimmed.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+                let inner = section.trim();
+                let is_origin = inner
+                    .get(..6)
+                    .map(|p| p.eq_ignore_ascii_case("remote"))
+                    .unwrap_or(false)
+                    && inner[6..].trim() == "\"origin\"";
+                in_origin = is_origin;
+                continue;
+            }
+            if in_origin {
+                if let Some((key, val)) = trimmed.split_once('=') {
+                    if key.trim().eq_ignore_ascii_case("url") {
+                        let url = val.trim().trim_matches('"');
+                        return parse_github_repo_from_remote(url);
+                    }
+                }
+            }
+        }
+        return None;
+    }
+    None
+}
+
+/// Derives `owner/repo` from the workspace's git `origin` remote URL.
+pub fn detect_git_remote_repo(workspace: &Path, run: &Runner<'_>) -> Option<String> {
+    if let Some(repo) = read_origin_url_from_git_config(workspace) {
+        return Some(repo);
+    }
+    let out = run(
+        "git",
+        &["--no-optional-locks", "remote", "get-url", "origin"],
+        Some(workspace),
+        GIT_TIMEOUT,
+    )?;
+    parse_github_repo_from_remote(&out)
+}
+
 /// Asks `gh` for the open and recently merged PRs and the open issue count.
-/// Any failure gives `{repo, unavailable: true}`, never an empty PR list.
+/// Any failure gives `{repo?, unavailable: true}`, never an empty PR list.
 pub fn probe_github(repo: &str, run: &Runner<'_>) -> Map {
+    probe_github_in(Some(repo), None, run)
+}
+
+fn probe_github_in(repo: Option<&str>, cwd: Option<&Path>, run: &Runner<'_>) -> Map {
+    let repo_owned = repo
+        .map(str::trim)
+        .filter(|r| !r.is_empty())
+        .map(str::to_string);
+    if repo_owned.is_none() && cwd.is_none() {
+        let mut gh = Map::new();
+        gh.insert("unavailable", true);
+        return gh;
+    }
+    let repo_ref = repo_owned.as_deref();
     let (open, merged, issues) = thread::scope(|s| {
         let gh = |args: Vec<&'static str>| {
             move || {
-                let mut full: Vec<&str> = vec![args[0], args[1], "--repo", repo];
+                let mut full: Vec<&str> = vec![args[0], args[1]];
+                if let Some(r) = repo_ref {
+                    full.push("--repo");
+                    full.push(r);
+                }
                 full.extend_from_slice(&args[2..]);
-                run("gh", &full, None, GH_TIMEOUT)
+                run("gh", &full, cwd, GH_TIMEOUT)
             }
         };
         let open = s.spawn(gh(vec![
@@ -508,7 +647,9 @@ pub fn probe_github(repo: &str, run: &Runner<'_>) -> Map {
         }
     };
     let mut gh = Map::new();
-    gh.insert("repo", repo);
+    if let Some(r) = repo_ref {
+        gh.insert("repo", r);
+    }
     match (parse_list(open), parse_list(merged), parse_list(issues)) {
         (Some(open), Some(merged), Some(issues)) => {
             gh.insert("openPrs", Value::Array(open));
@@ -606,28 +747,38 @@ pub fn run_inject_live_context(
     let fresh = snapshot_is_fresh(&snapshot, now_ms);
     let inject_git = settings.get("injectGit") != Some(&Value::Bool(false));
     let inject_github = settings.get("injectGitHub") != Some(&Value::Bool(false));
-    let repo = settings
+    let workspace = workspace_from_payload(&payload);
+    let configured_repo = settings
         .get("repo")
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|r| !r.is_empty())
-        .unwrap_or(DEFAULT_REPO)
-        .to_string();
-    let workspace = workspace_from_payload(&payload);
+        .map(str::to_string);
+    let resolved_repo = configured_repo.or_else(|| {
+        if inject_github {
+            workspace
+                .as_deref()
+                .and_then(|ws| detect_git_remote_repo(ws, run))
+        } else {
+            None
+        }
+    });
 
     let snapshot_git = snapshot.get("git").and_then(Value::as_object);
     let snapshot_github = snapshot.get("github").and_then(Value::as_object);
     // The cached GitHub state is usable only if fresh, for this repo, and a
     // real answer (it has a PR list, or says it is unavailable).
     let cached_github = snapshot_github.filter(|gh| {
-        fresh
-            && gh
-                .get("repo")
-                .and_then(Value::as_str)
-                .unwrap_or(DEFAULT_REPO)
-                == repo
-            && (gh.get("openPrs").and_then(Value::as_array).is_some()
-                || js_truthy(gh.get("unavailable")))
+        if !fresh
+            || (gh.get("openPrs").and_then(Value::as_array).is_none()
+                && !js_truthy(gh.get("unavailable")))
+        {
+            return false;
+        }
+        match resolved_repo.as_deref() {
+            Some(expected) => gh.get("repo").and_then(Value::as_str) == Some(expected),
+            None => workspace.is_none(),
+        }
     });
 
     let need_github = inject_github && cached_github.is_none();
@@ -636,7 +787,10 @@ pub fn run_inject_live_context(
             (Some(ws), true) => probe_git(ws, run),
             _ => None,
         });
-        let gh = s.spawn(|| need_github.then(|| probe_github(&repo, run)));
+        let gh = s.spawn(|| {
+            need_github
+                .then(|| probe_github_in(resolved_repo.as_deref(), workspace.as_deref(), run))
+        });
         (git.join().ok().flatten(), gh.join().ok().flatten())
     });
 
@@ -1104,14 +1258,23 @@ mod tests {
         calls: Mutex<Vec<String>>,
         gh_ok: bool,
         git_ok: bool,
+        origin_url: &'static str,
     }
 
     impl FakeTools {
         fn new(git_ok: bool, gh_ok: bool) -> Self {
+            Self::with_origin(
+                git_ok,
+                gh_ok,
+                "https://github.com/VitruvianSoftware/vitruvian-core.git\n",
+            )
+        }
+        fn with_origin(git_ok: bool, gh_ok: bool, origin_url: &'static str) -> Self {
             Self {
                 calls: Mutex::new(Vec::new()),
                 gh_ok,
                 git_ok,
+                origin_url,
             }
         }
         fn gh_calls(&self) -> usize {
@@ -1126,15 +1289,20 @@ mod tests {
             let line = format!("{program} {}", args.join(" "));
             self.calls.lock().unwrap().push(line.clone());
             match program {
-                "git" if self.git_ok => Some(
-                    match args {
-                        ["--no-optional-locks", "rev-parse", "--abbrev-ref", _] => "feat/x\n",
-                        ["--no-optional-locks", "rev-parse", "--short", _] => "abc1234\n",
-                        ["--no-optional-locks", "status", ..] => " M src/a.rs\n?? new.txt\n",
-                        _ => "",
+                "git" if self.git_ok => {
+                    if args == ["--no-optional-locks", "remote", "get-url", "origin"] {
+                        return (!self.origin_url.is_empty()).then(|| self.origin_url.to_string());
                     }
-                    .to_string(),
-                ),
+                    Some(
+                        match args {
+                            ["--no-optional-locks", "rev-parse", "--abbrev-ref", _] => "feat/x\n",
+                            ["--no-optional-locks", "rev-parse", "--short", _] => "abc1234\n",
+                            ["--no-optional-locks", "status", ..] => " M src/a.rs\n?? new.txt\n",
+                            _ => "",
+                        }
+                        .to_string(),
+                    )
+                }
                 "gh" if self.gh_ok => Some(
                     if line.contains("--state open") && line.starts_with("gh pr") {
                         r#"[{"number":7,"title":"Live PR","isDraft":false}]"#
@@ -1316,6 +1484,7 @@ mod tests {
     fn probes_run_in_parallel() {
         // Six slow tools must finish in about one tool's time, not six.
         let dir = temp_dir("parallel");
+        fs::write(dir.join("settings.json"), r#"{"repo":"acme/widgets"}"#).unwrap();
         let started = AtomicUsize::new(0);
         let run = |p: &str, a: &[&str], _c: Option<&Path>, _t: Duration| {
             started.fetch_add(1, Ordering::SeqCst);
@@ -1580,5 +1749,119 @@ mod tests {
     fn tail_and_conversation_id_are_cut_in_utf16_units() {
         assert_eq!(js_slice_head("abcdefghij", 8), "abcdefgh");
         assert_eq!(js_slice_tail("xx😀", 2), "😀");
+    }
+
+    fn drift_repo_path(rel: &str) -> PathBuf {
+        let direct = PathBuf::from(rel);
+        if direct.exists() {
+            return direct;
+        }
+        if let Ok(srcdir) = env::var("TEST_SRCDIR") {
+            let ws = env::var("TEST_WORKSPACE").unwrap_or_else(|_| "_main".to_string());
+            let candidate = PathBuf::from(srcdir).join(ws).join(rel);
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+        direct
+    }
+
+    #[test]
+    fn drift_skill_documents_settings_keys_and_git_remote_default() {
+        let skill = fs::read_to_string(drift_repo_path(
+            "apps/antigravity/plugins/live-context/skills/live-context/SKILL.md",
+        ))
+        .expect("read live-context SKILL.md");
+
+        for key in [
+            "injectGit",
+            "injectGitHub",
+            "injectContract",
+            "mode",
+            "repo",
+            "minChars",
+            "contractText",
+        ] {
+            assert!(
+                skill.contains(&format!("`{key}`")),
+                "live-context SKILL.md must document settings.json key `{key}`"
+            );
+        }
+        assert!(
+            skill.contains("origin"),
+            "live-context SKILL.md must document deriving default repo from the workspace git `origin` remote"
+        );
+    }
+
+    #[test]
+    fn derives_repo_from_git_origin_remote_when_unset_and_settings_override() {
+        assert_eq!(
+            parse_github_repo_from_remote("https://github.com/octo/app.git").as_deref(),
+            Some("octo/app")
+        );
+        assert_eq!(
+            parse_github_repo_from_remote("git@github.com:octo/app.git").as_deref(),
+            Some("octo/app")
+        );
+        assert_eq!(
+            parse_github_repo_from_remote("ssh://git@github.com:22/octo/app/").as_deref(),
+            Some("octo/app")
+        );
+        assert_eq!(parse_github_repo_from_remote("/local/only"), None);
+        assert_eq!(parse_github_repo_from_remote("file:///tmp/repo"), None);
+
+        let dir = temp_dir("origin-default");
+        let tools = FakeTools::with_origin(true, true, "git@github.com:octo-org/hello-world.git\n");
+        let msg = message(&inject(&dir, PAYLOAD, &tools));
+        assert!(msg.contains("LIVE octo-org/hello-world state"), "{msg}");
+        assert!(
+            !msg.contains("VitruvianSoftware/vitruvian-core"),
+            "default repo must come from git origin, not hard-coded repo:\n{msg}"
+        );
+        let calls = tools.calls.lock().unwrap().clone();
+        assert!(
+            calls
+                .iter()
+                .any(|c| c.contains("--repo octo-org/hello-world")),
+            "expected gh --repo octo-org/hello-world, got {calls:?}"
+        );
+
+        // settings.repo overrides origin.
+        fs::write(dir.join("settings.json"), r#"{"repo":"override/repo"}"#).unwrap();
+        let tools_override =
+            FakeTools::with_origin(true, true, "git@github.com:octo-org/hello-world.git\n");
+        let msg_override = message(&inject(&dir, PAYLOAD, &tools_override));
+        assert!(
+            msg_override.contains("LIVE override/repo state"),
+            "{msg_override}"
+        );
+
+        // Real git repo `.git/config` fast path.
+        let repo_dir = temp_dir("origin-git-config");
+        if Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&repo_dir)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+        {
+            let _ = Command::new("git")
+                .args([
+                    "remote",
+                    "add",
+                    "origin",
+                    "git@github.com:real-org/real-repo.git",
+                ])
+                .current_dir(&repo_dir)
+                .status();
+            let panic_run =
+                |_: &str, _: &[&str], _: Option<&Path>, _: Duration| -> Option<String> {
+                    panic!("expected .git/config fast path without spawning git");
+                };
+            assert_eq!(
+                detect_git_remote_repo(&repo_dir, &panic_run).as_deref(),
+                Some("real-org/real-repo")
+            );
+        }
     }
 }

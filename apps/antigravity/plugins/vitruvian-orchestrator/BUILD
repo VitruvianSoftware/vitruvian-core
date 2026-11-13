@@ -77,6 +77,28 @@ js_test(
     entry_point = "sidecars/panel/main.test.mjs",
 )
 
+js_test(
+    name = "drift_test",
+    size = "small",
+    data = [
+        "mcp_config.json",
+        "plugin.json",
+        "rules/AGENTS.md",
+        "skills/orchestrate/SKILL.md",
+        ":server_lib",
+        "//:.agents/roster/agents.tsv",
+        "//:.agents/roster/tiers.tsv",
+    ] + glob(
+        ["agents/*.md"],
+        allow_empty = True,
+    ),
+    entry_point = "drift.test.mjs",
+    no_copy_to_bin = [
+        "//:.agents/roster/agents.tsv",
+        "//:.agents/roster/tiers.tsv",
+    ],
+)
+
 filegroup(
     name = "site_sources",
     srcs = glob(
@@ -90,5 +112,8 @@ filegroup(
         ],
         allow_empty = True,
     ),
-    visibility = ["//tools/sync-site-tools:__pkg__"],
+    visibility = [
+        "//apps/antigravity/plugins/ext-marketplace:__pkg__",
+        "//tools/sync-site-tools:__pkg__",
+    ],
 )

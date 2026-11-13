@@ -21,7 +21,10 @@
  */
 
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   countChecks,
@@ -277,4 +280,53 @@ test("totalCacheKb and summariseWorktrees aggregate disk usage and cleanup count
     summary.items.map((i) => i.branch),
     ["feat-merged", "feat-open", "feat-cleaned"],
   );
+});
+
+test("drift: SKILL.md routes, hooks.json, and rules match code", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  let pluginDir = here;
+  for (const base of [process.cwd(), here]) {
+    let dir = resolve(base);
+    for (let i = 0; i < 8; i += 1) {
+      const cand = join(dir, "apps/antigravity/plugins/worktree-band");
+      if (existsSync(join(cand, "skills/worktree-band/SKILL.md"))) {
+        pluginDir = cand;
+        break;
+      }
+      if (existsSync(join(dir, "skills/worktree-band/SKILL.md"))) {
+        pluginDir = dir;
+        break;
+      }
+      const p = dirname(dir);
+      if (p === dir) break;
+      dir = p;
+    }
+  }
+  const skill = readFileSync(
+    join(pluginDir, "skills/worktree-band/SKILL.md"),
+    "utf8",
+  );
+  const rulesDoc = readFileSync(join(pluginDir, "rules/AGENTS.md"), "utf8");
+  const mainJs = readFileSync(
+    join(pluginDir, "sidecars/panel/main.mjs"),
+    "utf8",
+  );
+  const hooksJson = readFileSync(join(pluginDir, "hooks.json"), "utf8");
+
+  const codeRoutes = new Set(
+    [...mainJs.matchAll(/app\.api\(\s*["'](\/api\/[^"']+)["']/g)].map(
+      (m) => m[1],
+    ),
+  );
+  for (const m of skill.matchAll(/`(\/api\/[a-zA-Z0-9_-]+)`/g)) {
+    assert.ok(
+      codeRoutes.has(m[1]),
+      `SKILL.md route ${m[1]} missing from sidecars/panel/main.mjs`,
+    );
+  }
+  assert.match(hooksJson, /SessionStart/);
+  assert.match(rulesDoc, /SessionStart/);
+  assert.match(skill, /session-worktree\.sh/);
+  assert.match(hooksJson, /session-worktree\.sh/);
+  assert.match(rulesDoc, /DO_NOT_BUILD_HERE/);
 });

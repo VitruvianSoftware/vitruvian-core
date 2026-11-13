@@ -74,11 +74,17 @@ exports_files(
 
 exports_files(
     [
+        ".agents/roster/agents.tsv",
+        ".agents/roster/tiers.tsv",
         ".agents/roster/skills/orchestrate/antigravity.md",
         ".agents/roster/skills/orchestrate/claude-code.md",
         ".agents/roster/skills/orchestrate/opencode.md",
     ],
-    visibility = ["//tools/agent-roster:__pkg__"],
+    visibility = [
+        "//apps/antigravity/plugins/vitruvian-orchestrator:__pkg__",
+        "//apps/claude-code/plugins/vitruvian-orchestrator:__pkg__",
+        "//tools/agent-roster:__pkg__",
+    ],
 )
 
 # //tools/ci's hook tests read settings.json too, to check each hook is wired.

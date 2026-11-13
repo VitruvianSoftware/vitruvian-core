@@ -173,6 +173,7 @@ pipeline_unit(
     runner = "ubuntu-26.04",
     test_targets = [
         ":core_test",
+        ":drift_test",
         ":openui_test",
         ":rust_hook_test",
         ":sidecar_lib_test",
@@ -183,6 +184,18 @@ pipeline_unit(
     ],
     tier = "L1",
     timeout_minutes = 15,
+)
+
+js_test(
+    name = "drift_test",
+    size = "small",
+    data = [
+        "rules/AGENTS.md",
+        "sidecars/panel/main.mjs",
+        "skills/savvy-fleet/SKILL.md",
+        "skills/savvy-flow/SKILL.md",
+    ],
+    entry_point = "drift.test.mjs",
 )
 
 filegroup(
@@ -200,7 +213,10 @@ filegroup(
         ],
         allow_empty = True,
     ),
-    visibility = ["//tools/sync-site-tools:__pkg__"],
+    visibility = [
+        "//apps/antigravity/plugins/ext-marketplace:__pkg__",
+        "//tools/sync-site-tools:__pkg__",
+    ],
 )
 
 # What //apps/antigravity's cross-plugin tests read: the hooks.json

@@ -21,10 +21,19 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   MARKETPLACE_CATALOG,
@@ -46,11 +55,12 @@ const EXPECTED_IDS = [
   "receipts-report",
   "live-context",
   "savvy-fleet",
+  "vitruvian-orchestrator",
   "ext-marketplace",
 ];
 
-test("MARKETPLACE_CATALOG lists all 9 first-party Vitruvian extensions", () => {
-  assert.equal(MARKETPLACE_CATALOG.length, 9);
+test("MARKETPLACE_CATALOG lists all 10 first-party Vitruvian extensions", () => {
+  assert.equal(MARKETPLACE_CATALOG.length, 10);
   assert.deepEqual(
     MARKETPLACE_CATALOG.map((item) => item.id),
     EXPECTED_IDS,
@@ -192,7 +202,7 @@ test("mergeInstalledWithCatalog and summariseMarketplace combine catalog, instal
   };
 
   const merged = mergeInstalledWithCatalog(installedList, configJson);
-  assert.equal(merged.length, 10);
+  assert.equal(merged.length, 11);
 
   const ghWatch = merged.find((p) => p.id === "gh-watch");
   assert.equal(ghWatch.installed, true);
@@ -211,10 +221,99 @@ test("mergeInstalledWithCatalog and summariseMarketplace combine catalog, instal
     installedList,
     configJson,
   });
-  assert.equal(summary.counts.total, 10);
-  assert.equal(summary.counts.catalog, 9);
+  assert.equal(summary.counts.total, 11);
+  assert.equal(summary.counts.catalog, 10);
   assert.equal(summary.counts.installed, 3);
   assert.equal(summary.counts.enabled, 2);
   assert.equal(summary.counts.disabled, 1);
   assert.equal(summary.counts.updatesAvailable, 1);
+});
+
+test("drift: MARKETPLACE_CATALOG, SKILL.md, README.md, and plugins/README.md match physical plugin folders", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  let pluginsRoot = here;
+  for (const base of [process.cwd(), here]) {
+    let dir = resolve(base);
+    for (let i = 0; i < 8; i += 1) {
+      const cand = join(dir, "apps/antigravity/plugins");
+      if (
+        existsSync(
+          join(cand, "ext-marketplace/skills/ext-marketplace/SKILL.md"),
+        )
+      ) {
+        pluginsRoot = cand;
+        break;
+      }
+      const p = dirname(dir);
+      if (p === dir) break;
+      dir = p;
+    }
+  }
+
+  const physicalIds = readdirSync(pluginsRoot, { withFileTypes: true })
+    .filter(
+      (entry) =>
+        entry.isDirectory() &&
+        (existsSync(join(pluginsRoot, entry.name, "plugin.json")) ||
+          existsSync(
+            join(pluginsRoot, entry.name, ".claude-plugin/plugin.json"),
+          )),
+    )
+    .map((entry) => entry.name)
+    .sort();
+  assert.ok(
+    physicalIds.length >= 10,
+    `expected >= 10 plugin dirs, got ${physicalIds.join(", ")}`,
+  );
+
+  const catalogIds = MARKETPLACE_CATALOG.map((p) => p.id).sort();
+  assert.deepEqual(
+    catalogIds,
+    physicalIds,
+    `MARKETPLACE_CATALOG (${catalogIds.join(", ")}) must list every physical folder under apps/antigravity/plugins (${physicalIds.join(", ")})`,
+  );
+
+  const skill = readFileSync(
+    join(pluginsRoot, "ext-marketplace/skills/ext-marketplace/SKILL.md"),
+    "utf8",
+  );
+  const readme = readFileSync(
+    join(pluginsRoot, "ext-marketplace/README.md"),
+    "utf8",
+  );
+  const rootReadme = readFileSync(join(pluginsRoot, "README.md"), "utf8");
+
+  for (const id of physicalIds) {
+    assert.ok(
+      skill.includes(`\`${id}\``),
+      `SKILL.md catalog list missing plugin \`${id}\``,
+    );
+    assert.ok(
+      readme.includes(`\`${id}\``),
+      `README.md catalog list missing plugin \`${id}\``,
+    );
+    assert.ok(
+      rootReadme.includes(`[${id}](./${id}/`) ||
+        rootReadme.includes(`\`${id}/`),
+      `apps/antigravity/plugins/README.md missing plugin ${id}`,
+    );
+  }
+
+  // No hardcoded stale plugin count anywhere in SKILL.md, README.md, or catalog highlights.
+  for (const [label, text] of [
+    ["SKILL.md", skill],
+    ["README.md", readme],
+    [
+      "MARKETPLACE_CATALOG.highlights",
+      MARKETPLACE_CATALOG.flatMap((p) => p.highlights ?? []).join("\n"),
+    ],
+  ]) {
+    for (const m of text.matchAll(/\b(\d+)\s+first-party\b/gi)) {
+      assert.equal(
+        Number(m[1]),
+        physicalIds.length,
+        `${label} mentions stale count "${m[0]}" (expected ${physicalIds.length})`,
+      );
+    }
+  }
 });

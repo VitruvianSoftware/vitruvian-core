@@ -3217,7 +3217,7 @@ test("return round 2 security 2: agent/specialist/tier/model with ANSI, bidi, an
       {
         title: "Build panel",
         specialist: dirtySpec,
-        tier: dirtyTier,
+        tier: "core",
         after: [],
       },
     ],
@@ -3359,4 +3359,71 @@ test("return round 2 acceptance 7: /orchestrator-board --channel <unknown> repor
   for (const line of out.split("\n")) {
     expect(line.length).toBeLessThanOrEqual(56);
   }
+});
+
+test("progress accepts roster and legacy tiers and rejects unknown tier or phase without silent fallback", async ($, on) => {
+  mock.clock(on, { now: 20_000 });
+  let f: Flow | null = null;
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("state.set", { plugin: PLUGIN, key: "flow" }, (_, e, next) => {
+    f = e.value as Flow | null;
+    return next(e);
+  });
+
+  const ok = (await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "All valid tiers",
+    phase: "plan",
+    tasks: [
+      { title: "Lead task", specialist: "beacon", tier: "lead", after: [] },
+      { title: "Build task", specialist: "wren", tier: "build", after: [1] },
+      { title: "Deep task", specialist: "aegis", tier: "deep", after: [1] },
+      {
+        title: "Light task",
+        specialist: "scout",
+        tier: "light",
+        after: [2, 3],
+      },
+      { title: "Legacy core", specialist: "forge", tier: "core", after: [] },
+      { title: "Legacy fast", specialist: "quill", tier: "fast", after: [] },
+    ],
+  } as never)) as { result?: string; isError?: boolean };
+  expect(ok.isError).toBeUndefined();
+  expect(f?.tasks.map((t) => t.tier)).toEqual([
+    "lead",
+    "build",
+    "deep",
+    "light",
+    "core",
+    "fast",
+  ]);
+
+  const badTier = (await $.tool.call({
+    tool: PROGRESS_TOOL,
+    tasks: [{ title: "Bad", specialist: "wren", tier: "bogus", after: [] }],
+  } as never)) as { result?: string; isError?: boolean };
+  expect(badTier.isError).toBe(true);
+  expect(String(badTier.result ?? "")).toContain("invalid tier");
+
+  const dirtyTier = (await $.tool.call({
+    tool: PROGRESS_TOOL,
+    tasks: [
+      {
+        title: "Dirty",
+        specialist: "wren",
+        tier: "co\x1b[31mre\u202e\u200b",
+        after: [],
+      },
+    ],
+  } as never)) as { result?: string; isError?: boolean };
+  expect(dirtyTier.isError).toBe(true);
+  expect(f?.tasks.length).toBe(6);
+
+  const badPhase = (await $.tool.call({
+    tool: PROGRESS_TOOL,
+    phase: "execute",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(badPhase.isError).toBe(true);
+  expect(String(badPhase.result ?? "")).toContain("invalid phase");
+  expect(f?.phase).toBe("plan");
 });

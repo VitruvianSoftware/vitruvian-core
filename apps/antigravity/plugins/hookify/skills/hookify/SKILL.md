@@ -41,8 +41,9 @@ Use `bazel test //...` instead of invoking language test runners directly.
 
 - `name` (string, required): Unique identifier for the rule.
 - `enabled` (boolean, default `true`): Whether the rule is active.
-- `event` (string, default `"all"`):
-  - `"PreToolUse"` or `"all"`: Runs before any matching tool call.
+- `event` (string, default `"PreToolUse"`):
+  - `"PreToolUse"`: Runs before any matching tool call (default when omitted).
+  - `"all"`: Matches every supported event (`PreToolUse`, `PostToolUse`, `Stop`).
   - `"bash"`: Shorthand for `PreToolUse` on `run_command` / `Bash`.
   - `"file"`: Shorthand for `PreToolUse` on `write_file` / `edit_file` / `Write` / `Edit`.
   - `"Stop"`: Runs when the agent attempts to conclude its turn.
