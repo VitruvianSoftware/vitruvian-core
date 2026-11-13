@@ -229,7 +229,10 @@ package final class PreciseVolumeRollerService: ObservableObject {
         // The precise volume setting applies to the monitor as it does to any
         // other output: wheel bursts are thinned by the same gate and each
         // accepted click takes the fine step.
-        let precise = environment.defaults[Preferences.preciseVolumeRollerEnabled]
+        // A precise volume preference saved while the mixer was on does not
+        // reach the monitor once the mixer is off.
+        let precise = environment.mixerAvailable()
+            && environment.defaults[Preferences.preciseVolumeRollerEnabled]
         if precise, case let .step(direction) = action,
            !gate.accepts(direction > 0 ? .up : .down, at: ProcessInfo.processInfo.systemUptime) {
             return true
