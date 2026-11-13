@@ -45,6 +45,10 @@ struct LabelEditorWindow: View {
     @State private var saving = false
     @FocusState private var titleFocused: Bool
 
+    /// The window's width. Everything in it must fit inside this less its 20pt padding each side
+    /// (`ViewSnapshotTests` checks the colour and icon picker does).
+    static let width: CGFloat = 400
+
     private var existing: Space? {
         guard case let .edit(id) = target else { return nil }
         return spaces.spaces.first { $0.kind == .label && $0.labelID == id }
@@ -83,7 +87,10 @@ struct LabelEditorWindow: View {
             }
         }
         .padding(20)
-        .frame(width: 400)
+        .frame(width: Self.width)
+        // The focus ring, the "All Icons" link and the default button take the label's own colour, so the window
+        // previews the label being made instead of showing the app's red accent, which reads as an error here.
+        .tint(LabelColor.color(color))
         // The auto-archive section's Undo shows here, where its button is.
         .overlay(alignment: .bottom) { ToastView(inbox: inbox) }
         .navigationTitle(isNew ? String(localized: "New Label") : String(localized: "Edit Label"))
