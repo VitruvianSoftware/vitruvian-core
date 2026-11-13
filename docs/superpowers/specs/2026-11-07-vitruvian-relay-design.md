@@ -34,8 +34,8 @@ involves, and we copy none of their server, website or branding.
    **unmodified** upstream `@wonderwhy-er/desktop-commander` package as a local
    MCP server over stdio. It does not use that package's `remote` mode. MIT allows
    this. We get their tool improvements for free and we never patch their code.
-3. **The connector implements both Desktop Commander and Cua Driver-style GUI automation, plus any other local MCP server.**
-   Desktop Commander handles terminal, file, search, and edit tools; Cua Driver-style background GUI automation handles macOS Accessibility-tree inspection, window screenshots, and non-focus-stealing clicks and keystrokes for native desktop apps. The same connector can also expose Courier, Roborock, or any other stdio MCP server the user lists. This sets us apart from the incumbent instead of just cloning it.
+3. **The connector implements both Desktop Commander and Cua Driver (`cua.ai`), plus any other local MCP server.**
+   Desktop Commander handles terminal, file, search, and edit tools; Cua Driver handles background GUI automation (macOS Accessibility-tree inspection, window screenshots, and non-focus-stealing clicks and keystrokes for native desktop apps). The same connector can also expose Courier, Roborock, or any other stdio MCP server the user lists. This sets us apart from the incumbent instead of just cloning it.
 4. **The user's machine enforces the rules.** Which tools are exposed, which folders
    are reachable and what needs a local "Allow?" prompt are decided and enforced in
    the connector, not only on the server. A compromised relay must not be able to
@@ -326,7 +326,7 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
 | **P0 spikes** | (a) ChatGPT web and Claude web each add an OAuth-protected MCP on our domain with Zitadel sign-in. Settles the registration question. (b) Zitadel device flow from a CLI. (c) A WebSocket through the Cloudflare Tunnel stays up for 24 hours with reconnects. (d) A connector drives unmodified `desktop-commander` over stdio | Each spike has a written yes or no with evidence |
 | **P1 single-user alpha** | Relay and connector on the homelab, one user, one device, local rules file, no billing | James runs a command on his Mac from Claude on his phone, and the "ask first" prompt appears on the Mac |
 | **P2 multi-user** | Sign-up, several devices, dashboard, local settings screen, both activity logs, the isolation test in CI | A second invited user connects, and the isolation test fails against a deliberately broken check |
-| **P3 launch readiness** | Stripe product line and entitlements, §9 checklist, move to GCP, Zitadel hosting, signed installers for macOS then Linux and Windows, and Cua Driver-style background GUI automation alongside Desktop Commander | A stranger can sign up, pay in Stripe test mode, connect without help, and drive both terminal/file tools (Desktop Commander) and native desktop app UIs in the background (Cua Driver features) |
+| **P3 launch readiness** | Stripe product line and entitlements, §9 checklist, move to GCP, Zitadel hosting, signed installers for macOS then Linux and Windows, and **Cua Driver** (`cua.ai`) alongside Desktop Commander | A stranger can sign up, pay in Stripe test mode, connect without help, and drive both terminal/file tools (Desktop Commander) and native desktop app UIs in the background (Cua Driver) |
 
 ## 11. Open questions
 
