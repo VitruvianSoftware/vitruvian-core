@@ -352,7 +352,7 @@ package final class FeatureRuntime: ObservableObject {
         case .windowLayout: return [.windowUseTracker, .windowLayout, .pointerDisplay]
         case .autoQuit: return [.autoQuit]
         case .spacesOrder: return [.spacesOrder]
-        case .scrollInverter, .scrollHorizontal, .linearScroll: return [.scrollInverter]
+        case .scrollInverter, .scrollHorizontal, .scrollZoom, .linearScroll, .scrollSpeed: return [.scrollInverter]
         case .focusFollowsMouse: return [.focusFollowsMouse]
         case .smoothScroll: return [.smoothScroll]
         case .mouseAcceleration: return [.mouseAcceleration]

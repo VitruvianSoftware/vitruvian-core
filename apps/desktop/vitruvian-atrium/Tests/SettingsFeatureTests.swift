@@ -426,6 +426,23 @@ enum SettingsFeatureTests {
                     && ScreenCaptureTool.scrolling.settingsTitle(strings, language: language) == search.title,
                          "Keyboard shortcuts includes scrolling screenshot among installed capture tools")
         }
+        for (language, strings) in LocalizationTests.languages {
+            let mouse = SettingsDirectory.sections(strings, language: language, state: .current)
+                .flatMap(\.items).first { $0.page == .mouse }
+            let zoomTerms = mouse?.terms.filter { $0.feature == .scrollZoom }.flatMap(\.titles) ?? []
+            suite.expect(zoomTerms == [strings.zoomSection, strings.pinchZoom],
+                         "settings discovery includes every Zoom row in \(language.rawValue)")
+            let mouseKeywords = mouse?.terms.flatMap(\.titles) ?? []
+            for query in [strings.zoomSection, strings.pinchZoom] {
+                suite.expect(SettingsSearchSupport.matches(query: query, title: strings.tabMouse, keywords: mouseKeywords),
+                             "search finds a localized Zoom option on the Mouse page in \(language.rawValue)")
+            }
+            let sidebar = SettingsSidebarSupport.items(page: .mouse, title: strings.tabMouse, icon: "computermouse",
+                preferredFeatures: mouse?.terms.compactMap(\.feature) ?? [], includePage: false,
+                isAvailable: { _ in true }, featureTitle: { $0.rawValue })
+            suite.expect(sidebar.prefix(3).map(\.id) == [.feature(.scrollInverter), .feature(.scrollHorizontal), .feature(.scrollZoom)],
+                         "the sidebar places Zoom beside scrolling in \(language.rawValue)")
+        }
         for language in AppLanguage.allCases {
             let strings = Strings.localized(language)
             let uninstaller = SettingsDirectory.sections(strings, language: language, state: .current)
@@ -532,6 +549,10 @@ enum SettingsFeatureTests {
                 && backupKeys.contains(DefaultsKey.linearScrollLines)
                 && backupKeys.contains(DefaultsKey.panelControlLinearScroll),
                "linear scrolling preferences travel with the settings backup")
+        suite.expect(backupKeys.contains(DefaultsKey.scrollSpeedEnabled)
+                && backupKeys.contains(DefaultsKey.scrollSpeedModifier)
+                && backupKeys.contains(DefaultsKey.scrollSpeedMultiplier),
+               "modifier-held scroll speed preferences travel with the settings backup")
         suite.expect(Defaults.registeredDefaults[DefaultsKey.panelControlSmoothScroll] as? Bool == true
                 && backupKeys.contains(DefaultsKey.smoothScrollEnabled)
                 && backupKeys.contains(DefaultsKey.panelControlSmoothScroll),

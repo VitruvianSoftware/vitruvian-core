@@ -1286,6 +1286,9 @@ package struct Strings {
     package let invertVerticalScroll: String
     package let invertHorizontalScroll: String
     package let scrollHorizontalName: String
+    package let zoomSection: String
+    package let zoomControlNote: String
+    package let pinchZoom: String
     package let scrollHorizontalModifierLabel: String
     package let scrollHorizontalCommandKey: String
     package let scrollHorizontalCaption: String
@@ -1320,6 +1323,9 @@ package struct Strings {
     package let linearScrollName: String
     package let linearScrollCaption: String
     package let linearScrollLinesLabel: String
+    package let scrollSpeedName: String
+    package let scrollSpeedCaption: String
+    package let scrollSpeedMultiplierLabel: String
     package let shelfClearOnClose: String
     package let shelfClearOnCloseCaption: String
     package let shelfShortcutFinderSelection: String
@@ -2406,6 +2412,9 @@ extension Strings {
         invertVerticalScroll: "Inverter rolagem vertical",
         invertHorizontalScroll: "Inverter rolagem horizontal",
         scrollHorizontalName: "Rolar na horizontal segurando uma tecla",
+        zoomSection: "Zoom",
+        zoomControlNote: "Control + rolagem amplia o conteúdo do app em vez da tela do macOS.",
+        pinchZoom: "Zoom por pinça",
         scrollHorizontalModifierLabel: "Tecla modificadora",
         scrollHorizontalCommandKey: "Command",
         scrollHorizontalCaption: "Mantenha apenas a tecla escolhida pressionada para rolar a roda vertical do mouse na horizontal. Outras combinações de teclas não são alteradas.",
@@ -2440,6 +2449,9 @@ extension Strings {
         linearScrollName: "Rolagem linear",
         linearScrollCaption: "Cada passo da rodinha do mouse rola a mesma distância, não importa a velocidade do giro. O trackpad não muda.",
         linearScrollLinesLabel: "Linhas por passo",
+        scrollSpeedName: "Rolar mais rápido segurando uma tecla",
+        scrollSpeedCaption: "Mantenha apenas a tecla escolhida pressionada ao rolar a roda do mouse para multiplicar a distância. O trackpad não muda.",
+        scrollSpeedMultiplierLabel: "Velocidade",
         shelfClearOnClose: "Limpar ao fechar",
         shelfClearOnCloseCaption: "Esvazia a área somente quando você clica no botão de fechar. Ocultar automaticamente e encolher preservam os itens.",
         shelfShortcutFinderSelection: "Adicionar a seleção do Finder com o atalho",
@@ -3527,6 +3539,9 @@ extension Strings {
         invertVerticalScroll: "Invert vertical scrolling",
         invertHorizontalScroll: "Invert horizontal scrolling",
         scrollHorizontalName: "Scroll sideways while holding a key",
+        zoomSection: "Zoom",
+        zoomControlNote: "Control + scroll performs app zoom instead of macOS screen zoom.",
+        pinchZoom: "Pinch Zoom",
         scrollHorizontalModifierLabel: "Modifier key",
         scrollHorizontalCommandKey: "Command",
         scrollHorizontalCaption: "Hold only the selected modifier to scroll the vertical mouse wheel horizontally. Other key combinations are unchanged.",
@@ -3561,6 +3576,9 @@ extension Strings {
         linearScrollName: "Linear scrolling",
         linearScrollCaption: "Every notch of the mouse wheel scrolls the same distance, no matter how fast it spins. The trackpad is not affected.",
         linearScrollLinesLabel: "Lines per step",
+        scrollSpeedName: "Scroll faster while holding a key",
+        scrollSpeedCaption: "Hold only the selected modifier while scrolling the mouse wheel to multiply scroll distance. The trackpad is not affected.",
+        scrollSpeedMultiplierLabel: "Speed",
         shelfClearOnClose: "Clear when closed",
         shelfClearOnCloseCaption: "Empties the shelf only when you click its close button. Automatic hiding and collapsing keep the items.",
         shelfShortcutFinderSelection: "Add the Finder selection with the shortcut",

@@ -2405,6 +2405,12 @@ enum SwitcherModelFeatureTests {
                 && registeredDefaults[DefaultsKey.spacesOrderRestore] == nil
                 && registeredDefaults[DefaultsKey.spacesOrderRestartPending] == nil,
                "fixed Space order is opt-in, visible in the panel when installed, and its restore state is never registered")
+        suite.expect(registeredDefaults[DefaultsKey.scrollSpeedEnabled] as? Bool == false
+                && registeredDefaults[DefaultsKey.scrollSpeedModifier] as? String
+                    == ScrollHorizontalModifier.option.rawValue
+                && registeredDefaults[DefaultsKey.scrollSpeedMultiplier] as? Int
+                    == ScrollWheelSupport.defaultSpeedMultiplier,
+               "modifier-held scroll speed is opt-in with Option and a 3× default")
         suite.expect(registeredDefaults[DefaultsKey.mouseClickDebounceEnabled] as? Bool == false,
                "mouse click debounce is opt-in")
         suite.expect(registeredDefaults[DefaultsKey.mouseClickDebounceWindowMs] as? Int

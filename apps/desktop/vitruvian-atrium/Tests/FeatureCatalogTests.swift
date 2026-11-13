@@ -450,12 +450,12 @@ enum FeatureCatalogTests {
 
         // MARK: Features hub catalog
 
-        suite.expect(AppFeature.allCases.count == 78, "feature catalog has 78 features")
+        suite.expect(AppFeature.allCases.count == 80, "feature catalog has 80 features")
         suite.expect(Set(AppFeature.allCases.map(\.rawValue)).count == AppFeature.allCases.count,
                "feature ids are unique")
         suite.expect(AppFeature.allCases.map(\.rawValue) == [
             "switcher", "dockPreview", "dockClick", "windowMaximizer", "windowLayout", "autoQuit", "spacesOrder",
-            "scrollInverter", "scrollHorizontal", "focusFollowsMouse", "smoothScroll", "linearScroll", "mouseAcceleration", "mouseNavigation", "mouseButtonShortcuts", "middleClick",
+            "scrollInverter", "scrollHorizontal", "scrollZoom", "focusFollowsMouse", "smoothScroll", "linearScroll", "scrollSpeed", "mouseAcceleration", "mouseNavigation", "mouseButtonShortcuts", "middleClick",
             "mouseClickDebounce", "keyboardDebounce", "textSnippets", "superKey", "quitWindowProtection",
             "clipboardHistory", "pastePlain", "finderCutPaste", "finderRename", "shelf", "urlCleaner",
             "diskImageInstaller",
@@ -645,6 +645,7 @@ enum FeatureCatalogTests {
                 },
                "every feature an update already had stays installed and every other one ships uninstalled")
         suite.expect((AppFeature.availabilityDefaults[AppFeature.linearScroll.availabilityKey] as? Bool) == false
+                && (AppFeature.availabilityDefaults[AppFeature.scrollSpeed.availabilityKey] as? Bool) == false
                 && (AppFeature.availabilityDefaults[AppFeature.focusFollowsMouse.availabilityKey] as? Bool) == false
                 && (AppFeature.availabilityDefaults[AppFeature.fanControl.availabilityKey] as? Bool) == false
                 && (AppFeature.availabilityDefaults[AppFeature.spacesOrder.availabilityKey] as? Bool) == false
@@ -1631,6 +1632,12 @@ enum FeatureCatalogTests {
         suite.expect(activeSet(.accessibility, on: [DefaultsKey.scrollInverterHorizontalEnabled])
                 .contains(.scrollInverter),
                "horizontal-only inversion counts as using accessibility")
+        suite.expect(activeSet(.accessibility, available: [.scrollZoom], on: [DefaultsKey.pinchZoomEnabled])
+                == [.scrollZoom]
+                && activeSet(.accessibility, available: [], on: [DefaultsKey.pinchZoomEnabled]).isEmpty,
+               "Zoom alone owns accessibility only while installed")
+        suite.expect(FeatureRuntime.actions(for: .scrollZoom, in: .standard) == [.scrollInverter],
+               "installing, relaunching, or removing Zoom re-syncs the shared scroll tap")
         suite.expect(AppFeature.scrollInverter.enabledKeys == [DefaultsKey.scrollInverterEnabled,
                                                            DefaultsKey.scrollInverterHorizontalEnabled],
                "the inversion feature tracks only its own axes")

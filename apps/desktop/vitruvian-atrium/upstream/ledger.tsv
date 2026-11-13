@@ -495,7 +495,7 @@ c007f6af59a30ce47997d2264398298fa363fb88	4d8ebaf0eef52a9e1df59c23bfedad00be2b7cd
 1468701709514c3a003c9cf93179c8cfc1a31de9	c77887ad526bef07b39437eef723655c8b3630e9	2026-10-28	ported	#4682	fix(mic-mute): report failures and clarify device-control limits (#3591)
 6f41522ff15a9ec72c563e0df280d700d608eeb8	e9018a241cf50605cfb8d2a3856828c16e86600e	2026-10-28	ported	#4708	feat(notch): let the event countdown start earlier or later (#2167)
 1d46b933539efb785b45c667c79cbea72a643be2	807daf60452bca4661c1c9857dab819e65fc8c3c	2026-10-28	ported	#4708	feat(quick-toggles): add a Quit apps window (#3300)
-f1d115ae51933d21a5d6a4b5060f78c29aaf88b7	d6840e5e05939ae0075c17bdc95bac0191dd9678	2026-10-28	pending	-	feat(settings): add configurable scroll zoom (#2104)
+f1d115ae51933d21a5d6a4b5060f78c29aaf88b7	d6840e5e05939ae0075c17bdc95bac0191dd9678	2026-10-28	ported	#4727	feat(settings): add configurable scroll zoom (#2104)
 97a7d2141447ae8202e46a682d9f721eb3aa83a1	52f18d42c67f2dafe0962aa2e532f869f2a368d9	2026-10-28	skipped	only the changelog and a fix to QuitAppsRuntimeTests, a generated-copy test this fork left out	Document new controls and align quit-app test cleanup
 db0a245ee3316a2dc2305d7043f6a4d5358bd177	8af88392c4651c37eb82f123f2b124224aafaca5	2026-10-29	ported	#4708	feat(switcher): allow up to ten columns (#3410)
 3cca99e044283795a67638baa72a7531778bc2a7	31254aeb9dda79aec0b8a863d1ec089c1a1c9b51	2026-10-28	skipped	touches only upstream-only paths	docs: note expanded switcher column options
@@ -528,7 +528,7 @@ d61a376097dc583291903b4fba6102279865bf6d	cfa527fb69ee43febb1448d0d0200df4a5f5435
 54c1138ab66a343470733bd038ef4f1ae6ed0a20	1e3a1f4eebf1e8f6404c5b128e91ae1dbc3ed91f	2026-10-29	skipped	sponsorship invitation and SPONSORS.md; the fork never shows donation or community prompts	docs: add sponsorship invitation and details
 c6125dfb83a991595f5f5b5c8405659ec1273b60	6e95cfc8ce6c5f7e0d858eb1e26f314d48736959	2026-10-29	ported	#4710	fix(notch): keep timer ruler filled at duration limits
 f89c7b5e3622b938fecc3c6ba30b980dae2fef34	1e0c473bd51976939eb16a811a8e24774978e5e2	2026-10-29	skipped	upstream release bookkeeping; bumps the support-invitation version the fork never shows and prepares the next update	chore: prepare next update
-7e7e4ce33b844c9c9e10c56bf0824596acab5a45	ec4eeb7934a35c62bb376dad114a22f81f3ac6cb	2026-10-29	pending	-	refactor(mouse): keep only pinch zoom
+7e7e4ce33b844c9c9e10c56bf0824596acab5a45	ec4eeb7934a35c62bb376dad114a22f81f3ac6cb	2026-10-29	skipped	folded into the port of f1d115ae51, which brought in only Pinch Zoom; keyboard Zoom never came in	refactor(mouse): keep only pinch zoom
 63a57362ffe1c0f8689c8924a32fad01d40f215b	43743871e1e63d45c9687892998641083b7863a3	2026-10-29	skipped	upstream's 3.4.3 version bump and changelog; the fork versions through release-please	chore: prepare 3.4.3 stable
 e000b7d0f1fcd0a8c84aa78006ec0a25614efccf	2b8c485192875bec808efb508abe7f7e65630b53	2026-10-29	skipped	touches only upstream-only paths	chore: reopen changelog after 3.4.3
 a5da7633e09d0ebbf5b5607c0434ded28a239469	bd7eb12c8213b0def5d123d5bbbabfbaacb2881b	2026-10-29	ported	#4710	chore(agents): update AI price list
@@ -579,7 +579,7 @@ ec25fc0b91c1a58a66d8e8720ef2a7efa181063b	b25b30c0dcaee5482644425eb7aef81427b89dc
 cfe4e89d035a15be42ff93b7b0e5b14170f466d1	d2a26b1e0f87f8f8ff2314b7ae7c1b3bd70d9380	2026-11-10	pending	-	feat(uninstaller): offer a leftovers review after moving an app to Trash (#3879)
 15bd02d30521605b7ae592cd688b5af1f3835eb7	77a73cb4995f85bd92efa8e9273d746b22940fb1	2026-11-10	ported	#4719	fix(keep-awake): restore manual sessions on relaunch (#3937)
 49ffe9283676badc10b189b39817744c9c04f484	ccee56ccccb9976216f10633dc739cf3d89d443b	2026-11-10	ported	#4725	feat(display): configure monitor speaker volume steps and limits (#3257)
-375c57b1024a5f460c8c2c161f9153f0484c53ef	037549e1abc37ee4d98534c4cb000798e983337b	2026-11-10	pending	-	feat(scroll): speed up the mouse wheel while a modifier is held (#3769)
+375c57b1024a5f460c8c2c161f9153f0484c53ef	037549e1abc37ee4d98534c4cb000798e983337b	2026-11-10	ported	#4727	feat(scroll): speed up the mouse wheel while a modifier is held (#3769)
 f06190ceb1464a9a92661460996171657827fe5c	bbceb2cbeff57dd83fa008884c1a576f738d8089	2026-11-10	ported	#4719	fix(audio): let Vorssaint launch on early macOS Sonoma (#3982)
 86f84be1033ff23ad146228224bd121761c81beb	068ec369ba84182031e3b62118370e255d1edc6e	2026-11-10	ported	#4719	fix(mixer): resume a valid audio tap when a routine check is pending (#3990)
 b36c30107e7af82a15f3eeab0f7ef8b928b52373	5639acd54e59062a0f5ab5fe6ff011d8293180cb	2026-11-10	ported	#4719	fix(shortcuts): recognize Super Key chords while recording starts (#3994)

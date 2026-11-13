@@ -14,6 +14,14 @@ enum LinearScrollTapTests {
     /// The apps the wheel is excepted for. Only the test's own thread touches it.
     nonisolated final class Exceptions: @unchecked Sendable {
         var excepted: Set<MouseExceptionScope> = []
+        var ownWindow = false
+    }
+
+    /// What Pinch Zoom answers the tap, and how often it was asked.
+    nonisolated final class PinchZoomTurns: @unchecked Sendable {
+        var verdict = PinchZoomVerdict.notZoom
+        var overOwnWindow = false
+        var asked = 0
     }
 
     static func run(_ suite: TestSuite) {
@@ -21,11 +29,12 @@ enum LinearScrollTapTests {
         let defaults = ScratchDefaults.suite(named: name)!
         let exceptions = Exceptions()
         let targets = ScrollInverter.WheelTapTargets(excludes: { scope, _, _ in exceptions.excepted.contains(scope) },
-                                                     isOwnWindow: { _ in false })
+                                                     isOwnWindow: { _ in exceptions.ownWindow })
         defer { defaults.removePersistentDomain(forName: name) }
         func configure(linear: Bool = true, installed: Bool = true, lines: Int = 3,
                        invert: Bool = false, inverterInstalled: Bool = true,
-                       sidewaysKey: ScrollHorizontalModifier? = nil) {
+                       sidewaysKey: ScrollHorizontalModifier? = nil,
+                       speedKey: ScrollHorizontalModifier? = nil, speedFactor: Int = 3) {
             defaults.set(installed, forKey: AppFeature.linearScroll.availabilityKey)
             defaults.set(linear, forKey: DefaultsKey.linearScrollEnabled)
             defaults.set(lines, forKey: DefaultsKey.linearScrollLines)
@@ -34,7 +43,12 @@ enum LinearScrollTapTests {
             defaults.set(sidewaysKey != nil, forKey: AppFeature.scrollHorizontal.availabilityKey)
             defaults.set(sidewaysKey != nil, forKey: DefaultsKey.scrollHorizontalEnabled)
             defaults.set(sidewaysKey?.rawValue, forKey: DefaultsKey.scrollHorizontalModifier)
+            defaults.set(speedKey != nil, forKey: AppFeature.scrollSpeed.availabilityKey)
+            defaults.set(speedKey != nil, forKey: DefaultsKey.scrollSpeedEnabled)
+            defaults.set(speedKey?.rawValue, forKey: DefaultsKey.scrollSpeedModifier)
+            defaults.set(speedFactor, forKey: DefaultsKey.scrollSpeedMultiplier)
             exceptions.excepted = []
+            exceptions.ownWindow = false
         }
         /// One event through the shipped decision, with the state one tap keeps
         /// across events; nil when it was held back. Events built here carry
@@ -151,6 +165,126 @@ enum LinearScrollTapTests {
         trackpad.setIntegerValueField(.scrollWheelEventScrollPhase, value: 1)
         suite.expect(deliver(trackpad)?.getIntegerValueField(.scrollWheelEventPointDeltaAxis1) == 40,
                      "a trackpad gesture passes through untouched")
+
+        // Modifier-held scroll speed, on the shipped decision.
+        configure(linear: false, speedKey: .option, speedFactor: 4)
+        let sped = deliver(wheel(line: 2, fixed: 2, point: 20, flags: .maskAlternate))
+        suite.expect(sped.map(verticalLine) == 8 && sped?.flags.isEmpty == true,
+                     "Option-held speed multiplies the raw notch and consumes the modifier")
+        configure(speedKey: .option, speedFactor: 3)
+        let linearThenSpeed = deliver(wheel(line: 7, fixed: 7, point: 70, flags: .maskAlternate))
+        suite.expect(linearThenSpeed.map(verticalLine) == 9,
+                     "linear scrolling caps the notch before speed multiplies it")
+        configure(linear: false, sidewaysKey: .option, speedKey: .option, speedFactor: 4)
+        let horizontalWins = deliver(wheel(line: 2, fixed: 2, point: 20, flags: .maskAlternate))
+        suite.expect(horizontalWins.map(verticalLine) == 0
+                        && horizontalWins?.getIntegerValueField(.scrollWheelEventDeltaAxis2) == 2,
+                     "horizontal redirection with the same modifier wins over speed")
+        configure(linear: false, speedKey: .option, speedFactor: 4)
+        exceptions.excepted = [.scrollSpeed]
+        let speedExcepted = deliver(wheel(line: 2, fixed: 2, point: 20, flags: .maskAlternate))
+        suite.expect(speedExcepted.map(verticalLine) == 2
+                        && speedExcepted?.flags.contains(.maskAlternate) == true,
+                     "an app on scroll speed's own list keeps the unmodified wheel")
+        configure(linear: false, speedKey: .option, speedFactor: 4)
+        exceptions.ownWindow = true
+        let ownSpeed = deliver(wheel(line: 2, fixed: 2, point: 20, flags: .maskAlternate))
+        suite.expect(ownSpeed.map(verticalLine) == 2
+                        && ownSpeed?.flags.contains(.maskAlternate) == true,
+                     "own windows skip modifier-held speed")
+        configure(linear: false, speedKey: .option, speedFactor: 4)
+        let continuousMouseSpeed = deliver(wheel(continuous: true, line: 0, fixed: 4, point: 40,
+                                                 flags: .maskAlternate))
+        suite.expect(continuousMouseSpeed?.getIntegerValueField(.scrollWheelEventPointDeltaAxis1) == 160,
+                     "continuous mouse wheels still multiply under the speed modifier")
+        let subline = deliver(wheel(line: 0, fixed: 0.125, point: 0, flags: .maskAlternate))
+        suite.expect(subline.map(verticalFixed) == 0.5 && subline.map(verticalLine) == 0
+                        && subline?.getIntegerValueField(.scrollWheelEventPointDeltaAxis1) == 0,
+                     "a fixed-point-only wheel tick keeps its scaled fraction without inventing pixels or lines")
+        for sign: Int64 in [-1, 1] {
+            let large = deliver(wheel(line: sign * 20_000, fixed: Double(sign), point: sign * 1_000_000_000,
+                                      flags: .maskAlternate))
+            suite.expect(large.map(verticalLine) == Int64(sign > 0 ? Int16.max : Int16.min)
+                            && large?.getIntegerValueField(.scrollWheelEventPointDeltaAxis1)
+                                == Int64(sign > 0 ? Int32.max : Int32.min),
+                         "scaling a large input saturates the Quartz integer fields without reversing direction")
+        }
+        configure(lines: 1, speedKey: .option)
+        for boostFirst in [true, false] {
+            var inverterState = ScrollInverter.WheelTapState()
+            let first = carry(wheel(line: 0, fixed: 0.5, point: 5, flags: boostFirst ? .maskAlternate : []),
+                              through: &inverterState)
+            let second = carry(wheel(line: 0, fixed: 0.5, point: 5, flags: boostFirst ? [] : .maskAlternate),
+                               through: &inverterState)
+            suite.expect(first.map(verticalLine) == (boostFirst ? 1 : nil)
+                            && second.map(verticalLine) == (boostFirst ? 1 : 2)
+                            && inverterState.linearCarryVertical == 0,
+                         "each half-notch carries the speed of its own tick through a modifier change")
+        }
+
+        // Pinch Zoom has its turn at a zoom wheel before the wheel is capped.
+        let pinch = PinchZoomTurns()
+        let pinchTargets = ScrollInverter.WheelTapTargets(
+            excludes: { scope, _, _ in exceptions.excepted.contains(scope) },
+            isOwnWindow: { _ in pinch.overOwnWindow },
+            pinchZoom: { _, _ in
+                pinch.asked += 1
+                return pinch.verdict
+            })
+        func zoomWheel(_ event: CGEvent) -> CGEvent? {
+            var fresh = ScrollInverter.WheelTapState()
+            return ScrollInverter.adjustWheel(event, state: &fresh, defaults: defaults, ownProcessID: -1,
+                                              targets: pinchTargets) ? event : nil
+        }
+        func configurePinch(installed: Bool = true) {
+            configure()
+            defaults.set(installed, forKey: AppFeature.scrollZoom.availabilityKey)
+            defaults.set(true, forKey: DefaultsKey.pinchZoomEnabled)
+            defaults.set(ScrollZoomModifier.option.rawValue, forKey: DefaultsKey.pinchZoomModifier)
+            pinch.verdict = .notZoom
+            pinch.overOwnWindow = false
+            pinch.asked = 0
+        }
+        defer {
+            defaults.removeObject(forKey: AppFeature.scrollZoom.availabilityKey)
+            defaults.removeObject(forKey: DefaultsKey.pinchZoomEnabled)
+            defaults.removeObject(forKey: DefaultsKey.pinchZoomModifier)
+        }
+        configurePinch()
+        pinch.verdict = .consumed
+        suite.expect(zoomWheel(wheel(line: 4, fixed: 4, point: 40, flags: .maskAlternate)) == nil && pinch.asked == 1,
+                     "a zoom wheel Pinch Zoom turned into a gesture is dropped")
+        configurePinch()
+        pinch.verdict = .declined
+        let declined = zoomWheel(wheel(line: 4, fixed: 4, point: 40, flags: .maskAlternate))
+        suite.expect(declined.map(verticalLine) == 4 && declined.map(verticalFixed) == 4,
+                     "a zoom wheel Pinch Zoom declined outside this app's windows goes on as macOS sent it")
+        configurePinch()
+        pinch.verdict = .declined
+        pinch.overOwnWindow = true
+        let ownPanel = zoomWheel(wheel(line: 4, fixed: 4, point: 40, flags: .maskAlternate))
+        suite.expect(ownPanel.map(verticalLine) == 3,
+                     "over one of this app's panels a zoom wheel keeps its ordinary path")
+        configurePinch()
+        let switcherWheel = zoomWheel(wheel(line: 4, fixed: 4, point: 40, flags: .maskAlternate))
+        suite.expect(switcherWheel.map(verticalLine) == 3 && pinch.asked == 1,
+                     "a wheel Pinch Zoom leaves, as for the open switcher, keeps its ordinary path")
+        configurePinch()
+        pinch.verdict = .consumed
+        let plain = zoomWheel(wheel(line: 4, fixed: 4, point: 40))
+        suite.expect(plain.map(verticalLine) == 3 && pinch.asked == 0,
+                     "a wheel without the zoom modifier never reaches Pinch Zoom")
+        configurePinch(installed: false)
+        pinch.verdict = .consumed
+        let removed = zoomWheel(wheel(line: 4, fixed: 4, point: 40, flags: .maskAlternate))
+        suite.expect(removed.map(verticalLine) == 3 && pinch.asked == 0,
+                     "an uninstalled Pinch Zoom never takes the wheel")
+        configurePinch()
+        pinch.verdict = .consumed
+        exceptions.excepted = [.scrollDirection]
+        let exceptedPinch = zoomWheel(wheel(line: 4, fixed: 4, point: 40, flags: .maskAlternate))
+        suite.expect(exceptedPinch.map(verticalLine) == 3 && pinch.asked == 0,
+                     "an app excepted from Scroll Direction keeps its zoom wheel")
     }
 
     private static func verticalLine(_ event: CGEvent) -> Int64 {

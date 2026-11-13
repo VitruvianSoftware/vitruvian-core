@@ -41,6 +41,7 @@ package enum Preferences {
     package static let scrollInverterEnabled = Preference(DefaultsKey.scrollInverterEnabled, default: false)
     package static let scrollInverterHorizontalEnabled = Preference(DefaultsKey.scrollInverterHorizontalEnabled, default: false)
     package static let scrollHorizontalEnabled = Preference(DefaultsKey.scrollHorizontalEnabled, default: false)
+    package static let pinchZoomEnabled = Preference(DefaultsKey.pinchZoomEnabled, default: false)
     package static let focusFollowsMouseEnabled = Preference(DefaultsKey.focusFollowsMouseEnabled, default: false)
     package static let linearScrollEnabled = Preference(DefaultsKey.linearScrollEnabled, default: false)
     package static let mouseAccelerationDisabled = Preference(DefaultsKey.mouseAccelerationDisabled, default: false)
@@ -630,6 +631,7 @@ package enum Preferences {
     package static let mouseButtonShortcuts = Preference(DefaultsKey.mouseButtonShortcuts, default: [String: String]())
     package static let smoothScrollExceptions = Preference(DefaultsKey.smoothScrollExceptions, default: [String]())
     package static let linearScrollExceptions = Preference(DefaultsKey.linearScrollExceptions, default: [String]())
+    package static let scrollSpeedExceptions = Preference(DefaultsKey.scrollSpeedExceptions, default: [String]())
     package static let scrollInverterExceptions = Preference(DefaultsKey.scrollInverterExceptions, default: [String]())
     package static let focusFollowsMouseExceptions = Preference(
         DefaultsKey.focusFollowsMouseExceptions, default: [String]())
@@ -671,6 +673,11 @@ package enum Preferences {
     package static let focusFollowsMouseWaitForStop = Preference(DefaultsKey.focusFollowsMouseWaitForStop, default: true)
     package static let focusFollowsMouseDelay = Preference(DefaultsKey.focusFollowsMouseDelay, default: FocusFollowsMouseSupport.defaultDelayMilliseconds)
     package static let linearScrollLines = Preference(DefaultsKey.linearScrollLines, default: ScrollWheelSupport.defaultLinesPerNotch)
+    package static let scrollSpeedEnabled = Preference(DefaultsKey.scrollSpeedEnabled, default: false)
+    package static let scrollSpeedModifier = Preference(
+        DefaultsKey.scrollSpeedModifier, default: ScrollHorizontalModifier.option.rawValue)
+    package static let scrollSpeedMultiplier = Preference(
+        DefaultsKey.scrollSpeedMultiplier, default: ScrollWheelSupport.defaultSpeedMultiplier)
     package static let smoothScrollResponse = Preference(DefaultsKey.smoothScrollResponse, default: SmoothScrollSupport.defaultResponse)
     package static let smoothScrollCoast = Preference(DefaultsKey.smoothScrollCoast, default: SmoothScrollSupport.defaultCoast)
     package static let superKeySource = Preference(DefaultsKey.superKeySource, default: SuperKeySource.capsLock.rawValue)
@@ -736,6 +743,8 @@ package enum Preferences {
     package static let appearance = Preference(DefaultsKey.appearance, default: AppAppearance.fallback.rawValue)
     package static let scrollHorizontalModifier = Preference(
         DefaultsKey.scrollHorizontalModifier, default: ScrollHorizontalModifier.shift.rawValue)
+    package static let pinchZoomModifier = Preference(
+        DefaultsKey.pinchZoomModifier, default: ScrollZoomModifier.control.rawValue)
     package static let mouseClickDebounceWindowMs = Preference(
         DefaultsKey.mouseClickDebounceWindowMs, default: Defaults.defaultMouseClickDebounceWindowMs)
     package static let switcherWindowShortcut = Preference(
