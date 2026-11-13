@@ -188,6 +188,27 @@ enum KeepAwakeClamshellTests {
         expect(!quitting.marker && quitting.machine.prompts == 0,
                "successful quit clears recovery before returning and never asks for a password")
 
+        for policy in [true, false, nil] as [Bool?] {
+            let cutoff = C.active()
+            cutoff.machine.onBattery(true)
+            cutoff.machine.externalDisplay = nil
+            cutoff.machine.policy = policy
+            cutoff.manager.deactivate(reason: .battery)
+            cutoff.machine.drain()
+            expect(!cutoff.machine.disabled && cutoff.machine.sleeps == (policy == true ? 1 : 0),
+                   "with an unreadable display list the battery cutoff follows the lid policy \(String(describing: policy))")
+        }
+
+        for display in [true, false, nil] as [Bool?] {
+            let timed = C.active()
+            timed.machine.onBattery(nil)
+            timed.machine.externalDisplay = display
+            timed.manager.deactivate(reason: .timer)
+            timed.machine.drain()
+            expect(!timed.machine.disabled && timed.machine.sleeps == (display == false ? 1 : 0),
+                   "with unknown power the timer needs a confirmed absence of external displays, got \(String(describing: display))")
+        }
+
         for lid in [false, nil] as [Bool?] {
             let rig = C.active()
             rig.machine.lid = lid

@@ -27,6 +27,8 @@ package final class RecorderComposer {
     package struct Plan {
         package let sourceSize: CGSize
         package let canvasSize: CGSize
+        /// Nothing but a resize: no pointer, zoom, backdrop, cut or overlay.
+        package let isScaleOnly: Bool
         package let cardRect: CGRect
         package let frameRate: Int
         package let positions: [CGPoint]
@@ -71,9 +73,10 @@ package final class RecorderComposer {
         package let blurCovers: [[Bool]]
 
         // Spelled out because a memberwise initializer never leaves its module.
-        package init(sourceSize: CGSize, canvasSize: CGSize, cardRect: CGRect, frameRate: Int, positions: [CGPoint], zoom: [Double], travel: [CGPoint], pressScale: [Double], ring: [Double], showsPointer: Bool, pointerShapes: [RecorderPointerTrack.CursorShape], pointerShapeIndex: [Int], pointerVisible: [Bool], pointerOpacity: [Double], pointerScale: CGFloat, pointerPixelSize: CGFloat, showsClickRing: Bool, plate: CIImage?, mask: CIImage?, texts: [RecorderTextOverlay], textOpacity: [[Double]], textCanvasSize: CGSize, images: [RecorderImageOverlay], imageSprites: [CGImage?], imageOpacity: [[Double]], blurs: [RecorderBlurRegion], blurCovers: [[Bool]]) {
+        package init(sourceSize: CGSize, canvasSize: CGSize, isScaleOnly: Bool, cardRect: CGRect, frameRate: Int, positions: [CGPoint], zoom: [Double], travel: [CGPoint], pressScale: [Double], ring: [Double], showsPointer: Bool, pointerShapes: [RecorderPointerTrack.CursorShape], pointerShapeIndex: [Int], pointerVisible: [Bool], pointerOpacity: [Double], pointerScale: CGFloat, pointerPixelSize: CGFloat, showsClickRing: Bool, plate: CIImage?, mask: CIImage?, texts: [RecorderTextOverlay], textOpacity: [[Double]], textCanvasSize: CGSize, images: [RecorderImageOverlay], imageSprites: [CGImage?], imageOpacity: [[Double]], blurs: [RecorderBlurRegion], blurCovers: [[Bool]]) {
             self.sourceSize = sourceSize
             self.canvasSize = canvasSize
+            self.isScaleOnly = isScaleOnly
             self.cardRect = cardRect
             self.frameRate = frameRate
             self.positions = positions

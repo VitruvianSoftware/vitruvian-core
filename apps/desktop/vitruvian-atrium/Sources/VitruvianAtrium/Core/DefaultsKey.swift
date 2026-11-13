@@ -36,6 +36,10 @@ package enum DefaultsKey {
     package static let keepAwakePauseWhenLocked = "keepAwakePauseWhenLocked"
     package static let keepAwakeSwitchUsesUntil = "keepAwakeSwitchUsesUntil" // panel switch restarts the Until chip
     package static let keepAwakeUntilTime = "keepAwakeUntilTime"  // last picked end time; 0 = none yet
+    // The running manual session's end (0 = indefinite) and selected preset, if any.
+    // Absent when there is no session to resume. Live state: never registered,
+    // so never backed up.
+    package static let keepAwakeSessionEnd = "keepAwakeSessionEnd"
     package static let keepAwakeMouseJiggleEnabled = "keepAwakeMouseJiggleEnabled"
     package static let keepAwakeMouseJiggleInterval = "keepAwakeMouseJiggleIntervalMinutes"
     package static let hotkeyEnabled = "hotkeyEnabled"
@@ -223,6 +227,16 @@ package enum DefaultsKey {
     // answer reads. Kept local so wake handling does not repeatedly probe a
     // sensitive display path.
     package static let brightnessDDCWriteOnlyPaths = "brightnessDDCWriteOnlyPaths"
+    package static let displayVolumeEnabled = "displayVolumeEnabled" // speakers built into external monitors
+    package static let displayVolumeKeysEnabled = "displayVolumeKeysEnabled" // volume keys reach those speakers
+    package static let ddcVolumeStep = "ddcVolumeStep" // Double percent of the monitor's range per key press
+    package static let ddcVolumeMinimum = "ddcVolumeMinimum" // Int percent the volume keys stop at
+    package static let ddcVolumeMaximum = "ddcVolumeMaximum" // Int percent the volume keys stop at
+    // Per-monitor connection paths whose display answered the audio controls
+    // with no speakers behind them. Remembered for the same reason as the
+    // write-only paths: two extra reads on a bus paced in tens of
+    // milliseconds are not worth repeating on every scan.
+    package static let displayAudioSilentPaths = "displayAudioSilentPaths"
     // Set once the paths cached before paired discovery requests have been
     // dropped, so a monitor written off then is classified again exactly once.
     package static let brightnessDDCWriteOnlyPathsRechecked = "brightnessDDCWriteOnlyPathsRechecked"
@@ -679,6 +693,10 @@ package enum DefaultsKey {
     // Screenshot capture and editor.
     package static let screenshotShortcutEnabled = "screenshotShortcutEnabled"
     package static let screenshotShortcut = "screenshotShortcut"
+    package static let screenshotScrollingAutoScroll = "screenshotScrollingAutoScroll"
+    package static let screenshotScrollingShortcutEnabled = "screenshotScrollingShortcutEnabled"
+    package static let screenshotScrollingShortcut = "screenshotScrollingShortcut"
+    package static let screenshotScrollingShowCaptureMenuOnShortcut = "screenshotScrollingShowCaptureMenuOnShortcut"
     package static let unifiedScreenCaptureShortcutMigrated = "unifiedScreenCaptureShortcutMigrated"
     package static let restoredScreenCaptureShortcutsMigrated = "restoredScreenCaptureShortcutsMigrated"
     package static let orphanedCaptureShortcutMigrated = "orphanedCaptureShortcutMigrated"

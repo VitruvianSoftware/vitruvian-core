@@ -46,12 +46,13 @@ package struct NotchSystemNotification: Equatable, Identifiable, Sendable {
 package struct NotchNotificationInbox {
     package struct ArrivalCheck: Equatable, Sendable {
         package let id: UUID
-        package let notBefore: TimeInterval
+        package let openedAt: TimeInterval
+        package var notBefore: TimeInterval { openedAt + NotchNotificationSupport.centerOpeningGrace }
 
         // Spelled out because a memberwise initializer never leaves its module.
-        package init(id: UUID, notBefore: TimeInterval) {
+        package init(id: UUID, openedAt: TimeInterval) {
             self.id = id
-            self.notBefore = notBefore
+            self.openedAt = openedAt
         }
 
         package func delay(at now: TimeInterval) -> TimeInterval { max(0, notBefore - now) }
@@ -68,7 +69,7 @@ package struct NotchNotificationInbox {
     package var arrivalCheck: ArrivalCheck? { pendingItems.isEmpty ? nil : opening }
 
     package mutating func windowCreated(at now: TimeInterval) {
-        opening = ArrivalCheck(id: UUID(), notBefore: now + NotchNotificationSupport.centerOpeningGrace)
+        opening = ArrivalCheck(id: UUID(), openedAt: now)
     }
 
     package mutating func update(_ live: [NotchSystemNotification]) -> [NotchSystemNotification] {

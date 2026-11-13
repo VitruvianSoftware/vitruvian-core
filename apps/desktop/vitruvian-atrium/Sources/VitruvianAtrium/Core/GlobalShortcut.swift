@@ -210,6 +210,8 @@ package struct GlobalShortcut: Equatable, Hashable {
     // Default screenshot shortcut on the available control-option-command layer.
     package static let screenshotDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_4),
                                                   modifiers: [.control, .option, .command])
+    package static let screenshotScrollingDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_4),
+                                                                   modifiers: [.control, .option, .shift, .command])
     // Full screen sits beside the selector's 4 and the recorder's 5.
     package static let screenshotFullScreenDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_3),
                                                             modifiers: [.control, .option, .command])
@@ -768,6 +770,7 @@ package enum GlobalShortcutRole: CaseIterable, Identifiable {
     case quitAllExceptFront
     case quickLauncher
     case screenshot
+    case screenshotScrolling
     case screenshotFullScreen
     case screenshotLastCapture
     case screenshotUpload
@@ -805,6 +808,7 @@ package enum GlobalShortcutRole: CaseIterable, Identifiable {
         case .quitAll: return DefaultsKey.quitAppsShortcut
         case .quitAllExceptFront: return DefaultsKey.quitAppsExceptFrontShortcut
         case .quickLauncher: return DefaultsKey.quickLauncherShortcut
+        case .screenshotScrolling: return DefaultsKey.screenshotScrollingShortcut
         case .screenshot: return DefaultsKey.screenshotShortcut
         case .screenshotFullScreen: return DefaultsKey.screenshotFullScreenShortcut
         case .screenshotLastCapture: return DefaultsKey.screenshotLastCaptureShortcut
@@ -843,6 +847,7 @@ package enum GlobalShortcutRole: CaseIterable, Identifiable {
         case .quitAll: return .quitAllDefault
         case .quitAllExceptFront: return .quitAllExceptFrontDefault
         case .quickLauncher: return .quickLauncherDefault
+        case .screenshotScrolling: return .screenshotScrollingDefault
         case .screenshot: return .screenshotDefault
         case .screenshotFullScreen: return .screenshotFullScreenDefault
         case .screenshotLastCapture: return .screenshotLastCaptureDefault
@@ -916,6 +921,8 @@ package enum GlobalShortcutRole: CaseIterable, Identifiable {
         case .quickLauncher: return strings.launcherName
         case .screenshot:
             return FeatureStrings.screenshot(L10n.shared.language).pageTitle
+        case .screenshotScrolling:
+            return FeatureStrings.screenshot(L10n.shared.language).scrollingCaptureTitle
         case .screenshotFullScreen:
             return FeatureStrings.screenshot(L10n.shared.language).fullScreenShortcutTitle
         case .screenshotUpload:
@@ -987,6 +994,7 @@ package enum GlobalShortcutRole: CaseIterable, Identifiable {
         case .quitAll: return [DefaultsKey.quitAppsShortcutEnabled]
         case .quitAllExceptFront: return [DefaultsKey.quitAppsExceptFrontShortcutEnabled]
         case .quickLauncher: return [DefaultsKey.quickLauncherShortcutEnabled]
+        case .screenshotScrolling: return [DefaultsKey.screenshotScrollingShortcutEnabled]
         case .screenshot: return [DefaultsKey.screenshotShortcutEnabled]
         case .screenshotFullScreen: return [DefaultsKey.screenshotFullScreenShortcutEnabled]
         case .screenshotLastCapture: return [DefaultsKey.screenshotLastCaptureShortcutEnabled]
@@ -1025,7 +1033,7 @@ package enum GlobalShortcutRole: CaseIterable, Identifiable {
         case .micMute: return .micMute
         case .quitAll, .quitAllExceptFront: return .quitApps
         case .quickLauncher: return .quickLauncher
-        case .screenshot, .screenshotFullScreen, .screenshotLastCapture, .recentCaptures,
+        case .screenshot, .screenshotScrolling, .screenshotFullScreen, .screenshotLastCapture, .recentCaptures,
              .screenshotClipboard, .screenshotUpload:
             return .screenshot
         case .cameraPreview: return .cameraPreview
@@ -1123,7 +1131,7 @@ package enum GlobalShortcutRole: CaseIterable, Identifiable {
 
     /// Chooser tools first, in chooser order, then shared history and screenshot extras.
     package static let captureDisplayOrder: [GlobalShortcutRole] = [
-        .screenshot, .screenRecorder, .screenOCR, .colorPicker,
+        .screenshot, .screenRecorder, .screenOCR, .colorPicker, .screenshotScrolling,
         .recentCaptures, .screenshotFullScreen, .screenshotLastCapture, .screenshotClipboard, .screenshotUpload,
     ]
 

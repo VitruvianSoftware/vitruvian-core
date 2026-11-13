@@ -364,6 +364,41 @@ package enum HomebrewRefresh {
     case keepingError
 }
 
+/// Dismissal policy for a finished operation's status card. Issue #566: the
+/// card's timer used to wipe the technical log with it after 6 – 20 seconds;
+/// the log now stays until the next operation or an explicit Clear log, and
+/// only success and cancel cards dismiss themselves on a timer. A failure or
+/// terminal fallback card keeps its reason (and the open-in-terminal action)
+/// visible until then.
+package enum HomebrewCompletedOperationCleanup {
+    package static func cardDismissalDelay(result: HomebrewOperationResult) -> TimeInterval? {
+        switch result {
+        case .running: return nil
+        case .succeeded: return 8
+        case .cancelled: return 6
+        case .failed, .needsTerminal: return nil
+        }
+    }
+}
+
+package enum HomebrewOperationOutput: Equatable {
+    case status(HomebrewOperationStatus)
+    case lastLog(HomebrewOperationStatus)
+
+    // Keep the tail, where brew prints its final result. A cut must not split
+    // a UTF-8 scalar, and the omission mark counts towards the same limit.
+    package static let byteLimit = 256 * 1024
+
+    package static func retainedText(_ text: String) -> String {
+        let bytes = text.utf8
+        guard bytes.count > byteLimit else { return text }
+        let mark = "…\n"
+        let tail = bytes.suffix(byteLimit - mark.utf8.count)
+            .drop(while: { $0 & 0xc0 == 0x80 })
+        return mark + String(decoding: tail, as: UTF8.self)
+    }
+}
+
 package struct HomebrewOperationStatus: Equatable {
     package var action: HomebrewOperation.Action
     package var package: HomebrewPackage?
@@ -373,6 +408,7 @@ package struct HomebrewOperationStatus: Equatable {
     package var startedAt: Date
     package var finishedAt: Date?
     package var lastActivity: String?
+    package var fromUninstaller = false
 
     package var isActive: Bool {
         result == .running
@@ -383,7 +419,7 @@ package struct HomebrewOperationStatus: Equatable {
     }
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(action: HomebrewOperation.Action, package: HomebrewPackage? = nil, phase: HomebrewOperationPhase, result: HomebrewOperationResult, progressFraction: Double? = nil, startedAt: Date, finishedAt: Date? = nil, lastActivity: String? = nil) {
+    package init(action: HomebrewOperation.Action, package: HomebrewPackage? = nil, phase: HomebrewOperationPhase, result: HomebrewOperationResult, progressFraction: Double? = nil, startedAt: Date, finishedAt: Date? = nil, lastActivity: String? = nil, fromUninstaller: Bool = false) {
         self.action = action
         self.package = package
         self.phase = phase
@@ -392,6 +428,7 @@ package struct HomebrewOperationStatus: Equatable {
         self.startedAt = startedAt
         self.finishedAt = finishedAt
         self.lastActivity = lastActivity
+        self.fromUninstaller = fromUninstaller
     }
 }
 

@@ -98,6 +98,12 @@ package enum Preferences {
     package static let brightnessControlEnabled = Preference(DefaultsKey.brightnessControlEnabled, default: false)
     package static let brightnessKeysEnabled = Preference(DefaultsKey.brightnessKeysEnabled, default: false)
     package static let brightnessOSDEnabled = Preference(DefaultsKey.brightnessOSDEnabled, default: false)
+    package static let displayVolumeEnabled = Preference(DefaultsKey.displayVolumeEnabled, default: false)
+    package static let displayVolumeKeysEnabled = Preference(DefaultsKey.displayVolumeKeysEnabled, default: false)
+    package static let ddcVolumeStep = Preference(DefaultsKey.ddcVolumeStep,
+                                                  default: MonitorVolumeKeySettings.defaultStepPercent)
+    package static let ddcVolumeMinimum = Preference(DefaultsKey.ddcVolumeMinimum, default: 0)
+    package static let ddcVolumeMaximum = Preference(DefaultsKey.ddcVolumeMaximum, default: 100)
     package static let displayBrightnessShortcutsEnabled = Preference(DefaultsKey.displayBrightnessShortcutsEnabled, default: false)
     package static let keyboardBrightnessShortcutsEnabled = Preference(DefaultsKey.keyboardBrightnessShortcutsEnabled, default: false)
     package static let bluetoothSleepEnabled = Preference(DefaultsKey.bluetoothSleepEnabled, default: false)
@@ -399,6 +405,11 @@ package enum Preferences {
     package static let screenOCRShowCaptureMenuOnShortcut = Preference(DefaultsKey.screenOCRShowCaptureMenuOnShortcut, default: true)
     package static let colorPickerShowCaptureMenuOnShortcut = Preference(DefaultsKey.colorPickerShowCaptureMenuOnShortcut, default: true)
     package static let screenshotShortcutEnabled = Preference(DefaultsKey.screenshotShortcutEnabled, default: false)
+    package static let screenshotScrollingAutoScroll = Preference(DefaultsKey.screenshotScrollingAutoScroll, default: false)
+    package static let screenshotScrollingShortcutEnabled = Preference(
+        DefaultsKey.screenshotScrollingShortcutEnabled, default: false)
+    package static let screenshotScrollingShowCaptureMenuOnShortcut = Preference(
+        DefaultsKey.screenshotScrollingShowCaptureMenuOnShortcut, default: true)
     package static let unifiedScreenCaptureShortcutMigrated = Preference(DefaultsKey.unifiedScreenCaptureShortcutMigrated, default: false)
     package static let restoredScreenCaptureShortcutsMigrated = Preference(DefaultsKey.restoredScreenCaptureShortcutsMigrated, default: false)
     package static let screenshotFullScreenShortcutEnabled = Preference(DefaultsKey.screenshotFullScreenShortcutEnabled, default: false)
@@ -818,6 +829,8 @@ package enum Preferences {
     package static let recorderEditorPresets = Preference(DefaultsKey.recorderEditorPresets, default: Data())
     package static let screenshotShortcut = Preference(
         DefaultsKey.screenshotShortcut, default: GlobalShortcut.screenshotDefault.storageValue)
+    package static let screenshotScrollingShortcut = Preference(
+        DefaultsKey.screenshotScrollingShortcut, default: GlobalShortcut.screenshotScrollingDefault.storageValue)
     package static let screenshotFullScreenShortcut = Preference(
         DefaultsKey.screenshotFullScreenShortcut, default: GlobalShortcut.screenshotFullScreenDefault.storageValue)
     package static let screenshotLastCaptureShortcut = Preference(

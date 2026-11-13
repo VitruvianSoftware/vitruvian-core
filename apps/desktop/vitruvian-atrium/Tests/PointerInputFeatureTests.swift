@@ -2441,6 +2441,13 @@ enum PointerInputFeatureTests {
                                               longHold: true,
                                               repeated: true) == .capsLock,
                "the input-source action switches on a quick press and reserves a hold for Caps Lock")
+        suite.expect(SuperKeySupport.hasNativeCapsLock(in: nil)
+                && SuperKeySupport.hasNativeCapsLock(in: [])
+                && SuperKeySupport.hasNativeCapsLock(in: [["HIDKeyboardModifierMappingSrc": NSNumber(value: SuperKeySource.rightCommand.usage)]])
+                && !SuperKeySupport.hasNativeCapsLock(in: [["HIDKeyboardModifierMappingSrc": NSNumber(value: SuperKeySource.capsLock.usage)]])
+                && !SuperKeySupport.hasNativeCapsLock(in: [["unrecognized": 1]])
+                && !SuperKeySupport.hasNativeCapsLock(in: "unrecognized"),
+               "a keyboard must have a native Caps Lock before its lock is cleared during repair")
         suite.expect(SuperKeySupport.nextInputSourceID(currentID: "abc",
                                                  enabledIDs: ["abc", "pinyin", "kana"]) == "pinyin"
                 && SuperKeySupport.nextInputSourceID(currentID: "kana",
@@ -3779,6 +3786,16 @@ enum PointerInputFeatureTests {
                                                   steppedLoupeWantsRawWheel: { false }) == .passThroughEndingGlide
                 && ownFrameEntry == .passThrough && !loupeAsked,
                "entering stepped magnifier zoom cancels the fast glide before passing the raw notch")
+        // A tick aimed at this app's own panels, like clipboard history,
+        // passes raw unless the fast capture loupe is the window under it;
+        // another app's window is never asked about the loupe.
+        var loupeAskedForOtherApp = false
+        suite.expect(!SmoothScrollSupport.glides(targetProcessID: 42, ownProcessID: 42, isActiveLoupeWindow: { false })
+                && SmoothScrollSupport.glides(targetProcessID: 42, ownProcessID: 42, isActiveLoupeWindow: { true })
+                && SmoothScrollSupport.glides(targetProcessID: 7, ownProcessID: 42,
+                                              isActiveLoupeWindow: { loupeAskedForOtherApp = true; return false })
+                && !loupeAskedForOtherApp,
+               "the app's own panels keep the native wheel distance; the fast loupe and other apps glide")
         // A refused wheel tap gets one more look while a session switch
         // settles, and never a second: the inverter and smooth scrolling both
         // ask this before scheduling a retry, and a working tap or a stop

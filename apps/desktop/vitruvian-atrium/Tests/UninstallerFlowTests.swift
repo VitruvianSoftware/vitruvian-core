@@ -63,8 +63,9 @@ enum UninstallerFlowTests {
         }
     }
 
-    /// Homebrew as the uninstaller sees it. Clearing the log forgets a
-    /// finished status the way the real manager does when it is idle.
+    /// Homebrew as the uninstaller sees it. A finished status stays current,
+    /// as the real manager keeps the last run's log; `canStart` false plays a
+    /// command brew refused to start.
     final class Brew: AppUninstaller.PackageManager {
         var operation: HomebrewOperation?
         let statuses = CurrentValueSubject<HomebrewOperationStatus?, Never>(nil)
@@ -72,16 +73,20 @@ enum UninstallerFlowTests {
         var operationStatuses: AnyPublisher<HomebrewOperationStatus?, Never> { statuses.eraseToAnyPublisher() }
         var lookup: ((Result<HomebrewPackage?, HomebrewOwnershipError>) -> Void)?
         var uninstalled: [String] = []
+        var canStart = true
 
         func packageManagingApplication(at url: URL,
                                         completion: @escaping (Result<HomebrewPackage?, HomebrewOwnershipError>) -> Void) {
             lookup = completion
         }
-        func clearLog() {
-            if operation == nil { statuses.send(nil) }
+        func uninstall(_ package: HomebrewPackage, fromUninstaller: Bool) {
+            guard canStart, fromUninstaller else { return }
+            uninstalled.append(package.name)
+            operation = HomebrewOperation(action: .uninstall, package: package)
         }
-        func uninstall(_ package: HomebrewPackage) { uninstalled.append(package.name) }
         func publish(_ result: HomebrewOperationResult, for package: HomebrewPackage) {
+            // The real manager ends the operation before it reports the end.
+            if result != .running { operation = nil }
             statuses.send(HomebrewOperationStatus(action: .uninstall, package: package, phase: .uninstalling,
                                                   result: result, startedAt: Date()))
         }
@@ -447,8 +452,21 @@ enum UninstallerFlowTests {
                 brew.operation = nil
                 suite.expect(brew.uninstalled.isEmpty && record.hud.count == 3,
                              "another package operation still running starts nothing")
+                // A command brew does not start leaves the last run's status
+                // alone, and that status, sent again, finishes nothing.
+                let previous = HomebrewOperationStatus(action: .uninstall, package: first, phase: .uninstalling,
+                                                       result: .succeeded, startedAt: Date())
+                brew.statuses.send(previous)
+                brew.canStart = false
                 uninstaller.removeSelectedWithHomebrew(confirmation: confirmation)
-                suite.expect(brew.uninstalled == ["first"], "an unchanged Homebrew confirmation runs its package")
+                brew.statuses.send(previous)
+                suite.expect(brew.uninstalled.isEmpty && brew.operationStatus == previous
+                             && uninstaller.phase == .results && uninstaller.homebrewPackage == first,
+                             "an unavailable command preserves the previous run without acting on its completion")
+                brew.canStart = true
+                uninstaller.removeSelectedWithHomebrew(confirmation: confirmation)
+                suite.expect(brew.uninstalled == ["first"] && uninstaller.phase == .results,
+                             "an unchanged Homebrew confirmation starts a fresh removal, not the last run's result")
                 try fm.removeItem(at: a)
                 brew.publish(.succeeded, for: first)
                 queue.drain()

@@ -51,13 +51,14 @@ alone and its history has no upstream author. Not legal advice.
 
 ### Third-party code the app ships
 
-Besides upstream's code and ours, the app bundle holds one piece of software
-written by others. It arrives with the shared Nexus Agent chat view, not from
-this folder.
+Besides upstream's code and ours, the app bundle holds two pieces of software
+written by others. Mermaid arrives with the shared Nexus Agent chat view, not
+from this folder; cgif came with an upstream port (vorssaint-utils `d01ea2c6b9`).
 
 | What | Version | Licence | Where in the app | Notice |
 |---|---|---|---|---|
 | [Mermaid](https://github.com/mermaid-js/mermaid), which draws the diagrams in the Nexus Agent chat | 11.17.2, unmodified | MIT, which the GPL allows combining with | `Contents/Resources/mermaid.min.js`, with its licence text beside it as `mermaid-LICENSE.txt` | [`apps/desktop/vitruvian-code/THIRD_PARTY_NOTICES.md`](../vitruvian-code/THIRD_PARTY_NOTICES.md): where the file came from, its checksum, and the libraries built into it |
+| [cgif](https://github.com/dloebl/cgif)'s raw encoder, which writes the indexed frames of a fast GIF export | revision `b68f18ac`, unmodified | MIT, which the GPL allows combining with | compiled into the app binary from `Sources/RecorderGIFCodec/vendor/cgif`, with its licence as `Contents/Resources/cgif-LICENSE.txt` | [`Sources/RecorderGIFCodec/vendor/cgif/UPSTREAM.md`](Sources/RecorderGIFCodec/vendor/cgif/UPSTREAM.md): where the files came from and which ones are vendored |
 
 ## Trademarks and release blockers
 

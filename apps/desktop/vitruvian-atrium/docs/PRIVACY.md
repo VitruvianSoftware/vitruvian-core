@@ -9,7 +9,7 @@ Vitruvian Atrium is built to be local-first. Core features run on your Mac, and 
 - **No automatic telemetry.** Vitruvian Atrium gathers no usage stats, crash reports or device identifiers. Feedback sends technical details only when you select them after seeing the complete list.
 - **No Vitruvian Atrium analytics or tracking.** There are no analytics kits, no ad networks and no third party tracking anywhere in the app.
 - **No data selling.** Vitruvian Atrium never sells personal information or shared screenshots and recordings.
-- **Your settings stay put.** Preferences and saved state live in the app's own local storage on your Mac and are never uploaded.
+- **Your settings stay put.** Preferences and saved state live in the app's own local storage on your Mac and are never uploaded. You can also supply a read-only settings file in your XDG config folder. A settings export includes your text snippets.
 
 ## What it reads, and where that stays
 

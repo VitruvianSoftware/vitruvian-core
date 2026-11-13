@@ -194,6 +194,9 @@ package struct BrightnessPanelDisplayRow: View {
                     .accessibilityLabel(display.name)
             }
             SoftwareDimmingButton(display: display, compact: true)
+            if display.isActive, let audio = display.audio {
+                MonitorSpeakerVolumeRow(displayName: display.name, audio: audio, strings: strings, compact: true)
+            }
         }
     }
 
@@ -201,6 +204,55 @@ package struct BrightnessPanelDisplayRow: View {
         Binding(get: { display.brightness },
                 set: { service.setBrightness($0, for: display.id,
                                              showOSD: brightnessOSDEnabled) })
+    }
+}
+
+package struct MonitorSpeakerVolumeRow: View {
+    package let displayName: String
+    package let audio: BrightnessDisplay.Audio
+    package let strings: BrightnessFeatureStrings
+    package let compact: Bool
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(displayName: String, audio: BrightnessDisplay.Audio, strings: BrightnessFeatureStrings,
+                 compact: Bool) {
+        self.displayName = displayName
+        self.audio = audio
+        self.strings = strings
+        self.compact = compact
+    }
+
+    package var body: some View {
+        HStack(spacing: compact ? 6 : 12) {
+            if let muted = audio.muted {
+                Button {
+                    BrightnessService.shared.requestSpeakers(.set(volume: nil, muted: !muted), target: audio.target)
+                } label: {
+                    Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                        .font(.system(size: compact ? 10 : 12, weight: .semibold))
+                        .foregroundStyle(muted ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+                        .frame(width: 16)
+                }
+                .buttonStyle(.plain)
+                .help(muted ? strings.unmute : strings.mute)
+                .accessibilityLabel("\(displayName): \(muted ? strings.unmute : strings.mute)")
+            } else {
+                Image(systemName: "speaker.wave.2.fill")
+                    .font(.system(size: compact ? 10 : 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16)
+            }
+            Slider(value: Binding(get: { audio.volume }, set: {
+                BrightnessService.shared.requestSpeakers(.set(volume: $0, muted: nil), target: audio.target)
+            }),
+                   in: 0...1)
+                .controlSize(compact ? .small : .regular)
+                .accessibilityLabel("\(displayName) \(strings.volumeLabel)")
+            Text("\(Int((audio.volume * 100).rounded()))%")
+                .font(compact ? .system(size: 10, weight: .semibold).monospacedDigit() : .body.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: compact ? 30 : 52, alignment: .trailing)
+        }
     }
 }
 

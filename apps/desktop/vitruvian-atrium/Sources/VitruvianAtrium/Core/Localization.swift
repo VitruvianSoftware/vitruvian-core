@@ -598,6 +598,8 @@ package struct Strings {
     package let homebrewOpenTerminal: String
     package let homebrewCancelOperation: String
     package let homebrewClearLog: String
+    package let homebrewLastLogView: String
+    package let homebrewLastLogHide: String
     package let homebrewLogTitle: String
     package let homebrewVersion: String
     package let homebrewDescription: String
@@ -1752,6 +1754,8 @@ extension Strings {
         homebrewOpenTerminal: "Abrir terminal",
         homebrewCancelOperation: "Cancelar",
         homebrewClearLog: "Limpar log",
+        homebrewLastLogView: "Ver o último log",
+        homebrewLastLogHide: "Ocultar o último log",
         homebrewLogTitle: "Log",
         homebrewVersion: "Versão",
         homebrewDescription: "Tipo",
@@ -2871,6 +2875,8 @@ extension Strings {
         homebrewOpenTerminal: "Open terminal",
         homebrewCancelOperation: "Cancel",
         homebrewClearLog: "Clear log",
+        homebrewLastLogView: "View last log",
+        homebrewLastLogHide: "Hide last log",
         homebrewLogTitle: "Log",
         homebrewVersion: "Version",
         homebrewDescription: "Type",

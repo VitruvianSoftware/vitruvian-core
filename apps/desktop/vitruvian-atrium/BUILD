@@ -86,6 +86,56 @@ cc_library(
     target_compatible_with = MACOS_ONLY,
 )
 
+# Core Audio process taps created through Objective-C, so the executable
+# links no tap symbol that early macOS 14 lacks (see the header).
+swift_interop_hint(
+    name = "CoreAudioTapCompat_interop",
+    module_map = "Sources/CoreAudioTapCompat/module.modulemap",
+    module_name = "CoreAudioTapCompat",
+)
+
+cc_library(
+    name = "CoreAudioTapCompat",
+    hdrs = glob(["Sources/CoreAudioTapCompat/include/*.h"]),
+    aspect_hints = [":CoreAudioTapCompat_interop"],
+    target_compatible_with = MACOS_ONLY,
+)
+
+# The GIF export's indexed-frame encoder: upstream's wrapper and the vendored
+# cgif raw encoder (MIT, Sources/RecorderGIFCodec/vendor/cgif), compiled as
+# build.sh compiles them. Unlike the two above it has sources of its own.
+swift_interop_hint(
+    name = "RecorderGIFCodec_interop",
+    module_map = "Sources/RecorderGIFCodec/module.modulemap",
+    module_name = "RecorderGIFCodec",
+)
+
+cc_library(
+    name = "RecorderGIFCodec",
+    srcs = [
+        "Sources/RecorderGIFCodec/RecorderGIFCodec.c",
+        "Sources/RecorderGIFCodec/vendor/cgif/cgif.h",
+        "Sources/RecorderGIFCodec/vendor/cgif/cgif_raw.c",
+        "Sources/RecorderGIFCodec/vendor/cgif/cgif_raw.h",
+    ],
+    hdrs = ["Sources/RecorderGIFCodec/include/RecorderGIFCodec.h"],
+    aspect_hints = [":RecorderGIFCodec_interop"],
+    copts = [
+        "-O3",
+        "-std=c99",
+    ],
+    target_compatible_with = MACOS_ONLY,
+)
+
+# cgif's licence, which the bundle carries beside the encoder it covers, as
+# build.sh copies it.
+genrule(
+    name = "cgif_license",
+    srcs = ["Sources/RecorderGIFCodec/vendor/cgif/LICENSE"],
+    outs = ["bundle/cgif-LICENSE.txt"],
+    cmd = "cp $< $@",
+)
+
 # --- Modules ------------------------------------------------------------------
 # REFACTOR.md step 3. Every target shares one Swift package name, so `package`
 # declarations are visible across them and nowhere else.
@@ -151,8 +201,10 @@ swift_library(
     module_name = "VitruvianAtriumServices",
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
+        ":CoreAudioTapCompat",
         ":FanControlKit",
         ":HIDEventSystem",
+        ":RecorderGIFCodec",
         ":VMStatisticsCompat",
         ":VitruvianAtriumCore",
         ":VitruvianAtriumDesign",
@@ -233,8 +285,10 @@ swift_library(
     module_name = "VitruvianAtrium",
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
+        ":CoreAudioTapCompat",
         ":FanControlKit",
         ":HIDEventSystem",
+        ":RecorderGIFCodec",
         ":VMStatisticsCompat",
         ":VitruvianAtriumCore",
         ":VitruvianAtriumDesign",
@@ -256,8 +310,10 @@ swift_library(
     module_name = "VitruvianAtrium",
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
+        ":CoreAudioTapCompat",
         ":FanControlKit",
         ":HIDEventSystem",
+        ":RecorderGIFCodec",
         ":VMStatisticsCompat",
         ":VitruvianAtriumCore",
         ":VitruvianAtriumDesign",
@@ -555,6 +611,7 @@ macos_application(
         "CHANGELOG.md",
         "Resources/agent-prices.json",
         "Resources/now-playing.pl",
+        ":cgif_license",
         ":icons",
         ":structured_resources",
     ] + glob(["Resources/*.lproj/*.strings"]),
@@ -768,6 +825,7 @@ swift_test(
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":FanControlKit",
+        ":RecorderGIFCodec",
         ":VMStatisticsCompat",
         ":VitruvianAtriumCore",
         ":VitruvianAtriumDesign",

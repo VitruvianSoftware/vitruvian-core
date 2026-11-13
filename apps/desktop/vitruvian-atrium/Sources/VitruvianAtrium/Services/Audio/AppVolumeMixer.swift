@@ -6,6 +6,7 @@ import AppKit
 import AudioToolbox
 import Combine
 import CoreAudio
+import CoreAudioTapCompat
 import Darwin
 import VitruvianAtriumCore
 import VitruvianAtriumDesign
@@ -127,6 +128,16 @@ package final class AppVolumeMixer: ObservableObject {
     @Published package private(set) var currentSystemSoundOutputDeviceUID: String?
     @Published package private(set) var systemOutputVolume: Double?
     @Published package private(set) var systemOutputMuted: Bool?
+    /// The output's volume and mute as CoreAudio reports them. The published
+    /// pair above shows the monitor's speakers instead while one carries the
+    /// sound; see `republishSystemOutput()`.
+    private var coreAudioOutputVolume: Double? = nil { didSet { republishSystemOutput() } }
+    private var coreAudioOutputMuted: Bool? = nil { didSet { republishSystemOutput() } }
+    /// The monitor whose speakers carry the sound, when its speakers are on and
+    /// macOS cannot set that output's volume. Kept current by the brightness service.
+    package private(set) var monitorOutput: BrightnessSupport.MonitorSpeakerOutput? = nil {
+        didSet { republishSystemOutput() }
+    }
     @Published package private(set) var outputSwitchError: String?
     /// Set when tap creation fails with a permission error, so the panel can
     /// point at the System Audio Recording consent.
@@ -239,8 +250,8 @@ package final class AppVolumeMixer: ObservableObject {
             setScalarVolume: { Self.setOutputScalarVolume($0, for: $1) },
             uptime: { ProcessInfo.processInfo.systemUptime },
             isListening: { [weak self] in self?.listenerInstalled == true },
-            volumeChanged: { [weak self] in self?.systemOutputVolume = $0 },
-            mutedChanged: { [weak self] in self?.systemOutputMuted = $0 },
+            volumeChanged: { [weak self] in self?.coreAudioOutputVolume = $0 },
+            mutedChanged: { [weak self] in self?.coreAudioOutputMuted = $0 },
             outputsChanged: { [weak self] in self?.scheduleListenerRefresh() }))
     }()
 
@@ -357,6 +368,7 @@ package final class AppVolumeMixer: ObservableObject {
         if currentOutputDeviceUID != nil { currentOutputDeviceUID = nil }
         if currentSystemSoundOutputDeviceUID != nil { currentSystemSoundOutputDeviceUID = nil }
         outputControl.forget()
+        refreshMonitorOutput()
         if outputSwitchError != nil { outputSwitchError = nil }
         if needsPermission { needsPermission = false }
         processMonitoringEnabled = false
@@ -527,23 +539,76 @@ package final class AppVolumeMixer: ObservableObject {
 
     // MARK: - Volume API (panel)
 
-    /// See `MixerOutputControl.requestAdjustment`.
+    /// Whether the output in use is a monitor's own speakers. The panel and the
+    /// volume keys then work on the monitor's level instead of CoreAudio's.
+    package var outputIsMonitorSpeakers: Bool { monitorOutput != nil }
+
+    /// Reads which monitor, if any, carries the sound. The brightness service
+    /// calls this when its display list or the default output changes. Main
+    /// thread only.
+    package func refreshMonitorOutput() {
+        let next = BrightnessService.shared.monitorSpeakerOutput()
+        if next != monitorOutput { monitorOutput = next }
+    }
+
+    /// The published pair shows the monitor's levels while it carries the sound
+    /// and CoreAudio's otherwise. A monitor at zero without a recoverable
+    /// mute state publishes no mute control.
+    private func republishSystemOutput() {
+        let shown = Self.presentedOutput(monitor: monitorOutput, coreAudioVolume: coreAudioOutputVolume,
+                                         coreAudioMuted: coreAudioOutputMuted)
+        if systemOutputVolume != shown.volume { systemOutputVolume = shown.volume }
+        if systemOutputMuted != shown.muted { systemOutputMuted = shown.muted }
+    }
+
+    /// The level and mute the panel, the island and the keys show: the
+    /// monitor's while its speakers carry the sound, CoreAudio's otherwise.
+    nonisolated package static func presentedOutput(monitor: BrightnessSupport.MonitorSpeakerOutput?,
+                                                    coreAudioVolume: Double?,
+                                                    coreAudioMuted: Bool?) -> (volume: Double?, muted: Bool?) {
+        guard let monitor else { return (coreAudioVolume, coreAudioMuted) }
+        return (monitor.volume, monitor.muted)
+    }
+
+    /// See `MixerOutputControl.requestAdjustment`. A monitor's speakers take
+    /// the request on the brightness queue instead.
     package func requestOutputAdjustment(volume: Double? = nil, muted: Bool? = nil,
                                  completion: @escaping (Bool) -> Void = { _ in }) {
+        if let monitor = monitorOutput {
+            guard volume?.isFinite != false else { completion(false); return }
+            BrightnessService.shared.requestSpeakers(.set(volume: volume, muted: muted),
+                                                     target: monitor.target, completion: completion)
+            return
+        }
         outputControl.requestAdjustment(volume: volume, muted: muted, completion: completion)
     }
 
     /// What a volume or mute key came to (`MixerOutputControl.KeyResult`).
     package typealias OutputKeyResult = MixerOutputControl.KeyResult
 
-    /// See `MixerOutputControl.requestStep`.
-    package func requestOutputStep(level: @escaping (Double) -> Double,
+    /// See `MixerOutputControl.requestStep`. `raises` tells a monitor's
+    /// speakers which way the key went, so a raise can lift their mute.
+    package func requestOutputStep(level: @escaping (Double) -> Double, raises: Bool = false,
                            completion: @escaping (OutputKeyResult) -> Void = { _ in }) {
+        if let monitor = monitorOutput {
+            BrightnessService.shared.requestSpeakers(.step(levels: [level], raises: raises),
+                                                     target: monitor.target, requiresKeys: true) {
+                completion($0 ? .applied : .unconfirmed)
+            }
+            return
+        }
         outputControl.requestStep(level: level, completion: completion)
     }
 
     /// See `MixerOutputControl.requestMuteToggle`.
     package func requestOutputMuteToggle(completion: @escaping (OutputKeyResult) -> Void = { _ in }) {
+        if let monitor = monitorOutput {
+            guard monitor.muted != nil else { completion(.fallback); return }
+            BrightnessService.shared.requestSpeakers(.toggleMute, target: monitor.target, requiresKeys: true) {
+                completion($0 ? .applied : .unconfirmed)
+            }
+            return
+        }
         outputControl.requestMuteToggle(completion: completion)
     }
 
@@ -1991,7 +2056,7 @@ package final class AppVolumeMixer: ObservableObject {
         return nil
     }
 
-    nonisolated private static func hasSettableOutputVolume(for deviceID: AudioObjectID) -> Bool {
+    nonisolated static func hasSettableOutputVolume(for deviceID: AudioObjectID) -> Bool {
         for selector in outputVolumeSelectors {
             var address = AudioObjectPropertyAddress(mSelector: selector,
                                                      mScope: kAudioObjectPropertyScopeOutput,
@@ -2297,7 +2362,7 @@ package final class AppVolumeMixer: ObservableObject {
         return setOutputMuted(muted, for: device)
     }
 
-    nonisolated fileprivate static func defaultOutputDeviceID() -> AudioObjectID? {
+    nonisolated static func defaultOutputDeviceID() -> AudioObjectID? {
         var device = AudioObjectID(0)
         guard read(AudioObjectID(kAudioObjectSystemObject),
                    kAudioHardwarePropertyDefaultOutputDevice, &device),
@@ -2850,7 +2915,7 @@ private final class MixerTapConfiguration: @unchecked Sendable {
         let enqueue = lock.withLock {
             guard !stopped, !requiresRebuild else { return false }
             if suspend { rendering.value = 0 }
-            immediatePending = immediatePending || immediately
+            immediatePending = immediatePending || immediately || suspend
             guard !pending else { return false }
             pending = true
             return true
@@ -2872,9 +2937,9 @@ private final class MixerTapConfiguration: @unchecked Sendable {
                 if !unchanged {
                     rendering.value = 0
                     invalidated.value = 1
-                } else if !stopped, !pending, !requiresRebuild {
-                    // A notification arriving during a read owns another
-                    // pass and must not be cleared by this older result.
+                } else if !stopped, !immediatePending, !requiresRebuild {
+                    // A new format notification needs its own validation.
+                    // A periodic poll may skip its read and cannot resume audio for us.
                     rendering.value = 1
                 }
                 return notify
@@ -2977,7 +3042,6 @@ private final class TapGainEngine: GainEngine {
 
         guard let capture = Self.createTap(objects: objects, outputDeviceUID: outputDeviceUID) else { return nil }
         tapID = capture.id
-        let description = capture.description
         // Started before the aggregate, so its first read runs while the
         // aggregate is built. Every failure from here on calls stop().
         let compensation = compensationBox
@@ -2992,7 +3056,7 @@ private final class TapGainEngine: GainEngine {
             kAudioAggregateDeviceMainSubDeviceKey: outputDeviceUID,
             kAudioAggregateDeviceSubDeviceListKey: [[kAudioSubDeviceUIDKey: outputDeviceUID]],
             kAudioAggregateDeviceTapListKey: [[
-                kAudioSubTapUIDKey: description.uuid.uuidString,
+                kAudioSubTapUIDKey: capture.uid,
                 kAudioSubTapDriftCompensationKey: true,
             ]],
             kAudioAggregateDeviceTapAutoStartKey: true,
@@ -3089,27 +3153,25 @@ private final class TapGainEngine: GainEngine {
 
     private struct Capture {
         let id: AudioObjectID
-        let description: CATapDescription
+        let uid: String
         let format: MixerTapFormat
         let source: MixerTapConfiguration.Source?
     }
 
     private static func createTap(objects: [AudioObjectID], outputDeviceUID: String) -> Capture? {
         let source = deviceStreamSource(objects: objects, outputDeviceUID: outputDeviceUID)
-        if let source,
-           let capture = createTap(CATapDescription(processes: objects, deviceUID: outputDeviceUID, stream: 0),
-                                   source: source) {
+        if let source, let capture = createTap(objects: objects, deviceUID: outputDeviceUID, source: source) {
             return capture
         }
-        return createTap(CATapDescription(stereoMixdownOfProcesses: objects), source: nil)
+        return createTap(objects: objects, deviceUID: nil, source: nil)
     }
 
-    private static func createTap(_ description: CATapDescription,
+    private static func createTap(objects: [AudioObjectID], deviceUID: String?,
                                   source: MixerTapConfiguration.Source?) -> Capture? {
-        description.muteBehavior = .mutedWhenTapped
-        description.isPrivate = true
         var tap = AudioObjectID(0)
-        guard AudioHardwareCreateProcessTap(description, &tap) == noErr, tap != 0 else { return nil }
+        guard let uuid = createPrivateAudioTap(deviceUID == nil ? .stereoMixdown : .deviceStream,
+                                               processes: objects as [NSNumber], deviceUID: deviceUID,
+                                               name: nil, muteBehavior: .mutedWhenTapped, id: &tap) else { return nil }
         var asbd = AudioStreamBasicDescription()
         guard AppVolumeMixer.read(tap, kAudioTapPropertyFormat, &asbd),
               let format = MixerTapFormat(asbd),
@@ -3117,7 +3179,7 @@ private final class TapGainEngine: GainEngine {
             AudioHardwareDestroyProcessTap(tap)
             return nil
         }
-        return Capture(id: tap, description: description, format: format, source: source)
+        return Capture(id: tap, uid: uuid.uuidString, format: format, source: source)
     }
 
     private static func deviceStreamSource(objects: [AudioObjectID], outputDeviceUID: String)
@@ -3243,10 +3305,8 @@ private final class AirPlayGainEngine: GainEngine {
         self.gainBox = AtomicFloatBox(gain)
         self.compensationBox = AtomicFloatBox(1)
 
-        let description = CATapDescription(stereoMixdownOfProcesses: objects)
-        description.muteBehavior = .mutedWhenTapped
-        description.isPrivate = true
-        guard AudioHardwareCreateProcessTap(description, &tapID) == noErr, tapID != 0 else {
+        guard let uuid = createPrivateAudioTap(.stereoMixdown, processes: objects as [NSNumber], deviceUID: nil,
+                                               name: nil, muteBehavior: .mutedWhenTapped, id: &tapID) else {
             return nil
         }
         // Started before the aggregate, so its first read runs while the
@@ -3263,7 +3323,7 @@ private final class AirPlayGainEngine: GainEngine {
             kAudioAggregateDeviceMainSubDeviceKey: clockDeviceUID,
             kAudioAggregateDeviceSubDeviceListKey: [[kAudioSubDeviceUIDKey: clockDeviceUID]],
             kAudioAggregateDeviceTapListKey: [[
-                kAudioSubTapUIDKey: description.uuid.uuidString,
+                kAudioSubTapUIDKey: uuid.uuidString,
                 kAudioSubTapDriftCompensationKey: true,
             ]],
             kAudioAggregateDeviceTapAutoStartKey: true,

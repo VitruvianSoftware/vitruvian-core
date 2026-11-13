@@ -10,6 +10,18 @@ package enum NotchSettingsTab: CaseIterable {
     case layout, content, activity, behavior, companion
 }
 
+extension NotchSettingsLocation {
+    /// The tab that holds this place on the page.
+    package var tab: NotchSettingsTab {
+        switch self {
+        case .layout: return .layout
+        case .activity: return .activity
+        case .behavior: return .behavior
+        case .module: return .content
+        }
+    }
+}
+
 /// The Dynamic Island page's tabs, with the button that opens the island.
 /// Four tab names can need more room than the narrowest window leaves the
 /// page in longer languages, and a page wider than its column is centered and

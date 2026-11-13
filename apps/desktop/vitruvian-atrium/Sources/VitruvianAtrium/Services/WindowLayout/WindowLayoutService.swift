@@ -1635,11 +1635,12 @@ package final class WindowLayoutService: ObservableObject {
             // Vitruvian Atrium moved that window itself. Its release skips a lookup that has
             // already come back empty every time it was tried.
             let lookupsExhausted = edgeSnapResolveAttempts >= edgeSnapResolveAttemptLimit && !edgeSnapResolving
-            let releasedOverZone = pressOrigin.map {
+            let releasedAfterDrag = pressOrigin.map {
                 WindowGestureSupport.exceedsDragSlop(from: $0, to: location)
-                    && edgeSnapTarget(atQuartzPoint: location, velocity: velocity) != nil
             } ?? false
-            let mayRestore = !followsMoveGesture
+            let releasedOverZone = releasedAfterDrag
+                && edgeSnapTarget(atQuartzPoint: location, velocity: velocity) != nil
+            let mayRestore = releasedAfterDrag && !followsMoveGesture
                 && restoresOnDrag
                 && pressCandidate.map { candidate in
                     restoreFrames.keys.contains {
