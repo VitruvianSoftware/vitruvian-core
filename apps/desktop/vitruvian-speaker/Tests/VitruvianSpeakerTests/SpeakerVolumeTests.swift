@@ -155,23 +155,87 @@ func eventually(within seconds: Double = 30, _ done: () -> Bool) async throws {
     while !done(), Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
 }
 
+/// Restore timers the test releases itself. A real timer races the test's
+/// own checks, and a busy CI Mac can delay either by seconds (#4529); these
+/// wait until `releaseAll()`, so the order is the test's, not the machine's.
+final class ManualTimers: @unchecked Sendable {
+    private let lock = NSLock()
+    private var waiting: [UUID: (until: Date, resume: CheckedContinuation<Void, Never>)] = [:]
+    private var cancelled: Set<UUID> = []
+
+    /// Timers still waiting: started, not released and not cancelled.
+    var pending: Int { lock.withLock { waiting.count } }
+    /// When each waiting timer is due.
+    var pendingDeadlines: [Date] { lock.withLock { waiting.values.map(\.until) } }
+
+    var sleep: VolumeRestoreCoordinator.Sleep { { [self] until in await self.wait(until) } }
+
+    func releaseAll() {
+        let resumes = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            defer { waiting.removeAll() }
+            return waiting.values.map(\.resume)
+        }
+        resumes.forEach { $0.resume() }
+    }
+
+    private func wait(_ until: Date) async {
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                let resumeNow = lock.withLock { () -> Bool in
+                    if cancelled.contains(id) { return true }
+                    waiting[id] = (until, c)
+                    return false
+                }
+                if resumeNow { c.resume() }
+            }
+        } onCancel: {
+            let c = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+                cancelled.insert(id)
+                return waiting.removeValue(forKey: id)?.resume
+            }
+            c?.resume()
+        }
+    }
+}
+
 @MainActor
 @Suite(.serialized) struct VolumeRestoreTests {
+    private func coordinator(_ speaker: FakeSpeaker, _ timers: ManualTimers, confirmTimeout: Double = 0.3) -> VolumeRestoreCoordinator {
+        VolumeRestoreCoordinator(client: speaker, confirmTimeout: confirmTimeout, minimumHold: 0.1, sleep: timers.sleep)
+    }
+
     @Test func putsTheSpeakerBackAfterTheAnnouncement() async throws {
+        let speaker = FakeSpeaker(percent: 60), timers = ManualTimers()
+        let c = coordinator(speaker, timers)
+        c.schedule(VolumeBoost(target: office, structureId: "s", restoreTo: 40, announceLevel: 60), after: 0.2)
+        #expect(c.isHolding)
+        try await eventually { timers.pending == 1 }
+        #expect(speaker.sets.isEmpty, "nothing is put back before the timer ends")
+        timers.releaseAll()
+        try await eventually { c.lastReport != nil }
+        #expect(speaker.percent == 40)
+        #expect(!c.isHolding)
+    }
+
+    /// The app's real timer, end to end. Nothing here races it: the test only
+    /// waits for the restore, however late a busy machine runs it.
+    @Test func theRealTimerPutsTheSpeakerBack() async throws {
         let speaker = FakeSpeaker(percent: 60)
         let c = VolumeRestoreCoordinator(client: speaker, confirmTimeout: 0.3, minimumHold: 0.1)
         c.schedule(VolumeBoost(target: office, structureId: "s", restoreTo: 40, announceLevel: 60), after: 0.2)
-        #expect(c.isHolding)
         try await eventually { c.lastReport != nil }
         #expect(speaker.percent == 40)
         #expect(!c.isHolding)
     }
 
     @Test func aVolumeChangedByHandDuringTheAnnouncementIsLeftAlone() async throws {
-        let speaker = FakeSpeaker(percent: 60)
-        let c = VolumeRestoreCoordinator(client: speaker, confirmTimeout: 0.3, minimumHold: 0.1)
+        let speaker = FakeSpeaker(percent: 60), timers = ManualTimers()
+        let c = coordinator(speaker, timers)
         c.schedule(VolumeBoost(target: office, structureId: "s", restoreTo: 40, announceLevel: 60), after: 0.2)
         speaker.percent = 25   // someone turned it down mid-announcement
+        try await eventually { timers.pending == 1 }
+        timers.releaseAll()
         try await eventually { c.lastReport != nil }
         #expect(speaker.percent == 25)
         #expect(speaker.sets.isEmpty)
@@ -181,12 +245,17 @@ func eventually(within seconds: Double = 30, _ done: () -> Bool) async throws {
     /// A burst: the second announcement read the RAISED level. Restoring to
     /// that would leave the speaker loud; the first level must win.
     @Test func aBurstRestoresTheOriginalLevelOnceAfterTheLast() async throws {
-        let speaker = FakeSpeaker(percent: 60)
-        let c = VolumeRestoreCoordinator(client: speaker, confirmTimeout: 0.3, minimumHold: 0.1)
+        let speaker = FakeSpeaker(percent: 60), timers = ManualTimers()
+        let c = coordinator(speaker, timers)
+        let before = Date()
         c.schedule(VolumeBoost(target: office, structureId: "s", restoreTo: 40, announceLevel: 60), after: 0.3)
         c.schedule(VolumeBoost(target: office, structureId: "s", restoreTo: 60, announceLevel: 60), after: 0.8)
-        try await Task.sleep(for: .milliseconds(500))
-        #expect(speaker.percent == 60, "still announcing: not restored at the first deadline")
+        // The first timer is cancelled; one waits, for the later deadline.
+        try await eventually { timers.pending == 1 }
+        let due = try #require(timers.pendingDeadlines.first)
+        #expect(due.timeIntervalSince(before) >= 0.8, "the restore waits for the second announcement")
+        #expect(speaker.sets.isEmpty, "still announcing: not restored at the first deadline")
+        timers.releaseAll()
         try await eventually { c.lastReport != nil }
         #expect(speaker.percent == 40)
         #expect(speaker.sets == [40], "restored exactly once")
@@ -202,10 +271,12 @@ func eventually(within seconds: Double = 30, _ done: () -> Bool) async throws {
     /// restore that checked once would see the OLD level, decide someone had
     /// changed it by hand, and leave the speaker at the announcement volume.
     @Test func aLaggingReportDoesNotLeaveTheSpeakerLoud() async throws {
-        let speaker = FakeSpeaker(percent: 40, lag: 0.6)
+        let speaker = FakeSpeaker(percent: 40, lag: 0.6), timers = ManualTimers()
         let boost = await AnnounceVolume.prepare(level: 60, target: office, structureId: "s", client: speaker, canRestore: true)
-        let c = VolumeRestoreCoordinator(client: speaker, confirmTimeout: 1.5, minimumHold: 0.1)
-        c.schedule(try #require(boost), after: 0.1)   // checked while the report still says 40
+        let c = coordinator(speaker, timers, confirmTimeout: 1.5)
+        c.schedule(try #require(boost), after: 0.1)
+        try await eventually { timers.pending == 1 }
+        timers.releaseAll()   // checked while the report still says 40
         try await eventually { c.lastReport != nil }
         #expect(speaker.sets == [60, 40], "raised, then put back despite the stale first reading")
     }
@@ -213,15 +284,19 @@ func eventually(within seconds: Double = 30, _ done: () -> Bool) async throws {
     /// An announcement straight after a restore reads the raised level (the
     /// report lags) and would take it as the speaker's own volume.
     @Test func anAnnouncementJustAfterARestoreRemembersTheRealLevel() async throws {
-        let speaker = FakeSpeaker(percent: 60)
-        let c = VolumeRestoreCoordinator(client: speaker, confirmTimeout: 0.3, minimumHold: 0.1)
+        let speaker = FakeSpeaker(percent: 60), timers = ManualTimers()
+        let c = coordinator(speaker, timers)
         c.schedule(VolumeBoost(target: office, structureId: "s", restoreTo: 40, announceLevel: 60), after: 0.1)
+        try await eventually { timers.pending == 1 }
+        timers.releaseAll()
         try await eventually { c.lastReport != nil }
         #expect(speaker.percent == 40)
         speaker.percent = 60   // raised again for the next announcement
         // ...whose prepare read a stale 60 as the "own" level:
         c.schedule(VolumeBoost(target: office, structureId: "s", restoreTo: 60, announceLevel: 60), after: 0.1)
         #expect(c.isHolding, "not dropped as 'nothing to restore'")
+        try await eventually { timers.pending == 1 }
+        timers.releaseAll()
         try await eventually { speaker.sets.count == 2 }
         #expect(speaker.sets == [40, 40])
         #expect(speaker.percent == 40)
