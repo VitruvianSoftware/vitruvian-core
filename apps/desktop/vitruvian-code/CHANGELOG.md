@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.35.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.35.0...vitruvian-code-v1.35.1) (2026-11-12)
+
+
+### Bug Fixes
+
+* **vitruvian-code,vitruvian-speaker:** show the full Vitruvian names in the tool list ([#4644](https://github.com/VitruvianSoftware/vitruvian-core/issues/4644)) ([f611431](https://github.com/VitruvianSoftware/vitruvian-core/commit/f6114315740d4fc9a975722d507ba49ad25f4c0a))
+
 ## [1.35.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.34.0...vitruvian-code-v1.35.0) (2026-11-12)
 
 
