@@ -829,8 +829,11 @@ package final class MicMuteService: ObservableObject {
             status = environment.hal.setPropertyData(device, &address, 0, nil,
                                                 UInt32(MemoryLayout<Float>.size), &target)
         }
-        let readBack = controlValue(of: device, at: address)
-        return status == noErr || readBack.map { !controlValuesMatch($0, current) } == true
+        // A driver can accept a write and keep its old value. Only a control
+        // that reads back changed is one this app now owes back; a control
+        // that cannot be read back counts when the write was accepted.
+        guard let readBack = controlValue(of: device, at: address) else { return status == noErr }
+        return !controlValuesMatch(readBack, current)
     }
 
     /// An already-owned device may have been muted by a version without
