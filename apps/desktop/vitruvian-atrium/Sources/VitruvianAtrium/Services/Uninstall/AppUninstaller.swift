@@ -392,6 +392,8 @@ package final class AppUninstaller: ObservableObject {
         }
         environment.background(0) { [weak self] in
             guard !cancellation.isCancelled, let found = scan(request) else { return }
+            // A scan superseded while it ran hands nothing back to the main thread.
+            guard !cancellation.isCancelled else { return }
             main { [weak self] in
                 answers.leftovers = found
                 self?.deliverScan(answers, name: name, selectedURL: selectedURL, cancellation: cancellation)
