@@ -225,6 +225,9 @@ package enum DefaultsKey {
     // Set once the paths cached before paired discovery requests have been
     // dropped, so a monitor written off then is classified again exactly once.
     package static let brightnessDDCWriteOnlyPathsRechecked = "brightnessDDCWriteOnlyPathsRechecked"
+    // The read checksum fix needs its own recheck even if the paired-request
+    // migration already ran and cached the monitor as write-only again.
+    package static let brightnessDDCReadChecksumRechecked = "brightnessDDCReadChecksumRechecked"
     /// A beta already installed the companion for this Command Bar user, once.
     package static let notchMascotBetaInstalled = "notchMascotBetaInstalled"
     // Per-monitor connection paths a person has told this app to dim in
