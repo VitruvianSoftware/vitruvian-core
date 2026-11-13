@@ -25,6 +25,7 @@
 //! check_release_please_packages, check_release_infra_exclude,
 //! check_copybara_infra_exclude, check_copybara_version_maps,
 //! check_copybara_export_triggers, check_copybara_component_lists.
+//! Native: check_copybara_export_awaits_key_rotation.
 
 use crate::Context;
 use std::collections::{BTreeMap, BTreeSet};
@@ -1373,4 +1374,448 @@ fn extract_copybara_repos(content: &str) -> Vec<String> {
     }
 
     repos.into_iter().collect()
+}
+
+// ---------------------------------------------------------------------------
+// check_copybara_export_awaits_key_rotation (group: copybara)
+// ---------------------------------------------------------------------------
+
+const AWAIT_WF_REL: &str = ".github/workflows/_await-repo-config.yaml";
+const AWAIT_WF_FILE: &str = "_await-repo-config.yaml";
+const EXPORT_WF_FILE: &str = "_copybara-export.yaml";
+
+/// Split a workflow's `jobs:` block into (job id, the job's trimmed lines).
+fn workflow_job_bodies(content: &str) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    let mut in_jobs = false;
+    let mut job_indent: Option<usize> = None;
+    for line in content.lines() {
+        if line.starts_with("jobs:") {
+            in_jobs = true;
+            continue;
+        }
+        if !in_jobs {
+            continue;
+        }
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let ind = line.len() - line.trim_start().len();
+        if ind == 0 {
+            break;
+        }
+        let ji = *job_indent.get_or_insert(ind);
+        if ind == ji && trimmed.ends_with(':') {
+            out.push((trimmed.trim_end_matches(':').to_string(), String::new()));
+        } else if let Some(last) = out.last_mut() {
+            last.1.push_str(trimmed);
+            last.1.push('\n');
+        }
+    }
+    out
+}
+
+/// The ids a job's `needs:` names, in the scalar or the inline-list form.
+fn job_needs(body: &str) -> Vec<String> {
+    for line in body.lines() {
+        if let Some(rest) = line.strip_prefix("needs:") {
+            let rest = rest.split('#').next().unwrap_or("").trim();
+            return rest
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .split(',')
+                .map(|s| s.trim().trim_matches('"').trim_matches('\'').to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+        }
+    }
+    Vec::new()
+}
+
+/// Whether `job` waits on `target`, directly or through other jobs' needs.
+fn needs_transitively(jobs: &[(String, String)], job: &str, target: &str) -> bool {
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    let mut stack = vec![job.to_string()];
+    while let Some(j) = stack.pop() {
+        if !seen.insert(j.clone()) {
+            continue;
+        }
+        let Some((_, body)) = jobs.iter().find(|(id, _)| *id == j) else {
+            continue;
+        };
+        for n in job_needs(body) {
+            if n == target {
+                return true;
+            }
+            stack.push(n);
+        }
+    }
+    false
+}
+
+/// The value of an `env:`-style `KEY: value` line, quotes and comment removed.
+fn yaml_value(content: &str, key: &str) -> Option<String> {
+    content.lines().find_map(|l| {
+        let rest = l.trim().strip_prefix(key)?.strip_prefix(':')?;
+        Some(
+            rest.split(" #")
+                .next()
+                .unwrap_or("")
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string(),
+        )
+    })
+}
+
+/// The path prefixes under a workflow's `paths:` list (the `**` glob dropped).
+fn workflow_push_paths(content: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut in_paths = false;
+    for line in content.lines() {
+        let t = line.trim();
+        if t == "paths:" {
+            in_paths = true;
+            continue;
+        }
+        if in_paths {
+            if let Some(item) = t.strip_prefix("- ") {
+                out.push(
+                    item.trim_matches('"')
+                        .trim_matches('\'')
+                        .trim_end_matches("**")
+                        .to_string(),
+                );
+            } else if !t.starts_with('#') {
+                in_paths = false;
+            }
+        }
+    }
+    out
+}
+
+/// A mirror export must not be handed its deploy key while Repo Config Apply
+/// can still replace it (2026-11-13: #4661 renamed three mirrors, the apply
+/// replaced their keys, and exports already holding the old key were refused).
+///
+/// The caller maps <COMP>_SYNC_SSH_KEY, so the wait lives in the caller: every
+/// caller of _copybara-export.yaml runs _await-repo-config.yaml as a job, every
+/// job there that reads a key needs it (directly or transitively), the caller
+/// grants actions: read, and _await-repo-config.yaml really polls the apply
+/// workflow, over the apply's own path.
+pub fn check_copybara_export_awaits_key_rotation(ctx: &Context) {
+    let wf_dir = format!("{}/.github/workflows", ctx.root);
+    let why = "a key mapped before the apply finishes is the old one once the apply replaces it: the export is refused at the push step (Permission denied (publickey)), as on 2026-11-13 after #4661";
+    let mut failed = false;
+    let mut fail = |file: &str, found: &str, canon: &str, note: &str, fix: &str| {
+        ctx.emit_fail("copybara", file, found, canon, note, fix);
+    };
+
+    let mut callers: Vec<String> = fs::read_dir(&wf_dir)
+        .map(|it| {
+            it.filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .filter(|n| n.ends_with(".yaml") || n.ends_with(".yml"))
+                .collect()
+        })
+        .unwrap_or_default();
+    callers.sort();
+    let uses = |body: &str, file: &str| {
+        body.lines()
+            .any(|l| l.starts_with("uses:") && l.contains(&format!("/{file}")))
+    };
+
+    let mut n_callers = 0u32;
+    for name in &callers {
+        let Ok(c) = fs::read_to_string(format!("{wf_dir}/{name}")) else {
+            continue;
+        };
+        let jobs = workflow_job_bodies(&c);
+        if !jobs.iter().any(|(_, b)| uses(b, EXPORT_WF_FILE)) {
+            continue;
+        }
+        n_callers += 1;
+        let rel = format!(".github/workflows/{name}");
+
+        let grants = c.lines().any(|l| {
+            let t = l.split('#').next().unwrap_or("").trim();
+            t == "actions: read" || t == "actions: write"
+        });
+        if !grants {
+            failed = true;
+            fail(
+                &rel,
+                "no actions: read",
+                "permissions include actions: read",
+                "a called workflow gets no more than its caller grants: without it the wait cannot list Repo Config Apply runs",
+                &format!("add `actions: read` under permissions: in {rel}"),
+            );
+        }
+
+        let Some((await_id, _)) = jobs.iter().find(|(_, b)| uses(b, AWAIT_WF_FILE)) else {
+            failed = true;
+            fail(
+                &rel,
+                &format!("no job uses {AWAIT_WF_FILE}"),
+                &format!("an await-repo-config job: uses: ./.github/workflows/{AWAIT_WF_FILE}"),
+                why,
+                &format!("add the await-repo-config job and `needs: await-repo-config` on export in {rel} (copy a sibling copybara-export-*.yaml)"),
+            );
+            continue;
+        };
+        for (id, body) in &jobs {
+            if id == await_id {
+                continue;
+            }
+            let reads_key = uses(body, EXPORT_WF_FILE)
+                || (body.contains("secrets.") && body.contains("_SYNC_SSH_KEY"));
+            if reads_key && !needs_transitively(&jobs, id, await_id) {
+                failed = true;
+                fail(
+                    &rel,
+                    &format!("job {id} gets the mirror key without waiting on {await_id}"),
+                    &format!("needs: {await_id} (directly or through another job)"),
+                    why,
+                    &format!("add `needs: {await_id}` to the {id} job in {rel}"),
+                );
+            }
+        }
+    }
+    if n_callers == 0 {
+        return;
+    }
+
+    // The wait itself: it must poll the workflow that applies repo-config,
+    // over the same path that triggers it.
+    let await_path = format!("{}/{}", ctx.root, AWAIT_WF_REL);
+    match fs::read_to_string(&await_path) {
+        Err(_) => {
+            failed = true;
+            fail(
+                AWAIT_WF_REL,
+                "missing",
+                "a reusable wait for Repo Config Apply",
+                why,
+                &format!("restore {AWAIT_WF_REL} (see its history)"),
+            );
+        }
+        Ok(a) => {
+            let apply = yaml_value(&a, "APPLY_WORKFLOW").unwrap_or_default();
+            let apply_content = if apply.is_empty() {
+                None
+            } else {
+                fs::read_to_string(format!("{wf_dir}/{apply}")).ok()
+            };
+            match apply_content {
+                None => {
+                    failed = true;
+                    fail(
+                        AWAIT_WF_REL,
+                        &format!("APPLY_WORKFLOW: '{apply}'"),
+                        "the name of an existing workflow that applies repo-config",
+                        "the wait would list runs of a workflow that does not exist, find none, and let every export through",
+                        &format!("set APPLY_WORKFLOW in {AWAIT_WF_REL} to the repo-config apply workflow's file name"),
+                    );
+                }
+                Some(ac) => {
+                    let path = yaml_value(&a, "APPLY_PATH").unwrap_or_default();
+                    let trigger = workflow_push_paths(&ac);
+                    if path.is_empty() || !trigger.iter().any(|t| *t == path) {
+                        failed = true;
+                        fail(
+                            AWAIT_WF_REL,
+                            &format!("APPLY_PATH: '{path}'"),
+                            &format!("one of {apply}'s paths: {trigger:?}"),
+                            "the wait decides whether this push started an apply from this path; if it drifts from the apply's trigger it stops expecting the run",
+                            &format!("set APPLY_PATH in {AWAIT_WF_REL} to match the paths: of {apply}"),
+                        );
+                    }
+                }
+            }
+            let polls = a.contains("actions/workflows/${APPLY_WORKFLOW}/runs")
+                && ["queued", "in_progress", "waiting", "pending", "requested"]
+                    .iter()
+                    .all(|s| a.contains(s));
+            if !polls {
+                failed = true;
+                fail(
+                    AWAIT_WF_REL,
+                    "does not poll the apply's unfinished runs",
+                    "asks actions/workflows/${APPLY_WORKFLOW}/runs for every unfinished status (requested, queued, pending, waiting, in_progress)",
+                    "a wait that does not ask GitHub about the apply waits for nothing",
+                    &format!("restore the polling loop in {AWAIT_WF_REL} (see its history)"),
+                );
+            }
+        }
+    }
+
+    if !failed {
+        ctx.emit_ok(
+            "copybara",
+            ".github/workflows/copybara-export-*.yaml",
+            &format!("{n_callers} export callers wait on {AWAIT_WF_FILE}"),
+            "every key-reading job needs await-repo-config; callers grant actions: read",
+            "an export is never handed a mirror key Repo Config Apply is about to replace",
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run(files: &[(&str, &str)]) -> (u32, u32, String) {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static N: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "conformance-cbawait-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        for (rel, body) in files {
+            let p = dir.join(rel);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, body).unwrap();
+        }
+        let ctx = Context::for_root(dir.to_str().unwrap());
+        check_copybara_export_awaits_key_rotation(&ctx);
+        let out = (
+            ctx.ok_count.get(),
+            ctx.fail_count.get(),
+            ctx.rows.get("copybara"),
+        );
+        let _ = fs::remove_dir_all(&dir);
+        out
+    }
+
+    const APPLY: (&str, &str) = (
+        ".github/workflows/_repo-config-apply.yaml",
+        "on:\n    push:\n        paths:\n            - \"infrastructure/pulumi/platform/repo-config/**\"\n    workflow_dispatch:\n",
+    );
+    const AWAIT: &str = "\
+jobs:
+    wait:
+        steps:
+            - env:
+                  APPLY_WORKFLOW: _repo-config-apply.yaml
+                  APPLY_PATH: infrastructure/pulumi/platform/repo-config/
+              run: |
+                  runs=\"repos/${REPO}/actions/workflows/${APPLY_WORKFLOW}/runs\"
+                  for s in requested queued pending waiting in_progress; do gh api \"${runs}?status=${s}\"; done
+";
+    const CALLER: &str = "\
+permissions:
+    contents: read
+    actions: read # wait
+jobs:
+    await-repo-config:
+        uses: ./.github/workflows/_await-repo-config.yaml
+
+    export:
+        needs: await-repo-config
+        uses: ./.github/workflows/_copybara-export.yaml
+        secrets:
+            sync_ssh_key: ${{ secrets.A_SYNC_SSH_KEY }}
+
+    tidy:
+        needs: export
+        steps:
+            - env:
+                  SSH_KEY: ${{ secrets.A_SYNC_SSH_KEY }}
+";
+    /// A caller as it was on 2026-11-13: the export maps the key at once.
+    const CALLER_THAT_RACED: &str = "\
+permissions:
+    contents: read
+jobs:
+    export:
+        uses: ./.github/workflows/_copybara-export.yaml
+        secrets:
+            sync_ssh_key: ${{ secrets.A_SYNC_SSH_KEY }}
+";
+    const A: &str = ".github/workflows/copybara-export-a.yaml";
+    const AW: &str = ".github/workflows/_await-repo-config.yaml";
+
+    #[test]
+    fn the_fixed_layout_passes() {
+        let (ok, fail, rows) = run(&[(A, CALLER), (AW, AWAIT), APPLY]);
+        assert_eq!((ok, fail), (1, 0), "{rows}");
+    }
+
+    #[test]
+    fn the_caller_that_raced_fails() {
+        let (_, fail, rows) = run(&[(A, CALLER_THAT_RACED), (AW, AWAIT), APPLY]);
+        assert_eq!(fail, 2, "{rows}");
+        assert!(rows.contains("no actions: read"), "{rows}");
+        assert!(
+            rows.contains("no job uses _await-repo-config.yaml"),
+            "{rows}"
+        );
+    }
+
+    #[test]
+    fn an_export_without_needs_fails() {
+        let c = CALLER.replace("        needs: await-repo-config\n", "");
+        let (_, fail, rows) = run(&[(A, &c), (AW, AWAIT), APPLY]);
+        // export, and tidy through export, both get the key unwaited.
+        assert_eq!(fail, 2, "{rows}");
+        assert!(rows.contains("job export gets the mirror key"), "{rows}");
+        assert!(rows.contains("job tidy gets the mirror key"), "{rows}");
+    }
+
+    #[test]
+    fn a_direct_key_reader_without_needs_fails() {
+        let c = CALLER.replace("        needs: export\n", "");
+        let (_, fail, rows) = run(&[(A, &c), (AW, AWAIT), APPLY]);
+        assert_eq!(fail, 1, "{rows}");
+        assert!(rows.contains("job tidy gets the mirror key"), "{rows}");
+    }
+
+    #[test]
+    fn needs_in_list_form_counts() {
+        let c = CALLER.replace(
+            "needs: await-repo-config",
+            "needs: [other, await-repo-config]",
+        );
+        let (ok, fail, rows) = run(&[(A, &c), (AW, AWAIT), APPLY]);
+        assert_eq!((ok, fail), (1, 0), "{rows}");
+    }
+
+    /// Review of #4689: a wait that only names the apply but polls nothing
+    /// must not pass.
+    #[test]
+    fn a_wait_that_does_not_poll_fails() {
+        let a = "jobs:\n    wait:\n        steps:\n            - env:\n                  APPLY_WORKFLOW: _repo-config-apply.yaml\n                  APPLY_PATH: infrastructure/pulumi/platform/repo-config/\n              run: echo wait\n";
+        let (_, fail, rows) = run(&[(A, CALLER), (AW, a), APPLY]);
+        assert_eq!(fail, 1, "{rows}");
+        assert!(rows.contains("does not poll"), "{rows}");
+    }
+
+    #[test]
+    fn a_missing_apply_workflow_fails() {
+        let (_, fail, rows) = run(&[(A, CALLER), (AW, AWAIT)]);
+        assert_eq!(fail, 1, "{rows}");
+        assert!(rows.contains("APPLY_WORKFLOW"), "{rows}");
+    }
+
+    #[test]
+    fn an_apply_path_that_drifted_fails() {
+        let a = AWAIT.replace(
+            "APPLY_PATH: infrastructure/pulumi/platform/repo-config/",
+            "APPLY_PATH: infrastructure/pulumi/repo-config/",
+        );
+        let (_, fail, rows) = run(&[(A, CALLER), (AW, &a), APPLY]);
+        assert_eq!(fail, 1, "{rows}");
+        assert!(rows.contains("APPLY_PATH"), "{rows}");
+    }
+
+    #[test]
+    fn a_missing_wait_workflow_fails() {
+        let (_, fail, rows) = run(&[(A, CALLER), APPLY]);
+        assert_eq!(fail, 1, "{rows}");
+        assert!(rows.contains("missing"), "{rows}");
+    }
 }

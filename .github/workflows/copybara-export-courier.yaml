@@ -41,13 +41,20 @@ on:
 
 permissions:
     contents: read
+    actions: read # _await-repo-config.yaml lists Repo Config Apply runs
 
 concurrency:
     group: copybara-export-courier
     cancel-in-progress: false
 
 jobs:
+    # Holds the export (and the key mapping below) until no Repo Config
+    # Apply can still replace the mirror key: see _await-repo-config.yaml.
+    await-repo-config:
+        uses: ./.github/workflows/_await-repo-config.yaml
+
     export:
+        needs: await-repo-config
         uses: ./.github/workflows/_copybara-export.yaml
         with:
             component: vitruvian-courier

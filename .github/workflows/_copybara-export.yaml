@@ -63,6 +63,9 @@ permissions:
     contents: read
 
 jobs:
+    # Not started until the caller's await-repo-config job is done (see
+    # _await-repo-config.yaml): the caller maps sync_ssh_key, so that is where
+    # the wait has to be. Guarded by //tools/conformance:check.
     export:
         runs-on: ubuntu-26.04
         timeout-minutes: 45
