@@ -289,6 +289,7 @@ enum TestGroups {
                 CleanerScanFlowTests.run(suite)
             }),
             ("uninstaller", {
+                HomebrewOwnershipTests.run(suite)
                 UninstallerFlowTests.run(suite)
                 SelfUninstallContract.run(suite)
             }),

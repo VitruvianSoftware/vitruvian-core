@@ -1287,6 +1287,7 @@ package struct Strings {
     package let switcherShowShortcutHints: String
     package let switcherShowShortcutHintsCaption: String
     package let uninstallerHomebrewPackageFormat: String
+    package let uninstallerHomebrewCheckFailed: String
     package let shelfEdgeToggle: String
     package let shelfEdgeCaption: String
     package let focusFollowsMouseName: String
@@ -2401,6 +2402,7 @@ extension Strings {
         switcherShowShortcutHints: "Mostrar dicas de atalhos",
         switcherShowShortcutHintsCaption: "Exibe os atalhos de apps e janelas abaixo dos ícones.",
         uninstallerHomebrewPackageFormat: "%@ também será removido do Homebrew.",
+        uninstallerHomebrewCheckFailed: "Não foi possível verificar se o Homebrew gerencia este aplicativo. Atualize para tentar novamente ou desinstale pelo Homebrew.",
         shelfEdgeToggle: "Abrir perto de uma borda da tela",
         shelfEdgeCaption: "Ao arrastar um arquivo para perto da borda da tela, a área espia para dentro. Solte ali, ou puxe de volta e ela recua.",
         focusFollowsMouseName: "Foco ao passar o mouse",
@@ -3516,6 +3518,7 @@ extension Strings {
         switcherShowShortcutHints: "Show shortcut hints",
         switcherShowShortcutHintsCaption: "Shows the app and window shortcuts below the icons.",
         uninstallerHomebrewPackageFormat: "%@ will also be removed from Homebrew.",
+        uninstallerHomebrewCheckFailed: "Could not verify whether Homebrew manages this app. Refresh to try again, or uninstall it from Homebrew.",
         shelfEdgeToggle: "Open near a screen edge",
         shelfEdgeCaption: "Drag a file toward the screen edge to peek the shelf in. Drop it there, or pull back and it retreats.",
         focusFollowsMouseName: "Focus follows mouse",

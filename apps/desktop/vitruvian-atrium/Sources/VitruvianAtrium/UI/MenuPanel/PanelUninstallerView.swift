@@ -336,7 +336,7 @@ package struct PanelUninstallerView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .tint(.red)
-                .disabled(!uninstaller.items.contains(where: \.include)
+                .disabled(!uninstaller.canRemoveSelected
                           || (uninstaller.selectedHomebrewPackage != nil && homebrew.isBusy))
             }
         }
@@ -378,7 +378,9 @@ package struct PanelUninstallerView: View {
 
     @ViewBuilder
     private var homebrewStatus: some View {
-        if let package = uninstaller.selectedHomebrewPackage {
+        if uninstaller.homebrewCheckFailed {
+            UninstallerHomebrewFailureNote(onRetry: { uninstaller.retryHomebrewCheck() })
+        } else if let package = uninstaller.selectedHomebrewPackage {
             if let status = homebrew.operationStatus,
                status.action == .uninstall,
                status.package?.id == package.id {
