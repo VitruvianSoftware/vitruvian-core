@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.96.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.95.0...vitruvian-atrium-v3.96.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 39, monitor speakers, visible-control Settings search ([#4725](https://github.com/VitruvianSoftware/vitruvian-core/issues/4725)) ([1d4357d](https://github.com/VitruvianSoftware/vitruvian-core/commit/1d4357dadb2aa5bd1f34e126f8ac9f34aea95317))
+
 ## [3.95.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.94.0...vitruvian-atrium-v3.95.0) (2026-11-13)
 
 
