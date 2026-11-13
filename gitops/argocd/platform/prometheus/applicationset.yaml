@@ -253,7 +253,8 @@ spec:
                     annotations:
                       summary: "Alerting pipeline heartbeat (dead-man's-switch)"
                       description: >-
-                        Always firing. Routed to healthchecks.io so that if dev-local,
+                        Always firing. Routed (via the alertmanager-ntfy-bridge
+                        /heartbeat endpoint) to healthchecks.io so that if dev-local,
                         Prometheus, or Alertmanager dies, hc.io stops receiving pings
                         and raises an external alarm.
 
@@ -1333,12 +1334,27 @@ spec:
                   group_interval: 5m
                   repeat_interval: 4h
                   routes:
+                    # Dead-man's switch FIRST: Watchdog is severity=none, so
+                    # the null route below would swallow it. Every ~5 minutes
+                    # the bridge turns it into a healthchecks.io ping; when
+                    # anything on the path dies the pings stop and hc.io
+                    # alarms from outside. Set the hc.io check to period 5m,
+                    # grace 10m.
+                    - matchers: ['alertname="Watchdog"']
+                      receiver: heartbeat
+                      group_wait: 0s
+                      group_interval: 1m
+                      repeat_interval: 5m
                     - matchers: ['severity=~"none|noise"']
                       receiver: "null"
                     - matchers: ['severity=~"page|warning"']
                       receiver: ntfy
                 receivers:
                   - name: "null"
+                  - name: heartbeat
+                    webhook_configs:
+                      - url: http://alertmanager-ntfy-bridge.monitoring.svc.cluster.local:8080/heartbeat
+                        send_resolved: false
                   - name: ntfy
                     webhook_configs:
                       - url: http://alertmanager-ntfy-bridge.monitoring.svc.cluster.local:8080/webhook
