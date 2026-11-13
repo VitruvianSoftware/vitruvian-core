@@ -15,6 +15,19 @@ enum SliderScrollRoutingTests {
         var acceptsSliderScroll: Bool { scrollable && isEnabled }
     }
 
+    /// A scroll event of a phase (nil for a phaseless wheel tick), with
+    /// vertical and sideways deltas, as a trackpad or mouse sends it.
+    static func event(_ phase: CGScrollPhase?, delta: Int32 = 0, sideways: Int32 = 0,
+                      momentum: CGMomentumScrollPhase = .none, units: CGScrollEventUnit = .pixel,
+                      timestamp: CGEventTimestamp? = nil) -> NSEvent {
+        let cg = CGEvent(scrollWheelEvent2Source: nil, units: units, wheelCount: 2,
+                         wheel1: delta, wheel2: sideways, wheel3: 0)!
+        cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(phase?.rawValue ?? 0))
+        cg.setIntegerValueField(.scrollWheelEventMomentumPhase, value: Int64(momentum.rawValue))
+        if let timestamp { cg.timestamp = timestamp }
+        return NSEvent(cgEvent: cg)!
+    }
+
     static func run(_ suite: TestSuite) {
         let slider = Slider(frame: NSRect(x: 0, y: 0, width: 28, height: 80))
         let strip = NSScrollView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))

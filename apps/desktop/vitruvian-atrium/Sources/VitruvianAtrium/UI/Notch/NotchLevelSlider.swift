@@ -169,10 +169,12 @@ private final class NotchLevelControl: NSSlider, SliderScrollTarget {
     var trackingChanged: ((Bool) -> Void)?
     private var scroll = SliderScroll()
     private var scrolling = false
+    private var pendingScrollEvents: [NSEvent] = []
 
     func cancelScroll() {
         finishScrollEditing()
         scroll = SliderScroll()
+        pendingScrollEvents.removeAll()
     }
 
     private func finishScrollEditing() {
@@ -196,8 +198,13 @@ private final class NotchLevelControl: NSSlider, SliderScrollTarget {
             cancelScroll()
             return SliderScroll.pass(event, from: self)
         }
+        if scroll.verticalOnly != isVertical {
+            cancelScroll()
+            scroll.verticalOnly = isVertical
+        }
         if event.phase.contains(.began) {
             finishScrollEditing()
+            pendingScrollEvents.removeAll(keepingCapacity: true)
             scrolling = true
             trackingChanged?(true)
         }
@@ -207,8 +214,19 @@ private final class NotchLevelControl: NSSlider, SliderScrollTarget {
                 finishScrollEditing()
             }
         }
-        switch scroll.handle(event, current: doubleValue, range: minValue...maxValue) {
-        case .pass: SliderScroll.pass(event, from: self)
+        let outcome = scroll.handle(event, current: doubleValue, range: minValue...maxValue)
+        if scroll.isChoosingAxis {
+            if event.phase.contains(.began) || event.scrollingDeltaX != 0 || event.scrollingDeltaY != 0 {
+                pendingScrollEvents.append(event)
+            }
+            return
+        }
+        // The strip gets the original begin and small deltas in order, even
+        // when the deciding event only moves up.
+        let pending = pendingScrollEvents
+        pendingScrollEvents.removeAll()
+        switch outcome {
+        case .pass: SliderScroll.pass(event, from: self, after: pending)
         case .hold: break
         case .move(let value):
             guard value != doubleValue else { return }
