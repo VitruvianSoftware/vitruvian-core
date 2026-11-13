@@ -36,7 +36,7 @@ spec:
       path: apps/suites/vitruvian-relay/spike/deploy/chart
       helm:
         valueFiles:
-          - $values/gitops/argocd/platform/vitruvian-relay-spike/values.yaml
+          - $values/gitops/argocd/platform/relay-spike/values.yaml
     - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
       targetRevision: main
       ref: values
