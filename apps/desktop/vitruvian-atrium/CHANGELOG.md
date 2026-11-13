@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.91.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.90.1...vitruvian-atrium-v3.91.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 34, Quit apps window, all-windows switcher shortcut, event countdown lead and 10 more ([#4708](https://github.com/VitruvianSoftware/vitruvian-core/issues/4708)) ([491ba91](https://github.com/VitruvianSoftware/vitruvian-core/commit/491ba91e0ab58a7dc0e6fb0e5d9a1f07cb711f70))
+
 ## [3.90.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.90.0...vitruvian-atrium-v3.90.1) (2026-11-13)
 
 
