@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.38](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.37...android-remote-v0.1.38) (2026-11-13)
+
+
+### Bug Fixes
+
+* **vitruvian-atrium:** keep the bundle id com.vitruviansoftware.vitruvian through the rename ([#4668](https://github.com/VitruvianSoftware/vitruvian-core/issues/4668)) ([6438d01](https://github.com/VitruvianSoftware/vitruvian-core/commit/6438d01ac2a243b361f1aa34cec2fecb7970ee4e))
+
 ## [0.1.37](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.36...android-remote-v0.1.37) (2026-11-12)
 
 
