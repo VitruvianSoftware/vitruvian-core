@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.98.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.97.0...vitruvian-atrium-v3.98.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 41, switcher under secure input, Trash leftovers review and 2 more ([#4732](https://github.com/VitruvianSoftware/vitruvian-core/issues/4732)) ([1f8e46d](https://github.com/VitruvianSoftware/vitruvian-core/commit/1f8e46d9459ec3ddbec20cfa5770c67cdfc25bf6))
+
 ## [3.97.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.96.0...vitruvian-atrium-v3.97.0) (2026-11-13)
 
 
