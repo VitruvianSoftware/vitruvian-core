@@ -86,6 +86,21 @@ cc_library(
     target_compatible_with = MACOS_ONLY,
 )
 
+# Core Audio process taps created through Objective-C, so the executable
+# links no tap symbol that early macOS 14 lacks (see the header).
+swift_interop_hint(
+    name = "CoreAudioTapCompat_interop",
+    module_map = "Sources/CoreAudioTapCompat/module.modulemap",
+    module_name = "CoreAudioTapCompat",
+)
+
+cc_library(
+    name = "CoreAudioTapCompat",
+    hdrs = glob(["Sources/CoreAudioTapCompat/include/*.h"]),
+    aspect_hints = [":CoreAudioTapCompat_interop"],
+    target_compatible_with = MACOS_ONLY,
+)
+
 # The GIF export's indexed-frame encoder: upstream's wrapper and the vendored
 # cgif raw encoder (MIT, Sources/RecorderGIFCodec/vendor/cgif), compiled as
 # build.sh compiles them. Unlike the two above it has sources of its own.
@@ -186,6 +201,7 @@ swift_library(
     module_name = "VitruvianAtriumServices",
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
+        ":CoreAudioTapCompat",
         ":FanControlKit",
         ":HIDEventSystem",
         ":RecorderGIFCodec",
@@ -269,6 +285,7 @@ swift_library(
     module_name = "VitruvianAtrium",
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
+        ":CoreAudioTapCompat",
         ":FanControlKit",
         ":HIDEventSystem",
         ":RecorderGIFCodec",
@@ -293,6 +310,7 @@ swift_library(
     module_name = "VitruvianAtrium",
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
+        ":CoreAudioTapCompat",
         ":FanControlKit",
         ":HIDEventSystem",
         ":RecorderGIFCodec",
