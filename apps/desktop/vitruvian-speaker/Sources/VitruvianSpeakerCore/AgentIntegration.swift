@@ -101,7 +101,7 @@ public enum CodingAgent: String, CaseIterable, Sendable {
     /// identical to what the google-home skill documents so existing
     /// setups are recognised.
     public static let broadcastInstruction = """
-    - Follow the `vitruvian-speaker-broadcast` skill: Accompany top-level conversational responses to the user with a concise spoken broadcast (1-2 sentences) by executing the CLI tool `speaker-broadcast "<summary>"` (never run `speaker-broadcast` from a background subagent or a delegated `claude -p` helper call). Always use the CLI rather than manual `home_mcp` calls with device IDs, because `speaker-broadcast` dynamically resolves the live `default_target` from `~/.gemini/speaker_broadcast.json`, checks quiet hours, and verifies enabled status on every execution without caching state. When the user asks to turn speaker broadcasts on/off or change the target room, update `~/.gemini/speaker_broadcast.json` (or run `speaker-broadcast --set-target <room>`) and confirm.
+    - Follow the `vitruvian-speaker-broadcast` skill: Accompany top-level conversational responses to the user with a concise spoken broadcast (1-2 sentences) by executing the CLI tool `speaker-broadcast "<summary>"` (never run `speaker-broadcast` from a background subagent or a delegated `claude -p` helper call). Always use the CLI rather than manual `home_mcp` calls with device IDs, because `speaker-broadcast` dynamically resolves the live default speaker from the active Vitruvian Speaker settings, checks quiet hours, and verifies enabled status on every execution without caching state. When the user asks to turn speaker broadcasts on/off or change the target room, run `speaker-broadcast --on`, `speaker-broadcast --off`, or `speaker-broadcast --set-target <room>` and confirm.
     """
 
     /// The file (Claude Code) or folder (Antigravity's plugin) or file
@@ -362,7 +362,58 @@ public struct AgentIntegration {
     /// True when the text tells an agent to broadcast on its own (the
     /// prompt-driven setup that predates hooks).
     public static func mentionsBroadcastInstruction(_ text: String) -> Bool {
-        text.contains("speaker_broadcast.json") || text.contains("vitruvian-speaker-broadcast") || text.contains("speaker-broadcast")
+        text.contains("speaker_broadcast.json")
+            || text.contains("vitruvian-speaker-broadcast")
+            || text.contains("home-speaker-broadcast")
+            || text.contains("speaker-broadcast")
+    }
+
+    /// True when a single line is a legacy Vitruvian/Home Speaker broadcast
+    /// instruction that should be migrated in-place to `broadcastInstruction`.
+    public static func isLegacyBroadcastInstructionLine(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != CodingAgent.broadcastInstruction else { return false }
+        if trimmed.hasPrefix("- Follow the `vitruvian-speaker-broadcast` skill:")
+            || trimmed.hasPrefix("- Follow the `home-speaker-broadcast` skill:") {
+            return true
+        }
+        return trimmed.contains("speaker_broadcast.json") && trimmed.contains("speaker-broadcast")
+    }
+
+    /// Replaces legacy broadcast instruction line(s) in `text` with
+    /// `CodingAgent.broadcastInstruction` when stale wording is present;
+    /// returns `nil` if no legacy line needed updating.
+    public static func migratingBroadcastInstruction(in text: String) -> String? {
+        let endsWithNewline = text.hasSuffix("\n")
+        let rawLines = text.components(separatedBy: "\n")
+        let lines = (endsWithNewline && rawLines.last == "") ? Array(rawLines.dropLast()) : rawLines
+
+        var replaced = false
+        var didChange = false
+        var out: [String] = []
+        out.reserveCapacity(lines.count)
+
+        for line in lines {
+            if isLegacyBroadcastInstructionLine(line) {
+                didChange = true
+                if !replaced {
+                    out.append(CodingAgent.broadcastInstruction)
+                    replaced = true
+                }
+            } else if line.trimmingCharacters(in: .whitespacesAndNewlines) == CodingAgent.broadcastInstruction {
+                if !replaced {
+                    out.append(line)
+                    replaced = true
+                } else {
+                    didChange = true
+                }
+            } else {
+                out.append(line)
+            }
+        }
+
+        guard didChange else { return nil }
+        return out.joined(separator: "\n") + (endsWithNewline || !out.isEmpty ? "\n" : "")
     }
 
     // MARK: Status
@@ -458,10 +509,15 @@ public struct AgentIntegration {
     }
 
     /// Appends the broadcast instruction to the agent's instruction file,
-    /// creating it if needed. No-op when the file already has it.
+    /// creating it if needed, or updates a legacy instruction line in-place.
+    /// No-op when the file already mentions broadcasting with current text.
     public func addBroadcastInstruction(for agent: CodingAgent) throws {
         let url = agent.primaryInstructionFile(home: home)
         let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        if let migrated = Self.migratingBroadcastInstruction(in: existing) {
+            try migrated.write(to: url, atomically: true, encoding: .utf8)
+            return
+        }
         guard !Self.mentionsBroadcastInstruction(existing) else { return }
         let dir = url.deletingLastPathComponent()
         if !fileManager.fileExists(atPath: dir.path) {
@@ -471,6 +527,23 @@ public struct AgentIntegration {
         if !text.isEmpty && !text.hasSuffix("\n") { text += "\n" }
         text += CodingAgent.broadcastInstruction + "\n"
         try text.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    /// Updates any existing agent instruction file under `home` that still carries
+    /// a legacy Vitruvian/Home Speaker broadcast instruction line, without creating
+    /// new files or modifying custom wording.
+    public func migrateBroadcastInstructions() {
+        var seen: Set<URL> = []
+        for agent in CodingAgent.allCases {
+            for url in agent.instructionFiles(home: home) where seen.insert(url.standardizedFileURL).inserted {
+                guard fileManager.fileExists(atPath: url.path),
+                      let text = try? String(contentsOf: url, encoding: .utf8),
+                      let updated = Self.migratingBroadcastInstruction(in: text) else {
+                    continue
+                }
+                try? updated.write(to: url, atomically: true, encoding: .utf8)
+            }
+        }
     }
 
     public func hookStatus(for agent: CodingAgent = .claudeCode) -> HookStatus { status(of: agent).hook }

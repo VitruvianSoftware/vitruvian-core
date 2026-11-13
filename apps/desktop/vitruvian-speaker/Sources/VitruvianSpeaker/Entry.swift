@@ -32,6 +32,11 @@ import VitruvianSpeakerCore
 enum Entry {
     static func main() {
         let arguments = Array(CommandLine.arguments.dropFirst())
+        if BroadcastCommand.isInvocation(argv0: CommandLine.arguments.first) {
+            MainActor.assumeIsolated {
+                BroadcastCommand.run(arguments, engine: .app, parts: AppStartup.commandLineParts())
+            }
+        }
         if VitruvianSpeakerCommandLine.recognizes(arguments) {
             MainActor.assumeIsolated {
                 // The Stop hook and `--announce` stand aside while the

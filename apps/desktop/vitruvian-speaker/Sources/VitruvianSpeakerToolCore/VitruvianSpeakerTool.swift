@@ -1310,12 +1310,20 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
     /// after an update, so the replies are spoken again. When nobody has
     /// chosen (`choice == nil`), a hook that runs another program that is
     /// there is left alone, as is one that is not Vitruvian Speaker's program.
+    private var lastLoggedBroadcastLinkMessage: String?
+
     private func repairStrandedHooks() {
         guard let program = parts.driver.program,
               !OtherDoorPresence.isInTrash(program.path),
               !OtherDoorPresence.isOnTemporaryVolume(program.path) else { return }
         let choice = parts.door?.read()?.chosen
         let integration = AgentIntegration(home: parts.home, executablePath: program.path, bootout: parts.launchctlBootout)
+        integration.migrateBroadcastInstructions()
+        BroadcastCommandLink.ensureInstalled(home: parts.home, targetPath: program.path) { [self] message in
+            guard message != lastLoggedBroadcastLinkMessage else { return }
+            lastLoggedBroadcastLinkMessage = message
+            parts.link.log(message)
+        }
         for agent in CodingAgent.allCases where agent.supportsHook {
             let status = integration.status(of: agent)
             guard case .stale = status.hook, let runs = status.hookProgram, AgentIntegration.isVitruvianSpeakerProgram(runs),
