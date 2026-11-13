@@ -279,9 +279,12 @@ package enum MixerRender {
     package final class AppliedGain {
         fileprivate var value: Float?
 
+        // Spelled out because a default initializer never leaves its module.
+        package init() {}
+
         /// A silent callback breaks continuity with the last rendered block.
         /// Resume at the current gain, including a mute requested in the gap.
-        func reset() {
+        package func reset() {
             value = nil
         }
     }
