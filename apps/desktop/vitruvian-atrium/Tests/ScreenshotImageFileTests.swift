@@ -95,8 +95,13 @@ enum ScreenshotImageFileTests {
             suite.expect(false, "the drag provider advertises the source format or transparent PNG fallback")
             return
         }
-        var finished = false
-        var matches = false
+        // The provider answers on its own queue; the result comes back to
+        // the main thread through a box (Swift 6 forbids sending a captured var).
+        nonisolated final class Delivery: @unchecked Sendable {
+            var finished = false
+            var matches = false
+        }
+        let delivery = Delivery()
         provider.loadInPlaceFileRepresentation(forTypeIdentifier: format.contentType.identifier) { url, inPlace, error in
             let source = url.flatMap { CGImageSourceCreateWithURL($0 as CFURL, nil) }
             let valid = error == nil && url.flatMap { UTType(filenameExtension: $0.pathExtension) } == format.contentType
@@ -106,15 +111,15 @@ enum ScreenshotImageFileTests {
                 try? FileManager.default.removeItem(at: folder)
             }
             DispatchQueue.main.async {
-                matches = valid
-                finished = true
+                delivery.matches = valid
+                delivery.finished = true
             }
         }
         let deadline = Date(timeIntervalSinceNow: 2)
-        while !finished, Date() < deadline {
+        while !delivery.finished, Date() < deadline {
             RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.005))
         }
-        suite.expect(finished && matches, "the drag provider delivers matching bytes and extension for \(format.rawValue)")
+        suite.expect(delivery.finished && delivery.matches, "the drag provider delivers matching bytes and extension for \(format.rawValue)")
     }
 
     private static func transparency(_ suite: TestSuite) {

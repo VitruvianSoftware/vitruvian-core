@@ -370,9 +370,8 @@ package struct ShortcutPreferenceRow: View {
                         ShortcutRecorderButton(shortcut: pendingTakeOver ?? shortcut,
                                                isEnabled: isEnabled,
                                                waitingTitle: l10n.s.shortcutPressKeys,
-                                               emptyTitle: role.supportsClearing && assignedShortcut == nil
-                                                   && pendingTakeOver == nil ? l10n.s.shortcutNone : nil,
-                                               clearAction: role.supportsClearing ? clear : nil,
+                                               emptyTitle: emptyTitle,
+                                               clearAction: clearAction,
                                                notCapturedAction: { errorText = l10n.s.shortcutNotCaptured },
                                                recordingChanged: { recording in
                                                    isRecording = recording
@@ -405,7 +404,7 @@ package struct ShortcutPreferenceRow: View {
                                 .accessibilityHidden(true)
                         }
                         Button(l10n.s.shortcutReset, action: reset)
-                        .disabled(!isEnabled || (assignedShortcut == role.defaultShortcut))
+                        .disabled(!isEnabled || resetsNothing)
                     }
                     if let alternative = superKeyAlternative {
                         Text(String(format: FeatureStrings.shortcuts(l10n.language)
@@ -456,6 +455,22 @@ package struct ShortcutPreferenceRow: View {
 
     private var assignedShortcut: GlobalShortcut? {
         role.assignedShortcut(storedValue: { _ in rawValue })
+    }
+
+    /// Reset would change nothing: the row already holds its default.
+    private var resetsNothing: Bool { assignedShortcut == role.defaultShortcut }
+
+    // Worked out here rather than inline in `body`: inline, the two
+    // optional ternaries left the type checker unable to finish `body`
+    // ("failed to produce diagnostic for expression").
+    private var emptyTitle: String? {
+        guard role.supportsClearing, assignedShortcut == nil, pendingTakeOver == nil else { return nil }
+        return l10n.s.shortcutNone
+    }
+
+    private var clearAction: (() -> Void)? {
+        guard role.supportsClearing else { return nil }
+        return { clear() }
     }
 
     private func clear() {

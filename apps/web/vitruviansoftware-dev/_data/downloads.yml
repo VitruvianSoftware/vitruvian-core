@@ -28,7 +28,7 @@ categories:
     items:
       - id: vitruvian-code
         name: Vitruvian Code
-        version: "1.35.0"
+        version: "1.35.1"
         summary: >-
           macOS menu bar companion for AI coding assistants. Bridges Claude Code,
           Gemini Antigravity, and local LLMs to your phone via Telegram, with
@@ -38,20 +38,20 @@ categories:
         brew_cask: vitruviansoftware/tap/nexus-agent
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.35.0/VitruvianCode-1.35.0-macos.dmg
-            size: 10.1 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.35.1/VitruvianCode-1.35.1-macos.dmg
+            size: 10.0 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.35.0/VitruvianCode-1.35.0-arm64.dmg
-            size: 6.6 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.35.1/VitruvianCode-1.35.1-arm64.dmg
+            size: 6.5 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.35.0/VitruvianCode-1.35.0-x86_64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.35.1/VitruvianCode-1.35.1-x86_64.dmg
             size: 6.7 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.35.0/VitruvianCode-1.35.0-macos.zip
-            size: 8.9 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.35.1/VitruvianCode-1.35.1-macos.zip
+            size: 8.8 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-code/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-code
@@ -60,7 +60,7 @@ categories:
 
       - id: vitruvian-atrium
         name: Vitruvian Atrium
-        version: "3.89.0"
+        version: "3.91.0"
         summary: >-
           The flagship desktop control hub for Vitruvian. Orchestrates AI coding sessions,
           multi-agent workspaces, live status tracking, and terminal integration from the macOS menu bar.
@@ -68,20 +68,20 @@ categories:
         brew_cask: vitruviansoftware/tap/vitruvian-atrium
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.89.0/Vitruvian-3.89.0-universal.dmg
-            size: 83.7 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.91.0/VitruvianAtrium-3.91.0-universal.dmg
+            size: 84.2 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.89.0/Vitruvian-3.89.0-arm64.dmg
-            size: 44.2 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.91.0/VitruvianAtrium-3.91.0-arm64.dmg
+            size: 44.5 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.89.0/Vitruvian-3.89.0-x86_64.dmg
-            size: 45.6 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.91.0/VitruvianAtrium-3.91.0-x86_64.dmg
+            size: 45.9 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.89.0/Vitruvian-3.89.0-universal.zip
-            size: 83.8 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.91.0/VitruvianAtrium-3.91.0-universal.zip
+            size: 84.3 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-atrium
@@ -90,7 +90,7 @@ categories:
 
       - id: vitruvian-speaker
         name: Vitruvian Speaker
-        version: "1.42.0"
+        version: "1.42.1"
         summary: >-
           A macOS menu bar app that announces agent summaries, chat notifications, and spoken
           briefings aloud on Google Home, Nest speakers, or local system speech synthesis with quiet hours.
@@ -98,19 +98,19 @@ categories:
         brew_cask: vitruviansoftware/tap/vitruvian-speaker
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.42.0/VitruvianSpeaker-1.42.0-universal.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.42.1/VitruvianSpeaker-1.42.1-universal.dmg
             size: 5.7 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.42.0/VitruvianSpeaker-1.42.0-arm64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.42.1/VitruvianSpeaker-1.42.1-arm64.dmg
             size: 3.8 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.42.0/VitruvianSpeaker-1.42.0-x86_64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.42.1/VitruvianSpeaker-1.42.1-x86_64.dmg
             size: 4.0 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.42.0/VitruvianSpeaker-1.42.0-universal.zip
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.42.1/VitruvianSpeaker-1.42.1-universal.zip
             size: 5.7 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-speaker
@@ -120,7 +120,7 @@ categories:
 
       - id: vitruvian-courier
         name: Vitruvian Courier
-        version: "0.3.18"
+        version: "0.3.19"
         summary: >-
           Every chat app in one inbox, on this Mac. A native macOS app that brings
           your messaging accounts into one window, signed with Developer ID and notarized.
@@ -128,19 +128,19 @@ categories:
         brew_cask: vitruviansoftware/tap/vitruvian-courier
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.18/VitruvianCourier-0.3.18-universal.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.19/VitruvianCourier-0.3.19-universal.dmg
             size: 150.0 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.18/VitruvianCourier-0.3.18-arm64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.19/VitruvianCourier-0.3.19-arm64.dmg
             size: 72.7 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.18/VitruvianCourier-0.3.18-x86_64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.19/VitruvianCourier-0.3.19-x86_64.dmg
             size: 78.2 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.18/VitruvianCourier-0.3.18-universal.zip
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.19/VitruvianCourier-0.3.19-universal.zip
             size: 150.7 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-courier
@@ -152,16 +152,16 @@ categories:
     items:
       - id: android-remote
         name: Vitruvian Remote
-        version: "0.1.37"
+        version: "0.1.39"
         summary: >-
           Android companion app for Vitruvian. Answer agent permission prompts, monitor
           coding sessions, and review status updates directly from your phone.
         platforms: ["Android (arm64-v8a, x86_64)"]
         downloads:
           - label: Android APK
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.37/VitruvianRemote-0.1.37.apk
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.39/VitruvianRemote-0.1.39.apk
             size: 8.5 MB
-        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/android-remote-v0.1.37
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/android-remote-v0.1.39
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote
         extensions_url: /ai/#eco-vitruvian-remote
         extensions_label: Companion Extensions

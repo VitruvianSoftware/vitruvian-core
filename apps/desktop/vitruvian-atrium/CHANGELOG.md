@@ -4,6 +4,34 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.94.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.93.0...vitruvian-atrium-v3.94.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 37, read-only XDG settings, scrolling screenshots, GPU GIF export and 12 more ([#4719](https://github.com/VitruvianSoftware/vitruvian-core/issues/4719)) ([6203948](https://github.com/VitruvianSoftware/vitruvian-core/commit/620394878d89f8ffab56a4c5f355f8902ec660ee))
+
+## [3.93.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.92.0...vitruvian-atrium-v3.93.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 36, GIF export controls, software dimming for DDC monitors, large-image resize and 12 more ([#4715](https://github.com/VitruvianSoftware/vitruvian-core/issues/4715)) ([74ebd56](https://github.com/VitruvianSoftware/vitruvian-core/commit/74ebd565273b57b05d967bb6f6f9b91dc4c18006))
+
+## [3.92.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.91.0...vitruvian-atrium-v3.92.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 35, Mic Mute zeroes input gain, mixer volume slides, display stays off after wake and 12 more ([#4710](https://github.com/VitruvianSoftware/vitruvian-core/issues/4710)) ([2955e5d](https://github.com/VitruvianSoftware/vitruvian-core/commit/2955e5dc971383e04d58c667487c9521a3ad08ea))
+
+## [3.91.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.90.1...vitruvian-atrium-v3.91.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 34, Quit apps window, all-windows switcher shortcut, event countdown lead and 10 more ([#4708](https://github.com/VitruvianSoftware/vitruvian-core/issues/4708)) ([491ba91](https://github.com/VitruvianSoftware/vitruvian-core/commit/491ba91e0ab58a7dc0e6fb0e5d9a1f07cb711f70))
+
 ## [3.90.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.90.0...vitruvian-atrium-v3.90.1) (2026-11-13)
 
 
