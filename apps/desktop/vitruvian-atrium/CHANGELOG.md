@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.95.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.94.0...vitruvian-atrium-v3.95.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 38, settings file after migrations, locked-wake display, mixed feet and inches and 9 more ([#4723](https://github.com/VitruvianSoftware/vitruvian-core/issues/4723)) ([4896ae0](https://github.com/VitruvianSoftware/vitruvian-core/commit/4896ae0df884a3fc74446e9fa368d9438a52016a))
+
 ## [3.94.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.93.0...vitruvian-atrium-v3.94.0) (2026-11-13)
 
 
