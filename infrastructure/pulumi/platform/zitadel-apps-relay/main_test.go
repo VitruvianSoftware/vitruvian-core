@@ -26,7 +26,7 @@ import (
 )
 
 func TestClientSpecsDefault(t *testing.T) {
-	specs, err := clientSpecs("")
+	specs, err := clientSpecs("", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestClientSpecsDefault(t *testing.T) {
 }
 
 func TestClientSpecsChatGPT(t *testing.T) {
-	specs, err := clientSpecs(" https://chatgpt.com/connector/oauth/abc123 ,https://chatgpt.com/connector_platform_oauth_redirect")
+	specs, err := clientSpecs(" https://chatgpt.com/connector/oauth/abc123 ,https://chatgpt.com/connector_platform_oauth_redirect", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +63,33 @@ func TestClientSpecsChatGPT(t *testing.T) {
 	want := []string{"https://chatgpt.com/connector/oauth/abc123", "https://chatgpt.com/connector_platform_oauth_redirect"}
 	if !reflect.DeepEqual(specs[2].RedirectURIs, want) {
 		t.Errorf("got %v want %v", specs[2].RedirectURIs, want)
+	}
+}
+
+func TestClientSpecsGemini(t *testing.T) {
+	cb := "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-b3b5dc02c05b1a90254344dc"
+	specs, err := clientSpecs("", " "+cb+" ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(specs) != 3 || specs[2].Key != "gemini" {
+		t.Fatalf("want a gemini client third, got %+v", specs)
+	}
+	g := specs[2]
+	if !reflect.DeepEqual(g.RedirectURIs, []string{cb}) {
+		t.Errorf("got %v want %v", g.RedirectURIs, []string{cb})
+	}
+	// Gemini's connector form sends a client secret; the others must stay public.
+	if g.AuthMethod != authPost {
+		t.Errorf("gemini must be confidential (POST), got %s", g.AuthMethod)
+	}
+	for _, s := range specs[:2] {
+		if s.AuthMethod != authNone {
+			t.Errorf("%s must stay public, got %s", s.Key, s.AuthMethod)
+		}
+	}
+	if _, err := clientSpecs("", "https://chatgpt.com/connector/oauth/x"); err == nil {
+		t.Error("a gemini callback on another host must be refused")
 	}
 }
 
