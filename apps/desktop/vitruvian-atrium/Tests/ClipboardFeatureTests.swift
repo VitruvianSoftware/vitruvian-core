@@ -679,6 +679,38 @@ enum ClipboardFeatureTests {
                 && ClipboardHistoryWindowSizing.minimumSize(preview: true)
                     == NSSize(width: 840, height: 380),
                "the narrowest clipboard window leaves room for batch actions in both layouts")
+
+        // MARK: Clipboard history window position
+
+        let placementScreen = CGRect(x: 0, y: 25, width: 1512, height: 920)
+        let otherDisplay = NSRect(x: -1440, y: 0, width: 1440, height: 900)
+        let savedOrigin = NSPoint(x: -1100, y: 180)
+        let restored = ClipboardHistoryWindowPlacement.restoredFrame(
+            origin: savedOrigin, visibleFrames: [placementScreen, otherDisplay],
+            size: { ClipboardHistoryWindowSizing.contentSize(preview: false,
+                        savedWidth: 700, savedHeight: 500, visibleFrame: $0) })
+        suite.expect(restored == NSRect(origin: savedOrigin, size: NSSize(width: 700, height: 500)),
+               "a list reopens on its chosen display even when the pointer is elsewhere")
+        suite.expect(ClipboardHistoryWindowPlacement.restoredFrame(
+            origin: placementScreen.origin, visibleFrames: [placementScreen],
+            size: { _ in compactSize }) == NSRect(origin: placementScreen.origin, size: compactSize),
+               "a chosen position against the display edges is retained")
+        suite.expect(ClipboardHistoryWindowPlacement.restoredFrame(
+            origin: NSPoint(x: -20, y: 180), visibleFrames: [placementScreen],
+            size: { _ in compactSize }) == NSRect(x: 0, y: 180, width: 560, height: 420),
+               "a partly offscreen window stays on its display with its frame brought into view")
+        suite.expect(ClipboardHistoryWindowPlacement.restoredFrame(
+            origin: savedOrigin, visibleFrames: [placementScreen], size: { _ in compactSize }) == nil
+            && ClipboardHistoryWindowPlacement.restoredFrame(
+                origin: NSPoint(x: CGFloat.infinity, y: 100), visibleFrames: [placementScreen],
+                size: { _ in compactSize }) == nil,
+               "a disconnected display or invalid position uses the default placement")
+        suite.expect(ClipboardHistoryWindowPlacement.restoredFrame(
+            origin: NSPoint(x: 600, y: 180), visibleFrames: [placementScreen],
+            size: { ClipboardHistoryWindowSizing.contentSize(preview: true,
+                        savedWidth: 700, savedHeight: 500, visibleFrame: $0) })
+                == NSRect(x: 532, y: 180, width: 980, height: 580),
+               "preview expansion keeps the chosen display and brings the larger window into view")
         let taller = ClipboardHistoryWindowSizing.contentSize(
             preview: true, savedWidth: 700, savedHeight: 640, visibleFrame: desktop)
         suite.expect(taller == NSSize(width: 980, height: 720)

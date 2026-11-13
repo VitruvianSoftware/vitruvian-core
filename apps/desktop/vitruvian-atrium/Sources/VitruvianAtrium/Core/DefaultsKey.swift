@@ -117,6 +117,7 @@ package enum DefaultsKey {
     package static let switcherShowShortcutHints = "switcherShowShortcutHints" // show the shortcut bar under the large-icon switcher
     package static let switcherAppearanceDelay = "switcherAppearanceDelay" // milliseconds the shortcut must be held before the panel appears (SwitcherSupport.appearanceDelayMillisecondsRange)
     package static let switcherInstantSelection = "switcherInstantSelection" // skip selection and reveal animations while browsing
+    package static let switcherIgnoreHoverSelection = "switcherIgnoreHoverSelection" // pointer movement does not change the highlight; click still commits
     package static let switcherScreenPlacement = "switcherScreenPlacement" // SwitcherScreenPlacement raw value: which display the panel opens on
     package static let switcherCurrentDisplayOnly = "switcherCurrentDisplayOnly" // list only windows on the display under the pointer (issue #1391)
     package static let switcherMaxColumns = "switcherMaxColumns" // 0 = Auto, else the most items per row (SwitcherSupport.maxColumnsRange)
@@ -351,6 +352,7 @@ package enum DefaultsKey {
     package static let panelControlRadialMenu = "panelControlRadialMenu"
     package static let panelControlMouseButtonShortcuts = "panelControlMouseButtonShortcuts"
     package static let panelControlMouseAcceleration = "panelControlMouseAcceleration"
+    package static let panelControlSmoothScroll = "panelControlSmoothScroll"
     package static let panelControlLinearScroll = "panelControlLinearScroll"
     package static let panelControlMouseClickDebounce = "panelControlMouseClickDebounce"
     package static let panelControlSpacesOrder = "panelControlSpacesOrder"
@@ -574,6 +576,8 @@ package enum DefaultsKey {
     package static let clipboardHistoryLayout = "clipboardHistoryLayout" // cards | list, how the history window shows entries
     package static let clipboardHistoryWindowWidth = "clipboardHistoryWindowWidth" // the list window's chosen size
     package static let clipboardHistoryWindowHeight = "clipboardHistoryWindowHeight"
+    package static let clipboardHistoryWindowX = "clipboardHistoryWindowX" // the list window's chosen origin; unset until it is moved
+    package static let clipboardHistoryWindowY = "clipboardHistoryWindowY"
     package static let clipboardHistoryMenuBarPreview = "clipboardHistoryMenuBarPreview" // show latest copy next to the menu bar icon
     package static let clipboardHistoryMenuBarPreviewLength = "clipboardHistoryMenuBarPreviewLength" // characters shown before truncating
 
@@ -768,6 +772,7 @@ package enum DefaultsKey {
     package static let pointerDisplayEnabled = "pointerDisplayEnabled"
     package static let pointerDisplayShortcut = "pointerDisplayShortcut"
     package static let windowEdgeSnapEnabled = "windowEdgeSnapEnabled"
+    package static let windowEdgeSnapRestoreOnDrag = "windowEdgeSnapRestoreOnDrag" // dragging a snapped window away restores its earlier size
     package static let windowEdgeSnapDisabledZones = "windowEdgeSnapDisabledZones" // comma-separated visual zone ids
     package static let windowEdgeSnapZoneActions = "windowEdgeSnapZoneActions" // zone=action entries, + between split areas
     package static let windowGestureEnabled = "windowGestureEnabled"

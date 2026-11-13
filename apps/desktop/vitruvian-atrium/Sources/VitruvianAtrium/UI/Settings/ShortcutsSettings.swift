@@ -18,6 +18,8 @@ package struct ShortcutsSettings: View {
     /// tool command's row watches its own shortcut.
     @ObservedObject private var registry = ToolRegistry.shared
     @AppStorage(Preferences.keyboardBrightnessShortcutsEnabled) private var keyboardBrightnessShortcutsEnabled: Bool
+    @AppStorage(Preferences.keepAwakeShortcut) private var keepAwakeShortcut: String
+    @AppStorage(Preferences.snippetLibraryShortcut) private var snippetLibraryShortcut: String
     /// Keyed by group too: brightness has a row in two groups, and each opens on its own.
     @State private var expandedFeatures: [FeatureGroup: Set<AppFeature>] = [.tools: [.screenshot]]
     @State private var showsAppShortcuts = false
@@ -235,7 +237,7 @@ package struct ShortcutsSettings: View {
                          reservesClearButtonSpace: Bool = false) -> some View {
         let title = role.title(l10n.s)
         let featureTitle = role.feature.hubTitle(l10n.s, hub: hub)
-        let active = role.requiredEnableKeys.allSatisfy {
+        let active = hasAssignedShortcut(role) && role.requiredEnableKeys.allSatisfy {
             UserDefaults.standard.bool(forKey: $0)
         }
         return ShortcutPreferenceRow(
@@ -289,8 +291,19 @@ package struct ShortcutsSettings: View {
             return true
         }
         return roles.contains { role in
-            role.requiredEnableKeys.allSatisfy { UserDefaults.standard.bool(forKey: $0) }
+            hasAssignedShortcut(role)
+                && role.requiredEnableKeys.allSatisfy { UserDefaults.standard.bool(forKey: $0) }
         }
+    }
+
+    private func hasAssignedShortcut(_ role: GlobalShortcutRole) -> Bool {
+        role.assignedShortcut(storedValue: { key in
+            switch key {
+            case DefaultsKey.keepAwakeShortcut: return keepAwakeShortcut
+            case DefaultsKey.snippetLibraryShortcut: return snippetLibraryShortcut
+            default: return UserDefaults.standard.string(forKey: key)
+            }
+        }) != nil
     }
 
     private func groupTitle(_ group: FeatureGroup) -> String {

@@ -11,7 +11,7 @@ import VitruvianAtriumDesign
 
 /// One display the brightness feature can talk to.
 package struct BrightnessDisplay: Identifiable, Equatable {
-    package enum Method: Equatable {
+    package enum Method: Equatable, Sendable {
         /// The system brightness pipeline: the built-in panel and Apple
         /// external displays.
         case system
@@ -538,7 +538,7 @@ package final class BrightnessService: ObservableObject {
     /// waiting to be added to the step that read commits. An entry existing at
     /// all means a read is in flight for that display. Main thread only, like
     /// the key presses that fill it (issue #370).
-    private var ddcPendingSteps: [CGDirectDisplayID: Double] = [:]
+    private var ddcPendingSteps: [CGDirectDisplayID: (request: UUID, delta: Double)] = [:]
     nonisolated(unsafe) private var drainScheduled = false
     /// Session memory for write-only monitors, so their slider does not jump
     /// back to a placeholder between panel openings. Each value remembers
@@ -1898,7 +1898,8 @@ package final class BrightnessService: ObservableObject {
                       delta: Double,
                       showOSD: Bool) {
         focusKeyDisplay(displayID)
-        let cached = displays.first(where: { $0.id == displayID })?.brightness
+        let display = displays.first(where: { $0.id == displayID })
+        let cached = display?.brightness
         if method == .system {
             guard let current = currentSystemBrightness(for: displayID, fallback: cached) else { return }
             commitStep(from: current, delta: delta, to: displayID, method: method, showOSD: showOSD)
@@ -1908,6 +1909,13 @@ package final class BrightnessService: ObservableObject {
         let known = levelKnownAt[displayID]
         let route = routes[displayID]
         stateLock.unlock()
+        // A route can change before its new slider scale reaches the main
+        // thread. Wait for that publication instead of stepping the old scale.
+        guard route?.method == method, display?.method == method else { return }
+        // The preference changes before the queued rebuild replaces DDC.
+        // Keys in that gap must not start another hardware-scale step.
+        if route?.method == .ddc, let pathKey = route?.ddcPathKey,
+           forcedSoftwarePaths().contains(pathKey) { return }
         let fresh = BrightnessSupport.trustsRememberedLevel(lastKnownAt: known, now: environment.now(),
                                                             window: Self.levelTrustWindow)
         // Gamma dimming is this app's own doing, so the remembered value is
@@ -1923,13 +1931,15 @@ package final class BrightnessService: ObservableObject {
         // that read is about to commit. Starting a second read instead would
         // begin from the same value the first press has not written yet, and
         // two taps would move the monitor a single step.
-        if ddcPendingSteps[displayID] != nil {
-            ddcPendingSteps[displayID, default: 0] += delta
+        if var pending = ddcPendingSteps[displayID] {
+            pending.delta += delta
+            ddcPendingSteps[displayID] = pending
             return
         }
-        ddcPendingSteps[displayID] = 0
+        let request = UUID()
+        ddcPendingSteps[displayID] = (request, 0)
         // What the read is checked against, without the route's IOKit service.
-        let routeKey = route.ddcPathKey, routeDims = route.extendedDimming
+        let routeKey = route.ddcPathKey, routeDims = route.extendedDimming, routeMethod = route.method
         // The IOKit service is used on the work queue alone, by this read.
         nonisolated(unsafe) let channel = service
         // Reading a monitor takes long enough to be felt, so it happens off
@@ -1942,7 +1952,8 @@ package final class BrightnessService: ObservableObject {
                 // answer before the step is queued, so an external adjustment
                 // cannot make a necessary write look like a duplicate.
                 self.stateLock.lock()
-                if self.routes[displayID]?.ddcPathKey == routeKey,
+                if self.routes[displayID]?.method == routeMethod,
+                   self.routes[displayID]?.ddcPathKey == routeKey,
                    self.routes[displayID]?.extendedDimming == routeDims {
                     self.routes[displayID]?.lastDDCValue = value
                 }
@@ -1953,7 +1964,8 @@ package final class BrightnessService: ObservableObject {
                     self.rememberWriteOnlyDDCPath(routeKey)
                 }
                 self.stateLock.lock()
-                if self.routes[displayID]?.ddcPathKey == routeKey {
+                if self.routes[displayID]?.method == routeMethod,
+                   self.routes[displayID]?.ddcPathKey == routeKey {
                     self.routes[displayID]?.ddcReadable = false
                     self.routes[displayID]?.lastDDCValue = nil
                 }
@@ -1961,11 +1973,16 @@ package final class BrightnessService: ObservableObject {
                 Self.log.log("ddc reads stopped answering for display \(displayID); future steps will write only")
             }
             self.environment.main {
-                let queued = self.ddcPendingSteps.removeValue(forKey: displayID) ?? 0
+                // A dimming choice cancels the old read even before the
+                // rebuild runs. Its late reply must not consume a newer read.
+                guard self.ddcPendingSteps[displayID]?.request == request,
+                      let pending = self.ddcPendingSteps.removeValue(forKey: displayID) else { return }
+                let queued = pending.delta
                 var current = cached
                 self.stateLock.lock()
                 let superseded = self.levelKnownAt[displayID] != known
-                let routeChanged = self.routes[displayID]?.ddcPathKey != routeKey
+                let routeChanged = self.routes[displayID]?.method != routeMethod
+                    || self.routes[displayID]?.ddcPathKey != routeKey
                     || self.routes[displayID]?.extendedDimming != routeDims
                 self.stateLock.unlock()
                 guard !routeChanged else { return }
@@ -3001,6 +3018,7 @@ package final class BrightnessService: ObservableObject {
         }
         stateLock.unlock()
         guard let pathKey else { return }
+        ddcPendingSteps.removeValue(forKey: id)
         let defaults = environment.defaults
         let stored = defaults.stringArray(forKey: DefaultsKey.brightnessExtendedDimmingPaths) ?? []
         let updated = BrightnessSupport.updatedWriteOnlyDDCPaths(
@@ -3029,8 +3047,12 @@ package final class BrightnessService: ObservableObject {
     package func setSoftwareDimmingPreferred(_ preferred: Bool, for id: CGDirectDisplayID) {
         stateLock.lock()
         let pathKey = routes[id]?.ddcPathKey
+        if pathKey != nil {
+            pendingLevels.removeValue(forKey: id)
+        }
         stateLock.unlock()
         guard let pathKey else { return }
+        ddcPendingSteps.removeValue(forKey: id)
         let defaults = environment.defaults
         let stored = defaults.stringArray(forKey: DefaultsKey.brightnessForcedSoftwarePaths) ?? []
         let updated = BrightnessSupport.updatedWriteOnlyDDCPaths(

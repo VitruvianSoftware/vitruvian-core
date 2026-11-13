@@ -382,6 +382,7 @@ if (( TEST )); then
         Sources/VitruvianAtrium/Services/Recorder/RecorderWriter.swift
         Sources/VitruvianAtrium/Services/Recorder/RecorderCaptureEngine.swift
         Sources/VitruvianAtrium/Core/RecorderExportStrings.swift
+        Sources/VitruvianAtrium/Core/RecorderExportFormatStrings.swift
         Sources/VitruvianAtrium/Services/Recorder/RecorderComposer.swift
         Sources/VitruvianAtrium/Services/Recorder/RecorderComposerPlan.swift
         Sources/VitruvianAtrium/Services/Recorder/RecorderCursorSprite.swift
@@ -506,6 +507,9 @@ if (( TEST )); then
         Sources/VitruvianAtrium/Services/QuickTools/ScreenshotCapturePolicy.swift
         Sources/VitruvianAtrium/Core/QuickTools/ScreenshotSupport.swift
         Sources/VitruvianAtrium/Services/QuickTools/ScreenshotCanvasSupport.swift
+        Sources/VitruvianAtrium/Services/QuickTools/ScreenshotImageImport.swift
+        Sources/VitruvianAtrium/Services/Media/MediaImageProcessing.swift
+        Sources/VitruvianAtrium/Services/QuickTools/ScreenshotImageFile.swift
         Sources/VitruvianAtrium/UI/Settings/ScreenCaptureToolPicker.swift
         Sources/VitruvianAtrium/UI/Settings/MonitorToken.swift
         Sources/VitruvianAtrium/Services/QuickTools/ScreenshotRenderer.swift

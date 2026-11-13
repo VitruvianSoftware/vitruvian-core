@@ -97,7 +97,46 @@ enum BrightnessStepTests {
         suite.expect(desk.overlays == ["2:0.800"], "a step the island shows leaves the overlay away")
 
         extendedRange(suite)
+        dimmingRouteChanges(suite)
         systemWrites(suite)
+    }
+
+    /// Moving a readable monitor to the picture route by hand (issue #3621)
+    /// cancels what was measured in the monitor's scale: a key step whose
+    /// read is still out, and a slider level not yet written.
+    private static func dimmingRouteChanges(_ suite: TestSuite) {
+        do {
+            let (desk, service, monitor) = monitorDesk()
+            defer { desk.tearDown() }
+            desk.advance(seconds: 5)
+            service.step(2, method: .ddc, delta: -0.1, showOSD: false)
+            suite.expect(desk.work.pending.count == 1, "a step after a pause reads the monitor first")
+            service.setSoftwareDimmingPreferred(true, for: 2)
+            desk.drain()
+            suite.expect(!monitor.written.contains(40)
+                         && !close(Double(desk.display(2).pictureScale ?? 1), 0.4),
+                         "a DDC reply that lands after the picture route was chosen steps neither the monitor nor the picture")
+        }
+        do {
+            let (desk, service, monitor) = monitorDesk()
+            defer { desk.tearDown() }
+            service.setSoftwareDimmingPreferred(true, for: 2)
+            let queued = desk.work.pending.count, writes = monitor.written.count
+            desk.advance(seconds: 5)
+            service.step(2, method: .ddc, delta: -0.1, showOSD: false)
+            suite.expect(desk.work.pending.count == queued && monitor.written.count == writes,
+                         "keys cannot start another DDC step while the picture route's rebuild is queued")
+            desk.drain()
+        }
+        do {
+            let (desk, service, monitor) = monitorDesk()
+            defer { desk.tearDown() }
+            service.setBrightness(0.2, for: 2)
+            service.setSoftwareDimmingPreferred(true, for: 2)
+            desk.drain()
+            suite.expect(!monitor.written.contains(20),
+                         "choosing the picture route drops a monitor level that was not written yet")
+        }
     }
 
     /// A monitor with dimming below its hardware minimum: the lower quarter

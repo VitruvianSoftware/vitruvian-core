@@ -157,6 +157,8 @@ enum TestGroups {
                 ScreenshotPreviewHoverTests.run(suite)
                 ScreenshotWatermarkTests.run(suite)
                 ScreenshotFeatureTests.run(suite)
+                ScreenshotImageImportTests.run(suite)
+                ScreenshotImageFileTests.run(suite)
                 ScreenshotShareCompletionTests.run(suite)
                 ScreenshotScrollingCaptureTests.run(suite)
                 ScreenCaptureToolPickerTests.run(suite)
@@ -166,6 +168,7 @@ enum TestGroups {
                 RecorderFeatureTests.run(suite)
                 RecorderZoomAimingTests.run(suite)
                 RecorderExportSpeedTests.run(suite)
+                RecorderExportControlsTests.run(suite)
                 RecorderExportRenderingTests.run(suite)
             }),
             ("command-bar", {
@@ -293,6 +296,8 @@ enum TestGroups {
             ("uninstaller", {
                 HomebrewOwnershipTests.run(suite)
                 UninstallerFlowTests.run(suite)
+                UninstallerBulkSelectionTests.run(suite)
+                MixedStateCheckboxTests.run(suite)
                 SelfUninstallContract.run(suite)
             }),
             ("force-quit", { ProcessForceQuitTests.run(suite) }),

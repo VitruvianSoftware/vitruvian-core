@@ -736,6 +736,12 @@ package enum SwitcherSupport {
         iconRowMode || simpleMode
     }
 
+    /// Hover follows the pointer unless that is turned off. Click, the keyboard
+    /// and an overflowing icon row's edge slide select through other paths.
+    package static func hoverMovesSelection(ignoreHoverSelection: Bool) -> Bool {
+        !ignoreHoverSelection
+    }
+
     package static func capturesPreviews(simpleMode: Bool) -> Bool {
         !simpleMode
     }
