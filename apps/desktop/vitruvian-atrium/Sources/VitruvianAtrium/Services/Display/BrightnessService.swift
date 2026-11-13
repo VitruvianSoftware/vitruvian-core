@@ -2856,16 +2856,13 @@ package final class BrightnessService: ObservableObject {
                 }
                 let deviceValue = BrightnessSupport.deviceValue(for: value,
                                                                 maximum: route.maximum)
-                let packet = BrightnessSupport.writePacket(
-                    code: BrightnessSupport.luminanceCode,
-                    value: deviceValue)
-                writeSucceeded = ddcSend(to: id, service: service, packet: packet)
+                writeSucceeded = writeDDCLuminance(deviceValue, to: id, route: route, service: service)
             case .software:
                 writeSucceeded = applySoftwareDim(id, value: value)
             }
             Self.log.log("wrote display \(id) route \(String(describing: route.method), privacy: .public) level \(value) ok \(writeSucceeded)")
             if route.method == .ddc, !writeSucceeded, route.ddcReadable == false,
-               let pathKey = route.ddcPathKey {
+               let pathKey = route.ddcPathKey, !forcedSoftwarePaths().contains(pathKey) {
                 forgetWriteOnlyDDCPath(pathKey)
                 environment.main { [weak self] in
                     self?.refresh(force: true)
@@ -2927,23 +2924,27 @@ package final class BrightnessService: ObservableObject {
 
         let deviceValue = BrightnessSupport.deviceValue(for: components.hardware,
                                                         maximum: route.maximum)
-        var hardwareSucceeded = true
         if route.lastDDCValue != deviceValue {
-            let packet = BrightnessSupport.writePacket(code: BrightnessSupport.luminanceCode,
-                                                       value: deviceValue)
-            hardwareSucceeded = ddcSend(to: id, service: service, packet: packet)
-            if hardwareSucceeded {
-                stateLock.lock()
-                if routes[id]?.ddcPathKey == route.ddcPathKey,
-                   routes[id]?.extendedDimming == true {
-                    routes[id]?.lastDDCValue = deviceValue
-                }
-                stateLock.unlock()
+            guard writeDDCLuminance(deviceValue, to: id, route: route, service: service) else { return false }
+            stateLock.lock()
+            if routes[id]?.ddcPathKey == route.ddcPathKey,
+               routes[id]?.extendedDimming == true {
+                routes[id]?.lastDDCValue = deviceValue
             }
+            stateLock.unlock()
         }
-        let pictureSucceeded = components.picture >= 0.999
-            || applySoftwareDim(id, value: components.picture)
-        return hardwareSucceeded && pictureSucceeded
+        return components.picture >= 0.999 || applySoftwareDim(id, value: components.picture)
+    }
+
+    nonisolated private func writeDDCLuminance(_ value: UInt16, to id: CGDirectDisplayID,
+                                               route: Route, service: CFTypeRef) -> Bool {
+        let packet = BrightnessSupport.writePacket(code: BrightnessSupport.luminanceCode, value: value)
+        return ddcSend(to: id, service: service, packet: packet) {
+            // A dequeued write can still be waiting for the bus when the user
+            // switches to software dimming. Recheck before every physical send.
+            guard let path = route.ddcPathKey else { return true }
+            return !self.forcedSoftwarePaths().contains(path)
+        }
     }
 
     // MARK: - Software dimming (work queue)
@@ -3004,7 +3005,10 @@ package final class BrightnessService: ObservableObject {
         ddcCommandEnds[id] = environment.hardware.uptimeMicroseconds()
     }
 
-    nonisolated private func ddcSend(to id: CGDirectDisplayID, service: CFTypeRef, packet: [UInt8]) -> Bool {
+    /// `whileCurrent` is asked before every physical send: a write that
+    /// stopped being wanted while it waited for the bus is dropped.
+    nonisolated private func ddcSend(to id: CGDirectDisplayID, service: CFTypeRef, packet: [UInt8],
+                                     whileCurrent: () -> Bool = { true }) -> Bool {
         guard let write = environment.hardware.writeI2C else { return false }
         paceDDCCommand(for: id)
         defer { recordDDCCommandEnd(for: id) }
@@ -3013,6 +3017,7 @@ package final class BrightnessService: ObservableObject {
         for attempt in 0...BrightnessSupport.retryAttempts {
             for _ in 0..<BrightnessSupport.writeCycles {
                 environment.hardware.pause(BrightnessSupport.writePauseMicroseconds)
+                guard whileCurrent() else { return false }
                 let accepted = write(service, BrightnessSupport.chipAddress,
                                      BrightnessSupport.dataAddress,
                                      &bytes, UInt32(bytes.count)) == KERN_SUCCESS

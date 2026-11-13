@@ -137,6 +137,18 @@ enum BrightnessStepTests {
             suite.expect(!monitor.written.contains(20),
                          "choosing the picture route drops a monitor level that was not written yet")
         }
+        do {
+            let (desk, service, monitor) = monitorDesk()
+            defer { desk.tearDown() }
+            desk.beforePause = {
+                desk.beforePause = nil
+                MainActor.assumeIsolated { service.setSoftwareDimmingPreferred(true, for: 2) }
+            }
+            service.setBrightness(0.2, for: 2)
+            desk.drain()
+            suite.expect(!monitor.written.contains(20),
+                         "a monitor write already waiting on the DDC bus is dropped when the display switches to the picture route")
+        }
     }
 
     /// A monitor with dimming below its hardware minimum: the lower quarter

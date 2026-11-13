@@ -183,6 +183,8 @@ enum BrightnessRig {
         private(set) var displayQueries = 0
         /// What the service's main-thread check answers.
         var onMainThread = true
+        /// Runs at each DDC pause, just before a write reaches the bus.
+        var beforePause: (() -> Void)?
 
         let screens = NotificationCenter()
         let workspace = NotificationCenter()
@@ -326,7 +328,7 @@ enum BrightnessRig {
                     return result
                 },
                 readI2C: { service, _, _, bytes, count in (service as! Monitor).read(bytes, count: count) },
-                pause: { _ in },
+                pause: { [unowned self] _ in self.beforePause?() },
                 uptimeMicroseconds: { [unowned self] in
                     // Read at the start and end of every DDC command.
                     for display in self.displays { display.monitor?.commandBoundary() }
