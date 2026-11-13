@@ -1424,8 +1424,8 @@ pub const MUTATIONS: &[Mutation] = &[
         name: "a drag off the island keeps the edge click",
         group: "notch",
         relative: "Sources/VitruvianAtrium/Services/Notch/NotchScreenEdgeClicks.swift",
-        before: "                  !(pressArea.map { NotchSupport.screenEdgeArea($0, contains: point) } ?? false) else { return }\n            pressArea = nil\n",
-        after: "                  !(pressArea.map { NotchSupport.screenEdgeArea($0, contains: point) } ?? false) else { return }\n",
+        before: "                  !(press.map { NotchSupport.screenEdgeArea($0.area, contains: point) } ?? false) else { return }\n            press = nil\n",
+        after: "                  !(press.map { NotchSupport.screenEdgeArea($0.area, contains: point) } ?? false) else { return }\n",
         diagnostic: "dragging off the island or releasing outside cancels an edge click",
     },
     Mutation {
