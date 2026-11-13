@@ -427,6 +427,7 @@ package enum Preferences {
     package static let windowDirectionalEnabled = Preference(DefaultsKey.windowDirectionalEnabled, default: false)
     package static let pointerDisplayEnabled = Preference(DefaultsKey.pointerDisplayEnabled, default: false)
     package static let windowEdgeSnapEnabled = Preference(DefaultsKey.windowEdgeSnapEnabled, default: false)
+    package static let windowEdgeSnapRestoreOnDrag = Preference(DefaultsKey.windowEdgeSnapRestoreOnDrag, default: false)
     package static let windowGestureEnabled = Preference(DefaultsKey.windowGestureEnabled, default: false)
     package static let windowGestureRaiseWindow = Preference(DefaultsKey.windowGestureRaiseWindow, default: false)
     package static let smoothScrollEnabled = Preference(DefaultsKey.smoothScrollEnabled, default: false)

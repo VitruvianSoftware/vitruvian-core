@@ -1167,7 +1167,8 @@ package struct WindowLayoutSettledFrames {
     package init() {}
 
     package subscript(window: WindowLayoutWindowKey) -> WindowLayoutSettledFrame? {
-        framesByWindow[window]
+        get { framesByWindow[window] }
+        set { framesByWindow[window] = newValue }
     }
 
     /// Whether pressing `action` advances the size cycle of `window`, now at
@@ -1190,8 +1191,10 @@ package struct WindowLayoutSettledFrames {
     }
 
     /// Keeps where a placement that took left `window`, for a press that may
-    /// cycle: the frame `readBack` finds, or the requested one when it finds
-    /// none. Any other press reads nothing back and keeps nothing. Answers
+    /// cycle, or for any placement when `keepsWithoutCycle` (dragging a
+    /// snapped window away restores its size): the frame `readBack` finds, or
+    /// the requested one when it finds none. Any other press reads nothing
+    /// back and keeps nothing. Answers
     /// whether the window was read back away from the request: the lenient
     /// acceptance may have read a frame the app has not committed yet (issue
     /// #334), so it is worth another look once it has (`refresh`).
@@ -1199,9 +1202,10 @@ package struct WindowLayoutSettledFrames {
     package mutating func placed(_ window: WindowLayoutWindowKey,
                                  at requested: WindowLayoutFrame,
                                  cyclePress: WindowLayoutAction?,
+                                 keepsWithoutCycle: Bool = false,
                                  tolerance: CGFloat,
                                  readBack: () -> WindowLayoutFrame?) -> Bool {
-        guard let cyclePress else { return false }
+        guard cyclePress != nil || keepsWithoutCycle else { return false }
         let actual = readBack() ?? requested
         framesByWindow[window] = WindowLayoutSettledFrame(requested: requested,
                                                           actual: actual,
