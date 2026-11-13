@@ -47,6 +47,47 @@ enum DisplaySpeakerVolumeTests {
         value.map { abs($0 - expected) < 0.0001 } ?? false
     }
 
+    /// A monitor's speakers for `applySpeakerChange`: every read and write the
+    /// transaction makes, against a level, a range and an optional mute.
+    final class ScriptedSpeakers {
+        var raw: UInt16
+        var maximum: UInt16 = 100
+        var muted: Bool?
+        var ignoresLevel = false
+        var levelOnUnmute: UInt16?
+        var writes: [String] = []
+        var restore: BrightnessSupport.SpeakerLevel?
+
+        init(raw: UInt16, maximum: UInt16 = 100, muted: Bool?) {
+            self.raw = raw
+            self.maximum = maximum
+            self.muted = muted
+        }
+
+        @discardableResult
+        func apply(_ change: BrightnessSupport.SpeakerChange,
+                   settings: MonitorVolumeKeySettings = MonitorVolumeKeySettings())
+            -> (level: BrightnessSupport.SpeakerLevel, muted: Bool?)? {
+            BrightnessSupport.applySpeakerChange(change, hasNativeMute: muted != nil, keySettings: settings,
+                restore: &restore,
+                read: { code in
+                    if code == BrightnessSupport.audioVolumeCode { return (self.raw, self.maximum) }
+                    guard let muted = self.muted else { return nil }
+                    return (muted ? BrightnessSupport.audioMutedValue : BrightnessSupport.audioUnmutedValue, 2)
+                }, write: { code, value in
+                    if code == BrightnessSupport.audioVolumeCode {
+                        self.writes.append("volume:\(value)")
+                        if !self.ignoresLevel { self.raw = value }
+                    } else {
+                        self.writes.append(value == BrightnessSupport.audioMutedValue ? "mute:on" : "mute:off")
+                        self.muted = value == BrightnessSupport.audioMutedValue
+                        if self.muted == false, let restored = self.levelOnUnmute { self.raw = restored }
+                    }
+                    return true
+                })
+        }
+    }
+
     static func run(_ suite: TestSuite) {
         replyChecks(suite)
         keyChecks(suite)
@@ -166,9 +207,10 @@ enum DisplaySpeakerVolumeTests {
                      && BrightnessSupport.volumeKeyEvent(subtype: 8, data1: keyData(0, state: 7)) == nil,
                      "brightness keys, other subtypes and other states are never volume keys")
 
-        suite.expect(BrightnessSupport.volumeKeyDelta(direction: 1, fine: false) == 1.0 / 16.0
-                     && BrightnessSupport.volumeKeyDelta(direction: -1, fine: true) == -1.0 / 100.0,
-                     "a plain key moves a sixteenth and Option+Shift a percent, in the key's direction")
+        let settings = MonitorVolumeKeySettings()
+        suite.expect(settings.requestedLevel(from: 0, direction: 1, fine: false) == 1.0 / 16.0
+                     && settings.requestedLevel(from: 0, direction: -1, fine: true) == -1.0 / 100.0,
+                     "default monitor keys move one sixteenth, or one percent with Option and Shift")
         suite.expect(BrightnessSupport.volumeKeyFineness(option: true, shift: true,
                         commandOrControl: false) == true
                      && BrightnessSupport.volumeKeyFineness(option: false, shift: false,
@@ -240,58 +282,24 @@ enum DisplaySpeakerVolumeTests {
     /// write. Upstream checks these through its mixer stand-in; here they run
     /// on the production transaction directly.
     private static func transactionChecks(_ suite: TestSuite) {
-        final class Speakers {
-            var raw: UInt16
-            var maximum: UInt16 = 100
-            var muted: Bool?
-            var ignoresLevel = false
-            var levelOnUnmute: UInt16?
-            var writes: [String] = []
-            var restore: BrightnessSupport.SpeakerLevel?
-
-            init(raw: UInt16, muted: Bool?) {
-                self.raw = raw
-                self.muted = muted
-            }
-
-            func apply(_ change: BrightnessSupport.SpeakerChange) -> (level: BrightnessSupport.SpeakerLevel, muted: Bool?)? {
-                BrightnessSupport.applySpeakerChange(change, hasNativeMute: muted != nil, restore: &restore,
-                    read: { code in
-                        if code == BrightnessSupport.audioVolumeCode { return (self.raw, self.maximum) }
-                        guard let muted = self.muted else { return nil }
-                        return (muted ? BrightnessSupport.audioMutedValue : BrightnessSupport.audioUnmutedValue, 2)
-                    }, write: { code, value in
-                        if code == BrightnessSupport.audioVolumeCode {
-                            self.writes.append("volume:\(value)")
-                            if !self.ignoresLevel { self.raw = value }
-                        } else {
-                            self.writes.append(value == BrightnessSupport.audioMutedValue ? "mute:on" : "mute:off")
-                            self.muted = value == BrightnessSupport.audioMutedValue
-                            if !self.muted!, let restored = self.levelOnUnmute { self.raw = restored }
-                        }
-                        return true
-                    })
-            }
-        }
-
-        var speakers = Speakers(raw: 80, muted: true)
+        var speakers = ScriptedSpeakers(raw: 80, muted: true)
         var result = speakers.apply(.set(volume: 0.05, muted: nil))
         suite.expect(speakers.writes == ["volume:5", "mute:off"] && result?.level.raw == 5 && result?.muted == false,
                      "a verified low volume can safely lift a native mute")
 
-        speakers = Speakers(raw: 80, muted: true)
+        speakers = ScriptedSpeakers(raw: 80, muted: true)
         speakers.ignoresLevel = true
         result = speakers.apply(.step(levels: [{ _ in 0.05 }], raises: true))
         suite.expect(result == nil && speakers.writes == ["volume:5"] && speakers.raw == 80 && speakers.muted == true,
                      "an acknowledged-but-ignored level never unmutes the old high volume")
 
-        speakers = Speakers(raw: 80, muted: true)
+        speakers = ScriptedSpeakers(raw: 80, muted: true)
         speakers.levelOnUnmute = 80
         result = speakers.apply(.set(volume: 0.05, muted: nil))
         suite.expect(result == nil && speakers.writes == ["volume:5", "mute:off", "mute:on"] && speakers.muted == true,
                      "firmware that restores the old high level on unmute is muted again")
 
-        speakers = Speakers(raw: 2, muted: nil)
+        speakers = ScriptedSpeakers(raw: 2, muted: nil)
         result = speakers.apply(.toggleMute)
         suite.expect(speakers.raw == 0 && result?.muted == true && result?.level.volume == 0,
                      "a volume-only monitor silences through its confirmed volume")
@@ -300,20 +308,20 @@ enum DisplaySpeakerVolumeTests {
                      && near(result?.level.volume, 0.02),
                      "software unmute restores exactly the last physical level read at mute time")
 
-        speakers = Speakers(raw: 0, muted: nil)
+        speakers = ScriptedSpeakers(raw: 0, muted: nil)
         suite.expect(speakers.apply(.toggleMute) == nil && speakers.writes.isEmpty,
                      "zero without a known restore level cannot unmute to a guessed volume")
         result = speakers.apply(.step(levels: [{ $0 + 0.01 }], raises: true))
         suite.expect(speakers.raw == 1 && result?.level.raw == 1,
                      "a fine raise at zero remains available without a restore level")
 
-        speakers = Speakers(raw: 2, muted: nil)
+        speakers = ScriptedSpeakers(raw: 2, muted: nil)
         _ = speakers.apply(.toggleMute)
         speakers.maximum = 20
         suite.expect(speakers.apply(.toggleMute) == nil && speakers.raw == 0 && speakers.writes.count == 1,
                      "a new device range cannot inherit the old raw restore value")
 
-        speakers = Speakers(raw: 1, muted: false)
+        speakers = ScriptedSpeakers(raw: 1, muted: false)
         speakers.maximum = 20
         _ = speakers.apply(.step(levels: [{ $0 + 0.01 }], raises: true))
         result = speakers.apply(.step(levels: [{ $0 + 0.01 }, { $0 + 0.01 }], raises: true))

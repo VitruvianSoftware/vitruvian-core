@@ -3540,6 +3540,12 @@ package final class BrightnessService: ObservableObject {
         running && wantsMonitorVolume && environment.defaults[Preferences.displayVolumeKeysEnabled]
     }
 
+    /// The step and limits the volume keys use on a monitor's speakers, as
+    /// stored now. Read on the work queue for each key's transaction.
+    nonisolated package var monitorVolumeKeySettings: MonitorVolumeKeySettings {
+        MonitorVolumeKeySettings(in: environment.defaults)
+    }
+
     /// Queues a change for one monitor's speakers. A panel slider names the
     /// connection; the mixer and the keys also name the output device they
     /// saw, so a change of output in between drops the change. `completion`
@@ -3663,14 +3669,21 @@ package final class BrightnessService: ObservableObject {
         }
         guard current() else { return nil }
         var restore = speakerRestoreLevels[target.path]
+        // A key obeys the step and limits; a slider reaches the whole range.
+        let keySettings = job.requiresKeys ? monitorVolumeKeySettings : MonitorVolumeKeySettings()
         let result = BrightnessSupport.applySpeakerChange(job.change, hasNativeMute: route.hasNativeMute,
-            restore: &restore, read: { code in
+            keySettings: keySettings, restore: &restore, read: { code in
                 guard current(), case let .replied(value, maximum) = self.ddcProbe(code, for: id, service: route.service)
                 else { return nil }
                 return (value, maximum)
             }, write: { code, value in
-                self.ddcSend(to: id, service: route.service, packet: BrightnessSupport.writePacket(code: code, value: value),
-                             whileCurrent: current)
+                let packet = BrightnessSupport.writePacket(code: code, value: value)
+                return self.ddcSend(to: id, service: route.service, packet: packet) {
+                    // Settings can change while the bus is pacing a write. A
+                    // protective re-mute still belongs to the original target.
+                    let mutes = code == BrightnessSupport.audioMuteCode && value == BrightnessSupport.audioMutedValue
+                    return current() && (!job.requiresKeys || mutes || self.monitorVolumeKeySettings == keySettings)
+                }
             })
         speakerRestoreLevels[target.path] = restore
         guard let result else { return nil }

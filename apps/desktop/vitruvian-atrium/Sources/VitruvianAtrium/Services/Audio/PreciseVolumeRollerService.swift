@@ -253,8 +253,9 @@ package final class PreciseVolumeRollerService: ObservableObject {
         }
         switch action {
         case let .step(direction):
+            let settings = BrightnessService.shared.monitorVolumeKeySettings
             mixer.requestOutputStep(level: {
-                BrightnessSupport.steppedLevel($0, delta: BrightnessSupport.volumeKeyDelta(direction: direction, fine: fine))
+                settings.requestedLevel(from: $0, direction: direction, fine: fine)
             }, raises: direction > 0, completion: feedback)
         case .toggleMute:
             mixer.requestOutputMuteToggle(completion: feedback)

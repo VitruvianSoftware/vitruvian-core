@@ -331,6 +331,7 @@ TEST_PRODUCTION_SOURCES = [
     "Sources/VitruvianAtrium/Services/CleaningMode/CleaningMouseReleaseGate.swift",
     "Sources/VitruvianAtrium/Services/Display/ExtraBrightnessSupport.swift",
     "Sources/VitruvianAtrium/Core/Display/BrightnessSupport.swift",
+    "Sources/VitruvianAtrium/Core/Display/MonitorVolumeKeySettings.swift",
     "Sources/VitruvianAtrium/Services/Display/LidDimmingSupport.swift",
     "Sources/VitruvianAtrium/Core/Cleaner/CleanerSupport.swift",
     "Sources/VitruvianAtrium/Core/Cleaner/CleanerPolicy.swift",
