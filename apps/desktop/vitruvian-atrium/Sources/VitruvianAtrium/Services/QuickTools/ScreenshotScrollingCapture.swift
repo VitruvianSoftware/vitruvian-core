@@ -37,6 +37,44 @@ package enum ScreenshotScrollingCapture {
         case failed
     }
 
+    /// Main-actor bound, so the capture loop can hand it to the main thread.
+    package protocol AutomaticScroller: Sendable {
+        @MainActor func isCurrent() -> Bool
+        @MainActor func scroll() -> Bool
+    }
+
+    package enum AutoScrollAction: Equatable { case wait, scroll, finish, partial }
+
+    /// The capture loop drives scrolling only after observing its previous
+    /// attempt. No independent timer can keep scrolling after cancellation.
+    package struct AutoScrollState {
+        private var waitingSince: TimeInterval?
+        private var attemptedAt: TimeInterval?
+        private var heightBeforeAttempt = 0
+        private var attemptsWithoutProgress = 0
+
+        // Spelled out because a default initializer never leaves its module.
+        package init() {}
+
+        package mutating func next(now: TimeInterval, height: Int, settled: Bool,
+                                   unmatched: Bool = false) -> AutoScrollAction {
+            if waitingSince == nil { waitingSince = now }
+            if let attemptedAt {
+                let elapsed = now - attemptedAt
+                guard elapsed >= 0.55, settled || elapsed >= 1.5 else { return .wait }
+                // Another step could move the last good frame entirely out of view.
+                if unmatched { return .partial }
+                attemptsWithoutProgress = height > heightBeforeAttempt ? 0 : attemptsWithoutProgress + 1
+                if attemptsWithoutProgress >= 3 { return .finish }
+            } else if !settled, now - (waitingSince ?? now) < 1.5 {
+                return .wait
+            }
+            attemptedAt = now
+            heightBeforeAttempt = height
+            return .scroll
+        }
+    }
+
     private static let sampleInterval: TimeInterval = 0.09
     private static let settleInterval: TimeInterval = 0.22
     private static let finishGraceInterval: TimeInterval = 0.85
@@ -55,10 +93,12 @@ package enum ScreenshotScrollingCapture {
                         hideAtriumWindows: Bool,
                         protectedWindowIDs: Set<CGWindowID>,
                         finishSignal: FinishSignal,
+                        autoScroll: AutomaticScroller? = nil,
                         onProgress: @escaping @MainActor (Int) -> Void) async -> Result {
         let displayID = region.displayID
         let pixelRect = region.pixelRect
-        return await capture(region: region, finishSignal: finishSignal, onProgress: onProgress) {
+        return await capture(region: region, finishSignal: finishSignal, autoScroll: autoScroll,
+                             onProgress: onProgress) {
             guard let source = await ScreenshotCaptureEngine.prepareDisplayRegion(
                 displayID: displayID, pixelRect: pixelRect,
                 includePointer: includePointer, hideAtriumWindows: hideAtriumWindows,
@@ -71,11 +111,14 @@ package enum ScreenshotScrollingCapture {
     /// the region cannot be captured. Tests pass frames of their own.
     package static func capture(region: RecorderSupport.Region,
                                 finishSignal: FinishSignal,
+                                autoScroll: AutomaticScroller? = nil,
                                 onProgress: @escaping @MainActor (Int) -> Void,
                                 prepare: @Sendable () async -> FrameSource?) async -> Result {
         do {
+            try Task.checkCancellation()
             guard let source = await prepare(),
                   let firstFrame = await source.image(),
+                  await autoScroll?.isCurrent() != false,
                   let first = contentFrame(firstFrame)
             else { return Task.isCancelled ? .cancelled : .failed }
             try Task.checkCancellation()
@@ -96,6 +139,7 @@ package enum ScreenshotScrollingCapture {
             var lastCaptureAt = ProcessInfo.processInfo.systemUptime
             var scrollPending = false
             var finishRequestedAt: TimeInterval?
+            var automatic = AutoScrollState()
             await onProgress(totalHeight)
 
             while true {
@@ -134,6 +178,7 @@ package enum ScreenshotScrollingCapture {
                 }
 
                 guard let frame = await source.image(),
+                      await autoScroll?.isCurrent() != false,
                       let current = contentFrame(frame),
                       let currentSample = sample(current)
                 else {
@@ -256,13 +301,37 @@ package enum ScreenshotScrollingCapture {
                     // Scrolling back never duplicates pixels already kept. A
                     // later forward movement can continue from the furthest
                     // accepted frame without inventing a seam.
-                    hasUnmatchedContent = false
+                    hasUnmatchedContent = autoScroll != nil
 
                 case .unmatched:
                     hasUnmatchedContent = true
                 }
 
                 scrollPending = !frameIsStable || lastCaptureAt - lastChangedAt < settleInterval
+                if let autoScroll, !finishSignal.isRequested {
+                    switch automatic.next(now: lastCaptureAt, height: totalHeight,
+                                          settled: !scrollPending, unmatched: hasUnmatchedContent) {
+                    case .wait:
+                        break
+                    case .finish:
+                        return completed(slices: slices, footerSlice: footerSlice,
+                                         region: region, result: .success)
+                    case .partial:
+                        return completed(slices: slices, footerSlice: footerSlice,
+                                         region: region, result: .partial)
+                    case .scroll:
+                        // Finish and Cancel come from the main thread. Check there
+                        // too, after the hop and immediately before posting.
+                        let canContinue = await MainActor.run {
+                            if Task.isCancelled || finishSignal.isRequested { return true }
+                            return autoScroll.scroll()
+                        }
+                        guard canContinue else {
+                            return completed(slices: slices, footerSlice: footerSlice,
+                                             region: region, result: .partial)
+                        }
+                    }
+                }
             }
         } catch is CancellationError {
             return .cancelled

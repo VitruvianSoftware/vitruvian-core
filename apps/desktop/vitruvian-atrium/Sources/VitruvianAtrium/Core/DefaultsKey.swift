@@ -36,6 +36,10 @@ package enum DefaultsKey {
     package static let keepAwakePauseWhenLocked = "keepAwakePauseWhenLocked"
     package static let keepAwakeSwitchUsesUntil = "keepAwakeSwitchUsesUntil" // panel switch restarts the Until chip
     package static let keepAwakeUntilTime = "keepAwakeUntilTime"  // last picked end time; 0 = none yet
+    // The running manual session's end (0 = indefinite) and selected preset, if any.
+    // Absent when there is no session to resume. Live state: never registered,
+    // so never backed up.
+    package static let keepAwakeSessionEnd = "keepAwakeSessionEnd"
     package static let keepAwakeMouseJiggleEnabled = "keepAwakeMouseJiggleEnabled"
     package static let keepAwakeMouseJiggleInterval = "keepAwakeMouseJiggleIntervalMinutes"
     package static let hotkeyEnabled = "hotkeyEnabled"
@@ -101,6 +105,8 @@ package enum DefaultsKey {
     package static let systemShortcutTakeOverKeys = "systemShortcutTakeOverKeys"
     package static let switcherShortcut = "switcherShortcut"      // GlobalShortcut storage value
     package static let switcherWindowShortcut = "switcherWindowShortcut" // GlobalShortcut storage value
+    package static let switcherAllWindowsShortcut = "switcherAllWindowsShortcut"
+    package static let switcherAllWindowsShortcutEnabled = "switcherAllWindowsShortcutEnabled"
     package static let switcherIconRowMode = "switcherIconRowMode"
     package static let switcherSimpleMode = "switcherSimpleMode"  // app-only row without window captures
     package static let switcherMergeTabs = "switcherMergeTabs"     // show one switcher entry per app (collapse all of an app's windows)
@@ -115,6 +121,7 @@ package enum DefaultsKey {
     package static let switcherShowShortcutHints = "switcherShowShortcutHints" // show the shortcut bar under the large-icon switcher
     package static let switcherAppearanceDelay = "switcherAppearanceDelay" // milliseconds the shortcut must be held before the panel appears (SwitcherSupport.appearanceDelayMillisecondsRange)
     package static let switcherInstantSelection = "switcherInstantSelection" // skip selection and reveal animations while browsing
+    package static let switcherIgnoreHoverSelection = "switcherIgnoreHoverSelection" // pointer movement does not change the highlight; click still commits
     package static let switcherScreenPlacement = "switcherScreenPlacement" // SwitcherScreenPlacement raw value: which display the panel opens on
     package static let switcherCurrentDisplayOnly = "switcherCurrentDisplayOnly" // list only windows on the display under the pointer (issue #1391)
     package static let switcherMaxColumns = "switcherMaxColumns" // 0 = Auto, else the most items per row (SwitcherSupport.maxColumnsRange)
@@ -223,6 +230,9 @@ package enum DefaultsKey {
     // Set once the paths cached before paired discovery requests have been
     // dropped, so a monitor written off then is classified again exactly once.
     package static let brightnessDDCWriteOnlyPathsRechecked = "brightnessDDCWriteOnlyPathsRechecked"
+    // The read checksum fix needs its own recheck even if the paired-request
+    // migration already ran and cached the monitor as write-only again.
+    package static let brightnessDDCReadChecksumRechecked = "brightnessDDCReadChecksumRechecked"
     /// A beta already installed the companion for this Command Bar user, once.
     package static let notchMascotBetaInstalled = "notchMascotBetaInstalled"
     // Per-monitor connection paths a person has told this app to dim in
@@ -346,6 +356,7 @@ package enum DefaultsKey {
     package static let panelControlRadialMenu = "panelControlRadialMenu"
     package static let panelControlMouseButtonShortcuts = "panelControlMouseButtonShortcuts"
     package static let panelControlMouseAcceleration = "panelControlMouseAcceleration"
+    package static let panelControlSmoothScroll = "panelControlSmoothScroll"
     package static let panelControlLinearScroll = "panelControlLinearScroll"
     package static let panelControlMouseClickDebounce = "panelControlMouseClickDebounce"
     package static let panelControlSpacesOrder = "panelControlSpacesOrder"
@@ -374,6 +385,7 @@ package enum DefaultsKey {
     // Keep the existing storage key so moving the row preserves its visibility choice.
     package static let panelToggleMicMute = "panelUtilityMicMute"
     package static let panelToggleEmptyTrash = "panelToggleEmptyTrash"
+    package static let panelToggleQuitAllApps = "panelToggleQuitAllApps"
     package static let panelToggleEjectDisks = "panelToggleEjectDisks"
     package static let panelToggleHiddenFiles = "panelToggleHiddenFiles"
     package static let panelToggleDesktopIcons = "panelToggleDesktopIcons"
@@ -568,6 +580,8 @@ package enum DefaultsKey {
     package static let clipboardHistoryLayout = "clipboardHistoryLayout" // cards | list, how the history window shows entries
     package static let clipboardHistoryWindowWidth = "clipboardHistoryWindowWidth" // the list window's chosen size
     package static let clipboardHistoryWindowHeight = "clipboardHistoryWindowHeight"
+    package static let clipboardHistoryWindowX = "clipboardHistoryWindowX" // the list window's chosen origin; unset until it is moved
+    package static let clipboardHistoryWindowY = "clipboardHistoryWindowY"
     package static let clipboardHistoryMenuBarPreview = "clipboardHistoryMenuBarPreview" // show latest copy next to the menu bar icon
     package static let clipboardHistoryMenuBarPreviewLength = "clipboardHistoryMenuBarPreviewLength" // characters shown before truncating
 
@@ -596,6 +610,12 @@ package enum DefaultsKey {
     package static let screenOCRDetectQRCodes = "screenOCRDetectQRCodes" // QR content wins over OCR text
     package static let micMuteShortcutEnabled = "micMuteShortcutEnabled"
     package static let micMuteShortcut = "micMuteShortcut"
+    package static let quitAppsShortcutEnabled = "quitAppsShortcutEnabled"
+    package static let quitAppsShortcut = "quitAppsShortcut"
+    package static let quitAppsExceptFrontShortcutEnabled = "quitAppsExceptFrontShortcutEnabled"
+    package static let quitAppsExceptFrontShortcut = "quitAppsExceptFrontShortcut"
+    /// Bundle ids "Quit all apps" leaves running, on top of the mandatory set.
+    package static let quitAppsKeptApps = "quitAppsKeptApps"
     package static let cameraPreviewShortcutEnabled = "cameraPreviewShortcutEnabled"
     package static let cameraPreviewShortcut = "cameraPreviewShortcut"
     package static let wallpaperApplyAllDisplays = "wallpaperApplyAllDisplays"
@@ -640,6 +660,7 @@ package enum DefaultsKey {
     package static let micMuteSavedVolume = "micMuteSavedVolume"     // input volume to restore on unmute (pre 3.2.0 state)
     package static let micMuteSavedVolumes = "micMuteSavedVolumes"   // [device uid: input volume] to restore on unmute
     package static let micMuteSavedChannelVolumes = "micMuteSavedChannelVolumes" // [device uid: [channel: input volume]] to restore on unmute
+    package static let micMuteSavedControls = "micMuteSavedControls" // [device uid: [selector:element: original value]] pending restoration
     package static let micMuteMutedDevices = "micMuteMutedDevices"   // uids of the devices this app muted
     package static let micMuteMenuBarIndicator = "micMuteMenuBarIndicator" // badge the status icon while muted
     package static let quickLauncherShortcutEnabled = "quickLauncherShortcutEnabled"
@@ -652,6 +673,7 @@ package enum DefaultsKey {
     package static let panelUtilityCameraPreview = "panelUtilityCameraPreview"
     package static let panelUtilityScratchpad = "panelUtilityScratchpad"
     package static let clipboardHistoryShortcutEnabled = "clipboardHistoryShortcutEnabled"
+    package static let clipboardHistoryShowSourceAppIcons = "clipboardHistoryShowSourceAppIcons" // source app icons beside list entries
     package static let clipboardHistoryShortcut = "clipboardHistoryShortcut"
     // Mode chooser visibility for dedicated capture shortcuts.
     package static let screenshotShowCaptureMenuOnShortcut = "screenshotShowCaptureMenuOnShortcut"
@@ -661,6 +683,10 @@ package enum DefaultsKey {
     // Screenshot capture and editor.
     package static let screenshotShortcutEnabled = "screenshotShortcutEnabled"
     package static let screenshotShortcut = "screenshotShortcut"
+    package static let screenshotScrollingAutoScroll = "screenshotScrollingAutoScroll"
+    package static let screenshotScrollingShortcutEnabled = "screenshotScrollingShortcutEnabled"
+    package static let screenshotScrollingShortcut = "screenshotScrollingShortcut"
+    package static let screenshotScrollingShowCaptureMenuOnShortcut = "screenshotScrollingShowCaptureMenuOnShortcut"
     package static let unifiedScreenCaptureShortcutMigrated = "unifiedScreenCaptureShortcutMigrated"
     package static let restoredScreenCaptureShortcutsMigrated = "restoredScreenCaptureShortcutsMigrated"
     package static let orphanedCaptureShortcutMigrated = "orphanedCaptureShortcutMigrated"
@@ -754,6 +780,7 @@ package enum DefaultsKey {
     package static let pointerDisplayEnabled = "pointerDisplayEnabled"
     package static let pointerDisplayShortcut = "pointerDisplayShortcut"
     package static let windowEdgeSnapEnabled = "windowEdgeSnapEnabled"
+    package static let windowEdgeSnapRestoreOnDrag = "windowEdgeSnapRestoreOnDrag" // dragging a snapped window away restores its earlier size
     package static let windowEdgeSnapDisabledZones = "windowEdgeSnapDisabledZones" // comma-separated visual zone ids
     package static let windowEdgeSnapZoneActions = "windowEdgeSnapZoneActions" // zone=action entries, + between split areas
     package static let windowGestureEnabled = "windowGestureEnabled"
@@ -878,6 +905,7 @@ package enum DefaultsKey {
     package static let notchWatchCondition = "notchWatchCondition"
     package static let notchCalendarEnabled = "notchCalendarEnabled"
     package static let notchCalendarCountdown = "notchCalendarCountdown"
+    package static let notchCalendarCountdownLead = "notchCalendarCountdownLead" // minutes before a start, chosen events included
     package static let notchCalendarTimeLeft = "notchCalendarTimeLeft" // the event under way counts down to its end
     package static let notchCalendarWeekNumbers = "notchCalendarWeekNumbers" // the month grid numbers its weeks
     package static let notchCalendarExcluded = "notchCalendarExcluded" // [EKCalendar.calendarIdentifier] left out of the island

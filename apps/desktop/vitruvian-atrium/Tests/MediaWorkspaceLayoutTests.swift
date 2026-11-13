@@ -13,6 +13,25 @@ import VitruvianAtriumUI
 enum MediaWorkspaceLayoutTests {
     final class Fixture: ObservableObject {
         @Published var height: CGFloat = 180
+        weak var pickerView: NSView?
+
+        var pickerFrame: CGRect {
+            guard let pickerView, let root = pickerView.window?.contentView else { return .zero }
+            let frame = pickerView.convert(pickerView.bounds, to: root)
+            return CGRect(x: frame.minX, y: root.isFlipped ? frame.minY : root.bounds.maxY - frame.maxY,
+                          width: frame.width, height: frame.height)
+        }
+    }
+
+    // SwiftUI's global space need not include native scroll offsets on macOS 15.
+    struct PickerMarker: NSViewRepresentable {
+        let fixture: Fixture
+        func makeNSView(context: Context) -> NSView {
+            let view = NSView()
+            fixture.pickerView = view
+            return view
+        }
+        func updateNSView(_ view: NSView, context: Context) { fixture.pickerView = view }
     }
 
     final class Selection {
@@ -45,11 +64,13 @@ enum MediaWorkspaceLayoutTests {
     struct Workspace: View {
         @ObservedObject var fixture: Fixture
         let onContentHeightChange: ((CGFloat) -> Void)?
+        var scrollsContent = true
         var body: some View {
-            MediaWorkspaceStack(compact: true, onContentHeightChange: onContentHeightChange) {
+            MediaWorkspaceStack(compact: true, onContentHeightChange: onContentHeightChange,
+                                scrollsContent: scrollsContent) {
                 Color.clear.frame(height: 22)
             } toolPicker: {
-                Color.clear.frame(height: 24)
+                Color.clear.frame(height: 24).background(PickerMarker(fixture: fixture))
             } content: {
                 Color.clear.frame(height: fixture.height)
             }
@@ -81,6 +102,10 @@ enum MediaWorkspaceLayoutTests {
             fileView.mediaHeightChanged($0, id: sessionID)
         }))
         host.frame = CGRect(x: 0, y: 0, width: 380, height: 700)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer { window.close() }
         host.layoutSubtreeIfNeeded()
         suite.expect(settle { measured == 246 },
                "embedded media reports the intrinsic height of header, picker, spacing and content instead of the viewport")
@@ -98,6 +123,132 @@ enum MediaWorkspaceLayoutTests {
         fileView.mediaHeightChanged(.nan, id: sessionID)
         suite.expect(fileView.service.heights == frames,
                "duplicate, invalid and stale measurements never restart the resize")
+
+        func scrollViews(in view: NSView) -> [NSScrollView] {
+            ((view as? NSScrollView).map { [$0] } ?? [])
+                + view.subviews.flatMap { scrollViews(in: $0) }
+        }
+        func overflows(_ scroll: NSScrollView) -> Bool {
+            (scroll.documentView?.frame.height ?? 0) > scroll.contentView.bounds.height + 1
+        }
+        let panelFixture = Fixture()
+        panelFixture.height = 900
+        let panel = NSScrollView(frame: CGRect(x: 0, y: 0, width: 380, height: 260))
+        panel.hasVerticalScroller = true
+        panel.scrollerStyle = .overlay
+        panel.autohidesScrollers = true
+        let document = NSHostingView(rootView: VStack(spacing: 8) {
+            Color.clear.frame(height: 24)
+            Workspace(fixture: panelFixture, onContentHeightChange: nil, scrollsContent: false)
+        })
+        document.translatesAutoresizingMaskIntoConstraints = false
+        panel.documentView = document
+        let panelWindow = NSWindow(contentRect: panel.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        panelWindow.isReleasedWhenClosed = false
+        panelWindow.contentView = panel
+        defer { panelWindow.close() }
+        NSLayoutConstraint.activate([
+            document.topAnchor.constraint(equalTo: panel.contentView.topAnchor),
+            document.leadingAnchor.constraint(equalTo: panel.contentView.leadingAnchor),
+            document.trailingAnchor.constraint(equalTo: panel.contentView.trailingAnchor),
+            document.widthAnchor.constraint(equalTo: panel.contentView.widthAnchor),
+        ])
+        for height: CGFloat in [260, 120, 80, 190, 340] {
+            panelWindow.setContentSize(CGSize(width: 380, height: height))
+            panel.layoutSubtreeIfNeeded()
+            suite.expect(settle {
+                panel.layoutSubtreeIfNeeded()
+                return abs(document.frame.height - (panelFixture.height + 98)) <= 1
+                    && scrollViews(in: panel).count == 1
+                    && overflows(panel)
+            }, "compact media keeps its natural height and uses only its host's scroll region at height \(height)")
+            if let scroll = scrollViews(in: panel).first(where: overflows), let content = scroll.documentView {
+                let bottom = content.frame.height - scroll.contentView.bounds.height
+                scroll.contentView.scroll(to: CGPoint(x: 0, y: bottom))
+                scroll.reflectScrolledClipView(scroll.contentView)
+                suite.expect(abs(scroll.contentView.bounds.maxY - content.frame.height) <= 1,
+                       "the bottom media settings remain reachable at viewport height \(height)")
+                scroll.contentView.scroll(to: .zero)
+                scroll.reflectScrolledClipView(scroll.contentView)
+                _ = settle { panelFixture.pickerFrame.minY >= 0 }
+            }
+        }
+        if let scroll = scrollViews(in: panel).first(where: overflows), let content = scroll.documentView {
+            let picker = panelFixture.pickerFrame
+            suite.expect(picker.height == 24, "the type picker marker is mounted at its actual native height")
+            // Hidden test windows do not reliably route synthetic wheel events.
+            let bottom = content.isFlipped ? content.frame.height - scroll.contentView.bounds.height : 0
+            scroll.contentView.scroll(to: CGPoint(x: 0, y: bottom))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            suite.expect(abs(scroll.contentView.bounds.minY - bottom) <= 1 && panelFixture.pickerFrame.minY < picker.minY,
+                   "even a small media workspace can reach its bottom settings by scrolling the whole page")
+            scroll.contentView.scroll(to: .zero)
+            scroll.reflectScrolledClipView(scroll.contentView)
+            suite.expect(settle { abs(panelFixture.pickerFrame.minY - picker.minY) <= 1 },
+                   "scrolling back to the top restores the type picker in the same scroll region")
+        } else {
+            suite.expect(false, "long media options have a reachable scroll view")
+        }
+        for height: CGFloat in [80, 1200] {
+            panelFixture.height = height
+            let expectedScrolls = height == 80 ? 0 : 1
+            suite.expect(settle {
+                panel.layoutSubtreeIfNeeded()
+                return abs(document.frame.height - (height + 98)) <= 1
+                    && scrollViews(in: panel).count == 1
+                    && scrollViews(in: panel).filter(overflows).count == expectedScrolls
+            }, "changing media content height to \(height) preserves the panel viewport and scrolling ownership")
+        }
+
+        // Quick Launcher supplies a SwiftUI ScrollView rather than the menu's
+        // native wrapper. It must also own the sole scroll region.
+        let launcherFixture = Fixture()
+        launcherFixture.height = 900
+        let launcherHost = NSHostingView(rootView: ScrollView(showsIndicators: false) {
+            Workspace(fixture: launcherFixture, onContentHeightChange: nil, scrollsContent: false)
+        }.frame(width: 380, height: 120))
+        launcherHost.frame = CGRect(x: 0, y: 0, width: 380, height: 120)
+        let launcherWindow = NSWindow(contentRect: launcherHost.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        launcherWindow.isReleasedWhenClosed = false
+        launcherWindow.contentView = launcherHost
+        defer { launcherWindow.close() }
+        suite.expect(settle {
+            launcherHost.layoutSubtreeIfNeeded()
+            let scrolls = scrollViews(in: launcherHost)
+            return scrolls.count == 1 && scrolls.filter(overflows).count == 1 && launcherFixture.pickerFrame.height == 24
+        }, "the launcher's SwiftUI host is the only scroll region for compact media")
+        if let scroll = scrollViews(in: launcherHost).first, let content = scroll.documentView {
+            let picker = launcherFixture.pickerFrame
+            let bottom = content.isFlipped ? content.frame.height - scroll.contentView.bounds.height : 0
+            scroll.contentView.scroll(to: CGPoint(x: 0, y: bottom))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            suite.expect(settle { launcherFixture.pickerFrame.minY < picker.minY },
+                   "launcher media scrolls the selector with its options")
+            scroll.contentView.scroll(to: .zero)
+            scroll.reflectScrolledClipView(scroll.contentView)
+            suite.expect(settle { abs(launcherFixture.pickerFrame.minY - picker.minY) <= 1 },
+                   "launcher media restores the selector when scrolled back to the top")
+        }
+
+        fixture.height = 900
+        host.frame.size.height = 200
+        host.layoutSubtreeIfNeeded()
+        suite.expect(settle { measured == 966 }, "a small file-media viewport still reports its full natural height")
+        if let scroll = scrollViews(in: host).first(where: overflows), let content = scroll.documentView {
+            let picker = fixture.pickerFrame
+            scroll.contentView.scroll(to: CGPoint(x: 0, y: content.frame.height - scroll.contentView.bounds.height))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            suite.expect(picker.height == 24 && fixture.pickerFrame.minY < picker.minY && measured == 966,
+                   "file-media scrolls the type picker with its settings without resizing the island from the scroll offset")
+            scroll.contentView.scroll(to: .zero)
+            scroll.reflectScrolledClipView(scroll.contentView)
+            suite.expect(settle { abs(fixture.pickerFrame.minY - picker.minY) <= 1 && measured == 966 },
+                   "file-media scrolling back to the top restores type selection without changing the natural height")
+        } else {
+            suite.expect(false, "file media scrolls when its natural height exceeds the available space")
+        }
 
         let selection = Selection()
         func pick(_ tool: MediaTool) {

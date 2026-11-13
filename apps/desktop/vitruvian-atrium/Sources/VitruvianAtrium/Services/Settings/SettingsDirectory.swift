@@ -64,6 +64,9 @@ package enum SettingsDirectory {
                             }
                             return feature.hubTitle(s, hub: hub, language: language)
                         }
+                    if pageItem.page == .screenshot {
+                        rows = SettingsSidebarSupport.screenshotRows(rows, language: language)
+                    }
                     if pageItem.page == .general {
                         rows.insert(SettingsSidebarItem(
                             id: .setting(.panelConfiguration),
@@ -165,6 +168,7 @@ package enum SettingsDirectory {
                 .general, sectionAnchor: .panelConfiguration),
             title: s.menuBarSection, icon: "menubar.rectangle",
             keywords: [s.showMenuBarIcon, FeatureStrings.generalSettings(language).menuBarIconTitle, "SF Symbols"]))
+        items.append(SettingsSearchSupport.scrollingScreenshotItem(language: language))
         if BrightnessService.keyboardLightIsSupported {
             items.append(SettingsSearchSupport.keyboardBrightnessShortcutItem(language: language))
         }
@@ -260,6 +264,8 @@ package enum SettingsDirectory {
                 SettingsDirectoryItem(page: .switcher, title: s.tabSwitcher, icon: "rectangle.on.rectangle",
                                        featureKeywords: [
                                         (.switcher, [s.switcherEnable, s.switcherInstantSelection,
+                                                     s.switcherIgnoreHoverSelection,
+                                                     FeatureStrings.switcherShortcuts(language).allWindows,
                                                      s.switcherWindowlessApps,
                                                      s.switcherShowShortcutHints, s.switcherMaxColumns,
                                                      FeatureStrings.switcherAppRules(language).listTitle,
@@ -291,6 +297,7 @@ package enum SettingsDirectory {
                                       featureKeywords: [
                                         (.windowLayout, [s.dockClickCycleWindows,
                                                          FeatureStrings.windowLayout(language).edgeSnapEnable,
+                                                         WindowEdgeSnapRestoreStrings.localized(language).title,
                                                          FeatureStrings.windowLayout(language).gestureEnable,
                                                          FeatureStrings.windowLayout(language).gestureResize,
                                                          FeatureStrings.windowLayoutIgnoredApps(language).listTitle]),
@@ -362,7 +369,8 @@ package enum SettingsDirectory {
                                                  FeatureStrings.whatsAppDownloads(language).automatic,
                                                  FeatureStrings.whatsAppDownloads(language).fileTypes]),
                 SettingsDirectoryItem(page: .homebrew, title: s.homebrewName, icon: "shippingbox"),
-                SettingsDirectoryItem(page: .uninstaller, title: s.uninstallerName, icon: "trash"),
+                SettingsDirectoryItem(page: .uninstaller, title: s.uninstallerName, icon: "trash",
+                                      keywords: [s.uninstallerCommandBarToggle]),
                 SettingsDirectoryItem(page: .killProcess,
                                       title: FeatureStrings.killProcess(language).pageTitle,
                                       icon: "xmark.octagon",
@@ -413,6 +421,10 @@ package enum SettingsDirectory {
                                                             .emptyTrashTitle,
                                                          FeatureStrings.brightness(language)
                                                             .keyboardLight]),
+                                        (.quitApps, [s.quitAppsName,
+                                                     FeatureStrings.quickToggles(language).quitAllTitle,
+                                                     FeatureStrings.quickToggles(language).quitOthersTitle,
+                                                     FeatureStrings.quickToggles(language).exceptionsTitle]),
                                         (.cameraPreview,
                                          [FeatureStrings.cameraPreview(language).pageTitle]),
                                         (.wallpaper,

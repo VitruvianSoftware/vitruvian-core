@@ -235,6 +235,8 @@ extension Strings {
         switcherMaxColumnsAuto: "Auto",
         switcherInstantSelection: "Selezione istantanea",
         switcherInstantSelectionCaption: "Sposta subito l’evidenziazione e scorre l’elenco mentre navighi tra app e finestre.",
+        switcherIgnoreHoverSelection: "Ignora la selezione al passaggio",
+        switcherIgnoreHoverSelectionCaption: "Spostare il puntatore su app e finestre lascia l’evidenziazione dov’è. Un clic apre comunque un elemento.",
         switcherMergeTabs: "Mostra una voce per app",
         switcherMergeTabsCaption: "Raggruppa tutte le finestre di un’app in un’unica voce nel commutatore, anziché una per finestra.",
         switcherWindowlessApps: "App senza finestre aperte",
@@ -334,6 +336,7 @@ extension Strings {
         uninstallerRemoving: "Spostamento nel Cestino…",
         uninstallerFoundTitle: "trovati",
         uninstallerSelectedFormat: "%d di %d selezionati",
+        uninstallerSelectAll: "Seleziona tutto",
         uninstallerRemove: "Sposta nel Cestino",
         uninstallerCancel: "Annulla",
         uninstallerConfirmationExpired: "Questa conferma non è più valida. Controlla gli elementi attuali e conferma di nuovo.",
@@ -422,6 +425,8 @@ extension Strings {
         homebrewOpenTerminal: "Apri terminale",
         homebrewCancelOperation: "Annulla",
         homebrewClearLog: "Svuota registro",
+        homebrewLastLogView: "Mostra ultimo registro",
+        homebrewLastLogHide: "Nascondi ultimo registro",
         homebrewLogTitle: "Registro",
         homebrewVersion: "Versione",
         homebrewDescription: "Tipo",
@@ -1078,6 +1083,7 @@ extension Strings {
         switcherShowShortcutHints: "Mostra suggerimenti scorciatoie",
         switcherShowShortcutHintsCaption: "Mostra le scorciatoie per app e finestre sotto le icone.",
         uninstallerHomebrewPackageFormat: "%@ verrà rimosso anche da Homebrew.",
+        uninstallerHomebrewCheckFailed: "Impossibile verificare se Homebrew gestisce questa app. Aggiorna per riprovare oppure disinstallala da Homebrew.",
         shelfEdgeToggle: "Apri vicino a un bordo dello schermo",
         shelfEdgeCaption: "Trascina un file verso il bordo dello schermo per far intravedere il ripiano. Rilascialo lì, oppure torna indietro e si ritira.",
         focusFollowsMouseName: "Il focus segue il mouse",
@@ -1110,6 +1116,8 @@ extension Strings {
         shelfShortcutFinderSelection: "Aggiungi la selezione del Finder con la scorciatoia",
         shelfShortcutFinderSelectionCaption: "Con il Finder in primo piano, la scorciatoia apre il ripiano con i file selezionati già dentro. Senza selezione si apre come sempre.",
         spacesOrderName: "Mantieni gli Spazi in ordine fisso",
-        spacesOrderCaption: "Impedisce a macOS di riordinare gli Spazi in base all’uso più recente, così restano nell’ordine che hai scelto. L’impostazione precedente torna quando disattivi questa opzione. Il Dock potrebbe riavviarsi una volta per applicare la modifica."
+        spacesOrderCaption: "Impedisce a macOS di riordinare gli Spazi in base all’uso più recente, così restano nell’ordine che hai scelto. L’impostazione precedente torna quando disattivi questa opzione. Il Dock potrebbe riavviarsi una volta per applicare la modifica.",
+        quitAppsName: "Esci dalle app",
+        quitAppsCaption: "Elenca le app aperte per uscirne una alla volta, tutte insieme o tutte tranne quella in primo piano. Mostra sempre l’elenco prima di chiudere qualcosa."
     )
 }

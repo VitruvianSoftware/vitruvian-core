@@ -16,12 +16,13 @@ package enum FeaturePreset: String, CaseIterable, Identifiable {
     /// binding runs. Updates keep every existing availability choice, and an
     /// interrupted setup keeps the selection already applied on its purpose
     /// step.
-    package static func prepareFirstRunAvailability(in defaults: UserDefaults = .standard) {
+    package static func prepareFirstRunAvailability(in defaults: UserDefaults = .standard,
+                                                    preserving configuredKeys: Set<String> = []) {
         guard !defaults.bool(forKey: DefaultsKey.hasOnboarded),
               defaults[Preferences.onboardingStep] == 0
         else { return }
         let selected = FeaturePreset.essential.features
-        for feature in AppFeature.allCases {
+        for feature in AppFeature.allCases where !configuredKeys.contains(feature.availabilityKey) {
             defaults.set(selected.contains(feature), forKey: feature.availabilityKey)
         }
     }
@@ -148,7 +149,7 @@ extension AppFeature {
                     defaults[Preferences.brightnessKeyStep]) != .standard
                 ? .keyboard : .idle
         case .mouseAcceleration, .spacesOrder, .pastePlain, .soundOutputSwitcher, .audioPriority, .micMute,
-             .bluetoothSleep, .keepAwake, .quickLauncher, .quickToggles, .colorPicker,
+             .bluetoothSleep, .keepAwake, .quickLauncher, .quickToggles, .quitApps, .colorPicker,
              .screenOCR, .cleaningMode, .mediaTools, .cleaner, .uninstaller, .homebrew, .screenshot,
              .cameraPreview, .scratchpad, .commandBar, .screenRecorder, .wallpaper, .fanControl,
              .diskImageInstaller, .killProcess, .portManager:

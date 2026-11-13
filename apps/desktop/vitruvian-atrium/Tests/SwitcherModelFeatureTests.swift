@@ -322,19 +322,40 @@ enum SwitcherModelFeatureTests {
             suite.expect(migrationDefaults.object(forKey: DefaultsKey.switcherWindowlessApps) == nil,
                    "a setup that kept the windowless desktop app is left exactly as it was")
 
-            migrationDefaults.set(["display|port"],
-                                  forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
-            Defaults.recheckBrightnessDDCWriteOnlyPaths(in: migrationDefaults)
-            suite.expect(migrationDefaults.object(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths) == nil
-                   && migrationDefaults.bool(
-                    forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked),
-                   "verdicts cached before paired discovery requests are classified again")
-            migrationDefaults.set(["display|port"],
-                                  forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
-            Defaults.recheckBrightnessDDCWriteOnlyPaths(in: migrationDefaults)
-            suite.expect(migrationDefaults.stringArray(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
-                   == ["display|port"],
-                   "the recheck runs once and keeps later verdicts")
+            for pairedRecheckCompleted in [false, true] {
+                migrationDefaults.set(pairedRecheckCompleted,
+                                      forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked)
+                migrationDefaults.removeObject(forKey: DefaultsKey.brightnessDDCReadChecksumRechecked)
+                migrationDefaults.set(["display|port"],
+                                      forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+                migrationDefaults.set(["manual|port"],
+                                      forKey: DefaultsKey.brightnessForcedSoftwarePaths)
+                migrationDefaults.set(["display|port"],
+                                      forKey: DefaultsKey.brightnessExtendedDimmingPaths)
+                Defaults.recheckBrightnessDDCWriteOnlyPaths(in: migrationDefaults)
+                let recheckedPaths = migrationDefaults.stringArray(
+                    forKey: DefaultsKey.brightnessDDCWriteOnlyPaths) ?? []
+                suite.expect(migrationDefaults.object(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths) == nil
+                       && migrationDefaults.bool(forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked)
+                       && migrationDefaults.bool(forKey: DefaultsKey.brightnessDDCReadChecksumRechecked)
+                       && BrightnessSupport.shouldProbeDDC(pathKey: "display|port",
+                                                          writeOnlyPaths: Set(recheckedPaths)),
+                       "the checksum fix reopens cached paths with the paired recheck flag \(pairedRecheckCompleted)")
+                suite.expect(migrationDefaults.stringArray(forKey: DefaultsKey.brightnessForcedSoftwarePaths)
+                       == ["manual|port"]
+                       && migrationDefaults.stringArray(forKey: DefaultsKey.brightnessExtendedDimmingPaths)
+                       == ["display|port"],
+                       "rechecking DDC capability preserves manual dimming choices")
+                migrationDefaults.set(["display|port"],
+                                      forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+                Defaults.recheckBrightnessDDCWriteOnlyPaths(in: migrationDefaults)
+                let laterPaths = migrationDefaults.stringArray(
+                    forKey: DefaultsKey.brightnessDDCWriteOnlyPaths) ?? []
+                suite.expect(laterPaths == ["display|port"]
+                       && !BrightnessSupport.shouldProbeDDC(pathKey: "display|port",
+                                                           writeOnlyPaths: Set(laterPaths)),
+                       "the checksum recheck runs once and keeps later write-only verdicts")
+            }
 
             migrationDefaults.set("microphone,panel", forKey: DefaultsKey.notchHiddenControls)
             Defaults.hideScratchpadControlOnce(in: migrationDefaults)
@@ -491,6 +512,30 @@ enum SwitcherModelFeatureTests {
         }
         suite.expect(SettingsBackupSupport.sanitizedSettings(from: instantSelectionBackup)?[DefaultsKey.switcherInstantSelection] as? Bool == true,
                "App Switcher restores the instant selection choice from a settings backup")
+        suite.expect(registeredDefaults[DefaultsKey.switcherIgnoreHoverSelection] as? Bool == false
+               && SettingsBackupSupport.exportKeys().contains(DefaultsKey.switcherIgnoreHoverSelection),
+               "App Switcher keeps hover selection by default and carries ignore-hover selection in backups")
+        for value in [false, true] {
+            let ignoreHoverBackup = SettingsBackupSupport.payload(appVersion: "test") { key in
+                key == DefaultsKey.switcherIgnoreHoverSelection ? value : nil
+            }
+            suite.expect(SettingsBackupSupport.sanitizedSettings(from: ignoreHoverBackup)?[DefaultsKey.switcherIgnoreHoverSelection] as? Bool == value,
+                   "App Switcher restores either ignore-hover selection choice from a settings backup")
+        }
+        for value in ["true", 1, [true]] as [Any] {
+            let invalidBackup = SettingsBackupSupport.payload(appVersion: "test") { key in
+                key == DefaultsKey.switcherIgnoreHoverSelection ? value : nil
+            }
+            suite.expect(SettingsBackupSupport.sanitizedSettings(from: invalidBackup)?[DefaultsKey.switcherIgnoreHoverSelection] == nil,
+                   "App Switcher rejects non-boolean ignore-hover selection values in backups")
+        }
+        let oldBackup = SettingsBackupSupport.payload(appVersion: "test") { _ in nil }
+        suite.expect(SettingsBackupSupport.sanitizedSettings(from: oldBackup)?[DefaultsKey.switcherIgnoreHoverSelection] == nil
+                     && SettingsBackupSupport.keysToClear(whenImporting: [:]).contains(DefaultsKey.switcherIgnoreHoverSelection),
+                     "an older backup clears the ignore-hover choice back to its registered false default")
+        suite.expect(SwitcherSupport.hoverMovesSelection(ignoreHoverSelection: false)
+               && !SwitcherSupport.hoverMovesSelection(ignoreHoverSelection: true),
+               "hover moves the highlight until ignore-hover selection is on, and then leaves it")
         suite.expect(SwitcherSupport.appearanceDelayMillisecondsRange
                .contains(SwitcherSupport.defaultAppearanceDelayMilliseconds),
                "the default App Switcher appearance delay is one the slider accepts")
@@ -3796,7 +3841,10 @@ enum SwitcherModelFeatureTests {
                && SwitcherSupport.sanitizedMaxColumns(-3) == nil
                && SwitcherSupport.sanitizedMaxColumns(1) == SwitcherSupport.maxColumnsRange.lowerBound
                && SwitcherSupport.sanitizedMaxColumns(6) == 6
-               && SwitcherSupport.sanitizedMaxColumns(99) == SwitcherSupport.maxColumnsRange.upperBound,
+               && SwitcherSupport.sanitizedMaxColumns(9) == 9
+               && SwitcherSupport.sanitizedMaxColumns(10) == 10
+               && SwitcherSupport.sanitizedMaxColumns(11) == 10
+               && SwitcherSupport.sanitizedMaxColumns(99) == 10,
                "App Switcher column cap treats zero as Auto and clamps the rest")
         suite.expect(SwitcherSupport.cappedColumnCount(fitByWidth: 15, userMax: 6) == 6
                && SwitcherSupport.cappedColumnCount(fitByWidth: 4, userMax: 6) == 4
@@ -3819,6 +3867,17 @@ enum SwitcherModelFeatureTests {
                && SwitcherSupport.wrappingColumnCount(itemCount: 12, fitByWidth: 10, userMax: 8) == 6,
                "App Switcher column cap never makes the grid wider than Auto")
         let ultrawide = CGRect(x: 0, y: 0, width: 5120, height: 1415)
+        for columns in [9, 10] {
+            let layout = SwitcherIconRowLayout.compute(appCount: 30, selectedWindowCount: 1,
+                                                       screenVisibleFrame: ultrawide,
+                                                       maxColumns: SwitcherSupport.sanitizedMaxColumns(columns))
+            suite.expect(layout.columns == columns && layout.rows == (30 + columns - 1) / columns,
+                   "App Switcher icon row preserves a chosen cap of \(columns) columns")
+            suite.expect(SwitcherSupport.wrappingColumnCount(itemCount: 30, fitByWidth: 15,
+                                                              userMax: SwitcherSupport.sanitizedMaxColumns(columns)) == columns
+                   && SwitcherSupport.cappedColumnCount(fitByWidth: 4, userMax: columns) == 4,
+                   "App Switcher accepts a cap of \(columns) columns while respecting screen width")
+        }
         let strictIcons = SwitcherIconRowLayout.compute(appCount: 4, selectedWindowCount: 1,
                                                         screenVisibleFrame: ultrawide, maxColumns: 3)
         suite.expect(strictIcons.columns == 3 && strictIcons.rows == 2,
@@ -6750,7 +6809,7 @@ enum SwitcherModelFeatureTests {
                && SystemShortcutTakeoverSupport.recorderDecision(shortcut: .screenshotDefault, conflictsWithMacOS: false,
                                                                  takenOver: true, current: areaShot) == .save(clearTakeOver: true),
                "a taken-over row re-records its own key silently, is asked again for any other macOS key or when no key is recorded, and forgets the take-over when it leaves macOS keys")
-        suite.expect(GlobalShortcutRole.allCases.filter { !$0.supportsTakeOver } == [.switcher, .switcherWindow, .radialMenu]
+        suite.expect(GlobalShortcutRole.allCases.filter { !$0.supportsTakeOver } == [.switcher, .switcherWindow, .switcherAllWindows, .radialMenu]
                && GlobalShortcutRole.keepAwake.supportsTakeOver && GlobalShortcutRole.finderRename.supportsTakeOver,
                "only the rows whose key a feature claims may offer to take a macOS shortcut over")
         suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.systemShortcutTakeOverKeys)

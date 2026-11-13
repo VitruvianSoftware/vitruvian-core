@@ -229,6 +229,10 @@ private struct ExtraBrightnessPanelToggle: View {
 /// hardware minimum and is offered in Settings. On write-only DDC paths, it
 /// keeps the existing fallback to software control on both surfaces (issue
 /// #1589). Either choice stays visible until cleared.
+///
+/// A readable DDC display can also be moved to software control by hand in
+/// Settings. Some monitors answer reads but black out on brightness writes,
+/// and the only way to stop sending them is to leave DDC (issue #3621).
 package struct SoftwareDimmingButton: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = BrightnessService.shared
@@ -261,28 +265,55 @@ package struct SoftwareDimmingButton: View {
         return !(compact && readable)
     }
 
+    /// The opt-out from DDC for a readable monitor. Settings only, and only
+    /// while no other choice is on: once chosen, the main button carries it.
+    private var pictureDimmingOffered: Bool {
+        Self.offersPictureDimming(isActive: display.isActive, isBuiltIn: display.isBuiltIn,
+                                  canChooseDimming: display.canChooseDimming, isDDC: display.method == .ddc,
+                                  readable: display.readable, chosen: chosen, compact: compact)
+    }
+
+    /// Whether a readable DDC display's row also offers to dim the picture
+    /// instead, asked with plain values like `offersChoice`.
+    package static func offersPictureDimming(isActive: Bool, isBuiltIn: Bool, canChooseDimming: Bool,
+                                             isDDC: Bool, readable: Bool, chosen: Bool,
+                                             compact: Bool) -> Bool {
+        guard !compact, !chosen, isActive, !isBuiltIn, canChooseDimming else { return false }
+        return isDDC && readable
+    }
+
     package var body: some View {
         if offered {
-            Button {
+            choice(usesExtendedDimming ? strings.extendedDimming : strings.softwareDimming,
+                   chosen: chosen) {
                 if usesExtendedDimming {
                     service.setExtendedDimmingPreferred(!extendedChosen, for: display.id)
                 } else {
                     service.setSoftwareDimmingPreferred(!softwareChosen, for: display.id)
                 }
-            } label: {
-                HStack(spacing: compact ? 4 : 5) {
-                    Image(systemName: chosen ? "checkmark.circle.fill" : "circle.lefthalf.filled")
-                        .font(.system(size: compact ? 9.5 : 11, weight: .semibold))
-                    Text(usesExtendedDimming ? strings.extendedDimming : strings.softwareDimming)
-                        .font(.system(size: compact ? 10 : 12, weight: .medium))
-                        .lineLimit(1)
-                }
-                .foregroundStyle(chosen ? Color.accentColor : Color.secondary)
             }
-            .buttonStyle(.plain)
-            .disabled(service.isDisplayPending(display.id))
-            .accessibilityLabel("\(display.name): \(usesExtendedDimming ? strings.extendedDimming : strings.softwareDimming)")
         }
+        if pictureDimmingOffered {
+            choice(strings.softwareDimming, chosen: false) {
+                service.setSoftwareDimmingPreferred(true, for: display.id)
+            }
+        }
+    }
+
+    private func choice(_ title: String, chosen: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: compact ? 4 : 5) {
+                Image(systemName: chosen ? "checkmark.circle.fill" : "circle.lefthalf.filled")
+                    .font(.system(size: compact ? 9.5 : 11, weight: .semibold))
+                Text(title)
+                    .font(.system(size: compact ? 10 : 12, weight: .medium))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(chosen ? Color.accentColor : Color.secondary)
+        }
+        .buttonStyle(.plain)
+        .disabled(service.isDisplayPending(display.id))
+        .accessibilityLabel("\(display.name): \(title)")
     }
 }
 

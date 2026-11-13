@@ -235,6 +235,8 @@ extension Strings {
         switcherMaxColumnsAuto: "Auto",
         switcherInstantSelection: "Sélection instantanée",
         switcherInstantSelectionCaption: "Déplace immédiatement la surbrillance et fait défiler la liste pendant la navigation entre les apps et les fenêtres.",
+        switcherIgnoreHoverSelection: "Ignorer la sélection au survol",
+        switcherIgnoreHoverSelectionCaption: "Déplacer le pointeur sur les apps et les fenêtres laisse la surbrillance en place. Un clic ouvre toujours l’élément.",
         switcherMergeTabs: "Afficher une seule entrée par app",
         switcherMergeTabsCaption: "Regroupe toutes les fenêtres d’une app en une seule entrée dans le sélecteur, au lieu d’une entrée par fenêtre.",
         switcherWindowlessApps: "Apps sans fenêtre ouverte",
@@ -334,6 +336,7 @@ extension Strings {
         uninstallerRemoving: "Déplacement vers la corbeille…",
         uninstallerFoundTitle: "trouvé",
         uninstallerSelectedFormat: "%d sur %d sélectionnés",
+        uninstallerSelectAll: "Tout sélectionner",
         uninstallerRemove: "Placer dans la corbeille",
         uninstallerCancel: "Annuler",
         uninstallerConfirmationExpired: "Cette confirmation n’est plus valable. Vérifiez les éléments actuels et confirmez à nouveau.",
@@ -422,6 +425,8 @@ extension Strings {
         homebrewOpenTerminal: "Ouvrir le terminal",
         homebrewCancelOperation: "Annuler",
         homebrewClearLog: "Effacer le journal",
+        homebrewLastLogView: "Afficher le dernier journal",
+        homebrewLastLogHide: "Masquer le dernier journal",
         homebrewLogTitle: "Journal",
         homebrewVersion: "Version",
         homebrewDescription: "Type",
@@ -1078,6 +1083,7 @@ extension Strings {
         switcherShowShortcutHints: "Afficher les raccourcis",
         switcherShowShortcutHintsCaption: "Affiche les raccourcis des apps et des fenêtres sous les icônes.",
         uninstallerHomebrewPackageFormat: "%@ sera aussi retiré de Homebrew.",
+        uninstallerHomebrewCheckFailed: "Impossible de vérifier si Homebrew gère cette app. Actualisez pour réessayer ou désinstallez-la depuis Homebrew.",
         shelfEdgeToggle: "Ouvrir près d’un bord de l’écran",
         shelfEdgeCaption: "Faites glisser un fichier vers le bord de l’écran pour entrevoir l’étagère. Déposez-le là, ou reculez et elle se retire.",
         focusFollowsMouseName: "Le focus suit la souris",
@@ -1110,6 +1116,8 @@ extension Strings {
         shelfShortcutFinderSelection: "Ajouter la sélection du Finder avec le raccourci",
         shelfShortcutFinderSelectionCaption: "Quand le Finder est au premier plan, le raccourci ouvre l’étagère avec les fichiers sélectionnés déjà dedans. Sans sélection, elle s’ouvre comme d’habitude.",
         spacesOrderName: "Garder les Espaces dans un ordre fixe",
-        spacesOrderCaption: "Empêche macOS de réorganiser les Espaces selon leur utilisation récente, pour qu’ils restent dans l’ordre choisi. Votre réglage précédent revient quand cette option est désactivée. Le Dock peut redémarrer une fois pour appliquer le changement."
+        spacesOrderCaption: "Empêche macOS de réorganiser les Espaces selon leur utilisation récente, pour qu’ils restent dans l’ordre choisi. Votre réglage précédent revient quand cette option est désactivée. Le Dock peut redémarrer une fois pour appliquer le changement.",
+        quitAppsName: "Quitter des apps",
+        quitAppsCaption: "Liste vos apps ouvertes pour les quitter une par une, toutes à la fois ou toutes sauf celle au premier plan. La liste s’affiche toujours avant toute fermeture."
     )
 }

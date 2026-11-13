@@ -183,9 +183,15 @@ enum BrightnessRig {
         private(set) var displayQueries = 0
         /// What the service's main-thread check answers.
         var onMainThread = true
+        /// Runs at each DDC pause, just before a write reaches the bus.
+        var beforePause: (() -> Void)?
 
         let screens = NotificationCenter()
         let workspace = NotificationCenter()
+        /// Where the screen-unlocked notification is posted.
+        let unlocks = NotificationCenter()
+        /// Whether the lock screen is up; nil when the session cannot be read.
+        var screenLocked: Bool? = false
         /// Delayed main-thread work, run with `runDelayed()`.
         var delayed: [DispatchWorkItem] = []
 
@@ -252,7 +258,8 @@ enum BrightnessRig {
                 tearDownOverlay: {},
                 followsKeys: false,
                 islandIsOpen: { [unowned self] in self.islandOpen },
-                isMainThread: { [unowned self] in self.onMainThread })
+                isMainThread: { [unowned self] in self.onMainThread },
+                unlockNotifications: unlocks)
         }
 
         private var hardware: BrightnessService.Hardware {
@@ -321,7 +328,7 @@ enum BrightnessRig {
                     return result
                 },
                 readI2C: { service, _, _, bytes, count in (service as! Monitor).read(bytes, count: count) },
-                pause: { _ in },
+                pause: { [unowned self] _ in self.beforePause?() },
                 uptimeMicroseconds: { [unowned self] in
                     // Read at the start and end of every DDC command.
                     for display in self.displays { display.monitor?.commandBoundary() }
@@ -367,7 +374,8 @@ enum BrightnessRig {
                         self.lidStops += 1
                         self.lidChanged = nil
                     }
-                })
+                },
+                screenIsLocked: { [unowned self] in self.screenLocked ?? true })
         }
     }
 }

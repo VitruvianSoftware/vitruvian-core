@@ -226,6 +226,8 @@ extension Strings {
         switcherMaxColumnsAuto: "Авто",
         switcherInstantSelection: "Миттєвий вибір",
         switcherInstantSelectionCaption: "Під час переходу між програмами та вікнами одразу переміщує виділення і прокручує список.",
+        switcherIgnoreHoverSelection: "Не вибирати при наведенні",
+        switcherIgnoreHoverSelectionCaption: "Переміщення вказівника програмами й вікнами не зсуває виділення. Клацання й далі відкриває елемент.",
         switcherMergeTabs: "Показувати один запис на програму",
         switcherMergeTabsCaption: "Зводить усі вікна програми в один запис у перемикачі замість окремого запису на кожне вікно.",
         switcherWindowlessApps: "Програми без відкритих вікон",
@@ -322,6 +324,7 @@ extension Strings {
         uninstallerRemoving: "Переміщення в Смітник…",
         uninstallerFoundTitle: "знайдено",
         uninstallerSelectedFormat: "Вибрано %d з %d",
+        uninstallerSelectAll: "Вибрати все",
         uninstallerRemove: "Перемістити в Смітник",
         uninstallerCancel: "Скасувати",
         uninstallerConfirmationExpired: "Це підтвердження вже недійсне. Перегляньте поточні елементи й підтвердьте знову.",
@@ -408,6 +411,8 @@ extension Strings {
         homebrewOpenTerminal: "Відкрити термінал",
         homebrewCancelOperation: "Скасувати",
         homebrewClearLog: "Очистити журнал",
+        homebrewLastLogView: "Показати останній журнал",
+        homebrewLastLogHide: "Сховати останній журнал",
         homebrewLogTitle: "Журнал",
         homebrewVersion: "Версія",
         homebrewDescription: "Тип",
@@ -1048,6 +1053,7 @@ extension Strings {
         switcherShowShortcutHints: "Показувати підказки поєднань клавіш",
         switcherShowShortcutHintsCaption: "Показує клавіатурні скорочення для програм та вікон під значками.",
         uninstallerHomebrewPackageFormat: "%@ також буде видалено з Homebrew.",
+        uninstallerHomebrewCheckFailed: "Не вдалося перевірити, чи керує Homebrew цією програмою. Оновіть список і спробуйте ще раз або видаліть програму через Homebrew.",
         shelfEdgeToggle: "Відкривати біля краю екрана",
         shelfEdgeCaption: "Перетягніть файл до краю екрана, щоб полиця виглянула. Відпустіть його там, або потягніть назад, і полиця прибереться.",
         focusFollowsMouseName: "Фокус за вказівником",
@@ -1080,6 +1086,8 @@ extension Strings {
         shelfShortcutFinderSelection: "Додавати вибране у Finder клавіатурним скороченням",
         shelfShortcutFinderSelectionCaption: "Коли Finder на передньому плані, скорочення відкриває полицю вже з вибраними файлами. Якщо нічого не вибрано, вона відкривається як зазвичай.",
         spacesOrderName: "Фіксований порядок Spaces",
-        spacesOrderCaption: "Не дає macOS змінювати порядок Spaces за останнім використанням, тож вони лишаються в заданому вами порядку. Попереднє налаштування повернеться, коли цю опцію вимкнено. Dock може один раз перезапуститися, щоб застосувати зміну."
+        spacesOrderCaption: "Не дає macOS змінювати порядок Spaces за останнім використанням, тож вони лишаються в заданому вами порядку. Попереднє налаштування повернеться, коли цю опцію вимкнено. Dock може один раз перезапуститися, щоб застосувати зміну.",
+        quitAppsName: "Закриття програм",
+        quitAppsCaption: "Показує відкриті програми, щоб закрити їх по одній, усі одразу або всі, крім активної. Список завжди з’являється до того, як щось закриється."
     )
 }

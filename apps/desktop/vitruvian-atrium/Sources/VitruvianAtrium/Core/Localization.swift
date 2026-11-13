@@ -403,6 +403,8 @@ package struct Strings {
     package let switcherMaxColumnsAuto: String
     package let switcherInstantSelection: String
     package let switcherInstantSelectionCaption: String
+    package let switcherIgnoreHoverSelection: String
+    package let switcherIgnoreHoverSelectionCaption: String
     package let switcherMergeTabs: String
     package let switcherMergeTabsCaption: String
     package let switcherWindowlessApps: String
@@ -505,6 +507,7 @@ package struct Strings {
     package let uninstallerRemoving: String
     package let uninstallerFoundTitle: String
     package let uninstallerSelectedFormat: String   // + selected, total
+    package let uninstallerSelectAll: String
     package let uninstallerRemove: String
     package let uninstallerCancel: String
     package let uninstallerConfirmationExpired: String
@@ -595,6 +598,8 @@ package struct Strings {
     package let homebrewOpenTerminal: String
     package let homebrewCancelOperation: String
     package let homebrewClearLog: String
+    package let homebrewLastLogView: String
+    package let homebrewLastLogHide: String
     package let homebrewLogTitle: String
     package let homebrewVersion: String
     package let homebrewDescription: String
@@ -1287,6 +1292,7 @@ package struct Strings {
     package let switcherShowShortcutHints: String
     package let switcherShowShortcutHintsCaption: String
     package let uninstallerHomebrewPackageFormat: String
+    package let uninstallerHomebrewCheckFailed: String
     package let shelfEdgeToggle: String
     package let shelfEdgeCaption: String
     package let focusFollowsMouseName: String
@@ -1320,6 +1326,8 @@ package struct Strings {
     package let shelfShortcutFinderSelectionCaption: String
     package let spacesOrderName: String
     package let spacesOrderCaption: String
+    package let quitAppsName: String
+    package let quitAppsCaption: String
 }
 
 // MARK: - Português (Brasil)
@@ -1556,6 +1564,8 @@ extension Strings {
         switcherMaxColumnsAuto: "Automático",
         switcherInstantSelection: "Seleção instantânea",
         switcherInstantSelectionCaption: "Move o destaque e a rolagem imediatamente ao navegar por apps e janelas.",
+        switcherIgnoreHoverSelection: "Ignorar seleção ao passar o cursor",
+        switcherIgnoreHoverSelectionCaption: "Mover o ponteiro sobre apps e janelas deixa o destaque onde está. Clicar ainda abre um.",
         switcherMergeTabs: "Mostrar uma entrada por app",
         switcherMergeTabsCaption: "Junta todas as janelas de um app em uma só entrada no alternador, em vez de uma por janela.",
         switcherWindowlessApps: "Apps sem janela aberta",
@@ -1655,6 +1665,7 @@ extension Strings {
         uninstallerRemoving: "Movendo para a Lixeira…",
         uninstallerFoundTitle: "encontrado",
         uninstallerSelectedFormat: "%d de %d selecionados",
+        uninstallerSelectAll: "Selecionar tudo",
         uninstallerRemove: "Mover para a Lixeira",
         uninstallerCancel: "Cancelar",
         uninstallerConfirmationExpired: "Esta confirmação não é mais válida. Revise os itens atuais e confirme de novo.",
@@ -1743,6 +1754,8 @@ extension Strings {
         homebrewOpenTerminal: "Abrir terminal",
         homebrewCancelOperation: "Cancelar",
         homebrewClearLog: "Limpar log",
+        homebrewLastLogView: "Ver o último log",
+        homebrewLastLogHide: "Ocultar o último log",
         homebrewLogTitle: "Log",
         homebrewVersion: "Versão",
         homebrewDescription: "Tipo",
@@ -2399,6 +2412,7 @@ extension Strings {
         switcherShowShortcutHints: "Mostrar dicas de atalhos",
         switcherShowShortcutHintsCaption: "Exibe os atalhos de apps e janelas abaixo dos ícones.",
         uninstallerHomebrewPackageFormat: "%@ também será removido do Homebrew.",
+        uninstallerHomebrewCheckFailed: "Não foi possível verificar se o Homebrew gerencia este aplicativo. Atualize para tentar novamente ou desinstale pelo Homebrew.",
         shelfEdgeToggle: "Abrir perto de uma borda da tela",
         shelfEdgeCaption: "Ao arrastar um arquivo para perto da borda da tela, a área espia para dentro. Solte ali, ou puxe de volta e ela recua.",
         focusFollowsMouseName: "Foco ao passar o mouse",
@@ -2431,7 +2445,9 @@ extension Strings {
         shelfShortcutFinderSelection: "Adicionar a seleção do Finder com o atalho",
         shelfShortcutFinderSelectionCaption: "Com o Finder em primeiro plano, o atalho abre a área temporária já com os arquivos selecionados. Sem seleção, ela abre como sempre.",
         spacesOrderName: "Manter os Espaços em ordem fixa",
-        spacesOrderCaption: "Impede que o macOS reorganize os Espaços pelo uso mais recente, para que fiquem na ordem que você definiu. A configuração anterior volta ao desligar esta opção. O Dock pode reiniciar uma vez para aplicar a mudança."
+        spacesOrderCaption: "Impede que o macOS reorganize os Espaços pelo uso mais recente, para que fiquem na ordem que você definiu. A configuração anterior volta ao desligar esta opção. O Dock pode reiniciar uma vez para aplicar a mudança.",
+        quitAppsName: "Encerrar apps",
+        quitAppsCaption: "Lista seus apps abertos para encerrar um por um, todos de uma vez ou todos exceto o da frente. Sempre mostra a lista antes de encerrar qualquer um."
     )
 }
 
@@ -2669,6 +2685,8 @@ extension Strings {
         switcherMaxColumnsAuto: "Auto",
         switcherInstantSelection: "Instant selection",
         switcherInstantSelectionCaption: "Moves the highlight and scroll position immediately as you browse apps and windows.",
+        switcherIgnoreHoverSelection: "Ignore hover selection",
+        switcherIgnoreHoverSelectionCaption: "Moving the pointer over apps and windows leaves the highlight where it is. Clicking still opens one.",
         switcherMergeTabs: "Show one entry per app",
         switcherMergeTabsCaption: "Collapses all of an app’s windows into one entry in the switcher, instead of one entry per window.",
         switcherWindowlessApps: "Apps with no open window",
@@ -2768,6 +2786,7 @@ extension Strings {
         uninstallerRemoving: "Moving to the Trash…",
         uninstallerFoundTitle: "found",
         uninstallerSelectedFormat: "%d of %d selected",
+        uninstallerSelectAll: "Select all",
         uninstallerRemove: "Move to Trash",
         uninstallerCancel: "Cancel",
         uninstallerConfirmationExpired: "This confirmation is no longer valid. Review the current items and confirm again.",
@@ -2856,6 +2875,8 @@ extension Strings {
         homebrewOpenTerminal: "Open terminal",
         homebrewCancelOperation: "Cancel",
         homebrewClearLog: "Clear log",
+        homebrewLastLogView: "View last log",
+        homebrewLastLogHide: "Hide last log",
         homebrewLogTitle: "Log",
         homebrewVersion: "Version",
         homebrewDescription: "Type",
@@ -3512,6 +3533,7 @@ extension Strings {
         switcherShowShortcutHints: "Show shortcut hints",
         switcherShowShortcutHintsCaption: "Shows the app and window shortcuts below the icons.",
         uninstallerHomebrewPackageFormat: "%@ will also be removed from Homebrew.",
+        uninstallerHomebrewCheckFailed: "Could not verify whether Homebrew manages this app. Refresh to try again, or uninstall it from Homebrew.",
         shelfEdgeToggle: "Open near a screen edge",
         shelfEdgeCaption: "Drag a file toward the screen edge to peek the shelf in. Drop it there, or pull back and it retreats.",
         focusFollowsMouseName: "Focus follows mouse",
@@ -3544,6 +3566,8 @@ extension Strings {
         shelfShortcutFinderSelection: "Add the Finder selection with the shortcut",
         shelfShortcutFinderSelectionCaption: "With Finder in front, the shortcut opens the shelf with the selected files already in it. With nothing selected, it opens as usual.",
         spacesOrderName: "Keep Spaces in a fixed order",
-        spacesOrderCaption: "Stops macOS from rearranging Spaces by most recent use, so they stay in the order you set. Your previous setting returns when this is turned off. The Dock may restart once to apply the change."
+        spacesOrderCaption: "Stops macOS from rearranging Spaces by most recent use, so they stay in the order you set. Your previous setting returns when this is turned off. The Dock may restart once to apply the change.",
+        quitAppsName: "Quit apps",
+        quitAppsCaption: "Lists your open apps to quit one by one, all at once, or all but the one in front. Always shows the list before anything quits."
     )
 }

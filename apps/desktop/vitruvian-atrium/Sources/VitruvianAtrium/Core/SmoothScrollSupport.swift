@@ -164,6 +164,16 @@ package enum SmoothScrollSupport {
         return .glide
     }
 
+    /// Whether a tick aimed at `targetProcessID` may glide. This app's own
+    /// windows, the clipboard history among them (#3780), take the original
+    /// tick, so they move by the wheel's own distance; the pending glide ends
+    /// first. The fast capture loupe is the exception: it zooms on glide
+    /// frames. The loupe is asked only about a tick aimed at this app.
+    package static func glides(targetProcessID: Int64, ownProcessID: Int64,
+                               isActiveLoupeWindow: () -> Bool) -> Bool {
+        targetProcessID != ownProcessID || isActiveLoupeWindow()
+    }
+
     /// The timer is only a wakeup cadence; elapsed time controls the motion.
     package static let frameInterval: TimeInterval = 1.0 / 60.0
 

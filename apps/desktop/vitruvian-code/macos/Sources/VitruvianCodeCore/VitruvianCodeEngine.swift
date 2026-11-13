@@ -1026,34 +1026,6 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         }, sendInput: { data in writer.write(data) }, closeInput: { writer.close() })
     }
 
-    /// The write end of an agent's standard input. Writes and the close
-    /// may come from different threads (the session's, and the reader's
-    /// at exit), so both take a lock; a write after the close is dropped.
-    /// A write to an agent that has already gone fails with EPIPE rather
-    /// than raising SIGPIPE, which would end the app.
-    private final class AgentInput: @unchecked Sendable {
-        private let lock = NSLock()
-        private var handle: FileHandle?
-
-        init(_ handle: FileHandle) {
-            _ = fcntl(handle.fileDescriptor, F_SETNOSIGPIPE, 1)
-            self.handle = handle
-        }
-
-        func write(_ data: Data) {
-            lock.lock()
-            defer { lock.unlock() }
-            try? handle?.write(contentsOf: data)
-        }
-
-        func close() {
-            lock.lock()
-            defer { lock.unlock() }
-            try? handle?.close()
-            handle = nil
-        }
-    }
-
     /// A provider's own command. The program is started directly with its
     /// arguments as given, never through a shell. Its two outputs have a
     /// pipe and a reading thread each, so neither can fill up and stall

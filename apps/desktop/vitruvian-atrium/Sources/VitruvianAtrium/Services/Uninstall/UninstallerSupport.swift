@@ -113,6 +113,26 @@ package enum UninstallerSupport {
         case related
     }
 
+    /// What a select-all control shows for the leftover rows: nothing chosen,
+    /// everything chosen, or some of each.
+    package enum BulkSelection: Equatable {
+        case none, some, all
+
+        package init(included: Int, total: Int) {
+            if total == 0 || included == 0 {
+                self = .none
+            } else if included >= total {
+                self = .all
+            } else {
+                self = .some
+            }
+        }
+
+        /// The choice the next click applies: anything short of all fills in
+        /// the rest, a full selection clears.
+        package var nextInclude: Bool { self != .all }
+    }
+
     package struct DirListing: Equatable {
         package let name: String
         package let children: [DirListing]

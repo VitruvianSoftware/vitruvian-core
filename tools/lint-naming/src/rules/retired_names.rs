@@ -480,8 +480,8 @@ fn allowed_line_tokens(norm: &str) -> &'static [&'static str] {
         ],
         "apps/web/vitruviansoftware-dev/_data/downloads.yml" => &[
             concat!("vitruviansoftware/tap/", "nexus", "-agent"),
-            concat!("releases/download/android", "-remote-v0.1.37/"),
-            concat!("releases/tag/android", "-remote-v0.1.37"),
+            concat!("releases/download/android", "-remote-v0.1.39/"),
+            concat!("releases/tag/android", "-remote-v0.1.39"),
         ],
         "tools/conformance/src/checks/brew.rs" => &[concat!("\"", "nexus", "-agent\"")],
         // Catalog handover `replaces` IDs & frozen pre-cutover release download URLs

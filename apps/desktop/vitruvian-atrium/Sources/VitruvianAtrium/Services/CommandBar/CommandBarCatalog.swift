@@ -381,7 +381,7 @@ package enum CommandBarCatalog {
             guard role.isAvailable(using: { $0.isAvailable }),
                   role.requiredEnableKeys.allSatisfy({ UserDefaults.standard.bool(forKey: $0) })
             else { return nil }
-            return role.savedShortcut
+            return role.assignedShortcut()
         }
         func accessibilityTrouble() -> CommandBarEntry.Trouble? {
             Permissions.shared.accessibility ? nil : .needsPermission
@@ -390,6 +390,7 @@ package enum CommandBarCatalog {
         // Screen tools first: the beat lets the bar leave before capture.
         if AppFeature.screenshot.isAvailable {
             let screenshot = FeatureStrings.screenshot(language)
+            let autoScroll = UserDefaults.standard[Preferences.screenshotScrollingAutoScroll]
             entries.append(CommandBarEntry(
                 id: "action.screenshot",
                 title: screenshot.pageTitle,
@@ -403,7 +404,8 @@ package enum CommandBarCatalog {
                 title: screenshot.scrollingCaptureTitle,
                 subtitle: area(.screenshot, under: screenshot.pageTitle),
                 icon: .symbol("rectangle.stack"),
-                trouble: Permissions.shared.screenRecording && Permissions.shared.accessibility
+                shortcut: roleShortcut(.screenshotScrolling),
+                trouble: Permissions.shared.screenRecording && (!autoScroll || Permissions.shared.accessibility)
                     ? nil : .needsPermission,
                 run: { _ in afterBeat { ScreenshotService.shared.captureScrolling() } }))
         }
@@ -676,6 +678,25 @@ package enum CommandBarCatalog {
                 trouble: automationDenied ? .needsPermission : nil,
                 confirmationPrompt: togglesText.emptyTrashConfirmTitle,
                 run: { _ in QuickTogglesService.shared.emptyTrashConfirmed() }))
+        }
+
+        if AppFeature.quitApps.isAvailable {
+            let quitText = FeatureStrings.quickToggles(L10n.shared.language)
+            // Both open the Quit apps window, which is the confirmation.
+            entries.append(CommandBarEntry(
+                id: "action.quitAllApps",
+                title: quitText.quitAllTitle,
+                subtitle: area(.quitApps),
+                icon: .symbol("xmark.app"),
+                shortcut: roleShortcut(.quitAll),
+                run: { _ in QuickTogglesService.shared.showQuitApps(scope: .all) }))
+            entries.append(CommandBarEntry(
+                id: "action.quitAllExceptFront",
+                title: quitText.quitOthersTitle,
+                subtitle: area(.quitApps),
+                icon: .symbol("xmark.app"),
+                shortcut: roleShortcut(.quitAllExceptFront),
+                run: { _ in QuickTogglesService.shared.showQuitApps(scope: .allExceptFront) }))
         }
 
         if AppFeature.urlCleaner.isAvailable {

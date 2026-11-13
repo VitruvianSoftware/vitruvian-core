@@ -235,6 +235,8 @@ extension Strings {
         switcherMaxColumnsAuto: "Auto",
         switcherInstantSelection: "Okamžitý výber",
         switcherInstantSelectionCaption: "Pri prechádzaní aplikácií a okien okamžite presunie zvýraznenie a posunie zoznam.",
+        switcherIgnoreHoverSelection: "Ignorovať výber pri ukázaní",
+        switcherIgnoreHoverSelectionCaption: "Posun ukazovateľa po aplikáciách a oknách nechá zvýraznenie na mieste. Kliknutie stále otvorí položku.",
         switcherMergeTabs: "Zobraziť jednu položku na aplikáciu",
         switcherMergeTabsCaption: "Zlúči všetky okná aplikácie do jednej položky v prepínači namiesto jednej položky na každé okno.",
         switcherWindowlessApps: "Aplikácie bez otvoreného okna",
@@ -334,6 +336,7 @@ extension Strings {
         uninstallerRemoving: "Presúva sa do Koša…",
         uninstallerFoundTitle: "nájdené",
         uninstallerSelectedFormat: "Vybrané: %d z %d",
+        uninstallerSelectAll: "Vybrať všetko",
         uninstallerRemove: "Presunúť do Koša",
         uninstallerCancel: "Zrušiť",
         uninstallerConfirmationExpired: "Toto potvrdenie už neplatí. Skontrolujte aktuálne položky a potvrďte znova.",
@@ -422,6 +425,8 @@ extension Strings {
         homebrewOpenTerminal: "Otvoriť terminál",
         homebrewCancelOperation: "Zrušiť",
         homebrewClearLog: "Vymazať protokol",
+        homebrewLastLogView: "Zobraziť posledný protokol",
+        homebrewLastLogHide: "Skryť posledný protokol",
         homebrewLogTitle: "Protokol",
         homebrewVersion: "Verzia",
         homebrewDescription: "Typ",
@@ -1078,6 +1083,7 @@ extension Strings {
         switcherShowShortcutHints: "Zobraziť nápovedu ku skratkám",
         switcherShowShortcutHintsCaption: "Zobrazí skratky pre aplikácie a okná pod ikonami.",
         uninstallerHomebrewPackageFormat: "%@ sa odstráni aj z Homebrew.",
+        uninstallerHomebrewCheckFailed: "Nepodarilo sa overiť, či túto aplikáciu spravuje Homebrew. Obnovte zoznam a skúste to znova alebo ju odinštalujte cez Homebrew.",
         shelfEdgeToggle: "Otvoriť pri okraji obrazovky",
         shelfEdgeCaption: "Potiahnite súbor k okraju obrazovky a polica sa vysunie. Buď na ňu súbor pustíte, alebo sa potiahnutím späť zasunie.",
         focusFollowsMouseName: "Zameranie sleduje myš",
@@ -1110,6 +1116,8 @@ extension Strings {
         shelfShortcutFinderSelection: "Pridať výber z Findera skratkou",
         shelfShortcutFinderSelectionCaption: "Keď je Finder v popredí, skratka otvorí policu už s vybranými súbormi. Ak nie je nič vybraté, otvorí sa ako zvyčajne.",
         spacesOrderName: "Udržať plochy v pevnom poradí",
-        spacesOrderCaption: "Zabráni systému macOS meniť poradie plôch podľa posledného použitia, takže zostanú v poradí, ktoré ste nastavili. Po vypnutí sa vráti predchádzajúce nastavenie. Dock sa môže raz reštartovať, aby sa zmena použila."
+        spacesOrderCaption: "Zabráni systému macOS meniť poradie plôch podľa posledného použitia, takže zostanú v poradí, ktoré ste nastavili. Po vypnutí sa vráti predchádzajúce nastavenie. Dock sa môže raz reštartovať, aby sa zmena použila.",
+        quitAppsName: "Ukončenie aplikácií",
+        quitAppsCaption: "Zobrazí otvorené aplikácie, aby ste ich mohli ukončiť jednu po druhej, všetky naraz alebo všetky okrem tej vpredu. Zoznam sa vždy zobrazí skôr, než sa čokoľvek ukončí."
     )
 }

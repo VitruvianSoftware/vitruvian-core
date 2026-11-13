@@ -299,6 +299,8 @@ package enum Defaults {
         DefaultsKey.switcherTakeOverSystemShortcuts: Preferences.switcherTakeOverSystemShortcuts.defaultValue,
         DefaultsKey.switcherShortcut: Preferences.switcherShortcut.defaultValue,
         DefaultsKey.switcherWindowShortcut: Preferences.switcherWindowShortcut.defaultValue,
+        DefaultsKey.switcherAllWindowsShortcut: Preferences.switcherAllWindowsShortcut.defaultValue,
+        DefaultsKey.switcherAllWindowsShortcutEnabled: Preferences.switcherAllWindowsShortcutEnabled.defaultValue,
         DefaultsKey.switcherIconRowMode: Preferences.switcherIconRowMode.defaultValue,
         DefaultsKey.switcherSimpleMode: Preferences.switcherSimpleMode.defaultValue,
         DefaultsKey.switcherMergeTabs: Preferences.switcherMergeTabs.defaultValue,
@@ -313,6 +315,7 @@ package enum Defaults {
         DefaultsKey.switcherShowShortcutHints: Preferences.switcherShowShortcutHints.defaultValue,
         DefaultsKey.switcherAppearanceDelay: Preferences.switcherAppearanceDelay.defaultValue,
         DefaultsKey.switcherInstantSelection: Preferences.switcherInstantSelection.defaultValue,
+        DefaultsKey.switcherIgnoreHoverSelection: Preferences.switcherIgnoreHoverSelection.defaultValue,
         DefaultsKey.switcherScreenPlacement: Preferences.switcherScreenPlacement.defaultValue,
         DefaultsKey.switcherCurrentDisplayOnly: Preferences.switcherCurrentDisplayOnly.defaultValue,
         DefaultsKey.switcherMaxColumns: Preferences.switcherMaxColumns.defaultValue,
@@ -507,6 +510,7 @@ package enum Defaults {
         DefaultsKey.notchAccessoriesEnabled: Preferences.notchAccessoriesEnabled.defaultValue,
         DefaultsKey.notchCalendarEnabled: Preferences.notchCalendarEnabled.defaultValue,
         DefaultsKey.notchCalendarCountdown: Preferences.notchCalendarCountdown.defaultValue,
+        DefaultsKey.notchCalendarCountdownLead: Preferences.notchCalendarCountdownLead.defaultValue,
         DefaultsKey.notchCalendarTimeLeft: Preferences.notchCalendarTimeLeft.defaultValue,
         DefaultsKey.notchCalendarWeekNumbers: Preferences.notchCalendarWeekNumbers.defaultValue,
         DefaultsKey.notchCalendarExcluded: Preferences.notchCalendarExcluded.defaultValue,
@@ -643,6 +647,7 @@ package enum Defaults {
         DefaultsKey.panelControlRadialMenu: Preferences.panelControlRadialMenu.defaultValue,
         DefaultsKey.panelControlMouseButtonShortcuts: Preferences.panelControlMouseButtonShortcuts.defaultValue,
         DefaultsKey.panelControlMouseAcceleration: Preferences.panelControlMouseAcceleration.defaultValue,
+        DefaultsKey.panelControlSmoothScroll: Preferences.panelControlSmoothScroll.defaultValue,
         DefaultsKey.panelControlLinearScroll: Preferences.panelControlLinearScroll.defaultValue,
         DefaultsKey.panelControlMouseClickDebounce: Preferences.panelControlMouseClickDebounce.defaultValue,
         DefaultsKey.panelControlSpacesOrder: Preferences.panelControlSpacesOrder.defaultValue,
@@ -659,6 +664,7 @@ package enum Defaults {
         DefaultsKey.panelToggleKeyboardLight: Preferences.panelToggleKeyboardLight.defaultValue,
         DefaultsKey.panelToggleMicMute: Preferences.panelToggleMicMute.defaultValue,
         DefaultsKey.panelToggleEmptyTrash: Preferences.panelToggleEmptyTrash.defaultValue,
+        DefaultsKey.panelToggleQuitAllApps: Preferences.panelToggleQuitAllApps.defaultValue,
         DefaultsKey.panelToggleEjectDisks: Preferences.panelToggleEjectDisks.defaultValue,
         DefaultsKey.panelToggleHiddenFiles: Preferences.panelToggleHiddenFiles.defaultValue,
         DefaultsKey.panelToggleDesktopIcons: Preferences.panelToggleDesktopIcons.defaultValue,
@@ -846,6 +852,11 @@ package enum Defaults {
         DefaultsKey.screenOCRDetectQRCodes: Preferences.screenOCRDetectQRCodes.defaultValue,
         DefaultsKey.micMuteShortcutEnabled: Preferences.micMuteShortcutEnabled.defaultValue,
         DefaultsKey.micMuteShortcut: Preferences.micMuteShortcut.defaultValue,
+        DefaultsKey.quitAppsShortcutEnabled: Preferences.quitAppsShortcutEnabled.defaultValue,
+        DefaultsKey.quitAppsShortcut: Preferences.quitAppsShortcut.defaultValue,
+        DefaultsKey.quitAppsExceptFrontShortcutEnabled: Preferences.quitAppsExceptFrontShortcutEnabled.defaultValue,
+        DefaultsKey.quitAppsExceptFrontShortcut: Preferences.quitAppsExceptFrontShortcut.defaultValue,
+        DefaultsKey.quitAppsKeptApps: Preferences.quitAppsKeptApps.defaultValue,
         DefaultsKey.cameraPreviewShortcutEnabled: Preferences.cameraPreviewShortcutEnabled.defaultValue,
         DefaultsKey.cameraPreviewShortcut: Preferences.cameraPreviewShortcut.defaultValue,
         DefaultsKey.wallpaperApplyAllDisplays: Preferences.wallpaperApplyAllDisplays.defaultValue,
@@ -883,6 +894,7 @@ package enum Defaults {
         DefaultsKey.panelUtilityCameraPreview: Preferences.panelUtilityCameraPreview.defaultValue,
         DefaultsKey.panelUtilityScratchpad: Preferences.panelUtilityScratchpad.defaultValue,
         DefaultsKey.clipboardHistoryShortcutEnabled: Preferences.clipboardHistoryShortcutEnabled.defaultValue,
+        DefaultsKey.clipboardHistoryShowSourceAppIcons: Preferences.clipboardHistoryShowSourceAppIcons.defaultValue,
         DefaultsKey.clipboardHistoryShortcut: Preferences.clipboardHistoryShortcut.defaultValue,
         DefaultsKey.recorderShortcutEnabled: Preferences.recorderShortcutEnabled.defaultValue,
         DefaultsKey.recorderShortcut: Preferences.recorderShortcut.defaultValue,
@@ -904,6 +916,11 @@ package enum Defaults {
         DefaultsKey.recorderShowCaptureMenuOnShortcut: Preferences.recorderShowCaptureMenuOnShortcut.defaultValue,
         DefaultsKey.screenOCRShowCaptureMenuOnShortcut: Preferences.screenOCRShowCaptureMenuOnShortcut.defaultValue,
         DefaultsKey.colorPickerShowCaptureMenuOnShortcut: Preferences.colorPickerShowCaptureMenuOnShortcut.defaultValue,
+        DefaultsKey.screenshotScrollingAutoScroll: Preferences.screenshotScrollingAutoScroll.defaultValue,
+        DefaultsKey.screenshotScrollingShortcutEnabled: Preferences.screenshotScrollingShortcutEnabled.defaultValue,
+        DefaultsKey.screenshotScrollingShortcut: Preferences.screenshotScrollingShortcut.defaultValue,
+        DefaultsKey.screenshotScrollingShowCaptureMenuOnShortcut:
+            Preferences.screenshotScrollingShowCaptureMenuOnShortcut.defaultValue,
         DefaultsKey.screenshotShortcutEnabled: Preferences.screenshotShortcutEnabled.defaultValue,
         DefaultsKey.screenshotShortcut: Preferences.screenshotShortcut.defaultValue,
         DefaultsKey.unifiedScreenCaptureShortcutMigrated: Preferences.unifiedScreenCaptureShortcutMigrated.defaultValue,
@@ -971,6 +988,7 @@ package enum Defaults {
         DefaultsKey.pointerDisplayEnabled: Preferences.pointerDisplayEnabled.defaultValue,
         DefaultsKey.pointerDisplayShortcut: Preferences.pointerDisplayShortcut.defaultValue,
         DefaultsKey.windowEdgeSnapEnabled: Preferences.windowEdgeSnapEnabled.defaultValue,
+        DefaultsKey.windowEdgeSnapRestoreOnDrag: Preferences.windowEdgeSnapRestoreOnDrag.defaultValue,
         DefaultsKey.windowEdgeSnapDisabledZones: Preferences.windowEdgeSnapDisabledZones.defaultValue,
         DefaultsKey.windowEdgeSnapZoneActions: Preferences.windowEdgeSnapZoneActions.defaultValue,
         DefaultsKey.windowGestureEnabled: Preferences.windowGestureEnabled.defaultValue,
@@ -1178,14 +1196,15 @@ package enum Defaults {
         defaults.set(hidden.joined(separator: ","), forKey: DefaultsKey.notchHiddenControls)
     }
 
-    /// Discovery used to send one request per read, which reads a monitor that
-    /// answers only paired requests as write-only. That verdict is cached and
-    /// never re-probed, so it would outlive the fix: drop the cache once.
+    /// Both unpaired discovery requests and the old read checksum could cache
+    /// a readable monitor as write-only. Recheck after the checksum fix even
+    /// if the paired-request migration ran; keep later verdicts intact.
     package static func recheckBrightnessDDCWriteOnlyPaths(in defaults: UserDefaults) {
-        guard !defaults.bool(forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked) else {
+        guard !defaults.bool(forKey: DefaultsKey.brightnessDDCReadChecksumRechecked) else {
             return
         }
         defaults.set(true, forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked)
+        defaults.set(true, forKey: DefaultsKey.brightnessDDCReadChecksumRechecked)
         defaults.removeObject(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
     }
 

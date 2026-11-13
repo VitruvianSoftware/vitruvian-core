@@ -236,6 +236,8 @@ extension Strings {
         switcherMaxColumnsAuto: "Авто",
         switcherInstantSelection: "Мгновенный выбор",
         switcherInstantSelectionCaption: "При переходе между приложениями и окнами сразу перемещает выделение и прокручивает список.",
+        switcherIgnoreHoverSelection: "Не выбирать при наведении",
+        switcherIgnoreHoverSelectionCaption: "Перемещение указателя по приложениям и окнам не сдвигает выделение. Щелчок по-прежнему открывает элемент.",
         switcherMergeTabs: "Показывать одну запись на приложение",
         switcherMergeTabsCaption: "Сводит все окна приложения в одну запись в переключателе вместо отдельной записи на каждое окно.",
         switcherWindowlessApps: "Приложения без открытых окон",
@@ -335,6 +337,7 @@ extension Strings {
         uninstallerRemoving: "Перемещение в Корзину…",
         uninstallerFoundTitle: "найдено",
         uninstallerSelectedFormat: "Выбрано %d из %d",
+        uninstallerSelectAll: "Выбрать все",
         uninstallerRemove: "Переместить в Корзину",
         uninstallerCancel: "Отмена",
         uninstallerConfirmationExpired: "Это подтверждение больше не действует. Проверьте текущие элементы и подтвердите снова.",
@@ -423,6 +426,8 @@ extension Strings {
         homebrewOpenTerminal: "Открыть терминал",
         homebrewCancelOperation: "Отмена",
         homebrewClearLog: "Очистить лог",
+        homebrewLastLogView: "Показать последний лог",
+        homebrewLastLogHide: "Скрыть последний лог",
         homebrewLogTitle: "Лог",
         homebrewVersion: "Версия",
         homebrewDescription: "Тип",
@@ -1079,6 +1084,7 @@ extension Strings {
         switcherShowShortcutHints: "Показывать подсказки сочетаний клавиш",
         switcherShowShortcutHintsCaption: "Показывает сочетания клавиш для приложений и окон под значками.",
         uninstallerHomebrewPackageFormat: "%@ также будет удалён из Homebrew.",
+        uninstallerHomebrewCheckFailed: "Не удалось проверить, управляет ли Homebrew этим приложением. Обновите список и попробуйте снова или удалите приложение через Homebrew.",
         shelfEdgeToggle: "Открывать у края экрана",
         shelfEdgeCaption: "Перетащите файл к краю экрана, чтобы полка выглянула. Отпустите его там, или потяните обратно, и полка уберётся.",
         focusFollowsMouseName: "Фокус следует за мышью",
@@ -1111,6 +1117,8 @@ extension Strings {
         shelfShortcutFinderSelection: "Добавлять выбранное в Finder по горячей клавише",
         shelfShortcutFinderSelectionCaption: "Когда Finder на переднем плане, горячая клавиша открывает полку уже с выбранными файлами. Если ничего не выбрано, полка открывается как обычно.",
         spacesOrderName: "Фиксированный порядок Spaces",
-        spacesOrderCaption: "Не даёт macOS переставлять Spaces по недавнему использованию, чтобы они оставались в заданном порядке. Прежняя настройка вернётся после выключения функции. Для применения Dock может один раз перезапуститься."
+        spacesOrderCaption: "Не даёт macOS переставлять Spaces по недавнему использованию, чтобы они оставались в заданном порядке. Прежняя настройка вернётся после выключения функции. Для применения Dock может один раз перезапуститься.",
+        quitAppsName: "Закрытие приложений",
+        quitAppsCaption: "Показывает открытые приложения, чтобы закрыть их по одному, все сразу или все, кроме активного. Список всегда появляется до того, как что-либо закроется."
     )
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+import AppKit
 import SwiftUI
 import VitruvianAtriumCore
 import VitruvianAtriumDesign
@@ -180,6 +181,60 @@ package struct DisclosureHeaderRow<Label: View>: View {
         .buttonStyle(.plain)
         .accessibilityValue(isExpanded.wrappedValue
             ? l10n.s.disclosureExpanded : l10n.s.disclosureCollapsed)
+    }
+}
+
+/// A checkbox that can also show AppKit's mixed state, which SwiftUI's Toggle
+/// cannot draw. One control stands for a list of independently checkable rows:
+/// all checked, none, or a dash for some of each.
+package struct MixedStateCheckbox: NSViewRepresentable {
+    package let title: String
+    package let isOn: Bool
+    package let isMixed: Bool
+    package var isEnabled = true
+    /// The title's point size, matched to the text around each use site.
+    package var fontSize: CGFloat = 12
+
+    package let onToggle: () -> Void
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(title: String, isOn: Bool, isMixed: Bool, isEnabled: Bool = true, fontSize: CGFloat = 12,
+                 onToggle: @escaping () -> Void) {
+        self.title = title
+        self.isOn = isOn
+        self.isMixed = isMixed
+        self.isEnabled = isEnabled
+        self.fontSize = fontSize
+        self.onToggle = onToggle
+    }
+
+    package func makeNSView(context: Context) -> NSButton {
+        let button = NSButton(checkboxWithTitle: title, target: context.coordinator,
+                              action: #selector(Coordinator.toggled(_:)))
+        button.allowsMixedState = true
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return button
+    }
+
+    package func updateNSView(_ button: NSButton, context: Context) {
+        context.coordinator.onToggle = onToggle
+        button.title = title
+        button.font = .systemFont(ofSize: fontSize)
+        button.isEnabled = isEnabled
+        // The model decides the value; AppKit's own click cycling is undone
+        // here on the next render.
+        button.state = isMixed ? .mixed : (isOn ? .on : .off)
+    }
+
+    package func makeCoordinator() -> Coordinator { Coordinator(onToggle: onToggle) }
+
+    @MainActor package final class Coordinator: NSObject {
+        var onToggle: () -> Void
+
+        init(onToggle: @escaping () -> Void) { self.onToggle = onToggle }
+
+        @objc func toggled(_ sender: NSButton) { onToggle() }
     }
 }
 

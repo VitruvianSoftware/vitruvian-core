@@ -29,9 +29,11 @@ Every upstream commit is in the ledger, none is `pending`, and every port is on
 2. Run `bazel run //apps/desktop/vitruvian-atrium:track_upstream -- status`. If nothing
    is untriaged or pending, stop and report "caught up at" the upstream commit.
 3. Run `triage`, and commit the ledger on its own as
-   `chore(vitruvian): triage N upstream commits from <date>`.
+   `chore(vitruvian-atrium): triage N upstream commits from <date>`.
 4. Port the pending commits oldest first, one commit in this fork per upstream
    commit. Keep a pull request to about 15 ports, and land them one at a time.
+   That limit is per pull request, not per run: a run keeps porting batches
+   until nothing is pending (step 8).
    For each upstream commit:
    - run `port <sha>` and read its `report.md`;
    - resolve the conflicts against the refactored code;
@@ -43,7 +45,7 @@ Every upstream commit is in the ledger, none is `pending`, and every port is on
    and check its exit status. Piping it through `tail` hides a failure. Linux has
    no Swift compiler, so read the diff again against the rules below.
 6. Open the pull request, titled
-   `feat(vitruvian): port upstream batch <n>, <summary>` and numbered after the
+   `feat(vitruvian-atrium): port upstream batch <n>, <summary>` and numbered after the
    last merged batch. Its body is a table of each upstream commit, what changes
    for Vitruvian Atrium and how it was ported, then a test plan. Then push a commit that
    sets the ported ledger rows to `ported` with the pull request's number
@@ -57,8 +59,9 @@ Every upstream commit is in the ledger, none is `pending`, and every port is on
    port cannot be made green after a few honest attempts, leave the pull request
    open with one comment naming what blocks it, and report that.
 8. After it merges, run `bazel run //tools/pipeline-status -- <sha>` for the
-   squashed commit, then `status` again. If upstream moved meanwhile, port the
-   next batch.
+   squashed commit, then `status` again. If anything is untriaged or pending,
+   go back to step 3 (or 4) and port the next batch. Stop only when nothing is
+   left.
 9. Report the pull requests merged, the upstream commit the fork is now caught up
    with, anything skipped or left pending and why, and anything a maintainer must
    decide.
@@ -73,6 +76,9 @@ Every upstream commit is in the ledger, none is `pending`, and every port is on
   Swift 6; make it computed. A closure handed to `MainActor.assumeIsolated` must
   not capture a value that is not `Sendable`: copy what it needs into a local
   first. Work off the main thread must not read main-actor state.
+  Code that is not in a view type but hands an `NSEvent` to an `NSView`
+  (an extension of a Services struct, say) needs `@MainActor`, or Swift 6
+  reports "sending 'event' risks causing data races".
 - The self-test runs the app's launch path, so a crash there usually means new
   code that runs at launch.
 - A new preference goes in `Core/DefaultsKey.swift`, `Core/Preferences.swift`
@@ -87,6 +93,12 @@ Every upstream commit is in the ledger, none is `pending`, and every port is on
   commit.
 - A new format string or SF Symbol goes in `Tests/SourceNames.swift`;
   `source_lints_test` names the ones missing.
+- The product, and so the commit scope, is `vitruvian-atrium` (since #4631).
+  `release-scope` fails a `feat` or `fix` whose scope does not name it, so
+  write `feat(vitruvian-atrium): ...`, not `feat(vitruvian): ...`.
+- `mutation_fixtures_test` fails when a port changes a line that a check in
+  `bazel/src/mutation_checks/mutations.rs` quotes; update the quote. Upstream
+  mutation checks go in that file, and `mutations_count` follows the count.
 - Upstream's brand, domains and services never come in
   ([`TRADEMARKS.md`](../TRADEMARKS.md)). Upstream's files keep upstream's
   copyright notice. Reverse-DNS names use `com.vitruviansoftware.vitruvian`.

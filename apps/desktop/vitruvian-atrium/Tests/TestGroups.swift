@@ -86,6 +86,7 @@ enum TestGroups {
             ("clipboard", {
                 ClipboardFeatureTests.run(suite)
                 URLCleanerTests.run(suite)
+                URLCleanerMetadataTests.run(suite)
                 PastePlainTests.run(suite)
                 TransientPasteTests.run(suite)
                 ClipboardSensitiveTextPreferenceTests.run(suite)
@@ -110,6 +111,7 @@ enum TestGroups {
             ("media", { MediaFeatureTests.run(suite) }),
             ("mixer", {
                 MixerRenderContinuityTests.run(suite)
+                MixerGainRampContract.run(suite)
                 MixerNativeDragTests.run(suite)
                 MixerOutputAdjustmentContract.run(suite)
                 MixerHeadphonesDisconnectContract.run(suite)
@@ -155,16 +157,21 @@ enum TestGroups {
                 ScreenshotPreviewHoverTests.run(suite)
                 ScreenshotWatermarkTests.run(suite)
                 ScreenshotFeatureTests.run(suite)
+                ScreenshotImageImportTests.run(suite)
+                ScreenshotImageFileTests.run(suite)
                 ScreenshotShareCompletionTests.run(suite)
                 ScreenshotScrollingCaptureTests.run(suite)
                 ScreenCaptureToolPickerTests.run(suite)
             }),
             ("recorder", {
                 RecorderGIFWriterTests.run(suite)
+                RecorderFastGIFWriterTests.run(suite)
                 RecorderFeatureTests.run(suite)
                 RecorderZoomAimingTests.run(suite)
                 RecorderExportSpeedTests.run(suite)
+                RecorderExportControlsTests.run(suite)
                 RecorderExportRenderingTests.run(suite)
+                RecorderFastGIFExportTests.run(suite)
             }),
             ("command-bar", {
                 CommandBarFeatureTests.run(suite)
@@ -232,6 +239,7 @@ enum TestGroups {
             }),
             ("utilities", {
                 UtilitiesFeatureTests.run(suite)
+                QuickTogglesQuitAllTests.run(suite)
                 PortManagerRefreshTests.run(suite)
             }),
             ("settings", {
@@ -288,7 +296,11 @@ enum TestGroups {
                 CleanerScanFlowTests.run(suite)
             }),
             ("uninstaller", {
+                HomebrewOwnershipTests.run(suite)
+                HomebrewOperationLogRetentionTests.run(suite)
                 UninstallerFlowTests.run(suite)
+                UninstallerBulkSelectionTests.run(suite)
+                MixedStateCheckboxTests.run(suite)
                 SelfUninstallContract.run(suite)
             }),
             ("force-quit", { ProcessForceQuitTests.run(suite) }),
@@ -300,6 +312,7 @@ enum TestGroups {
             }),
             ("spaces-order", { SpacesOrderTests.run(suite) }),
             ("switcher", {
+                SwitcherAllWindowsTests.run(suite)
                 SwitcherScrollContract.run(suite)
                 SwitcherActivationTests.run(suite)
                 WindowServerCaptureContract.run(suite)

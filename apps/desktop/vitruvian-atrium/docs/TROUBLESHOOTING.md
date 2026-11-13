@@ -75,6 +75,33 @@ starting a multiplexer or a slow prompt:
 [[ -n $VITRUVIAN_RESOLVING_ENVIRONMENT ]] && return
 ```
 
+## Keeping settings in your dotfiles
+
+At each normal launch, Vitruvian Atrium reads `~/.config/vitruvian/settings.plist`.
+An absolute `XDG_CONFIG_HOME` selects the parent of `vitruvian/`. The Developer
+build uses `vitruvian-dev/`. Git, Stow or Home Manager can own the file,
+including a symlink to a read-only target. Edits made during a session take
+effect the next time you launch the app.
+
+Create a starting file by exporting your current settings. Backups include
+your text snippets, so review the contents before sharing one.
+
+```sh
+"/Applications/Vitruvian Atrium.app/Contents/MacOS/VitruvianAtrium" --export-settings ~/.config/vitruvian/settings.plist
+```
+
+Keep the backup version and the `settings` dictionary. You can trim the
+dictionary to just the settings you want to manage. Omitted preferences and
+snippets stay local, and the app only reads this file during normal use.
+An explicit export replaces its destination with a complete snapshot.
+Export to a separate path to review changes to a hand-maintained file.
+The Import button and `--import-settings FILE` still perform a full restore.
+Quit the app before importing from a script.
+
+Apps opened from Finder inherit the login environment. To choose a custom
+folder, set it with `launchctl setenv XDG_CONFIG_HOME "$HOME/my-config"` and
+reopen Vitruvian Atrium.
+
 ## Resetting permissions
 
 To wipe Vitruvian Atrium's granted permissions and let macOS ask again from scratch, pick one of these.

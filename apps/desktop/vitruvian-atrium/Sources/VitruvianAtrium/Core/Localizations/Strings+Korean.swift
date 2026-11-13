@@ -236,6 +236,8 @@ extension Strings {
         switcherMaxColumnsAuto: "자동",
         switcherInstantSelection: "즉시 선택",
         switcherInstantSelectionCaption: "앱과 윈도우를 탐색할 때 강조 표시와 스크롤 위치를 즉시 이동합니다.",
+        switcherIgnoreHoverSelection: "가리켜 선택하지 않기",
+        switcherIgnoreHoverSelectionCaption: "앱과 윈도우 위로 포인터를 옮겨도 강조 표시는 그대로입니다. 클릭하면 여전히 엽니다.",
         switcherMergeTabs: "앱별로 하나로 묶어 표시",
         switcherMergeTabsCaption: "전환기에서 앱의 모든 윈도우를 각각이 아닌 하나의 항목으로 묶습니다.",
         switcherWindowlessApps: "열린 윈도우가 없는 앱",
@@ -335,6 +337,7 @@ extension Strings {
         uninstallerRemoving: "휴지통으로 이동하는 중…",
         uninstallerFoundTitle: "개 찾음",
         uninstallerSelectedFormat: "%d / %d개 선택됨",
+        uninstallerSelectAll: "모두 선택",
         uninstallerRemove: "휴지통으로 이동",
         uninstallerCancel: "취소",
         uninstallerConfirmationExpired: "이 확인은 더 이상 유효하지 않습니다. 현재 항목을 검토한 뒤 다시 확인하세요.",
@@ -423,6 +426,8 @@ extension Strings {
         homebrewOpenTerminal: "터미널 열기",
         homebrewCancelOperation: "취소",
         homebrewClearLog: "로그 지우기",
+        homebrewLastLogView: "마지막 로그 보기",
+        homebrewLastLogHide: "마지막 로그 숨기기",
         homebrewLogTitle: "로그",
         homebrewVersion: "버전",
         homebrewDescription: "설명",
@@ -1079,6 +1084,7 @@ extension Strings {
         switcherShowShortcutHints: "단축키 힌트 보기",
         switcherShowShortcutHintsCaption: "아이콘 아래에 앱 및 윈도우 단축키를 표시합니다.",
         uninstallerHomebrewPackageFormat: "%@도 Homebrew에서 제거됩니다.",
+        uninstallerHomebrewCheckFailed: "Homebrew가 이 앱을 관리하는지 확인할 수 없습니다. 새로 고침하여 다시 시도하거나 Homebrew에서 제거하세요.",
         shelfEdgeToggle: "화면 가장자리 근처에서 열기",
         shelfEdgeCaption: "파일을 화면 가장자리 쪽으로 드래그하면 선반이 살짝 나타납니다. 그 자리에 놓거나, 다시 뒤로 당기면 선반이 들어갑니다.",
         focusFollowsMouseName: "마우스를 따라 포커스",
@@ -1111,6 +1117,8 @@ extension Strings {
         shelfShortcutFinderSelection: "단축키로 Finder 선택 항목 추가",
         shelfShortcutFinderSelectionCaption: "Finder가 앞에 있을 때 단축키를 누르면 선택한 파일이 담긴 선반이 열립니다. 아무것도 선택하지 않았다면 평소처럼 열립니다.",
         spacesOrderName: "공간 순서 고정",
-        spacesOrderCaption: "macOS가 최근 사용 순서에 따라 공간을 재정렬하지 않도록 해 정한 순서를 유지합니다. 끄면 이전 설정으로 돌아갑니다. 변경 사항을 적용하려고 Dock이 한 번 다시 시작될 수 있습니다."
+        spacesOrderCaption: "macOS가 최근 사용 순서에 따라 공간을 재정렬하지 않도록 해 정한 순서를 유지합니다. 끄면 이전 설정으로 돌아갑니다. 변경 사항을 적용하려고 Dock이 한 번 다시 시작될 수 있습니다.",
+        quitAppsName: "앱 종료",
+        quitAppsCaption: "열려 있는 앱을 나열해 하나씩, 한 번에 모두, 또는 맨 앞의 앱을 제외하고 모두 종료할 수 있습니다. 무엇이든 종료하기 전에 항상 목록을 먼저 보여 줍니다."
     )
 }

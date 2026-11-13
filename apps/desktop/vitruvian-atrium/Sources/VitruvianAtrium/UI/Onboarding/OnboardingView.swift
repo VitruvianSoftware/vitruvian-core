@@ -38,11 +38,12 @@ package struct OnboardingView: View {
         let defaults = UserDefaults.standard
         let selectionWasApplied = defaults.bool(forKey: DefaultsKey.hasOnboarded)
             || defaults[Preferences.onboardingStep] >= 2
-        let features = selectionWasApplied
-            ? Set(AppFeature.allCases.filter(\.isAvailable))
-            : FeaturePreset.essential.features
+        // Startup has already installed the first-run preset and any features
+        // declared in the settings file. Show the selection Continue will save.
+        let features = Set(AppFeature.allCases.filter(\.isAvailable))
         _selectedFeatures = State(initialValue: features)
-        _selectedPreset = State(initialValue: selectionWasApplied ? nil : .essential)
+        _selectedPreset = State(initialValue: !selectionWasApplied && features == FeaturePreset.essential.features
+            ? .essential : nil)
     }
 
     private var setupPermissions: [AppPermission] {

@@ -235,6 +235,8 @@ extension Strings {
         switcherMaxColumnsAuto: "Auto",
         switcherInstantSelection: "Sofortige Auswahl",
         switcherInstantSelectionCaption: "Verschiebt Markierung und Liste beim Durchgehen von Apps und Fenstern sofort.",
+        switcherIgnoreHoverSelection: "Auswahl beim Zeigen ignorieren",
+        switcherIgnoreHoverSelectionCaption: "Bewegt sich der Zeiger über Apps und Fenster, bleibt die Markierung an ihrem Platz. Ein Klick öffnet weiterhin einen Eintrag.",
         switcherMergeTabs: "Einen Eintrag pro App anzeigen",
         switcherMergeTabsCaption: "Fasst alle Fenster einer App zu einem Eintrag im Umschalter zusammen, statt einen Eintrag pro Fenster.",
         switcherWindowlessApps: "Apps ohne geöffnetes Fenster",
@@ -334,6 +336,7 @@ extension Strings {
         uninstallerRemoving: "Wird in den Papierkorb bewegt…",
         uninstallerFoundTitle: "gefunden",
         uninstallerSelectedFormat: "%d von %d ausgewählt",
+        uninstallerSelectAll: "Alle auswählen",
         uninstallerRemove: "In den Papierkorb legen",
         uninstallerCancel: "Abbrechen",
         uninstallerConfirmationExpired: "Diese Bestätigung ist nicht mehr gültig. Prüfe die aktuellen Einträge und bestätige erneut.",
@@ -422,6 +425,8 @@ extension Strings {
         homebrewOpenTerminal: "Terminal öffnen",
         homebrewCancelOperation: "Abbrechen",
         homebrewClearLog: "Protokoll leeren",
+        homebrewLastLogView: "Letztes Protokoll anzeigen",
+        homebrewLastLogHide: "Letztes Protokoll ausblenden",
         homebrewLogTitle: "Protokoll",
         homebrewVersion: "Version",
         homebrewDescription: "Typ",
@@ -1078,6 +1083,7 @@ extension Strings {
         switcherShowShortcutHints: "Kurzbefehlhinweise anzeigen",
         switcherShowShortcutHintsCaption: "Zeigt die Kurzbefehle für Apps und Fenster unter den Symbolen.",
         uninstallerHomebrewPackageFormat: "%@ wird auch aus Homebrew entfernt.",
+        uninstallerHomebrewCheckFailed: "Es konnte nicht geprüft werden, ob Homebrew diese App verwaltet. Aktualisiere die Liste, um es erneut zu versuchen, oder deinstalliere sie über Homebrew.",
         shelfEdgeToggle: "In der Nähe eines Bildschirmrands öffnen",
         shelfEdgeCaption: "Ziehe eine Datei in Richtung Bildschirmrand, damit die Ablage kurz hervorschaut. Lass sie dort los, oder zieh zurück, und die Ablage verschwindet wieder.",
         focusFollowsMouseName: "Fokus folgt Maus",
@@ -1110,6 +1116,8 @@ extension Strings {
         shelfShortcutFinderSelection: "Finder-Auswahl per Kurzbefehl hinzufügen",
         shelfShortcutFinderSelectionCaption: "Ist der Finder im Vordergrund, öffnet der Kurzbefehl die Ablage bereits mit den ausgewählten Dateien. Ohne Auswahl öffnet sie sich wie gewohnt.",
         spacesOrderName: "Spaces in fester Reihenfolge halten",
-        spacesOrderCaption: "Verhindert, dass macOS die Spaces nach der letzten Nutzung neu anordnet, damit sie in deiner Reihenfolge bleiben. Deine vorherige Einstellung kehrt zurück, wenn du dies ausschaltest. Das Dock startet dafür eventuell einmal neu."
+        spacesOrderCaption: "Verhindert, dass macOS die Spaces nach der letzten Nutzung neu anordnet, damit sie in deiner Reihenfolge bleiben. Deine vorherige Einstellung kehrt zurück, wenn du dies ausschaltest. Das Dock startet dafür eventuell einmal neu.",
+        quitAppsName: "Apps beenden",
+        quitAppsCaption: "Listet deine geöffneten Apps auf, um sie einzeln, alle auf einmal oder alle außer der vorderen zu beenden. Zeigt immer zuerst die Liste, bevor etwas beendet wird."
     )
 }
