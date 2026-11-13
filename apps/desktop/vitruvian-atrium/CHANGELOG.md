@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.90.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.90.0...vitruvian-atrium-v3.90.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **vitruvian-atrium:** keep the bundle id com.vitruviansoftware.vitruvian through the rename ([#4668](https://github.com/VitruvianSoftware/vitruvian-core/issues/4668)) ([6438d01](https://github.com/VitruvianSoftware/vitruvian-core/commit/6438d01ac2a243b361f1aa34cec2fecb7970ee4e))
+
 ## [3.90.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.89.0...vitruvian-atrium-v3.90.0) (2026-11-12)
 
 
