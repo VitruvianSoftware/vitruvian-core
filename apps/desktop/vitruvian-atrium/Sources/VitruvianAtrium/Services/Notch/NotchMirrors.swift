@@ -28,6 +28,14 @@ package protocol NotchMirrorHost: AnyObject {
     func releaseWave()
     /// What the copy draws, for the bars another window should repeat.
     var waveContent: NSView? { get }
+    /// Whether a screen point lands on the copy, so a click there is not a
+    /// click away from the island.
+    func contains(_ screenPoint: CGPoint) -> Bool
+}
+
+extension NotchMirrorHost {
+    /// A host that draws nowhere a click can land.
+    package func contains(_ screenPoint: CGPoint) -> Bool { false }
 }
 
 // The island's mirrors drive their hosts on the main thread.
@@ -76,6 +84,7 @@ package final class AnyNotchMirrorHost: NotchMirrorHost {
         host.presentCopy(size: size, geometry: geometry, animated: animated, transitionContent: transitionContent)
     }
     package func hideCopy() { host.hideCopy() }
+    package func contains(_ screenPoint: CGPoint) -> Bool { host.contains(screenPoint) }
     package func close() { host.close() }
     package func setOutline(enabled: Bool, color: NSColor) { host.setOutline(enabled: enabled, color: color) }
     package func setActivationArea(_ rect: CGRect, title: String, willPress: @escaping () -> Void,
@@ -211,6 +220,11 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
 
     /// Whether another display shows a copy of the closed island now.
     package var showsAny: Bool { copies.values.contains { $0.model.shown } }
+    /// A copy on screen lies under the point. A hidden copy does not hold a
+    /// click at its old position.
+    package func showsCopy(at screenPoint: CGPoint) -> Bool {
+        copies.values.contains { $0.model.shown && $0.host.contains(screenPoint) }
+    }
     /// Whether any copy is a capsule, whose width follows a song's title.
     package var hasCapsule: Bool { copies.values.contains { $0.model.geometry.floats } }
     package var visibleWindowIDs: [CGWindowID] { copies.values.compactMap { $0.host.visibleWindowID } }

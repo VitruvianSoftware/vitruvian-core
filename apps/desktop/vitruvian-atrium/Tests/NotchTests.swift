@@ -2002,6 +2002,7 @@ enum NotchTests {
         NotchNoticeQueueTests.run(suite)
         NotchCaptureControlsStateTests.run(suite)
         NotchScreenEdgeClickTests.run(suite)
+        NotchClickElsewhereTests.run(suite)
         NotchPresentationRefreshContract.run(suite)
         NotchScreenRefreshContract.run(suite)
         NotchMirrorContract.run(suite)
