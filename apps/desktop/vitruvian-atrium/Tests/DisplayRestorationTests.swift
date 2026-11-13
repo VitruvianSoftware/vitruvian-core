@@ -74,7 +74,7 @@ enum DisplayRestorationTests {
     /// back when it is the only way to see anything.
     private static func sleepAndWake(_ suite: TestSuite) {
         func monitorOff() -> (Rig.Desk, BrightnessService) {
-            let (desk, service) = desk()
+            let (desk, service) = Self.desk()
             tap(desk, service, 2)
             desk.configurations = []
             return (desk, service)

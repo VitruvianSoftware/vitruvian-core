@@ -1,0 +1,13 @@
+{"direction":"client","method":"initialize"}
+{"direction":"agent","send":{"jsonrpc":"2.0","id":"$id","result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true,"promptCapabilities":{"image":false}}}}}
+{"direction":"client","method":"session/load"}
+{"direction":"agent","send":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess-reloaded","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"Old user message"}}}}}
+{"direction":"agent","send":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess-reloaded","update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"Old thinking"}}}}}
+{"direction":"agent","send":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess-reloaded","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Old assistant reply"}}}}}
+{"direction":"agent","send":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess-reloaded","update":{"sessionUpdate":"tool_call","toolCallId":"old-call","title":"Old Read","kind":"read","status":"completed"}}}}
+{"direction":"agent","send":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess-reloaded","update":{"sessionUpdate":"config_option_update","configOptions":[{"id":"model","name":"Model","category":"model","type":"select","currentValue":"sonnet","options":[{"value":"sonnet","name":"Sonnet"},{"value":"opus","name":"Opus"}]}]}}}}
+{"direction":"agent","send":{"jsonrpc":"2.0","id":"$id","result":{"sessionId":"sess-reloaded"}}}
+{"direction":"client","method":"session/prompt"}
+{"direction":"agent","send":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess-reloaded","_meta":{"isReplay":true},"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Explicit replay chunk"}}}}}
+{"direction":"agent","send":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess-reloaded","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Fresh reply"}}}}}
+{"direction":"agent","send":{"jsonrpc":"2.0","id":"$id","result":{"stopReason":"end_turn"}}}

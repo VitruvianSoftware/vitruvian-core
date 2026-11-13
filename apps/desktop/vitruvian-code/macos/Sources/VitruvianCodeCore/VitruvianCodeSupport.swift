@@ -846,6 +846,30 @@ public struct VitruvianCodeStatePaths: Equatable, Sendable {
         self.logPath = logPath
         self.worktreesDirectory = worktreesDirectory
     }
+
+    /// Directory where per-chat ACP connection logs (`chat-<session-id>.log`) live:
+    /// `<override>/logs` under `--state-dir`, or `<stateDirectory>/logs` otherwise.
+    public var chatLogsDirectory: String {
+        if stateDirectoryOverride != nil {
+            return logsDirectory
+        }
+        return (stateDirectory as NSString).appendingPathComponent("logs")
+    }
+
+    /// Per-chat log file path (`logs/chat-<session-id>.log`), with path separators sanitized.
+    public func chatLogPath(sessionID: String) -> String {
+        let safeID = Self.sanitizedSessionFilenameComponent(sessionID)
+        return (chatLogsDirectory as NSString).appendingPathComponent("chat-\(safeID).log")
+    }
+
+    private static func sanitizedSessionFilenameComponent(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "unknown" }
+        let forbidden = CharacterSet(charactersIn: "/\\:\0")
+        let replaced = trimmed.unicodeScalars.map { forbidden.contains($0) ? "_" : Character($0) }
+        let cleaned = String(replaced).replacingOccurrences(of: "..", with: "_")
+        return cleaned.isEmpty ? "unknown" : cleaned
+    }
 }
 
 /// Where the bot and the agent CLI live, and how the agent is asked.
@@ -1616,6 +1640,26 @@ public struct VitruvianCodeModelOption: Identifiable, Equatable, Sendable {
     }
 }
 
+/// One selectable decision option on an ACP permission request.
+public struct AgentPermissionOption: Identifiable, Equatable, Sendable, Codable {
+    public enum Kind: String, Equatable, Sendable, Codable, CaseIterable {
+        case allowOnce = "allow_once"
+        case allowAlways = "allow_always"
+        case rejectOnce = "reject_once"
+        case rejectAlways = "reject_always"
+    }
+
+    public let id: String
+    public let name: String
+    public let kind: Kind
+
+    public init(id: String, name: String, kind: Kind) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+    }
+}
+
 /// An interactive tool execution approval request.
 public struct VitruvianCodeApprovalRequest: Identifiable, Equatable, Sendable {
     public let id: String
@@ -1626,6 +1670,8 @@ public struct VitruvianCodeApprovalRequest: Identifiable, Equatable, Sendable {
     /// which the answer on its standard input must carry. Nil for a
     /// request nothing is waiting on an answer to.
     public let requestID: String?
+    /// Permission choices offered by an ACP agent (`allow_once`, `allow_always`, etc.).
+    public var options: [AgentPermissionOption]
 
     public enum Status: String, Sendable, Equatable {
         case pending
@@ -1639,13 +1685,15 @@ public struct VitruvianCodeApprovalRequest: Identifiable, Equatable, Sendable {
         toolName: String,
         commandOrPath: String,
         status: Status = .pending,
-        requestID: String? = nil
+        requestID: String? = nil,
+        options: [AgentPermissionOption] = []
     ) {
         self.id = id
         self.toolName = toolName
         self.commandOrPath = commandOrPath
         self.status = status
         self.requestID = requestID
+        self.options = options
     }
 }
 
@@ -1835,11 +1883,131 @@ public struct VitruvianCodeTurnMetrics: Equatable, Sendable {
     }
 }
 
+/// One step in a live agent plan (`session/update` kind `plan`).
+public struct PlanEntry: Equatable, Sendable, Codable {
+    public enum Status: String, Equatable, Sendable, Codable {
+        case pending
+        case inProgress = "in_progress"
+        case completed
+        case other
+
+        public init(acpRawValue: String) {
+            self = Status(rawValue: acpRawValue) ?? .other
+        }
+    }
+
+    public enum Priority: String, Equatable, Sendable, Codable {
+        case high
+        case medium
+        case low
+    }
+
+    public let content: String
+    public let status: Status
+    public let priority: Priority?
+
+    public init(content: String, status: Status = .pending, priority: Priority? = nil) {
+        self.content = content
+        self.status = status
+        self.priority = priority
+    }
+}
+
+/// A structured elicitation form or URL consent prompt from an agent.
+public struct AgentQuestion: Identifiable, Equatable, Sendable, Codable {
+    public enum FieldType: String, Equatable, Sendable, Codable {
+        case text
+        case number
+        case integer
+        case boolean
+        case choice
+        case multiChoice = "multi_choice"
+    }
+
+    public struct Option: Equatable, Sendable, Codable {
+        public let value: String
+        public let label: String
+        public let description: String?
+
+        public init(value: String, label: String, description: String? = nil) {
+            self.value = value
+            self.label = label
+            self.description = description
+        }
+    }
+
+    public struct Field: Identifiable, Equatable, Sendable, Codable {
+        public let id: String
+        public let type: FieldType
+        public let label: String
+        public let description: String?
+        public let required: Bool
+        public let options: [Option]
+
+        public init(
+            id: String,
+            type: FieldType,
+            label: String,
+            description: String? = nil,
+            required: Bool = false,
+            options: [Option] = []
+        ) {
+            self.id = id
+            self.type = type
+            self.label = label
+            self.description = description
+            self.required = required
+            self.options = options
+        }
+    }
+
+    public var id: String { requestID }
+    public let requestID: String
+    public let title: String?
+    public let message: String
+    public let url: String?
+    public let fields: [Field]
+
+    public init(
+        requestID: String = UUID().uuidString,
+        title: String? = nil,
+        message: String,
+        url: String? = nil,
+        fields: [Field] = []
+    ) {
+        self.requestID = requestID
+        self.title = title
+        self.message = message
+        self.url = url
+        self.fields = fields
+    }
+}
+
+/// Why a live agent connection failed mid-session or on startup.
+public struct AgentFailure: Equatable, Sendable, Codable {
+    public enum Kind: String, Equatable, Sendable, Codable {
+        case startupFailed = "startup_failed"
+        case protocolError = "protocol_error"
+        case exited
+        case timedOut = "timed_out"
+    }
+
+    public let kind: Kind
+    public let message: String
+    public let detail: String?
+
+    public init(kind: Kind, message: String, detail: String? = nil) {
+        self.kind = kind
+        self.message = message
+        self.detail = detail
+    }
+}
+
 /// Kept for one release while callers move to `AgentEvent`.
 public typealias VitruvianCodeStreamEvent = AgentEvent
 
 /// One line of `agy --output-format stream-json`, Claude Code stream-json or
-/// `opencode run --format json`, reduced to what the Quick Prompt shows.
+/// `opencode run --format json`, or one update from a live `AgentConnection`.
 public enum AgentEvent: Equatable, Sendable {
     case started(conversationID: String?)
     case text(String)
@@ -1860,6 +2028,24 @@ public enum AgentEvent: Equatable, Sendable {
     case thinking(String)
     /// How many reasoning tokens the model has used so far this turn.
     case thinkingTokens(Int)
+    /// Replaces the live plan shown for the current session.
+    case planReplaced([PlanEntry])
+    /// Starts or finishes a typed subagent run.
+    case subagent(VitruvianCodeActiveSubagent, started: Bool)
+    /// Asks the user a structured form or URL-consent question.
+    case question(AgentQuestion)
+    /// Updates the session's live configuration options.
+    case configOptions([AgentConfigOption])
+    /// Reports context compaction progress or completion.
+    case compaction(id: String, status: String, summary: String?)
+    /// Displays an agent notice banner.
+    case notice(severity: String, title: String, detail: String?)
+    /// Updates session metadata such as title or timestamp.
+    case sessionInfo(title: String?, updatedAt: String?)
+    /// Reports a plan/rate usage limit and its reset time.
+    case usageLimit(resetsAt: Date?)
+    /// Reports a connection-level failure (startup, framing, timeout or unexpected exit).
+    case connectionFailed(AgentFailure)
 
     /// The first event of a line; nil for blank lines, non-JSON noise and
     /// events the prompt ignores. A line can hold several events (a Claude

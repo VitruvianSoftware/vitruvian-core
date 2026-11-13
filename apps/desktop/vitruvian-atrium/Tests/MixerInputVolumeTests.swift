@@ -66,10 +66,14 @@ enum MixerInputVolumeContract {
         nonisolated(unsafe) static var readFails: Set<Key> = []
         nonisolated(unsafe) static var writeFails: Set<Key> = []
         nonisolated(unsafe) static var mute: [UInt32: UInt32] = [:]
+        /// Per-element mute switches, for devices that mute each channel.
+        nonisolated(unsafe) static var muteElements: [Key: UInt32] = [:]
         nonisolated(unsafe) static var writes: [Key] = []
         nonisolated(unsafe) static var listeners: Set<Key> = []
         nonisolated(unsafe) static var listenerFails = false
         nonisolated(unsafe) static var ignoreWrites = false
+        /// Controls that accept a write and keep their old value.
+        nonisolated(unsafe) static var ignoredWrites: Set<Key> = []
         nonisolated(unsafe) static var devices: [UInt32] = [10]
         nonisolated(unsafe) static var streamChannels: [UInt32: [UInt32]] = [:]
         nonisolated(unsafe) static var streamReadFails = false
