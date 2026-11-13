@@ -101,6 +101,8 @@ package enum DefaultsKey {
     package static let systemShortcutTakeOverKeys = "systemShortcutTakeOverKeys"
     package static let switcherShortcut = "switcherShortcut"      // GlobalShortcut storage value
     package static let switcherWindowShortcut = "switcherWindowShortcut" // GlobalShortcut storage value
+    package static let switcherAllWindowsShortcut = "switcherAllWindowsShortcut"
+    package static let switcherAllWindowsShortcutEnabled = "switcherAllWindowsShortcutEnabled"
     package static let switcherIconRowMode = "switcherIconRowMode"
     package static let switcherSimpleMode = "switcherSimpleMode"  // app-only row without window captures
     package static let switcherMergeTabs = "switcherMergeTabs"     // show one switcher entry per app (collapse all of an app's windows)
@@ -374,6 +376,7 @@ package enum DefaultsKey {
     // Keep the existing storage key so moving the row preserves its visibility choice.
     package static let panelToggleMicMute = "panelUtilityMicMute"
     package static let panelToggleEmptyTrash = "panelToggleEmptyTrash"
+    package static let panelToggleQuitAllApps = "panelToggleQuitAllApps"
     package static let panelToggleEjectDisks = "panelToggleEjectDisks"
     package static let panelToggleHiddenFiles = "panelToggleHiddenFiles"
     package static let panelToggleDesktopIcons = "panelToggleDesktopIcons"
@@ -596,6 +599,12 @@ package enum DefaultsKey {
     package static let screenOCRDetectQRCodes = "screenOCRDetectQRCodes" // QR content wins over OCR text
     package static let micMuteShortcutEnabled = "micMuteShortcutEnabled"
     package static let micMuteShortcut = "micMuteShortcut"
+    package static let quitAppsShortcutEnabled = "quitAppsShortcutEnabled"
+    package static let quitAppsShortcut = "quitAppsShortcut"
+    package static let quitAppsExceptFrontShortcutEnabled = "quitAppsExceptFrontShortcutEnabled"
+    package static let quitAppsExceptFrontShortcut = "quitAppsExceptFrontShortcut"
+    /// Bundle ids "Quit all apps" leaves running, on top of the mandatory set.
+    package static let quitAppsKeptApps = "quitAppsKeptApps"
     package static let cameraPreviewShortcutEnabled = "cameraPreviewShortcutEnabled"
     package static let cameraPreviewShortcut = "cameraPreviewShortcut"
     package static let wallpaperApplyAllDisplays = "wallpaperApplyAllDisplays"
@@ -652,6 +661,7 @@ package enum DefaultsKey {
     package static let panelUtilityCameraPreview = "panelUtilityCameraPreview"
     package static let panelUtilityScratchpad = "panelUtilityScratchpad"
     package static let clipboardHistoryShortcutEnabled = "clipboardHistoryShortcutEnabled"
+    package static let clipboardHistoryShowSourceAppIcons = "clipboardHistoryShowSourceAppIcons" // source app icons beside list entries
     package static let clipboardHistoryShortcut = "clipboardHistoryShortcut"
     // Mode chooser visibility for dedicated capture shortcuts.
     package static let screenshotShowCaptureMenuOnShortcut = "screenshotShowCaptureMenuOnShortcut"
@@ -878,6 +888,7 @@ package enum DefaultsKey {
     package static let notchWatchCondition = "notchWatchCondition"
     package static let notchCalendarEnabled = "notchCalendarEnabled"
     package static let notchCalendarCountdown = "notchCalendarCountdown"
+    package static let notchCalendarCountdownLead = "notchCalendarCountdownLead" // minutes before a start, chosen events included
     package static let notchCalendarTimeLeft = "notchCalendarTimeLeft" // the event under way counts down to its end
     package static let notchCalendarWeekNumbers = "notchCalendarWeekNumbers" // the month grid numbers its weeks
     package static let notchCalendarExcluded = "notchCalendarExcluded" // [EKCalendar.calendarIdentifier] left out of the island

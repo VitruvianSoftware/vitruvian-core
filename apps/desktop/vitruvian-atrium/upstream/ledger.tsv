@@ -493,31 +493,31 @@ f0ae4fa83a04902c3144e1de4d777fbb1552fd04	aa287643778484b502511ebd0f90051ab1c6445
 c007f6af59a30ce47997d2264398298fa363fb88	4d8ebaf0eef52a9e1df59c23bfedad00be2b7cd2	2026-10-28	ported	#4682	fix(display): preserve Mission Control thumbnails with extra brightness (#3572)
 39b63cab1e46b7ce89e343377bb8e408dd92edb5	750dee6d8a7078c9fa063e707a7566c2baf5f7ad	2026-10-27	ported	#4682	docs(changelog): summarize reviewed fixes and contributor credits
 1468701709514c3a003c9cf93179c8cfc1a31de9	c77887ad526bef07b39437eef723655c8b3630e9	2026-10-28	ported	#4682	fix(mic-mute): report failures and clarify device-control limits (#3591)
-6f41522ff15a9ec72c563e0df280d700d608eeb8	e9018a241cf50605cfb8d2a3856828c16e86600e	2026-10-28	pending	-	feat(notch): let the event countdown start earlier or later (#2167)
-1d46b933539efb785b45c667c79cbea72a643be2	807daf60452bca4661c1c9857dab819e65fc8c3c	2026-10-28	pending	-	feat(quick-toggles): add a Quit apps window (#3300)
+6f41522ff15a9ec72c563e0df280d700d608eeb8	e9018a241cf50605cfb8d2a3856828c16e86600e	2026-10-28	ported	#4708	feat(notch): let the event countdown start earlier or later (#2167)
+1d46b933539efb785b45c667c79cbea72a643be2	807daf60452bca4661c1c9857dab819e65fc8c3c	2026-10-28	ported	#4708	feat(quick-toggles): add a Quit apps window (#3300)
 f1d115ae51933d21a5d6a4b5060f78c29aaf88b7	d6840e5e05939ae0075c17bdc95bac0191dd9678	2026-10-28	pending	-	feat(settings): add configurable scroll zoom (#2104)
-97a7d2141447ae8202e46a682d9f721eb3aa83a1	52f18d42c67f2dafe0962aa2e532f869f2a368d9	2026-10-28	pending	-	Document new controls and align quit-app test cleanup
-db0a245ee3316a2dc2305d7043f6a4d5358bd177	8af88392c4651c37eb82f123f2b124224aafaca5	2026-10-29	pending	-	feat(switcher): allow up to ten columns (#3410)
+97a7d2141447ae8202e46a682d9f721eb3aa83a1	52f18d42c67f2dafe0962aa2e532f869f2a368d9	2026-10-28	skipped	only the changelog and a fix to QuitAppsRuntimeTests, a generated-copy test this fork left out	Document new controls and align quit-app test cleanup
+db0a245ee3316a2dc2305d7043f6a4d5358bd177	8af88392c4651c37eb82f123f2b124224aafaca5	2026-10-29	ported	#4708	feat(switcher): allow up to ten columns (#3410)
 3cca99e044283795a67638baa72a7531778bc2a7	31254aeb9dda79aec0b8a863d1ec089c1a1c9b51	2026-10-28	skipped	touches only upstream-only paths	docs: note expanded switcher column options
-92e479545dc385e66cdbf4a3c2735855b003d96f	ac9d1080c8e202dc0b2ded25aa3f093e554e77b1	2026-10-28	pending	-	fix(agents): illustrate limits in the settings preview (#3421)
+92e479545dc385e66cdbf4a3c2735855b003d96f	ac9d1080c8e202dc0b2ded25aa3f093e554e77b1	2026-10-28	ported	#4708	fix(agents): illustrate limits in the settings preview (#3421)
 f1621f97aa50bca69ef08d960b1e5f85beeb1690	654d60ef83b789f38c20cd9c9fdc4261b01df804	2026-10-28	skipped	touches only upstream-only paths	docs(changelog): note agent limit preview fix
-bb0c44138b7c0668cd48e56d119e073cb2df8c47	b978a54d7fd505daf820e8b0b8c45029dccce524	2026-10-29	pending	-	feat(clipboard): add optional source app icons to list view (#3446)
+bb0c44138b7c0668cd48e56d119e073cb2df8c47	b978a54d7fd505daf820e8b0b8c45029dccce524	2026-10-29	ported	#4708	feat(clipboard): add optional source app icons to list view (#3446)
 77ef5e2625ec4e42a43fa1f303a54d2980d2ce03	a8ad7910a196282b177f9833bbd557e7f7d43572	2026-10-28	skipped	touches only upstream-only paths	docs: note clipboard source app icons
-a03c1e3348ba101ef9e1c7019a2861c8a1abfded	264e9cf24c4f72c38737a40f1f3b0d77d9e6bb01	2026-10-29	pending	-	fix(radial-menu): attach the action editor's file picker to the editor (#3289)
+a03c1e3348ba101ef9e1c7019a2861c8a1abfded	264e9cf24c4f72c38737a40f1f3b0d77d9e6bb01	2026-10-29	ported	#4708	fix(radial-menu): attach the action editor's file picker to the editor (#3289)
 e74c1efc9718719342f938ffe00d5ac35b30db69	dfed33cc82c2d2311f92f86b2bd8eafe4a5499ef	2026-10-28	skipped	touches only upstream-only paths	docs(changelog): note radial menu file picker fix
-eb272f6cf9c412d5b26c55eb0011d7ef69ca246c	0803a5141dba19d98230349bae6449e4ffebf460	2026-10-28	pending	-	fix(url-cleaner): keep the port and login out of a pasted site key (#3519)
+eb272f6cf9c412d5b26c55eb0011d7ef69ca246c	0803a5141dba19d98230349bae6449e4ffebf460	2026-10-28	ported	#4708	fix(url-cleaner): keep the port and login out of a pasted site key (#3519)
 23f7153f89b6513b176c6f2d7efa4155a1dee17f	9721bd98d357f3fb945b92c6816d84560c790089	2026-10-28	skipped	touches only upstream-only paths	docs(changelog): note URL Cleaner site key correction
-b336c95930d692ce88e7c7608fd54a24818f7a58	497d3b908fac44cd26534022ba83374692869e81	2026-10-28	pending	-	fix(quit-protection): follow the live macOS switcher shortcut (#3318)
+b336c95930d692ce88e7c7608fd54a24818f7a58	497d3b908fac44cd26534022ba83374692869e81	2026-10-28	ported	#4708	fix(quit-protection): follow the live macOS switcher shortcut (#3318)
 2ab6bbac651b6242b62b8503eaff33ad14d8f83c	8619ce9663bdf0fdfa728439801af42f150cc619	2026-10-28	skipped	touches only upstream-only paths	docs: note live native switcher quit protection
-e91fb1a9efbce775a707f007615419c5e5a3c1d9	bafcadf3fce94934bc96ca89ba8ffb0f047a6a74	2026-10-28	pending	-	fix(media): keep a zero image watermark margin (#2871)
-4b27ac06fa9704708fb27716b3515ce6ecba326b	c631195a5610d19a73f030eec6d036642be2bf0f	2026-10-29	pending	-	fix(agents): say whether a limit reading is left or used (#2353)
+e91fb1a9efbce775a707f007615419c5e5a3c1d9	bafcadf3fce94934bc96ca89ba8ffb0f047a6a74	2026-10-28	ported	#4708	fix(media): keep a zero image watermark margin (#2871)
+4b27ac06fa9704708fb27716b3515ce6ecba326b	c631195a5610d19a73f030eec6d036642be2bf0f	2026-10-29	ported	#4708	fix(agents): say whether a limit reading is left or used (#2353)
 abf441034c3176e973b0b134b0d493bfe2852a3e	d54100fe396180cdd4315e334595b3c86e1be033	2026-10-28	skipped	touches only upstream-only paths	docs(changelog): note clearer agent limit labels
 8910f18eed027ff34d2a1e66794c34a185d4a88f	17077523c26028867be3a0c3b837977bda9a9cbd	2026-10-28	skipped	touches only upstream-only paths	docs(changelog): note zero watermark margins
-4a405fd2abd3ed312be8022e05140798961087c3	f4bde9c01a3c2045cf9b30d5f58dbebfdbd97fc8	2026-10-29	pending	-	fix(shelf): offer only a copy for files stored inside packages (#2085)
+4a405fd2abd3ed312be8022e05140798961087c3	f4bde9c01a3c2045cf9b30d5f58dbebfdbd97fc8	2026-10-29	ported	#4708	fix(shelf): offer only a copy for files stored inside packages (#2085)
 8e2a826eca02b54a803f7eb8c4f335fccba11ca2	07d271b4b81e24593580d6729f491961c28acc88	2026-10-28	skipped	touches only upstream-only paths	docs(changelog): note safer Shelf package drags
-0121b0177a5a7075996f9d82374221383a850b09	6a316224d258d34dce9cb8281c67d97579b6f189	2026-10-28	pending	-	feat(switcher): add an optional shortcut for all windows (#3609)
+0121b0177a5a7075996f9d82374221383a850b09	6a316224d258d34dce9cb8281c67d97579b6f189	2026-10-28	ported	#4708	feat(switcher): add an optional shortcut for all windows (#3609)
 efb5e60f5445ba68b3f0ce7cbafa21fcf7375595	aee62ad86de20e44b5650f19db38bfe0ecb6ea43	2026-10-28	pending	-	feat(agents): add Claude account selection (#3610)
-4d830f42178da244166e1dd842bc2db822286249	bb7da9b0b69becc86de1626ce3288d5c36d7ab03	2026-10-28	pending	-	fix(super-key): make hotkeys independent of startup order (#3613)
+4d830f42178da244166e1dd842bc2db822286249	bb7da9b0b69becc86de1626ce3288d5c36d7ab03	2026-10-28	ported	#4708	fix(super-key): make hotkeys independent of startup order (#3613)
 00f8386bb09c5fdb47c2b8bf260a17cfc631acfb	5edcfd44bc96175c698dc0bfd34afbcf218a97af	2026-10-28	pending	-	fix(clipboard): support control navigation in the dynamic island (#3615)
 b33607515ea4b104e818bd2f2b1e674012aa3b4e	c474b8734f060f24b997b345423c28be8c8a63f8	2026-10-28	pending	-	fix(uninstaller): stop removal when Homebrew verification fails (#3617)
 e701eddeace73a10c6b2682272855bb208aacb7e	cc4ca07ab2cef08fdd3cb4565cac994c0ac9e220	2026-10-28	pending	-	fix(url-cleaner): preserve Safari link previews when cleaning (#3618)

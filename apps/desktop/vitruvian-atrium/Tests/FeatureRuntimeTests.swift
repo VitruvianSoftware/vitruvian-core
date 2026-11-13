@@ -87,9 +87,11 @@ enum FeatureRuntimeContract {
         suite.expect([AppFeature.monitorCPU, .monitorGPU, .monitorMemory, .monitorNetwork, .monitorDisk, .monitorPower,
                       .connectedDevices].allSatisfy { actions($0) == [.monitorPlan, .monitorAlerts] },
                      "every metric family and connected devices recompute the sampling plan")
-        suite.expect([AppFeature.quickToggles, .cleaningMode, .uninstaller, .homebrew, .killProcess, .portManager]
+        suite.expect([AppFeature.cleaningMode, .uninstaller, .homebrew, .killProcess, .portManager]
                         .allSatisfy { actions($0).isEmpty },
                      "an on-demand tool has nothing to start or stop")
+        suite.expect(actions(.quickToggles) == [.quickToggles] && actions(.quitApps) == [.quickToggles],
+                     "Quick toggles and Quit apps both resync the service that owns the Quit apps shortcuts")
         suite.expect(actions(.urlCleaner) == [.tool(URLCleanerService.manifest.id)],
                      "a feature that has become a tool is handed to the tool host")
         let pasteTool = FeatureBindingAction.tool(PastePlainService.manifest.id)

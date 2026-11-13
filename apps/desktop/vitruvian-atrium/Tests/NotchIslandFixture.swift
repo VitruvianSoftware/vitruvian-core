@@ -526,6 +526,7 @@ final class RecordingIslandServices: NotchIslandServices {
     var keepAwakeActive = false
     var keepAwakeEndDate: Date?
     var calendarCountdown: NotchCalendarCountdown?
+    var calendarCountdownLeadTime = NotchCalendarSupport.timeLeftLeadTime
     var chosenCalendarEvent = false
     func calendarIsChosen(_ event: NotchCalendarEvent) -> Bool { chosenCalendarEvent }
     /// The event the island last asked the Calendar page to scroll to.

@@ -9,14 +9,19 @@ import VitruvianAtriumDesign
 /// the user's order and the per-item visibility keys.
 package enum QuickToggleAction: String, PanelOrderItem, CaseIterable, Identifiable {
     // Case order is the default panel order: the appearance switch leads
-    // because it is the tab's headline action (issue request).
-    case darkMode, keyboardLight, micMute, emptyTrash, ejectDisks, hiddenFiles, desktopIcons,
-         lockScreen, displayOff, screenSaver
+    // because it is the tab's headline action (issue request). Quit all sits
+    // next to Empty the Trash (issue #855).
+    case darkMode, keyboardLight, micMute, emptyTrash, quitAllApps, ejectDisks, hiddenFiles,
+         desktopIcons, lockScreen, displayOff, screenSaver
 
     package var id: String { rawValue }
 
     package var feature: AppFeature {
-        self == .micMute ? .micMute : .quickToggles
+        switch self {
+        case .micMute: return .micMute
+        case .quitAllApps: return .quitApps
+        default: return .quickToggles
+        }
     }
 }
 
@@ -35,13 +40,43 @@ package final class QuickTogglesService: ObservableObject {
     }
 
     @Published package private(set) var states: [QuickToggleAction: RunState] = [:]
+    @Published package private(set) var shortcutRegistrationFailed = false
+    @Published package private(set) var othersShortcutRegistrationFailed = false
+    @Published package private(set) var quitAllExceptions: [String] = []
 
     private let workQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.quick-toggles", qos: .userInitiated)
+    private let hotkey = QuickToolHotkey(id: 63)
+    private let othersHotkey = QuickToolHotkey(id: 62)
 
-    private init() {}
+    private init() {
+        hotkey.onPress = { [weak self] in self?.showQuitApps(scope: .all) }
+        othersHotkey.onPress = { [weak self] in self?.showQuitApps(scope: .allExceptFront) }
+        reloadQuitAllExceptions()
+    }
 
     package func state(for action: QuickToggleAction) -> RunState? {
         states[action]
+    }
+
+    package func syncWithPreferences() {
+        let available = quitAppsAvailable
+        let defaults = UserDefaults.standard
+        shortcutRegistrationFailed = !hotkey.sync(
+            enabled: available && defaults[Preferences.quitAppsShortcutEnabled],
+            shortcut: GlobalShortcut.saved(for: DefaultsKey.quitAppsShortcut,
+                                           fallback: .quitAllDefault),
+            storageKey: DefaultsKey.quitAppsShortcut)
+        othersShortcutRegistrationFailed = !othersHotkey.sync(
+            enabled: available && defaults[Preferences.quitAppsExceptFrontShortcutEnabled],
+            shortcut: GlobalShortcut.saved(for: DefaultsKey.quitAppsExceptFrontShortcut,
+                                           fallback: .quitAllExceptFrontDefault),
+            storageKey: DefaultsKey.quitAppsExceptFrontShortcut)
+        if !available {
+            hotkey.unregister()
+            othersHotkey.unregister()
+            QuitAppsPanelController.shared.close()
+        }
+        reloadQuitAllExceptions()
     }
 
     // MARK: - Current system state (read on demand, never observed)
@@ -107,6 +142,88 @@ package final class QuickTogglesService: ObservableObject {
         runAppleScript(.emptyTrash,
                        target: .finder,
                        source: QuickTogglesSupport.emptyTrashSource)
+    }
+
+    // MARK: - Quit apps (issue #855)
+
+    /// Opens the Quit apps window. `scope` only decides which batch button
+    /// Return presses; the list and both buttons are always there.
+    package func showQuitApps(scope: QuitAppsScope = .all) {
+        guard quitAppsAvailable else { return }
+        QuitAppsPanelController.shared.show(scope: scope, frontmostPID: frontmostAppPID())
+    }
+
+    /// Soft quit only: `terminate()`, never `forceTerminate()`, so unsaved
+    /// document sheets still appear. Finder, Phone, Vitruvian Atrium, any app the user
+    /// listed as an exception and `keepingPID` are left alone.
+    package func quitAllApps(keepingPID: pid_t?) {
+        guard quitAppsAvailable, beginRun(.quitAllApps) else { return }
+        let exceptions = Set(quitAllExceptions)
+        // `terminate()` only posts the quit request, and running-app state
+        // updates on the main run loop, so the sweep stays on main.
+        let running = NSWorkspace.shared.runningApplications
+        let targets = Set(QuickTogglesSupport.batchQuitTargets(
+            running.map(Self.candidate), exceptions: exceptions, keepingPID: keepingPID))
+        for app in running where targets.contains(app.processIdentifier) {
+            _ = app.terminate()
+        }
+        finishRun(.quitAllApps, state: nil)
+    }
+
+    /// Asks one app to quit, exceptions included: picking its row is explicit.
+    package func quitApp(pid: pid_t) -> Bool {
+        guard quitAppsAvailable,
+              let app = NSRunningApplication(processIdentifier: pid),
+              let bundleID = app.bundleIdentifier,
+              !QuickTogglesSupport.vitruvianBundleIdentifiers.contains(bundleID) else { return false }
+        return app.terminate()
+    }
+
+    private static func candidate(_ app: NSRunningApplication) -> QuitAppsCandidate {
+        QuitAppsCandidate(pid: app.processIdentifier,
+                          bundleIdentifier: app.bundleIdentifier,
+                          activationPolicyRawValue: app.activationPolicy.rawValue,
+                          isTerminated: app.isTerminated)
+    }
+
+    /// Preserve the app in front, or the source remembered before our panel
+    /// took focus. An unrelated visible window is not a safe substitute.
+    package func frontmostAppPID() -> pid_t? {
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        if let front = NSWorkspace.shared.frontmostApplication, front.processIdentifier != ownPID {
+            return front.processIdentifier
+        }
+        return appShell()?.panelActivationSourcePID
+    }
+
+    package func addQuitAllException(_ bundleID: String) {
+        let bundleID = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !bundleID.isEmpty, !quitAllExceptions.contains(bundleID) else { return }
+        var list = QuickTogglesSupport.sanitizedQuitAllExceptions(quitAllExceptions)
+        list.append(bundleID)
+        UserDefaults.standard[Preferences.quitAppsKeptApps] = list
+        reloadQuitAllExceptions()
+    }
+
+    package func removeQuitAllException(_ bundleID: String) {
+        guard !isMandatoryQuitAllException(bundleID) else { return }
+        let list = QuickTogglesSupport.sanitizedQuitAllExceptions(
+            quitAllExceptions.filter { $0 != bundleID })
+        UserDefaults.standard[Preferences.quitAppsKeptApps] = list
+        reloadQuitAllExceptions()
+    }
+
+    package func isMandatoryQuitAllException(_ bundleID: String) -> Bool {
+        Defaults.mandatoryAutoQuitExceptionBundleIDs.contains(bundleID)
+    }
+
+    private func reloadQuitAllExceptions() {
+        let raw = UserDefaults.standard[Preferences.quitAppsKeptApps]
+        let sanitized = QuickTogglesSupport.sanitizedQuitAllExceptions(raw)
+        if raw != sanitized {
+            UserDefaults.standard[Preferences.quitAppsKeptApps] = sanitized
+        }
+        quitAllExceptions = sanitized
     }
 
     // MARK: - Finder flags
@@ -211,6 +328,10 @@ package final class QuickTogglesService: ObservableObject {
 
     private var available: Bool {
         AppFeature.quickToggles.isAvailable
+    }
+
+    private var quitAppsAvailable: Bool {
+        AppFeature.quitApps.isAvailable
     }
 
     nonisolated private static func automationTarget(for action: QuickToggleAction) -> Permissions.AutomationTarget? {

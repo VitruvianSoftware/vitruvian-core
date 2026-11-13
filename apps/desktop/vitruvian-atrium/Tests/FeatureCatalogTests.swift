@@ -450,7 +450,7 @@ enum FeatureCatalogTests {
 
         // MARK: Features hub catalog
 
-        suite.expect(AppFeature.allCases.count == 77, "feature catalog has 77 features")
+        suite.expect(AppFeature.allCases.count == 78, "feature catalog has 78 features")
         suite.expect(Set(AppFeature.allCases.map(\.rawValue)).count == AppFeature.allCases.count,
                "feature ids are unique")
         suite.expect(AppFeature.allCases.map(\.rawValue) == [
@@ -461,7 +461,7 @@ enum FeatureCatalogTests {
             "diskImageInstaller",
             "mixer", "soundOutputSwitcher", "audioPriority", "micMute", "musicBlock",
             "keepAwake", "brightness", "extraBrightness", "bluetoothSleep",
-            "quickLauncher", "quickToggles", "colorPicker", "screenOCR", "cleaningMode", "mediaTools",
+            "quickLauncher", "quickToggles", "quitApps", "colorPicker", "screenOCR", "cleaningMode", "mediaTools",
             "cleaner", "uninstaller", "homebrew", "appUpdates", "screenshot", "cameraPreview",
             "radialMenu", "scratchpad", "commandBar", "screenRecorder", "wallpaper", "killProcess", "portManager", "notch", "notchCalendar", "notchNotifications", "notchGestures", "notchTimer", "notchAccessories", "notchLyrics", "notchQueue", "notchLiveEqualizer", "notchDownloads", "notchAgents", "notchWatch", "notchMascot",
             "monitorCPU", "monitorGPU", "monitorMemory", "monitorNetwork", "monitorDisk", "monitorPower",
@@ -648,7 +648,8 @@ enum FeatureCatalogTests {
                 && (AppFeature.availabilityDefaults[AppFeature.focusFollowsMouse.availabilityKey] as? Bool) == false
                 && (AppFeature.availabilityDefaults[AppFeature.fanControl.availabilityKey] as? Bool) == false
                 && (AppFeature.availabilityDefaults[AppFeature.spacesOrder.availabilityKey] as? Bool) == false
-                && (AppFeature.availabilityDefaults[AppFeature.notchMascot.availabilityKey] as? Bool) == false,
+                && (AppFeature.availabilityDefaults[AppFeature.notchMascot.availabilityKey] as? Bool) == false
+                && (AppFeature.availabilityDefaults[AppFeature.quitApps.availabilityKey] as? Bool) == false,
                "features added after the list was frozen wait on the Features page instead of installing themselves")
         let linearScrollSuiteName = "com.vitruviansoftware.vitruvian.tests.linear-scroll-availability.\(UUID().uuidString)"
         if let linearDefaults = ScratchDefaults.suite(named: linearScrollSuiteName) {
@@ -1748,6 +1749,17 @@ enum FeatureCatalogTests {
                "pasting copied images as files engages the shared Finder feature")
         suite.expect(AppFeature.quickToggles.permissions == [.automationFinder],
                "the quick toggles need no permission beyond the Trash's Finder ask")
+        suite.expect(AppFeature.quitApps.permissions.isEmpty
+                && AppFeature.quitApps.onboardingPermissions.isEmpty
+                && AppFeature.quitApps.enabledKeys.isEmpty
+                && AppFeature.quitApps.energyProfile == .idle
+                && AppFeature.quitApps.group == .tools
+                && AppFeature.quitApps.symbolName == "xmark.app",
+               "Quit apps is an on-demand tool that needs no permission and keeps nothing running")
+        suite.expect(AppFeature.quitApps.settingsDestination
+                == FeatureSettingsDestination(.quickTools, sectionAnchor: .quitApps)
+                && !FeaturePreset.allCases.contains { $0.features.contains(.quitApps) },
+               "Quit apps opens its own Quick tools section and joins no preset")
         suite.expect(activeSet(.appManagement) == [.homebrew, .appUpdates, .diskImageInstaller],
                "package, update and disk-image installs declare App Management access")
         suite.expect(AppFeature.homebrew.permissions == [.appManagement],
@@ -1797,10 +1809,10 @@ enum FeatureCatalogTests {
                "a role leaves the shortcuts page when its feature is off in the hub")
         suite.expect(GlobalShortcutRole.activeRoles(isOn: { _ in true },
                                               isAvailable: { $0 != .switcher })
-                .allSatisfy { $0 != .switcher && $0 != .switcherWindow },
-               "both switcher roles follow the switcher feature")
+                .allSatisfy { $0.feature != .switcher },
+               "all switcher roles follow the switcher feature")
         suite.expect(GlobalShortcutRole.availableRoles(isAvailable: { $0 != .switcher })
-                .allSatisfy { $0 != .switcher && $0 != .switcherWindow },
+                .allSatisfy { $0.feature != .switcher },
                "the shortcut editor lists installed roles even without reading enable keys")
         for role in [GlobalShortcutRole.displayBrightnessDecrease, .displayBrightnessIncrease] {
             suite.expect(role.feature == .brightness && role.group == .energyDisplay,
@@ -2271,6 +2283,8 @@ enum FeatureCatalogTests {
                "cleaner settings, including WhatsApp downloads, follow the cleaner module")
         suite.expect(pageVisible(.quickTools, available: [.quickToggles]),
                "the quick toggles alone keep the quick tools page")
+        suite.expect(pageVisible(.quickTools, available: [.quitApps]),
+               "Quit apps alone keeps the quick tools page")
         suite.expect(pageVisible(.clipboard, available: [.finderCutPaste]),
                "the image paste option keeps the Clipboard page available")
         suite.expect(AppFeature.allCases.allSatisfy { feature in

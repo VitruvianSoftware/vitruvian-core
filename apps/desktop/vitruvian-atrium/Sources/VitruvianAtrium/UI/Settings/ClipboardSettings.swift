@@ -18,6 +18,7 @@ package struct ClipboardSettings: View {
     @AppStorage(Preferences.clipboardHistoryFilterSensitiveText) private var skipSensitive: Bool
     @AppStorage(Preferences.clipboardHistoryIncludeImagesFiles) private var includeImagesFiles: Bool
     @AppStorage(Preferences.clipboardHistoryShortcutEnabled) private var shortcutEnabled: Bool
+    @AppStorage(Preferences.clipboardHistoryShowSourceAppIcons) private var showSourceAppIcons: Bool
     @AppStorage(Preferences.clipboardHistoryLayout) private var historyLayoutRaw: String
     @AppStorage(Preferences.clipboardHistoryMenuBarPreview) private var menuBarPreview: Bool
     @AppStorage(Preferences.clipboardHistoryMenuBarPreviewLength)
@@ -194,6 +195,7 @@ package struct ClipboardSettings: View {
                 Text(text.historyLayoutCards).tag(ClipboardHistoryLayout.cards)
             }
             .pickerStyle(.segmented)
+            Toggle(text.showSourceAppIconsInList, isOn: $showSourceAppIcons)
             Button {
                 ClipboardHistoryService.shared.showHistoryWindow()
             } label: {

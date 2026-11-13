@@ -315,9 +315,12 @@ package final class SuperKeyService: ObservableObject {
             let mask = (CGEventMask(1) << CGEventType.keyDown.rawValue)
                 | (CGEventMask(1) << CGEventType.keyUp.rawValue)
                 | (CGEventMask(1) << CGEventType.flagsChanged.rawValue)
+            // Transform keys before every session shortcut consumer, even one
+            // that starts or restarts after us (#3556). The HID tail keeps raw
+            // filters and shortcut recording ahead of the transformation.
             guard let tap = system.createTap(
-                .cgSessionEventTap,
-                .headInsertEventTap,
+                .cghidEventTap,
+                .tailAppendEventTap,
                 .defaultTap,
                 mask,
                 { _, type, event, userInfo in
@@ -726,8 +729,8 @@ package final class SuperKeyService: ObservableObject {
             return nil
         case .interceptAndRemap:
             repairMappingIfStale()
-            // At the session tap a missing Caps Lock mapping may already have
-            // flipped the lock state. Put it back off while the mapping repairs.
+            // A missing Caps Lock mapping may already have flipped the lock
+            // state. Put it back off while the mapping repairs.
             DispatchQueue.main.async { [weak self] in
                 guard let self,
                       self.lifecycleLock.withLock({
@@ -833,14 +836,15 @@ package final class SuperKeyService: ObservableObject {
             return keyCode == source.keyCode ? .sourceKey : .otherModifier
         }
         guard keyCode == SuperKeySupport.triggerKeyCode else { return .otherKey }
+        let timestamp = EventTimestamp.nanoseconds(of: event)
         if type == .keyDown {
             return .triggerDown(
                 isRepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0,
                 hasPrimaryModifiers: !GlobalShortcutModifiers(cgFlags: event.flags).isEmpty,
-                timestamp: UInt64(event.timestamp)
+                timestamp: timestamp
             )
         }
-        return .triggerUp(timestamp: UInt64(event.timestamp))
+        return .triggerUp(timestamp: timestamp)
     }
 
     // MARK: - Tapped on its own

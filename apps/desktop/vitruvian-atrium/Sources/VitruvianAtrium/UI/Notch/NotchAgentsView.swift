@@ -286,6 +286,63 @@ private struct NotchAgentChip: View {
 
 // MARK: Limits
 
+/// The share keeps its meaning at every width. A reset countdown uses spare
+/// room, otherwise its full date remains in the row's tooltip.
+package struct NotchAgentLimitReading: View {
+    let title: String
+    let share: String
+    let countdown: String?
+    let tint: Color
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(title: String, share: String, countdown: String?, tint: Color) {
+        self.title = title
+        self.share = share
+        self.countdown = countdown
+        self.tint = tint
+    }
+
+    package var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 5) {
+                heading.fixedSize()
+                if let countdown {
+                    Label(countdown, systemImage: "arrow.clockwise")
+                        .labelStyle(NotchAgentInlineLabel())
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                        .accessibilityIdentifier("notch.agentLimitCountdown")
+                }
+                Spacer(minLength: 2)
+                reading
+            }
+            HStack(spacing: 5) {
+                heading.minimumScaleFactor(0.8)
+                Spacer(minLength: 2)
+                reading
+            }
+        }
+    }
+
+    private var heading: some View {
+        Text(title)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(.white.opacity(0.85))
+            .lineLimit(1)
+    }
+
+    private var reading: some View {
+        Text(share)
+            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .monospacedDigit()
+            .foregroundStyle(tint)
+            .fixedSize()
+            .contentTransition(.numericText())
+            .accessibilityIdentifier("notch.agentLimitShare")
+    }
+}
+
 /// An added Codex home's card: only its own checks, never the reading the
 /// logs give the provider's other account, even when its check failed.
 private struct NotchAgentAccount {
@@ -474,7 +531,8 @@ private struct NotchAgentLimitsCard: View {
         }
     }
 
-    /// A row says what is spent, when the window renews, and under-bar runway forecasting.
+    /// A row says what is left or used, as chosen, when the window renews,
+    /// and under-bar runway forecasting.
     private func row(_ window: AgentLimitWindow) -> some View {
         let all = (snapshot.limits[provider]?.windows ?? []).map { AgentLimitSupport.current($0, at: now) }
         let is3p = !window.id.hasPrefix("claude") && (window.id.contains("3p") || window.scope == "Claude/GPT")
@@ -495,35 +553,13 @@ private struct NotchAgentLimitsCard: View {
         let tint = agentLimitTint(provider, usedFraction: window.usedFraction)
         let remaining = display == .remaining
         let fraction = remaining ? window.remainingFraction : window.usedFraction
+        let reset = AgentLimitSupport.displayedReset(window, now: now).map {
+            (window.estimatedResetsAt == nil ? "" : "≈ ") + countdown(to: $0)
+        }
         return VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 5) {
-                Text(window.name)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .lineLimit(1)
-                    .layoutPriority(1)
-                Group {
-                    if let resets = AgentLimitSupport.displayedReset(window, now: now) {
-                        Label((window.estimatedResetsAt == nil ? "" : "≈ ") + countdown(to: resets),
-                              systemImage: "arrow.clockwise")
-                            .labelStyle(NotchAgentInlineLabel())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .font(.system(size: 9.5))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                Spacer(minLength: 2)
-                // The figure keeps its width, so every row's ends at the same edge.
-                Text(AgentFormat.percent(fraction))
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(tint == provider.tint ? Color.white : tint)
-                    .contentTransition(.numericText())
-                    .lineLimit(1)
-                    .fixedSize()
-                    .layoutPriority(2)
-            }
+            NotchAgentLimitReading(title: window.name,
+                                   share: NotchAgentSupport.limitShare(window, display: display, text: text),
+                                   countdown: reset, tint: tint == provider.tint ? Color.white : tint)
             NotchAgentMeter(value: fraction, pace: pace.map { remaining ? 1 - $0.elapsed : $0.elapsed },
                             tint: tint, height: 4)
             if let pace, !pace.summary.isEmpty {

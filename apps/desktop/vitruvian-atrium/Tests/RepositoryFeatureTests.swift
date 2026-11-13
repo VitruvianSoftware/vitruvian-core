@@ -417,6 +417,48 @@ enum RepositoryFeatureTests {
                "deleting a name the user added drops it from the switched off names too: \(siteSwitch.disabledNames)")
         expectEqual(URLCleaning.siteKey(from: " https://WWW.Weibo.com/path?x=1 ") ?? "",
                     "weibo.com", "the site field takes a pasted link and keeps the host")
+        expectEqual(URLCleaning.siteKey(from: "https://user@Shop.Example.com:8080/x") ?? "",
+                    "shop.example.com", "a pasted link's port and login do not become part of the host key")
+        let siteInputs: [(input: String, host: String, link: String)] = [
+            ("shop.example.com", "shop.example.com", "https://shop.example.com/x"),
+            ("shop.example.com:8080", "shop.example.com", "https://shop.example.com:8080/x"),
+            ("https://shop.example.com:8080/x?ref=a#part", "shop.example.com",
+             "https://shop.example.com:8080/x"),
+            ("https://user@shop.example.com/x", "shop.example.com", "https://user@shop.example.com/x"),
+            (" https://user:pass@WWW.Shop.Example.com:8080/x ", "shop.example.com",
+             "https://user:pass@WWW.Shop.Example.com:8080/x"),
+            ("https://192.0.2.1:8080/x", "192.0.2.1", "https://192.0.2.1:8080/x"),
+            ("[::ffff:192.0.2.1]", "[::ffff:192.0.2.1]", "https://[::ffff:192.0.2.1]/x"),
+            ("https://[::ffff:192.0.2.1]/x", "[::ffff:192.0.2.1]", "https://[::ffff:192.0.2.1]/x"),
+            ("https://user:pass@[2001:db8::192.0.2.1]:8080/x", "[2001:db8::192.0.2.1]",
+             "https://user:pass@[2001:db8::192.0.2.1]:8080/x"),
+        ]
+        for entry in siteInputs {
+            var site = URLCleaning.StoredRules()
+            suite.expect(site.addSite(entry.input, parameter: " Ref "),
+                         "site creation accepts \(entry.input)")
+            expectEqual(site.siteNames, "\(entry.host)|ref", "site creation stores only the host from \(entry.input)")
+            let restored = site.rules
+            let link = entry.link + "?ref=campaign&id=42#section"
+            expectEqual(URLCleaning.clean(link, rules: restored)?.url ?? "", entry.link + "?id=42#section",
+                        "the stored rule cleans its host and preserves login, port, path and fragment")
+            let otherSite = "https://unrelated.example/?ref=campaign&id=42"
+            expectEqual(URLCleaning.clean(otherSite, rules: restored)?.url ?? "", otherSite,
+                        "a saved site rule does not reach an unrelated host")
+            if let group = URLCleaning.ruleGroups(rules: restored).first(where: { $0.site == entry.host }) {
+                site.setSite(group, enabled: false)
+                let disabled = site.rules
+                expectEqual(URLCleaning.clean(link, rules: disabled)?.url ?? "", link,
+                            "a disabled stored site rule preserves the original link")
+            } else {
+                suite.expect(false, "the saved site rule has a group")
+            }
+        }
+        for invalidSite in ["not a host", ".example.com", "https://user@:8080/x", "example.com|ref"] {
+            var site = URLCleaning.StoredRules()
+            suite.expect(!site.addSite(invalidSite, parameter: "ref") && site.siteNames.isEmpty,
+                         "invalid site creation is refused and stores no rule: \(invalidSite)")
+        }
         suite.expect(URLCleaning.siteKey(from: "not a host") == nil,
                "text that is not a host is refused rather than stored")
         expectEqual(URLCleaning.parameterName(from: " Ref ") ?? "", "ref",

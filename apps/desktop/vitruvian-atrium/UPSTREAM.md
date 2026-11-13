@@ -3185,7 +3185,7 @@ Run `triage` and commit the ledger, then decide each pending commit:
    Then build and test (see `README.md`).
 5. In the same PR, set each ported commit's ledger row to `ported` with the PR
    number (`#1234`). Set any commit dropped while porting to `skipped`, with why.
-6. Title the commit `fix(vitruvian): ...` or `feat(vitruvian): ...`, because
+6. Title the commit `fix(vitruvian-atrium): ...` or `feat(vitruvian-atrium): ...`, because
    release-please writes the release notes from these. End the message with
    `Upstream-Commit: vorssaint/vorssaint-utils@<sha>` for each upstream commit,
    and `Co-authored-by:` for each upstream author.

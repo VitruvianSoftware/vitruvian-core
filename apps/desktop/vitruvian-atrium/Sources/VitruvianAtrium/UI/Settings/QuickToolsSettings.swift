@@ -12,12 +12,15 @@ package struct QuickToolsSettings: View {
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var micMute = MicMuteService.shared
+    @ObservedObject private var quickToggles = QuickTogglesService.shared
     @ObservedObject private var launcher = QuickLauncherService.shared
     @ObservedObject private var cameraPreview = CameraPreviewService.shared
     @ObservedObject private var scratchpad = ScratchpadService.shared
     @ObservedObject private var brightness = BrightnessService.shared
     @AppStorage(Preferences.quickLauncherShortcutEnabled) private var launcherShortcutEnabled: Bool
     @AppStorage(Preferences.micMuteShortcutEnabled) private var micShortcutEnabled: Bool
+    @AppStorage(Preferences.quitAppsShortcutEnabled) private var quitAllShortcutEnabled: Bool
+    @AppStorage(Preferences.quitAppsExceptFrontShortcutEnabled) private var quitOthersShortcutEnabled: Bool
     @AppStorage(Preferences.cameraPreviewShortcutEnabled) private var cameraShortcutEnabled: Bool
     @AppStorage(Preferences.scratchpadShortcutEnabled) private var scratchpadShortcutEnabled: Bool
     @AppStorage(Preferences.scratchpadRetention) private var scratchpadRetention: String
@@ -101,6 +104,52 @@ package struct QuickToolsSettings: View {
                 }
                 .settingsFormSectionAnchor(.quickToggles)
                 .onAppear { brightness.refreshKeyboardLight() }
+            }
+
+            if AppFeature.quitApps.isAvailable {
+                Section {
+                    Button {
+                        QuickTogglesService.shared.showQuitApps()
+                    } label: {
+                        Label(FeatureStrings.quickToggles(l10n.language).quitAllTitle,
+                              systemImage: "xmark.app")
+                    }
+                    QuitAllExceptionsList()
+                    Toggle("\(l10n.s.quickToolShortcutToggle): \(FeatureStrings.quickToggles(l10n.language).quitAllTitle)",
+                           isOn: $quitAllShortcutEnabled)
+                        .onChange(of: quitAllShortcutEnabled) { _, _ in
+                            QuickTogglesService.shared.syncWithPreferences()
+                        }
+                    ShortcutPreferenceRow(role: .quitAll,
+                                          isEnabled: quitAllShortcutEnabled) {
+                        QuickTogglesService.shared.syncWithPreferences()
+                    }
+                    if quitAllShortcutEnabled, quickToggles.shortcutRegistrationFailed {
+                        Text(l10n.s.shortcutUnavailable)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                    Toggle("\(l10n.s.quickToolShortcutToggle): \(FeatureStrings.quickToggles(l10n.language).quitOthersTitle)",
+                           isOn: $quitOthersShortcutEnabled)
+                        .onChange(of: quitOthersShortcutEnabled) { _, _ in
+                            QuickTogglesService.shared.syncWithPreferences()
+                        }
+                    ShortcutPreferenceRow(role: .quitAllExceptFront,
+                                          isEnabled: quitOthersShortcutEnabled) {
+                        QuickTogglesService.shared.syncWithPreferences()
+                    }
+                    if quitOthersShortcutEnabled, quickToggles.othersShortcutRegistrationFailed {
+                        Text(l10n.s.shortcutUnavailable)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                    Text(l10n.s.quitAppsCaption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text(l10n.s.quitAppsName)
+                }
+                .settingsFormSectionAnchor(.quitApps)
             }
 
             if AppFeature.micMute.isAvailable {

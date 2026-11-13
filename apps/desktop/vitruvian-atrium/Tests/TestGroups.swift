@@ -232,6 +232,7 @@ enum TestGroups {
             }),
             ("utilities", {
                 UtilitiesFeatureTests.run(suite)
+                QuickTogglesQuitAllTests.run(suite)
                 PortManagerRefreshTests.run(suite)
             }),
             ("settings", {
@@ -300,6 +301,7 @@ enum TestGroups {
             }),
             ("spaces-order", { SpacesOrderTests.run(suite) }),
             ("switcher", {
+                SwitcherAllWindowsTests.run(suite)
                 SwitcherScrollContract.run(suite)
                 SwitcherActivationTests.run(suite)
                 WindowServerCaptureContract.run(suite)
