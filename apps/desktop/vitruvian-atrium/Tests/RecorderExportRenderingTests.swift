@@ -189,6 +189,75 @@ nonisolated enum RecorderExportRenderingTests {
         await uncomposable(suite, take: take, folder: folder)
         enter("exporting a recording whose frames cannot be decoded")
         try await unreadable(suite, folder: folder)
+        // The last case ends protection in the removed interval. The frame
+        // held immediately before the splice must retain the pre-cut blur.
+        let cases: [(cuts: Bool, blurStart: Double, blurEnd: Double, protectedTime: Double, clearTime: Double)] = [
+            (false, 0.2, 0.999, 0.99899, 1.2),
+            (true, 0.2, 0.999, 0.69899, 0.9),
+            (true, 0, 0.499, 0.19999, 0.3),
+        ]
+        for scenario in cases {
+            let hasCuts = scenario.cuts
+            var doc = RecorderEditDocument()
+            doc.backdrop = ""
+            doc.showsPointer = false
+            doc.zoomEnabled = false
+            doc.quality = RecorderSupport.Quality.high.rawValue
+            doc.blurs = [RecorderBlurRegion(start: scenario.blurStart, end: scenario.blurEnd,
+                                             rect: CGRect(x: 0, y: 0, width: 1, height: 1))]
+            if hasCuts {
+                doc.trimStart = 0.05
+                doc.cuts = [.init(start: 0.25, end: 0.5)]
+            }
+            for speed in [0.25, 0.5, 1.0, 1.37, 4.0] {
+                doc.exportSpeed = speed
+                enter("exporting the production video at \(speed)x with cuts \(hasCuts), blur to \(scenario.blurEnd)")
+                let output = folder.appendingPathComponent("export-\(hasCuts)-\(scenario.blurEnd)-\(speed).mp4")
+                let failure = await RecorderExporter().export(take: take, document: doc,
+                    output: .video, to: output, progress: { _ in })
+                suite.expect(failure == nil, "production export succeeds at \(speed)x with cuts \(hasCuts)")
+                guard failure == nil else { continue }
+                let asset = AVURLAsset(url: output)
+                let duration = try await asset.load(.duration).seconds
+                suite.expectClose(duration, doc.exportDuration(duration: 2),
+                                  "retimed export duration", tol: 1.0 / 60 + 0.001)
+                let generator = AVAssetImageGenerator(asset: asset)
+                generator.requestedTimeToleranceBefore = .zero
+                generator.requestedTimeToleranceAfter = .zero
+                // The final output frame inside the blur must remain obscured,
+                // even when it holds the preceding source frame. Later content
+                // must still be visible; extending the blur forever cannot pass.
+                for (editedTime, protected) in [(scenario.protectedTime, true), (scenario.clearTime, false)] {
+                    let time = floor(editedTime / speed * 60) / 60
+                    enter("reading frame \(time)s of the production export at \(speed)x with cuts \(hasCuts)")
+                let frame = try await generator.image(at: CMTime(seconds: time, preferredTimescale: 60000))
+                    let contrast = contrast(of: frame.image)
+                    suite.expect(protected ? contrast < 40 : contrast > 100,
+                        "privacy coverage \(protected) at \(speed)x with cuts \(hasCuts), contrast \(contrast)")
+                }
+            }
+        }
+    }
+
+    /// An edit that cannot be composed stops the export. The plain path
+    /// draws the recording untouched, so answering with it would hand back a
+    /// file with the areas kept unreadable, and everything else drawn on the
+    /// picture, missing.
+    private static func uncomposable(_ suite: TestSuite, take: RecorderTakeStore.Take,
+                                     folder: URL) async {
+        var blurred = RecorderEditDocument()
+        blurred.blurs = [RecorderBlurRegion(start: 0, end: 1, rect: CGRect(x: 0, y: 0, width: 1, height: 1))]
+        let exporter = RecorderExporter(filtered: { _, _, _ in nil })
+        for (output, name) in [(RecorderExporter.Output.video, "uncomposable.mp4"), (.gif, "uncomposable.gif")] {
+            let destination = folder.appendingPathComponent(name)
+            let failure = await exporter.export(take: take, document: blurred, output: output,
+                                                to: destination, progress: { _ in })
+            suite.expect(failure == .readFailed && !FileManager.default.fileExists(atPath: destination.path),
+                         "a \(name) export stops when the edit cannot be composed, instead of saving "
+                         + "the recording bare, found \(String(describing: failure))")
+        }
+    }
+
     private static func audioAndGIF(_ suite: TestSuite, take: RecorderTakeStore.Take) async throws {
         let folder = take.folder.appendingPathComponent("audio")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
