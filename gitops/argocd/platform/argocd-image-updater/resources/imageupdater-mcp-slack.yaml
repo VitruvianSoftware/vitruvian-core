@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# Watches vitruvian-slack-mcp's floating `main` tag (ghcr.io/vitruviansoftware/mcp-slack)
+# Watches vitruvian-slack-mcp's floating `main` tag (ghcr.io/vitruviansoftware/vitruvian-slack-mcp)
 # for a new digest and writes the resolved `main@sha256:...` back into
 # gitops/argocd/platform/mcp-slack/values.yaml's `image.digest`.
 #
@@ -54,7 +54,7 @@ spec:
     - namePattern: "mcp-slack"
       images:
         - alias: "vitruvian-slack-mcp"
-          imageName: "ghcr.io/vitruviansoftware/mcp-slack:main"
+          imageName: "ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main"
           commonUpdateSettings:
             updateStrategy: "digest"
             forceUpdate: true
