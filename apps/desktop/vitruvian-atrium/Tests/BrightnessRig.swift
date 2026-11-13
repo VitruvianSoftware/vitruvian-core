@@ -186,6 +186,10 @@ enum BrightnessRig {
 
         let screens = NotificationCenter()
         let workspace = NotificationCenter()
+        /// Where the screen-unlocked notification is posted.
+        let unlocks = NotificationCenter()
+        /// Whether the lock screen is up; nil when the session cannot be read.
+        var screenLocked: Bool? = false
         /// Delayed main-thread work, run with `runDelayed()`.
         var delayed: [DispatchWorkItem] = []
 
@@ -252,7 +256,8 @@ enum BrightnessRig {
                 tearDownOverlay: {},
                 followsKeys: false,
                 islandIsOpen: { [unowned self] in self.islandOpen },
-                isMainThread: { [unowned self] in self.onMainThread })
+                isMainThread: { [unowned self] in self.onMainThread },
+                unlockNotifications: unlocks)
         }
 
         private var hardware: BrightnessService.Hardware {
@@ -367,7 +372,8 @@ enum BrightnessRig {
                         self.lidStops += 1
                         self.lidChanged = nil
                     }
-                })
+                },
+                screenIsLocked: { [unowned self] in self.screenLocked ?? true })
         }
     }
 }

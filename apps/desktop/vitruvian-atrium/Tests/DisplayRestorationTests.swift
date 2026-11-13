@@ -67,6 +67,85 @@ enum DisplayRestorationTests {
         lateDisconnect(suite)
         mirroring(suite)
         sleepAndWake(suite)
+        lockedWake(suite)
+    }
+
+    /// The lock screen is on the built-in panel after a wake: switching the
+    /// panel off again waits for the unlock, while a returning external
+    /// monitor is switched off at once.
+    private static func lockedWake(_ suite: TestSuite) {
+        let sleep = [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification]
+        let wake = [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification]
+        func post(_ desk: Rig.Desk, _ names: [Notification.Name]) {
+            for name in names { desk.workspace.post(name: name, object: nil) }
+        }
+        func unlock(_ desk: Rig.Desk) {
+            desk.unlocks.post(name: Notification.Name("com.apple.screenIsUnlocked"), object: nil)
+        }
+        func connect(_ desk: Rig.Desk, _ ids: [CGDirectDisplayID], _ connected: Bool) {
+            for id in ids {
+                desk.display(id).online = connected
+                desk.display(id).active = connected
+            }
+        }
+
+        var (desk, service) = Self.desk()
+        tap(desk, service, 2)
+        desk.configurations = []
+        desk.screenLocked = true
+        post(desk, sleep)
+        connect(desk, [2], true)
+        post(desk, wake)
+        desk.runDelayed()
+        suite.expect(desk.configurations == ["off:2"] && switchedOff(desk) == [2],
+                     "one settled wake switches a returned external monitor off once even while locked")
+        desk.tearDown()
+
+        (desk, service) = Self.desk()
+        tap(desk, service, 1)
+        desk.configurations = []
+        desk.screenLocked = true
+        post(desk, sleep)
+        // macOS brings the panel back up for the lock screen.
+        connect(desk, [1], true)
+        post(desk, wake)
+        desk.runDelayed()
+        suite.expect(desk.configurations.isEmpty && switchedOff(desk) == [1],
+                     "a locked wake with the monitors active keeps the built-in panel up and its off choice saved")
+        desk.screens.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        desk.runDelayed()
+        suite.expect(desk.configurations.isEmpty, "later screen notifications also leave the lock screen up")
+
+        desk.screenLocked = false
+        unlock(desk)
+        connect(desk, [2, 3], false)
+        desk.runDelayed()
+        suite.expect(desk.configurations.isEmpty, "unplugging the monitors before the unlock retry keeps the last panel up")
+
+        connect(desk, [2, 3], true)
+        desk.screenLocked = nil
+        desk.screens.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        desk.runDelayed()
+        suite.expect(desk.configurations.isEmpty, "an unreadable session cannot authorize an automatic panel switch-off")
+        desk.screenLocked = false
+        unlock(desk)
+        desk.runDelayed()
+        suite.expect(desk.configurations == ["off:1"] && switchedOff(desk) == [1],
+                     "the unlock alone switches the built-in panel off again while a monitor can show the desktop")
+        desk.tearDown()
+
+        (desk, service) = Self.desk()
+        tap(desk, service, 1)
+        desk.configurations = []
+        desk.screenLocked = true
+        post(desk, sleep)
+        connect(desk, [2, 3], false)
+        post(desk, wake)
+        desk.runDelayed()
+        suite.expect(desk.configurations == ["on:1"] && switchedOff(desk).isEmpty,
+                     "a locked wake still brings the panel back when the monitors left during sleep")
+        withExtendedLifetime(service) {}
+        desk.tearDown()
     }
 
     /// A monitor the person switched off stays off through the lid, sleep
