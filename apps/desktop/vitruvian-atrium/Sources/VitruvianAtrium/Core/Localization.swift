@@ -507,6 +507,7 @@ package struct Strings {
     package let uninstallerRemoving: String
     package let uninstallerFoundTitle: String
     package let uninstallerSelectedFormat: String   // + selected, total
+    package let uninstallerSelectAll: String
     package let uninstallerRemove: String
     package let uninstallerCancel: String
     package let uninstallerConfirmationExpired: String
@@ -1662,6 +1663,7 @@ extension Strings {
         uninstallerRemoving: "Movendo para a Lixeira…",
         uninstallerFoundTitle: "encontrado",
         uninstallerSelectedFormat: "%d de %d selecionados",
+        uninstallerSelectAll: "Selecionar tudo",
         uninstallerRemove: "Mover para a Lixeira",
         uninstallerCancel: "Cancelar",
         uninstallerConfirmationExpired: "Esta confirmação não é mais válida. Revise os itens atuais e confirme de novo.",
@@ -2780,6 +2782,7 @@ extension Strings {
         uninstallerRemoving: "Moving to the Trash…",
         uninstallerFoundTitle: "found",
         uninstallerSelectedFormat: "%d of %d selected",
+        uninstallerSelectAll: "Select all",
         uninstallerRemove: "Move to Trash",
         uninstallerCancel: "Cancel",
         uninstallerConfirmationExpired: "This confirmation is no longer valid. Review the current items and confirm again.",

@@ -296,6 +296,8 @@ enum TestGroups {
             ("uninstaller", {
                 HomebrewOwnershipTests.run(suite)
                 UninstallerFlowTests.run(suite)
+                UninstallerBulkSelectionTests.run(suite)
+                MixedStateCheckboxTests.run(suite)
                 SelfUninstallContract.run(suite)
             }),
             ("force-quit", { ProcessForceQuitTests.run(suite) }),

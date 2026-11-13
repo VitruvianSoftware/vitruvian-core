@@ -316,6 +316,18 @@ enum UninstallerFlowTests {
             suite.expect(uninstaller.phase == .results && uninstaller.homebrewRemovalConfirmation == nil,
                          "the plain app is back under review")
 
+            // The select-all box over the results (upstream #3704).
+            suite.expect(uninstaller.bulkSelection == .all, "a fresh review starts with every row chosen")
+            uninstaller.setInclude(false, for: uninstaller.items[1].id)
+            suite.expect(uninstaller.bulkSelection == .some, "one cleared row shows the mixed state")
+            uninstaller.setAllIncluded(uninstaller.bulkSelection.nextInclude)
+            suite.expect(uninstaller.bulkSelection == .all && uninstaller.items.allSatisfy(\.include),
+                         "clicking a mixed box chooses every row")
+            uninstaller.setAllIncluded(uninstaller.bulkSelection.nextInclude)
+            suite.expect(uninstaller.bulkSelection == .none && !uninstaller.items.contains(where: \.include),
+                         "clicking a full box clears every row")
+            uninstaller.setAllIncluded(true)
+
             // A plain removal, and what it holds on to while it runs.
             for key in [kVK_Tab, kVK_Space, kVK_UpArrow, kVK_DownArrow] {
                 suite.expect(!review.handleKey(key, searchFieldFocused: false)
@@ -339,6 +351,8 @@ enum UninstallerFlowTests {
                          "other surfaces cannot reset an active plain removal")
             uninstaller.setInclude(false, for: originalItems[0].id)
             suite.expect(uninstaller.items == originalItems, "an active removal keeps its captured selection")
+            uninstaller.setAllIncluded(false)
+            suite.expect(uninstaller.items == originalItems, "select-all cannot change an active removal either")
             suite.expect(record.released.isEmpty, "an app's shortcut stays while its removal is still running")
             queue.drain()
             suite.expect(uninstaller.phase == .done(freed: Disk.appSize + Disk.supportSize, failed: [])
