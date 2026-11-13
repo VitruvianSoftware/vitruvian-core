@@ -281,7 +281,7 @@ jobs:
           VERSION="${{ needs.detect.outputs.version }}"
           folder="/tmp/tool/vitruvian-code"
           mkdir -p "$folder/bin"
-          cp macos/tool/vitruvian-tool.json "$folder/"
+          cp macos/atrium-extension/vitruvian-tool.json "$folder/"
           cp /tmp/universal/vitruvian-code-tool "$folder/bin/tool"
           chmod 755 "$folder/bin/tool"
           cp macos/Sources/VitruvianCodeUI/Resources/mermaid.min.js "$folder/bin/"
