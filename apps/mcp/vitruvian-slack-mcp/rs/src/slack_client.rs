@@ -19,7 +19,7 @@
 // SOFTWARE.
 
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
@@ -586,6 +586,283 @@ pub struct ReplyToThreadOptions {
     pub unfurl_links: Option<bool>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ScheduleMessageOptions {
+    pub thread_ts: Option<String>,
+    pub reply_broadcast: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ListScheduledMessagesOptions {
+    pub channel_id: Option<String>,
+    pub cursor: Option<String>,
+    pub limit: Option<f64>,
+}
+
+const MAX_CACHED_CHANNELS: usize = 4_096;
+const MAX_CHANNEL_LIST_PAGES: usize = 100;
+const MAX_CACHED_USERS: usize = 20_000;
+const MAX_USER_LIST_PAGES: usize = 100;
+const MAX_SCHEDULE_AHEAD_SECS: i64 = 120 * 86_400;
+
+#[derive(Debug, Default)]
+struct ChannelNameCache {
+    entries: HashMap<String, String>,
+    order: VecDeque<String>,
+    resume_cursor: Option<String>,
+    exhausted: bool,
+    has_listed: bool,
+    public_only: bool,
+}
+
+impl ChannelNameCache {
+    fn insert_bounded(&mut self, name_lower: String, id: String) {
+        if !self.entries.contains_key(&name_lower) && self.entries.len() >= MAX_CACHED_CHANNELS {
+            if let Some(evicted) = self.order.pop_front() {
+                self.entries.remove(&evicted);
+            }
+        }
+        if !self.entries.contains_key(&name_lower) {
+            self.order.push_back(name_lower.clone());
+        }
+        self.entries.insert(name_lower, id);
+    }
+
+    fn reset_unrestricted(&mut self) {
+        self.entries.clear();
+        self.order.clear();
+        self.resume_cursor = None;
+        self.exhausted = false;
+        self.has_listed = false;
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CachedUserEntry {
+    id: String,
+    name_lower: Option<String>,
+    display_name_lower: Option<String>,
+    real_name_lower: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct UserHandleCache {
+    users: Vec<CachedUserEntry>,
+    populated: bool,
+}
+
+fn match_user_tiers(
+    users: &[CachedUserEntry],
+    needle: &str,
+) -> Option<Result<String, Vec<String>>> {
+    let tiers: [fn(&CachedUserEntry) -> Option<&str>; 3] = [
+        |u| u.name_lower.as_deref(),
+        |u| u.display_name_lower.as_deref(),
+        |u| u.real_name_lower.as_deref(),
+    ];
+    for field_fn in tiers {
+        let mut ids: Vec<String> = Vec::new();
+        for u in users {
+            if field_fn(u) == Some(needle) && !ids.contains(&u.id) {
+                ids.push(u.id.clone());
+            }
+        }
+        if ids.len() == 1 {
+            return Some(Ok(ids.into_iter().next().unwrap()));
+        }
+        if ids.len() > 1 {
+            return Some(Err(ids));
+        }
+    }
+    None
+}
+
+fn is_leap_year(year: i64) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+}
+
+fn days_in_month(year: i64, month: u32) -> Option<u32> {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => Some(31),
+        4 | 6 | 9 | 11 => Some(30),
+        2 => Some(if is_leap_year(year) { 29 } else { 28 }),
+        _ => None,
+    }
+}
+
+fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
+    let y = year - i64::from(month <= 2);
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = (y - era * 400) as u32;
+    let m_adj = if month > 2 { month - 3 } else { month + 9 };
+    let doy = (153 * m_adj + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + i64::from(doe) - 719_468
+}
+
+fn parse_ascii_u32(s: &str) -> Option<u32> {
+    if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    s.parse().ok()
+}
+
+fn parse_iso8601_with_offset(raw: &str) -> Result<i64, SlackClientError> {
+    let invalid = |detail: &str| {
+        SlackClientError::Message(format!("Invalid post_at value {raw:?}: {detail}"))
+    };
+    let bytes = raw.as_bytes();
+    if bytes.len() < 16 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return Err(invalid(
+            "expected a Unix timestamp in seconds or an ISO 8601 date-time with timezone offset.",
+        ));
+    }
+    if !matches!(bytes[10], b'T' | b't' | b' ') {
+        return Err(invalid(
+            "expected 'T' separating date and time in ISO 8601 date-time.",
+        ));
+    }
+    let year: i64 = parse_ascii_u32(&raw[0..4])
+        .map(i64::from)
+        .ok_or_else(|| invalid("invalid 4-digit year."))?;
+    let month = parse_ascii_u32(&raw[5..7]).ok_or_else(|| invalid("invalid month."))?;
+    let day = parse_ascii_u32(&raw[8..10]).ok_or_else(|| invalid("invalid day."))?;
+    let max_day =
+        days_in_month(year, month).ok_or_else(|| invalid("month out of range 01..12."))?;
+    if day == 0 || day > max_day {
+        return Err(invalid("day out of range for month."));
+    }
+
+    let rest = &raw[11..];
+    let (time_part, offset_secs) = if let Some(tp) =
+        rest.strip_suffix('Z').or_else(|| rest.strip_suffix('z'))
+    {
+        (tp, 0i64)
+    } else if let Some(pos) = rest.rfind(['+', '-']) {
+        let sign = if rest.as_bytes()[pos] == b'-' {
+            -1i64
+        } else {
+            1i64
+        };
+        let tz = &rest[pos + 1..];
+        let (tz_h, tz_m) = if tz.len() == 5 && tz.as_bytes()[2] == b':' {
+            (
+                parse_ascii_u32(&tz[0..2]).ok_or_else(|| invalid("invalid timezone hour."))?,
+                parse_ascii_u32(&tz[3..5]).ok_or_else(|| invalid("invalid timezone minute."))?,
+            )
+        } else if tz.len() == 4 {
+            (
+                parse_ascii_u32(&tz[0..2]).ok_or_else(|| invalid("invalid timezone hour."))?,
+                parse_ascii_u32(&tz[2..4]).ok_or_else(|| invalid("invalid timezone minute."))?,
+            )
+        } else if tz.len() == 2 {
+            (
+                parse_ascii_u32(tz).ok_or_else(|| invalid("invalid timezone hour."))?,
+                0,
+            )
+        } else {
+            return Err(invalid(
+                "invalid timezone offset; expected Z, ±HH:MM, or ±HHMM.",
+            ));
+        };
+        if tz_h > 23 || tz_m > 59 {
+            return Err(invalid("timezone offset out of range."));
+        }
+        (
+            &rest[..pos],
+            sign * (i64::from(tz_h) * 3_600 + i64::from(tz_m) * 60),
+        )
+    } else {
+        return Err(invalid(
+            "ISO 8601 date-times must include a timezone offset (e.g. Z or -08:00).",
+        ));
+    };
+
+    let (hms_part, frac_opt) = match time_part.split_once('.') {
+        Some((a, b)) => (a, Some(b)),
+        None => (time_part, None),
+    };
+    if let Some(frac) = frac_opt {
+        if frac.is_empty() || !frac.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(invalid("invalid fractional seconds."));
+        }
+    }
+    let (hour, minute, second) = if hms_part.len() == 8
+        && hms_part.as_bytes()[2] == b':'
+        && hms_part.as_bytes()[5] == b':'
+    {
+        (
+            parse_ascii_u32(&hms_part[0..2]).ok_or_else(|| invalid("invalid hour."))?,
+            parse_ascii_u32(&hms_part[3..5]).ok_or_else(|| invalid("invalid minute."))?,
+            parse_ascii_u32(&hms_part[6..8]).ok_or_else(|| invalid("invalid second."))?,
+        )
+    } else if hms_part.len() == 5 && frac_opt.is_none() && hms_part.as_bytes()[2] == b':' {
+        (
+            parse_ascii_u32(&hms_part[0..2]).ok_or_else(|| invalid("invalid hour."))?,
+            parse_ascii_u32(&hms_part[3..5]).ok_or_else(|| invalid("invalid minute."))?,
+            0,
+        )
+    } else {
+        return Err(invalid("invalid time format; expected HH:MM:SS."));
+    };
+    if hour > 23 || minute > 59 || second > 60 {
+        return Err(invalid("time components out of range."));
+    }
+    let second = second.min(59);
+    let local_secs = days_from_civil(year, month, day) * 86_400
+        + i64::from(hour) * 3_600
+        + i64::from(minute) * 60
+        + i64::from(second);
+    Ok(local_secs - offset_secs)
+}
+
+fn parse_post_at_epoch_secs(raw: &str, now_secs: i64) -> Result<i64, SlackClientError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(SlackClientError::Message(
+            "Argument post_at must not be empty.".to_string(),
+        ));
+    }
+    let digits = trimmed
+        .strip_prefix('-')
+        .or_else(|| trimmed.strip_prefix('+'))
+        .unwrap_or(trimmed);
+    let epoch_secs = if !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) {
+        trimmed.parse::<i64>().map_err(|_| {
+            SlackClientError::Message(format!(
+                "Invalid post_at value {raw:?}: Unix timestamp out of 64-bit integer range."
+            ))
+        })?
+    } else {
+        parse_iso8601_with_offset(trimmed)?
+    };
+
+    if epoch_secs <= now_secs {
+        return Err(SlackClientError::Message(format!(
+            "Invalid post_at {raw:?}: timestamp is in the past (must be strictly after {now_secs})."
+        )));
+    }
+    if epoch_secs > now_secs + MAX_SCHEDULE_AHEAD_SECS {
+        return Err(SlackClientError::Message(format!(
+            "Invalid post_at {raw:?}: Slack cannot schedule messages more than 120 days in the future."
+        )));
+    }
+    Ok(epoch_secs)
+}
+
+fn scheduled_message_allowed(guard: &ChannelGuard, item: &JsonValue) -> bool {
+    let cid = item
+        .get("channel_id")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            item.get("channel")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+        });
+    cid.is_some_and(|id| guard.is_allowed(id))
+}
+
 fn parse_relative_since(raw: &str, now_epoch_secs: f64) -> Result<String, SlackClientError> {
     let trimmed = raw.trim();
     let invalid = || {
@@ -656,6 +933,8 @@ pub struct SlackClient {
     team_id: String,
     channel_guard: ChannelGuard,
     write_token: WriteTokenPreference,
+    channel_name_cache: Arc<Mutex<ChannelNameCache>>,
+    user_handle_cache: Arc<Mutex<UserHandleCache>>,
 }
 
 impl SlackClient {
@@ -670,6 +949,8 @@ impl SlackClient {
             team_id: slack.team_id,
             channel_guard,
             write_token,
+            channel_name_cache: Arc::new(Mutex::new(ChannelNameCache::default())),
+            user_handle_cache: Arc::new(Mutex::new(UserHandleCache::default())),
         }
     }
 
@@ -2542,6 +2823,495 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
             JsonValue::object(vec![
                 ("usergroup", usergroup_id.into()),
                 ("team_id", self.team_id.as_str().into()),
+            ]),
+            WriteTokenPreference::User,
+            "POST",
+        )
+    }
+
+    // ── Name & handle resolution ───────────────────────────────────────
+
+    pub fn resolve_channel_id(&self, raw: &str) -> Result<String, SlackClientError> {
+        if !raw.starts_with('#') {
+            return Ok(raw.to_string());
+        }
+        let needle = raw[1..].to_lowercase();
+        if needle.is_empty() {
+            if !self.channel_guard.is_unrestricted() {
+                return Err(SlackClientError::ChannelAllowlist(
+                    ChannelAllowlistError::ChannelNotAllowed {
+                        channel_id: raw.to_string(),
+                    },
+                ));
+            }
+            return Err(SlackClientError::Message(format!(
+                "channel_not_found: {raw}"
+            )));
+        }
+
+        if !self.channel_guard.is_unrestricted() {
+            {
+                let cache = self
+                    .channel_name_cache
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner());
+                if let Some(id) = cache.entries.get(&needle) {
+                    return Ok(id.clone());
+                }
+            }
+            self.populate_restricted_channel_names()?;
+            let found = {
+                let cache = self
+                    .channel_name_cache
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner());
+                cache.entries.get(&needle).cloned()
+            };
+            if let Some(id) = found {
+                return Ok(id);
+            }
+            return Err(SlackClientError::ChannelAllowlist(
+                ChannelAllowlistError::ChannelNotAllowed {
+                    channel_id: raw.to_string(),
+                },
+            ));
+        }
+
+        let (was_already_listed, exhausted) = {
+            let cache = self
+                .channel_name_cache
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            if let Some(id) = cache.entries.get(&needle) {
+                return Ok(id.clone());
+            }
+            (cache.has_listed, cache.exhausted)
+        };
+
+        if !exhausted {
+            if let Some(id) = self.page_unrestricted_channels_until(&needle)? {
+                return Ok(id);
+            }
+        }
+
+        if was_already_listed {
+            {
+                let mut cache = self
+                    .channel_name_cache
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner());
+                cache.reset_unrestricted();
+            }
+            if let Some(id) = self.page_unrestricted_channels_until(&needle)? {
+                return Ok(id);
+            }
+        }
+
+        Err(SlackClientError::Message(format!(
+            "channel_not_found: {raw}"
+        )))
+    }
+
+    fn populate_restricted_channel_names(&self) -> Result<(), SlackClientError> {
+        let mut fetched: Vec<(String, String)> = Vec::new();
+        for channel_id in &self.channel_guard.allowed {
+            let data = self.api(
+                "conversations.info",
+                JsonValue::object(vec![("channel", channel_id.as_str().into())]),
+                WriteTokenPreference::Bot,
+                "GET",
+            )?;
+            let channel = data.get("channel");
+            if is_ok(&data) && js_truthy(channel) {
+                let ch = channel.unwrap_or(&JsonValue::Null);
+                self.channel_guard
+                    .assert_visibility_matches(channel_id, ch.get("is_private"))?;
+                if let Some(name) = ch
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                {
+                    fetched.push((name.to_lowercase(), channel_id.clone()));
+                }
+            }
+        }
+        let mut cache = self
+            .channel_name_cache
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        cache.entries.clear();
+        cache.order.clear();
+        for (name_lower, id) in fetched {
+            cache.insert_bounded(name_lower, id);
+        }
+        Ok(())
+    }
+
+    fn page_unrestricted_channels_until(
+        &self,
+        needle: &str,
+    ) -> Result<Option<String>, SlackClientError> {
+        let tok = if self.user_auth.is_some() {
+            WriteTokenPreference::User
+        } else {
+            WriteTokenPreference::Bot
+        };
+        for _ in 0..MAX_CHANNEL_LIST_PAGES {
+            let (cursor, mut public_only) = {
+                let cache = self
+                    .channel_name_cache
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner());
+                if let Some(id) = cache.entries.get(needle) {
+                    return Ok(Some(id.clone()));
+                }
+                if cache.exhausted {
+                    return Ok(None);
+                }
+                (cache.resume_cursor.clone(), cache.public_only)
+            };
+
+            let data = loop {
+                let types = if public_only {
+                    "public_channel"
+                } else {
+                    "public_channel,private_channel"
+                };
+                let mut params = JsonValue::object(vec![
+                    ("types", types.into()),
+                    ("limit", 200i64.into()),
+                    ("team_id", self.team_id.as_str().into()),
+                ]);
+                if let Some(c) = cursor.as_deref().filter(|s| !s.is_empty()) {
+                    params.insert("cursor", c.into());
+                }
+                let resp = self.api("conversations.list", params, tok, "GET")?;
+                if !is_ok(&resp)
+                    && !public_only
+                    && resp.get("error").and_then(|v| v.as_str()) == Some("missing_scope")
+                {
+                    public_only = true;
+                    continue;
+                }
+                break resp;
+            };
+
+            if !is_ok(&data) {
+                return Err(SlackClientError::Message(format!(
+                    "conversations.list failed: {}",
+                    string_or(data.get("error"), "unknown_error")
+                )));
+            }
+
+            let next_cursor = data
+                .get("response_metadata")
+                .and_then(|m| m.get("next_cursor"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+
+            let mut matched_id: Option<String> = None;
+            {
+                let mut cache = self
+                    .channel_name_cache
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner());
+                cache.public_only = public_only;
+                cache.has_listed = true;
+                if let Some(channels) = data.get("channels").and_then(|v| v.as_array()) {
+                    for ch in channels {
+                        let id_opt = ch
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .filter(|s| !s.is_empty());
+                        let name_opt = ch
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .filter(|s| !s.is_empty());
+                        if let (Some(id), Some(name)) = (id_opt, name_opt) {
+                            let lower = name.to_lowercase();
+                            if lower == needle && matched_id.is_none() {
+                                matched_id = Some(id.to_string());
+                            }
+                            cache.insert_bounded(lower, id.to_string());
+                        }
+                    }
+                }
+                match next_cursor {
+                    Some(nc) => {
+                        cache.resume_cursor = Some(nc);
+                        cache.exhausted = false;
+                    }
+                    None => {
+                        cache.resume_cursor = None;
+                        cache.exhausted = true;
+                    }
+                }
+            }
+
+            if let Some(id) = matched_id {
+                return Ok(Some(id));
+            }
+            let done = {
+                let cache = self
+                    .channel_name_cache
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner());
+                cache.exhausted
+            };
+            if done {
+                break;
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn resolve_user_id(&self, raw: &str) -> Result<String, SlackClientError> {
+        if !raw.starts_with('@') {
+            return Ok(raw.to_string());
+        }
+        let needle = raw[1..].to_lowercase();
+        if needle.is_empty() {
+            return Err(SlackClientError::Message(format!("user_not_found: {raw}")));
+        }
+
+        {
+            let cache = self
+                .user_handle_cache
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            if cache.populated {
+                match match_user_tiers(&cache.users, &needle) {
+                    Some(Ok(id)) => return Ok(id),
+                    Some(Err(ids)) => {
+                        return Err(SlackClientError::Message(format!(
+                            "Ambiguous user handle {raw} matches multiple users: {}",
+                            ids.join(", ")
+                        )))
+                    }
+                    None => {}
+                }
+            }
+        }
+
+        self.populate_user_handle_cache()?;
+        let outcome = {
+            let cache = self
+                .user_handle_cache
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            match_user_tiers(&cache.users, &needle)
+        };
+        match outcome {
+            Some(Ok(id)) => Ok(id),
+            Some(Err(ids)) => Err(SlackClientError::Message(format!(
+                "Ambiguous user handle {raw} matches multiple users: {}",
+                ids.join(", ")
+            ))),
+            None => Err(SlackClientError::Message(format!("user_not_found: {raw}"))),
+        }
+    }
+
+    fn populate_user_handle_cache(&self) -> Result<(), SlackClientError> {
+        let mut collected: Vec<CachedUserEntry> = Vec::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..MAX_USER_LIST_PAGES {
+            let mut params = JsonValue::object(vec![
+                ("limit", 200i64.into()),
+                ("team_id", self.team_id.as_str().into()),
+            ]);
+            if let Some(c) = cursor.as_deref().filter(|s| !s.is_empty()) {
+                params.insert("cursor", c.into());
+            }
+            let data = self.api("users.list", params, WriteTokenPreference::Bot, "GET")?;
+            if !is_ok(&data) {
+                return Err(SlackClientError::Message(format!(
+                    "users.list failed: {}",
+                    string_or(data.get("error"), "unknown_error")
+                )));
+            }
+            if let Some(members) = data.get("members").and_then(|v| v.as_array()) {
+                for m in members {
+                    if collected.len() >= MAX_CACHED_USERS {
+                        break;
+                    }
+                    let Some(id) = m
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty())
+                    else {
+                        continue;
+                    };
+                    let name_lower = m
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_lowercase);
+                    let profile = m.get("profile");
+                    let display_name_lower = profile
+                        .and_then(|p| p.get("display_name"))
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_lowercase);
+                    let real_name_lower = profile
+                        .and_then(|p| p.get("real_name"))
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_lowercase);
+                    collected.push(CachedUserEntry {
+                        id: id.to_string(),
+                        name_lower,
+                        display_name_lower,
+                        real_name_lower,
+                    });
+                }
+            }
+            if collected.len() >= MAX_CACHED_USERS {
+                break;
+            }
+            cursor = data
+                .get("response_metadata")
+                .and_then(|m| m.get("next_cursor"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+            if cursor.is_none() {
+                break;
+            }
+        }
+        let mut cache = self
+            .user_handle_cache
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        cache.users = collected;
+        cache.populated = true;
+        Ok(())
+    }
+
+    // ── Direct messages & scheduled messages ───────────────────────────
+
+    pub fn open_dm(&self, user_ids: &[String]) -> Result<JsonValue, SlackClientError> {
+        if user_ids.is_empty() || user_ids.len() > 8 {
+            return Err(SlackClientError::Message(format!(
+                "Argument users must contain between 1 and 8 user IDs or @handles (got {}).",
+                user_ids.len()
+            )));
+        }
+        let mut data = self.api(
+            "conversations.open",
+            JsonValue::object(vec![("users", user_ids.join(",").into())]),
+            WriteTokenPreference::User,
+            "POST",
+        )?;
+        let dm_id = data
+            .get("channel")
+            .and_then(|c| c.get("id"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+
+        if !self.channel_guard.is_unrestricted() {
+            let allowed = dm_id
+                .as_deref()
+                .is_some_and(|id| self.channel_guard.is_allowed(id));
+            if !allowed {
+                return Err(SlackClientError::ChannelAllowlist(
+                    ChannelAllowlistError::ChannelNotAllowed {
+                        channel_id: format!("dm:{}", user_ids.join(",")),
+                    },
+                ));
+            }
+        }
+
+        if is_ok(&data) {
+            if let Some(id) = dm_id {
+                data.insert("channel_id", id.into());
+            }
+        }
+        Ok(data)
+    }
+
+    pub fn schedule_message(
+        &self,
+        channel_id: &str,
+        text: &str,
+        post_at: &str,
+        opts: ScheduleMessageOptions,
+    ) -> Result<JsonValue, SlackClientError> {
+        self.guard_params(&JsonValue::object(vec![("channel", channel_id.into())]))?;
+        let now_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::ZERO)
+            .as_secs() as i64;
+        let post_at_secs = parse_post_at_epoch_secs(post_at, now_secs)?;
+
+        let mut params = JsonValue::object(vec![
+            ("channel", channel_id.into()),
+            ("text", text.into()),
+            ("post_at", post_at_secs.into()),
+        ]);
+        if let Some(ts) = opts.thread_ts.as_deref().filter(|s| !s.is_empty()) {
+            params.insert("thread_ts", ts.into());
+        }
+        if let Some(rb) = opts.reply_broadcast {
+            params.insert("reply_broadcast", rb.into());
+        }
+        self.api(
+            "chat.scheduleMessage",
+            params,
+            WriteTokenPreference::User,
+            "POST",
+        )
+    }
+
+    pub fn list_scheduled_messages(
+        &self,
+        opts: ListScheduledMessagesOptions,
+    ) -> Result<JsonValue, SlackClientError> {
+        let mut params = JsonValue::empty_object();
+        if let Some(cid) = opts.channel_id.as_deref().filter(|s| !s.is_empty()) {
+            params.insert("channel", cid.into());
+        }
+        if let Some(cursor) = opts.cursor.as_deref().filter(|s| !s.is_empty()) {
+            params.insert("cursor", cursor.into());
+        }
+        if let Some(limit) = opts.limit {
+            params.insert("limit", limit.into());
+        }
+        let mut data = self.api(
+            "chat.scheduledMessages.list",
+            params,
+            WriteTokenPreference::User,
+            "POST",
+        )?;
+        if !self.channel_guard.is_unrestricted() && is_ok(&data) {
+            let mut filtered_out = 0usize;
+            if let Some(items) = data.get("scheduled_messages").and_then(|v| v.as_array()) {
+                let mut kept = Vec::with_capacity(items.len());
+                for item in items {
+                    if scheduled_message_allowed(&self.channel_guard, item) {
+                        kept.push(item.clone());
+                    } else {
+                        filtered_out += 1;
+                    }
+                }
+                data.insert("scheduled_messages", JsonValue::Array(kept));
+            }
+            data.insert("filtered_out", filtered_out.into());
+        }
+        Ok(data)
+    }
+
+    pub fn delete_scheduled_message(
+        &self,
+        channel_id: &str,
+        scheduled_message_id: &str,
+    ) -> Result<JsonValue, SlackClientError> {
+        self.api(
+            "chat.deleteScheduledMessage",
+            JsonValue::object(vec![
+                ("channel", channel_id.into()),
+                ("scheduled_message_id", scheduled_message_id.into()),
             ]),
             WriteTokenPreference::User,
             "POST",
