@@ -350,6 +350,7 @@ if (( TEST )); then
         Sources/VitruvianAtrium/Core/CameraPreviewStrings.swift
         Sources/VitruvianAtrium/Core/WallpaperStrings.swift
         Sources/VitruvianAtrium/Services/Wallpaper/WallpaperSupport.swift
+        Sources/VitruvianAtrium/UI/MenuPanel/WallpaperThumbnailView.swift
         Sources/VitruvianAtrium/Core/ScratchpadStrings.swift
         Sources/VitruvianAtrium/Core/FinderRenameStrings.swift
         Sources/VitruvianAtrium/Core/CommandBarStrings.swift
