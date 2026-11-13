@@ -111,6 +111,7 @@ enum TestGroups {
             ("media", { MediaFeatureTests.run(suite) }),
             ("mixer", {
                 MixerRenderContinuityTests.run(suite)
+                MixerGainRampContract.run(suite)
                 MixerNativeDragTests.run(suite)
                 MixerOutputAdjustmentContract.run(suite)
                 MixerHeadphonesDisconnectContract.run(suite)
