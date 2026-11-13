@@ -47,6 +47,10 @@ enum KeepAwakeTimerHandoffTests {
                "a timer running out on battery hands nothing over to an All automation")
         expect(Dock(requireAll: false).handoff(in: defaults) == [.externalDisplay],
                "the same timer still hands over under Any, which is today's behaviour")
+        var launched = Dock(requireAll: false)
+        launched.trigger = .launch
+        expect(launched.handoff(in: defaults) == [.externalDisplay],
+               "a session started at launch hands over when its timer ends, as a manual one does")
         var plugged = Dock(requireAll: true)
         plugged.matching = [.externalDisplay, .power]
         expect(plugged.handoff(in: defaults) == [.externalDisplay, .power],

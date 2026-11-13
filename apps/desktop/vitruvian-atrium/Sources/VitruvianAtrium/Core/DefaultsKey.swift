@@ -36,6 +36,10 @@ package enum DefaultsKey {
     package static let keepAwakePauseWhenLocked = "keepAwakePauseWhenLocked"
     package static let keepAwakeSwitchUsesUntil = "keepAwakeSwitchUsesUntil" // panel switch restarts the Until chip
     package static let keepAwakeUntilTime = "keepAwakeUntilTime"  // last picked end time; 0 = none yet
+    // The running manual session's end (0 = indefinite) and selected preset, if any.
+    // Absent when there is no session to resume. Live state: never registered,
+    // so never backed up.
+    package static let keepAwakeSessionEnd = "keepAwakeSessionEnd"
     package static let keepAwakeMouseJiggleEnabled = "keepAwakeMouseJiggleEnabled"
     package static let keepAwakeMouseJiggleInterval = "keepAwakeMouseJiggleIntervalMinutes"
     package static let hotkeyEnabled = "hotkeyEnabled"
@@ -679,6 +683,10 @@ package enum DefaultsKey {
     // Screenshot capture and editor.
     package static let screenshotShortcutEnabled = "screenshotShortcutEnabled"
     package static let screenshotShortcut = "screenshotShortcut"
+    package static let screenshotScrollingAutoScroll = "screenshotScrollingAutoScroll"
+    package static let screenshotScrollingShortcutEnabled = "screenshotScrollingShortcutEnabled"
+    package static let screenshotScrollingShortcut = "screenshotScrollingShortcut"
+    package static let screenshotScrollingShowCaptureMenuOnShortcut = "screenshotScrollingShowCaptureMenuOnShortcut"
     package static let unifiedScreenCaptureShortcutMigrated = "unifiedScreenCaptureShortcutMigrated"
     package static let restoredScreenCaptureShortcutsMigrated = "restoredScreenCaptureShortcutsMigrated"
     package static let orphanedCaptureShortcutMigrated = "orphanedCaptureShortcutMigrated"

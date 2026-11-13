@@ -77,12 +77,16 @@ package final class JunkCleaner: ObservableObject {
     /// and Launch Services, which knows apps registered anywhere on disk.
     package struct Places: Sendable {
         package var home: String
+        /// The Library folder shared by every user: `/Library`.
+        package var systemLibrary: String
         package var screenshotFolders: @Sendable () -> [URL]
         package var isRegistered: @Sendable (String) -> Bool
 
-        package init(home: String, screenshotFolders: @escaping @Sendable () -> [URL],
+        package init(home: String, systemLibrary: String = "/Library",
+                     screenshotFolders: @escaping @Sendable () -> [URL],
                      isRegistered: @escaping @Sendable (String) -> Bool) {
             self.home = home
+            self.systemLibrary = systemLibrary
             self.screenshotFolders = screenshotFolders
             self.isRegistered = isRegistered
         }
@@ -362,10 +366,11 @@ package final class JunkCleaner: ObservableObject {
               !UninstallerSupport.isSymbolicLink(url),
               url.resolvingSymlinksInPath().standardizedFileURL.path == path else { return false }
         if item.category == .leftovers {
-            guard isDirectLeftoverRootChild(url, home: places.home),
+            guard isDirectLeftoverRootChild(url, places: places),
                   CleanerSupport.isAttributableBundleID(item.detail),
                   !CleanerSupport.isProtectedBundleID(item.detail),
-                  !hasLivingOwner(item.detail, installed: installed, places: places) else { return false }
+                  !hasLivingLeftoverOwner(item.detail, at: url, installed: installed,
+                                          places: places) else { return false }
         }
         if item.category == .screenshots {
             guard isScreenshotFolderChild(url, places: places), isScreenCapture(url) else { return false }
@@ -475,6 +480,23 @@ package final class JunkCleaner: ObservableObject {
         return places.isRegistered(candidate)
     }
 
+    /// A living owner, or, for a direct child of an Application Support
+    /// folder, an installed app whose reversed identifier names it
+    /// (Battle.net for net.battle.app).
+    nonisolated
+    private static func hasLivingLeftoverOwner(_ owner: String, at url: URL, installed: Set<String>,
+                                               places: Places) -> Bool {
+        if hasLivingOwner(owner, installed: installed, places: places) { return true }
+        let isSupportEntry = [places.home + "/Library", places.systemLibrary].contains { library in
+            let support = URL(fileURLWithPath: library + "/Application Support", isDirectory: true)
+            return CleanerSupport.isDirectChild(url, of: support)
+        }
+        guard isSupportEntry,
+              CleanerSupport.isOwnedSupportDomain(url.lastPathComponent, byInstalled: installed) else { return false }
+        // A confirmed file remains eligible. Keep the entry if its type cannot be read.
+        return (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != false
+    }
+
     // MARK: - Category scanners
 
     /// One category's finds. A path the leftover scan claimed stays out of
@@ -531,8 +553,8 @@ package final class JunkCleaner: ObservableObject {
     ]
 
     nonisolated
-    private static func isDirectLeftoverRootChild(_ url: URL, home: String) -> Bool {
-        [home + "/Library", "/Library"].contains { library in
+    private static func isDirectLeftoverRootChild(_ url: URL, places: Places) -> Bool {
+        [places.home + "/Library", places.systemLibrary].contains { library in
             leftoverRoots.contains { root in
                 CleanerSupport.isDirectChild(
                     url,
@@ -543,9 +565,9 @@ package final class JunkCleaner: ObservableObject {
     }
 
     nonisolated
-    private static func scanLeftovers(installed: Set<String>, places: Places) -> [Item] {
+    package static func scanLeftovers(installed: Set<String>, places: Places) -> [Item] {
         let fm = FileManager.default
-        let libraries = [places.home + "/Library", "/Library"]
+        let libraries = [places.home + "/Library", places.systemLibrary]
         var found: [Item] = []
         for library in libraries {
             for root in leftoverRoots {
@@ -581,7 +603,7 @@ package final class JunkCleaner: ObservableObject {
             if let owner = leftoverOwner(entry: entry, url: url,
                                          usesContainerMetadata: usesContainerMetadata) {
                 if CleanerSupport.isProtectedBundleID(owner)
-                    || hasLivingOwner(owner, installed: installed, places: places) {
+                    || hasLivingLeftoverOwner(owner, at: url, installed: installed, places: places) {
                     continue
                 }
                 found.append(Item(url: url, category: .leftovers,
@@ -620,11 +642,11 @@ package final class JunkCleaner: ObservableObject {
     /// and whose label has no living owner: the classic ghost that keeps a
     /// deleted app listed under Login Items and Extensions.
     nonisolated
-    private static func scanOrphanedLaunchPlists(installed: Set<String>, places: Places) -> [Item] {
+    package static func scanOrphanedLaunchPlists(installed: Set<String>, places: Places) -> [Item] {
         let fm = FileManager.default
         let roots = [places.home + "/Library/LaunchAgents",
-                     "/Library/LaunchAgents",
-                     "/Library/LaunchDaemons"]
+                     places.systemLibrary + "/LaunchAgents",
+                     places.systemLibrary + "/LaunchDaemons"]
         var found: [Item] = []
         for root in roots {
             guard let entries = try? fm.contentsOfDirectory(atPath: root) else { continue }

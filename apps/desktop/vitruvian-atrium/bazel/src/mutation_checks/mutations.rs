@@ -712,8 +712,8 @@ pub const MUTATIONS: &[Mutation] = &[
         name: "one undecodable frame fails the GIF",
         group: "recorder",
         relative: "Sources/VitruvianAtrium/Services/Recorder/RecorderExporter.swift",
-        before: "                var decoded = try? await generator.image(at: time).image\n",
-        after: "                var decoded = try? await generator.image(at: time).image\n                if decoded == nil { return cancelled.isCancelled ? .cancelled : .readFailed }\n",
+        before: "                    let decoded = try? await generator.image(at: time).image\n",
+        after: "                    let decoded = try? await generator.image(at: time).image\n                    if decoded == nil { return cancelled.isCancelled ? .cancelled : .readFailed }\n",
         diagnostic: "a GIF exports past frames that do not decode",
     },
     Mutation {
@@ -1424,8 +1424,8 @@ pub const MUTATIONS: &[Mutation] = &[
         name: "a drag off the island keeps the edge click",
         group: "notch",
         relative: "Sources/VitruvianAtrium/Services/Notch/NotchScreenEdgeClicks.swift",
-        before: "                  !(pressArea.map { NotchSupport.screenEdgeArea($0, contains: point) } ?? false) else { return }\n            pressArea = nil\n",
-        after: "                  !(pressArea.map { NotchSupport.screenEdgeArea($0, contains: point) } ?? false) else { return }\n",
+        before: "                  !(press.map { NotchSupport.screenEdgeArea($0.area, contains: point) } ?? false) else { return }\n            press = nil\n",
+        after: "                  !(press.map { NotchSupport.screenEdgeArea($0.area, contains: point) } ?? false) else { return }\n",
         diagnostic: "dragging off the island or releasing outside cancels an edge click",
     },
     Mutation {

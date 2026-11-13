@@ -3057,7 +3057,7 @@ package struct KeepAwakeCard: View {
     }
 
     private func durationChip(_ minutes: Int) -> some View {
-        let selected = manualSession && awake.sessionMinutes == minutes
+        let selected = showsSessionPick && awake.sessionMinutes == minutes
         return Button {
             if selected {
                 awake.toggle()
@@ -3090,15 +3090,15 @@ package struct KeepAwakeCard: View {
 
     private var untilChip: some View {
         KeepAwakeEndTimePicker(selection: untilTime,
-                               activeEnd: manualSession && awake.sessionMinutes == nil ? awake.endDate : nil,
+                               activeEnd: showsSessionPick && awake.sessionMinutes == nil ? awake.endDate : nil,
                                onStop: { awake.toggle() }) {
             awake.activate(until: KeepAwakeAutomationSupport.resolvedUntilDate(picked: untilTime.wrappedValue, now: Date()))
             untilDraft = nil
         }
     }
 
-    private var manualSession: Bool {
-        awake.isActive && awake.sessionTrigger == .manual
+    private var showsSessionPick: Bool {
+        awake.isActive && awake.sessionTrigger != .automation
     }
 
     /// "58:12" or "1:05:12" for the highlighted chip.

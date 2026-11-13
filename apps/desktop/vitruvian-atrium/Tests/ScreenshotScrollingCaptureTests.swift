@@ -296,5 +296,84 @@ enum ScreenshotScrollingCaptureTests {
         if case .cancelled = await cancelled.value {} else {
             suite.expect(false, "Cancel must not deliver a screenshot")
         }
+        await automaticScrolling(suite)
+    }
+
+    /// The window an automatic capture scrolls, as the capture loop sees it.
+    @MainActor final class Scroller: ScreenshotScrollingCapture.AutomaticScroller {
+        var current = true
+        var scrolls = 0
+        func isCurrent() -> Bool { current }
+        func scroll() -> Bool { scrolls += 1; return true }
+    }
+
+    @MainActor static func automaticScrolling(_ suite: TestSuite) async {
+        if let event = ScreenshotAutomaticScroller.scrollEvent(
+            processID: 42, point: CGPoint(x: -150, y: 220), step: 80) {
+            suite.expect(event.location == CGPoint(x: -150, y: 220),
+                         "automatic scroll retains the selected point: \(event.location)")
+            suite.expect(event.flags.isEmpty,
+                         "automatic scroll clears modifiers: \(event.flags.rawValue)")
+            let expectedFields: [(CGEventField, Int64)] = [
+                (.scrollWheelEventPointDeltaAxis1, -80),
+                (.eventTargetUnixProcessID, 42),
+                (.eventSourceUserData, ScrollWheelSupport.syntheticTag),
+                (.eventSourceUnixProcessID, Int64(ProcessInfo.processInfo.processIdentifier))
+            ]
+            for (field, expected) in expectedFields {
+                let actual = event.getIntegerValueField(field)
+                suite.expect(actual == expected,
+                             "automatic scroll field \(field.rawValue): got \(actual), expected \(expected)")
+            }
+        } else { suite.expect(false, "an automatic downward scroll event can be prepared without posting it") }
+        let screen = CGRect(x: -800, y: 40, width: 800, height: 600)
+        let controlsSize = CGSize(width: 320, height: 70)
+        let usual = ScreenshotSupport.scrollingControlsFrame(size: controlsSize, visibleFrame: screen, avoiding: nil)
+        let underControls = CGPoint(x: usual.midX, y: usual.midY)
+        let moved = ScreenshotSupport.scrollingControlsFrame(
+            size: controlsSize, visibleFrame: screen, avoiding: underControls)
+        suite.expect(screen.contains(moved) && !moved.contains(underControls)
+                     && ScreenshotSupport.scrollingControlsFrame(size: controlsSize, visibleFrame: screen,
+                                                                avoiding: .zero) == usual,
+                     "capture controls move only when they would intercept the automatic wheel")
+        var automatic = ScreenshotScrollingCapture.AutoScrollState()
+        suite.expect(automatic.next(now: 0, height: 120, settled: false) == .wait
+                     && automatic.next(now: 0.25, height: 120, settled: true) == .scroll
+                     && automatic.next(now: 0.4, height: 120, settled: true) == .wait
+                     && automatic.next(now: 0.9, height: 162, settled: true) == .scroll,
+                     "automatic capture observes each scroll and waits for overlapping frames")
+        suite.expect(automatic.next(now: 1.5, height: 162, settled: true) == .scroll
+                     && automatic.next(now: 2.1, height: 162, settled: true) == .scroll
+                     && automatic.next(now: 2.7, height: 162, settled: true) == .finish,
+                     "three attempts without new content stop automatic scrolling")
+        var animatedBottom = ScreenshotScrollingCapture.AutoScrollState()
+        suite.expect(animatedBottom.next(now: 0, height: 120, settled: true) == .scroll
+                     && animatedBottom.next(now: 1, height: 120, settled: false) == .wait
+                     && animatedBottom.next(now: 1.6, height: 120, settled: false) == .scroll
+                     && animatedBottom.next(now: 3.2, height: 120, settled: false) == .scroll
+                     && animatedBottom.next(now: 4.8, height: 120, settled: false) == .finish,
+                     "an animated element cannot keep automatic scrolling alive indefinitely")
+        var animatedStart = ScreenshotScrollingCapture.AutoScrollState()
+        suite.expect(animatedStart.next(now: 0, height: 120, settled: false) == .wait
+                     && animatedStart.next(now: 1, height: 120, settled: false) == .wait
+                     && animatedStart.next(now: 1.6, height: 120, settled: false) == .scroll,
+                     "automatic scrolling starts even when the page never becomes still")
+        let region = RecorderSupport.Region(displayID: 1, windowID: nil,
+                                            pixelRect: CGRect(x: 0, y: 0, width: 32, height: 120),
+                                            anchorRect: CGRect(x: 10, y: 20, width: 16, height: 60),
+                                            scale: 2)
+        let replaced = Scroller()
+        replaced.current = false
+        let signal = ScreenshotScrollingCapture.FinishSignal()
+        let source = Source([frame(offset: 0), frame(offset: 42)], finish: signal)
+        let result = await ScreenshotScrollingCapture.capture(
+            region: region, finishSignal: signal, autoScroll: replaced, onProgress: { _ in }) {
+                .init { await source.image() }
+            }
+        if case .failed = result {
+            suite.expect(replaced.scrolls == 0, "a window replaced before the first frame is never scrolled")
+        } else {
+            suite.expect(false, "an automatic capture whose window was replaced at the start fails")
+        }
     }
 }

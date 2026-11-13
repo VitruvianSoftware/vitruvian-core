@@ -25,6 +25,17 @@ package struct NotchNotice: Equatable {
     /// so a burst of messages does not resize the island with each one.
     package var minimumWings = NotchNoticeWings.zero
 
+    package enum ClickTarget: Hashable {
+        case event(NotchEvent, title: String, detail: String?)
+        case notification(UUID)
+    }
+
+    /// A new reading can keep the same action. Each mirrored message has its own.
+    package var clickTarget: ClickTarget {
+        if let notificationID { return .notification(notificationID) }
+        return .event(event, title: title, detail: level == nil ? detail : nil)
+    }
+
     /// Each side as wide as what it shows, so neither ends in a band of
     /// empty black: the island reaches further toward its wider side.
     package var preferredWings: NotchNoticeWings { preferredWings(wrapsMessage: false) }
@@ -453,7 +464,16 @@ package final class NotchService: ObservableObject {
             keepsWorkingSurface: { [weak self] in self?.keepsWorkingSurface ?? false },
             containsDestination: { [weak self] in self?.windowHost?.containsDestination($0) == true },
             pressed: { [weak self] in self?.screenEdgePressed() },
-            clicked: { [weak self] in self?.openFromClosedIsland() }))
+            clicked: { [weak self] in self?.openFromClosedIsland() },
+            stripNotice: { [weak self] in self?.stripNotice },
+            hasCurrentNotice: { [weak self] in self?.notice != nil },
+            floats: { [weak self] in self?.geometry.floats ?? false },
+            capsuleContains: { [weak self] point in
+                guard let geometry = self?.geometry else { return false }
+                let free = CGSize(width: NotchCapsuleLayout.availableWidth(geometry), height: geometry.stripHeight)
+                return geometry.contains(point, in: free)
+            },
+            activate: { [weak self] in self?.activateNotice($0, fromEdgePress: true) }))
     /// Files dragged onto the island (`NotchFileDrop`).
     private lazy var fileDrop: NotchFileDrop = NotchFileDrop(
         environment: parts.fileDrop({ Self.collaborators.shelfAccept($0) }),
@@ -3079,15 +3099,27 @@ package final class NotchService: ObservableObject {
         return true
     }
 
-    package func activateNotice(_ selectedNotice: NotchNotice) {
-        guard notice == selectedNotice else { return }
+    /// The strip keeps its outgoing button until another notice or page takes its place.
+    package var stripNotice: NotchNotice? {
+        notice ?? (expanded || peeking ? nil : departingNotice)
+    }
+
+    package func activateNotice(_ selectedNotice: NotchNotice, fromEdgePress: Bool = false) {
+        guard acceptsSystemFeedback, noticeCanPresent, NotchSupport.routes(selectedNotice.event, in: defaults)
+        else { return }
+        let shown = stripNotice
+        guard shown?.clickTarget == selectedNotice.clickTarget
+            || (fromEdgePress && shown == nil) else { return }
         if let id = selectedNotice.notificationID {
             guard services.openingNotification == nil else { return }
             // The pointer stays where the banner was; like a click on the
             // island itself, this must not turn into a hover opening.
             settleNotificationHover()
+            let event = selectedNotice.event
             services.openNotification(id) { [weak self] result in
-                guard let self else { return }
+                guard let self, self.acceptsSystemFeedback, self.noticeCanPresent,
+                      NotchSupport.routes(event, in: self.defaults),
+                      self.stripNotice == nil || self.stripNotice?.notificationID == id else { return }
                 if self.notice?.notificationID == id { self.dismissNotice() }
                 if result == .unavailable || result == .uncertain { self.open(.notifications) }
             }
@@ -3098,6 +3130,8 @@ package final class NotchService: ObservableObject {
              : selectedNotice.event == .clipboard ? .clipboard : selectedNotice.event == .agents ? .agents
              : selectedNotice.event == .track ? .music : selectedNotice.event == .microphone ? .mixer
              : selectedNotice.event == .watch ? .watch : .controls)
+        // The notice grows into the page it led to, and stays gone after it closes.
+        if expanded, (notice ?? departingNotice)?.clickTarget == selectedNotice.clickTarget { dismissNotice() }
     }
 
     /// Skipping through songs, or a title that lands before its artist, shows
@@ -3211,16 +3245,17 @@ package final class NotchService: ObservableObject {
         if let mascotBack { bridgeMascotHome(from: mascotBack) }
         guard departingNotice != nil else { return }
         // Without motion the host hides the content at once; so does the view.
-        guard windowHost?.departsContent == true else { endDeparture(); return }
-        let work = DispatchWorkItem { [weak self] in self?.endDeparture() }
+        guard windowHost?.departsContent == true else { endDeparture(restoringClicks: true); return }
+        let work = DispatchWorkItem { [weak self] in self?.endDeparture(restoringClicks: true) }
         departureWork = work
         schedule(NotchMotion.departureHidden, work)
     }
 
-    private func endDeparture() {
+    private func endDeparture(restoringClicks: Bool = false) {
         departureWork?.cancel(); departureWork = nil
         guard noticeQueue.finishDeparture() else { return }
         windowHost?.finishDeparture()
+        if restoringClicks { refreshPresentation() }
     }
 
     private var noticeCanPresent: Bool {
@@ -3498,7 +3533,7 @@ package final class NotchService: ObservableObject {
         let activationRect: CGRect
         if captureControls != nil {
             activationRect = captureControlsCollapsed ? CGRect(origin: .zero, size: size) : .zero
-        } else if notice != nil || dragPlaceholder {
+        } else if stripNotice != nil || dragPlaceholder {
             activationRect = .zero
         } else if showsCompactActivityPicker {
             let strip = compactActivityGeometry.compactActivitySize
@@ -3795,11 +3830,12 @@ package final class NotchService: ObservableObject {
     private var screenEdgeClickArea: CGRect? {
         NotchScreenEdgeClicks.area(for: .init(
             running: running, suspended: suspended, expanded: expanded, peeking: peeking,
-            hasCaptureControls: captureControls != nil, hasNotice: notice != nil,
+            hasCaptureControls: captureControls != nil, hasNotice: stripNotice != nil,
             dragPlaceholder: dragPlaceholder, heldDrag: heldDrag,
             panelTakesClicks: panel.map { $0.isVisible && !$0.ignoresMouseEvents },
             compactActivityIsVisible: compactActivityIsVisible, geometry: geometry,
-            compactActivityGeometry: compactActivityGeometry, surfaceSize: surfaceSize))
+            compactActivityGeometry: compactActivityGeometry, surfaceSize: surfaceSize,
+            noticeExpanded: noticeExpanded))
     }
 
     private func syncScreenEdgeClicks() { screenEdgeClicks.sync() }
@@ -3830,7 +3866,7 @@ package final class NotchService: ObservableObject {
         // Losing a safe center must also hide an unchanged bare cutout.
         if previousSize != surfaceSize || panel?.isVisible != true || room == nil {
             refreshPresentation(animated: grows)
-        }
+        } else { syncScreenEdgeClicks() }
     }
 
     /// Only a laptop reports its lid, and only a laptop can lose its

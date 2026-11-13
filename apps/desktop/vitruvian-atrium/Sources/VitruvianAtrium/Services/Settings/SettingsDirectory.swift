@@ -64,6 +64,9 @@ package enum SettingsDirectory {
                             }
                             return feature.hubTitle(s, hub: hub, language: language)
                         }
+                    if pageItem.page == .screenshot {
+                        rows = SettingsSidebarSupport.screenshotRows(rows, language: language)
+                    }
                     if pageItem.page == .general {
                         rows.insert(SettingsSidebarItem(
                             id: .setting(.panelConfiguration),
@@ -165,6 +168,7 @@ package enum SettingsDirectory {
                 .general, sectionAnchor: .panelConfiguration),
             title: s.menuBarSection, icon: "menubar.rectangle",
             keywords: [s.showMenuBarIcon, FeatureStrings.generalSettings(language).menuBarIconTitle, "SF Symbols"]))
+        items.append(SettingsSearchSupport.scrollingScreenshotItem(language: language))
         if BrightnessService.keyboardLightIsSupported {
             items.append(SettingsSearchSupport.keyboardBrightnessShortcutItem(language: language))
         }

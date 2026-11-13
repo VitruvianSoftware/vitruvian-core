@@ -207,6 +207,50 @@ enum SettingsFeatureTests {
                 && backupKeys.contains(DefaultsKey.windowLayoutShortcutPreviousDisplay)
                 && backupKeys.contains(DefaultsKey.windowLayoutShortcutMarginMaximize),
                "window layout choices travel with the settings backup")
+        for (language, strings) in LocalizationTests.languages {
+            let captureRows = SettingsSidebarSupport.items(
+                page: .screenshot, title: "Screen capture", icon: "camera.viewfinder",
+                preferredFeatures: [.screenshot, .screenRecorder, .screenOCR, .colorPicker],
+                includePage: false, isAvailable: { _ in true }, featureTitle: { $0.rawValue })
+            let rows = SettingsSidebarSupport.screenshotRows(captureRows, language: language)
+            let destination = ScreenCaptureTool.scrolling.settingsDestination
+            suite.expect(rows.prefix(3).map(\.id)
+                    == [.feature(.screenshot), .setting(.screenshotScrolling), .feature(.screenRecorder)]
+                    && rows[1].title == FeatureStrings.screenshot(language).scrollingCaptureTitle
+                    && SettingsSidebarSupport.selection(for: destination, in: rows)
+                        == .setting(.screenshotScrolling),
+                         "scrolling screenshot has a localized sidebar row beside Screenshot")
+            let hiddenRows = SettingsSidebarSupport.items(
+                page: .screenshot, title: "Screen capture", icon: "camera.viewfinder",
+                preferredFeatures: [.screenRecorder], includePage: false,
+                isAvailable: { $0 == .screenRecorder }, featureTitle: { $0.rawValue })
+            suite.expect(!SettingsSidebarSupport.screenshotRows(hiddenRows, language: language)
+                .contains { $0.id == .setting(.screenshotScrolling) },
+                         "removing Screenshot also hides its scrolling sidebar row")
+            let search = SettingsSearchSupport.scrollingScreenshotItem(language: language)
+            suite.expect(search.destination == destination && search.destination.hasValidSectionAnchor
+                    && SettingsSearchSupport.matches(query: search.title, title: search.title)
+                    && SettingsSearchSupport.route(for: search, isAvailable: { _ in false })
+                        .targetFeature == .screenshot,
+                         "scrolling screenshot search opens its own tool or its installation page")
+            suite.expect(GlobalShortcutRole.captureRoles(in:
+                GlobalShortcutRole.availableRoles(isAvailable: { $0 == .screenshot }))
+                    .contains(.screenshotScrolling)
+                    && ScreenCaptureTool.scrolling.settingsTitle(strings, language: language) == search.title,
+                         "Keyboard shortcuts includes scrolling screenshot among installed capture tools")
+        }
+        let captureRouter = SettingsRouter()
+        captureRouter.request(ScreenCaptureTool.screenshot.settingsDestination)
+        captureRouter.request(ScreenCaptureTool.scrolling.settingsDestination)
+        captureRouter.goBack()
+        suite.expect(captureRouter.destination == ScreenCaptureTool.screenshot.settingsDestination,
+                     "Back returns from scrolling screenshot to Screenshot")
+        captureRouter.goForward()
+        suite.expect(captureRouter.destination == ScreenCaptureTool.scrolling.settingsDestination,
+                     "Forward restores scrolling screenshot and its sidebar selection")
+        suite.expect(backupKeys.contains(DefaultsKey.screenshotScrollingAutoScroll)
+                && Defaults.registeredDefaults[DefaultsKey.screenshotScrollingAutoScroll] as? Bool == false,
+               "automatic scrolling is optional and travels with the screenshot settings backup")
         suite.expect(backupKeys.contains(DefaultsKey.screenshotFreeze)
                 && backupKeys.contains(DefaultsKey.screenshotFullScreenShortcutEnabled)
                 && backupKeys.contains(DefaultsKey.screenshotFullScreenShortcut)
@@ -390,6 +434,7 @@ enum SettingsFeatureTests {
         suite.expect(!backupKeys.contains(DefaultsKey.clipboardHistoryEntries)
                 && !backupKeys.contains(DefaultsKey.shelfItems)
                 && !backupKeys.contains(DefaultsKey.sleepDisabledFlag)
+                && !backupKeys.contains(DefaultsKey.keepAwakeSessionEnd)
                 && !backupKeys.contains(DefaultsKey.micMuteActive)
                 && !backupKeys.contains(DefaultsKey.micMuteSavedVolumes)
                 && !backupKeys.contains(DefaultsKey.micMuteSavedChannelVolumes)
@@ -643,12 +688,14 @@ enum SettingsFeatureTests {
                "a file without the version envelope is rejected")
         let tampered: [String: Any] = [
             SettingsBackupSupport.formatVersionKey: 1,
-            SettingsBackupSupport.settingsKey: ["evilKey": "x", DefaultsKey.autoQuitEnabled: true] as [String: Any],
+            SettingsBackupSupport.settingsKey: ["evilKey": "x", DefaultsKey.autoQuitEnabled: true,
+                                                DefaultsKey.keepAwakeSessionEnd: ["end": 0.0, "minutes": 0]] as [String: Any],
         ]
         let filteredImport = SettingsBackupSupport.sanitizedSettings(from: tampered)
         suite.expect(filteredImport?["evilKey"] == nil
+                && filteredImport?[DefaultsKey.keepAwakeSessionEnd] == nil
                 && filteredImport?[DefaultsKey.autoQuitEnabled] as? Bool == true,
-               "unknown keys are dropped on import")
+               "unknown keys and live Keep Awake sessions are dropped on import")
         suite.expect(SettingsBackupSupport.sanitizedSettings(from: [
             SettingsBackupSupport.formatVersionKey: 99,
             SettingsBackupSupport.settingsKey: [String: Any](),
@@ -668,6 +715,43 @@ enum SettingsFeatureTests {
         suite.expect(SettingsBackupSupport.sanitizedSettings(from: stringVersionBackup)?[DefaultsKey.smoothScrollStep] as? Int == 60,
                "a backup with a string-encoded format version restores correctly")
 
+        // MARK: Settings file (issue #497)
+        SettingsFileTests.run(suite)
+        let configHome = URL(fileURLWithPath: "/Users/someone", isDirectory: true)
+        let configPath: ([String: String], Bool) -> String = {
+            SettingsBackupSupport.configFileURL(environment: $0, home: configHome, isDeveloperBuild: $1).path
+        }
+        suite.expect(configPath([:], false) == "/Users/someone/.config/vitruvian/settings.plist",
+               "without XDG_CONFIG_HOME the settings file lives in ~/.config")
+        suite.expect(configPath(["XDG_CONFIG_HOME": "/Users/someone/dotfiles"], false)
+                == "/Users/someone/dotfiles/vitruvian/settings.plist",
+               "an absolute XDG_CONFIG_HOME holds the settings file")
+        suite.expect(configPath(["XDG_CONFIG_HOME": ""], false) == configPath([:], false)
+                && configPath(["XDG_CONFIG_HOME": "dotfiles"], false) == configPath([:], false),
+               "an empty or relative XDG_CONFIG_HOME is ignored, as the XDG spec asks")
+        suite.expect(configPath([:], true) == "/Users/someone/.config/vitruvian-dev/settings.plist",
+               "the Developer build never reads the official app's settings file")
+        let binary = "/Applications/Vitruvian Atrium.app/Contents/MacOS/VitruvianAtrium"
+        suite.expect(SettingsBackupSupport.appliesConfigFile(arguments: [binary])
+                && SettingsBackupSupport.appliesConfigFile(arguments: [binary, "-NSDocumentRevisionsDebugMode", "YES"]),
+               "a plain launch applies the settings file")
+        suite.expect(["--uninstall", "--selftest", "--mouse-acceleration-cleanup",
+                      SuperKeyMappingGuard.cleanupArgument, SettingsBackupSupport.importFlag].allSatisfy {
+                    !SettingsBackupSupport.appliesConfigFile(arguments: [binary, $0])
+                }, "cleanup, diagnostic and backup modes never apply the settings file")
+        let localLogo: [String: Any] = [
+            DefaultsKey.mediaImageWatermarkKind: MediaImageWatermarkKind.logo.rawValue,
+        ]
+        suite.expect(SettingsBackupSupport.keepingLocalMediaLogos(
+                    [DefaultsKey.mediaImageWatermarkKind: MediaImageWatermarkKind.off.rawValue],
+                    local: localLogo)[DefaultsKey.mediaImageWatermarkKind] as? String
+                == MediaImageWatermarkKind.logo.rawValue,
+               "a file exported on this Mac keeps its local logo watermark")
+        suite.expect(SettingsBackupSupport.keepingLocalMediaLogos(
+                    [DefaultsKey.mediaImageWatermarkKind: MediaImageWatermarkKind.text.rawValue],
+                    local: localLogo)[DefaultsKey.mediaImageWatermarkKind] as? String
+                == MediaImageWatermarkKind.text.rawValue,
+               "a watermark the file chose itself still wins over the local logo")
         // A backup file can be edited by hand, and a value of the wrong shape
         // would reach code that trusts its own settings.
         let wrongShapes: [String: Any] = [

@@ -260,9 +260,16 @@ package final class SmoothScrollService: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
+        // Our panels, including clipboard history (#3780), handle the original
+        // notch. The fast capture loupe uses glide frames to zoom. A stepped
+        // loupe already took the raw event above.
         guard let processID = pid_t(exactly: event.getIntegerValueField(.eventTargetUnixProcessID)),
               processID > 0,
               let windowNumber = NSEvent(cgEvent: event)?.windowNumber, windowNumber > 0,
+              SmoothScrollSupport.glides(targetProcessID: Int64(processID), ownProcessID: Self.ownProcessID,
+                                         isActiveLoupeWindow: {
+                                             ScreenshotSelectionController.isActiveLoupeWindow(windowNumber)
+                                         }),
               let template = event.copy() else {
             stopGlide()
             return Unmanaged.passUnretained(event)
