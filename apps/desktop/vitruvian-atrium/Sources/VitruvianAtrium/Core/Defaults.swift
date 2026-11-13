@@ -264,6 +264,8 @@ package enum Defaults {
         DefaultsKey.scrollInverterHorizontalEnabled: Preferences.scrollInverterHorizontalEnabled.defaultValue,
         DefaultsKey.scrollHorizontalEnabled: Preferences.scrollHorizontalEnabled.defaultValue,
         DefaultsKey.scrollHorizontalModifier: Preferences.scrollHorizontalModifier.defaultValue,
+        DefaultsKey.pinchZoomEnabled: Preferences.pinchZoomEnabled.defaultValue,
+        DefaultsKey.pinchZoomModifier: Preferences.pinchZoomModifier.defaultValue,
         DefaultsKey.focusFollowsMouseEnabled: Preferences.focusFollowsMouseEnabled.defaultValue,
         DefaultsKey.focusFollowsMouseRaise: Preferences.focusFollowsMouseRaise.defaultValue,
         DefaultsKey.focusFollowsMouseWaitForStop: Preferences.focusFollowsMouseWaitForStop.defaultValue,

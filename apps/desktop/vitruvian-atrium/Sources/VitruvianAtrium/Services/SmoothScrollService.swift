@@ -260,6 +260,20 @@ package final class SmoothScrollService: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
+        let defaults = UserDefaults.standard
+        let direction = ScrollDirectionPreferences(defaults: defaults)
+        let scrollTargetExcluded = exceptions.excludesPointerTarget(
+            .scrollDirection,
+            at: event.location,
+            sourceProcessID: sourceProcessID
+        )
+        // Pinch Zoom takes its wheel before a glide can be made of it.
+        if !scrollTargetExcluded, direction.zoom.action(for: event) != nil {
+            stopGlide()
+            if ScrollInverter.shared.pinchZoom.consume(event, direction: direction) == .consumed { return nil }
+            if !ScrollWheelTarget.shared.contains(event.location) { return Unmanaged.passUnretained(event) }
+        }
+
         // Our panels, including clipboard history (#3780), handle the original
         // notch. The fast capture loupe uses glide frames to zoom. A stepped
         // loupe already took the raw event above.
@@ -283,13 +297,7 @@ package final class SmoothScrollService: ObservableObject {
         // the inverter's tap running with the direction features uninstalled
         // and their switches left on, so the flip itself comes from
         // ScrollDirectionPreferences, which reads each one's availability.
-        let adjustDirectionHere = ScrollInverter.shared.isRunning
-            && !exceptions.excludesPointerTarget(
-                .scrollDirection,
-                at: event.location,
-                sourceProcessID: sourceProcessID)
-        let defaults = UserDefaults.standard
-        let direction = ScrollDirectionPreferences(defaults: defaults)
+        let adjustDirectionHere = ScrollInverter.shared.isRunning && !scrollTargetExcluded
         let redirected: Bool
         if adjustDirectionHere, let modifier = direction.horizontalModifier {
             redirected = ScrollWheelSupport.redirectVerticalScroll(event, modifier: modifier,

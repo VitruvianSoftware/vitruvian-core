@@ -25,6 +25,7 @@ package enum SettingsSectionAnchor: String, CaseIterable, Hashable {
     case extraBrightness
     case bluetoothSleep
     case scrollDirection
+    case scrollZoom
     case focusFollowsMouse
     case smoothScroll
     case linearScroll
@@ -66,7 +67,7 @@ package enum SettingsSectionAnchor: String, CaseIterable, Hashable {
              .soundOutputSwitcher:
             return .general
         case .keepAwake, .brightness, .extraBrightness, .bluetoothSleep: return .energy
-        case .scrollDirection, .focusFollowsMouse, .smoothScroll, .linearScroll, .mouseAcceleration, .mouseNavigation, .mouseButtonShortcuts,
+        case .scrollDirection, .scrollZoom, .focusFollowsMouse, .smoothScroll, .linearScroll, .mouseAcceleration, .mouseNavigation, .mouseButtonShortcuts,
              .middleClick, .mouseClickDebounce:
             return .mouse
         case .switcher: return .switcher
@@ -367,6 +368,8 @@ extension AppFeature {
 
         case .scrollInverter, .scrollHorizontal:
             return FeatureSettingsDestination(.mouse, sectionAnchor: .scrollDirection)
+        case .scrollZoom:
+            return FeatureSettingsDestination(.mouse, sectionAnchor: .scrollZoom)
         case .focusFollowsMouse:
             return FeatureSettingsDestination(.mouse, sectionAnchor: .focusFollowsMouse)
         case .smoothScroll:
@@ -485,7 +488,7 @@ package enum FeatureVisibilitySupport {
         switch page {
         case .energy: return [.keepAwake, .brightness, .extraBrightness, .bluetoothSleep]
         case .monitor: return monitorFeatures
-        case .mouse: return [.scrollInverter, .scrollHorizontal, .focusFollowsMouse, .smoothScroll, .linearScroll, .mouseAcceleration, .mouseNavigation, .mouseButtonShortcuts,
+        case .mouse: return [.scrollInverter, .scrollHorizontal, .scrollZoom, .focusFollowsMouse, .smoothScroll, .linearScroll, .mouseAcceleration, .mouseNavigation, .mouseButtonShortcuts,
                              .middleClick, .mouseClickDebounce]
         case .switcher: return [.switcher]
         case .dock: return [.dockPreview, .dockClick, .spacesOrder]

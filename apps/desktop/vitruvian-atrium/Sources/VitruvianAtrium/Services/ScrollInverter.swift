@@ -25,6 +25,11 @@ import VitruvianAtriumDesign
 /// scrolling tap and honors this same list. Linear scrolling keeps a list of
 /// its own, honored the same way in both taps, so a game or a 3D tool that
 /// counts the notches itself can be left out of the cap alone.
+///
+/// Pinch Zoom (`PinchZoomGesture`) rides on the same tap: the selected modifier
+/// held alone with the wheel becomes a magnification gesture at the pointer,
+/// and the tap also watches the modifiers so that gesture ends when its key
+/// is let go.
 @MainActor
 package final class ScrollInverter: ObservableObject {
     package static let shared = ScrollInverter()
@@ -72,8 +77,16 @@ package final class ScrollInverter: ObservableObject {
     nonisolated(unsafe) private var wheel = WheelTapState()
     private var tapCreationRetry = TapCreationRetry()
     private var tapCreationRetryWork: DispatchWorkItem?
+    /// Pinch Zoom, which both wheel taps hand the wheel to. It keeps its own
+    /// state behind its own lock.
+    nonisolated package let pinchZoom: PinchZoomGesture
+    /// What this tap asks about the pointer, Pinch Zoom included.
+    nonisolated private let targets: WheelTapTargets
 
     private init() {
+        let pinchZoom = PinchZoomGesture.live(switcher: AppSwitcher.shared)
+        self.pinchZoom = pinchZoom
+        targets = .system(pinchZoom: pinchZoom)
         // Fast user switching: the tap goes back while this session is off
         // screen and is built again from the preferences on the way in.
         SessionActivity.shared.onChange { [weak self] _ in
@@ -84,10 +97,11 @@ package final class ScrollInverter: ObservableObject {
     /// Applies the persisted preference; safe to call repeatedly.
     package func syncWithPreferences() {
         let direction = ScrollDirectionPreferences()
+        pinchZoom.update(direction.zoom)
         if SessionActivitySupport.tapShouldRun(featureWanted: direction.isEnabled || Self.linearScrollWanted,
                                                accessibilityGranted: Permissions.shared.accessibility,
                                                sessionIsActive: SessionActivity.shared.isActive) {
-            ScrollWheelTarget.shared.setEnabled(direction.horizontalModifier != nil)
+            ScrollWheelTarget.shared.setEnabled(direction.horizontalModifier != nil || direction.zoom.isEnabled)
             start()
         } else {
             stop()
@@ -119,6 +133,7 @@ package final class ScrollInverter: ObservableObject {
         if let port = tapStateLock.withLock({ tap }) {
             CGEvent.tapEnable(tap: port, enable: true)
             setSourceTracking(true)
+            pinchZoom.start()
             isRunning = true
             return
         }
@@ -127,7 +142,8 @@ package final class ScrollInverter: ObservableObject {
             tap: ScrollWheelSupport.tapLocation,
             place: .tailAppendEventTap,
             options: .defaultTap,
-            eventsOfInterest: CGEventMask(1 << CGEventType.scrollWheel.rawValue),
+            eventsOfInterest: CGEventMask(1 << CGEventType.scrollWheel.rawValue)
+                | CGEventMask(1 << CGEventType.flagsChanged.rawValue),
             callback: Self.eventTapCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
@@ -159,10 +175,12 @@ package final class ScrollInverter: ObservableObject {
             PointerTapRunLoop.add(source)
         }
         CGEvent.tapEnable(tap: tap, enable: true)
+        pinchZoom.start()
         isRunning = true
     }
 
     private func stop() {
+        pinchZoom.stop()
         ScrollWheelTarget.shared.setEnabled(false)
         tapCreationRetryWork?.cancel()
         tapCreationRetryWork = nil
@@ -209,6 +227,12 @@ package final class ScrollInverter: ObservableObject {
             }
             return Unmanaged.passUnretained(event)
         }
+        if type == .flagsChanged {
+            if event.getIntegerValueField(.eventSourceUserData) != ScrollWheelSupport.syntheticTag {
+                pinchZoom.modifiersChanged(event.flags)
+            }
+            return Unmanaged.passUnretained(event)
+        }
         guard type == .scrollWheel else { return Unmanaged.passUnretained(event) }
         // A remote screen posts its scroll below the HID stage, already
         // turned and paced the controlling computer's way, trackpad
@@ -217,7 +241,7 @@ package final class ScrollInverter: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
         let keeps = Self.adjustWheel(event, state: &wheel, defaults: .standard,
-                                     ownProcessID: Self.ownProcessID, targets: .system)
+                                     ownProcessID: Self.ownProcessID, targets: targets)
         return keeps ? Unmanaged.passUnretained(event) : nil
     }
 
@@ -239,19 +263,28 @@ package final class ScrollInverter: ObservableObject {
                                          _ sourceProcessID: Int64) -> Bool
         /// One of this app's own windows is under the pointer.
         package var isOwnWindow: @Sendable (CGPoint) -> Bool
+        /// Pinch Zoom's turn at the wheel (`PinchZoomGesture.consume`).
+        package var pinchZoom: @Sendable (CGEvent, ScrollDirectionPreferences) -> PinchZoomVerdict
 
         package init(excludes: @escaping @Sendable (MouseExceptionScope, CGPoint, Int64) -> Bool,
-                     isOwnWindow: @escaping @Sendable (CGPoint) -> Bool) {
+                     isOwnWindow: @escaping @Sendable (CGPoint) -> Bool,
+                     pinchZoom: @escaping @Sendable (CGEvent, ScrollDirectionPreferences) -> PinchZoomVerdict
+                        = { _, _ in .notZoom }) {
             self.excludes = excludes
             self.isOwnWindow = isOwnWindow
+            self.pinchZoom = pinchZoom
         }
 
-        package static let system = WheelTapTargets(excludes: {
-            MouseAppExceptions.shared.excludesPointerTarget($0, at: $1, sourceProcessID: $2)
-        }, isOwnWindow: { ScrollWheelTarget.shared.contains($0) })
+        package static func system(pinchZoom: PinchZoomGesture) -> WheelTapTargets {
+            WheelTapTargets(excludes: {
+                MouseAppExceptions.shared.excludesPointerTarget($0, at: $1, sourceProcessID: $2)
+            }, isOwnWindow: { ScrollWheelTarget.shared.contains($0) },
+            pinchZoom: { pinchZoom.consume($0, direction: $1) })
+        }
     }
 
-    /// Caps, turns or redirects one wheel event in place. False when it only
+    /// Caps, turns or redirects one wheel event in place. False when it is
+    /// dropped: Pinch Zoom turned it into a magnification step, or it only
     /// carried part of a notch, which is held back and added to the next one.
     nonisolated package static func adjustWheel(_ event: CGEvent, state: inout WheelTapState,
                                                 defaults: UserDefaults, ownProcessID: Int64,
@@ -288,6 +321,14 @@ package final class ScrollInverter: ObservableObject {
         let direction = ScrollDirectionPreferences(defaults: defaults)
         let directionApplies = direction.isEnabled
             && !targets.excludes(.scrollDirection, event.location, sourceProcessID)
+        if directionApplies, direction.zoom.action(for: event) != nil {
+            switch targets.pinchZoom(event, direction) {
+            case .consumed: return false
+            // Our panels decline zoom but still use their ordinary wheel path.
+            case .declined where !targets.isOwnWindow(event.location): return true
+            case .declined, .notZoom: break
+            }
+        }
         // Control-wheel is native zoom. Only the explicit Control-to-horizontal
         // shortcut turns it into scrolling; a direction exception or one of
         // our own windows leaves it as zoom too.

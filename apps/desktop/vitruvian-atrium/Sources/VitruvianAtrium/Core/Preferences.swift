@@ -41,6 +41,7 @@ package enum Preferences {
     package static let scrollInverterEnabled = Preference(DefaultsKey.scrollInverterEnabled, default: false)
     package static let scrollInverterHorizontalEnabled = Preference(DefaultsKey.scrollInverterHorizontalEnabled, default: false)
     package static let scrollHorizontalEnabled = Preference(DefaultsKey.scrollHorizontalEnabled, default: false)
+    package static let pinchZoomEnabled = Preference(DefaultsKey.pinchZoomEnabled, default: false)
     package static let focusFollowsMouseEnabled = Preference(DefaultsKey.focusFollowsMouseEnabled, default: false)
     package static let linearScrollEnabled = Preference(DefaultsKey.linearScrollEnabled, default: false)
     package static let mouseAccelerationDisabled = Preference(DefaultsKey.mouseAccelerationDisabled, default: false)
@@ -736,6 +737,8 @@ package enum Preferences {
     package static let appearance = Preference(DefaultsKey.appearance, default: AppAppearance.fallback.rawValue)
     package static let scrollHorizontalModifier = Preference(
         DefaultsKey.scrollHorizontalModifier, default: ScrollHorizontalModifier.shift.rawValue)
+    package static let pinchZoomModifier = Preference(
+        DefaultsKey.pinchZoomModifier, default: ScrollZoomModifier.control.rawValue)
     package static let mouseClickDebounceWindowMs = Preference(
         DefaultsKey.mouseClickDebounceWindowMs, default: Defaults.defaultMouseClickDebounceWindowMs)
     package static let switcherWindowShortcut = Preference(

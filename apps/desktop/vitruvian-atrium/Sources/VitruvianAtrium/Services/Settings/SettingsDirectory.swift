@@ -417,6 +417,7 @@ package enum SettingsDirectory {
                                                            s.invertHorizontalScroll, s.scrollSection]),
                                         (.scrollHorizontal, [s.scrollHorizontalName,
                                                             s.scrollHorizontalModifierLabel, s.scrollSection]),
+                                        (.scrollZoom, [s.zoomSection, s.pinchZoom]),
                                         (.middleClick, [s.middleClickTapPicker, s.middleClickEnable]),
                                         (.focusFollowsMouse, [s.focusFollowsMouseName,
                                                               s.focusFollowsMouseDelay,

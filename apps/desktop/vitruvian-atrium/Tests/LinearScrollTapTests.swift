@@ -16,6 +16,13 @@ enum LinearScrollTapTests {
         var excepted: Set<MouseExceptionScope> = []
     }
 
+    /// What Pinch Zoom answers the tap, and how often it was asked.
+    nonisolated final class PinchZoomTurns: @unchecked Sendable {
+        var verdict = PinchZoomVerdict.notZoom
+        var overOwnWindow = false
+        var asked = 0
+    }
+
     static func run(_ suite: TestSuite) {
         let name = "com.vitruviansoftware.vitruvian.tests.linear-scroll-tap.\(UUID().uuidString)"
         let defaults = ScratchDefaults.suite(named: name)!
@@ -151,6 +158,70 @@ enum LinearScrollTapTests {
         trackpad.setIntegerValueField(.scrollWheelEventScrollPhase, value: 1)
         suite.expect(deliver(trackpad)?.getIntegerValueField(.scrollWheelEventPointDeltaAxis1) == 40,
                      "a trackpad gesture passes through untouched")
+
+        // Pinch Zoom has its turn at a zoom wheel before the wheel is capped.
+        let pinch = PinchZoomTurns()
+        let pinchTargets = ScrollInverter.WheelTapTargets(
+            excludes: { scope, _, _ in exceptions.excepted.contains(scope) },
+            isOwnWindow: { _ in pinch.overOwnWindow },
+            pinchZoom: { _, _ in
+                pinch.asked += 1
+                return pinch.verdict
+            })
+        func zoomWheel(_ event: CGEvent) -> CGEvent? {
+            var fresh = ScrollInverter.WheelTapState()
+            return ScrollInverter.adjustWheel(event, state: &fresh, defaults: defaults, ownProcessID: -1,
+                                              targets: pinchTargets) ? event : nil
+        }
+        func configurePinch(installed: Bool = true) {
+            configure()
+            defaults.set(installed, forKey: AppFeature.scrollZoom.availabilityKey)
+            defaults.set(true, forKey: DefaultsKey.pinchZoomEnabled)
+            defaults.set(ScrollZoomModifier.option.rawValue, forKey: DefaultsKey.pinchZoomModifier)
+            pinch.verdict = .notZoom
+            pinch.overOwnWindow = false
+            pinch.asked = 0
+        }
+        defer {
+            defaults.removeObject(forKey: AppFeature.scrollZoom.availabilityKey)
+            defaults.removeObject(forKey: DefaultsKey.pinchZoomEnabled)
+            defaults.removeObject(forKey: DefaultsKey.pinchZoomModifier)
+        }
+        configurePinch()
+        pinch.verdict = .consumed
+        suite.expect(zoomWheel(wheel(line: 4, fixed: 4, point: 40, flags: .maskAlternate)) == nil && pinch.asked == 1,
+                     "a zoom wheel Pinch Zoom turned into a gesture is dropped")
+        configurePinch()
+        pinch.verdict = .declined
+        let declined = zoomWheel(wheel(line: 4, fixed: 4, point: 40, flags: .maskAlternate))
+        suite.expect(declined.map(verticalLine) == 4 && declined.map(verticalFixed) == 4,
+                     "a zoom wheel Pinch Zoom declined outside this app's windows goes on as macOS sent it")
+        configurePinch()
+        pinch.verdict = .declined
+        pinch.overOwnWindow = true
+        let ownPanel = zoomWheel(wheel(line: 4, fixed: 4, point: 40, flags: .maskAlternate))
+        suite.expect(ownPanel.map(verticalLine) == 3,
+                     "over one of this app's panels a zoom wheel keeps its ordinary path")
+        configurePinch()
+        let switcherWheel = zoomWheel(wheel(line: 4, fixed: 4, point: 40, flags: .maskAlternate))
+        suite.expect(switcherWheel.map(verticalLine) == 3 && pinch.asked == 1,
+                     "a wheel Pinch Zoom leaves, as for the open switcher, keeps its ordinary path")
+        configurePinch()
+        pinch.verdict = .consumed
+        let plain = zoomWheel(wheel(line: 4, fixed: 4, point: 40))
+        suite.expect(plain.map(verticalLine) == 3 && pinch.asked == 0,
+                     "a wheel without the zoom modifier never reaches Pinch Zoom")
+        configurePinch(installed: false)
+        pinch.verdict = .consumed
+        let removed = zoomWheel(wheel(line: 4, fixed: 4, point: 40, flags: .maskAlternate))
+        suite.expect(removed.map(verticalLine) == 3 && pinch.asked == 0,
+                     "an uninstalled Pinch Zoom never takes the wheel")
+        configurePinch()
+        pinch.verdict = .consumed
+        exceptions.excepted = [.scrollDirection]
+        let exceptedPinch = zoomWheel(wheel(line: 4, fixed: 4, point: 40, flags: .maskAlternate))
+        suite.expect(exceptedPinch.map(verticalLine) == 3 && pinch.asked == 0,
+                     "an app excepted from Scroll Direction keeps its zoom wheel")
     }
 
     private static func verticalLine(_ event: CGEvent) -> Int64 {
