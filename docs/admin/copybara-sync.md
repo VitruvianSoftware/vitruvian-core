@@ -110,7 +110,7 @@ flowchart LR
    stamping each with `MONOREPO_REV_ID`.
    Before any of that, each caller's `await-repo-config` job (`_await-repo-config.yaml`) waits
    until no **Repo Config Apply** run is queued or in flight (and, if this push changed
-   `infrastructure/pulumi/platform/repo-config/`, until that push's apply has appeared). The
+   `infrastructure/pulumi/platform/repo-config/`, until that push's apply has appeared; a manual run compares the head commit with its parent). The
    caller's `export` job, which maps `<COMP>_SYNC_SSH_KEY`, `needs` it. The apply can replace the
    mirror's deploy key and that secret (a mirror rename always does); an export already holding
    the key would push with the old one and be refused. That happened on 2026-11-13 (#4661).
