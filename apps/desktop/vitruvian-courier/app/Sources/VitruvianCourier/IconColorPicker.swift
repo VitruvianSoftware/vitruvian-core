@@ -94,7 +94,7 @@ public struct IconColorPicker: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(LabelColor.color(color))
                 .accessibilityLabel(String(localized: "All Icons"))
             }
 
@@ -203,18 +203,23 @@ private struct ColorRow: View {
     @Binding var color: Int
     @FocusState private var focused: Bool
 
+    /// All twelve swatches in one row that fits the picker's width, however narrow its window: the row shares the
+    /// width out instead of asking for more. A fixed-spacing row needed ~456pt, wider than the 360pt the label
+    /// window gives it, and pushed the whole window's content off both edges.
+    private static let columns = Array(repeating: GridItem(.flexible(minimum: 24), spacing: 2), count: LabelsModel.colors.count)
+
     var body: some View {
-        HStack(spacing: 8) {
+        LazyVGrid(columns: Self.columns, spacing: 2) {
             ForEach(Array(LabelsModel.colors), id: \.self) { index in
                 Circle()
                     .fill(LabelColor.color(index))
-                    .frame(width: 22, height: 22)
+                    .frame(width: 18, height: 18)
                     .overlay {
                         if index == color {
-                            Circle().strokeBorder(Color.primary, lineWidth: 2).padding(-4)
+                            Circle().strokeBorder(Color.primary, lineWidth: 2).padding(-3)
                         }
                     }
-                    .padding(4)
+                    .frame(width: 26, height: 26)
                     .contentShape(Circle())
                     .onTapGesture { color = index }
                     .help(LabelColor.name(index))
