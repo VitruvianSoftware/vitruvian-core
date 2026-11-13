@@ -62,3 +62,10 @@ zitadel-apps-relay-apply.yaml action
 # conflicting downloads PR. Added 2026-11-12 at James's request, after the brand
 # rename left that PR conflicting with main.
 site-sync-downloads.yaml
+
+# Delivers one Vitruvian Tabs unit into one environment. Added 2026-11-12 at
+# James's request ("Yes, deploy them"): the rename commit's deploy of
+# build-stack and identity was cancelled and never re-run, so delivery-drift
+# reports them as not delivered. No allow-unsoaked key. Each environment's
+# GitHub Environment rules still apply.
+delivery-vitruvian-tabs.yaml unit environment
