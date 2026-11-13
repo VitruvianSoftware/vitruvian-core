@@ -37,14 +37,14 @@ Component package providing implementation for `tools/lint-naming/src/rules`.
 - [configs.rs:312]: `assert!(wf("jobs:\n  unit-test:\n    runs-on: x\n").is_empty());`
 - [configs.rs:317]: `assert!(wf("jobs:\n  b:\n    steps:\n      - id: ${{ matrix.step_id }}\n").is...`
 - [configs.rs:331]: `assert!(wf(content).is_empty());`
-- [directories.rs:224]: `assert!(validate_directory_name("tools/ci-preflight", false).is_empty());`
-- [directories.rs:231]: `assert!(validate_directory_name("a", true).is_empty());`
-- [directories.rs:232]: `assert!(validate_directory_name("", false).is_empty());`
+- [directories.rs:220]: `assert!(validate_directory_name("tools/ci-preflight", false).is_empty());`
+- [directories.rs:227]: `assert!(validate_directory_name("a", true).is_empty());`
+- [directories.rs:228]: `assert!(validate_directory_name("", false).is_empty());`
 - [environment.rs:108]: `assert!(validate_env_var_name("x.sh", "GH_TOKEN", None).is_empty());`
 
 ## Side Effects
-- [directories.rs:246]: `"tabula/web/prisma/migrations/20260524120000_init_schema",`
-- [migration.rs:51]: `"tabula/web/prisma",`
+- [directories.rs:242]: `"apps/suites/vitruvian-tabs/api/prisma/migrations/20260524120000_init_schema",`
+- [migration.rs:51]: `"apps/suites/vitruvian-tabs/api/prisma",`
 
 ## Verification
 - Run: `bazel test //tools/lint-naming/src/rules/...`

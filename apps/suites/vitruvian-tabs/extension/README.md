@@ -280,7 +280,7 @@ MIT - See [LICENSE](../../LICENSE)
 
 ## Links
 
-- [Documentation](https://bluecentre.github.io/tabula/)
+- [Documentation](../docs/README.md)
 - [GitHub Repository](https://github.com/VitruvianSoftware/vitruvian-core)
 - [Issue Tracker](https://github.com/VitruvianSoftware/vitruvian-core/issues)
 
