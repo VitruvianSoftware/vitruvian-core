@@ -1103,6 +1103,25 @@ mod tests {
         .or_else(|_| std::fs::read_to_string("src/testdata_main_tools_list.json"))
         .expect("golden tools/list fixture from main must be readable");
         let golden = JsonValue::parse(&golden_raw).expect("valid golden JSON");
+        let golden_tools = golden
+            .as_array()
+            .expect("golden tools/list must be a single top-level JSON array of main's 43 tools");
+        assert_eq!(
+            golden_tools.len(),
+            43,
+            "golden tools/list must hold exactly one copy of main's 43 tools"
+        );
+        let mut unique_golden_names = std::collections::BTreeSet::new();
+        for entry in golden_tools {
+            let name = entry
+                .get("name")
+                .and_then(|v| v.as_str())
+                .expect("every golden tool entry must have a string name");
+            assert!(
+                unique_golden_names.insert(name),
+                "duplicate tool entry {name:?} in testdata_main_tools_list.json"
+            );
+        }
 
         let server_for = |env: &BTreeMap<String, String>| -> McpServer {
             let cfg = resolve_config(env).unwrap();
@@ -1147,9 +1166,25 @@ mod tests {
             "true".to_string(),
         );
 
-        let cases: &[(&str, &BTreeMap<String, String>, usize, &[&str])] = &[
-            ("stdio", &stdio, 47, NEW_TOOLS),
-            ("http_user_destructive_on", &http_user_on, 46, NEW_TOOLS),
+        let cases: &[(
+            &str,
+            &BTreeMap<String, String>,
+            usize,
+            &[&str],
+            bool,
+            bool,
+            bool,
+        )] = &[
+            ("stdio", &stdio, 47, NEW_TOOLS, false, true, true),
+            (
+                "http_user_destructive_on",
+                &http_user_on,
+                46,
+                NEW_TOOLS,
+                true,
+                true,
+                true,
+            ),
             (
                 "http_user_destructive_off",
                 &http_user_off,
@@ -1159,12 +1194,40 @@ mod tests {
                     "slack_schedule_message",
                     "slack_list_scheduled_messages",
                 ],
+                true,
+                true,
+                false,
             ),
-            ("http_bot_destructive_on", &http_bot_on, 21, &[]),
-            ("http_bot_destructive_off", &http_bot_off, 21, &[]),
+            (
+                "http_bot_destructive_on",
+                &http_bot_on,
+                21,
+                &[],
+                true,
+                false,
+                true,
+            ),
+            (
+                "http_bot_destructive_off",
+                &http_bot_off,
+                21,
+                &[],
+                true,
+                false,
+                false,
+            ),
         ];
 
-        for (label, env, expected_count, expected_new_present) in cases {
+        for (
+            label,
+            env,
+            expected_count,
+            expected_new_present,
+            is_http,
+            has_user_token,
+            allow_destructive,
+        ) in cases
+        {
             let entries = tools_list_for(env);
             let names: Vec<&str> = entries
                 .iter()
@@ -1183,7 +1246,7 @@ mod tests {
                 );
             }
 
-            // Strip the 4 new tools and assert the remaining entries are byte-identical to main.
+            // Strip the 4 new tools and assert the remaining entries match main's derived config byte-for-byte.
             let existing_only: Vec<JsonValue> = entries
                 .into_iter()
                 .filter(|e| {
@@ -1191,10 +1254,22 @@ mod tests {
                     !NEW_TOOLS.contains(&n)
                 })
                 .collect();
-            let expected_main = golden.get(label).expect("golden key present");
+            let expected_main: Vec<JsonValue> = golden_tools
+                .iter()
+                .filter(|e| {
+                    let n = e.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                    if !*is_http {
+                        return true;
+                    }
+                    !HTTP_WITHHELD_ALWAYS.contains(&n)
+                        && (*has_user_token || !HTTP_WITHHELD_WITHOUT_USER_TOKEN.contains(&n))
+                        && (*allow_destructive || !HTTP_WITHHELD_DESTRUCTIVE.contains(&n))
+                })
+                .cloned()
+                .collect();
             assert_eq!(
                 JsonValue::Array(existing_only).to_json_string(),
-                expected_main.to_json_string(),
+                JsonValue::Array(expected_main).to_json_string(),
                 "{label}: existing tool entries drifted from main"
             );
         }

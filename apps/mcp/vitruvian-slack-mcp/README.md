@@ -83,7 +83,7 @@ flowchart TD
 | `slack_update_user_group` | **User** | Rename or re-describe a user group |
 | `slack_set_user_group_members` | **User** | Replace a user group's member list |
 | `slack_set_user_group_enabled` | **User** | Enable or disable a user group |
-| `slack_open_dm` | **User** | Open or retrieve a 1:1 DM or group DM (1–8 users) and return its channel ID |
+| `slack_open_dm` | **User** | Open or retrieve a 1:1 DM or group DM (1–8 users) and return its channel ID (when `SLACK_CHANNEL_IDS` restricts access, never opens a new conversation; matches only existing allow-listed DMs/group DMs) |
 | `slack_schedule_message` | **User** | Schedule a message up to 120 days ahead (Unix seconds or ISO 8601 with offset) |
 | `slack_list_scheduled_messages` | **User** | List pending scheduled messages created by the authenticated user |
 | `slack_delete_scheduled_message` | **User** | Cancel a pending scheduled message before it is sent |
@@ -103,7 +103,7 @@ flowchart TD
 All 47 tools accept an optional `compact` boolean (default `false` unless `SLACK_COMPACT_OUTPUT` is enabled). Setting `compact: true` returns compact JSON with Slack UI blocks, client IDs, and avatar noise stripped out.
 
 - **Channel names (`#channel`) & user handles (`@user`)**: Wherever a tool takes `channel_id` (or `channel_ids`), `#name` (e.g. `#general`, case-insensitive) is accepted alongside bare IDs (`C…`, `G…`, `D…`), resolved and cached in-process before the allow-list guard runs. When `SLACK_CHANNEL_IDS` restricts access, `#name` resolves strictly against the allow-listed IDs (never listing the workspace) and returns the identical allow-list refusal for anything else without hinting whether the channel exists. Wherever a tool takes `user_id`, `user_ids`, or `users`, `@handle` resolves case-insensitively against `name`, then `profile.display_name`, then `profile.real_name` (failing explicitly with matching IDs if ambiguous). Bare IDs never trigger extra lookup calls.
-- **`slack_open_dm`**: accepts 1–8 user IDs or `@handles` (`users`) and returns `channel_id` for the DM or group DM. When `SLACK_CHANNEL_IDS` is restricted, the DM ID is returned only if allow-listed; otherwise the standard refusal is returned without exposing the DM ID.
+- **`slack_open_dm`**: accepts 1–8 user IDs or `@handles` (`users`) and returns `channel_id` for the DM or group DM. When `SLACK_CHANNEL_IDS` restricts access, it never opens a new conversation; it returns the ID only if an existing allow-listed DM or group DM with exactly those users is found, otherwise the standard refusal without exposing any DM ID.
 - **`slack_schedule_message`, `slack_list_scheduled_messages` & `slack_delete_scheduled_message`**: `post_at` accepts a Unix timestamp in seconds or an ISO 8601 date-time with timezone offset (`Z` or `±HH:MM`) strictly in the future and at most 120 days ahead. When restricted, `slack_list_scheduled_messages` drops entries outside the allow-list and sets `filtered_out` (with pagination in `response_metadata.next_cursor`).
 - **`slack_get_channel_history`**: optional `limit`, `oldest`, `latest` (Slack timestamps), `since` (relative duration like `30m`, `24h`, or `7d`), `cursor` (pagination cursor), and `include_activity` (boolean, default `true` to include join/leave notices). The next page's cursor is in `response_metadata.next_cursor`.
 - **`slack_get_thread_replies`**: optional `limit` (max 200), `cursor`, `oldest`, and `latest`. The next page's cursor is in `response_metadata.next_cursor`.

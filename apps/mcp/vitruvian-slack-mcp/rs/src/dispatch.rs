@@ -215,7 +215,13 @@ fn post_at_arg(args: &JsonValue, name: &str) -> Result<String, SlackClientError>
     match args.get(name) {
         Some(JsonValue::String(s)) if !s.is_empty() => Ok(s.clone()),
         Some(JsonValue::Number(n)) if n.is_finite() && n.fract() == 0.0 => {
-            Ok((*n as i64).to_string())
+            if *n >= (i64::MIN as f64) && *n < 9_223_372_036_854_775_808.0 {
+                Ok((*n as i64).to_string())
+            } else {
+                Err(SlackClientError::Message(format!(
+                    "Invalid post_at value {n}: Unix timestamp out of 64-bit integer range."
+                )))
+            }
         }
         _ => Err(SlackClientError::Message(format!(
             "Argument {name} is required and must be a Unix timestamp (seconds) or ISO 8601 date-time with timezone offset."
@@ -1744,6 +1750,15 @@ mod tests {
                     .unwrap(),
                 ));
             }
+            if req.url.contains("conversations.info") && req.url.contains("channel=D0ALLOWED9") {
+                return Ok(HttpResponse::json(
+                    200,
+                    JsonValue::parse(
+                        r#"{"ok":true,"channel":{"id":"D0ALLOWED9","is_im":true,"user":"U_ALLOWED_PEER"}}"#,
+                    )
+                    .unwrap(),
+                ));
+            }
             if req.url.contains("conversations.open") {
                 let body = req.body_str().unwrap_or_default();
                 let dm_id = if body.contains("U_ALLOWED_PEER") {
@@ -1842,6 +1857,211 @@ mod tests {
             allowed_dm.get("channel_id").and_then(|v| v.as_str()),
             Some("D0ALLOWED9")
         );
+    }
+
+    #[test]
+    fn open_dm_under_restriction_never_calls_conversations_open_for_im_mpim_or_refusal() {
+        let calls: Arc<Mutex<Vec<CapturedCall>>> = Arc::new(Mutex::new(Vec::new()));
+        let calls_ref = calls.clone();
+        let _guard = set_mock_fetch(move |req| {
+            calls_ref.lock().unwrap().push(CapturedCall {
+                url: req.url.clone(),
+                body: req.body_str(),
+            });
+            if req.url.contains("users.list") {
+                return Ok(HttpResponse::json(
+                    200,
+                    JsonValue::parse(
+                        r#"{
+                            "ok": true,
+                            "members": [
+                                {"id": "U_ALICE", "name": "alice", "profile": {}},
+                                {"id": "U_BOB", "name": "bob", "profile": {}},
+                                {"id": "U_STRANGER", "name": "stranger", "profile": {}}
+                            ],
+                            "response_metadata": {"next_cursor": ""}
+                        }"#,
+                    )
+                    .unwrap(),
+                ));
+            }
+            if req.url.ends_with("/api/auth.test") {
+                return Ok(HttpResponse::json(
+                    200,
+                    JsonValue::parse(r#"{"ok":true,"user_id":"U_CALLER","team_id":"T123"}"#)
+                        .unwrap(),
+                ));
+            }
+            if req.url.contains("conversations.info") {
+                if req.url.contains("channel=D0ALLOWED_IM") {
+                    return Ok(HttpResponse::json(
+                        200,
+                        JsonValue::parse(
+                            r#"{"ok":true,"channel":{"id":"D0ALLOWED_IM","is_im":true,"user":"U_ALICE"}}"#,
+                        )
+                        .unwrap(),
+                    ));
+                }
+                if req.url.contains("channel=G0ALLOWED_MPIM") {
+                    return Ok(HttpResponse::json(
+                        200,
+                        JsonValue::parse(
+                            r#"{"ok":true,"channel":{"id":"G0ALLOWED_MPIM","is_mpim":true,"is_private":true}}"#,
+                        )
+                        .unwrap(),
+                    ));
+                }
+                if req.url.contains("channel=G0PRIV_CHAN") {
+                    return Ok(HttpResponse::json(
+                        200,
+                        JsonValue::parse(
+                            r#"{"ok":true,"channel":{"id":"G0PRIV_CHAN","name":"ops-priv","is_mpim":false,"is_private":true}}"#,
+                        )
+                        .unwrap(),
+                    ));
+                }
+                if req.url.contains("channel=C0ALLOWED1") {
+                    return Ok(HttpResponse::json(
+                        200,
+                        JsonValue::parse(
+                            r#"{"ok":true,"channel":{"id":"C0ALLOWED1","name":"general","is_private":false}}"#,
+                        )
+                        .unwrap(),
+                    ));
+                }
+            }
+            if req.url.contains("conversations.members")
+                && req.url.contains("channel=G0ALLOWED_MPIM")
+            {
+                return Ok(HttpResponse::json(
+                    200,
+                    JsonValue::parse(
+                        r#"{"ok":true,"members":["U_CALLER","U_ALICE","U_BOB"],"response_metadata":{"next_cursor":""}}"#,
+                    )
+                    .unwrap(),
+                ));
+            }
+            if req.url.contains("conversations.open") {
+                return Ok(HttpResponse::json(
+                    200,
+                    JsonValue::parse(r#"{"ok":true,"channel":{"id":"D0UNWANTED_CREATED"}}"#)
+                        .unwrap(),
+                ));
+            }
+            Ok(HttpResponse::json(
+                200,
+                JsonValue::object(vec![("ok", true.into())]),
+            ))
+        });
+
+        let mut restricted_env = http_env();
+        restricted_env.insert("SLACK_USER_TOKEN".to_string(), "xoxp-test".to_string());
+        restricted_env.insert(
+            "SLACK_CHANNEL_IDS".to_string(),
+            "C0ALLOWED1,D0ALLOWED_IM".to_string(),
+        );
+        restricted_env.insert(
+            "SLACK_PRIVATE_CHANNEL_IDS".to_string(),
+            "G0ALLOWED_MPIM,G0PRIV_CHAN".to_string(),
+        );
+        let restricted = client_for(&restricted_env);
+
+        // 1. Refused case: stranger DM not in allow-list -> zero conversations.open calls.
+        let refused_im = dispatch(
+            &restricted,
+            "slack_open_dm",
+            &JsonValue::parse(r#"{"users":["@stranger"]}"#).unwrap(),
+        )
+        .unwrap_err();
+        let open_calls_after_refusal = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.url.contains("conversations.open"))
+            .count();
+        assert_eq!(
+            open_calls_after_refusal, 0,
+            "restricted slack_open_dm must NEVER call conversations.open on refusal"
+        );
+        assert_eq!(
+            refused_im,
+            SlackClientError::ChannelAllowlist(ChannelAllowlistError::ChannelNotAllowed {
+                channel_id: "dm:U_STRANGER".to_string(),
+            })
+        );
+        assert!(!refused_im.to_string().contains("D0UNWANTED_CREATED"));
+
+        // 2. Allowed 1:1 IM match -> returns D0ALLOWED_IM with zero conversations.open calls and zero extra info calls (cached).
+        calls.lock().unwrap().clear();
+        let ok_im = dispatch(
+            &restricted,
+            "slack_open_dm",
+            &JsonValue::parse(r#"{"users":["@alice"]}"#).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            ok_im.get("channel_id").and_then(|v| v.as_str()),
+            Some("D0ALLOWED_IM")
+        );
+        assert_eq!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|c| c.url.contains("conversations.open"))
+                .count(),
+            0,
+            "restricted slack_open_dm must NEVER call conversations.open on allowed IM match"
+        );
+        assert_eq!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|c| c.url.contains("conversations.info"))
+                .count(),
+            0,
+            "second restricted open_dm reuses cached allowed D/G map"
+        );
+
+        // 3. Allowed MPIM match (exact member set = caller + requested users) -> returns G0ALLOWED_MPIM, zero conversations.open calls.
+        calls.lock().unwrap().clear();
+        let ok_mpim = dispatch(
+            &restricted,
+            "slack_open_dm",
+            &JsonValue::parse(r#"{"users":["U_BOB","@alice"]}"#).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            ok_mpim.get("channel_id").and_then(|v| v.as_str()),
+            Some("G0ALLOWED_MPIM")
+        );
+        assert_eq!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|c| c.url.contains("conversations.open"))
+                .count(),
+            0,
+            "restricted slack_open_dm must NEVER call conversations.open on allowed MPIM match"
+        );
+
+        // 4. MPIM non-exact member sets (subset/superset/wrong peer) -> standard refusal, zero conversations.open calls.
+        calls.lock().unwrap().clear();
+        let refused_superset = dispatch(
+            &restricted,
+            "slack_open_dm",
+            &JsonValue::parse(r#"{"users":["U_ALICE","U_BOB","U_STRANGER"]}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            refused_superset,
+            SlackClientError::ChannelAllowlist(ChannelAllowlistError::ChannelNotAllowed {
+                channel_id: "dm:U_ALICE,U_BOB,U_STRANGER".to_string(),
+            })
+        );
+        assert!(calls.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -1998,6 +2218,85 @@ mod tests {
                 Some(two_days_later)
             );
         }
+    }
+
+    #[test]
+    fn schedule_message_accepts_numeric_json_post_at_and_rejects_past_or_invalid_numbers() {
+        let calls: Arc<Mutex<Vec<CapturedCall>>> = Arc::new(Mutex::new(Vec::new()));
+        let calls_ref = calls.clone();
+        let _guard = set_mock_fetch(move |req| {
+            calls_ref.lock().unwrap().push(CapturedCall {
+                url: req.url.clone(),
+                body: req.body_str(),
+            });
+            Ok(HttpResponse::json(
+                200,
+                JsonValue::parse(
+                    r#"{"ok":true,"channel":"C1","scheduled_message_id":"Q_NUM","post_at":1800000000}"#,
+                )
+                .unwrap(),
+            ))
+        });
+
+        let client = client_for(&stdio_env());
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        // 1. Valid future JSON number is accepted and sent to chat.scheduleMessage.
+        let future_num = now_secs + 3600;
+        let ok_payload = JsonValue::parse(&format!(
+            r#"{{"channel_id":"C1","text":"numeric","post_at":{future_num}}}"#
+        ))
+        .unwrap();
+        assert!(matches!(
+            ok_payload.get("post_at"),
+            Some(JsonValue::Number(_))
+        ));
+        dispatch(&client, "slack_schedule_message", &ok_payload).unwrap();
+        {
+            let recorded = calls.lock().unwrap();
+            assert_eq!(recorded.len(), 1);
+            assert!(recorded[0].url.contains("/api/chat.scheduleMessage"));
+            let body = JsonValue::parse(recorded[0].body.as_ref().unwrap()).unwrap();
+            assert_eq!(
+                body.get("post_at").and_then(|v| v.as_i64()),
+                Some(future_num)
+            );
+        }
+
+        // 2. Past JSON number is rejected before calling Slack.
+        calls.lock().unwrap().clear();
+        let past_num = now_secs - 60;
+        let past_payload = JsonValue::parse(&format!(
+            r#"{{"channel_id":"C1","text":"too late","post_at":{past_num}}}"#
+        ))
+        .unwrap();
+        let err_past = dispatch(&client, "slack_schedule_message", &past_payload).unwrap_err();
+        assert!(err_past.to_string().contains("past"));
+        assert!(calls.lock().unwrap().is_empty());
+
+        // 3. Fractional JSON number is rejected.
+        let frac_payload = JsonValue::parse(&format!(
+            r#"{{"channel_id":"C1","text":"frac","post_at":{future_num}.5}}"#
+        ))
+        .unwrap();
+        assert!(dispatch(&client, "slack_schedule_message", &frac_payload).is_err());
+        assert!(calls.lock().unwrap().is_empty());
+
+        // 4. Out-of-64-bit-range JSON number is rejected as out of range rather than saturating to i64::MAX.
+        let overflow_payload =
+            JsonValue::parse(r#"{"channel_id":"C1","text":"overflow","post_at":1e25}"#).unwrap();
+        let err_overflow =
+            dispatch(&client, "slack_schedule_message", &overflow_payload).unwrap_err();
+        assert!(
+            err_overflow
+                .to_string()
+                .contains("out of 64-bit integer range"),
+            "expected out-of-range error, got: {err_overflow}"
+        );
+        assert!(calls.lock().unwrap().is_empty());
     }
 
     #[test]

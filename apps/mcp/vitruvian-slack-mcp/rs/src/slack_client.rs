@@ -25,7 +25,7 @@ use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::base64;
 use crate::channel_allowlist::{
@@ -244,6 +244,53 @@ fn sleep_for_retry(duration: Duration) {
         }
     }
     std::thread::sleep(duration);
+}
+
+#[cfg(test)]
+thread_local! {
+    static THREAD_MOCK_CLOCK: RefCell<Option<Arc<Mutex<Instant>>>> = const { RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub struct MockClockGuard {
+    now: Arc<Mutex<Instant>>,
+}
+
+#[cfg(test)]
+impl MockClockGuard {
+    pub fn advance(&self, delta: Duration) {
+        let mut g = self.now.lock().unwrap();
+        *g += delta;
+    }
+}
+
+#[cfg(test)]
+impl Drop for MockClockGuard {
+    fn drop(&mut self) {
+        THREAD_MOCK_CLOCK.with(|cell| {
+            *cell.borrow_mut() = None;
+        });
+    }
+}
+
+#[cfg(test)]
+pub fn set_mock_clock() -> MockClockGuard {
+    let now = Arc::new(Mutex::new(Instant::now()));
+    let cloned = Arc::clone(&now);
+    THREAD_MOCK_CLOCK.with(|cell| {
+        *cell.borrow_mut() = Some(cloned);
+    });
+    MockClockGuard { now }
+}
+
+fn now_instant() -> Instant {
+    #[cfg(test)]
+    {
+        if let Some(clock) = THREAD_MOCK_CLOCK.with(|cell| cell.borrow().clone()) {
+            return *clock.lock().unwrap();
+        }
+    }
+    Instant::now()
 }
 
 /// Longest a single Slack Web API call may take, end to end.
@@ -602,13 +649,71 @@ pub struct ListScheduledMessagesOptions {
 const MAX_CACHED_CHANNELS: usize = 4_096;
 const MAX_CHANNEL_LIST_PAGES: usize = 100;
 const MAX_CACHED_USERS: usize = 20_000;
-const MAX_USER_LIST_PAGES: usize = 100;
 const MAX_SCHEDULE_AHEAD_SECS: i64 = 120 * 86_400;
+const RESTRICTED_CACHE_REFRESH_TTL: Duration = Duration::from_secs(300);
+const NEGATIVE_CHANNEL_CACHE_TTL: Duration = Duration::from_secs(60);
+
+#[derive(Debug, Clone)]
+enum AllowedDmKind {
+    Im { peer_user: String },
+    Mpim { members: HashSet<String> },
+}
+
+#[derive(Debug, Clone)]
+struct CachedAllowedDm {
+    id: String,
+    channel: JsonValue,
+    kind: AllowedDmKind,
+}
+
+#[derive(Debug, Default)]
+struct AllowedDmCache {
+    entries: Vec<CachedAllowedDm>,
+    caller_user_id: Option<String>,
+    populated_at: Option<Instant>,
+}
+
+fn match_allowed_dm(cache: &AllowedDmCache, resolved_users: &[String]) -> Option<JsonValue> {
+    if resolved_users.len() == 1 {
+        let target = &resolved_users[0];
+        for entry in &cache.entries {
+            if let AllowedDmKind::Im { peer_user } = &entry.kind {
+                if peer_user == target {
+                    return Some(JsonValue::object(vec![
+                        ("ok", true.into()),
+                        ("channel", entry.channel.clone()),
+                        ("channel_id", entry.id.as_str().into()),
+                    ]));
+                }
+            }
+        }
+        return None;
+    }
+
+    let caller = cache.caller_user_id.as_deref()?;
+    let mut expected: HashSet<String> = resolved_users.iter().cloned().collect();
+    expected.insert(caller.to_string());
+    for entry in &cache.entries {
+        if let AllowedDmKind::Mpim { members } = &entry.kind {
+            if members == &expected {
+                return Some(JsonValue::object(vec![
+                    ("ok", true.into()),
+                    ("channel", entry.channel.clone()),
+                    ("channel_id", entry.id.as_str().into()),
+                ]));
+            }
+        }
+    }
+    None
+}
 
 #[derive(Debug, Default)]
 struct ChannelNameCache {
     entries: HashMap<String, String>,
     order: VecDeque<String>,
+    negative_misses: HashMap<String, Instant>,
+    negative_order: VecDeque<String>,
+    restricted_populated_at: Option<Instant>,
     resume_cursor: Option<String>,
     exhausted: bool,
     has_listed: bool,
@@ -617,6 +722,7 @@ struct ChannelNameCache {
 
 impl ChannelNameCache {
     fn insert_bounded(&mut self, name_lower: String, id: String) {
+        self.negative_misses.remove(&name_lower);
         if !self.entries.contains_key(&name_lower) && self.entries.len() >= MAX_CACHED_CHANNELS {
             if let Some(evicted) = self.order.pop_front() {
                 self.entries.remove(&evicted);
@@ -626,6 +732,31 @@ impl ChannelNameCache {
             self.order.push_back(name_lower.clone());
         }
         self.entries.insert(name_lower, id);
+    }
+
+    fn has_valid_negative_miss(&mut self, name_lower: &str, now: Instant) -> bool {
+        if let Some(&ts) = self.negative_misses.get(name_lower) {
+            if now.saturating_duration_since(ts) < NEGATIVE_CHANNEL_CACHE_TTL {
+                return true;
+            }
+            self.negative_misses.remove(name_lower);
+        }
+        false
+    }
+
+    fn insert_negative_miss(&mut self, name_lower: String, now: Instant) {
+        while !self.negative_misses.contains_key(&name_lower)
+            && self.negative_misses.len() >= MAX_CACHED_CHANNELS
+        {
+            let Some(evicted) = self.negative_order.pop_front() else {
+                break;
+            };
+            self.negative_misses.remove(&evicted);
+        }
+        if !self.negative_misses.contains_key(&name_lower) {
+            self.negative_order.push_back(name_lower.clone());
+        }
+        self.negative_misses.insert(name_lower, now);
     }
 
     fn reset_unrestricted(&mut self) {
@@ -649,6 +780,7 @@ struct CachedUserEntry {
 struct UserHandleCache {
     users: Vec<CachedUserEntry>,
     populated: bool,
+    complete: bool,
 }
 
 fn match_user_tiers(
@@ -935,6 +1067,7 @@ pub struct SlackClient {
     write_token: WriteTokenPreference,
     channel_name_cache: Arc<Mutex<ChannelNameCache>>,
     user_handle_cache: Arc<Mutex<UserHandleCache>>,
+    allowed_dm_cache: Arc<Mutex<AllowedDmCache>>,
 }
 
 impl SlackClient {
@@ -951,6 +1084,7 @@ impl SlackClient {
             write_token,
             channel_name_cache: Arc::new(Mutex::new(ChannelNameCache::default())),
             user_handle_cache: Arc::new(Mutex::new(UserHandleCache::default())),
+            allowed_dm_cache: Arc::new(Mutex::new(AllowedDmCache::default())),
         }
     }
 
@@ -2850,7 +2984,7 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
         }
 
         if !self.channel_guard.is_unrestricted() {
-            {
+            let needs_refresh = {
                 let cache = self
                     .channel_name_cache
                     .lock()
@@ -2858,17 +2992,22 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
                 if let Some(id) = cache.entries.get(&needle) {
                     return Ok(id.clone());
                 }
-            }
-            self.populate_restricted_channel_names()?;
-            let found = {
-                let cache = self
-                    .channel_name_cache
-                    .lock()
-                    .unwrap_or_else(|p| p.into_inner());
-                cache.entries.get(&needle).cloned()
+                cache.restricted_populated_at.map_or(true, |t| {
+                    now_instant().saturating_duration_since(t) >= RESTRICTED_CACHE_REFRESH_TTL
+                })
             };
-            if let Some(id) = found {
-                return Ok(id);
+            if needs_refresh {
+                self.populate_restricted_channel_names();
+                let found = {
+                    let cache = self
+                        .channel_name_cache
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner());
+                    cache.entries.get(&needle).cloned()
+                };
+                if let Some(id) = found {
+                    return Ok(id);
+                }
             }
             return Err(SlackClientError::ChannelAllowlist(
                 ChannelAllowlistError::ChannelNotAllowed {
@@ -2878,12 +3017,17 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
         }
 
         let (was_already_listed, exhausted) = {
-            let cache = self
+            let mut cache = self
                 .channel_name_cache
                 .lock()
                 .unwrap_or_else(|p| p.into_inner());
             if let Some(id) = cache.entries.get(&needle) {
                 return Ok(id.clone());
+            }
+            if cache.has_valid_negative_miss(&needle, now_instant()) {
+                return Err(SlackClientError::Message(format!(
+                    "channel_not_found: {raw}"
+                )));
             }
             (cache.has_listed, cache.exhausted)
         };
@@ -2907,32 +3051,64 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
             }
         }
 
+        {
+            let mut cache = self
+                .channel_name_cache
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            cache.insert_negative_miss(needle, now_instant());
+        }
+
         Err(SlackClientError::Message(format!(
             "channel_not_found: {raw}"
         )))
     }
 
-    fn populate_restricted_channel_names(&self) -> Result<(), SlackClientError> {
+    fn populate_restricted_channel_names(&self) {
         let mut fetched: Vec<(String, String)> = Vec::new();
         for channel_id in &self.channel_guard.allowed {
-            let data = self.api(
+            let data = match self.api(
                 "conversations.info",
                 JsonValue::object(vec![("channel", channel_id.as_str().into())]),
                 WriteTokenPreference::Bot,
                 "GET",
-            )?;
-            let channel = data.get("channel");
-            if is_ok(&data) && js_truthy(channel) {
-                let ch = channel.unwrap_or(&JsonValue::Null);
-                self.channel_guard
-                    .assert_visibility_matches(channel_id, ch.get("is_private"))?;
-                if let Some(name) = ch
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .filter(|s| !s.is_empty())
-                {
-                    fetched.push((name.to_lowercase(), channel_id.clone()));
+            ) {
+                Ok(d) => d,
+                Err(err) => {
+                    eprintln!(
+                        "vitruvian-slack-mcp: restricted #name conversations.info failed for {channel_id}: {err}"
+                    );
+                    continue;
                 }
+            };
+            if !is_ok(&data) {
+                eprintln!(
+                    "vitruvian-slack-mcp: restricted #name conversations.info failed for {channel_id}: {}",
+                    string_or(data.get("error"), "unknown_error")
+                );
+                continue;
+            }
+            let Some(ch) = data.get("channel").filter(|c| js_truthy(Some(c))) else {
+                eprintln!(
+                    "vitruvian-slack-mcp: restricted #name conversations.info returned no channel object for {channel_id}"
+                );
+                continue;
+            };
+            if let Err(err) = self
+                .channel_guard
+                .assert_visibility_matches(channel_id, ch.get("is_private"))
+            {
+                eprintln!(
+                    "vitruvian-slack-mcp: restricted #name visibility check failed for {channel_id}: {err}"
+                );
+                continue;
+            }
+            if let Some(name) = ch
+                .get("name")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+            {
+                fetched.push((name.to_lowercase(), channel_id.clone()));
             }
         }
         let mut cache = self
@@ -2944,7 +3120,7 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
         for (name_lower, id) in fetched {
             cache.insert_bounded(name_lower, id);
         }
-        Ok(())
+        cache.restricted_populated_at = Some(now_instant());
     }
 
     fn page_unrestricted_channels_until(
@@ -3075,7 +3251,7 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
             return Err(SlackClientError::Message(format!("user_not_found: {raw}")));
         }
 
-        {
+        let should_populate_cache = {
             let cache = self
                 .user_handle_cache
                 .lock()
@@ -3089,19 +3265,16 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
                             ids.join(", ")
                         )))
                     }
+                    None if cache.complete => {
+                        return Err(SlackClientError::Message(format!("user_not_found: {raw}")))
+                    }
                     None => {}
                 }
             }
-        }
-
-        self.populate_user_handle_cache()?;
-        let outcome = {
-            let cache = self
-                .user_handle_cache
-                .lock()
-                .unwrap_or_else(|p| p.into_inner());
-            match_user_tiers(&cache.users, &needle)
+            !cache.populated
         };
+
+        let outcome = self.scan_and_populate_user_handle(&needle, should_populate_cache)?;
         match outcome {
             Some(Ok(id)) => Ok(id),
             Some(Err(ids)) => Err(SlackClientError::Message(format!(
@@ -3112,10 +3285,18 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
         }
     }
 
-    fn populate_user_handle_cache(&self) -> Result<(), SlackClientError> {
+    fn scan_and_populate_user_handle(
+        &self,
+        needle: &str,
+        populate_cache: bool,
+    ) -> Result<Option<Result<String, Vec<String>>>, SlackClientError> {
         let mut collected: Vec<CachedUserEntry> = Vec::new();
+        let mut hit_cap = false;
+        let mut tier_matches: [Vec<String>; 3] = [Vec::new(), Vec::new(), Vec::new()];
         let mut cursor: Option<String> = None;
-        for _ in 0..MAX_USER_LIST_PAGES {
+        let mut seen_cursors: HashSet<String> = HashSet::new();
+
+        loop {
             let mut params = JsonValue::object(vec![
                 ("limit", 200i64.into()),
                 ("team_id", self.team_id.as_str().into()),
@@ -3132,9 +3313,6 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
             }
             if let Some(members) = data.get("members").and_then(|v| v.as_array()) {
                 for m in members {
-                    if collected.len() >= MAX_CACHED_USERS {
-                        break;
-                    }
                     let Some(id) = m
                         .get("id")
                         .and_then(|v| v.as_str())
@@ -3158,16 +3336,35 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
                         .and_then(|v| v.as_str())
                         .filter(|s| !s.is_empty())
                         .map(str::to_lowercase);
-                    collected.push(CachedUserEntry {
-                        id: id.to_string(),
-                        name_lower,
-                        display_name_lower,
-                        real_name_lower,
-                    });
+
+                    for (tier_idx, candidate) in [
+                        name_lower.as_deref(),
+                        display_name_lower.as_deref(),
+                        real_name_lower.as_deref(),
+                    ]
+                    .into_iter()
+                    .enumerate()
+                    {
+                        if candidate == Some(needle)
+                            && !tier_matches[tier_idx].iter().any(|existing| existing == id)
+                        {
+                            tier_matches[tier_idx].push(id.to_string());
+                        }
+                    }
+
+                    if populate_cache {
+                        if collected.len() < MAX_CACHED_USERS {
+                            collected.push(CachedUserEntry {
+                                id: id.to_string(),
+                                name_lower,
+                                display_name_lower,
+                                real_name_lower,
+                            });
+                        } else {
+                            hit_cap = true;
+                        }
+                    }
                 }
-            }
-            if collected.len() >= MAX_CACHED_USERS {
-                break;
             }
             cursor = data
                 .get("response_metadata")
@@ -3175,17 +3372,31 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty())
                 .map(str::to_string);
-            if cursor.is_none() {
-                break;
+            match &cursor {
+                Some(nc) if seen_cursors.insert(nc.clone()) => {}
+                _ => break,
             }
         }
-        let mut cache = self
-            .user_handle_cache
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
-        cache.users = collected;
-        cache.populated = true;
-        Ok(())
+
+        if populate_cache {
+            let mut cache = self
+                .user_handle_cache
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            cache.users = collected;
+            cache.populated = true;
+            cache.complete = !hit_cap;
+        }
+
+        for ids in tier_matches {
+            if ids.len() == 1 {
+                return Ok(Some(Ok(ids.into_iter().next().unwrap())));
+            }
+            if ids.len() > 1 {
+                return Ok(Some(Err(ids)));
+            }
+        }
+        Ok(None)
     }
 
     // ── Direct messages & scheduled messages ───────────────────────────
@@ -3197,9 +3408,23 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
                 user_ids.len()
             )));
         }
+        if self.user_auth.is_none() {
+            return Err(SlackClientError::UserTokenUnavailable {
+                method: "conversations.open".to_string(),
+            });
+        }
+        let mut resolved_users = Vec::with_capacity(user_ids.len());
+        for u in user_ids {
+            resolved_users.push(self.resolve_user_id(u)?);
+        }
+
+        if !self.channel_guard.is_unrestricted() {
+            return self.open_dm_restricted(&resolved_users);
+        }
+
         let mut data = self.api(
             "conversations.open",
-            JsonValue::object(vec![("users", user_ids.join(",").into())]),
+            JsonValue::object(vec![("users", resolved_users.join(",").into())]),
             WriteTokenPreference::User,
             "POST",
         )?;
@@ -3210,25 +3435,220 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
             .filter(|s| !s.is_empty())
             .map(str::to_string);
 
-        if !self.channel_guard.is_unrestricted() {
-            let allowed = dm_id
-                .as_deref()
-                .is_some_and(|id| self.channel_guard.is_allowed(id));
-            if !allowed {
-                return Err(SlackClientError::ChannelAllowlist(
-                    ChannelAllowlistError::ChannelNotAllowed {
-                        channel_id: format!("dm:{}", user_ids.join(",")),
-                    },
-                ));
-            }
-        }
-
         if is_ok(&data) {
             if let Some(id) = dm_id {
                 data.insert("channel_id", id.into());
             }
         }
         Ok(data)
+    }
+
+    fn open_dm_restricted(&self, resolved_users: &[String]) -> Result<JsonValue, SlackClientError> {
+        let now = now_instant();
+        let needs_initial_populate = {
+            let cache = self
+                .allowed_dm_cache
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            if cache.populated_at.is_some() {
+                if let Some(hit) = match_allowed_dm(&cache, resolved_users) {
+                    return Ok(hit);
+                }
+            }
+            cache.populated_at.is_none()
+                || cache.populated_at.is_some_and(|t| {
+                    now.saturating_duration_since(t) >= RESTRICTED_CACHE_REFRESH_TTL
+                })
+        };
+
+        if needs_initial_populate {
+            self.populate_allowed_dms();
+            let cache = self
+                .allowed_dm_cache
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            if let Some(hit) = match_allowed_dm(&cache, resolved_users) {
+                return Ok(hit);
+            }
+        }
+
+        Err(SlackClientError::ChannelAllowlist(
+            ChannelAllowlistError::ChannelNotAllowed {
+                channel_id: format!("dm:{}", resolved_users.join(",")),
+            },
+        ))
+    }
+
+    fn populate_allowed_dms(&self) {
+        let mut entries: Vec<CachedAllowedDm> = Vec::new();
+        let mut caller_user_id: Option<String> = {
+            let cache = self
+                .allowed_dm_cache
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            cache.caller_user_id.clone()
+        };
+
+        for channel_id in &self.channel_guard.allowed {
+            if !channel_id.starts_with('D') && !channel_id.starts_with('G') {
+                continue;
+            }
+            let data = match self.api(
+                "conversations.info",
+                JsonValue::object(vec![("channel", channel_id.as_str().into())]),
+                WriteTokenPreference::User,
+                "GET",
+            ) {
+                Ok(d) => d,
+                Err(err) => {
+                    eprintln!(
+                        "vitruvian-slack-mcp: restricted open_dm conversations.info failed for {channel_id}: {err}"
+                    );
+                    continue;
+                }
+            };
+            if !is_ok(&data) {
+                eprintln!(
+                    "vitruvian-slack-mcp: restricted open_dm conversations.info failed for {channel_id}: {}",
+                    string_or(data.get("error"), "unknown_error")
+                );
+                continue;
+            }
+            let Some(ch) = data.get("channel").filter(|c| js_truthy(Some(c))) else {
+                eprintln!(
+                    "vitruvian-slack-mcp: restricted open_dm conversations.info missing channel for {channel_id}"
+                );
+                continue;
+            };
+
+            let is_im = js_truthy(ch.get("is_im"))
+                || (channel_id.starts_with('D') && !js_truthy(ch.get("is_mpim")));
+            if is_im {
+                if let Some(peer) = ch
+                    .get("user")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                {
+                    entries.push(CachedAllowedDm {
+                        id: channel_id.clone(),
+                        channel: ch.clone(),
+                        kind: AllowedDmKind::Im {
+                            peer_user: peer.to_string(),
+                        },
+                    });
+                } else {
+                    eprintln!(
+                        "vitruvian-slack-mcp: restricted open_dm IM {channel_id} missing user field"
+                    );
+                }
+                continue;
+            }
+
+            if js_truthy(ch.get("is_mpim")) {
+                if caller_user_id.is_none() {
+                    match self.api(
+                        "auth.test",
+                        JsonValue::empty_object(),
+                        WriteTokenPreference::User,
+                        "POST",
+                    ) {
+                        Ok(auth_data) if is_ok(&auth_data) => {
+                            caller_user_id = auth_data
+                                .get("user_id")
+                                .and_then(|v| v.as_str())
+                                .filter(|s| !s.is_empty())
+                                .map(str::to_string);
+                            if caller_user_id.is_none() {
+                                eprintln!(
+                                    "vitruvian-slack-mcp: restricted open_dm auth.test missing user_id"
+                                );
+                            }
+                        }
+                        Ok(auth_data) => {
+                            eprintln!(
+                                "vitruvian-slack-mcp: restricted open_dm auth.test failed: {}",
+                                string_or(auth_data.get("error"), "unknown_error")
+                            );
+                        }
+                        Err(err) => {
+                            eprintln!(
+                                "vitruvian-slack-mcp: restricted open_dm auth.test failed: {err}"
+                            );
+                        }
+                    }
+                }
+                if let Some(members) = self.fetch_mpim_members(channel_id) {
+                    entries.push(CachedAllowedDm {
+                        id: channel_id.clone(),
+                        channel: ch.clone(),
+                        kind: AllowedDmKind::Mpim { members },
+                    });
+                }
+            }
+        }
+
+        let mut cache = self
+            .allowed_dm_cache
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        cache.entries = entries;
+        cache.caller_user_id = caller_user_id;
+        cache.populated_at = Some(now_instant());
+    }
+
+    fn fetch_mpim_members(&self, channel_id: &str) -> Option<HashSet<String>> {
+        let mut members = HashSet::new();
+        let mut cursor: Option<String> = None;
+        let mut seen_cursors = HashSet::new();
+        loop {
+            let mut params = JsonValue::object(vec![
+                ("channel", channel_id.into()),
+                ("limit", 200i64.into()),
+            ]);
+            if let Some(c) = cursor.as_deref().filter(|s| !s.is_empty()) {
+                params.insert("cursor", c.into());
+            }
+            let data = match self.api(
+                "conversations.members",
+                params,
+                WriteTokenPreference::User,
+                "GET",
+            ) {
+                Ok(d) => d,
+                Err(err) => {
+                    eprintln!(
+                        "vitruvian-slack-mcp: restricted open_dm conversations.members failed for {channel_id}: {err}"
+                    );
+                    return None;
+                }
+            };
+            if !is_ok(&data) {
+                eprintln!(
+                    "vitruvian-slack-mcp: restricted open_dm conversations.members failed for {channel_id}: {}",
+                    string_or(data.get("error"), "unknown_error")
+                );
+                return None;
+            }
+            if let Some(arr) = data.get("members").and_then(|v| v.as_array()) {
+                for item in arr {
+                    if let Some(uid) = item.as_str().filter(|s| !s.is_empty()) {
+                        members.insert(uid.to_string());
+                    }
+                }
+            }
+            cursor = data
+                .get("response_metadata")
+                .and_then(|m| m.get("next_cursor"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+            match &cursor {
+                None => break,
+                Some(nc) if !seen_cursors.insert(nc.clone()) => break,
+                Some(_) => {}
+            }
+        }
+        Some(members)
     }
 
     pub fn schedule_message(
@@ -5428,5 +5848,374 @@ mod tests {
         assert!(raw_messages.contains_key("paging"));
         assert!(raw_messages.contains_key("pagination"));
         assert!(!raw_msg.contains_key("filtered_out"));
+    }
+
+    #[test]
+    fn restricted_channel_name_misses_reuse_cached_allowlist_map_without_recalling_slack() {
+        let clock = set_mock_clock();
+        let guard = set_mock_fetch(|req| {
+            if req.url.contains("/api/conversations.info") {
+                if req.url.contains("channel=C_ALLOWED") {
+                    return Ok(HttpResponse::json(
+                        200,
+                        JsonValue::parse(
+                            r#"{"ok":true,"channel":{"id":"C_ALLOWED","name":"allowed-one","is_private":false}}"#,
+                        )
+                        .unwrap(),
+                    ));
+                }
+                if req.url.contains("channel=C_SECOND") {
+                    return Ok(HttpResponse::json(
+                        200,
+                        JsonValue::parse(
+                            r#"{"ok":true,"channel":{"id":"C_SECOND","name":"allowed-two","is_private":false}}"#,
+                        )
+                        .unwrap(),
+                    ));
+                }
+            }
+            Ok(HttpResponse::json(
+                200,
+                JsonValue::object(vec![("ok", true.into())]),
+            ))
+        });
+
+        let client = client_for(&http_env());
+
+        // First miss builds the allowed-ID -> name map once (2 conversations.info calls).
+        let err1 = client.resolve_channel_id("#not-allowed-1").unwrap_err();
+        assert!(matches!(
+            err1,
+            SlackClientError::ChannelAllowlist(ChannelAllowlistError::ChannelNotAllowed { .. })
+        ));
+        assert_eq!(
+            guard
+                .calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|c| c.url.contains("/api/conversations.info"))
+                .count(),
+            2
+        );
+
+        // Repeated misses within the refresh window make ZERO conversations.info calls.
+        guard.calls.lock().unwrap().clear();
+        clock.advance(Duration::from_secs(120));
+        assert!(matches!(
+            client.resolve_channel_id("#not-allowed-1"),
+            Err(SlackClientError::ChannelAllowlist(
+                ChannelAllowlistError::ChannelNotAllowed { .. }
+            ))
+        ));
+        assert!(matches!(
+            client.resolve_channel_id("#not-allowed-2"),
+            Err(SlackClientError::ChannelAllowlist(
+                ChannelAllowlistError::ChannelNotAllowed { .. }
+            ))
+        ));
+        assert_eq!(
+            guard
+                .calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|c| c.url.contains("/api/conversations.info"))
+                .count(),
+            0,
+            "repeated restricted #name misses must make zero conversations.info calls"
+        );
+
+        // Cached allowed name also resolves with zero calls.
+        assert_eq!(
+            client.resolve_channel_id("#Allowed-Two").unwrap(),
+            "C_SECOND"
+        );
+        assert!(guard.calls.lock().unwrap().is_empty());
+
+        // Bounded refresh after 5 minutes refreshes at most once, then re-caches for subsequent misses.
+        clock.advance(Duration::from_secs(181));
+        assert!(client.resolve_channel_id("#still-missing").is_err());
+        assert_eq!(
+            guard
+                .calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|c| c.url.contains("/api/conversations.info"))
+                .count(),
+            2
+        );
+        guard.calls.lock().unwrap().clear();
+        assert!(client.resolve_channel_id("#still-missing-2").is_err());
+        assert!(guard.calls.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn unrestricted_channel_name_negative_cache_suppresses_relist_until_ttl_expires() {
+        let clock = set_mock_clock();
+        let guard = set_mock_fetch(|req| {
+            if req.url.contains("/api/conversations.list") {
+                return Ok(HttpResponse::json(
+                    200,
+                    JsonValue::parse(
+                        r#"{"ok":true,"channels":[{"id":"C_GEN","name":"general","is_private":false}],"response_metadata":{"next_cursor":""}}"#,
+                    )
+                    .unwrap(),
+                ));
+            }
+            Ok(HttpResponse::json(
+                200,
+                JsonValue::object(vec![("ok", true.into())]),
+            ))
+        });
+
+        let client = client_for(&stdio_env());
+
+        // First miss pages conversations.list once.
+        let err1 = client.resolve_channel_id("#missing-room").unwrap_err();
+        assert_eq!(err1.to_string(), "channel_not_found: #missing-room");
+        assert_eq!(
+            guard
+                .calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|c| c.url.contains("/api/conversations.list"))
+                .count(),
+            1
+        );
+
+        // Second miss inside the 60s TTL (case-insensitive) makes ZERO conversations.list calls.
+        guard.calls.lock().unwrap().clear();
+        clock.advance(Duration::from_secs(30));
+        let err2 = client.resolve_channel_id("#MISSING-ROOM").unwrap_err();
+        assert_eq!(err2.to_string(), "channel_not_found: #MISSING-ROOM");
+        assert_eq!(
+            guard
+                .calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|c| c.url.contains("/api/conversations.list"))
+                .count(),
+            0,
+            "second unrestricted miss inside 60s TTL must make zero conversations.list calls"
+        );
+
+        // Hits remain unchanged.
+        assert_eq!(client.resolve_channel_id("#general").unwrap(), "C_GEN");
+        assert!(guard.calls.lock().unwrap().is_empty());
+
+        // After the 60s TTL expires, the next miss makes ONE more conversations.list call.
+        clock.advance(Duration::from_secs(31));
+        let err3 = client.resolve_channel_id("#missing-room").unwrap_err();
+        assert_eq!(err3.to_string(), "channel_not_found: #missing-room");
+        assert_eq!(
+            guard
+                .calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|c| c.url.contains("/api/conversations.list"))
+                .count(),
+            1,
+            "miss after 60s TTL must make exactly one additional conversations.list call"
+        );
+
+        // Subsequent miss within the new TTL window makes zero calls again.
+        guard.calls.lock().unwrap().clear();
+        assert!(client.resolve_channel_id("#missing-room").is_err());
+        assert!(guard.calls.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn restricted_channel_name_resolution_failures_return_byte_identical_standard_refusal() {
+        let mode = Arc::new(AtomicUsize::new(0));
+        let mode_clone = Arc::clone(&mode);
+        let _guard = set_mock_fetch(move |req| {
+            if req.url.contains("/api/conversations.info") {
+                if req.url.contains("channel=C_ALLOWED") {
+                    return match mode_clone.load(Ordering::SeqCst) {
+                        // 0: normal healthy allowed channel
+                        0 => Ok(HttpResponse::json(
+                            200,
+                            JsonValue::parse(
+                                r#"{"ok":true,"channel":{"id":"C_ALLOWED","name":"allowed-one","is_private":false}}"#,
+                            )
+                            .unwrap(),
+                        )),
+                        // 1: transport error
+                        1 => Err("simulated connection reset".to_string()),
+                        // 2: malformed JSON parse failure
+                        2 => Ok(HttpResponse {
+                            status: 200,
+                            headers: Vec::new(),
+                            body: b"<<<not-valid-json>>>".to_vec(),
+                        }),
+                        // 3: visibility mismatch (declared public C_ALLOWED, actual private)
+                        _ => Ok(HttpResponse::json(
+                            200,
+                            JsonValue::parse(
+                                r#"{"ok":true,"channel":{"id":"C_ALLOWED","name":"secret-allowed","is_private":true}}"#,
+                            )
+                            .unwrap(),
+                        )),
+                    };
+                }
+                if req.url.contains("channel=C_SECOND") {
+                    return Ok(HttpResponse::json(
+                        200,
+                        JsonValue::parse(
+                            r#"{"ok":true,"channel":{"id":"C_SECOND","name":"good-room","is_private":false}}"#,
+                        )
+                        .unwrap(),
+                    ));
+                }
+            }
+            Ok(HttpResponse::json(
+                200,
+                JsonValue::object(vec![("ok", true.into())]),
+            ))
+        });
+
+        // Baseline normal refusal for a disallowed #name.
+        mode.store(0, Ordering::SeqCst);
+        let baseline_client = client_for(&http_env());
+        let expected_refusal = baseline_client
+            .resolve_channel_id("#disallowed-room")
+            .unwrap_err();
+        assert!(matches!(
+            expected_refusal,
+            SlackClientError::ChannelAllowlist(ChannelAllowlistError::ChannelNotAllowed { .. })
+        ));
+
+        // 1. Transport error on C_ALLOWED still returns byte-identical refusal for #disallowed-room
+        //    and still resolves healthy C_SECOND.
+        mode.store(1, Ordering::SeqCst);
+        let transport_client = client_for(&http_env());
+        let err_transport = transport_client
+            .resolve_channel_id("#disallowed-room")
+            .unwrap_err();
+        assert_eq!(err_transport, expected_refusal);
+        assert_eq!(err_transport.to_string(), expected_refusal.to_string());
+        assert_eq!(
+            transport_client.resolve_channel_id("#good-room").unwrap(),
+            "C_SECOND"
+        );
+
+        // 2. JSON parse failure on C_ALLOWED returns byte-identical standard refusal.
+        mode.store(2, Ordering::SeqCst);
+        let parse_client = client_for(&http_env());
+        let err_parse = parse_client
+            .resolve_channel_id("#disallowed-room")
+            .unwrap_err();
+        assert_eq!(err_parse, expected_refusal);
+        assert_eq!(err_parse.to_string(), expected_refusal.to_string());
+
+        // 3. Visibility mismatch on C_ALLOWED returns byte-identical standard refusal
+        //    (and refuses #secret-allowed too).
+        mode.store(3, Ordering::SeqCst);
+        let vis_client = client_for(&http_env());
+        let err_vis = vis_client
+            .resolve_channel_id("#disallowed-room")
+            .unwrap_err();
+        assert_eq!(err_vis, expected_refusal);
+        assert_eq!(err_vis.to_string(), expected_refusal.to_string());
+        let err_mismatched_self = vis_client
+            .resolve_channel_id("#secret-allowed")
+            .unwrap_err();
+        assert_eq!(
+            err_mismatched_self.to_string(),
+            baseline_client
+                .resolve_channel_id("#secret-allowed")
+                .unwrap_err()
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn resolve_user_id_resolves_handles_beyond_max_cached_users_cap() {
+        // Build 102 pages x 200 users = 20,400 users (> MAX_CACHED_USERS = 20,000).
+        const TOTAL_PAGES: usize = 102;
+        const PER_PAGE: usize = 200;
+        let pages: Arc<Vec<Vec<u8>>> = Arc::new(
+            (0..TOTAL_PAGES)
+                .map(|page| {
+                    let mut members_json = String::with_capacity(PER_PAGE * 64);
+                    members_json.push('[');
+                    for i in 0..PER_PAGE {
+                        if i > 0 {
+                            members_json.push(',');
+                        }
+                        let idx = page * PER_PAGE + i;
+                        if idx == TOTAL_PAGES * PER_PAGE - 1 {
+                            members_json.push_str(
+                                r#"{"id":"U_BEYOND_CAP","name":"beyond_cap","profile":{"display_name":"Beyond Cap","real_name":"Beyond Cap User"}}"#,
+                            );
+                        } else {
+                            members_json.push_str(&format!(
+                                r#"{{"id":"U_{idx:05}","name":"user_{idx}"}}"#
+                            ));
+                        }
+                    }
+                    members_json.push(']');
+                    let next_cursor = if page + 1 < TOTAL_PAGES {
+                        format!("page_{}", page + 1)
+                    } else {
+                        String::new()
+                    };
+                    format!(
+                        r#"{{"ok":true,"members":{members_json},"response_metadata":{{"next_cursor":"{next_cursor}"}}}}"#
+                    )
+                    .into_bytes()
+                })
+                .collect(),
+        );
+
+        let pages_ref = Arc::clone(&pages);
+        let guard = set_mock_fetch(move |req| {
+            if req.url.contains("/api/users.list") {
+                let page_idx = req
+                    .url
+                    .split("cursor=page_")
+                    .nth(1)
+                    .and_then(|s| s.split('&').next())
+                    .and_then(|n| n.parse::<usize>().ok())
+                    .unwrap_or(0);
+                return Ok(HttpResponse {
+                    status: 200,
+                    headers: Vec::new(),
+                    body: pages_ref[page_idx].clone(),
+                });
+            }
+            Ok(HttpResponse::json(
+                200,
+                JsonValue::object(vec![("ok", true.into())]),
+            ))
+        });
+
+        let client = client_for(&stdio_env());
+
+        // Handle at index 20,399 (page 102, beyond the 20,000 cache cap) must still resolve.
+        assert_eq!(
+            client.resolve_user_id("@beyond_cap").unwrap(),
+            "U_BEYOND_CAP"
+        );
+        assert_eq!(
+            guard
+                .calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|c| c.url.contains("/api/users.list"))
+                .count(),
+            TOTAL_PAGES
+        );
+
+        // Cached handle within the first 20,000 resolves with zero extra users.list calls.
+        guard.calls.lock().unwrap().clear();
+        assert_eq!(client.resolve_user_id("@user_42").unwrap(), "U_00042");
+        assert!(guard.calls.lock().unwrap().is_empty());
     }
 }
