@@ -41,6 +41,9 @@ private final class FakeModel: StyleRewriting, @unchecked Sendable {
     private let behaviour: Behaviour
     private var _calls: [(text: String, instructions: String, key: String?)] = []
     var calls: [(text: String, instructions: String, key: String?)] { lock.withLock { _calls } }
+    private var _gaveUp = false
+    /// A stalled call was cancelled: the stylist gave up on it.
+    var gaveUp: Bool { lock.withLock { _gaveUp } }
 
     init(_ behaviour: Behaviour) { self.behaviour = behaviour }
 
@@ -50,7 +53,12 @@ private final class FakeModel: StyleRewriting, @unchecked Sendable {
         case .answer(let out): return out
         case .fail: throw StyleRewriteError.unavailable("no model")
         case .stall:
-            try await Task.sleep(for: .seconds(30))
+            // Stalls until cancelled. A stylist that never gives up hangs
+            // here, and the test's time limit fails it.
+            do { try await Task.sleep(for: .seconds(3600)) } catch {
+                lock.withLock { _gaveUp = true }
+                throw error
+            }
             return "too late"
         }
     }
@@ -242,16 +250,17 @@ private let reply = """
         #expect(log.all.count == 2, "each failure is logged")
     }
 
-    @Test func aModelThatStallsIsGivenUpOn() async {
-        let start = Date()
-        let out = await stylist(gemini: FakeModel(.stall), apple: FakeModel(.stall), timeout: 0.2)
+    /// Checks the outcome, not the clock: a busy CI Mac once took 4.8 s over a
+    /// 0.2 s timeout (#4529). Each stalled model must be called and then
+    /// cancelled; one that is never given up on stalls for an hour, and the
+    /// time limit fails the test.
+    @Test(.timeLimit(.minutes(1))) func aModelThatStallsIsGivenUpOn() async {
+        let gemini = FakeModel(.stall), apple = FakeModel(.stall)
+        let out = await stylist(gemini: gemini, apple: apple, timeout: 0.2)
             .style(reply, config: styled(.plain, model: .gemini))
         #expect(out == GoogleHomeClient.cleanForSpeech(reply, length: .summary))
-        // Each stalled model would take 30 s; giving up at 0.2 s each finishes
-        // far sooner. The bound is loose because a busy CI Mac can delay this
-        // test's start by seconds (it took 4.8 s in a merge-queue run): any
-        // bound well under 30 s still proves the stall was given up on.
-        #expect(Date().timeIntervalSince(start) < 15)
+        #expect(gemini.calls.count == 1 && gemini.gaveUp, "Gemini was asked, then given up on")
+        #expect(apple.calls.count == 1 && apple.gaveUp, "Apple was asked, then given up on")
     }
 
     @Test func anAnswerThatCleansToNothingFallsThrough() async {
