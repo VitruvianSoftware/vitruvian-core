@@ -32,9 +32,9 @@ import VitruvianSpeakerCore
 enum Entry {
     static func main() {
         let arguments = Array(CommandLine.arguments.dropFirst())
-        if BroadcastCommand.isInvocation(argv0: CommandLine.arguments.first) {
+        if let broadcastArgs = BroadcastCommand.invocationArguments(argv: CommandLine.arguments) {
             MainActor.assumeIsolated {
-                BroadcastCommand.run(arguments, engine: .app, parts: AppStartup.commandLineParts())
+                BroadcastCommand.run(broadcastArgs, engine: .app, parts: AppStartup.commandLineParts())
             }
         }
         if VitruvianSpeakerCommandLine.recognizes(arguments) {

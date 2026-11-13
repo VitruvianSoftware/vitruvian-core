@@ -104,6 +104,7 @@ final class AppSide {
                 // extension (design 7.6).
                 repairHooks: { choice in
                     AgentIntegration.shared.repairHookIfMoved(choice: choice)
+                    AgentIntegration.shared.syncPlugins(config: ConfigManager.shared.config, installMissing: true, choice: choice)
                     AgentIntegration.shared.migrateBroadcastInstructions()
                     BroadcastCommandLink.ensureInstalled(targetPath: AgentIntegration.runningExecutable())
                 },

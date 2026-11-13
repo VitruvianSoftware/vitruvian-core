@@ -554,10 +554,14 @@ private func makeSampleConfig(
     // MARK: - Instruction Text & Legacy Migration
 
     @Test func instructionTextAndLegacyMigration() throws {
+        #expect(!CodingAgent.broadcastInstruction.contains("vitruvian-speaker-broadcast"))
+        #expect(!CodingAgent.broadcastInstruction.contains("home-speaker-broadcast"))
         #expect(!CodingAgent.broadcastInstruction.contains("speaker_broadcast.json"))
+        #expect(CodingAgent.broadcastInstruction.contains("speaker-broadcast \"<summary>\""))
         #expect(CodingAgent.broadcastInstruction.contains("speaker-broadcast --on"))
-        #expect(CodingAgent.broadcastInstruction.contains("speaker-broadcast --off"))
-        #expect(CodingAgent.broadcastInstruction.contains("speaker-broadcast --set-target <room>"))
+        #expect(CodingAgent.broadcastInstruction.contains("--off"))
+        #expect(CodingAgent.broadcastInstruction.contains("--set-target <room>"))
+        #expect(CodingAgent.broadcastInstruction.contains("speaker-broadcast --help"))
 
         // Existing legacy detections still match
         let oldVitruvianLine = "- Follow the `vitruvian-speaker-broadcast` skill: Accompany top-level conversational responses to the user with a concise spoken broadcast (1-2 sentences) by executing the CLI tool `speaker-broadcast \"<summary>\"` (never run `speaker-broadcast` from a background subagent or a delegated `claude -p` helper call). Always use the CLI rather than manual `home_mcp` calls with device IDs, because `speaker-broadcast` dynamically resolves the live `default_target` from `~/.gemini/speaker_broadcast.json`, checks quiet hours, and verifies enabled status on every execution without caching state. When the user asks to turn speaker broadcasts on/off or change the target room, update `~/.gemini/speaker_broadcast.json` (or run `speaker-broadcast --set-target <room>`) and confirm."
@@ -566,6 +570,15 @@ private func makeSampleConfig(
         #expect(AgentIntegration.mentionsBroadcastInstruction(oldVitruvianLine))
         #expect(AgentIntegration.mentionsBroadcastInstruction(oldHomeSpeakerLine))
         #expect(AgentIntegration.mentionsBroadcastInstruction(CodingAgent.broadcastInstruction))
+
+        // Mixed/duplicate old wording block is replaced once with no duplicate left behind
+        let mixedOldBlock = "# Header\n\(oldVitruvianLine)\n\(oldHomeSpeakerLine)\n# Footer\n"
+        let migratedOnce = try #require(AgentIntegration.migratingBroadcastInstruction(in: mixedOldBlock))
+        #expect(migratedOnce == "# Header\n\(CodingAgent.broadcastInstruction)\n# Footer\n")
+        #expect(!migratedOnce.contains("vitruvian-speaker-broadcast"))
+        #expect(!migratedOnce.contains("speaker_broadcast.json"))
+        #expect(migratedOnce.components(separatedBy: CodingAgent.broadcastInstruction).count == 2)
+        #expect(AgentIntegration.migratingBroadcastInstruction(in: migratedOnce) == nil, "already current: idempotent")
 
         let root = try makeScratchDir()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -581,12 +594,18 @@ private func makeSampleConfig(
         #expect(afterAdd.hasPrefix("# Header\n"))
         #expect(afterAdd.hasSuffix("\n# Footer\n"))
         #expect(!afterAdd.contains("speaker_broadcast.json"))
-        #expect(afterAdd.components(separatedBy: "vitruvian-speaker-broadcast").count == 2)
+        #expect(!afterAdd.contains("vitruvian-speaker-broadcast"))
+        #expect(afterAdd.components(separatedBy: CodingAgent.broadcastInstruction).count == 2)
 
-        // migrateBroadcastInstructions updates existing Claude/OpenCode files and preserves custom non-legacy wording
+        // migrateBroadcastInstructions removes managed instruction lines (legacy + standalone) for
+        // plugin-backed agents and preserves custom user-written wording.
         let claudeMd = root.appendingPathComponent(".claude/CLAUDE.md")
         try FileManager.default.createDirectory(at: claudeMd.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try "\(oldHomeSpeakerLine)\n".write(to: claudeMd, atomically: true, encoding: .utf8)
+        try "# Personal\n\(oldHomeSpeakerLine)\n\(CodingAgent.broadcastInstruction)\nKeep this note.\n"
+            .write(to: claudeMd, atomically: true, encoding: .utf8)
+
+        let geminiMd = root.appendingPathComponent(".gemini/GEMINI.md")
+        try "\(oldVitruvianLine)\n".write(to: geminiMd, atomically: true, encoding: .utf8)
 
         let openCodeMd = root.appendingPathComponent(".config/opencode/AGENTS.md")
         try FileManager.default.createDirectory(at: openCodeMd.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -595,8 +614,84 @@ private func makeSampleConfig(
 
         integration.migrateBroadcastInstructions()
 
-        let migratedClaude = try String(contentsOf: claudeMd, encoding: .utf8)
-        #expect(migratedClaude == "\(CodingAgent.broadcastInstruction)\n")
+        #expect(try String(contentsOf: claudeMd, encoding: .utf8) == "# Personal\nKeep this note.\n")
+        #expect(try String(contentsOf: geminiMd, encoding: .utf8) == "")
+        #expect(try String(contentsOf: geminiAgents, encoding: .utf8) == "# Header\n# Footer\n")
         #expect(try String(contentsOf: openCodeMd, encoding: .utf8) == "\(customInstruction)\n")
+    }
+
+    // MARK: - SpeakerSkill Parity & Invocation Routing
+
+    @Test func speakerSkillCommandsMatchOptionTableAndExamplesParse() throws {
+        let generated = SpeakerSkill.commandsAndOptionsSection()
+        let helpText = BroadcastCommand.helpLines().joined(separator: "\n")
+
+        for spec in BroadcastCommand.optionSpecs {
+            let expectedToken = spec.isPositional ? "speaker-broadcast \(spec.syntax)" : spec.syntax
+            #expect(generated.contains("`\(expectedToken)`"), "skill section missing \(expectedToken)")
+            #expect(helpText.contains(spec.syntax), "help text missing \(spec.syntax)")
+        }
+
+        // Extract every `speaker-broadcast ...` invocation inside fenced ```sh blocks in SKILL.md
+        let markdown = SpeakerSkill.markdown()
+        #expect(markdown.contains(generated))
+        let lines = markdown.components(separatedBy: "\n")
+        var inShellFence = false
+        var commandLines: [String] = []
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("```sh") {
+                inShellFence = true
+                continue
+            }
+            if inShellFence && trimmed.hasPrefix("```") {
+                inShellFence = false
+                continue
+            }
+            if inShellFence && trimmed.hasPrefix("speaker-broadcast") {
+                commandLines.append(trimmed)
+            }
+        }
+        #expect(commandLines.count >= 9)
+        for line in commandLines {
+            let tokens = Self.tokenizeShellWords(line)
+            let args = Array(tokens.dropFirst())
+            switch BroadcastCommand.parse(args) {
+            case .failure(let err):
+                Issue.record("Skill example '\(line)' failed to parse: \(err)")
+            case .success:
+                break
+            }
+        }
+    }
+
+    @Test func invocationArgumentsAndShortForceFlagWork() throws {
+        #expect(BroadcastCommand.invocationArguments(argv: ["/Users/a/.local/bin/speaker-broadcast", "--status"]) == ["--status"])
+        #expect(BroadcastCommand.invocationArguments(argv: ["/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker", "--broadcast-cli", "-f", "Hello"]) == ["-f", "Hello"])
+        #expect(BroadcastCommand.invocationArguments(argv: ["/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker", "--help"]) == nil)
+        #expect(BroadcastCommand.invocationArguments(argv: ["/Users/a/Library/Application Support/Vitruvian/Tools/dev.vitruvian.speaker/bin/tool"]) == nil)
+
+        #expect(try BroadcastCommand.parse(["-f", "Urgent", "alert"]).get()
+            == .speak(message: "Urgent alert", target: nil, force: true))
+    }
+
+    private static func tokenizeShellWords(_ line: String) -> [String] {
+        var words: [String] = []
+        var current = ""
+        var inDoubleQuote = false
+        for ch in line {
+            if ch == "\"" {
+                inDoubleQuote.toggle()
+            } else if ch == " " && !inDoubleQuote {
+                if !current.isEmpty {
+                    words.append(current)
+                    current = ""
+                }
+            } else {
+                current.append(ch)
+            }
+        }
+        if !current.isEmpty { words.append(current) }
+        return words
     }
 }

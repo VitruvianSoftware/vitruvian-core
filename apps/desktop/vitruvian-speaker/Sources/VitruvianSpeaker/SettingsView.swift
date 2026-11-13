@@ -919,7 +919,17 @@ public struct SettingsView: View {
                 ForEach(CodingAgent.allCases, id: \.self) { agent in
                     Toggle(SettingsCatalog.Key.forAgent(agent).label(), isOn: Binding(
                         get: { configManager.config.announces(agent) },
-                        set: { configManager.setAnnounces(agent, $0) }
+                        set: { isOn in
+                            configManager.setAnnounces(agent, isOn)
+                            if !door.plan.role.isQuiet {
+                                if !isOn {
+                                    try? AgentIntegration.shared.removeHook(for: agent)
+                                } else if AgentIntegration.shared.status(of: agent).isInstalled {
+                                    try? AgentIntegration.shared.installHook(for: agent)
+                                }
+                                viewModel.refresh()
+                            }
+                        }
                     ))
                 }
                 Picker(SettingsCatalog.Key.announceSource.label(), selection: Binding(
@@ -1000,6 +1010,12 @@ public struct SettingsView: View {
                             .font(.caption.monospaced())
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
+                        if st.agent == .claudeCode && st.usingSettingsFallback {
+                            Text("Installed in ~/.claude/settings.json because the claude CLI was not found (skill and plugin bin require the claude CLI).")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         if st.configuredByInstruction {
                             Label(st.hook == .installed
                                   ? "Your \(st.agent.instructionFileName) also tells \(st.agent.displayName) to broadcast on its own. With the hook installed, remove that instruction to avoid hearing replies twice."

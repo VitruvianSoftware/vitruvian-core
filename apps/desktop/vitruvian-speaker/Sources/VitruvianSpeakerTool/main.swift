@@ -163,15 +163,15 @@ func runProgram() -> Never {
     // or a page's) never revokes a login the app shares.
     let appSecrets = VitruvianSpeakerProfile.app().secretsURL
 
-    // When invoked as `speaker-broadcast`, run its CLI front end before
-    // VitruvianSpeaker's own flags so zero-arg status, messages and
-    // toggles work consistently across both programs.
-    if BroadcastCommand.isInvocation(argv0: CommandLine.arguments.first) {
+    // When invoked as `speaker-broadcast` (or via `--broadcast-cli`), run its CLI
+    // front end before VitruvianSpeaker's own flags so zero-arg status, messages
+    // and toggles work consistently across both programs.
+    if let broadcastArgs = BroadcastCommand.invocationArguments(argv: CommandLine.arguments) {
         if let located = ExtensionLocation.locate(environment: environment, program: program, workingDirectory: nil) {
             VitruvianSpeakerProfile.useForThisProcess(located.profile)
             let appProfile = VitruvianSpeakerProfile.app(home: home)
             BroadcastCommand.run(
-                arguments, engine: VitruvianSpeakerEngine(profile: located.profile),
+                broadcastArgs, engine: VitruvianSpeakerEngine(profile: located.profile),
                 parts: ExtensionSide.commandLineParts(
                     check: check, appSecretsURL: appSecrets, appSettingsURL: appProfile.settingsURL,
                     appProfile: appProfile, program: program, appProgram: { locateApp() }, home: home))
@@ -179,7 +179,7 @@ func runProgram() -> Never {
         let appProfile = VitruvianSpeakerProfile.app(home: home)
         VitruvianSpeakerProfile.useForThisProcess(appProfile)
         BroadcastCommand.run(
-            arguments,
+            broadcastArgs,
             engine: VitruvianSpeakerEngine(profile: appProfile),
             parts: AppStartup.commandLineParts())
     }

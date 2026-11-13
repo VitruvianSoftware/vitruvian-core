@@ -67,6 +67,81 @@ public enum SubagentDetection {
 /// Front-end for Vitruvian Speaker when invoked under the `speaker-broadcast` name.
 public enum BroadcastCommand {
     public static let commandName = "speaker-broadcast"
+    public static let explicitInvocationFlag = "--broadcast-cli"
+
+    public struct OptionSpec: Sendable, Equatable {
+        public enum Category: Sendable, Equatable {
+            case positional
+            case speaking
+            case command
+        }
+
+        public let syntax: String
+        public let summary: String
+        public let isPositional: Bool
+        public let category: Category
+
+        public init(syntax: String, summary: String, isPositional: Bool = false, category: Category) {
+            self.syntax = syntax
+            self.summary = summary
+            self.isPositional = isPositional
+            self.category = category
+        }
+    }
+
+    public static let optionSpecs: [OptionSpec] = [
+        OptionSpec(
+            syntax: "\"<message>\"",
+            summary: "Speak <message> on the active target speaker",
+            isPositional: true,
+            category: .positional
+        ),
+        OptionSpec(
+            syntax: "-t, --target <alias>",
+            summary: "Speak once on another speaker without changing the default",
+            category: .speaking
+        ),
+        OptionSpec(
+            syntax: "-f, --force",
+            summary: "Speak even during quiet hours or snooze",
+            category: .speaking
+        ),
+        OptionSpec(
+            syntax: "--on",
+            summary: "Turn broadcasting ON",
+            category: .command
+        ),
+        OptionSpec(
+            syntax: "--off",
+            summary: "Turn broadcasting OFF",
+            category: .command
+        ),
+        OptionSpec(
+            syntax: "--toggle",
+            summary: "Toggle broadcasting ON/OFF",
+            category: .command
+        ),
+        OptionSpec(
+            syntax: "-s, --set-target <alias>",
+            summary: "Change the persistent default speaker (exact or loose match)",
+            category: .command
+        ),
+        OptionSpec(
+            syntax: "-l, --list",
+            summary: "List configured speakers and rooms (* = default)",
+            category: .command
+        ),
+        OptionSpec(
+            syntax: "--status",
+            summary: "Show current enabled state, active target, voices, and quiet hours",
+            category: .command
+        ),
+        OptionSpec(
+            syntax: "-h, --help",
+            summary: "Show this help text and exit",
+            category: .command
+        ),
+    ]
 
     public enum ToggleAction: String, Equatable, Sendable {
         case on
@@ -107,6 +182,18 @@ public enum BroadcastCommand {
     public static func isInvocation(argv0: String?) -> Bool {
         guard let argv0, !argv0.isEmpty else { return false }
         return (argv0 as NSString).lastPathComponent == commandName
+    }
+
+    /// Returns the `speaker-broadcast` arguments when invoked either via `speaker-broadcast`
+    /// symlink (`argv[0]` basename) or via the explicit `--broadcast-cli` shim flag.
+    public static func invocationArguments(argv: [String] = CommandLine.arguments) -> [String]? {
+        if isInvocation(argv0: argv.first) {
+            return Array(argv.dropFirst())
+        }
+        if argv.dropFirst().first == explicitInvocationFlag {
+            return Array(argv.dropFirst(2))
+        }
+        return nil
     }
 
     // MARK: - Parsing
@@ -175,7 +262,7 @@ public enum BroadcastCommand {
                     index += 1
                     continue
                 }
-                if arg == "--force" {
+                if arg == "-f" || arg == "--force" {
                     force = true
                     index += 1
                     continue
@@ -340,27 +427,29 @@ public enum BroadcastCommand {
     // MARK: - Output Formatting
 
     public static func helpLines() -> [String] {
-        [
+        let speaking = optionSpecs.filter { $0.category == .speaking }
+        let commands = optionSpecs.filter { $0.category == .command }
+        let padWidth = (speaking + commands).map(\.syntax.count).max() ?? 24
+
+        var lines = [
             "Usage:",
             "  speaker-broadcast \"<message>\"            Broadcast a message",
             "  speaker-broadcast [OPTIONS] \"<message>\"  Broadcast with options",
             "  speaker-broadcast [COMMAND]",
             "",
             "Speaking options:",
-            "  -t, --target <alias>      Speak once on another speaker (default unchanged)",
-            "      --force               Speak even during quiet hours or snooze",
-            "",
-            "Commands:",
-            "  --on                      Turn broadcasting ON",
-            "  --off                     Turn broadcasting OFF",
-            "  --toggle                  Toggle broadcasting ON/OFF",
-            "  -s, --set-target <alias>  Change the default speaker (exact or loose match)",
-            "  -l, --list                List configured speakers and rooms (* = default)",
-            "      --status              Show current broadcast state, target, voices, quiet hours",
-            "  -h, --help                Show this help and exit",
-            "",
-            "With no arguments, prints --status and a hint.",
         ]
+        for spec in speaking {
+            lines.append("  \(spec.syntax.padding(toLength: padWidth, withPad: " ", startingAt: 0))  \(spec.summary)")
+        }
+        lines.append("")
+        lines.append("Commands:")
+        for spec in commands {
+            lines.append("  \(spec.syntax.padding(toLength: padWidth, withPad: " ", startingAt: 0))  \(spec.summary)")
+        }
+        lines.append("")
+        lines.append("With no arguments, prints --status and a hint.")
+        return lines
     }
 
     public static func formatList(config: SpeakerConfig) -> [String] {
