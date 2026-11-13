@@ -70,6 +70,7 @@ pub fn run_all(ctx: &Context) {
     iac::check_copybara_infra_exclude(ctx);
     iac::check_copybara_version_maps(ctx);
     iac::check_copybara_export_triggers(ctx);
+    iac::check_copybara_export_awaits_key_rotation(ctx);
     iac::check_copybara_component_lists(ctx);
 
     iac::check_release_infra_exclude(ctx);

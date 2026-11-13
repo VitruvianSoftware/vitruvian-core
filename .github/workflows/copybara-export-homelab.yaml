@@ -35,6 +35,7 @@ on:
 
 permissions:
     contents: read
+    actions: read # _copybara-export.yaml waits for Repo Config Apply runs
 
 concurrency:
     group: copybara-export-homelab

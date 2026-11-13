@@ -25,6 +25,7 @@
 //! check_release_please_packages, check_release_infra_exclude,
 //! check_copybara_infra_exclude, check_copybara_version_maps,
 //! check_copybara_export_triggers, check_copybara_component_lists.
+//! Native: check_copybara_export_awaits_key_rotation.
 
 use crate::Context;
 use std::collections::{BTreeMap, BTreeSet};
@@ -1373,4 +1374,314 @@ fn extract_copybara_repos(content: &str) -> Vec<String> {
     }
 
     repos.into_iter().collect()
+}
+
+// ---------------------------------------------------------------------------
+// check_copybara_export_awaits_key_rotation (group: copybara)
+// ---------------------------------------------------------------------------
+
+const EXPORT_WF_REL: &str = ".github/workflows/_copybara-export.yaml";
+const APPLY_WF_FILE: &str = "_repo-config-apply.yaml";
+const AWAIT_JOB: &str = "await-repo-config";
+
+/// Split a workflow's `jobs:` block into (job id, the job's lines).
+fn workflow_job_bodies(content: &str) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    let mut in_jobs = false;
+    let mut job_indent: Option<usize> = None;
+    for line in content.lines() {
+        if line.starts_with("jobs:") {
+            in_jobs = true;
+            continue;
+        }
+        if !in_jobs {
+            continue;
+        }
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let ind = line.len() - line.trim_start().len();
+        if ind == 0 {
+            break;
+        }
+        let ji = *job_indent.get_or_insert(ind);
+        if ind == ji && trimmed.ends_with(':') {
+            out.push((trimmed.trim_end_matches(':').to_string(), String::new()));
+        } else if let Some(last) = out.last_mut() {
+            last.1.push_str(trimmed);
+            last.1.push('\n');
+        }
+    }
+    out
+}
+
+/// The ids a job's `needs:` names, in either the scalar or the list form.
+fn job_needs(body: &str) -> Vec<String> {
+    for line in body.lines() {
+        if let Some(rest) = line.strip_prefix("needs:") {
+            let rest = rest.split('#').next().unwrap_or("").trim();
+            return rest
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .split(',')
+                .map(|s| s.trim().trim_matches('"').trim_matches('\'').to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+        }
+    }
+    Vec::new()
+}
+
+/// A mirror export must not load its deploy key while Repo Config Apply can
+/// still rotate it (2026-11-13: #4661 renamed three mirrors, the apply replaced
+/// their keys, and the exports that had already started pushed with the old
+/// one and were refused). So in _copybara-export.yaml every job that reads the
+/// key must wait on a job that waits for the apply, and every caller must grant
+/// the actions: read that wait needs to list the apply's runs.
+pub fn check_copybara_export_awaits_key_rotation(ctx: &Context) {
+    let path = format!("{}/{}", ctx.root, EXPORT_WF_REL);
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let why = "a job gets its secrets when it starts, so an export that starts beside a Repo Config Apply that rotates the mirror's key pushes with the old key and is refused (Permission denied (publickey)), as on 2026-11-13 after #4661";
+    let mut failed = false;
+
+    let jobs = workflow_job_bodies(&content);
+    let await_job = jobs.iter().find(|(id, _)| id == AWAIT_JOB);
+    match await_job {
+        None => {
+            failed = true;
+            ctx.emit_fail(
+                "copybara",
+                EXPORT_WF_REL,
+                &format!("no {AWAIT_JOB} job"),
+                &format!("an {AWAIT_JOB} job that waits for {APPLY_WF_FILE}"),
+                why,
+                &format!("restore the {AWAIT_JOB} job in {EXPORT_WF_REL} (see its history)"),
+            );
+        }
+        Some((_, body)) => {
+            let apply_exists =
+                Path::new(&format!("{}/.github/workflows/{}", ctx.root, APPLY_WF_FILE)).exists();
+            if !body.contains(APPLY_WF_FILE) || !apply_exists {
+                failed = true;
+                ctx.emit_fail(
+                    "copybara",
+                    EXPORT_WF_REL,
+                    &format!("{AWAIT_JOB} does not name an existing {APPLY_WF_FILE}"),
+                    &format!("{AWAIT_JOB} waits for .github/workflows/{APPLY_WF_FILE}"),
+                    "the wait would list runs of a workflow that does not exist, find none, and let every export through",
+                    &format!("point APPLY_WORKFLOW in {AWAIT_JOB} at the workflow that applies repo-config"),
+                );
+            }
+        }
+    }
+
+    for (id, body) in &jobs {
+        if id == AWAIT_JOB || !body.contains("secrets.sync_ssh_key") {
+            continue;
+        }
+        if !job_needs(body).iter().any(|n| n == AWAIT_JOB) {
+            failed = true;
+            ctx.emit_fail(
+                "copybara",
+                EXPORT_WF_REL,
+                &format!("job {id} reads sync_ssh_key without needs: {AWAIT_JOB}"),
+                &format!("needs: {AWAIT_JOB}"),
+                why,
+                &format!("add `needs: {AWAIT_JOB}` to the {id} job in {EXPORT_WF_REL}"),
+            );
+        }
+    }
+
+    let wf_dir = format!("{}/.github/workflows", ctx.root);
+    let mut callers: Vec<String> = fs::read_dir(&wf_dir)
+        .map(|it| {
+            it.filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .filter(|n| n.ends_with(".yaml") || n.ends_with(".yml"))
+                .collect()
+        })
+        .unwrap_or_default();
+    callers.sort();
+    for name in &callers {
+        let Ok(c) = fs::read_to_string(format!("{wf_dir}/{name}")) else {
+            continue;
+        };
+        if !c.lines().any(|l| {
+            let t = l.trim();
+            t.starts_with("uses:") && t.contains("/_copybara-export.yaml")
+        }) {
+            continue;
+        }
+        let grants = c.lines().any(|l| {
+            let t = l.split('#').next().unwrap_or("").trim();
+            t == "actions: read" || t == "actions: write"
+        });
+        if !grants {
+            failed = true;
+            let rel = format!(".github/workflows/{name}");
+            ctx.emit_fail(
+                "copybara",
+                &rel,
+                "no actions: read",
+                "permissions include actions: read",
+                "a called workflow gets no more than its caller grants: without it the wait cannot list Repo Config Apply runs and the export fails before it starts",
+                &format!("add `actions: read` under permissions: in {rel}"),
+            );
+        }
+    }
+
+    if !failed {
+        ctx.emit_ok(
+            "copybara",
+            EXPORT_WF_REL,
+            &format!("export waits on {AWAIT_JOB}"),
+            &format!("key-reading jobs need {AWAIT_JOB}; callers grant actions: read"),
+            "an export never loads a mirror key Repo Config Apply is about to rotate",
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run(files: &[(&str, &str)]) -> (u32, u32, String) {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static N: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "conformance-cbawait-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        for (rel, body) in files {
+            let p = dir.join(rel);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, body).unwrap();
+        }
+        let ctx = Context::for_root(dir.to_str().unwrap());
+        check_copybara_export_awaits_key_rotation(&ctx);
+        let out = (
+            ctx.ok_count.get(),
+            ctx.fail_count.get(),
+            ctx.rows.get("copybara"),
+        );
+        let _ = fs::remove_dir_all(&dir);
+        out
+    }
+
+    const APPLY: (&str, &str) = (
+        ".github/workflows/_repo-config-apply.yaml",
+        "name: Repo Config Apply\n",
+    );
+    const CALLER_OK: &str = "permissions:\n    contents: read\n    actions: read # wait\njobs:\n    export:\n        uses: ./.github/workflows/_copybara-export.yaml\n";
+    const CALLER_NO_ACTIONS: &str = "permissions:\n    contents: read\njobs:\n    export:\n        uses: ./.github/workflows/_copybara-export.yaml\n";
+
+    const FIXED: &str = "\
+permissions:
+    contents: read
+jobs:
+    await-repo-config:
+        runs-on: ubuntu-26.04
+        steps:
+            - env:
+                  APPLY_WORKFLOW: _repo-config-apply.yaml
+              run: echo wait
+    export:
+        needs: await-repo-config
+        runs-on: ubuntu-26.04
+        steps:
+            - env:
+                  SSH_KEY: ${{ secrets.sync_ssh_key }}
+              run: echo push
+";
+
+    /// The workflow as it was on 2026-11-13: one export job, no wait.
+    const BEFORE_FIX: &str = "\
+permissions:
+    contents: read
+jobs:
+    export:
+        runs-on: ubuntu-26.04
+        steps:
+            - env:
+                  SSH_KEY: ${{ secrets.sync_ssh_key }}
+              run: echo push
+";
+
+    #[test]
+    fn the_fixed_workflow_passes() {
+        let (ok, fail, rows) = run(&[
+            (EXPORT_WF_REL, FIXED),
+            APPLY,
+            (".github/workflows/copybara-export-a.yaml", CALLER_OK),
+        ]);
+        assert_eq!((ok, fail), (1, 0), "{rows}");
+    }
+
+    #[test]
+    fn the_workflow_that_raced_fails() {
+        let (_, fail, rows) = run(&[
+            (EXPORT_WF_REL, BEFORE_FIX),
+            APPLY,
+            (".github/workflows/copybara-export-a.yaml", CALLER_OK),
+        ]);
+        assert_eq!(fail, 2, "{rows}");
+        assert!(rows.contains("no await-repo-config job"), "{rows}");
+        assert!(rows.contains("job export reads sync_ssh_key"), "{rows}");
+    }
+
+    #[test]
+    fn a_key_reading_job_without_needs_fails() {
+        let wf = FIXED.replace("        needs: await-repo-config\n", "");
+        let (_, fail, rows) = run(&[
+            (EXPORT_WF_REL, &wf),
+            APPLY,
+            (".github/workflows/copybara-export-a.yaml", CALLER_OK),
+        ]);
+        assert_eq!(fail, 1, "{rows}");
+        assert!(rows.contains("job export reads sync_ssh_key"), "{rows}");
+    }
+
+    #[test]
+    fn needs_in_list_form_counts() {
+        let wf = FIXED.replace(
+            "needs: await-repo-config",
+            "needs: [other, await-repo-config]",
+        );
+        let (ok, fail, rows) = run(&[
+            (EXPORT_WF_REL, &wf),
+            APPLY,
+            (".github/workflows/copybara-export-a.yaml", CALLER_OK),
+        ]);
+        assert_eq!((ok, fail), (1, 0), "{rows}");
+    }
+
+    #[test]
+    fn a_missing_apply_workflow_fails() {
+        let (_, fail, rows) = run(&[
+            (EXPORT_WF_REL, FIXED),
+            (".github/workflows/copybara-export-a.yaml", CALLER_OK),
+        ]);
+        assert_eq!(fail, 1, "{rows}");
+    }
+
+    #[test]
+    fn a_caller_without_actions_read_fails() {
+        let (_, fail, rows) = run(&[
+            (EXPORT_WF_REL, FIXED),
+            APPLY,
+            (".github/workflows/copybara-export-a.yaml", CALLER_OK),
+            (
+                ".github/workflows/copybara-export-b.yaml",
+                CALLER_NO_ACTIONS,
+            ),
+        ]);
+        assert_eq!(fail, 1, "{rows}");
+        assert!(rows.contains("copybara-export-b.yaml"), "{rows}");
+    }
 }
