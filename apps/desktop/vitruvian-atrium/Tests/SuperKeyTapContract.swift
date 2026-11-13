@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import CoreGraphics
+import Darwin
 import Foundation
 import VitruvianAtriumCore
 import VitruvianAtriumDesign
@@ -16,18 +17,23 @@ enum SuperKeyTapContract {
     nonisolated final class Machine: @unchecked Sendable {
         private let lock = NSLock()
         private var _tapRequests: [CGEventTapLocation] = []
+        private var _tapPlacements: [CGEventTapPlacement] = []
         private var _hidutil: [[String]] = []
         private var _pending: [@MainActor @Sendable () -> Void] = []
         var trusted = true
 
         var tapRequests: [CGEventTapLocation] { lock.withLock { _tapRequests } }
+        var tapPlacements: [CGEventTapPlacement] { lock.withLock { _tapPlacements } }
         var hidutilCalls: [[String]] { lock.withLock { _hidutil } }
 
         func system(defaults: UserDefaults) -> SuperKeyService.System {
             SuperKeyService.System(
                 defaults: defaults,
-                createTap: { [self] location, _, _, _, _, _ in
-                    lock.withLock { _tapRequests.append(location) }
+                createTap: { [self] location, placement, _, _, _, _ in
+                    lock.withLock {
+                        _tapRequests.append(location)
+                        _tapPlacements.append(placement)
+                    }
                     return nil
                 },
                 runThread: { $0.main() },
@@ -71,8 +77,13 @@ enum SuperKeyTapContract {
             let machine = Machine()
             let service = SuperKeyService(system: machine.system(defaults: defaults))
             service.start()
-            suite.expect(machine.tapRequests == [.cgSessionEventTap] && service.mappingFailure == nil,
+            suite.expect(machine.tapRequests == [.cghidEventTap] && service.mappingFailure == nil,
                          "the keyboard tap is asked for on the tap thread, which reports back on the main queue")
+            // The HID tail transforms keys before every session shortcut
+            // consumer, whichever starts or restarts first, and still after
+            // raw HID filters and shortcut recording at the HID head (#3556).
+            suite.expect(machine.tapPlacements == [.tailAppendEventTap],
+                         "the Super key taps the tail of the HID stage, found \(machine.tapPlacements)")
             machine.drainMain()
             suite.expect(!service.isRunning && !SuperKeyService.isEngaged
                          && service.mappingFailure == .keyboardTapRefused,
