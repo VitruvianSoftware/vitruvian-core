@@ -72,6 +72,7 @@ rust_test(
     crate = ":vitruvian_slack_mcp_lib",
     data = [
         "README.md",
+        "rs/src/testdata_main_tools_list.json",
     ],
 )
 
