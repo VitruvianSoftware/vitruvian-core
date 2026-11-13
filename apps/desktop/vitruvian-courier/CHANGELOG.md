@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.19](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.18...vitruvian-courier-v0.3.19) (2026-11-13)
+
+
+### Bug Fixes
+
+* **vitruvian-atrium:** keep the bundle id com.vitruviansoftware.vitruvian through the rename ([#4668](https://github.com/VitruvianSoftware/vitruvian-core/issues/4668)) ([6438d01](https://github.com/VitruvianSoftware/vitruvian-core/commit/6438d01ac2a243b361f1aa34cec2fecb7970ee4e))
+
 ## [0.3.18](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.17...vitruvian-courier-v0.3.18) (2026-11-12)
 
 
