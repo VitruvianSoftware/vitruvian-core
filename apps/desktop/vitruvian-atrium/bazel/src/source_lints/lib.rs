@@ -2240,7 +2240,7 @@ fn names_use_the_apps_identifier(repo: &Repository) -> Vec<String> {
     let mut problems = Vec::new();
     let sample = [
         "let a = DispatchQueue(label: \"com.vitruvian.spaces\")",
-        "let b = DispatchQueue(label: \"com.vitruviansoftware.atrium.spaces\")",
+        "let b = DispatchQueue(label: \"com.vitruviansoftware.vitruvian.spaces\")",
         "let own = id.hasPrefix(\"com.vitruvian\")",
     ]
     .join("\n");
@@ -2257,7 +2257,7 @@ fn names_use_the_apps_identifier(repo: &Repository) -> Vec<String> {
     }
     if !problems.is_empty() {
         return vec![format!(
-            "name them under com.vitruviansoftware.atrium: {:?}",
+            "name them under com.vitruviansoftware.vitruvian: {:?}",
             problems
         )];
     }

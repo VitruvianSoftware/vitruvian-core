@@ -152,7 +152,7 @@ enum NotchNotificationTests {
         suite.expect(inbox.items.isEmpty && inbox.update([]).isEmpty,
                "clearing an empty inbox is harmless")
 
-        let domain = "com.vitruviansoftware.atrium.tests.notch-notifications"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-notifications"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

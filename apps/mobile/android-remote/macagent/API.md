@@ -812,7 +812,7 @@ Connects to the configured TV (`adb connect <address>`) and runs a single combin
 
 - `available`: `true` when `adb` is found on the Mac (`/opt/homebrew/bin/adb`, `/usr/local/bin/adb`, `~/Library/Android/sdk/platform-tools/adb`, or `PATH`).
 - `foreground`: one of `"Projectivy Home"`, `"SmartTube 4K"`, `"AerialViews 4K"`, `"Disney+"`, `"Netflix"`, `"Awake"`, or `"Standby"`.
-- `address`: read from `~/.config/vitruvian/tv.json` (`address` or `tvAddress`), falling back to `~/Library/Application Support/com.vitruviansoftware.atrium/ToolData/dev.vitruvian.tv/storage.json`, then `"192.168.86.31:5555"`.
+- `address`: read from `~/.config/vitruvian/tv.json` (`address` or `tvAddress`), falling back to `~/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.tv/storage.json`, then `"192.168.86.31:5555"`.
 
 ### `POST /v1/tv/act` (act — Bearer token)
 

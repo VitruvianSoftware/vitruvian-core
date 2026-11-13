@@ -1879,7 +1879,7 @@ enum SwitcherModelFeatureTests {
                                                                   DefaultsKey.monitorPwrTemperature,
                                                                   DefaultsKey.monitorSysBattery]),
                "preview appearance and moved battery visibility travel in settings backups")
-        let batteryVisibilitySuite = "com.vitruviansoftware.atrium.tests.batteryVisibility.\(UUID().uuidString)"
+        let batteryVisibilitySuite = "com.vitruviansoftware.vitruvian.tests.batteryVisibility.\(UUID().uuidString)"
         if let batteryVisibilityDefaults = ScratchDefaults.suite(named: batteryVisibilitySuite) {
             batteryVisibilityDefaults.removePersistentDomain(forName: batteryVisibilitySuite)
             batteryVisibilityDefaults.set(false, forKey: DefaultsKey.monitorSysTemps)
@@ -2846,7 +2846,7 @@ enum SwitcherModelFeatureTests {
         // back to the app.
         suite.expect(registeredDefaults[DefaultsKey.notchHidesMenuBarIcon] as? Bool == false,
                "Dynamic Island only takes the icon's place when asked")
-        let islandIconSuite = "com.vitruviansoftware.atrium.tests.islandMenuBarIcon"
+        let islandIconSuite = "com.vitruviansoftware.vitruvian.tests.islandMenuBarIcon"
         if let islandDefaults = ScratchDefaults.suite(named: islandIconSuite) {
             islandDefaults.removePersistentDomain(forName: islandIconSuite)
             defer { islandDefaults.removePersistentDomain(forName: islandIconSuite) }
@@ -2910,7 +2910,7 @@ enum SwitcherModelFeatureTests {
                                                                   showsCountdown: true,
                                                                   hasEndDate: false),
                "idle, hidden and indefinite Keep Awake titles need no timer")
-        let statusPlacementSuite = "com.vitruviansoftware.atrium.tests.statusItemPlacement"
+        let statusPlacementSuite = "com.vitruviansoftware.vitruvian.tests.statusItemPlacement"
         if let statusDefaults = ScratchDefaults.suite(named: statusPlacementSuite) {
             statusDefaults.removePersistentDomain(forName: statusPlacementSuite)
             suite.expect(StatusItemPlacementSupport.placementGeneration(in: statusDefaults) == 0,
@@ -3168,13 +3168,13 @@ enum SwitcherModelFeatureTests {
             return [["bundle": ["_0": bundleID]], entry]
         }
         let trackedApplications: [Any] = tracked("com.lowtechguys.Clop", allowed: true)
-            + tracked("com.vitruviansoftware.atrium", allowed: false)
-            + tracked("com.vitruviansoftware.atrium.dev", allowed: true)
+            + tracked("com.vitruviansoftware.vitruvian", allowed: false)
+            + tracked("com.vitruviansoftware.vitruvian.dev", allowed: true)
             + tracked("com.example.legacy", allowed: nil)
-        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.atrium",
+        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.vitruvian",
                                                        trackedApplications: trackedApplications) == .disallowed,
                "an app switched off under Allow in the Menu Bar reads as disallowed")
-        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.atrium.dev",
+        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.vitruvian.dev",
                                                        trackedApplications: trackedApplications) == .allowed,
                "a sibling bundle id with its own entry does not bleed over")
         suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.example.legacy",
@@ -3183,7 +3183,7 @@ enum SwitcherModelFeatureTests {
         suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.example.absent",
                                                        trackedApplications: trackedApplications) == .unknown,
                "an app Control Center has never tracked is unknown")
-        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.atrium",
+        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.vitruvian",
                                                        trackedApplications: ["garbage", 3]) == .unknown,
                "a malformed store is unknown rather than a crash or a verdict")
         // The on-disk shape: an outer plist whose trackedApplications value is
@@ -3196,10 +3196,10 @@ enum SwitcherModelFeatureTests {
                                                 format: .binary, options: 0)
         }
         suite.expect(outerData.map {
-                MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.atrium", groupContainerPlist: $0)
+                MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.vitruvian", groupContainerPlist: $0)
             } == .disallowed,
                "the nested Control Center store decodes down to the per-app verdict")
-        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.atrium",
+        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.vitruvian",
                                                        groupContainerPlist: Data([0x00, 0x01])) == .unknown,
                "an unreadable store is unknown")
         do {
@@ -3387,7 +3387,7 @@ enum SwitcherModelFeatureTests {
                "battery time is shown in the Power panel by default")
         suite.expect(registeredDefaults[DefaultsKey.monitorPwrPeripherals] as? Bool == false,
                "peripheral batteries stay out of the Power card until turned on")
-        let peripheralsSuite = "com.vitruviansoftware.atrium.tests.powerPeripherals.\(UUID().uuidString)"
+        let peripheralsSuite = "com.vitruviansoftware.vitruvian.tests.powerPeripherals.\(UUID().uuidString)"
         if let peripheralsDefaults = ScratchDefaults.suite(named: peripheralsSuite) {
             peripheralsDefaults.removePersistentDomain(forName: peripheralsSuite)
             peripheralsDefaults.set(false, forKey: DefaultsKey.menuBarPeripheralBattery)
@@ -4053,7 +4053,7 @@ enum SwitcherModelFeatureTests {
         } else {
             UserDefaults.standard.removeObject(forKey: DefaultsKey.switcherPreviewSize)
         }
-        let previewSizeSuite = "com.vitruviansoftware.atrium.tests.switcher-preview-size.\(UUID().uuidString)"
+        let previewSizeSuite = "com.vitruviansoftware.vitruvian.tests.switcher-preview-size.\(UUID().uuidString)"
         if let previewSizeDefaults = ScratchDefaults.suite(named: previewSizeSuite) {
             previewSizeDefaults.set("large", forKey: DefaultsKey.previewSize)
             Defaults.migrateSwitcherPreviewSize(in: previewSizeDefaults)
@@ -4072,7 +4072,7 @@ enum SwitcherModelFeatureTests {
                    "a Dock Preview size chosen after the first launch leaves the switcher at its default size")
             previewSizeDefaults.removePersistentDomain(forName: previewSizeSuite)
         }
-        let excludedAppsSuite = "com.vitruviansoftware.atrium.tests.switcher-preview-excluded-apps.\(UUID().uuidString)"
+        let excludedAppsSuite = "com.vitruviansoftware.vitruvian.tests.switcher-preview-excluded-apps.\(UUID().uuidString)"
         if let excludedAppsDefaults = ScratchDefaults.suite(named: excludedAppsSuite) {
             excludedAppsDefaults.set(["com.example.vault"], forKey: DefaultsKey.windowPreviewExcludedApps)
             Defaults.migrateSwitcherPreviewExcludedApps(in: excludedAppsDefaults)
@@ -4092,7 +4092,7 @@ enum SwitcherModelFeatureTests {
         }
         // The module's own check, with preferences of its own and the app in
         // front passed in.
-        let previewSuite = "com.vitruviansoftware.atrium.tests.preview-pause"
+        let previewSuite = "com.vitruviansoftware.vitruvian.tests.preview-pause"
         let previewDefaults = ScratchDefaults.suite(named: previewSuite)!
         previewDefaults.removePersistentDomain(forName: previewSuite)
         previewDefaults.set(["com.example.vault"], forKey: DefaultsKey.windowPreviewExcludedApps)
@@ -4583,8 +4583,8 @@ enum SwitcherModelFeatureTests {
                "a click after hiding lets the Dock bring the app back")
         suite.expect(DockClickSupport.repeatDecision(lastAction: .hide, elapsed: 0.1) == .swallow,
                "an accidental double-click never hides and immediately reopens the app")
-        suite.expect(DockClickSupport.isOwnBundleIdentifier("com.vitruviansoftware.atrium")
-                && DockClickSupport.isOwnBundleIdentifier("com.vitruviansoftware.atrium.dev")
+        suite.expect(DockClickSupport.isOwnBundleIdentifier("com.vitruviansoftware.vitruvian")
+                && DockClickSupport.isOwnBundleIdentifier("com.vitruviansoftware.vitruvian.dev")
                 && !DockClickSupport.isOwnBundleIdentifier("com.example.editor")
                 && !DockClickSupport.isOwnBundleIdentifier(nil),
                "Dock clicks never target either build of this app")

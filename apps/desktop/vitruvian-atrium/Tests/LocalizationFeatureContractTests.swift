@@ -455,7 +455,7 @@ enum LocalizationFeatureContractTests {
         // to and the helper listens on (FanControlIdentifiers), as its label,
         // its program and its Mach service.
         let releaseHelperID = FanControlIdentifiers.helperID
-        let helperTemplatePath = "Resources/com.vitruviansoftware.atrium.fan-control.plist"
+        let helperTemplatePath = "Resources/com.vitruviansoftware.vitruvian.fan-control.plist"
         let helperTemplate = ShippedResource.dictionary(helperTemplatePath) ?? [:]
         let templateLabel = helperTemplate["Label"] as? String
         let templateProgram = helperTemplate["BundleProgram"] as? String
@@ -470,7 +470,7 @@ enum LocalizationFeatureContractTests {
         // fan control would just never answer. Its rename (build.sh) runs here
         // on a copy of the shipped plist, written out rather than copied: in
         // the test's runfiles the shipped file is a link into the checkout.
-        let developerHelperID = "com.vitruviansoftware.atrium.dev.fan-control"
+        let developerHelperID = "com.vitruviansoftware.vitruvian.dev.fan-control"
         let renameFolder = FileManager.default.temporaryDirectory
             .appendingPathComponent("vitru-helper-rename-\(UUID().uuidString)")
         let renamedPlist = renameFolder.appendingPathComponent("helper.plist")

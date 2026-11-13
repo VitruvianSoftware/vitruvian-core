@@ -53,7 +53,7 @@ package final class MicMuteService: ObservableObject {
 
         package static var live: Environment {
             Environment(hal: .live,
-                        halQueue: .live(label: "com.vitruviansoftware.atrium.micmute.hal"),
+                        halQueue: .live(label: "com.vitruviansoftware.vitruvian.micmute.hal"),
                         main: { work in DispatchQueue.main.async { work() } },
                         defaults: .standard,
                         showMicrophone: { NotchService.shared.showMicrophone(muted: $0) },

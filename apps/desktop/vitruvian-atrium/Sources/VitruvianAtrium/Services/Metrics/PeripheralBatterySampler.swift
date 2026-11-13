@@ -37,7 +37,7 @@ package final class PeripheralBatterySampler {
     /// Set once before sampling starts.
     package var onBluetoothRefresh: (@Sendable () -> Void)?
 
-    package init(bluetoothQueue: DispatchQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.peripheral-battery.bluetooth", qos: .utility),
+    package init(bluetoothQueue: DispatchQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.peripheral-battery.bluetooth", qos: .utility),
          readFast: @escaping () -> [PeripheralBatteryDevice] = PeripheralBatterySampler.readFastDevices,
          readProfiler: @escaping (BoundedProcessCancellation) -> Data = PeripheralBatterySampler.readBluetoothSystemProfilerData,
          makeBluetoothRead: @escaping (DispatchQueue, BoundedProcessCancellation, @escaping ([BluetoothBatteryReading]) -> Void) -> PeripheralBluetoothReading = {

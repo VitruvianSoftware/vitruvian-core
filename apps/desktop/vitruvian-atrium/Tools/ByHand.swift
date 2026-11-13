@@ -19,7 +19,7 @@
 import AppKit
 import ApplicationServices
 
-let bundleID = "com.vitruviansoftware.atrium"
+let bundleID = "com.vitruviansoftware.vitruvian"
 typealias Words = ByHandRules.Words
 
 enum Exit: Int32 {

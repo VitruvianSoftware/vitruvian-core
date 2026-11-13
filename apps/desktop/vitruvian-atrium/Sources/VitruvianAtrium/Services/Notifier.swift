@@ -9,11 +9,11 @@ import VitruvianAtriumDesign
 
 package enum Notifier {
     package static let whatsAppOrganizerUndoActionIdentifier =
-        "com.vitruviansoftware.atrium.notification.whatsapp-organizer.undo"
+        "com.vitruviansoftware.vitruvian.notification.whatsapp-organizer.undo"
     private static let whatsAppOrganizerTransactionKey =
-        "com.vitruviansoftware.atrium.notification.whatsapp-organizer.transaction"
+        "com.vitruviansoftware.vitruvian.notification.whatsapp-organizer.transaction"
     private static let whatsAppOrganizerCategoryIdentifier =
-        "com.vitruviansoftware.atrium.notification.whatsapp-organizer"
+        "com.vitruviansoftware.vitruvian.notification.whatsapp-organizer"
     private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "atrium",
                                     category: "notifications")
 

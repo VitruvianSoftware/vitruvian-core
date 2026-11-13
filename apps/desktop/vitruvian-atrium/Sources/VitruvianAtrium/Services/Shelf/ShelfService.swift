@@ -263,7 +263,7 @@ package final class ShelfService: ObservableObject {
     private var promiseTransfers: [UUID: (target: UUID?, transfer: ShelfFilePromiseTransfer, additions: [Item])] = [:]
 
     nonisolated private let tempDir: URL = {
-        let id = Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.atrium"
+        let id = Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.vitruvian"
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("VitruvianAtriumShelf", isDirectory: true)
             .appendingPathComponent(id, isDirectory: true)
@@ -281,7 +281,7 @@ package final class ShelfService: ObservableObject {
     /// Writes coalesce per mutation cycle already; the JSON encode itself
     /// also stays off the main thread (a full shelf of large texts is real
     /// work), serialized so blobs land in mutation order.
-    nonisolated private static let persistQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.shelf-persist",
+    nonisolated private static let persistQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.shelf-persist",
                                                     qos: .utility)
 
     private var persistScheduled = false

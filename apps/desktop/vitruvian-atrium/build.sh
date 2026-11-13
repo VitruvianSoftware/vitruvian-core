@@ -45,14 +45,14 @@ done
 if (( DEV )); then
     APP_NAME="Vitruvian Atrium (Developer)"
     EXECUTABLE="VitruvianAtriumDeveloper"
-    APP_BUNDLE_ID="com.vitruviansoftware.atrium.dev"
+    APP_BUNDLE_ID="com.vitruviansoftware.vitruvian.dev"
     BUILD_VARIANT_FLAGS=(-D VITRUVIAN_DEVELOPMENT)
     APP_OPTIMIZATION_FLAGS=(-Onone)
     BUILD_CONFIGURATION="debug"
 else
     APP_NAME="Vitruvian Atrium"
     EXECUTABLE="VitruvianAtrium"
-    APP_BUNDLE_ID="com.vitruviansoftware.atrium"
+    APP_BUNDLE_ID="com.vitruviansoftware.vitruvian"
     BUILD_VARIANT_FLAGS=()
     APP_OPTIMIZATION_FLAGS=(-O)
     BUILD_CONFIGURATION="release"
@@ -224,13 +224,13 @@ discard_test_preferences() {
     # cfprefsd can recreate an emptied domain after the first removal. Require
     # two quiet checks, but keep a hard limit so persistent failures still fail CI.
     for attempt in {1..10}; do
-        for name in "vitru.tests." "com.vitruviansoftware.atrium.tests."; do
+        for name in "vitru.tests." "com.vitruviansoftware.vitruvian.tests."; do
             rm -f "$preferences"/$name*.plist(N)
         done
         rm -f "$preferences/metrics-tests.plist"
         sleep 0.2
         survivors=$(find "$preferences" -maxdepth 1 \
-            \( -name "vitru.tests.*.plist" -o -name "com.vitruviansoftware.atrium.tests.*.plist" \
+            \( -name "vitru.tests.*.plist" -o -name "com.vitruviansoftware.vitruvian.tests.*.plist" \
                -o -name "metrics-tests.plist" \) 2>/dev/null | wc -l | tr -d ' ')
         if [[ "$survivors" == "0" ]]; then
             quiet_passes=$((quiet_passes + 1))
@@ -677,7 +677,7 @@ rename_fan_helper() {
     local plist="$1" helper_id="$2"
     /usr/libexec/PlistBuddy -c "Set :Label $helper_id" "$plist"
     /usr/libexec/PlistBuddy -c "Set :BundleProgram Contents/Library/LaunchServices/$helper_id" "$plist"
-    /usr/libexec/PlistBuddy -c "Delete :MachServices:com.vitruviansoftware.atrium.fan-control" "$plist"
+    /usr/libexec/PlistBuddy -c "Delete :MachServices:com.vitruviansoftware.vitruvian.fan-control" "$plist"
     /usr/libexec/PlistBuddy -c "Add :MachServices:$helper_id bool true" "$plist"
 }
 
@@ -692,7 +692,7 @@ mkdir -p "$STAGE/Contents/Frameworks"
 cp "build/$NOW_PLAYING_ADAPTER" "$STAGE/Contents/Frameworks/$NOW_PLAYING_ADAPTER"
 cp Resources/now-playing.pl "$STAGE/Contents/Resources/now-playing.pl"
 cp Resources/agent-prices.json "$STAGE/Contents/Resources/agent-prices.json"
-cp Resources/com.vitruviansoftware.atrium.fan-control.plist \
+cp Resources/com.vitruviansoftware.vitruvian.fan-control.plist \
     "$STAGE/Contents/Library/LaunchDaemons/$FAN_HELPER_ID.plist"
 cp Resources/Info.plist "$STAGE/Contents/Info.plist"
 cp CHANGELOG.md "$STAGE/Contents/Resources/CHANGELOG.md"

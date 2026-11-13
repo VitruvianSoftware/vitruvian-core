@@ -369,7 +369,7 @@ Google.
 | `~/.gemini/speaker_monitor_status.json` | What the app's chat monitor is doing (running, last poll, last error, Slack identity, Google Chat reader, the Beeper networks read and skipped, the app's pid), written by the app. The extension writes its own, below, and its Vitruvian tool reads that one. Not settings: a crashed app leaves it saying "running", so a reader checks the app is up. |
 
 The extension keeps the same four things in its own data folder instead,
-`~/Library/Application Support/com.vitruviansoftware.atrium/ToolData/dev.vitruvian.speaker/`:
+`~/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.speaker/`:
 `settings.json`, `secrets.json` (mode `0600`), `history.json` and
 `speaker_monitor_status.json`. The formats are the same as the app's. To
 move settings or sign-ins between the two, use the copy offered in the

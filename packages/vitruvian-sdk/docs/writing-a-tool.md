@@ -582,7 +582,7 @@ with `{}`.
 have ten seconds; for everything after it, two.
 
 ```json message
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":["1","2"],"language":"en-US","dataFolder":"/Users/you/Library/Application Support/com.vitruviansoftware.atrium/ToolData/com.acme.deploys","features":["ui.status","ui.choice","preferences.options","ui.status.activity","ui.open.settings"]}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":["1","2"],"language":"en-US","dataFolder":"/Users/you/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/com.acme.deploys","features":["ui.status","ui.choice","preferences.options","ui.status.activity","ui.open.settings"]}}
 {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"1","toolVersion":"1.2.0"}}
 ```
 
@@ -1940,7 +1940,7 @@ output and dependencies you do not ship out of it.
 
 The app copies the folder and runs the copy, so the original may move. The
 copy is in
-`~/Library/Application Support/com.vitruviansoftware.atrium/Tools/<id>/`.
+`~/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/<id>/`.
 What the tool saves goes in `ToolData/<id>/` beside it, which is also the
 folder the program is started in.
 

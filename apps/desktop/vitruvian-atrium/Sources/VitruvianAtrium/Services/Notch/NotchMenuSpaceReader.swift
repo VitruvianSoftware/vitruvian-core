@@ -62,7 +62,7 @@ package final class NotchMenuSpaceReader {
         }
 
         package static var system: Environment {
-            let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.notch-menu-space", qos: .utility)
+            let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-menu-space", qos: .utility)
             return Environment(
                 menuBarOwner: {
                     // The reader asks on the main thread, from its ticks and its answers.

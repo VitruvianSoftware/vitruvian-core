@@ -17,7 +17,7 @@ package final class NotchNotificationService: ObservableObject {
     @Published package private(set) var monitoring = false
     @Published package private(set) var openingID: UUID?
     package let received = PassthroughSubject<NotchSystemNotification, Never>()
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.notch-notifications", qos: .utility)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-notifications", qos: .utility)
     private var appIcons: [String: NSImage] = [:]
     private var sourceApplications: [UUID: String] = [:]
     @Published package private(set) var unavailableID: UUID?

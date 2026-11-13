@@ -224,7 +224,7 @@ package final class MediaService: ObservableObject {
 
     @Published package private(set) var state: MediaServiceState = .idle
 
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.media", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.media", qos: .userInitiated)
     // Guarded by `lock`: the work queue reads and writes these too.
     private let lock = NSLock()
     nonisolated(unsafe) private var operationID: UUID?

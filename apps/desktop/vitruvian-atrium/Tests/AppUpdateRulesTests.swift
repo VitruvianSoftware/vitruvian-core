@@ -171,7 +171,7 @@ enum AppUpdateRulesContract {
         suite.expect(service.rules == kept, "a picked bundle without an identifier adds no rule")
         service.addExclusion(appAt: bundle("Empty", ["CFBundleIdentifier": ""]))
         suite.expect(service.rules == kept, "a picked bundle with an empty identifier adds no rule")
-        service.addExclusion(appAt: bundle("Vitruvian Atrium", ["CFBundleIdentifier": "com.vitruviansoftware.atrium"]))
+        service.addExclusion(appAt: bundle("Vitruvian Atrium", ["CFBundleIdentifier": "com.vitruviansoftware.vitruvian"]))
         suite.expect(service.rules == kept, "Vitruvian Atrium's own bundles never become exclusions")
         service.addExclusion(appAt: bundle("Spaced", ["CFBundleIdentifier": "com.example two"]))
         suite.expect(service.rules == kept, "a picked identifier with whitespace that a reload would drop adds no rule")

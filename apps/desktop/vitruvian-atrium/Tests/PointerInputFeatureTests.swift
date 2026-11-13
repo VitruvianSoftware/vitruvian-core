@@ -836,7 +836,7 @@ enum PointerInputFeatureTests {
                                                              stringFor: { _ in nil })
         suite.expect(!uninstalledInverter.invertVertical && !uninstalledInverter.invertHorizontal,
                "an uninstalled inverter flips nothing even with its switches left on")
-        let linearName = "com.vitruviansoftware.atrium.tests.linear-lines.\(UUID().uuidString)"
+        let linearName = "com.vitruviansoftware.vitruvian.tests.linear-lines.\(UUID().uuidString)"
         let linearDefaults = ScratchDefaults.suite(named: linearName)!
         defer { linearDefaults.removePersistentDomain(forName: linearName) }
         var exceptionChecks = 0

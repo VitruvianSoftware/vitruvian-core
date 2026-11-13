@@ -123,7 +123,7 @@ private struct SilentLocal: LocalSpeaking {
     }
 
     @Test func extensionFoldersFromTheProgram() {
-        let base = "/Users/someone/Library/Application Support/com.vitruviansoftware.atrium"
+        let base = "/Users/someone/Library/Application Support/com.vitruviansoftware.vitruvian"
         let program = URL(fileURLWithPath: base + "/Tools/dev.vitruvian.speaker/bin/tool")
         let folders = VitruvianSpeakerProfile.extensionFolders(program: program)
         #expect(folders?.tool.path == base + "/Tools/dev.vitruvian.speaker")

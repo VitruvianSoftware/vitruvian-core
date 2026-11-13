@@ -202,7 +202,7 @@ package final class AppVolumeMixer: ObservableObject {
     /// pass the mixer no longer wants is dropped rather than publishing state
     /// that is already out of date.
     private var refresh = MixerRefreshCoordinator()
-    private let buildQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.mixer", qos: .userInitiated)
+    private let buildQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.mixer", qos: .userInitiated)
     /// Every CoreAudio property read runs here, and every HAL notification is
     /// delivered here. Reads serialize behind the audio daemon's device state,
     /// so while a device is being reconfigured (headphones pairing, an
@@ -213,7 +213,7 @@ package final class AppVolumeMixer: ObservableObject {
     /// Deliberately not `buildQueue`: creating a tap and its aggregate device
     /// takes far longer than reading a property, and the panel must never wait
     /// behind one to learn which devices exist.
-    private let halQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.mixer.hal", qos: .userInitiated)
+    private let halQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.mixer.hal", qos: .userInitiated)
 
     /// The default output's volume and mute, for the output whose listeners
     /// this mixer holds.
@@ -2425,7 +2425,7 @@ package enum MixerEngineTeardown {
     /// above so the parked ones cannot take the thread pool with them.
     package static let queue: OperationQueue = {
         let operations = OperationQueue()
-        operations.name = "com.vitruviansoftware.atrium.mixer.teardown"
+        operations.name = "com.vitruviansoftware.vitruvian.mixer.teardown"
         operations.qualityOfService = .utility
         operations.maxConcurrentOperationCount = maximumConcurrent
         return operations
@@ -2500,7 +2500,7 @@ final class LevelCompensationWatch: @unchecked Sendable {
     /// engine, so a read waiting on an output that is being reconfigured
     /// never holds back another engine's correction. The two values below
     /// are touched only on it.
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.mixer.level",
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.mixer.level",
                                       qos: .userInitiated)
     private var lastDevices = Set<AudioObjectID>()
     private var lastReadAt: CFAbsoluteTime = 0
@@ -2783,7 +2783,7 @@ private final class MixerTapConfiguration: @unchecked Sendable {
     var canRender: Bool { rendering.value != 0 }
     var requiresRebuild: Bool { invalidated.value != 0 }
 
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.mixer.format", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.mixer.format", qos: .userInitiated)
     private let lock = NSLock()
     private var pending = false
     private var immediatePending = false
@@ -3077,7 +3077,7 @@ private final class TapGainEngine: GainEngine {
 
     /// Where the new rate is read, away from whatever thread the answer
     /// arrived on. Serial, so two changes in a row cannot land out of order.
-    fileprivate static let rateQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.mixer.rate",
+    fileprivate static let rateQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.mixer.rate",
                                                  qos: .userInitiated)
     fileprivate static func nominalSampleRateAddress() -> AudioObjectPropertyAddress {
         AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyNominalSampleRate,

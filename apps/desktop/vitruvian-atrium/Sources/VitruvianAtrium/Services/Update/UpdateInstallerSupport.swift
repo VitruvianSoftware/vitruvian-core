@@ -30,7 +30,7 @@ package enum UpdateInstallerSupport {
     /// the same team. The installer also asks Gatekeeper, which needs it
     /// notarized.
     package static var appRequirement: String {
-        "identifier \"com.vitruviansoftware.atrium\" and \(diskImageRequirement)"
+        "identifier \"com.vitruviansoftware.vitruvian\" and \(diskImageRequirement)"
     }
 
     /// The installer: waits for the app to exit, verifies and mounts the DMG,

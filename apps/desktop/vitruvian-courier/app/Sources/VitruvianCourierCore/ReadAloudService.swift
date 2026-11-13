@@ -126,10 +126,10 @@ public extension VitruvianSpeakerLocating {
 public struct WorkspaceVitruvianSpeakerLocator: VitruvianSpeakerLocating {
     public static let bundleIdentifier = "com.vitruviansoftware.speaker"
     /// The Vitruvian app, which hosts Vitruvian Speaker as an extension.
-    public static let vitruvianBundleIdentifier = "com.vitruviansoftware.atrium"
+    public static let vitruvianBundleIdentifier = "com.vitruviansoftware.vitruvian"
     /// The extension's binary, relative to the home folder.
     public static let extensionToolPath =
-        "Library/Application Support/com.vitruviansoftware.atrium/Tools/dev.vitruvian.speaker/bin/tool"
+        "Library/Application Support/com.vitruviansoftware.vitruvian/Tools/dev.vitruvian.speaker/bin/tool"
 
     private let home: URL
     private let isExecutable: @Sendable (String) -> Bool

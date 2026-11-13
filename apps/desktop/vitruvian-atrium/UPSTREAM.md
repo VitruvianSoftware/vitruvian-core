@@ -67,7 +67,7 @@ icon, bundle identity, signing identity and update feed for upstream. The rename
 
 - **Name:** Vitruvian everywhere the app shows or reads it. Upstream's
   copyright lines stay, because they are legal notices, not branding (GPL-3.0 §5).
-- **Bundle IDs:** `com.vitruviansoftware.atrium`, plus its fan helper and Now
+- **Bundle IDs:** `com.vitruviansoftware.vitruvian`, plus its fan helper and Now
   Playing adapter IDs.
 - **Icon:** Vitruvian's own app icon and menu bar mark (VitruvianSoftware/vitruvian-core#2643),
   which replaced the placeholders the import used.

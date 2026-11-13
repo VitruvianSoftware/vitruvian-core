@@ -11,9 +11,9 @@ package enum FanControlIdentifiers {
     package static let teamID = "Q5MH753M3F"
 
     #if VITRUVIAN_DEVELOPMENT
-    package static let appBundleID = "com.vitruviansoftware.atrium.dev"
+    package static let appBundleID = "com.vitruviansoftware.vitruvian.dev"
     #else
-    package static let appBundleID = "com.vitruviansoftware.atrium"
+    package static let appBundleID = "com.vitruviansoftware.vitruvian"
     #endif
 
     package static let helperID = "\(appBundleID).fan-control"

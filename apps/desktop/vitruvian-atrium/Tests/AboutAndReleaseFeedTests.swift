@@ -263,8 +263,20 @@ enum UpdateSignerContract {
         suite.expect(UpdateInstallerSupport.diskImageRequirement
                 == "anchor apple generic and certificate leaf[subject.OU] = \"Q5MH753M3F\""
                 && UpdateInstallerSupport.appRequirement
-                == "identifier \"com.vitruviansoftware.atrium\" and anchor apple generic and certificate leaf[subject.OU] = \"Q5MH753M3F\"",
+                == "identifier \"com.vitruviansoftware.vitruvian\" and anchor apple generic and certificate leaf[subject.OU] = \"Q5MH753M3F\"",
                "the installer accepts only an image and an app that Vitruvian Atrium's team signed")
+        // The bundle id never changes, whatever the app is called. Every
+        // release installs an update only when the new bundle has the id it
+        // has itself (`appRequirement`), and macOS keys the app's settings,
+        // its support folder, its permissions and its Keychain items to it.
+        // 3.90.0 changed it with the rename to Vitruvian Atrium: no Mac on
+        // 3.89.0 could update to it, and one that installed it by hand found
+        // no tools, no settings and no permissions.
+        let plist = (try? Data(contentsOf: URL(fileURLWithPath: "Resources/Info.plist")))
+            .flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? [String: Any] }
+        suite.expect(plist?["CFBundleIdentifier"] as? String == "com.vitruviansoftware.vitruvian"
+                && UpdateInstallerSupport.appRequirement.hasPrefix("identifier \"com.vitruviansoftware.vitruvian\" "),
+               "the app keeps the bundle id every earlier release updates to and keeps its data under")
         suite.expect(!script.contains("3D485NHW29")
                 && !FanControlIdentifiers.appCodeRequirement.contains("3D485NHW29")
                 && !FanControlIdentifiers.helperCodeRequirement.contains("3D485NHW29"),

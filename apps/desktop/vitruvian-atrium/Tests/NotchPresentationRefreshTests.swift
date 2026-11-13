@@ -61,7 +61,7 @@ enum NotchPresentationRefreshContract {
     }
 
     static func run(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-presentation-refresh"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-presentation-refresh"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         Self.defaults = defaults

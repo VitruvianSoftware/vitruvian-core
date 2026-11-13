@@ -2410,7 +2410,7 @@ enum CommandBarFeatureTests {
                 && editedCompletion == nil,
                "Tab remembers the fuzzy search unless the completed field is edited")
 
-        let learningDefaultsName = "com.vitruviansoftware.atrium.tests.command-bar-learning"
+        let learningDefaultsName = "com.vitruviansoftware.vitruvian.tests.command-bar-learning"
         let learningDefaults = ScratchDefaults.suite(named: learningDefaultsName)!
         learningDefaults.removePersistentDomain(forName: learningDefaultsName)
         let firstInstallationKey = CommandBarLearning.installationKey(in: learningDefaults)

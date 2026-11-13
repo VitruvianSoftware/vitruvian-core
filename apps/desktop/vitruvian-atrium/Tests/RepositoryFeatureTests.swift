@@ -1291,7 +1291,7 @@ enum RepositoryFeatureTests {
         let uninstallScratch = scratchFolder("uninstall")
         defer { try? FileManager.default.removeItem(at: uninstallScratch) }
         let uninstallHome = uninstallScratch.appendingPathComponent("home").path
-        let releaseBundleID = "com.vitruviansoftware.atrium"
+        let releaseBundleID = "com.vitruviansoftware.vitruvian"
         let appRemoves = SelfUninstall.ownedPaths(home: uninstallHome, bundleID: releaseBundleID)
         let byHostPreferences = "\(uninstallHome)/Library/Preferences/ByHost/\(releaseBundleID).0123-ABCD.plist"
         let notTheApp = [
