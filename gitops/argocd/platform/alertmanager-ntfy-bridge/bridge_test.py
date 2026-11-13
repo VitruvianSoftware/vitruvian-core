@@ -97,7 +97,12 @@ def _group(status, alerts, key='{}/{}:{alertname="CNPGBackupStale", namespace="b
 def _alert(status, pod, severity="warning"):
     return {
         "status": status,
-        "labels": {"alertname": "CNPGBackupStale", "namespace": "buzz", "pod": pod, "severity": severity},
+        "labels": {
+            "alertname": "CNPGBackupStale",
+            "namespace": "buzz",
+            "pod": pod,
+            "severity": severity,
+        },
         "annotations": {"summary": f"stale {pod}"},
     }
 
@@ -107,13 +112,14 @@ class BridgeTest(unittest.TestCase):
         server = _make_server(self)
         a = _group("firing", [_alert("firing", "p1")])
         b = _group("resolved", [_alert("resolved", "p1")])
-        other = _group("firing", [_alert("firing", "p1")], key='{}/{}:{alertname="Other"}')
+        other = _group(
+            "firing", [_alert("firing", "p1")], key='{}/{}:{alertname="Other"}'
+        )
         assert server.sequence_id(a) == server.sequence_id(b)
         assert server.sequence_id(a) != server.sequence_id(other)
         sid = server.sequence_id(a)
         assert sid.startswith("am-") and len(sid) == 35
         assert all(c.isalnum() or c == "-" for c in sid)
-
 
     def test_firing_publishes_json_with_the_group_sequence_id(self):
         server = _make_server(self)
@@ -129,7 +135,6 @@ class BridgeTest(unittest.TestCase):
         assert body["title"].startswith("[app] firing: CNPGBackupStale (1)")
         assert req.get_header("Authorization").startswith("Basic ")
 
-
     def test_refire_reuses_the_same_id_so_ntfy_replaces_it(self):
         server = _make_server(self)
         first = _group("firing", [_alert("firing", "p1")])
@@ -139,7 +144,6 @@ class BridgeTest(unittest.TestCase):
         ids = [json.loads(r.data)["sequence_id"] for r in server.sent]
         assert ids[0] == ids[1]
 
-
     def test_partial_resolve_lists_only_alerts_still_firing(self):
         server = _make_server(self)
         payload = _group("firing", [_alert("resolved", "p1"), _alert("firing", "p2")])
@@ -148,22 +152,24 @@ class BridgeTest(unittest.TestCase):
         assert "p2" in body["message"] and "p1" not in body["message"]
         assert body["title"].endswith("(1)")
 
-
     def test_whole_group_resolved_deletes_that_notification(self):
         server = _make_server(self)
         payload = _group("resolved", [_alert("resolved", "p1")])
         assert server.handle_alertmanager(payload) == 200
         (req,) = server.sent
         assert req.get_method() == "DELETE"
-        assert req.full_url == f"https://ntfy.example/alerts/{server.sequence_id(payload)}"
+        assert (
+            req.full_url == f"https://ntfy.example/alerts/{server.sequence_id(payload)}"
+        )
         assert req.data is None
-
 
     def test_delete_of_an_already_gone_notification_counts_as_success(self):
         server = _make_server(self)
         server.next_status = 404
-        assert server.handle_alertmanager(_group("resolved", [_alert("resolved", "p1")])) == 200
-
+        assert (
+            server.handle_alertmanager(_group("resolved", [_alert("resolved", "p1")]))
+            == 200
+        )
 
     def test_delete_server_error_propagates_so_alertmanager_retries(self):
         server = _make_server(self)
