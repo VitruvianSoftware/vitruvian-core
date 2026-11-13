@@ -157,6 +157,7 @@ enum MixerInputVolumeContract {
             readFails = []
             writeFails = []
             mute = [:]
+            muteElements = [:]
             writes = []
             listeners = []
             procs = [:]
@@ -164,6 +165,7 @@ enum MixerInputVolumeContract {
             outputOnly = []
             listenerFails = false
             ignoreWrites = false
+            ignoredWrites = []
             devices = [10]
             current = 10
             uids = [:]
@@ -194,7 +196,8 @@ enum MixerInputVolumeContract {
 
         static func HasProperty(_ d: UInt32, _ a: UnsafePointer<AudioObjectPropertyAddress>) -> Bool {
             let k = Key(d, a.pointee)
-            return levels[k] != nil || (a.pointee.mSelector == kAudioDevicePropertyMute && mute[d] != nil)
+            return levels[k] != nil || (a.pointee.mSelector == kAudioDevicePropertyMute
+                && (muteElements[k] != nil || (a.pointee.mElement == 0 && mute[d] != nil)))
         }
         static func IsPropertySettable(
             _ d: UInt32, _ a: UnsafePointer<AudioObjectPropertyAddress>,
@@ -260,7 +263,7 @@ enum MixerInputVolumeContract {
             case kAudioDevicePropertyDeviceIsRunningSomewhere:
                 p.storeBytes(of: UInt32(running.contains(d) ? 1 : 0), as: UInt32.self)
             case kAudioDevicePropertyMute:
-                guard let v = mute[d] else { return -1 }
+                guard let v = muteElements[k] ?? (a.pointee.mElement == 0 ? mute[d] : nil) else { return -1 }
                 p.storeBytes(of: v, as: UInt32.self)
             default: return -1
             }
@@ -273,13 +276,19 @@ enum MixerInputVolumeContract {
             let k = Key(d, a.pointee)
             writes.append(k)
             if writeFails.contains(k) { return -1 }
-            if ignoreWrites { return noErr }
+            if ignoreWrites || ignoredWrites.contains(k) { return noErr }
             if a.pointee.mSelector == kAudioHardwarePropertyDefaultInputDevice {
                 current = p.load(as: UInt32.self)
                 return noErr
             }
             if a.pointee.mSelector == kAudioDevicePropertyMute {
-                mute[d] = p.load(as: UInt32.self)
+                if muteElements[k] != nil {
+                    muteElements[k] = p.load(as: UInt32.self)
+                } else if a.pointee.mElement == 0, mute[d] != nil {
+                    mute[d] = p.load(as: UInt32.self)
+                } else {
+                    return -1
+                }
                 return noErr
             }
             guard levels[k] != nil else { return -1 }

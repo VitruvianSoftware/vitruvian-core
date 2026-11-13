@@ -652,6 +652,7 @@ package enum DefaultsKey {
     package static let micMuteSavedVolume = "micMuteSavedVolume"     // input volume to restore on unmute (pre 3.2.0 state)
     package static let micMuteSavedVolumes = "micMuteSavedVolumes"   // [device uid: input volume] to restore on unmute
     package static let micMuteSavedChannelVolumes = "micMuteSavedChannelVolumes" // [device uid: [channel: input volume]] to restore on unmute
+    package static let micMuteSavedControls = "micMuteSavedControls" // [device uid: [selector:element: original value]] pending restoration
     package static let micMuteMutedDevices = "micMuteMutedDevices"   // uids of the devices this app muted
     package static let micMuteMenuBarIndicator = "micMuteMenuBarIndicator" // badge the status icon while muted
     package static let quickLauncherShortcutEnabled = "quickLauncherShortcutEnabled"
