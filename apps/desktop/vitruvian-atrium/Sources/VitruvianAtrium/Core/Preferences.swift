@@ -98,6 +98,12 @@ package enum Preferences {
     package static let brightnessControlEnabled = Preference(DefaultsKey.brightnessControlEnabled, default: false)
     package static let brightnessKeysEnabled = Preference(DefaultsKey.brightnessKeysEnabled, default: false)
     package static let brightnessOSDEnabled = Preference(DefaultsKey.brightnessOSDEnabled, default: false)
+    package static let displayVolumeEnabled = Preference(DefaultsKey.displayVolumeEnabled, default: false)
+    package static let displayVolumeKeysEnabled = Preference(DefaultsKey.displayVolumeKeysEnabled, default: false)
+    package static let ddcVolumeStep = Preference(DefaultsKey.ddcVolumeStep,
+                                                  default: MonitorVolumeKeySettings.defaultStepPercent)
+    package static let ddcVolumeMinimum = Preference(DefaultsKey.ddcVolumeMinimum, default: 0)
+    package static let ddcVolumeMaximum = Preference(DefaultsKey.ddcVolumeMaximum, default: 100)
     package static let displayBrightnessShortcutsEnabled = Preference(DefaultsKey.displayBrightnessShortcutsEnabled, default: false)
     package static let keyboardBrightnessShortcutsEnabled = Preference(DefaultsKey.keyboardBrightnessShortcutsEnabled, default: false)
     package static let bluetoothSleepEnabled = Preference(DefaultsKey.bluetoothSleepEnabled, default: false)

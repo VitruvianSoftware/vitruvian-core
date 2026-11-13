@@ -338,8 +338,8 @@ enum SwitcherModelFeatureTests {
                 suite.expect(migrationDefaults.object(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths) == nil
                        && migrationDefaults.bool(forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked)
                        && migrationDefaults.bool(forKey: DefaultsKey.brightnessDDCReadChecksumRechecked)
-                       && BrightnessSupport.shouldProbeDDC(pathKey: "display|port",
-                                                          writeOnlyPaths: Set(recheckedPaths)),
+                       && BrightnessSupport.shouldProbe(pathKey: "display|port",
+                                                          rememberedPaths: Set(recheckedPaths)),
                        "the checksum fix reopens cached paths with the paired recheck flag \(pairedRecheckCompleted)")
                 suite.expect(migrationDefaults.stringArray(forKey: DefaultsKey.brightnessForcedSoftwarePaths)
                        == ["manual|port"]
@@ -352,8 +352,8 @@ enum SwitcherModelFeatureTests {
                 let laterPaths = migrationDefaults.stringArray(
                     forKey: DefaultsKey.brightnessDDCWriteOnlyPaths) ?? []
                 suite.expect(laterPaths == ["display|port"]
-                       && !BrightnessSupport.shouldProbeDDC(pathKey: "display|port",
-                                                           writeOnlyPaths: Set(laterPaths)),
+                       && !BrightnessSupport.shouldProbe(pathKey: "display|port",
+                                                           rememberedPaths: Set(laterPaths)),
                        "the checksum recheck runs once and keeps later write-only verdicts")
             }
 

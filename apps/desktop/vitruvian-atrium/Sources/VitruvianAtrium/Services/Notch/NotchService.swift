@@ -3020,15 +3020,15 @@ package final class NotchService: ObservableObject {
     package func cancelCaptureControls() { captureState.cancel?() }
 
     package func openSettings() {
-        collapse()
-        services.openNotchSettings()
-        MainActor.assumeIsolated { services.openSettingsWindow() }
+        openSettings(showing: nil)
     }
 
-    /// Opens the Dynamic Island settings on one section's options.
-    package func openSettings(showing module: NotchModule) {
-        services.showSettingsModule(module)
-        openSettings()
+    /// Opens the Dynamic Island settings, on one section's options when
+    /// one is named.
+    package func openSettings(showing module: NotchModule?) {
+        collapse()
+        if let module { services.showSettingsModule(module) } else { services.openNotchSettings() }
+        MainActor.assumeIsolated { services.openSettingsWindow() }
     }
 
     package func perform(_ action: @escaping @MainActor () -> Void) {
@@ -4357,7 +4357,9 @@ package final class NotchService: ObservableObject {
         }
     }
 
-    package func showCurrentVolume() {
+    /// Shows the output's current level. False when there is no level to show.
+    @discardableResult
+    package func showCurrentVolume() -> Bool {
         volumeFeedback.showCurrentVolume()
     }
 

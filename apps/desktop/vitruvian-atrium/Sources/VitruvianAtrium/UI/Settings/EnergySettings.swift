@@ -21,6 +21,8 @@ package struct EnergySettings: View {
     @AppStorage(Preferences.brightnessControlEnabled) private var brightnessEnabled: Bool
     @AppStorage(Preferences.brightnessKeysEnabled) private var brightnessKeysEnabled: Bool
     @AppStorage(Preferences.brightnessOSDEnabled) private var brightnessOSDEnabled: Bool
+    @AppStorage(Preferences.displayVolumeEnabled) private var displayVolume: Bool
+    @AppStorage(Preferences.displayVolumeKeysEnabled) private var displayVolumeKeys: Bool
     @AppStorage(Preferences.brightnessKeyStep)
     private var brightnessKeyStep: String
     @AppStorage(Preferences.extraBrightnessEnabled) private var extraBrightnessEnabled: Bool
@@ -316,7 +318,14 @@ package struct EnergySettings: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(brightness.displays) { display in
-                        EnergyDisplayRow(display: display)
+                        VStack(alignment: .leading, spacing: 6) {
+                            EnergyDisplayRow(display: display)
+                            if display.isActive, let audio = display.audio {
+                                MonitorSpeakerVolumeRow(displayName: display.name, audio: audio,
+                                                        strings: strings, compact: false)
+                                    .padding(.leading, 38)
+                            }
+                        }
                     }
                 }
                 if let failure = brightness.displayControlFailure {
@@ -356,7 +365,29 @@ package struct EnergySettings: View {
                                     }
                             }
                         }
-                        if brightnessKeysEnabled || brightnessOSDEnabled
+                        SettingsRow(symbol: "speaker.wave.2", title: strings.volumeToggle,
+                                    caption: strings.volumeCaption) {
+                            Toggle(strings.volumeToggle, isOn: $displayVolume)
+                                .labelsHidden()
+                                .onChange(of: displayVolume) { _, _ in
+                                    BrightnessService.shared.syncWithPreferences()
+                                }
+                        }
+                        if displayVolume {
+                            SettingsRow(symbol: "keyboard", title: strings.volumeKeysToggle,
+                                        caption: strings.volumeKeysCaption) {
+                                Toggle(strings.volumeKeysToggle, isOn: $displayVolumeKeys)
+                                    .labelsHidden()
+                                    .onChange(of: displayVolumeKeys) { _, isOn in
+                                        if isOn { Permissions.shared.requestAccessibility() }
+                                        BrightnessService.shared.syncWithPreferences()
+                                    }
+                            }
+                            if displayVolumeKeys {
+                                MonitorVolumeKeyControls(strings: strings)
+                            }
+                        }
+                        if brightnessKeysEnabled || brightnessOSDEnabled || (displayVolume && displayVolumeKeys)
                             || BrightnessSupport.KeyStep.sanitized(brightnessKeyStep) != .standard,
                            !permissions.accessibility {
                             PermissionRow(kind: .accessibility)

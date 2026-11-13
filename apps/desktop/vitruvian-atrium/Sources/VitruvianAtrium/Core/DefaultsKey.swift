@@ -227,6 +227,16 @@ package enum DefaultsKey {
     // answer reads. Kept local so wake handling does not repeatedly probe a
     // sensitive display path.
     package static let brightnessDDCWriteOnlyPaths = "brightnessDDCWriteOnlyPaths"
+    package static let displayVolumeEnabled = "displayVolumeEnabled" // speakers built into external monitors
+    package static let displayVolumeKeysEnabled = "displayVolumeKeysEnabled" // volume keys reach those speakers
+    package static let ddcVolumeStep = "ddcVolumeStep" // Double percent of the monitor's range per key press
+    package static let ddcVolumeMinimum = "ddcVolumeMinimum" // Int percent the volume keys stop at
+    package static let ddcVolumeMaximum = "ddcVolumeMaximum" // Int percent the volume keys stop at
+    // Per-monitor connection paths whose display answered the audio controls
+    // with no speakers behind them. Remembered for the same reason as the
+    // write-only paths: two extra reads on a bus paced in tens of
+    // milliseconds are not worth repeating on every scan.
+    package static let displayAudioSilentPaths = "displayAudioSilentPaths"
     // Set once the paths cached before paired discovery requests have been
     // dropped, so a monitor written off then is classified again exactly once.
     package static let brightnessDDCWriteOnlyPathsRechecked = "brightnessDDCWriteOnlyPathsRechecked"

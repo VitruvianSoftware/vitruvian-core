@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 VitruvianSoftware
 
+import CoreAudio
 import CoreGraphics
 import Foundation
 import VitruvianAtriumCore
@@ -29,12 +30,30 @@ enum BrightnessRig {
     }
 
     /// An external monitor that speaks DDC/CI: it answers a luminance read
-    /// with the real reply format and takes Set VCP writes.
+    /// with the real reply format and takes Set VCP writes. One with
+    /// speakers answers their volume and, when it has one, their mute.
     nonisolated final class Monitor: @unchecked Sendable {
         var current: UInt16
         var maximum: UInt16
         var answersReads = true
         var acceptsWrites = true
+        /// The speakers' raw level; nil for a monitor without speakers,
+        /// which never answers their controls.
+        var speakerLevel: UInt16?
+        var speakerMaximum: UInt16 = 100
+        /// The MCCS mute; nil when the monitor has no such control.
+        var speakerMuted: Bool?
+        /// Takes speaker volume writes and then keeps its old level.
+        var ignoresSpeakerLevel = false
+        /// The level some firmware puts back when it is unmuted.
+        var levelOnUnmute: UInt16?
+        /// Runs at each speaker write, before it lands.
+        var onSpeakerWrite: (() -> Void)?
+        /// Every speaker write that reached the monitor, once per command:
+        /// "volume:<raw>" or "mute:on" / "mute:off".
+        private(set) var speakerWrites: [String] = []
+        /// The speaker control the last read request asked about.
+        private var speakerRequest: UInt8?
         /// Every luminance value written, once per command: the service
         /// sends each packet more than once inside one command.
         private(set) var written: [UInt16] = []
@@ -50,6 +69,7 @@ enum BrightnessRig {
 
         func forgetWrites() {
             written = []
+            speakerWrites = []
             lastPacket = nil
         }
 
@@ -65,7 +85,32 @@ enum BrightnessRig {
             if packet == BrightnessSupport.readRequestPacket(code: BrightnessSupport.luminanceCode) {
                 if !requested { reads += 1 }
                 requested = true
+                speakerRequest = nil
                 lastPacket = nil
+                return 0
+            }
+            for code in [BrightnessSupport.audioVolumeCode, BrightnessSupport.audioMuteCode]
+                where packet == BrightnessSupport.readRequestPacket(code: code) {
+                speakerRequest = code
+                requested = false
+                lastPacket = nil
+                return 0
+            }
+            if packet.count == 6, speakerLevel != nil,
+               packet[2] == BrightnessSupport.audioVolumeCode || packet[2] == BrightnessSupport.audioMuteCode {
+                let value = UInt16(packet[3]) << 8 | UInt16(packet[4])
+                if packet != lastPacket {
+                    onSpeakerWrite?()
+                    if packet[2] == BrightnessSupport.audioVolumeCode {
+                        speakerWrites.append("volume:\(value)")
+                        if !ignoresSpeakerLevel { speakerLevel = value }
+                    } else if speakerMuted != nil {
+                        speakerWrites.append(value == BrightnessSupport.audioMutedValue ? "mute:on" : "mute:off")
+                        speakerMuted = value == BrightnessSupport.audioMutedValue
+                        if value == BrightnessSupport.audioUnmutedValue, let levelOnUnmute { speakerLevel = levelOnUnmute }
+                    }
+                }
+                lastPacket = packet
                 return 0
             }
             if packet.count == 6, packet[2] == BrightnessSupport.luminanceCode {
@@ -78,9 +123,26 @@ enum BrightnessRig {
         }
 
         func read(_ bytes: UnsafeMutableRawPointer, count: UInt32) -> Int32 {
+            if let code = speakerRequest {
+                speakerRequest = nil
+                guard answersReads, let level = speakerLevel else { return 1 }
+                if code == BrightnessSupport.audioVolumeCode {
+                    return reply(code: code, current: level, maximum: speakerMaximum, into: bytes, count: count)
+                }
+                guard let muted = speakerMuted else { return 1 }
+                return reply(code: code, current: muted ? BrightnessSupport.audioMutedValue
+                                                        : BrightnessSupport.audioUnmutedValue,
+                             maximum: 2, into: bytes, count: count)
+            }
             guard answersReads, requested else { return 1 }
             requested = false
-            var reply: [UInt8] = [0x6E, 0x88, 0x02, 0x00, BrightnessSupport.luminanceCode, 0x00,
+            return reply(code: BrightnessSupport.luminanceCode, current: current, maximum: maximum,
+                         into: bytes, count: count)
+        }
+
+        private func reply(code: UInt8, current: UInt16, maximum: UInt16,
+                           into bytes: UnsafeMutableRawPointer, count: UInt32) -> Int32 {
+            var reply: [UInt8] = [0x6E, 0x88, 0x02, 0x00, code, 0x00,
                                   UInt8(maximum >> 8), UInt8(maximum & 0xFF),
                                   UInt8(current >> 8), UInt8(current & 0xFF)]
             reply.append(reply.reduce(UInt8(0x50)) { $0 ^ $1 })
@@ -195,6 +257,27 @@ enum BrightnessRig {
         /// Delayed main-thread work, run with `runDelayed()`.
         var delayed: [DispatchWorkItem] = []
 
+        // Sound output
+        /// The device the Mac plays through; nil when there is none.
+        var soundOutput: BrightnessService.SoundOutput.Device?
+        /// Whether macOS can set that device's volume itself.
+        var soundOutputSettable = false
+        /// How many times the service said which monitor carries the sound
+        /// may have changed, and whether the volume keys may have.
+        var soundRouteChanges = 0
+        var volumeKeyChanges = 0
+        private var soundOutputChanged: (@MainActor () -> Void)?
+        var isWatchingSoundOutput: Bool { soundOutputChanged != nil }
+
+        /// The Mac starts playing through another device: the service hears
+        /// about it on the main queue, as from CoreAudio.
+        func playThrough(_ device: BrightnessService.SoundOutput.Device?) {
+            soundOutput = device
+            if let soundOutputChanged {
+                main.pending.append { MainActor.assumeIsolated { soundOutputChanged() } }
+            }
+        }
+
         /// `custom` stands in for the rig's own scratch suite; its owner
         /// clears it.
         init(defaults custom: UserDefaults? = nil) {
@@ -259,7 +342,21 @@ enum BrightnessRig {
                 followsKeys: false,
                 islandIsOpen: { [unowned self] in self.islandOpen },
                 isMainThread: { [unowned self] in self.onMainThread },
-                unlockNotifications: unlocks)
+                unlockNotifications: unlocks,
+                soundOutput: sound)
+        }
+
+        private var sound: BrightnessService.SoundOutput {
+            BrightnessService.SoundOutput(
+                current: { [unowned self] in self.soundOutput },
+                hasSettableVolume: { [unowned self] _ in self.soundOutputSettable },
+                read: { [work] job in work.pending.append(job) },
+                observe: { [unowned self] changed in
+                    self.soundOutputChanged = changed
+                    return { [unowned self] in self.soundOutputChanged = nil }
+                },
+                routeChanged: { [unowned self] in self.soundRouteChanges += 1 },
+                keysChanged: { [unowned self] in self.volumeKeyChanges += 1 })
         }
 
         private var hardware: BrightnessService.Hardware {
