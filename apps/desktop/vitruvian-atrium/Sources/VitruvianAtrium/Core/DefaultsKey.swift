@@ -878,6 +878,7 @@ package enum DefaultsKey {
     package static let notchWatchCondition = "notchWatchCondition"
     package static let notchCalendarEnabled = "notchCalendarEnabled"
     package static let notchCalendarCountdown = "notchCalendarCountdown"
+    package static let notchCalendarCountdownLead = "notchCalendarCountdownLead" // minutes before a start, chosen events included
     package static let notchCalendarTimeLeft = "notchCalendarTimeLeft" // the event under way counts down to its end
     package static let notchCalendarWeekNumbers = "notchCalendarWeekNumbers" // the month grid numbers its weeks
     package static let notchCalendarExcluded = "notchCalendarExcluded" // [EKCalendar.calendarIdentifier] left out of the island
