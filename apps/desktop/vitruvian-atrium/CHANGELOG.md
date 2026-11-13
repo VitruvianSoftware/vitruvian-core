@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.97.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.96.0...vitruvian-atrium-v3.97.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 40, Pinch Zoom and modifier scroll speed ([#4727](https://github.com/VitruvianSoftware/vitruvian-core/issues/4727)) ([9d00902](https://github.com/VitruvianSoftware/vitruvian-core/commit/9d00902f54f3e425298b3e47a267eb9df837de60))
+
 ## [3.96.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.95.0...vitruvian-atrium-v3.96.0) (2026-11-13)
 
 
