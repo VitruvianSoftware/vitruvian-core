@@ -61,77 +61,12 @@ on:
 
 permissions:
     contents: read
-    actions: read # list Repo Config Apply runs (await-repo-config)
 
 jobs:
-    # Repo Config Apply owns every mirror's deploy key and the matching
-    # <COMP>_SYNC_SSH_KEY secret, and can rotate both (a mirror rename does, by
-    # design: see the comment on <repo>-sync-key in
-    # infrastructure/pulumi/platform/repo-config/internal/copybara_sync/sync.go).
-    # A job gets its secrets when it starts. On 2026-11-13 (push b37b85a6, #4661)
-    # the devx, homelab and mcp-slack exports started alongside the apply, took
-    # the old key, and were refused at the push step ("Permission denied
-    # (publickey)") after the apply had replaced it. So the export job does not
-    # start until no apply is in flight: it then reads the key that is current.
-    # Guarded by //tools/conformance:check (copybara group).
-    await-repo-config:
-        runs-on: ubuntu-26.04
-        timeout-minutes: 50 # the apply's own limit is 45
-        steps:
-            - name: Wait for any Repo Config Apply in flight
-              env:
-                  GH_TOKEN: ${{ github.token }}
-                  REPO: ${{ github.repository }}
-                  SHA: ${{ github.sha }}
-                  BEFORE: ${{ github.event.before }}
-                  APPLY_WORKFLOW: _repo-config-apply.yaml
-                  APPLY_PATH: infrastructure/pulumi/platform/repo-config/
-              run: |
-                  set -euo pipefail
-                  runs="repos/${REPO}/actions/workflows/${APPLY_WORKFLOW}/runs"
-
-                  # 1. If this push changed repo-config, its apply run must
-                  #    exist before "nothing in flight" means anything. GitHub
-                  #    creates a push's runs together, but give it two minutes.
-                  changed=false
-                  if [ -n "${BEFORE}" ] && [ "${BEFORE}" != 0000000000000000000000000000000000000000 ]; then
-                      files="$(gh api "repos/${REPO}/compare/${BEFORE}...${SHA}" --jq '.files[].filename')"
-                      # The compare API lists at most 300 files: assume a touch past that.
-                      if grep -q "^${APPLY_PATH}" <<<"${files}" || [ "$(wc -l <<<"${files}")" -ge 300 ]; then
-                          changed=true
-                      fi
-                  fi
-                  if [ "${changed}" = true ]; then
-                      for _ in $(seq 1 24); do
-                          n="$(gh api "${runs}?head_sha=${SHA}" --jq '.total_count')"
-                          [ "${n}" -gt 0 ] && break
-                          sleep 5
-                      done
-                      if [ "${n}" -eq 0 ]; then
-                          echo "::warning::this push changed ${APPLY_PATH} but no ${APPLY_WORKFLOW} run appeared for ${SHA}; exporting with the current key"
-                      fi
-                  fi
-
-                  # 2. Wait until no apply is queued or running, on any commit:
-                  #    an earlier push's apply can rotate a key just as well.
-                  while :; do
-                      busy="$(gh api "${runs}?per_page=30" \
-                          --jq '[.workflow_runs[] | select(.status != "completed")] | map("\(.html_url) (\(.status))") | join(" ")')"
-                      [ -z "${busy}" ] && break
-                      echo "waiting for: ${busy}"
-                      sleep 15
-                  done
-
-                  # Said, not enforced: if this push's apply failed, the key may
-                  # or may not have moved, and the push step is the real test.
-                  c="$(gh api "${runs}?head_sha=${SHA}" --jq '.workflow_runs[0].conclusion // "none"')"
-                  case "${c}" in
-                      success | skipped | none) echo "repo-config apply for ${SHA}: ${c}" ;;
-                      *) echo "::warning::repo-config apply for ${SHA} ended '${c}'; a rotated mirror key may not match" ;;
-                  esac
-
+    # Not started until the caller's await-repo-config job is done (see
+    # _await-repo-config.yaml): the caller maps sync_ssh_key, so that is where
+    # the wait has to be. Guarded by //tools/conformance:check.
     export:
-        needs: await-repo-config
         runs-on: ubuntu-26.04
         timeout-minutes: 45
         steps:

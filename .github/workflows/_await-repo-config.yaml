@@ -1,0 +1,120 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+name: Await Repo Config Apply (reusable)
+
+# Holds a mirror export until no Repo Config Apply run is queued or in flight.
+#
+# Repo Config Apply owns every mirror's deploy key and the matching
+# <COMP>_SYNC_SSH_KEY secret, and can replace both (a mirror rename always
+# does: see <repo>-sync-key in
+# infrastructure/pulumi/platform/repo-config/internal/copybara_sync/sync.go).
+# On 2026-11-13 (push b37b85a6, #4661) the devx, homelab and mcp-slack exports
+# ran alongside the apply, held the old key, and were refused at the push step
+# ("Permission denied (publickey)") once the apply had replaced it.
+#
+# Each copybara-export-*.yaml caller runs this as its own job and gives the job
+# that maps <COMP>_SYNC_SSH_KEY `needs: await-repo-config`. The wait has to sit
+# in the CALLER: a called job's `with:`/`secrets:` are evaluated when that job
+# starts (they may read needs.*.outputs), so the key mapping is read only after
+# this has finished. A wait inside _copybara-export.yaml would come too late
+# if the caller's mapping were evaluated at run start.
+# Guarded by //tools/conformance:check (copybara group).
+on:
+    workflow_call:
+
+permissions:
+    contents: read
+    actions: read # list Repo Config Apply runs
+
+jobs:
+    wait:
+        runs-on: ubuntu-26.04
+        timeout-minutes: 50 # the apply's own limit is 45
+        steps:
+            - name: Wait for any Repo Config Apply in flight
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  REPO: ${{ github.repository }}
+                  SHA: ${{ github.sha }}
+                  # Empty on workflow_dispatch: a manual run is started after
+                  # the fact, so only the in-flight wait (step 2) applies.
+                  BEFORE: ${{ github.event.before }}
+                  APPLY_WORKFLOW: _repo-config-apply.yaml
+                  # Must match the apply's push path filter (conformance-checked).
+                  APPLY_PATH: infrastructure/pulumi/platform/repo-config/
+              run: |
+                  set -euo pipefail
+                  runs="repos/${REPO}/actions/workflows/${APPLY_WORKFLOW}/runs"
+
+                  # A transient API error must not end the job: retry, then fail.
+                  api() {
+                      local i
+                      for i in 1 2 3 4 5; do
+                          if gh api "$@"; then return 0; fi
+                          echo "gh api $1 failed (attempt ${i}); retrying" >&2
+                          sleep 10
+                      done
+                      return 1
+                  }
+
+                  # 1. If this push changed repo-config, its apply run must
+                  #    exist before "nothing in flight" means anything. GitHub
+                  #    creates a push's runs together, but allow two minutes.
+                  changed=false
+                  if [ -n "${BEFORE}" ] && [ "${BEFORE}" != 0000000000000000000000000000000000000000 ]; then
+                      files="$(api "repos/${REPO}/compare/${BEFORE}...${SHA}" --jq '.files[].filename')"
+                      # The compare API lists at most 300 files: assume a touch past that.
+                      if grep -q "^${APPLY_PATH}" <<<"${files}" || [ "$(wc -l <<<"${files}")" -ge 300 ]; then
+                          changed=true
+                      fi
+                  fi
+                  if [ "${changed}" = true ]; then
+                      n=0
+                      for _ in $(seq 1 24); do
+                          n="$(api "${runs}?head_sha=${SHA}" --jq '.total_count')"
+                          [ "${n}" -gt 0 ] && break
+                          sleep 5
+                      done
+                      if [ "${n}" -eq 0 ]; then
+                          echo "::warning::this push changed ${APPLY_PATH} but no ${APPLY_WORKFLOW} run appeared for ${SHA}; exporting with the current key"
+                      fi
+                  fi
+
+                  # 2. Wait until no apply is unfinished, on any commit (an
+                  #    earlier push's apply can replace a key just as well).
+                  #    Asked per status, so a busy run is never pushed off a page.
+                  while :; do
+                      busy=""
+                      for s in requested queued pending waiting in_progress; do
+                          b="$(api "${runs}?status=${s}&per_page=10" --jq '.workflow_runs[] | "\(.html_url) (\(.status))"')"
+                          busy="${busy}${b:+${b} }"
+                      done
+                      [ -z "${busy}" ] && break
+                      echo "waiting for: ${busy}"
+                      sleep 15
+                  done
+
+                  # Said, not enforced: if this push's apply failed, the key may
+                  # or may not have moved, and the push step is the real test.
+                  c="$(api "${runs}?head_sha=${SHA}" --jq '.workflow_runs[0].conclusion // "none"')"
+                  case "${c}" in
+                      success | skipped | none) echo "repo-config apply for ${SHA}: ${c}" ;;
+                      *) echo "::warning::repo-config apply for ${SHA} ended '${c}'; a replaced mirror key may not match" ;;
+                  esac

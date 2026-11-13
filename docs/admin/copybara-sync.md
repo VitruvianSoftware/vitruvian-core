@@ -108,13 +108,15 @@ flowchart LR
 4. Copybara **reads** vitruvian-core over **HTTPS** (`GITHUB_TOKEN`), strips the `apps/mcp/vitruvian-slack-mcp/` prefix
    (`core.move`), and **pushes** the migrated commit(s) to the standalone over **SSH** (deploy key),
    stamping each with `MONOREPO_REV_ID`.
-   Before any of that, the `await-repo-config` job waits until no **Repo Config Apply** run is
-   queued or in flight (and, if this push changed `infrastructure/pulumi/platform/repo-config/`,
-   until that push's apply has appeared). A job gets its secrets when it starts, and the apply can
-   replace the mirror's deploy key and `<COMP>_SYNC_SSH_KEY` (a mirror rename always does); an export
-   that had already started would push with the old key and be refused. That happened on
-   2026-11-13 (#4661). `//tools/conformance:check` fails if the export job stops waiting, or if a
-   caller drops the `actions: read` the wait needs.
+   Before any of that, each caller's `await-repo-config` job (`_await-repo-config.yaml`) waits
+   until no **Repo Config Apply** run is queued or in flight (and, if this push changed
+   `infrastructure/pulumi/platform/repo-config/`, until that push's apply has appeared). The
+   caller's `export` job, which maps `<COMP>_SYNC_SSH_KEY`, `needs` it. The apply can replace the
+   mirror's deploy key and that secret (a mirror rename always does); an export already holding
+   the key would push with the old one and be refused. That happened on 2026-11-13 (#4661).
+   The wait sits in the caller, not in `_copybara-export.yaml`, because the caller is where the
+   key is mapped. `//tools/conformance:check` fails if a key-reading job stops waiting, if a caller
+   drops the `actions: read` the wait needs, or if the wait stops polling the apply.
 5. Nothing on the mirror side reacts. The mirror is read-only; the only way a change re-enters the
    monorepo is a labelled mirror PR (§4), and that path skip-guards any commit carrying
    `MONOREPO_REV_ID` (no bounce).
@@ -547,7 +549,7 @@ invariants across releases, downloads, and documentation:
 |---|---|---|
 | `Cannot find last imported revision … <LABEL> could not be found` | Destination has no rev-id baseline yet | Seed once with `--last-rev`/`--force` (§8b) |
 | `Load key "/root/.ssh/id_rsa": invalid format` → `Permission denied (publickey)` | SSH key lost its trailing newline | We run the image directly and write the key with a guaranteed `\n` — do **not** switch to `olivr/copybara-action` (it trims the newline via `core.getInput`) |
-| `Permission denied (publickey)` at the push step, right after a `repo-config` change | The export started before Repo Config Apply rotated the key, so it held the old one. `await-repo-config` now prevents this; if it recurs, check that job ran and waited | Re-run the export (`workflow_dispatch`) now that the apply is done |
+| `Permission denied (publickey)` at the push step, right after a `repo-config` change | The export started before Repo Config Apply rotated the key, so it held the old one. each caller's `await-repo-config` job now prevents this; if it recurs, check that job ran and waited | Re-run the export (`workflow_dispatch`) now that the apply is done |
 | A genuine change silently doesn't sync; export "succeeds" as NO_OP | Skip-guard over-fired (only possible in `SQUASH`, so only a component with an import path) | Ensure `mode = "ITERATIVE"` in `copy.bara.sky` (§5) |
 | Export pushes but the standalone loses `package-lock.json` / the dispatch workflow; or import deletes a gazelle `BUILD` | Missing context-file exclude | Confirm the `glob(..., exclude=[…])` lists in `copy.bara.sky` (see below) |
 | Export refuses with a red pre-check annotation | Someone pushed directly to the mirror, bypassing the PR gate | Bring the change in via a labelled mirror PR (§4), then re-run the export (§7) |
