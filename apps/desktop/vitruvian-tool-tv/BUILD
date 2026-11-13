@@ -110,3 +110,26 @@ rust_test(
     size = "small",
     crate = ":publish_tool_lib",
 )
+
+# Holds vitruvian-tool.json to release-please's JSON layout (every non-empty
+# array one item a line) and checks its version matches release-please.
+rust_test(
+    name = "version_test",
+    size = "small",
+    srcs = ["scripts/src/version_test.rs"],
+    data = [
+        ".release-please-manifest.json",
+        "release-please-config.json",
+        "vitruvian-tool.json",
+    ],
+    edition = "2021",
+    env = {
+        "MANIFEST_PATH": "$(rootpath vitruvian-tool.json)",
+        "RP_CONFIG_PATH": "$(rootpath release-please-config.json)",
+        "RP_MANIFEST_PATH": "$(rootpath .release-please-manifest.json)",
+    },
+    deps = [
+        "//packages/vitruvian-sdk:conformance_lib",
+        "@crates//:serde_json",
+    ],
+)

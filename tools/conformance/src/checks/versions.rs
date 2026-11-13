@@ -691,6 +691,409 @@ fn copies_package_json(content: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// CHECK: release-please JSON extra-files — every non-package.json `"type": "json"`
+// extra-file must be in release-please's 2-space expanded-array layout AND
+// marked `rules-lint-ignored=true` in `.gitattributes` so `//:tidy` (Prettier)
+// does not collapse short arrays back and fail `tidy-check` on release PRs.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug)]
+enum OrderedJson {
+    Leaf(serde_json::Value),
+    Arr(Vec<OrderedJson>),
+    Obj(Vec<(String, OrderedJson)>),
+}
+
+struct JsonCursor<'a> {
+    bytes: &'a [u8],
+    src: &'a str,
+    pos: usize,
+}
+
+impl<'a> JsonCursor<'a> {
+    fn skip_ws(&mut self) {
+        while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_whitespace() {
+            self.pos += 1;
+        }
+    }
+
+    fn parse_value(&mut self) -> Result<OrderedJson, String> {
+        self.skip_ws();
+        let b = *self.bytes.get(self.pos).ok_or("unexpected EOF")?;
+        match b {
+            b'{' => self.parse_obj(),
+            b'[' => self.parse_arr(),
+            b'"' => {
+                let s = self.parse_str()?;
+                Ok(OrderedJson::Leaf(serde_json::Value::String(s)))
+            }
+            _ => {
+                let start = self.pos;
+                while self.pos < self.bytes.len() {
+                    let c = self.bytes[self.pos];
+                    if c.is_ascii_whitespace() || matches!(c, b',' | b']' | b'}') {
+                        break;
+                    }
+                    self.pos += 1;
+                }
+                let tok = &self.src[start..self.pos];
+                let val: serde_json::Value =
+                    serde_json::from_str(tok).map_err(|e| format!("invalid token {tok:?}: {e}"))?;
+                Ok(OrderedJson::Leaf(val))
+            }
+        }
+    }
+
+    fn parse_str(&mut self) -> Result<String, String> {
+        let start = self.pos;
+        self.pos += 1; // opening '"'
+        let mut escaped = false;
+        while self.pos < self.bytes.len() {
+            let c = self.bytes[self.pos];
+            self.pos += 1;
+            if escaped {
+                escaped = false;
+            } else if c == b'\\' {
+                escaped = true;
+            } else if c == b'"' {
+                let slice = &self.src[start..self.pos];
+                return serde_json::from_str(slice)
+                    .map_err(|e| format!("invalid string {slice}: {e}"));
+            }
+        }
+        Err("unterminated JSON string".to_string())
+    }
+
+    fn parse_arr(&mut self) -> Result<OrderedJson, String> {
+        self.pos += 1; // '['
+        self.skip_ws();
+        let mut items = Vec::new();
+        if self.bytes.get(self.pos) == Some(&b']') {
+            self.pos += 1;
+            return Ok(OrderedJson::Arr(items));
+        }
+        loop {
+            items.push(self.parse_value()?);
+            self.skip_ws();
+            match self.bytes.get(self.pos) {
+                Some(b',') => {
+                    self.pos += 1;
+                }
+                Some(b']') => {
+                    self.pos += 1;
+                    return Ok(OrderedJson::Arr(items));
+                }
+                other => return Err(format!("expected ',' or ']', found {other:?}")),
+            }
+        }
+    }
+
+    fn parse_obj(&mut self) -> Result<OrderedJson, String> {
+        self.pos += 1; // '{'
+        self.skip_ws();
+        let mut entries: Vec<(String, OrderedJson)> = Vec::new();
+        if self.bytes.get(self.pos) == Some(&b'}') {
+            self.pos += 1;
+            return Ok(OrderedJson::Obj(entries));
+        }
+        loop {
+            self.skip_ws();
+            if self.bytes.get(self.pos) != Some(&b'"') {
+                return Err("expected string key in object".to_string());
+            }
+            let key = self.parse_str()?;
+            self.skip_ws();
+            if self.bytes.get(self.pos) != Some(&b':') {
+                return Err("expected ':' after object key".to_string());
+            }
+            self.pos += 1;
+            let val = self.parse_value()?;
+            if let Some(existing) = entries.iter_mut().find(|(k, _)| k == &key) {
+                existing.1 = val;
+            } else {
+                entries.push((key, val));
+            }
+            self.skip_ws();
+            match self.bytes.get(self.pos) {
+                Some(b',') => {
+                    self.pos += 1;
+                }
+                Some(b'}') => {
+                    self.pos += 1;
+                    return Ok(OrderedJson::Obj(entries));
+                }
+                other => return Err(format!("expected ',' or '}}', found {other:?}")),
+            }
+        }
+    }
+}
+
+fn format_ordered_json(val: &OrderedJson, indent: usize) -> String {
+    match val {
+        OrderedJson::Leaf(v) => serde_json::to_string(v).expect("serialize leaf"),
+        OrderedJson::Arr(items) => {
+            if items.is_empty() {
+                return "[]".to_string();
+            }
+            let inner = " ".repeat(indent + 2);
+            let outer = " ".repeat(indent);
+            let parts: Vec<String> = items
+                .iter()
+                .map(|i| format!("{inner}{}", format_ordered_json(i, indent + 2)))
+                .collect();
+            format!("[\n{}\n{outer}]", parts.join(",\n"))
+        }
+        OrderedJson::Obj(entries) => {
+            if entries.is_empty() {
+                return "{}".to_string();
+            }
+            let inner = " ".repeat(indent + 2);
+            let outer = " ".repeat(indent);
+            let parts: Vec<String> = entries
+                .iter()
+                .map(|(k, v)| {
+                    let k_str = serde_json::to_string(k).expect("serialize key");
+                    format!("{inner}{k_str}: {}", format_ordered_json(v, indent + 2))
+                })
+                .collect();
+            format!("{{\n{}\n{outer}}}", parts.join(",\n"))
+        }
+    }
+}
+
+fn release_please_json_layout(text: &str) -> Result<String, String> {
+    let mut cur = JsonCursor {
+        bytes: text.as_bytes(),
+        src: text,
+        pos: 0,
+    };
+    let parsed = cur.parse_value()?;
+    cur.skip_ws();
+    if cur.pos != cur.bytes.len() {
+        return Err("trailing characters after JSON root".to_string());
+    }
+    let mut out = format_ordered_json(&parsed, 0);
+    out.push('\n');
+    Ok(out)
+}
+
+fn gitattr_glob_rec(pat: &[char], pi: usize, txt: &[char], ti: usize) -> bool {
+    if pi == pat.len() {
+        return ti == txt.len();
+    }
+    if pi + 1 < pat.len() && pat[pi] == '*' && pat[pi + 1] == '*' {
+        // `/**/` or leading `**/`: zero or more directory segments.
+        if pi + 2 < pat.len() && pat[pi + 2] == '/' && gitattr_glob_rec(pat, pi + 3, txt, ti) {
+            return true;
+        }
+        for skip in 0..=(txt.len() - ti) {
+            if gitattr_glob_rec(pat, pi + 2, txt, ti + skip) {
+                return true;
+            }
+        }
+        return false;
+    }
+    match pat[pi] {
+        '*' => {
+            let mut skip = 0;
+            loop {
+                if gitattr_glob_rec(pat, pi + 1, txt, ti + skip) {
+                    return true;
+                }
+                if ti + skip >= txt.len() || txt[ti + skip] == '/' {
+                    break;
+                }
+                skip += 1;
+            }
+            false
+        }
+        '?' => ti < txt.len() && txt[ti] != '/' && gitattr_glob_rec(pat, pi + 1, txt, ti + 1),
+        c => ti < txt.len() && txt[ti] == c && gitattr_glob_rec(pat, pi + 1, txt, ti + 1),
+    }
+}
+
+fn is_rules_lint_ignored(gitattributes: &str, rel_path: &str) -> bool {
+    let basename = rel_path.rsplit('/').next().unwrap_or(rel_path);
+    let mut ignored = false;
+    for raw_line in gitattributes.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let mut tokens = line.split_whitespace();
+        let Some(pattern) = tokens.next() else {
+            continue;
+        };
+        let pat_str = pattern.strip_prefix('/').unwrap_or(pattern);
+        let pat_chars: Vec<char> = pat_str.chars().collect();
+        let target = if pattern.contains('/') {
+            rel_path
+        } else {
+            basename
+        };
+        let txt_chars: Vec<char> = target.chars().collect();
+        if !gitattr_glob_rec(&pat_chars, 0, &txt_chars, 0) {
+            continue;
+        }
+        for attr in tokens {
+            if attr == "rules-lint-ignored" || attr == "rules-lint-ignored=true" {
+                ignored = true;
+            } else if attr == "-rules-lint-ignored" || attr == "rules-lint-ignored=false" {
+                ignored = false;
+            }
+        }
+    }
+    ignored
+}
+
+fn normalize_rel_path(base: &str, rel: &str) -> String {
+    let combined = if base.is_empty() || base == "." {
+        rel.to_string()
+    } else {
+        format!("{}/{}", base.trim_matches('/'), rel)
+    };
+    let mut parts: Vec<&str> = Vec::new();
+    for seg in combined.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            s => parts.push(s),
+        }
+    }
+    parts.join("/")
+}
+
+/// Every non-`package.json` `"type": "json"` extra-file in any
+/// `release-please-config.json` must be committed in `release-please`'s
+/// 2-space expanded-array layout and marked `rules-lint-ignored=true` in
+/// `.gitattributes`. Prettier's built-in `json-stringify` parser already
+/// formats `package.json` identically to `release-please`, whereas Prettier's
+/// default `json` parser collapses short arrays onto one line and breaks
+/// `tidy-check` on release PRs (#3200, #3217, #4676).
+pub fn check_release_json_extra_files(ctx: &Context) {
+    let gitattr_path = format!("{}/.gitattributes", ctx.root);
+    let gitattributes = fs::read_to_string(&gitattr_path).unwrap_or_default();
+
+    let configs = ctx.files.discover(&ctx.root, "release-please-config.json");
+    let mut checked = 0u32;
+    let mut all_ok = true;
+
+    for cfg_abs in &configs {
+        let cfg_rel = ctx.rel(cfg_abs);
+        let cfg_dir = cfg_rel.rfind('/').map(|i| &cfg_rel[..i]).unwrap_or("");
+        let Ok(cfg_text) = fs::read_to_string(cfg_abs) else {
+            continue;
+        };
+        let Ok(cfg_json) = serde_json::from_str::<serde_json::Value>(&cfg_text) else {
+            continue;
+        };
+        let Some(packages) = cfg_json.get("packages").and_then(|p| p.as_object()) else {
+            continue;
+        };
+        for (pkg_key, pkg_val) in packages {
+            let pkg_base = if pkg_key == "." || pkg_key.is_empty() {
+                cfg_dir
+            } else {
+                pkg_key.as_str()
+            };
+            let Some(extra_files) = pkg_val.get("extra-files").and_then(|e| e.as_array()) else {
+                continue;
+            };
+            for entry in extra_files {
+                let Some(obj) = entry.as_object() else {
+                    continue;
+                };
+                if obj.get("type").and_then(|t| t.as_str()) != Some("json") {
+                    continue;
+                }
+                let Some(rel_file) = obj.get("path").and_then(|p| p.as_str()) else {
+                    continue;
+                };
+                let target_rel = normalize_rel_path(pkg_base, rel_file);
+                let filename = target_rel.rsplit('/').next().unwrap_or(&target_rel);
+                if filename == "package.json" {
+                    continue;
+                }
+                checked += 1;
+                let target_abs = format!("{}/{}", ctx.root, target_rel);
+                let Ok(text) = fs::read_to_string(&target_abs) else {
+                    ctx.emit_fail(
+                        "release",
+                        &target_rel,
+                        "(missing)",
+                        "present",
+                        &format!("referenced by {cfg_rel} extra-files, but missing on disk"),
+                        &format!("create {target_rel} or fix extra-files in {cfg_rel}"),
+                    );
+                    all_ok = false;
+                    continue;
+                };
+
+                if !is_rules_lint_ignored(&gitattributes, &target_rel) {
+                    ctx.emit_fail(
+                        "release",
+                        &target_rel,
+                        "formatted by prettier",
+                        "rules-lint-ignored=true",
+                        &format!(
+                            "{cfg_rel} updates {target_rel} with release-please's json updater (arrays one item a line), which Prettier collapses back on tidy-check"
+                        ),
+                        &format!(
+                            "mark {target_rel} (or its pattern) rules-lint-ignored=true in .gitattributes"
+                        ),
+                    );
+                    all_ok = false;
+                }
+
+                match release_please_json_layout(&text) {
+                    Ok(expected) if expected == text => {}
+                    Ok(_) => {
+                        ctx.emit_fail(
+                            "release",
+                            &target_rel,
+                            "collapsed arrays",
+                            "release-please JSON layout",
+                            &format!(
+                                "{target_rel} is not in release-please's 2-space expanded-array layout; its next release PR will rewrite unrelated lines"
+                            ),
+                            &format!(
+                                "format {target_rel} with JSON.stringify(..., null, 2) + \"\\n\" (every non-empty array one item a line)"
+                            ),
+                        );
+                        all_ok = false;
+                    }
+                    Err(e) => {
+                        ctx.emit_fail(
+                            "release",
+                            &target_rel,
+                            "invalid JSON",
+                            "valid JSON",
+                            &format!("could not parse {target_rel}: {e}"),
+                            &format!("fix JSON syntax in {target_rel}"),
+                        );
+                        all_ok = false;
+                    }
+                }
+            }
+        }
+    }
+
+    if checked > 0 && all_ok {
+        ctx.emit_ok_uncounted(
+            "release",
+            "json extra-files",
+            "release-please layout + lint-ignored",
+            "release-please layout + lint-ignored",
+            &format!(
+                "all {checked} non-package.json release-please JSON extra-files keep release-please layout and are rules-lint-ignored"
+            ),
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -912,5 +1315,66 @@ rust.toolchain(\n    edition = \"2021\",\n    versions = [\"1.75.0\"],\n)\n";
         assert!(copies_package_json("COPY pnpm-lock.yaml package.json ./"));
         assert!(!copies_package_json("COPY requirements.txt ./"));
         assert!(!copies_package_json("RUN cat package.json"));
+    }
+
+    fn run_release_json_check(files: &[(&str, &str)]) -> (u32, String) {
+        let dir = repo(files);
+        let ctx = Context::for_root(dir.to_str().unwrap());
+        check_release_json_extra_files(&ctx);
+        let out = (ctx.fail_count.get(), ctx.rows.get("RELEASE"));
+        let _ = fs::remove_dir_all(&dir);
+        out
+    }
+
+    #[test]
+    fn release_json_extra_file_fails_when_collapsed_or_not_lint_ignored() {
+        let cfg = r#"{
+  "packages": {
+    "apps/desktop/demo": {
+      "extra-files": [
+        { "type": "json", "path": "vitruvian-tool.json", "jsonpath": "$.version" }
+      ]
+    }
+  }
+}
+"#;
+        let collapsed = "{\n  \"version\": \"0.1.0\",\n  \"uses\": [\"notify\"]\n}\n";
+        let (fail, rows) = run_release_json_check(&[
+            ("apps/desktop/demo/release-please-config.json", cfg),
+            ("apps/desktop/demo/vitruvian-tool.json", collapsed),
+            (".gitattributes", ""),
+        ]);
+        assert_eq!(fail, 2, "{rows}");
+        assert!(rows.contains("rules-lint-ignored=true"), "{rows}");
+        assert!(rows.contains("expanded-array layout"), "{rows}");
+    }
+
+    #[test]
+    fn release_json_extra_file_passes_with_wildcard_gitattributes_and_expanded_arrays() {
+        let cfg = r#"{
+  "packages": {
+    "apps/desktop/demo": {
+      "extra-files": [
+        { "type": "json", "path": "vitruvian-tool.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "package.json", "jsonpath": "$.version" }
+      ]
+    }
+  }
+}
+"#;
+        let expanded = "{\n  \"version\": \"0.1.0\",\n  \"uses\": [\n    \"notify\"\n  ]\n}\n";
+        let (fail, rows) = run_release_json_check(&[
+            ("apps/desktop/demo/release-please-config.json", cfg),
+            ("apps/desktop/demo/vitruvian-tool.json", expanded),
+            (
+                "apps/desktop/demo/package.json",
+                "{\"version\":\"0.1.0\"}\n",
+            ),
+            (
+                ".gitattributes",
+                "apps/**/vitruvian-tool.json rules-lint-ignored=true\n",
+            ),
+        ]);
+        assert_eq!(fail, 0, "{rows}");
     }
 }
