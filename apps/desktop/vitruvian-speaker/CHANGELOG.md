@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.42.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.42.0...vitruvian-speaker-v1.42.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **vitruvian-atrium:** keep the bundle id com.vitruviansoftware.vitruvian through the rename ([#4668](https://github.com/VitruvianSoftware/vitruvian-core/issues/4668)) ([6438d01](https://github.com/VitruvianSoftware/vitruvian-core/commit/6438d01ac2a243b361f1aa34cec2fecb7970ee4e))
+
 ## [1.42.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.41.0...vitruvian-speaker-v1.42.0) (2026-11-12)
 
 
