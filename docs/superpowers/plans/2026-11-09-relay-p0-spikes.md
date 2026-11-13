@@ -12,7 +12,7 @@ Each spike ends in a written yes or no with evidence. This file is the record.
 |---|---|---|
 | A | Can ChatGPT and Claude add an OAuth-protected MCP on our domain, with Zitadel sign-in? | **Claude: yes, live** (2026-11-11, claude.ai). ChatGPT: yes on paper for one user, needs open registration for many; not tried live |
 | B | Does Zitadel's device flow work from a command-line app? | **Yes** (2026-11-11), with `relay-spike-client login` |
-| C | Does a WebSocket through the Cloudflare Tunnel stay up for 24 hours? | **Running.** `relay-spike-client hold` started 2026-11-11 18:15 PST, ends 2026-11-12 18:15 PST |
+| C | Does a WebSocket through the Cloudflare Tunnel stay up for 24 hours? | **No for one connection, yes for the service** (2026-11-12). 10 drops in 24 hours, connected 99.3% of the time; reconnecting is mandatory |
 | D | Can a connector drive unmodified `desktop-commander` over stdio? | **Yes** (2026-11-12), version 0.3.1 run through Bazel. The connector must kill the whole process group, turn telemetry off and redirect its feature-flag fetch |
 
 ## Live results (2026-11-11)
@@ -49,9 +49,48 @@ Each spike ends in a written yes or no with evidence. This file is the record.
   doesn't share the session of the newer one Claude's sign-in used, so James
   signed in twice. Worth fixing before real users see it.
 
-### C: running
+### C: no for one connection, yes with reconnects
 
-Results land here when the hold ends.
+`relay-spike-client hold --hours 24` (now `bazel run //apps/suites/vitruvian-relay/spike:vitruvian-relay-spike-client -- hold`) ran
+from 2026-11-11 18:15 to 2026-11-12 18:15 PST from James's MacBook, over home
+Wi-Fi, to `wss://relay-spike.ipv1337.dev/connect`. It sent a probe every 30 s
+and reconnected with backoff.
+
+| | |
+|---|---|
+| Time connected | 85,836 of 86,400 s (**99.3%**) |
+| Connections | 11 (**10 drops**) |
+| Longest single connection | 45,836 s (12.7 h) |
+| Probe round trip | p50 62 ms, p95 152 ms, max 462 ms (2,814 probes) |
+| Longest gap | 352 s |
+
+The 10 drops had three causes:
+
+- **8 resets from the network**, between 06:59 and 15:06, after 5 minutes to
+  12.7 hours. They were TCP resets or closes without a WebSocket close frame.
+  Each time, the client was back in about 1 s. Which hop reset them (home
+  network, Cloudflare's edge, or `cloudflared`) is **not established**: nothing
+  on the server side was logged for these.
+- **2 server outages, 17:36 and 17:59.** The client heard nothing for 90 s,
+  then Cloudflare answered 503 or 504 for up to 6 minutes. The relay-spike pod
+  was running on the node `james-mbp16`, a laptop, which went `NotReady` twice
+  in that window. The pod was then evicted and rescheduled on `nuc9i9` (cluster
+  events, 18:04). These are the gaps of 3 to 6 minutes.
+- **1 token refresh failed** on a reset (06:59, same moment as a drop) and
+  succeeded on the next try a second later.
+
+What this means for the relay:
+
+- **The connector must reconnect by itself, quietly and quickly.** A drop every
+  few hours is normal, and the backoff used here was enough.
+- Calls in flight when a connection drops are lost, so the relay has to fail
+  them cleanly and Claude has to be able to retry them.
+- **Production relay pods must not run on laptop nodes.** Pin them to always-on
+  nodes, and run more than one replica so a node going away isn't an outage.
+- The test client and the laptop node may be the same machine. Repeating the
+  test from an always-on host would tell home-network resets apart from
+  Cloudflare ones. That isn't needed for P0: the design has to reconnect either
+  way.
 
 ## Evidence so far (2026-11-09)
 
@@ -200,7 +239,7 @@ subject.
 - [ ] **A (ChatGPT):** James starts adding the connector in ChatGPT and copies its
       callback into `chatgptRedirectUris`, then re-apply, then finish. Only if his
       plan allows custom MCP servers
-- [ ] **C:** a WebSocket client on this Mac holds `/connect` open for 24 hours,
+- [x] **C:** a WebSocket client on this Mac holds `/connect` open for 24 hours,
       logging drops, reconnect times and ping round trips
 - [x] **D:** add a Bazel route for running an npm package (`//tools/pnpm:lock`,
       #4663), then run it
