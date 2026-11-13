@@ -58,7 +58,12 @@ func appears(within seconds: TimeInterval = 3, _ isThere: () -> Bool) -> Bool {
 // MARK: - The app
 
 func runningApp() -> NSRunningApplication? {
-    NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first
+    let listed = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+    let seen = listed.map {
+        ByHandRules.Listed(pid: $0.processIdentifier, hasProgram: $0.executableURL != nil,
+                           isTerminated: $0.isTerminated)
+    }
+    return ByHandRules.running(among: seen).map { listed[$0] }
 }
 
 /// The running app, or the end of the command.
