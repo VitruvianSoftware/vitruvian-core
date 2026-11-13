@@ -26,19 +26,85 @@ import Foundation
 /// gives the same bytes: Settings compares them to tell an installed plugin
 /// from one an older Vitruvian Speaker wrote (shown as "Update").
 public enum AgentPlugins {
-    /// The plugin's name in both agents.
+    /// The plugin's name across supported coding agents.
     public static let name = "vitruvian-speaker"
+
+    /// A generated file inside a plugin or local marketplace directory.
+    public struct GeneratedPluginFile: Equatable, Sendable {
+        public var relativePath: String
+        public var data: Data
+        public var isExecutable: Bool
+
+        public init(relativePath: String, data: Data, isExecutable: Bool = false) {
+            self.relativePath = relativePath
+            self.data = data
+            self.isExecutable = isExecutable
+        }
+    }
+
+    // MARK: Claude Code
+
+    public static let claudeMarketplaceName = name
+    public static let claudePluginID = "\(name)@\(claudeMarketplaceName)"
+
+    /// Generates all files for Speaker's local Claude Code marketplace and plugin.
+    public static func claudeMarketplaceFiles(program: String, hookCommand: String) throws -> [GeneratedPluginFile] {
+        let description = "Speaks each finished Claude Code reply on your Google Home speakers or this Mac, through Vitruvian Speaker."
+        let author: [String: Any] = [
+            "name": "VitruvianSoftware",
+            "url": "https://github.com/VitruvianSoftware",
+        ]
+        let marketplace: [String: Any] = [
+            "name": claudeMarketplaceName,
+            "owner": author,
+            "metadata": ["description": "Vitruvian Speaker integration for Claude Code."],
+            "plugins": [[
+                "name": name,
+                "source": "./plugins/\(name)",
+                "description": description,
+                "author": author,
+                "license": "MIT",
+            ]],
+        ]
+        let pluginManifest: [String: Any] = [
+            "name": name,
+            "version": "1.0.0",
+            "description": description,
+            "author": author,
+            "license": "MIT",
+        ]
+        let hooks: [String: Any] = [
+            "hooks": [
+                "Stop": [[
+                    "hooks": [[
+                        "type": "command",
+                        "command": hookCommand,
+                        "timeout": 10,
+                    ]],
+                ]],
+            ],
+        ]
+        let shim = "#!/bin/sh\nexec \(shellSingleQuote(program)) \(BroadcastCommand.explicitInvocationFlag) \"$@\"\n"
+        return [
+            GeneratedPluginFile(relativePath: ".claude-plugin/marketplace.json", data: try json(marketplace)),
+            GeneratedPluginFile(relativePath: "plugins/\(name)/.claude-plugin/plugin.json", data: try json(pluginManifest)),
+            GeneratedPluginFile(relativePath: "plugins/\(name)/hooks/hooks.json", data: try json(hooks)),
+            GeneratedPluginFile(relativePath: "plugins/\(name)/skills/\(name)/SKILL.md", data: Data(SpeakerSkill.markdown().utf8)),
+            GeneratedPluginFile(relativePath: "plugins/\(name)/bin/speaker-broadcast", data: Data(shim.utf8), isExecutable: true),
+        ]
+    }
 
     // MARK: Antigravity
 
     public static let antigravityManifestFile = "plugin.json"
     public static let antigravityHooksFile = "hooks.json"
+    public static let antigravitySkillFile = "skills/\(name)/SKILL.md"
 
-    /// `plugin.json` and `hooks.json` for `~/.gemini/config/plugins/vitruvian-speaker/`.
-    /// Antigravity enables a plugin it finds there unless its `config.json`
-    /// says `"enabled": false` for it, so nothing else is written. Its `Stop`
-    /// event takes a flat list of handlers (no `matcher`), its timeout is
-    /// in seconds, and the command runs through `sh -c`.
+    /// `plugin.json`, `hooks.json`, and `skills/vitruvian-speaker/SKILL.md` for
+    /// `~/.gemini/config/plugins/vitruvian-speaker/`. Antigravity enables a
+    /// plugin it finds there unless its `config.json` says `"enabled": false`
+    /// for it. Its `Stop` event takes a flat list of handlers (no `matcher`),
+    /// its timeout is in seconds, and the command runs through `sh -c`.
     public static func antigravityFiles(command: String) throws -> [(String, Data)] {
         let manifest: [String: Any] = [
             "name": name,
@@ -53,7 +119,12 @@ public enum AgentPlugins {
         return [
             (antigravityManifestFile, try json(manifest)),
             (antigravityHooksFile, try json(hooks)),
+            (antigravitySkillFile, Data(SpeakerSkill.markdown().utf8)),
         ]
+    }
+
+    public static func shellSingleQuote(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     /// The command of the Vitruvian Speaker `Stop` handler in an Antigravity
@@ -79,6 +150,12 @@ public enum AgentPlugins {
     }
 
     // MARK: OpenCode
+
+    public static let openCodeSkillRelativePath = ".config/opencode/skills/\(name)/SKILL.md"
+
+    public static func openCodeSkillData() -> Data {
+        Data(SpeakerSkill.markdown().utf8)
+    }
 
     /// The line that records the hook command in the plugin file.
     static let openCodeCommandPrefix = "// Command: "
