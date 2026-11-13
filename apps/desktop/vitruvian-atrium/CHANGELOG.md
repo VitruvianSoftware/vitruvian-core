@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.93.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.92.0...vitruvian-atrium-v3.93.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 36, GIF export controls, software dimming for DDC monitors, large-image resize and 12 more ([#4715](https://github.com/VitruvianSoftware/vitruvian-core/issues/4715)) ([74ebd56](https://github.com/VitruvianSoftware/vitruvian-core/commit/74ebd565273b57b05d967bb6f6f9b91dc4c18006))
+
 ## [3.92.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.91.0...vitruvian-atrium-v3.92.0) (2026-11-13)
 
 
