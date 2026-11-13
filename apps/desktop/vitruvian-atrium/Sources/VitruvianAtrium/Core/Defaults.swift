@@ -916,6 +916,11 @@ package enum Defaults {
         DefaultsKey.recorderShowCaptureMenuOnShortcut: Preferences.recorderShowCaptureMenuOnShortcut.defaultValue,
         DefaultsKey.screenOCRShowCaptureMenuOnShortcut: Preferences.screenOCRShowCaptureMenuOnShortcut.defaultValue,
         DefaultsKey.colorPickerShowCaptureMenuOnShortcut: Preferences.colorPickerShowCaptureMenuOnShortcut.defaultValue,
+        DefaultsKey.screenshotScrollingAutoScroll: Preferences.screenshotScrollingAutoScroll.defaultValue,
+        DefaultsKey.screenshotScrollingShortcutEnabled: Preferences.screenshotScrollingShortcutEnabled.defaultValue,
+        DefaultsKey.screenshotScrollingShortcut: Preferences.screenshotScrollingShortcut.defaultValue,
+        DefaultsKey.screenshotScrollingShowCaptureMenuOnShortcut:
+            Preferences.screenshotScrollingShowCaptureMenuOnShortcut.defaultValue,
         DefaultsKey.screenshotShortcutEnabled: Preferences.screenshotShortcutEnabled.defaultValue,
         DefaultsKey.screenshotShortcut: Preferences.screenshotShortcut.defaultValue,
         DefaultsKey.unifiedScreenCaptureShortcutMigrated: Preferences.unifiedScreenCaptureShortcutMigrated.defaultValue,

@@ -45,6 +45,7 @@ package enum SettingsSectionAnchor: String, CaseIterable, Hashable {
     case quickToggles
     case quitApps
     case screenshot
+    case screenshotScrolling
     case screenRecorder
     case colorPicker
     case screenOCR
@@ -74,7 +75,7 @@ package enum SettingsSectionAnchor: String, CaseIterable, Hashable {
         case .quickLauncher, .quickToggles, .quitApps, .micMute, .cameraPreview, .wallpaper, .scratchpad,
              .cleaningMode:
             return .quickTools
-        case .screenshot, .screenRecorder, .colorPicker, .screenOCR:
+        case .screenshot, .screenshotScrolling, .screenRecorder, .colorPicker, .screenOCR:
             return .screenshot
         case .keyboardBrightnessShortcuts: return .shortcuts
         case .fanControl: return .monitor
@@ -255,7 +256,7 @@ package final class SettingsRouter: ObservableObject {
     }
 
     private static func anchorSelectsTool(on page: SettingsPage) -> Bool {
-        page == .general || page == .energy
+        page == .general || page == .energy || page == .screenshot
     }
 
     package func goBack(isPageVisible: (SettingsPage) -> Bool = { _ in true }) {

@@ -399,6 +399,11 @@ package enum Preferences {
     package static let screenOCRShowCaptureMenuOnShortcut = Preference(DefaultsKey.screenOCRShowCaptureMenuOnShortcut, default: true)
     package static let colorPickerShowCaptureMenuOnShortcut = Preference(DefaultsKey.colorPickerShowCaptureMenuOnShortcut, default: true)
     package static let screenshotShortcutEnabled = Preference(DefaultsKey.screenshotShortcutEnabled, default: false)
+    package static let screenshotScrollingAutoScroll = Preference(DefaultsKey.screenshotScrollingAutoScroll, default: false)
+    package static let screenshotScrollingShortcutEnabled = Preference(
+        DefaultsKey.screenshotScrollingShortcutEnabled, default: false)
+    package static let screenshotScrollingShowCaptureMenuOnShortcut = Preference(
+        DefaultsKey.screenshotScrollingShowCaptureMenuOnShortcut, default: true)
     package static let unifiedScreenCaptureShortcutMigrated = Preference(DefaultsKey.unifiedScreenCaptureShortcutMigrated, default: false)
     package static let restoredScreenCaptureShortcutsMigrated = Preference(DefaultsKey.restoredScreenCaptureShortcutsMigrated, default: false)
     package static let screenshotFullScreenShortcutEnabled = Preference(DefaultsKey.screenshotFullScreenShortcutEnabled, default: false)
@@ -818,6 +823,8 @@ package enum Preferences {
     package static let recorderEditorPresets = Preference(DefaultsKey.recorderEditorPresets, default: Data())
     package static let screenshotShortcut = Preference(
         DefaultsKey.screenshotShortcut, default: GlobalShortcut.screenshotDefault.storageValue)
+    package static let screenshotScrollingShortcut = Preference(
+        DefaultsKey.screenshotScrollingShortcut, default: GlobalShortcut.screenshotScrollingDefault.storageValue)
     package static let screenshotFullScreenShortcut = Preference(
         DefaultsKey.screenshotFullScreenShortcut, default: GlobalShortcut.screenshotFullScreenDefault.storageValue)
     package static let screenshotLastCaptureShortcut = Preference(

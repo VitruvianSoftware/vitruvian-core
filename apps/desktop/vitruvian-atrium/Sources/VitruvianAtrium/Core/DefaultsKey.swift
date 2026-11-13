@@ -679,6 +679,10 @@ package enum DefaultsKey {
     // Screenshot capture and editor.
     package static let screenshotShortcutEnabled = "screenshotShortcutEnabled"
     package static let screenshotShortcut = "screenshotShortcut"
+    package static let screenshotScrollingAutoScroll = "screenshotScrollingAutoScroll"
+    package static let screenshotScrollingShortcutEnabled = "screenshotScrollingShortcutEnabled"
+    package static let screenshotScrollingShortcut = "screenshotScrollingShortcut"
+    package static let screenshotScrollingShowCaptureMenuOnShortcut = "screenshotScrollingShowCaptureMenuOnShortcut"
     package static let unifiedScreenCaptureShortcutMigrated = "unifiedScreenCaptureShortcutMigrated"
     package static let restoredScreenCaptureShortcutsMigrated = "restoredScreenCaptureShortcutsMigrated"
     package static let orphanedCaptureShortcutMigrated = "orphanedCaptureShortcutMigrated"
