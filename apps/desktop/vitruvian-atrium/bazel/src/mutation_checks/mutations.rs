@@ -712,8 +712,8 @@ pub const MUTATIONS: &[Mutation] = &[
         name: "one undecodable frame fails the GIF",
         group: "recorder",
         relative: "Sources/VitruvianAtrium/Services/Recorder/RecorderExporter.swift",
-        before: "                let decoded = try? await generator.image(at: time).image\n",
-        after: "                guard let decoded = try? await generator.image(at: time).image else {\n                    return cancelled.isCancelled ? .cancelled : .readFailed\n                }\n",
+        before: "                var decoded = try? await generator.image(at: time).image\n",
+        after: "                var decoded = try? await generator.image(at: time).image\n                if decoded == nil { return cancelled.isCancelled ? .cancelled : .readFailed }\n",
         diagnostic: "a GIF exports past frames that do not decode",
     },
     Mutation {

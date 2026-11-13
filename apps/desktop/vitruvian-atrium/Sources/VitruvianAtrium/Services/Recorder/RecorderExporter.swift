@@ -3,6 +3,7 @@
 
 import AVFoundation
 import CoreGraphics
+import CoreImage
 import ImageIO
 import UniformTypeIdentifiers
 import VitruvianAtriumCore
@@ -607,18 +608,28 @@ package final class RecorderExporter: Sendable {
                                              track: track,
                                              sourceSize: sourceSize,
                                              frameRate: RecorderSupport.sanitizedFrameRate(frameRate),
-                                             duration: duration)
+                                             duration: duration,
+                                             outputScale: CGFloat(document.outputScale(for: .gif)),
+                                             outputFormat: .gif)
         let composer = plan.map { RecorderComposer(plan: $0) }
-        let canvas = composer?.canvasSize ?? RecorderSupport.evenSize(sourceSize)
-        let size = RecorderSupport.gifOutputSize(source: canvas, size: document.resolvedGIFSize)
+        // Pure resizing stays after decoding: AV video composition can replace
+        // corrupt input frames with black rather than reporting a missing frame.
+        let scaleOnly = composer != nil && RecorderComposer.makePlan(
+            document: document, track: track, sourceSize: sourceSize,
+            frameRate: RecorderSupport.sanitizedFrameRate(frameRate), duration: duration) == nil
+        let resizeContext = scaleOnly ? CIContext() : nil
+        // GIF dimensions are independent of the video bitrate and size preset.
+        let canvas = composer?.canvasSize
+            ?? RecorderSupport.gifOutputSize(source: RecorderSupport.evenSize(sourceSize),
+                scalePercent: document.resolvedGIFScalePercent)
 
         let generator = AVAssetImageGenerator(asset: timeline)
         defer { generator.cancelAllCGImageGeneration() }
         generator.appliesPreferredTrackTransform = true
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
-        generator.maximumSize = size
-        if let composer {
+        generator.maximumSize = composer == nil ? canvas : .zero
+        if let composer, !scaleOnly {
             guard let composition = await RecorderComposer.videoComposition(
                 track: timelineVideo,
                 asset: timeline,
@@ -649,7 +660,12 @@ package final class RecorderExporter: Sendable {
                 if cancelled.isCancelled { return .cancelled }
                 let seconds = min(outputDuration, Double(index) / Double(fps))
                 let time = CMTime(seconds: seconds, preferredTimescale: 600)
-                let decoded = try? await generator.image(at: time).image
+                var decoded = try? await generator.image(at: time).image
+                if let image = decoded, let resizeContext, let composer {
+                    decoded = resizeContext.createCGImage(
+                        composer.render(CIImage(cgImage: image), at: seconds),
+                        from: CGRect(origin: .zero, size: canvas))
+                }
                 if cancelled.isCancelled { return .cancelled }
                 if let frame = decoded ?? previous {
                     for _ in 0...missing { try writer.append(frame) }

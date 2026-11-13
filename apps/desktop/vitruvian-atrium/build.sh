@@ -382,6 +382,7 @@ if (( TEST )); then
         Sources/VitruvianAtrium/Services/Recorder/RecorderWriter.swift
         Sources/VitruvianAtrium/Services/Recorder/RecorderCaptureEngine.swift
         Sources/VitruvianAtrium/Core/RecorderExportStrings.swift
+        Sources/VitruvianAtrium/Core/RecorderExportFormatStrings.swift
         Sources/VitruvianAtrium/Services/Recorder/RecorderComposer.swift
         Sources/VitruvianAtrium/Services/Recorder/RecorderComposerPlan.swift
         Sources/VitruvianAtrium/Services/Recorder/RecorderCursorSprite.swift

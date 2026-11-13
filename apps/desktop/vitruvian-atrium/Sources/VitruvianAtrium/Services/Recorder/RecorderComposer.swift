@@ -58,6 +58,9 @@ package final class RecorderComposer {
         /// once like everything else, so a frame is a lookup.
         package let texts: [RecorderTextOverlay]
         package let textOpacity: [[Double]]
+        /// GIF captions keep the preview's font metrics and minimum font size,
+        /// then scale with the picture instead of being laid out again smaller.
+        package let textCanvasSize: CGSize
         /// Pictures laid over the recording, each already resized to the
         /// pixels it is drawn at, with the same per-frame solidity.
         package let images: [RecorderImageOverlay]
@@ -68,7 +71,7 @@ package final class RecorderComposer {
         package let blurCovers: [[Bool]]
 
         // Spelled out because a memberwise initializer never leaves its module.
-        package init(sourceSize: CGSize, canvasSize: CGSize, cardRect: CGRect, frameRate: Int, positions: [CGPoint], zoom: [Double], travel: [CGPoint], pressScale: [Double], ring: [Double], showsPointer: Bool, pointerShapes: [RecorderPointerTrack.CursorShape], pointerShapeIndex: [Int], pointerVisible: [Bool], pointerOpacity: [Double], pointerScale: CGFloat, pointerPixelSize: CGFloat, showsClickRing: Bool, plate: CIImage?, mask: CIImage?, texts: [RecorderTextOverlay], textOpacity: [[Double]], images: [RecorderImageOverlay], imageSprites: [CGImage?], imageOpacity: [[Double]], blurs: [RecorderBlurRegion], blurCovers: [[Bool]]) {
+        package init(sourceSize: CGSize, canvasSize: CGSize, cardRect: CGRect, frameRate: Int, positions: [CGPoint], zoom: [Double], travel: [CGPoint], pressScale: [Double], ring: [Double], showsPointer: Bool, pointerShapes: [RecorderPointerTrack.CursorShape], pointerShapeIndex: [Int], pointerVisible: [Bool], pointerOpacity: [Double], pointerScale: CGFloat, pointerPixelSize: CGFloat, showsClickRing: Bool, plate: CIImage?, mask: CIImage?, texts: [RecorderTextOverlay], textOpacity: [[Double]], textCanvasSize: CGSize, images: [RecorderImageOverlay], imageSprites: [CGImage?], imageOpacity: [[Double]], blurs: [RecorderBlurRegion], blurCovers: [[Bool]]) {
             self.sourceSize = sourceSize
             self.canvasSize = canvasSize
             self.cardRect = cardRect
@@ -90,6 +93,7 @@ package final class RecorderComposer {
             self.mask = mask
             self.texts = texts
             self.textOpacity = textOpacity
+            self.textCanvasSize = textCanvasSize
             self.images = images
             self.imageSprites = imageSprites
             self.imageOpacity = imageOpacity
@@ -174,6 +178,8 @@ package final class RecorderComposer {
     /// frame the moment the zoom moved.
     private func drawTexts(on content: CIImage, index: Int) -> CIImage {
         guard !plan.texts.isEmpty else { return content }
+        let scale = CGAffineTransform(scaleX: plan.canvasSize.width / plan.textCanvasSize.width,
+                                      y: plan.canvasSize.height / plan.textCanvasSize.height)
         var result = content
         for (order, overlay) in plan.texts.enumerated() {
             guard plan.textOpacity.indices.contains(order),
@@ -181,12 +187,13 @@ package final class RecorderComposer {
             let opacity = plan.textOpacity[order][index]
             guard opacity > 0.01,
                   let image = RecorderTextRenderer.image(for: overlay,
-                                                         canvasHeight: plan.canvasSize.height)
+                                                         canvasHeight: plan.textCanvasSize.height)
             else { continue }
             let size = CGSize(width: image.width, height: image.height)
-            let origin = overlay.anchor.origin(of: size, in: plan.canvasSize)
+            let origin = overlay.anchor.origin(of: size, in: plan.textCanvasSize)
             result = faded(CIImage(cgImage: image), opacity: opacity)
                 .transformed(by: CGAffineTransform(translationX: origin.x, y: origin.y))
+                .transformed(by: scale)
                 .composited(over: result)
         }
         return result
