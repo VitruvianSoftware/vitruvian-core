@@ -7,15 +7,19 @@ import VitruvianAtriumDesign
 import VitruvianAtriumServices
 import VitruvianAtriumUI
 
-/// The module's real scans and removal guard, in a fixture home folder where
-/// Launch Services knows no app. No cleaning is performed.
+/// The module's real scans and removal guard, in a fixture home folder and
+/// shared Library folder where Launch Services knows no app. No cleaning is
+/// performed.
 enum CleanerEligibilityTests {
     typealias Item = JunkCleaner.Item
 
     /// A fixture's home folder: no app is registered with Launch Services,
-    /// and screenshots are saved in `screenshots`.
+    /// and screenshots are saved in `screenshots`. The shared Library folder
+    /// is `Library` beside the home folder, never the real `/Library`.
     static func places(home: URL, screenshots: [URL] = []) -> JunkCleaner.Places {
-        JunkCleaner.Places(home: home.path, screenshotFolders: { screenshots }, isRegistered: { _ in false })
+        JunkCleaner.Places(home: home.path,
+                           systemLibrary: home.deletingLastPathComponent().appendingPathComponent("Library").path,
+                           screenshotFolders: { screenshots }, isRegistered: { _ in false })
     }
 
     static func item(_ url: URL, _ category: CleanerSupport.Category = .leftovers, detail: String,
@@ -172,33 +176,117 @@ enum CleanerEligibilityTests {
                      "a file that no longer proves it is a capture is never removed")
     }
 
+    static func leftovers(in directory: URL, installed: Set<String>, places: JunkCleaner.Places,
+                          metadata: Bool = false) -> [Item] {
+        var items: [Item] = []
+        JunkCleaner.appendLeftovers(in: directory.path, usesContainerMetadata: metadata,
+                                    installed: installed, places: places, fm: .default, into: &items)
+        return items
+    }
+
+    static func checkSupportDirectories(_ suite: TestSuite, home: URL, places: JunkCleaner.Places) throws {
+        func canRemove(_ item: Item, installed: Set<String> = []) -> Bool {
+            JunkCleaner.mayRemove(item, installed: installed, places: places)
+        }
+        let manager = FileManager.default
+        let support = home.appendingPathComponent("Library/Application Support", isDirectory: true)
+        let battle = support.appendingPathComponent("Battle.net", isDirectory: true)
+        try manager.createDirectory(at: battle.appendingPathComponent("Versions", isDirectory: true),
+                                    withIntermediateDirectories: true)
+        try manager.createDirectory(at: support.appendingPathComponent("Battle.net.plist"),
+                                    withIntermediateDirectories: true)
+        try Data([1]).write(to: support.appendingPathComponent("maker.com"))
+
+        let other = home.deletingLastPathComponent()
+            .appendingPathComponent("another-user/Library/Application Support/Battle.net", isDirectory: true)
+        try manager.createDirectory(at: other, withIntermediateDirectories: true)
+        let shared = URL(fileURLWithPath: places.systemLibrary, isDirectory: true)
+            .appendingPathComponent("Application Support/Battle.net", isDirectory: true)
+        try manager.createDirectory(at: shared, withIntermediateDirectories: true)
+        let battlePath = battle.resolvingSymlinksInPath().path
+        let sharedPath = shared.resolvingSymlinksInPath().path
+        let otherPath = other.resolvingSymlinksInPath().path
+        let before = JunkCleaner.scanLeftovers(installed: [], places: places)
+        suite.expect(!before.contains { $0.url.resolvingSymlinksInPath().path == otherPath }
+                     && !canRemove(item(other, detail: "Battle.net")),
+                     "another user's support directory is outside the scan and removal roots")
+        guard let row = before.first(where: { $0.url.resolvingSymlinksInPath().path == battlePath }),
+              let sharedRow = before.first(where: { $0.url.resolvingSymlinksInPath().path == sharedPath }) else {
+            suite.expect(false, "unowned support directories in both libraries are offered for review")
+            return
+        }
+        suite.expect([row, sharedRow].allSatisfy { $0.detail == "Battle.net" && !$0.recommended && canRemove($0) },
+                     "an uninstalled app's domain directories are optional leftovers")
+        let installed: Set<String> = ["net.battle.app", "com.maker"]
+        let found = JunkCleaner.scanLeftovers(installed: installed, places: places)
+        suite.expect(!found.contains { $0.url.lastPathComponent == "Battle.net" }
+                     && !canRemove(row, installed: installed) && !canRemove(sharedRow, installed: installed),
+                     "an installed Battle.net is protected in both libraries at scan and after a stale selection")
+        suite.expect(Set(found.map { $0.url.lastPathComponent }) == ["Battle.net.plist", "maker.com"]
+                     && found.allSatisfy { canRemove($0, installed: installed) },
+                     "only the raw name of a support directory establishes reverse ownership")
+        // The checks that follow read this Application Support folder too.
+        for url in [battle, support.appendingPathComponent("Battle.net.plist"),
+                    support.appendingPathComponent("maker.com"), shared] {
+            try manager.removeItem(at: url)
+        }
+    }
+
+    static func checkOrphanedAgents(_ suite: TestSuite, home: URL, places: JunkCleaner.Places) throws {
+        let agents = home.appendingPathComponent("Library/LaunchAgents", isDirectory: true)
+        try FileManager.default.createDirectory(at: agents, withIntermediateDirectories: true)
+        let missingProgram = agents.appendingPathComponent("missing").path
+        for label in ["test.editor", "editor.test"] {
+            try PropertyListSerialization.data(fromPropertyList: ["Label": label, "Program": missingProgram],
+                                               format: .xml, options: 0)
+                .write(to: agents.appendingPathComponent(label + ".plist"))
+        }
+        let found = JunkCleaner.scanOrphanedLaunchPlists(installed: ["editor.test"], places: places)
+        suite.expect(found.map(\.detail) == ["test.editor"] && found.allSatisfy(\.recommended),
+                     "the orphaned agent is still offered while the installed label stays protected")
+    }
+
     static func run(_ suite: TestSuite) {
         let manager = FileManager.default
-        let root = manager.temporaryDirectory.resolvingSymlinksInPath()
+        // The home folder sits in a sandbox beside the fixture's shared Library.
+        let sandbox = manager.temporaryDirectory.resolvingSymlinksInPath()
             .appendingPathComponent("vitruvian-cleaner-\(UUID().uuidString)", isDirectory: true)
-        defer { try? manager.removeItem(at: root) }
+        let root = sandbox.appendingPathComponent("user", isDirectory: true)
+        defer { try? manager.removeItem(at: sandbox) }
         let places = Self.places(home: root)
         func canRemove(_ item: Item, installed: Set<String> = []) -> Bool {
             JunkCleaner.mayRemove(item, installed: installed, places: places)
         }
         do {
             try manager.createDirectory(at: root, withIntermediateDirectories: true)
+            try checkSupportDirectories(suite, home: root, places: places)
+            try checkOrphanedAgents(suite, home: root, places: places)
+            let installed: Set<String> = ["editor.test"]
             for category in [CleanerSupport.Category.caches, .logs] {
                 let dir = root.appendingPathComponent(category == .caches ? "Library/Caches" : "Library/Logs")
                 try manager.createDirectory(at: dir, withIntermediateDirectories: true)
-                for name in ["logitec.localized", "Vendor.LoCaLiZeD", "com.vendor.editor"] {
+                for name in ["logitec.localized", "Vendor.LoCaLiZeD", "com.vendor.editor", "test.editor"] {
                     let folder = dir.appendingPathComponent(name)
                     try manager.createDirectory(at: folder, withIntermediateDirectories: true)
                     try Data(repeating: 1, count: 4096).write(to: folder.appendingPathComponent("data"))
                 }
-                var leftovers: [Item] = []
+                var scanned: [Item] = []
                 JunkCleaner.appendLeftovers(in: dir.path, usesContainerMetadata: false,
-                                            installed: [], places: places, fm: manager, into: &leftovers)
-                let claimed = Set(leftovers.map { $0.url.standardizedFileURL.path })
+                                            installed: [], places: places, fm: manager, into: &scanned)
+                let claimed = Set(scanned.map { $0.url.standardizedFileURL.path })
                 let found = category == .caches ? JunkCleaner.scanCaches(excluding: claimed, places: places)
                     : JunkCleaner.scanLogs(excluding: claimed, places: places)
                 suite.expect(found.isEmpty,
                              "localized folders cannot return as recommended \(category) after leftover scanning")
+                let optional = leftovers(in: dir, installed: installed, places: places)
+                let optionalClaimed = Set(optional.map { $0.url.standardizedFileURL.path })
+                let unclaimed = category == .caches
+                    ? JunkCleaner.scanCaches(excluding: optionalClaimed, places: places)
+                    : JunkCleaner.scanLogs(excluding: optionalClaimed, places: places)
+                suite.expect(optional.contains {
+                    $0.detail == "test.editor" && !$0.recommended && canRemove($0, installed: installed)
+                } && unclaimed.isEmpty,
+                             "a reversed id cannot promote an optional \(category) leftover to scheduled cleanup")
                 let normal = category == .caches ? JunkCleaner.scanCaches(excluding: [], places: places)
                     : JunkCleaner.scanLogs(excluding: [], places: places)
                 suite.expect(normal.contains { $0.detail == "com.vendor.editor" && $0.recommended },
@@ -236,6 +324,10 @@ enum CleanerEligibilityTests {
                 suite.expect(!canRemove(item(preference, detail: id), installed: [id]),
                              "preferences for an installed owner \(id) remain protected")
             }
+            let reversed = preferences.appendingPathComponent("test.editor.plist")
+            try Data().write(to: reversed)
+            suite.expect(canRemove(item(reversed, detail: "test.editor"), installed: installed),
+                         "an installed reversed id does not protect an unrelated preference")
 
             let container = containers.appendingPathComponent(UUID().uuidString, isDirectory: true)
             try manager.createDirectory(at: container, withIntermediateDirectories: false)
@@ -246,6 +338,17 @@ enum CleanerEligibilityTests {
             suite.expect(owner(container, metadata: true) == "com.vendor.localized"
                          && canRemove(item(container, detail: "com.vendor.localized")),
                          "container metadata remains an identifier rather than a directory name")
+            for id in ["test.editor", "editor.test"] {
+                let owned = containers.appendingPathComponent(UUID().uuidString, isDirectory: true)
+                try manager.createDirectory(at: owned, withIntermediateDirectories: false)
+                try PropertyListSerialization.data(fromPropertyList: ["MCMMetadataIdentifier": id],
+                                                   format: .xml, options: 0)
+                    .write(to: owned.appendingPathComponent(".com.apple.containermanagerd.metadata.plist"))
+            }
+            let contained = leftovers(in: containers, installed: installed, places: places, metadata: true)
+            suite.expect(Set(contained.map(\.detail)) == ["com.vendor.localized", "test.editor"]
+                         && contained.allSatisfy { canRemove($0, installed: installed) },
+                         "container metadata protects the actual owner and keeps unrelated leftovers eligible")
 
             runScreenshotRules(suite)
             try runScreenshotScan(suite, root: root)

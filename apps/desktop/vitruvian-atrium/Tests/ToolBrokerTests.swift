@@ -943,6 +943,56 @@ enum ToolBrokerTests {
         suite.expect(result?.replaced == nil && board.string(forType: .string) == "dirty",
                      "a look called off while the rule was deciding writes nothing")
 
+        // A carried type is read once the replacement is known, and kept,
+        // dropped or refused as the rule says.
+        let preview = NSPasteboard.PasteboardType("org.vitruvian.test.preview")
+        func carrying(_ answer: ClipboardCarriedData,
+                      during: @escaping @Sendable () -> Void = {}) -> ClipboardRewriteRule {
+            var carrier = rule()
+            carrier.carriedTypes = [preview.rawValue]
+            carrier.carry = { type, data, text in
+                log.asked.append("carry \(type) \(data.map { String(decoding: $0, as: UTF8.self) } ?? "-") \(text)")
+                during()
+                return answer
+            }
+            return carrier
+        }
+        func copyWithPreview() {
+            copy("dirty")
+            board.setData(Data("old".utf8), forType: preview)
+        }
+        copyWithPreview()
+        result = look(carrying(.keep(Data("new".utf8))))
+        suite.expect(result?.replaced?.text == "clean"
+                         && log.asked == ["types", "text dirty", "carry org.vitruvian.test.preview old dirty"]
+                         && board.string(forType: .string) == "clean" && board.data(forType: preview) == Data("new".utf8),
+                     "a carried type the rule keeps is written back beside the replacement, as the rule gave it")
+        copyWithPreview()
+        result = look(carrying(.drop))
+        suite.expect(result?.replaced?.text == "clean" && board.data(forType: preview) == nil,
+                     "a carried type the rule drops is left out of the rewrite")
+        copyWithPreview()
+        result = look(carrying(.refuse))
+        suite.expect(result?.replaced == nil && board.string(forType: .string) == "dirty"
+                         && board.data(forType: preview) == Data("old".utf8),
+                     "a carried type the rule refuses leaves the whole copy as it was")
+        copy("dirty")
+        result = look(carrying(.refuse))
+        suite.expect(result?.replaced?.text == "clean" && log.asked == ["types", "text dirty"],
+                     "a carried type that is not on the clipboard is not asked about")
+        copyWithPreview()
+        result = look(carrying(.keep(Data("new".utf8)), during: {
+            board.clearContents()
+            board.setString("other", forType: .string)
+        }))
+        suite.expect(result?.replaced == nil && board.string(forType: .string) == "other",
+                     "a copy that changed while a carried type was decided is not overwritten")
+        copyWithPreview()
+        let carryToken = ClipboardPollToken()
+        result = look(carrying(.keep(Data("new".utf8)), during: { carryToken.cancel() }), token: carryToken)
+        suite.expect(result?.replaced == nil && board.string(forType: .string) == "dirty",
+                     "a look called off while a carried type was decided writes nothing")
+
         board.clearContents()
         board.writeObjects(["a" as NSString, "b" as NSString])
         result = look(rule())

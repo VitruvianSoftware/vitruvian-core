@@ -1,133 +1,118 @@
 # Vitruvian brand standard
 
-> **Status:** Draft, 2026-11-10. Names marked *proposed* wait for James's approval.
+> **Status:** Active (cutover completed 2026-11-12).
 > **Owner:** James. **Applies to:** every product, repo, doc and agent in `vitruvian-core`.
 
-## 1. The short version
+## 1. Naming rule
 
-Every product we ship is called **Vitruvian _Noun_**, where the noun says plainly what
-it does. One company name, one pattern, no clever words to decode.
+Every shipped product is **Vitruvian \<Noun\>** — one real English noun that says plainly
+what the product does. One company name, one pattern, no camel-case compounds
+(`HomeSpeaker`) and no invented words (`Tabula`).
 
 - **Vitruvian Software** is the company. It appears in legal text, the site footer,
-  signing identities and the GitHub org. Products never say "by Vitruvian Software" in
-  their name.
-- **Vitruvian Desktop** is the platform. It hosts products as extensions. Inside
-  Desktop, a product drops the prefix and shows only its noun ("Code", "Speaker"),
-  because the user is already inside Vitruvian.
-- **Products** are `Vitruvian <Noun>` everywhere outside Desktop: app name, menu bar,
-  site, catalog, README title, store listing.
-- **Internal tools** (homelab, Backstage, God's eye view, the MCP servers we only use
-  ourselves, build tooling) get no product brand. They keep plain technical names.
+  signing identities and the `VitruvianSoftware` GitHub org. Products never put
+  "by Vitruvian Software" in their name.
+- **Vitruvian Atrium** is the macOS host app (notch island, Command Bar, Radial menu)
+  that runs tools over JSON-RPC. Tools use `Vitruvian <Noun>` too (`Vitruvian Code`,
+  `Vitruvian Speaker`, `Vitruvian Remote`, `Vitruvian GitHub`, `Vitruvian TV`).
+- **Intentional multi-word display names:** `Vitruvian DevX CLI` keeps `DevX CLI` so it
+  reads clearly as a developer CLI; MCP servers use `Vitruvian <Target> MCP` in prose and
+  `vitruvian-<target>-mcp` in directory, binary and repo slugs; `Vitruvian TV` uses the
+  standard acronym.
+- **Internal tools and standalone utilities** get no `Vitruvian` product brand (`backstage`,
+  `gods-eye-view`, `ostation`, `oauth-user-inspector`, `gh-watch`, `Daytona Platinum`,
+  Antigravity plugins, Pulumi libraries and `tools/`).
 
-The reason: a small company gets more from one strong name than from many weak ones.
-Every product someone meets teaches them the word "Vitruvian", and a new product starts
-with the trust the others earned.
+Old product names are **retired, not aliased**. `tools/lint-naming` (`RET001`) fails CI if
+a retired name reappears outside the allowlisted records and kept identifiers below.
 
-## 2. Naming rules
+## 2. Products and mirror repos
 
-| Where | Rule | Example (Speaker) |
-|---|---|---|
-| Display name (outside Desktop) | `Vitruvian <Noun>` | Vitruvian Speaker |
-| Display name (inside Desktop) | `<Noun>` | Speaker |
-| Monorepo directory | `vitruvian-<noun>` under its category | `apps/desktop/vitruvian-speaker` |
-| Mirror repo | same as the directory | `VitruvianSoftware/vitruvian-speaker` |
-| CLI command | `vitruvian-<noun>` | `vitruvian-speaker` |
-| macOS / Android bundle ID | `com.vitruviansoftware.<noun>` | `com.vitruviansoftware.speaker` |
-| Swift module / type prefix | `Vitruvian<Noun>` | `VitruvianSpeakerCore` |
-| MCP server name | `vitruvian-<noun>` | `vitruvian-speaker` |
-| release-please component | the directory name | `vitruvian-speaker` |
-| On-disk folders | `Vitruvian <Noun>` | `~/Library/Application Support/Vitruvian Speaker` |
-| Env vars | `VITRUVIAN_<NOUN>_*` | `VITRUVIAN_SPEAKER_TARGET` |
+Verified against `apps/`, `packages/`, `catalog/` and `StandaloneRepo` in
+`infrastructure/pulumi/platform/repo-config/internal/copybara_sync/sync.go`:
 
-Choosing the noun:
+| Product | Former name | Monorepo folder | Bundle / tool / CLI ID | Release component | Mirror repo (`VitruvianSoftware/…`) |
+|---|---|---|---|---|---|
+| **Vitruvian Code** | Nexus Agent | `apps/desktop/vitruvian-code` | `com.vitruviansoftware.code`, `dev.vitruvian.code` | `vitruvian-code` | `vitruvian-code` |
+| **Vitruvian Speaker** | HomeSpeaker | `apps/desktop/vitruvian-speaker` | `com.vitruviansoftware.speaker`, `dev.vitruvian.speaker` | `vitruvian-speaker` | `vitruvian-speaker` |
+| **Vitruvian Courier** | Courier | `apps/desktop/vitruvian-courier` | `com.vitruviansoftware.courier` (kept) | `vitruvian-courier` | `vitruvian-courier` |
+| **Vitruvian Atrium** | Vitruvian (host app) | `apps/desktop/vitruvian-atrium` | `com.vitruviansoftware.vitruvian` (kept) | `vitruvian-atrium` | `vitruvian-atrium` |
+| **Vitruvian Remote** | *(already compliant)* | `apps/mobile/android-remote` (kept) | `dev.vitruvian.remote`, `com.vitruviansoftware.remote` | `android-remote` | `vitruvian-remote` |
+| **Vitruvian Tabs** | Tabula | `apps/suites/vitruvian-tabs` | CLI `vitruvian-tabs` | `vitruvian-tabs-{api,cli,extension,shared,web}` | — *(monorepo-only)* |
+| **Vitruvian Wand** | Wand | `apps/suites/vitruvian-wand` | `com.vitruviansoftware.wand`, CLI `vitruvian-wand` | `vitruvian-wand` | — *(monorepo-only)* |
+| **Vitruvian Watch** | Wear OS app | `apps/mobile/vitruvian-watch` | `com.vitruviansoftware.watch.{pulse,remote,home,code}` | `vitruvian-watch` | — *(monorepo-only)* |
+| **Vitruvian Relay** | Relay | `apps/suites/vitruvian-relay` | `vitruvian-relay-spike` *(spike)* | — *(pre-release)* | — *(monorepo-only)* |
+| **Vitruvian DevX CLI** | `devx` | `apps/cli/vitruvian-devx` | CLI `devx` (kept) | `vitruvian-devx` | `vitruvian-devx` |
+| **Vitruvian Homelab** | `homelab` | `apps/cli/vitruvian-homelab` | CLI `homelab` (kept) | `vitruvian-homelab` | `vitruvian-homelab` |
+| **Vitruvian Deck** | ESP32-S3 desk companion | `apps/embedded/vitruvian-deck` | `vitruvian-deck.local` | `vitruvian-deck` | `vitruvian-deck` |
+| **Vitruvian Roborock MCP** (`vitruvian-roborock-mcp`) | `mcp-roborock` | `apps/mcp/vitruvian-roborock-mcp` | MCP `vitruvian-roborock-mcp`, CLI `rrctl` (kept) | — *(none)* | `vitruvian-roborock-mcp` |
+| **Vitruvian Slack MCP** (`vitruvian-slack-mcp`) | `mcp-slack` | `apps/mcp/vitruvian-slack-mcp` | MCP & CLI `vitruvian-slack-mcp` | `vitruvian-slack-mcp` | `vitruvian-slack-mcp` |
+| **Vitruvian GitHub** | GitHub tool | `apps/desktop/vitruvian-tool-github` | `dev.vitruvian.github` | `vitruvian-tool-github` | `vitruvian-tool-github` |
+| **Vitruvian TV** | TV tool | `apps/desktop/vitruvian-tool-tv` | `dev.vitruvian.tv` | `vitruvian-tool-tv` | — *(monorepo-only)* |
+| **Vitruvian Tool SDK** (`vitruvian-sdk`) | *(already compliant)* | `packages/vitruvian-sdk` | `VitruvianToolKit` | `vitruvian-sdk` | `vitruvian-sdk` |
 
-- **Say the job.** A stranger should guess what it does from the name alone.
-- **One word**, a real English noun. No camel-case compounds (`HomeSpeaker`), no
-  invented words.
-- **No clash** with a well-known developer product in the same space.
+Unbranded mirrors in `sync.go` stay as-is: `oauth-user-inspector`, `gh-watch`,
+`site-vitruviansoftware-dev`, `pulumi-library`, `pulumi_go-example-foundation` and
+`pulumi_ts-example-foundation`.
 
-Old names are **retired, not aliased**. Once a product is renamed, its old command,
-folder and ID are gone. A repo check (see section 6) fails if a retired name comes back,
-so a missed caller shows up as a red build instead of a silent fallback.
+## 3. Kept on purpose
 
-## 3. Name map
+These identifiers stayed at their pre-cutover values because renaming them would break
+stored user data, live cloud state, external credentials or daily shell muscle memory for
+no visible benefit:
 
-| Today | New name | Status |
-|---|---|---|
-| Vitruvian Software | Vitruvian Software | company, unchanged |
-| Vitruvian (macOS app, shows as "Vitruvian" today) | Vitruvian Desktop | *proposed*; display name only, directory and bundle ID stay `vitruvian` (the platform owns the bare word) |
-| Nexus Agent | **Vitruvian Code** | approved |
-| HomeSpeaker | **Vitruvian Speaker** | approved |
-| Courier | **Vitruvian Courier** | approved |
-| Vitruvian Remote (Android) | Vitruvian Remote | already compliant |
-| Tabula | Vitruvian Tabs | *proposed* |
-| Wand | Vitruvian Wand | *proposed* (already a plain noun) |
-| Relay | Vitruvian Relay | *proposed* (already a plain noun) |
-| devx | Vitruvian Dev | *proposed*; see open question 1 |
-| ESP32-S3 desk companion | Vitruvian Desk | *proposed* |
-| GitHub tool, TV tool | GitHub, TV (inside Desktop only) | extensions, already compliant |
-| homelab, Backstage, God's eye view, mcp-slack, mcp-roborock, ostation, Wear OS faces | unchanged | internal, no brand |
+- **Stored user data, wire keys and bundle/keychain IDs:** Courier's internal Matrix server
+  name `courier.local` (baked into every stored room, user and media ID), saved config keys
+  (`courier_enabled`) and Remote wire-protocol keys; Courier's bundle ID and Keychain
+  services (`com.vitruviansoftware.courier*`); Atrium's bundle ID
+  `com.vitruviansoftware.vitruvian` (plus helper IDs `.fan-control` and `.now-playing`,
+  `window.vitruvian` and `VITRUVIAN_*` env vars); Android Remote's folder/component
+  `android-remote` and Android `applicationId` `dev.vitruvian.remote`; Atrium's tool ID
+  namespace `dev.vitruvian.*` (separate from app bundle IDs `com.vitruviansoftware.*`);
+  Deck's NVS namespace and `"ESP32-S3"` when naming the hardware chip.
+- **CLI commands and Homebrew tokens:** `devx`, `homelab` and `rrctl` stay short for
+  interactive terminal use; `speaker-broadcast` and `~/.gemini/speaker_broadcast.json` stay
+  stable for external agent hooks; Homebrew formulas stay `devx` and `homelab`, and the
+  Vitruvian Code cask token in `homebrew-tap` stays `nexus-agent`.
+- **Historical releases, catalog handovers and archives:** git history, `CHANGELOG.md`
+  files, pre-cutover release tags (`courier-v*` through `0.3.17`, `home-speaker-v*` through
+  `1.41.0`, `vitruvian-v3.89.0`, `esp32-s3-v0.1.12`), `replaces` entries in
+  `catalog/tools.json` (`dev.vitruvian.nexus-agent`, `dev.vitruvian.homespeaker`) so
+  existing Atrium installs swap cleanly, and dated planning/audit docs under
+  `docs/archive/`, `docs/superpowers/` and `docs/standards/`.
+- **Pulumi, cloud, Kubernetes and Copybara state:** all Pulumi stacks under
+  `infrastructure/`; Vitruvian Tabs' live Pulumi projects (`tabula-*`), Cloud Run services,
+  Artifact Registry, `TABULA_*` secrets, GitHub Environments and domains
+  (`tabula*.vitruviansoftware.dev`, `tabula.{com,app,dev}`); Slack MCP's `mcp-slack*`
+  Kubernetes namespace, Argo CD app, SealedSecrets and Zitadel stack; Copybara workflow
+  keys, `LegacyRepo` redirect guards, `*_REV_ID` / `*_SYNC_SSH_KEY` / `*_DISPATCH_APP_*`
+  secrets and `.github/workflows/copybara-export-*.yaml`; GitHub team slugs (`*-team`), the
+  `"Vitruvian Desktop"` GitHub App (`docs/github-relay/`), Atrium's CI unit
+  `vitruvian-desktop-macos` and site catalog keys (`vitruvianDesktopTools`), and Stripe
+  donation keys (`/donate/<key>/`, `.github/FUNDING.yml`).
 
-## 4. What a rename changes
+## 4. Cutover record
 
-A rename is **everything with the name in it**, not just labels. For an installed app
-that includes hidden identifiers, and changing those has consequences the user feels:
+**Done 2026-11-12, hard cutover, no migrations.** PR #4631 renamed product folders, Bazel
+targets, Swift/Rust/Go/TS packages and user-facing labels in one pass with no runtime data
+migrations, Keychain copy shims or CLI aliases. PRs #4651 and #4661 renamed the standalone
+mirror repositories in place under `VitruvianSoftware/vitruvian-*`, with GitHub serving
+permanent URL and git redirects from the old repo names.
 
-| Changes | What the user notices | How we handle it |
-|---|---|---|
-| Bundle ID | macOS sees a brand-new app | ship the new app; the old one's last release hands over (below) |
-| Privacy grants (Accessibility, Screen Recording, Automation …) | asked again | **cannot be migrated** — macOS ties them to the app. A first-run screen explains why and links each setting |
-| Application Support / Caches / Logs folders | nothing, if migrated | one-time copy on first launch of the new app, old folder left in place until the copy is verified, then removed |
-| UserDefaults domain | nothing, if migrated | import the old domain on first launch |
-| Keychain items | nothing, or one sign-in prompt | read under the old service and re-write under the new; if macOS blocks the read, ask the user to sign in once |
-| Login item / launchd label | nothing | new app registers its own and unregisters the old |
-| Update feed / signed catalog | nothing | the old ID's feed serves one final **bridge release** that installs the new app and quits; the catalog then lists only the new ID |
-| CLI command | old command stops working | every caller in this repo and on James's Mac updated in the same change |
-| Mirror repo | old URL redirects | GitHub rename; copybara config and Homebrew tap updated together |
+## 5. Naming a new product
 
-**Stored data IDs stay.** Some names live inside users' saved data, not in anything a
-person sees: Courier's internal chat server name (`courier.local`, baked into every stored
-room, user and media ID), saved config keys like `courier_enabled`, and the Remote app's
-wire-protocol keys. Renaming those means rewriting every user's database and breaking
-older phones talking to newer Macs, for no visible gain. They stay, and the
-retired-names check allows them by exact value.
+Use this checklist from the first commit:
 
-**Update feeds need a transition.** Old installs look for updates by their old tag
-(`courier-v*`, and likewise for the others). The bridge release is published under the
-old tag; new releases use the new tag after that.
-
-What we do **not** rewrite: git history, published release tags and changelogs, and
-planning docs marked `status: completed`. They record what was true then.
-
-## 5. Rollout
-
-One product at a time, each through the full team (implement → QA → UAT) and landed
-before the next starts. The first product is the pilot: its migration code becomes the
-shared helper the others reuse, so the hard parts are solved once.
-
-1. This standard and the retired-names check.
-2. Pilot: **Vitruvian Code** — fewest hidden IDs, so the helper is built on the easy case
-   ([design](../superpowers/specs/2026-11-10-vitruvian-code-rename-design.md)).
-3. **Vitruvian Courier** — the largest data store and saved AI/Telegram keychain items.
-4. **Vitruvian Speaker** last — its callers include scripts and skills outside this repo
-   (`~/bin/speaker-broadcast`, skills under `~/.claude` and `~/.agents`), shared files in
-   `~/.gemini`, and the Remote app's Mac helper, which is being changed right now.
-5. Docs, diagrams, site and catalog sweep.
-6. Mirror repo renames (after the code that names them has landed).
-7. Proposed names, once approved.
-
-## 6. Keeping it consistent
-
-- `tools/lint-naming` gains a **retired-names list**. The check fails on any retired name
-  outside the allowed places (changelogs, git-history docs, the migration code that has
-  to know the old IDs, and this file).
-- New products follow section 2 from their first commit.
-
-## 7. Open questions
-
-1. **devx command length.** `vitruvian-dev` is long for a command typed many times a day.
-   Option: keep the product name "Vitruvian Dev" but allow one short command (`vdev`).
-   That is an exception to section 2, so it is James's call.
-2. **Two ID namespaces.** Apps use `com.vitruviansoftware.*`; Desktop extensions use
-   `dev.vitruvian.*`. They don't collide, but they are inconsistent. Converging them is a
-   separate migration and is not part of this one.
+- [ ] **Pick the noun:** one plain English noun for what it does (`Vitruvian <Noun>`), with
+      no clash against a known developer product in the same space.
+- [ ] **Monorepo folder:** `apps/<kind>/vitruvian-<noun>` (or
+      `apps/mcp/vitruvian-<noun>-mcp` for an MCP server).
+- [ ] **Bundle and tool IDs:** `com.vitruviansoftware.<noun>` for macOS/Android apps
+      (`Vitruvian<Noun>` for Swift modules/types, `~/Library/Application Support/Vitruvian <Noun>`
+      on disk), and `dev.vitruvian.<noun>` if it ships an Atrium tool.
+- [ ] **CLI and env vars:** command `vitruvian-<noun>`, env prefix `VITRUVIAN_<NOUN>_*`.
+- [ ] **Mirror repo:** `VitruvianSoftware/vitruvian-<noun>` via `StandaloneRepo` in
+      `infrastructure/pulumi/platform/repo-config/internal/copybara_sync/sync.go` (omit if
+      monorepo-only).
+- [ ] **Release component:** `vitruvian-<noun>` in `release-please-config.json` (tags
+      `vitruvian-<noun>-v*`).

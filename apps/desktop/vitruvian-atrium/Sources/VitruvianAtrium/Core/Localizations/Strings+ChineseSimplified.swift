@@ -235,6 +235,8 @@ extension Strings {
         switcherMaxColumnsAuto: "自动",
         switcherInstantSelection: "即时选择",
         switcherInstantSelectionCaption: "浏览 App 和窗口时，立即移动高亮并滚动列表。",
+        switcherIgnoreHoverSelection: "悬停时不选择",
+        switcherIgnoreHoverSelectionCaption: "指针经过 App 和窗口时，高亮保持不动。单击仍会打开。",
         switcherMergeTabs: "每个 App 仅显示一项",
         switcherMergeTabsCaption: "将一个 App 的所有窗口合并为切换器中的一项，而不是每个窗口一项。",
         switcherWindowlessApps: "无打开窗口的 App",
@@ -334,6 +336,7 @@ extension Strings {
         uninstallerRemoving: "正在移到废纸篓…",
         uninstallerFoundTitle: "已找到",
         uninstallerSelectedFormat: "已选择 %d 项，共 %d 项",
+        uninstallerSelectAll: "全选",
         uninstallerRemove: "移到废纸篓",
         uninstallerCancel: "取消",
         uninstallerConfirmationExpired: "此次确认已失效。请检查当前项目并重新确认。",
@@ -422,6 +425,8 @@ extension Strings {
         homebrewOpenTerminal: "打开终端",
         homebrewCancelOperation: "取消",
         homebrewClearLog: "清空日志",
+        homebrewLastLogView: "查看上次日志",
+        homebrewLastLogHide: "隐藏上次日志",
         homebrewLogTitle: "日志",
         homebrewVersion: "版本",
         homebrewDescription: "类型",
@@ -1078,6 +1083,7 @@ extension Strings {
         switcherShowShortcutHints: "显示快捷键提示",
         switcherShowShortcutHintsCaption: "在图标下方显示 App 和窗口快捷键。",
         uninstallerHomebrewPackageFormat: "%@ 也会从 Homebrew 中移除。",
+        uninstallerHomebrewCheckFailed: "无法确认此 App 是否由 Homebrew 管理。请刷新后重试，或通过 Homebrew 卸载。",
         shelfEdgeToggle: "靠近屏幕边缘时打开",
         shelfEdgeCaption: "将文件拖向屏幕边缘，暂存架就会探出一角。放在那里即可放下，往回拖则会收回去。",
         focusFollowsMouseName: "悬停聚焦",
@@ -1110,6 +1116,8 @@ extension Strings {
         shelfShortcutFinderSelection: "使用快捷键添加访达中的所选项",
         shelfShortcutFinderSelectionCaption: "访达位于前台时，快捷键会打开暂存架并放入所选文件。未选择任何内容时照常打开。",
         spacesOrderName: "固定空间顺序",
-        spacesOrderCaption: "阻止 macOS 按最近使用情况重新排列空间，让它们保持你设定的顺序。关闭此选项后会恢复之前的设置。为应用更改，Dock 可能会重新启动一次。"
+        spacesOrderCaption: "阻止 macOS 按最近使用情况重新排列空间，让它们保持你设定的顺序。关闭此选项后会恢复之前的设置。为应用更改，Dock 可能会重新启动一次。",
+        quitAppsName: "退出应用",
+        quitAppsCaption: "列出打开的应用，可逐个退出、全部退出，或退出最前面应用以外的所有应用。退出任何应用前都会先显示列表。"
     )
 }

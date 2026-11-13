@@ -1014,4 +1014,22 @@ public class WireTest {
     val parsed = JsonReader(body).readValue() as Map<*, *>
     assertEquals(mapOf("active_door" to "extension", "copy" to true), parsed)
   }
+
+  @Test
+  fun `a phone that saved HomeSpeaker keeps it as Vitruvian Speaker`() {
+    assertEquals(
+        setOf("claude", "speaker", "tv"),
+        RenamedModules.migrate(setOf("claude", "homespeaker", "tv")))
+    // Both ids saved (an install of the new one before the move) collapse to one.
+    assertEquals(setOf("speaker"), RenamedModules.migrate(setOf("homespeaker", "speaker")))
+    // Nothing to move: null, so the caller writes nothing.
+    assertNull(RenamedModules.migrate(setOf("claude", "speaker")))
+    assertEquals("claude", RenamedModules.current("claude"))
+  }
+
+  @Test
+  fun `an old notification's HomeSpeaker link opens Vitruvian Speaker`() {
+    assertEquals("speaker", DeepLink.appsModule("vitruvian-remote://apps/homespeaker"))
+    assertEquals("speaker", DeepLink.appsModule("vitruvian-remote://apps/speaker"))
+  }
 }

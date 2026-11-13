@@ -505,7 +505,8 @@ package final class RadialMenuService: ObservableObject {
             if item.kind == .command {
                 guard let id = item.commandID, registry.canRun(id) else { return nil }
             }
-            if item.kind == .quickToggle, !isFeatureAvailable(.quickToggles) { return nil }
+            if item.kind == .quickToggle,
+               !isFeatureAvailable(item.quickToggle?.feature ?? .quickToggles) { return nil }
             if item.kind == .windowLayout, !isFeatureAvailable(.windowLayout) { return nil }
             if item.kind == .submenu {
                 item.children = availableItems(item.children, registry: registry,
@@ -828,12 +829,13 @@ package final class RadialMenuService: ObservableObject {
     }
 
     private func run(_ action: RadialMenuQuickToggle) {
-        guard AppFeature.quickToggles.isAvailable else { return }
+        guard action.feature.isAvailable else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             let toggles = QuickTogglesService.shared
             switch action {
             case .darkMode: toggles.toggleDarkMode()
             case .emptyTrash: toggles.emptyTrash()
+            case .quitAllApps: toggles.showQuitApps()
             case .ejectDisks: toggles.ejectAllDisks()
             case .hiddenFiles: toggles.toggleHiddenFiles()
             case .desktopIcons: toggles.toggleDesktopIcons()

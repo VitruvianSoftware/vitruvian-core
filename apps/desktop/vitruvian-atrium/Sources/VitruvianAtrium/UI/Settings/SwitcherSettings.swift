@@ -15,6 +15,7 @@ package struct SwitcherSettings: View {
     @ObservedObject private var secureInput = SecureInputMonitor.shared
     @AppStorage(Preferences.switcherEnabled) private var switcherEnabled: Bool
     @AppStorage(Preferences.switcherShortcut) private var switcherShortcutStorage: String
+    @AppStorage(Preferences.switcherAllWindowsShortcutEnabled) private var allWindowsShortcutEnabled: Bool
     @AppStorage(Preferences.switcherTakeOverSystemShortcuts) private var switcherTakeOverSystemShortcuts: Bool
     @AppStorage(Preferences.switcherIconRowMode) private var switcherIconRowMode: Bool
     @AppStorage(Preferences.switcherSimpleMode) private var switcherSimpleMode: Bool
@@ -30,6 +31,7 @@ package struct SwitcherSettings: View {
     @AppStorage(Preferences.switcherShowShortcutHints) private var switcherShowShortcutHints: Bool
     @AppStorage(Preferences.switcherAppearanceDelay) private var switcherAppearanceDelay: Int
     @AppStorage(Preferences.switcherInstantSelection) private var switcherInstantSelection: Bool
+    @AppStorage(Preferences.switcherIgnoreHoverSelection) private var switcherIgnoreHoverSelection: Bool
     @AppStorage(Preferences.switcherMaxColumns) private var switcherMaxColumns: Int
     private var pages: SettingsPageStrings { FeatureStrings.settingsPages(l10n.language) }
     private var switcherEngaged: Bool { switcherEnabled && AppFeature.switcher.isAvailable }
@@ -161,6 +163,22 @@ package struct SwitcherSettings: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                SettingsRow(symbol: "macwindow.on.rectangle",
+                            title: FeatureStrings.switcherShortcuts(l10n.language).allWindows,
+                            caption: FeatureStrings.switcherShortcuts(l10n.language).allWindowsCaption) {
+                    Toggle(FeatureStrings.switcherShortcuts(l10n.language).allWindows,
+                           isOn: $allWindowsShortcutEnabled)
+                        .labelsHidden()
+                        .onChange(of: allWindowsShortcutEnabled) { _, _ in
+                            AppSwitcher.shared.syncWithPreferences()
+                        }
+                }
+                if allWindowsShortcutEnabled {
+                    ShortcutPreferenceRow(role: .switcherAllWindows,
+                                          isEnabled: switcherEnabled) {
+                        AppSwitcher.shared.syncWithPreferences()
+                    }
+                }
                 SettingsRow(symbol: "command", title: l10n.s.switcherTakeOverSystemShortcuts,
                             caption: l10n.s.switcherTakeOverSystemShortcutsCaption) {
                     Toggle(l10n.s.switcherTakeOverSystemShortcuts, isOn: $switcherTakeOverSystemShortcuts)
@@ -220,6 +238,10 @@ package struct SwitcherSettings: View {
             SettingsRow(symbol: "cursorarrow.rays", title: l10n.s.switcherInstantSelection,
                         caption: l10n.s.switcherInstantSelectionCaption) {
                 Toggle(l10n.s.switcherInstantSelection, isOn: $switcherInstantSelection).labelsHidden()
+            }
+            SettingsRow(symbol: "cursorarrow.slash", title: l10n.s.switcherIgnoreHoverSelection,
+                        caption: l10n.s.switcherIgnoreHoverSelectionCaption) {
+                Toggle(l10n.s.switcherIgnoreHoverSelection, isOn: $switcherIgnoreHoverSelection).labelsHidden()
             }
             SettingsRow(symbol: "magnifyingglass", title: l10n.s.switcherSearchPin,
                         caption: l10n.s.switcherSearchPinCaption) {

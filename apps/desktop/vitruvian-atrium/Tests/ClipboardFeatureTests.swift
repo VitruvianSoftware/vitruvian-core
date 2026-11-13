@@ -19,12 +19,16 @@ import VitruvianAtriumUI
 enum ClipboardFeatureTests {
     /// Runs the production `pasteIntoPreviousApp` with a target app, the
     /// Accessibility grant, the beep and the paste all recorded as events.
-    struct QuickPasteTarget { let isTerminated: Bool }
+    struct QuickPasteTarget {
+        let isTerminated: Bool
+        var bundleIdentifier: String? = "com.example.writer"
+    }
 
     static func quickPaste(_ app: QuickPasteTarget?, trusted: Bool, prompted: inout Bool) -> [String] {
         var events: [String] = []
         ClipboardHistoryService.pasteIntoPreviousApp(app,
                                                      isTerminated: \.isTerminated,
+                                                     bundleID: \.bundleIdentifier,
                                                      activate: { _ in events.append("activate") },
                                                      isTrusted: { trusted },
                                                      promptedForAccessibility: &prompted,
@@ -637,6 +641,9 @@ enum ClipboardFeatureTests {
         suite.expect(Defaults.registeredDefaults[DefaultsKey.clipboardHistoryQuickPreview] as? Bool == false,
                "clipboard history quick preview is closed by default")
 
+        suite.expect(Defaults.registeredDefaults[DefaultsKey.clipboardHistoryShowSourceAppIcons] as? Bool == false,
+                     "source app icons are opt-in, preserving the existing list by default")
+
         // MARK: Clipboard history layout
 
         suite.expect(Defaults.registeredDefaults[DefaultsKey.clipboardHistoryLayout] as? String
@@ -672,6 +679,38 @@ enum ClipboardFeatureTests {
                 && ClipboardHistoryWindowSizing.minimumSize(preview: true)
                     == NSSize(width: 840, height: 380),
                "the narrowest clipboard window leaves room for batch actions in both layouts")
+
+        // MARK: Clipboard history window position
+
+        let placementScreen = CGRect(x: 0, y: 25, width: 1512, height: 920)
+        let otherDisplay = NSRect(x: -1440, y: 0, width: 1440, height: 900)
+        let savedOrigin = NSPoint(x: -1100, y: 180)
+        let restored = ClipboardHistoryWindowPlacement.restoredFrame(
+            origin: savedOrigin, visibleFrames: [placementScreen, otherDisplay],
+            size: { ClipboardHistoryWindowSizing.contentSize(preview: false,
+                        savedWidth: 700, savedHeight: 500, visibleFrame: $0) })
+        suite.expect(restored == NSRect(origin: savedOrigin, size: NSSize(width: 700, height: 500)),
+               "a list reopens on its chosen display even when the pointer is elsewhere")
+        suite.expect(ClipboardHistoryWindowPlacement.restoredFrame(
+            origin: placementScreen.origin, visibleFrames: [placementScreen],
+            size: { _ in compactSize }) == NSRect(origin: placementScreen.origin, size: compactSize),
+               "a chosen position against the display edges is retained")
+        suite.expect(ClipboardHistoryWindowPlacement.restoredFrame(
+            origin: NSPoint(x: -20, y: 180), visibleFrames: [placementScreen],
+            size: { _ in compactSize }) == NSRect(x: 0, y: 180, width: 560, height: 420),
+               "a partly offscreen window stays on its display with its frame brought into view")
+        suite.expect(ClipboardHistoryWindowPlacement.restoredFrame(
+            origin: savedOrigin, visibleFrames: [placementScreen], size: { _ in compactSize }) == nil
+            && ClipboardHistoryWindowPlacement.restoredFrame(
+                origin: NSPoint(x: CGFloat.infinity, y: 100), visibleFrames: [placementScreen],
+                size: { _ in compactSize }) == nil,
+               "a disconnected display or invalid position uses the default placement")
+        suite.expect(ClipboardHistoryWindowPlacement.restoredFrame(
+            origin: NSPoint(x: 600, y: 180), visibleFrames: [placementScreen],
+            size: { ClipboardHistoryWindowSizing.contentSize(preview: true,
+                        savedWidth: 700, savedHeight: 500, visibleFrame: $0) })
+                == NSRect(x: 532, y: 180, width: 980, height: 580),
+               "preview expansion keeps the chosen display and brings the larger window into view")
         let taller = ClipboardHistoryWindowSizing.contentSize(
             preview: true, savedWidth: 700, savedHeight: 640, visibleFrame: desktop)
         suite.expect(taller == NSSize(width: 980, height: 720)
@@ -849,6 +888,10 @@ enum ClipboardFeatureTests {
                    && !clipboardStrings.historyLayoutList.isEmpty
                    && clipboardStrings.historyLayoutCards != clipboardStrings.historyLayoutList,
                    "\(language.rawValue) clipboard history layout choice is localized")
+            suite.expect(!clipboardStrings.showSourceAppIconsInList.isEmpty
+                         && (language == .enUS || clipboardStrings.showSourceAppIconsInList
+                             != FeatureStrings.clipboard(.enUS).showSourceAppIconsInList),
+                         "\(language.rawValue) source app icons setting is localized")
             let layoutStrings = FeatureStrings.windowLayout(language)
             suite.expect(!layoutStrings.sixths.isEmpty
                    && !layoutStrings.topLeftSixth.isEmpty
@@ -1515,6 +1558,20 @@ enum ClipboardFeatureTests {
             suite.expect(events == expected,
                    "quick paste beeps or asks for Accessibility when it cannot paste, found \(events)")
         }
+        for bundleID in ["com.microsoft.rdc.macos", "com.microsoft.rdc.mac"] {
+            for trusted in [true, false] {
+                var prompted = false
+                let events = quickPaste(QuickPasteTarget(isTerminated: false, bundleIdentifier: bundleID),
+                                        trusted: trusted, prompted: &prompted)
+                suite.expect(events == ["activate"] && !prompted,
+                       "quick paste into a remote desktop session leaves the pick on the clipboard, found \(events)")
+            }
+        }
+        var unnamedPrompted = false
+        let unnamed = quickPaste(QuickPasteTarget(isTerminated: false, bundleIdentifier: nil),
+                                 trusted: true, prompted: &unnamedPrompted)
+        suite.expect(unnamed == ["activate", "paste"],
+               "quick paste still pastes into an app without a bundle identifier, found \(unnamed)")
         for trusted in [true, false] {
             var prompted = false
             let events = quickPaste(nil, trusted: trusted, prompted: &prompted)

@@ -14,6 +14,7 @@ import VitruvianAtriumUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSWindowDelegate {
+    var configuredFeatureKeys: Set<String> = []
     private var statusController: StatusItemController!
     private let popover = NSPopover()
     /// Where the panel opens, how it holds its spot and how it closes and
@@ -73,6 +74,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     /// Vitruvian Atrium does not stay in front. Captured when a click opens the panel
     /// and kept current by the observers below while the panel is shown.
     private var panelActivationSource: NSRunningApplication?
+
+    /// Actions opened from our panel keep the app that was actually active,
+    /// even when it has no ordinary window in the current Space.
+    var panelActivationSourcePID: pid_t? {
+        guard let source = panelActivationSource, !source.isTerminated else { return nil }
+        return source.processIdentifier
+    }
     private var panelActivationObservers: [NSObjectProtocol] = []
     private var metricAnchorSwitchSerial = 0
     private var isTerminating = false
@@ -127,7 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         // Shape a clean install before any feature can create a listener,
         // timer or shortcut. The onboarding can replace this set after the
         // person chooses what they actually want.
-        FeaturePreset.prepareFirstRunAvailability()
+        FeaturePreset.prepareFirstRunAvailability(preserving: configuredFeatureKeys)
 
         // Redo a launch at login registration the system lost. The stored
         // choice is the last thing the user expressed in the app; startup

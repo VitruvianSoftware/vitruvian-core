@@ -59,6 +59,7 @@ package enum Preferences {
     package static let switcherSearchPinEnabled = Preference(DefaultsKey.switcherSearchPinEnabled, default: false)
     package static let switcherShowShortcutHints = Preference(DefaultsKey.switcherShowShortcutHints, default: true)
     package static let switcherInstantSelection = Preference(DefaultsKey.switcherInstantSelection, default: false)
+    package static let switcherIgnoreHoverSelection = Preference(DefaultsKey.switcherIgnoreHoverSelection, default: false)
     package static let switcherCurrentDisplayOnly = Preference(DefaultsKey.switcherCurrentDisplayOnly, default: false)
     package static let switcherMaxColumns = Preference(DefaultsKey.switcherMaxColumns, default: 0)
     package static let minimalWindowPreviews = Preference(DefaultsKey.minimalWindowPreviews, default: false)
@@ -97,6 +98,12 @@ package enum Preferences {
     package static let brightnessControlEnabled = Preference(DefaultsKey.brightnessControlEnabled, default: false)
     package static let brightnessKeysEnabled = Preference(DefaultsKey.brightnessKeysEnabled, default: false)
     package static let brightnessOSDEnabled = Preference(DefaultsKey.brightnessOSDEnabled, default: false)
+    package static let displayVolumeEnabled = Preference(DefaultsKey.displayVolumeEnabled, default: false)
+    package static let displayVolumeKeysEnabled = Preference(DefaultsKey.displayVolumeKeysEnabled, default: false)
+    package static let ddcVolumeStep = Preference(DefaultsKey.ddcVolumeStep,
+                                                  default: MonitorVolumeKeySettings.defaultStepPercent)
+    package static let ddcVolumeMinimum = Preference(DefaultsKey.ddcVolumeMinimum, default: 0)
+    package static let ddcVolumeMaximum = Preference(DefaultsKey.ddcVolumeMaximum, default: 100)
     package static let displayBrightnessShortcutsEnabled = Preference(DefaultsKey.displayBrightnessShortcutsEnabled, default: false)
     package static let keyboardBrightnessShortcutsEnabled = Preference(DefaultsKey.keyboardBrightnessShortcutsEnabled, default: false)
     package static let bluetoothSleepEnabled = Preference(DefaultsKey.bluetoothSleepEnabled, default: false)
@@ -151,6 +158,8 @@ package enum Preferences {
     package static let notchAccessoriesEnabled = Preference(DefaultsKey.notchAccessoriesEnabled, default: true)
     package static let notchCalendarEnabled = Preference(DefaultsKey.notchCalendarEnabled, default: true)
     package static let notchCalendarCountdown = Preference(DefaultsKey.notchCalendarCountdown, default: false)
+    package static let notchCalendarCountdownLead = Preference(DefaultsKey.notchCalendarCountdownLead,
+                                                                default: NotchCalendarSupport.defaultCountdownLeadMinutes)
     package static let notchCalendarTimeLeft = Preference(DefaultsKey.notchCalendarTimeLeft, default: false)
     package static let notchCalendarWeekNumbers = Preference(DefaultsKey.notchCalendarWeekNumbers, default: false)
     package static let notchAgentsEnabled = Preference(DefaultsKey.notchAgentsEnabled, default: false)
@@ -247,6 +256,7 @@ package enum Preferences {
     package static let panelControlRadialMenu = Preference(DefaultsKey.panelControlRadialMenu, default: true)
     package static let panelControlMouseButtonShortcuts = Preference(DefaultsKey.panelControlMouseButtonShortcuts, default: true)
     package static let panelControlMouseAcceleration = Preference(DefaultsKey.panelControlMouseAcceleration, default: true)
+    package static let panelControlSmoothScroll = Preference(DefaultsKey.panelControlSmoothScroll, default: true)
     package static let panelControlLinearScroll = Preference(DefaultsKey.panelControlLinearScroll, default: true)
     package static let panelControlMouseClickDebounce = Preference(DefaultsKey.panelControlMouseClickDebounce, default: true)
     package static let panelControlSpacesOrder = Preference(DefaultsKey.panelControlSpacesOrder, default: true)
@@ -263,6 +273,7 @@ package enum Preferences {
     package static let panelToggleKeyboardLight = Preference(DefaultsKey.panelToggleKeyboardLight, default: true)
     package static let panelToggleMicMute = Preference(DefaultsKey.panelToggleMicMute, default: true)
     package static let panelToggleEmptyTrash = Preference(DefaultsKey.panelToggleEmptyTrash, default: true)
+    package static let panelToggleQuitAllApps = Preference(DefaultsKey.panelToggleQuitAllApps, default: true)
     package static let panelToggleEjectDisks = Preference(DefaultsKey.panelToggleEjectDisks, default: true)
     package static let panelToggleHiddenFiles = Preference(DefaultsKey.panelToggleHiddenFiles, default: true)
     package static let panelToggleDesktopIcons = Preference(DefaultsKey.panelToggleDesktopIcons, default: true)
@@ -361,6 +372,9 @@ package enum Preferences {
     package static let screenOCRRemoveLineBreaks = Preference(DefaultsKey.screenOCRRemoveLineBreaks, default: false)
     package static let screenOCRDetectQRCodes = Preference(DefaultsKey.screenOCRDetectQRCodes, default: true)
     package static let micMuteShortcutEnabled = Preference(DefaultsKey.micMuteShortcutEnabled, default: false)
+    package static let quitAppsShortcutEnabled = Preference(DefaultsKey.quitAppsShortcutEnabled, default: false)
+    package static let quitAppsExceptFrontShortcutEnabled = Preference(
+        DefaultsKey.quitAppsExceptFrontShortcutEnabled, default: false)
     package static let cameraPreviewShortcutEnabled = Preference(DefaultsKey.cameraPreviewShortcutEnabled, default: false)
     package static let wallpaperApplyAllDisplays = Preference(DefaultsKey.wallpaperApplyAllDisplays, default: true)
     package static let scratchpadShortcutEnabled = Preference(DefaultsKey.scratchpadShortcutEnabled, default: false)
@@ -377,6 +391,7 @@ package enum Preferences {
     package static let panelUtilityCameraPreview = Preference(DefaultsKey.panelUtilityCameraPreview, default: true)
     package static let panelUtilityScratchpad = Preference(DefaultsKey.panelUtilityScratchpad, default: true)
     package static let clipboardHistoryShortcutEnabled = Preference(DefaultsKey.clipboardHistoryShortcutEnabled, default: true)
+    package static let clipboardHistoryShowSourceAppIcons = Preference(DefaultsKey.clipboardHistoryShowSourceAppIcons, default: false)
     package static let recorderShortcutEnabled = Preference(DefaultsKey.recorderShortcutEnabled, default: false)
     package static let recorderSystemAudio = Preference(DefaultsKey.recorderSystemAudio, default: true)
     package static let recorderMicrophone = Preference(DefaultsKey.recorderMicrophone, default: false)
@@ -390,6 +405,11 @@ package enum Preferences {
     package static let screenOCRShowCaptureMenuOnShortcut = Preference(DefaultsKey.screenOCRShowCaptureMenuOnShortcut, default: true)
     package static let colorPickerShowCaptureMenuOnShortcut = Preference(DefaultsKey.colorPickerShowCaptureMenuOnShortcut, default: true)
     package static let screenshotShortcutEnabled = Preference(DefaultsKey.screenshotShortcutEnabled, default: false)
+    package static let screenshotScrollingAutoScroll = Preference(DefaultsKey.screenshotScrollingAutoScroll, default: false)
+    package static let screenshotScrollingShortcutEnabled = Preference(
+        DefaultsKey.screenshotScrollingShortcutEnabled, default: false)
+    package static let screenshotScrollingShowCaptureMenuOnShortcut = Preference(
+        DefaultsKey.screenshotScrollingShowCaptureMenuOnShortcut, default: true)
     package static let unifiedScreenCaptureShortcutMigrated = Preference(DefaultsKey.unifiedScreenCaptureShortcutMigrated, default: false)
     package static let restoredScreenCaptureShortcutsMigrated = Preference(DefaultsKey.restoredScreenCaptureShortcutsMigrated, default: false)
     package static let screenshotFullScreenShortcutEnabled = Preference(DefaultsKey.screenshotFullScreenShortcutEnabled, default: false)
@@ -419,6 +439,7 @@ package enum Preferences {
     package static let windowDirectionalEnabled = Preference(DefaultsKey.windowDirectionalEnabled, default: false)
     package static let pointerDisplayEnabled = Preference(DefaultsKey.pointerDisplayEnabled, default: false)
     package static let windowEdgeSnapEnabled = Preference(DefaultsKey.windowEdgeSnapEnabled, default: false)
+    package static let windowEdgeSnapRestoreOnDrag = Preference(DefaultsKey.windowEdgeSnapRestoreOnDrag, default: false)
     package static let windowGestureEnabled = Preference(DefaultsKey.windowGestureEnabled, default: false)
     package static let windowGestureRaiseWindow = Preference(DefaultsKey.windowGestureRaiseWindow, default: false)
     package static let smoothScrollEnabled = Preference(DefaultsKey.smoothScrollEnabled, default: false)
@@ -719,12 +740,18 @@ package enum Preferences {
         DefaultsKey.mouseClickDebounceWindowMs, default: Defaults.defaultMouseClickDebounceWindowMs)
     package static let switcherWindowShortcut = Preference(
         DefaultsKey.switcherWindowShortcut, default: GlobalShortcut.switcherWindowDefault.storageValue)
+    package static let switcherAllWindowsShortcut = Preference(
+        DefaultsKey.switcherAllWindowsShortcut, default: GlobalShortcut.switcherAllWindowsDefault.storageValue)
+    package static let switcherAllWindowsShortcutEnabled = Preference(
+        DefaultsKey.switcherAllWindowsShortcutEnabled, default: false)
     package static let mixerHeadphonesDisconnectVolumePercent = Preference(
         DefaultsKey.mixerHeadphonesDisconnectVolumePercent, default: Defaults.defaultMixerHeadphonesDisconnectVolumePercent)
     package static let soundOutputSwitcherShortcut = Preference(
         DefaultsKey.soundOutputSwitcherShortcut, default: GlobalShortcut.soundOutputSwitcherDefault.storageValue)
     package static let autoQuitExceptions = Preference(
         DefaultsKey.autoQuitExceptions, default: Defaults.mandatoryAutoQuitExceptionBundleIDs)
+    package static let quitAppsKeptApps = Preference(
+        DefaultsKey.quitAppsKeptApps, default: Defaults.mandatoryAutoQuitExceptionBundleIDs)
     package static let autoQuitDockApps = Preference(DefaultsKey.autoQuitDockApps, default: [String]())
     package static let shelfDockPlacement = Preference(
         DefaultsKey.shelfDockPlacement, default: ShelfDockPlacement.menuBar.rawValue)
@@ -781,6 +808,10 @@ package enum Preferences {
         DefaultsKey.screenOCRShortcut, default: GlobalShortcut.screenOCRDefault.storageValue)
     package static let micMuteShortcut = Preference(
         DefaultsKey.micMuteShortcut, default: GlobalShortcut.micMuteDefault.storageValue)
+    package static let quitAppsShortcut = Preference(
+        DefaultsKey.quitAppsShortcut, default: GlobalShortcut.quitAllDefault.storageValue)
+    package static let quitAppsExceptFrontShortcut = Preference(
+        DefaultsKey.quitAppsExceptFrontShortcut, default: GlobalShortcut.quitAllExceptFrontDefault.storageValue)
     package static let cameraPreviewShortcut = Preference(
         DefaultsKey.cameraPreviewShortcut, default: GlobalShortcut.cameraPreviewDefault.storageValue)
     package static let scratchpadShortcut = Preference(
@@ -798,6 +829,8 @@ package enum Preferences {
     package static let recorderEditorPresets = Preference(DefaultsKey.recorderEditorPresets, default: Data())
     package static let screenshotShortcut = Preference(
         DefaultsKey.screenshotShortcut, default: GlobalShortcut.screenshotDefault.storageValue)
+    package static let screenshotScrollingShortcut = Preference(
+        DefaultsKey.screenshotScrollingShortcut, default: GlobalShortcut.screenshotScrollingDefault.storageValue)
     package static let screenshotFullScreenShortcut = Preference(
         DefaultsKey.screenshotFullScreenShortcut, default: GlobalShortcut.screenshotFullScreenDefault.storageValue)
     package static let screenshotLastCaptureShortcut = Preference(

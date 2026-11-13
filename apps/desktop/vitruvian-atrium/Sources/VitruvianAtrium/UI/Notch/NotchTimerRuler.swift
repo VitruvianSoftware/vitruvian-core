@@ -7,7 +7,7 @@ import VitruvianAtriumCore
 import VitruvianAtriumDesign
 import VitruvianAtriumServices
 
-/// A native slider with a centered ruler, including mouse dragging on desktop.
+/// A native duration ruler, including mouse dragging on desktop.
 package struct NotchTimerRuler: NSViewRepresentable {
     @Binding package var minutes: Int
     package let label: String
@@ -62,6 +62,10 @@ package final class NotchTimerRulerControl: NSSlider {
     package override var isFlipped: Bool { true }
     package override var acceptsFirstResponder: Bool { isEnabled }
 
+    private var selectionX: CGFloat {
+        bounds.minX + CGFloat(NotchTimerRulerScale.selectionX(selected: integerValue, width: Double(bounds.width)))
+    }
+
     package func synchronize(minutes: Int) {
         let bounded = NotchTimerRulerScale.minute(Double(minutes))
         guard integerValue != bounded else { return }
@@ -92,7 +96,7 @@ package final class NotchTimerRulerControl: NSSlider {
     package override func mouseUp(with event: NSEvent) {
         guard isEnabled, drag != nil else { drag = nil; return }
         if !didDrag {
-            let offset = convert(event.locationInWindow, from: nil).x - bounds.midX
+            let offset = convert(event.locationInWindow, from: nil).x - selectionX
             select(NotchTimerRulerScale.moving(doubleValue, by: -Double(offset)))
         }
         drag = nil
@@ -162,10 +166,11 @@ package final class NotchTimerRulerControl: NSSlider {
         // Drawn for the full ruler height; a shorter island compresses the
         // ticks and pointer below the labels instead of cutting them off.
         let scale = bounds.height / NotchLayout.timerRulerHeight
+        let selectionX = self.selectionX
         for minute in 1...180 {
-            let x = bounds.midX + CGFloat(NotchTimerRulerScale.offset(of: minute, selected: integerValue))
+            let x = selectionX + CGFloat(NotchTimerRulerScale.offset(of: minute, selected: integerValue))
             guard x >= bounds.minX - 16, x <= bounds.maxX + 16 else { continue }
-            let fade = min(1, max(0, min(x - bounds.minX, bounds.maxX - x) / edgeFade))
+            let fade = minute == integerValue ? 1 : min(1, max(0, min(x - bounds.minX, bounds.maxX - x) / edgeFade))
             let strength = minute <= integerValue ? 1.0 : increasedContrast ? 0.65 : 0.35
             let color = NSColor.systemOrange.withAlphaComponent(fade * strength * (isEnabled ? 1 : 0.4))
             color.setFill()
@@ -178,9 +183,9 @@ package final class NotchTimerRulerControl: NSSlider {
             }
         }
         let pointer = NSBezierPath()
-        pointer.move(to: NSPoint(x: bounds.midX, y: 70 * scale))
-        pointer.line(to: NSPoint(x: bounds.midX + 6, y: 80 * scale))
-        pointer.line(to: NSPoint(x: bounds.midX - 6, y: 80 * scale))
+        pointer.move(to: NSPoint(x: selectionX, y: 70 * scale))
+        pointer.line(to: NSPoint(x: selectionX + 6, y: 80 * scale))
+        pointer.line(to: NSPoint(x: selectionX - 6, y: 80 * scale))
         pointer.close()
         NSColor.systemOrange.withAlphaComponent(isEnabled ? 1 : 0.4).setFill()
         pointer.fill()

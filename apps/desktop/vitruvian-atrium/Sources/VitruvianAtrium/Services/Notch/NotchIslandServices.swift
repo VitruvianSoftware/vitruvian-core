@@ -32,6 +32,8 @@ package protocol NotchIslandServices: AnyObject {
     var keepAwakeActive: Bool { get }
     var keepAwakeEndDate: Date? { get }
     var calendarCountdown: NotchCalendarCountdown? { get }
+    /// How long before a start the island counts down, from Settings.
+    var calendarCountdownLeadTime: TimeInterval { get }
     /// The person chose to count down to this event.
     func calendarIsChosen(_ event: NotchCalendarEvent) -> Bool
     /// The event the Calendar page scrolls to once it next shows, or nil.
@@ -167,6 +169,7 @@ package final class SystemNotchIslandServices: NotchIslandServices {
     package var keepAwakeActive: Bool { KeepAwakeManager.shared.isActive }
     package var keepAwakeEndDate: Date? { KeepAwakeManager.shared.endDate }
     package var calendarCountdown: NotchCalendarCountdown? { NotchCalendarService.shared.countdown }
+    package var calendarCountdownLeadTime: TimeInterval { NotchCalendarService.shared.countdownLeadTime }
     package func calendarIsChosen(_ event: NotchCalendarEvent) -> Bool { NotchCalendarService.shared.isChosen(event) }
     package func revealCalendarEvent(_ id: String?) { NotchCalendarService.shared.revealing = id }
     package var importingLyrics: Bool { NotchLyricsService.shared.isImporting }
@@ -255,7 +258,9 @@ package final class SystemNotchIslandServices: NotchIslandServices {
     package func showCommandBar() { CommandBarService.shared.show() }
     package func showScratchpad() { ScratchpadService.shared.show() }
     package func openNotchSettings() { SettingsRouter.shared.request(FeatureSettingsDestination(.notch)) }
-    package func showSettingsModule(_ module: NotchModule) { SettingsRouter.shared.notchModule = module }
+    package func showSettingsModule(_ module: NotchModule) {
+        SettingsRouter.shared.request(FeatureSettingsDestination(notch: .module(module)))
+    }
 
     package var hasModalWindow: Bool { NSApp.modalWindow != nil }
     package func isOverStatusItem(_ point: CGPoint) -> Bool { appShell()?.isOverStatusItem(point) == true }

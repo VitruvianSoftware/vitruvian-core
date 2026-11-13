@@ -370,6 +370,8 @@ package struct ShortcutPreferenceRow: View {
                         ShortcutRecorderButton(shortcut: pendingTakeOver ?? shortcut,
                                                isEnabled: isEnabled,
                                                waitingTitle: l10n.s.shortcutPressKeys,
+                                               emptyTitle: emptyTitle,
+                                               clearAction: clearAction,
                                                notCapturedAction: { errorText = l10n.s.shortcutNotCaptured },
                                                recordingChanged: { recording in
                                                    isRecording = recording
@@ -384,26 +386,25 @@ package struct ShortcutPreferenceRow: View {
                                                captureAction: save)
                             .frame(width: 108)
                             .disabled(!isEnabled)
-                        if reservesClearButtonSpace {
+                        if role.supportsClearing {
+                            Button(action: clear) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!isEnabled || assignedShortcut == nil)
+                            .help(l10n.s.shortcutClear)
+                            .accessibilityLabel(l10n.s.shortcutClear)
+                        } else if reservesClearButtonSpace {
                             // Rows beside it have a clear button here; keep the
                             // recorders in one column.
                             Image(systemName: "xmark.circle.fill")
                                 .hidden()
                                 .accessibilityHidden(true)
                         }
-                        Button(l10n.s.shortcutReset) {
-                            if let refusal = refusal(for: role.defaultShortcut) {
-                                errorText = refusal
-                                pendingTakeOver = nil
-                                return
-                            }
-                            rawValue = role.defaultShortcut.storageValue
-                            errorText = nil
-                            pendingTakeOver = nil
-                            SystemShortcutTakeover.setTakeOver(role.storageKey, false)
-                            onChange()
-                        }
-                        .disabled(!isEnabled || shortcut == role.defaultShortcut)
+                        Button(l10n.s.shortcutReset, action: reset)
+                        .disabled(!isEnabled || resetsNothing)
                     }
                     if let alternative = superKeyAlternative {
                         Text(String(format: FeatureStrings.shortcuts(l10n.language)
@@ -420,7 +421,7 @@ package struct ShortcutPreferenceRow: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             } else if isRecording {
-                Text(ShortcutRecordingCaption.text(l10n.s, canClear: false))
+                Text(ShortcutRecordingCaption.text(l10n.s, canClear: role.supportsClearing))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -452,9 +453,45 @@ package struct ShortcutPreferenceRow: View {
         GlobalShortcut(storageValue: rawValue) ?? role.defaultShortcut
     }
 
+    private var assignedShortcut: GlobalShortcut? {
+        role.assignedShortcut(storedValue: { _ in rawValue })
+    }
+
+    /// Reset would change nothing: the row already holds its default.
+    private var resetsNothing: Bool { assignedShortcut == role.defaultShortcut }
+
+    // Worked out here rather than inline in `body`: inline, the two
+    // optional ternaries left the type checker unable to finish `body`
+    // ("failed to produce diagnostic for expression").
+    private var emptyTitle: String? {
+        guard role.supportsClearing, assignedShortcut == nil, pendingTakeOver == nil else { return nil }
+        return l10n.s.shortcutNone
+    }
+
+    private var clearAction: (() -> Void)? {
+        guard role.supportsClearing else { return nil }
+        return { clear() }
+    }
+
+    private func clear() {
+        guard role.supportsClearing else { return }
+        rawValue = GlobalShortcutRole.clearedShortcutStorageValue
+        errorText = nil
+        pendingTakeOver = nil
+        SystemShortcutTakeover.setTakeOver(role.storageKey, false)
+        onChange()
+    }
+
+    private func reset() {
+        // A cleared combination may now belong to another action. Reset has
+        // to pass the same conflict and macOS takeover checks as a new capture.
+        pendingTakeOver = nil
+        save(role.defaultShortcut)
+    }
+
     private var superKeyAlternative: String? {
-        guard showsSuperKeyAlternative else { return nil }
-        return shortcut.superKeyAlternative(
+        guard showsSuperKeyAlternative, let assignedShortcut else { return nil }
+        return assignedShortcut.superKeyAlternative(
             sourceLabel: FeatureStrings.superKey(l10n.language).sourceLabel(superKey.source),
             superKeyModifiers: superKeyModifiers)
     }

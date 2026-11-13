@@ -46,10 +46,11 @@ package final class HomebrewManager: ObservableObject {
     private var popularityLoads: Set<HomebrewPackageKind> = []
     private var activeProcess: Process?
     private var cancelRequested = false
-    private var installedCaskRecords: [HomebrewCaskRecord] = []
-    private var installedCaskRecordsFetchedAt: Date?
-    private var ownershipLoads: [String: [(HomebrewPackage?) -> Void]] = [:]
+    private var ownershipLoads: [String: [(Result<HomebrewPackage?, HomebrewOwnershipError>) -> Void]] = [:]
     private var completedOperationCleanup: DispatchWorkItem?
+    private var dismissedStatus: HomebrewOperationStatus?
+    private let processForCommand: @Sendable (HomebrewCommand) -> Process
+    private let scheduleCleanup: (TimeInterval, DispatchWorkItem) -> Void
     private lazy var analyticsSession: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 6
@@ -65,6 +66,22 @@ package final class HomebrewManager: ObservableObject {
         outdatedPackagesByID.count
     }
 
+    package var operationOutput: HomebrewOperationOutput? {
+        if let operationStatus { return .status(operationStatus) }
+        guard let dismissedStatus, !log.isEmpty else { return nil }
+        return .lastLog(dismissedStatus)
+    }
+
+    // The checklist already shows a matching status card. Its last run must
+    // also be reachable from the completion screen or after changing targets.
+    package func uninstallerLastLog(showingPackageID: String?) -> HomebrewOperationStatus? {
+        guard let status = operationStatus ?? dismissedStatus,
+              status.fromUninstaller, !status.isActive,
+              operationStatus == nil || status.package?.id != showingPackageID,
+              !log.isEmpty || status.result == .failed || status.result == .needsTerminal else { return nil }
+        return status
+    }
+
     /// Finds brew, or answers nil when it is not installed.
     private let locateBrew: () -> String?
 
@@ -76,10 +93,17 @@ package final class HomebrewManager: ObservableObject {
         })
     }
 
-    /// `shared` looks for brew in Homebrew's two prefixes; tests hand in a
-    /// stand-in.
-    package init(locateBrew: @escaping () -> String?) {
+    /// `shared` looks for brew in Homebrew's two prefixes and runs it, and
+    /// hides a finished card on the main queue; tests hand in a stand-in for
+    /// each.
+    package init(locateBrew: @escaping () -> String?,
+                 processForCommand: (@Sendable (HomebrewCommand) -> Process)? = nil,
+                 scheduleCleanup: ((TimeInterval, DispatchWorkItem) -> Void)? = nil) {
         self.locateBrew = locateBrew
+        self.processForCommand = processForCommand ?? { HomebrewManager.makeProcess($0) }
+        self.scheduleCleanup = scheduleCleanup ?? { delay, item in
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+        }
         brewPath = locateBrew()
     }
 
@@ -90,8 +114,6 @@ package final class HomebrewManager: ObservableObject {
         guard let brewPath = detectBrewPath() else {
             self.brewPath = nil
             installed = []
-            installedCaskRecords = []
-            installedCaskRecordsFetchedAt = nil
             searchResults = []
             selectedPackage = nil
             outdatedGeneration += 1
@@ -128,8 +150,6 @@ package final class HomebrewManager: ObservableObject {
                     self.installed = try HomebrewParser.parseInfoCommandOutput(output).map(self.packageEnriched)
                     self.searchResults = HomebrewSearchResults.reconciled(self.searchResults,
                                                                          installed: self.installed)
-                    self.installedCaskRecords = HomebrewParser.parseInstalledCaskRecords(output)
-                    self.installedCaskRecordsFetchedAt = Date()
                     self.didOpenInstaller = false
                     if let selected = self.selectedPackage {
                         self.selectedPackage = self.packageEnriched(self.installed.first { $0.id == selected.id } ?? selected)
@@ -226,47 +246,39 @@ package final class HomebrewManager: ObservableObject {
         perform(.install, package: package)
     }
 
-    package func uninstall(_ package: HomebrewPackage) {
-        perform(.uninstall, package: package)
+    package func uninstall(_ package: HomebrewPackage, fromUninstaller: Bool = false) {
+        perform(.uninstall, package: package, fromUninstaller: fromUninstaller)
     }
 
-    /// Looks up whether Homebrew owns this exact app bundle. The cached
-    /// installed catalog is reused when fresh; otherwise one read-only command
-    /// answers every concurrent request for the same path.
+    /// Removal needs a fresh inventory: an app may have just been installed
+    /// outside Vitruvian Atrium. Concurrent requests for the same path share one read.
+    /// A failed read must never be mistaken for an unmanaged app.
     package func packageManagingApplication(at url: URL,
-                                    completion: @escaping (HomebrewPackage?) -> Void) {
+                                    completion: @escaping (Result<HomebrewPackage?, HomebrewOwnershipError>) -> Void) {
         let path = url.standardizedFileURL.path
-        if let fetchedAt = installedCaskRecordsFetchedAt,
-           Date().timeIntervalSince(fetchedAt) < 60 {
-            completion(HomebrewOwnershipSupport.packageManagingApplication(
-                atPath: path,
-                installed: installedCaskRecords
-            ))
-            return
-        }
         if ownershipLoads[path] != nil {
             ownershipLoads[path]?.append(completion)
             return
         }
         ownershipLoads[path] = [completion]
         guard let brewPath = brewPath ?? detectBrewPath() else {
-            finishOwnershipLoad(path: path, package: nil)
+            finishOwnershipLoad(path: path, result: .success(nil))
             return
         }
         self.brewPath = brewPath
         run(HomebrewCommandBuilder.installed(brewPath: brewPath)) { [weak self] status, output in
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                let records = status == 0 ? HomebrewParser.parseInstalledCaskRecords(output) : []
-                if status == 0 {
-                    self.installedCaskRecords = records
-                    self.installedCaskRecordsFetchedAt = Date()
+                guard status == 0,
+                      let records = try? HomebrewParser.parseInstalledCaskRecords(output) else {
+                    self.finishOwnershipLoad(path: path, result: .failure(.unavailable))
+                    return
                 }
-                let package = HomebrewOwnershipSupport.packageManagingApplication(
+                let result = HomebrewOwnershipSupport.packageManagingApplication(
                     atPath: path,
                     installed: records
                 )
-                self.finishOwnershipLoad(path: path, package: package)
+                self.finishOwnershipLoad(path: path, result: result)
             }
         }
     }
@@ -308,9 +320,13 @@ package final class HomebrewManager: ObservableObject {
     package func clearLog() {
         completedOperationCleanup?.cancel()
         completedOperationCleanup = nil
+        dismissedStatus = nil
         log = ""
         terminalFallbackCommand = nil
         if operation == nil {
+            if operationStatus?.result == .failed, errorMessage == operationStatus?.lastActivity {
+                errorMessage = nil
+            }
             operationStatus = nil
         }
     }
@@ -374,20 +390,24 @@ package final class HomebrewManager: ObservableObject {
 
     private func perform(_ action: HomebrewOperation.Action,
                          package: HomebrewPackage?,
-                         command commandOverride: HomebrewCommand? = nil) {
+                         command commandOverride: HomebrewCommand? = nil,
+                         fromUninstaller: Bool = false) {
         guard operation == nil else { return }
         guard let brewPath = brewPath ?? detectBrewPath() else { return }
         guard let command = commandOverride
                 ?? standardCommand(for: action, package: package, brewPath: brewPath) else { return }
+        dismissedStatus = nil
         operation = HomebrewOperation(action: action, package: package)
+        let startedAt = Date()
         operationStatus = HomebrewOperationStatus(action: action,
                                                   package: package,
                                                   phase: initialPhase(for: action),
                                                   result: .running,
                                                   progressFraction: nil,
-                                                  startedAt: Date(),
+                                                  startedAt: startedAt,
                                                   finishedAt: nil,
-                                                  lastActivity: nil)
+                                                  lastActivity: nil,
+                                                  fromUninstaller: fromUninstaller)
         terminalFallbackCommand = nil
         errorMessage = nil
         clearUntrustedTap()
@@ -397,13 +417,19 @@ package final class HomebrewManager: ObservableObject {
         log = ""
         runStreaming(command,
                      onOutput: { [weak self] chunk in
-                         self?.appendLog(chunk)
-                         self?.updateOperationStatus(from: chunk, action: action)
+                         guard let self, self.operation != nil,
+                               self.operationStatus?.startedAt == startedAt else { return }
+                         self.appendLog(chunk)
+                         self.updateOperationStatus(from: chunk, action: action)
                      }) { [weak self] status, output in
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.activeProcess = nil
                 self.operation = nil
+                // A pipe read may end midway through a UTF-8 scalar. The
+                // complete stream and errors that prevented launch arrive here.
+                self.log = HomebrewOperationOutput.retainedText(output)
+                if self.cancelRequested { self.appendLog("\nCancelled.\n") }
                 let end = HomebrewOperationEnd(status: status, cancelRequested: self.cancelRequested,
                                                output: output)
                 switch end {
@@ -426,13 +452,16 @@ package final class HomebrewManager: ObservableObject {
                                                phase: self.operationStatus?.phase ?? .finalizing,
                                                activity: HomebrewProgressParser.visibleError(from: output))
                 case .untrustedTap(let tap):
-                    self.presentUntrustedTap(tap) { [weak self] in self?.perform(action, package: package) }
+                    self.presentUntrustedTap(tap) { [weak self] in
+                        self?.perform(action, package: package, command: commandOverride, fromUninstaller: fromUninstaller)
+                    }
                     self.markOperationComplete(result: .failed,
                                                phase: self.operationStatus?.phase ?? .finalizing,
                                                activity: nil)
                 case .failed:
                     let message = HomebrewProgressParser.visibleError(from: output)
-                    self.errorMessage = message.isEmpty ? output.trimmingCharacters(in: .whitespacesAndNewlines) : message
+                    let reason = message.isEmpty ? output.trimmingCharacters(in: .whitespacesAndNewlines) : message
+                    self.errorMessage = HomebrewOperationOutput.retainedText(reason)
                     self.markOperationComplete(result: .failed,
                                                phase: self.operationStatus?.phase ?? .finalizing,
                                                activity: self.errorMessage)
@@ -450,9 +479,9 @@ package final class HomebrewManager: ObservableObject {
         }
     }
 
-    private func finishOwnershipLoad(path: String, package: HomebrewPackage?) {
+    private func finishOwnershipLoad(path: String, result: Result<HomebrewPackage?, HomebrewOwnershipError>) {
         let completions = ownershipLoads.removeValue(forKey: path) ?? []
-        completions.forEach { $0(package) }
+        completions.forEach { $0(result) }
     }
 
     private func standardCommand(for action: HomebrewOperation.Action,
@@ -483,7 +512,7 @@ package final class HomebrewManager: ObservableObject {
             status.progressFraction = progress
         }
         if let activity = HomebrewProgressParser.activity(in: chunk) {
-            status.lastActivity = activity
+            status.lastActivity = HomebrewOperationOutput.retainedText(activity)
         }
         operationStatus = status
     }
@@ -522,7 +551,7 @@ package final class HomebrewManager: ObservableObject {
             status.progressFraction = 1
         }
         if let activity, !activity.isEmpty {
-            status.lastActivity = activity
+            status.lastActivity = HomebrewOperationOutput.retainedText(activity)
         }
         operationStatus = status
         scheduleCompletedOperationCleanup(result: result,
@@ -625,38 +654,22 @@ package final class HomebrewManager: ObservableObject {
                                                    targetID: String,
                                                    finishedAt: Date?) {
         completedOperationCleanup?.cancel()
-        guard result != .running,
-              let finishedAt else { return }
-        let delay: TimeInterval
-        let clearsWholeStatus: Bool
-        switch result {
-        case .succeeded:
-            delay = 8
-            clearsWholeStatus = true
-        case .cancelled:
-            delay = 6
-            clearsWholeStatus = true
-        case .failed, .needsTerminal:
-            delay = 20
-            clearsWholeStatus = false
-        case .running:
-            return
-        }
-
+        completedOperationCleanup = nil
+        // Keep the output and its identity when the live card expires.
+        guard let finishedAt,
+              let delay = HomebrewCompletedOperationCleanup.cardDismissalDelay(result: result) else { return }
         let item = DispatchWorkItem { [weak self] in
             guard let self,
                   self.operation == nil,
                   self.operationStatus?.targetID == targetID,
                   self.operationStatus?.finishedAt == finishedAt else { return }
-            self.log = ""
-            if clearsWholeStatus {
-                self.terminalFallbackCommand = nil
-                self.operationStatus = nil
-            }
+            self.dismissedStatus = self.log.isEmpty ? nil : self.operationStatus
+            self.terminalFallbackCommand = nil
+            self.operationStatus = nil
             self.completedOperationCleanup = nil
         }
         completedOperationCleanup = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+        scheduleCleanup(delay, item)
     }
 
     /// One click on the trust card: marks the tap as trusted for Homebrew
@@ -755,8 +768,9 @@ package final class HomebrewManager: ObservableObject {
     /// `completion` runs on `workQueue`; every caller hops to the main queue itself.
     private func run(_ command: HomebrewCommand,
                      completion: @escaping @Sendable (_ status: Int32, _ output: String) -> Void) {
+        let processForCommand = self.processForCommand
         workQueue.async {
-            let process = Self.makeProcess(command)
+            let process = processForCommand(command)
             let pipe = Pipe()
             process.standardOutput = pipe
             process.standardError = pipe
@@ -793,8 +807,9 @@ package final class HomebrewManager: ObservableObject {
     private func runStreaming(_ command: HomebrewCommand,
                               onOutput: @escaping @MainActor @Sendable (String) -> Void,
                               completion: @escaping @Sendable (_ status: Int32, _ output: String) -> Void) {
+        let processForCommand = self.processForCommand
         workQueue.async { [weak self] in
-            let process = Self.makeProcess(command)
+            let process = processForCommand(command)
             let pipe = Pipe()
             process.standardOutput = pipe
             process.standardError = pipe
@@ -831,12 +846,16 @@ package final class HomebrewManager: ObservableObject {
             _ = drained.wait(timeout: .now() + 1)
             pipe.fileHandleForReading.readabilityHandler = nil
             try? pipe.fileHandleForReading.close()
-            completion(process.isRunning ? -1 : process.terminationStatus, output.text)
+            completion(process.isRunning ? -1 : process.terminationStatus, output.lossyText)
         }
     }
 
     private func appendLog(_ text: String) {
-        log.append(text)
+        if log.utf8.count + text.utf8.count <= HomebrewOperationOutput.byteLimit {
+            log.append(text)
+        } else {
+            log = HomebrewOperationOutput.retainedText(log + text)
+        }
     }
 }
 
@@ -865,6 +884,14 @@ private final class HomebrewProcessOutput: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    /// The whole stream with any invalid UTF-8 replaced, so a cut scalar
+    /// cannot empty a streamed operation's log.
+    var lossyText: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return String(decoding: data, as: UTF8.self)
     }
 }
 

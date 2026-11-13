@@ -74,6 +74,7 @@ pub fn run_all(ctx: &Context) {
     iac::check_copybara_component_lists(ctx);
 
     iac::check_release_infra_exclude(ctx);
+    versions::check_release_json_extra_files(ctx);
     delivery::check_no_local_paths(ctx);
     ci::check_ci_gate_lists_match(ctx);
     delivery::check_deploy_sequencer_gate(ctx);

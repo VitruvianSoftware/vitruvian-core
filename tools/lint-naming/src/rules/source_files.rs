@@ -358,7 +358,7 @@ mod tests {
             "src/apiEndpoints.server.ts",
             "src/runtime-config.server.test.ts",
             "postcss.config.mjs",
-            "tabula/web/__tests__/RelayLanding.test.tsx",
+            "apps/suites/vitruvian-tabs/web/__tests__/RelayLanding.test.tsx",
             "app/page.tsx",
             "types/x_y.d.ts",
         ] {

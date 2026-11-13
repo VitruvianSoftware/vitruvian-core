@@ -16,7 +16,10 @@ alias(
 
 filegroup(
     name = "testdata_files",
-    srcs = glob(["testdata/*.json"]),
+    srcs = glob([
+        "testdata/*.json",
+        "testdata/acp/*.ndjson",
+    ]),
 )
 
 # The mirror's release workflow. It never runs in this repository, so

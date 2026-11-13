@@ -116,12 +116,16 @@ package struct HomebrewCaskRecord: Hashable {
     }
 }
 
+package enum HomebrewOwnershipError: Error {
+    case unavailable
+}
+
 package enum HomebrewOwnershipSupport {
     /// Resolves a package only when its catalog points at this exact app. A
     /// same-named copy elsewhere must never make an unrelated package eligible
     /// for a destructive command.
     package static func packageManagingApplication(atPath rawPath: String,
-                                           installed: [HomebrewCaskRecord]) -> HomebrewPackage? {
+                                           installed: [HomebrewCaskRecord]) -> Result<HomebrewPackage?, HomebrewOwnershipError> {
         let path = URL(fileURLWithPath: rawPath).standardizedFileURL.path
         let exact = installed.filter { record in
             record.appPaths.contains {
@@ -129,9 +133,16 @@ package enum HomebrewOwnershipSupport {
             }
         }
         if exact.count == 1 {
-            return package(from: exact[0])
+            return .success(package(from: exact[0]))
         }
-        return nil
+        let name = URL(fileURLWithPath: path).lastPathComponent
+        guard exact.isEmpty,
+              !installed.contains(where: { $0.appPaths.isEmpty && $0.appFileNames.contains(name) }) else {
+            // A missing target or multiple owners cannot authorize either a
+            // package command or ordinary removal of a possibly managed app.
+            return .failure(.unavailable)
+        }
+        return .success(nil)
     }
 
     private static func package(from record: HomebrewCaskRecord) -> HomebrewPackage {
@@ -353,6 +364,41 @@ package enum HomebrewRefresh {
     case keepingError
 }
 
+/// Dismissal policy for a finished operation's status card. Issue #566: the
+/// card's timer used to wipe the technical log with it after 6 – 20 seconds;
+/// the log now stays until the next operation or an explicit Clear log, and
+/// only success and cancel cards dismiss themselves on a timer. A failure or
+/// terminal fallback card keeps its reason (and the open-in-terminal action)
+/// visible until then.
+package enum HomebrewCompletedOperationCleanup {
+    package static func cardDismissalDelay(result: HomebrewOperationResult) -> TimeInterval? {
+        switch result {
+        case .running: return nil
+        case .succeeded: return 8
+        case .cancelled: return 6
+        case .failed, .needsTerminal: return nil
+        }
+    }
+}
+
+package enum HomebrewOperationOutput: Equatable {
+    case status(HomebrewOperationStatus)
+    case lastLog(HomebrewOperationStatus)
+
+    // Keep the tail, where brew prints its final result. A cut must not split
+    // a UTF-8 scalar, and the omission mark counts towards the same limit.
+    package static let byteLimit = 256 * 1024
+
+    package static func retainedText(_ text: String) -> String {
+        let bytes = text.utf8
+        guard bytes.count > byteLimit else { return text }
+        let mark = "…\n"
+        let tail = bytes.suffix(byteLimit - mark.utf8.count)
+            .drop(while: { $0 & 0xc0 == 0x80 })
+        return mark + String(decoding: tail, as: UTF8.self)
+    }
+}
+
 package struct HomebrewOperationStatus: Equatable {
     package var action: HomebrewOperation.Action
     package var package: HomebrewPackage?
@@ -362,6 +408,7 @@ package struct HomebrewOperationStatus: Equatable {
     package var startedAt: Date
     package var finishedAt: Date?
     package var lastActivity: String?
+    package var fromUninstaller = false
 
     package var isActive: Bool {
         result == .running
@@ -372,7 +419,7 @@ package struct HomebrewOperationStatus: Equatable {
     }
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(action: HomebrewOperation.Action, package: HomebrewPackage? = nil, phase: HomebrewOperationPhase, result: HomebrewOperationResult, progressFraction: Double? = nil, startedAt: Date, finishedAt: Date? = nil, lastActivity: String? = nil) {
+    package init(action: HomebrewOperation.Action, package: HomebrewPackage? = nil, phase: HomebrewOperationPhase, result: HomebrewOperationResult, progressFraction: Double? = nil, startedAt: Date, finishedAt: Date? = nil, lastActivity: String? = nil, fromUninstaller: Bool = false) {
         self.action = action
         self.package = package
         self.phase = phase
@@ -381,6 +428,7 @@ package struct HomebrewOperationStatus: Equatable {
         self.startedAt = startedAt
         self.finishedAt = finishedAt
         self.lastActivity = lastActivity
+        self.fromUninstaller = fromUninstaller
     }
 }
 
@@ -897,14 +945,20 @@ package enum HomebrewParser {
 
     /// Installed casks with the app bundles they install, so a package token
     /// can be traced back to the app on disk.
-    package static func parseInstalledCaskRecords(_ output: String) -> [HomebrewCaskRecord] {
+    package static func parseInstalledCaskRecords(_ output: String) throws -> [HomebrewCaskRecord] {
         for json in [output] + balancedJSONObjects(in: output) {
             let data = Data(json.utf8)
             guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let casks = root["casks"] as? [[String: Any]] else { continue }
-            return casks.compactMap(parseCaskRecord)
+            guard casks.allSatisfy({ ($0["installed"] as? String)?.isEmpty == false
+                && $0["artifacts"] is [[String: Any]] }) else {
+                throw HomebrewOwnershipError.unavailable
+            }
+            let records = casks.compactMap(parseCaskRecord)
+            guard records.count == casks.count else { throw HomebrewOwnershipError.unavailable }
+            return records
         }
-        return []
+        throw HomebrewOwnershipError.unavailable
     }
 
     private static func parseCaskRecord(_ item: [String: Any]) -> HomebrewCaskRecord? {

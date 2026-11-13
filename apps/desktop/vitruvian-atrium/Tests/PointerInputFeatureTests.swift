@@ -2441,6 +2441,13 @@ enum PointerInputFeatureTests {
                                               longHold: true,
                                               repeated: true) == .capsLock,
                "the input-source action switches on a quick press and reserves a hold for Caps Lock")
+        suite.expect(SuperKeySupport.hasNativeCapsLock(in: nil)
+                && SuperKeySupport.hasNativeCapsLock(in: [])
+                && SuperKeySupport.hasNativeCapsLock(in: [["HIDKeyboardModifierMappingSrc": NSNumber(value: SuperKeySource.rightCommand.usage)]])
+                && !SuperKeySupport.hasNativeCapsLock(in: [["HIDKeyboardModifierMappingSrc": NSNumber(value: SuperKeySource.capsLock.usage)]])
+                && !SuperKeySupport.hasNativeCapsLock(in: [["unrecognized": 1]])
+                && !SuperKeySupport.hasNativeCapsLock(in: "unrecognized"),
+               "a keyboard must have a native Caps Lock before its lock is cleared during repair")
         suite.expect(SuperKeySupport.nextInputSourceID(currentID: "abc",
                                                  enabledIDs: ["abc", "pinyin", "kana"]) == "pinyin"
                 && SuperKeySupport.nextInputSourceID(currentID: "kana",
@@ -3779,6 +3786,16 @@ enum PointerInputFeatureTests {
                                                   steppedLoupeWantsRawWheel: { false }) == .passThroughEndingGlide
                 && ownFrameEntry == .passThrough && !loupeAsked,
                "entering stepped magnifier zoom cancels the fast glide before passing the raw notch")
+        // A tick aimed at this app's own panels, like clipboard history,
+        // passes raw unless the fast capture loupe is the window under it;
+        // another app's window is never asked about the loupe.
+        var loupeAskedForOtherApp = false
+        suite.expect(!SmoothScrollSupport.glides(targetProcessID: 42, ownProcessID: 42, isActiveLoupeWindow: { false })
+                && SmoothScrollSupport.glides(targetProcessID: 42, ownProcessID: 42, isActiveLoupeWindow: { true })
+                && SmoothScrollSupport.glides(targetProcessID: 7, ownProcessID: 42,
+                                              isActiveLoupeWindow: { loupeAskedForOtherApp = true; return false })
+                && !loupeAskedForOtherApp,
+               "the app's own panels keep the native wheel distance; the fast loupe and other apps glide")
         // A refused wheel tap gets one more look while a session switch
         // settles, and never a second: the inverter and smooth scrolling both
         // ask this before scheduling a retry, and a working tap or a stop
@@ -4049,6 +4066,38 @@ enum PointerInputFeatureTests {
                                                  bundleIdentifier: "com.example.other",
                                                  exceptions: ["com.example.editor"]),
                "all-except scope protects an unselected bundle")
+
+        let commandTab = GlobalShortcut(keyCode: 48, modifiers: [.command])
+        let commandShiftTab = GlobalShortcut(keyCode: 48, modifiers: [.command, .shift])
+        let factorySwitcher = [
+            LiveSystemShortcut(id: 1, shortcut: commandTab, enabled: true),
+            LiveSystemShortcut(id: 2, shortcut: commandShiftTab, enabled: true),
+        ]
+        suite.expect(QuitProtectionSupport.opensNativeSwitcher(keyCode: 48, flags: .maskCommand,
+                                                               entries: factorySwitcher)
+                && QuitProtectionSupport.opensNativeSwitcher(keyCode: 48, flags: [.maskCommand, .maskShift],
+                                                             entries: factorySwitcher),
+               "⌘Tab and ⌘⇧Tab open macOS's own switcher")
+        suite.expect(!QuitProtectionSupport.opensNativeSwitcher(keyCode: 48, flags: .maskCommand, entries: [
+                    LiveSystemShortcut(id: 1, shortcut: commandTab, enabled: false),
+                ]),
+               "⌘Tab with the system row off, as the App Switcher's take-over leaves it, opens Vitruvian Atrium's switcher only")
+        suite.expect(QuitProtectionSupport.opensNativeSwitcher(keyCode: 50, flags: .maskCommand, entries: [
+                    LiveSystemShortcut(id: 1, shortcut: GlobalShortcut(keyCode: 50, modifiers: [.command]),
+                                       enabled: true),
+                ]) && !QuitProtectionSupport.opensNativeSwitcher(keyCode: 48, flags: .maskCommand, entries: [
+                    LiveSystemShortcut(id: 1, shortcut: GlobalShortcut(keyCode: 50, modifiers: [.command]),
+                                       enabled: true),
+                ]),
+               "a remapped system switcher key is followed, and ⌘Tab then is not it")
+        suite.expect(!QuitProtectionSupport.opensNativeSwitcher(keyCode: 48, flags: .maskCommand, entries: [
+                    LiveSystemShortcut(id: 27, shortcut: commandTab, enabled: true),
+                ]),
+               "only the app switcher rows count, not another system shortcut on the same keys")
+        suite.expect(QuitProtectionSupport.opensNativeSwitcher(keyCode: 48, flags: .maskCommand, entries: nil)
+                && !QuitProtectionSupport.opensNativeSwitcher(keyCode: 48, flags: [.maskCommand, .maskAlternate],
+                                                              entries: nil),
+               "without the system table only the factory ⌘Tab is assumed")
 
         suite.expect(QuitProtectionSupport.matchesKey(keyCharacter: "\u{439}", keyCode: 12,
                                                 commandLabel: "Q", shortcut: .quit),

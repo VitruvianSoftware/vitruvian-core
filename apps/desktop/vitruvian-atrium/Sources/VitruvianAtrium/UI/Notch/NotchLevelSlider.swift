@@ -32,6 +32,24 @@ package struct NotchLevelSlider: NSViewRepresentable {
     package var scrollable = true
     package var onEditingChanged: ((Bool) -> Void)?
 
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(value: Binding<Double>, label: String, range: ClosedRange<Double> = 0...1,
+                 tint: Color = .white, vertical: Bool = false, trackThickness: CGFloat? = nil,
+                 marker: Double? = nil, valueLabel: String? = nil, easesChanges: Bool = false,
+                 scrollable: Bool = true, onEditingChanged: ((Bool) -> Void)? = nil) {
+        _value = value
+        self.label = label
+        self.range = range
+        self.tint = tint
+        self.vertical = vertical
+        self.trackThickness = trackThickness
+        self.marker = marker
+        self.valueLabel = valueLabel
+        self.easesChanges = easesChanges
+        self.scrollable = scrollable
+        self.onEditingChanged = onEditingChanged
+    }
+
     package func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     package func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSSlider, context: Context) -> CGSize? {
@@ -151,10 +169,12 @@ private final class NotchLevelControl: NSSlider, SliderScrollTarget {
     var trackingChanged: ((Bool) -> Void)?
     private var scroll = SliderScroll()
     private var scrolling = false
+    private var pendingScrollEvents: [NSEvent] = []
 
     func cancelScroll() {
         finishScrollEditing()
         scroll = SliderScroll()
+        pendingScrollEvents.removeAll()
     }
 
     private func finishScrollEditing() {
@@ -178,8 +198,13 @@ private final class NotchLevelControl: NSSlider, SliderScrollTarget {
             cancelScroll()
             return SliderScroll.pass(event, from: self)
         }
+        if scroll.verticalOnly != isVertical {
+            cancelScroll()
+            scroll.verticalOnly = isVertical
+        }
         if event.phase.contains(.began) {
             finishScrollEditing()
+            pendingScrollEvents.removeAll(keepingCapacity: true)
             scrolling = true
             trackingChanged?(true)
         }
@@ -189,8 +214,19 @@ private final class NotchLevelControl: NSSlider, SliderScrollTarget {
                 finishScrollEditing()
             }
         }
-        switch scroll.handle(event, current: doubleValue, range: minValue...maxValue) {
-        case .pass: SliderScroll.pass(event, from: self)
+        let outcome = scroll.handle(event, current: doubleValue, range: minValue...maxValue)
+        if scroll.isChoosingAxis {
+            if event.phase.contains(.began) || event.scrollingDeltaX != 0 || event.scrollingDeltaY != 0 {
+                pendingScrollEvents.append(event)
+            }
+            return
+        }
+        // The strip gets the original begin and small deltas in order, even
+        // when the deciding event only moves up.
+        let pending = pendingScrollEvents
+        pendingScrollEvents.removeAll()
+        switch outcome {
+        case .pass: SliderScroll.pass(event, from: self, after: pending)
         case .hold: break
         case .move(let value):
             guard value != doubleValue else { return }
@@ -272,4 +308,14 @@ private final class NotchLevelCell: NSSliderCell {
     }
 
     override func drawKnob(_ knobRect: NSRect) {}
+
+    /// The knob is never drawn, so it has no length either. AppKit then maps
+    /// the pointer across the whole track, as the fill is drawn, rather than
+    /// along a run shortened by half a hidden knob at each end, which left the
+    /// fill behind the pointer near the start and ahead of it near the end.
+    override func knobRect(flipped: Bool) -> NSRect {
+        let knob = super.knobRect(flipped: flipped)
+        return isFader ? NSRect(x: knob.minX, y: knob.midY, width: knob.width, height: 0)
+            : NSRect(x: knob.midX, y: knob.minY, width: 0, height: knob.height)
+    }
 }

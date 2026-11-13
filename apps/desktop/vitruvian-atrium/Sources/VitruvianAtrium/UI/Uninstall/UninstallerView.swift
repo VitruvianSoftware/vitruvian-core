@@ -6,6 +6,22 @@ import VitruvianAtriumCore
 import VitruvianAtriumDesign
 import VitruvianAtriumServices
 
+package struct UninstallerHomebrewLastLog: View {
+    @ObservedObject private var uninstaller = AppUninstaller.shared
+    @ObservedObject private var homebrew = HomebrewManager.shared
+    let compact: Bool
+
+    package var body: some View {
+        let showingPackage = uninstaller.phase == .results && !uninstaller.homebrewCheckFailed
+            ? uninstaller.selectedHomebrewPackage?.id : nil
+        if let status = homebrew.uninstallerLastLog(showingPackageID: showingPackage) {
+            HomebrewOperationOutputView(homebrew: homebrew, output: .lastLog(status), compact: compact)
+                .id(status.startedAt)
+                .padding(compact ? 8 : 12)
+        }
+    }
+}
+
 /// The uninstaller, embedded as a Settings page: drop an app (or pick one),
 /// review the leftover files it found with their sizes, then move the selected
 /// ones to the Trash and see the space recovered.
@@ -18,31 +34,38 @@ package struct UninstallerView: View {
     @State private var dropTargeted = false
     @State private var showingAppPicker = false
     @State private var pendingHomebrewRemoval: AppUninstaller.HomebrewRemovalConfirmation?
-    @State private var showHomebrewDetails = false
 
     package var body: some View {
-        content
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onAppear { uninstaller.clearRefusal() }
-            .onDisappear { uninstaller.clearRefusal() }
-            .alert(l10n.s.homebrewConfirmUninstallTitle,
-                   isPresented: Binding(get: { pendingHomebrewRemoval != nil },
-                                        set: { if !$0 { pendingHomebrewRemoval = nil } }),
-                   presenting: pendingHomebrewRemoval) { confirmation in
-                Button(l10n.s.uninstallerCancel, role: .cancel) {}
-                Button(l10n.s.homebrewUninstall, role: .destructive) {
-                    pendingHomebrewRemoval = nil
-                    uninstaller.removeSelectedWithHomebrew(confirmation: confirmation)
-                }
-            } message: { confirmation in
-                Text(String(format: l10n.s.homebrewConfirmUninstallBodyFormat, confirmation.package.displayName))
+        VStack(spacing: 0) {
+            content
+            UninstallerHomebrewLastLog(compact: false)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { uninstaller.clearRefusal() }
+        .onDisappear { uninstaller.clearRefusal() }
+        .alert(l10n.s.homebrewConfirmUninstallTitle,
+               isPresented: Binding(get: { pendingHomebrewRemoval != nil },
+                                    set: { if !$0 { pendingHomebrewRemoval = nil } }),
+               presenting: pendingHomebrewRemoval) { confirmation in
+            Button(l10n.s.uninstallerCancel, role: .cancel) {}
+            Button(l10n.s.homebrewUninstall, role: .destructive) {
+                pendingHomebrewRemoval = nil
+                uninstaller.removeSelectedWithHomebrew(confirmation: confirmation)
             }
+        } message: { confirmation in
+            Text(String(format: l10n.s.homebrewConfirmUninstallBodyFormat, confirmation.package.displayName))
+        }
     }
 
     @ViewBuilder
     private var content: some View {
         switch uninstaller.phase {
-        case .empty: emptyState
+        case .empty:
+            GeometryReader { viewport in
+                ScrollView {
+                    emptyState.frame(maxWidth: .infinity, minHeight: viewport.size.height)
+                }
+            }
         case .scanning: busyState(l10n.s.uninstallerScanning)
         case .results: resultsState
         case .removing: busyState(l10n.s.uninstallerRemoving)
@@ -229,7 +252,16 @@ package struct UninstallerView: View {
     }
 
     private var footer: some View {
-        HStack {
+        HStack(spacing: 12) {
+            MixedStateCheckbox(
+                title: l10n.s.uninstallerSelectAll,
+                isOn: uninstaller.bulkSelection == .all,
+                isMixed: uninstaller.bulkSelection == .some,
+                isEnabled: !uninstaller.isRemoving && !uninstaller.items.isEmpty,
+                fontSize: 12
+            ) {
+                uninstaller.setAllIncluded(uninstaller.bulkSelection.nextInclude)
+            }
             VStack(alignment: .leading, spacing: 1) {
                 Text(String(format: l10n.s.uninstallerSelectedFormat,
                             uninstaller.items.filter(\.include).count, uninstaller.items.count))
@@ -249,7 +281,7 @@ package struct UninstallerView: View {
             }
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
-                .disabled(!uninstaller.items.contains(where: \.include)
+                .disabled(!uninstaller.canRemoveSelected
                           || (uninstaller.selectedHomebrewPackage != nil && homebrew.isBusy))
         }
         .padding(16)
@@ -261,18 +293,15 @@ package struct UninstallerView: View {
 
     @ViewBuilder
     private var homebrewStatus: some View {
-        if let package = uninstaller.selectedHomebrewPackage {
+        if uninstaller.homebrewCheckFailed {
+            UninstallerHomebrewFailureNote(onRetry: { uninstaller.retryHomebrewCheck() })
+                .padding(12)
+            Divider()
+        } else if let package = uninstaller.selectedHomebrewPackage {
             if let status = homebrew.operationStatus,
                status.action == .uninstall,
                status.package?.id == package.id {
-                HomebrewOperationStatusView(status: status,
-                                            log: homebrew.log,
-                                            terminalFallbackCommand: homebrew.terminalFallbackCommand,
-                                            compact: false,
-                                            showDetails: $showHomebrewDetails,
-                                            onCancel: homebrew.cancelOperation,
-                                            onClear: homebrew.clearLog,
-                                            onOpenTerminal: homebrew.openTerminalFallback)
+                HomebrewOperationOutputView(homebrew: homebrew, output: .status(status), compact: false)
                     .padding(12)
                 if let tap = homebrew.untrustedTap {
                     HomebrewTrustCard(tap: tap)
@@ -355,5 +384,24 @@ package struct UninstallerView: View {
 
     private static func byteString(_ bytes: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+}
+
+/// The same failed-check state in Settings, the panel and Command Bar.
+package struct UninstallerHomebrewFailureNote: View {
+    @ObservedObject private var l10n = L10n.shared
+    let onRetry: () -> Void
+
+    package var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(l10n.s.uninstallerHomebrewCheckFailed, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(l10n.s.homebrewRefresh, action: onRetry)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        }
+        .font(.caption)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

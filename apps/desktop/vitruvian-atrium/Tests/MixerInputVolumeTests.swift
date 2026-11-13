@@ -66,10 +66,14 @@ enum MixerInputVolumeContract {
         nonisolated(unsafe) static var readFails: Set<Key> = []
         nonisolated(unsafe) static var writeFails: Set<Key> = []
         nonisolated(unsafe) static var mute: [UInt32: UInt32] = [:]
+        /// Per-element mute switches, for devices that mute each channel.
+        nonisolated(unsafe) static var muteElements: [Key: UInt32] = [:]
         nonisolated(unsafe) static var writes: [Key] = []
         nonisolated(unsafe) static var listeners: Set<Key> = []
         nonisolated(unsafe) static var listenerFails = false
         nonisolated(unsafe) static var ignoreWrites = false
+        /// Controls that accept a write and keep their old value.
+        nonisolated(unsafe) static var ignoredWrites: Set<Key> = []
         nonisolated(unsafe) static var devices: [UInt32] = [10]
         nonisolated(unsafe) static var streamChannels: [UInt32: [UInt32]] = [:]
         nonisolated(unsafe) static var streamReadFails = false
@@ -157,6 +161,7 @@ enum MixerInputVolumeContract {
             readFails = []
             writeFails = []
             mute = [:]
+            muteElements = [:]
             writes = []
             listeners = []
             procs = [:]
@@ -164,6 +169,7 @@ enum MixerInputVolumeContract {
             outputOnly = []
             listenerFails = false
             ignoreWrites = false
+            ignoredWrites = []
             devices = [10]
             current = 10
             uids = [:]
@@ -194,7 +200,8 @@ enum MixerInputVolumeContract {
 
         static func HasProperty(_ d: UInt32, _ a: UnsafePointer<AudioObjectPropertyAddress>) -> Bool {
             let k = Key(d, a.pointee)
-            return levels[k] != nil || (a.pointee.mSelector == kAudioDevicePropertyMute && mute[d] != nil)
+            return levels[k] != nil || (a.pointee.mSelector == kAudioDevicePropertyMute
+                && (muteElements[k] != nil || (a.pointee.mElement == 0 && mute[d] != nil)))
         }
         static func IsPropertySettable(
             _ d: UInt32, _ a: UnsafePointer<AudioObjectPropertyAddress>,
@@ -260,7 +267,7 @@ enum MixerInputVolumeContract {
             case kAudioDevicePropertyDeviceIsRunningSomewhere:
                 p.storeBytes(of: UInt32(running.contains(d) ? 1 : 0), as: UInt32.self)
             case kAudioDevicePropertyMute:
-                guard let v = mute[d] else { return -1 }
+                guard let v = muteElements[k] ?? (a.pointee.mElement == 0 ? mute[d] : nil) else { return -1 }
                 p.storeBytes(of: v, as: UInt32.self)
             default: return -1
             }
@@ -273,13 +280,19 @@ enum MixerInputVolumeContract {
             let k = Key(d, a.pointee)
             writes.append(k)
             if writeFails.contains(k) { return -1 }
-            if ignoreWrites { return noErr }
+            if ignoreWrites || ignoredWrites.contains(k) { return noErr }
             if a.pointee.mSelector == kAudioHardwarePropertyDefaultInputDevice {
                 current = p.load(as: UInt32.self)
                 return noErr
             }
             if a.pointee.mSelector == kAudioDevicePropertyMute {
-                mute[d] = p.load(as: UInt32.self)
+                if muteElements[k] != nil {
+                    muteElements[k] = p.load(as: UInt32.self)
+                } else if a.pointee.mElement == 0, mute[d] != nil {
+                    mute[d] = p.load(as: UInt32.self)
+                } else {
+                    return -1
+                }
                 return noErr
             }
             guard levels[k] != nil else { return -1 }
@@ -1136,6 +1149,26 @@ enum MixerInputVolumeContract {
 
         HAL.reset()
         HAL.levels[HAL.key(10)] = 0.5
+        HAL.muteService.setMuted(true)
+        Queue.drain()
+        HAL.devices = []
+        HAL.defaults.set(false, forKey: AppFeature.micMute.availabilityKey)
+        HAL.muteService.syncWithPreferences()
+        Queue.drain()
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        let devicesChanged = Key(system, AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
+                                                                    mScope: kAudioObjectPropertyScopeGlobal,
+                                                                    mElement: kAudioObjectPropertyElementMain))
+        check(HAL.listeners.contains(devicesChanged),
+              "disabling mic mute keeps device discovery until an unplugged microphone is restored")
+        HAL.devices = [10]
+        HAL.notify(system, kAudioHardwarePropertyDevices)
+        Queue.drain()
+        check(HAL.levels[HAL.key(10)] == 0.5 && !HAL.muteService.hasOutstandingClaims && HAL.listeners.isEmpty,
+              "a claimed microphone regains its volume on reconnection with the feature disabled")
+
+        HAL.reset()
+        HAL.levels[HAL.key(10)] = 0.5
         HAL.ignoreWrites = true
         HAL.muteService.setMuted(true)
         Queue.drain()
@@ -1157,6 +1190,26 @@ enum MixerInputVolumeContract {
         check(HAL.mute[10] == 0 && HAL.levels[HAL.key(10)] == 0,
               "a mute switch that cannot be written falls back to the level")
 
+        let legacyFirstMute = HAL.key(10, 1, kAudioDevicePropertyMute)
+        for mainMute in [UInt32(0), 1] {
+            HAL.reset()
+            HAL.mute[10] = mainMute
+            HAL.levels[HAL.key(10, 1)] = 0
+            HAL.levels[HAL.key(10, 2)] = 0.5
+            HAL.muteElements[legacyFirstMute] = 1
+            HAL.defaults.set(true, forKey: DefaultsKey.micMuteActive)
+            HAL.defaults.set(["device-10"], forKey: DefaultsKey.micMuteMutedDevices)
+            HAL.muteService = HAL.makeMute()
+            HAL.muteService.syncWithPreferences()
+            Queue.drain()
+            HAL.muteService.setMuted(false)
+            Queue.drain()
+            check(HAL.mute[10] == 0 && HAL.levels[HAL.key(10, 2)] == 0.5
+                    && HAL.levels[HAL.key(10, 1)] == 0 && HAL.muteElements[legacyFirstMute] == 1
+                    && !HAL.muteService.hasOutstandingClaims,
+                  "a legacy switch mute preserves the channel mix even if another client already released the switch")
+        }
+
         HAL.reset()
         HAL.levels[HAL.key(10)] = 0.5
         HAL.muteService.setMuted(true)
@@ -1171,5 +1224,28 @@ enum MixerInputVolumeContract {
         Queue.drain()
         check(!HAL.muteService.isMuted && HAL.levels[HAL.key(10)] == 0.5 && HAL.levels[HAL.key(20)] == 0.5,
               "switching the feature off gives every microphone its level back")
+
+        HAL.reset()
+        HAL.mute[10] = 0
+        HAL.levels[HAL.key(10)] = 0
+        HAL.defaults.set(0.625, forKey: DefaultsKey.micMuteSavedVolume)
+        HAL.defaults.set(["device-10"], forKey: DefaultsKey.micMuteMutedDevices)
+        HAL.muteService = HAL.makeMute()
+        HAL.muteService.syncWithPreferences()
+        Queue.drain()
+        check(HAL.levels[HAL.key(10)] == 0.625 && !HAL.muteService.hasOutstandingClaims,
+              "a zeroed legacy gain mute still uses its saved fallback when the main switch is off")
+
+        HAL.reset()
+        HAL.mute[10] = 1
+        HAL.levels[HAL.key(10)] = 0
+        HAL.muteElements[legacyFirstMute] = 1
+        HAL.defaults.set(["device-10"], forKey: DefaultsKey.micMuteMutedDevices)
+        HAL.muteService = HAL.makeMute()
+        HAL.muteService.syncWithPreferences()
+        Queue.drain()
+        check(HAL.mute[10] == 0 && HAL.levels[HAL.key(10)] == 0 && HAL.muteElements[legacyFirstMute] == 1
+                && !HAL.muteService.hasOutstandingClaims,
+              "a pending legacy unmute restores only the claimed main switch when the microphone returns")
     }
 }

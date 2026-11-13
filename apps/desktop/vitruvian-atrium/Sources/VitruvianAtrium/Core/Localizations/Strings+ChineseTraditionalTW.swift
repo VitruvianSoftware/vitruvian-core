@@ -236,6 +236,8 @@ extension Strings {
         switcherMaxColumnsAuto: "自動",
         switcherInstantSelection: "即時選取",
         switcherInstantSelectionCaption: "瀏覽 App 和視窗時，立即移動醒目提示並捲動列表。",
+        switcherIgnoreHoverSelection: "停留時不選取",
+        switcherIgnoreHoverSelectionCaption: "指標經過 App 和視窗時，醒目提示保持原位。按一下仍會開啟。",
         switcherMergeTabs: "每個 App 僅顯示一項",
         switcherMergeTabsCaption: "將一個 App 的所有視窗合併為切換器中的一項，而不是每個視窗一項。",
         switcherWindowlessApps: "沒有開啟視窗的 App",
@@ -335,6 +337,7 @@ extension Strings {
         uninstallerRemoving: "正在移到垃圾桶…",
         uninstallerFoundTitle: "已找到",
         uninstallerSelectedFormat: "已選取 %d 項，共 %d 項",
+        uninstallerSelectAll: "全選",
         uninstallerRemove: "移到垃圾桶",
         uninstallerCancel: "取消",
         uninstallerConfirmationExpired: "此確認已失效。請檢查目前的項目並重新確認。",
@@ -423,6 +426,8 @@ extension Strings {
         homebrewOpenTerminal: "開啟終端機",
         homebrewCancelOperation: "取消",
         homebrewClearLog: "清空日誌",
+        homebrewLastLogView: "查看上次日誌",
+        homebrewLastLogHide: "隱藏上次日誌",
         homebrewLogTitle: "日誌",
         homebrewVersion: "版本",
         homebrewDescription: "類型",
@@ -1079,6 +1084,7 @@ extension Strings {
         switcherShowShortcutHints: "顯示快速鍵提示",
         switcherShowShortcutHintsCaption: "在圖示下方顯示 App 和視窗快速鍵。",
         uninstallerHomebrewPackageFormat: "%@ 也會從 Homebrew 移除。",
+        uninstallerHomebrewCheckFailed: "無法確認此 App 是否由 Homebrew 管理。請重新整理後再試一次，或透過 Homebrew 解除安裝。",
         shelfEdgeToggle: "靠近螢幕邊緣時開啟",
         shelfEdgeCaption: "將檔案拖曳到螢幕邊緣，暫存架就會探出一角。放在那裡即可放下，往回拖曳就會收回去。",
         focusFollowsMouseName: "游標停留時聚焦",
@@ -1111,6 +1117,8 @@ extension Strings {
         shelfShortcutFinderSelection: "使用快速鍵加入 Finder 所選項目",
         shelfShortcutFinderSelectionCaption: "Finder 位於前景時，快速鍵會打開暫存架並放入所選檔案。未選取任何項目時照常打開。",
         spacesOrderName: "固定桌面空間順序",
-        spacesOrderCaption: "避免 macOS 依最近使用情況重新排列桌面空間，讓它們維持你設定的順序。關閉此選項後會恢復先前的設定。為套用變更，Dock 可能會重新啟動一次。"
+        spacesOrderCaption: "避免 macOS 依最近使用情況重新排列桌面空間，讓它們維持你設定的順序。關閉此選項後會恢復先前的設定。為套用變更，Dock 可能會重新啟動一次。",
+        quitAppsName: "結束 App",
+        quitAppsCaption: "列出開啟中的 App，可逐一結束、全部結束，或結束最前方 App 以外的所有 App。結束任何 App 前一律會先顯示清單。"
     )
 }

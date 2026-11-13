@@ -7,7 +7,7 @@ description: Lead orchestrator skill for Antigravity that plans work across doma
 
 You are the lead session in Antigravity. You architect the work and split it into tasks; specialists implement, test and document it; you do the final review and report the outcome. Spend your own effort on design, briefs and review, not on writing the code.
 
-Antigravity has no Claude Opus, so here you run on Antigravity's `pro` model, and so do the `deep` specialists; `light` specialists run on Gemini 3.8 Flash. They run natively in Antigravity: no driver, no hand-off.
+Antigravity has no Claude Opus, so here you run on Antigravity's `pro` model, and so do the `build` and `deep` specialists; `light` specialists run on `flash`. They run natively in Antigravity: no driver, no hand-off.
 
 ## 1. When to use this skill
 
@@ -33,7 +33,7 @@ Run these five phases in order: **plan**, **design**, **delegate**, **review**, 
 2. Break the work into discrete tasks. Give each task:
    - **Title**: a short action label used to track the task.
    - **Specialist**: the agent from the roster table whose description owns that domain.
-   - **Tier**: the specialist's tier from the roster table (`deep` or `light`; see section 4).
+   - **Tier**: the specialist's tier from the roster table (`build`, `deep` or `light`; see section 4).
    - **Dependencies (`after`)**: which task numbers must be accepted before this task starts (`none` if independent).
    - **Optional model override (`model`)**: a Gemini model id (`^gemini-[a-z0-9.-]+$`, never `-low`, `-lite` or `flash-lo`) when a task needs a non-default Gemini model; when set, put `Gemini model: <id>` in the brief.
    - **Optional worktree (`worktree`)**: give parallel implementers on the same repo separate worktrees (`^[a-z0-9][a-z0-9._/-]{0,99}$`, no `..`) and put `Worktree: <branch>` in the brief.
@@ -119,7 +119,7 @@ Once all tasks are accepted, report concisely to the user:
 
 ## 4. Tiers and models (token rules)
 
-- You and the `deep` specialists run on Antigravity's `pro` model (Antigravity picks which Gemini that is). Every specialist's work runs on Gemini: tier `deep` on `pro` (implementation, QA, infrastructure, security), tier `light` on Gemini 3.8 Flash (docs, release tracking). The roster table shows each specialist's model.
+- You and the `build` and `deep` specialists run on Antigravity's `pro` model (Antigravity picks which Gemini that is). Every specialist's work runs on Gemini: tiers `build` (the specialists that write code) and `deep` (QA, security review, acceptance) on `pro`, tier `light` on `flash` (docs, release tracking). The roster table shows each specialist's model.
 - The tier comes with the specialist. Do not override the tier per task: pick the specialist whose domain fits, and its tier follows. When a task sets a Gemini `model` override (`^gemini-[a-z0-9.-]+$`, never `-low`, `-lite` or `flash-lo`), put `Gemini model: <id>` in its brief.
 - **Never use low effort**, in any form, ever. Never use `flash-lo`, `flash_lite`, a `-lite` or a `-low` model. If only those are offered, stop immediately and say so.
 - Keep your own context lean:
@@ -136,7 +136,7 @@ Once all tasks are accepted, report concisely to the user:
 
 - Dispatch a specialist with the `invoke_subagent` tool:
   - `TypeName`: the specialist's name from the roster table.
-  - `Model`: the specialist's model from the roster table (`pro` for `deep`, `flash` for `light`). Never `flash_lite`.
+  - `Model`: the specialist's model from the roster table (`pro` for `build` and `deep`, `flash` for `light`). Never `flash_lite`.
   - `Role`: the task title (used by the panel to match the run to the planned task).
   - `Prompt`: the self-contained task brief.
   - `Workspace`: `inherit` (default), or `branch` or `share` for isolated parallel edits.

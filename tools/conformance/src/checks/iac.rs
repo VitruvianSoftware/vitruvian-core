@@ -1496,6 +1496,43 @@ fn workflow_push_paths(content: &str) -> Vec<String> {
     out
 }
 
+/// The unfinished states a workflow run can be in, every one of which the
+/// wait must ask GitHub about.
+const UNFINISHED_RUN_STATES: [&str; 5] =
+    ["requested", "queued", "pending", "waiting", "in_progress"];
+
+/// Whether the wait's script really polls the apply's unfinished runs: a
+/// `runs=` URL for actions/workflows/${APPLY_WORKFLOW}/runs, a `for s in` loop
+/// over every unfinished state, and a request with `status=${s}` on that URL.
+/// Comments are dropped first, so a comment that names the states, or a
+/// loop that never sends them, does not pass.
+fn wait_polls_unfinished_runs(content: &str) -> bool {
+    let code: Vec<&str> = content
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.starts_with('#'))
+        .map(|l| l.split(" #").next().unwrap_or("").trim())
+        .collect();
+    let runs_url = code
+        .iter()
+        .any(|l| l.starts_with("runs=") && l.contains("actions/workflows/${APPLY_WORKFLOW}/runs"));
+    let state_loop = code.iter().any(|l| {
+        l.strip_prefix("for s in ").is_some_and(|rest| {
+            let states: BTreeSet<&str> = rest
+                .split(';')
+                .next()
+                .unwrap_or("")
+                .split_whitespace()
+                .collect();
+            UNFINISHED_RUN_STATES.iter().all(|s| states.contains(s))
+        })
+    });
+    let asks = code
+        .iter()
+        .any(|l| l.contains("${runs}?status=${s}") && (l.contains("api ") || l.contains("gh api")));
+    runs_url && state_loop && asks
+}
+
 /// A mirror export must not be handed its deploy key while Repo Config Apply
 /// can still replace it (2026-11-13: #4661 renamed three mirrors, the apply
 /// replaced their keys, and exports already holding the old key were refused).
@@ -1634,10 +1671,7 @@ pub fn check_copybara_export_awaits_key_rotation(ctx: &Context) {
                     }
                 }
             }
-            let polls = a.contains("actions/workflows/${APPLY_WORKFLOW}/runs")
-                && ["queued", "in_progress", "waiting", "pending", "requested"]
-                    .iter()
-                    .all(|s| a.contains(s));
+            let polls = wait_polls_unfinished_runs(&a);
             if !polls {
                 failed = true;
                 fail(
@@ -1790,6 +1824,38 @@ jobs:
     fn a_wait_that_does_not_poll_fails() {
         let a = "jobs:\n    wait:\n        steps:\n            - env:\n                  APPLY_WORKFLOW: _repo-config-apply.yaml\n                  APPLY_PATH: infrastructure/pulumi/platform/repo-config/\n              run: echo wait\n";
         let (_, fail, rows) = run(&[(A, CALLER), (AW, a), APPLY]);
+        assert_eq!(fail, 1, "{rows}");
+        assert!(rows.contains("does not poll"), "{rows}");
+    }
+
+    /// Review of #4689 (nit): naming the states in a comment is not polling.
+    #[test]
+    fn states_named_only_in_a_comment_fail() {
+        let a = "\
+jobs:
+    wait:
+        steps:
+            - env:
+                  APPLY_WORKFLOW: _repo-config-apply.yaml
+                  APPLY_PATH: infrastructure/pulumi/platform/repo-config/
+              run: |
+                  # polls actions/workflows/${APPLY_WORKFLOW}/runs for requested queued pending waiting in_progress
+                  runs=\"repos/${REPO}/actions/workflows/${APPLY_WORKFLOW}/runs\"
+                  echo wait
+";
+        let (_, fail, rows) = run(&[(A, CALLER), (AW, a), APPLY]);
+        assert_eq!(fail, 1, "{rows}");
+        assert!(rows.contains("does not poll"), "{rows}");
+    }
+
+    /// A loop that leaves out one unfinished state misses runs in it.
+    #[test]
+    fn a_loop_missing_a_state_fails() {
+        let a = AWAIT.replace(
+            "for s in requested queued pending waiting in_progress;",
+            "for s in queued in_progress;",
+        );
+        let (_, fail, rows) = run(&[(A, CALLER), (AW, &a), APPLY]);
         assert_eq!(fail, 1, "{rows}");
         assert!(rows.contains("does not poll"), "{rows}");
     }

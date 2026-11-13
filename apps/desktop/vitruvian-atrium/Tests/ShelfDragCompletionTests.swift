@@ -147,5 +147,86 @@ enum ShelfDragCompletionTests {
             suite.expect(session.islandClosures == 0 && session.floatingClosures == 0,
                    "an old drag cannot close a different destination or a replacement notch window")
         }
+        fileDragProtection(suite)
+    }
+
+    /// Package content, read from a real file system fixture: the rule the
+    /// Shelf uses to offer only a copy, and the drag state that carries it.
+    private static func fileDragProtection(_ suite: TestSuite) {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("vitruvian-shelf-drag-tests-\(UUID())")
+        defer { try? fm.removeItem(at: root) }
+        do {
+            let package = root.appendingPathComponent("Library.app", isDirectory: true)
+            let resources = package.appendingPathComponent("Contents/Resources", isDirectory: true)
+            try fm.createDirectory(at: resources, withIntermediateDirectories: true)
+            let inside = resources.appendingPathComponent("photo.jpeg")
+            let plain = root.appendingPathComponent("plain.jpeg")
+            try Data("package content".utf8).write(to: inside)
+            try Data("ordinary file".utf8).write(to: plain)
+            let directoryLink = root.appendingPathComponent("exports", isDirectory: true)
+            let fileLink = root.appendingPathComponent("photo-link")
+            let packageLink = root.appendingPathComponent("package-link")
+            try fm.createSymbolicLink(at: directoryLink, withDestinationURL: resources)
+            try fm.createSymbolicLink(at: fileLink, withDestinationURL: inside)
+            try fm.createSymbolicLink(at: packageLink, withDestinationURL: package)
+
+            let cases: [(URL, Bool, String)] = [
+                (inside, true, "package content"),
+                (resources, true, "a directory inside a package"),
+                (directoryLink.appendingPathComponent("photo.jpeg"), true, "content through a directory symlink"),
+                (plain, false, "an ordinary file"),
+                (package, false, "a whole package"),
+                (fileLink, false, "a symlink to a package file"),
+                (packageLink, false, "a symlink to a whole package"),
+            ]
+            for (url, protected, label) in cases {
+                let holds = ShelfInteractionSupport.holdsPackageContent([url])
+                suite.expect(holds == protected, "package content is recognised for \(label)")
+                let offersMove = ShelfInteractionSupport.offersMoveOutside(
+                    removeAfterDrop: true, dragIncludesPinned: false, dragIncludesPackageContent: holds)
+                // Exercise a same-volume destination using only the offered
+                // operation. Everything here belongs to this temporary fixture.
+                let destination = root.appendingPathComponent("drop-\(UUID())")
+                if offersMove {
+                    try fm.moveItem(at: url, to: destination)
+                } else {
+                    try fm.copyItem(at: url, to: destination)
+                }
+                suite.expect(fm.fileExists(atPath: destination.path)
+                        && fm.fileExists(atPath: url.path) == protected,
+                       "the offered transfer leaves package contents in place and permits legitimate moves for \(label)")
+                if url == fileLink || url == packageLink {
+                    suite.expect(fm.fileExists(atPath: inside.path),
+                           "moving the symlink itself leaves its package target untouched")
+                }
+                if offersMove {
+                    try fm.moveItem(at: destination, to: url)
+                } else {
+                    try fm.removeItem(at: destination)
+                }
+            }
+            suite.expect(ShelfInteractionSupport.holdsPackageContent([plain, inside])
+                    && !ShelfInteractionSupport.holdsPackageContent([plain, fileLink])
+                    && !ShelfInteractionSupport.holdsPackageContent([]),
+                   "a mixed drag is protected by any one package file in it")
+
+            // The drag carries the decision and forgets it when it ends.
+            for accepted in [false, true] {
+                let session = Context.Session()
+                let id = UUID()
+                session.drag.begin(ids: [id], from: Context.Window(), holdsPackageContent: true)
+                suite.expect(session.drag.holdsPackageContent, "a drag holding package content says so")
+                session.drag.complete(dropAccepted: accepted)
+                suite.expect(!session.drag.holdsPackageContent && session.removed == (accepted ? [id] : []),
+                       "ending a protected drag clears the protection and retires only an accepted tile")
+                session.drag.begin(ids: [UUID()], from: Context.Window())
+                suite.expect(!session.drag.holdsPackageContent,
+                       "a subsequent ordinary drag does not retain the previous package protection")
+                session.drag.complete(dropAccepted: false)
+            }
+        } catch {
+            suite.expect(false, "shelf drag protection fixture failed: \(error)")
+        }
     }
 }

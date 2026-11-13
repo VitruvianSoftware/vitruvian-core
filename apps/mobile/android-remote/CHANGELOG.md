@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.39](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.38...android-remote-v0.1.39) (2026-11-13)
+
+
+### Bug Fixes
+
+* **android-remote:** keep the Speaker module and its settings when a phone updates past the rename ([#4703](https://github.com/VitruvianSoftware/vitruvian-core/issues/4703)) ([a5dc09c](https://github.com/VitruvianSoftware/vitruvian-core/commit/a5dc09ca09f0dd7579e59efaf3b2a363c9119080))
+
 ## [0.1.38](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.37...android-remote-v0.1.38) (2026-11-13)
 
 

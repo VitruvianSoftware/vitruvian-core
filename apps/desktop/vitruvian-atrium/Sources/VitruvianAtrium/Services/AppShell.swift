@@ -32,6 +32,9 @@ package protocol AppShell: AnyObject {
     func showUpdatePreview()
     func showPermissionGuide(for kind: PermissionKind)
     func relaunchApp()
+    /// The app that was active before the menu bar panel opened, so actions
+    /// started from the panel keep it even with no window in this Space.
+    var panelActivationSourcePID: pid_t? { get }
 }
 
 extension AppShell {

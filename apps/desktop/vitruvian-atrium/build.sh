@@ -207,6 +207,10 @@ fi
 SDK_COMPAT_FLAGS=()
 VM_STATISTICS_COMPAT_FLAGS=(-I Sources/VMStatisticsCompat)
 HID_EVENT_SYSTEM_FLAGS=(-I Sources/HIDEventSystem)
+CORE_AUDIO_TAP_FLAGS=(-I Sources/CoreAudioTapCompat)
+GIF_CODEC_FLAGS=(-I Sources/RecorderGIFCodec)
+GIF_CODEC_OBJECTS=(build/objects/recorder-gif-codec/RecorderGIFCodec.o
+                   build/objects/recorder-gif-codec/cgif_raw.o)
 if [[ "$SDK" == "$PINNED_SDK" ]]; then
     # Swift 6.4 can read the SDK 26 interfaces when given their compiler version.
     SDK_COMPAT_FLAGS=(-Xfrontend -interface-compiler-version -Xfrontend 6.3.2)
@@ -245,6 +249,12 @@ discard_test_preferences() {
 
 # Standalone automated tests: pure contracts plus isolated disk, subprocess,
 # keyboard-data and media fixtures. No application windows or device capture.
+mkdir -p build/objects/recorder-gif-codec
+xcrun clang -O3 -std=c99 -target "$TARGET" -isysroot "$SDK" \
+    -c Sources/RecorderGIFCodec/RecorderGIFCodec.c -o "$GIF_CODEC_OBJECTS[1]"
+xcrun clang -O3 -std=c99 -target "$TARGET" -isysroot "$SDK" \
+    -c Sources/RecorderGIFCodec/vendor/cgif/cgif_raw.c -o "$GIF_CODEC_OBJECTS[2]"
+
 if (( TEST )); then
     python3 Tests/generate_sources.py
     TEST_OBJECT_DIR="build/objects/tests"
@@ -336,6 +346,7 @@ if (( TEST )); then
         Sources/VitruvianAtrium/Core/FeatureHubStrings.swift
         Sources/VitruvianAtrium/Core/MixerScreenSharingStrings.swift
         Sources/VitruvianAtrium/Core/ShortcutSettingsStrings.swift
+        Sources/VitruvianAtrium/Core/SwitcherShortcutStrings.swift
         Sources/VitruvianAtrium/Core/SettingsBackupSupport.swift
         Sources/VitruvianAtrium/Core/BackupStrings.swift
         Sources/VitruvianAtrium/Core/SnippetStrings.swift
@@ -381,6 +392,7 @@ if (( TEST )); then
         Sources/VitruvianAtrium/Services/Recorder/RecorderWriter.swift
         Sources/VitruvianAtrium/Services/Recorder/RecorderCaptureEngine.swift
         Sources/VitruvianAtrium/Core/RecorderExportStrings.swift
+        Sources/VitruvianAtrium/Core/RecorderExportFormatStrings.swift
         Sources/VitruvianAtrium/Services/Recorder/RecorderComposer.swift
         Sources/VitruvianAtrium/Services/Recorder/RecorderComposerPlan.swift
         Sources/VitruvianAtrium/Services/Recorder/RecorderCursorSprite.swift
@@ -389,6 +401,7 @@ if (( TEST )); then
         Sources/VitruvianAtrium/Services/Recorder/RecorderExporter.swift
         Sources/VitruvianAtrium/Services/Recorder/RecorderGIFClipboard.swift
         Sources/VitruvianAtrium/Services/Recorder/RecorderGIFWriter.swift
+        Sources/VitruvianAtrium/Services/Recorder/RecorderFastGIFWriter.swift
         Sources/VitruvianAtrium/Services/Recorder/RecorderGIFWorkspace.swift
         Sources/VitruvianAtrium/Services/Recorder/RecorderComposition.swift
         Sources/VitruvianAtrium/Services/Recorder/RecordingSharingSupport.swift
@@ -416,6 +429,7 @@ if (( TEST )); then
         Sources/VitruvianAtrium/Core/WhatsAppOrganizerStrings.swift
         Sources/VitruvianAtrium/Core/ReleaseNotes.swift
         Sources/VitruvianAtrium/Core/URLCleaning.swift
+        Sources/VitruvianAtrium/Services/URLCleanerLinkMetadata.swift
         Sources/VitruvianAtrium/Services/GeneralPasteboardAccess.swift
         Sources/VitruvianAtrium/Services/Clipboard/ClipboardHistoryWrite.swift
         Sources/VitruvianAtrium/Services/Audio/AirPlayRouteManager.swift
@@ -432,6 +446,8 @@ if (( TEST )); then
         Sources/VitruvianAtrium/Services/SpacesOrder/SpacesOrderHold.swift
         Sources/VitruvianAtrium/Core/Homebrew/HomebrewSupport.swift
         Sources/VitruvianAtrium/Services/Homebrew/HomebrewEnvironment.swift
+        Sources/VitruvianAtrium/Services/Homebrew/HomebrewManager.swift
+        Sources/VitruvianAtrium/UI/HomebrewOperationStatusView.swift
         Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift
         Sources/VitruvianAtrium/Core/AppUpdates/AppUpdateFeedSupport.swift
         Sources/VitruvianAtrium/Core/AppUpdateStrings.swift
@@ -504,6 +520,9 @@ if (( TEST )); then
         Sources/VitruvianAtrium/Services/QuickTools/ScreenshotCapturePolicy.swift
         Sources/VitruvianAtrium/Core/QuickTools/ScreenshotSupport.swift
         Sources/VitruvianAtrium/Services/QuickTools/ScreenshotCanvasSupport.swift
+        Sources/VitruvianAtrium/Services/QuickTools/ScreenshotImageImport.swift
+        Sources/VitruvianAtrium/Services/Media/MediaImageProcessing.swift
+        Sources/VitruvianAtrium/Services/QuickTools/ScreenshotImageFile.swift
         Sources/VitruvianAtrium/UI/Settings/ScreenCaptureToolPicker.swift
         Sources/VitruvianAtrium/UI/Settings/MonitorToken.swift
         Sources/VitruvianAtrium/Services/QuickTools/ScreenshotRenderer.swift
@@ -566,6 +585,7 @@ if (( TEST )); then
         Sources/VitruvianAtrium/Services/CleaningMode/CleaningMouseReleaseGate.swift
         Sources/VitruvianAtrium/Services/Display/ExtraBrightnessSupport.swift
         Sources/VitruvianAtrium/Core/Display/BrightnessSupport.swift
+        Sources/VitruvianAtrium/Core/Display/MonitorVolumeKeySettings.swift
         Sources/VitruvianAtrium/Services/Display/LidDimmingSupport.swift
         Sources/VitruvianAtrium/Core/Cleaner/CleanerSupport.swift
         Sources/VitruvianAtrium/Core/Cleaner/CleanerPolicy.swift
@@ -582,7 +602,8 @@ if (( TEST )); then
     swiftc -Onone -incremental -enable-batch-mode -j "$(sysctl -n hw.logicalcpu)" \
         -module-name VitruvianAtriumTests -output-file-map "$TEST_OUTPUT_FILE_MAP" \
         -target "$TARGET" -sdk "$SDK" "${SDK_COMPAT_FLAGS[@]}" \
-        "${VM_STATISTICS_COMPAT_FLAGS[@]}" "${TEST_SOURCES[@]}" -o build/metrics-tests
+        "${VM_STATISTICS_COMPAT_FLAGS[@]}" "${CORE_AUDIO_TAP_FLAGS[@]}" "${GIF_CODEC_FLAGS[@]}" \
+        "${TEST_SOURCES[@]}" "${GIF_CODEC_OBJECTS[@]}" -o build/metrics-tests
     test_status=0
     ./build/metrics-tests "${TEST_ARGS[@]}" || test_status=$?
     if (( ${#TEST_ARGS} == 0 )); then
@@ -613,8 +634,10 @@ write_swift_output_file_map "$APP_OUTPUT_FILE_MAP" "$APP_OBJECT_DIR" "${APP_SOUR
 swiftc "${APP_OPTIMIZATION_FLAGS[@]}" -incremental -enable-batch-mode -j "$(sysctl -n hw.logicalcpu)" \
     -output-file-map "$APP_OUTPUT_FILE_MAP" \
     -target "$TARGET" -sdk "$SDK" "${SDK_COMPAT_FLAGS[@]}" "${VM_STATISTICS_COMPAT_FLAGS[@]}" "${HID_EVENT_SYSTEM_FLAGS[@]}" \
+    "${CORE_AUDIO_TAP_FLAGS[@]}" "${GIF_CODEC_FLAGS[@]}" \
     "${BUILD_VARIANT_FLAGS[@]}" \
-    "${APP_SOURCES[@]}" -o "build/$EXECUTABLE"
+    "${APP_SOURCES[@]}" "${GIF_CODEC_OBJECTS[@]}" -o "build/$EXECUTABLE"
+xcrun dyld_info -imports "build/$EXECUTABLE" | awk -f Tests/AudioTapImports.awk
 
 echo "▸ Compiling protected fan helper…"
 swiftc -O -target "$TARGET" -sdk "$SDK" "${SDK_COMPAT_FLAGS[@]}" "${BUILD_VARIANT_FLAGS[@]}" \
@@ -729,6 +752,7 @@ FAN_HELPER_VERSION="$(
     "$STAGE/Contents/Info.plist"
 printf 'APPL????' > "$STAGE/Contents/PkgInfo"
 cp build/AppIcon.icns "$STAGE/Contents/Resources/AppIcon.icns"
+cp Sources/RecorderGIFCodec/vendor/cgif/LICENSE "$STAGE/Contents/Resources/cgif-LICENSE.txt"
 cp build/MenuBarIcon.png build/MenuBarIcon@2x.png build/BrandMark.png "$STAGE/Contents/Resources/"
 if [[ -f build/Assets.car ]]; then
     cp build/Assets.car "$STAGE/Contents/Resources/Assets.car"
