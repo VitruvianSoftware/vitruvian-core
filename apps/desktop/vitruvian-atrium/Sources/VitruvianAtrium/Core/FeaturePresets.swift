@@ -148,7 +148,7 @@ extension AppFeature {
                     defaults[Preferences.brightnessKeyStep]) != .standard
                 ? .keyboard : .idle
         case .mouseAcceleration, .spacesOrder, .pastePlain, .soundOutputSwitcher, .audioPriority, .micMute,
-             .bluetoothSleep, .keepAwake, .quickLauncher, .quickToggles, .colorPicker,
+             .bluetoothSleep, .keepAwake, .quickLauncher, .quickToggles, .quitApps, .colorPicker,
              .screenOCR, .cleaningMode, .mediaTools, .cleaner, .uninstaller, .homebrew, .screenshot,
              .cameraPreview, .scratchpad, .commandBar, .screenRecorder, .wallpaper, .fanControl,
              .diskImageInstaller, .killProcess, .portManager:

@@ -835,7 +835,7 @@ private struct RadialItemEditor: View {
     }
 
     private var availableQuickToggles: [RadialMenuQuickToggle] {
-        AppFeature.quickToggles.isAvailable ? RadialMenuQuickToggle.allCases : []
+        RadialMenuQuickToggle.allCases.filter { $0.feature.isAvailable }
     }
 
     /// Every tool this slice could be: the app's own, and registry commands

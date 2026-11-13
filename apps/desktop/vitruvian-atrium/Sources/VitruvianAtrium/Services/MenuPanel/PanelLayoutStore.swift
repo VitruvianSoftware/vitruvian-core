@@ -115,7 +115,7 @@ package enum PanelSectionID: String, CaseIterable, Identifiable, Hashable {
                                 .finderCutPaste, .autoQuit,
                                 .shelf, .windowMaximizer, .dockPreview, .keyboardDebounce, .dockClick, .spacesOrder,
                                 .middleClick, .textSnippets, .superKey, .radialMenu, .mouseClickDebounce, .notch]
-        case .toggles: return [.quickToggles, .micMute]
+        case .toggles: return [.quickToggles, .micMute, .quitApps]
         case .wallpaper: return [.wallpaper]
         // No hub feature keeps it: an extension is added in Settings, not
         // installed from the hub.

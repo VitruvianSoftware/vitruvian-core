@@ -232,6 +232,7 @@ enum TestGroups {
             }),
             ("utilities", {
                 UtilitiesFeatureTests.run(suite)
+                QuickTogglesQuitAllTests.run(suite)
                 PortManagerRefreshTests.run(suite)
             }),
             ("settings", {

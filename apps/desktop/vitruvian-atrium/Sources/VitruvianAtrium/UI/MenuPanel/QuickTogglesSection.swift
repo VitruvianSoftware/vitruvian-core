@@ -79,6 +79,7 @@ package struct QuickTogglesList: View {
     @AppStorage(Preferences.panelToggleKeyboardLight) private var showKeyboardLight: Bool
     @AppStorage(Preferences.panelToggleMicMute) private var showMicMute: Bool
     @AppStorage(Preferences.panelToggleEmptyTrash) private var showEmptyTrash: Bool
+    @AppStorage(Preferences.panelToggleQuitAllApps) private var showQuitAllApps: Bool
     @AppStorage(Preferences.panelToggleEjectDisks) private var showEjectDisks: Bool
     @AppStorage(Preferences.panelToggleHiddenFiles) private var showHiddenFiles: Bool
     @AppStorage(Preferences.panelToggleDesktopIcons) private var showDesktopIcons: Bool
@@ -115,7 +116,7 @@ package struct QuickTogglesList: View {
         let defaults = UserDefaults.standard
         for key in [DefaultsKey.panelToggleDarkMode, DefaultsKey.panelToggleKeyboardLight,
                     DefaultsKey.panelToggleMicMute,
-                    DefaultsKey.panelToggleEmptyTrash,
+                    DefaultsKey.panelToggleEmptyTrash, DefaultsKey.panelToggleQuitAllApps,
                     DefaultsKey.panelToggleEjectDisks, DefaultsKey.panelToggleHiddenFiles,
                     DefaultsKey.panelToggleDesktopIcons, DefaultsKey.panelToggleLockScreen,
                     DefaultsKey.panelToggleDisplayOff, DefaultsKey.panelToggleScreenSaver] {
@@ -156,6 +157,7 @@ package struct QuickTogglesList: View {
         case .keyboardLight: return $showKeyboardLight
         case .micMute: return $showMicMute
         case .emptyTrash: return $showEmptyTrash
+        case .quitAllApps: return $showQuitAllApps
         case .ejectDisks: return $showEjectDisks
         case .hiddenFiles: return $showHiddenFiles
         case .desktopIcons: return $showDesktopIcons
@@ -220,6 +222,17 @@ package struct QuickTogglesList: View {
                                     // The confirmation alert opens centered and
                                     // key; the panel stays put behind it.
                                     QuickTogglesService.shared.emptyTrash()
+                                })
+        case .quitAllApps:
+            UtilityActionButton(title: strings.quitAllTitle,
+                                caption: caption(for: item, idle: l10n.s.quitAppsCaption),
+                                systemImage: "xmark.app",
+                                isEditing: editing,
+                                showsDragHandle: true,
+                                visibility: visibilityBinding(item),
+                                shortcutHint: shortcutHint(.quitAll),
+                                action: {
+                                    QuickTogglesService.shared.showQuitApps()
                                 })
         case .ejectDisks:
             // Anything but the plain description is news: nothing to eject,

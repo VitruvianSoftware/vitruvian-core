@@ -374,6 +374,7 @@ package enum DefaultsKey {
     // Keep the existing storage key so moving the row preserves its visibility choice.
     package static let panelToggleMicMute = "panelUtilityMicMute"
     package static let panelToggleEmptyTrash = "panelToggleEmptyTrash"
+    package static let panelToggleQuitAllApps = "panelToggleQuitAllApps"
     package static let panelToggleEjectDisks = "panelToggleEjectDisks"
     package static let panelToggleHiddenFiles = "panelToggleHiddenFiles"
     package static let panelToggleDesktopIcons = "panelToggleDesktopIcons"
@@ -596,6 +597,12 @@ package enum DefaultsKey {
     package static let screenOCRDetectQRCodes = "screenOCRDetectQRCodes" // QR content wins over OCR text
     package static let micMuteShortcutEnabled = "micMuteShortcutEnabled"
     package static let micMuteShortcut = "micMuteShortcut"
+    package static let quitAppsShortcutEnabled = "quitAppsShortcutEnabled"
+    package static let quitAppsShortcut = "quitAppsShortcut"
+    package static let quitAppsExceptFrontShortcutEnabled = "quitAppsExceptFrontShortcutEnabled"
+    package static let quitAppsExceptFrontShortcut = "quitAppsExceptFrontShortcut"
+    /// Bundle ids "Quit all apps" leaves running, on top of the mandatory set.
+    package static let quitAppsKeptApps = "quitAppsKeptApps"
     package static let cameraPreviewShortcutEnabled = "cameraPreviewShortcutEnabled"
     package static let cameraPreviewShortcut = "cameraPreviewShortcut"
     package static let wallpaperApplyAllDisplays = "wallpaperApplyAllDisplays"
