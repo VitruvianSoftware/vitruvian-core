@@ -15,6 +15,10 @@ if let command = SettingsBackupSupport.command(in: CommandLine.arguments) {
 }
 
 SuperKeyMappingGuard.runIfRequestedAndExit()
+// The optional read-only settings file (~/.config/vitruvian/settings.plist)
+// overlays its keys before defaults register and migrations run. Only a
+// plain launch reads it. Top-level code runs on the main thread.
+let configuredFeatureKeys = MainActor.assumeIsolated { SettingsBackup.applyConfigFileAtLaunch() }
 Defaults.register()
 // The island asks the brightness service whether this Mac has a keyboard
 // light. Top-level code runs on the main thread.
@@ -94,6 +98,10 @@ if NotchPresentationProbeMode.isRequested(by: CommandLine.arguments) {
 
 let app = NSApplication.shared
 // Top-level code runs on the main thread.
-let delegate = MainActor.assumeIsolated { AppDelegate() }
+let delegate = MainActor.assumeIsolated { () -> AppDelegate in
+    let appDelegate = AppDelegate()
+    appDelegate.configuredFeatureKeys = configuredFeatureKeys
+    return appDelegate
+}
 app.delegate = delegate
 app.run()
