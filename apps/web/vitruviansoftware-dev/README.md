@@ -42,7 +42,7 @@ Then open <http://localhost:4000>.
 | `tech-stack.html`, `contributions.html` | Redirects from URLs the previous site used |
 | `_data/projects.yml` | Every project card on `/projects/` and the home page |
 | `_data/extensions.yml`, `ai/catalog.json`, `.claude-plugin/marketplace.json` | Multi-marketplace extension registry powering `/ai/`, generated automatically from monorepo manifests by `bazel run //tools/sync-site-tools:sync` (do not edit by hand) |
-| `_data/tools.yml` | Signed Vitruvian macOS and Android Remote tool catalog powering `/tools/catalog/` and `/ai/`, written by `bazel run //tools/sync-site-tools:sync` |
+| `_data/tools.yml` | Signed Vitruvian macOS and Vitruvian Remote tool catalog powering `/tools/catalog/` and `/ai/`, written by `bazel run //tools/sync-site-tools:sync` |
 | `_data/team.yml` | The leadership and team section of the About page: the founder, and the AI agents with their portraits |
 | `_posts/` | Blog posts, named `YYYY-MM-DD-title.md`; set `description` for the listing |
 | `tools/` | The Tools section. `index.html` is written by hand. `guide.md`, `protocol.md` and `examples/*.md` are copies of `packages/vitruvian-sdk`'s docs and samples, written by `bazel run //tools/sync-site-tools:sync`: do not edit them, and `//tools/sync-site-tools:in_sync_test` fails until they match their sources |

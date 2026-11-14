@@ -29,7 +29,7 @@
     },
     {
       "id": "dev.vitruvian.github",
-      "repo": "VitruvianSoftware/vitruvian-tool-github",
+      "repo": "VitruvianSoftware/vitruvian-github",
       "tagPrefix": "v",
       "asset": "github-tool-{version}.zip",
       "uploader": "github-actions[bot]",
@@ -46,20 +46,20 @@
     {
       "id": "dev.vitruvian.remote",
       "repo": "VitruvianSoftware/vitruvian-core",
-      "tagPrefix": "android-remote-v",
+      "tagPrefix": "vitruvian-remote-v",
       "asset": "VitruvianRemote-{version}-tool.zip",
       "uploader": "github-actions[bot]",
       "universal": true,
-      "releaseWorkflow": "android-remote-release"
+      "releaseWorkflow": "vitruvian-remote-release"
     },
     {
       "id": "dev.vitruvian.tv",
       "repo": "VitruvianSoftware/vitruvian-core",
-      "tagPrefix": "vitruvian-tool-tv-v",
+      "tagPrefix": "vitruvian-tv-v",
       "asset": "VitruvianTV-{version}-tool.zip",
       "uploader": "github-actions[bot]",
       "universal": false,
-      "releaseWorkflow": "vitruvian-tool-tv-release"
+      "releaseWorkflow": "vitruvian-tv-release"
     }
   ],
   "manual": {

@@ -50,7 +50,7 @@ Each application type has its own conventions — see the
 │   ├── cli/                         # Developer & platform CLIs (Vitruvian DevX CLI, Vitruvian Homelab)
 │   ├── mcp/                         # Model Context Protocol servers (slack)
 │   ├── desktop/                     # Native desktop applications (vitruvian-code, vitruvian-speaker, vitruvian-atrium)
-│   ├── mobile/                      # Mobile apps (android-remote)
+│   ├── mobile/                      # Mobile apps (vitruvian-remote)
 │   └── embedded/                    # Embedded firmware (vitruvian-deck)
 ├── packages/                        # Shared packages (packages/pulumi, design-system)
 ├── infrastructure/pulumi/           # IaC: Cloud Run, deploy identity, repo config, dev-local bootstrap

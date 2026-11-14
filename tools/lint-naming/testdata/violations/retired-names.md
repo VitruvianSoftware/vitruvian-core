@@ -9,3 +9,6 @@ This fixture triggers `RET001` for retired product and mirror names:
 - mcp-roborock
 - esp32-desk-companion
 - Vitruvian Desktop
+- VitruvianToolGitHub
+- VitruvianToolTV
+- Android Remote

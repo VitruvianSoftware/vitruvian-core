@@ -18,21 +18,21 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-name: Copybara Export (vitruvian-tool-github)
+name: Copybara Export (vitruvian-github)
 
-# EXPORT-ONLY mirror: monorepo apps/desktop/vitruvian-tool-github/ -> VitruvianSoftware/
-# vitruvian-tool-github (repo root) on every push under that subtree. Thin caller --
-# logic lives in _copybara-export.yaml; the export_vitruvian_tool_github workflow
+# EXPORT-ONLY mirror: monorepo apps/extensions/atrium/vitruvian-github/ -> VitruvianSoftware/
+# vitruvian-github (repo root) on every push under that subtree. Thin caller --
+# logic lives in _copybara-export.yaml; the export_vitruvian_github workflow
 # is defined in tools/copybara/copy.bara.sky.
 #
-# The mirror is where the GitHub tool is released from: its own release.yml
+# The mirror is where Vitruvian GitHub is released from: its own release.yml
 # (exported with everything else) tags vX.Y.Z, builds the tool and attaches
 # the zip that catalog/tools.json pins, when the exported manifest has a new
 # version. A green run here means "pushed to the mirror", not "released".
 on:
     push:
         branches: [main]
-        paths: ["apps/desktop/vitruvian-tool-github/**", "tools/copybara/copy.bara.sky"]
+        paths: ["apps/extensions/atrium/vitruvian-github/**", "tools/copybara/copy.bara.sky"]
     workflow_dispatch:
         inputs:
             copybara-options:
@@ -45,7 +45,7 @@ permissions:
     actions: read # _await-repo-config.yaml lists Repo Config Apply runs
 
 concurrency:
-    group: copybara-export-vitruvian-tool-github
+    group: copybara-export-vitruvian-github
     cancel-in-progress: false
 
 jobs:
@@ -58,7 +58,7 @@ jobs:
         needs: await-repo-config
         uses: ./.github/workflows/_copybara-export.yaml
         with:
-            component: vitruvian-tool-github
+            component: vitruvian-github
             copybara-options: ${{ inputs['copybara-options'] || github.event.inputs['copybara-options'] || '--force --ignore-noop' }}
         secrets:
             sync_ssh_key: ${{ secrets.VITRUVIAN_TOOL_GITHUB_SYNC_SSH_KEY }}

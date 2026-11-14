@@ -111,7 +111,7 @@ RUN curl -fsSL -o /tmp/rust.tar.xz \
 # `no such target '@@rules_android++android_sdk_repository_extension+androidsdk//:fail'`.
 # GitHub's hosted image has it at /usr/local/lib/android/sdk; same path here.
 # Only what the Android targets need (targetSdkVersion 35 in
-# apps/mobile/android-remote/BUILD), each zip pinned by SHA-256 rather than
+# apps/mobile/vitruvian-remote/BUILD), each zip pinned by SHA-256 rather than
 # fetched through sdkmanager, which would resolve "latest" at build time.
 # Bump platform and build-tools together with targetSdkVersion.
 # Pin platform-tools to a channel-0 (stable, android-sdk-license) release in

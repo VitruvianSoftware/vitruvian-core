@@ -510,7 +510,7 @@ jobs:
               - 'apps/desktop/vitruvian-code/**'
               - 'apps/desktop/vitruvian-speaker/**'
               - 'packages/peripherals/**'
-              - 'apps/mobile/android-remote/macmenu/**'
+              - 'apps/mobile/vitruvian-remote/macmenu/**'
               # The pinned Xcode: a bump changes every Swift build.
               - '.xcode-version'
               - '.github/actions/select-xcode/**'
@@ -632,13 +632,13 @@ jobs:
 
           # Vitruvian Remote menu bar app: the .app bundle is `manual`, so build
           # it by label. Its tests run in the generated remote-mac-menu unit.
-          bazel build "${cache[@]}" --config=macos-app //apps/mobile/android-remote/macmenu:VitruvianRemote
+          bazel build "${cache[@]}" --config=macos-app //apps/mobile/vitruvian-remote/macmenu:VitruvianRemote
           # The release's tool zip for the Vitruvian catalog, short of
           # uploading: both architectures built, joined, signed ad hoc and
-          # zipped, as android-remote-release.yaml does. Otherwise the Intel
+          # zipped, as vitruvian-remote-release.yaml does. Otherwise the Intel
           # build would first run on release day. Uses the job's BuildBuddy
           # key itself, like the release.
-          bazel run "${cache[@]}" //apps/mobile/android-remote/macmenu:publish-tool -- --dry-run
+          bazel run "${cache[@]}" //apps/mobile/vitruvian-remote/macmenu:publish-tool -- --dry-run
 
           # Vitruvian desktop app (GPL fork, apps/desktop/vitruvian-atrium): build only.
           # Changes to the app itself are built AND tested by the generated

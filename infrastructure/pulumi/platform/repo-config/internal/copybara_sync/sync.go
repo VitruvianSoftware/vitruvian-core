@@ -407,15 +407,19 @@ var syncedProjects = []syncedProject{
 		Description:    "Build tools for the Vitruvian Mac app: the protocol, the Swift kit and the vitruvian-tool command",
 	},
 	{
-		// The GitHub tool for the Vitruvian app (apps/desktop/vitruvian-tool-github).
+		// Vitruvian GitHub for Vitruvian Atrium (apps/extensions/atrium/vitruvian-github).
 		// Export-only: developed here, released from the mirror, whose own
 		// release.yml tags vX.Y.Z and attaches the tool's zip, which
 		// catalog/tools.json pins by checksum. No tap key: nothing of it goes
 		// to Homebrew. Name uppercase-snakes to
 		// VITRUVIAN_TOOL_GITHUB_SYNC_SSH_KEY, consumed by
 		// copybara-export-vitruvian-tool-github.yaml.
+		// Renamed in place from VitruvianSoftware/vitruvian-tool-github to VitruvianSoftware/vitruvian-github.
+		// The Pulumi resource keeps the name "vitruvian-tool-github" (LegacyRepo), and so do the
+		// secret names and the export workflow file, so nothing is deleted.
 		Name:           "vitruvian-tool-github",
-		StandaloneRepo: "vitruvian-tool-github",
+		StandaloneRepo: "vitruvian-github",
+		LegacyRepo:     "vitruvian-tool-github",
 		OneWay:         true,
 		CreateRepo:     true,
 		Description:    "The GitHub tool for the Vitruvian Mac app: pull requests and checks in the Dynamic Island, and a GravaStar mouse as a status light",
@@ -464,7 +468,7 @@ var syncedProjects = []syncedProject{
 		Description:    "HomeSpeaker: a macOS menu bar app that reads agent replies and messages aloud on Google Home speakers, this Mac or your phone",
 	},
 	{
-		// Vitruvian Remote (apps/mobile/android-remote), MIT: the Android app
+		// Vitruvian Remote (apps/mobile/vitruvian-remote), MIT: the Android app
 		// plus its Mac agent and menu. Export-only. VITRUVIAN_REMOTE_SYNC_SSH_KEY,
 		// consumed by copybara-export-vitruvian-remote.yaml.
 		Name:           "vitruvian-remote",

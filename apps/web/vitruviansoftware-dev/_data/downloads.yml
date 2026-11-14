@@ -150,7 +150,7 @@ categories:
     title: Mobile & Companion Apps
     blurb: Native mobile companion applications for remote agent control, session monitoring, and real-time alerts.
     items:
-      - id: android-remote
+      - id: vitruvian-remote
         name: Vitruvian Remote
         version: "0.1.39"
         summary: >-
@@ -162,7 +162,7 @@ categories:
             url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.39/VitruvianRemote-0.1.39.apk
             size: 8.5 MB
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/android-remote-v0.1.39
-        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/vitruvian-remote
         extensions_url: /ai/#eco-vitruvian-remote
         extensions_label: Companion Extensions
 

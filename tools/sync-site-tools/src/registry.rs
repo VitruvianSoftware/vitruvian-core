@@ -218,7 +218,7 @@ pub fn ecosystems() -> Vec<Value> {
         eco(
             "vitruvian-remote",
             "Vitruvian Remote (Android)",
-            "Android Remote",
+            "Vitruvian Remote",
             "Foldable Android remote, Tailscale bridge, Sony Google TV control, and live host observability companions.",
             Some((
                 "Download Android APK",
