@@ -221,6 +221,7 @@ rust_test(
     data = [
         ".dockerignore",
         "Dockerfile",
+        "frontend/tsconfig.json",
         "//:MODULE.bazel",
     ],
     edition = "2021",
@@ -228,6 +229,7 @@ rust_test(
         "DOCKERFILE": "$(rootpath Dockerfile)",
         "DOCKERIGNORE": "$(rootpath .dockerignore)",
         "MODULE_BAZEL": "$(rootpath //:MODULE.bazel)",
+        "FRONTEND_TSCONFIG": "$(rootpath frontend/tsconfig.json)",
     },
     deps = [":oauth_scripts_lib"],
 )
