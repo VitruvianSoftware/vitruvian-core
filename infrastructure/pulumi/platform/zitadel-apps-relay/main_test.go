@@ -104,10 +104,10 @@ func TestGeminiCallbackPathIsPinned(t *testing.T) {
 		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x/y",            // extra segment
 		`https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x\..\..\other`,  // backslash walk
 		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x%5C..%5Cother", // encoded backslash
-		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-..",
-		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-abc?",
-		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-abc#",
-		"HTTPS://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-abc", // dot segment id
+		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-..",             // dot segment id
+		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-abc?",           // empty query
+		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-abc#",           // empty fragment
+		"HTTPS://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-abc",            // upper-case scheme
 	}
 	for _, raw := range bad {
 		if _, err := clientSpecs("", raw); err == nil {
