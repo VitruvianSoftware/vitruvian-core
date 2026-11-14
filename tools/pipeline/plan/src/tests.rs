@@ -21,7 +21,7 @@
 //! The cases of plan_test.go, rdepsmap_test.go and units_test.go.
 
 use super::*;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -579,6 +579,7 @@ fn load_rdeps_map_checks() {
         commit: "abc".into(),
         packages: Some(v(&["app"])),
         tests: None,
+        unit_packages: None,
     };
     fs::write(&p, unitfile::gocompat::json::marshal(&good)).unwrap();
     assert!(load_rdeps_map(ps, "abc").unwrap().is_some());
@@ -1007,4 +1008,158 @@ fn plan_json_matches_go_shape() {
         got,
         r#"{"schema_version":1,"base_rev":"base\u003c\u0026\u003e","head_rev":"","duration_ms":0,"changed_files":["apps/suites/vitruvian-tabs/web/x.ts"],"affected_packages":["//apps/suites/vitruvian-tabs/web:all"],"persona":"frontend-dev","operation":"ui-feature","is_docs_only":false,"is_global_impact":false,"is_degraded":false,"plan_source":"live-query","targets":null,"target_count":0,"matrix":[{"name":"vitruvian-tabs-web","package":"apps/suites/vitruvian-tabs/web","runner":"ubuntu-26.04","tier":"L1","persona":"frontend","targets":["//apps/suites/vitruvian-tabs/web:unit_tests"],"test_targets":"//apps/suites/vitruvian-tabs/web:unit_tests","target_count":1,"timeout_minutes":20,"concurrency_group":"pipeline-vitruvian-tabs-web","is_required":true}]}"#
     );
+}
+
+fn edges(pairs: &[(&str, &[&str])]) -> HashMap<String, Vec<String>> {
+    pairs
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.iter().map(|s| s.to_string()).collect()))
+        .collect()
+}
+
+#[test]
+fn compute_unit_packages_walks_each_units_own_targets() {
+    let e = edges(&[
+        (
+            "//suite/desktop:app",
+            &["//suite/core:core", "@crates//:objc2"],
+        ),
+        ("@crates//:objc2", &["//third_party/shim:shim"]),
+        ("//suite/core:core", &[]),
+        ("//third_party/shim:shim", &[]),
+        ("//suite/android:apk", &["//suite/core:core"]),
+    ]);
+    let mut roots = BTreeMap::new();
+    roots.insert("suite-macos".to_string(), v(&["//suite/desktop:app"]));
+    // A root the graph does not know: leave the unit out, never under-report.
+    roots.insert(
+        "ghost-macos".to_string(),
+        v(&["//suite/desktop:app", "//gone:x"]),
+    );
+    roots.insert("empty-macos".to_string(), vec![]);
+    let up = compute_unit_packages(&roots, &e);
+    assert_eq!(
+        up.get("suite-macos"),
+        Some(&v(&["suite/core", "suite/desktop", "third_party/shim"]))
+    );
+    assert!(!up.contains_key("ghost-macos"));
+    assert!(!up.contains_key("empty-macos"));
+}
+
+const SUITE_BUILD: &str = r#"
+pipeline_unit(
+    name = "suite-macos",
+    runner = "xcode-27",
+    test_targets = ["//suite/desktop:desktop_test"],
+)
+
+pipeline_unit(
+    name = "suite-android",
+    test_targets = ["//suite/android:android_test"],
+)
+"#;
+
+fn suite_map(with_unit_packages: bool) -> RdepsMap {
+    let mut tests = BTreeMap::new();
+    tests.insert(
+        "suite/android".to_string(),
+        v(&["//suite/android:android_test"]),
+    );
+    tests.insert(
+        "suite/core".to_string(),
+        v(&[
+            "//suite/android:android_test",
+            "//suite/desktop:desktop_test",
+        ]),
+    );
+    tests.insert(
+        "suite/desktop".to_string(),
+        v(&["//suite/desktop:desktop_test"]),
+    );
+    let mut up = BTreeMap::new();
+    up.insert(
+        "suite-macos".to_string(),
+        v(&["suite/core", "suite/desktop"]),
+    );
+    RdepsMap {
+        schema: RDEPS_MAP_SCHEMA,
+        commit: "abc".into(),
+        packages: Some(v(&[
+            "suite",
+            "suite/android",
+            "suite/core",
+            "suite/desktop",
+        ])),
+        tests: Some(tests),
+        unit_packages: if with_unit_packages { Some(up) } else { None },
+    }
+}
+
+fn suite_plan(m: RdepsMap, file: &str) -> Vec<String> {
+    let d = tmp(&format!("suite-{}", file.replace('/', "_")));
+    write(&d, "suite/BUILD", SUITE_BUILD);
+    for pkg in ["suite/android", "suite/core", "suite/desktop"] {
+        write(&d, &format!("{pkg}/BUILD"), "");
+    }
+    let failing = Mock::failing();
+    let mut e = Engine::new(d.to_str().unwrap(), &failing);
+    e.rdeps_map = Some(m);
+    let p = e.compute_plan(v(&[file]), "abc", "HEAD").unwrap();
+    assert_eq!(p.plan_source, PLAN_SOURCE_MAP);
+    let mut names: Vec<String> = p.matrix.into_iter().map(|m| m.name).collect();
+    names.sort();
+    names
+}
+
+#[test]
+fn android_change_does_not_wake_the_mac_unit() {
+    // The old rule: an affected test anywhere under suite/ wakes the Mac unit.
+    assert_eq!(
+        suite_plan(suite_map(false), "suite/android/Main.kt"),
+        v(&["suite-android", "suite-macos"])
+    );
+    // With what the Mac unit's own targets reach, it stays asleep.
+    assert_eq!(
+        suite_plan(suite_map(true), "suite/android/Main.kt"),
+        v(&["suite-android"])
+    );
+    // Code both apps use still wakes both.
+    assert_eq!(
+        suite_plan(suite_map(true), "suite/core/lib.rs"),
+        v(&["suite-android", "suite-macos"])
+    );
+    // Linux units keep the broad rule: suite-android wakes here too, because
+    // an affected test under suite/ is enough for it. Only Mac units changed.
+    assert_eq!(
+        suite_plan(suite_map(true), "suite/desktop/main.rs"),
+        v(&["suite-android", "suite-macos"])
+    );
+    // Its own BUILD file (where the unit is declared) always wakes it.
+    assert_eq!(
+        suite_plan(suite_map(true), "suite/BUILD"),
+        v(&["suite-android", "suite-macos"])
+    );
+}
+
+#[test]
+fn unit_packages_survive_a_round_trip() {
+    let d = tmp("unitpkgs");
+    let p = d.join("map.json");
+    fs::write(&p, unitfile::gocompat::json::marshal(&suite_map(true))).unwrap();
+    let m = load_rdeps_map(p.to_str().unwrap(), "abc").unwrap().unwrap();
+    assert_eq!(m.unit_packages, suite_map(true).unit_packages);
+    // A map written before the field existed still loads, without it.
+    fs::write(
+        &p,
+        r#"{"schema":1,"commit":"abc","packages":["a"],"tests":{}}"#,
+    )
+    .unwrap();
+    let m = load_rdeps_map(p.to_str().unwrap(), "abc").unwrap().unwrap();
+    assert_eq!(m.unit_packages, None);
+}
+
+#[test]
+fn mac_runner_names() {
+    assert!(is_mac_runner("xcode-27") && is_mac_runner("macos-15"));
+    assert!(!is_mac_runner("ubuntu-26.04") && !is_mac_runner("vitruvian-queue"));
 }
