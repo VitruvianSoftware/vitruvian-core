@@ -152,8 +152,8 @@ Pulumi-encrypted one.
    for the DNS record. The runtime SA can read only the prefixed set.
 2. **GitHub Environment secrets — CI-only.** Secrets CI itself consumes that are
    *not* in Secret Manager: `ZITADEL_MACHINE_KEY_JSON` (the Zitadel machine-user
-   key for the Pulumi provider) and `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` (the
-   Tailscale on-ramp so CI can reach Zitadel over the tailnet). These are managed
+   key for the Pulumi provider) and `HEADSCALE_CI_AUTHKEY` (the Headscale
+   pre-auth key CI joins the mesh with to reach Zitadel). These are managed
    by [`tools/sync-env-secrets`](../../../../tools/sync-env-secrets), **not** by
    repo-config.
 3. **Bitwarden — source of truth for the GitHub-secret class.** `sync-env-secrets`
@@ -215,9 +215,10 @@ managed as code in
 
 The `zitadel-<env>` CI jobs (reusable
 [`_zitadel-apps-apply.yaml`](../../../../.github/workflows/_zitadel-apps-apply.yaml))
-join the tailnet with `TS_OAUTH_*` and reach the Zitadel management API through
-the Envoy gateway NodePort on a node's tailscale IP
-(`nuc9i9.coati-koi.ts.net:30265`) — **not** the public Cloudflare edge (which
+join the Headscale mesh with `HEADSCALE_CI_AUTHKEY` and reach the Zitadel
+management API through the Envoy gateway NodePort `:30265` on a wired cluster
+node's Headscale address (the first of nuc9i9, nuc9i5 and fedora that answers;
+see [`zitadel-tunnel-setup`](../../../../.github/actions/zitadel-tunnel-setup/action.yml)) — **not** the public Cloudflare edge (which
 returns bot-protection 1010) and **not** the LB VIP over the subnet router. They
 are gated on the repo variable `ZITADEL_APPS_AUTO_APPLY` (currently `"true"`).
 
@@ -268,7 +269,7 @@ never receives traffic in the first place.
   `OAUTH_USER_INSPECTOR_`-prefixed name. The server caches for 60 s, so the new
   value takes effect within a minute — no redeploy needed. For the Zitadel
   secret, re-apply `zitadel-apps` (it re-syncs id/secret to SM).
-- **CI secret** (`ZITADEL_MACHINE_KEY_JSON`, `TS_OAUTH_*`): update the Bitwarden
+- **CI secret** (`ZITADEL_MACHINE_KEY_JSON`, `HEADSCALE_CI_AUTHKEY`): update the Bitwarden
   item, then:
   ```bash
   # from the repo root

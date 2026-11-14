@@ -54,10 +54,11 @@
       "dst": ["*:*"]
     },
     {
-      // CI reaches the Envoy gateway's HTTP NodePort on the cluster nodes, and
-      // nothing else.
+      // CI reaches the Envoy gateway's HTTP NodePort on the cluster nodes over
+      // TCP, and nothing else (no UDP, no ICMP, no other port).
       "action": "accept",
       "src": ["tag:ci"],
+      "proto": "tcp",
       "dst": ["fedora:30265", "nuc9i5:30265", "nuc9i9:30265"]
     }
   ]

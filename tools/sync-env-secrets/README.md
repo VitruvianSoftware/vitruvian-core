@@ -124,11 +124,12 @@ delivery](../../docs/concepts/sdlc.md):
 | `TS_OAUTH_CLIENT_ID` | **Unused since the move to Headscale.** Commercial Tailscale OAuth client id for the old CI on-ramp; kept until the Headscale path has proven itself, then to be removed. |
 | `TS_OAUTH_SECRET` | **Unused**, as above (paired with the id). |
 
-Provisioning these (machine key via the in-cluster `iam-admin-pat`; the Tailscale
-OAuth client in the admin console) is described in
+Provisioning the machine key (via the in-cluster `iam-admin-pat`) is described in
 [`oauth-user-inspector` onboarding](../../apps/web/oauth-user-inspector/infra/identity/);
-once you hold the values, drop each into `secrets/oauth-user-inspector-development/`
-and run `apply` + `bw-push`.
+the Headscale key's minting and rotation are in the
+[headscale README](../../gitops/argocd/platform/headscale/README.md#ci-pre-auth-key-headscale_ci_authkey).
+Once you hold a value, drop it into `secrets/oauth-user-inspector-<env>/` and run
+`bw-push` + `apply`.
 
 ## `vitruvian-courier-release`
 

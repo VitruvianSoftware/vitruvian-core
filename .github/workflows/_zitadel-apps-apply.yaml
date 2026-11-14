@@ -33,8 +33,9 @@ name: _zitadel-apps-apply
 #     GCP_DEPLOY_SERVICE_ACCOUNT) used for the stack's GCP Secret Manager
 #     resources — pass `secrets: inherit` (Headscale key + Zitadel key + Pulumi
 #     token).
-#   * The Zitadel management API is reached over the Headscale mesh (the Envoy
-#     gateway NodePort on a cluster node; see zitadel-tunnel-setup) — NOT the public Cloudflare edge, whose bot-protection
+#   * The Zitadel management API is reached over the Headscale mesh (the
+#     Envoy gateway NodePort on a cluster node; see zitadel-tunnel-setup)
+#     — NOT the public Cloudflare edge, whose bot-protection
 #     (HTTP 1010) blocks the provider's Go client. See
 #     infrastructure/pulumi/platform/zitadel-apps/APPLYING-FROM-CI.md.
 #   * The env's Cloud Run run.app redirect URI is only known after the app
@@ -141,6 +142,7 @@ jobs:
           # datapath before LB; conntrack never sees it). With the gateway service
           # externalTrafficPolicy: Cluster (see envoyproxy.yaml), any node
           # forwards to the Envoy endpoints.
+          : "${ZITADEL_GATEWAY:?zitadel-tunnel-setup did not pick a gateway node}"
           sudo socat OPENSSL-LISTEN:443,reuseaddr,fork,cert=/etc/auth-internal-ck.pem,verify=0 \
             TCP:"${ZITADEL_GATEWAY}" &
           trap 'sudo pkill -f "OPENSSL-LISTEN:443" 2>/dev/null || true' EXIT

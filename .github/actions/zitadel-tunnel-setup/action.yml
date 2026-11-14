@@ -50,8 +50,14 @@ runs:
         # clients, so this is a pre-auth key. The key itself carries tag:ci and
         # makes the node ephemeral, so no `tags:` here (that would add
         # --advertise-tags, which a tagged key does not need).
+        # The action marks `authkey` deprecated in favour of OAuth; the warning
+        # it prints is expected here.
         authkey: ${{ inputs.headscale-authkey }}
         args: --login-server=https://headscale.ipv1337.dev
+        # Pinned, not "latest": a client newer than Headscale v0.26.1 knows is
+        # a risk. 1.104.x is what this action version defaults to and what
+        # James's Mac (1.104.5) already runs against this Headscale.
+        version: 1.104.4
         hostname: ci-${{ github.run_id }}-${{ github.run_attempt }}
         # v4 already passes `--accept-routes`; don't add it in args.
 
@@ -72,7 +78,8 @@ runs:
         for attempt in $(seq 1 10); do
           for ip in $candidates; do
             if curl -fsS --max-time 5 -H 'Host: auth.ipv1337.dev' \
-                "http://${ip}:30265/debug/healthz" >/dev/null 2>&1; then
+                "http://${ip}:30265/debug/healthz" \
+                >/dev/null 2>&1; then
               echo "Zitadel answers through ${ip}:30265 (attempt ${attempt})"
               echo "ZITADEL_GATEWAY=${ip}:30265" >>"$GITHUB_ENV"
               exit 0
@@ -80,7 +87,8 @@ runs:
           done
           sleep 3
         done
-        echo "::error::No cluster node answered Zitadel healthz on :30265 over Headscale (${candidates})."
+        echo "::error::No cluster node answered Zitadel healthz on :30265" \
+          "over Headscale (${candidates})."
         tailscale status || true
         exit 1
 

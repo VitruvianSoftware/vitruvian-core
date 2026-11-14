@@ -59,28 +59,83 @@ pub fn load_headplane_config() -> Value {
     yaml::parse_doc(raw_cfg).expect("failed to parse Headplane config.yaml")
 }
 
-/// Load `policy.hujson` as JSON. The file keeps to whole-line `//` comments
-/// so this needs no HuJSON parser (Headscale's own check is
-/// `bazel run //tools/gitops:headscale-policy-check`).
+/// Parse `policy.hujson` text as JSON. The file keeps to whole-line `//`
+/// comments and no trailing commas, so this needs no HuJSON parser; comment
+/// lines are blanked rather than dropped so an error's line number is the
+/// file's. Headscale's own check is
+/// `bazel run //tools/gitops:headscale-policy-check`.
+pub fn parse_policy(raw: &str) -> Result<Value, String> {
+    let json: String = raw
+        .lines()
+        .map(|l| {
+            if l.trim_start().starts_with("//") {
+                ""
+            } else {
+                l
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    serde_json::from_str(&json).map_err(|e| {
+        format!(
+            "policy.hujson line {}: {e} (keep comments on lines of their own, and no trailing commas)",
+            e.line()
+        )
+    })
+}
+
+/// Load and parse `policy.hujson`.
 pub fn load_policy() -> Value {
     let path = yaml::resolve_data_path(PKG_DIR, "policy.hujson");
     let raw = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
-    let json: String = raw
-        .lines()
-        .filter(|l| !l.trim_start().starts_with("//"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    serde_json::from_str(&json).unwrap_or_else(|e| panic!("policy.hujson is not JSON: {e}"))
+    parse_policy(&raw).unwrap_or_else(|e| panic!("{e}"))
+}
+
+fn read_root_file(rel: &str) -> String {
+    let path = yaml::resolve_data_path(PKG_DIR, rel);
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()))
+}
+
+const TUNNEL_ACTION: &str = ".github/actions/zitadel-tunnel-setup/action.yml";
+
+/// The port the tunnel action probes and tunnels to, from its
+/// `"http://${ip}:PORT/..."` healthz URL.
+pub fn load_tunnel_port() -> String {
+    let raw = read_root_file(TUNNEL_ACTION);
+    let marker = "http://${ip}:";
+    let at = raw
+        .find(marker)
+        .unwrap_or_else(|| panic!("no {marker} probe in {TUNNEL_ACTION}"));
+    raw[at + marker.len()..]
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect()
+}
+
+/// The Envoy gateway's pinned HTTP nodePort (the `http-80` port entry).
+pub fn load_envoy_http_nodeport() -> String {
+    let raw = read_root_file("gitops/argocd/platform/envoy-gateway/gateway/envoyproxy.yaml");
+    let mut lines = raw.lines().skip_while(|l| l.trim() != "- name: http-80");
+    lines
+        .next()
+        .expect("no http-80 port entry in envoyproxy.yaml");
+    lines
+        .take_while(|l| !l.trim_start().starts_with("- "))
+        .find_map(|l| {
+            l.trim()
+                .strip_prefix("nodePort:")
+                .map(|v| v.trim().to_string())
+        })
+        .expect("http-80 has no nodePort in envoyproxy.yaml")
 }
 
 /// The candidate gateway IPs the Zitadel tunnel action tries, from its
 /// `candidates="..."` line.
 pub fn load_tunnel_candidates() -> Vec<String> {
-    let rel = ".github/actions/zitadel-tunnel-setup/action.yml";
-    let path = yaml::resolve_data_path(PKG_DIR, rel);
-    let raw = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+    let rel = TUNNEL_ACTION;
+    let raw = read_root_file(rel);
     let line = raw
         .lines()
         .map(str::trim)
@@ -370,6 +425,11 @@ mod tests {
             }
             ci_rules += 1;
             assert_eq!(src, vec!["tag:ci"], "keep tag:ci in a rule of its own");
+            assert_eq!(
+                rule.get("proto").and_then(Value::as_str),
+                Some("tcp"),
+                "the tag:ci rule must be TCP-only (no UDP or ICMP to the nodes)"
+            );
             for d in rule["dst"]
                 .as_array()
                 .expect("dst")
@@ -408,6 +468,46 @@ mod tests {
             "zitadel-tunnel-setup's candidate nodes must be exactly the policy's hosts, \
              or CI would try a node the ACL blocks (or the ACL would open one CI never uses)"
         );
+    }
+
+    #[test]
+    fn test_gateway_port_agrees_across_policy_tunnel_and_envoy() {
+        let envoy = load_envoy_http_nodeport();
+        assert_eq!(
+            load_tunnel_port(),
+            envoy,
+            "zitadel-tunnel-setup must probe the Envoy gateway's pinned HTTP nodePort"
+        );
+        let policy = load_policy();
+        for rule in policy["acls"].as_array().expect("acls") {
+            if rule["src"]
+                .as_array()
+                .expect("src")
+                .iter()
+                .any(|s| s == "tag:ci")
+            {
+                for d in rule["dst"]
+                    .as_array()
+                    .expect("dst")
+                    .iter()
+                    .filter_map(Value::as_str)
+                {
+                    assert_eq!(
+                        d.rsplit_once(':').map(|(_, p)| p),
+                        Some(envoy.as_str()),
+                        "tag:ci dst {d} must use the Envoy gateway nodePort {envoy}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_policy_parse_errors_name_the_real_line() {
+        let raw = "// header\n// more\n{\n  \"acls\": [],\n}\n";
+        let err = parse_policy(raw).unwrap_err();
+        assert!(err.starts_with("policy.hujson line 5:"), "{err}");
+        assert!(err.contains("trailing commas"), "{err}");
     }
 
     #[test]

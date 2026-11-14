@@ -146,6 +146,7 @@ jobs:
           # predates that fix and is stale on this point.
           # :30265 is pinned in gitops/argocd/platform/envoy-gateway/gateway/envoyproxy.yaml
           # precisely so this hardcoding cannot drift.
+          : "${ZITADEL_GATEWAY:?zitadel-tunnel-setup did not pick a gateway node}"
           sudo socat OPENSSL-LISTEN:443,reuseaddr,fork,cert=/etc/auth-internal-ck.pem,verify=0 \
             TCP:"${ZITADEL_GATEWAY}" &
           trap 'sudo pkill -f "OPENSSL-LISTEN:443" 2>/dev/null || true' EXIT
