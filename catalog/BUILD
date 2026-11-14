@@ -27,6 +27,14 @@ exports_files([
     "tools.json",
 ])
 
+# The app's Info.plist (LSMinimumSystemVersion), for tests outside this
+# package that hold a tool's programs to the same floor //catalog:bump does.
+filegroup(
+    name = "app_info_plist",
+    srcs = ["//apps/desktop/vitruvian-atrium:Resources/Info.plist"],
+    visibility = ["//apps/extensions/atrium/vitruvian-tv:__pkg__"],
+)
+
 rust_library(
     name = "catalog_lib",
     srcs = glob(

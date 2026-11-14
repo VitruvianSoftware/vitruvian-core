@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.98.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.98.0...vitruvian-atrium-v3.98.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **vitruvian-atrium:** close every unpinned island when the pointer leaves ([#4784](https://github.com/VitruvianSoftware/vitruvian-core/issues/4784)) ([74665ec](https://github.com/VitruvianSoftware/vitruvian-core/commit/74665ecb898ae303b25b78a625060c268db6351b))
+
 ## [3.98.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.97.0...vitruvian-atrium-v3.98.0) (2026-11-13)
 
 

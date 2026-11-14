@@ -632,35 +632,42 @@ private func makeSampleConfig(
             #expect(helpText.contains(spec.syntax), "help text missing \(spec.syntax)")
         }
 
-        // Extract every `speaker-broadcast ...` invocation inside fenced ```sh blocks in SKILL.md
-        let markdown = SpeakerSkill.markdown()
-        #expect(markdown.contains(generated))
-        let lines = markdown.components(separatedBy: "\n")
-        var inShellFence = false
-        var commandLines: [String] = []
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("```sh") {
-                inShellFence = true
-                continue
+        // Every agent's skill is rendered from the same source; only the way it
+        // runs the command differs (bare for Claude Code, a full path otherwise).
+        let commands = [
+            BroadcastCommand.commandName,
+            "/Users/a/.gemini/config/plugins/vitruvian-speaker/bin/speaker-broadcast",
+            "'/Users/a b/.config/opencode/skills/vitruvian-speaker/bin/speaker-broadcast'",
+        ]
+        for command in commands {
+            let markdown = SpeakerSkill.markdown(command: command)
+            #expect(markdown.contains(SpeakerSkill.commandsAndOptionsSection(command: command)))
+            var inShellFence = false
+            var commandLines: [String] = []
+            for line in markdown.components(separatedBy: "\n") {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed.hasPrefix("```sh") {
+                    inShellFence = true
+                    continue
+                }
+                if inShellFence && trimmed.hasPrefix("```") {
+                    inShellFence = false
+                    continue
+                }
+                if inShellFence {
+                    #expect(trimmed.hasPrefix(command + " "), "skill example '\(trimmed)' does not run \(command)")
+                    commandLines.append(trimmed)
+                }
             }
-            if inShellFence && trimmed.hasPrefix("```") {
-                inShellFence = false
-                continue
-            }
-            if inShellFence && trimmed.hasPrefix("speaker-broadcast") {
-                commandLines.append(trimmed)
-            }
-        }
-        #expect(commandLines.count >= 9)
-        for line in commandLines {
-            let tokens = Self.tokenizeShellWords(line)
-            let args = Array(tokens.dropFirst())
-            switch BroadcastCommand.parse(args) {
-            case .failure(let err):
-                Issue.record("Skill example '\(line)' failed to parse: \(err)")
-            case .success:
-                break
+            #expect(commandLines.count >= 9)
+            for line in commandLines {
+                let args = Self.tokenizeShellWords(String(line.dropFirst(command.count)))
+                switch BroadcastCommand.parse(args) {
+                case .failure(let err):
+                    Issue.record("Skill example '\(line)' failed to parse: \(err)")
+                case .success:
+                    break
+                }
             }
         }
     }
