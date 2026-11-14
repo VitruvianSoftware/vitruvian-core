@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tabs-api-infra-v1.3.1...vitruvian-tabs-api-infra-v1.4.0) (2026-11-14)
+
+
+### Features
+
+* **telemetry:** wire Sentry DSNs for Cloud Run and GitOps workloads ([#4839](https://github.com/VitruvianSoftware/vitruvian-core/issues/4839)) ([879e439](https://github.com/VitruvianSoftware/vitruvian-core/commit/879e439da101a9f53c7dffb3acb3223829a2b9fe))
+
 ## [1.3.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-infra-v1.3.0...tabula-api-infra-v1.3.1) (2026-09-02)
 
 
