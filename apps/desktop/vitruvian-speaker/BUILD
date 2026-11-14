@@ -346,7 +346,7 @@ exports_files(
         "testdata/state_v1.json",
     ],
     visibility = [
-        "//apps/mobile/android-remote:__subpackages__",
+        "//apps/mobile:__subpackages__",
         "//infrastructure/pulumi/platform/stripe:__pkg__",
     ],
 )
