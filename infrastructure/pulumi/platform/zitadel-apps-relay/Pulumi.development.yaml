@@ -37,3 +37,8 @@ config:
   # ChatGPT's per-connector callback, copied from ChatGPT's "Add custom MCP
   # server" screen. Empty = no ChatGPT client yet (spike A, second half).
   zitadel-apps-relay:chatgptRedirectUris: ""
+  # The Gemini app's callback for this connector, copied from Gemini's
+  # Settings > Connectors > + Custom > Additional settings > "Copy redirect URI"
+  # with https://relay-spike.ipv1337.dev/mcp as the server URL (2026-11-13).
+  # Empty = no Gemini client.
+  zitadel-apps-relay:geminiRedirectUris: "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-b3b5dc02c05b1a90254344dc"

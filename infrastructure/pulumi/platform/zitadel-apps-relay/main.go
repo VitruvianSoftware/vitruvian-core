@@ -21,8 +21,9 @@
 // The Zitadel project and OIDC clients for the Vitruvian Relay
 // (docs/superpowers/specs/2026-11-07-vitruvian-relay-design.md §6).
 //
-// Three kinds of client, all public (no secret) with PKCE, all issuing JWT
-// access tokens so the relay can validate them locally against JWKS:
+// Four kinds of client, all issuing JWT access tokens so the relay can
+// validate them locally against JWKS. All but gemini are public (no secret)
+// with PKCE:
 //
 //   - connector: the program on the user's computer. It signs in with the OAuth
 //     device flow (RFC 8628), so it has no redirect URI at all.
@@ -32,6 +33,11 @@
 //     not advertise RFC 9207 issuer identification, so ChatGPT uses a
 //     per-connector callback (https://chatgpt.com/connector/oauth/{id}) that
 //     is only known after the connector is started in ChatGPT's UI.
+//   - gemini: created only when geminiRedirectUris is set. The Gemini app's
+//     custom connector form asks for a client id AND secret and shows a
+//     per-user callback on oauth-redirect.googleusercontent.com. It is the one
+//     confidential client (client_secret_post), matching the sibling
+//     zitadel-apps-mcp-slack client that already works with Gemini.
 //
 // WHY ITS OWN PROJECT: Zitadel's audience scope is per project, so sharing a
 // project with another app would blur that boundary. But note what the sibling
@@ -67,6 +73,18 @@ const cfgNamespace = "zitadel-apps-relay"
 // manually registered client (claude.com/docs/connectors/building/authentication).
 const claudeCallback = "https://claude.ai/api/mcp/auth_callback"
 
+// Where each app may receive the authorization code. Host AND path prefix are
+// pinned: the host alone would accept any path on a shared Google redirector.
+const (
+	chatgptCallbackHost = "chatgpt.com"
+	// Covers both https://chatgpt.com/connector/oauth/{id} and
+	// https://chatgpt.com/connector_platform_oauth_redirect.
+	chatgptCallbackPathPrefix = "/connector"
+	geminiCallbackHost        = "oauth-redirect.googleusercontent.com"
+	// The Gemini app's custom connectors: /r/user_bound_custom-mcp-<id>.
+	geminiCallbackPathPrefix = "/r/user_bound_custom-mcp-"
+)
+
 // clientSpec is everything about one OIDC client that this stack decides.
 // Built by pure functions so the decisions are unit-tested; main only turns
 // specs into resources.
@@ -75,26 +93,37 @@ type clientSpec struct {
 	AppType      string
 	GrantTypes   []string
 	RedirectURIs []string
+	// AuthMethod is how the client authenticates at the token endpoint.
+	// OIDC_AUTH_METHOD_TYPE_NONE = public client, PKCE required.
+	AuthMethod string
 }
 
-// clientSpecs returns the clients to create. chatgptRaw is the comma-separated
-// chatgptRedirectUris config; empty means no ChatGPT client.
-func clientSpecs(chatgptRaw string) ([]clientSpec, error) {
+const (
+	authNone = "OIDC_AUTH_METHOD_TYPE_NONE"
+	authPost = "OIDC_AUTH_METHOD_TYPE_POST"
+)
+
+// clientSpecs returns the clients to create. chatgptRaw and geminiRaw are the
+// comma-separated chatgptRedirectUris and geminiRedirectUris config; empty
+// means no client for that app.
+func clientSpecs(chatgptRaw, geminiRaw string) ([]clientSpec, error) {
 	specs := []clientSpec{
 		{
 			Key:          "connector",
 			AppType:      "OIDC_APP_TYPE_NATIVE",
 			GrantTypes:   []string{"OIDC_GRANT_TYPE_DEVICE_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"},
 			RedirectURIs: []string{},
+			AuthMethod:   authNone,
 		},
 		{
 			Key:          "claude",
 			AppType:      "OIDC_APP_TYPE_WEB",
 			GrantTypes:   []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"},
 			RedirectURIs: []string{claudeCallback},
+			AuthMethod:   authNone,
 		},
 	}
-	chatgpt, err := parseRedirectURIs(chatgptRaw, "chatgpt.com")
+	chatgpt, err := parseRedirectURIs(chatgptRaw, chatgptCallbackHost, chatgptCallbackPathPrefix)
 	if err != nil {
 		return nil, err
 	}
@@ -104,15 +133,30 @@ func clientSpecs(chatgptRaw string) ([]clientSpec, error) {
 			AppType:      "OIDC_APP_TYPE_WEB",
 			GrantTypes:   []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"},
 			RedirectURIs: chatgpt,
+			AuthMethod:   authNone,
+		})
+	}
+	gemini, err := parseRedirectURIs(geminiRaw, geminiCallbackHost, geminiCallbackPathPrefix)
+	if err != nil {
+		return nil, err
+	}
+	if len(gemini) > 0 {
+		specs = append(specs, clientSpec{
+			Key:          "gemini",
+			AppType:      "OIDC_APP_TYPE_WEB",
+			GrantTypes:   []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"},
+			RedirectURIs: gemini,
+			AuthMethod:   authPost,
 		})
 	}
 	return specs, nil
 }
 
 // parseRedirectURIs splits a comma-separated list and refuses anything that is
-// not an exact https URL on wantHost. A redirect URI on the wrong host would
-// hand an authorization code to someone else, so a typo is an apply error.
-func parseRedirectURIs(raw, wantHost string) ([]string, error) {
+// not an exact https URL on wantHost whose path starts with wantPathPrefix and
+// goes on past it. A redirect URI on the wrong host or path would hand an
+// authorization code to someone else, so a typo is an apply error.
+func parseRedirectURIs(raw, wantHost, wantPathPrefix string) ([]string, error) {
 	var out []string
 	for _, part := range strings.Split(raw, ",") {
 		s := strings.TrimSpace(part)
@@ -120,8 +164,9 @@ func parseRedirectURIs(raw, wantHost string) ([]string, error) {
 			continue
 		}
 		u, err := url.Parse(s)
-		if err != nil || u.Scheme != "https" || u.Host != wantHost || u.RawQuery != "" || u.Fragment != "" {
-			return nil, fmt.Errorf("%s: redirect URI %q must be an https URL on %s with no query or fragment", cfgNamespace, s, wantHost)
+		if err != nil || u.Scheme != "https" || u.Host != wantHost || u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
+			!strings.HasPrefix(u.Path, wantPathPrefix) || len(u.Path) == len(wantPathPrefix) || u.RawPath != "" || strings.Contains(u.Path, "/..") {
+			return nil, fmt.Errorf("%s: redirect URI %q must be an https URL on %s under %s, with no query or fragment", cfgNamespace, s, wantHost, wantPathPrefix)
 		}
 		out = append(out, s)
 	}
@@ -181,7 +226,7 @@ func main() {
 		if err != nil {
 			return err
 		}
-		specs, err := clientSpecs(cfg.Get("chatgptRedirectUris"))
+		specs, err := clientSpecs(cfg.Get("chatgptRedirectUris"), cfg.Get("geminiRedirectUris"))
 		if err != nil {
 			return err
 		}
@@ -243,8 +288,9 @@ func main() {
 				ResponseTypes: pulumi.StringArray{pulumi.String("OIDC_RESPONSE_TYPE_CODE")},
 				GrantTypes:    pulumi.ToStringArray(s.GrantTypes),
 				AppType:       pulumi.String(s.AppType),
-				// Public client: no secret, PKCE (S256) required by Zitadel.
-				AuthMethodType:           pulumi.String("OIDC_AUTH_METHOD_TYPE_NONE"),
+				// NONE: public client, PKCE (S256) required by Zitadel.
+				// POST (gemini only): Zitadel issues a client secret.
+				AuthMethodType:           pulumi.String(s.AuthMethod),
 				Version:                  pulumi.String("OIDC_VERSION_1_0"),
 				AccessTokenType:          pulumi.String("OIDC_TOKEN_TYPE_JWT"),
 				DevMode:                  pulumi.Bool(false),
@@ -256,10 +302,15 @@ func main() {
 				return err
 			}
 			// The provider marks clientId secret, so it would print as
-			// [secret]. These are public clients with no secret: the id goes
-			// into the relay's config and the AI apps' connector settings, so
-			// it is reported in plain text.
+			// [secret]. A client id is not a credential: it goes into the
+			// relay's config and the AI apps' connector settings, so it is
+			// reported in plain text.
 			ctx.Export(s.Key+"ClientId", pulumi.Unsecret(app.ClientId))
+			if s.AuthMethod != authNone {
+				// Stays a secret output: encrypted in state, masked in logs.
+				// Read it with the stack target's --show-secrets.
+				ctx.Export(s.Key+"ClientSecret", app.ClientSecret)
+			}
 			// Exported because it is ignored above, so Pulumi never reconciles
 			// it; the relay's local JWT validation depends on it being JWT.
 			ctx.Export(s.Key+"AccessTokenType", app.AccessTokenType)
