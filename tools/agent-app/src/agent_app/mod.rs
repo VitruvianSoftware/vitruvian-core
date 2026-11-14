@@ -1855,7 +1855,8 @@ impl Tool {
     }
 
     fn label_create(&self, args: &[Vec<u8>]) -> Res {
-        let usage = "label-create [--agent <agent>] <name> [--description <s>] [--color <hex>] [--force]";
+        let usage =
+            "label-create [--agent <agent>] <name> [--description <s>] [--color <hex>] [--force]";
         let (agent, rest) =
             take_agent(args).ok_or_else(|| die(&cat(&[b"usage: ", usage.as_bytes()])))?;
         need_target("label", usage, arg(rest, 0))?;
