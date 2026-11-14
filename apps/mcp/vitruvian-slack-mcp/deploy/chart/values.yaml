@@ -155,6 +155,11 @@ slack:
   # Default: false — withheld on HTTP unless explicitly enabled.
   httpAllowDestructive: false
 
+# Sentry error tracking
+sentry:
+  # Internal Sentry DSN (cluster-internal gateway)
+  dsn: "https://e52fdc93b32a6a779d5f87475f9ac39b@sentry.lab.ipv1337.dev/15"
+
 # Hosts this pod may reach. Anything not listed is denied by the
 # CiliumNetworkPolicy. Kept explicit rather than derived from other values so
 # that widening egress is a visible diff.

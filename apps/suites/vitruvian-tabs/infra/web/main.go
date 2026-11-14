@@ -70,7 +70,11 @@ func main() {
 		// dev/nonprod/prod. Mirrors apps/suites/vitruvian-tabs/infra/app's own apiUrl config (same
 		// value, same env, read by main.go there too).
 		apiURL := cfg.Get("apiUrl")
-		serviceEnv := revision.EnvMap(apiURL)
+		sentryDsn := cfg.Get("sentryDsn")
+		if sentryDsn == "" {
+			sentryDsn = "https://e68b62b2a2f4064278c4e6915c1b4766@sentry-ingest.ipv1337.dev/11"
+		}
+		serviceEnv := revision.EnvMap(apiURL, sentryDsn)
 
 		shortDigest, err := revision.ShortDigest(imageDigest)
 		if err != nil {

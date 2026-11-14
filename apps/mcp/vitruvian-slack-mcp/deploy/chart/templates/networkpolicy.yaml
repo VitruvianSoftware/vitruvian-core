@@ -146,6 +146,14 @@ spec:
             - port: "53"
               protocol: TCP
 
+    # Outbound HTTPS to internal platform Gateway LB IP (sentry.lab.ipv1337.dev)
+    - toCIDR:
+        - 10.44.86.211/32
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
     # Outbound HTTPS to the public internet: Slack's API and the IdP's JWKS.
     #
     # `world` rather than CIDRs, and DO NOT NARROW IT TO IPv4 CIDRs. From
