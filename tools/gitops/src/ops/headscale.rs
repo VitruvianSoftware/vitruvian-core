@@ -126,7 +126,7 @@ fn run_ops(args: &[Vec<u8>]) -> Res<i32> {
             if st != 0 {
                 return die(
                     st,
-                    b"ERROR: policy check failed; the live policy was not changed.",
+                    b"ERROR: policy check did not pass (see the output above); the live policy was not changed.",
                 );
             }
             policy_exec(&k, &pod, b"set", &policy)?

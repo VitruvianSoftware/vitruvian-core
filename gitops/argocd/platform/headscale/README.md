@@ -60,8 +60,9 @@ key="$(bazel run //tools/gitops:headscale-preauthkey-create -- \
 [ -n "$key" ] && [ "$key" != null ] || { echo "no key minted; store unchanged" >&2; exit 1; }
 ( umask 077
   for env in development nonproduction production; do
-    printf '%s' "$key" \
-      >"tools/sync-env-secrets/secrets/oauth-user-inspector-$env/HEADSCALE_CI_AUTHKEY"
+    f="tools/sync-env-secrets/secrets/oauth-user-inspector-$env/HEADSCALE_CI_AUTHKEY"
+    printf '%s' "$key" >"$f"
+    chmod 600 "$f" # umask covers new files only
   done )
 unset key
 bazel run //tools/sync-env-secrets:bw-push
