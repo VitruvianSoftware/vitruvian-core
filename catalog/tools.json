@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-11-14T05:02:24Z",
+  "generated": "2026-11-14T06:20:42Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -63,7 +63,7 @@
     {
       "id": "dev.vitruvian.github",
       "name": {
-        "en": "GitHub"
+        "en": "Vitruvian GitHub"
       },
       "publisher": "VitruvianSoftware",
       "summary": {
@@ -83,14 +83,14 @@
         "zh-TW": "顯示你關注的儲存庫中 main 是否為綠色，以及你的拉取要求進度如何。",
         "zh-HK": "顯示你關注的儲存庫中 main 是否為綠色，以及你的拉取要求進度如何。"
       },
-      "version": "1.6.0",
+      "version": "1.6.1",
       "protocol": "2",
       "minimumAppVersion": "3.46.0",
       "source": "https://github.com/VitruvianSoftware/vitruvian-github",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-tool-github/releases/download/v1.6.0/github-tool-1.6.0.zip",
-        "sha256": "0e0e5d9e937a190af6923abae34f6c85837cb1f64e03205f5767279de438bbc4",
-        "size": 1349492
+        "url": "https://github.com/VitruvianSoftware/vitruvian-github/releases/download/v1.6.1/github-tool-1.6.1.zip",
+        "sha256": "82cb84fadbddf18b266241e92440060ec3cfd6054ec54a80c8506a248537106d",
+        "size": 1409489
       },
       "uses": ["clipboard.write", "notify", "open", "storage"],
       "commands": [
