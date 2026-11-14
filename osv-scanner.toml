@@ -206,3 +206,83 @@ id = "GHSA-qc2q-p7wx-3px3"
 ignoreUntil = 2026-12-23
 reason = "Go google.golang.org/grpc (1.82.1) in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
 
+[[IgnoredVulns]]
+id = "GO-2026-6505"
+ignoreUntil = 2026-12-23
+reason = "Go go.opentelemetry.io/otel/sdk in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GHSA-8wmf-6v46-5gfg"
+ignoreUntil = 2026-12-23
+reason = "Go go.opentelemetry.io/otel/sdk in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-6615"
+ignoreUntil = 2026-12-23
+reason = "Go go.opentelemetry.io/otel/sdk/log in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GHSA-hjf4-fphr-2h65"
+ignoreUntil = 2026-12-23
+reason = "Go go.opentelemetry.io/otel/sdk/log in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-6303"
+ignoreUntil = 2026-12-23
+reason = "Go golang.org/x/crypto in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-6354"
+ignoreUntil = 2026-12-23
+reason = "Go golang.org/x/crypto in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-6355"
+ignoreUntil = 2026-12-23
+reason = "Go golang.org/x/crypto in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-6179"
+ignoreUntil = 2026-12-23
+reason = "Go golang.org/x/mod in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-6180"
+ignoreUntil = 2026-12-23
+reason = "Go golang.org/x/mod in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-5942"
+ignoreUntil = 2026-12-23
+reason = "Go golang.org/x/net in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-6603"
+ignoreUntil = 2026-12-23
+reason = "Go golang.org/x/net in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-6610"
+ignoreUntil = 2026-12-23
+reason = "Go golang.org/x/net in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-6611"
+ignoreUntil = 2026-12-23
+reason = "Go golang.org/x/net in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-6612"
+ignoreUntil = 2026-12-23
+reason = "Go golang.org/x/net in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-6617"
+ignoreUntil = 2026-12-23
+reason = "Go golang.org/x/net in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-6860"
+ignoreUntil = 2026-12-23
+reason = "Go golang.org/x/net in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
