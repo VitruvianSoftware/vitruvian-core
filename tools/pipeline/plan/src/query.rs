@@ -52,6 +52,12 @@ pub struct RdepsMap {
     /// Package ("apps/x") to the tests that depend on it; packages with no
     /// dependent test are absent.
     pub tests: Option<BTreeMap<String, Vec<String>>>,
+    /// macOS unit name to every main-repo package its own targets reach.
+    /// `tests` cannot answer this: it holds no manual tests (every Swift
+    /// test is manual) and no build-only targets such as app bundles. A unit
+    /// that is absent is matched the old, broader way. Optional, so a planner
+    /// that predates it ignores it and the schema stays 1.
+    pub unit_packages: Option<BTreeMap<String, Vec<String>>>,
 }
 
 /// `lines[...]` of a string, each trimmed, empty ones dropped.
@@ -191,7 +197,104 @@ fn strict_query(ctx: &Ctx, repo_root: &str, expr: &str, flags: &[&str]) -> Resul
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// The three strict queries behind the dependency map.
+/// Whether a unit runs on a macOS runner (defs.bzl's needs_emulator check
+/// uses the same prefixes).
+pub fn is_mac_runner(runner: &str) -> bool {
+    runner.starts_with("macos") || runner.starts_with("xcode")
+}
+
+/// A target pattern that names more than one target.
+fn is_wildcard(label: &str) -> bool {
+    label.ends_with("/...")
+        || label.ends_with(":all")
+        || label.ends_with(":*")
+        || label.ends_with(":all-targets")
+}
+
+/// The packages each macOS unit's targets reach. `roots` maps a unit to the
+/// labels its targets expand to; a unit with a root missing from the graph is
+/// left out (so it is matched the old way) rather than given a short list.
+pub fn compute_unit_packages(
+    roots: &BTreeMap<String, Vec<String>>,
+    edges: &HashMap<String, Vec<String>>,
+) -> BTreeMap<String, Vec<String>> {
+    let mut out = BTreeMap::new();
+    'unit: for (unit, labels) in roots {
+        if labels.is_empty() {
+            continue;
+        }
+        let mut pkgs: BTreeSet<String> = BTreeSet::new();
+        let mut seen: HashSet<&str> = HashSet::new();
+        let mut stack: Vec<&str> = Vec::new();
+        for l in labels {
+            if !edges.contains_key(l.as_str()) {
+                continue 'unit;
+            }
+            if seen.insert(l.as_str()) {
+                stack.push(l.as_str());
+            }
+        }
+        while let Some(n) = stack.pop() {
+            if let Some(pkg) = main_repo_package(n) {
+                pkgs.insert(pkg);
+            }
+            if let Some(deps) = edges.get(n) {
+                for d in deps {
+                    if seen.insert(d.as_str()) {
+                        stack.push(d.as_str());
+                    }
+                }
+            }
+        }
+        out.insert(unit.clone(), pkgs.into_iter().collect());
+    }
+    out
+}
+
+/// What each macOS unit's targets reach, from two more strict queries.
+fn build_unit_packages(
+    ctx: &Ctx,
+    repo_root: &str,
+) -> Result<BTreeMap<String, Vec<String>>, String> {
+    let units: Vec<unitfile::Unit> = unitfile::discover(repo_root)?
+        .into_iter()
+        .filter(|u| is_mac_runner(&u.runner) && !u.test_targets.is_empty())
+        .collect();
+    if units.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let mut roots: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut all: Vec<String> = Vec::new();
+    for u in &units {
+        let mut labels: Vec<String> = Vec::new();
+        for t in &u.test_targets {
+            if is_wildcard(t) {
+                let out = strict_query(ctx, repo_root, t, &["--output=label"])?;
+                labels.extend(non_empty_lines(&out));
+            } else {
+                labels.push(t.clone());
+            }
+        }
+        all.extend(labels.iter().cloned());
+        roots.insert(u.name.clone(), labels);
+    }
+    all.sort();
+    all.dedup();
+    let dot = strict_query(
+        ctx,
+        repo_root,
+        &format!("deps(set({}))", all.join(" ")),
+        &[
+            "--output=graph",
+            "--graph:factored=false",
+            "--graph:node_limit=-1",
+        ],
+    )?;
+    let edges = parse_graph_edges(&dot)?;
+    Ok(compute_unit_packages(&roots, &edges))
+}
+
+/// The strict queries behind the dependency map.
 pub fn build_rdeps_map(ctx: &Ctx, repo_root: &str, commit: &str) -> Result<RdepsMap, String> {
     let tests = strict_query(ctx, repo_root, TEST_UNIVERSE_EXPR, &["--output=label"])?;
     let pkgs = strict_query(ctx, repo_root, "//...", &["--output=package"])?;
@@ -207,12 +310,15 @@ pub fn build_rdeps_map(ctx: &Ctx, repo_root: &str, commit: &str) -> Result<Rdeps
         ],
     )?;
     let edges = parse_graph_edges(&dot)?;
-    Ok(compute_rdeps_map(
+    let mut m = compute_rdeps_map(
         commit,
         &non_empty_lines(&tests),
         &edges,
         &non_empty_lines(&pkgs),
-    ))
+    );
+    let up = build_unit_packages(ctx, repo_root)?;
+    m.unit_packages = if up.is_empty() { None } else { Some(up) };
+    Ok(m)
 }
 
 /// Reads `bazel query --output=graph --graph:factored=false` into an
@@ -298,6 +404,7 @@ pub fn compute_rdeps_map(
         commit: commit.to_string(),
         packages: if pk.is_empty() { None } else { Some(pk) },
         tests: Some(tests_map),
+        unit_packages: None,
     }
 }
 
@@ -329,11 +436,12 @@ fn decode_map(data: &[u8]) -> Result<RdepsMap, String> {
         &v,
         "RdepsMap",
         "main.RdepsMap",
-        &["schema", "commit", "packages", "tests"],
+        &["schema", "commit", "packages", "tests", "unit_packages"],
         |d, name, x| match name {
             "schema" => d.int(x, &mut m.schema),
             "commit" => d.string(x, &mut m.commit),
             "packages" => d.strings(x, &mut m.packages),
+            "unit_packages" => d.strings_map(x, &mut m.unit_packages),
             _ => d.strings_map(x, &mut m.tests),
         },
     );
