@@ -125,8 +125,10 @@ is two clicks per agent; everything either side of them is here.
                                   # only workflows in workflow-allowlist.txt, only from main,
                                   # only the input keys its line declares (-F is refused)
   bazel run //tools/agent-app -- issue-create [--agent <agent>] --title <s> --body-file <f> [gh issue create args]
+  bazel run //tools/agent-app -- issue-edit [--agent <agent>] <issue> [gh issue edit args]
   bazel run //tools/agent-app -- issue-comment [--agent <agent>] <issue> --body-file <f> | --body <s>
   bazel run //tools/agent-app -- issue-close [--agent <agent>] <issue> [--comment <s>] [--reason <r>]
+  bazel run //tools/agent-app -- label-create [--agent <agent>] <name> [--description <s>] [--color <hex>] [--force]
   bazel run //tools/agent-app -- branch-delete [--agent <agent>] [--abandoned <pr>] <branch>...
                                   # delete branches on GitHub, only ones already on main;
                                   # --abandoned <pr>: one branch whose PR closed unmerged,
@@ -1841,6 +1843,28 @@ impl Tool {
         self.pass(&tok, &[b"issue", b"close"], rest)
     }
 
+    fn issue_edit(&self, args: &[Vec<u8>]) -> Res {
+        let usage = "issue-edit [--agent <agent>] <issue> [gh issue edit args]";
+        let (agent, rest) =
+            take_agent(args).ok_or_else(|| die(&cat(&[b"usage: ", usage.as_bytes()])))?;
+        need_target("issue", usage, arg(rest, 0))?;
+        issue_args_ok(usage, rest)?;
+        let tok = self.mint_token(&agent, b"the issue was NOT edited")?;
+        to_caller_dir()?;
+        self.pass(&tok, &[b"issue", b"edit"], rest)
+    }
+
+    fn label_create(&self, args: &[Vec<u8>]) -> Res {
+        let usage = "label-create [--agent <agent>] <name> [--description <s>] [--color <hex>] [--force]";
+        let (agent, rest) =
+            take_agent(args).ok_or_else(|| die(&cat(&[b"usage: ", usage.as_bytes()])))?;
+        need_target("label", usage, arg(rest, 0))?;
+        issue_args_ok(usage, rest)?;
+        let tok = self.mint_token(&agent, b"the label was NOT created")?;
+        to_caller_dir()?;
+        self.pass(&tok, &[b"label", b"create"], rest)
+    }
+
     // --- security alerts (aegis) -------------------------------------------
 
     fn secret_alert_resolve(&self, args: &[Vec<u8>]) -> Res {
@@ -1971,8 +1995,10 @@ impl Tool {
             ),
             b"workflow-run" => self.workflow_run(rest),
             b"issue-create" => self.issue_create(rest),
+            b"issue-edit" => self.issue_edit(rest),
             b"issue-comment" => self.issue_comment(rest),
             b"issue-close" => self.issue_close(rest),
+            b"label-create" => self.label_create(rest),
             b"branch-delete" => self.branch_delete(rest),
             b"secret-alert-resolve" => self.secret_alert_resolve(rest),
             b"dependabot-alert-dismiss" => self.dependabot_alert_dismiss(rest),
