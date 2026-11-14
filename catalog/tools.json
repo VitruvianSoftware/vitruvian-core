@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-11-14T12:54:00Z",
+  "generated": "2026-11-14T13:26:26Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -147,14 +147,14 @@
       "summary": {
         "en": "Speaks what you type, or the clipboard, on your Google Home speakers, and keeps broadcasting, quiet hours and the volume at hand."
       },
-      "version": "1.43.1",
+      "version": "1.43.2",
       "protocol": "2",
       "minimumAppVersion": "3.90.0",
       "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-speaker",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.43.1/VitruvianSpeaker-1.43.1-tool.zip",
-        "sha256": "14d9ded4feb858849ae53423ac390caa7a35b3037c1ab7dcbc6005f71984e61e",
-        "size": 4680770
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.43.2/VitruvianSpeaker-1.43.2-tool.zip",
+        "sha256": "33d42ff10cf5b569430a179217b1d416fb0fdef8d9236714ee10724e08fe9636",
+        "size": 4688186
       },
       "uses": ["notify", "clipboard.read", "open"],
       "commands": [
