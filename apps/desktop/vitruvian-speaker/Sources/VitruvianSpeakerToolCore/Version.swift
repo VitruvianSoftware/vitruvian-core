@@ -22,5 +22,5 @@
 /// and `atrium-extension/src/version_test.rs` holds the three to each other.
 public enum ToolVersion {
     /// Auto-managed by release-please. Do not edit manually.
-    public static let current = "1.43.1" // x-release-please-version
+    public static let current = "1.43.2" // x-release-please-version
 }
