@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.43.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.42.1...vitruvian-speaker-v1.43.0) (2026-11-14)
+
+
+### Features
+
+* **vitruvian-speaker:** ship speaker-broadcast and a per-agent plugin with a generated skill ([#4769](https://github.com/VitruvianSoftware/vitruvian-core/issues/4769)) ([79bdc13](https://github.com/VitruvianSoftware/vitruvian-core/commit/79bdc13dbec5e9d6ee918921486d8b1d35bebd9e))
+
 ## [1.42.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.42.0...vitruvian-speaker-v1.42.1) (2026-11-13)
 
 
