@@ -72,8 +72,10 @@ func main() {
 			projMap[slug] = r.Project
 		}
 
-		if err := alerts.ReconcileDefaultIssueAlerts(ctx, cfg.Organization, projMap, provOpt); err != nil {
-			return err
+		if cfg.EnableIssueAlerts {
+			if err := alerts.ReconcileDefaultIssueAlerts(ctx, cfg.Organization, projMap, provOpt); err != nil {
+				return err
+			}
 		}
 
 		return nil
