@@ -47,3 +47,10 @@ data:
     headscale:
       url: "http://headscale.headscale.svc.cluster.local:8080"
       config_strict: false
+
+    oidc:
+      issuer: "https://accounts.google.com"
+      client_id: "713543034670-ksu8dsg664kbd1thbdk2134fhsflpj7e.apps.googleusercontent.com"
+      client_secret_path: "/var/run/secrets/headplane-oidc/oidc-client-secret"
+      headscale_api_key_path: "/var/run/secrets/headplane-oidc/headscale-api-key"
+      disable_api_key_login: false
