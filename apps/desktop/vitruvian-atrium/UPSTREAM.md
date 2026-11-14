@@ -3065,6 +3065,9 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/Notch/NotchService.swift` (upstream file): tracks `pointerVisited` through opening, hover, the Command Bar and collapse, and keys typed in the island hold it open like an open menu. Pinning, a menu, a drag, a sheet or dialog still hold it as before.
   - `UI/Settings/NotchSettings.swift` (upstream file): the closing time is always shown, since it now applies to every island, not only hover openings.
   - `Tests/NotchTests.swift` and `Tests/NotchHoverTests.swift` (upstream files): expect the new rule and default; the hover checks pin the 0.18 s delay their timings were written for.
+- **2026-11-14**: A tool's own page, an extension's or a built-in utility's, closes when the pointer leaves like any other island page. Upstream counted it as work that holds the island, which also held it against the pointer leaving, so the one closing rule of 2026-11-13 never reached it.
+  - `Services/Notch/NotchService.swift` (upstream file): `keepsSurfaceOnClick` splits into `holdsSurface` (pinning, a menu, a dialog, a sheet, a chooser or prompt, a drag of sections or tools) and the tool-page clauses, which still keep a click in the page from closing the island. The pointer-exit checks use the new `keepsSurfaceOnPointerExit`, which leaves the tool page out.
+  - `Tests/NotchHoverTests.swift` (upstream file): an extension's page and a built-in utility's page each close after the closing time when the pointer leaves, and stay while pinned.
 
 ## Tracking and porting upstream
 

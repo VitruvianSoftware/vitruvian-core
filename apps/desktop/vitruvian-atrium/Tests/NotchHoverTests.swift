@@ -997,6 +997,30 @@ enum NotchHoverTests {
         suite.expect(clicked.island.expanded, "a panel opened by click waits for the closing time")
         clicked.advance(0.02)
         suite.expect(!clicked.island.expanded, "a panel opened by click closes when the pointer leaves, like a hover opening")
+        // A tool's own page is a page like any other. It holds the island
+        // against a click in it, never against the pointer leaving.
+        for (name, showPage) in [
+            ("an extension's page", { (f: NotchIslandFixture) in
+                f.services.openToolPanel = ToolPanelHost.Key(tool: ToolID("dev.example.hello")!, panel: "main") }),
+            ("a built-in utility's page", { (f: NotchIslandFixture) in
+                f.island.open(.tools); f.services.activeUtility = .urlCleaner })
+        ] {
+            let page = island()
+            page.island.open()
+            showPage(page)
+            leave(page)
+            page.advance(closeDelay - 0.01)
+            suite.expect(page.island.expanded, "\(name) waits for the closing time")
+            page.advance(0.02)
+            suite.expect(!page.island.expanded, "\(name) closes when the pointer leaves, like any page")
+            let pinnedPage = island()
+            pinnedPage.island.open()
+            showPage(pinnedPage)
+            pinnedPage.island.pinned = true
+            leave(pinnedPage)
+            pinnedPage.advance(1)
+            suite.expect(pinnedPage.island.expanded, "\(name) stays open while pinned")
+        }
         let clickedPinned = island()
         clickedPinned.island.open()
         clickedPinned.island.pinned = true

@@ -607,7 +607,21 @@ package final class NotchService: ObservableObject {
     /// A screenshot preview stays when the pointer leaves or another app
     /// activates. It leaves on its own timer or on a click elsewhere.
     private var keepsWorkingSurface: Bool { keepsSurfaceOnClick || showsCapturePreview }
+    /// What holds the open island when the pointer leaves: pinning, a capture
+    /// preview, and the passing work in `holdsSurface`. A tool's page is not
+    /// among them. It lives in the island, so a click in it is not a click
+    /// away (`keepsSurfaceOnClick`), but it is a page like any other: not
+    /// pinned, it closes when the pointer leaves (`closesOnPointerExit`).
+    private var keepsSurfaceOnPointerExit: Bool { holdsSurface || showsCapturePreview }
     private var keepsSurfaceOnClick: Bool {
+        holdsSurface
+            // A tool's own page, an extension's or a built-in utility's.
+            || (expanded && !showingSections && selected == .tools && services.activeUtility != nil)
+            || (expanded && !showingSections && services.showsToolPanel)
+    }
+    /// Pinning, and work under way in or beside the island: a menu, a dialog,
+    /// a sheet, a chooser or prompt, or a drag of sections or tools.
+    private var holdsSurface: Bool {
         pinned || trackingMenu || services.hasModalWindow || panel?.attachedSheet != nil
             || services.importingLyrics
             // Like the lyrics chooser, these panels stand beside the island
@@ -619,11 +633,9 @@ package final class NotchService: ObservableObject {
             || (expanded && !showingSections && selected == .calendar && services.keepsCalendarPrompt)
             || (expanded && !showingSections && selected == .files && fileInteractionActive)
             || services.keepsCameraPrompt
-            || (expanded && !showingSections && selected == .tools
-                && (services.activeUtility != nil || services.editingTools))
-            // Dragging a section, or a tool's own page, is work in the island.
+            || (expanded && !showingSections && selected == .tools && services.editingTools)
+            // Dragging a section is work in the island.
             || (expanded && showingSections && editingSections)
-            || (expanded && !showingSections && services.showsToolPanel)
     }
     private var showsCapturePreview: Bool {
         expanded && !showingSections && selected == .captures && captureContent != nil
@@ -2264,7 +2276,7 @@ package final class NotchService: ObservableObject {
             updateCaptureControlsHover(wasInside: wasInside)
             return
         }
-        guard !pinned, !heldDrag, !keepsWorkingSurface else {
+        guard !pinned, !heldDrag, !keepsSurfaceOnPointerExit else {
             hoverWork?.cancel(); hoverWork = nil
             // A dialog or menu keeps the island, not a banner the pointer left.
             if !inside { releaseNotification() }
@@ -2319,7 +2331,7 @@ package final class NotchService: ObservableObject {
                 self.releaseNotification()
                 // Keys typed in the island hold it, like an open menu: the
                 // pointer drifting off mid-word must not close it.
-                guard !self.pinned, !self.heldDrag, !self.keepsWorkingSurface, self.captureControls == nil,
+                guard !self.pinned, !self.heldDrag, !self.keepsSurfaceOnPointerExit, self.captureControls == nil,
                       !self.showsKeyboardFocus,
                       !self.services.assistiveKeyboardOwns(self.pointer()),
                       NotchSupport.closesOnPointerExit(expanded: self.expanded, peeking: self.peeking, pointerVisited: self.pointerVisited) else { return }
@@ -2354,7 +2366,7 @@ package final class NotchService: ObservableObject {
         let keepsMusicStrip = musicStripNamed || musicStripHeldSong != nil
         let watching = ((hoverEmphasized || followsClosedHover || keepsMusicStrip) && captureHover == nil
                 || !entered && NotchSupport.closesOnPointerExit(expanded: expanded, peeking: peeking, pointerVisited: pointerVisited))
-            && captureControls == nil && !pinned && !heldDrag && !hiddenUntilHover && !keepsWorkingSurface
+            && captureControls == nil && !pinned && !heldDrag && !hiddenUntilHover && !keepsSurfaceOnPointerExit
             // Once watching, a pointer that leaves and slips back unreported is still seen.
             && (hoverExitWatch.isWatching || windowHost?.containsHover(point) == true)
         guard watching else { removeHoverExitMonitors(); return }
