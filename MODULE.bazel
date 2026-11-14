@@ -748,12 +748,18 @@ crate.annotation(
 crate.annotation(
     build_script_env = {
         "CC_aarch64_apple_darwin": "$(execpath @@//apps/desktop/vitruvian-courier/libsignal:cc_in_execroot)",
+        "CC_aarch64_unknown_linux_gnu": "$(execpath @@//apps/desktop/vitruvian-courier/libsignal:cc_in_execroot)",
         "CC_x86_64_apple_darwin": "$(execpath @@//apps/desktop/vitruvian-courier/libsignal:cc_in_execroot)",
+        "CC_x86_64_unknown_linux_gnu": "$(execpath @@//apps/desktop/vitruvian-courier/libsignal:cc_in_execroot)",
         "VITRUVIAN_COURIER_BAZEL_EXECROOT": "$${pwd}",
     },
     build_script_tools = ["@@//apps/desktop/vitruvian-courier/libsignal:cc_in_execroot"],
     crate = "ring",
-    repositories = ["libsignal_crates"],
+    repositories = [
+        "crates",
+        "libsignal_crates",
+        "vitruvian_wand_crates",
+    ],
 )
 use_repo(crate, "libsignal_crates")
 

@@ -13,6 +13,10 @@
     "lib/**/*.tsx",
     "types/**/*.ts",
     "proxy.ts",
-    "next.config.ts"
+    "next.config.ts",
+    "instrumentation.ts",
+    "sentry.client.config.ts",
+    "sentry.server.config.ts",
+    "sentry.edge.config.ts"
   ]
 }

@@ -45,6 +45,22 @@ impl MigrationLogger for StdioMigrationLogger {
 }
 
 fn main() {
+    let sentry_dsn = std::env::var("SENTRY_DSN").ok();
+    let _sentry_guard = sentry_dsn.filter(|s| !s.trim().is_empty()).map(|dsn| {
+        sentry::init((
+            dsn,
+            sentry::ClientOptions {
+                release: sentry::release_name!(),
+                environment: Some(
+                    std::env::var("NODE_ENV")
+                        .unwrap_or_else(|_| "development".to_string())
+                        .into(),
+                ),
+                ..Default::default()
+            },
+        ))
+    });
+
     let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let bind_addr = format!("{host}:{port}");
@@ -90,6 +106,10 @@ fn main() {
 
     println!("Vitruvian Tabs API (Rust) listening on http://{bind_addr}");
     if let Err(err) = serve_http(ctx, &bind_addr) {
+        sentry::capture_message(
+            &format!("Failed to start Vitruvian Tabs API server: {err}"),
+            sentry::Level::Fatal,
+        );
         eprintln!("Failed to start Vitruvian Tabs API server: {err}");
         std::process::exit(1);
     }

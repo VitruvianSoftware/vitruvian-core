@@ -47,6 +47,7 @@ _DEPS = [
     "@vitruvian_wand_crates//:egui",
     "@vitruvian_wand_crates//:futures",
     "@vitruvian_wand_crates//:log",
+    "@vitruvian_wand_crates//:sentry",
     "@vitruvian_wand_crates//:serde",
     "@vitruvian_wand_crates//:serde_json",
     "@vitruvian_wand_crates//:tokio",

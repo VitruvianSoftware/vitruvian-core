@@ -10,6 +10,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@sentry/nextjs": "^11.12.0",
     "@vitruvian-tabs/shared": "workspace:*",
     "@vitruviansoftware/design-system": "workspace:*",
     "geist": "^1.9.2",

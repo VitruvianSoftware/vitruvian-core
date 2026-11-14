@@ -22,6 +22,32 @@
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
+    let sentry_dsn = std::env::var("SENTRY_DSN").ok().or_else(|| {
+        if std::env::var("SENTRY_ENABLED")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false)
+        {
+            Some("https://9cf2abc1bfe2c6145e8b5334b2c9ff4c@sentry-ingest.ipv1337.dev/9".to_string())
+        } else {
+            None
+        }
+    });
+    let _sentry_guard = sentry_dsn.filter(|s| !s.trim().is_empty()).map(|dsn| {
+        sentry::init((
+            dsn,
+            sentry::ClientOptions {
+                release: sentry::release_name!(),
+                environment: Some(
+                    std::env::var("NODE_ENV")
+                        .or_else(|_| std::env::var("ENVIRONMENT"))
+                        .unwrap_or_else(|_| "production".to_string())
+                        .into(),
+                ),
+                ..Default::default()
+            },
+        ))
+    });
+
     match vitruvian_wand_desktop::run_from_env() {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
