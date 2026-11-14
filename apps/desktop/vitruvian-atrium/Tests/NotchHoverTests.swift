@@ -27,6 +27,11 @@ enum NotchHoverTests {
                                cameraWidth: 0, backingScale: 2, isBuiltIn: false, hasMenuBar: true)
     }
 
+    /// The closing delay these checks time against. They test how leaving is
+    /// followed, not the shipped default, so they pin the short delay their
+    /// timings were written for.
+    private static let closeDelay: TimeInterval = 0.18
+
     /// A started island with hover at its defaults, its menus leaving it
     /// room, and the pointer resting at the top of its display.
     private static func island(physical: Bool = false, before: (NotchIslandFixture) -> Void = { _ in })
@@ -38,7 +43,7 @@ enum NotchHoverTests {
         // below turn it off where they mean to.
         defaults.set(true, forKey: DefaultsKey.notchHoverInFullscreen)
         defaults.set(NotchSupport.defaultHoverDelay, forKey: DefaultsKey.notchHoverDelay)
-        defaults.set(NotchSupport.defaultCloseDelay, forKey: DefaultsKey.notchCloseDelay)
+        defaults.set(closeDelay, forKey: DefaultsKey.notchCloseDelay)
         let fixture = NotchIslandFixture(defaults: defaults)
         fixture.displays = [display(physical: physical)]
         fixture.menusReadable = true
@@ -92,7 +97,7 @@ enum NotchHoverTests {
     /// stays out for the close delay, so what the island covers, such as a
     /// browser's tabs, can take the drop.
     private static func shelfDragChecks(_ expect: (Bool, String) -> Void) {
-        let delay = NotchSupport.defaultCloseDelay
+        let delay = closeDelay
         func dragging(physical: Bool = false) -> (fixture: NotchIslandFixture, inside: CGPoint, outside: CGPoint) {
             let fixture = island(physical: physical)
             fixture.island.open(.controls)
@@ -147,8 +152,11 @@ enum NotchHoverTests {
         let ended = dragging()
         move(ended.fixture, to: ended.outside)
         ended.fixture.island.fileDragChanged(false, internalDrag: true)
+        ended.fixture.advance(delay - 0.01)
+        expect(ended.fixture.island.expanded, "a drag that ends outside the island does not close it at once")
         ended.fixture.advance(1)
-        expect(ended.fixture.island.expanded, "a drag that ends before the delay leaves the island alone")
+        expect(!ended.fixture.island.expanded,
+               "a drag that ends outside the island leaves it to close like any pointer exit")
         ended.fixture.island.stop()
     }
 
@@ -644,8 +652,12 @@ enum NotchHoverTests {
         clickOpened.host?.hoverExtras = [CGRect(x: open.midX - 38, y: open.minY - 72, width: 76, height: 88)]
         clickOpened.pointer = CGPoint(x: open.midX, y: open.minY - 60)
         clickOpened.island.hover(false)
-        suite.expect(!clickOpened.watchesMovement,
-                     "an island opened by a click, which leaving does not close, never follows the pointer")
+        suite.expect(clickOpened.movementWatchCount == 1,
+                     "an island opened by a click with the pointer on it follows the pointer like a hover opening")
+        clickOpened.drift(to: CGPoint(x: open.midX, y: open.minY - 400))
+        clickOpened.advance(closeDelay + 0.01)
+        suite.expect(!clickOpened.island.expanded,
+                     "an island opened by a click closes once the pointer leaves it, as one opened by hover does")
         // Passing quickly over the closed island to a display above: the last
         // exit arrives while the pointer still touches the island's top edge.
         do {
@@ -976,11 +988,40 @@ enum NotchHoverTests {
             suite.expect(protected.host.map { !$0.transitions.dropFirst(presented).contains(.dismiss) } == true,
                    "a pending departure cannot interrupt pinning, dragging, capture, a menu or suspension")
         }
+        // One rule for every island: not pinned, it closes when the pointer
+        // leaves it, however it opened. Pinning is what keeps it.
         let clicked = island()
         clicked.island.open()
         leave(clicked)
-        clicked.advance(1)
-        suite.expect(clicked.island.expanded, "a panel opened by click stays open when the pointer leaves")
+        clicked.advance(closeDelay - 0.01)
+        suite.expect(clicked.island.expanded, "a panel opened by click waits for the closing time")
+        clicked.advance(0.02)
+        suite.expect(!clicked.island.expanded, "a panel opened by click closes when the pointer leaves, like a hover opening")
+        let clickedPinned = island()
+        clickedPinned.island.open()
+        clickedPinned.island.pinned = true
+        leave(clickedPinned)
+        clickedPinned.advance(1)
+        suite.expect(clickedPinned.island.expanded, "a pinned panel stays open when the pointer leaves")
+        let hoverPinned = island()
+        hoverPinned.island.hover(true)
+        hoverPinned.advance(0.26)
+        hoverPinned.island.pinned = true
+        leave(hoverPinned)
+        hoverPinned.advance(1)
+        suite.expect(hoverPinned.island.expanded, "a pinned island opened by hover stays open when the pointer leaves")
+        let unreached = island()
+        unreached.pointer = CGPoint(x: unreached.displays[0].frame.minX, y: unreached.displays[0].frame.minY)
+        unreached.island.open()
+        unreached.island.hover(false)
+        unreached.advance(1)
+        suite.expect(unreached.island.expanded,
+                     "an island opened from the keyboard or menu bar waits for the pointer to reach it")
+        unreached.pointer = top(unreached)
+        unreached.island.hover(true)
+        leave(unreached)
+        unreached.advance(closeDelay + 0.01)
+        suite.expect(!unreached.island.expanded, "once the pointer has reached it, leaving closes it")
 
         let keyboard = island()
         keyboard.island.open(takeFocus: false)

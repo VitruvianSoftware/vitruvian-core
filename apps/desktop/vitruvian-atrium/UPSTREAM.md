@@ -3060,6 +3060,11 @@ is that notice. Add an entry for every change to upstream files.
 - **2026-11-11**: Complete the Vitruvian Code cutover by removing retired built-in feature preference keys and updating comment wording:
   - `UI/Notch/NotchAgentStrip.swift` (upstream file) and `Tests/ToolStatusTests.swift`: update doc/assertion comments to `Vitruvian Code`.
   - `Core/Defaults.swift`, `Core/DefaultsKey.swift`, `Core/Preferences.swift`, `Core/GlobalShortcut.swift`, `Core/SettingsBackupSupport.swift`, and `Services/FeatureRuntime.swift` (upstream files): delete the retired `nexusAgent*` preference keys, shortcut default, and hand-off comment, and delete `Services/NexusAgent/NexusAgentHandoff.swift` and `Services/Platform/External/ToolIDMigration.swift`.
+- **2026-11-13**: One closing rule for the island: not pinned, it closes when the pointer leaves it, however it opened. Upstream closed only islands opened by hover; one opened by a click, the keyboard or the menu bar stayed until a click elsewhere, so the same page behaved two ways and pinning was not the only way to keep it.
+  - `Core/Notch/NotchSupport.swift` (upstream file): `closesOnPointerExit` takes `pointerVisited` (the pointer has been on the open island since it opened) in place of `openedByHover`. An island opened from the keyboard or the menu bar waits for the pointer to reach it before leaving can close it. `defaultCloseDelay` is 0.5 s instead of upstream's 0.18 s, so overshooting the edge while scrolling a page or reaching for a picker does not close it.
+  - `Services/Notch/NotchService.swift` (upstream file): tracks `pointerVisited` through opening, hover, the Command Bar and collapse, and keys typed in the island hold it open like an open menu. Pinning, a menu, a drag, a sheet or dialog still hold it as before.
+  - `UI/Settings/NotchSettings.swift` (upstream file): the closing time is always shown, since it now applies to every island, not only hover openings.
+  - `Tests/NotchTests.swift` and `Tests/NotchHoverTests.swift` (upstream files): expect the new rule and default; the hover checks pin the 0.18 s delay their timings were written for.
 
 ## Tracking and porting upstream
 
