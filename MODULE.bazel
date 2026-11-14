@@ -1077,10 +1077,17 @@ register_toolchains("@androidsdk//:all")
 
 http_jar = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_jar")
 
+# Google's mirror of Maven Central first, Maven Central itself second -- the
+# same order as rules_android_maven above. With Maven Central as the only URL,
+# a 403 from it failed tidy-check in the merge queue (runs 43407933341 and
+# 43525890774, 2026-11-13); the integrity pin makes either source safe.
 http_jar(
     name = "ktfmt",
     integrity = "sha256-l/x/vRlNAan6RdgUfAVSQDAD1VusSridhNe7TV4/SN4=",
-    url = "https://repo1.maven.org/maven2/com/facebook/ktfmt/0.46/ktfmt-0.46-jar-with-dependencies.jar",
+    urls = [
+        "https://maven-central.storage-download.googleapis.com/maven2/com/facebook/ktfmt/0.46/ktfmt-0.46-jar-with-dependencies.jar",
+        "https://repo1.maven.org/maven2/com/facebook/ktfmt/0.46/ktfmt-0.46-jar-with-dependencies.jar",
+    ],
 )
 
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
