@@ -56,9 +56,11 @@ created:
 `{id}` is letters, digits, `_` and `-` only. Anything else is an apply error: a
 look-alike path, an extra segment, a `.` or `..` id, a `%` escape, a backslash, a
 `?` or `#` (even empty), or a scheme other than lower-case `https://`. A wrong
-callback would send the sign-in code somewhere else. If Gemini's sign-in fails with `invalid_client` at
-`/oauth/v2/token` after the browser round trip, the auth method is the first thing
-to change (the sibling stack's README explains why).
+callback would send the sign-in code somewhere else.
+
+If Gemini's sign-in fails with `invalid_client` at `/oauth/v2/token` after the
+browser round trip, the auth method is the first thing to change (the sibling
+stack's README explains why).
 
 ## Two things to know
 

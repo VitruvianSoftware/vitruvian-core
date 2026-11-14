@@ -104,7 +104,10 @@ func TestGeminiCallbackPathIsPinned(t *testing.T) {
 		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x/y",            // extra segment
 		`https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x\..\..\other`,  // backslash walk
 		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x%5C..%5Cother", // encoded backslash
-		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-..",             // dot segment id
+		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-..",
+		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-abc?",
+		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-abc#",
+		"HTTPS://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-abc", // dot segment id
 	}
 	for _, raw := range bad {
 		if _, err := clientSpecs("", raw); err == nil {
@@ -167,5 +170,13 @@ func TestResolveGrantUserIDs(t *testing.T) {
 	}
 	if got, err := resolveGrantUserIDs(false, "", "relay-user"); err != nil || len(got) != 0 {
 		t.Errorf("check off, no grants: got %v %v", got, err)
+	}
+}
+
+func TestEmptyPathRuleMatchesNothing(t *testing.T) {
+	for _, p := range []string{"/abc", "abc", "/"} {
+		if (pathRule{}).matches(p) {
+			t.Errorf("empty rule matched %q", p)
+		}
 	}
 }

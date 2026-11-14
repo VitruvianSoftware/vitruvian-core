@@ -92,6 +92,10 @@ type pathRule struct {
 }
 
 func (r pathRule) matches(path string) bool {
+	// A rule with neither field set would accept any id-shaped path.
+	if r.Exact == "" && r.Prefix == "" {
+		return false
+	}
 	if r.Exact != "" {
 		return path == r.Exact
 	}
