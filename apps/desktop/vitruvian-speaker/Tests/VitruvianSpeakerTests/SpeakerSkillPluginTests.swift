@@ -143,14 +143,12 @@ import Testing
             "plugins/vitruvian-speaker/bin/speaker-broadcast",
         ])
 
-        let antiA = try AgentPlugins.antigravityFiles(command: hookCmd)
-        let antiB = try AgentPlugins.antigravityFiles(command: hookCmd)
-        #expect(antiA.count == 3)
-        for (a, b) in zip(antiA, antiB) {
-            #expect(a.0 == b.0)
-            #expect(a.1 == b.1)
-        }
-        #expect(AgentPlugins.openCodeSkillData() == AgentPlugins.openCodeSkillData())
+        let antiFolder = root.appendingPathComponent(".gemini/config/plugins/vitruvian-speaker")
+        let antiA = try AgentPlugins.antigravityFiles(command: hookCmd, program: appProgram, folder: antiFolder)
+        let antiB = try AgentPlugins.antigravityFiles(command: hookCmd, program: appProgram, folder: antiFolder)
+        #expect(antiA == antiB)
+        #expect(antiA.map(\.relativePath) == ["plugin.json", "hooks.json", "skills/vitruvian-speaker/SKILL.md", "bin/speaker-broadcast"])
+        #expect(AgentPlugins.openCodeSkillFiles(program: appProgram, home: root) == AgentPlugins.openCodeSkillFiles(program: appProgram, home: root))
 
         let integration = AgentIntegration(home: root, executablePath: appProgram)
         let dest = root.appendingPathComponent("test/file.sh")
@@ -279,8 +277,10 @@ import Testing
 
         let antiSkill = root.appendingPathComponent(".gemini/config/plugins/vitruvian-speaker/skills/vitruvian-speaker/SKILL.md")
         let openSkill = root.appendingPathComponent(AgentPlugins.openCodeSkillRelativePath)
-        #expect(try String(contentsOf: antiSkill, encoding: .utf8) == SpeakerSkill.markdown())
-        #expect(try String(contentsOf: openSkill, encoding: .utf8) == SpeakerSkill.markdown())
+        let antiCommand = root.appendingPathComponent(".gemini/config/plugins/vitruvian-speaker/bin/speaker-broadcast").standardizedFileURL.path
+        let openCommand = root.appendingPathComponent(".config/opencode/skills/vitruvian-speaker/bin/speaker-broadcast").standardizedFileURL.path
+        #expect(try String(contentsOf: antiSkill, encoding: .utf8) == SpeakerSkill.markdown(command: antiCommand))
+        #expect(try String(contentsOf: openSkill, encoding: .utf8) == SpeakerSkill.markdown(command: openCommand))
         #expect(integration.status(of: .antigravity).hook == .installed)
         #expect(integration.status(of: .opencode).hook == .installed)
 
@@ -297,6 +297,152 @@ import Testing
         #expect(!fm.fileExists(atPath: CodingAgent.antigravity.settingsURL(home: root).path))
         #expect(!fm.fileExists(atPath: CodingAgent.opencode.settingsURL(home: root).path))
         #expect(!fm.fileExists(atPath: openSkill.path))
+        #expect(!fm.fileExists(atPath: openCommand), "the skill's speaker-broadcast goes with it")
+    }
+
+    // MARK: Every command a skill names must be one its agent can run
+
+    /// Whether each agent puts an installed plugin's `bin/` on the PATH of
+    /// the shell it runs commands in. Written out here, apart from
+    /// `CodingAgent.putsPluginBinOnPATH`, so flipping that flag to make a
+    /// bare name "reachable" fails this test instead of passing it:
+    /// Claude Code adds a plugin's `bin/` to its Bash tool's PATH;
+    /// Antigravity and OpenCode run commands with the user's own PATH.
+    private static let agentsPutPluginBinOnPATH: [CodingAgent: Bool] = [
+        .claudeCode: true, .antigravity: false, .opencode: false,
+    ]
+
+    /// What an agent's shell has on PATH with none of the user's additions:
+    /// no `~/.local/bin`, no Homebrew.
+    private static let bareSystemPATH = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+
+    /// The first shell word of `line`, honouring a single- or double-quoted word.
+    private static func firstShellWord(_ line: String) -> String {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        if let quote = trimmed.first, quote == "'" || quote == "\"" {
+            let rest = trimmed.dropFirst()
+            return String(rest.prefix { $0 != quote })
+        }
+        return String(trimmed.prefix { $0 != " " })
+    }
+
+    /// Every way the skill tells the agent to run `speaker-broadcast`: the
+    /// first word of each line in a ```sh block, and every inline code span
+    /// whose first word is (a path to) `speaker-broadcast`.
+    private static func broadcastInvocations(in skill: String) -> [String] {
+        var found: [String] = []
+        var inShellFence = false
+        for line in skill.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("```") {
+                inShellFence = !inShellFence && trimmed.hasPrefix("```sh")
+                continue
+            }
+            if inShellFence, !trimmed.isEmpty {
+                found.append(firstShellWord(trimmed))
+                continue
+            }
+            for (index, span) in trimmed.components(separatedBy: "`").enumerated() where index % 2 == 1 {
+                let word = firstShellWord(span)
+                if URL(fileURLWithPath: word).lastPathComponent == BroadcastCommand.commandName { found.append(word) }
+            }
+        }
+        return found
+    }
+
+    /// Installs all three plugins for a program at a scratch home and checks
+    /// that every `speaker-broadcast` each skill names resolves, for that
+    /// agent, to the copy the app installed with that agent's plugin, and
+    /// that running it reaches the program. Covers the app and the Atrium
+    /// extension's `bin/tool`, and a home folder whose path needs quoting.
+    @Test func everyCommandASkillNamesIsReachableByItsAgent() throws {
+        for agent in CodingAgent.allCases {
+            #expect(agent.putsPluginBinOnPATH == Self.agentsPutPluginBinOnPATH[agent],
+                    "\(agent.displayName): PATH rule changed without updating this test's table")
+        }
+        let programs = [
+            "Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker",
+            "Library/Application Support/com.vitruviansoftware.vitruvian/Tools/dev.vitruvian.speaker/bin/tool",
+        ]
+        for programPath in programs {
+            for homeName in ["home", "home with space"] {
+                try checkSkillsReachTheirCommand(programRelativePath: programPath, homeName: homeName)
+            }
+        }
+    }
+
+    private func checkSkillsReachTheirCommand(programRelativePath: String, homeName: String) throws {
+        let root = try makeScratchDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fm = FileManager.default
+
+        // A stand-in program that prints the arguments it was run with.
+        let program = root.appendingPathComponent(programRelativePath)
+        try fm.createDirectory(at: program.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("#!/bin/sh\nprintf '%s\\n' \"$@\"\n".utf8).write(to: program)
+        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: program.path)
+        #expect(AgentIntegration.isVitruvianSpeakerProgram(program.path))
+
+        let home = root.appendingPathComponent(homeName, isDirectory: true)
+        for marker in [".claude", ".gemini/config", ".config/opencode"] {
+            try fm.createDirectory(at: home.appendingPathComponent(marker), withIntermediateDirectories: true)
+        }
+        let fakeCLI = FakeClaudeCLI(home: home)
+        let integration = AgentIntegration(
+            home: home, executablePath: program.path, claudeCLI: fakeCLI.runner,
+            dataFolder: root.appendingPathComponent("data", isDirectory: true))
+
+        let claudePlugin = integration.claudeMarketplaceDirectory.appendingPathComponent("plugins/vitruvian-speaker")
+        let installs: [(CodingAgent, skill: URL, pluginFolder: URL)] = [
+            (.claudeCode, claudePlugin.appendingPathComponent("skills/vitruvian-speaker/SKILL.md"), claudePlugin),
+            (.antigravity, CodingAgent.antigravity.settingsURL(home: home).appendingPathComponent(AgentPlugins.antigravitySkillFile),
+             CodingAgent.antigravity.settingsURL(home: home)),
+            (.opencode, home.appendingPathComponent(AgentPlugins.openCodeSkillRelativePath),
+             home.appendingPathComponent(AgentPlugins.openCodeSkillFolderRelativePath)),
+        ]
+
+        for (agent, skillURL, pluginFolder) in installs {
+            try integration.installHook(for: agent)
+            #expect(integration.status(of: agent).hook == .installed, "\(agent.displayName)")
+            let skill = try String(contentsOf: skillURL, encoding: .utf8)
+            let invocations = Self.broadcastInvocations(in: skill)
+            #expect(invocations.count >= 9, "\(agent.displayName): found \(invocations)")
+
+            // The agent's PATH: the bare system one, plus the plugin's bin/
+            // only for an agent that adds it.
+            var path = Self.bareSystemPATH
+            if Self.agentsPutPluginBinOnPATH[agent] == true {
+                path.insert(pluginFolder.appendingPathComponent("bin").path, at: 0)
+            }
+            let pluginPrefix = pluginFolder.standardizedFileURL.path + "/"
+
+            for word in Set(invocations) {
+                let resolved: String?
+                if word.contains("/") {
+                    resolved = word.hasPrefix("/") ? word : nil
+                } else {
+                    resolved = path.map { "\($0)/\(word)" }.first { fm.isExecutableFile(atPath: $0) }
+                }
+                guard let resolved, fm.isExecutableFile(atPath: resolved) else {
+                    Issue.record("\(agent.displayName) (\(homeName), \(program.lastPathComponent)): skill runs `\(word)`, which that agent cannot reach")
+                    continue
+                }
+                #expect(resolved.hasPrefix(pluginPrefix),
+                        "\(agent.displayName): `\(word)` is not the copy installed (and removed) with its plugin")
+
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: resolved)
+                process.arguments = ["--status"]
+                process.environment = ["PATH": path.joined(separator: ":")]
+                let out = Pipe()
+                process.standardOutput = out
+                try process.run()
+                process.waitUntilExit()
+                let printed = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+                #expect(printed == "\(BroadcastCommand.explicitInvocationFlag)\n--status\n",
+                        "\(agent.displayName): `\(word)` does not run the program")
+            }
+        }
     }
 
     @Test func claudeCLILocatesExecutableInScratchHomeWithoutSystemFallback() throws {

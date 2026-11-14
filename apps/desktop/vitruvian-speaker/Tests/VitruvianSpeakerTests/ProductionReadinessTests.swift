@@ -717,6 +717,10 @@ private final class SentinelClass {}
         #expect(ClaudeStopHook.commandBroadcasts("speaker-broadcast hi"))
         #expect(ClaudeStopHook.commandBroadcasts("cd /tmp && speaker-broadcast hi"))
         #expect(ClaudeStopHook.commandBroadcasts("/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker --say hi"))
+        // The Antigravity and OpenCode skills run their copy by its full path.
+        #expect(ClaudeStopHook.commandBroadcasts("/Users/a/.gemini/config/plugins/vitruvian-speaker/bin/speaker-broadcast \"Done.\""))
+        #expect(ClaudeStopHook.commandBroadcasts("'/Users/a b/.config/opencode/skills/vitruvian-speaker/bin/speaker-broadcast' \"Done.\""))
+        #expect(!ClaudeStopHook.commandBroadcasts("echo '/Users/a b/bin/speaker-broadcast'"))
         #expect(!ClaudeStopHook.commandBroadcasts(#"grep -n "speaker-broadcast" f.swift"#))
         #expect(!ClaudeStopHook.commandBroadcasts("VitruvianSpeaker --claude-stop-hook"))
         #expect(!ClaudeStopHook.commandBroadcasts("ls /tmp/claude_broadcast_*.lock"))
