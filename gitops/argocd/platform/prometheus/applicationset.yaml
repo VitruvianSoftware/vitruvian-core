@@ -460,6 +460,16 @@ spec:
                       summary: "Repeated OOM kills: {{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }})"
                       description: "{{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} restarted {{ $value | printf \"%.0f\" }}x in 6h, last exit OOMKilled, and the current run is under 30m old. Check its memory limit and what it was serving at the time. Clears on its own once the container has run cleanly for 30m."
 
+                  - alert: RunnerPodsUnschedulable
+                    expr: |
+                      sum(kube_pod_status_unschedulable{namespace="arc-runners"}) > 0
+                    for: 10m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "Merge-queue runner pods cannot be placed"
+                      description: "{{ $value | printf \"%.0f\" }} runner pod(s) in arc-runners have been unschedulable for 10m, so merge-queue jobs are waiting for a runner that cannot start. Usually the nodes ran out of free CPU or memory requests: compare the pods' requests in gitops/argocd/platform/actions-runners/applicationset.yaml with what fedora and nuc9i9 have left. On 2026-11-13 this cost every queue entry ~6 min."
+
                   - alert: KubePodCrashLoopingNoisy
                     expr: |
                       increase(
