@@ -78,7 +78,8 @@ pub fn parse_policy(raw: &str) -> Result<Value, String> {
         .join("\n");
     serde_json::from_str(&json).map_err(|e| {
         format!(
-            "policy.hujson line {}: {e} (keep comments on lines of their own, and no trailing commas)",
+            "policy.hujson line {}: {e} \
+             (keep comments on lines of their own, and no trailing commas)",
             e.line()
         )
     })

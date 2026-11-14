@@ -199,8 +199,15 @@ fn policy_exec(k: &[u8], pod: &[u8], verb: &[u8], policy: &[u8]) -> Res<i32> {
     {
         let mut sin = child.stdin.take().expect("piped stdin");
         if let Err(e) = sin.write_all(policy) {
-            let _ = child.kill();
-            let _ = child.wait();
+            // kubectl may have exited before reading (bad context, no pod);
+            // its own status and message say why, so report that first.
+            drop(sin);
+            if let Ok(st) = child.wait() {
+                let code = sc::status_code(st);
+                if code != 0 {
+                    return Ok(code);
+                }
+            }
             return die(
                 1,
                 &sc::cat(&[

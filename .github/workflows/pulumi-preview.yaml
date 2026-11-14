@@ -53,7 +53,7 @@ name: Pulumi Preview
 #
 # Gated on the PULUMI_PREVIEW_ENABLED repo variable (codified in repo-config's
 # pipelineGates). The zitadel-apps stack is NOT previewed here: reaching its
-# management API needs a tailnet join + TLS shim per run (see the zitadel-infra
+# management API needs a Headscale mesh join + TLS shim per run (see the zitadel-infra
 # job in oauth-user-inspector-deploy.yaml); its destructive-import class is
 # instead blocked statically by //tools/conformance:check (check_zitadel_import)
 # on every PR for free.

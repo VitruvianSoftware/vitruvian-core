@@ -104,7 +104,7 @@ terminator)" step in the workflow sketch below.
 
 ## (a) Tailnet internal routing — RECOMMENDED, chosen
 
-The deploy job joins the tailnet ephemerally and talks to Zitadel over the
+The deploy job joins the Headscale mesh ephemerally and talks to Zitadel over the
 internal Envoy, transparently to the provider (which still uses
 `https://auth.ipv1337.dev`, so issuer/audience/SNI are unchanged).
 
@@ -132,6 +132,7 @@ internal Envoy, transparently to the provider (which still uses
         with:
           authkey: ${{ secrets.HEADSCALE_CI_AUTHKEY }}
           args: --login-server=https://headscale.ipv1337.dev
+          version: 1.104.4
           # the key carries tag:ci and makes the node ephemeral
 
       - name: Route auth.ipv1337.dev to the internal Envoy (TLS terminator)

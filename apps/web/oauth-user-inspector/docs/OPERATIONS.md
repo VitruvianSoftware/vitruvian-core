@@ -218,7 +218,8 @@ The `zitadel-<env>` CI jobs (reusable
 join the Headscale mesh with `HEADSCALE_CI_AUTHKEY` and reach the Zitadel
 management API through the Envoy gateway NodePort `:30265` on a wired cluster
 node's Headscale address (the first of nuc9i9, nuc9i5 and fedora that answers;
-see [`zitadel-tunnel-setup`](../../../../.github/actions/zitadel-tunnel-setup/action.yml)) — **not** the public Cloudflare edge (which
+see [`zitadel-tunnel-setup`](../../../../.github/actions/zitadel-tunnel-setup/action.yml))
+— **not** the public Cloudflare edge (which
 returns bot-protection 1010) and **not** the LB VIP over the subnet router. They
 are gated on the repo variable `ZITADEL_APPS_AUTO_APPLY` (currently `"true"`).
 

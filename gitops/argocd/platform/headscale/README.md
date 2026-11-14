@@ -45,13 +45,19 @@ GitHub Environments, backed up in the Bitwarden deploy-env store
 ([`tools/sync-env-secrets`](../../../../tools/sync-env-secrets/README.md)).
 
 **Rotate** before it expires (an expired key fails at "Join the Headscale
-mesh"). From the main checkout, so the store is the shared one; the key goes
-straight into the three store files and is never printed:
+mesh"). From the main checkout, so the store is the shared one; needs `jq`.
+The key goes straight into the three store files and is never printed. Run it
+as a script (e.g. save it and `bash rotate.sh`), so a failure stops it rather
+than closing your shell:
 
 ```sh
+set -euo pipefail
 bazel run //tools/sync-env-secrets:bw-pull
 key="$(bazel run //tools/gitops:headscale-preauthkey-create -- \
   -u 1 --reusable --ephemeral --tags tag:ci -e 8760h -o json 2>/dev/null | jq -r .key)"
+# Stop before touching the store if minting failed (an empty key would be
+# pushed to Bitwarden and GitHub otherwise).
+[ -n "$key" ] && [ "$key" != null ] || { echo "no key minted; store unchanged" >&2; exit 1; }
 ( umask 077
   for env in development nonproduction production; do
     printf '%s' "$key" \
