@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.21](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.20...vitruvian-courier-v0.3.21) (2026-11-14)
+
+
+### Features
+
+* **vitruvian-courier:** close 16 UX gaps with Beeper: instant chat switching, open at newest, seen-by, Beeper-style bubbles, list and chrome ([#4782](https://github.com/VitruvianSoftware/vitruvian-core/issues/4782)) ([f3428de](https://github.com/VitruvianSoftware/vitruvian-core/commit/f3428de834e1e98e10046d309df278d7319b0c36))
+
 ## [0.3.20](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.19...vitruvian-courier-v0.3.20) (2026-11-13)
 
 
