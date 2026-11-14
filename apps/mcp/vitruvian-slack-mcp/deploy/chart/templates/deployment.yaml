@@ -127,6 +127,11 @@ spec:
             # the visibility split exists at all.
             - name: SLACK_PRIVATE_CHANNEL_IDS
               value: {{ .Values.slack.privateChannelIds | quote }}
+            {{- if and .Values.sentry .Values.sentry.dsn }}
+            # Sentry crash reporting & error tracking
+            - name: SENTRY_DSN
+              value: {{ .Values.sentry.dsn | quote }}
+            {{- end }}
             # Always-present credentials: bot token (reads, and bot-mode writes)
             # and workspace team id. SLACK_USER_TOKEN is optional on the HTTP
             # transport and is mounted below only when slack.userTokenEnabled is true.
