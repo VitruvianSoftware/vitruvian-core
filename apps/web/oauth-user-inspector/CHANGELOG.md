@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.16.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.15.6...oauth-user-inspector-v1.16.0) (2026-11-14)
+
+
+### Features
+
+* **oauth-user-inspector:** add Sentry error tracking to web and relay apps ([#4834](https://github.com/VitruvianSoftware/vitruvian-core/issues/4834)) ([7ff6b80](https://github.com/VitruvianSoftware/vitruvian-core/commit/7ff6b80164f0f773a5314de23655e8cf047e79b2))
+
 ## [1.15.6](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.15.5...oauth-user-inspector-v1.15.6) (2026-11-02)
 
 
