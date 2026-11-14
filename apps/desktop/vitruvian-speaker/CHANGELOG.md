@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.43.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.43.1...vitruvian-speaker-v1.43.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* **vitruvian-speaker:** make the AGENTS.md instruction line name a speaker-broadcast the agent can run ([#4843](https://github.com/VitruvianSoftware/vitruvian-core/issues/4843)) ([4b24f3a](https://github.com/VitruvianSoftware/vitruvian-core/commit/4b24f3ad01a9e689e3a4e33d266c17d3cbb412cf))
+
 ## [1.43.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.43.0...vitruvian-speaker-v1.43.1) (2026-11-14)
 
 
