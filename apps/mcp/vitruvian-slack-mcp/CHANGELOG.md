@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-slack-mcp-v1.24.0...vitruvian-slack-mcp-v1.25.0) (2026-11-14)
+
+
+### Features
+
+* **telemetry:** wire Sentry DSNs for Cloud Run and GitOps workloads ([#4839](https://github.com/VitruvianSoftware/vitruvian-core/issues/4839)) ([879e439](https://github.com/VitruvianSoftware/vitruvian-core/commit/879e439da101a9f53c7dffb3acb3223829a2b9fe))
+
 ## [1.24.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-slack-mcp-v1.23.0...vitruvian-slack-mcp-v1.24.0) (2026-11-13)
 
 
