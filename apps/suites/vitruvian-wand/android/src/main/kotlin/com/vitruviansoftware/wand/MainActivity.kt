@@ -55,6 +55,14 @@ class MainActivity : ComponentActivity() {
       }
 
   override fun onCreate(savedInstanceState: Bundle?) {
+    val sentryDsn =
+        System.getenv("SENTRY_DSN")
+            ?: "https://9cf2abc1bfe2c6145e8b5334b2c9ff4c@sentry-ingest.ipv1337.dev/9"
+    io.sentry.Sentry.init { options ->
+      options.dsn = sentryDsn
+      options.release = "vitruvian-wand@0.1.0"
+      options.environment = "production"
+    }
     super.onCreate(savedInstanceState)
     pairingHelper =
         DaydreamPairingHelper(

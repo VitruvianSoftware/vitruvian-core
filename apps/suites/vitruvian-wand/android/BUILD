@@ -91,6 +91,7 @@ kt_android_library(
         "@maven//:androidx_compose_ui_ui_unit",
         "@maven//:androidx_core_core",
         "@maven//:androidx_core_core_ktx",
+        "@maven//:io_sentry_sentry",
         "@maven//:org_jetbrains_kotlinx_kotlinx_coroutines_android",
         "@maven//:org_jetbrains_kotlinx_kotlinx_coroutines_core_jvm",
     ],

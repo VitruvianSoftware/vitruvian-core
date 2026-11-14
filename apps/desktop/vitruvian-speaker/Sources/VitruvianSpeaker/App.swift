@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import SentryLite
 import SwiftUI
 import VitruvianSpeakerCore
 
@@ -26,6 +27,11 @@ struct VitruvianSpeakerApp: App {
     @StateObject private var monitor = ChatMonitorService.shared
 
     init() {
+        SentryLite.start(
+            dsn: "https://0efbe9711b4456857875112a25d0fa3d@sentry-ingest.ipv1337.dev/10",
+            release: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev",
+            tags: ["app": "vitruvian-speaker", "platform": "macos"]
+        )
         Task { @MainActor in
             let side = AppSide.shared
             // An edit from the phone or the CLI that turns a chat source on

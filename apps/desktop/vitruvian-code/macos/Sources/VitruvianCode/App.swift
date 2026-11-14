@@ -18,12 +18,25 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+#if canImport(SentryLite)
+import SentryLite
+#endif
 import SwiftUI
 import VitruvianCodeCore
 
 @main
 struct VitruvianCodeApp: App {
     @StateObject private var appState = AppState()
+
+    init() {
+#if canImport(SentryLite)
+        SentryLite.start(
+            dsn: "https://259b457f48de7e350f152674cb029dda@sentry-ingest.ipv1337.dev/8",
+            release: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev",
+            tags: ["app": "vitruvian-code", "platform": "macos"]
+        )
+#endif
+    }
 
     var body: some Scene {
         MenuBarExtra {

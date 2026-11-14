@@ -17,7 +17,10 @@ swift_library(
     srcs = glob(["Sources/VitruvianSpeaker/**/*.swift"]),
     module_name = "VitruvianSpeaker",
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
-    deps = [":VitruvianSpeakerCore"],
+    deps = [
+        ":VitruvianSpeakerCore",
+        "//packages/swift/SentryLite",
+    ],
 )
 
 swift_test(
