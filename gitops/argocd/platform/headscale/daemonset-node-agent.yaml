@@ -19,10 +19,10 @@
 # SOFTWARE.
 #
 # Unprivileged userspace Tailscale DaemonSet that registers every k3s node
-# (fedora, nuc9i5, nuc9i9, james-macbook-pro, james-mbp, james-mbp16, james-mbp32)
-# onto the self-hosted Headscale mesh (`https://headscale.ipv1337.dev`) while
-# leaving each host's primary `tailscale0` daemon on commercial Tailscale untouched
-# as the k3s etcd underlay and break-glass network.
+# (fedora, nuc9i5, nuc9i9, james-mbp, james-mbp16, james-mbp32)
+# onto the self-hosted Headscale mesh (`https://headscale.ipv1337.dev`).
+# k3s and etcd run directly on the homelab LAN (`192.168.86.x`), while host
+# `tailscaled` stays installed (disabled/offline) as a break-glass backup.
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
