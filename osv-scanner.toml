@@ -120,3 +120,193 @@ reason = "PERMANENT: no fixed version exists in any range ('zbus_names is unmain
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0372"
 reason = "PERMANENT: no fixed version exists in any range ('zvariant_derive is unmaintained', a notice, not a flaw). crates.io zvariant_derive 5.15.1, proc macro of zvariant in zbus 5.19.0 (latest) <- accesskit_unix and ksni, Linux only (apps/suites/vitruvian-wand/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when eframe/tray-icon move off zbus or apps/suites/vitruvian-wand is re-locked."
+
+[[IgnoredVulns]]
+id = "GHSA-r6v5-fh4h-64xc"
+ignoreUntil = 2026-12-23
+reason = "Rust time (0.3.41), reached via sentry-types in apps/suites/vitruvian-relay/spike and apps/web/oauth-user-inspector/server. Fixed only in 0.3.47 which requires Rust 1.88.0 (repo toolchain is Rust 1.75.0). Sentry uses time solely for client-side event timestamps and never parses untrusted RFC 2822 dates."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0009"
+ignoreUntil = 2026-12-23
+reason = "Rust time (0.3.41), reached via sentry-types in apps/suites/vitruvian-relay/spike and apps/web/oauth-user-inspector/server. Fixed only in 0.3.47 which requires Rust 1.88.0 (repo toolchain is Rust 1.75.0). Sentry uses time solely for client-side event timestamps and never parses untrusted RFC 2822 dates."
+
+[[IgnoredVulns]]
+id = "GHSA-q7gw-24fr-5p69"
+ignoreUntil = 2026-12-23
+reason = "Go go.opentelemetry.io/otel (1.46.0) in packages/pulumi/library/go/pkg/{pubsub,upstash,vpc_service_controls}/go.mod. Advisory published against AttributeValueLengthLimit truncation with U+FFFD runes. Pulumi IaC packages do not process untrusted telemetry streams. Time-boxed until dependencies are bumped to 1.47.0 across Pulumi packages."
+
+[[IgnoredVulns]]
+id = "GO-2026-6629"
+ignoreUntil = 2026-12-23
+reason = "Go golang.org/x/text (0.37.0) in infrastructure/pulumi/platform/sentry/go.mod. Pulumi stack configuration does not process untrusted BCP 47 language tags. Dependabot PR open to upgrade."
+
+[[IgnoredVulns]]
+id = "GO-2026-6348"
+ignoreUntil = 2026-12-23
+reason = "Go google.golang.org/grpc (1.82.1) in infrastructure/pulumi/platform/sentry/go.mod. Pulumi stack configuration does not expose public gRPC servers. Tracked by Dependabot PR #4830."
+
+[[IgnoredVulns]]
+id = "GHSA-vp52-pcj8-j9qc"
+ignoreUntil = 2026-12-23
+reason = "Go google.golang.org/grpc (1.82.1) in infrastructure/pulumi/platform/sentry/go.mod. Pulumi stack configuration does not expose public gRPC servers. Tracked by Dependabot PR #4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6441"
+ignoreUntil = 2026-12-23
+reason = "Go google.golang.org/grpc (1.82.1) in infrastructure/pulumi/platform/sentry/go.mod. Pulumi stack configuration does not expose public gRPC servers. Tracked by Dependabot PR #4830."
+
+[[IgnoredVulns]]
+id = "GHSA-qc2q-p7wx-3px3"
+ignoreUntil = 2026-12-23
+reason = "Go google.golang.org/grpc (1.82.1) in infrastructure/pulumi/platform/sentry/go.mod. Pulumi stack configuration does not expose public gRPC servers. Tracked by Dependabot PR #4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6443"
+ignoreUntil = 2026-12-23
+reason = "Go google.golang.org/grpc (1.82.1) in infrastructure/pulumi/platform/sentry/go.mod. Pulumi stack configuration does not expose public gRPC servers. Tracked by Dependabot PR #4830."
+
+[[IgnoredVulns]]
+id = "GHSA-2v4p-qf9q-27wj"
+ignoreUntil = 2026-12-23
+reason = "Go google.golang.org/grpc (1.82.1) in infrastructure/pulumi/platform/sentry/go.mod. Pulumi stack configuration does not expose public gRPC servers. Tracked by Dependabot PR #4830."
+
+[[IgnoredVulns]]
+id = "GHSA-259r-337f-4rfw"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GHSA-8wmf-6v46-5gfg"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GHSA-hc8v-wwc9-vgxm"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GHSA-hjf4-fphr-2h65"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GHSA-qgq7-7hm3-q39j"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GHSA-w34q-cm8f-9c5x"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-5158"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-5841"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-5942"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-5970"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6179"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6180"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6213"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6214"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6303"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6354"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6355"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6505"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6508"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6603"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6610"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6611"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6612"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6615"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6617"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6860"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6865"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6866"
+ignoreUntil = 2026-12-23
+reason = "Go dependency in infrastructure/pulumi/platform/sentry/go.mod (merged in #4822). Tracked by Dependabot PRs #4823-#4830."

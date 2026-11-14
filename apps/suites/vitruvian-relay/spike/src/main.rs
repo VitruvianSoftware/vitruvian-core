@@ -260,6 +260,7 @@ async fn upgrade(
         let upgraded = match on_upgrade.await {
             Ok(u) => u,
             Err(e) => {
+                sentry::capture_error(&e);
                 log(
                     "ws_upgrade_failed",
                     serde_json::json!({"error": e.to_string()}),
@@ -330,6 +331,14 @@ where
 
 #[tokio::main]
 async fn main() {
+    let _guard = sentry::init((
+        std::env::var("SENTRY_DSN").ok(),
+        sentry::ClientOptions {
+            release: sentry::release_name!(),
+            ..Default::default()
+        },
+    ));
+
     if std::env::args()
         .skip(1)
         .any(|a| a == "--version" || a == "-V")
@@ -340,6 +349,7 @@ async fn main() {
     let settings = match Settings::from_lookup(|k| std::env::var(k).ok()) {
         Ok(s) => s,
         Err(e) => {
+            sentry::capture_message(&format!("configuration error: {e}"), sentry::Level::Fatal);
             eprintln!("configuration error: {e}");
             std::process::exit(1);
         }
@@ -351,6 +361,7 @@ async fn main() {
                 mcp.insert(id.clone(), v);
             }
             Err(e) => {
+                sentry::capture_message(&format!("configuration error: {e}"), sentry::Level::Fatal);
                 eprintln!("configuration error: {e}");
                 std::process::exit(1);
             }
@@ -359,6 +370,7 @@ async fn main() {
     let connector = match verifier(&settings, &settings.connector_client_id) {
         Ok(v) => v,
         Err(e) => {
+            sentry::capture_message(&format!("configuration error: {e}"), sentry::Level::Fatal);
             eprintln!("configuration error: {e}");
             std::process::exit(1);
         }
@@ -377,6 +389,7 @@ async fn main() {
     let listener = match TcpListener::bind(("0.0.0.0", port)).await {
         Ok(l) => l,
         Err(e) => {
+            sentry::capture_error(&e);
             eprintln!("cannot listen on port {port}: {e}");
             std::process::exit(1);
         }
@@ -395,7 +408,9 @@ async fn main() {
                     let conn = http1::Builder::new()
                         .serve_connection(TokioIo::new(stream), svc)
                         .with_upgrades();
-                    let _ = conn.await;
+                    if let Err(e) = conn.await {
+                        sentry::capture_error(&e);
+                    }
                 });
             }
         }
