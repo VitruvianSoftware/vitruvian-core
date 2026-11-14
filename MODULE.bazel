@@ -163,6 +163,16 @@ go_deps.module_override(
     path = "go.mau.fi/mautrix-signal",
 )
 
+# go.mau.fi/mautrix-gmessages (Vitruvian Courier's Google Messages bridge): it sends a direct chat's
+# read receipt only when a live update flips my message to "read", so a message read while the bridge
+# wasn't watching never shows as seen. The patch sends that receipt from the conversation sync, which
+# carries the latest message's status. Not fixed upstream as of v0.2610.0; drop it when it is.
+go_deps.module_override(
+    patch_strip = 1,
+    patches = ["//tools/go_deps:mautrix-gmessages-conversation-read-receipt.patch"],
+    path = "go.mau.fi/mautrix-gmessages",
+)
+
 # github.com/mattn/go-sqlite3 (the cgo SQLite driver under Vitruvian Courier's engine and
 # its bridges): Vitruvian Courier's search index needs FTS5 (with contentless_delete,
 # SQLite 3.43+), which upstream compiles only under the sqlite_fts5 build tag.

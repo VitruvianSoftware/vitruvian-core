@@ -693,19 +693,46 @@ struct MessageRowView: View {
         }
     }
 
-    @ViewBuilder
-    private var header: some View {
-        let isRedacted = resolvedAppearance?.redactNamesAndPictures ?? false
-        let displaySenderName = isRedacted
+    /// The sender's name as shown (pseudonymised when names are redacted).
+    private var displaySenderName: String {
+        (resolvedAppearance?.redactNamesAndPictures ?? false)
             ? AppearancePreferences.redactedText(message.senderName, kind: .name)
             : message.senderName
-        let senderColor: Color = (resolvedAppearance?.perParticipantBubbleColors ?? false)
-            ? (Color(hex: AppearancePreferences.participantBubbleColorHex(for: message.sender, isDark: colorScheme == .dark)) ?? AvatarView.color(for: message.senderName))
-            : AvatarView.color(for: message.senderName)
+    }
+
+    /// Group chats only: someone else's name, shown in the first incoming bubble of a cluster.
+    private var showsSender: Bool { !message.mine && !message.isDirect }
+
+    /// A bright, legible per-sender colour for the name inside an incoming bubble.
+    private var senderNameColor: Color {
+        Color(hex: AppearancePreferences.senderNameColorHex(for: message.sender, isDark: colorScheme == .dark))
+            ?? AvatarView.color(for: message.senderName)
+    }
+
+    /// The name sits inside the first bubble of a sender's run, at the top, unless the bubble has no background to
+    /// hold it (stickers). The run's later bubbles carry no name, as in Beeper.
+    private var senderNameInBubble: Bool {
+        showsSender && message.startsGroup && !message.suppressesBubbleBackground
+    }
+
+    private var senderNameLabel: some View {
+        Text(displaySenderName)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(senderNameColor)
+            .lineLimit(1)
+            .onHover { hovering in
+                actions.hoverSender(hovering, message)
+            }
+    }
+
+    /// Above a cluster: the network badge for merged chats (and the sender's name when the bubble can't hold it).
+    /// The time is in the bubble.
+    @ViewBuilder
+    private var header: some View {
         let net = actions.messageNetwork(message)
         let hasNet = net != nil && !(net?.isEmpty ?? true)
-        let showsSender = !message.mine && !message.isDirect
-        if hasNet || showsSender || actions.showMessageTimestamps {
+        let namesHere = showsSender && message.suppressesBubbleBackground
+        if hasNet || namesHere {
             HStack(spacing: 6) {
                 if let net, !net.isEmpty {
                     NetworkBadge(
@@ -714,22 +741,52 @@ struct MessageRowView: View {
                         size: 12
                     )
                 }
-                if showsSender {
-                    Text(displaySenderName)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(senderColor)
-                        .onHover { hovering in
-                            actions.hoverSender(hovering, message)
-                        }
-                }
-                if actions.showMessageTimestamps {
-                    Text(actions.timeFormat.formatTime(Date(timeIntervalSince1970: Double(message.ts) / 1000)))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+                if namesHere { senderNameLabel }
             }
             .padding(.horizontal, 4)
         }
+    }
+
+    // MARK: Time inside the bubble
+
+    private var timeText: String? {
+        actions.showMessageTimestamps
+            ? actions.timeFormat.formatTime(Date(timeIntervalSince1970: Double(message.ts) / 1000))
+            : nil
+    }
+
+    private var hasMeta: Bool { timeText != nil || message.isEdited }
+
+    /// Text that is the last thing in its bubble carries the time on the end of its last line (the way Beeper does);
+    /// everything else (pictures, files, cards under the text) gets it on a line of its own at the trailing edge.
+    private var metaIsInline: Bool {
+        guard hasMeta, message.kind == .text || message.kind == .notice, contentIsText,
+              message.linkPreviews.isEmpty, ExternalEmbedDescriptor.first(in: message) == nil else { return false }
+        return true
+    }
+
+    private var metaColor: Color {
+        if message.mine && !message.suppressesBubbleBackground { return Color.white.opacity(0.8) }
+        return Color.secondary
+    }
+
+    /// What the text reserves at the end of its last line for `metaView`: the same words, drawn clear.
+    private var metaPlaceholder: String? {
+        guard metaIsInline else { return nil }
+        var parts: [String] = []
+        if message.isEdited { parts.append(ui.historyOpen.contains(message.id) ? String(localized: "Hide Edits") : String(localized: "Edited")) }
+        if let timeText { parts.append(timeText) }
+        return parts.joined(separator: "  ")
+    }
+
+    private var metaView: some View {
+        HStack(spacing: 5) {
+            if message.isEdited { editedButton.takesOwnClick() }
+            if let timeText { Text(timeText) }
+        }
+        .font(.caption2)
+        .foregroundStyle(metaColor)
+        .fixedSize()
     }
 
     @ViewBuilder
@@ -745,6 +802,7 @@ struct MessageRowView: View {
 
     private var bubble: some View {
         VStack(alignment: .leading, spacing: 5) {
+            if senderNameInBubble { senderNameLabel }
             // The message reads as one line to VoiceOver; "Edited" is a button of its own beside it, and a poll's
             // options stay buttons.
             VStack(alignment: .leading, spacing: 5) {
@@ -783,7 +841,14 @@ struct MessageRowView: View {
             .accessibilityElement(children: message.kind == .poll ? .contain : .combine)
             // A poll is a group of its option buttons, summed up as "who: question".
             .accessibilityLabel(accessibilityText)
-            if message.isEdited { editedButton.takesOwnClick() }
+            // Room for the time on a line of its own; the real one is laid over it below (a Spacer here would
+            // stretch the bubble to the full row).
+            if hasMeta && !metaIsInline { metaView.hidden() }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if hasMeta {
+                metaView.padding(.horizontal, metaIsInline ? 0 : (message.kind == .image || message.kind == .sticker || message.kind == .video ? 4 : 0))
+            }
         }
         .foregroundStyle(foreground)
         .padding(.horizontal, message.suppressesBubbleBackground ? 2 : (message.kind == .image || message.kind == .sticker || message.kind == .video ? 4 : 11))
@@ -915,12 +980,13 @@ struct MessageRowView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 }
             case .emote:
-                Text(LinkedText.attributed("* \(message.senderName) \(message.body)", now: actions.now()))
+                Text(LinkedText.decorated(LinkedText.attributed("* \(message.senderName) \(message.body)", now: actions.now()),
+                                          color: message.mine ? .white : .primary, arrowSize: 10))
                     .italic()
                     .fixedSize(horizontal: false, vertical: true)
             case .text, .notice:
                 RichTextView(rich: message.rich, onBubble: message.mine, revealed: ui.revealedBinding(message.id),
-                             italic: message.kind == .notice, now: actions.now())
+                             italic: message.kind == .notice, now: actions.now(), trailingMeta: metaPlaceholder)
             case .poll:
                 if let poll = message.poll {
                     PollView(poll: poll, onBubble: message.mine) { actions.vote(message.id, $0) }
@@ -954,11 +1020,14 @@ struct MessageRowView: View {
             if appearance.perParticipantBubbleColors {
                 return Color(hex: AppearancePreferences.participantBubbleColorHex(for: message.sender, isDark: isDark)) ?? Color.primary.opacity(0.09)
             }
-            if effective.preset != .classicTeal || effective.isOverriddenForRoom || appearance.incomingBubbleColorHex != nil {
-                return Color(hex: isDark ? effective.incomingBubbleHexDark : effective.incomingBubbleHexLight) ?? Color.primary.opacity(0.09)
-            }
+            return Color(hex: isDark ? effective.incomingBubbleHexDark : effective.incomingBubbleHexLight) ?? neutralIncomingFill
         }
-        return message.mine ? themeAccent : Color.primary.opacity(0.09)
+        return message.mine ? themeAccent : neutralIncomingFill
+    }
+
+    /// Incoming bubbles with no theme at all: neutral grey, clearly apart from the outgoing colour.
+    private var neutralIncomingFill: Color {
+        colorScheme == .dark ? Color(white: 0.17) : Color(white: 0.92)
     }
 
     private var foreground: Color {
@@ -1112,7 +1181,7 @@ struct MessageRowView: View {
             // pane shows none, as it shows no Sent).
             if showsSent {
                 Text(message.statusLine.flatMap { line in
-                    StatusLine.seenText(line, time: { actions.timeFormat.formatTime($0) })
+                    StatusLine.seenText(line, time: { actions.timeFormat.formatTime($0) }, now: actions.now())
                 } ?? StatusLine.deliveredLabel)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -1484,6 +1553,34 @@ enum LinkedText {
         return cache
     }()
     private static let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
+    /// Web and mail links drawn underlined in `color` (the bubble's own text colour, never the system accent), each
+    /// followed by a small "↗". Dates and everything else are left as they are.
+    static func decorated(_ input: AttributedString, color: Color, arrowSize: CGFloat) -> AttributedString {
+        let runs = Array(input.runs)
+        var out = AttributedString()
+        for (index, run) in runs.enumerated() {
+            var piece = AttributedString(input[run.range])
+            guard let url = run.link, isWebLink(url) else {
+                out.append(piece)
+                continue
+            }
+            piece.underlineStyle = .single
+            piece.foregroundColor = color
+            out.append(piece)
+            if index + 1 < runs.count, runs[index + 1].link == url { continue }
+            var arrow = AttributedString("\u{2009}\u{2197}\u{FE0E}")
+            arrow.font = .system(size: arrowSize, weight: .semibold)
+            arrow.foregroundColor = color
+            arrow.baselineOffset = arrowSize * 0.25
+            out.append(arrow)
+        }
+        return out
+    }
+
+    static func isWebLink(_ url: URL) -> Bool {
+        ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "")
+    }
 
     static func attributed(_ text: String, now: Date = Date(), detectDates: Bool = true) -> AttributedString {
         let cacheKey = "\(detectDates ? 1 : 0):\(Int(now.timeIntervalSince1970 / 900)):\(text)" as NSString

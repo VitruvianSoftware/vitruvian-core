@@ -17,20 +17,27 @@ struct RichTextView: View {
     var italic = false
     var now: Date = Date()
     var detectDates = true
+    /// The time (and "Edited") that sits on the end of the last line, as text: the last paragraph ends with this much
+    /// room, drawn clear, so the bubble can lay the real thing over it.
+    var trailingMeta: String? = nil
     /// The size of message text (the body style's 13 pt, times the font size setting and the zoom level).
     @Environment(\.courierMessagePointSize) private var pointSize
+    @Environment(\.themeAccentColor) private var themeAccent
 
     var body: some View {
         let blocks = RichTextLayout.blocks(of: rich)
         let hasSpoiler = rich.entities.contains { $0.kind == .spoiler }
         VStack(alignment: .leading, spacing: 5) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                blockView(block)
+            ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+                blockView(block, reservesMeta: index == blocks.count - 1)
+            }
+            if let trailingMeta, let last = blocks.last, last.kind != .paragraph, last.kind != .quote {
+                Text(verbatim: trailingMeta).font(.caption2).hidden()
             }
         }
         .italic(italic)
-        // Links on my own bubble are white, as its text is.
-        .tint(onBubble ? Color.white : Color.accentColor)
+        // Links take the bubble's own text colour, never the system accent (which can be red).
+        .tint(linkColor)
         // A click shows the spoilers; it still selects the message, as a click anywhere on it does.
         .simultaneousGesture(TapGesture().onEnded { if hasSpoiler { revealed = true } })
         .help(hasSpoiler && !revealed ? String(localized: "Click to show the spoiler") : "")
@@ -39,17 +46,17 @@ struct RichTextView: View {
     }
 
     @ViewBuilder
-    private func blockView(_ block: RichTextLayout.Block) -> some View {
+    private func blockView(_ block: RichTextLayout.Block, reservesMeta: Bool = false) -> some View {
         switch block.kind {
         case .paragraph:
-            Text(joined(block.lines))
+            (Text(joined(block.lines)) + metaGap(reservesMeta))
                 .fixedSize(horizontal: false, vertical: true)
         case .quote:
             HStack(alignment: .top, spacing: 7) {
                 RoundedRectangle(cornerRadius: 1.5)
                     .fill(onBubble ? Color.white.opacity(0.7) : Color.secondary.opacity(0.6))
                     .frame(width: 3)
-                Text(joined(block.lines))
+                (Text(joined(block.lines)) + metaGap(reservesMeta))
                     .opacity(0.85)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -78,6 +85,14 @@ struct RichTextView: View {
             }
             .background(RoundedRectangle(cornerRadius: 6).fill(tint))
         }
+    }
+
+    /// Links, and the arrow after them, are the bubble's text colour.
+    private var linkColor: Color { onBubble ? Color.white : Color.primary }
+
+    private func metaGap(_ reserve: Bool) -> Text {
+        guard reserve, let trailingMeta else { return Text(verbatim: "") }
+        return Text(verbatim: "\u{2003}" + trailingMeta).font(.caption2).foregroundStyle(Color.clear)
     }
 
     private var tint: Color { onBubble ? Color.white.opacity(0.2) : Color.primary.opacity(0.08) }
@@ -110,11 +125,15 @@ struct RichTextView: View {
             if let url = run.link {
                 piece.link = url
                 piece.underlineStyle = .single
-                if onBubble { piece.foregroundColor = .white }
+                piece.foregroundColor = linkColor
+            }
+            if !(run.spoiler && !revealed), run.link != nil || (run.mention == nil && !run.code) {
+                piece = LinkedText.decorated(piece, color: linkColor, arrowSize: round(pointSize * 0.8))
             }
             if run.mention != nil {
-                piece.backgroundColor = onBubble ? Color.white.opacity(0.25) : Color.accentColor.opacity(0.16)
-                if !onBubble { piece.foregroundColor = Color.accentColor }
+                // Mentions are a highlight in the theme's accent, not a link.
+                piece.backgroundColor = onBubble ? Color.white.opacity(0.25) : themeAccent.opacity(0.18)
+                if !onBubble { piece.foregroundColor = themeAccent }
             }
             if run.spoiler, !revealed {
                 piece.foregroundColor = .clear

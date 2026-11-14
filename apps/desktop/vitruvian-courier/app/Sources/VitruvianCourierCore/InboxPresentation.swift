@@ -47,6 +47,15 @@ extension InboxRow {
         }
     }
 
+    /// Before a reaction preview, whose body the engine words as "😂 to “…”": "You reacted ", "<Name> reacted " in a
+    /// group, "Reacted " in a direct chat. Nil when the newest activity is not a reaction.
+    public var reactionPreviewLead: String? {
+        guard previewKind == .reaction else { return nil }
+        if previewMine { return String(localized: "You reacted ") }
+        if !isDirect, !previewSenderName.isEmpty { return String(localized: "\(previewSenderName) reacted ") }
+        return String(localized: "Reacted ")
+    }
+
     /// Before the preview when the newest message is a reply that stays in its thread, which the chat's timeline
     /// doesn't show: "You, in a thread: ", "<Name>, in a thread: " in a direct chat, or "In a thread: " in a group.
     /// Nil otherwise.
@@ -61,6 +70,15 @@ extension InboxRow {
         return String(localized: "In a thread: ")
     }
 
+    /// Who the compact thread glyph is followed by: "You: " for my reply, "<Name>: " in a direct chat, nil in a group
+    /// (the engine doesn't say who) and for a message that isn't a thread reply.
+    public var previewThreadSender: String? {
+        guard previewInThread else { return nil }
+        if previewMine { return String(localized: "You: ") }
+        if isDirect, !name.isEmpty { return String(localized: "\(name): ") }
+        return nil
+    }
+
     /// The preview body.
     public var previewBody: String {
         preview
@@ -68,6 +86,7 @@ extension InboxRow {
 
     /// The full plain-text preview string for an inbox row.
     public var formattedPreviewText: String {
+        if let lead = reactionPreviewLead { return lead + preview }
         var result = ""
         if let prefix = previewThreadPrefix {
             result += prefix
@@ -103,11 +122,11 @@ extension InboxRow {
     public var initials: String { Self.initials(of: name) }
 }
 
-/// A row's time: the time of day if it is today, the weekday within the last six days, the short date otherwise.
-/// All in the person's locale and calendar. A row asks for it on every render, so the formatters are kept: one per
+/// A row's time: the time of day if it is today, "Yesterday", the weekday for two to six days ago, "November 4" for
+/// the rest of this year, and "Nov 4, 2025" before that. All in the person's locale and calendar. A row asks for it on every render, so the formatters are kept: one per
 /// style, locale and calendar.
 public enum RelativeTime {
-    private enum Style: String { case time, weekday, date }
+    private enum Style: String { case time, weekday, monthDay, fullDate }
 
     private static let lock = NSLock()
     nonisolated(unsafe) private static var formatters: [String: DateFormatter] = [:]
@@ -129,9 +148,10 @@ public enum RelativeTime {
                 formatter.dateStyle = .none
             case .weekday:
                 formatter.setLocalizedDateFormatFromTemplate("EEEE")
-            case .date:
-                formatter.timeStyle = .none
-                formatter.dateStyle = .short
+            case .monthDay:
+                formatter.setLocalizedDateFormatFromTemplate("MMMMd")
+            case .fullDate:
+                formatter.setLocalizedDateFormatFromTemplate("yMMMd")
             }
             if formatters.count >= 32 { formatters = [:] } // a person changes locale rarely; this is only a bound
             formatters[key] = formatter
@@ -149,13 +169,118 @@ public enum RelativeTime {
         let style: Style
         switch days {
         case 0: style = .time
-        case 1 ... 6: style = .weekday
-        default: style = .date // older, or ahead of this clock
+        case 1: return String(localized: "Yesterday")
+        case 2 ... 6: style = .weekday
+        default: // older, or ahead of this clock
+            style = calendar.component(.year, from: date) == calendar.component(.year, from: now) ? .monthDay : .fullDate
         }
         if style == .time, timeFormat != .system {
             return timeFormat.formatTime(date, locale: locale, timeZone: calendar.timeZone)
         }
         return formatter(style, calendar: calendar, locale: locale).string(from: date)
+    }
+}
+
+/// One person on a group's composite avatar: a name, and a local picture when there is one.
+public struct AvatarMember: Equatable, Sendable {
+    public let name: String
+    public let avatarPath: String?
+
+    public init(name: String, avatarPath: String? = nil) {
+        self.name = name
+        self.avatarPath = avatarPath
+    }
+}
+
+/// How a group with no picture of its own is drawn.
+public enum GroupAvatarStyle: Equatable, Sendable {
+    /// A channel ("#data-science"): a tile with a "#" on the channel's colour. The associated value is its name.
+    case channel(String)
+    /// A name that lists people ("Eddie Stecker, Kent Hua, GitHub"): up to three small circles, overlapping.
+    case people([AvatarMember])
+    /// Any other name: its initials on the group's colour.
+    case single
+
+    /// The most people a composite shows.
+    public static let maxMembers = 3
+
+    /// The style a group's name implies until the engine sends its real members.
+    public static func of(name: String) -> GroupAvatarStyle {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("#"), trimmed.count > 1 { return .channel(trimmed.lowercased()) }
+        let parts = trimmed.split(whereSeparator: { $0 == "," || $0 == "&" })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        // Two or more short names. A long part is a sentence, not a person.
+        guard parts.count >= 2, parts.allSatisfy({ $0.split(whereSeparator: \.isWhitespace).count <= 3 }) else {
+            return .single
+        }
+        return .people(parts.prefix(maxMembers).map { AvatarMember(name: $0) })
+    }
+}
+
+extension InboxRow {
+    /// The engine's real members (`memberPreview`) win over what the name implies, except for a channel, which keeps
+    /// its "#" tile.
+    public var groupAvatarStyle: GroupAvatarStyle {
+        let byName = GroupAvatarStyle.of(name: name)
+        if case .channel = byName { return byName }
+        let real = memberPreview.prefix(GroupAvatarStyle.maxMembers)
+            .map { AvatarMember(name: $0.name, avatarPath: $0.avatarPath) }
+        return real.isEmpty ? byName : .people(Array(real))
+    }
+}
+
+/// A network's app-icon tile: a rounded square in the network's brand colour (a gradient for some) with a white SF
+/// Symbol glyph. Colours and symbols only, never the network's own artwork.
+public struct NetworkTile: Equatable, Sendable {
+    public struct RGB: Equatable, Sendable {
+        public let red: Double, green: Double, blue: Double
+        public init(hex: UInt32) {
+            red = Double((hex >> 16) & 0xFF) / 255
+            green = Double((hex >> 8) & 0xFF) / 255
+            blue = Double(hex & 0xFF) / 255
+        }
+    }
+
+    /// The white glyph, an SF Symbol.
+    public let glyph: String
+    /// The tile's colour at its top leading corner, and at its bottom trailing one (the same for a flat tile).
+    public let top: RGB
+    public let bottom: RGB
+
+    public init(glyph: String, top: UInt32, bottom: UInt32? = nil) {
+        self.glyph = glyph
+        self.top = RGB(hex: top)
+        self.bottom = RGB(hex: bottom ?? top)
+    }
+
+    public static let fallback = NetworkTile(glyph: "bubble.left.fill", top: 0x73_78_85)
+
+    /// Every network the app draws a tile for, in the order of `NetworkAppearance.of`.
+    public static let knownNetworks = [
+        "whatsapp", "signal", "telegram", "slack", "gmessages", "gchat", "discord", "facebook", "instagram",
+        "twitter", "linkedin", "gvoice", "bluesky", "imessage",
+    ]
+
+    public static func of(_ network: String) -> NetworkTile {
+        switch network {
+        case "whatsapp": NetworkTile(glyph: "phone.bubble.fill", top: 0x25D366)
+        case "signal": NetworkTile(glyph: "message.fill", top: 0x3A76F0)
+        case "telegram": NetworkTile(glyph: "paperplane.fill", top: 0x2AABEE)
+        case "slack": NetworkTile(glyph: "number", top: 0x4A154B)
+        case "gmessages": NetworkTile(glyph: "bubble.left.fill", top: 0x1A73E8)
+        case "gchat": NetworkTile(glyph: "bubble.left.and.bubble.right.fill", top: 0x00AC47)
+        case "discord": NetworkTile(glyph: "gamecontroller.fill", top: 0x5865F2)
+        case "facebook": NetworkTile(glyph: "bolt.fill", top: 0x0099FF, bottom: 0xA033FF)
+        case "instagram": NetworkTile(glyph: "camera.fill", top: 0xF9A03F, bottom: 0xC13584)
+        case "twitter": NetworkTile(glyph: "at", top: 0x1D9BF0)
+        case "linkedin": NetworkTile(glyph: "briefcase.fill", top: 0x0A66C2)
+        case "gvoice": NetworkTile(glyph: "phone.fill", top: 0x0B9D58)
+        case "bluesky": NetworkTile(glyph: "cloud.fill", top: 0x1185FE)
+        case "imessage": NetworkTile(glyph: "message.fill", top: 0x34C759)
+        default: fallback
+        }
     }
 }
 

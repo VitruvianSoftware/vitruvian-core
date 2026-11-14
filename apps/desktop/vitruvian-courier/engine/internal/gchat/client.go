@@ -787,6 +787,7 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 			if respBytes, rpcErr := c.rpcCall(ctx, "get_group", reqBytes); rpcErr == nil && len(respBytes) > 0 {
 				var resp pb.GetGroupResponse
 				if pb.Unmarshal(respBytes, &resp) == nil {
+					c.queueReceiptsAfterCurrent(ctx, c.readReceiptEvents(ctx, isDM, rawID, resp.GetReadReceiptSet()))
 					if g := resp.GetGroup(); g != nil {
 						if gName := strings.TrimSpace(g.GetName()); gName != "" && !isPlaceholderChatName(portal.ID, gName) {
 							name = gName

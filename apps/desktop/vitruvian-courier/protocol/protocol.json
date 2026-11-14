@@ -215,13 +215,22 @@
             "poll",
             "timer_change",
             "call",
+            "reaction",
             ""
           ],
-          "doc": "What the newest message is. For a poll, preview is its question. timer_change: a note that the chat's disappearing timer changed (a bridge's, or one the engine wrote for a change made in Vitruvian Courier); preview is \"\", and the app words it. call: a bridge's notice of a call; preview is \"\", preview_call says what happened, and the app words it."
+          "doc": "What the newest message is. For a poll, preview is its question. timer_change: a note that the chat's disappearing timer changed (a bridge's, or one the engine wrote for a change made in Vitruvian Courier); preview is \"\", and the app words it. call: a bridge's notice of a call; preview is \"\", preview_call says what happened, and the app words it. reaction: the newest activity is a reaction, newer than the newest message (a reaction never moves the chat, nor counts as unread: only the preview changes); preview is the reaction and the message it reacts to, quoted when it has text (\"😂 to “Maybe in his mind he did…”\", the quote cut to 60 characters), else the reaction alone; preview_mine and preview_sender_name say who reacted, and preview_status, preview_media_path and preview_call are empty. The app treats a value it doesn't know as text."
         },
         "preview_mine": {
           "type": "bool",
-          "doc": "The newest message is mine."
+          "doc": "The newest message is mine; for a reaction preview, the reaction is."
+        },
+        "preview_sender_name": {
+          "type": "string?",
+          "doc": "Who wrote the newest message (for a reaction preview, who reacted), as typing names people: their name in the chat, else their profile's, else their ID's localpart. Left out when it is mine or there is no message (and by an engine before this field): read it as \"\"."
+        },
+        "members_preview": {
+          "type": "RowMember[]?",
+          "doc": "For a group (not is_direct) with no picture of its own (avatar_path and local_avatar_path both \"\" on the engine's side), up to 3 of its joined members other than me, for a stacked picture: who spoke most recently first, then those with a picture, then by name. Bridge bots and my own ghosts are left out. Left out for a one-to-one chat, a group with a picture, or a group with nobody else (and by an engine before this field): read it as []."
         },
         "preview_in_thread": {
           "type": "bool",
@@ -313,6 +322,20 @@
           "type": "string?",
           "values": ["always", "never"],
           "doc": "Per-chat Vitruvian Speaker announcement override; left out for Default."
+        }
+      }
+    },
+    "RowMember": {
+      "doc": "Someone in a chat, for its inbox row's picture (InboxRow.members_preview).",
+      "fields": {
+        "user_id": { "type": "string" },
+        "name": {
+          "type": "string",
+          "doc": "Their name in the chat, else their profile's, else their ID's localpart."
+        },
+        "avatar_path": {
+          "type": "string",
+          "doc": "Their picture, when the engine has it, or \"\"."
         }
       }
     },
