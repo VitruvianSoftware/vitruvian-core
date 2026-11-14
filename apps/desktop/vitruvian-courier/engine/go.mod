@@ -3,6 +3,7 @@ module github.com/VitruvianSoftware/vitruvian-courier/engine
 go 1.26.10
 
 require (
+	github.com/getsentry/sentry-go v0.31.1
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/rs/zerolog v1.35.1

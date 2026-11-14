@@ -3,6 +3,7 @@
 
 import AppKit
 import Combine
+import SentryLite
 import VitruvianCourierCore
 
 /// Owns the app's model, and so the engine: starts it at launch and stops it before the app quits. Closing the
@@ -143,6 +144,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hideTypingQuestion: HideTypingQuestion?
 
     override init() {
+        SentryLite.start(
+            dsn: "https://2fc1a74b9689b056842028164e4baaca@sentry-ingest.ipv1337.dev/13",
+            release: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev",
+            tags: ["app": "vitruvian-courier", "platform": "macos"]
+        )
         let environment = ProcessInfo.processInfo.environment
         let enginePath = EngineLocation.enginePath(environment: environment)
         let supervisor = EngineSupervisor(
