@@ -125,6 +125,10 @@ module.exports = {
       "process.env.NODE_ENV": JSON.stringify(
         process.env.NODE_ENV || "development",
       ),
+      "process.env.SENTRY_DSN": JSON.stringify(
+        process.env.SENTRY_DSN ||
+          "https://e68b62b2a2f4064278c4e6915c1b4766@sentry-ingest.ipv1337.dev/11",
+      ),
     }),
   ],
   devtool: "cheap-module-source-map",

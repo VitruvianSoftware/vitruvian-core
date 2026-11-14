@@ -29,6 +29,7 @@ _CRATES = [
     "@vitruvian_roborock_mcp_crates//:md-5",
     "@vitruvian_roborock_mcp_crates//:png",
     "@vitruvian_roborock_mcp_crates//:rustls",
+    "@vitruvian_roborock_mcp_crates//:sentry",
     "@vitruvian_roborock_mcp_crates//:serde",
     "@vitruvian_roborock_mcp_crates//:serde_json",
     "@vitruvian_roborock_mcp_crates//:sha2",
@@ -57,7 +58,10 @@ rust_binary(
     srcs = ["rust_src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":vitruvian_roborock_mcp_lib"],
+    deps = [
+        ":vitruvian_roborock_mcp_lib",
+        "@vitruvian_roborock_mcp_crates//:sentry",
+    ],
 )
 
 rust_test(

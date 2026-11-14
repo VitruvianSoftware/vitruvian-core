@@ -37,6 +37,8 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 # deps) is preserved below.
 package(default_visibility = ["//apps/suites/vitruvian-tabs:__subpackages__"])
 
+exports_files(["rs/Cargo.toml"])
+
 npm_link_all_packages(name = "node_modules")
 
 rust_library(
@@ -68,6 +70,7 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
+        "@crates//:sentry",
         "@crates//:serde",
         "@crates//:serde_json",
     ],
@@ -79,7 +82,10 @@ rust_binary(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/suites/vitruvian-tabs:__subpackages__"],
-    deps = [":vitruvian_tabs_api_tools_lib"],
+    deps = [
+        ":vitruvian_tabs_api_tools_lib",
+        "@crates//:sentry",
+    ],
 )
 
 rust_binary(
@@ -87,7 +93,10 @@ rust_binary(
     srcs = ["rs/src/bin/generate_client.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":vitruvian_tabs_api_tools_lib"],
+    deps = [
+        ":vitruvian_tabs_api_tools_lib",
+        "@crates//:sentry",
+    ],
 )
 
 rust_binary(
@@ -96,7 +105,10 @@ rust_binary(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/suites/vitruvian-tabs:__subpackages__"],
-    deps = [":vitruvian_tabs_api_tools_lib"],
+    deps = [
+        ":vitruvian_tabs_api_tools_lib",
+        "@crates//:sentry",
+    ],
 )
 
 alias(
@@ -112,6 +124,7 @@ rust_test(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
+        "@crates//:sentry",
         "@crates//:serde",
         "@crates//:serde_json",
     ],
@@ -124,6 +137,7 @@ rust_test(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
+        "@crates//:sentry",
         "@crates//:serde",
         "@crates//:serde_json",
     ],
@@ -173,7 +187,10 @@ rust_binary(
     rustc_env = {"PRISMA_CLI_RLOCATION": "$(rlocationpath :prisma_cli)"},
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/suites/vitruvian-tabs:__subpackages__"],
-    deps = [":vitruvian_tabs_api_tools_lib"],
+    deps = [
+        ":vitruvian_tabs_api_tools_lib",
+        "@crates//:sentry",
+    ],
 )
 
 itest_service(

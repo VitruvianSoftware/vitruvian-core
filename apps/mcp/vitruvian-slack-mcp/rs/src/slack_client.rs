@@ -1215,6 +1215,13 @@ impl SlackClient {
             );
         }
 
+        if !is_ok(&data) && !err_str.is_empty() {
+            sentry::capture_message(
+                &format!("Slack API error calling {method}: {err_str}"),
+                sentry::Level::Error,
+            );
+        }
+
         Ok(data)
     }
 

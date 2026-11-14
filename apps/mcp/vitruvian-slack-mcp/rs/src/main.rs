@@ -47,6 +47,27 @@ fn shutdown_grace_ms(env: &HashMap<String, String>) -> u64 {
 }
 
 fn main() {
+    let sentry_dsn = std::env::var("SENTRY_DSN").unwrap_or_else(|_| {
+        "https://e52fdc93b32a6a779d5f87475f9ac39b@sentry.lab.ipv1337.dev/15".to_string()
+    });
+    let _sentry_guard = if !sentry_dsn.trim().is_empty() {
+        Some(sentry::init((
+            sentry_dsn,
+            sentry::ClientOptions {
+                release: sentry::release_name!(),
+                environment: Some(
+                    std::env::var("NODE_ENV")
+                        .or_else(|_| std::env::var("ENVIRONMENT"))
+                        .unwrap_or_else(|_| "production".to_string())
+                        .into(),
+                ),
+                ..Default::default()
+            },
+        )))
+    } else {
+        None
+    };
+
     let args: Vec<String> = std::env::args().skip(1).collect();
     for arg in &args {
         if arg == "--help" || arg == "-h" {
