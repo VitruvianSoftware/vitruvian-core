@@ -180,6 +180,10 @@ rust_test(
     deps = [":tests_lib"],
 )
 
+# Mac runners are scarce (5 at a time on GitHub's free plan), so this unit
+# lists only what needs a Mac: Swift, app bundles, and tests whose code differs
+# on macOS. Tests that pass on Linux run in ci.yaml's build-test whenever they
+# are affected, so listing them here only spent Mac time running them twice.
 pipeline_unit(
     name = "vitruvian-github",
     persona = "platform",
@@ -188,8 +192,6 @@ pipeline_unit(
         ":GitHubToolCoreTests",
         ":conformance_test",
         ":github-tool",
-        ":mirror_workflows_test",
-        ":version_test",
     ],
     tier = "L1",
     timeout_minutes = 30,
