@@ -88,7 +88,7 @@ env:
 jobs:
   image:
     runs-on: ubuntu-26.04
-    timeout-minutes: 30
+    timeout-minutes: 50
     outputs:
       digest: ${{ steps.publish.outputs.digest }}
     steps:
