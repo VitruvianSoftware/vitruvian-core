@@ -448,8 +448,9 @@ enum SettingsFeatureTests {
             let uninstaller = SettingsDirectory.sections(strings, language: language, state: .current)
                 .flatMap(\.items).first { $0.page == .uninstaller }
             let uninstallerLabels = uninstaller?.terms.flatMap(\.titles) ?? []
-            suite.expect(uninstallerLabels.contains(strings.uninstallerCommandBarToggle),
-                         "Settings search finds the uninstaller's Command Bar switch")
+            suite.expect(uninstallerLabels.contains(strings.uninstallerWatchTrashToggle)
+                         && uninstallerLabels.contains(strings.uninstallerCommandBarToggle),
+                         "Settings search finds the uninstaller's trash cleanup and Command Bar switches")
         }
         let captureRouter = SettingsRouter()
         captureRouter.request(ScreenCaptureTool.screenshot.settingsDestination)

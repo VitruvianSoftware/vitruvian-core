@@ -22,6 +22,10 @@ import VitruvianAtriumDesign
 package protocol AppShell: AnyObject {
     func openSettingsWindow()
     func openSettingsFromHighlights()
+    /// Opens the Uninstaller already reviewing an app. `trashMove` is the
+    /// witnessed move to the Trash the review belongs to, when a watch on the
+    /// Trash offered it.
+    func openUninstaller(for appURL: URL, trashMove: UninstallerSupport.TrashMove?)
     func closePopover(animated: Bool, after delay: TimeInterval, preservingNotch: Bool,
                       reason: PanelCloseReason, completion: (() -> Void)?)
     func isOverStatusItem(_ point: NSPoint) -> Bool

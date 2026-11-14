@@ -1,3 +1,4 @@
+load("@build_bazel_rules_apple//apple:apple.bzl", "apple_universal_binary")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
@@ -144,7 +145,7 @@ swift_binary(
 genrule(
     name = "tool-folder",
     srcs = [
-        "tool/vitruvian-tool.json",
+        "atrium-extension/vitruvian-tool.json",
         "Sources/VitruvianCodeUI/Resources/mermaid.min.js",
         ":vitruvian-code-tool",
     ],
@@ -153,7 +154,7 @@ genrule(
         "built/vitruvian-code/bin/tool",
         "built/vitruvian-code/bin/mermaid.min.js",
     ],
-    cmd = "cp $(location tool/vitruvian-tool.json) $(RULEDIR)/built/vitruvian-code/vitruvian-tool.json && cp $(location :vitruvian-code-tool) $(RULEDIR)/built/vitruvian-code/bin/tool && cp $(location Sources/VitruvianCodeUI/Resources/mermaid.min.js) $(RULEDIR)/built/vitruvian-code/bin/mermaid.min.js",
+    cmd = "cp $(location atrium-extension/vitruvian-tool.json) $(RULEDIR)/built/vitruvian-code/vitruvian-tool.json && cp $(location :vitruvian-code-tool) $(RULEDIR)/built/vitruvian-code/bin/tool && cp $(location Sources/VitruvianCodeUI/Resources/mermaid.min.js) $(RULEDIR)/built/vitruvian-code/bin/mermaid.min.js",
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
 )
@@ -165,7 +166,7 @@ genrule(
 rust_test(
     name = "tool_conformance_test",
     size = "medium",
-    srcs = ["tool/src/conformance_test.rs"],
+    srcs = ["atrium-extension/src/conformance_test.rs"],
     data = [
         "built/vitruvian-code/vitruvian-tool.json",
         ":tool-folder",
@@ -190,12 +191,12 @@ rust_test(
 rust_test(
     name = "tool_version_test",
     size = "small",
-    srcs = ["tool/src/version_test.rs"],
+    srcs = ["atrium-extension/src/version_test.rs"],
     data = [
         "Package.swift",
         "Sources/VitruvianCode/Version.swift",
         "Sources/VitruvianCodeToolCore/Version.swift",
-        "tool/vitruvian-tool.json",
+        "atrium-extension/vitruvian-tool.json",
         "//apps/desktop/vitruvian-code:release_please_config",
     ],
     edition = "2021",
@@ -271,8 +272,36 @@ swift_test(
 #
 # No `provisioning_profile` or signing identity is configured, so rules_apple
 # ad-hoc signs the bundle by default ("codesign --identity -").
+# The Rust bot engine as a universal macOS helper executable, signed ad hoc so
+# `VitruvianCode` can bundle it into `Contents/Helpers/bot-engine`.
+apple_universal_binary(
+    name = "bot_engine_universal",
+    binary = "//apps/desktop/vitruvian-code/src:bot-engine",
+    forced_cpus = [
+        "x86_64",
+        "arm64",
+    ],
+    minimum_os_version = "14.0",
+    platform_type = "macos",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
+genrule(
+    name = "bot_engine_helper",
+    srcs = [":bot_engine_universal"],
+    outs = ["bot-engine"],
+    cmd = "cp $(location :bot_engine_universal) $@ && chmod 755 $@ && /usr/bin/codesign --force --sign - --identifier com.vitruviansoftware.code.bot-engine $@",
+    executable = True,
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
 macos_application(
     name = "VitruvianCode",
+    additional_contents = {
+        ":bot_engine_helper": "Helpers",
+    },
     bundle_id = "com.vitruviansoftware.code",
     bundle_name = "Vitruvian Code",
     executable_name = "VitruvianCode",
@@ -296,6 +325,7 @@ rust_test(
     data = [
         "Package.swift",
         ":bundle-app",
+        "//apps/desktop/vitruvian-code/src:bot-engine",
     ] + glob([
         "Resources/**",
         "Sources/**",
@@ -303,6 +333,7 @@ rust_test(
     ]) + ["//apps/desktop/vitruvian-code:testdata_files"],
     edition = "2021",
     env = {
+        "BOT_BIN": "$(rootpath //apps/desktop/vitruvian-code/src:bot-engine)",
         "BUNDLE_BIN": "$(rootpath :bundle-app)",
     },
     env_inherit = ["DEVELOPER_DIR"],
@@ -335,6 +366,26 @@ rust_test(
         "APP_NAME": "Vitruvian Code",
         "ARCHIVE_PATHS": "$(rootpaths :VitruvianCode)",
         "RESOURCE_PATHS": "$(rootpaths :shared_ui_resources)",
+    },
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [":vitruvian_code_scripts_lib"],
+)
+
+# The app Bazel built holds Contents/Helpers/bot-engine for all app
+# architectures, verifies its code signature, and confirms `--dry-run` works
+# in an isolated empty environment.
+rust_test(
+    name = "app_holds_bot_test",
+    size = "small",
+    srcs = ["scripts/src/app_holds_bot_test.rs"],
+    data = [
+        ":VitruvianCode",
+    ],
+    edition = "2021",
+    env = {
+        "APP_NAME": "Vitruvian Code",
+        "ARCHIVE_PATHS": "$(rootpaths :VitruvianCode)",
     },
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
@@ -396,6 +447,23 @@ rust_binary(
     visibility = ["//apps/desktop/vitruvian-code:__subpackages__"],
 ) for n in [
     "bazel_app_holds_mermaid",
+]]
+
+rust_binary(
+    name = "bazel-app-holds-bot",
+    srcs = ["scripts/src/bin/bazel_app_holds_bot.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/desktop/vitruvian-code:__subpackages__"],
+    deps = [":vitruvian_code_scripts_lib"],
+)
+
+[alias(
+    name = n,
+    actual = ":bazel-app-holds-bot",
+    visibility = ["//apps/desktop/vitruvian-code:__subpackages__"],
+) for n in [
+    "bazel_app_holds_bot",
 ]]
 
 rust_binary(

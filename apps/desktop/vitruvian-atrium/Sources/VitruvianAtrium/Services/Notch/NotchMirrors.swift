@@ -15,8 +15,13 @@ package protocol NotchMirrorHost: AnyObject {
     /// Under the island's own window, which is about to leave this display, so
     /// the display keeps an island when the window goes.
     func orderPanelBelow(windowNumber: Int)
-    func presentCopy(size: CGSize, geometry: NotchGeometry, animated: Bool, transitionContent: NotchContentTransition)
-    func hideCopy()
+    /// `revealFromHidden` brings a window that was withdrawn back in from
+    /// the screen edge, instead of growing it where it stands.
+    func presentCopy(size: CGSize, geometry: NotchGeometry, animated: Bool,
+                     transitionContent: NotchContentTransition, revealFromHidden: Bool)
+    /// `animated` eases the copy away, as an app's own full screen does; a
+    /// full-screen Space slides the screen itself, so it takes the copy at once.
+    func hideCopy(animated: Bool)
     func close()
     func setOutline(enabled: Bool, color: NSColor)
     func setActivationArea(_ rect: CGRect, title: String, willPress: @escaping () -> Void, activate: @escaping () -> Void)
@@ -52,10 +57,11 @@ extension NotchWindowHost: @preconcurrency NotchMirrorHost {
     package func orderPanelBelow(windowNumber: Int) { panel.order(.below, relativeTo: windowNumber) }
     package var waveContent: NSView? { panel.contentView }
     package func presentCopy(size: CGSize, geometry: NotchGeometry, animated: Bool,
-                             transitionContent: NotchContentTransition) {
-        present(size: size, geometry: geometry, animated: animated, transitionContent: transitionContent)
+                             transitionContent: NotchContentTransition, revealFromHidden: Bool) {
+        present(size: size, geometry: geometry, animated: animated, transitionContent: transitionContent,
+                revealFromHidden: revealFromHidden)
     }
-    package func hideCopy() { hide(animated: false) }
+    package func hideCopy(animated: Bool) { hide(animated: animated) }
 }
 
 /// A copy's window, whatever built it: the island's copies take theirs from
@@ -80,10 +86,11 @@ package final class AnyNotchMirrorHost: NotchMirrorHost {
     package func keepWave() { host.keepWave() }
     package func releaseWave() { host.releaseWave() }
     package func presentCopy(size: CGSize, geometry: NotchGeometry, animated: Bool,
-                             transitionContent: NotchContentTransition) {
-        host.presentCopy(size: size, geometry: geometry, animated: animated, transitionContent: transitionContent)
+                             transitionContent: NotchContentTransition, revealFromHidden: Bool) {
+        host.presentCopy(size: size, geometry: geometry, animated: animated, transitionContent: transitionContent,
+                         revealFromHidden: revealFromHidden)
     }
-    package func hideCopy() { host.hideCopy() }
+    package func hideCopy(animated: Bool) { host.hideCopy(animated: animated) }
     package func contains(_ screenPoint: CGPoint) -> Bool { host.contains(screenPoint) }
     package func close() { host.close() }
     package func setOutline(enabled: Bool, color: NSColor) { host.setOutline(enabled: enabled, color: color) }
@@ -147,8 +154,11 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
         package var displays: () -> [Display]
         /// The island at rest on a display, as the island would be drawn there.
         package var baseGeometry: (CGDirectDisplayID) -> NotchGeometry?
-        /// Which of these displays show a full-screen Space.
+        /// Which of these displays are in full screen, a Space's or an app's own.
         package var fullscreenDisplays: ([CGDirectDisplayID]) -> Set<CGDirectDisplayID>
+        /// The part of those that show a full-screen Space, which slides the
+        /// screen itself.
+        package var fullscreenSpaceDisplays: ([CGDirectDisplayID]) -> Set<CGDirectDisplayID>
         package var hidesUntilHover: () -> Bool
         /// Hidden until hover, the island still shows its activities.
         package var hiddenShowsActivity: () -> Bool
@@ -161,6 +171,7 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
         package init(displays: @escaping () -> [Display],
                      baseGeometry: @escaping (CGDirectDisplayID) -> NotchGeometry?,
                      fullscreenDisplays: @escaping ([CGDirectDisplayID]) -> Set<CGDirectDisplayID>,
+                     fullscreenSpaceDisplays: @escaping ([CGDirectDisplayID]) -> Set<CGDirectDisplayID>,
                      hidesUntilHover: @escaping () -> Bool,
                      hiddenShowsActivity: @escaping () -> Bool,
                      coversMenus: @escaping () -> Bool,
@@ -171,6 +182,7 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
             self.displays = displays
             self.baseGeometry = baseGeometry
             self.fullscreenDisplays = fullscreenDisplays
+            self.fullscreenSpaceDisplays = fullscreenSpaceDisplays
             self.hidesUntilHover = hidesUntilHover
             self.hiddenShowsActivity = hiddenShowsActivity
             self.coversMenus = coversMenus
@@ -190,8 +202,12 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
     package private(set) var copies: [CGDirectDisplayID: Copy] = [:]
     /// The name each copy's button was last given.
     private var said: [CGDirectDisplayID: String] = [:]
-    /// Displays showing a full-screen Space, read as Spaces change.
+    /// Displays in full screen, a Space's or an app's own, read as it changes.
     package private(set) var fullscreenDisplays: Set<CGDirectDisplayID> = []
+    /// The part of `fullscreenDisplays` that shows a full-screen Space.
+    package private(set) var fullscreenSpaceDisplays: Set<CGDirectDisplayID> = []
+    /// The copies an app's own full screen eased away, so they ease back in.
+    package private(set) var copiesHiddenByApp: Set<CGDirectDisplayID> = []
 
     private let environment: Environment
     private let island: () -> Island?
@@ -235,6 +251,7 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
         for (id, copy) in copies where !displays.contains(where: { $0.id == id }) {
             copy.host.close()
             copies[id] = nil
+            copiesHiddenByApp.remove(id)
         }
         let activity = island.activity
         // An island hidden until the pointer reaches it hides its copies as
@@ -256,9 +273,17 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
                 }
             }
             guard let base else {
-                if let copy = copies[id], copy.model.shown {
-                    copy.model.shown = false
-                    copy.host.hideCopy()
+                // A full-screen Space already slides the screen, so only an
+                // app's own full screen eases its copy away.
+                let byApp = id != island.displayID && fullscreenDisplays.contains(id)
+                    && !fullscreenSpaceDisplays.contains(id)
+                if !byApp { copiesHiddenByApp.remove(id) }
+                if let copy = copies[id] {
+                    if byApp { copiesHiddenByApp.insert(id) }
+                    if copy.model.shown {
+                        copy.model.shown = false
+                        copy.host.hideCopy(animated: byApp)
+                    }
                 }
                 continue
             }
@@ -273,6 +298,8 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
             let sharing: NSWindow.SharingType = environment.showsInCaptures() ? .readOnly : .none
             if copy.host.panelSharingType != sharing { copy.host.panelSharingType = sharing }
             let revealing = !copy.model.shown
+            // Where an app's full screen eased the copy away, it eases back in.
+            let afterApp = revealing && copiesHiddenByApp.remove(id) != nil
             let previous = copy.model.activity
             let title = environment.openTitle()
             guard copy.model.update(geometry: base, strip: strip, size: size, activity: activity) || revealing else {
@@ -288,8 +315,9 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
             said[id] = title
             copy.model.shown = true
             // Shown at once where the island just left, so the two trade places.
-            copy.host.presentCopy(size: size, geometry: base, animated: !revealing,
-                                  transitionContent: !revealing && previous != activity ? .replace : .none)
+            copy.host.presentCopy(size: size, geometry: base, animated: !revealing || afterApp,
+                                  transitionContent: !revealing && previous != activity ? .replace : .none,
+                                  revealFromHidden: afterApp)
             copy.host.setActivationArea(CGRect(origin: .zero, size: size), title: title,
                                         willPress: {}, activate: { [weak self] in self?.activate(id) })
             guard !copy.host.panelIsVisible else { continue }
@@ -330,13 +358,20 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
         guard !copies.isEmpty else { return }
         copies.values.forEach { $0.host.close() }
         copies.removeAll()
+        copiesHiddenByApp.removeAll()
     }
 
     /// Only the copies ask which displays are in full screen, and only when
     /// the island hides there; the island asks for its own display.
     package func updateFullscreenDisplays(showsOnAllDisplays: Bool) {
-        guard showsOnAllDisplays, environment.hidesInFullscreen() else { fullscreenDisplays = []; return }
-        fullscreenDisplays = environment.fullscreenDisplays(environment.displays().map(\.id))
+        guard showsOnAllDisplays, environment.hidesInFullscreen() else {
+            fullscreenDisplays = []
+            fullscreenSpaceDisplays = []
+            return
+        }
+        let ids = environment.displays().map(\.id)
+        fullscreenDisplays = environment.fullscreenDisplays(ids)
+        fullscreenSpaceDisplays = environment.fullscreenSpaceDisplays(ids)
     }
 
     /// A copy's closed surface: the strip of what the island shows, drawn

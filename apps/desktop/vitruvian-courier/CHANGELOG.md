@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.20](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.19...vitruvian-courier-v0.3.20) (2026-11-13)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** fit the New Label window's colours and icons inside it ([#4730](https://github.com/VitruvianSoftware/vitruvian-core/issues/4730)) ([c0710df](https://github.com/VitruvianSoftware/vitruvian-core/commit/c0710df308ce72ed7f9118510d81ff961e81493d))
+
 ## [0.3.19](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.18...vitruvian-courier-v0.3.19) (2026-11-13)
 
 

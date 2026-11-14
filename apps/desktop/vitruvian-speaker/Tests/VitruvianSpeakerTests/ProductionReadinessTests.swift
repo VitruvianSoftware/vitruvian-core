@@ -494,7 +494,7 @@ private final class SentinelClass {}
         try a.addBroadcastInstruction(for: .antigravity)
         try a.addBroadcastInstruction(for: .antigravity)
         let text = try String(contentsOf: home.appendingPathComponent(".gemini/AGENTS.md"), encoding: .utf8)
-        #expect(text.components(separatedBy: "vitruvian-speaker-broadcast").count == 2, "instruction present exactly once")
+        #expect(text.components(separatedBy: CodingAgent.broadcastInstruction).count == 2, "instruction present exactly once")
         st = a.status(of: .antigravity)
         #expect(st.configuredByInstruction)
         #expect(st.isConfigured)
@@ -515,7 +515,7 @@ private final class SentinelClass {}
         try a.addBroadcastInstruction(for: .opencode)
         try a.addBroadcastInstruction(for: .opencode)
         let opencodeMd = try String(contentsOf: home.appendingPathComponent(".config/opencode/AGENTS.md"), encoding: .utf8)
-        #expect(opencodeMd.components(separatedBy: "vitruvian-speaker-broadcast").count == 2)
+        #expect(opencodeMd.components(separatedBy: CodingAgent.broadcastInstruction).count == 2)
         #expect(a.status(of: .opencode).configuredByInstruction)
         #expect(a.status(of: .opencode).isConfigured)
     }

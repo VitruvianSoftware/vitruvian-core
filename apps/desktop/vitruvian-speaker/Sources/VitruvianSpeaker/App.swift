@@ -102,7 +102,12 @@ final class AppSide {
                 // If the user moved the app since installing the hook,
                 // re-point it; a choice of the app takes it back from the
                 // extension (design 7.6).
-                repairHooks: { AgentIntegration.shared.repairHookIfMoved(choice: $0) },
+                repairHooks: { choice in
+                    AgentIntegration.shared.repairHookIfMoved(choice: choice)
+                    AgentIntegration.shared.syncPlugins(config: ConfigManager.shared.config, installMissing: true, choice: choice)
+                    AgentIntegration.shared.migrateBroadcastInstructions()
+                    BroadcastCommandLink.ensureInstalled(targetPath: AgentIntegration.runningExecutable())
+                },
                 // Chat monitoring only runs when the user opted in earlier.
                 startMonitorIfConfigured: { ChatMonitorService.shared.startIfConfigured() },
                 stopMonitor: { ChatMonitorService.shared.stop() },

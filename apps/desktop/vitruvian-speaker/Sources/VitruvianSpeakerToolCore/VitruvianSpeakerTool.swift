@@ -329,7 +329,12 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
     /// nil when Vitruvian Speaker is not installed, so there is nothing to point at.
     public func agentIntegration(home: URL? = nil) -> AgentIntegration? {
         guard let program = parts.driver.program else { return nil }
-        return AgentIntegration(home: home ?? parts.home, executablePath: program.path, bootout: parts.launchctlBootout)
+        return AgentIntegration(
+            home: home ?? parts.home,
+            executablePath: program.path,
+            bootout: parts.launchctlBootout,
+            dataFolder: parts.profile?.settingsURL.deletingLastPathComponent()
+        )
     }
 
     /// The agents' state and the cleanup, which need no Vitruvian Speaker: the
@@ -564,6 +569,7 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
                 reload()
                 _ = try SettingsActions.applySet(key: SettingsCatalog.Key.forAgent(agent), value: String(isOn), to: &config)
                 try save()
+                syncAgentToggle(agent, isOn: isOn)
             case Pages.Block.slackEnabled?, Pages.Block.googleChatEnabled?, Pages.Block.beeperEnabled?:
                 // Saved, as Settings saves it: the engine follows the file
                 // and starts, stops or restarts its monitor to match
@@ -1141,6 +1147,7 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
         case Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?, Pages.Block.opencodeEnabled?:
             guard let isOn = event.isOn, let id = event.block, let agent = Pages.Block.agentEnabledAgent(id) else { return false }
             _ = try applySetting(SettingsCatalog.Key.forAgent(agent), String(isOn))
+            syncAgentToggle(agent, isOn: isOn)
         case Pages.Block.muteOwnMessages?:
             guard let isOn = event.isOn else { return false }
             _ = try applySetting(.muteOwnMessages, String(isOn))
@@ -1310,22 +1317,39 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
     /// after an update, so the replies are spoken again. When nobody has
     /// chosen (`choice == nil`), a hook that runs another program that is
     /// there is left alone, as is one that is not Vitruvian Speaker's program.
+    private var lastLoggedBroadcastLinkMessage: String?
+
+    private func syncAgentToggle(_ agent: CodingAgent, isOn: Bool) {
+        guard !parts.role().isQuiet, let integration = agentIntegration() else { return }
+        if !isOn {
+            try? integration.removeHook(for: agent)
+        } else if integration.status(of: agent).isInstalled {
+            try? integration.installHook(for: agent)
+        }
+    }
+
     private func repairStrandedHooks() {
         guard let program = parts.driver.program,
               !OtherDoorPresence.isInTrash(program.path),
               !OtherDoorPresence.isOnTemporaryVolume(program.path) else { return }
         let choice = parts.door?.read()?.chosen
-        let integration = AgentIntegration(home: parts.home, executablePath: program.path, bootout: parts.launchctlBootout)
-        for agent in CodingAgent.allCases where agent.supportsHook {
-            let status = integration.status(of: agent)
-            guard case .stale = status.hook, let runs = status.hookProgram, AgentIntegration.isVitruvianSpeakerProgram(runs),
-                  runs == program.path || choice == .extension || OtherDoorPresence.isInTrash(runs) || !FileManager.default.fileExists(atPath: runs) else { continue }
-            do {
-                try integration.installHook(for: agent)
-            } catch {
-                parts.link.log("the \(agent.displayName) hook could not be pointed at this Vitruvian Speaker: \(error.localizedDescription)")
-            }
+        let integration = AgentIntegration(
+            home: parts.home,
+            executablePath: program.path,
+            bootout: parts.launchctlBootout,
+            dataFolder: parts.profile?.settingsURL.deletingLastPathComponent()
+        )
+        BroadcastCommandLink.ensureInstalled(home: parts.home, targetPath: program.path) { [self] message in
+            guard message != lastLoggedBroadcastLinkMessage else { return }
+            lastLoggedBroadcastLinkMessage = message
+            parts.link.log(message)
         }
+        integration.syncPlugins(
+            config: config,
+            installMissing: !parts.otherInstalled() || choice == .extension,
+            choice: choice
+        )
+        integration.migrateBroadcastInstructions()
     }
 
     /// A side that runs: the hook, the chat monitor, listening.

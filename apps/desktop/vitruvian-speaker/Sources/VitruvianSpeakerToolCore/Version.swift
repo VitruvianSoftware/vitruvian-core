@@ -19,7 +19,7 @@
 // SOFTWARE.
 
 /// The tool's version, which is Vitruvian Speaker's: its manifest says it too,
-/// and `tool/version_test.py` holds the three to each other.
+/// and `atrium-extension/src/version_test.rs` holds the three to each other.
 public enum ToolVersion {
     /// Auto-managed by release-please. Do not edit manually.
     public static let current = "1.42.1" // x-release-please-version

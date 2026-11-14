@@ -23,37 +23,15 @@ Message [@userinfobot](https://t.me/userinfobot) on Telegram — it will reply
 with your numeric user ID. This is used to restrict the bot so only you can use
 it.
 
-### Step 3: Configure the Bot
+### Step 3: Configure & Start the Bot in the Vitruvian Code App
 
-Copy `.env.example` to `.env` in the plugin directory and fill in:
+1. Open **Vitruvian Code** from Applications (it bundles the Rust `bot-engine` binary in `Contents/Helpers/bot-engine` — no Node.js installation required).
+2. Open **Settings** from the menu bar app, paste your **Telegram Bot Token** and **Allowed User IDs**, choose your default **Working Directory**, and click **Save** (writes `~/.config/vitruvian-code/.env`).
+3. Click **Start** in the Vitruvian Code app menu to start the bundled bot.
 
-```bash
-TELEGRAM_BOT_TOKEN="<your-bot-token>"
-ALLOWED_USER_IDS="<your-user-id>"
-AGY_WORKING_DIR="<project-directory>"
-AGY_APPROVAL_MODE="yolo"
-```
+> **Contributors:** To run the Rust bot directly from the monorepo checkout during development, run `bazel run //apps/desktop/vitruvian-code/src:bot`.
 
-### Step 4: Build the Rust Bot
-
-The Telegram bot is a native Rust binary built with Bazel (`src/BUILD`: `bot-engine`, aliased as `bot`; source under `src/rs/`):
-
-```bash
-bazel build //apps/desktop/vitruvian-code/src:bot
-```
-
-### Step 5: Run & Verify the Bot
-
-Load `.env` from the directory where you run the binary (or export its variables in your shell) and run the bot in the foreground:
-
-```bash
-bazel run //apps/desktop/vitruvian-code/src:bot -- --dry-run   # Verify config & command count
-bazel run //apps/desktop/vitruvian-code/src:bot               # Start polling Telegram (Ctrl+C to stop)
-```
-
-Use `-- --print-agy-flags "<prompt>"` to inspect the `agy` CLI flags generated for a prompt.
-
-### Step 6: Test It
+### Step 4: Test It
 
 Open Telegram, find your bot, and send it a message like "hello". You should get
 a response from agy.
@@ -80,17 +58,14 @@ a response from agy.
 
 ## Managing the Bot
 
-The Rust `bot-engine` (`//apps/desktop/vitruvian-code/src:bot`) runs in the foreground (stdout/stderr):
-
-- **Start**: `bazel run //apps/desktop/vitruvian-code/src:bot` (reads `.env` from the current directory and process environment)
-- **Stop**: `Ctrl+C` in the running terminal (or `pkill -f bot-engine` if backgrounded)
-- **Verify config (dry run)**: `bazel run //apps/desktop/vitruvian-code/src:bot -- --dry-run`
-- **Inspect CLI flags**: `bazel run //apps/desktop/vitruvian-code/src:bot -- --print-agy-flags "hi"`
+- **Start / Stop / Restart**: Use the controls in the **Vitruvian Code** menu bar app.
+- **Status & Logs**: Inspect the running indicator and recent log output inside the **Vitruvian Code** menu bar app (`~/Library/Application Support/Vitruvian Code/bot.log`).
+- **Contributor dev run**: `bazel run //apps/desktop/vitruvian-code/src:bot`
 
 ## How It Works
 
 ```
-Telegram → Bot (Rust, src/rs/) → agy -p "prompt" --output-format stream-json → reply
+Telegram → Bundled Rust Bot (Contents/Helpers/bot-engine) → agy -p "prompt" --output-format json (stream-json when streaming) → reply
 ```
 
 Each Telegram message spawns `agy -p` in print mode. Conversations are tracked
@@ -102,6 +77,8 @@ splitting for long outputs.
 
 - **Empty responses**: The working directory may not have the right context. Use
   `/workdir /path/to/project` to change it.
-- **Double messages**: Make sure only one `bot-engine` instance is running (`pgrep -fl bot-engine`).
+- **Double messages**: Make sure only one bot instance is running. Stop and
+  restart from the **Vitruvian Code** menu bar app so PID tracking stays clean.
 - **Auth errors**: Ensure your Telegram user ID is in `ALLOWED_USER_IDS`.
-- **Formatting issues**: If markdown doesn't render, check the bot's stderr/stdout output for HTML parse warnings.
+- **Formatting issues**: If markdown doesn't render, open the bot log from the
+  **Vitruvian Code** menu bar app to inspect HTML parse warnings.

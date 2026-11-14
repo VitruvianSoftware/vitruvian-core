@@ -5,6 +5,76 @@ import AppKit
 import CoreGraphics
 import Foundation
 
+/// Carbon callbacks own input before their replay reaches the tap. Cancelling
+/// that interval invalidates every queued press without releasing a newer one.
+package struct SwitcherSecureInputReplayState {
+    package private(set) var generation: UInt64 = 0
+    package private(set) var pendingCount = 0
+    package private(set) var shortcut: GlobalShortcut?
+    package var hasPending: Bool { pendingCount > 0 }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
+
+    package mutating func enqueue(shortcut: GlobalShortcut) -> UInt64 {
+        if !hasPending { self.shortcut = shortcut }
+        pendingCount += 1
+        return generation
+    }
+
+    package func contains(_ generation: UInt64) -> Bool {
+        self.generation == generation && hasPending
+    }
+
+    package mutating func finish(_ generation: UInt64) {
+        guard contains(generation) else { return }
+        pendingCount -= 1
+        if !hasPending { shortcut = nil }
+    }
+
+    package mutating func invalidate() {
+        generation &+= 1
+        pendingCount = 0
+        shortcut = nil
+    }
+}
+
+/// A shortcut already owned while the window list is being assembled. The
+/// tap can cancel it or add navigation without waiting for Accessibility.
+package struct SwitcherPendingSessionStart {
+    package let generation: UInt64
+    package let shortcut: GlobalShortcut
+    package let scope: SwitcherSessionScope
+    package let reversed: Bool
+    package var additionalNavigation = 0
+    package var commitWhenReady = false
+    package var isSecureInputReplay = false
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(generation: UInt64, shortcut: GlobalShortcut, scope: SwitcherSessionScope,
+                 reversed: Bool, additionalNavigation: Int = 0, commitWhenReady: Bool = false,
+                 isSecureInputReplay: Bool = false) {
+        self.generation = generation
+        self.shortcut = shortcut
+        self.scope = scope
+        self.reversed = reversed
+        self.additionalNavigation = additionalNavigation
+        self.commitWhenReady = commitWhenReady
+        self.isSecureInputReplay = isSecureInputReplay
+    }
+
+    package mutating func observeModifiers(_ flags: CGEventFlags) {
+        if !shortcut.requiredModifiersHeld(in: flags) { commitWhenReady = true }
+    }
+
+    /// Carbon is delivered on main, so modifier-up can reach the tap before
+    /// its queued press creates this state. Check again before showing UI;
+    /// normal tap events retain their ordered, event-based modifier handling.
+    package mutating func reconcileReplayedModifiers(_ flags: @autoclosure () -> CGEventFlags) {
+        if isSecureInputReplay { observeModifiers(flags()) }
+    }
+}
+
 package struct SwitcherScrollNavigation {
     package static let gestureStep: Double = 30
     private var accumulated: Double = 0
@@ -1999,9 +2069,10 @@ package enum SwitcherSupport {
     ///
     /// Secure Event Input hides every key from event taps, the switcher's
     /// included, while macOS still answers its own switcher keys (measured on
-    /// 27.2: a session tap saw no key while another process held it). Asking
-    /// for nothing then keeps ⌘Tab working instead of leaving it dead until
-    /// the app holding it lets go.
+    /// 27.2: a session tap saw no key while another process held it). Callers
+    /// pass true only when no Carbon stand-in is registered, and asking for
+    /// nothing then keeps ⌘Tab working instead of leaving it dead until the
+    /// app holding it lets go.
     package static func nativeHotkeyIDs(takeOverSystemShortcuts: Bool,
                                 secureInputEnabled: Bool,
                                 appsShortcut: GlobalShortcut,
@@ -2019,6 +2090,83 @@ package enum SwitcherSupport {
                                            windowShortcut: windowShortcut,
                                            allWindowsShortcut: allWindowsShortcut,
                                            nativeShortcuts: nativeShortcuts).map(\.rawValue))
+    }
+
+    package static func secureInputHotKeysWanted(canStartSession: Bool, capturingShortcut: Bool,
+                                                 takeOverSystemShortcuts: Bool, secureInputEnabled: Bool,
+                                                 registrationFailed: Bool) -> Bool {
+        canStartSession && !capturingShortcut && takeOverSystemShortcuts
+            && secureInputEnabled && !registrationFailed
+    }
+
+    package static func secureInputHotKeyShortcuts(appsShortcut: GlobalShortcut,
+                                                   windowShortcut: GlobalShortcut,
+                                                   allWindowsShortcut: GlobalShortcut? = nil) -> [GlobalShortcut] {
+        var shortcuts: [GlobalShortcut] = []
+        for shortcut in [appsShortcut, windowShortcut] + [allWindowsShortcut].compactMap({ $0 }) {
+            var variants = [shortcut]
+            if shortcut.shiftIsNavigationModifier {
+                variants.append(GlobalShortcut(keyCode: shortcut.keyCode,
+                                               modifiers: shortcut.modifiers.union(.shift)))
+            }
+            for variant in variants where !shortcuts.contains(variant) {
+                shortcuts.append(variant)
+            }
+        }
+        return shortcuts
+    }
+
+    /// Session-only guards. Carbon consumes these without replaying a letter
+    /// action: secure input still has no search or Q/W support. Include every
+    /// extra modifier and the layout's Q/W positions, so Shift-Command-Q and
+    /// layouts such as AZERTY cannot send an action to the foreground app.
+    package static func secureInputActionShortcuts(
+        for shortcut: GlobalShortcut,
+        excluding registered: Set<GlobalShortcut> = [],
+        keyLabel: (Int64, Bool, Bool) -> String? = {
+            GlobalShortcut.layoutKeyLabel(for: $0, usesCommand: $1, usesShift: $2)
+        }
+    ) -> [GlobalShortcut] {
+        var shortcuts: [GlobalShortcut] = []
+        var actionKeysByLayout: [GlobalShortcutModifiers: [Int64]] = [:]
+        for mask in 1...GlobalShortcutModifiers.validMask.rawValue {
+            let modifiers = GlobalShortcutModifiers(rawValue: mask)
+            guard modifiers.intersection(shortcut.modifiers) == shortcut.modifiers else { continue }
+            // Control and Option do not select a different character table.
+            // Resolve each table once before this Carbon callback returns.
+            let layout = modifiers.intersection([.command, .shift])
+            if actionKeysByLayout[layout] == nil {
+                actionKeysByLayout[layout] = (Int64(0)...127).filter { keyCode in
+                    if keyCode == USKeyPosition.q || keyCode == USKeyPosition.w { return true }
+                    let label = keyLabel(keyCode, layout.contains(.command), layout.contains(.shift))?.lowercased()
+                    return label == "q" || label == "w"
+                }
+            }
+            for keyCode in actionKeysByLayout[layout] ?? [] {
+                let action = GlobalShortcut(keyCode: keyCode, modifiers: modifiers)
+                if !registered.contains(action) { shortcuts.append(action) }
+            }
+        }
+        return shortcuts
+    }
+
+    /// All-or-nothing registration is shared by the triggers and the session
+    /// guards. A partial set must never be presented as complete coverage.
+    package static func registerSecureInputHotKeys<Reference>(
+        _ shortcuts: [GlobalShortcut],
+        register: (GlobalShortcut, UInt32) -> Reference?,
+        unregister: (Reference) -> Void
+    ) -> [UInt32: (ref: Reference, shortcut: GlobalShortcut)]? {
+        var registrations: [UInt32: (ref: Reference, shortcut: GlobalShortcut)] = [:]
+        for (index, shortcut) in shortcuts.enumerated() {
+            let id = UInt32(index + 1)
+            guard let ref = register(shortcut, id) else {
+                for value in registrations.values { unregister(value.ref) }
+                return nil
+            }
+            registrations[id] = (ref, shortcut)
+        }
+        return registrations
     }
 
     /// Mirrors the event tap's `allowingExtraShift` match: Shift reverses a

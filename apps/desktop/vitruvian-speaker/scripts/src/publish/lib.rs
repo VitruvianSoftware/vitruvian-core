@@ -285,11 +285,11 @@ pub fn zip_tool_bundle(
         check_universal_archs(tool_bin, "tool binary")?;
     }
 
-    let manifest = app_dir.join("tool/vitruvian-tool.json");
+    let manifest = app_dir.join("atrium-extension/vitruvian-tool.json");
     let manifest_version = read_manifest_version(&manifest)?;
     if manifest_version != version {
         return Err(format!(
-            "tool/vitruvian-tool.json says {manifest_version}, the release is {version}"
+            "atrium-extension/vitruvian-tool.json says {manifest_version}, the release is {version}"
         ));
     }
 

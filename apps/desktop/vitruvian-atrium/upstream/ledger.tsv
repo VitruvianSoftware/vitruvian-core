@@ -535,13 +535,13 @@ a5da7633e09d0ebbf5b5607c0434ded28a239469	bd7eb12c8213b0def5d123d5bbbabfbaacb2881
 4632b3a889653c7e75e8bb81b50e0cb8b38b9b9d	67483b80d0183fea6889c34664fd50e0f6432f33	2026-11-05	ported	#4710	fix(clipboard): copy without pasting into remote desktop sessions (#3783)
 da971fd4b7923f6db0bfced82fb25765a4ad7a61	3cb625882722e2adec5720e9bb7512c1061d3164	2026-11-04	ported	#4710	fix(display): include the host address in the DDC read checksum (#3708)
 5b0a8b44bd25b79aac13e20d1e955c561b5d28b2	5a2f0d4cd0aceee7e3bcbb4edb3b733e5a55d257	2026-11-05	ported	#4710	fix(mic-mute): zero input volume so capture actually stops (#3772)
-c5930bfc6fc64d48337c7717ddb7891826f7a54a	0efb0fdd1c20869126b6b4cf18a31ca7c9b10a97	2026-11-04	pending	-	fix(notch): hide over an app's own full screen on every display (#3686)
+c5930bfc6fc64d48337c7717ddb7891826f7a54a	0efb0fdd1c20869126b6b4cf18a31ca7c9b10a97	2026-11-04	ported	#4732	fix(notch): hide over an app's own full screen on every display (#3686)
 3afcd0222dd1dfc8b76c8c3782599cba60e44b62	ae744230d0f8c042f5f66a72653270b34c96f6c7	2026-11-04	ported	#4710	fix(recorder): stop compiling GPU programs for every exported frame (#3648)
 b1ffc9d9010eb567d6ebfdd3af26224e322726b7	2cdc059fc51cc59b3eb915ca25eb5153e36fd49b	2026-11-04	ported	#4710	fix(mixer): slide the volume across a block instead of stepping it (#3538)
 73b4846f52a938e1b924abae285813b702459980	801eafc241a6a2ac7342bce12fcf799681878ee4	2026-11-05	pending	-	perf(switcher): reduce quick-switch latency and minimized-window flashes (#3570)
 d257dfd208634981cef9856e9bd291ec6eab7966	9eca256c08e3eb7df329dbc402a6538df4ecc3d7	2026-11-05	ported	#4710	fix(mouse): focus without raising again when the no-raise path fails (#3737)
 2806d2bcc11f52de78f5786d6e618df147dea414	3968aeb37e67e41b3e676f76dc46b83ab8cb4650	2026-11-05	ported	#4710	fix(window-layout): resolve gesture targets when child hit tests fail (#3773)
-ab7e57131ebbb86135d09917c2b81b8a165f69be	f3d73a7c17384c732a43c6b5ce580b008837fc79	2026-11-04	pending	-	fix(switcher): keep the shortcut working under secure input (#3643)
+ab7e57131ebbb86135d09917c2b81b8a165f69be	f3d73a7c17384c732a43c6b5ce580b008837fc79	2026-11-04	ported	#4732	fix(switcher): keep the shortcut working under secure input (#3643)
 3857e560d6e19b3170d432c2038c60b542810852	8aacbcd76b6411136e9b17d41f00af995cd6cba2	2026-11-04	skipped	touches only upstream-only paths	docs: credit the integrated fixes in unreleased notes
 cbecb6278d14d3d33791d47f71293c0709fbd58a	0a7e25290ae936b4adaad10e96c5dea573dd9d33	2026-11-04	skipped	only edits the oriented/edge recorder test fixtures this fork left out (generated copies)	test(recorder): preserve fixture contrast across H.264 encoders
 da1e5d52305b9ff1481f15fb97b84ecb82039ec0	5c0b65b7b2f25677ecd63d8fbde0916cf55a4133	2026-11-06	ported	#4710	fix(command-bar): outline the selected row so it reads on dark surfaces (#3835)
@@ -576,7 +576,7 @@ d110b626f4da6ba637ee4222347058d7e857bf5f	c4baddc3082d83adf3ec3cea6aea3987715a14a
 b4d9318aaaa3062e0250456157a46796265154ea	cc8bae83de43e74324e2986f6a743119a1a33687	2026-11-10	ported	#4719	fix(notch): keep horizontal swipes from changing mixer levels (#3930)
 b891ebd4678db36d500ca7fc4a53363af9703da7	f59bbc4551b9eac3428904caa2f60e88627f8cde	2026-11-10	ported	#4719	fix(super-key): preserve Caps Lock after a solo tap (#3870)
 ec25fc0b91c1a58a66d8e8720ef2a7efa181063b	b25b30c0dcaee5482644425eb7aef81427b89dc7	2026-11-10	ported	#4719	feat(screenshot): capture a scrolling window automatically (#3798)
-cfe4e89d035a15be42ff93b7b0e5b14170f466d1	d2a26b1e0f87f8f8ff2314b7ae7c1b3bd70d9380	2026-11-10	pending	-	feat(uninstaller): offer a leftovers review after moving an app to Trash (#3879)
+cfe4e89d035a15be42ff93b7b0e5b14170f466d1	d2a26b1e0f87f8f8ff2314b7ae7c1b3bd70d9380	2026-11-10	ported	#4732	feat(uninstaller): offer a leftovers review after moving an app to Trash (#3879)
 15bd02d30521605b7ae592cd688b5af1f3835eb7	77a73cb4995f85bd92efa8e9273d746b22940fb1	2026-11-10	ported	#4719	fix(keep-awake): restore manual sessions on relaunch (#3937)
 49ffe9283676badc10b189b39817744c9c04f484	ccee56ccccb9976216f10633dc739cf3d89d443b	2026-11-10	ported	#4725	feat(display): configure monitor speaker volume steps and limits (#3257)
 375c57b1024a5f460c8c2c161f9153f0484c53ef	037549e1abc37ee4d98534c4cb000798e983337b	2026-11-10	ported	#4727	feat(scroll): speed up the mouse wheel while a modifier is held (#3769)
@@ -593,7 +593,7 @@ a3f776d611d7e4c79e9f2e8fe946a44c676ccf39	71a981afe7ba9fe467d766f8b4ebb8544b20706
 7c5a34f628151e09964e1b4776013ce431126dcf	e6d868f585476ee423385fa96b8f8fdcf360227f	2026-11-10	ported	#4723	fix(notch): remember notification center focus during banner detection
 d461c2edd6bcb98d5e470d35737f26ce79f7916a	c807ee467784990755f7bd52b60b1df0693d1086	2026-11-10	ported	#4723	fix(recorder): recheck GIF copy cancellation and reuse the export plan
 7415c09f9e629e7d286ff7da984e3a3d3e42c76d	9f338e9c6258ecd1dfbe93993b3dd28d9f98f45b	2026-11-10	ported	#4723	fix(window-layout): require a drag before restoring a snapped window
-c3877576be56187c9f74e4b9735db96ca3f401b4	f416da09963d3de5970a08ddeafa14d3d48e0a69	2026-11-10	pending	-	perf(switcher): reuse key labels during secure shortcut registration
+c3877576be56187c9f74e4b9735db96ca3f401b4	f416da09963d3de5970a08ddeafa14d3d48e0a69	2026-11-10	ported	#4732	perf(switcher): reuse key labels during secure shortcut registration
 772c8918c303eb1c96f550467bbb9acf4ae39cb5	304c3b9b29e43df518b6574d420a83e3d5632c94	2026-11-10	skipped	test-only: restores the registration domain in upstream's generated-fixture suites (QuitAppsRuntimeTests, ShortcutClearingTests) this fork does not have	test: isolate registered preferences between suites
 cb8ba92a7f36a3bf2c7c138032e3444bbf896ecf	65320ee832a6165bb8daa1df85b8909a092597e1	2026-11-10	ported	#4723	fix(settings): preserve local preferences when loading partial configuration
 4baad551370fb68bf3ae0ed1c7c9cfd73b564dfd	b43564d9c79be6e8deb88e58e9c5ae25bfbaee90	2026-11-10	ported	#4723	fix(settings): find automatic scrolling and trash cleanup controls

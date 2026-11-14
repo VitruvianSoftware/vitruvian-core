@@ -1840,6 +1840,9 @@ public enum Pages {
             if status.installed, let command = status.agents.hookCommands[st.agent] {
                 text(UIText.plain(command), style: .caption)
             }
+            if st.agent == .claudeCode && st.usingSettingsFallback {
+                text("Installed in ~/.claude/settings.json because the claude CLI was not found (skill and plugin bin require the claude CLI).", style: .caption)
+            }
             if st.configuredByInstruction {
                 text(UIText.plain(st.hook == .installed
                                   ? "Your \(st.agent.instructionFileName) also tells \(name) to broadcast on its own. With the hook installed, remove that instruction to avoid hearing replies twice."

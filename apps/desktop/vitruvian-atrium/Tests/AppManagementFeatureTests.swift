@@ -510,6 +510,25 @@ enum AppManagementFeatureTests {
         suite.expect(Bundle(url: flatApp)?.bundleIdentifier == "com.vendor.flat"
                && UninstallerSupport.selection(for: flatApp) == nil,
                "a bare iPhone-style bundle with no Contents/Info.plist is refused")
+        // Bundle(url:) caches by path for the whole process, so a different
+        // app that later sits at a path already read (a Trash name reused
+        // after Empty Trash) must still be read from disk.
+        let reusedApp = selectionFixture.appendingPathComponent("Reused.app", isDirectory: true)
+        writeInfo("com.vendor.first", to: reusedApp.appendingPathComponent("Contents/Info.plist"))
+        let firstReused = UninstallerSupport.selection(for: reusedApp)?.bundleID
+        _ = Bundle(url: reusedApp)?.bundleIdentifier
+        try? FileManager.default.removeItem(at: reusedApp)
+        writeInfo("com.vendor.second", to: reusedApp.appendingPathComponent("Contents/Info.plist"))
+        suite.expect(firstReused == "com.vendor.first"
+               && UninstallerSupport.selection(for: reusedApp)?.bundleID == "com.vendor.second"
+               && UninstallerSupport.bundleIdentifier(of: reusedApp) == "com.vendor.second",
+               "a different app at a path already read is selected by its own bundle ID")
+        let reviewed = UninstallerSupport.selection(for: reusedApp)
+        suite.expect(reviewed?.isCurrent == true, "the current selection matches its app on disk")
+        let reusedInfo = reusedApp.appendingPathComponent("Contents/Info.plist")
+        try? Data(contentsOf: reusedInfo).write(to: reusedInfo, options: .atomic)
+        suite.expect(reviewed?.isCurrent == false,
+               "replacing the Info.plist invalidates the earlier selection")
         // An iPhone or iPad app installed on a Mac with Apple silicon (#1582):
         // the App Store keeps the real bundle in Wrapper with its Info.plist at
         // the top, and Bundle reads it through the WrappedBundle link.
@@ -736,6 +755,14 @@ enum AppManagementFeatureTests {
                 URL(fileURLWithPath: "/Users/test/Downloads/Editor.app"),
                 home: URL(fileURLWithPath: "/Users/test")),
                "embedded helpers belong to the selected app while unregistered download copies never own shared data")
+        let trashHome = URL(fileURLWithPath: "/Users/test")
+        suite.expect(!UninstallerSupport.applicationIsInTrustedInstallRoot(
+                URL(fileURLWithPath: "/Users/test/.Trash/Editor.app"), home: trashHome)
+            && !UninstallerSupport.applicationIsInTrustedInstallRoot(
+                URL(fileURLWithPath: "/Users/test/.Trash/Old Stuff/Editor.app"), home: trashHome)
+            && !UninstallerSupport.isInTrash(
+                URL(fileURLWithPath: "/Users/test/.Trash"), home: trashHome),
+               "a Trash path alone never grants ownership of shared data")
         let uninstallCandidateIDs: Set<String> = ["com.vendor.editor", "com.vendor.editor.helper"]
         suite.expect(UninstallerSupport.exclusiveBundleIDs(
                    uninstallCandidateIDs,
@@ -1069,22 +1096,47 @@ enum AppManagementFeatureTests {
         }
         let rosterSelection = UninstallerSupport.selection(for: rosterApp)
         var rosterBuilds = 0
-        func rosterRemoval(appIdentity: UninstallerSupport.FileIdentity?) -> AppUninstaller.Removal {
-            AppUninstaller.Removal(chosen: [], allowedPaths: [], targetURL: rosterSelection?.url,
-                                   targetIdentity: appIdentity, infoIdentity: rosterSelection?.infoIdentity,
+        // One chosen row claiming the app's own data: without a row to claim,
+        // no removal reads the roster at all.
+        let rosterRow = AppUninstaller.Leftover(
+            url: rosterFixture.appendingPathComponent("com.vendor.roster.plist"),
+            category: .preferences, size: 1, ownerBundleID: "com.vendor.roster", ownerGroupID: nil,
+            evidenceBundleID: nil, confidence: .exact, fileIdentity: .init(device: 0, inode: 7))
+        func rosterRemoval(_ selection: UninstallerSupport.Selection) -> AppUninstaller.Removal {
+            AppUninstaller.Removal(chosen: [rosterRow], allowedPaths: [], selection: selection,
                                    alreadyFreed: 0, packageRemovedApplication: false)
         }
-        _ = AppUninstaller.remove(rosterRemoval(appIdentity: UninstallerSupport.FileIdentity(device: 0, inode: 0))) { _ in
-            rosterBuilds += 1
-            return []
+        // The same app at the same path, but not the bundle that was selected.
+        if let rosterSelection {
+            let replaced = UninstallerSupport.Selection(
+                bundleID: rosterSelection.bundleID, url: rosterSelection.url,
+                identity: UninstallerSupport.FileIdentity(device: 0, inode: 0),
+                infoIdentity: rosterSelection.infoIdentity)
+            _ = AppUninstaller.remove(rosterRemoval(replaced)) { _ in
+                rosterBuilds += 1
+                return []
+            }
         }
         let rosterBuildsForReplacedApp = rosterBuilds
-        _ = AppUninstaller.remove(rosterRemoval(appIdentity: rosterSelection?.identity)) { _ in
-            rosterBuilds += 1
-            return []
+        if let rosterSelection {
+            _ = AppUninstaller.remove(rosterRemoval(rosterSelection)) { _ in
+                rosterBuilds += 1
+                return []
+            }
         }
         suite.expect(rosterSelection != nil && rosterBuildsForReplacedApp == 0 && rosterBuilds == 1,
                "a removal builds the known-application roster only when it may claim shared data")
+        // A removal with nothing to claim never pays for the roster either.
+        if let rosterSelection {
+            var emptyBuilds = 0
+            _ = AppUninstaller.remove(
+                AppUninstaller.Removal(chosen: [], allowedPaths: [], selection: rosterSelection,
+                                       alreadyFreed: 0, packageRemovedApplication: false)) { _ in
+                emptyBuilds += 1
+                return []
+            }
+            suite.expect(emptyBuilds == 0, "a removal with no shared-data row skips the roster")
+        }
         try? FileManager.default.removeItem(at: rosterFixture)
         // A row the Trash move did not take counts as freed only once its
         // absence is confirmed. `UninstallerFlowTests` drives the package

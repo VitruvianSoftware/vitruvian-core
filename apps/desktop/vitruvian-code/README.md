@@ -12,7 +12,7 @@ The bot acts as a thin bridge between the Telegram Bot API and a locally-running
 
 ```mermaid
 flowchart LR
-    A[Telegram API] <-->|long-poll| B[Bot Server\nRust bot-engine]
+    A[Telegram API] <-->|long-poll| B[Bundled Rust Bot\nbot-engine]
     B -->|child process| C[AI CLI\nagy/Custom]
     B <--> D[(Session Store\nin-mem)]
     C <--> E[(Local File System)]
@@ -31,9 +31,10 @@ flowchart LR
 
 | Decision | Rationale |
 |----------|-----------|
+| **Bundled Rust binary (`Contents/Helpers/bot-engine`)** | Self-contained native executable — no external Node.js or runtime dependencies needed |
 | **Long polling** (not webhooks) | No public URL or TLS certificate required — runs entirely on your local machine |
 | **Child process per prompt** | The CLI is stateless per invocation; session continuity is handled via CLI flags (`--resume`) |
-| **In-memory session store** | Simple `Map<chatId, sessionId>` — no database needed for single-user use |
+| **In-memory session store** | Simple per-chat session store persisted on disk — no database needed for single-user use |
 | **JSON output format** | Structured parsing of CLI responses instead of fragile text scraping |
 | **`yolo` approval mode** | Auto-approves all tool actions for unattended operation (configurable) |
 
@@ -45,30 +46,33 @@ flowchart LR
 
 ```mermaid
 graph TD
-    A[src/rs/main.rs<br>Entry point, polling loop] --> B[src/rs/bot.rs<br>Command router & Telegram API]
+    M[src/rs/main.rs<br>CLI entry point, --dry-run] --> B[src/rs/bot.rs<br>Telegram polling & orchestration]
     B --> C[src/rs/agy.rs<br>CLI Process & Provider Logic]
     B --> D[src/rs/formatter.rs<br>Telegram Message Formatting]
     B --> E[src/rs/sessions.rs<br>Session Management]
+    M --> L[src/rs/lib.rs<br>Shared config & JSON helpers]
 ```
 
 ### Module Details
 
-#### `src/rs/main.rs` & `src/rs/bot.rs` — Bot Server & Orchestration
+#### `src/rs/main.rs` & `src/rs/bot.rs` — Rust Bot Engine & Orchestration
 
-The main Rust entry point (`//apps/desktop/vitruvian-code/src:bot-engine`, aliased as `//apps/desktop/vitruvian-code/src:bot`). Initializes `BotEngine`, loads configuration, and polls Telegram.
+The compiled `bot-engine` binary entry point (`//apps/desktop/vitruvian-code/src:bot-engine`), bundled directly inside `Vitruvian Code.app/Contents/Helpers/bot-engine`.
 
 **Responsibilities:**
-- Load configuration from `.env` and process environment variables (`BotEngine::from_process_env`)
-- Apply authentication check (`ALLOWED_USER_IDS` whitelist)
-- Register and dispatch bot commands (`/start`, `/new`, `/session`, `/help`, etc.)
-- Forward incoming text messages to `AgyBridge`
-- Format and send responses back, splitting if needed
+- Load configuration from `.env` in the bot working directory (`~/.config/vitruvian-code/.env`) overlaid with process environment variables (`src/rs/lib.rs`)
+- Authenticate with Telegram Bot API via long polling (`src/rs/bot.rs`)
+- Apply user ID whitelist middleware (`ALLOWED_USER_IDS`)
+- Register bot commands (`/start`, `/new`, `/session`, `/help`, etc.)
+- Forward incoming text messages to the AI CLI runner (`src/rs/agy.rs`)
+- Format and split long responses for Telegram (`src/rs/formatter.rs`)
+- Support `--dry-run` config validation and graceful shutdown on `SIGINT`/`SIGTERM`
 
 **Middleware pipeline:**
 
 ```mermaid
 flowchart TD
-    A[Incoming Update] --> B{Auth Check}
+    A[Incoming Update] --> B{Auth Middleware}
     B -->|Reject| C["Not authorized message"]
     B -->|Pass| D[Command or Text Handler]
 ```
@@ -81,19 +85,9 @@ Manages spawning of AI CLI child processes and tracking sessions per chat.
 - Spawn `agy -p "<prompt>"` or custom provider using `CLI_COMMAND_TEMPLATE`
 - Tokenize and inject `{prompt}` and `{model}` into custom provider arguments
 - Set working directory to `AGY_WORKING_DIR`
-- If a session exists for the chat, pass it to context continuity (e.g., via `--resume`)
-- Collect stdout/stderr buffers and parse on process exit
-- Stream support (`executePromptStreaming`) and multi-strategy JSON parsing
+- If a session exists for the chat, pass it for context continuity (e.g., via `--resume`)
+- Collect stdout/stderr and parse JSON output on process completion
 - Track active running processes to allow prompt cancellation
-
-**Exported API:**
-
-| Function | Description |
-|----------|-------------|
-| `executePrompt(prompt, options)` | Run a prompt and wait, return `{ text, sessionId }` |
-| `executePromptStreaming(prompt, options)` | Run prompt with callback chunks |
-| `cancelPrompt(chatId)` | Terminate a running process for a chat |
-| `clearSession(chatId)` | Forget session for a chat |
 
 **CLI invocation example:**
 ```bash
@@ -160,12 +154,10 @@ flowchart LR
 ## Security Model
 
 ```mermaid
-block-beta
-    columns 1
-    A("1. Telegram Bot Token (only you know it)"):1
-    B("2. User ID Whitelist (ALLOWED_USER_IDS)"):1
-    C("3. Local-only execution (no public server)"):1
-    D("4. Process-level sandboxing (optional -s)"):1
+flowchart TD
+    A["1. Telegram Bot Token (only you know it)"] --> B["2. User ID Whitelist (ALLOWED_USER_IDS)"]
+    B --> C["3. Local-only execution (no public server)"]
+    C --> D["4. Process-level sandboxing (optional -s)"]
 ```
 
 | Layer | Protection |
@@ -191,51 +183,39 @@ block-beta
 
 Message [@userinfobot](https://t.me/userinfobot) on Telegram — it will reply with your user ID.
 
-### 3. Configure
+### 3. Install & Run the Vitruvian Code App
+
+Download the latest DMG from the [Releases page](https://github.com/VitruvianSoftware/vitruvian-code/releases), drag **Vitruvian Code** to **Applications**, and open it.
+
+Vitruvian Code bundles the native Rust bot (`Contents/Helpers/bot-engine`) inside the app bundle — no Node.js or external package installation is required.
+
+1. Open **Settings** from the menu bar icon.
+2. Paste your `TELEGRAM_BOT_TOKEN`, `ALLOWED_USER_IDS`, and working directory, then click **Save** (writes `~/.config/vitruvian-code/.env`).
+3. Click **Start** in the menu bar popover to start or stop the bot and view logs.
+
+See [macOS Menu Bar App](#macos-menu-bar-app) below for installation and release signing details.
+
+### 4. Contributor Development Path (Monorepo)
+
+Contributors developing the Rust bot engine directly from `vitruvian-core` can run it via Bazel in their bot directory (where `.env` lives):
 
 ```bash
-cp .env.example .env
+bazel run //apps/desktop/vitruvian-code/src:bot
 ```
 
-Edit `.env`:
-```
-TELEGRAM_BOT_TOKEN=your_bot_token_here
-ALLOWED_USER_IDS=your_user_id_here
-AGY_WORKING_DIR=/path/to/your/project
-```
-
-### 4. Build the Rust Bot
+Or validate configuration without contacting Telegram:
 
 ```bash
-bazel build //apps/desktop/vitruvian-code/src:bot
+bazel run //apps/desktop/vitruvian-code/src:bot -- --dry-run
 ```
 
-### 5. Run
-
-There are three ways to run the bot:
-
-#### Option A: Direct (foreground) via Bazel
-
-```bash
-bazel run //apps/desktop/vitruvian-code/src:bot -- --dry-run   # Verify config
-bazel run //apps/desktop/vitruvian-code/src:bot               # Start polling Telegram
-```
-
-Runs in the foreground (`bot-engine`, aliased as `bot` in [`src/BUILD`](./src/BUILD)) — you'll see logs in your terminal. Press `Ctrl+C` to stop. (Export `.env` variables in your shell or run the built binary from the folder holding `.env` so `BotEngine::from_process_env` reads it.)
-
-#### Option B: macOS Menu Bar App
-
-Download the latest DMG from the [Releases page](https://github.com/VitruvianSoftware/vitruvian-code/releases). Open it and drag the app to your Applications folder.
-
-A native SwiftUI app that lives in the menu bar (no dock icon). Provides a GUI to start/stop the bot, view logs, configure settings, and handle Quick Prompts. See [macOS Menu Bar App](#macos-menu-bar-app) below for installation and release signing details.
-
-#### Option C: Antigravity plugin
+### Optional: Antigravity plugin
 
 ```bash
 agy plugin install https://github.com/VitruvianSoftware/vitruvian-code
 ```
 
-Clones this repository into Antigravity's plugin folder (`~/.gemini/config/plugins/vitruvian-code`) and loads its setup guide (`rules/AGENTS.md`) into every session. Ask agy *"help me set up the Telegram bot"* and it will walk you through configuration, then start the bot from that folder. To install from a local clone instead, pass its path in place of the URL.
+Clones this repository into Antigravity's plugin folder (`~/.gemini/config/plugins/vitruvian-code`) and loads its setup guide (`rules/AGENTS.md`) into every session so agy can walk you through configuring the **Vitruvian Code** app.
 
 ---
 
@@ -341,7 +321,7 @@ The pre-migration `GEMINI_*` names are still read as fallbacks.
 
 ## Requirements
 
-- Bazel (builds the Rust `bot-engine` binary and runs tests via `bazel test //apps/desktop/vitruvian-code/...`)
+- macOS 14.0+ (for **Vitruvian Code.app** — the Rust `bot-engine` helper is bundled inside)
 - [Antigravity CLI](https://antigravity.google) (`agy`) installed and signed in — Google retired Gemini CLI for individual accounts
 - A Telegram bot token from [@BotFather](https://t.me/BotFather)
 

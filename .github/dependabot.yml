@@ -401,7 +401,7 @@ updates:
   #
   #     This is a mitigation, NOT a guarantee, and must not be mistaken for one:
   #     grouping can only co-bump a dependency that ALREADY appears in both
-  #     go.mods, and it does not group MAJOR bumps at all. A library bump that
+  #     go.mods (majors are grouped separately, in go-major). A library bump that
   #     introduces a brand-new transitive module still desyncs the examples.
   #     `bazel run //tools/gomod:check` (wired into example-build) is the actual
   #     backstop; this just makes it fire far less often. ───
@@ -430,3 +430,11 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      # Majors too, in their own group: a major of one shared module (the
+      # go.opentelemetry.io/otel/sdk/log 0.21 -> 1.47 sweep, 2026-11-13) otherwise
+      # opens one PR per module -- ~20 at once -- and each runs the full presubmit,
+      # starving the merge queue for an hour. One PR moves every module together,
+      # which is also what keeps the examples and the library in step.
+      go-major:
+        update-types:
+          - "major"

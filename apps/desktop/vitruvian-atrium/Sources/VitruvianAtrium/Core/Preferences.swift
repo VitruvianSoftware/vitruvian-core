@@ -224,6 +224,7 @@ package enum Preferences {
     package static let panelUtilityURLCleaner = Preference(DefaultsKey.panelUtilityURLCleaner, default: true)
     package static let panelUtilityUninstaller = Preference(DefaultsKey.panelUtilityUninstaller, default: true)
     package static let uninstallerCommandBarEnabled = Preference(DefaultsKey.uninstallerCommandBarEnabled, default: false)
+    package static let uninstallerWatchesTrash = Preference(DefaultsKey.uninstallerWatchesTrash, default: false)
     package static let killProcessCommandBarEnabled = Preference(DefaultsKey.killProcessCommandBarEnabled, default: true)
     package static let killProcessGroupRelated = Preference(DefaultsKey.killProcessGroupRelated, default: true)
     package static let killProcessSortAscending = Preference(DefaultsKey.killProcessSortAscending, default: false)
