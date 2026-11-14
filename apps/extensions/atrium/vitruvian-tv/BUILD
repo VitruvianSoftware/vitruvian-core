@@ -133,3 +133,24 @@ rust_test(
         "@crates//:serde_json",
     ],
 )
+
+# bin/tool's oldest macOS (LC_BUILD_VERSION minos) is no newer than the app's
+# LSMinimumSystemVersion: the check catalog-bump refused 0.1.1 and 0.1.2 on
+# (#4704, #4796), run before a release instead of after. Mac only: elsewhere
+# bin/tool is not a Mach-O.
+rust_test(
+    name = "minos_test",
+    size = "small",
+    srcs = ["scripts/src/minos_test.rs"],
+    data = [
+        "built/vitruvian-tv/bin/tool",
+        "//catalog:app_info_plist",
+    ],
+    edition = "2021",
+    env = {
+        "TOOL_PATH": "$(rootpath built/vitruvian-tv/bin/tool)",
+        "APP_INFO_PATH": "$(rootpath //catalog:app_info_plist)",
+    },
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = ["//catalog:catalog_lib"],
+)

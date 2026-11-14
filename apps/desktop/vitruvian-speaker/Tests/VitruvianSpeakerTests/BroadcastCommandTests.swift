@@ -553,6 +553,34 @@ private func makeSampleConfig(
 
     // MARK: - Instruction Text & Legacy Migration
 
+    @Test func instructionLineNamesTheInstalledCommandAndFollowsAMove() throws {
+        let root = try makeScratchDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let integration = AgentIntegration(home: root, executablePath: "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker")
+        let line = integration.broadcastInstructionLine
+        let command = AgentPlugins.shellWord(integration.instructionCommandURL.path)
+        #expect(command.hasPrefix("'/"), "Application Support has a space, so the path is quoted")
+        #expect(line.contains("`\(command) \"<summary>\"`"))
+        #expect(line.contains("`\(command) --help`"))
+        #expect(!line.contains("`speaker-broadcast"), "no bare command left for an agent to miss")
+        #expect(AgentIntegration.isManagedBroadcastInstructionLine(line))
+
+        // The bare line older releases wrote, and a line naming a folder
+        // that has since moved, are both rewritten to the current one.
+        let moved = CodingAgent.broadcastInstruction(command: "'/Users/old/Library/Application Support/Vitruvian Speaker/bin/speaker-broadcast'")
+        for stale in [CodingAgent.broadcastInstruction, moved] {
+            #expect(AgentIntegration.migratingBroadcastInstruction(in: "# A\n\(stale)\n", current: line) == "# A\n\(line)\n")
+            #expect(AgentIntegration.removingBroadcastInstruction(from: "# A\n\(stale)\n") == "# A\n")
+        }
+        #expect(AgentIntegration.migratingBroadcastInstruction(in: "\(line)\n", current: line) == nil)
+
+        // Adding the line writes the command it names.
+        try integration.addBroadcastInstruction(for: .antigravity)
+        #expect(FileManager.default.isExecutableFile(atPath: integration.instructionCommandURL.path))
+        #expect(try Data(contentsOf: integration.instructionCommandURL)
+                == AgentPlugins.broadcastShim(program: "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker"))
+    }
+
     @Test func instructionTextAndLegacyMigration() throws {
         #expect(!CodingAgent.broadcastInstruction.contains("vitruvian-speaker-broadcast"))
         #expect(!CodingAgent.broadcastInstruction.contains("home-speaker-broadcast"))
@@ -594,8 +622,8 @@ private func makeSampleConfig(
         #expect(afterAdd.hasPrefix("# Header\n"))
         #expect(afterAdd.hasSuffix("\n# Footer\n"))
         #expect(!afterAdd.contains("speaker_broadcast.json"))
-        #expect(!afterAdd.contains("vitruvian-speaker-broadcast"))
-        #expect(afterAdd.components(separatedBy: CodingAgent.broadcastInstruction).count == 2)
+        #expect(!afterAdd.contains("`vitruvian-speaker-broadcast` skill"))
+        #expect(afterAdd.components(separatedBy: integration.broadcastInstructionLine).count == 2)
 
         // migrateBroadcastInstructions removes managed instruction lines (legacy + standalone) for
         // plugin-backed agents and preserves custom user-written wording.
@@ -632,35 +660,42 @@ private func makeSampleConfig(
             #expect(helpText.contains(spec.syntax), "help text missing \(spec.syntax)")
         }
 
-        // Extract every `speaker-broadcast ...` invocation inside fenced ```sh blocks in SKILL.md
-        let markdown = SpeakerSkill.markdown()
-        #expect(markdown.contains(generated))
-        let lines = markdown.components(separatedBy: "\n")
-        var inShellFence = false
-        var commandLines: [String] = []
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("```sh") {
-                inShellFence = true
-                continue
+        // Every agent's skill is rendered from the same source; only the way it
+        // runs the command differs (bare for Claude Code, a full path otherwise).
+        let commands = [
+            BroadcastCommand.commandName,
+            "/Users/a/.gemini/config/plugins/vitruvian-speaker/bin/speaker-broadcast",
+            "'/Users/a b/.config/opencode/skills/vitruvian-speaker/bin/speaker-broadcast'",
+        ]
+        for command in commands {
+            let markdown = SpeakerSkill.markdown(command: command)
+            #expect(markdown.contains(SpeakerSkill.commandsAndOptionsSection(command: command)))
+            var inShellFence = false
+            var commandLines: [String] = []
+            for line in markdown.components(separatedBy: "\n") {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed.hasPrefix("```sh") {
+                    inShellFence = true
+                    continue
+                }
+                if inShellFence && trimmed.hasPrefix("```") {
+                    inShellFence = false
+                    continue
+                }
+                if inShellFence {
+                    #expect(trimmed.hasPrefix(command + " "), "skill example '\(trimmed)' does not run \(command)")
+                    commandLines.append(trimmed)
+                }
             }
-            if inShellFence && trimmed.hasPrefix("```") {
-                inShellFence = false
-                continue
-            }
-            if inShellFence && trimmed.hasPrefix("speaker-broadcast") {
-                commandLines.append(trimmed)
-            }
-        }
-        #expect(commandLines.count >= 9)
-        for line in commandLines {
-            let tokens = Self.tokenizeShellWords(line)
-            let args = Array(tokens.dropFirst())
-            switch BroadcastCommand.parse(args) {
-            case .failure(let err):
-                Issue.record("Skill example '\(line)' failed to parse: \(err)")
-            case .success:
-                break
+            #expect(commandLines.count >= 9)
+            for line in commandLines {
+                let args = Self.tokenizeShellWords(String(line.dropFirst(command.count)))
+                switch BroadcastCommand.parse(args) {
+                case .failure(let err):
+                    Issue.record("Skill example '\(line)' failed to parse: \(err)")
+                case .success:
+                    break
+                }
             }
         }
     }

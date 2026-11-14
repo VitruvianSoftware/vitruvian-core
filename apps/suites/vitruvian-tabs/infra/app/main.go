@@ -108,10 +108,14 @@ func main() {
 		// rejected with `spec.traffic.revision_name[0]: ... invalid`. Derive both
 		// from one serviceName so they cannot drift apart again.
 		serviceName := fmt.Sprintf("tabula-api-%s", env)
+		sentryDsn := cfg.Get("sentryDsn")
+		if sentryDsn == "" {
+			sentryDsn = "https://e68b62b2a2f4064278c4e6915c1b4766@sentry-ingest.ipv1337.dev/11"
+		}
 		// The env is part of the revision's identity, not just the image — see
 		// revisionNameFor. Rendered once here so the name and the deployed
 		// container are hashed from the SAME map and cannot drift.
-		serviceEnv := revision.EnvMap(project, cfg.Get("apiUrl"), cfg.Get("authPostmessageOrigin"), cfg.Get("corsOrigin"))
+		serviceEnv := revision.EnvMap(project, cfg.Get("apiUrl"), cfg.Get("authPostmessageOrigin"), cfg.Get("corsOrigin"), sentryDsn)
 		revisionName := revision.Name(serviceName, shortDigest, serviceEnv)
 
 		promote := envOrConfigBool("TABULA_PROMOTE", cfg, "promote")

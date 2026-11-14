@@ -181,11 +181,16 @@ public enum ClaudeStopHook {
     /// True when `command` *invokes* a broadcaster, rather than merely
     /// containing its name. The tool name has to sit where a command goes:
     /// start of line, or after `;`, `&`, `|`, a backtick or `$(` — never
-    /// inside a quoted string.
+    /// inside a quoted string. It may be run by a path, plain or quoted as
+    /// one word (`'/Users/a b/…/bin/speaker-broadcast'`), as the Antigravity
+    /// and OpenCode skills do.
     static func commandBroadcasts(_ command: String) -> Bool {
         func invokes(_ tool: String) -> Bool {
-            let pattern = "(?:^|[\\n;&|`]|\\$\\()[ \\t]*(?:[\\w./-]*/)?(?:[\\w .-]*\\.app/Contents/MacOS/)?\(tool)\\b"
-            return command.range(of: pattern, options: [.regularExpression]) != nil
+            let start = "(?:^|[\\n;&|`]|\\$\\()[ \\t]*"
+            let plain = start + "(?:[\\w./~-]*/)?(?:[\\w .-]*\\.app/Contents/MacOS/)?\(tool)\\b"
+            let quoted = start + "(['\"])(?:[^'\"\\n]*/)?\(tool)\\1"
+            return command.range(of: plain, options: [.regularExpression]) != nil
+                || command.range(of: quoted, options: [.regularExpression]) != nil
         }
         if invokes("speaker-broadcast") { return true }
         // The app binary does many things; only --say speaks.

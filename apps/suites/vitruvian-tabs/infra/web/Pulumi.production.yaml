@@ -32,3 +32,4 @@ config:
   # env's tabula-api apiUrl (apps/suites/vitruvian-tabs/infra/app/Pulumi.production.yaml) — the
   # web app and the browser it serves both need to reach the SAME API host.
   tabula-web:apiUrl: https://tabula-api.vitruviansoftware.dev/api/v1
+  tabula-web:sentryDsn: https://e68b62b2a2f4064278c4e6915c1b4766@sentry-ingest.ipv1337.dev/11

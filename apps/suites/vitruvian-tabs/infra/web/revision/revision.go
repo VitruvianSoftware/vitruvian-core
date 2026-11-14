@@ -56,13 +56,17 @@ func ShortDigest(imageDigest string) (string, error) {
 // built image. Empty means ABSENT rather than empty-string, matching
 // apps/suites/vitruvian-tabs/infra/app/revision.EnvMap, so an unconfigured env is a missing key
 // instead of an empty one — and hashes differently.
-func EnvMap(apiURL string) map[string]string {
+func EnvMap(apiURL, sentryDSN string) map[string]string {
 	env := map[string]string{
 		"NODE_ENV": "production",
 		"HOSTNAME": "0.0.0.0",
 	}
 	if apiURL != "" {
 		env["API_URL"] = apiURL
+	}
+	if sentryDSN != "" {
+		env["SENTRY_DSN"] = sentryDSN
+		env["NEXT_PUBLIC_SENTRY_DSN"] = sentryDSN
 	}
 	return env
 }

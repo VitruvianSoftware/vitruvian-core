@@ -42,6 +42,37 @@ public enum AgentPlugins {
         }
     }
 
+    // MARK: speaker-broadcast, per agent
+
+    /// Where each plugin keeps its copy of `speaker-broadcast`, relative to
+    /// the plugin's (or OpenCode skill's) own folder.
+    public static let commandRelativePath = "bin/\(BroadcastCommand.commandName)"
+
+    /// The `speaker-broadcast` script a plugin carries: it runs `program`
+    /// (the app's, or the extension's `bin/tool`) as the broadcast command.
+    public static func broadcastShim(program: String) -> Data {
+        Data("#!/bin/sh\nexec \(shellSingleQuote(program)) \(BroadcastCommand.explicitInvocationFlag) \"$@\"\n".utf8)
+    }
+
+    /// How the skill installed for `agent` must run `speaker-broadcast`.
+    ///
+    /// Only Claude Code puts a plugin's `bin/` on its Bash PATH, so only its
+    /// skill may say the bare name. Every other agent is told the absolute
+    /// path of the copy the app wrote in `pluginFolder` (removed with it),
+    /// so the skill works whatever the user's PATH is and with no
+    /// `~/.local/bin`. Generated from the same place the copy is written,
+    /// so the two cannot drift.
+    public static func skillCommand(for agent: CodingAgent, pluginFolder: URL?) -> String {
+        guard !agent.putsPluginBinOnPATH, let pluginFolder else { return BroadcastCommand.commandName }
+        return shellWord(pluginFolder.appendingPathComponent(commandRelativePath).standardizedFileURL.path)
+    }
+
+    /// `value` as one shell word: as is when it needs no quoting, else single-quoted.
+    static func shellWord(_ value: String) -> String {
+        let plain = value.range(of: "^[A-Za-z0-9_./+:@%-]+$", options: .regularExpression) != nil
+        return plain ? value : shellSingleQuote(value)
+    }
+
     // MARK: Claude Code
 
     public static let claudeMarketplaceName = name
@@ -84,13 +115,15 @@ public enum AgentPlugins {
                 ]],
             ],
         ]
-        let shim = "#!/bin/sh\nexec \(shellSingleQuote(program)) \(BroadcastCommand.explicitInvocationFlag) \"$@\"\n"
         return [
             GeneratedPluginFile(relativePath: ".claude-plugin/marketplace.json", data: try json(marketplace)),
             GeneratedPluginFile(relativePath: "plugins/\(name)/.claude-plugin/plugin.json", data: try json(pluginManifest)),
             GeneratedPluginFile(relativePath: "plugins/\(name)/hooks/hooks.json", data: try json(hooks)),
-            GeneratedPluginFile(relativePath: "plugins/\(name)/skills/\(name)/SKILL.md", data: Data(SpeakerSkill.markdown().utf8)),
-            GeneratedPluginFile(relativePath: "plugins/\(name)/bin/speaker-broadcast", data: Data(shim.utf8), isExecutable: true),
+            GeneratedPluginFile(
+                relativePath: "plugins/\(name)/skills/\(name)/SKILL.md",
+                data: Data(SpeakerSkill.markdown(command: skillCommand(for: .claudeCode, pluginFolder: nil)).utf8)
+            ),
+            GeneratedPluginFile(relativePath: "plugins/\(name)/\(commandRelativePath)", data: broadcastShim(program: program), isExecutable: true),
         ]
     }
 
@@ -100,12 +133,17 @@ public enum AgentPlugins {
     public static let antigravityHooksFile = "hooks.json"
     public static let antigravitySkillFile = "skills/\(name)/SKILL.md"
 
-    /// `plugin.json`, `hooks.json`, and `skills/vitruvian-speaker/SKILL.md` for
-    /// `~/.gemini/config/plugins/vitruvian-speaker/`. Antigravity enables a
+    public static let antigravityCommandFile = commandRelativePath
+
+    /// `plugin.json`, `hooks.json`, `skills/vitruvian-speaker/SKILL.md` and
+    /// `bin/speaker-broadcast` for `folder`
+    /// (`~/.gemini/config/plugins/vitruvian-speaker/`). Antigravity enables a
     /// plugin it finds there unless its `config.json` says `"enabled": false`
     /// for it. Its `Stop` event takes a flat list of handlers (no `matcher`),
     /// its timeout is in seconds, and the command runs through `sh -c`.
-    public static func antigravityFiles(command: String) throws -> [(String, Data)] {
+    /// Antigravity does not put the plugin's `bin/` on PATH, so the skill
+    /// names that copy by its absolute path.
+    public static func antigravityFiles(command: String, program: String, folder: URL) throws -> [GeneratedPluginFile] {
         let manifest: [String: Any] = [
             "name": name,
             "version": "1.0.0",
@@ -116,10 +154,12 @@ public enum AgentPlugins {
         let hooks: [String: Any] = [
             name: ["Stop": [["type": "command", "command": command, "timeout": 10]]],
         ]
+        let skill = SpeakerSkill.markdown(command: skillCommand(for: .antigravity, pluginFolder: folder))
         return [
-            (antigravityManifestFile, try json(manifest)),
-            (antigravityHooksFile, try json(hooks)),
-            (antigravitySkillFile, Data(SpeakerSkill.markdown().utf8)),
+            GeneratedPluginFile(relativePath: antigravityManifestFile, data: try json(manifest)),
+            GeneratedPluginFile(relativePath: antigravityHooksFile, data: try json(hooks)),
+            GeneratedPluginFile(relativePath: antigravitySkillFile, data: Data(skill.utf8)),
+            GeneratedPluginFile(relativePath: antigravityCommandFile, data: broadcastShim(program: program), isExecutable: true),
         ]
     }
 
@@ -151,10 +191,22 @@ public enum AgentPlugins {
 
     // MARK: OpenCode
 
-    public static let openCodeSkillRelativePath = ".config/opencode/skills/\(name)/SKILL.md"
+    /// The skill's folder, relative to the home folder. OpenCode loads
+    /// `SKILL.md` from it; the app also keeps the skill's `speaker-broadcast`
+    /// there, so removing the folder removes both.
+    public static let openCodeSkillFolderRelativePath = ".config/opencode/skills/\(name)"
+    public static let openCodeSkillRelativePath = "\(openCodeSkillFolderRelativePath)/SKILL.md"
 
-    public static func openCodeSkillData() -> Data {
-        Data(SpeakerSkill.markdown().utf8)
+    /// `SKILL.md` and `bin/speaker-broadcast`, relative to the home folder.
+    /// OpenCode does not put a skill's `bin/` on PATH, so the skill names
+    /// that copy by its absolute path.
+    public static func openCodeSkillFiles(program: String, home: URL) -> [GeneratedPluginFile] {
+        let folder = home.appendingPathComponent(openCodeSkillFolderRelativePath, isDirectory: true)
+        let skill = SpeakerSkill.markdown(command: skillCommand(for: .opencode, pluginFolder: folder))
+        return [
+            GeneratedPluginFile(relativePath: openCodeSkillRelativePath, data: Data(skill.utf8)),
+            GeneratedPluginFile(relativePath: "\(openCodeSkillFolderRelativePath)/\(commandRelativePath)", data: broadcastShim(program: program), isExecutable: true),
+        ]
     }
 
     /// The line that records the hook command in the plugin file.

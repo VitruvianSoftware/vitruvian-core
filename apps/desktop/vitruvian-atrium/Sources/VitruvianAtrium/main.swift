@@ -2,10 +2,21 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+#if canImport(SentryLite)
+import SentryLite
+#endif
 import VitruvianAtriumCore
 import VitruvianAtriumDesign
 import VitruvianAtriumServices
 import VitruvianAtriumUI
+
+#if canImport(SentryLite)
+SentryLite.start(
+    dsn: "https://97777aaf76768be64dd8e9177611b5dd@sentry-ingest.ipv1337.dev/12",
+    release: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev",
+    tags: ["app": "vitruvian-atrium", "platform": "macos"]
+)
+#endif
 
 // Select backup mode before cleanup and diagnostic arguments can act. Invalid
 // backup commands must leave files, input mappings and recovery journals alone.

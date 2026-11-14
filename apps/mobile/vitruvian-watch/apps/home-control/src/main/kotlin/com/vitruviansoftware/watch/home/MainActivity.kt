@@ -54,6 +54,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import com.vitruviansoftware.watch.common.RoborockAction
 import com.vitruviansoftware.watch.common.SpeakerRoom
+import com.vitruviansoftware.watch.common.WatchSentry
 import dev.vitruvian.design.Tag
 import dev.vitruvian.design.TagTone
 import dev.vitruvian.design.VText
@@ -61,6 +62,7 @@ import dev.vitruvian.design.VitruvianTheme
 
 public class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
+    WatchSentry.init("vitruvian-watch-home")
     super.onCreate(savedInstanceState)
     setContent { VitruvianTheme { HomeControlWatchScreen() } }
   }

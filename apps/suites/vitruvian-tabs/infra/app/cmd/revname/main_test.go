@@ -63,6 +63,7 @@ func TestComputeRevisionName(t *testing.T) {
 			"https://tabula-api.dev.vitruviansoftware.dev/api/v1",
 			"chrome-extension://eblknkhkhfolhecoobmpjhfejfcmfoof",
 			"https://tabula.dev.vitruviansoftware.dev",
+			"https://e68b62b2a2f4064278c4e6915c1b4766@sentry-ingest.ipv1337.dev/11",
 		)
 		want := revision.Name("tabula-api-development", "de662165", env)
 		if got != want {

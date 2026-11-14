@@ -60,8 +60,9 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
-        "@crates//:serde",
-        "@crates//:serde_json",
+        "@oauth_user_inspector_server_crates//:sentry",
+        "@oauth_user_inspector_server_crates//:serde",
+        "@oauth_user_inspector_server_crates//:serde_json",
     ],
 )
 
@@ -70,7 +71,10 @@ rust_binary(
     srcs = ["server/src/bin/server.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":oauth_server_lib"],
+    deps = [
+        ":oauth_server_lib",
+        "@oauth_user_inspector_server_crates//:sentry",
+    ],
 )
 
 alias(

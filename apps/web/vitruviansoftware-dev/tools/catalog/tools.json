@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-11-14T05:02:24Z",
+  "generated": "2026-11-14T13:26:26Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -63,7 +63,7 @@
     {
       "id": "dev.vitruvian.github",
       "name": {
-        "en": "GitHub"
+        "en": "Vitruvian GitHub"
       },
       "publisher": "VitruvianSoftware",
       "summary": {
@@ -83,14 +83,14 @@
         "zh-TW": "顯示你關注的儲存庫中 main 是否為綠色，以及你的拉取要求進度如何。",
         "zh-HK": "顯示你關注的儲存庫中 main 是否為綠色，以及你的拉取要求進度如何。"
       },
-      "version": "1.6.0",
+      "version": "1.6.1",
       "protocol": "2",
       "minimumAppVersion": "3.46.0",
       "source": "https://github.com/VitruvianSoftware/vitruvian-github",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-tool-github/releases/download/v1.6.0/github-tool-1.6.0.zip",
-        "sha256": "0e0e5d9e937a190af6923abae34f6c85837cb1f64e03205f5767279de438bbc4",
-        "size": 1349492
+        "url": "https://github.com/VitruvianSoftware/vitruvian-github/releases/download/v1.6.1/github-tool-1.6.1.zip",
+        "sha256": "82cb84fadbddf18b266241e92440060ec3cfd6054ec54a80c8506a248537106d",
+        "size": 1409489
       },
       "uses": ["clipboard.write", "notify", "open", "storage"],
       "commands": [
@@ -147,14 +147,14 @@
       "summary": {
         "en": "Speaks what you type, or the clipboard, on your Google Home speakers, and keeps broadcasting, quiet hours and the volume at hand."
       },
-      "version": "1.43.0",
+      "version": "1.43.2",
       "protocol": "2",
       "minimumAppVersion": "3.90.0",
       "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-speaker",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.43.0/VitruvianSpeaker-1.43.0-tool.zip",
-        "sha256": "894cfa2e127da2bb9f168ef726da1a06f3fdc0d369b5252b50f601fde132f182",
-        "size": 4675268
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.43.2/VitruvianSpeaker-1.43.2-tool.zip",
+        "sha256": "33d42ff10cf5b569430a179217b1d416fb0fdef8d9236714ee10724e08fe9636",
+        "size": 4688186
       },
       "uses": ["notify", "clipboard.read", "open"],
       "commands": [
@@ -377,14 +377,14 @@
       "summary": {
         "en": "Controls your Sony Google TV over ADB: power, 4K Aerial screensaver, SmartTube, Projectivy Launcher, volume, and clipboard video casting."
       },
-      "version": "0.1.0",
+      "version": "0.1.3",
       "protocol": "2",
       "minimumAppVersion": "3.48.0",
       "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/extensions/atrium/vitruvian-tv",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-tool-tv-v0.1.0/VitruvianTV-0.1.0-tool.zip",
-        "sha256": "f6fd4712d0c86ebee1620c8c2d4e579f496ff9b89df244c98b1b0f76705290ae",
-        "size": 46021
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-tv-v0.1.3/VitruvianTV-0.1.3-tool.zip",
+        "sha256": "35784300de82bfc5ba5148d85136713c24f19293e23f949f354ececdc6332246",
+        "size": 777761
       },
       "uses": ["notify", "clipboard.read", "storage"],
       "commands": [

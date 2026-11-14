@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tv-v0.1.2...vitruvian-tv-v0.1.3) (2026-11-14)
+
+
+### Bug Fixes
+
+* **vitruvian-tv:** build bin/tool for macOS 14.0, not the runner's macOS ([#4800](https://github.com/VitruvianSoftware/vitruvian-core/issues/4800)) ([f678835](https://github.com/VitruvianSoftware/vitruvian-core/commit/f678835057e6590396dc88cae2dfe28fdc38fc02))
+
 ## [0.1.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tv-v0.1.1...vitruvian-tv-v0.1.2) (2026-11-14)
 
 

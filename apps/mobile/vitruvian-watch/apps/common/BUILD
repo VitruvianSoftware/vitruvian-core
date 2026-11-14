@@ -27,6 +27,9 @@ package(default_visibility = ["//apps/mobile/vitruvian-watch:__subpackages__"])
 kt_jvm_library(
     name = "common",
     srcs = glob(["src/main/kotlin/**/*.kt"]),
+    deps = [
+        "@maven//:io_sentry_sentry",
+    ],
 )
 
 kt_jvm_test(
