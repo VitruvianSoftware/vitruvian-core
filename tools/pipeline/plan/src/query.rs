@@ -316,8 +316,16 @@ pub fn build_rdeps_map(ctx: &Ctx, repo_root: &str, commit: &str) -> Result<Rdeps
         &edges,
         &non_empty_lines(&pkgs),
     );
-    let up = build_unit_packages(ctx, repo_root)?;
-    m.unit_packages = if up.is_empty() { None } else { Some(up) };
+    // Optional: if it cannot be computed, Mac units are matched the old way.
+    // Never let it cost the whole map, which every plan's speed rests on.
+    m.unit_packages = match build_unit_packages(ctx, repo_root) {
+        Ok(up) if !up.is_empty() => Some(up),
+        Ok(_) => None,
+        Err(e) => {
+            eprintln!("dependency map: no macOS unit packages ({e}); Mac units use the broad rule");
+            None
+        }
+    };
     Ok(m)
 }
 
