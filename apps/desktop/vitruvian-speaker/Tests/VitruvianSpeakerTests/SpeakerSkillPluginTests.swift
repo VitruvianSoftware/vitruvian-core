@@ -388,9 +388,10 @@ import Testing
             try fm.createDirectory(at: home.appendingPathComponent(marker), withIntermediateDirectories: true)
         }
         let fakeCLI = FakeClaudeCLI(home: home)
-        let integration = AgentIntegration(
-            home: home, executablePath: program.path, claudeCLI: fakeCLI.runner,
-            dataFolder: root.appendingPathComponent("data", isDirectory: true))
+        // The real data folder for this program (the app's Application
+        // Support folder, or the extension's ToolData folder).
+        let integration = AgentIntegration(home: home, executablePath: program.path, claudeCLI: fakeCLI.runner)
+        let label = "(\(homeName), \(program.lastPathComponent))"
 
         let claudePlugin = integration.claudeMarketplaceDirectory.appendingPathComponent("plugins/vitruvian-speaker")
         let installs: [(CodingAgent, skill: URL, pluginFolder: URL)] = [
@@ -414,34 +415,58 @@ import Testing
             if Self.agentsPutPluginBinOnPATH[agent] == true {
                 path.insert(pluginFolder.appendingPathComponent("bin").path, at: 0)
             }
-            let pluginPrefix = pluginFolder.standardizedFileURL.path + "/"
 
-            for word in Set(invocations) {
-                let resolved: String?
-                if word.contains("/") {
-                    resolved = word.hasPrefix("/") ? word : nil
-                } else {
-                    resolved = path.map { "\($0)/\(word)" }.first { fm.isExecutableFile(atPath: $0) }
-                }
-                guard let resolved, fm.isExecutableFile(atPath: resolved) else {
-                    Issue.record("\(agent.displayName) (\(homeName), \(program.lastPathComponent)): skill runs `\(word)`, which that agent cannot reach")
-                    continue
-                }
-                #expect(resolved.hasPrefix(pluginPrefix),
-                        "\(agent.displayName): `\(word)` is not the copy installed (and removed) with its plugin")
+            try Self.expectReachable(
+                Set(invocations), path: path, within: pluginFolder,
+                what: "\(agent.displayName) \(label): skill", copy: "the copy installed (and removed) with its plugin")
+        }
 
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: resolved)
-                process.arguments = ["--status"]
-                process.environment = ["PATH": path.joined(separator: ":")]
-                let out = Pipe()
-                process.standardOutput = out
-                try process.run()
-                process.waitUntilExit()
-                let printed = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
-                #expect(printed == "\(BroadcastCommand.explicitInvocationFlag)\n--status\n",
-                        "\(agent.displayName): `\(word)` does not run the program")
+        // The one-line instruction Settings can add to an agent's own
+        // instruction file (an agent with no plugin, or Claude Code on the
+        // settings.json fallback). No plugin bin/ is on anyone's PATH here.
+        for agent in CodingAgent.allCases {
+            try integration.addBroadcastInstruction(for: agent)
+            let file = agent.primaryInstructionFile(home: home)
+            let text = try String(contentsOf: file, encoding: .utf8)
+            let invocations = Self.broadcastInvocations(in: text)
+            #expect(invocations.count >= 3, "\(agent.displayName) instruction: found \(invocations)")
+            try Self.expectReachable(
+                Set(invocations), path: Self.bareSystemPATH, within: integration.dataFolder,
+                what: "\(agent.displayName) \(label): \(file.lastPathComponent) line", copy: "the copy Speaker keeps in its data folder")
+        }
+    }
+
+    /// Resolves each command word the way a shell with `path` would, requires
+    /// it to be inside `folder`, and runs it to check it reaches the program.
+    private static func expectReachable(
+        _ words: Set<String>, path: [String], within folder: URL, what: String, copy: String
+    ) throws {
+        let fm = FileManager.default
+        let prefix = folder.standardizedFileURL.path + "/"
+        for word in words {
+            let resolved: String?
+            if word.contains("/") {
+                resolved = word.hasPrefix("/") ? word : nil
+            } else {
+                resolved = path.map { "\($0)/\(word)" }.first { fm.isExecutableFile(atPath: $0) }
             }
+            guard let resolved, fm.isExecutableFile(atPath: resolved) else {
+                Issue.record("\(what) runs `\(word)`, which that agent cannot reach")
+                continue
+            }
+            #expect(resolved.hasPrefix(prefix), "\(what): `\(word)` is not \(copy)")
+
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: resolved)
+            process.arguments = ["--status"]
+            process.environment = ["PATH": path.joined(separator: ":")]
+            let out = Pipe()
+            process.standardOutput = out
+            try process.run()
+            process.waitUntilExit()
+            let printed = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+            #expect(printed == "\(BroadcastCommand.explicitInvocationFlag)\n--status\n",
+                    "\(what): `\(word)` does not run the program")
         }
     }
 
