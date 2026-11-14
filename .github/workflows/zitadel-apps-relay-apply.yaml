@@ -128,6 +128,12 @@ jobs:
           # Read every output once. Under bash -e a failed read stops the run
           # here, so a transient Pulumi error can't make a client look absent.
           outputs="$(pulumi stack output --json)"
+          # has() runs jq inside an `if`, where a parse error would read as
+          # "key absent" and skip a client's check. Prove it's a JSON object first.
+          if ! jq -e 'type == "object"' <<<"$outputs" >/dev/null; then
+            echo "::error::pulumi stack output --json did not return a JSON object" >&2
+            exit 1
+          fi
           has() { jq -e --arg k "$1" 'has($k)' <<<"$outputs" >/dev/null; }
           get() { jq -r --arg k "$1" '.[$k]' <<<"$outputs"; }
           for c in chatgpt gemini; do

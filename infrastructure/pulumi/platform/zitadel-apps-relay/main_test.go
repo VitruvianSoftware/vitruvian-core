@@ -127,6 +127,9 @@ func TestParseRedirectURIsRefusesWrongTargets(t *testing.T) {
 		"https://chatgpt.com/connectorevil",                      // look-alike of /connector
 		"https://chatgpt.com/connector/oauth/",                   // prefix only, no id
 		"https://chatgpt.com/connector/oauth/a/b",                // extra segment
+		"https://chatgpt.com/connector/oauth/abc?",               // empty query
+		"https://chatgpt.com/connector/oauth/abc#",               // empty fragment
+		"HTTPS://chatgpt.com/connector/oauth/abc",                // upper-case scheme
 		"https://chatgpt.com/connector/oauth/..",                 // dot-dot id
 		"https://chatgpt.com/connector/oauth/.",                  // dot id
 		`https://chatgpt.com/connector/oauth/x\..\..\share`,      // backslash walk

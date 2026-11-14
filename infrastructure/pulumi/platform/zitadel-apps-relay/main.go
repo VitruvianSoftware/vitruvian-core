@@ -190,8 +190,11 @@ func parseRedirectURIs(raw, wantHost string, rules []pathRule) ([]string, error)
 		if s == "" {
 			continue
 		}
-		if strings.ContainsAny(s, "\\") {
-			return nil, fmt.Errorf("%s: redirect URI %q contains a backslash", cfgNamespace, s)
+		// Checked on the raw text, before parsing: Go drops an empty "?" or "#"
+		// (ForceQuery, empty Fragment) and lower-cases the scheme, so the parsed
+		// URL alone can't see these.
+		if strings.ContainsAny(s, "\\?#") || !strings.HasPrefix(s, "https://") {
+			return nil, fmt.Errorf("%s: redirect URI %q must start with lower-case https:// and contain no backslash, ? or #", cfgNamespace, s)
 		}
 		u, err := url.Parse(s)
 		if err != nil || u.Scheme != "https" || u.Host != wantHost || u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
