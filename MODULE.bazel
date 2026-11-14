@@ -753,7 +753,11 @@ crate.annotation(
     },
     build_script_tools = ["@@//apps/desktop/vitruvian-courier/libsignal:cc_in_execroot"],
     crate = "ring",
-    repositories = ["libsignal_crates"],
+    repositories = [
+        "crates",
+        "libsignal_crates",
+        "vitruvian_wand_crates",
+    ],
 )
 use_repo(crate, "libsignal_crates")
 
