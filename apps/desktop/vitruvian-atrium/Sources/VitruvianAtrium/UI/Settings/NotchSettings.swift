@@ -756,8 +756,10 @@ package struct NotchSettings: View {
                 }
                 if hover || (hideInFullscreen && hoverInFullscreen) {
                     hoverDelayControl
-                    if hoverExpand { closeDelayControl }
                 }
+                // Every island not pinned closes this long after the pointer
+                // leaves, however it opened, so the delay is always shown.
+                closeDelayControl
                 switchRow("keyboard", l10n.s.quickToolShortcutToggle, isOn: $shortcutEnabled)
                 if shortcutEnabled {
                     ShortcutPreferenceRow(role: .notch) {

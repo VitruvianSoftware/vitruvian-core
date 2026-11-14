@@ -585,6 +585,10 @@ package final class NotchService: ObservableObject {
     private var activityPickerMenuOpen = false
     private var hoverState = NotchHoverState()
     private var openedByHover = false
+    /// Whether the pointer has been on the open island since it opened. Not
+    /// pinned, an island closes once the pointer has visited it and leaves,
+    /// however it opened (`NotchSupport.closesOnPointerExit`).
+    private var pointerVisited = false
     /// A click inside the open island, which may be what brings another app forward.
     private var clickedSinceOpening = false
     /// Whether the open detail was reached from inside the island, so Escape
@@ -1975,6 +1979,7 @@ package final class NotchService: ObservableObject {
         activityPickerMenuOpen = false
         hoverState = NotchHoverState()
         openedByHover = false
+        pointerVisited = false
         removeEventMonitors()
         removeScreenEdgeClickMonitors()
         removeCaptureControlsClickThrough()
@@ -2110,6 +2115,7 @@ package final class NotchService: ObservableObject {
         if !expanded {
             detailHasPage = false
             showsKeyboardFocus = false
+            pointerVisited = false
         }
         else if appPanel || metric != nil, !showingAppPanel, selectedMetric == nil { detailHasPage = true }
         // Following the closed island ends the moment it opens, before a page
@@ -2132,6 +2138,7 @@ package final class NotchService: ObservableObject {
             if notice?.notificationID != nil { noticeWork?.cancel(); noticeWork = nil; noticeQueue.clear() }
         }
         inside = windowHost?.containsHover(pointer()) == true
+        if inside { pointerVisited = true }
         installEventMonitors()
         syncVisibleConsumers()
         if takeFocus { windowHost?.takeKeyboard() }
@@ -2154,6 +2161,7 @@ package final class NotchService: ObservableObject {
             if noticeExpanded { noticeQueue.clear() }
             expanded = false
             openedByHover = false
+            pointerVisited = false
             peeking = false
             selectedMetric = nil
             showingAppPanel = false
@@ -2227,6 +2235,7 @@ package final class NotchService: ObservableObject {
             && windowHost?.isConcealedForMissionControl == false
             : windowHost?.containsHover(point) == true || pointerOverChildWindow(point)
         hoverState.update(pointerInside: inside)
+        if inside && (expanded || peeking) { pointerVisited = true }
         // The music strip names its song only while the pointer stays on the
         // island: leaving ends it, and a name left from before goes on return.
         let unnamesMusic = inside != wasInside && endMusicStripHover(leaving: !inside)
@@ -2300,7 +2309,7 @@ package final class NotchService: ObservableObject {
             let delay = NotchSupport.sanitizedHoverDelay(defaults[Preferences.notchHoverDelay])
             schedule(delay, work)
         } else if holdsNotification
-                    || NotchSupport.closesOnPointerExit(expanded: expanded, peeking: peeking, openedByHover: openedByHover) {
+                    || NotchSupport.closesOnPointerExit(expanded: expanded, peeking: peeking, pointerVisited: pointerVisited) {
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 self.hoverWork = nil
@@ -2308,9 +2317,12 @@ package final class NotchService: ObservableObject {
                       self.windowHost?.containsHover(self.pointer()) != true,
                       !self.pointerOverChildWindow(self.pointer()) else { return }
                 self.releaseNotification()
+                // Keys typed in the island hold it, like an open menu: the
+                // pointer drifting off mid-word must not close it.
                 guard !self.pinned, !self.heldDrag, !self.keepsWorkingSurface, self.captureControls == nil,
+                      !self.showsKeyboardFocus,
                       !self.services.assistiveKeyboardOwns(self.pointer()),
-                      NotchSupport.closesOnPointerExit(expanded: self.expanded, peeking: self.peeking, openedByHover: self.openedByHover) else { return }
+                      NotchSupport.closesOnPointerExit(expanded: self.expanded, peeking: self.peeking, pointerVisited: self.pointerVisited) else { return }
                 self.collapse()
             }
             hoverWork = work
@@ -2341,7 +2353,7 @@ package final class NotchService: ObservableObject {
         // until the pointer leaves, with or without an emphasis to follow.
         let keepsMusicStrip = musicStripNamed || musicStripHeldSong != nil
         let watching = ((hoverEmphasized || followsClosedHover || keepsMusicStrip) && captureHover == nil
-                || !entered && NotchSupport.closesOnPointerExit(expanded: expanded, peeking: peeking, openedByHover: openedByHover))
+                || !entered && NotchSupport.closesOnPointerExit(expanded: expanded, peeking: peeking, pointerVisited: pointerVisited))
             && captureControls == nil && !pinned && !heldDrag && !hiddenUntilHover && !keepsWorkingSurface
             // Once watching, a pointer that leaves and slips back unreported is still seen.
             && (hoverExitWatch.isWatching || windowHost?.containsHover(point) == true)
@@ -4833,7 +4845,7 @@ extension NotchService {
         MainActor.assumeIsolated { services.closeMenuPopover() }
         hoverState.open()
         hoverWork?.cancel()
-        if !expanded { removeHoverExitMonitors() }
+        if !expanded { removeHoverExitMonitors(); pointerVisited = false }
         mutatePresentation(transitionContent: expanded ? .replace : .reveal) {
             showingCommandBar = true
             showingAppPanel = false
@@ -4846,6 +4858,7 @@ extension NotchService {
             if notice?.notificationID != nil { noticeWork?.cancel(); noticeWork = nil; noticeQueue.clear() }
         }
         inside = windowHost?.containsHover(pointer()) == true
+        if inside { pointerVisited = true }
         installEventMonitors()
         syncVisibleConsumers()
         panel.makeKey()

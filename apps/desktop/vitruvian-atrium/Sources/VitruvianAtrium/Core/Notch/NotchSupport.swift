@@ -1901,8 +1901,9 @@ package enum NotchSupport {
         value.isFinite ? min(hoverDelayRange.upperBound, max(hoverDelayRange.lowerBound, value)) : defaultHoverDelay
     }
 
-    /// How long an island opened by hover waits after the pointer leaves.
-    package static let defaultCloseDelay = NotchQuickAccessLayout.hoverExitDelay
+    /// How long an open island waits after the pointer leaves. Long enough
+    /// to overshoot the edge while scrolling a page or reaching for a picker.
+    package static let defaultCloseDelay: TimeInterval = 0.5
     package static let closeDelayRange = 0.10...2.0
 
     package static func sanitizedCloseDelay(_ value: TimeInterval) -> TimeInterval {
@@ -2374,10 +2375,15 @@ package enum NotchSupport {
             + (AppFeature.connectedDevices.isAvailable(in: defaults) ? 1 : 0)
     }
 
-    /// Direct openings are dismissed explicitly, never by the pointer's
-    /// initial position at the menu bar or in the application being used.
-    package static func closesOnPointerExit(expanded: Bool, peeking: Bool, openedByHover: Bool) -> Bool {
-        peeking || (expanded && openedByHover)
+    /// Not pinned, an open island closes when the pointer leaves it, however
+    /// it opened: by hover, a click, the keyboard or the menu bar. Pinning is
+    /// what keeps an island open. An opening the pointer has not reached yet,
+    /// from the keyboard or the menu bar, waits for it to arrive, so the
+    /// pointer's position at the menu bar or in the application being used
+    /// does not close it. Pinned and holding states (a menu, a drag, a sheet)
+    /// are checked by the caller.
+    package static func closesOnPointerExit(expanded: Bool, peeking: Bool, pointerVisited: Bool) -> Bool {
+        peeking || (expanded && pointerVisited)
     }
 
     /// Another app becoming active closes the open island like a click away.
