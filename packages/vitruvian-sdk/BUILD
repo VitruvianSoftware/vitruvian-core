@@ -916,38 +916,23 @@ rust_test(
     deps = [":verification_lib"],
 )
 
+# Mac runners are scarce (5 at a time on GitHub's free plan), so this unit
+# lists only what needs a Mac: Swift, app bundles, and tests whose code differs
+# on macOS. Tests that pass on Linux run in ci.yaml's build-test whenever they
+# are affected, so listing them here only spent Mac time running them twice.
 pipeline_unit(
     name = "vitruvian-sdk",
     persona = "platform",
     runner = "xcode-27",
     test_targets = [
-        "//packages/vitruvian-sdk/go/toolkit:toolkit_test",
-        "//packages/vitruvian-sdk/kits/rust:protocol_test",
-        "//packages/vitruvian-sdk/kits/rust:tool_test",
-        "//packages/vitruvian-sdk/kits/typescript:kit_test",
-        "//tools/sdk-codegen:in_sync_test",
-        "//tools/sdk-codegen:sdk_codegen_test",
         ":VitruvianToolCLITests",
         ":VitruvianToolKitTests",
         ":VitruvianToolProtocolTests",
-        ":conformance_test",
-        ":go_kit_vet_test",
-        ":go_sample_test",
         ":go_template_test",
-        ":guide_test",
         ":init_test",
-        ":kit_samples_test",
-        ":mirror_workflows_test",
-        ":protocol_examples_test",
         ":python_kit_apple_python_test",
-        ":python_kit_test",
-        ":release_version_test",
-        ":rust_sample_test",
-        ":samples_test",
         ":swift_samples_test",
-        ":swift_template_cleanup_test",
         ":swift_template_test",
-        ":templates_in_sync_test",
     ],
     tier = "L1",
     timeout_minutes = 30,

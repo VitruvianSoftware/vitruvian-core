@@ -233,6 +233,10 @@ macos_application(
     deps = [":RemoteMenuLib"],
 )
 
+# Mac runners are scarce (5 at a time on GitHub's free plan), so this unit
+# lists only what needs a Mac: Swift, app bundles, and tests whose code differs
+# on macOS. Tests that pass on Linux run in ci.yaml's build-test whenever they
+# are affected, so listing them here only spent Mac time running them twice.
 pipeline_unit(
     name = "remote-mac-menu",
     persona = "frontend",
@@ -240,10 +244,7 @@ pipeline_unit(
     test_targets = [
         ":RemoteMenuTests",
         ":RemoteToolTests",
-        ":paths_match_installer_test",
         ":tool_conformance_test",
-        ":tool_version_test",
-        ":zip_tool_test",
     ],
     tier = "L1",
     timeout_minutes = 30,

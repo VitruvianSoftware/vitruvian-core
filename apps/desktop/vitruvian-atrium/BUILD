@@ -1328,6 +1328,10 @@ rust_test(
 
 # --- Pipeline -----------------------------------------------------------------
 
+# Mac runners are scarce (5 at a time on GitHub's free plan), so this unit
+# lists only what needs a Mac: Swift, app bundles, and tests whose code differs
+# on macOS. Tests that pass on Linux run in ci.yaml's build-test whenever they
+# are affected, so listing them here only spent Mac time running them twice.
 pipeline_unit(
     name = "vitruvian-atrium-macos",
     # Services builds with complete concurrency checking, REFACTOR.md 6zu,
@@ -1342,14 +1346,9 @@ pipeline_unit(
         ":VitruvianAtriumLibWithSampleTool",
         ":by-hand",
         ":fan_helper_selftest",
-        ":mutation_fixtures_test",
         ":selftest",
         # Its end-to-end check runs the stock LibreSSL /usr/bin/openssl, so
         # it only runs on a Mac.
-        ":setup_signing_test",
-        ":source_lints_test",
-        ":sources_in_sync_test",
-        ":tool_protocol_pin_test",
         ":unit_tests",
     ],
     tier = "L1",

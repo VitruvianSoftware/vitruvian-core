@@ -500,6 +500,10 @@ rust_binary(
     "check_packaged_app",
 ]]
 
+# Mac runners are scarce (5 at a time on GitHub's free plan), so this unit
+# lists only what needs a Mac: Swift, app bundles, and tests whose code differs
+# on macOS. Tests that pass on Linux run in ci.yaml's build-test whenever they
+# are affected, so listing them here only spent Mac time running them twice.
 pipeline_unit(
     name = "vitruvian-code-macos",
     depends_on = ["vitruvian-code-src"],
@@ -510,7 +514,6 @@ pipeline_unit(
         ":VitruvianCodeToolTests",
         ":mirror_build_test",
         ":tool_conformance_test",
-        ":tool_version_test",
         ":vitruvian-code-tool",
     ],
     tier = "L1",
