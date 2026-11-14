@@ -25,6 +25,7 @@ _CRATES = [
     "@vitruvian_slack_mcp_crates//:ring",
     "@vitruvian_slack_mcp_crates//:rustls",
     "@vitruvian_slack_mcp_crates//:rustls-native-certs",
+    "@vitruvian_slack_mcp_crates//:sentry",
     "@vitruvian_slack_mcp_crates//:serde_json",
     "@vitruvian_slack_mcp_crates//:tokio",
     "@vitruvian_slack_mcp_crates//:ureq",
@@ -63,7 +64,10 @@ rust_binary(
     srcs = ["rs/src/main.rs"],
     crate_root = "rs/src/main.rs",
     edition = "2021",
-    deps = [":vitruvian_slack_mcp_lib"],
+    deps = [
+        ":vitruvian_slack_mcp_lib",
+        "@vitruvian_slack_mcp_crates//:sentry",
+    ],
 )
 
 rust_test(

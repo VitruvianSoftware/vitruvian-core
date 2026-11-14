@@ -52,6 +52,7 @@ log = "0.4"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSEvent", "NSGraphicsContext", "objc2-core-graphics"] }
 objc2-foundation = "0.3"
+sentry = "0.34"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }

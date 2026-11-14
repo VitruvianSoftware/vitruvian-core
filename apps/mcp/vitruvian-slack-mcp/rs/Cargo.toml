@@ -62,6 +62,7 @@ ring = "0.17"
 # rustls-pemfile (RUSTSEC-2025-0134).
 rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"] }
 rustls-native-certs = "0.8"
+sentry = "0.34"
 serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 ureq = { version = "2.12", default-features = false, features = ["tls"] }

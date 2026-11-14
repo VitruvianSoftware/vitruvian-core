@@ -24,6 +24,7 @@ resolver = "2"
 # and the crates gods-eye-view's Rust tools use.
 # The crate universe in MODULE.bazel (@crates) is read from this workspace.
 members = [
+    "apps/suites/vitruvian-tabs/api/rs",
     "apps/web/gods-eye-view/scripts",
     "packages/vitruvian-sdk/kits/rust",
     "packages/vitruvian-sdk/samples/hello-panel-rust",

@@ -24,5 +24,6 @@ declare let process: {
   env: {
     NODE_ENV: "development" | "staging" | "production" | "test";
     API_URL: string;
+    SENTRY_DSN?: string;
   };
 };
