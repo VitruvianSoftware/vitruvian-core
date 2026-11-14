@@ -603,3 +603,4 @@ b023c7707a1b3ece148821f979f28aef965e91de	50ebacece6edbafcd54b1ff677932ca07d50b61
 83ec5e77281b571f64aae30e7b9b6ea43ca1c227	f1c303eb99c4db4efe74cdbcf28745c976c87ce3	2026-11-11	ported	#4723	fix(super-key): keep the HID client alive while checking keyboards
 d9c7f4a77e809405facd4d71289ec58a29e46380	9d7521623f95293c37c5d2d90552bab4fce72f98	2026-11-11	skipped	upstream's 3.4.4 version bump, changelog and support-invitation pin; the fork versions through release-please	chore: prepare 3.4.4 stable
 ce1276470d2b1115c8c3398f34e82079905fffba	4e8dce8acc24f13e5408bb58b3c33a72e14f2ad4	2026-11-11	skipped	touches only upstream-only paths	chore: reopen changelog after 3.4.4
+89d2626089d693bf0462ba29ea5d047d80c9da2e	2b8580701196a8a2a3cada820438acb7af3d7623	2026-11-13	ported	#4779	chore(agents): update AI price list
