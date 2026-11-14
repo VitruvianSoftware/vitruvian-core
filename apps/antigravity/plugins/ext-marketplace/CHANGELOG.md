@@ -2,6 +2,13 @@
 
 All notable changes to ext-marketplace are recorded here.
 
+## [0.1.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/ext-marketplace-v0.1.4...ext-marketplace-v0.1.5) (2026-11-14)
+
+
+### Bug Fixes
+
+* **antigravity,claude-code:** make the shipped plugin instructions match the code, with drift tests ([#4771](https://github.com/VitruvianSoftware/vitruvian-core/issues/4771)) ([028ce19](https://github.com/VitruvianSoftware/vitruvian-core/commit/028ce197df5ae4544e46733da9ee9cc53c38f210))
+
 ## [0.1.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/ext-marketplace-v0.1.3...ext-marketplace-v0.1.4) (2026-11-01)
 
 
