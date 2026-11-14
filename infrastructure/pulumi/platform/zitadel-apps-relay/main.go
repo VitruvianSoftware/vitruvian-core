@@ -73,16 +73,38 @@ const cfgNamespace = "zitadel-apps-relay"
 // manually registered client (claude.com/docs/connectors/building/authentication).
 const claudeCallback = "https://claude.ai/api/mcp/auth_callback"
 
-// Where each app may receive the authorization code. Host AND path prefix are
-// pinned: the host alone would accept any path on a shared Google redirector.
+// Where each app may receive the authorization code. Host AND path are pinned:
+// the host alone would accept any path on a shared redirector, and a bare
+// prefix would accept look-alikes such as /connectorevil.
 const (
 	chatgptCallbackHost = "chatgpt.com"
-	// Covers both https://chatgpt.com/connector/oauth/{id} and
+	geminiCallbackHost  = "oauth-redirect.googleusercontent.com"
+)
+
+// pathRule allows one callback path shape: either exactly Exact, or Prefix
+// followed by a non-empty id containing no further "/".
+type pathRule struct {
+	Exact  string
+	Prefix string
+}
+
+func (r pathRule) matches(path string) bool {
+	if r.Exact != "" {
+		return path == r.Exact
+	}
+	id, ok := strings.CutPrefix(path, r.Prefix)
+	return ok && id != "" && !strings.Contains(id, "/")
+}
+
+var (
+	// https://chatgpt.com/connector/oauth/{id} and the fixed
 	// https://chatgpt.com/connector_platform_oauth_redirect.
-	chatgptCallbackPathPrefix = "/connector"
-	geminiCallbackHost        = "oauth-redirect.googleusercontent.com"
-	// The Gemini app's custom connectors: /r/user_bound_custom-mcp-<id>.
-	geminiCallbackPathPrefix = "/r/user_bound_custom-mcp-"
+	chatgptCallbackPaths = []pathRule{
+		{Prefix: "/connector/oauth/"},
+		{Exact: "/connector_platform_oauth_redirect"},
+	}
+	// The Gemini app's custom connectors: /r/user_bound_custom-mcp-{id}.
+	geminiCallbackPaths = []pathRule{{Prefix: "/r/user_bound_custom-mcp-"}}
 )
 
 // clientSpec is everything about one OIDC client that this stack decides.
@@ -123,7 +145,7 @@ func clientSpecs(chatgptRaw, geminiRaw string) ([]clientSpec, error) {
 			AuthMethod:   authNone,
 		},
 	}
-	chatgpt, err := parseRedirectURIs(chatgptRaw, chatgptCallbackHost, chatgptCallbackPathPrefix)
+	chatgpt, err := parseRedirectURIs(chatgptRaw, chatgptCallbackHost, chatgptCallbackPaths)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +158,7 @@ func clientSpecs(chatgptRaw, geminiRaw string) ([]clientSpec, error) {
 			AuthMethod:   authNone,
 		})
 	}
-	gemini, err := parseRedirectURIs(geminiRaw, geminiCallbackHost, geminiCallbackPathPrefix)
+	gemini, err := parseRedirectURIs(geminiRaw, geminiCallbackHost, geminiCallbackPaths)
 	if err != nil {
 		return nil, err
 	}
@@ -153,10 +175,9 @@ func clientSpecs(chatgptRaw, geminiRaw string) ([]clientSpec, error) {
 }
 
 // parseRedirectURIs splits a comma-separated list and refuses anything that is
-// not an exact https URL on wantHost whose path starts with wantPathPrefix and
-// goes on past it. A redirect URI on the wrong host or path would hand an
+// not an exact https URL on wantHost whose path matches one of rules. A redirect URI on the wrong host or path would hand an
 // authorization code to someone else, so a typo is an apply error.
-func parseRedirectURIs(raw, wantHost, wantPathPrefix string) ([]string, error) {
+func parseRedirectURIs(raw, wantHost string, rules []pathRule) ([]string, error) {
 	var out []string
 	for _, part := range strings.Split(raw, ",") {
 		s := strings.TrimSpace(part)
@@ -165,12 +186,21 @@ func parseRedirectURIs(raw, wantHost, wantPathPrefix string) ([]string, error) {
 		}
 		u, err := url.Parse(s)
 		if err != nil || u.Scheme != "https" || u.Host != wantHost || u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
-			!strings.HasPrefix(u.Path, wantPathPrefix) || len(u.Path) == len(wantPathPrefix) || u.RawPath != "" || strings.Contains(u.Path, "/..") {
-			return nil, fmt.Errorf("%s: redirect URI %q must be an https URL on %s under %s, with no query or fragment", cfgNamespace, s, wantHost, wantPathPrefix)
+			u.RawPath != "" || !anyRuleMatches(rules, u.Path) {
+			return nil, fmt.Errorf("%s: redirect URI %q is not an allowed https callback on %s (no query, fragment or extra path segments)", cfgNamespace, s, wantHost)
 		}
 		out = append(out, s)
 	}
 	return out, nil
+}
+
+func anyRuleMatches(rules []pathRule, path string) bool {
+	for _, r := range rules {
+		if r.matches(path) {
+			return true
+		}
+	}
+	return false
 }
 
 // parseBool is strict on purpose: cfg.GetBool turns an unparseable value into

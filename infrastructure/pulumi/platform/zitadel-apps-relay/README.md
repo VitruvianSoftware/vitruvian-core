@@ -46,10 +46,12 @@ bazel run //infrastructure/pulumi/platform/zitadel-apps-relay:stack -- output ge
 
 The client id is printed in the apply report (`geminiClientId`).
 
-Callbacks are checked on host **and** path before anything is created: ChatGPT's
-must sit under `https://chatgpt.com/connector`, Gemini's under
-`https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-`. A callback
-outside those is an apply error, because a wrong one would send the sign-in code
+Callbacks are checked on host **and** exact path shape before anything is
+created. ChatGPT's must be `https://chatgpt.com/connector/oauth/{id}` or exactly
+`https://chatgpt.com/connector_platform_oauth_redirect`; Gemini's must be
+`https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-{id}`, where
+`{id}` is one path segment. Anything else (a look-alike path, an extra segment, a
+query) is an apply error, because a wrong callback would send the sign-in code
 somewhere else. If Gemini's sign-in fails with `invalid_client` at
 `/oauth/v2/token` after the browser round trip, the auth method is the first thing
 to change (the sibling stack's README explains why).

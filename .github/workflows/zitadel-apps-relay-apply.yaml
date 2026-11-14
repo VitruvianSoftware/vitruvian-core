@@ -133,9 +133,17 @@ jobs:
           # The relay validates JWTs locally; an opaque token on any client would
           # fail every request while the stack reports clean.
           for c in connector claude chatgpt gemini; do
-            att="$(pulumi stack output "${c}AccessTokenType" 2>/dev/null || true)"
-            # chatgpt and gemini exist only when their callbacks are configured.
-            [ -z "$att" ] && { [ "$c" = chatgpt ] || [ "$c" = gemini ]; } && continue
+            # chatgpt and gemini exist only when their callbacks are configured;
+            # skip one only when the stack has no client for it at all. A client
+            # that exists but whose token type can't be read fails the run.
+            if { [ "$c" = chatgpt ] || [ "$c" = gemini ]; } &&
+              ! pulumi stack output "${c}ClientId" >/dev/null 2>&1; then
+              continue
+            fi
+            if ! att="$(pulumi stack output "${c}AccessTokenType")"; then
+              echo "::error::could not read ${c}AccessTokenType for a configured client" >&2
+              exit 1
+            fi
             if [ "$att" != "OIDC_TOKEN_TYPE_JWT" ]; then
               echo "::error::${c} access token type is '${att}', not OIDC_TOKEN_TYPE_JWT" >&2
               exit 1

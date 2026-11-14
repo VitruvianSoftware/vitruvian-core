@@ -101,6 +101,7 @@ func TestGeminiCallbackPathIsPinned(t *testing.T) {
 		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-",              // prefix only, no id
 		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x/../evil",     // path traversal
 		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x%2F..%2Fevil", // encoded traversal
+		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x/y",           // extra segment
 	}
 	for _, raw := range bad {
 		if _, err := clientSpecs("", raw); err == nil {
@@ -120,13 +121,17 @@ func TestParseRedirectURIsRefusesWrongTargets(t *testing.T) {
 		"https://chatgpt.com/",                       // right host, wrong path
 		"https://chatgpt.com/share/abc",              // right host, wrong path
 		"https://user@chatgpt.com/connector/oauth/x", // userinfo
+		"https://chatgpt.com/connectorevil",                // look-alike of /connector
+		"https://chatgpt.com/connector/oauth/",             // prefix only, no id
+		"https://chatgpt.com/connector/oauth/a/b",          // extra segment
+		"https://chatgpt.com/connector_platform_oauth_redirectx", // not the exact path
 	}
 	for _, raw := range bad {
-		if _, err := parseRedirectURIs(raw, chatgptCallbackHost, chatgptCallbackPathPrefix); err == nil {
+		if _, err := parseRedirectURIs(raw, chatgptCallbackHost, chatgptCallbackPaths); err == nil {
 			t.Errorf("%q: want refusal, got none", raw)
 		}
 	}
-	if got, err := parseRedirectURIs(" , ", chatgptCallbackHost, chatgptCallbackPathPrefix); err != nil || len(got) != 0 {
+	if got, err := parseRedirectURIs(" , ", chatgptCallbackHost, chatgptCallbackPaths); err != nil || len(got) != 0 {
 		t.Errorf("separators only: want empty and no error, got %v %v", got, err)
 	}
 }
