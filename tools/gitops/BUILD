@@ -280,6 +280,14 @@ TOOLS = {
         "headscale_ops.sh",
         ["preauthkey-list"],
     ),
+    "headscale-policy-check": (
+        "headscale_ops.sh",
+        ["policy-check"],
+    ),
+    "headscale-policy-set": (
+        "headscale_ops.sh",
+        ["policy-set"],
+    ),
     "rotate-github-otel-webhook-secret": ("rotate_github_otel_webhook_secret.sh", []),
     "cicd-telemetry-smoke": ("cicd_telemetry_smoke.sh", []),
     "seal-arc-github-app": ("seal_arc_github_app.sh", []),

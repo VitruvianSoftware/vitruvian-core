@@ -20,35 +20,77 @@
 
 name: Zitadel tunnel setup
 description: >-
-  Join the tailnet and prepare a local TLS terminator for the internal route
-  to auth.ipv1337.dev (Zitadel), deduped from _zitadel-apps-apply.yaml and
-  zitadel-apps-mcp-slack-apply.yaml's identical copies. This ONLY prepares the
-  cert/hosts-file/tailnet join -- it deliberately does NOT start the socat
-  tunnel itself. socat's `&` background process does not survive across a
-  step boundary, so the actual `sudo socat OPENSSL-LISTEN:443,... &` +
-  healthz-wait must stay inlined in the SAME step as whatever command (pulumi,
-  etc.) needs the route -- see either caller for that half.
+  Join the Headscale mesh and prepare a local TLS terminator for the internal
+  route to auth.ipv1337.dev (Zitadel), deduped from _zitadel-apps-apply.yaml,
+  zitadel-apps-mcp-slack-apply.yaml and zitadel-apps-relay-apply.yaml. This
+  ONLY prepares the mesh join, the cert and the hosts entry, and picks a
+  reachable gateway node into $ZITADEL_GATEWAY. It deliberately does NOT start
+  the socat tunnel itself: socat's `&` background process does not survive
+  across a step boundary, so the actual `sudo socat OPENSSL-LISTEN:443,...
+  TCP:${ZITADEL_GATEWAY} &` + healthz-wait must stay inlined in the SAME step
+  as whatever command (pulumi, etc.) needs the route -- see any caller.
 
 inputs:
-  tailscale-oauth-client-id:
-    required: true
-  tailscale-oauth-secret:
+  headscale-authkey:
+    description: >-
+      Reusable, ephemeral Headscale pre-auth key tagged tag:ci (the
+      HEADSCALE_CI_AUTHKEY environment secret). Minting and rotation:
+      gitops/argocd/platform/headscale/README.md.
     required: true
 
 runs:
   using: composite
   steps:
-    - name: Join the tailnet (ephemeral, tag:ci)
+    - name: Join the Headscale mesh (ephemeral, tag:ci)
       uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
       with:
-        # OAuth client (no expiry) — mints a short-lived ephemeral tag:ci key
-        # per run, so there's no 90-day auth-key rotation chore. The client
-        # carries the `auth_keys` write scope tagged tag:ci; `tags:` is
-        # required with OAuth.
-        oauth-client-id: ${{ inputs.tailscale-oauth-client-id }}
-        oauth-secret: ${{ inputs.tailscale-oauth-secret }}
-        tags: tag:ci
+        # Self-hosted Headscale, not commercial Tailscale (which is now
+        # offline break-glass on the cluster hosts; see
+        # docs/admin/headscale-tailscale-failover.md). Headscale has no OAuth
+        # clients, so this is a pre-auth key. The key itself carries tag:ci and
+        # makes the node ephemeral, so no `tags:` here (that would add
+        # --advertise-tags, which a tagged key does not need).
+        # The action marks `authkey` deprecated in favour of OAuth; the warning
+        # it prints is expected here.
+        authkey: ${{ inputs.headscale-authkey }}
+        args: --login-server=https://headscale.ipv1337.dev
+        # Pinned, not "latest": a client newer than Headscale v0.26.1 knows is
+        # a risk. 1.104.x is what this action version defaults to and what
+        # James's Mac (1.104.5) already runs against this Headscale.
+        version: 1.104.4
+        hostname: ci-${{ github.run_id }}-${{ github.run_attempt }}
         # v4 already passes `--accept-routes`; don't add it in args.
+
+    - name: Pick a reachable Envoy gateway node
+      shell: bash
+      run: |
+        set -euo pipefail
+        # The Envoy gateway's HTTP NodePort (pinned to 30265 in
+        # gitops/argocd/platform/envoy-gateway/gateway/envoyproxy.yaml) on the
+        # wired cluster nodes' Headscale addresses (headscale-node-agent). The
+        # gateway Service is externalTrafficPolicy: Cluster, so any node
+        # forwards to Envoy; trying all three means one node being down does
+        # not break CI. These are the `hosts` in
+        # gitops/argocd/platform/headscale/policy.hujson, which allows tag:ci
+        # to reach exactly these ports -- keep the two lists in step.
+        # Order: nuc9i9 first, the node the workflows used before.
+        candidates="100.64.0.8 100.64.0.6 100.64.0.7"
+        for attempt in $(seq 1 10); do
+          for ip in $candidates; do
+            if curl -fsS --max-time 5 -H 'Host: auth.ipv1337.dev' \
+                "http://${ip}:30265/debug/healthz" \
+                >/dev/null 2>&1; then
+              echo "Zitadel answers through ${ip}:30265 (attempt ${attempt})"
+              echo "ZITADEL_GATEWAY=${ip}:30265" >>"$GITHUB_ENV"
+              exit 0
+            fi
+          done
+          sleep 3
+        done
+        echo "::error::No cluster node answered Zitadel healthz on :30265" \
+          "over Headscale (${candidates})."
+        tailscale status || true
+        exit 1
 
     - name: Prepare the internal TLS route to the Envoy gateway
       shell: bash

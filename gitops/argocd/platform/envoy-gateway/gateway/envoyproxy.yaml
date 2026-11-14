@@ -47,8 +47,8 @@ spec:
         type: LoadBalancer
         # Cluster (not Local) external traffic policy so EVERY node answers the
         # generated NodePort, not only nodes running an Envoy pod. CI reaches
-        # Zitadel's management API over the tailnet via a node's tailscale IP on
-        # this NodePort (_zitadel-apps-apply.yaml): the LB VIP 10.44.86.211 is a
+        # Zitadel's management API over the Headscale mesh via a node's mesh IP
+        # on this NodePort (.github/actions/zitadel-tunnel-setup): the LB VIP 10.44.86.211 is a
         # Cilium eBPF LB address that is NOT load-balanced for subnet-router-
         # forwarded external packets, so the VIP is unreachable from off-cluster
         # tailnet clients — the NodePort is. Cluster policy keeps that path robust
@@ -62,9 +62,10 @@ spec:
         annotations:
           lbipam.cilium.io/ips: "10.44.86.211,192.168.86.211"
         # Pin the NodePort so it can't drift on a Service recreation. The
-        # zitadel-apps CI apply reaches this gateway at a node tailscale IP on
-        # THIS nodePort (_zitadel-apps-apply.yaml hardcodes :30265), so a drift
-        # would silently break that path. Strategic-merge by the port number
+        # zitadel-apps CI apply reaches this gateway at a node's Headscale IP on
+        # THIS nodePort (zitadel-tunnel-setup and the headscale ACL both name
+        # :30265; headscale_values_test checks they match this), so a drift
+        # would break that path. Strategic-merge by the port number
         # (Kubernetes ServiceSpec.ports declares `port` as its patchMergeKey),
         # so every entry must include `port` for Envoy Gateway's StrategicMerge
         # reconciliation to succeed.
