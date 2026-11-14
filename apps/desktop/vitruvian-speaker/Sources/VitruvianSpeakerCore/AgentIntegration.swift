@@ -109,9 +109,17 @@ public enum CodingAgent: String, CaseIterable, Sendable {
         }
     }
 
-    /// The line that tells the agent to announce its replies itself. Kept
-    /// identical to what the google-home skill documents so existing
-    /// setups are recognised.
+    /// The line that tells the agent to announce its replies itself, naming
+    /// the command as `command` (a bare name or a shell-quoted path). Speaker
+    /// writes it with the full path of the copy it installed
+    /// (`AgentIntegration.broadcastInstructionLine`), because an agent with no
+    /// Speaker plugin has no `speaker-broadcast` on its PATH.
+    public static func broadcastInstruction(command: String) -> String {
+        "- Announce top-level replies aloud with `\(command) \"<summary>\"` (never run speaker-broadcast from a background subagent or a delegated `claude -p` helper). Run `\(command) --on`, `--off`, or `--set-target <room>` to change settings, and `\(command) --help` for the rest."
+    }
+
+    /// The line with the bare command name: the wording older releases wrote,
+    /// still recognised as Speaker's own so it is updated or removed.
     public static let broadcastInstruction = """
     - Announce top-level replies aloud with `speaker-broadcast "<summary>"` (never run `speaker-broadcast` from a background subagent or a delegated `claude -p` helper). Run `speaker-broadcast --on`, `--off`, or `--set-target <room>` to change settings, and `speaker-broadcast --help` for the rest.
     """
@@ -411,9 +419,9 @@ public struct AgentIntegration {
 
     /// True when a single line is a legacy Vitruvian/Home Speaker broadcast
     /// instruction that should be migrated in-place to `broadcastInstruction`.
-    public static func isLegacyBroadcastInstructionLine(_ line: String) -> Bool {
+    public static func isLegacyBroadcastInstructionLine(_ line: String, current: String = CodingAgent.broadcastInstruction) -> Bool {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed != CodingAgent.broadcastInstruction else { return false }
+        guard !trimmed.isEmpty, trimmed != current else { return false }
         if trimmed.contains("vitruvian-speaker-broadcast") || trimmed.contains("home-speaker-broadcast") {
             return true
         }
@@ -423,19 +431,22 @@ public struct AgentIntegration {
     /// True when a line was written by Vitruvian/Home Speaker's instruction
     /// installer (current or any historical wording). Custom user lines such as
     /// `"Use speaker-broadcast."` do not match.
-    public static func isManagedBroadcastInstructionLine(_ line: String) -> Bool {
+    public static func isManagedBroadcastInstructionLine(_ line: String, current: String = CodingAgent.broadcastInstruction) -> Bool {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
-        if trimmed == CodingAgent.broadcastInstruction || isLegacyBroadcastInstructionLine(line) {
+        if trimmed == current || trimmed == CodingAgent.broadcastInstruction
+            || isLegacyBroadcastInstructionLine(line, current: current) {
             return true
         }
-        return trimmed.hasPrefix("- Announce top-level replies aloud with `speaker-broadcast")
+        // Any `broadcastInstruction(command:)`: bare name or full path.
+        return trimmed.hasPrefix("- Announce top-level replies aloud with `")
+            && trimmed.contains(BroadcastCommand.commandName)
     }
 
-    /// Replaces legacy broadcast instruction line(s) in `text` with
-    /// `CodingAgent.broadcastInstruction` when stale wording is present;
-    /// returns `nil` if no legacy line needed updating.
-    public static func migratingBroadcastInstruction(in text: String) -> String? {
+    /// Replaces Speaker's broadcast instruction line(s) in `text` with
+    /// `current` when any other wording is present (older text, or a path to
+    /// a program that moved); returns `nil` if nothing needed updating.
+    public static func migratingBroadcastInstruction(in text: String, current: String = CodingAgent.broadcastInstruction) -> String? {
         let endsWithNewline = text.hasSuffix("\n")
         let rawLines = text.components(separatedBy: "\n")
         let lines = (endsWithNewline && rawLines.last == "") ? Array(rawLines.dropLast()) : rawLines
@@ -447,17 +458,17 @@ public struct AgentIntegration {
 
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed == CodingAgent.broadcastInstruction {
+            if trimmed == current {
                 if !replaced {
                     out.append(line)
                     replaced = true
                 } else {
                     didChange = true
                 }
-            } else if isManagedBroadcastInstructionLine(line) {
+            } else if isManagedBroadcastInstructionLine(line, current: current) {
                 didChange = true
                 if !replaced {
-                    out.append(CodingAgent.broadcastInstruction)
+                    out.append(current)
                     replaced = true
                 }
             } else {
@@ -595,13 +606,39 @@ public struct AgentIntegration {
             usingSettingsFallback: fallback)
     }
 
+    /// The `speaker-broadcast` the instruction line names: a two-line shim in
+    /// Speaker's own data folder that runs this program, so it is there for
+    /// the app and the Atrium extension alike, whatever the agent's PATH is.
+    public var instructionCommandURL: URL {
+        dataFolder.appendingPathComponent(AgentPlugins.commandRelativePath)
+    }
+
+    /// The instruction line as Speaker writes it: naming `instructionCommandURL`
+    /// by its full path.
+    public var broadcastInstructionLine: String {
+        CodingAgent.broadcastInstruction(
+            command: AgentPlugins.shellWord(instructionCommandURL.standardizedFileURL.path))
+    }
+
+    /// Writes (or re-points) the shim the instruction line names.
+    func ensureInstructionCommand() throws {
+        guard Self.isVitruvianSpeakerProgram(executablePath) else { throw IntegrationError.notVitruvianSpeaker(executablePath) }
+        _ = try writeFileIfChanged(
+            at: instructionCommandURL,
+            data: AgentPlugins.broadcastShim(program: executablePath),
+            isExecutable: true)
+    }
+
     /// Appends the broadcast instruction to the agent's instruction file,
-    /// creating it if needed, or updates a legacy instruction line in-place.
-    /// No-op when the file already mentions broadcasting with current text.
+    /// creating it if needed, or updates an older instruction line in-place.
+    /// Writes the command the line names first. No-op when the file already
+    /// mentions broadcasting with current text.
     public func addBroadcastInstruction(for agent: CodingAgent) throws {
+        try ensureInstructionCommand()
+        let current = broadcastInstructionLine
         let url = agent.primaryInstructionFile(home: home)
         let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-        if let migrated = Self.migratingBroadcastInstruction(in: existing) {
+        if let migrated = Self.migratingBroadcastInstruction(in: existing, current: current) {
             try migrated.write(to: url, atomically: true, encoding: .utf8)
             return
         }
@@ -612,7 +649,7 @@ public struct AgentIntegration {
         }
         var text = existing
         if !text.isEmpty && !text.hasSuffix("\n") { text += "\n" }
-        text += CodingAgent.broadcastInstruction + "\n"
+        text += current + "\n"
         try text.write(to: url, atomically: true, encoding: .utf8)
     }
 
@@ -623,6 +660,8 @@ public struct AgentIntegration {
     /// Never creates new files or removes custom wording.
     public func migrateBroadcastInstructions() {
         let claudeFallback = status(of: .claudeCode).usingSettingsFallback
+        let current = broadcastInstructionLine
+        var commandReady = false
         var seen: Set<URL> = []
         for agent in CodingAgent.allCases {
             let keepFallbackLine = (agent == .claudeCode && claudeFallback)
@@ -631,8 +670,14 @@ public struct AgentIntegration {
                       let text = try? String(contentsOf: url, encoding: .utf8) else {
                     continue
                 }
+                if keepFallbackLine, !commandReady,
+                   text.components(separatedBy: "\n").contains(where: { Self.isManagedBroadcastInstructionLine($0, current: current) }) {
+                    // Keep the command the line names in step with this program.
+                    commandReady = (try? ensureInstructionCommand()) != nil
+                    guard commandReady else { continue }
+                }
                 let updated = keepFallbackLine
-                    ? Self.migratingBroadcastInstruction(in: text)
+                    ? Self.migratingBroadcastInstruction(in: text, current: current)
                     : Self.removingBroadcastInstruction(from: text)
                 guard let updated else { continue }
                 try? updated.write(to: url, atomically: true, encoding: .utf8)
