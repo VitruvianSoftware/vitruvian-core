@@ -23,6 +23,10 @@ Component package providing implementation for `tools/watch-pr/src`.
 - `[pyjson.rs:str_repr]`
 - `[pyjson.rs:loads]`
 - `[pyprint.rs:NOT_PRINTABLE]`
+- `[queue.rs:QUERY]`
+- `[queue.rs:Verdict]`
+- `[queue.rs:Status]`
+- `[queue.rs:parse]`
 - `[sh.rs:Captured]`
 
 ## Invariants
