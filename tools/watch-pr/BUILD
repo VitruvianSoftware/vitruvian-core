@@ -62,7 +62,21 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
+# Runs the built binary against a fake gh/git, so the merge-queue phase is
+# tested end to end (tests/queue_test.rs).
+rust_test(
+    name = "queue_test",
+    size = "small",
+    srcs = ["tests/queue_test.rs"],
+    data = [":watch-pr"],
+    edition = "2021",
+    env = {"WATCH_PR_BIN": "$(rootpath :watch-pr)"},
+)
+
 test_suite(
     name = "watch-pr_test",
-    tests = [":watch_pr_lib_test"],
+    tests = [
+        ":queue_test",
+        ":watch_pr_lib_test",
+    ],
 )

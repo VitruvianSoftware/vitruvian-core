@@ -31,4 +31,5 @@ pub mod cli;
 pub mod post_merge;
 pub mod pyjson;
 pub mod pyprint;
+pub mod queue;
 pub mod sh;
