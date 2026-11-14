@@ -15,6 +15,7 @@ _CRATES = [
     "@vitruvian_relay_spike_crates//:http-body-util",
     "@vitruvian_relay_spike_crates//:hyper",
     "@vitruvian_relay_spike_crates//:hyper-util",
+    "@vitruvian_relay_spike_crates//:sentry",
     "@vitruvian_relay_spike_crates//:serde_json",
     "@vitruvian_relay_spike_crates//:tokio",
     "@vitruvian_relay_spike_crates//:tokio-tungstenite",

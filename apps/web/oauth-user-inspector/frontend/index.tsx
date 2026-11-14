@@ -22,7 +22,24 @@
 
 import React from "react";
 import ReactDOM from "react-dom/client";
+import * as Sentry from "@sentry/react";
 import App from "./App";
+
+const sentryDsn =
+  import.meta.env.VITE_SENTRY_DSN ||
+  (import.meta.env.PROD
+    ? "https://b5f2531a96fc15a51fd199825daf0be4@sentry-ingest.ipv1337.dev/7"
+    : undefined);
+
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    environment:
+      import.meta.env.MODE ||
+      (import.meta.env.PROD ? "production" : "development"),
+    tracesSampleRate: 0.0,
+  });
+}
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
@@ -32,6 +49,12 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <App />
+    <Sentry.ErrorBoundary
+      fallback={
+        <div className="p-4 text-red-500">An unexpected error occurred.</div>
+      }
+    >
+      <App />
+    </Sentry.ErrorBoundary>
   </React.StrictMode>,
 );
