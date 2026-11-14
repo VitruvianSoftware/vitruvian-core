@@ -41,5 +41,7 @@ slack:
   userTokenEnabled: true # impersonation mode — posts as the human
   writeMode: "user" # "user" = impersonate, "bot" = post as bot
   httpAllowDestructive: true
+sentry:
+  dsn: "https://e52fdc93b32a6a779d5f87475f9ac39b@sentry.lab.ipv1337.dev/15"
 networkPolicy:
   enabled: true
