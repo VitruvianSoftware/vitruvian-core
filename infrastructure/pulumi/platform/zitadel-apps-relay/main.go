@@ -59,6 +59,7 @@ package main
 import (
 	"fmt"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -82,7 +83,9 @@ const (
 )
 
 // pathRule allows one callback path shape: either exactly Exact, or Prefix
-// followed by a non-empty id containing no further "/".
+// followed by an id of letters, digits, "_" and "-" only. The narrow id
+// alphabet refuses "/", a backslash (browsers read it as "/"), "%" and the dot
+// segments "." and "..", any of which could walk the path somewhere else.
 type pathRule struct {
 	Exact  string
 	Prefix string
@@ -93,8 +96,10 @@ func (r pathRule) matches(path string) bool {
 		return path == r.Exact
 	}
 	id, ok := strings.CutPrefix(path, r.Prefix)
-	return ok && id != "" && !strings.Contains(id, "/")
+	return ok && callbackID.MatchString(id)
 }
+
+var callbackID = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 var (
 	// https://chatgpt.com/connector/oauth/{id} and the fixed
@@ -175,14 +180,18 @@ func clientSpecs(chatgptRaw, geminiRaw string) ([]clientSpec, error) {
 }
 
 // parseRedirectURIs splits a comma-separated list and refuses anything that is
-// not an exact https URL on wantHost whose path matches one of rules. A redirect URI on the wrong host or path would hand an
-// authorization code to someone else, so a typo is an apply error.
+// not an exact https URL on wantHost whose path matches one of rules. A
+// redirect URI on the wrong host or path would hand an authorization code to
+// someone else, so a typo is an apply error.
 func parseRedirectURIs(raw, wantHost string, rules []pathRule) ([]string, error) {
 	var out []string
 	for _, part := range strings.Split(raw, ",") {
 		s := strings.TrimSpace(part)
 		if s == "" {
 			continue
+		}
+		if strings.ContainsAny(s, "\\") {
+			return nil, fmt.Errorf("%s: redirect URI %q contains a backslash", cfgNamespace, s)
 		}
 		u, err := url.Parse(s)
 		if err != nil || u.Scheme != "https" || u.Host != wantHost || u.User != nil || u.RawQuery != "" || u.Fragment != "" ||

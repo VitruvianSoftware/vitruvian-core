@@ -125,25 +125,30 @@ jobs:
             fi
             printf '%-26s %s\n' "$o" "$v"
           done
+          # Read every output once. Under bash -e a failed read stops the run
+          # here, so a transient Pulumi error can't make a client look absent.
+          outputs="$(pulumi stack output --json)"
+          has() { jq -e --arg k "$1" 'has($k)' <<<"$outputs" >/dev/null; }
+          get() { jq -r --arg k "$1" '.[$k]' <<<"$outputs"; }
           for c in chatgpt gemini; do
-            if pulumi stack output "${c}ClientId" >/dev/null 2>&1; then
-              printf '%-26s %s\n' "${c}ClientId" "$(pulumi stack output "${c}ClientId")"
+            if has "${c}ClientId"; then
+              printf '%-26s %s\n' "${c}ClientId" "$(get "${c}ClientId")"
             fi
           done
           # The relay validates JWTs locally; an opaque token on any client would
           # fail every request while the stack reports clean.
           for c in connector claude chatgpt gemini; do
-            # chatgpt and gemini exist only when their callbacks are configured;
-            # skip one only when the stack has no client for it at all. A client
-            # that exists but whose token type can't be read fails the run.
-            if { [ "$c" = chatgpt ] || [ "$c" = gemini ]; } &&
-              ! pulumi stack output "${c}ClientId" >/dev/null 2>&1; then
+            # chatgpt and gemini exist only when their callbacks are configured.
+            # Skip one only when the stack has no client for it; a configured
+            # client with no token type fails the run.
+            if { [ "$c" = chatgpt ] || [ "$c" = gemini ]; } && ! has "${c}ClientId"; then
               continue
             fi
-            if ! att="$(pulumi stack output "${c}AccessTokenType")"; then
-              echo "::error::could not read ${c}AccessTokenType for a configured client" >&2
+            if ! has "${c}AccessTokenType"; then
+              echo "::error::${c} client exists but has no ${c}AccessTokenType output" >&2
               exit 1
             fi
+            att="$(get "${c}AccessTokenType")"
             if [ "$att" != "OIDC_TOKEN_TYPE_JWT" ]; then
               echo "::error::${c} access token type is '${att}', not OIDC_TOKEN_TYPE_JWT" >&2
               exit 1

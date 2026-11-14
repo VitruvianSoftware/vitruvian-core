@@ -95,13 +95,16 @@ func TestClientSpecsGemini(t *testing.T) {
 
 func TestGeminiCallbackPathIsPinned(t *testing.T) {
 	bad := []string{
-		"https://oauth-redirect.googleusercontent.com/",                                      // no path
-		"https://oauth-redirect.googleusercontent.com/r/",                                    // another redirector entry
-		"https://oauth-redirect.googleusercontent.com/r/someone-elses-app",                   // another Google client
-		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-",              // prefix only, no id
-		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x/../evil",     // path traversal
-		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x%2F..%2Fevil", // encoded traversal
-		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x/y",           // extra segment
+		"https://oauth-redirect.googleusercontent.com/",                                       // no path
+		"https://oauth-redirect.googleusercontent.com/r/",                                     // another redirector entry
+		"https://oauth-redirect.googleusercontent.com/r/someone-elses-app",                    // another Google client
+		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-",               // prefix only, no id
+		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x/../evil",      // path traversal
+		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x%2F..%2Fevil",  // encoded traversal
+		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x/y",            // extra segment
+		`https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x\..\..\other`,  // backslash walk
+		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-x%5C..%5Cother", // encoded backslash
+		"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-..",             // dot segment id
 	}
 	for _, raw := range bad {
 		if _, err := clientSpecs("", raw); err == nil {
@@ -118,12 +121,15 @@ func TestParseRedirectURIsRefusesWrongTargets(t *testing.T) {
 		"https://chatgpt.com/connector/oauth/x?y=1",   // query
 		"https://chatgpt.com/connector/oauth/x#frag",  // fragment
 		"not a url at all",
-		"https://chatgpt.com/",                       // right host, wrong path
-		"https://chatgpt.com/share/abc",              // right host, wrong path
-		"https://user@chatgpt.com/connector/oauth/x", // userinfo
-		"https://chatgpt.com/connectorevil",                // look-alike of /connector
-		"https://chatgpt.com/connector/oauth/",             // prefix only, no id
-		"https://chatgpt.com/connector/oauth/a/b",          // extra segment
+		"https://chatgpt.com/",                                   // right host, wrong path
+		"https://chatgpt.com/share/abc",                          // right host, wrong path
+		"https://user@chatgpt.com/connector/oauth/x",             // userinfo
+		"https://chatgpt.com/connectorevil",                      // look-alike of /connector
+		"https://chatgpt.com/connector/oauth/",                   // prefix only, no id
+		"https://chatgpt.com/connector/oauth/a/b",                // extra segment
+		"https://chatgpt.com/connector/oauth/..",                 // dot-dot id
+		"https://chatgpt.com/connector/oauth/.",                  // dot id
+		`https://chatgpt.com/connector/oauth/x\..\..\share`,      // backslash walk
 		"https://chatgpt.com/connector_platform_oauth_redirectx", // not the exact path
 	}
 	for _, raw := range bad {
