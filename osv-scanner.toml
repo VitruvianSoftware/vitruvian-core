@@ -132,36 +132,6 @@ ignoreUntil = 2026-12-23
 reason = "crates.io time 0.3.41, reached via sentry-types 0.34.0 in vitruvian-slack-mcp and vitruvian-relay. Advisory covers stack exhaustion when parsing crafted RFC 2822 dates; neither Sentry nor Slack MCP/relay parses RFC 2822 date strings. Fixed in 0.3.47 which requires MSRV 1.88+ (repo locks Rust 1.75)."
 
 [[IgnoredVulns]]
-id = "RUSTSEC-2026-0474"
-ignoreUntil = 2026-12-23
-reason = "crates.io openssl 0.10.78 in Cargo.lock, reached via sentry native-tls client. Fixed in 0.10.79/0.10.80 which requires MSRV 1.80+ (root Cargo.lock pinned to Rust 1.75 toolchain). Outbound HTTPS client only."
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2026-0476"
-ignoreUntil = 2026-12-23
-reason = "crates.io openssl 0.10.78 in Cargo.lock, reached via sentry native-tls client. Fixed in 0.10.79/0.10.80 which requires MSRV 1.80+ (root Cargo.lock pinned to Rust 1.75 toolchain). Outbound HTTPS client only."
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2026-0477"
-ignoreUntil = 2026-12-23
-reason = "crates.io openssl 0.10.78 in Cargo.lock, reached via sentry native-tls client. Fixed in 0.10.80 which requires MSRV 1.80+ (root Cargo.lock pinned to Rust 1.75 toolchain). Outbound HTTPS client only."
-
-[[IgnoredVulns]]
-id = "GHSA-phqj-4mhp-q6mq"
-ignoreUntil = 2026-12-23
-reason = "crates.io openssl 0.10.78 in Cargo.lock (alias for RUSTSEC-2026-0474). Fixed in 0.10.79 (MSRV 1.80+)."
-
-[[IgnoredVulns]]
-id = "GHSA-xp3w-r5p5-63rr"
-ignoreUntil = 2026-12-23
-reason = "crates.io openssl 0.10.78 in Cargo.lock (alias for RUSTSEC-2026-0476). Fixed in 0.10.79 (MSRV 1.80+)."
-
-[[IgnoredVulns]]
-id = "GHSA-xv59-967r-8726"
-ignoreUntil = 2026-12-23
-reason = "crates.io openssl 0.10.78 in Cargo.lock (alias for RUSTSEC-2026-0477). Fixed in 0.10.80 (MSRV 1.80+)."
-
-[[IgnoredVulns]]
 id = "GHSA-q7gw-24fr-5p69"
 ignoreUntil = 2026-12-23
 reason = "Go go.opentelemetry.io/otel/trace (1.46.0) in packages/pulumi/library/go/pkg/vpc_service_controls/go.mod. Active Dependabot bump PR in-flight."
@@ -285,4 +255,54 @@ reason = "Go golang.org/x/net in infrastructure/pulumi/platform/sentry/go.mod. A
 id = "GO-2026-6860"
 ignoreUntil = 2026-12-23
 reason = "Go golang.org/x/net in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-6213"
+ignoreUntil = 2026-12-23
+reason = "Go github.com/go-git/go-git/v6 in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GHSA-hc8v-wwc9-vgxm"
+ignoreUntil = 2026-12-23
+reason = "Go github.com/go-git/go-git/v6 in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-6214"
+ignoreUntil = 2026-12-23
+reason = "Go github.com/go-git/go-git/v6 in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GHSA-qgq7-7hm3-q39j"
+ignoreUntil = 2026-12-23
+reason = "Go github.com/go-git/go-git/v6 in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-5841"
+ignoreUntil = 2026-12-23
+reason = "Go github.com/klauspost/compress in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GHSA-259r-337f-4rfw"
+ignoreUntil = 2026-12-23
+reason = "Go github.com/klauspost/compress in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-6865"
+ignoreUntil = 2026-12-23
+reason = "Go github.com/klauspost/compress in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-5158"
+ignoreUntil = 2026-12-23
+reason = "Go go.opentelemetry.io/otel in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GO-2026-6508"
+ignoreUntil = 2026-12-23
+reason = "Go go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
+
+[[IgnoredVulns]]
+id = "GHSA-w34q-cm8f-9c5x"
+ignoreUntil = 2026-12-23
+reason = "Go go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc in infrastructure/pulumi/platform/sentry/go.mod. Active Dependabot bump PR in-flight."
 
