@@ -39,6 +39,15 @@ struct ConversationView: View {
     /// The scroll to a message (a search result) that has been made. Until it is, the bottom being in view is the
     /// timeline starting there, not the person reaching it, and reads nothing newer.
     @State private var scrolledToMessage: Int?
+    /// Just opened at its newest message: the view keeps the bottom in view until this time while rows settle
+    /// (pictures and link previews growing after layout), unless the person scrolls first.
+    @State private var pinToBottomUntil: Date?
+    /// Watches for the person's own scrolling while `pinToBottomUntil` holds.
+    @State private var pinScrollMonitor: Any?
+    /// When the person last scrolled, clicked or pressed a key in the window: the bottom leaving the view soon
+    /// after is their doing; otherwise content grew under it (a picture's real size, a status line).
+    @State private var lastUserScroll = Date.distantPast
+    @State private var userScrollMonitor: Any?
     @State private var inviteCandidates: [ContactCandidate] = []
     /// The thread's and Chat Info's widths, for their headers in the toolbar.
     @State private var sidePaneWidths: [SidePane: CGFloat] = [:]
@@ -378,7 +387,8 @@ struct ConversationView: View {
                         textHeight: $composerTextHeight,
                         chromeSignature: $composerChromeSignature,
                         closeThread: { conversation.deselectMessage() || closeThread() },
-                        upArrow: upArrow
+                        upArrow: upArrow,
+                        redactNames: redact
                     )
                 }
             }
@@ -633,7 +643,15 @@ struct ConversationView: View {
                             leavingBottom?.cancel()
                             leavingBottom = Task {
                                 try? await Task.sleep(nanoseconds: 150_000_000)
-                                if !Task.isCancelled { conversation.scrolled(toBottom: false) }
+                                guard !Task.isCancelled else { return }
+                                // Pushed out by content growing, not by the person: follow it down.
+                                if conversation.isAtBottom, !conversation.isAwayFromLatest,
+                                   conversation.scrollToMessageRequest == nil,
+                                   Date().timeIntervalSince(lastUserScroll) > 0.6 {
+                                    proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                                    return
+                                }
+                                conversation.scrolled(toBottom: false)
                             }
                         }
                 }
@@ -661,7 +679,27 @@ struct ConversationView: View {
             .onChange(of: conversation.items) { _, _ in
                 // New messages, a reaction or a status line are followed only by someone already at the newest
                 // message. Away from it (opened at a search result), new messages never move the view.
-                if conversation.isAtBottom, !conversation.isAwayFromLatest { scrollToBottom(proxy) }
+                if (conversation.isAtBottom || isPinningToBottom), !conversation.isAwayFromLatest {
+                    scrollToBottom(proxy)
+                }
+            }
+            .onAppear {
+                startPinningToBottom(proxy)
+                if userScrollMonitor == nil {
+                    userScrollMonitor = NSEvent.addLocalMonitorForEvents(
+                        matching: [.scrollWheel, .keyDown, .leftMouseDown, .leftMouseDragged]
+                    ) { event in
+                        MainActor.assumeIsolated { lastUserScroll = Date() }
+                        return event
+                    }
+                }
+            }
+            .onDisappear {
+                stopPinningToBottom()
+                if let monitor = userScrollMonitor {
+                    NSEvent.removeMonitor(monitor)
+                    userScrollMonitor = nil
+                }
             }
             .onChange(of: bottomBarSignature) { _, _ in
                 // The bottom bar grew (a reply, files, more lines): keep the newest message in view.
@@ -716,6 +754,49 @@ struct ConversationView: View {
         conversation.loadNewer()
     }
 
+    /// The first moments after the chat opens at its newest message, before the person has scrolled.
+    private var isPinningToBottom: Bool {
+        guard let until = pinToBottomUntil else { return false }
+        return Date() < until
+    }
+
+    /// How long after opening the view keeps the newest message in view while rows settle.
+    static let pinToBottomDuration: TimeInterval = 1.5
+
+    /// Opened at its newest message: scroll to the bottom now, and again a few times while rows settle (a picture
+    /// takes its real size, a link preview comes in), so the chat opens at the newest message and not above it.
+    /// Never when it was opened at a message (a search result), and it stops as soon as the person scrolls.
+    private func startPinningToBottom(_ proxy: ScrollViewProxy) {
+        stopPinningToBottom()
+        guard !conversation.isHeldAwayFromLatest, !conversation.isAwayFromLatest,
+              conversation.scrollToMessageRequest == nil else { return }
+        pinToBottomUntil = Date().addingTimeInterval(Self.pinToBottomDuration)
+        pinScrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            // The person's own scroll (not the tail of a fling from before) ends it.
+            if !event.phase.isEmpty || event.momentumPhase.isEmpty, event.scrollingDeltaY != 0 {
+                MainActor.assumeIsolated { stopPinningToBottom() }
+            }
+            return event
+        }
+        let room = conversation.roomID
+        for delay in [0.0, 0.05, 0.15, 0.3, 0.5, 0.75, 1.0, 1.25, Self.pinToBottomDuration] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard pinToBottomUntil != nil, conversation.roomID == room, !conversation.isAwayFromLatest,
+                      conversation.scrollToMessageRequest == nil else { return }
+                proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                if delay >= Self.pinToBottomDuration { stopPinningToBottom() }
+            }
+        }
+    }
+
+    private func stopPinningToBottom() {
+        pinToBottomUntil = nil
+        if let monitor = pinScrollMonitor {
+            NSEvent.removeMonitor(monitor)
+            pinScrollMonitor = nil
+        }
+    }
+
     private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = false) {
         // A moment later, so the layout that asked for it has settled.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -730,7 +811,8 @@ struct ConversationView: View {
     @ViewBuilder
     private var placeholder: some View {
         if !conversation.isLoaded {
-            if conversation.problem == nil { ProgressView() }
+            // Only when nothing is kept for the chat, and only after a moment: a fast read never flashes it.
+            if conversation.problem == nil { DelayedSpinner().id(conversation.roomID) }
         } else if conversation.items.isEmpty {
             Text(String(localized: "No messages yet"))
                 .foregroundStyle(.secondary)
@@ -874,7 +956,7 @@ private struct ConversationHeaderContainer: View {
         let headerRow = conversation.roomID.flatMap { inbox.row(of: $0) } ?? inbox.selectedRow
         ConversationHeader(
             row: headerRow,
-            networkName: headerRow.map { inbox.networkName($0.network) },
+            networkName: headerRow.map { NetworkNames.displayName(of: $0.network) ?? inbox.networkName($0.network) },
             conversation: conversation,
             readAloud: readAloud.isVitruvianSpeakerInstalled ? headerRow?.effectiveReadAloud : nil,
             onSelectReadAloud: { choice in
@@ -899,6 +981,17 @@ private struct ConversationComposerContainer: View {
     @Binding var chromeSignature: String
     let closeThread: () -> Bool
     let upArrow: () -> Bool
+    /// Names and pictures are hidden (Appearance): the placeholder names no one.
+    var redactNames: Bool = false
+
+    /// "Message Florian on Google Messages": the chat's name and, in a merged chat, the network replies go to.
+    private var placeholder: String {
+        let name = redactNames ? nil
+            : (conversation.mergedChat?.name ?? conversation.roomID.flatMap { inbox.row(of: $0)?.name })
+        let network = conversation.activeReplyNetwork ?? conversation.network
+        let networkName = network.isEmpty ? "" : (NetworkNames.displayName(of: network) ?? inbox.networkName(network))
+        return ConversationModel.composerPlaceholder(chatName: name, network: networkName)
+    }
 
     private var currentChromeSignature: String {
         "\(composer.replyTarget?.eventID ?? "")|\(composer.attachments.count)|\(composer.notice == nil ? "" : "notice")|\(composer.isAIWriting)|\(composer.aiResult != nil)|\(composer.aiError ?? "")"
@@ -915,6 +1008,7 @@ private struct ConversationComposerContainer: View {
             activeReplyNetwork: conversation.activeReplyNetwork,
             activeReplyAccountName: conversation.activeReplyRoomID.flatMap { inbox.row(of: $0)?.loginName } ?? "",
             onCycleReplyNetwork: conversation.cycleMergedReplyNetwork,
+            placeholder: placeholder,
             menus: ComposerMenus(
                 sendLater: messageActions.requestSendLater,
                 createPoll: { conversation.isCreatingPoll = true },
@@ -973,10 +1067,11 @@ struct ConversationHeader: View {
     @ViewBuilder
     private var identity: some View {
         if let row {
-            AvatarView(path: row.avatarPath, initials: row.initials, seed: row.name, size: 32)
+            // The inbox's picture: a group with none gets the group picture, not initials.
+            ChatAvatar(row: row, size: 32)
+                .frame(width: 32, height: 32)
                 .blur(radius: redactNamesAndPictures ? 6 : 0)
                 .clipShape(Circle())
-                .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 1) {
                 Text(
                     redactNamesAndPictures
@@ -985,6 +1080,12 @@ struct ConversationHeader: View {
                 )
                     .font(.headline)
                     .lineLimit(1)
+                if let subtitle = subtitle(of: row) {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
                 if let timer = conversation.timerLine {
                     Label(timer, systemImage: "timer")
                         .font(.caption)
@@ -993,6 +1094,18 @@ struct ConversationHeader: View {
                 }
             }
         }
+    }
+
+    /// Under the name: the network ("Google Messages") and, for a group whose members are known (Chat Info has
+    /// read them), how many ("Google Messages · 5 members"). Nil when neither is known.
+    private func subtitle(of row: InboxRow) -> String? {
+        var parts: [String] = []
+        if let networkName, !networkName.isEmpty { parts.append(networkName) }
+        if !row.isDirect, let info = conversation.chatInfo, info.roomID == row.roomID, !info.members.isEmpty {
+            let count = info.members.count
+            parts.append(count == 1 ? String(localized: "1 member") : String(localized: "\(count) members"))
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     /// The buttons: borderless in the strip; in the toolbar in the toolbar's own style, which draws them as glass.
@@ -1064,6 +1177,22 @@ private struct ProblemBar: View {
         case .loadFailed: String(localized: "Vitruvian Courier could not read the latest messages.")
         case let .actionFailed(reason): reason
         case .messageGone: String(localized: "That message isn’t in this chat any more.")
+        }
+    }
+}
+
+/// A spinner that shows only after `delay`, so a read that finishes sooner never flashes one.
+private struct DelayedSpinner: View {
+    var delay: Duration = .milliseconds(250)
+    @State private var isShown = false
+
+    var body: some View {
+        Group {
+            if isShown { ProgressView() } else { Color.clear }
+        }
+        .task {
+            try? await Task.sleep(for: delay)
+            if !Task.isCancelled { isShown = true }
         }
     }
 }

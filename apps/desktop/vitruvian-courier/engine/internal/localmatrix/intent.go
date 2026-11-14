@@ -73,6 +73,12 @@ func (in *Intent) SendMessage(ctx context.Context, roomID id.RoomID, evtType eve
 	}); err != nil {
 		return nil, err
 	}
+	// A new message of mine that the bridge says was already read when it arrived (arrived.go): the receipt the
+	// bridge won't send for it.
+	if extra != nil && extra.MessageMeta != nil && extra.MessageMeta.MXID == "" && evtType != event.EventRedaction &&
+		arrivedRead(in.c.network, extra.MessageMeta.Metadata) && in.isMine(ctx) {
+		in.c.readOnArrival(ctx, string(roomID), string(evtID))
+	}
 	return &mautrix.RespSendEvent{EventID: evtID}, nil
 }
 

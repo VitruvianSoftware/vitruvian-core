@@ -62,7 +62,14 @@ struct SearchPanel: View {
                     .padding(.top, 8)
             }
             if let notice = search.notice {
-                SearchNoticeView(notice: notice, clearFilters: search.clearFilters, retry: search.retry)
+                SearchNoticeView(notice: notice, clearFilters: search.clearFilters, retry: search.retry,
+                                 scopeName: search.scope?.name)
+                if notice == .welcomeInChat {
+                    RecentChatsList(rows: recentChats) { row in
+                        search.close()
+                        inbox.select(row.id)
+                    }
+                }
             } else {
                 results
             }
@@ -85,6 +92,11 @@ struct SearchPanel: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(String(localized: "Search"))
+    }
+
+    /// The chats most recently active, for the empty in-chat search (not the chat searched in).
+    private var recentChats: [InboxRow] {
+        Array(inbox.rows.filter { $0.roomID != search.scope?.roomID }.prefix(5))
     }
 
     // MARK: The field
@@ -218,10 +230,11 @@ private struct ScopeChip: View {
             .help(String(localized: "Search every chat"))
             .accessibilityLabel(String(localized: "Search every chat"))
         }
-        .font(.callout)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(Capsule().fill(themeAccent.opacity(0.15)))
+        .font(.callout.weight(.medium))
+        .foregroundStyle(Color.white)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(themeAccent))
         .frame(maxWidth: 220, alignment: .leading)
         .fixedSize()
     }
@@ -364,6 +377,8 @@ struct SearchNoticeView: View {
     let notice: SearchNotice
     let clearFilters: () -> Void
     let retry: () -> Void
+    /// The chat a ⌘F search is in, when it has a name to say.
+    var scopeName: String? = nil
 
     var body: some View {
         VStack(spacing: 8) {
@@ -371,8 +386,13 @@ struct SearchNoticeView: View {
             case .welcome:
                 line(String(localized: "Find any chat, person or message on this Mac."))
             case .welcomeInChat:
-                line(String(localized: "Search this chat’s messages.",
-                            comment: "Search panel inside one chat (⌘F), before typing, with no recent searches."))
+                if let scopeName, !scopeName.isEmpty {
+                    line(String(localized: "Press ⌘F to search your conversation in \(scopeName)",
+                                comment: "Search panel inside one chat (⌘F), before typing, with no recent searches."))
+                } else {
+                    line(String(localized: "Search this chat’s messages.",
+                                comment: "Search panel inside one chat (⌘F), before typing, with no recent searches."))
+                }
             case .searching:
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
@@ -406,8 +426,41 @@ struct SearchNoticeView: View {
 
     private func line(_ text: String) -> some View {
         Text(text)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Color.primary.opacity(0.7))
             .multilineTextAlignment(.center)
+    }
+}
+
+/// "Recent chats" under the empty in-chat search: a click opens the chat.
+struct RecentChatsList: View {
+    let rows: [InboxRow]
+    let open: (InboxRow) -> Void
+
+    var body: some View {
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(String(localized: "Recent chats"))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 4)
+                ForEach(rows, id: \.id) { row in
+                    Button { open(row) } label: {
+                        HStack(spacing: 10) {
+                            ChatAvatar(row: row, size: 28).frame(width: 28, height: 28)
+                            Text(row.name.isEmpty ? String(localized: "Unnamed chat") : row.name)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 3)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.bottom, 12)
+        }
     }
 }
 

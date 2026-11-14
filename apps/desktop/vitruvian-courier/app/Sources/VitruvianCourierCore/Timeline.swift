@@ -262,19 +262,43 @@ public enum StatusLine: Equatable, Sendable {
     /// The "Don't Send" button on a waiting message's line: it takes the message back, as Undo does.
     public static var dontSendTitle: String { String(localized: "Don’t Send") }
 
-    /// How a Seen line reads: "Seen", or "Seen 10:42" when a one-to-one receipt had a time; in a group, "Seen by Ana",
-    /// "Seen by Ana & 1 other", "Seen by Ana & 2 others", naming the newest reader. `time` writes the receipt's time.
-    /// Nil for any other line. Inferred (inventory 01 §5), which lists the words, not when each is used.
-    public static func seenText(_ line: StatusLine, time: (Date) -> String) -> String? {
+    /// How a Seen line reads. One-to-one: "Seen" or, when the receipt had a time, "Seen at 9:25 AM" today, "Seen
+    /// yesterday at 9:25 AM", and "Seen Oct 12 at 9:25 AM" before that. In a group, naming the newest readers:
+    /// "Seen by Kent", "Seen by Kent & Eddie", "Seen by Kent & 3 others". `time` writes the receipt's time of day;
+    /// `date` its day, for one older than yesterday; `now` and `calendar` say which day is today. Nil for any other
+    /// line.
+    public static func seenText(_ line: StatusLine, time: (Date) -> String, date: ((Date) -> String)? = nil,
+                                now: Date = Date(), calendar: Calendar = .autoupdatingCurrent) -> String? {
         guard case let .seen(by, at) = line else { return nil }
         guard let first = by.first else {
             guard let at, at > 0 else { return String(localized: "Seen") }
-            return String(localized: "Seen \(time(Date(timeIntervalSince1970: Double(at) / 1000)))")
+            let when = Date(timeIntervalSince1970: Double(at) / 1000)
+            let clock = time(when)
+            if calendar.isDate(when, inSameDayAs: now) || when > now {
+                return String(localized: "Seen at \(clock)")
+            }
+            if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
+               calendar.isDate(when, inSameDayAs: yesterday) {
+                return String(localized: "Seen yesterday at \(clock)")
+            }
+            let day = date?(when) ?? Self.shortDay(when, now: now, calendar: calendar)
+            return String(localized: "Seen \(day) at \(clock)")
         }
-        let others = by.count - 1
-        if others == 0 { return String(localized: "Seen by \(first)") }
-        return others == 1 ? String(localized: "Seen by \(first) & \(others) other")
-            : String(localized: "Seen by \(first) & \(others) others")
+        switch by.count {
+        case 1: return String(localized: "Seen by \(first)")
+        case 2: return String(localized: "Seen by \(first) & \(by[1])")
+        default: return String(localized: "Seen by \(first) & \(by.count - 1) others")
+        }
+    }
+
+    /// "Oct 12", or "Oct 12, 2025" in another year, in `calendar`'s time zone.
+    private static func shortDay(_ day: Date, now: Date, calendar: Calendar) -> String {
+        var style = Date.FormatStyle(date: .omitted, time: .omitted).month(.abbreviated).day()
+        if calendar.component(.year, from: day) != calendar.component(.year, from: now) { style = style.year() }
+        style.timeZone = calendar.timeZone
+        style.calendar = calendar
+        if let locale = calendar.locale { style.locale = locale }
+        return day.formatted(style)
     }
 
     /// Waiting for its network, with or without an account to go through: held as a queued message is (it offers
@@ -1064,7 +1088,7 @@ public enum Timeline {
                 fileName: isDeleted ? "" : shown.fileName, mimeType: isDeleted ? "" : shown.mimeType,
                 byteSize: isDeleted ? nil : shown.byteSize, width: isDeleted ? nil : shown.width,
                 height: isDeleted ? nil : shown.height,
-                mediaPath: hideViewOnceMedia ? "" : base.mediaPath,
+                mediaPath: hideViewOnceMedia ? "" : (shown.mediaPath ?? base.mediaPath),
                 thumbnailPath: hideViewOnceMedia ? nil : shown.thumbnailPath,
                 blurhash: isDeleted ? nil : shown.blurhash,
                 durationMS: isDeleted ? nil : shown.durationMS,
@@ -1165,6 +1189,9 @@ public enum Timeline {
         var mediaRemoved = false
         var sticker: StickerAttachment?
         var gif: GIFAttachment?
+        /// The file's local path when it is not the base event's own (an edit made the message a file); nil for the
+        /// base's.
+        var mediaPath: String?
     }
 
     /// The HTML of a message's content, when it has some.
@@ -1181,6 +1208,11 @@ public enum Timeline {
     /// What a message says: its kind, its text (the edit's, if it has one) and, for a file, what is known of it. A
     /// call note says Vitruvian Courier's words for the call, never the bridge's body; `mine` is whether I made the call.
     private static func describe(_ event: Event, edit: Event?, mine: Bool) -> Shown {
+        if let edit, let replaced = withMediaEdit(event, edit: edit) {
+            var shown = describe(replaced, edit: nil, mine: mine)
+            shown.mediaPath = replaced.mediaPath
+            return shown
+        }
         let content = event.content
         if event.type == "m.room.message", let call = CallNote.of(content) {
             let words = call.words(mine: mine)
@@ -1312,6 +1344,46 @@ public enum Timeline {
             body = withoutReplyFallback(original)
         }
         return Shown(kind: kind, body: body, rich: rich(body, html: formatted))
+    }
+
+    /// The message msgtypes that carry a file.
+    private static let mediaMsgtypes: Set<String> = ["m.image", "m.video", "m.audio", "m.file"]
+
+    /// A message whose newest edit makes it a file (text edited to a picture, as Google Messages does with a picture
+    /// shared from another app; or a file swapped or recaptioned): the message as the edit has it, its content the
+    /// edit's `m.new_content`, its file the edit's, else the base's when the edit keeps the same file. Nil for an edit
+    /// to text, which only changes the words.
+    private static func withMediaEdit(_ base: Event, edit: Event) -> Event? {
+        guard case var .object(replacement)? = edit.content["m.new_content"],
+              let msgtype = replacement["msgtype"]?.stringValue, mediaMsgtypes.contains(msgtype) else { return nil }
+        let baseIsMedia = base.content["msgtype"]?.stringValue.map(mediaMsgtypes.contains) ?? false
+        let editURL = replacement["url"]?.stringValue ?? ""
+        let editPath = edit.mediaPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The edit names no file of its own: it keeps the base's (only a file's, never a text's).
+        let keepsBaseFile = editURL.isEmpty && editPath.isEmpty && baseIsMedia
+        if keepsBaseFile {
+            for key in ["url", "info", "filename", "file"] where replacement[key] == nil {
+                if let value = base.content[key] { replacement[key] = value }
+            }
+        } else if replacement["info"] == nil, let info = edit.content["info"] {
+            replacement["info"] = info
+        }
+        if let relation = base.content["m.relates_to"], replacement["m.relates_to"] == nil {
+            replacement["m.relates_to"] = relation // a reply stays a reply
+        }
+        var replaced = base
+        replaced.content = .object(replacement)
+        if !keepsBaseFile {
+            replaced.mediaPath = edit.mediaPath
+            replaced.thumbnailPath = edit.thumbnailPath ?? (baseIsMedia ? nil : base.thumbnailPath)
+            replaced.blurhash = edit.blurhash
+            replaced.durationMS = edit.durationMS
+            replaced.waveform = edit.waveform
+            replaced.isGIF = edit.isGIF
+            replaced.isAnimated = edit.isAnimated
+            if edit.viewOnce != nil { replaced.viewOnce = edit.viewOnce }
+        }
+        return replaced
     }
 
     /// A reply made by an app that quotes in its text starts with the quoted lines ("> <@user> text"), then a

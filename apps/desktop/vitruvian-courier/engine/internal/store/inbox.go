@@ -4,6 +4,7 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -27,8 +28,12 @@ type InboxRow struct {
 	Room
 	LastTS      time.Time // zero when the room has no message yet
 	Preview     string    // body of the newest message-like event, at most 140 runes
-	PreviewKind string    // "text", "image", "video", "audio", "file", "sticker", "poll", "timer_change", "call", or "" (nothing readable yet)
-	PreviewMine bool      // the newest message is mine
+	PreviewKind string    // "text", "image", "video", "audio", "file", "sticker", "poll", "timer_change", "call", "reaction", or "" (nothing readable yet)
+	PreviewMine bool      // the newest message (or, for a "reaction" preview, the reaction) is mine
+	// PreviewSenderName is who wrote the newest message (for a "reaction" preview, who reacted), as typing names
+	// people: their name in the chat, else their profile's, else their ID's localpart. "" when it is mine or there is
+	// no message.
+	PreviewSenderName string
 	// PreviewInThread is that the newest message is a reply that stays in its thread (isThreadReply): the main
 	// timeline doesn't show it, so the row says where it is.
 	PreviewInThread bool
@@ -172,13 +177,29 @@ var inboxColsSQL = `r.room_id, r.network,
   COALESCE(p.pinned_at, 0), COALESCE(p.archived_at, 0), COALESCE(p.low_priority, 0), COALESCE(p.hidden, 0),
   COALESCE(p.marked_unread, 0), r.request, COALESCE(p.draft, ''), COALESCE(p.read_aloud, ''),
   COALESCE((SELECT group_concat(rl.label_id) FROM room_labels rl WHERE rl.room_id = r.room_id), ''),
-  rm.room_id IS NOT NULL, COALESCE(rm.condition, ''), COALESCE(rm.due_at, 0), COALESCE(rm.set_at, 0), COALESCE(rm.fired_at, 0)`
+  rm.room_id IS NOT NULL, COALESCE(rm.condition, ''), COALESCE(rm.due_at, 0), COALESCE(rm.set_at, 0), COALESCE(rm.fired_at, 0),
+  COALESCE(rx.sender, ''), COALESCE(rx.content, ''), COALESCE(rxt.type, ''), COALESCE(rxt.content, ''),
+  COALESCE((SELECT CASE WHEN json_valid(pm.content) THEN json_extract(pm.content, '$.displayname') END FROM members pm
+            WHERE pm.room_id = r.room_id AND pm.user_id = COALESCE(rx.sender, ev.sender)), ''),
+  COALESCE((SELECT pp.display_name FROM profiles pp WHERE pp.user_id = COALESCE(rx.sender, ev.sender)), '')`
+
+// newestReactionSQL is the event ID of room r's newest reaction that is newer, by (ts, seq), than its newest message
+// ev: when there is one, the row previews it ("reaction") instead of the message. A reaction never moves the chat
+// (InsertEvent: isMessageLike) or counts as unread (unreadTypes), so only the preview changes. A removed reaction
+// (redacted) or one that failed to send doesn't count. It is a range scan of events_room_ts from the newest message
+// on, so it only reads what came after it.
+const newestReactionSQL = `SELECT x.event_id FROM events x
+  WHERE x.room_id = r.room_id AND (x.ts, x.seq) > (COALESCE(ev.ts, 0), COALESCE(ev.seq, 0))
+    AND x.type = 'm.reaction' AND x.redacted = 0 AND x.deleted_for_me = 0 AND x.status <> 'failed'
+  ORDER BY x.ts DESC, x.seq DESC LIMIT 1`
 
 // inboxJoinsSQL brings in what inboxColsSQL reads beside the room r.
 var inboxJoinsSQL = `LEFT JOIN events ev ON ev.event_id = r.last_event_id
 LEFT JOIN room_prefs p ON p.room_id = r.room_id
 LEFT JOIN account_prefs ap ON ap.network = r.network
 LEFT JOIN reminders rm ON rm.room_id = r.room_id
+LEFT JOIN events rx ON rx.event_id = (` + newestReactionSQL + `)
+LEFT JOIN events rxt ON rxt.event_id = (CASE WHEN json_valid(rx.content) THEN json_extract(rx.content, '$."m.relates_to".event_id') END)
 ` + readMarkerJoins
 
 // inboxSQL is the whole inbox in one statement. $1 is my user ID. Every part is an index lookup:
@@ -332,12 +353,14 @@ func (s *Store) scanInboxRow(row dbutil.Scannable) (InboxRow, error) {
 	var hasReminder bool
 	var rem Reminder
 	var dueAt, setAt, firedAt int64
+	var rxSender, rxContent, rxtType, rxtContent, actorMemberName, actorProfileName string
 	if err := row.Scan(&r.ID, &r.Network, &r.Name, &r.RemoteName, &r.LocalName, &r.Topic,
 		&r.AvatarURI, &r.LocalAvatarURI, &r.SpamReportedAt, &r.MergeID,
 		&direct, &created, &r.LoginID,
 		&lastTS, &sender, &typ, &content, &r.PreviewStatus, &muted, &r.Unread, &r.UnreadMentions, &r.MutedBy, &r.MutedByName,
 		&pinnedAt, &archivedAt, &low, &hidden, &markedUnread, &request, &r.Draft, &r.ReadAloud, &labels,
-		&hasReminder, &rem.Condition, &dueAt, &setAt, &firedAt); err != nil {
+		&hasReminder, &rem.Condition, &dueAt, &setAt, &firedAt,
+		&rxSender, &rxContent, &rxtType, &rxtContent, &actorMemberName, &actorProfileName); err != nil {
 		return InboxRow{}, err
 	}
 	r.IsDirect, r.CreatedAt, r.Muted = direct == 1, time.UnixMilli(created), muted == 1
@@ -351,6 +374,16 @@ func (s *Store) scanInboxRow(row dbutil.Scannable) (InboxRow, error) {
 	if r.PreviewKind == "call" {
 		note, _ := parseCallNote(typ, json.RawMessage(content))
 		r.PreviewCall = &note
+	}
+	actor := sender
+	if rxSender != "" {
+		// The newest activity is a reaction: the row previews it, and says nothing of the message's own state.
+		actor = rxSender
+		r.Preview, r.PreviewKind = reactionPreview(rxContent, rxtType, rxtContent), "reaction"
+		r.PreviewMine, r.PreviewInThread, r.PreviewStatus, r.PreviewMediaURI, r.PreviewCall = rxSender == myID, false, "", "", nil
+	}
+	if actor != "" && actor != myID {
+		r.PreviewSenderName = cmp.Or(actorMemberName, actorProfileName, userLocalpart(actor))
 	}
 	if r.MutedBy == "account" {
 		r.MutedByName = s.networkName(r.Network)
@@ -438,6 +471,42 @@ func previewOf(typ, content string) (preview, kind, mediaURI string) {
 		c.Body = string(r[:maxPreviewRunes])
 	}
 	return c.Body, kind, mediaURI
+}
+
+// userLocalpart is a Matrix ID's localpart: the part before the server name, without the @.
+func userLocalpart(userID string) string {
+	local, _, _ := strings.Cut(strings.TrimPrefix(userID, "@"), ":")
+	return local
+}
+
+// maxReactionQuoteRunes is how much of the message a reaction preview quotes.
+const maxReactionQuoteRunes = 60
+
+// reactionPreview is the one-line preview of a reaction (its content) to a message (targetType, targetContent):
+// `😂 to “Maybe in his mind he did…”`. The message is quoted when it has text (a text message, or a poll's question),
+// on one line and cut to maxReactionQuoteRunes with an ellipsis; otherwise (media, a message Vitruvian Courier doesn't
+// have) the preview is the reaction alone and the app words the rest. Who reacted is the row's preview_mine and
+// preview_sender_name.
+func reactionPreview(content, targetType, targetContent string) string {
+	var c struct {
+		RelatesTo struct {
+			Key string `json:"key"`
+		} `json:"m.relates_to"`
+	}
+	_ = json.Unmarshal([]byte(content), &c) // malformed content just previews as empty
+	key := strings.TrimSpace(c.RelatesTo.Key)
+	out := key
+	if body, kind, _ := previewOf(targetType, targetContent); (kind == "text" || kind == "poll") && strings.TrimSpace(body) != "" {
+		quote := strings.Join(strings.Fields(body), " ")
+		if r := []rune(quote); len(r) > maxReactionQuoteRunes {
+			quote = strings.TrimSpace(string(r[:maxReactionQuoteRunes-1])) + "…"
+		}
+		out = strings.TrimSpace(key + " to “" + quote + "”")
+	}
+	if r := []rune(out); len(r) > maxPreviewRunes {
+		out = string(r[:maxPreviewRunes])
+	}
+	return out
 }
 
 // Cursor marks a position in a chat's history: the oldest event of the page you already have.

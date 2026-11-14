@@ -136,7 +136,9 @@ struct InboxRowView<HoverMenu: View>: View {
                     secondLine
                         .font(.system(size: previewPointSize))
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        // Two lines, as Beeper's rows; compact rows stay at one.
+                        .lineLimit(style.compact ? 1 : 2)
+                        .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     HStack(alignment: .center, spacing: 5) {
                         marks
@@ -179,7 +181,8 @@ struct InboxRowView<HoverMenu: View>: View {
         let badgeSize: CGFloat = style.compact ? 11 : 14
         return ChatAvatar(row: row, size: size)
             .blur(radius: isRedacted ? 6 : 0)
-            .clipShape(Circle())
+            // The frame's square, not a circle: a group's small circles reach its corners.
+            .clipShape(Rectangle())
             .frame(width: size, height: size)
             .overlay(alignment: .bottomTrailing) {
                 if style.showNetworkIcons {
@@ -190,17 +193,16 @@ struct InboxRowView<HoverMenu: View>: View {
                                     network: net,
                                     name: NetworkNames.displayName(of: net) ?? net,
                                     size: badgeSize,
-                                    tinted: style.colorNetworkIcons
+                                    tinted: style.colorNetworkIcons,
+                                    ringed: true
                                 )
-                                .background(Circle().fill(.background))
                             }
                         }
                         .offset(x: 4, y: 3)
                     } else {
-                        NetworkBadge(network: row.network, name: networkName, size: style.compact ? 12 : 15,
-                                     tinted: style.colorNetworkIcons)
-                            .background(Circle().fill(.background))
-                            .offset(x: 3, y: 3)
+                        NetworkBadge(network: row.network, name: networkName, size: style.compact ? 13 : 16,
+                                     tinted: style.colorNetworkIcons, ringed: true)
+                            .offset(x: 4, y: 4)
                     }
                 }
             }
@@ -352,12 +354,18 @@ struct PreviewTickMark: View {
 
 /// A chat's newest message as its row shows it; search's chat rows show it the same way.
 enum ChatPreview {
-    /// "You, in a thread: " (or "<Name>, in a thread: ") when the newest message stays in its thread, "You: " when it
+    /// A small thread mark (then "<Name>: ", or "You: ") when the newest message stays in its thread, "You: " when it
     /// is mine outside a thread, then the kind's label if it is not text, then the text.
     static func text(_ row: InboxRow) -> Text {
         var text = Text(verbatim: "")
-        if let prefix = row.previewThreadPrefix {
-            text = text + Text(prefix)
+        if let lead = row.reactionPreviewLead {
+            return text + Text(verbatim: lead + row.previewBody)
+        }
+        if row.previewInThread {
+            text = text + Text(Image(systemName: "arrowshape.turn.up.left"))
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.tertiary) + Text(verbatim: " ")
+            if let sender = row.previewThreadSender { text = text + Text(sender) }
         } else if row.previewMine {
             text = text + Text(String(localized: "You: "))
         }
@@ -370,10 +378,13 @@ enum ChatPreview {
     }
 }
 
-/// A chat's picture: its own, else a group's mark, else "?" for a chat with no name, else its initials.
+/// A chat's picture: its own, else a group's composite (a channel's "#" tile, or a few of its people), else "?" for a
+/// chat with no name, else its initials. `members` are a group's people; with none given, a group whose name lists
+/// people ("Eddie Stecker, Kent Hua, GitHub") is drawn from the name.
 struct ChatAvatar: View {
     let row: InboxRow
     var size: CGFloat = 40
+    var members: [(name: String, avatarPath: String?)] = []
 
     var body: some View {
         if !row.avatarPath.isEmpty {
@@ -381,10 +392,84 @@ struct ChatAvatar: View {
         } else if row.name.isEmpty {
             UnknownAvatar()
         } else if !row.isDirect {
-            GroupAvatar(seed: row.name)
+            GroupCompositeAvatar(name: row.name, members: groupMembers, size: size)
         } else {
             AvatarView(path: "", initials: row.initials, seed: row.name, size: size)
         }
+    }
+
+    private var groupMembers: [(name: String, avatarPath: String?)] {
+        if !members.isEmpty { return members }
+        if case let .people(people) = row.groupAvatarStyle { return people.map { ($0.name, $0.avatarPath) } }
+        return []
+    }
+}
+
+/// A group with no picture of its own, as Beeper draws it: two or three small overlapping member circles (a photo,
+/// else initials on the member's colour); a rounded "#" tile for a channel; the group's initials on its colour when
+/// the name says nothing more.
+struct GroupCompositeAvatar: View {
+    let name: String
+    let members: [(name: String, avatarPath: String?)]
+    var size: CGFloat = 40
+
+    /// Lays itself out in whatever square its caller gives it (`size` is only the fallback).
+    var body: some View {
+        GeometryReader { proxy in
+            let side = min(proxy.size.width, proxy.size.height)
+            content(side: side > 0 ? side : size)
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+        }
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func content(side: CGFloat) -> some View {
+        if case let .channel(channel) = GroupAvatarStyle.of(name: name), members.isEmpty {
+            ZStack {
+                RoundedRectangle(cornerRadius: side * 0.28, style: .continuous)
+                    .fill(Self.channelColor(channel))
+                Text(verbatim: "#")
+                    .font(.system(size: side * 0.56, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: side, height: side)
+        } else if members.count >= 2 {
+            composite(Array(members.prefix(GroupAvatarStyle.maxMembers)), side: side)
+        } else {
+            AvatarView(path: members.first?.avatarPath ?? "", initials: InboxRow.initials(of: members.first?.name ?? name),
+                       seed: name, size: side)
+                .frame(width: side, height: side)
+        }
+    }
+
+    /// A channel's colour: one of twelve well-spread hues picked by a hash of its name, so neighbouring channels
+    /// ("#general", "#data-science") are told apart where the plain hash gives similar browns.
+    static func channelColor(_ channel: String) -> Color {
+        var hash: UInt32 = 2_166_136_261
+        for byte in channel.utf8 { hash = (hash ^ UInt32(byte)) &* 16_777_619 }
+        hash ^= hash >> 15
+        return Color(hue: Double(hash % 12) / 12, saturation: 0.55, brightness: 0.68)
+    }
+
+    private func composite(_ people: [(name: String, avatarPath: String?)], side: CGFloat) -> some View {
+        let three = people.count >= 3
+        let diameter = side * (three ? 0.56 : 0.66)
+        // The bottom-right corner is left to the network badge.
+        let spots: [CGPoint] = three
+            ? [CGPoint(x: 0, y: 0), CGPoint(x: side - diameter, y: 0), CGPoint(x: side * 0.2, y: side - diameter)]
+            : [CGPoint(x: side - diameter, y: 0), CGPoint(x: 0, y: side - diameter)]
+        return ZStack(alignment: .topLeading) {
+            ForEach(Array(people.enumerated()), id: \.offset) { index, person in
+                AvatarView(path: person.avatarPath ?? "", initials: InboxRow.initials(of: person.name),
+                           seed: person.name, size: diameter)
+                    .frame(width: diameter, height: diameter)
+                    // A ring in the list's colour keeps overlapping circles apart.
+                    .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: max(1, side * 0.04)))
+                    .offset(x: spots[index].x, y: spots[index].y)
+            }
+        }
+        .frame(width: side, height: side, alignment: .topLeading)
     }
 }
 
@@ -441,28 +526,59 @@ private struct PreviewThumbnail: View {
     }
 }
 
-/// A network's mark: an SF Symbol in the network's tint (or plain, with "Colour network icons" off), named by its
-/// tooltip and accessibility label.
+/// A network's mark: a rounded app-icon tile in the network's brand colour with a white glyph (grey with "Colour
+/// network icons" off), named by its tooltip and accessibility label. Colours and SF Symbols only, not the
+/// networks' own artwork. `ringed` puts a ring in the window's colour round it, so it reads on top of an avatar.
 struct NetworkBadge: View {
     let network: String
     let name: String
     let size: CGFloat
     var tinted = true
     var showsTooltip = true
+    var ringed = false
 
     var body: some View {
-        let look = NetworkAppearance.of(network)
-        let image = Image(systemName: look.symbol)
-            .resizable()
-            .scaledToFit()
-            .frame(width: size, height: size)
-            .foregroundStyle(tinted ? Color(red: look.red, green: look.green, blue: look.blue) : Color.secondary)
+        let image = NetworkTileView(network: network, size: size, tinted: tinted)
+            .padding(ringed ? max(1.5, size * 0.1) : 0)
+            .background {
+                if ringed {
+                    RoundedRectangle(cornerRadius: size * 0.28 + 2, style: .continuous).fill(.background)
+                }
+            }
             .accessibilityLabel(name)
         if showsTooltip, !name.isEmpty {
             image.help(name)
         } else {
             image
         }
+    }
+}
+
+/// The tile itself.
+struct NetworkTileView: View {
+    let network: String
+    let size: CGFloat
+    var tinted = true
+
+    var body: some View {
+        let tile = NetworkTile.of(network)
+        let shape = RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
+        ZStack {
+            if tinted {
+                shape.fill(LinearGradient(colors: [Self.color(tile.top), Self.color(tile.bottom)],
+                                          startPoint: .topLeading, endPoint: .bottomTrailing))
+            } else {
+                shape.fill(Color.secondary)
+            }
+            Image(systemName: tile.glyph)
+                .font(.system(size: size * 0.54, weight: .bold))
+                .foregroundStyle(.white)
+        }
+        .frame(width: size, height: size)
+    }
+
+    static func color(_ rgb: NetworkTile.RGB) -> Color {
+        Color(red: rgb.red, green: rgb.green, blue: rgb.blue)
     }
 }
 

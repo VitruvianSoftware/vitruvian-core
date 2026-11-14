@@ -59,10 +59,10 @@ public enum CourierThemePreset: String, CaseIterable, Codable, Sendable, Identif
 
     public var defaultOutgoingBubbleHexLight: String {
         switch self {
-        case .classicTeal: "#0D9488"
-        case .slate: "#334155"
+        case .classicTeal: "#0B7F75"
+        case .slate: "#3556C8"
         case .midnightIndigo: "#4338CA"
-        case .warmPaper: "#92400E"
+        case .warmPaper: "#B45309"
         case .evergreen: "#047857"
         case .sunsetCoral: "#C2410C"
         case .roseQuartz: "#BE185D"
@@ -72,40 +72,40 @@ public enum CourierThemePreset: String, CaseIterable, Codable, Sendable, Identif
 
     public var defaultOutgoingBubbleHexDark: String {
         switch self {
-        case .classicTeal: "#14B8A6"
-        case .slate: "#64748B"
-        case .midnightIndigo: "#6366F1"
-        case .warmPaper: "#D97706"
-        case .evergreen: "#10B981"
-        case .sunsetCoral: "#F97316"
-        case .roseQuartz: "#EC4899"
-        case .oceanDeep: "#0EA5E9"
+        case .classicTeal: "#0D8277"
+        case .slate: "#3D63DD"
+        case .midnightIndigo: "#5B4FE0"
+        case .warmPaper: "#B85A0B"
+        case .evergreen: "#0A7F5A"
+        case .sunsetCoral: "#CC4510"
+        case .roseQuartz: "#D61F69"
+        case .oceanDeep: "#0875BB"
         }
     }
 
     public var defaultIncomingBubbleHexLight: String {
         switch self {
-        case .classicTeal: "#E6F4F1"
-        case .slate: "#F1F5F9"
-        case .midnightIndigo: "#EEF2FF"
-        case .warmPaper: "#FEF3C7"
-        case .evergreen: "#ECFDF5"
-        case .sunsetCoral: "#FFEDD5"
-        case .roseQuartz: "#FCE7F3"
-        case .oceanDeep: "#E0F2FE"
+        case .classicTeal: "#E8EEED"
+        case .slate: "#ECEEF2"
+        case .midnightIndigo: "#ECEDF6"
+        case .warmPaper: "#F3EEE4"
+        case .evergreen: "#E9F0EC"
+        case .sunsetCoral: "#F3ECE8"
+        case .roseQuartz: "#F3EBEF"
+        case .oceanDeep: "#E7EFF4"
         }
     }
 
     public var defaultIncomingBubbleHexDark: String {
         switch self {
-        case .classicTeal: "#132A28"
-        case .slate: "#1E293B"
-        case .midnightIndigo: "#1E1B4B"
-        case .warmPaper: "#292014"
-        case .evergreen: "#062E22"
-        case .sunsetCoral: "#2A1810"
-        case .roseQuartz: "#2D1222"
-        case .oceanDeep: "#0C2538"
+        case .classicTeal: "#272B2B"
+        case .slate: "#2B2D31"
+        case .midnightIndigo: "#2A2B33"
+        case .warmPaper: "#2D2A26"
+        case .evergreen: "#272B29"
+        case .sunsetCoral: "#2E2A28"
+        case .roseQuartz: "#2E2A2D"
+        case .oceanDeep: "#272B2F"
         }
     }
 
@@ -941,6 +941,27 @@ public final class AppearancePreferences: ObservableObject {
         }
     }
 
+    /// A bright, legible colour for a sender's name inside an incoming bubble: the same sender always gets the same one.
+    /// Dark mode uses light pastel-bright tones on the neutral dark bubble, light mode uses deeper tones on the pale one;
+    /// every entry keeps at least 4.5:1 contrast against its bubble (CourierThemeContrastTests).
+    nonisolated public static func senderNameColorHex(for senderID: String, isDark: Bool) -> String {
+        let darkPalette = [
+            "#FF8A80", "#FFB454", "#E6D44F", "#7EE081",
+            "#5FD7C8", "#6FC3FF", "#A9A4FF", "#F59BDC",
+        ]
+        let lightPalette = [
+            "#C62828", "#A34A06", "#7A6000", "#2A722E",
+            "#00796B", "#0B63B8", "#5646D6", "#B0268F",
+        ]
+        var hash: UInt32 = 2_166_136_261
+        for byte in senderID.utf8 {
+            hash ^= UInt32(byte)
+            hash &*= 16_777_619
+        }
+        let index = Int(hash % UInt32(darkPalette.count))
+        return isDark ? darkPalette[index] : lightPalette[index]
+    }
+
     public static func participantBubbleColorHex(for senderID: String, isDark: Bool) -> String {
         let lightPalette = [
             "#DBEAFE", "#FCE7F3", "#D1FAE5", "#FEF3C7",
@@ -957,5 +978,35 @@ public final class AppearancePreferences: ObservableObject {
         }
         let index = Int(hash % UInt32(lightPalette.count))
         return isDark ? darkPalette[index] : lightPalette[index]
+    }
+}
+
+/// Colour maths on `#RRGGBB` strings, for checking that bubble colours stay legible and clearly different.
+public enum HexColorMetrics {
+    public static func rgb(_ hex: String) -> (r: Double, g: Double, b: Double)? {
+        var text = hex.trimmingCharacters(in: .whitespaces)
+        if text.hasPrefix("#") { text.removeFirst() }
+        guard text.count == 6, let value = UInt32(text, radix: 16) else { return nil }
+        return (Double((value >> 16) & 0xFF) / 255, Double((value >> 8) & 0xFF) / 255, Double(value & 0xFF) / 255)
+    }
+
+    /// WCAG relative luminance, 0 (black) to 1 (white).
+    public static func luminance(_ hex: String) -> Double {
+        guard let c = rgb(hex) else { return 0 }
+        func lin(_ v: Double) -> Double { v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4) }
+        return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
+    }
+
+    /// WCAG contrast ratio between two colours, 1 to 21.
+    public static func contrast(_ a: String, _ b: String) -> Double {
+        let la = luminance(a), lb = luminance(b)
+        return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+    }
+
+    /// HSV saturation, 0 (grey) to 1 (fully vivid).
+    public static func saturation(_ hex: String) -> Double {
+        guard let c = rgb(hex) else { return 0 }
+        let hi = max(c.r, c.g, c.b), lo = min(c.r, c.g, c.b)
+        return hi == 0 ? 0 : (hi - lo) / hi
     }
 }
