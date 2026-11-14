@@ -65,7 +65,7 @@ a response from agy.
 ## How It Works
 
 ```
-Telegram → Bundled Rust Bot (Contents/Helpers/bot-engine) → agy -p "prompt" --output-format json → reply
+Telegram → Bundled Rust Bot (Contents/Helpers/bot-engine) → agy -p "prompt" --output-format json (stream-json when streaming) → reply
 ```
 
 Each Telegram message spawns `agy -p` in print mode. Conversations are tracked

@@ -1,9 +1,9 @@
 ---
-description: Finalize all lint, format, and e2e tests for commit
+description: Finalize all lint, format, and tests for commit
 ---
 
-Address and fix all issues in this exact order:
+Address and fix all issues in this order:
 
-1. vitruvian-tabs dev e2e --e2e-test-token (ensure there is no regression)
-2. vitruvian-tabs dev coverage (ensure coverage is >80%)
-3. vitruvian-tabs dev check (ensure there are no failed tests)
+1. `bazel test //apps/suites/vitruvian-tabs/...` (unit and hermetic integration tests)
+2. `bazel test --config=e2e //apps/suites/vitruvian-tabs/...` (Playwright E2E when UI/sync/API behavior changed)
+3. `bazel run //tools/format` (formatting)

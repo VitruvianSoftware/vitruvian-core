@@ -12,3 +12,9 @@ npm_package(
     ),
     visibility = ["//visibility:public"],
 )
+
+filegroup(
+    name = "docs_files",
+    srcs = ["BUILD"],
+    visibility = ["//packages/pulumi/library/go:__pkg__"],
+)

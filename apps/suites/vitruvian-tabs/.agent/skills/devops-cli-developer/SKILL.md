@@ -1,208 +1,73 @@
 ---
 name: DevOps/CLI Developer
-description: Expert guidance for developing Vitruvian Tabs CLI and managing CI/CD workflows
+description: Guidance for developing the Vitruvian Tabs Rust CLI and running Bazel checks
 ---
 
 # DevOps/CLI Developer
 
-You are an expert DevOps engineer specializing in Vitruvian Tabs CLI development and CI/CD workflows.
+You are a DevOps/CLI developer working on the Vitruvian Tabs CLI (`apps/suites/vitruvian-tabs/cli/`) and its Bazel test/build workflows.
 
 ## Technology Stack
 
-- **Vitruvian Tabs CLI**: Custom CLI built with Commander.js
-- **Docker/Docker Compose**: Local development
-- **GitHub Actions**: CI/CD pipelines
-- **Release Please**: Automated releases
+- **Vitruvian Tabs CLI**: Native Rust binary (`cli/rs/src/`, Bazel target `//apps/suites/vitruvian-tabs/cli:vitruvian-tabs`)
+- **Bazel**: Build, unit tests, and hermetic `rules_itest` E2E (`bazel test //apps/suites/vitruvian-tabs/...`)
+- **GitHub Actions + Delivery**: CI/CD and release-please in the `vitruvian-core` monorepo
 
 ## Vitruvian Tabs CLI Structure
 
 ```
-cli/src/
-├── index.ts          # Entry point with Commander.js
-├── commands/
-│   ├── init.ts       # Initialize configuration
-│   ├── config.ts     # Config management
-│   ├── db.ts         # Database operations
-│   ├── dev.ts        # Development workflows
-│   ├── infra.ts      # Infrastructure commands
-│   ├── auth.ts       # Authentication
-│   └── github.ts     # GitHub integration
-└── utils/
-    ├── config.ts     # Config file handling
-    └── exec.ts       # Command execution
+cli/
+├── BUILD                      # Bazel targets (:vitruvian-tabs, :unit_tests, :vitruvian_tabs_cli_test)
+└── rs/src/
+    ├── main.rs                # Entrypoint calling vitruvian_tabs_cli_lib::run_cli
+    ├── lib.rs                 # CLI command router & unit tests
+    ├── commands/
+    │   ├── mod.rs             # Command module exports
+    │   ├── auth.rs            # auth subcommands (neon, gcloud, etc.)
+    │   ├── config.rs          # config management
+    │   ├── db.rs              # db subcommands (init, migrate, reset, studio, list, status)
+    │   ├── ext.rs             # ext subcommands (local dev extension install/update)
+    │   ├── init.rs            # init configuration
+    │   ├── version.rs         # version reporting
+    │   └── workos.rs          # WorkOS CLI wrapper
+    └── utils/                 # Config, extension, and secret helpers
 ```
 
-## Essential Commands
+## Real CLI Commands (`cli/rs/src/commands/mod.rs`)
 
-### Development Workflow
+Dev-loop and infra commands (`dev`, `infra`, `github`) were retired in the monorepo migration. The real CLI subcommands are:
 
 ```bash
-# Start local services (Docker)
-vitruvian-tabs dev start
-
-# Stop local services
-vitruvian-tabs dev stop
-
-# Run all checks (lint, test, build)
-vitruvian-tabs dev check
-
-# Run tests with coverage
-vitruvian-tabs dev coverage --detailed
-
-# Run E2E tests
-vitruvian-tabs dev e2e --e2e-test-token
-
-# Verify environment
-vitruvian-tabs dev verify
+bazel run //apps/suites/vitruvian-tabs/cli:vitruvian-tabs -- --help
+# Subcommands:
+#   init      Initialize Vitruvian Tabs configuration
+#   config    Manage Vitruvian Tabs CLI configuration
+#   db        Database management commands (init, migrate, reset, studio, list, status)
+#   version   Show Vitruvian Tabs CLI and component versions
+#   auth      Manage authentication for external services
+#   workos    WorkOS CLI wrapper with automatic authentication
+#   ext       Manage the local load-unpacked dev extension install
 ```
 
-### Database Operations
+## Bazel Verification & Testing
+
+Use Bazel targets instead of `npm` or retired CLI dev commands:
 
 ```bash
-# Initialize database
-vitruvian-tabs db init --local
+# Build extension dist
+bazel build //apps/suites/vitruvian-tabs/extension:dist
 
-# Run migrations
-vitruvian-tabs db migrate --name add_feature
+# Run unit + hermetic integration suites
+bazel test //apps/suites/vitruvian-tabs/...
 
-# Check migration status
-vitruvian-tabs db status
-
-# Open Prisma Studio
-vitruvian-tabs db studio
+# Run Playwright E2E (boots Postgres, Redis, migrations, and API via rules_itest)
+bazel test --config=e2e //apps/suites/vitruvian-tabs/...
 ```
-
-### Infrastructure & Deployment
-
-```bash
-# Deploy to environment
-vitruvian-tabs infra deploy staging
-
-# Check deployment status
-vitruvian-tabs infra status staging
-
-# Manage secrets
-vitruvian-tabs infra secrets set DATABASE_URL
-vitruvian-tabs infra secrets pull
-
-# Sync secrets to GitHub
-vitruvian-tabs github secrets sync --env dev
-```
-
-## Command Implementation Pattern
-
-```typescript
-// cli/src/commands/dev.ts
-import { Command } from 'commander';
-import { execa } from 'execa';
-
-export const devCommand = new Command('dev').description('Development workflow commands');
-
-devCommand
-  .command('check')
-  .description('Run all checks (lint, test, build)')
-  .action(async () => {
-    console.log('Running lint...');
-    await execa('npm', ['run', 'lint'], { stdio: 'inherit' });
-
-    console.log('Running tests...');
-    await execa('npm', ['test'], { stdio: 'inherit' });
-
-    console.log('Running build...');
-    await execa('npm', ['run', 'build'], { stdio: 'inherit' });
-  });
-```
-
-## Idempotency Pattern (ADR-005)
-
-All CLI commands should be safe to re-run:
-
-```typescript
-// ✅ Good - Check before creating
-if (!(await exists(configPath))) {
-  await writeConfig(defaultConfig);
-}
-
-// ✅ Good - Use upsert patterns
-await prisma.workspace.upsert({
-  where: { id },
-  create: { id, ...data },
-  update: { ...data },
-});
-
-// ❌ Bad - No existence check
-await writeFile(configPath, defaultConfig);
-```
-
-## CI/CD Workflows
-
-### GitHub Actions Structure
-
-```yaml
-# .github/workflows/ci.yml
-name: CI
-on: [push, pull_request]
-
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-      - run: npm ci
-      - run: npm run lint
-      - run: npm test
-      - run: npm run build
-```
-
-### Release Please
-
-Automated releases using conventional commits:
-
-```json
-// release-please-config.json
-{
-  "packages": {
-    "api": { "release-type": "node" },
-    "extension": { "release-type": "node" },
-    "cli": { "release-type": "node" },
-    "web": { "release-type": "node" }
-  }
-}
-```
-
-## Docker Development
-
-```yaml
-# docker-compose.yml
-services:
-  postgres:
-    image: postgres:16
-    ports:
-      - '5432:5432'
-    environment:
-      POSTGRES_DB: vitruvian_tabs_dev
-      POSTGRES_USER: vitruvian-tabs
-      POSTGRES_PASSWORD: vitruvian-tabs
-
-  redis:
-    image: redis:7
-    ports:
-      - '6379:6379'
-```
-
-## Common Hazards
-
-1. **Husky v10 Deprecation**: Use `npx husky init` instead of `husky install`
-2. **Git Push Context**: Ensure correct branch and remote before push
-3. **Spurious Flag Trap**: Check for non-existent flags in shell scripts
 
 ## Key Files to Reference
 
 - [CLI README](../../../cli/README.md)
+- [CLI Commands](../../../cli/rs/src/commands/mod.rs)
 - [CLI Reference Docs](../../../docs/reference/cli.md)
-- [Development guide](../../../docs/getting-started/development.md)
+- [Development Guide](../../../docs/getting-started/development.md)
 - [Commit Readiness Workflow](../../workflows/commit-readiness.md)

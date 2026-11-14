@@ -446,3 +446,13 @@ pipeline_unit(
     tier = "L1",
     timeout_minutes = 15,
 )
+
+filegroup(
+    name = "docs_files",
+    srcs = [
+        "src/dashboard/Dashboard.tsx",
+        "src/hooks/useTabSync.ts",
+        "src/manifest.json",
+    ] + glob(["src/services/**"]),
+    visibility = ["//apps/suites/vitruvian-tabs:__pkg__"],
+)

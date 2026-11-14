@@ -26,6 +26,7 @@
 # gazelle:ignore
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 rust_library(
     name = "conformance_check",
@@ -97,3 +98,15 @@ rust_test(
         "conformance-owners_test",
     ]
 ]
+
+exports_files(
+    ["skill_docs_check.sh"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "skill_docs_check_test",
+    size = "small",
+    srcs = ["skill_docs_check_test.sh"],
+    data = ["skill_docs_check.sh"],
+)

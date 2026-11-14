@@ -377,3 +377,11 @@ exports_files(
     ],
     visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],
 )
+
+exports_files(
+    [
+        "packages/pulumi/library/.agents/skills/pulumi-library-ci/SKILL.md",
+        "packages/pulumi/library/.github/workflows/release.yml",
+    ],
+    visibility = ["//packages/pulumi/library/go:__pkg__"],
+)

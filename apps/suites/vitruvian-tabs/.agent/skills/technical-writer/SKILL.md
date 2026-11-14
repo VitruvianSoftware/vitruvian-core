@@ -178,4 +178,4 @@ export async function createWorkspace(input: CreateWorkspaceInput): Promise<Work
 - [CONTRIBUTING.md](../../../CONTRIBUTING.md)
 - [Architecture Overview](../../../docs/architecture/overview.md)
 - [Sync Strategy](../../../docs/architecture/sync-strategy.md)
-- [mkdocs.yml](../../../../mkdocs.yml)
+- [mkdocs.yml](../../../mkdocs.yml)

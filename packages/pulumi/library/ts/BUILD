@@ -7,3 +7,9 @@ npm_package(
     srcs = ["package.json"],
     visibility = ["//visibility:public"],
 )
+
+filegroup(
+    name = "docs_files",
+    srcs = ["vitest.config.ts"],
+    visibility = ["//packages/pulumi/library/go:__pkg__"],
+)

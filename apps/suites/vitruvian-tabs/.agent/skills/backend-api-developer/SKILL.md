@@ -1,163 +1,73 @@
 ---
 name: Backend API Developer
-description: Expert guidance for developing the Vitruvian Tabs API using Fastify, Prisma, and Node.js
+description: Guidance for developing the Vitruvian Tabs Rust API server and Prisma schema
 ---
 
 # Backend API Developer
 
-You are an expert Node.js backend developer specializing in the Vitruvian Tabs API service.
+You are a backend developer working on the Vitruvian Tabs API service (`apps/suites/vitruvian-tabs/api/`).
 
 ## Technology Stack
 
-- **Node.js 18+** runtime
-- **Fastify** web framework
-- **Prisma** ORM with Neon Postgres
-- **Zod** schema validation
-- **JWT** authentication (RS256)
-- **ioredis** for Upstash Redis
-- **WorkOS SDK** for SSO (Phase 4)
+- **Rust** (`api/rs/src/`) — std-based HTTP server (`server.rs`) with `serde` and `serde_json`
+- **Prisma** (`api/prisma/schema.prisma`) — Postgres schema and migrations, invoked via `migrate_deploy_bin` (`api/rs/src/bin/migrate_deploy.rs`)
+- **WorkOS** (`api/rs/src/workos.rs`) — OAuth login/callback
+- **JWT (HS256)** (`api/rs/src/crypto.rs`) — access & refresh tokens
+- **Upstash/RESP Redis** (`api/rs/src/store.rs`, `api/rs/src/sync_events.rs`) — pub/sub & rate limiting
 
 ## Project Structure
 
 ```
-api/src/
-├── app.ts           # Fastify app configuration
-├── routes/          # API route handlers
-│   ├── auth.routes.ts      # Authentication routes
-│   ├── workspace.routes.ts # Workspace CRUD
-│   ├── backup.routes.ts    # Backup/restore
-│   └── sync.routes.ts      # SSE sync endpoints
-├── services/        # Business logic layer
-├── schemas/         # Zod validation schemas
-├── middleware/      # Auth, rate limiting
-└── lib/             # Utilities (db, redis, jwt)
+api/
+├── BUILD                  # Bazel targets (:api_bin, :vitruvian_tabs_api_tools_test, :integration_tests, :api_service)
+├── prisma/
+│   ├── schema.prisma      # Postgres schema
+│   └── migrations/        # Prisma migrations
+└── rs/src/
+    ├── bin/
+    │   ├── server.rs      # API server entrypoint (:api_bin)
+    │   ├── migrate_deploy.rs
+    │   ├── seed_test_user.rs
+    │   └── generate_client.rs
+    ├── server.rs          # HTTP router & handlers
+    ├── services.rs        # Business logic layer
+    ├── schemas.rs         # Request payload validation
+    ├── store.rs           # Postgres & Redis stores
+    ├── auth_lib.rs        # Token TTL & JWT secret helpers
+    ├── crypto.rs          # HS256 JWT sign/verify & hashing
+    ├── errors.rs          # AppError & JSON error responses
+    ├── tiers.rs           # Plan limits & per-minute rate limits
+    └── workos.rs          # WorkOS provider abstraction
 ```
 
-## API Endpoints
+## API Endpoints (`api/rs/src/server.rs`)
 
-```
-Auth:
-  POST   /api/v1/auth/signup
-  POST   /api/v1/auth/login
-  POST   /api/v1/auth/logout
-  GET    /api/v1/auth/me
-
-Workspaces:
-  GET    /api/v1/workspaces
-  PUT    /api/v1/workspaces/:id  (upsert)
-  DELETE /api/v1/workspaces/:id
-
-Backups:
-  GET    /api/v1/backups
-  POST   /api/v1/backups
-  GET    /api/v1/backups/:id
-  POST   /api/v1/backups/:id/restore
-  DELETE /api/v1/backups/:id
-
-Sync:
-  GET    /api/v1/sync/subscribe  (SSE)
-```
-
-## Route Pattern
-
-```typescript
-// routes/workspace.routes.ts
-import { FastifyPluginAsync } from 'fastify';
-import { workspaceService } from '../services/workspace.service';
-import { WorkspaceSchema, WorkspaceUpdateSchema } from '../schemas/workspace';
-
-const workspaceRoutes: FastifyPluginAsync = async (fastify) => {
-  // GET /api/v1/workspaces
-  fastify.get('/', {
-    preHandler: [fastify.authenticate],
-    handler: async (request, reply) => {
-      const workspaces = await workspaceService.getByUserId(request.user.id);
-      return { data: workspaces };
-    },
-  });
-};
-```
-
-## SSE (Server-Sent Events) Pattern
-
-```typescript
-// routes/sync.routes.ts
-fastify.get('/subscribe', {
-  preHandler: [fastify.authenticate],
-  handler: async (request, reply) => {
-    reply.raw.setHeader('Content-Type', 'text/event-stream');
-    reply.raw.setHeader('Cache-Control', 'no-cache');
-    reply.raw.setHeader('Connection', 'keep-alive');
-
-    // Send events
-    const sendEvent = (type: string, data: unknown) => {
-      reply.raw.write(`data: ${JSON.stringify({ type, payload: data })}\n\n`);
-    };
-
-    sendEvent('connected', { userId: request.user.id });
-    // ... subscribe to Redis pub/sub for updates
-  },
-});
-```
-
-## Database Patterns (Prisma)
-
-```typescript
-// services/workspace.service.ts
-import { prisma } from '../lib/db';
-
-export const workspaceService = {
-  async upsert(userId: string, id: string, data: WorkspaceInput) {
-    return prisma.workspace.upsert({
-      where: { id },
-      create: { id, userId, ...data },
-      update: { ...data, updatedAt: new Date() },
-    });
-  },
-
-  async getByUserId(userId: string) {
-    return prisma.workspace.findMany({
-      where: { userId },
-      orderBy: { position: 'asc' },
-    });
-  },
-};
-```
-
-## Authentication Flow
-
-1. Extension sends credentials to `/auth/login`
-2. API validates credentials against database
-3. Returns JWT access token (15min) + refresh token (7 days)
-4. Refresh token stored in Redis
-5. Protected routes use `fastify.authenticate` preHandler
-
-## Error Handling
-
-```typescript
-// Consistent error response format
-throw fastify.httpErrors.unauthorized('Invalid token');
-throw fastify.httpErrors.notFound('Workspace not found');
-throw fastify.httpErrors.badRequest('Validation failed');
-```
+- **Health & Info**: `GET /health`, `GET /`
+- **Auth (`/api/v1/auth`)**: `GET /login`, `GET /callback`, `POST /refresh`, `POST /logout`, `POST /password-reset`
+- **Users (`/api/v1/users`)**: `GET /me`, `PATCH /me`, `DELETE /me`
+- **Workspaces (`/api/v1/workspaces`)**: CRUD, `/shared-with-me`, `/tabs/move`, `/tabs/reorder`, `/tabs/bulk`, collaborator & share routes
+- **Space Groups (`/api/v1/space-groups`)**: CRUD
+- **Backups (`/api/v1/backups`)**: list, create, `/stats`, `/:id`, `/:id/restore`, delete
+- **Sync (`/api/v1/sync`)**: `GET /stream` (SSE), `POST /push`, `GET|POST /pull`, `GET /status` / `GET /state`
+- **Share Links (`/api/v1/share-links`)**: `POST /info`, `POST /accept`, `/relay/:id/info`, `/relay/:id/accept`
 
 ## Testing Commands
 
 ```bash
-# Unit tests
-npm test --workspace=api
+# Unit & Rust integration tests
+bazel test //apps/suites/vitruvian-tabs/api:vitruvian_tabs_api_tools_test //apps/suites/vitruvian-tabs/api:integration_tests
 
-# Integration tests (requires test DB)
-npm run test:integration --workspace=api
+# Hermetic Postgres migration test
+bazel test //apps/suites/vitruvian-tabs/api:migrate_deploy_itest
 
-# Start development server
-npm run dev --workspace=api
+# Full suite (unit + integration)
+bazel test //apps/suites/vitruvian-tabs/api/...
 ```
 
 ## Key Files to Reference
 
-- [App Configuration](../../../api/src/app.ts)
-- [Workspace Routes](../../../api/src/routes/workspace.routes.ts)
-- [Backup Routes](../../../api/src/routes/backup.routes.ts)
+- [API Server](../../../api/rs/src/server.rs)
+- [API Services](../../../api/rs/src/services.rs)
+- [API Schemas](../../../api/rs/src/schemas.rs)
 - [Prisma Schema](../../../api/prisma/schema.prisma)
 - [API Documentation](../../../docs/reference/api.md)

@@ -42,3 +42,12 @@ go_test(
         "@com_github_stretchr_testify//require",
     ],
 )
+
+filegroup(
+    name = "docs_files",
+    srcs = [
+        "BUILD",
+        "README.md",
+    ],
+    visibility = ["//packages/pulumi/library/go:__pkg__"],
+)
