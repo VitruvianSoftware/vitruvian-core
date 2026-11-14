@@ -120,8 +120,9 @@ delivery](../../docs/concepts/sdlc.md):
 | Secret | What it is |
 |---|---|
 | `ZITADEL_MACHINE_KEY_JSON` | Zitadel machine-user JWT-profile key the Pulumi zitadel provider authenticates with (the `zitadel-infra` job). |
-| `TS_OAUTH_CLIENT_ID` | Tailscale OAuth client id for the CI tailnet on-ramp (`tailscale/github-action`). |
-| `TS_OAUTH_SECRET` | Tailscale OAuth client secret (paired with the id above). |
+| `HEADSCALE_CI_AUTHKEY` | Headscale pre-auth key (reusable, ephemeral, `tag:ci`) the Zitadel apply workflows join the mesh with, via `.github/actions/zitadel-tunnel-setup`. Also in the `-nonproduction` and `-production` environments. Expiry and rotation: [headscale README](../../gitops/argocd/platform/headscale/README.md#ci-pre-auth-key-headscale_ci_authkey). |
+| `TS_OAUTH_CLIENT_ID` | **Unused since the move to Headscale.** Commercial Tailscale OAuth client id for the old CI on-ramp; kept until the Headscale path has proven itself, then to be removed. |
+| `TS_OAUTH_SECRET` | **Unused**, as above (paired with the id). |
 
 Provisioning these (machine key via the in-cluster `iam-admin-pat`; the Tailscale
 OAuth client in the admin console) is described in

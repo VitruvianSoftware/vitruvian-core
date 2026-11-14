@@ -59,6 +59,40 @@ pub fn load_headplane_config() -> Value {
     yaml::parse_doc(raw_cfg).expect("failed to parse Headplane config.yaml")
 }
 
+/// Load `policy.hujson` as JSON. The file keeps to whole-line `//` comments
+/// so this needs no HuJSON parser (Headscale's own check is
+/// `bazel run //tools/gitops:headscale-policy-check`).
+pub fn load_policy() -> Value {
+    let path = yaml::resolve_data_path(PKG_DIR, "policy.hujson");
+    let raw = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+    let json: String = raw
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    serde_json::from_str(&json).unwrap_or_else(|e| panic!("policy.hujson is not JSON: {e}"))
+}
+
+/// The candidate gateway IPs the Zitadel tunnel action tries, from its
+/// `candidates="..."` line.
+pub fn load_tunnel_candidates() -> Vec<String> {
+    let rel = ".github/actions/zitadel-tunnel-setup/action.yml";
+    let path = yaml::resolve_data_path(PKG_DIR, rel);
+    let raw = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+    let line = raw
+        .lines()
+        .map(str::trim)
+        .find(|l| l.starts_with("candidates=\""))
+        .unwrap_or_else(|| panic!("no candidates=\"...\" line in {rel}"));
+    line.trim_start_matches("candidates=\"")
+        .trim_end_matches('"')
+        .split_whitespace()
+        .map(str::to_string)
+        .collect()
+}
+
 /// Validate that `HEADSCALE_POLICY_MODE=database` when Headplane has no `headscale.config_path`.
 pub fn check_policy_mode(hp_cfg: &Value, hs_values: &Value) -> Result<(), String> {
     let has_config_path = hp_cfg
@@ -292,6 +326,87 @@ mod tests {
         assert!(
             init_cmd.contains("k8s-api.lab.ipv1337.dev"),
             "Headscale config must include extra_records for k8s-api.lab.ipv1337.dev so Headscale clients do not dial commercial Tailscale 100.x IPs."
+        );
+    }
+
+    #[test]
+    fn test_policy_has_no_wildcard_source() {
+        let policy = load_policy();
+        for rule in policy["acls"].as_array().expect("acls") {
+            let src: Vec<&str> = rule["src"]
+                .as_array()
+                .expect("src")
+                .iter()
+                .filter_map(Value::as_str)
+                .collect();
+            assert!(
+                !src.contains(&"*"),
+                "an ACL with src \"*\" would also cover tag:ci runners; name the sources instead: {rule}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_ci_tag_reaches_only_the_gateway_nodeport() {
+        let policy = load_policy();
+        assert!(
+            policy
+                .pointer("/tagOwners/tag:ci")
+                .and_then(Value::as_array)
+                .is_some_and(|o| !o.is_empty()),
+            "tag:ci needs a tagOwners entry"
+        );
+        let hosts = policy["hosts"].as_object().expect("hosts");
+        let mut ci_rules = 0;
+        for rule in policy["acls"].as_array().expect("acls") {
+            let src: Vec<&str> = rule["src"]
+                .as_array()
+                .expect("src")
+                .iter()
+                .filter_map(Value::as_str)
+                .collect();
+            if !src.contains(&"tag:ci") {
+                continue;
+            }
+            ci_rules += 1;
+            assert_eq!(src, vec!["tag:ci"], "keep tag:ci in a rule of its own");
+            for d in rule["dst"]
+                .as_array()
+                .expect("dst")
+                .iter()
+                .filter_map(Value::as_str)
+            {
+                let (host, port) = d.rsplit_once(':').expect("dst host:port");
+                assert_eq!(
+                    port, "30265",
+                    "tag:ci may reach only the Envoy gateway NodePort, not {d}"
+                );
+                assert!(
+                    hosts.contains_key(host),
+                    "tag:ci dst {host} is not a named host"
+                );
+            }
+        }
+        assert_eq!(ci_rules, 1, "expected exactly one tag:ci rule");
+    }
+
+    #[test]
+    fn test_tunnel_candidates_match_policy_hosts() {
+        let policy = load_policy();
+        let mut hosts: Vec<String> = policy["hosts"]
+            .as_object()
+            .expect("hosts")
+            .values()
+            .filter_map(Value::as_str)
+            .map(|c| c.trim_end_matches("/32").to_string())
+            .collect();
+        let mut candidates = load_tunnel_candidates();
+        hosts.sort();
+        candidates.sort();
+        assert_eq!(
+            candidates, hosts,
+            "zitadel-tunnel-setup's candidate nodes must be exactly the policy's hosts, \
+             or CI would try a node the ACL blocks (or the ACL would open one CI never uses)"
         );
     }
 

@@ -26,7 +26,7 @@ use shell_compat as sc;
 
 use super::common::*;
 
-const SUBCMDS: &str = "raw|apikey-create|apikey-list|apikey-expire|user-create|user-list|user-destroy|node-list|node-register|node-delete|preauthkey-create|preauthkey-list";
+const SUBCMDS: &str = "raw|apikey-create|apikey-list|apikey-expire|user-create|user-list|user-destroy|node-list|node-register|node-delete|preauthkey-create|preauthkey-list|policy-check|policy-set";
 
 pub fn main(args: &[Vec<u8>]) -> i32 {
     match run_ops(args) {
@@ -114,7 +114,66 @@ fn run_ops(args: &[Vec<u8>]) -> Res<i32> {
         }
         b"preauthkey-create" => kexec(&[b"preauthkeys", b"create"], &a),
         b"preauthkey-list" => kexec(&[b"preauthkeys", b"list"], &a),
+        b"policy-check" => policy_exec(&k, &pod, b"check", &a)?,
+        b"policy-set" => {
+            let st = policy_exec(&k, &pod, b"check", &a)?;
+            if st != 0 {
+                return die(
+                    st,
+                    b"ERROR: policy check failed; the live policy was not changed.",
+                );
+            }
+            policy_exec(&k, &pod, b"set", &a)?
+        }
         _ => return die(2, &sc::cat(&[b"ERROR: unknown subcmd '", &sub, b"'"])),
     };
     Ok(st)
+}
+
+/// The policy file in git that `policy-check`/`policy-set` send by default.
+const POLICY_FILE: &str = "gitops/argocd/platform/headscale/policy.hujson";
+
+/// `headscale policy {check,set} -f /dev/stdin` with the repo's policy file
+/// (or the path in $1, relative to the workspace) streamed in over
+/// `kubectl exec -i`, so nothing has to be copied into the pod.
+fn policy_exec(k: &[u8], pod: &[u8], verb: &[u8], rest: &[&[u8]]) -> Res<i32> {
+    cd_workspace(120)?;
+    let path: Vec<u8> = rest
+        .first()
+        .map(|p| p.to_vec())
+        .unwrap_or_else(|| POLICY_FILE.as_bytes().to_vec());
+    let file = match std::fs::File::open(sc::path(&path)) {
+        Ok(f) => f,
+        Err(e) => {
+            return die(
+                1,
+                &sc::cat(&[
+                    b"ERROR: cannot read ",
+                    &path,
+                    b": ",
+                    sc::strerror(&e).as_bytes(),
+                ]),
+            )
+        }
+    };
+    let mut c = kubectl(
+        k,
+        &[
+            b"-n",
+            b"headscale",
+            b"exec",
+            b"-i",
+            b"-c",
+            b"headscale",
+            pod,
+            b"--",
+            b"headscale",
+            b"policy",
+            verb,
+            b"-f",
+            b"/dev/stdin",
+        ],
+    );
+    c.stdin(std::process::Stdio::from(file));
+    Ok(run(0, &mut c, false))
 }

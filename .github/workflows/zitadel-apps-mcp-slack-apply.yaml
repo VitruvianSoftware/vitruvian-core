@@ -90,12 +90,12 @@ jobs:
     # GCP Secret Manager writes, and this stack has no GCP resources.
     permissions:
       contents: read
-    # Supplies TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET and ZITADEL_MACHINE_KEY_JSON,
+    # Supplies HEADSCALE_CI_AUTHKEY and ZITADEL_MACHINE_KEY_JSON,
     # which are ENVIRONMENT secrets rather than repo secrets — this stack cannot
     # authenticate without it. The name says oauth-user-inspector because that is
-    # where those three were first seeded; they are instance-wide credentials,
+    # where they were first seeded; they are instance-wide credentials,
     # not app-scoped. A dedicated environment would be tidier and would cost a
-    # human three secret copies, so it is deliberately not done here.
+    # human more secret copies, so it is deliberately not done here.
     environment: oauth-user-inspector-development
     env:
       DEPLOY_ENV: development
@@ -111,11 +111,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up the Zitadel tunnel (tailnet join + TLS terminator prep)
+      - name: Set up the Zitadel tunnel (Headscale join + TLS terminator prep)
         uses: ./.github/actions/zitadel-tunnel-setup
         with:
-          tailscale-oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          tailscale-oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          headscale-authkey: ${{ secrets.HEADSCALE_CI_AUTHKEY }}
 
       - name: Install Pulumi
         uses: pulumi/actions@96c7761824268174e0d2a4e8c7d75671eebd24a7 # v7.1.0
@@ -137,18 +136,18 @@ jobs:
           # The terminator must live inside THIS step — a backgrounded process does
           # not survive across steps.
           #
-          # Target a cluster node's TAILSCALE device on the gateway NodePort, NOT
-          # the LB VIP 10.44.86.211. The VIP is a Cilium eBPF LB address: a packet
+          # Target a cluster node's Headscale address on the gateway NodePort
+          # ($ZITADEL_GATEWAY, picked by the zitadel-tunnel-setup action), NOT the
+          # LB VIP 10.44.86.211. The VIP is a Cilium eBPF LB address: a packet
           # forwarded to it by the subnet router is dropped in Cilium's datapath
-          # before load-balancing, so conntrack never sees it. A node's tailscale IP
-          # is a first-class tailnet device and Cilium DOES load-balance NodePort for
-          # that traffic. Fixed in 7fea0b3f for the sibling workflow.
+          # before load-balancing, so conntrack never sees it. Fixed in 7fea0b3f
+          # for the sibling workflow.
           # NOTE: zitadel-apps/APPLYING-FROM-CI.md still documents the VIP form; it
           # predates that fix and is stale on this point.
           # :30265 is pinned in gitops/argocd/platform/envoy-gateway/gateway/envoyproxy.yaml
           # precisely so this hardcoding cannot drift.
           sudo socat OPENSSL-LISTEN:443,reuseaddr,fork,cert=/etc/auth-internal-ck.pem,verify=0 \
-            TCP:nuc9i9.coati-koi.ts.net:30265 &
+            TCP:"${ZITADEL_GATEWAY}" &
           trap 'sudo pkill -f "OPENSSL-LISTEN:443" 2>/dev/null || true' EXIT
 
           # Fail loudly on the route rather than letting Pulumi report a confusing

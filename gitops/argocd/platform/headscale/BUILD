@@ -44,6 +44,8 @@ gitops_manifest(
 )
 
 DATA_FILES = [
+    "policy.hujson",
+    "//:.github/actions/zitadel-tunnel-setup/action.yml",
     "applicationset.yaml",
     "backendtrafficpolicy.yaml",
     "certificate.yaml",

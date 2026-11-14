@@ -1,0 +1,64 @@
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+// Headscale ACL policy: the source of truth for who may reach what on the
+// mesh. Headscale stores its policy in its database (HEADSCALE_POLICY_MODE=
+// database, so Headplane's ACL page keeps working), so this file does not
+// apply itself. Apply it after it merges:
+//
+//   bazel run //tools/gitops:headscale-policy-check   # validate against live Headscale
+//   bazel run //tools/gitops:headscale-policy-set     # check, then replace the live policy
+//
+// An edit made in Headplane is overwritten by the next policy-set. Make the
+// change here instead. The file is .hujson on purpose: Argo CD's directory
+// source reads *.yaml/*.yml/*.json, so it never tries to apply this.
+{
+  "tagOwners": {
+    // Ephemeral GitHub Actions runners (the Zitadel apply workflows). They join
+    // with the HEADSCALE_CI_AUTHKEY pre-auth key, which carries this tag.
+    "tag:ci": ["james@"]
+  },
+  "hosts": {
+    // The wired, bare-metal cluster nodes' headscale-node-agent addresses.
+    // Keep in step with .github/actions/zitadel-tunnel-setup/action.yml.
+    "fedora": "100.64.0.7/32",
+    "nuc9i5": "100.64.0.6/32",
+    "nuc9i9": "100.64.0.8/32"
+  },
+  "acls": [
+    {
+      // Every device James owns may reach everything, as under the previous
+      // allow-all policy. "james@" owns every node today; the second entry is
+      // the same person's OIDC (Google) login, for devices registered through
+      // it. Tagged devices belong to no user, so this rule does not cover them.
+      // (Headscale v0.26.1 has no autogroup:member.)
+      "action": "accept",
+      "src": ["james@", "james.nguyen@gmail.com"],
+      "dst": ["*:*"]
+    },
+    {
+      // CI reaches the Envoy gateway's HTTP NodePort on the cluster nodes, and
+      // nothing else.
+      "action": "accept",
+      "src": ["tag:ci"],
+      "dst": ["fedora:30265", "nuc9i5:30265", "nuc9i9:30265"]
+    }
+  ]
+}
