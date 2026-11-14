@@ -57,6 +57,23 @@ jobs:
     timeout-minutes: 45
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+      # What the gate below treats as inert. See its comment.
+      TIDY_IGNORE: '^(gitops|docs|\.agents)/.*\.(md|mdx|png|jpg|jpeg|gif|svg|txt|yaml|yml|html|css)$|\.(md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\.yaml|OWNERS|CODEOWNERS)$'
+      # On a PR, also the files no step of this job reads, so release-please
+      # and site-publish PRs (manifest, CHANGELOG, plist, .sig, catalog JSON)
+      # and Swift-only PRs stop paying ~6 min for nothing:
+      #   - gazelle runs starlark, go, python, js and cc only (//:gazelle), so
+      #     never Swift, plists or .sig files;
+      #   - //tools/format has no Swift formatter, and prettier ignores apps/**
+      #     (.prettierignore), so YAML, text and these JSON files under apps/
+      #     are never formatted;
+      #   - the lockfile, generated-workflow and label steps read MODULE.bazel,
+      #     Cargo.*, package.json, pnpm-lock.yaml, BUILD files and workflows,
+      #     none of which match.
+      # package.json and tsconfig*.json are NOT listed: the js gazelle reads them.
+      # The merge queue and main keep TIDY_IGNORE alone, so a wrong entry here
+      # costs a queue failure, never an unchecked main.
+      TIDY_IGNORE_PR: '^(gitops|docs|\.agents)/.*\.(md|mdx|png|jpg|jpeg|gif|svg|txt|yaml|yml|html|css)$|\.(md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\.yaml|OWNERS|CODEOWNERS)$|\.(swift|plist|sig|xcstrings)$|^apps/.*\.(ya?ml|txt)$|^apps/(.*/)?(\.release-please-manifest|plugin|vitruvian-tool|tools)\.json$'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -90,12 +107,13 @@ jobs:
       # every later change the same way. Inside those folders only the file
       # types no formatter here touches are ignored (measured: YAML, Markdown,
       # HTML and CSS are left alone); anything else runs the check.
-      # //tools/ci:relevant_paths_test reads this value and pins it.
+      # The sets are TIDY_IGNORE and, on a PR, TIDY_IGNORE_PR (job env above).
+      # //tools/ci:relevant_paths_test reads both values and pins them.
       - name: Gate on changed paths
         id: gate
         uses: ./.github/actions/changed-paths-gate
         with:
-          ignore-regex: '^(gitops|docs|\.agents)/.*\.(md|mdx|png|jpg|jpeg|gif|svg|txt|yaml|yml|html|css)$|\.(md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\.yaml|OWNERS|CODEOWNERS)$'
+          ignore-regex: ${{ github.event_name == 'pull_request' && env.TIDY_IGNORE_PR || env.TIDY_IGNORE }}
 
       # Free disk BEFORE any Bazel work -- see the free-disk-space composite
       # for the rationale (#404/#374 hit "No space left on device"; this lane
