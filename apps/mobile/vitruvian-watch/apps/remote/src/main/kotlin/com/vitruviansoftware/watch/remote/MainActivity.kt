@@ -58,6 +58,7 @@ import com.vitruviansoftware.watch.common.MediaTarget
 import com.vitruviansoftware.watch.common.RemoteWireCodec
 import com.vitruviansoftware.watch.common.RotaryVolumeAccumulator
 import com.vitruviansoftware.watch.common.TvRemoteCommand
+import com.vitruviansoftware.watch.common.WatchSentry
 import dev.vitruvian.design.Tag
 import dev.vitruvian.design.TagTone
 import dev.vitruvian.design.VText
@@ -65,6 +66,7 @@ import dev.vitruvian.design.VitruvianTheme
 
 public class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
+    WatchSentry.init("vitruvian-watch-remote")
     super.onCreate(savedInstanceState)
     setContent { VitruvianTheme { WristRemoteScreen() } }
   }

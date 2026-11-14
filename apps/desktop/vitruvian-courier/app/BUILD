@@ -34,7 +34,10 @@ swift_library(
     srcs = glob(["Sources/VitruvianCourier/**/*.swift"]),
     module_name = "VitruvianCourier",
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
-    deps = [":VitruvianCourierCore"],
+    deps = [
+        ":VitruvianCourierCore",
+        "//packages/swift/SentryLite",
+    ],
 )
 
 # The app's views without App.swift (whose @main no test can link), as the module VitruvianCourier, compiled for

@@ -33,6 +33,7 @@ go_library(
         "//apps/desktop/vitruvian-courier/engine/internal/sqlite",
         "//apps/desktop/vitruvian-courier/engine/internal/store",
         "//apps/desktop/vitruvian-courier/engine/internal/timers",
+        "@com_github_getsentry_sentry_go//:sentry-go",
         "@com_github_modelcontextprotocol_go_sdk//mcp",
         "@com_github_rs_zerolog//:zerolog",
         "@net_maunium_go_mautrix//bridgev2",

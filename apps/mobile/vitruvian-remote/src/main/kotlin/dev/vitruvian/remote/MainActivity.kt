@@ -133,6 +133,14 @@ public class MainActivity : ComponentActivity() {
       }
 
   override fun onCreate(savedInstanceState: Bundle?) {
+    val sentryDsn =
+        System.getenv("SENTRY_DSN")
+            ?: "https://ae2f3e2be71221701a6608b02c1bc344@sentry-ingest.ipv1337.dev/4"
+    io.sentry.Sentry.init { options ->
+      options.dsn = sentryDsn
+      options.release = "vitruvian-remote@1.0"
+      options.environment = "production"
+    }
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
 

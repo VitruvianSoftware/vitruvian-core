@@ -62,6 +62,7 @@ import com.vitruviansoftware.watch.common.ApprovalDecision
 import com.vitruviansoftware.watch.common.PendingApprovalItem
 import com.vitruviansoftware.watch.common.SpecialistAgent
 import com.vitruviansoftware.watch.common.VoiceAgentRouter
+import com.vitruviansoftware.watch.common.WatchSentry
 import dev.vitruvian.design.Tag
 import dev.vitruvian.design.TagTone
 import dev.vitruvian.design.VText
@@ -69,6 +70,7 @@ import dev.vitruvian.design.VitruvianTheme
 
 public class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
+    WatchSentry.init("vitruvian-watch-code")
     super.onCreate(savedInstanceState)
     setContent { VitruvianTheme { CodeWristScreen() } }
   }
