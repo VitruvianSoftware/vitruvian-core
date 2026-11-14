@@ -60,6 +60,8 @@ import {
   isValidWorktree,
   reduce,
   remaining,
+  VALID_PHASES,
+  VALID_TIERS,
   validateChannelAction,
   validatePostChannel,
 } from "../sidecars/panel/lib/orchestrator-core.mjs";
@@ -94,7 +96,10 @@ export const TOOLS = Object.freeze([
             properties: {
               title: { type: "string" },
               specialist: { type: "string" },
-              tier: { type: "string", enum: ["lead", "core", "fast"] },
+              tier: {
+                type: "string",
+                enum: [...VALID_TIERS],
+              },
               after: {
                 type: "array",
                 items: { type: "integer" },
@@ -485,12 +490,39 @@ function resolveMemberTarget(ref, flow) {
 }
 
 /**
- * Maps `progress` tool arguments to an ordered list of orchestrator-core events:
- *   tasks -> plan; phase -> phase; accept -> task.accept; return -> task.return;
- *   retire -> member.retire; kill -> member.kill; finished -> close
+ * Validates `progress` tool arguments, returning a human-readable error message
+ * when `phase` or any task's `tier` is missing/unknown instead of falling back.
  *
  * @param {Record<string, any>} args
- * @param {number} at
+ * @returns {string | null}
+ */
+export function validateProgressArgs(args = {}) {
+  const inp = args && typeof args === "object" ? args : {};
+  if (inp.phase !== undefined) {
+    const phase = typeof inp.phase === "string" ? inp.phase.trim() : "";
+    if (!VALID_PHASES.has(phase)) {
+      return `invalid phase ${JSON.stringify(inp.phase)}: expected one of ${[...VALID_PHASES].join(", ")}`;
+    }
+  }
+  if (Array.isArray(inp.tasks)) {
+    for (let i = 0; i < inp.tasks.length; i += 1) {
+      const rawTier = inp.tasks[i]?.tier;
+      const tier =
+        typeof rawTier === "string" ? rawTier.trim().toLowerCase() : "";
+      if (!VALID_TIERS.has(tier)) {
+        return `invalid tier ${JSON.stringify(rawTier)} for task ${i + 1}: expected one of ${[...VALID_TIERS].join(", ")}`;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Maps `progress` tool arguments to an ordered list of orchestrator-core events:
+ * `plan` -> `phase` -> `task.accept` -> `task.return` -> `member.retire` -> `member.kill` -> `close`.
+ *
+ * @param {Record<string, any>} args
+ * @param {number} [at]
  * @param {string} [rootConversationId]
  * @param {Record<string, any>} [rawMeta]
  * @param {import("../sidecars/panel/lib/orchestrator-core.mjs").Flow | null} [flow]
@@ -502,6 +534,10 @@ export function mapProgressToEvents(
   rawMeta = undefined,
   flow = undefined,
 ) {
+  const validationError = validateProgressArgs(args);
+  if (validationError) {
+    throw new Error(validationError);
+  }
   const inp = args && typeof args === "object" ? args : {};
   const events = [];
   const metaFields = {
@@ -513,7 +549,7 @@ export function mapProgressToEvents(
     const tasks = inp.tasks.map((t) => ({
       title: String(t?.title ?? "").trim(),
       specialist: String(t?.specialist ?? "wren").trim(),
-      tier: t?.tier === "lead" || t?.tier === "fast" ? t.tier : "core",
+      tier: String(t.tier).trim().toLowerCase(),
       after: Array.isArray(t?.after)
         ? t.after.map((n) => Number(n)).filter((n) => Number.isInteger(n))
         : [],
@@ -1730,6 +1766,17 @@ export function handleJsonRpcMessage(message, options = {}) {
           error: {
             code: -32602,
             message: "progress is for the lead only",
+          },
+        };
+      }
+      const validationError = validateProgressArgs(toolArgs);
+      if (validationError) {
+        return {
+          jsonrpc: "2.0",
+          id,
+          error: {
+            code: -32602,
+            message: validationError,
           },
         };
       }

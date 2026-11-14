@@ -77,8 +77,36 @@ filegroup(
 js_test(
     name = "core_test",
     size = "small",
-    data = [":lib"],
+    data = [
+        "README.md",
+        "rules/AGENTS.md",
+        "skills/ext-marketplace/SKILL.md",
+        ":lib",
+        ":site_sources",
+        "//apps/antigravity:plugins/README.md",
+        "//apps/antigravity/plugins/gh-watch:site_sources",
+        "//apps/antigravity/plugins/hookify:site_sources",
+        "//apps/antigravity/plugins/live-context:site_sources",
+        "//apps/antigravity/plugins/ralph-loop:site_sources",
+        "//apps/antigravity/plugins/receipts-report:site_sources",
+        "//apps/antigravity/plugins/savvy-fleet:site_sources",
+        "//apps/antigravity/plugins/security-guidance:site_sources",
+        "//apps/antigravity/plugins/vitruvian-orchestrator:site_sources",
+        "//apps/antigravity/plugins/worktree-band:site_sources",
+    ],
     entry_point = "sidecars/panel/lib/core.test.mjs",
+    no_copy_to_bin = [
+        "//apps/antigravity:plugins/README.md",
+        "//apps/antigravity/plugins/gh-watch:site_sources",
+        "//apps/antigravity/plugins/hookify:site_sources",
+        "//apps/antigravity/plugins/live-context:site_sources",
+        "//apps/antigravity/plugins/ralph-loop:site_sources",
+        "//apps/antigravity/plugins/receipts-report:site_sources",
+        "//apps/antigravity/plugins/savvy-fleet:site_sources",
+        "//apps/antigravity/plugins/security-guidance:site_sources",
+        "//apps/antigravity/plugins/vitruvian-orchestrator:site_sources",
+        "//apps/antigravity/plugins/worktree-band:site_sources",
+    ],
 )
 
 js_test(
@@ -199,7 +227,10 @@ filegroup(
         ],
         allow_empty = True,
     ),
-    visibility = ["//tools/sync-site-tools:__pkg__"],
+    visibility = [
+        "//apps/antigravity/plugins/ext-marketplace:__pkg__",
+        "//tools/sync-site-tools:__pkg__",
+    ],
 )
 
 # What //apps/antigravity's cross-plugin tests read: the hooks.json

@@ -4,7 +4,7 @@ An Antigravity desktop plugin that provides an interactive **Extensions Marketpl
 
 ## Features
 
-- **Curated First-Party Catalog**: Includes all 9 first-party Vitruvian Antigravity extensions (`gh-watch`, `worktree-band`, `ralph-loop`, `hookify`, `security-guidance`, `receipts-report`, `live-context`, `savvy-fleet`, `ext-marketplace`) alongside any official or custom plugins installed in `~/.gemini/config/plugins/` and `~/.gemini/config/config.json`.
+- **Curated First-Party Catalog**: Includes all first-party Vitruvian Antigravity extensions (`gh-watch`, `worktree-band`, `ralph-loop`, `hookify`, `security-guidance`, `receipts-report`, `live-context`, `savvy-fleet`, `vitruvian-orchestrator`, `ext-marketplace`) alongside any official or custom plugins installed in `~/.gemini/config/plugins/` and `~/.gemini/config/config.json`.
 - **Deep Plugin Metadata Inspection**: Automatically inspects every installed plugin directory for `plugin.json`, `sidecars/*/sidecar.json` (`hasSidecarUi`), `skills/*/SKILL.md`, `hooks.json`, `mcp.json`, and `rules/*.md`.
 - **Safe Non-Destructive Config Toggling**: Toggling a plugin runs `agy plugin enable|disable <name>` and atomically updates `plugins.<name>.enabled` in `~/.gemini/config/config.json` while preserving `installedFrom` and all other configuration keys.
 - **One-Click Install, Update & Uninstall**: Install directly from the local `vitruvian-core` monorepo path (via symlink) or GitHub repository URL (`agy plugin install <repo>`), pull updates (`git -C ~/.gemini/config/plugins/<name> pull`), or uninstall (`agy plugin uninstall <name>`).

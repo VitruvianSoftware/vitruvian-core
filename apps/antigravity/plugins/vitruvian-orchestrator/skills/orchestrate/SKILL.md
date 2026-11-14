@@ -32,6 +32,7 @@ Antigravity has no Claude Opus, so here you run on Antigravity's `pro` model, an
 | pace | light | flash | Use this agent for release readiness, sequencing cross-team dependencies, monitoring merge queue progression, and flagging release slip risks in vitruvian-core. |
 
 - Each specialist's description in the roster table is its routing rule. Pick the specialist whose description matches the task's domain.
+- This plugin ships its generated roster under `agents/*.md`, which Antigravity auto-discovers alongside project `.agents/agents/*.md` definitions so all named specialists resolve natively outside this repository too.
 - Every specialist reads `AGENTS.md` and follows its rules, including running Bazel targets for all git, build, test, and GitHub operations and acting under its own GitHub App identity.
 - Never invent specialist names or models outside the roster table.
 
@@ -45,7 +46,7 @@ Run these five phases in order: **plan**, **design**, **delegate**, **review**, 
 2. Break the work into discrete tasks. Give each task:
    - **Title**: a short action label used to track the task.
    - **Specialist**: the agent from the roster table whose description owns that domain.
-   - **Tier**: the specialist's tier from the roster table (`build`, `deep` or `light`; see section 4).
+   - **Tier**: the specialist's tier from the roster table (`lead`, `build`, `deep` or `light`; legacy `core` and `fast` remain accepted by the `progress` tool, and unknown values are rejected; see section 4).
    - **Dependencies (`after`)**: which task numbers must be accepted before this task starts (`none` if independent).
    - **Optional model override (`model`)**: a Gemini model id (`^gemini-[a-z0-9.-]+$`, never `-low`, `-lite` or `flash-lo`) when a task needs a non-default Gemini model; when set, put `Gemini model: <id>` in the brief.
    - **Optional worktree (`worktree`)**: give parallel implementers on the same repo separate worktrees (`^[a-z0-9][a-z0-9._/-]{0,99}$`, no `..`) and put `Worktree: <branch>` in the brief.
@@ -162,7 +163,7 @@ The vitruvian-orchestrator panel shows the plan, a burn-down, each specialist's 
 only knows what you tell it, so keep it current. If the tool is not available, skip this silently.
 
 - Call the `progress` tool of the `vitruvian-orchestrator` MCP server:
-  - right after you show the plan: `title`, `phase: "delegate"` (or `"design"`), and `tasks` as
+  - right after you show the plan: `title`, `phase: "plan"`, and `tasks` as
     `[{ title, specialist, tier, after, model?, worktree? }]` in plan order, `after` holding task numbers;
   - on every phase change: `phase`;
   - after each review outcome: `accept: <task number>` or `return: <task number>`;

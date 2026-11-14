@@ -5,7 +5,7 @@ Claude Code plugin for coordinating specialist helpers across a planned engineer
 ## What is in this plugin
 
 - **`orchestrate` lead skill (`skills/orchestrate/SKILL.md`)**: Turns the active Claude Code session into the lead that plans across five phases (`plan` → `design` → `delegate` → `review` → `close`), dispatches specialist helpers (`wren`, `scout`, `compass`, `quill`, and peers), reviews their work, and closes the flow. See [How the agent team works](../../../../docs/concepts/agent-team.md).
-- **Specialist subagents**: Loaded automatically for the project from `.claude/agents/*.md`.
+- **Specialist subagents (`agents/*.md`)**: Generated from `.agents/roster/` and shipped inside this plugin alongside the project's `.claude/agents/*.md` definitions; non-lead drivers call the external `agy-delegate` CLI (falling back to `general-purpose` on Sonnet when unavailable).
 - **Live orchestration panel (`hooks/register.tsx`)**: Renders the `Orchestrator` pane and an `AbovePrompt` status band:
   1. **Header**: Flow title, phase pills (`plan`, `design`, `delegate`, `review`, `close`), `"accepted N of M"`, and estimated cost (`est.`).
   2. **Burn-down**: Remaining tasks over time with an ideal line and re-plan markers (SVG chart on desktop, text sparkline in terminal).

@@ -22,7 +22,7 @@
 
 export type Phase = "plan" | "design" | "delegate" | "review" | "close";
 
-export type Tier = "lead" | "core" | "fast";
+export type Tier = "lead" | "build" | "deep" | "light" | "core" | "fast";
 
 export type TaskState =
   "waiting" | "ready" | "running" | "review" | "returned" | "accepted";

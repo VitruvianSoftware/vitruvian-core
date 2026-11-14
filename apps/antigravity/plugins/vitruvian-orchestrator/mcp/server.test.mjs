@@ -2360,3 +2360,64 @@ test("return round 2 security 3: repeated channel create or archive returns curr
     rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test("progress accepts roster tiers (lead, build, deep, light) plus legacy (core, fast) and rejects unknown tier or phase", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "vo-tier-test-"));
+  try {
+    const meta = {
+      "antigravity.google/root_conversation_id": "tier-root",
+      "antigravity.google/conversation_id": "tier-root",
+    };
+    const call = (id, args) =>
+      handleJsonRpcMessage(
+        {
+          jsonrpc: "2.0",
+          id,
+          method: "tools/call",
+          params: { name: "progress", arguments: args, _meta: meta },
+        },
+        { flowsDir: tempDir, brainRoots: [tempDir] },
+      );
+
+    const ok = call(1, {
+      title: "Roster Tiers",
+      phase: "plan",
+      tasks: [
+        { title: "T1", specialist: "beacon", tier: "lead" },
+        { title: "T2", specialist: "wren", tier: "build" },
+        { title: "T3", specialist: "aegis", tier: "deep" },
+        { title: "T4", specialist: "scout", tier: "light" },
+        { title: "T5", specialist: "forge", tier: "core" },
+        { title: "T6", specialist: "quill", tier: "fast" },
+      ],
+    });
+    assert.equal(ok.error, undefined);
+    assert.equal(ok.result.content[0].text, "flow updated: 0/6 accepted");
+    const persisted = readFlowFromJsonlFile(join(tempDir, "tier-root.jsonl"));
+    assert.equal(persisted.phase, "plan");
+    assert.deepEqual(
+      persisted.tasks.map((t) => t.tier),
+      ["lead", "build", "deep", "light", "core", "fast"],
+    );
+
+    const badTier = call(2, {
+      tasks: [{ title: "Bad", specialist: "wren", tier: "bogus" }],
+    });
+    assert.equal(badTier.error?.code, -32602);
+    assert.match(badTier.error?.message ?? "", /invalid tier/);
+
+    const badPhase = call(3, { phase: "execute" });
+    assert.equal(badPhase.error?.code, -32602);
+    assert.match(badPhase.error?.message ?? "", /invalid phase/);
+
+    assert.throws(
+      () =>
+        mapProgressToEvents({
+          tasks: [{ title: "Missing tier", specialist: "wren" }],
+        }),
+      /invalid tier/,
+    );
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});

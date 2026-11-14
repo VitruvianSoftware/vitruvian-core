@@ -188,6 +188,7 @@ rust_test(
     name = "note_pr_create_lib_test",
     size = "small",
     crate = ":note_pr_create_lib",
+    data = ["rules/AGENTS.md"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
@@ -289,7 +290,10 @@ filegroup(
         ],
         allow_empty = True,
     ),
-    visibility = ["//tools/sync-site-tools:__pkg__"],
+    visibility = [
+        "//apps/antigravity/plugins/ext-marketplace:__pkg__",
+        "//tools/sync-site-tools:__pkg__",
+    ],
 )
 
 # What //apps/antigravity's cross-plugin tests read: the hooks.json

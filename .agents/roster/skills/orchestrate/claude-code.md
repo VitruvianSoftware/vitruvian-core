@@ -20,6 +20,7 @@ You run on Claude Opus. The specialists do not: each one in the roster table is 
 <!-- roster:table -->
 
 - Each specialist's description in the roster table is its routing rule. Pick the specialist whose description matches the task's domain.
+- This plugin ships its generated roster under `agents/*.md` so all named specialists exist even outside this repository. Note that `build`, `deep`, and `light` specialists delegate to Gemini via the external `agy-delegate` CLI (`agy-delegate` on `PATH`); when `agy-delegate` is not installed or blocked, fall back per section 5 (`general-purpose` on `sonnet` at `high` effort).
 - Every specialist reads `AGENTS.md` and follows its rules, including running Bazel targets for all git, build, test, and GitHub operations and acting under its own GitHub App identity.
 - Never invent specialist names or models outside the roster table.
 
@@ -33,7 +34,7 @@ Run these five phases in order: **plan**, **design**, **delegate**, **review**, 
 2. Break the work into discrete tasks. Give each task:
    - **Title**: a short action label used to track the task.
    - **Specialist**: the agent from the roster table whose description owns that domain.
-   - **Tier**: the specialist's tier from the roster table (`build`, `deep` or `light`; see section 4).
+   - **Tier**: the specialist's tier from the roster table (`lead`, `build`, `deep` or `light`; legacy `core` and `fast` remain accepted by `mcp__vitruvian-orchestrator__progress`, and unknown values are rejected; see section 4).
    - **Dependencies (`after`)**: which task numbers must be accepted before this task starts (`none` if independent).
    - **Optional model override (`model`)**: a Gemini model id (`^gemini-[a-z0-9.-]+$`, never `-low`, `-lite` or `flash-lo`) when a task needs a non-default Gemini model; when set, put `Gemini model: <id>` in the brief.
    - **Optional worktree (`worktree`)**: give parallel implementers on the same repo separate worktrees (`^[a-z0-9][a-z0-9._/-]{0,99}$`, no `..`) and put `Worktree: <branch>` in the brief.
@@ -129,7 +130,7 @@ Once all tasks are accepted, report concisely to the user:
 
 ## 5. Fallback
 
-- A specialist reports `BLOCKED` when Gemini is out of quota, unauthenticated, timed out or failing twice. Retry it once. If it is still blocked:
+- A specialist reports `BLOCKED` when Gemini is out of quota, unauthenticated, timed out, failing twice, or missing `agy-delegate`. Retry it once. If it is still blocked (or if `agy-delegate` is unavailable in this environment):
   1. Run the task on Claude with the `general-purpose` agent on `sonnet` at `high` effort, using the same brief, and say in your close that it ran on Claude and why.
   2. Do not move specialist work to Opus. Opus is for the lead.
 - Never drop below standard (`medium`) effort. If no model at standard effort or above is available, stop and tell the user.
@@ -152,7 +153,7 @@ The vitruvian-orchestrator panel shows the plan, a burn-down, each specialist's 
 only knows what you tell it, so keep it current. If the tool is not available, skip this silently.
 
 - Call the `mcp__vitruvian-orchestrator__progress`:
-  - right after you show the plan: `title`, `phase: "delegate"` (or `"design"`), and `tasks` as
+  - right after you show the plan: `title`, `phase: "plan"`, and `tasks` as
     `[{ title, specialist, tier, after, model?, worktree? }]` in plan order, `after` holding task numbers;
   - on every phase change: `phase`;
   - after each review outcome: `accept: <task number>` or `return: <task number>`;

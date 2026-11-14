@@ -1680,4 +1680,70 @@ mod tests {
         // A non-string Cwd made path.join throw.
         assert_eq!(run(r#"{"toolCall":{"name":"x","args":{"Cwd":5}}}"#), ALLOW);
     }
+
+    fn drift_repo_path(rel: &str) -> PathBuf {
+        let direct = PathBuf::from(rel);
+        if direct.exists() {
+            return direct;
+        }
+        if let Ok(srcdir) = env::var("TEST_SRCDIR") {
+            let ws = env::var("TEST_WORKSPACE").unwrap_or_else(|_| "_main".to_string());
+            let candidate = PathBuf::from(srcdir).join(ws).join(rel);
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+        direct
+    }
+
+    #[test]
+    fn drift_skill_and_rules_match_hook_defaults_and_operators() {
+        let skill = fs::read_to_string(drift_repo_path(
+            "apps/antigravity/plugins/hookify/skills/hookify/SKILL.md",
+        ))
+        .expect("read hookify SKILL.md");
+        let rules_doc = fs::read_to_string(drift_repo_path(
+            "apps/antigravity/plugins/hookify/rules/AGENTS.md",
+        ))
+        .expect("read hookify rules/AGENTS.md");
+
+        let minimal = parse_hookify_markdown("---\nname: minimal\n---\nCheck\n", "")
+            .expect("parse minimal hookify rule");
+        let default_event = minimal["event"].as_str().unwrap();
+        let default_action = minimal["action"].as_str().unwrap();
+        let default_enabled = minimal["enabled"].as_bool().unwrap();
+
+        assert!(
+            skill.contains(&format!(
+                "- `event` (string, default `\"{default_event}\"`):"
+            )),
+            "SKILL.md event default drifted from code default {default_event:?}"
+        );
+        assert!(
+            skill.contains(&format!(
+                "- `action` (string, default `\"{default_action}\"`):"
+            )),
+            "SKILL.md action default drifted from code default {default_action:?}"
+        );
+        assert!(
+            skill.contains(&format!(
+                "- `enabled` (boolean, default `{default_enabled}`):"
+            )),
+            "SKILL.md enabled default drifted from code default {default_enabled}"
+        );
+
+        for op in SUPPORTED_OPERATORS {
+            assert!(
+                skill.contains(&format!("`\"{op}\"`")),
+                "SKILL.md missing SUPPORTED_OPERATORS entry {op}"
+            );
+        }
+        for act in SUPPORTED_ACTIONS {
+            assert!(
+                skill.contains(&format!("`\"{act}\"`")),
+                "SKILL.md missing SUPPORTED_ACTIONS entry {act}"
+            );
+        }
+        assert!(rules_doc.contains("`deny`") && rules_doc.contains("`overwrite`"));
+    }
 }

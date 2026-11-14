@@ -20,6 +20,8 @@
 
 """The vitruvian-orchestrator plugin: the files the site registry reads."""
 
+load("@aspect_rules_js//js:defs.bzl", "js_test")
+
 # gazelle:ignore
 # The mod (hooks/) runs inside Claude Code, not under Bazel; its tests run with
 # `claude plugin test`. Keep gazelle from generating js targets for it.
@@ -29,6 +31,28 @@
 exports_files(
     ["README.md"],
     visibility = ["//packages/orchestrator-core:__pkg__"],
+)
+
+js_test(
+    name = "drift_test",
+    size = "small",
+    data = [
+        "README.md",
+        "hooks/register.tsx",
+        "skills/orchestrate/SKILL.md",
+        "//:.agents/roster/agents.tsv",
+        "//:.agents/roster/tiers.tsv",
+        "//apps/claude-code/plugins/vitruvian-orchestrator/types:index.d.ts",
+    ] + glob(
+        ["agents/*.md"],
+        allow_empty = True,
+    ),
+    entry_point = "drift.test.mjs",
+    no_copy_to_bin = [
+        "//:.agents/roster/agents.tsv",
+        "//:.agents/roster/tiers.tsv",
+        "//apps/claude-code/plugins/vitruvian-orchestrator/types:index.d.ts",
+    ],
 )
 
 filegroup(

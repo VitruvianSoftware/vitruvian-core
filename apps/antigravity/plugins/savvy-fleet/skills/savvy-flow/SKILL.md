@@ -26,7 +26,7 @@ flowchart LR
 3. For each task, declare:
    - **`title`**: Short 3–6 word title (reused verbatim in `invoke_subagent`'s `Role` parameter so the Savvy Fleet panel matches runs to planned tasks).
    - **`tier`**: Complexity tier (`fable`, `heavy`, `careful`, `medium`, `light`).
-   - **`specialist`**: Target Antigravity subagent (`beacon`, `wren`, `atlas`, `ridge`, `scout`, `aegis`, `quill`, `compass`, `pace`).
+   - **`specialist`**: Target Antigravity subagent (`beacon`, `wren`, `atlas`, `ridge`, `scout`, `aegis`, `quill`, `compass`, `pace` — requires the `vitruvian-orchestrator` plugin or workspace `.agents/agents/`; outside that environment, fall back to built-in `self` / `research`).
    - **`after`**: Array of prerequisite task numbers (`[]` if ready immediately).
 
 ### Phase 2: Design (`design`)
@@ -42,7 +42,7 @@ Dispatch ready tasks (whose `after` dependencies are satisfied) in parallel usin
 | **`heavy`** | `pro` / high | Complex multi-file refactors, Pulumi IaC topology, non-trivial state machines | `beacon`, `atlas`, `wren` |
 | **`careful`** | `inherit` / high | Security audits, RBAC/NetworkPolicies, production GitOps, data migrations | `aegis`, `ridge`, `atlas` |
 | **`medium`** | `inherit` / medium | Standard feature development, bug fixes, authoring unit and integration tests | `wren`, `scout` |
-| **`light`** | `flash` / low | Mechanical validation, CI check monitoring, documentation updates, formatting | `scout`, `quill`, `pace` |
+| **`light`** | `flash` / medium | Mechanical validation, CI check monitoring, documentation updates, formatting | `scout`, `quill`, `pace` |
 
 When calling `invoke_subagent`, prefix or include the tier in `Role` (e.g., `Role: "[medium] Implement OpenUI renderer"` or `Role: "wren: Implement OpenUI renderer"`) and provide a self-contained `Prompt` with:
 - Exact file paths to create or modify (and paths that are off-limits).

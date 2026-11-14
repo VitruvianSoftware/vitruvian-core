@@ -88,6 +88,10 @@ rust_test(
     name = "live_context_hooks_lib_test",
     size = "small",
     crate = ":live_context_hooks_lib",
+    data = [
+        "rules/AGENTS.md",
+        "skills/live-context/SKILL.md",
+    ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
@@ -219,7 +223,10 @@ filegroup(
         ],
         allow_empty = True,
     ),
-    visibility = ["//tools/sync-site-tools:__pkg__"],
+    visibility = [
+        "//apps/antigravity/plugins/ext-marketplace:__pkg__",
+        "//tools/sync-site-tools:__pkg__",
+    ],
 )
 
 # What //apps/antigravity's cross-plugin tests read: the hooks.json
