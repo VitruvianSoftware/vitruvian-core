@@ -77,6 +77,16 @@ common --workspace_status_command="./tools/workspace-status.sh --check-only"
 # Mac builds everything else instead of failing in swiftc.
 build:macos-app --extra_toolchains=@local_config_apple_cc_toolchains//:all
 
+# The oldest macOS every Mac program built here runs on: the app's
+# LSMinimumSystemVersion (apps/desktop/vitruvian-atrium/Resources/Info.plist),
+# which every macos_* target's minimum_os_version already says. Unset, Bazel
+# takes the build machine's own macOS, and the C/C++ toolchain links with
+# -mmacosx-version-min=<that> -- so a Rust or cgo program built on a macOS 27
+# runner refused to start on anything older. catalog-bump turned Vitruvian TV
+# 0.1.1 and 0.1.2 away for exactly that (#4704, #4796);
+# //apps/extensions/atrium/vitruvian-tv:minos_test holds it.
+common --macos_minimum_os=14.0
+
 common:lint --aspects=//tools/lint:linters.bzl%shellcheck
 common:lint --aspects=//tools/lint:linters.bzl%eslint
 common:lint --aspects=//tools/lint:linters.bzl%ruff
