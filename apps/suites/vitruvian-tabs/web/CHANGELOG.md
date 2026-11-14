@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.33](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tabs-web-v0.1.32...vitruvian-tabs-web-v0.1.33) (2026-11-14)
+
+
+### Features
+
+* **telemetry:** instrument Suites and MCP bridges with Sentry ([#4835](https://github.com/VitruvianSoftware/vitruvian-core/issues/4835)) ([6da38a7](https://github.com/VitruvianSoftware/vitruvian-core/commit/6da38a7a64e677f03c8ba248a41c4129374a0696))
+
 ## [0.1.32](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.31...tabula-web-v0.1.32) (2026-09-13)
 
 
