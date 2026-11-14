@@ -40,10 +40,11 @@ type TeamConfig struct {
 }
 
 type StackConfig struct {
-	BaseURL      string          `json:"baseUrl"`
-	Organization string          `json:"organization"`
-	Team         TeamConfig      `json:"team"`
-	Projects     []ProjectConfig `json:"projects"`
+	BaseURL           string          `json:"baseUrl"`
+	Organization      string          `json:"organization"`
+	EnableIssueAlerts bool            `json:"enableIssueAlerts"`
+	Team              TeamConfig      `json:"team"`
+	Projects          []ProjectConfig `json:"projects"`
 }
 
 func Load(ctx *pulumi.Context) (*StackConfig, error) {
@@ -55,6 +56,7 @@ func Load(ctx *pulumi.Context) (*StackConfig, error) {
 	if sc.Organization == "" {
 		sc.Organization = "sentry"
 	}
+	sc.EnableIssueAlerts = cfg.GetBool("enableIssueAlerts")
 
 	if err := cfg.TryObject("team", &sc.Team); err != nil {
 		return nil, fmt.Errorf("loading sentry:team config: %w", err)
