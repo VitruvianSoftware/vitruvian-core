@@ -23,12 +23,21 @@ use oauth_server_lib::server::{default_bind_addr, serve_http, App};
 use std::sync::Arc;
 
 fn main() {
+    let _guard = sentry::init((
+        std::env::var("SENTRY_DSN").ok(),
+        sentry::ClientOptions {
+            release: sentry::release_name!(),
+            ..Default::default()
+        },
+    ));
+
     let port: u16 = std::env::var("PORT")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(8080);
     let app = Arc::new(App::new());
     if let Err(err) = serve_http(app, default_bind_addr(port)) {
+        sentry::capture_error(&err);
         eprintln!("Failed to start OAuth User Inspector server: {err}");
         std::process::exit(1);
     }

@@ -850,6 +850,9 @@ importers:
       '@google-cloud/secret-manager':
         specifier: ^7.2.0
         version: 7.2.0
+      '@sentry/react':
+        specifier: ^11.12.0
+        version: 11.12.0(react-router@6.30.6(react@19.2.8))(react@19.2.8)
       dotenv:
         specifier: ^18.0.9
         version: 18.0.9
@@ -29232,6 +29235,15 @@ snapshots:
     optionalDependencies:
       react-router: 6.30.6(react@18.3.1)
 
+  '@sentry/react@11.12.0(react-router@6.30.6(react@19.2.8))(react@19.2.8)':
+    dependencies:
+      '@sentry/browser': 11.12.0
+      '@sentry/conventions': 0.32.0
+      '@sentry/core': 11.12.0
+      react: 19.2.8
+    optionalDependencies:
+      react-router: 6.30.6(react@19.2.8)
+
   '@sentry/replay-canvas@11.12.0':
     dependencies:
       '@sentry/core': 11.12.0
@@ -42409,6 +42421,12 @@ snapshots:
     dependencies:
       '@remix-run/router': 1.23.4
       react: 18.3.1
+
+  react-router@6.30.6(react@19.2.8):
+    dependencies:
+      '@remix-run/router': 1.23.4
+      react: 19.2.8
+    optional: true
 
   react-side-effect@2.1.2(react@18.3.1):
     dependencies:

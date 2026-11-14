@@ -2069,6 +2069,15 @@ pub fn serve_http(app: Arc<App>, addr: SocketAddr) -> std::io::Result<()> {
 
             if let Some(req) = read_wire_request(&mut stream, remote_ip) {
                 let resp = app_clone.handle_request(&req);
+                if resp.status >= 500 {
+                    sentry::capture_message(
+                        &format!(
+                            "HTTP {} server error handling request: {} {}",
+                            resp.status, req.method, req.path
+                        ),
+                        sentry::Level::Error,
+                    );
+                }
                 let _ = write_wire_response(&mut stream, &resp);
             }
         });
