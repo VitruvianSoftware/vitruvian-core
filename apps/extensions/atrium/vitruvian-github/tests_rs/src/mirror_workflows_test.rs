@@ -67,3 +67,23 @@ fn workflow_limits() {
     }
     println!("mirror workflows: OK");
 }
+
+#[test]
+fn every_script_a_step_runs_is_in_the_mirror() {
+    let dir = workflows_dir();
+    let base = dir.parent().unwrap().parent().unwrap().to_path_buf();
+    let mut problems = Vec::new();
+    for name in ["ci.yml", "release.yml"] {
+        let wf = mirror_workflows::load_workflow(&dir.join(name));
+        problems.extend(mirror_workflows::missing_script_problems(name, &wf, &base));
+    }
+    if !problems.is_empty() {
+        for p in &problems {
+            eprintln!("{p}");
+        }
+        panic!(
+            "{} step(s) run a file the mirror does not have",
+            problems.len()
+        );
+    }
+}

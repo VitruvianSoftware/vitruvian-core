@@ -73,4 +73,13 @@ jobs:
           HOME="$RUNNER_TEMP/home" vitruvian-sdk/verification/target/release/conformance "$folder"
 
       - name: The version is one number
-        run: python3 version_test.py
+        run: |
+          # The mirror has no Bazel, so the full check (//apps/extensions/atrium/vitruvian-github:version_test)
+          # runs in the monorepo. This is its core: the three files name one version.
+          tool="$(python3 -c 'import json; print(json.load(open("vitruvian-tool.json"))["version"])')"
+          rp="$(python3 -c 'import json; print(next(iter(json.load(open(".release-please-manifest.json")).values())))')"
+          swift="$(sed -n 's/.*current = "\([^"]*\)".*x-release-please-version.*/\1/p' Sources/GitHubToolCore/Version.swift)"
+          if [ "$tool" != "$rp" ] || [ "$swift" != "$rp" ]; then
+            echo "::error::vitruvian-tool.json says $tool, Version.swift says $swift, the release manifest says $rp."
+            exit 1
+          fi
