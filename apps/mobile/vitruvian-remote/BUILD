@@ -93,6 +93,7 @@ kt_android_library(
         "@maven//:androidx_core_core",
         "@maven//:androidx_window_window",
         "@maven//:androidx_window_window_core",
+        "@maven//:io_sentry_sentry",
         "@maven//:org_jetbrains_kotlinx_kotlinx_coroutines_android",
     ],
 )
