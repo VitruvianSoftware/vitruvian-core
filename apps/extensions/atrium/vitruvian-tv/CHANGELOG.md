@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tv-v0.1.1...vitruvian-tv-v0.1.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* **brand:** Vitruvian GitHub, TV and Remote names, and a folder layout that says what kind of app each is ([#4709](https://github.com/VitruvianSoftware/vitruvian-core/issues/4709)) ([07b0bc4](https://github.com/VitruvianSoftware/vitruvian-core/commit/07b0bc4649716483b49411f7f0c5415ef7ead503))
+
 ## [0.1.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tool-tv-v0.1.0...vitruvian-tool-tv-v0.1.1) (2026-11-13)
 
 
