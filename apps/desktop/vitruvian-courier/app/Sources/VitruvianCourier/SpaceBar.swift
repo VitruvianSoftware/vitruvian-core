@@ -280,7 +280,16 @@ private struct SpaceIcon: View {
     private var mark: some View {
         switch space.kind {
         case .account:
+            // An app-icon tile; the selected account's has an accent outline besides the highlight behind it.
             NetworkBadge(network: space.network, name: SpaceLook.title(space), size: 26, showsTooltip: false)
+                .overlay {
+                    if isShown {
+                        RoundedRectangle(cornerRadius: 26 * 0.26 + 2.5, style: .continuous)
+                            .strokeBorder(themeAccent, lineWidth: 2)
+                            .padding(-3)
+                    }
+                }
+                .opacity(isShown || hovering ? 1 : 0.88)
                 .accessibilityHidden(true)
         case .label:
             LabelIcon(color: space.color, icon: space.icon, size: 28)

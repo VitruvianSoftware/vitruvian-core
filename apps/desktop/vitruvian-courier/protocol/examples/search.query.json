@@ -27,6 +27,7 @@
           "preview": "picnic.jpg",
           "preview_kind": "image",
           "preview_mine": false,
+          "preview_sender_name": "Picnic Organiser",
           "preview_in_thread": false,
           "preview_status": "",
           "login_name": "",
@@ -46,7 +47,14 @@
           "typing": [],
           "unread_mentions": 0,
           "preview_media_path": "",
-          "preview_call": null
+          "preview_call": null,
+          "members_preview": [
+            {
+              "user_id": "@whatsapp_organiser.one:courier.local",
+              "name": "Picnic Organiser",
+              "avatar_path": ""
+            }
+          ]
         }
       ],
       "in_groups": [

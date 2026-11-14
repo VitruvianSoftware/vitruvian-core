@@ -14,7 +14,7 @@
 >   it goes in `docs/` and is linked from here (as the homelab access section does) —
 >   everything in this guide should be actionable by every agent that reads it.
 > - **Nested `AGENTS.md` files scope to their subtree** (`apps/cli/vitruvian-devx/`, `apps/suites/vitruvian-tabs/`, `apps/suites/vitruvian-wand/`,
->   `apps/web/oauth-user-inspector/`, `apps/web/vitruviansoftware-dev/`, `apps/mobile/android-remote/`, `apps/desktop/`, `apps/desktop/vitruvian-speaker/`,
+>   `apps/web/oauth-user-inspector/`, `apps/web/vitruviansoftware-dev/`, `apps/mobile/vitruvian-remote/`, `apps/extensions/atrium/vitruvian-github/`, `apps/desktop/`, `apps/desktop/vitruvian-speaker/`,
 >   `apps/desktop/vitruvian-atrium/`, `apps/embedded/vitruvian-deck/`) — put per-component detail there, not here. Note that an
 >   `AGENTS.md` only applies to the directory it sits in and below, so one in a
 >   non-source directory silently never applies.
@@ -148,7 +148,7 @@ prints the command to use instead. If no target fits, stop and say which one is 
 | Lint workflows | `bazel run //tools/ci:actionlint` |
 | Remove a worktree | `bazel run //tools/worktree -- --remove <branch\|name> [--delete-branch]` |
 | Delete a local branch with no worktree whose work landed changed | `bazel run //tools/worktree -- --remove <branch> --delete-branch --landed-as <PR,PR>` (after checking which PRs it went into) |
-| Delete a branch on GitHub | `bazel run //tools/agent-app -- branch-delete --agent <you> <branch>...` (only branches already on `main`) |
+| Delete a branch on GitHub | `bazel run //tools/agent-app -- branch-delete --agent <you> <branch>...` (only branches already on `main`; `--abandoned <pr> <branch>` for one whose PR closed unmerged) |
 | Open, comment on or close an issue | `bazel run //tools/agent-app -- issue-create --agent <you> --title "…" --body-file <f>` (`issue-comment <n>`, `issue-close <n>`) |
 
 Pass `--agent <you>` to commit and push: it makes your agent's bot the author,

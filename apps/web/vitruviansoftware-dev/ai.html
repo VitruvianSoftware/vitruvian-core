@@ -89,8 +89,8 @@ description: >-
   <div class="container">
     <div class="section-head">
       <span class="eyebrow">{{ shown | prepend: '0' }}</span>
-      <h2>Vitruvian Atrium &amp; Android Remote Extensions</h2>
-      <p>Ed25519-signed JSON-RPC 2.0 extensions for the <a href="/downloads/#vitruvian-atrium">Vitruvian macOS host app</a> (notch island, Command Bar, Radial menu) and <a href="/downloads/#android-remote">Vitruvian Remote for Android</a>. Synchronized from the <a href="/tools/catalog/">signed catalog ledger (/tools/catalog/)</a> and built with the <a href="/tools/">Vitruvian Tool SDK (/tools/)</a>.</p>
+      <h2>Vitruvian Atrium &amp; Vitruvian Remote Extensions</h2>
+      <p>Ed25519-signed JSON-RPC 2.0 extensions for the <a href="/downloads/#vitruvian-atrium">Vitruvian macOS host app</a> (notch island, Command Bar, Radial menu) and <a href="/downloads/#vitruvian-remote">Vitruvian Remote for Android</a>. Synchronized from the <a href="/tools/catalog/">signed catalog ledger (/tools/catalog/)</a> and built with the <a href="/tools/">Vitruvian Tool SDK (/tools/)</a>.</p>
     </div>
     <div class="grid grid-2">
       {%- for tool in tool_catalog.tools -%}
@@ -110,7 +110,7 @@ description: >-
         <ul class="tags" aria-label="Works with and capabilities">
           <li class="tag tag-host">Vitruvian macOS</li>
           {%- if tool_ecosystems contains "vitruvian-remote" -%}
-          <li class="tag tag-host">Android Remote</li>
+          <li class="tag tag-host">Vitruvian Remote</li>
           {%- endif -%}
           {%- for words in tool.uses -%}
           <li class="tag">{{ words }}</li>

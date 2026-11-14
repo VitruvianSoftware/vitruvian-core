@@ -327,7 +327,8 @@ struct MainWindow: View {
                         spaces: spaces,
                         preferences: preferences,
                         composerPreferences: composerPreferences,
-                        ui: ui
+                        ui: ui,
+                        openSearch: { search.show() }
                     )
                 }
                 .navigationSplitViewColumnWidth(min: preferences.showSpaceBar ? 260 + SpaceBar.width : 260,

@@ -181,8 +181,12 @@ package final class NotchService: ObservableObject {
             package var fileDrop: @MainActor (_ shelfAccept: @escaping (NSPasteboard) -> Bool) -> NotchFileDrop.Environment
             /// The clicks and keys the open island hears.
             package var openEvents: NotchOpenEvents
-            /// Which of these displays show a full-screen Space now.
+            /// Which of these displays are in full screen now, a Space's or
+            /// an app's own.
             package var fullscreenDisplays: @MainActor ([CGDirectDisplayID]) -> Set<CGDirectDisplayID>
+            /// The part of those that show a full-screen Space, which slides
+            /// the screen itself.
+            package var fullscreenSpaceDisplays: @MainActor ([CGDirectDisplayID]) -> Set<CGDirectDisplayID>
             /// The app's own notifications: menus, windows, screens and preferences.
             package var notifications: NotificationCenter
             /// The workspace's: Spaces, the app in front and accessibility.
@@ -210,6 +214,8 @@ package final class NotchService: ObservableObject {
                          fileDrop: @escaping @MainActor (@escaping (NSPasteboard) -> Bool) -> NotchFileDrop.Environment,
                          openEvents: NotchOpenEvents,
                          fullscreenDisplays: @escaping @MainActor ([CGDirectDisplayID]) -> Set<CGDirectDisplayID>,
+                         fullscreenSpaceDisplays: @escaping @MainActor ([CGDirectDisplayID])
+                             -> Set<CGDirectDisplayID> = { _ in [] },
                          notifications: NotificationCenter, workspaceNotifications: NotificationCenter,
                          sessionNotifications: NotificationCenter,
                          currentSession: @escaping @MainActor () -> NotchSessionState,
@@ -229,6 +235,7 @@ package final class NotchService: ObservableObject {
                 self.fileDrop = fileDrop
                 self.openEvents = openEvents
                 self.fullscreenDisplays = fullscreenDisplays
+                self.fullscreenSpaceDisplays = fullscreenSpaceDisplays
                 self.notifications = notifications
                 self.workspaceNotifications = workspaceNotifications
                 self.sessionNotifications = sessionNotifications
@@ -254,6 +261,11 @@ package final class NotchService: ObservableObject {
                           return Set(ids.filter {
                               topology.isFullscreen(on: $0, separateSpaces: separate) || covered.contains($0)
                           })
+                      },
+                      fullscreenSpaceDisplays: { ids in
+                          guard let topology = SpaceWindowBridge.topology() else { return [] }
+                          let separate = NSScreen.screensHaveSeparateSpaces
+                          return Set(ids.filter { topology.isFullscreen(on: $0, separateSpaces: separate) })
                       },
                       notifications: .default, workspaceNotifications: NSWorkspace.shared.notificationCenter,
                       sessionNotifications: DistributedNotificationCenter.default(),
@@ -573,6 +585,10 @@ package final class NotchService: ObservableObject {
     private var activityPickerMenuOpen = false
     private var hoverState = NotchHoverState()
     private var openedByHover = false
+    /// Whether the pointer has been on the open island since it opened. Not
+    /// pinned, an island closes once the pointer has visited it and leaves,
+    /// however it opened (`NotchSupport.closesOnPointerExit`).
+    private var pointerVisited = false
     /// A click inside the open island, which may be what brings another app forward.
     private var clickedSinceOpening = false
     /// Whether the open detail was reached from inside the island, so Escape
@@ -621,6 +637,9 @@ package final class NotchService: ObservableObject {
     private lazy var sessionTracker = NotchSessionTracker(workspace: parts.workspaceNotifications,
                                                           distributed: parts.sessionNotifications)
     private var suspended: Bool { !session.canPresent }
+    /// Set while an app's own full screen ends, so the island that stepped
+    /// aside comes back in from the screen edge (`NotchFullscreenVisibility`).
+    private var revealingFromAppFullscreen = false
     @Published package private(set) var hiddenInFullscreen = false {
         didSet {
             guard hiddenInFullscreen != oldValue else { return }
@@ -796,6 +815,7 @@ package final class NotchService: ObservableObject {
                 return self.baseGeometry(for: display)
             },
             fullscreenDisplays: { [parts] ids in parts.fullscreenDisplays(ids) },
+            fullscreenSpaceDisplays: { [parts] ids in parts.fullscreenSpaceDisplays(ids) },
             hidesUntilHover: { [defaults] in NotchSupport.hidesUntilHover(in: defaults) },
             hiddenShowsActivity: { [defaults] in NotchSupport.hiddenShowsActivity(in: defaults) },
             coversMenus: { [defaults] in NotchSupport.coversMenus(in: defaults) },
@@ -956,7 +976,12 @@ package final class NotchService: ObservableObject {
             updateFullscreenDisplays: { [weak self] in self?.updateFullscreenDisplays() },
             syncMirrors: { [weak self] in self?.syncMirrors() },
             syncVisibleConsumers: { [weak self] in self?.syncVisibleConsumers() },
-            refreshPresentation: { [weak self] in self?.refreshPresentation(animated: false) }))
+            refreshPresentation: { [weak self] animated, revealingFromApp in
+                guard let self else { return }
+                self.revealingFromAppFullscreen = revealingFromApp
+                self.refreshPresentation(animated: animated)
+                self.revealingFromAppFullscreen = false
+            }))
 
     /// The preferences the island follows (`Environment.defaults`).
     private let defaults: UserDefaults
@@ -1954,6 +1979,7 @@ package final class NotchService: ObservableObject {
         activityPickerMenuOpen = false
         hoverState = NotchHoverState()
         openedByHover = false
+        pointerVisited = false
         removeEventMonitors()
         removeScreenEdgeClickMonitors()
         removeCaptureControlsClickThrough()
@@ -1970,6 +1996,7 @@ package final class NotchService: ObservableObject {
         displayID = nil
         syncPanelKey()
         hiddenInFullscreen = false
+        fullscreen.forgetHidden()
     }
 
     /// Opening without a page shows what the closed island is already
@@ -2088,6 +2115,7 @@ package final class NotchService: ObservableObject {
         if !expanded {
             detailHasPage = false
             showsKeyboardFocus = false
+            pointerVisited = false
         }
         else if appPanel || metric != nil, !showingAppPanel, selectedMetric == nil { detailHasPage = true }
         // Following the closed island ends the moment it opens, before a page
@@ -2110,6 +2138,7 @@ package final class NotchService: ObservableObject {
             if notice?.notificationID != nil { noticeWork?.cancel(); noticeWork = nil; noticeQueue.clear() }
         }
         inside = windowHost?.containsHover(pointer()) == true
+        if inside { pointerVisited = true }
         installEventMonitors()
         syncVisibleConsumers()
         if takeFocus { windowHost?.takeKeyboard() }
@@ -2132,6 +2161,7 @@ package final class NotchService: ObservableObject {
             if noticeExpanded { noticeQueue.clear() }
             expanded = false
             openedByHover = false
+            pointerVisited = false
             peeking = false
             selectedMetric = nil
             showingAppPanel = false
@@ -2205,6 +2235,7 @@ package final class NotchService: ObservableObject {
             && windowHost?.isConcealedForMissionControl == false
             : windowHost?.containsHover(point) == true || pointerOverChildWindow(point)
         hoverState.update(pointerInside: inside)
+        if inside && (expanded || peeking) { pointerVisited = true }
         // The music strip names its song only while the pointer stays on the
         // island: leaving ends it, and a name left from before goes on return.
         let unnamesMusic = inside != wasInside && endMusicStripHover(leaving: !inside)
@@ -2278,7 +2309,7 @@ package final class NotchService: ObservableObject {
             let delay = NotchSupport.sanitizedHoverDelay(defaults[Preferences.notchHoverDelay])
             schedule(delay, work)
         } else if holdsNotification
-                    || NotchSupport.closesOnPointerExit(expanded: expanded, peeking: peeking, openedByHover: openedByHover) {
+                    || NotchSupport.closesOnPointerExit(expanded: expanded, peeking: peeking, pointerVisited: pointerVisited) {
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 self.hoverWork = nil
@@ -2286,9 +2317,12 @@ package final class NotchService: ObservableObject {
                       self.windowHost?.containsHover(self.pointer()) != true,
                       !self.pointerOverChildWindow(self.pointer()) else { return }
                 self.releaseNotification()
+                // Keys typed in the island hold it, like an open menu: the
+                // pointer drifting off mid-word must not close it.
                 guard !self.pinned, !self.heldDrag, !self.keepsWorkingSurface, self.captureControls == nil,
+                      !self.showsKeyboardFocus,
                       !self.services.assistiveKeyboardOwns(self.pointer()),
-                      NotchSupport.closesOnPointerExit(expanded: self.expanded, peeking: self.peeking, openedByHover: self.openedByHover) else { return }
+                      NotchSupport.closesOnPointerExit(expanded: self.expanded, peeking: self.peeking, pointerVisited: self.pointerVisited) else { return }
                 self.collapse()
             }
             hoverWork = work
@@ -2319,7 +2353,7 @@ package final class NotchService: ObservableObject {
         // until the pointer leaves, with or without an emphasis to follow.
         let keepsMusicStrip = musicStripNamed || musicStripHeldSong != nil
         let watching = ((hoverEmphasized || followsClosedHover || keepsMusicStrip) && captureHover == nil
-                || !entered && NotchSupport.closesOnPointerExit(expanded: expanded, peeking: peeking, openedByHover: openedByHover))
+                || !entered && NotchSupport.closesOnPointerExit(expanded: expanded, peeking: peeking, pointerVisited: pointerVisited))
             && captureControls == nil && !pinned && !heldDrag && !hiddenUntilHover && !keepsWorkingSurface
             // Once watching, a pointer that leaves and slips back unreported is still seen.
             && (hoverExitWatch.isWatching || windowHost?.containsHover(point) == true)
@@ -3511,13 +3545,16 @@ package final class NotchService: ObservableObject {
         }
         var presented = expanded ? expandedGeometry : geometry
         presented.surfaceShift = surfaceShift
+        // An island hidden until the pointer reaches it comes in from the
+        // screen edge, and so does one an app's own full screen withdrew.
+        let revealsFromHidden = !hiddenInFullscreen && captureControls == nil
+            && (revealingFromAppFullscreen
+                || defaults[Preferences.notchHideUntilHover] && defaults[Preferences.notchOpenOnHover])
         windowHost?.present(size: size, geometry: presented, animated: animated,
                             transitionContent: contentTransition,
                             quickAccess: expanded && captureControls == nil && !showingCommandBar && !access.buttons.isEmpty
                                 ? access : nil,
-                            revealFromHidden: !hiddenInFullscreen && captureControls == nil
-                                && defaults[Preferences.notchHideUntilHover]
-                                && defaults[Preferences.notchOpenOnHover],
+                            revealFromHidden: revealsFromHidden,
                             hideWhenSettled: false,
                             usesGlass: !fullscreenCompact && usesGlassSurface,
                             steady: fitsInPlace)
@@ -4808,7 +4845,7 @@ extension NotchService {
         MainActor.assumeIsolated { services.closeMenuPopover() }
         hoverState.open()
         hoverWork?.cancel()
-        if !expanded { removeHoverExitMonitors() }
+        if !expanded { removeHoverExitMonitors(); pointerVisited = false }
         mutatePresentation(transitionContent: expanded ? .replace : .reveal) {
             showingCommandBar = true
             showingAppPanel = false
@@ -4821,6 +4858,7 @@ extension NotchService {
             if notice?.notificationID != nil { noticeWork?.cancel(); noticeWork = nil; noticeQueue.clear() }
         }
         inside = windowHost?.containsHover(pointer()) == true
+        if inside { pointerVisited = true }
         installEventMonitors()
         syncVisibleConsumers()
         panel.makeKey()

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-11-13T08:42:11Z",
+  "generated": "2026-11-13T17:30:39Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -86,7 +86,7 @@
       "version": "1.6.0",
       "protocol": "2",
       "minimumAppVersion": "3.46.0",
-      "source": "https://github.com/VitruvianSoftware/vitruvian-tool-github",
+      "source": "https://github.com/VitruvianSoftware/vitruvian-github",
       "download": {
         "url": "https://github.com/VitruvianSoftware/vitruvian-tool-github/releases/download/v1.6.0/github-tool-1.6.0.zip",
         "sha256": "0e0e5d9e937a190af6923abae34f6c85837cb1f64e03205f5767279de438bbc4",
@@ -203,7 +203,7 @@
       "version": "0.1.39",
       "protocol": "2",
       "minimumAppVersion": "3.48.0",
-      "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote",
+      "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/vitruvian-remote",
       "download": {
         "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.39/VitruvianRemote-0.1.39-tool.zip",
         "sha256": "1aa8dcd99031eb1848f791289b13dcb65d31e71ad53f324f80bca17cd0889091",
@@ -380,7 +380,7 @@
       "version": "0.1.0",
       "protocol": "2",
       "minimumAppVersion": "3.48.0",
-      "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-tool-tv",
+      "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/extensions/atrium/vitruvian-tv",
       "download": {
         "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-tool-tv-v0.1.0/VitruvianTV-0.1.0-tool.zip",
         "sha256": "f6fd4712d0c86ebee1620c8c2d4e579f496ff9b89df244c98b1b0f76705290ae",

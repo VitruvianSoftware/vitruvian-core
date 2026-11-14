@@ -129,7 +129,7 @@ fn default_ignore_set_for_the_bazel_build_lanes() {
         "app catalog-info skips",
         false,
         "",
-        &["apps/mobile/android-remote/catalog-info.yaml"],
+        &["apps/mobile/vitruvian-remote/catalog-info.yaml"],
     );
     case("root OWNERS skips", false, "", &["OWNERS"]);
     case(
@@ -219,7 +219,7 @@ fn conformance_check_set_never_skips_metadata() {
         "app catalog-info RUNS",
         true,
         CONFORMANCE,
-        &["apps/mobile/android-remote/catalog-info.yaml"],
+        &["apps/mobile/vitruvian-remote/catalog-info.yaml"],
     );
     case("OWNERS RUNS", true, CONFORMANCE, &["OWNERS"]);
 }

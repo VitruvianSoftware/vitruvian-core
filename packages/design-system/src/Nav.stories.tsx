@@ -136,7 +136,7 @@ export const MobileBarsAndRail: StoryObj = {
       <div className="grid grid-cols-2 gap-5">
         <Plate className="overflow-hidden">
           <TopBar
-            title="Android Remote"
+            title="Vitruvian Remote"
             trailing={<HostChip host="mac-studio.local" signal="ok" />}
           />
           <div className="p-5 dim">Touch viewport body</div>

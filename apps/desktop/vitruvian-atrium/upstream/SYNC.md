@@ -21,6 +21,44 @@ syncs learned.
 Every upstream commit is in the ledger, none is `pending`, and every port is on
 `main` with its checks green.
 
+## Where the work happens
+
+agent-guard refuses raw git writes (`git add`, `commit`, `push`, `checkout -b`,
+...), and `//tools/git:commit` refuses in the main checkout. A routine session
+starts in the main checkout, on a branch the session assigned, and the worktree
+tool cannot take that branch, since the main checkout already has it. So on
+2026-11-02 and 2026-11-09 the sync stopped before porting anything, and 123
+upstream commits piled up. Work like this instead:
+
+- **Your own branch in a worktree.** Run
+  `bazel run //tools/worktree -- <assigned branch>-sync` (it starts from
+  `origin/main`), `cd` into the path it prints, and do every step below there.
+  `<assigned branch>` is the one the session put the main checkout on
+  (`git branch --show-current` there). Extend that name rather than inventing
+  one: a cloud session's git access is scoped to its assigned branch, and a name
+  that extends it is known to push. Outside a session, any
+  `claude/atrium-sync-<YYYYMMDD>`. This branch is the one to commit to, push and
+  open the pull request from, and this file is your permission to push it
+  instead of the branch the session assigned. Do not stop to ask. Driving an
+  open batch pull request (step 1) means working on its branch instead:
+  `bazel run //tools/worktree -- <its branch>`.
+- **Commit and push through the targets**:
+  `bazel run //tools/git:commit -- -F <message file> --all` and
+  `bazel run //tools/git:push`, from inside the worktree.
+- **Identity.** Where agent keys exist (`tools/sync-env-secrets/agent-keys/` in
+  the main checkout), pass `--agent <your name>` to commit and push, and use
+  `bazel run //tools/agent-app -- pr-create --agent <your name>` and `pr-enqueue`
+  for the pull request. A cloud session has no keys and no `GH_TOKEN`, and
+  agent-app then refuses. There, leave `--agent` off: the commit carries the
+  session's own git identity and the push uses the session's GitHub access.
+  Open the pull request, turn on auto-merge and read checks and job logs with
+  the session's GitHub tools. Never mint another agent's token, and never merge
+  past the merge queue.
+- **Disk.** The worktree builds in an output root of its own, a few GB on top of
+  the main checkout's. If a build fails with "No space left on device", run
+  `bazel run //tools/bazel-cache:gc -- --execute` (without `--execute` it only
+  lists what it would delete). Never `rm -r` a Bazel cache.
+
 ## Steps
 
 1. Start from the latest `origin/main`. If an open pull request already ports an

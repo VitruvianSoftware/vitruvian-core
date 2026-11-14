@@ -33,6 +33,8 @@ public enum ClaudeStopHook {
     /// `VitruvianSpeaker --announce <text>`: the whole announcement, quiet hours
     /// honoured, in a process of its own. See `run` for why.
     public static let announceArgument = "--announce"
+    /// Entrypoint value recorded for non-interactive `claude -p` / SDK runs.
+    public static let sdkCliEntrypoint = "sdk-cli"
 
     /// One transcript line, reduced to what the hook cares about.
     public struct Entry: Equatable {
@@ -59,7 +61,7 @@ public enum ClaudeStopHook {
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   obj["isSidechain"] as? Bool != true else { continue }
             if let entrypoint = obj["entrypoint"] as? String,
-               entrypoint == "sdk-cli" {
+               entrypoint == sdkCliEntrypoint {
                 continue
             }
             if let topType = obj["type"] as? String,

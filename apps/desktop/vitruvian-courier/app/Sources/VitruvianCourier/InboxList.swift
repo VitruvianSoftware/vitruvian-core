@@ -20,6 +20,9 @@ struct InboxList: View {
     @ObservedObject var preferences: InboxPreferences
     @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
     @ObservedObject var ui: InboxUI
+    /// Opens ⌘K's search. When the window doesn't pass it, the header's button chooses the Search… item of the
+    /// menu bar, which is the same thing ⌘K does.
+    var openSearch: (@MainActor () -> Void)? = nil
     @Environment(\.openDetachedWindow) private var openDetachedWindow
     @Environment(\.appearancePreferences) private var appearanceEnv
     @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
@@ -78,7 +81,7 @@ struct InboxList: View {
         }
         .overlay(alignment: .bottom) { ToastView(inbox: inbox) }
         .overlay(alignment: .top) { popoverAnchors }
-        .modifier(InboxToolbarHeader(inbox: inbox, title: spaceTitle))
+        .modifier(InboxToolbarHeader(inbox: inbox, title: spaceTitle, openSearch: openSearch))
     }
 
     /// Where ⌘⌥A's accounts and ⌘L's Remind Me open: the top of the list, whatever its header shows.
@@ -116,6 +119,7 @@ struct InboxList: View {
                 .font(.headline)
                 .lineLimit(1)
             Spacer(minLength: 4)
+            InboxHeaderButtons(inbox: inbox, openSearch: openSearch)
             FilterMenu(inbox: inbox)
             DisplayOptionsMenu(inbox: inbox)
         }
@@ -330,6 +334,7 @@ private struct SkeletonRows: View {
 private struct InboxToolbarHeader: ViewModifier {
     @ObservedObject var inbox: InboxModel
     let title: String
+    var openSearch: (@MainActor () -> Void)? = nil
     @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
 
     func body(content: Content) -> some View {
@@ -347,6 +352,7 @@ private struct InboxToolbarHeader: ViewModifier {
                     .sharedBackgroundVisibility(.hidden)
                     ToolbarSpacer(.flexible)
                     ToolbarItemGroup(placement: .automatic) {
+                        InboxHeaderButtons(inbox: inbox, openSearch: openSearch, inToolbar: true)
                         FilterMenu(inbox: inbox, inToolbar: true)
                         DisplayOptionsMenu(inbox: inbox, inToolbar: true)
                     }
@@ -355,5 +361,55 @@ private struct InboxToolbarHeader: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+/// Search (⌘K) and New Chat (⌘N), as icon buttons at the head of the sidebar, as Beeper has them.
+struct InboxHeaderButtons: View {
+    @ObservedObject var inbox: InboxModel
+    var openSearch: (@MainActor () -> Void)? = nil
+    /// In the window's toolbar: the toolbar's own button look.
+    var inToolbar = false
+
+    var body: some View {
+        Group {
+            button(String(localized: "Search"), symbol: "magnifyingglass", keys: "⌘K") {
+                if let openSearch { openSearch() } else { _ = MainMenuAction.choose(String(localized: "Search…")) }
+            }
+            button(String(localized: "New Chat"), symbol: "square.and.pencil", keys: "⌘N") {
+                inbox.openStartNewChat()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func button(_ title: String, symbol: String, keys: String, action: @escaping () -> Void) -> some View {
+        let tip = "\(title) (\(keys))"
+        if inToolbar {
+            Button(action: action) { Label(title, systemImage: symbol).labelStyle(.iconOnly) }
+                .help(tip)
+        } else {
+            Button(action: action) { Label(title, systemImage: symbol).labelStyle(.iconOnly) }
+                .buttonStyle(.borderless)
+                .help(tip)
+        }
+    }
+}
+
+/// Chooses an item of the menu bar by its title: the way a header button does what a menu item with a key does,
+/// without the list holding the models behind it.
+@MainActor
+enum MainMenuAction {
+    @discardableResult
+    static func choose(_ title: String, in menu: NSMenu? = NSApp.mainMenu) -> Bool {
+        guard let menu else { return false }
+        for (index, item) in menu.items.enumerated() {
+            if item.title == title, item.isEnabled, !item.isSeparatorItem {
+                menu.performActionForItem(at: index)
+                return true
+            }
+            if let submenu = item.submenu, choose(title, in: submenu) { return true }
+        }
+        return false
     }
 }

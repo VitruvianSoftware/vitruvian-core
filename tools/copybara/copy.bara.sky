@@ -565,8 +565,8 @@ COMPONENTS = [
         "standalone_only": [],
         "export_only": True,
     },
-    # vitruvian-tool-github: EXPORT-ONLY mirror of apps/desktop/vitruvian-tool-github,
-    # the GitHub tool for the Vitruvian app. The folder becomes the mirror's
+    # vitruvian-tool-github: EXPORT-ONLY mirror of apps/extensions/atrium/vitruvian-github,
+    # Vitruvian GitHub for Vitruvian Atrium. The folder becomes the mirror's
     # root, which is the shape `swift build` needs: Package.swift at the top.
     # The mirror's own release.yml (exported from the subtree) tags vX.Y.Z
     # from the exported .release-please-manifest.json and attaches the tool's
@@ -574,8 +574,8 @@ COMPONENTS = [
     # this repository (the tool's AGENTS.md), so there is no import path.
     {
         "name": "vitruvian-tool-github",
-        "repo": "vitruvian-tool-github",
-        "subtree": "apps/desktop/vitruvian-tool-github",
+        "repo": "vitruvian-github",
+        "subtree": "apps/extensions/atrium/vitruvian-github",
         "standalone_rev_id": "VITRUVIAN_TOOL_GITHUB_REV_ID",
         "mode": "SQUASH",
         "standalone_only": [],
@@ -637,22 +637,22 @@ COMPONENTS = [
         ],
         "export_only": True,
     },
-    # vitruvian-remote: EXPORT-ONLY mirror of apps/mobile/android-remote (MIT),
+    # vitruvian-remote: EXPORT-ONLY mirror of apps/mobile/vitruvian-remote (MIT),
     # the Android app with its Mac agent and menu.
     {
         "name": "vitruvian-remote",
         "repo": "vitruvian-remote",
-        "subtree": "apps/mobile/android-remote",
+        "subtree": "apps/mobile/vitruvian-remote",
         "standalone_rev_id": "VITRUVIAN_REMOTE_REV_ID",
         "mode": "SQUASH",
         "standalone_only": [],
         # release-please and the monorepo's catalog, owners and docs-site files.
         "origin_only_exclude": [
-            "apps/mobile/android-remote/release-please-config.json",
-            "apps/mobile/android-remote/.release-please-manifest.json",
-            "apps/mobile/android-remote/catalog-info.yaml",
-            "apps/mobile/android-remote/OWNERS",
-            "apps/mobile/android-remote/mkdocs.yml",
+            "apps/mobile/vitruvian-remote/release-please-config.json",
+            "apps/mobile/vitruvian-remote/.release-please-manifest.json",
+            "apps/mobile/vitruvian-remote/catalog-info.yaml",
+            "apps/mobile/vitruvian-remote/OWNERS",
+            "apps/mobile/vitruvian-remote/mkdocs.yml",
         ],
         "export_only": True,
     },

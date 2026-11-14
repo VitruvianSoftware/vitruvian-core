@@ -15,7 +15,7 @@ vitruvian-core                .github/FUNDING.yml
 vitruvian-atrium              apps/desktop/vitruvian-atrium/.github/FUNDING.yml
 vitruvian-courier             apps/desktop/vitruvian-courier/.github/FUNDING.yml
 vitruvian-speaker             apps/desktop/vitruvian-speaker/.github/FUNDING.yml
-vitruvian-remote              apps/mobile/android-remote/.github/FUNDING.yml
+vitruvian-remote              apps/mobile/vitruvian-remote/.github/FUNDING.yml
 vitruvian-deck                apps/embedded/vitruvian-deck/.github/FUNDING.yml
 vitruvian-code                apps/desktop/vitruvian-code/.github/FUNDING.yml
 oauth-user-inspector          apps/web/oauth-user-inspector/.github/FUNDING.yml
@@ -24,7 +24,7 @@ vitruvian-roborock-mcp        apps/mcp/vitruvian-roborock-mcp/.github/FUNDING.ym
 gh-watch                      apps/antigravity/plugins/gh-watch/.github/FUNDING.yml
 vitruvian-devx                apps/cli/vitruvian-devx/.github/FUNDING.yml
 vitruvian-homelab             apps/cli/vitruvian-homelab/.github/FUNDING.yml
-vitruvian-tool-github         apps/desktop/vitruvian-tool-github/.github/FUNDING.yml
+vitruvian-github              apps/extensions/atrium/vitruvian-github/.github/FUNDING.yml
 vitruvian-sdk                 packages/vitruvian-sdk/.github/FUNDING.yml
 pulumi-library                packages/pulumi/library/.github/FUNDING.yml
 pulumi_go-example-foundation  packages/pulumi/examples/go-foundation/.github/FUNDING.yml

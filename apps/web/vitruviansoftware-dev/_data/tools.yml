@@ -1,6 +1,6 @@
 # Written by tools/sync-site-tools from catalog/tools.json. Do not edit:
 #   bazel run //tools/sync-site-tools:sync
-generated: "2026-11-13T08:42:11Z"
+generated: "2026-11-13T17:30:39Z"
 public_key: "ysvqcMifelrOyxEx01sOS4B5VN585nBLKkdaaT0xyWY="
 tools:
   - id: "dev.vitruvian.reference"
@@ -30,7 +30,7 @@ tools:
     publisher: "VitruvianSoftware"
     summary: "Shows whether main is green on the repositories you watch and where your pull requests stand."
     version: "1.6.0"
-    source: "https://github.com/VitruvianSoftware/vitruvian-tool-github"
+    source: "https://github.com/VitruvianSoftware/vitruvian-github"
     download: "https://github.com/VitruvianSoftware/vitruvian-tool-github/releases/download/v1.6.0/github-tool-1.6.0.zip"
     size: "1.3 MB"
     sha256: "0e0e5d9e937a190af6923abae34f6c85837cb1f64e03205f5767279de438bbc4"
@@ -57,7 +57,7 @@ tools:
     publisher: "VitruvianSoftware"
     summary: "Pairs your Android phone with this Mac's Vitruvian Remote agent over Tailscale, manages push notifications and Claude Code permission prompts, and exposes the phone's MCP bridge."
     version: "0.1.39"
-    source: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote"
+    source: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/vitruvian-remote"
     download: "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.39/VitruvianRemote-0.1.39-tool.zip"
     size: "2.4 MB"
     sha256: "1aa8dcd99031eb1848f791289b13dcb65d31e71ad53f324f80bca17cd0889091"
@@ -82,7 +82,7 @@ tools:
     publisher: "VitruvianSoftware"
     summary: "Controls your Sony Google TV over ADB: power, 4K Aerial screensaver, SmartTube, Projectivy Launcher, volume, and clipboard video casting."
     version: "0.1.0"
-    source: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-tool-tv"
+    source: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/extensions/atrium/vitruvian-tv"
     download: "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-tool-tv-v0.1.0/VitruvianTV-0.1.0-tool.zip"
     size: "45 KB"
     sha256: "f6fd4712d0c86ebee1620c8c2d4e579f496ff9b89df244c98b1b0f76705290ae"

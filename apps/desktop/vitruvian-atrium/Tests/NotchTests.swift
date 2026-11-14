@@ -2303,20 +2303,20 @@ enum NotchTests {
                "hover activation times stay within usable bounds")
         suite.expect([Double.nan, .infinity, -.infinity].allSatisfy { NotchSupport.sanitizedHoverDelay($0) == 0.25 },
                "non-finite hover activation times fall back to the default")
-        suite.expect(defaults.double(forKey: DefaultsKey.notchCloseDelay) == 0.18
+        suite.expect(defaults.double(forKey: DefaultsKey.notchCloseDelay) == 0.5
                && NotchSupport.sanitizedCloseDelay(0.65) == 0.65
                && NotchSupport.sanitizedCloseDelay(-1) == 0.10 && NotchSupport.sanitizedCloseDelay(9) == 2.0
-               && NotchSupport.sanitizedCloseDelay(.nan) == 0.18,
-               "closing after the pointer leaves keeps its old pause and stays within usable bounds")
+               && NotchSupport.sanitizedCloseDelay(.nan) == 0.5,
+               "closing after the pointer leaves waits half a second and stays within usable bounds")
         defaults.set(1.5, forKey: DefaultsKey.notchCloseDelay)
         suite.expect(NotchSupport.closeDelay(in: defaults) == 1.5,
                      "the closing delay reads the saved preference")
         defaults.set("invalid", forKey: DefaultsKey.notchCloseDelay)
-        suite.expect(NotchSupport.closeDelay(in: defaults) == 0.18,
+        suite.expect(NotchSupport.closeDelay(in: defaults) == 0.5,
                      "a closing delay stored with the wrong type uses the default")
         defaults.removeObject(forKey: DefaultsKey.notchCloseDelay)
-        suite.expect(NotchSupport.closeDelay(in: defaults) == 0.18,
-                     "removing the closing preference restores the original delay")
+        suite.expect(NotchSupport.closeDelay(in: defaults) == 0.5,
+                     "removing the closing preference restores the default delay")
         suite.expect(!NotchSupport.routesAppPanel(in: defaults) && NotchSupport.routesQuickPanel(in: defaults)
                && NotchSupport.routesClipboardWindow(in: defaults) && NotchSupport.routesShelf(in: defaults)
                && NotchSupport.routesCaptureControls(in: defaults),
@@ -2698,11 +2698,11 @@ enum NotchTests {
         suite.expect(NotchSupport.filteredModules(allModules, query: "", title: { $0.rawValue }) == allModules
                && NotchSupport.filteredModules(allModules, query: "unmatched", title: { $0.rawValue }).isEmpty,
                "empty queries preserve configured ordering and unmatched queries have no action")
-        suite.expect(!NotchSupport.closesOnPointerExit(expanded: true, peeking: false, openedByHover: false),
-               "menu bar and keyboard openings survive a pointer outside the notch")
-        suite.expect(NotchSupport.closesOnPointerExit(expanded: true, peeking: false, openedByHover: true)
-               && NotchSupport.closesOnPointerExit(expanded: false, peeking: true, openedByHover: false),
-               "hover presentations still close when the pointer leaves")
+        suite.expect(!NotchSupport.closesOnPointerExit(expanded: true, peeking: false, pointerVisited: false),
+               "menu bar and keyboard openings survive a pointer that has not reached the island yet")
+        suite.expect(NotchSupport.closesOnPointerExit(expanded: true, peeking: false, pointerVisited: true)
+               && NotchSupport.closesOnPointerExit(expanded: false, peeking: true, pointerVisited: false),
+               "an open island the pointer has visited closes when it leaves, however it opened")
         var hover = NotchHoverState()
         hover.close(pointerInside: true)
         for _ in 0..<4 { hover.update(pointerInside: true) }

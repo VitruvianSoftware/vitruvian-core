@@ -88,7 +88,10 @@ func TestMigrationFromMilestone4_2(t *testing.T) {
 	rows := inboxByID(t, s)
 	require.Len(t, rows, 2)
 	require.Equal(t, "$a10", lastEventID(t, s, "!pat:courier.local"))
-	require.Equal(t, "standup moved", rows["!team:courier.local"].Preview)
+	// The team chat's newest message is "standup moved"; a reaction after it is the newest activity, so the row
+	// previews the reaction (protocol: preview_kind reaction), quoting the message it reacts to.
+	require.Equal(t, "reaction", rows["!team:courier.local"].PreviewKind)
+	require.Equal(t, "+1 to “release notes draft”", rows["!team:courier.local"].Preview)
 
 	backfillAll(t, s, 2000)
 	find := func(q string) []string {

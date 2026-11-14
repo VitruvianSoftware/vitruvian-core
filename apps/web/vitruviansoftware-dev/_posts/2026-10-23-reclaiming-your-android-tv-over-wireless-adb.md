@@ -278,11 +278,11 @@ You can install **[Vitruvian TV (`dev.vitruvian.tv`)](/tools/catalog/#dev.vitruv
 
 ### 2. From the Couch: Vitruvian Remote for Android Foldables
 
-When you aren't at your laptop, **[Vitruvian Remote](https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote)** (`apps/mobile/android-remote`) is our Jetpack Compose remote and observability console built specifically for Android foldables like the Pixel Fold.
+When you aren't at your laptop, **[Vitruvian Remote](https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/vitruvian-remote)** (`apps/mobile/vitruvian-remote`) is our Jetpack Compose remote and observability console built specifically for Android foldables like the Pixel Fold.
 
 Folded closed, it acts as a tactile pocket remote and trackpad. Unfolded—or set half-open on the coffee table in tabletop posture—it displays live Mac CPU/thermal sparklines, Lima VMs, K3s cluster health, Vitruvian Speaker TTS broadcast controls, and a dedicated **Sony TV dashboard** (`tvDashboard`).
 
-Because the phone talks to `vitruvian-remote-agent` on the Mac over Tailscale, the phone doesn't even need its own ADB key paired to the TV. The Go agent ([`apps/mobile/android-remote/macagent/tv.go`](https://github.com/VitruvianSoftware/vitruvian-core/blob/main/apps/mobile/android-remote/macagent/tv.go)) exposes `GET /v1/tv` and `POST /v1/tv`, coalescing power state, foreground window focus, and `/proc/meminfo` into a single 5-second-bounded ADB shell round-trip:
+Because the phone talks to `vitruvian-remote-agent` on the Mac over Tailscale, the phone doesn't even need its own ADB key paired to the TV. The Go agent ([`apps/mobile/vitruvian-remote/macagent/tv.go`](https://github.com/VitruvianSoftware/vitruvian-core/blob/main/apps/mobile/vitruvian-remote/macagent/tv.go)) exposes `GET /v1/tv` and `POST /v1/tv`, coalescing power state, foreground window focus, and `/proc/meminfo` into a single 5-second-bounded ADB shell round-trip:
 
 ```go
 const statusQuery = "dumpsys power | grep -E 'mWakefulness=' ; " +
@@ -323,5 +323,5 @@ Both the macOS notch extension and the Go agent read and write the same `~/.conf
 Every script, daemon, and UI surface described in this post is open source in **[vitruvian-core](https://github.com/VitruvianSoftware/vitruvian-core)**:
 
 - **Wireless ADB auto-discovery (`_adb._tcp` + `_adb-tls-connect._tcp`):** [`tools/adb-connect`](https://github.com/VitruvianSoftware/vitruvian-core/tree/main/tools/adb-connect) (`bazel run //tools/adb-connect`)
-- **Vitruvian TV macOS extension (`dev.vitruvian.tv`):** **[Tool Catalog (`/tools/catalog/#dev.vitruvian.tv`)](/tools/catalog/#dev.vitruvian.tv)**, **[SDK Overview (`/tools/`)](/tools/)**, and [`apps/desktop/vitruvian-tool-tv`](https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-tool-tv)
-- **Vitruvian Remote for Android & Mac Agent (`/v1/tv`):** **[Tool Catalog (`/tools/catalog/#dev.vitruvian.remote`)](/tools/catalog/#dev.vitruvian.remote)** and [`apps/mobile/android-remote`](https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote) — explore all of our open-source apps and developer tools on **[/projects/](/projects/)**.
+- **Vitruvian TV macOS extension (`dev.vitruvian.tv`):** **[Tool Catalog (`/tools/catalog/#dev.vitruvian.tv`)](/tools/catalog/#dev.vitruvian.tv)**, **[SDK Overview (`/tools/`)](/tools/)**, and [`apps/extensions/atrium/vitruvian-tv`](https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/extensions/atrium/vitruvian-tv)
+- **Vitruvian Remote for Android & Mac Agent (`/v1/tv`):** **[Tool Catalog (`/tools/catalog/#dev.vitruvian.remote`)](/tools/catalog/#dev.vitruvian.remote)** and [`apps/mobile/vitruvian-remote`](https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/vitruvian-remote) — explore all of our open-source apps and developer tools on **[/projects/](/projects/)**.

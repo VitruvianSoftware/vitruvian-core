@@ -5,9 +5,9 @@ These JSON files capture the single rulebook for Vitruvian Speaker's settings ca
 ## Who reads these files
 
 - **Swift engine tests (now):** `//apps/desktop/vitruvian-speaker:VitruvianSpeakerTests` (`Tests/VitruvianSpeakerTests/SharedRulebookCasesTests.swift` and `Tests/VitruvianSpeakerTests/ControlsManifestTests.swift`) loads every `.json` file in this directory and checks `VitruvianSpeakerCore` (`SettingsCatalog`, `SpeakerConfig`, `SpeakerDevice`, `ChatMonitorConfig`, `ChatMonitorStatus`, `VitruvianSpeakerStateContract.supportedOperations`) against it.
-- **Android remote tests:**
-  - Rust Mac helper tests: `//apps/mobile/android-remote/macagent:macagent_test` (reads `state_v1.json` and `controls.json`)
-  - Kotlin state & derivation tests: `//apps/mobile/android-remote:derive_test` and `//apps/mobile/android-remote:wire_test` (read `state_v1.json` and `controls.json`)
+- **Vitruvian Remote tests:**
+  - Rust Mac helper tests: `//apps/mobile/vitruvian-remote/macagent:macagent_test` (reads `state_v1.json` and `controls.json`)
+  - Kotlin state & derivation tests: `//apps/mobile/vitruvian-remote:derive_test` and `//apps/mobile/vitruvian-remote:wire_test` (read `state_v1.json` and `controls.json`)
 
 ## Files
 

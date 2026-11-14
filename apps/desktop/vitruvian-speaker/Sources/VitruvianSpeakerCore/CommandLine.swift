@@ -608,7 +608,7 @@ public enum VitruvianSpeakerCommandLine {
         _ text: String, config: SpeakerConfig, announcer: Announcer, history: BroadcastHistory,
         standsAside: Bool, door: VitruvianSpeakerProfile.Door, note: String? = nil,
         source: BroadcastSource = .user, session: SessionOrigin? = nil, inUse: SpeakerConfig? = nil,
-        records: Bool = true, at date: Date = Date()
+        records: Bool = true, force: Bool = true, at date: Date = Date()
     ) async -> CLIOutput {
         let active = inUse ?? config
         if let agent = source.agent, let refusal = agentRefusal(agent, config: active) {
@@ -620,7 +620,7 @@ public enum VitruvianSpeakerCommandLine {
             SourceLabel.lead(active.effectiveAnnounceSource, agent: $0, session: session, history: history.load(), now: date)
         }
         var out = await announcement(
-            text, force: true, source: source.historyLabel, records: records, lead: lead, session: session,
+            text, force: force, source: source.historyLabel, records: records, lead: lead, session: session,
             config: active, announcer: announcer, history: history, at: date)
         if standsAside {
             let other = door == .app ? "extension" : "app"
@@ -796,7 +796,7 @@ public enum VitruvianSpeakerCommandLine {
     }
 
     /// The default speaker's volume, as JSON on stdout: the contract the
-    /// Mac agent (android-remote) relies on. `--set-volume N`, `--mute` and
+    /// Mac agent (vitruvian-remote) relies on. `--set-volume N`, `--mute` and
     /// `--unmute` change it and answer with the level read back afterwards.
     /// Failures are still JSON (available:false + reason) and exit 1.
     public static func volume(

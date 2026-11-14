@@ -4,6 +4,9 @@
 Component package providing implementation for `apps/desktop/vitruvian-code/macos/scripts/src`.
 
 ## Interface
+- `[bazel_app_holds_bot.rs:resolve_app_bundle]`
+- `[bazel_app_holds_bot.rs:run]`
+- `[bazel_app_holds_bot.rs:verify_unpacked_app]`
 - `[bazel_app_holds_mermaid.rs:run]`
 - `[bundle.rs:run]`
 - `[check_packaged_app.rs:extract_sha256_from_notices]`

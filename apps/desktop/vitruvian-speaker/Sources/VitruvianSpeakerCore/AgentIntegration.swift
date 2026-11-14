@@ -68,11 +68,11 @@ public enum CodingAgent: String, CaseIterable, Sendable {
     public var hookFootnote: String {
         switch self {
         case .claudeCode:
-            return "Adds one entry to the Stop hooks in ~/.claude/settings.json. Other hooks you have are left untouched."
+            return "Installs the vitruvian-speaker plugin in Claude Code (skill, Stop hook, and speaker-broadcast command), falling back to ~/.claude/settings.json if the claude CLI is unavailable."
         case .antigravity:
-            return "Installs the vitruvian-speaker plugin in ~/.gemini/config/plugins/vitruvian-speaker (plugin.json and hooks.json); its Stop hook runs Vitruvian Speaker when a turn ends. Remove deletes that folder only. New Antigravity sessions pick it up."
+            return "Installs the vitruvian-speaker plugin in ~/.gemini/config/plugins/vitruvian-speaker (plugin.json, hooks.json, and skills/vitruvian-speaker/SKILL.md). Remove deletes that folder only."
         case .opencode:
-            return "Writes the plugin file ~/.config/opencode/plugins/vitruvian-speaker.ts, which runs Vitruvian Speaker when a session goes idle. Remove deletes that file only. OpenCode loads it the next time it starts."
+            return "Writes ~/.config/opencode/plugins/vitruvian-speaker.ts and ~/.config/opencode/skills/vitruvian-speaker/SKILL.md, running Vitruvian Speaker when a session goes idle."
         }
     }
 
@@ -101,7 +101,7 @@ public enum CodingAgent: String, CaseIterable, Sendable {
     /// identical to what the google-home skill documents so existing
     /// setups are recognised.
     public static let broadcastInstruction = """
-    - Follow the `vitruvian-speaker-broadcast` skill: Accompany top-level conversational responses to the user with a concise spoken broadcast (1-2 sentences) by executing the CLI tool `speaker-broadcast "<summary>"` (never run `speaker-broadcast` from a background subagent or a delegated `claude -p` helper call). Always use the CLI rather than manual `home_mcp` calls with device IDs, because `speaker-broadcast` dynamically resolves the live `default_target` from `~/.gemini/speaker_broadcast.json`, checks quiet hours, and verifies enabled status on every execution without caching state. When the user asks to turn speaker broadcasts on/off or change the target room, update `~/.gemini/speaker_broadcast.json` (or run `speaker-broadcast --set-target <room>`) and confirm.
+    - Announce top-level replies aloud with `speaker-broadcast "<summary>"` (never run `speaker-broadcast` from a background subagent or a delegated `claude -p` helper). Run `speaker-broadcast --on`, `--off`, or `--set-target <room>` to change settings, and `speaker-broadcast --help` for the rest.
     """
 
     /// The file (Claude Code) or folder (Antigravity's plugin) or file
@@ -177,6 +177,20 @@ public struct AgentIntegration {
     /// Stops a launchd job by its service target (`gui/<uid>/<label>`).
     /// Injected so tests never stop a job in the live login session.
     private let bootout: @Sendable (String) -> Void
+    private let claudeCLI: ClaudeCLIRunner
+    public let dataFolder: URL
+
+    /// Folder containing Speaker's generated local Claude Code directory marketplace.
+    public var claudeMarketplaceDirectory: URL {
+        dataFolder.appendingPathComponent("claude-marketplace", isDirectory: true)
+    }
+
+    public static func defaultDataFolder(home: URL, executablePath: String) -> URL {
+        if let folders = VitruvianSpeakerProfile.extensionFolders(program: URL(fileURLWithPath: executablePath)) {
+            return folders.data
+        }
+        return home.appendingPathComponent("Library/Application Support/Vitruvian Speaker", isDirectory: true)
+    }
 
     /// `executablePath` is the Vitruvian Speaker program the hooks will run. A
     /// process other than the app (the Vitruvian tool's `bin/tool`) must pass
@@ -184,14 +198,26 @@ public struct AgentIntegration {
     /// hook pointed at another program would never speak. An empty path
     /// gives an integration that can read the agents' state and clean up,
     /// but never install a hook (`installHook` refuses it).
+    /// Non-live `home` defaults `claudeCLI` to `.scopedToHome(home)` so unit
+    /// tests using a scratch directory never touch the real `~/.claude`.
     public init(
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
         executablePath: String = AgentIntegration.runningExecutable(),
-        bootout: @escaping @Sendable (String) -> Void = AgentIntegration.launchctlBootout
+        bootout: @escaping @Sendable (String) -> Void = AgentIntegration.launchctlBootout,
+        claudeCLI: ClaudeCLIRunner? = nil,
+        dataFolder: URL? = nil
     ) {
         self.home = home
         self.executablePath = executablePath
         self.bootout = bootout
+        if let claudeCLI {
+            self.claudeCLI = claudeCLI
+        } else if home.standardizedFileURL == FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL {
+            self.claudeCLI = .live(home: home)
+        } else {
+            self.claudeCLI = .scopedToHome(home)
+        }
+        self.dataFolder = dataFolder ?? Self.defaultDataFolder(home: home, executablePath: executablePath)
     }
 
     /// `launchctl bootout <target>`, waited for. A job that is not loaded
@@ -253,6 +279,7 @@ public struct AgentIntegration {
         /// The hook would run something that is not Vitruvian Speaker.
         case notVitruvianSpeaker(String)
         case corruptSettingsFile(String)
+        case claudePluginCommandFailed(String)
 
         public var errorDescription: String? {
             switch self {
@@ -260,6 +287,8 @@ public struct AgentIntegration {
                 return "\(path) is not the Vitruvian Speaker app, so a hook pointing at it would never speak. Install the hook from Vitruvian Speaker itself."
             case .corruptSettingsFile(let path):
                 return "Refusing to modify corrupt settings file: \(path)"
+            case .claudePluginCommandFailed(let message):
+                return "Claude plugin setup failed: \(message)"
             }
         }
     }
@@ -362,7 +391,97 @@ public struct AgentIntegration {
     /// True when the text tells an agent to broadcast on its own (the
     /// prompt-driven setup that predates hooks).
     public static func mentionsBroadcastInstruction(_ text: String) -> Bool {
-        text.contains("speaker_broadcast.json") || text.contains("vitruvian-speaker-broadcast") || text.contains("speaker-broadcast")
+        text.contains("speaker_broadcast.json")
+            || text.contains("vitruvian-speaker-broadcast")
+            || text.contains("home-speaker-broadcast")
+            || text.contains("speaker-broadcast")
+    }
+
+    /// True when a single line is a legacy Vitruvian/Home Speaker broadcast
+    /// instruction that should be migrated in-place to `broadcastInstruction`.
+    public static func isLegacyBroadcastInstructionLine(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != CodingAgent.broadcastInstruction else { return false }
+        if trimmed.contains("vitruvian-speaker-broadcast") || trimmed.contains("home-speaker-broadcast") {
+            return true
+        }
+        return trimmed.contains("speaker_broadcast.json") && trimmed.contains("speaker-broadcast")
+    }
+
+    /// True when a line was written by Vitruvian/Home Speaker's instruction
+    /// installer (current or any historical wording). Custom user lines such as
+    /// `"Use speaker-broadcast."` do not match.
+    public static func isManagedBroadcastInstructionLine(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        if trimmed == CodingAgent.broadcastInstruction || isLegacyBroadcastInstructionLine(line) {
+            return true
+        }
+        return trimmed.hasPrefix("- Announce top-level replies aloud with `speaker-broadcast")
+    }
+
+    /// Replaces legacy broadcast instruction line(s) in `text` with
+    /// `CodingAgent.broadcastInstruction` when stale wording is present;
+    /// returns `nil` if no legacy line needed updating.
+    public static func migratingBroadcastInstruction(in text: String) -> String? {
+        let endsWithNewline = text.hasSuffix("\n")
+        let rawLines = text.components(separatedBy: "\n")
+        let lines = (endsWithNewline && rawLines.last == "") ? Array(rawLines.dropLast()) : rawLines
+
+        var replaced = false
+        var didChange = false
+        var out: [String] = []
+        out.reserveCapacity(lines.count)
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed == CodingAgent.broadcastInstruction {
+                if !replaced {
+                    out.append(line)
+                    replaced = true
+                } else {
+                    didChange = true
+                }
+            } else if isManagedBroadcastInstructionLine(line) {
+                didChange = true
+                if !replaced {
+                    out.append(CodingAgent.broadcastInstruction)
+                    replaced = true
+                }
+            } else {
+                out.append(line)
+            }
+        }
+
+        guard didChange else { return nil }
+        return out.joined(separator: "\n") + (endsWithNewline || !out.isEmpty ? "\n" : "")
+    }
+
+    /// Removes Speaker-managed broadcast instruction line(s) (current and all
+    /// historical wordings) from `text`, preserving user-written content.
+    /// Returns `nil` when nothing needed removing.
+    public static func removingBroadcastInstruction(from text: String) -> String? {
+        let endsWithNewline = text.hasSuffix("\n")
+        let rawLines = text.components(separatedBy: "\n")
+        let lines = (endsWithNewline && rawLines.last == "") ? Array(rawLines.dropLast()) : rawLines
+
+        var out: [String] = []
+        out.reserveCapacity(lines.count)
+        var didChange = false
+
+        for line in lines {
+            if isManagedBroadcastInstructionLine(line) {
+                didChange = true
+            } else {
+                out.append(line)
+            }
+        }
+
+        guard didChange else { return nil }
+        if out.allSatisfy({ $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            return ""
+        }
+        return out.joined(separator: "\n") + (endsWithNewline || !out.isEmpty ? "\n" : "")
     }
 
     // MARK: Status
@@ -390,6 +509,9 @@ public struct AgentIntegration {
         /// that is (this one, another copy of the app, the extension's).
         /// Nil when no Vitruvian Speaker hook is installed.
         public var hookProgram: String?
+        /// True when Claude Code uses `~/.claude/settings.json` directly because
+        /// the `claude` CLI is unavailable to install the unified plugin.
+        public var usingSettingsFallback: Bool
 
         /// Announcements will happen one way or another.
         public var isConfigured: Bool { hook == .installed || configuredByInstruction }
@@ -415,7 +537,8 @@ public struct AgentIntegration {
 
         public init(
             agent: CodingAgent, isInstalled: Bool, hook: HookStatus, configuredByInstruction: Bool, rivalHook: URL?,
-            hookProgram: String? = nil
+            hookProgram: String? = nil,
+            usingSettingsFallback: Bool = false
         ) {
             self.agent = agent
             self.isInstalled = isInstalled
@@ -423,6 +546,7 @@ public struct AgentIntegration {
             self.configuredByInstruction = configuredByInstruction
             self.rivalHook = rivalHook
             self.hookProgram = hookProgram
+            self.usingSettingsFallback = usingSettingsFallback
         }
     }
 
@@ -444,6 +568,7 @@ public struct AgentIntegration {
         } else {
             hook = .notInstalled
         }
+        let fallback = agent == .claudeCode && claudePluginMarketplaceRoot() == nil && command != nil
         let byInstruction = agent.instructionFiles(home: home).contains { url in
             (try? String(contentsOf: url, encoding: .utf8)).map(Self.mentionsBroadcastInstruction) ?? false
         }
@@ -454,14 +579,20 @@ public struct AgentIntegration {
         return AgentStatus(
             agent: agent, isInstalled: installed, hook: hook,
             configuredByInstruction: byInstruction, rivalHook: rival,
-            hookProgram: command.map(Self.program(ofHookCommand:)))
+            hookProgram: command.map(Self.program(ofHookCommand:)),
+            usingSettingsFallback: fallback)
     }
 
     /// Appends the broadcast instruction to the agent's instruction file,
-    /// creating it if needed. No-op when the file already has it.
+    /// creating it if needed, or updates a legacy instruction line in-place.
+    /// No-op when the file already mentions broadcasting with current text.
     public func addBroadcastInstruction(for agent: CodingAgent) throws {
         let url = agent.primaryInstructionFile(home: home)
         let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        if let migrated = Self.migratingBroadcastInstruction(in: existing) {
+            try migrated.write(to: url, atomically: true, encoding: .utf8)
+            return
+        }
         guard !Self.mentionsBroadcastInstruction(existing) else { return }
         let dir = url.deletingLastPathComponent()
         if !fileManager.fileExists(atPath: dir.path) {
@@ -473,6 +604,41 @@ public struct AgentIntegration {
         try text.write(to: url, atomically: true, encoding: .utf8)
     }
 
+    /// Updates or removes Speaker-managed broadcast instruction lines in existing
+    /// agent instruction files under `home`. When an agent carries `SKILL.md`
+    /// inside its plugin (not on Claude's `settings.json` fallback), Speaker's
+    /// managed line is removed cleanly so there is one source of instructions.
+    /// Never creates new files or removes custom wording.
+    public func migrateBroadcastInstructions() {
+        let claudeFallback = status(of: .claudeCode).usingSettingsFallback
+        var seen: Set<URL> = []
+        for agent in CodingAgent.allCases {
+            let keepFallbackLine = (agent == .claudeCode && claudeFallback)
+            for url in agent.instructionFiles(home: home) where seen.insert(url.standardizedFileURL).inserted {
+                guard fileManager.fileExists(atPath: url.path),
+                      let text = try? String(contentsOf: url, encoding: .utf8) else {
+                    continue
+                }
+                let updated = keepFallbackLine
+                    ? Self.migratingBroadcastInstruction(in: text)
+                    : Self.removingBroadcastInstruction(from: text)
+                guard let updated else { continue }
+                try? updated.write(to: url, atomically: true, encoding: .utf8)
+            }
+        }
+    }
+
+    private func stripBroadcastInstructions(for agent: CodingAgent) {
+        for url in agent.instructionFiles(home: home) {
+            guard fileManager.fileExists(atPath: url.path),
+                  let text = try? String(contentsOf: url, encoding: .utf8),
+                  let updated = Self.removingBroadcastInstruction(from: text) else {
+                continue
+            }
+            try? updated.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
     public func hookStatus(for agent: CodingAgent = .claudeCode) -> HookStatus { status(of: agent).hook }
     public func hookStatus() -> HookStatus { hookStatus(for: .claudeCode) }
     public func isClaudeCodeHookInstalled() -> Bool { hookStatus() == .installed }
@@ -482,30 +648,113 @@ public struct AgentIntegration {
         guard Self.isVitruvianSpeakerProgram(executablePath) else { throw IntegrationError.notVitruvianSpeaker(executablePath) }
         switch agent {
         case .claudeCode:
-            try writeSettings(Self.mergeHook(into: try readSettings(agent), command: hookCommand(for: agent), agent: agent), agent)
+            if claudeCLI.isAvailable {
+                let files = try AgentPlugins.claudeMarketplaceFiles(
+                    program: executablePath,
+                    hookCommand: hookCommand(for: agent)
+                )
+                for file in files {
+                    _ = try writeFileIfChanged(
+                        at: claudeMarketplaceDirectory.appendingPathComponent(file.relativePath),
+                        data: file.data,
+                        isExecutable: file.isExecutable
+                    )
+                }
+                let marketplaceMatches = claudePluginMarketplaceLocation()?.standardizedFileURL.path
+                    == claudeMarketplaceDirectory.standardizedFileURL.path
+                if !(claudePluginInstalled() && marketplaceMatches) {
+                    if claudePluginInstalled() || claudePluginMarketplaceLocation() != nil {
+                        _ = try? claudeCLI.run(["plugin", "uninstall", AgentPlugins.claudePluginID])
+                        _ = try? claudeCLI.run(["plugin", "marketplace", "remove", AgentPlugins.claudeMarketplaceName])
+                    }
+                    let addResult = try claudeCLI.run(["plugin", "marketplace", "add", claudeMarketplaceDirectory.path])
+                    guard addResult.exitCode == 0 else {
+                        throw IntegrationError.claudePluginCommandFailed(
+                            Self.claudeFailureMessage(command: "plugin marketplace add", result: addResult)
+                        )
+                    }
+                    let installResult = try claudeCLI.run(["plugin", "install", AgentPlugins.claudePluginID])
+                    guard installResult.exitCode == 0 else {
+                        throw IntegrationError.claudePluginCommandFailed(
+                            Self.claudeFailureMessage(command: "plugin install", result: installResult)
+                        )
+                    }
+                }
+                // Remove Speaker's old Stop hook from ~/.claude/settings.json once the plugin
+                // is installed so replies are never announced twice.
+                if let settings = try? readSettings(.claudeCode),
+                   Self.installedHookCommand(in: settings, agent: .claudeCode) != nil {
+                    try writeSettings(Self.removeHook(from: settings, agent: .claudeCode), .claudeCode)
+                }
+                stripBroadcastInstructions(for: .claudeCode)
+            } else {
+                try writeSettings(Self.mergeHook(into: try readSettings(agent), command: hookCommand(for: agent), agent: agent), agent)
+            }
         case .antigravity:
             let folder = agent.settingsURL(home: home)
-            try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
             for (name, data) in try AgentPlugins.antigravityFiles(command: hookCommand(for: agent)) {
-                try data.write(to: folder.appendingPathComponent(name), options: .atomic)
+                _ = try writeFileIfChanged(at: folder.appendingPathComponent(name), data: data)
             }
+            stripBroadcastInstructions(for: .antigravity)
         case .opencode:
-            let file = agent.settingsURL(home: home)
-            try fileManager.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try Data(AgentPlugins.openCodePlugin(program: executablePath).utf8).write(to: file, options: .atomic)
+            _ = try writeFileIfChanged(
+                at: agent.settingsURL(home: home),
+                data: Data(AgentPlugins.openCodePlugin(program: executablePath).utf8)
+            )
+            _ = try writeFileIfChanged(
+                at: home.appendingPathComponent(AgentPlugins.openCodeSkillRelativePath),
+                data: AgentPlugins.openCodeSkillData()
+            )
+            stripBroadcastInstructions(for: .opencode)
         }
     }
 
     public func removeHook(for agent: CodingAgent) throws {
         switch agent {
         case .claudeCode:
-            try writeSettings(Self.removeHook(from: try readSettings(agent), agent: agent), agent)
-        case .antigravity, .opencode:
+            let wasPluginInstalled = claudePluginInstalled()
+            let hadMarketplace = claudePluginMarketplaceLocation() != nil
+            if (wasPluginInstalled || hadMarketplace) && claudeCLI.isAvailable {
+                if wasPluginInstalled {
+                    let res = try claudeCLI.run(["plugin", "uninstall", AgentPlugins.claudePluginID])
+                    if res.exitCode != 0 && claudePluginInstalled() {
+                        throw IntegrationError.claudePluginCommandFailed(
+                            Self.claudeFailureMessage(command: "plugin uninstall", result: res)
+                        )
+                    }
+                }
+                if hadMarketplace {
+                    let res = try claudeCLI.run(["plugin", "marketplace", "remove", AgentPlugins.claudeMarketplaceName])
+                    if res.exitCode != 0 && claudePluginMarketplaceLocation() != nil {
+                        throw IntegrationError.claudePluginCommandFailed(
+                            Self.claudeFailureMessage(command: "plugin marketplace remove", result: res)
+                        )
+                    }
+                }
+            }
+            if fileManager.fileExists(atPath: claudeMarketplaceDirectory.path) {
+                try fileManager.removeItem(at: claudeMarketplaceDirectory)
+            }
+            if let settings = try? readSettings(.claudeCode),
+               Self.installedHookCommand(in: settings, agent: .claudeCode) != nil {
+                try writeSettings(Self.removeHook(from: settings, agent: .claudeCode), .claudeCode)
+            }
+        case .antigravity:
+            // Only a plugin this app wrote is removed; a folder of the same
+            // name someone else put there is left alone.
+            let url = agent.settingsURL(home: home)
+            guard installedCommand(agent) != nil else { return }
+            try fileManager.removeItem(at: url)
+        case .opencode:
             // Only a plugin this app wrote is removed; a file of the same
             // name someone else put there is left alone.
             let url = agent.settingsURL(home: home)
             guard installedCommand(agent) != nil else { return }
             try fileManager.removeItem(at: url)
+            let skillFolder = home.appendingPathComponent(AgentPlugins.openCodeSkillRelativePath).deletingLastPathComponent()
+            if fileManager.fileExists(atPath: skillFolder.path) {
+                try? fileManager.removeItem(at: skillFolder)
+            }
         }
     }
 
@@ -514,6 +763,14 @@ public struct AgentIntegration {
     private func installedCommand(_ agent: CodingAgent) -> String? {
         switch agent {
         case .claudeCode:
+            if let root = claudePluginMarketplaceRoot() {
+                let hooksFile = root.appendingPathComponent("plugins/\(AgentPlugins.name)/hooks/hooks.json")
+                if let data = try? Data(contentsOf: hooksFile),
+                   let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let cmd = Self.installedHookCommand(in: dict, agent: .claudeCode) {
+                    return cmd
+                }
+            }
             return (try? readSettings(agent)).flatMap { Self.installedHookCommand(in: $0, agent: agent) }
         case .antigravity:
             let file = agent.settingsURL(home: home).appendingPathComponent(AgentPlugins.antigravityHooksFile)
@@ -525,20 +782,126 @@ public struct AgentIntegration {
     }
 
     /// True when the agent's plugin files are exactly what this app would
-    /// write now, so an older plugin shows as one to update. Claude Code's
-    /// hook is one line in a shared file: its command says it all.
+    /// write now, so an older plugin (or missing skill / leftover settings
+    /// hook) shows as needing an update.
     private func pluginIsCurrent(_ agent: CodingAgent) -> Bool {
         switch agent {
         case .claudeCode:
-            return true
+            if let root = claudePluginMarketplaceRoot() {
+                guard root.standardizedFileURL.path == claudeMarketplaceDirectory.standardizedFileURL.path,
+                      let files = try? AgentPlugins.claudeMarketplaceFiles(
+                          program: executablePath,
+                          hookCommand: hookCommand(for: .claudeCode)
+                      ) else {
+                    return false
+                }
+                let filesMatch = files.allSatisfy { file in
+                    let url = claudeMarketplaceDirectory.appendingPathComponent(file.relativePath)
+                    guard (try? Data(contentsOf: url)) == file.data else { return false }
+                    if file.isExecutable && !fileManager.isExecutableFile(atPath: url.path) { return false }
+                    return true
+                }
+                guard filesMatch else { return false }
+                let leftoverSettingsHook = (try? readSettings(.claudeCode))
+                    .flatMap { Self.installedHookCommand(in: $0, agent: .claudeCode) }
+                return leftoverSettingsHook == nil
+            }
+            return !claudeCLI.isAvailable
         case .antigravity:
             let folder = agent.settingsURL(home: home)
             guard let files = try? AgentPlugins.antigravityFiles(command: hookCommand(for: agent)) else { return false }
             return files.allSatisfy { name, data in (try? Data(contentsOf: folder.appendingPathComponent(name))) == data }
         case .opencode:
-            return (try? String(contentsOf: agent.settingsURL(home: home), encoding: .utf8))
-                == AgentPlugins.openCodePlugin(program: executablePath)
+            let pluginMatches = (try? Data(contentsOf: agent.settingsURL(home: home)))
+                == Data(AgentPlugins.openCodePlugin(program: executablePath).utf8)
+            let skillMatches = (try? Data(contentsOf: home.appendingPathComponent(AgentPlugins.openCodeSkillRelativePath)))
+                == AgentPlugins.openCodeSkillData()
+            return pluginMatches && skillMatches
         }
+    }
+
+    // MARK: Claude Code plugin files & byte-preserving writer
+
+    private var claudePluginsDirectory: URL {
+        home.appendingPathComponent(".claude/plugins", isDirectory: true)
+    }
+
+    private func readJSONObject(at url: URL) -> [String: Any]? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+    private func claudePluginEnabledInSettings() -> Bool {
+        guard let settings = try? readSettings(.claudeCode),
+              let enabled = settings["enabledPlugins"] as? [String: Any],
+              let value = enabled[AgentPlugins.claudePluginID] as? Bool else {
+            return true
+        }
+        return value
+    }
+
+    private func claudePluginInstalled() -> Bool {
+        guard claudePluginEnabledInSettings(),
+              let installed = readJSONObject(at: claudePluginsDirectory.appendingPathComponent("installed_plugins.json")),
+              let plugins = installed["plugins"] as? [String: Any],
+              let entries = plugins[AgentPlugins.claudePluginID] as? [[String: Any]] else {
+            return false
+        }
+        return !entries.isEmpty
+    }
+
+    private func claudePluginMarketplaceLocation() -> URL? {
+        guard let known = readJSONObject(at: claudePluginsDirectory.appendingPathComponent("known_marketplaces.json")),
+              let entry = known[AgentPlugins.claudeMarketplaceName] as? [String: Any] else {
+            return nil
+        }
+        if let installLocation = entry["installLocation"] as? String, !installLocation.isEmpty {
+            return URL(fileURLWithPath: installLocation, isDirectory: true)
+        }
+        if let source = entry["source"] as? [String: Any],
+           let path = source["path"] as? String, !path.isEmpty {
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+        return nil
+    }
+
+    private func claudePluginMarketplaceRoot() -> URL? {
+        guard claudePluginInstalled() else { return nil }
+        let root = claudePluginMarketplaceLocation() ?? claudeMarketplaceDirectory
+        let hooksFile = root.appendingPathComponent("plugins/\(AgentPlugins.name)/hooks/hooks.json")
+        guard fileManager.fileExists(atPath: hooksFile.path) else { return nil }
+        return root
+    }
+
+    private static func claudeFailureMessage(command: String, result: ClaudeCLI.CommandResult) -> String {
+        let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        let detail = stderr.isEmpty ? stdout : stderr
+        if detail.isEmpty {
+            return "`claude \(command)` exited with status \(result.exitCode)"
+        }
+        return "`claude \(command)` exited with status \(result.exitCode): \(detail)"
+    }
+
+    /// Writes `data` to `url` only when its bytes or executable bit differ.
+    @discardableResult
+    public func writeFileIfChanged(at url: URL, data: Data, isExecutable: Bool = false) throws -> Bool {
+        let bytesMatch = (try? Data(contentsOf: url)) == data
+        let execMatches = !isExecutable || fileManager.isExecutableFile(atPath: url.path)
+        if bytesMatch && execMatches {
+            return false
+        }
+        let dir = url.deletingLastPathComponent()
+        if !fileManager.fileExists(atPath: dir.path) {
+            try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        if !bytesMatch {
+            try data.write(to: url, options: .atomic)
+        }
+        if isExecutable {
+            try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        }
+        return true
     }
 
     public func installClaudeCodeHook() throws { try installHook(for: .claudeCode) }
@@ -585,6 +948,65 @@ public struct AgentIntegration {
             }
             try? installHook(for: agent)
         }
+    }
+
+    /// Reconciles every coding agent's unified plugin on start-up for the
+    /// active door: installs missing plugins (when `installMissing`), updates
+    /// stale/moved ones in place, removes plugins whose agent toggle is off,
+    /// and strips redundant instruction lines when the plugin carries `SKILL.md`.
+    public func syncPlugins(
+        config: SpeakerConfig,
+        installMissing: Bool,
+        extensionProgramExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+        choice: VitruvianSpeakerProfile.Door?
+    ) {
+        guard Self.isVitruvianSpeakerProgram(executablePath),
+              !OtherDoorPresence.isInTrash(executablePath),
+              !OtherDoorPresence.isOnTemporaryVolume(executablePath) else { return }
+        for agent in CodingAgent.allCases where agent.supportsHook {
+            let st = status(of: agent)
+            guard ownsOrMayTake(st, extensionProgramExists: extensionProgramExists, choice: choice) else { continue }
+            if !config.announces(agent) {
+                if st.hook != .notInstalled {
+                    try? removeHook(for: agent)
+                }
+                continue
+            }
+            switch st.hook {
+            case .installed:
+                if !st.usingSettingsFallback {
+                    stripBroadcastInstructions(for: agent)
+                }
+            case .stale:
+                try? installHook(for: agent)
+            case .notInstalled:
+                if installMissing && st.isInstalled {
+                    try? installHook(for: agent)
+                }
+            }
+        }
+    }
+
+    private func ownsOrMayTake(
+        _ status: AgentStatus,
+        extensionProgramExists: (String) -> Bool,
+        choice: VitruvianSpeakerProfile.Door?
+    ) -> Bool {
+        guard let program = status.hookProgram, Self.isVitruvianSpeakerProgram(program) else {
+            return true
+        }
+        if Self.isAppProgram(executablePath), Self.isExtensionProgram(program),
+           extensionProgramExists(program), choice != .app {
+            return false
+        }
+        if Self.isExtensionProgram(executablePath), Self.isAppProgram(program),
+           !OtherDoorPresence.isInTrash(program),
+           !OtherDoorPresence.isOnTemporaryVolume(program),
+           fileManager.fileExists(atPath: program),
+           choice != .extension {
+            return false
+        }
+        return true
     }
 
     private func readSettings(_ agent: CodingAgent) throws -> [String: Any] {

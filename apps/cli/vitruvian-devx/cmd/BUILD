@@ -93,6 +93,7 @@ go_library(
         "secrets.go",
         "shell.go",
         "sites.go",
+        "skill_ref.go",
         "ssh.go",
         "state.go",
         "state_attach.go",
@@ -202,11 +203,14 @@ go_test(
         "profile_test.go",
         "scaffold_test.go",
         "shell_test.go",
+        "skill_ref_test.go",
         "stats_test.go",
         "up_container_test.go",
     ],
+    data = ["//apps/cli/vitruvian-devx:checked_in_skills"],  # keep
     embed = [":cmd"],
     deps = [
+        "//apps/cli/vitruvian-devx/internal/agent",
         "//apps/cli/vitruvian-devx/internal/image",
         "//apps/cli/vitruvian-devx/internal/testutil",
         "@com_github_spf13_cobra//:cobra",

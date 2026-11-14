@@ -138,16 +138,35 @@ final class PortedRulesTests: XCTestCase {
                       && VitruvianCodeSupport.botDirectory(configured: " ~/bots/nexus ", home: home) == "/Users/test/bots/nexus"
                       && VitruvianCodeSupport.botDirectory(configured: "/opt/nexus", home: home) == "/opt/nexus",
                       "the bot folder defaults to the standalone app's and expands ~")
-        let installed: Set<String> = ["/opt/homebrew/bin/agy", "/custom/agy", "/usr/local/bin/node"]
+        let installed: Set<String> = ["/opt/homebrew/bin/agy", "/custom/agy",
+                                      "/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine",
+                                      "/tmp/override/bot-engine"]
         XCTAssertTrue(VitruvianCodeSupport.locateAgent(environment: ["AGY_BIN": "/custom/agy"], home: home,
                                                     isExecutable: installed.contains) == "/custom/agy"
                       && VitruvianCodeSupport.locateAgent(environment: ["AGY_BIN": "/missing/agy"], home: home,
                                                        isExecutable: installed.contains) == "/opt/homebrew/bin/agy"
                       && VitruvianCodeSupport.locateAgent(environment: [:], home: home, isExecutable: { _ in false }) == nil,
                       "AGY_BIN wins when it runs; otherwise the usual install folders, or nothing")
-        XCTAssertTrue(VitruvianCodeSupport.locateNode(home: home, isExecutable: installed.contains) == "/usr/local/bin/node"
-                      && VitruvianCodeSupport.locateNode(home: home, isExecutable: { _ in false }) == nil,
-                      "Node is found where Homebrew or its installer put it")
+        let bundleURL = URL(fileURLWithPath: "/Applications/Vitruvian Code.app")
+        let execURL = URL(fileURLWithPath: "/Applications/Vitruvian Code.app/Contents/MacOS/VitruvianCode")
+        let candidates = VitruvianCodeSupport.bundledBotCandidates(bundleURL: bundleURL, executableURL: execURL)
+        XCTAssertEqual(candidates, [
+            "/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine",
+            "/Applications/Vitruvian Code.app/Contents/MacOS/bot-engine",
+        ])
+        XCTAssertTrue(VitruvianCodeSupport.locateBundledBot(environment: [:], candidates: candidates,
+                                                            isExecutable: installed.contains)
+                      == "/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine"
+                      && VitruvianCodeSupport.locateBundledBot(environment: ["VITRUVIAN_CODE_BOT_BIN": "/tmp/override/bot-engine"],
+                                                               candidates: candidates,
+                                                               isExecutable: installed.contains) == "/tmp/override/bot-engine"
+                      && VitruvianCodeSupport.locateBundledBot(environment: ["VITRUVIAN_CODE_BOT_BIN": "/missing/bot-engine"],
+                                                               candidates: candidates,
+                                                               isExecutable: installed.contains)
+                      == "/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine"
+                      && VitruvianCodeSupport.locateBundledBot(environment: [:], candidates: candidates,
+                                                               isExecutable: { _ in false }) == nil,
+                      "VITRUVIAN_CODE_BOT_BIN wins when executable; otherwise the bundled Contents/Helpers/bot-engine candidate")
         let child = VitruvianCodeSupport.childEnvironment(base: ["PATH": "/opt/homebrew/bin:/usr/bin", "KEEP": "1"], home: home)
         XCTAssertTrue(child["PATH"] == "/Users/test/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin"
                       && child["NO_COLOR"] == "1" && child["KEEP"] == "1",

@@ -127,8 +127,10 @@ is two clicks per agent; everything either side of them is here.
   bazel run //tools/agent-app -- issue-create [--agent <agent>] --title <s> --body-file <f> [gh issue create args]
   bazel run //tools/agent-app -- issue-comment [--agent <agent>] <issue> --body-file <f> | --body <s>
   bazel run //tools/agent-app -- issue-close [--agent <agent>] <issue> [--comment <s>] [--reason <r>]
-  bazel run //tools/agent-app -- branch-delete [--agent <agent>] <branch>...
-                                  # delete branches on GitHub, only ones already on main
+  bazel run //tools/agent-app -- branch-delete [--agent <agent>] [--abandoned <pr>] <branch>...
+                                  # delete branches on GitHub, only ones already on main;
+                                  # --abandoned <pr>: one branch whose PR closed unmerged,
+                                  # still at that PR's last commit
   bazel run //tools/agent-app -- secret-alert-resolve [--agent <agent>] <alert> --resolution <r> --comment <s>
   bazel run //tools/agent-app -- dependabot-alert-dismiss [--agent <agent>] <alert> --reason <r> --comment <s>
   bazel run //tools/agent-app -- read [--agent <agent>] <gh read command>
@@ -1561,9 +1563,11 @@ impl Tool {
     }
 
     fn branch_delete(&self, args: &[Vec<u8>]) -> Res {
-        let usage = "branch-delete [--agent <agent>] <branch>...";
+        let usage = "branch-delete [--agent <agent>] [--abandoned <pr>] <branch>...";
         let (agent, rest) =
             take_agent(args).ok_or_else(|| die(&cat(&[b"usage: ", usage.as_bytes()])))?;
+        let (abandoned, rest) =
+            take_abandoned(rest).map_err(|e| die(&cat(&[e, b"; usage: ", usage.as_bytes()])))?;
         need_target("branch", usage, arg(rest, 0))?;
         if self.landed.is_empty() {
             return Err(die(
@@ -1640,7 +1644,35 @@ impl Tool {
                 continue;
             }
             let sha: Vec<u8>;
-            if let Some(pr) = queue_pr(br) {
+            if let Some(pr) = &abandoned {
+                let (vst, o) = self.gh(
+                    &tok,
+                    &[
+                        b"pr",
+                        b"view",
+                        pr,
+                        b"--json",
+                        b"state,headRefName,headRefOid,isCrossRepository",
+                        b"--jq",
+                        b"\"\\(.state) \\(.headRefName) \\(.headRefOid) \\(.isCrossRepository)\"",
+                    ],
+                    Io::Capture,
+                    Io::Null,
+                );
+                let view = if vst == 0 { sh::subst(o) } else { Vec::new() };
+                let now = match self.remote_sha(&tok, br) {
+                    Some(x) => x,
+                    None => {
+                        keep(&mut kept, br, b"could not read its SHA on GitHub");
+                        continue;
+                    }
+                };
+                if let Some(why) = abandoned_refusal(pr, br, &view, &now) {
+                    keep(&mut kept, br, &why);
+                    continue;
+                }
+                sha = now;
+            } else if let Some(pr) = queue_pr(br) {
                 let (_, o) = self.gh(
                     &tok,
                     &[b"pr", b"view", &pr, b"--json", b"state", b"--jq", b".state"],
@@ -2708,6 +2740,70 @@ pub fn queue_pr(br: &[u8]) -> Option<Vec<u8>> {
         return None;
     }
     Some(r[..n].to_vec())
+}
+
+/// `[--abandoned <pr>] <branch>...` for branch-delete: the PR number when the
+/// flag leads, and the branches after it. With the flag there must be exactly
+/// one branch, so one closed PR can never vouch for another branch.
+pub fn take_abandoned(args: &[Vec<u8>]) -> Result<(Option<Vec<u8>>, &[Vec<u8>]), &'static [u8]> {
+    match args.first().map(Vec::as_slice) {
+        Some(b"--abandoned") => {
+            let pr = args.get(1).map(Vec::as_slice).unwrap_or(b"");
+            if pr.is_empty() || !pr.iter().all(u8::is_ascii_digit) {
+                return Err(b"--abandoned takes the number of the closed pull request");
+            }
+            if args.len() != 3 {
+                return Err(b"--abandoned deletes exactly one branch: the closed PR's own");
+            }
+            Ok((Some(pr.to_vec()), &args[2..]))
+        }
+        _ => Ok((None, args)),
+    }
+}
+
+/// Why `--abandoned <pr>` must keep `br`, or None when it may delete it.
+/// `view` is `pr view <pr>` reduced to `state headRefName headRefOid
+/// isCrossRepository`; `now` is the branch's SHA on GitHub. It may delete only
+/// a branch whose PR was closed without merging, was opened from this
+/// repository's `br`, and still points at the PR's last commit. Then nothing
+/// is lost: GitHub keeps every closed PR's commits (refs/pull/<pr>/head), so
+/// the branch can be restored from the PR page.
+pub fn abandoned_refusal(pr: &[u8], br: &[u8], view: &[u8], now: &[u8]) -> Option<Vec<u8>> {
+    let f: Vec<&[u8]> = view.split(|&c| c == b' ').collect();
+    let [state, head, oid, cross] = f.as_slice() else {
+        return Some(cat(&[b"could not read PR #", pr, b" on GitHub"]));
+    };
+    match *state {
+        b"CLOSED" => {}
+        b"MERGED" => {
+            return Some(cat(&[
+                b"PR #",
+                pr,
+                b" merged; drop --abandoned and let the landed gate decide",
+            ]));
+        }
+        _ => return Some(cat(&[b"PR #", pr, b" is ", state, b", not closed"])),
+    }
+    if *cross != b"false" || *head != br {
+        return Some(cat(&[
+            b"PR #",
+            pr,
+            b" was not opened from this repository's ",
+            br,
+        ]));
+    }
+    if *oid != now {
+        return Some(cat(&[
+            b"it has commits PR #",
+            pr,
+            b" never had (PR ends at ",
+            &oid[..oid.len().min(8)],
+            b", branch is at ",
+            &now[..now.len().min(8)],
+            b")",
+        ]));
+    }
+    None
 }
 
 /// Parse `<alert> --resolution|--reason <val> --comment <text>` for

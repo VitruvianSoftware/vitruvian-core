@@ -66,7 +66,7 @@
     {
       "id": "vitruvian-remote",
       "title": "Vitruvian Remote (Android)",
-      "badge": "Android Remote",
+      "badge": "Vitruvian Remote",
       "blurb": "Foldable Android remote, Tailscale bridge, Sony Google TV control, and live host observability companions.",
       "bootstrap_label": "Download Android APK",
       "bootstrap_command": "https://vitruviansoftware.dev/downloads/",

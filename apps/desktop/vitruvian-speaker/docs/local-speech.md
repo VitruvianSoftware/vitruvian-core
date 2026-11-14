@@ -72,4 +72,4 @@ available to apps.
 
 Two switches, "Home speakers" and "This Mac", plus the Mac's voice name. The Mac agent reads and
 writes the three keys above in the same file, the same way it already writes `enabled`,
-`pause_media` and the volume (see `apps/mobile/android-remote/macagent/vitruvian-speaker.go`).
+`pause_media` and the volume (see `apps/mobile/vitruvian-remote/macagent/vitruvian-speaker.go`).

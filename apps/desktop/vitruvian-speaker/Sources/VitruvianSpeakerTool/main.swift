@@ -163,6 +163,27 @@ func runProgram() -> Never {
     // or a page's) never revokes a login the app shares.
     let appSecrets = VitruvianSpeakerProfile.app().secretsURL
 
+    // When invoked as `speaker-broadcast` (or via `--broadcast-cli`), run its CLI
+    // front end before VitruvianSpeaker's own flags so zero-arg status, messages
+    // and toggles work consistently across both programs.
+    if let broadcastArgs = BroadcastCommand.invocationArguments(argv: CommandLine.arguments) {
+        if let located = ExtensionLocation.locate(environment: environment, program: program, workingDirectory: nil) {
+            VitruvianSpeakerProfile.useForThisProcess(located.profile)
+            let appProfile = VitruvianSpeakerProfile.app(home: home)
+            BroadcastCommand.run(
+                broadcastArgs, engine: VitruvianSpeakerEngine(profile: located.profile),
+                parts: ExtensionSide.commandLineParts(
+                    check: check, appSecretsURL: appSecrets, appSettingsURL: appProfile.settingsURL,
+                    appProfile: appProfile, program: program, appProgram: { locateApp() }, home: home))
+        }
+        let appProfile = VitruvianSpeakerProfile.app(home: home)
+        VitruvianSpeakerProfile.useForThisProcess(appProfile)
+        BroadcastCommand.run(
+            broadcastArgs,
+            engine: VitruvianSpeakerEngine(profile: appProfile),
+            parts: AppStartup.commandLineParts())
+    }
+
     // The command line: no Vitruvian, so no hello to name the folder.
     if VitruvianSpeakerCommandLine.recognizes(arguments) {
         guard let located = ExtensionLocation.locate(environment: environment, program: program, workingDirectory: nil) else {

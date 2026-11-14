@@ -542,8 +542,8 @@ mod tests {
             );
             let ret_hits = found.iter().filter(|v| v.rule_id == "RET001").count();
             assert!(
-                ret_hits >= 7,
-                "expected >= 7 RET001 violations on testdata/violations/retired-names.md, got {}",
+                ret_hits >= 10,
+                "expected >= 10 RET001 violations on testdata/violations/retired-names.md, got {}",
                 ret_hits
             );
         }

@@ -628,6 +628,56 @@ func (c *Client) convertParsedMessage(ctx context.Context, pm parsedMessage) (*b
 	return cm, nil
 }
 
+// readReceiptEvents is a read receipt for each reader in set, in the chat (isDM, rawGroupID): that person has read
+// it up to their read time. A reader with no ID or no time says nothing. bridgev2 marks the newest message at or
+// before that time read (handleRemoteReadReceipt), as their marker; mine is my own read (IsFromMe).
+func (c *Client) readReceiptEvents(ctx context.Context, isDM bool, rawGroupID string, set *pb.ReadReceiptSet) []bridgev2.RemoteEvent {
+	var out []bridgev2.RemoteEvent
+	for _, rr := range set.GetReadReceipts() {
+		readTimeMicros := rr.GetReadTimeMicros()
+		readerGaiaID := rr.GetUser().GetUserId().GetId()
+		if readerGaiaID == "" || readTimeMicros <= 0 {
+			continue
+		}
+		senderID := MakeUserID(readerGaiaID)
+		rt := time.UnixMicro(readTimeMicros)
+		out = append(out, &simplevent.Receipt{
+			EventMeta: simplevent.EventMeta{
+				Type:      bridgev2.RemoteEventReadReceipt,
+				PortalKey: c.portalKeyFromGroup(isDM, rawGroupID),
+				Sender: bridgev2.EventSender{
+					Sender:   senderID,
+					IsFromMe: c.IsThisUser(ctx, senderID),
+				},
+				Timestamp: rt,
+			},
+			ReadUpTo: rt,
+		})
+	}
+	return out
+}
+
+// queueReceiptsAfterCurrent queues the read receipts a chat's own answer carried (list_topics' and get_group's
+// read_receipt_set: who has read how far, as of now), so the people who read it while Vitruvian Courier was away
+// show as readers too. Before, only a live READ_RECEIPT_CHANGED moved a marker, so a read made while the stream
+// was down never reached the chat, and my message there said "Sent" for good.
+//
+// They are called for while bridgev2 handles one of the chat's events (a backfill, a resync's chat info), and the
+// host handles a portal's events one at a time (PortalEventBuffer 0: the portal's events lock), so they go from a
+// goroutine of their own: each waits for the event under way to finish, by when the messages it stored are there
+// for a receipt to land on.
+func (c *Client) queueReceiptsAfterCurrent(ctx context.Context, evts []bridgev2.RemoteEvent) {
+	if len(evts) == 0 || c.UserLogin == nil {
+		return
+	}
+	ctx = context.WithoutCancel(ctx)
+	go func() {
+		for _, evt := range evts {
+			c.executeRemoteEvent(ctx, evt)
+		}
+	}()
+}
+
 // FetchMessages implements bridgev2.BackfillingNetworkAPI with one POST /u/0/api/list_topics for
 // spaces and DMs alike, as the reference does (ref pkg/connector/backfill.go fetchTopicHeadMessages).
 // The request carries only group_id and page_size_for_topics: adding the page_size_for_*replies fields
@@ -670,6 +720,8 @@ func (c *Client) FetchMessages(ctx context.Context, fetchParams bridgev2.FetchMe
 	if err := pb.Unmarshal(respBytes, &resp); err != nil {
 		return nil, fmt.Errorf("decode list_topics response: %w", err)
 	}
+
+	c.queueReceiptsAfterCurrent(ctx, c.readReceiptEvents(ctx, isDM, rawID, resp.GetReadReceiptSet()))
 
 	anchor := fetchParams.AnchorMessage
 	var anchorMicros int64
@@ -1323,25 +1375,8 @@ func (c *Client) translateSingleEventBody(
 		if rg, dm, ok := pb.GroupIDToParts(rrc.GetGroupId()); ok {
 			isDM, rawGroupID, hasGroup = dm, rg, true
 		}
-		for _, rr := range rrc.GetReadReceiptSet().GetReadReceipts() {
-			readTimeMicros := rr.GetReadTimeMicros()
-			readerGaiaID := rr.GetUser().GetUserId().GetId()
-			if hasGroup && readerGaiaID != "" && readTimeMicros > 0 {
-				senderID := MakeUserID(readerGaiaID)
-				rt := time.UnixMicro(readTimeMicros)
-				out = append(out, &simplevent.Receipt{
-					EventMeta: simplevent.EventMeta{
-						Type:      bridgev2.RemoteEventReadReceipt,
-						PortalKey: c.portalKeyFromGroup(isDM, rawGroupID),
-						Sender: bridgev2.EventSender{
-							Sender:   senderID,
-							IsFromMe: c.IsThisUser(ctx, senderID),
-						},
-						Timestamp: rt,
-					},
-					ReadUpTo: rt,
-				})
-			}
+		if hasGroup {
+			out = append(out, c.readReceiptEvents(ctx, isDM, rawGroupID, rrc.GetReadReceiptSet())...)
 		}
 	}
 

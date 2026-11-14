@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+pub mod bazel_app_holds_bot;
 pub mod bazel_app_holds_mermaid;
 pub mod bundle;
 pub mod check_packaged_app;
@@ -317,6 +318,10 @@ mod tests {
         fs::create_dir_all(&ui_bundle).unwrap();
         fs::write(ui_bundle.join("mermaid.min.js"), b"mermaid").unwrap();
 
+        let bot_bin = exe_dir.join("bot-engine");
+        fs::write(&bot_bin, b"fake-bot-engine").unwrap();
+        fs::set_permissions(&bot_bin, fs::Permissions::from_mode(0o755)).unwrap();
+
         let output = dir.join("output");
         fs::create_dir_all(&output).unwrap();
 
@@ -337,6 +342,7 @@ mod tests {
         assert_eq!(rc, 0, "bundle should succeed");
         let app = output.join("Vitruvian Code.app");
         assert!(app.join("Contents/MacOS/VitruvianCode").exists());
+        assert!(app.join("Contents/Helpers/bot-engine").exists());
         assert!(app.join("Contents/Resources").exists());
         assert!(app.join("Contents/Info.plist").exists());
         assert!(app.join("Contents/PkgInfo").exists());
@@ -442,6 +448,11 @@ mod tests {
         fs::write(&exe, b"fake").unwrap();
         fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).unwrap();
 
+        fs::create_dir_all(app.join("Contents/Helpers")).unwrap();
+        let bot = app.join("Contents/Helpers/bot-engine");
+        fs::write(&bot, b"fake-bot").unwrap();
+        fs::set_permissions(&bot, fs::Permissions::from_mode(0o755)).unwrap();
+
         let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let orig_path = std::env::var("PATH").unwrap_or_default();
         let orig_cwd = std::env::current_dir().unwrap();
@@ -470,6 +481,50 @@ mod tests {
 
         assert_eq!(rejected, 1, "--notarized must fail when spctl rejects");
         assert_eq!(accepted, 0, "--notarized must pass when spctl accepts");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn bazel_app_holds_bot_rejects_missing_helper_and_missing_arch() {
+        let dir = std::env::temp_dir().join("bazel_app_holds_bot_test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let fake_bin = dir.join("fake_bin");
+        fs::create_dir_all(&fake_bin).unwrap();
+        make_fake_tool(
+            &fake_bin,
+            "lipo",
+            "#!/bin/sh\nif [ \"$(basename \"$2\")\" = \"VitruvianCode\" ]; then echo \"arm64 x86_64\"; else echo \"arm64\"; fi\n",
+        );
+        make_fake_tool(&fake_bin, "codesign", "#!/bin/sh\nexit 0\n");
+
+        let app = dir.join("Vitruvian Code.app");
+        fs::create_dir_all(app.join("Contents/MacOS")).unwrap();
+        let exe = app.join("Contents/MacOS/VitruvianCode");
+        fs::write(&exe, b"fake-app").unwrap();
+        fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let missing = bazel_app_holds_bot::verify_unpacked_app(&app, &dir);
+        assert!(missing.is_err());
+        assert!(missing.unwrap_err().contains("Contents/Helpers/bot-engine"));
+
+        fs::create_dir_all(app.join("Contents/Helpers")).unwrap();
+        let bot = app.join("Contents/Helpers/bot-engine");
+        fs::write(&bot, b"fake-bot").unwrap();
+        fs::set_permissions(&bot, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let orig_path = std::env::var("PATH").unwrap_or_default();
+        std::env::set_var("PATH", format!("{}:{}", fake_bin.display(), orig_path));
+        let bad_arch = bazel_app_holds_bot::verify_unpacked_app(&app, &dir);
+        std::env::set_var("PATH", &orig_path);
+
+        assert!(bad_arch.is_err());
+        assert!(bad_arch
+            .unwrap_err()
+            .contains("lacks app architecture(s) x86_64"));
+
         let _ = fs::remove_dir_all(&dir);
     }
 }
