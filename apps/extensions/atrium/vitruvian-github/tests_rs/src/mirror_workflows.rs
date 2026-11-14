@@ -578,6 +578,50 @@ pub fn limit_problems(name: &str, wf: &Workflow) -> Vec<String> {
     problems
 }
 
+/// Script files a workflow step runs (`python3 x.py`, `bash x.sh`, `./x`),
+/// as paths relative to the tool's folder. The mirror has no Bazel, so a
+/// step that names a file the export does not carry fails on every run:
+/// `version_test.py` became a Rust test on 2026-10-27 and both mirror
+/// workflows kept calling it, which broke the 1.6.1 release.
+pub fn script_paths(run: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in run.lines() {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        for (i, w) in words.iter().enumerate() {
+            let prev = if i > 0 { words[i - 1] } else { "" };
+            let runner = matches!(prev, "python" | "python3" | "bash" | "sh" | "source" | ".");
+            let path = w.trim_matches(|c| c == '"' || c == '\'' || c == ';');
+            if path.contains('$') || path.starts_with('-') {
+                continue;
+            }
+            let is_script = path.ends_with(".py") || path.ends_with(".sh");
+            if (runner && is_script) || (path.starts_with("./") && i == 0) {
+                out.push(path.trim_start_matches("./").to_string());
+            }
+        }
+    }
+    out
+}
+
+pub fn missing_script_problems(name: &str, wf: &Workflow, base: &Path) -> Vec<String> {
+    let mut problems = Vec::new();
+    for (job_name, job) in &wf.jobs {
+        for step in &job.steps {
+            if let Some(run) = &step.run {
+                for path in script_paths(run) {
+                    if !base.join(&path).exists() {
+                        problems.push(format!(
+                            "{name}: job {job_name} runs {path}, which the mirror does not have"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    problems.sort();
+    problems
+}
+
 pub fn load_workflow(path: &Path) -> Workflow {
     let text =
         fs::read_to_string(path).unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
@@ -587,6 +631,37 @@ pub fn load_workflow(path: &Path) -> Workflow {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn script_paths_finds_runner_invocations() {
+        assert_eq!(
+            script_paths("python3 version_test.py"),
+            vec!["version_test.py"]
+        );
+        assert_eq!(
+            script_paths("set -e\n  bash scripts/x.sh --flag"),
+            vec!["scripts/x.sh"]
+        );
+        assert_eq!(script_paths("./build.sh"), vec!["build.sh"]);
+    }
+
+    #[test]
+    fn script_paths_ignores_inline_code_and_variables() {
+        assert!(script_paths("python3 -c 'import json'").is_empty());
+        assert!(script_paths("bash \"$RUNNER_TEMP/x.sh\"").is_empty());
+        assert!(script_paths("swift build -c release").is_empty());
+    }
+
+    #[test]
+    fn missing_script_is_reported() {
+        let wf = parse_workflow(
+            "permissions:\n  contents: read\njobs:\n  ci:\n    steps:\n      - name: v\n        run: python3 gone.py\n",
+        );
+        let dir = std::env::temp_dir();
+        let problems = missing_script_problems("ci.yml", &wf, &dir);
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("gone.py"));
+    }
 
     #[test]
     fn parse_simple_workflow() {

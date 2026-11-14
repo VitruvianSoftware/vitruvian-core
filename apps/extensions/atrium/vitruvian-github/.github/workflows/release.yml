@@ -91,10 +91,11 @@ jobs:
 
       - name: The manifest and Version.swift say this version
         run: |
-          python3 version_test.py
+          # The mirror has no Bazel; the full version check runs in the monorepo.
           manifest="$(python3 -c 'import json; print(json.load(open("vitruvian-tool.json"))["version"])')"
-          if [ "$manifest" != "$V" ]; then
-            echo "::error::vitruvian-tool.json says $manifest, the release manifest says $V."
+          swift="$(sed -n 's/.*current = "\([^"]*\)".*x-release-please-version.*/\1/p' Sources/GitHubToolCore/Version.swift)"
+          if [ "$manifest" != "$V" ] || [ "$swift" != "$V" ]; then
+            echo "::error::vitruvian-tool.json says $manifest, Version.swift says $swift, the release manifest says $V."
             exit 1
           fi
 
