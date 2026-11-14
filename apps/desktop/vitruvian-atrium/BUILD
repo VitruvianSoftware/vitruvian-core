@@ -887,9 +887,15 @@ rust_test(
     # The tests' UserDefaults suites stay in a container under TEST_TMPDIR
     # (//tools/swift-test-preferences); the wrapper looks in the real
     # ~/Library/Preferences, and fails the run if one got there anyway.
+    #
+    # The result may be cached (no-remote-exec, not no-remote). This test was
+    # 580 of the Atrium Mac job's 700 seconds, and most runs repeated it on
+    # unchanged inputs. Everything it reads is declared above, and the test
+    # binary's compile actions carry XCODE_VERSION_OVERRIDE, so a new Xcode
+    # still runs it fresh. It cannot execute remotely: the pool is Linux.
     tags = [
         "manual",
-        "no-remote",
+        "no-remote-exec",
         "no-sandbox",
     ],
     target_compatible_with = MACOS_ONLY,
