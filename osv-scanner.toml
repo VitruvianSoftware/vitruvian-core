@@ -120,3 +120,13 @@ reason = "PERMANENT: no fixed version exists in any range ('zbus_names is unmain
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0372"
 reason = "PERMANENT: no fixed version exists in any range ('zvariant_derive is unmaintained', a notice, not a flaw). crates.io zvariant_derive 5.15.1, proc macro of zvariant in zbus 5.19.0 (latest) <- accesskit_unix and ksni, Linux only (apps/suites/vitruvian-wand/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when eframe/tray-icon move off zbus or apps/suites/vitruvian-wand is re-locked."
+
+[[IgnoredVulns]]
+id = "GHSA-r6v5-fh4h-64xc"
+ignoreUntil = 2026-12-23
+reason = "Rust time (0.3.41), reached via sentry-types in apps/suites/vitruvian-relay/spike and apps/web/oauth-user-inspector/server. Fixed only in 0.3.47 which requires Rust 1.88.0 (repo toolchain is Rust 1.75.0). Sentry uses time solely for client-side event timestamps and never parses untrusted RFC 2822 dates."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0009"
+ignoreUntil = 2026-12-23
+reason = "Rust time (0.3.41), reached via sentry-types in apps/suites/vitruvian-relay/spike and apps/web/oauth-user-inspector/server. Fixed only in 0.3.47 which requires Rust 1.88.0 (repo toolchain is Rust 1.75.0). Sentry uses time solely for client-side event timestamps and never parses untrusted RFC 2822 dates."

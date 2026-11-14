@@ -509,6 +509,8 @@ crate.annotation(
     build_script_tools = ["@@//apps/desktop/vitruvian-courier/libsignal:cc_in_execroot"],
     crate = "ring",
     repositories = [
+        "oauth_user_inspector_server_crates",
+        "vitruvian_relay_spike_crates",
         "vitruvian_roborock_mcp_crates",
         "vitruvian_slack_mcp_crates",
     ],
