@@ -135,3 +135,38 @@ reason = "Rust time (0.3.41), reached via sentry-types in apps/suites/vitruvian-
 id = "GHSA-q7gw-24fr-5p69"
 ignoreUntil = 2026-12-23
 reason = "Go go.opentelemetry.io/otel (1.46.0) in packages/pulumi/library/go/pkg/{pubsub,upstash,vpc_service_controls}/go.mod. Advisory published against AttributeValueLengthLimit truncation with U+FFFD runes. Pulumi IaC packages do not process untrusted telemetry streams. Time-boxed until dependencies are bumped to 1.47.0 across Pulumi packages."
+
+[[IgnoredVulns]]
+id = "GO-2026-6629"
+ignoreUntil = 2026-12-23
+reason = "Go golang.org/x/text (0.37.0) in infrastructure/pulumi/platform/sentry/go.mod. Pulumi stack configuration does not process untrusted BCP 47 language tags. Dependabot PR open to upgrade."
+
+[[IgnoredVulns]]
+id = "GO-2026-6348"
+ignoreUntil = 2026-12-23
+reason = "Go google.golang.org/grpc (1.82.1) in infrastructure/pulumi/platform/sentry/go.mod. Pulumi stack configuration does not expose public gRPC servers. Tracked by Dependabot PR #4830."
+
+[[IgnoredVulns]]
+id = "GHSA-vp52-pcj8-j9qc"
+ignoreUntil = 2026-12-23
+reason = "Go google.golang.org/grpc (1.82.1) in infrastructure/pulumi/platform/sentry/go.mod. Pulumi stack configuration does not expose public gRPC servers. Tracked by Dependabot PR #4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6441"
+ignoreUntil = 2026-12-23
+reason = "Go google.golang.org/grpc (1.82.1) in infrastructure/pulumi/platform/sentry/go.mod. Pulumi stack configuration does not expose public gRPC servers. Tracked by Dependabot PR #4830."
+
+[[IgnoredVulns]]
+id = "GHSA-qc2q-p7wx-3px3"
+ignoreUntil = 2026-12-23
+reason = "Go google.golang.org/grpc (1.82.1) in infrastructure/pulumi/platform/sentry/go.mod. Pulumi stack configuration does not expose public gRPC servers. Tracked by Dependabot PR #4830."
+
+[[IgnoredVulns]]
+id = "GO-2026-6443"
+ignoreUntil = 2026-12-23
+reason = "Go google.golang.org/grpc (1.82.1) in infrastructure/pulumi/platform/sentry/go.mod. Pulumi stack configuration does not expose public gRPC servers. Tracked by Dependabot PR #4830."
+
+[[IgnoredVulns]]
+id = "GHSA-2v4p-qf9q-27wj"
+ignoreUntil = 2026-12-23
+reason = "Go google.golang.org/grpc (1.82.1) in infrastructure/pulumi/platform/sentry/go.mod. Pulumi stack configuration does not expose public gRPC servers. Tracked by Dependabot PR #4830."
