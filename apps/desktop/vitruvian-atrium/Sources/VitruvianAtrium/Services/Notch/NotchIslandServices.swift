@@ -258,7 +258,9 @@ package final class SystemNotchIslandServices: NotchIslandServices {
     package func showCommandBar() { CommandBarService.shared.show() }
     package func showScratchpad() { ScratchpadService.shared.show() }
     package func openNotchSettings() { SettingsRouter.shared.request(FeatureSettingsDestination(.notch)) }
-    package func showSettingsModule(_ module: NotchModule) { SettingsRouter.shared.notchModule = module }
+    package func showSettingsModule(_ module: NotchModule) {
+        SettingsRouter.shared.request(FeatureSettingsDestination(notch: .module(module)))
+    }
 
     package var hasModalWindow: Bool { NSApp.modalWindow != nil }
     package func isOverStatusItem(_ point: CGPoint) -> Bool { appShell()?.isOverStatusItem(point) == true }

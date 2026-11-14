@@ -894,3 +894,60 @@ fn parse_alert_dismiss_validates_alert_number_kind_and_comment() {
         );
     }
 }
+
+// --- branch-delete --abandoned ------------------------------------------------
+
+#[test]
+fn abandoned_flag_takes_one_closed_pr_and_exactly_one_branch() {
+    let a = v(&["--abandoned", "4609", "rename/x"]);
+    let (pr, rest) = take_abandoned(&a).unwrap();
+    assert_eq!(pr.as_deref(), Some(&b"4609"[..]));
+    assert_eq!(rest, &a[2..]);
+
+    let a = v(&["old/a", "old/b"]);
+    let (pr, rest) = take_abandoned(&a).unwrap();
+    assert_eq!(pr, None);
+    assert_eq!(rest.len(), 2);
+
+    for bad in [
+        v(&["--abandoned"]),
+        v(&["--abandoned", "rename/x"]),
+        v(&["--abandoned", "#4609", "rename/x"]),
+        v(&["--abandoned", "4609"]),
+        v(&["--abandoned", "4609", "rename/x", "other/y"]),
+    ] {
+        assert!(take_abandoned(&bad).is_err(), "{:?}", bad);
+    }
+}
+
+#[test]
+fn abandoned_deletes_only_a_closed_prs_own_branch_at_its_last_commit() {
+    let tip = "2efa60676d9991db1b606d094cb4230d0da67fe9";
+    let other = "c6147a07b0000000000000000000000000000000";
+    let br = b"rename/x";
+    let view = |state: &str, head: &str, oid: &str, cross: &str| {
+        format!("{} {} {} {}", state, head, oid, cross).into_bytes()
+    };
+    let refuse = |vw: Vec<u8>, now: &str| abandoned_refusal(b"4609", br, &vw, now.as_bytes());
+
+    assert_eq!(refuse(view("CLOSED", "rename/x", tip, "false"), tip), None);
+
+    // Merged: the landed gate's call, not this flag's.
+    assert!(refuse(view("MERGED", "rename/x", tip, "false"), tip).is_some());
+    // Still open.
+    assert!(refuse(view("OPEN", "rename/x", tip, "false"), tip).is_some());
+    // Another branch's PR cannot vouch for this one.
+    assert!(refuse(view("CLOSED", "rename/y", tip, "false"), tip).is_some());
+    // A fork's branch of the same name is a different branch.
+    assert!(refuse(view("CLOSED", "rename/x", tip, "true"), tip).is_some());
+    // Commits pushed after the PR's last one would be lost.
+    let why = refuse(view("CLOSED", "rename/x", tip, "false"), other).unwrap();
+    assert!(
+        String::from_utf8_lossy(&why).contains("never had"),
+        "{:?}",
+        why
+    );
+    // GitHub's answer could not be read.
+    assert!(refuse(Vec::new(), tip).is_some());
+    assert!(refuse(b"CLOSED rename/x".to_vec(), tip).is_some());
+}

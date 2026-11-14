@@ -99,3 +99,14 @@ exports_files(
     ],
     visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],
 )
+
+filegroup(
+    name = "checked_in_skills",
+    srcs = [
+        ".agents/skills/devx/SKILL.md",
+        ".agents/skills/platform-engineer/SKILL.md",
+        ".github/skills/devx/SKILL.md",
+        ".github/skills/platform-engineer/SKILL.md",
+    ],
+    visibility = ["//apps/cli/vitruvian-devx:__subpackages__"],
+)

@@ -128,6 +128,16 @@ package final class AppVolumeMixer: ObservableObject {
     @Published package private(set) var currentSystemSoundOutputDeviceUID: String?
     @Published package private(set) var systemOutputVolume: Double?
     @Published package private(set) var systemOutputMuted: Bool?
+    /// The output's volume and mute as CoreAudio reports them. The published
+    /// pair above shows the monitor's speakers instead while one carries the
+    /// sound; see `republishSystemOutput()`.
+    private var coreAudioOutputVolume: Double? = nil { didSet { republishSystemOutput() } }
+    private var coreAudioOutputMuted: Bool? = nil { didSet { republishSystemOutput() } }
+    /// The monitor whose speakers carry the sound, when its speakers are on and
+    /// macOS cannot set that output's volume. Kept current by the brightness service.
+    package private(set) var monitorOutput: BrightnessSupport.MonitorSpeakerOutput? = nil {
+        didSet { republishSystemOutput() }
+    }
     @Published package private(set) var outputSwitchError: String?
     /// Set when tap creation fails with a permission error, so the panel can
     /// point at the System Audio Recording consent.
@@ -240,8 +250,8 @@ package final class AppVolumeMixer: ObservableObject {
             setScalarVolume: { Self.setOutputScalarVolume($0, for: $1) },
             uptime: { ProcessInfo.processInfo.systemUptime },
             isListening: { [weak self] in self?.listenerInstalled == true },
-            volumeChanged: { [weak self] in self?.systemOutputVolume = $0 },
-            mutedChanged: { [weak self] in self?.systemOutputMuted = $0 },
+            volumeChanged: { [weak self] in self?.coreAudioOutputVolume = $0 },
+            mutedChanged: { [weak self] in self?.coreAudioOutputMuted = $0 },
             outputsChanged: { [weak self] in self?.scheduleListenerRefresh() }))
     }()
 
@@ -358,6 +368,7 @@ package final class AppVolumeMixer: ObservableObject {
         if currentOutputDeviceUID != nil { currentOutputDeviceUID = nil }
         if currentSystemSoundOutputDeviceUID != nil { currentSystemSoundOutputDeviceUID = nil }
         outputControl.forget()
+        refreshMonitorOutput()
         if outputSwitchError != nil { outputSwitchError = nil }
         if needsPermission { needsPermission = false }
         processMonitoringEnabled = false
@@ -528,23 +539,76 @@ package final class AppVolumeMixer: ObservableObject {
 
     // MARK: - Volume API (panel)
 
-    /// See `MixerOutputControl.requestAdjustment`.
+    /// Whether the output in use is a monitor's own speakers. The panel and the
+    /// volume keys then work on the monitor's level instead of CoreAudio's.
+    package var outputIsMonitorSpeakers: Bool { monitorOutput != nil }
+
+    /// Reads which monitor, if any, carries the sound. The brightness service
+    /// calls this when its display list or the default output changes. Main
+    /// thread only.
+    package func refreshMonitorOutput() {
+        let next = BrightnessService.shared.monitorSpeakerOutput()
+        if next != monitorOutput { monitorOutput = next }
+    }
+
+    /// The published pair shows the monitor's levels while it carries the sound
+    /// and CoreAudio's otherwise. A monitor at zero without a recoverable
+    /// mute state publishes no mute control.
+    private func republishSystemOutput() {
+        let shown = Self.presentedOutput(monitor: monitorOutput, coreAudioVolume: coreAudioOutputVolume,
+                                         coreAudioMuted: coreAudioOutputMuted)
+        if systemOutputVolume != shown.volume { systemOutputVolume = shown.volume }
+        if systemOutputMuted != shown.muted { systemOutputMuted = shown.muted }
+    }
+
+    /// The level and mute the panel, the island and the keys show: the
+    /// monitor's while its speakers carry the sound, CoreAudio's otherwise.
+    nonisolated package static func presentedOutput(monitor: BrightnessSupport.MonitorSpeakerOutput?,
+                                                    coreAudioVolume: Double?,
+                                                    coreAudioMuted: Bool?) -> (volume: Double?, muted: Bool?) {
+        guard let monitor else { return (coreAudioVolume, coreAudioMuted) }
+        return (monitor.volume, monitor.muted)
+    }
+
+    /// See `MixerOutputControl.requestAdjustment`. A monitor's speakers take
+    /// the request on the brightness queue instead.
     package func requestOutputAdjustment(volume: Double? = nil, muted: Bool? = nil,
                                  completion: @escaping (Bool) -> Void = { _ in }) {
+        if let monitor = monitorOutput {
+            guard volume?.isFinite != false else { completion(false); return }
+            BrightnessService.shared.requestSpeakers(.set(volume: volume, muted: muted),
+                                                     target: monitor.target, completion: completion)
+            return
+        }
         outputControl.requestAdjustment(volume: volume, muted: muted, completion: completion)
     }
 
     /// What a volume or mute key came to (`MixerOutputControl.KeyResult`).
     package typealias OutputKeyResult = MixerOutputControl.KeyResult
 
-    /// See `MixerOutputControl.requestStep`.
-    package func requestOutputStep(level: @escaping (Double) -> Double,
+    /// See `MixerOutputControl.requestStep`. `raises` tells a monitor's
+    /// speakers which way the key went, so a raise can lift their mute.
+    package func requestOutputStep(level: @escaping (Double) -> Double, raises: Bool = false,
                            completion: @escaping (OutputKeyResult) -> Void = { _ in }) {
+        if let monitor = monitorOutput {
+            BrightnessService.shared.requestSpeakers(.step(levels: [level], raises: raises),
+                                                     target: monitor.target, requiresKeys: true) {
+                completion($0 ? .applied : .unconfirmed)
+            }
+            return
+        }
         outputControl.requestStep(level: level, completion: completion)
     }
 
     /// See `MixerOutputControl.requestMuteToggle`.
     package func requestOutputMuteToggle(completion: @escaping (OutputKeyResult) -> Void = { _ in }) {
+        if let monitor = monitorOutput {
+            guard monitor.muted != nil else { completion(.fallback); return }
+            BrightnessService.shared.requestSpeakers(.toggleMute, target: monitor.target, requiresKeys: true) {
+                completion($0 ? .applied : .unconfirmed)
+            }
+            return
+        }
         outputControl.requestMuteToggle(completion: completion)
     }
 
@@ -1992,7 +2056,7 @@ package final class AppVolumeMixer: ObservableObject {
         return nil
     }
 
-    nonisolated private static func hasSettableOutputVolume(for deviceID: AudioObjectID) -> Bool {
+    nonisolated static func hasSettableOutputVolume(for deviceID: AudioObjectID) -> Bool {
         for selector in outputVolumeSelectors {
             var address = AudioObjectPropertyAddress(mSelector: selector,
                                                      mScope: kAudioObjectPropertyScopeOutput,
@@ -2298,7 +2362,7 @@ package final class AppVolumeMixer: ObservableObject {
         return setOutputMuted(muted, for: device)
     }
 
-    nonisolated fileprivate static func defaultOutputDeviceID() -> AudioObjectID? {
+    nonisolated static func defaultOutputDeviceID() -> AudioObjectID? {
         var device = AudioObjectID(0)
         guard read(AudioObjectID(kAudioObjectSystemObject),
                    kAudioHardwarePropertyDefaultOutputDevice, &device),

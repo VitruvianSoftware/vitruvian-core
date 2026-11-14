@@ -606,7 +606,7 @@ jobs:
           # above and fails when the copy of Mermaid its diagrams draw with is
           # missing; here, not in the vitruvian-code-macos unit, because this is
           # the job that builds the app.
-          bazel test "${cache[@]}" --config=macos-app //apps/desktop/vitruvian-code/macos:VitruvianCodeTests //apps/desktop/vitruvian-code/macos:app_holds_mermaid_test
+          bazel test "${cache[@]}" --config=macos-app //apps/desktop/vitruvian-code/macos:VitruvianCodeTests //apps/desktop/vitruvian-code/macos:app_holds_mermaid_test //apps/desktop/vitruvian-code/macos:app_holds_bot_test
 
           # vitruvian-speaker build, unit tests & packaging validation
           bazel build "${cache[@]}" --config=macos-app //apps/desktop/vitruvian-speaker/... //apps/desktop/vitruvian-speaker:VitruvianSpeaker

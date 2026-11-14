@@ -528,6 +528,10 @@ package struct Strings {
     package let uninstallerCommandBarBrowseTitle: String
     package let uninstallerCommandBarToggle: String
     package let uninstallerCommandBarCaption: String
+    package let uninstallerWatchTrashToggle: String
+    package let uninstallerWatchTrashCaption: String
+    package let uninstallerConfirmTrashCleanup: String
+    package let uninstallerTrashUnavailable: String
     package let uninstallerCommandBarFinderTitle: String
     package let uninstallerSelectionUnavailable: String
     package let uninstallerRefusedNotApp: String
@@ -1286,6 +1290,9 @@ package struct Strings {
     package let invertVerticalScroll: String
     package let invertHorizontalScroll: String
     package let scrollHorizontalName: String
+    package let zoomSection: String
+    package let zoomControlNote: String
+    package let pinchZoom: String
     package let scrollHorizontalModifierLabel: String
     package let scrollHorizontalCommandKey: String
     package let scrollHorizontalCaption: String
@@ -1320,6 +1327,9 @@ package struct Strings {
     package let linearScrollName: String
     package let linearScrollCaption: String
     package let linearScrollLinesLabel: String
+    package let scrollSpeedName: String
+    package let scrollSpeedCaption: String
+    package let scrollSpeedMultiplierLabel: String
     package let shelfClearOnClose: String
     package let shelfClearOnCloseCaption: String
     package let shelfShortcutFinderSelection: String
@@ -1686,6 +1696,10 @@ extension Strings {
         uninstallerCommandBarBrowseTitle: "Desinstalar aplicativo",
         uninstallerCommandBarToggle: "Mostrar na Barra de Comandos",
         uninstallerCommandBarCaption: "Permite escolher e desinstalar aplicativos pela Barra de Comandos.",
+        uninstallerWatchTrashToggle: "Oferecer limpeza ao mover um app para o Lixo",
+        uninstallerWatchTrashCaption: "Abre o Desinstalador quando você apaga um app no Finder. Requer Acesso Total ao Disco.",
+        uninstallerConfirmTrashCleanup: "Se você moveu este app para o Lixo para desinstalá-lo, confirme para mover também os dados selecionados. Se o app estiver sendo atualizado, cancele para manter seus dados.",
+        uninstallerTrashUnavailable: "Só é possível limpar dados do Lixo após mover a última cópia do app da pasta Aplicativos. Se ele ainda estiver instalado ou em atualização, seus dados serão mantidos.",
         uninstallerCommandBarFinderTitle: "Desinstalar aplicativo selecionado no Finder",
         uninstallerSelectionUnavailable: "Selecione um aplicativo que possa ser removido no Finder ou escolha outro na lista.",
         uninstallerRefusedNotApp: "Só é possível desinstalar apps.",
@@ -2406,6 +2420,9 @@ extension Strings {
         invertVerticalScroll: "Inverter rolagem vertical",
         invertHorizontalScroll: "Inverter rolagem horizontal",
         scrollHorizontalName: "Rolar na horizontal segurando uma tecla",
+        zoomSection: "Zoom",
+        zoomControlNote: "Control + rolagem amplia o conteúdo do app em vez da tela do macOS.",
+        pinchZoom: "Zoom por pinça",
         scrollHorizontalModifierLabel: "Tecla modificadora",
         scrollHorizontalCommandKey: "Command",
         scrollHorizontalCaption: "Mantenha apenas a tecla escolhida pressionada para rolar a roda vertical do mouse na horizontal. Outras combinações de teclas não são alteradas.",
@@ -2440,6 +2457,9 @@ extension Strings {
         linearScrollName: "Rolagem linear",
         linearScrollCaption: "Cada passo da rodinha do mouse rola a mesma distância, não importa a velocidade do giro. O trackpad não muda.",
         linearScrollLinesLabel: "Linhas por passo",
+        scrollSpeedName: "Rolar mais rápido segurando uma tecla",
+        scrollSpeedCaption: "Mantenha apenas a tecla escolhida pressionada ao rolar a roda do mouse para multiplicar a distância. O trackpad não muda.",
+        scrollSpeedMultiplierLabel: "Velocidade",
         shelfClearOnClose: "Limpar ao fechar",
         shelfClearOnCloseCaption: "Esvazia a área somente quando você clica no botão de fechar. Ocultar automaticamente e encolher preservam os itens.",
         shelfShortcutFinderSelection: "Adicionar a seleção do Finder com o atalho",
@@ -2807,6 +2827,10 @@ extension Strings {
         uninstallerCommandBarBrowseTitle: "Uninstall Application",
         uninstallerCommandBarToggle: "Show in Command Bar",
         uninstallerCommandBarCaption: "Choose and uninstall apps in the Command Bar.",
+        uninstallerWatchTrashToggle: "Offer cleanup when an app is moved to the Trash",
+        uninstallerWatchTrashCaption: "Opens the Uninstaller when you delete an app in Finder. Needs Full Disk Access.",
+        uninstallerConfirmTrashCleanup: "If you moved this app to the Trash to uninstall it, confirm to move its selected data to the Trash too. If the app is updating, cancel to keep its data.",
+        uninstallerTrashUnavailable: "Cleanup requires moving the last installed copy from an Applications folder to the Trash. Data is kept while the app is installed or updating.",
         uninstallerCommandBarFinderTitle: "Uninstall app selected in Finder",
         uninstallerSelectionUnavailable: "Select an app that can be removed in Finder, or choose another from the list.",
         uninstallerRefusedNotApp: "Only apps can be uninstalled.",
@@ -3527,6 +3551,9 @@ extension Strings {
         invertVerticalScroll: "Invert vertical scrolling",
         invertHorizontalScroll: "Invert horizontal scrolling",
         scrollHorizontalName: "Scroll sideways while holding a key",
+        zoomSection: "Zoom",
+        zoomControlNote: "Control + scroll performs app zoom instead of macOS screen zoom.",
+        pinchZoom: "Pinch Zoom",
         scrollHorizontalModifierLabel: "Modifier key",
         scrollHorizontalCommandKey: "Command",
         scrollHorizontalCaption: "Hold only the selected modifier to scroll the vertical mouse wheel horizontally. Other key combinations are unchanged.",
@@ -3561,6 +3588,9 @@ extension Strings {
         linearScrollName: "Linear scrolling",
         linearScrollCaption: "Every notch of the mouse wheel scrolls the same distance, no matter how fast it spins. The trackpad is not affected.",
         linearScrollLinesLabel: "Lines per step",
+        scrollSpeedName: "Scroll faster while holding a key",
+        scrollSpeedCaption: "Hold only the selected modifier while scrolling the mouse wheel to multiply scroll distance. The trackpad is not affected.",
+        scrollSpeedMultiplierLabel: "Speed",
         shelfClearOnClose: "Clear when closed",
         shelfClearOnCloseCaption: "Empties the shelf only when you click its close button. Automatic hiding and collapsing keep the items.",
         shelfShortcutFinderSelection: "Add the Finder selection with the shortcut",

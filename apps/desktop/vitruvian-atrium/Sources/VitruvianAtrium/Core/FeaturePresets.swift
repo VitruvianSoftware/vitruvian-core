@@ -90,7 +90,7 @@ package enum FeatureEnergyProfile: String {
 extension AppFeature {
     package var energyProfile: FeatureEnergyProfile {
         switch self {
-        case .scrollInverter, .scrollHorizontal, .focusFollowsMouse, .smoothScroll, .linearScroll, .windowMaximizer, .middleClick,
+        case .scrollInverter, .scrollHorizontal, .scrollZoom, .focusFollowsMouse, .smoothScroll, .linearScroll, .scrollSpeed, .windowMaximizer, .middleClick,
              .mouseNavigation, .mouseButtonShortcuts, .mouseClickDebounce,
              .dockPreview, .dockClick, .shelf:
             return .mouse
@@ -145,6 +145,8 @@ extension AppFeature {
             let defaults = UserDefaults.standard
             return defaults[Preferences.brightnessKeysEnabled]
                 || defaults[Preferences.brightnessOSDEnabled]
+                || (defaults[Preferences.displayVolumeEnabled]
+                    && defaults[Preferences.displayVolumeKeysEnabled])
                 || BrightnessSupport.KeyStep.sanitized(
                     defaults[Preferences.brightnessKeyStep]) != .standard
                 ? .keyboard : .idle

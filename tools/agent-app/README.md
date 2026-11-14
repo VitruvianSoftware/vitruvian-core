@@ -27,7 +27,7 @@ the step-by-step runbook is [docs/guides/creating-an-agent-github-app.md](../../
 | `issue-create --title <s> --body-file <f> \| --body <s> [gh issue create args]` | **How agents open issues.** Opens an issue in this repository as the agent. Title and body are required (without them gh prompts); `--repo` and `--web` are refused. |
 | `issue-comment <issue> --body-file <f> \| --body <s>` | Comments on an issue as the agent. The body is required. |
 | `issue-close <issue> [--comment <s>] [--reason completed\|"not planned"]` | Closes an issue as the agent. |
-| `branch-delete <branch>...` | **How agents delete branches on GitHub.** Deletes each branch only if [`//tools/landed`](../landed)`--remote-branch` proves its work is on `main` (below). Refuses `main`, names that are not plain branch names, and a branch with an open PR (use `pr-close <n> --delete-branch`). A merge-queue branch (`gh-readonly-queue/<base>/pr-<n>-…`) is deleted once PR `<n>` is merged or closed. Reads the branch's SHA again just before deleting and keeps it if it moved. Deletes the ones that pass, keeps the rest with the reason, and fails if any was kept. There is no override. |
+| `branch-delete <branch>...` | **How agents delete branches on GitHub.** Deletes each branch only if [`//tools/landed`](../landed)`--remote-branch` proves its work is on `main` (below). Refuses `main`, names that are not plain branch names, and a branch with an open PR (use `pr-close <n> --delete-branch`). A merge-queue branch (`gh-readonly-queue/<base>/pr-<n>-…`) is deleted once PR `<n>` is merged or closed. Reads the branch's SHA again just before deleting and keeps it if it moved. Deletes the ones that pass, keeps the rest with the reason, and fails if any was kept. The one exception is `--abandoned <pr>` (below). |
 
 Every `pr-*`, `issue-*`, `run-*`, `workflow-run` and `branch-delete` command takes `--agent <agent>` as its
 **first** argument (default `wren`, or `$AGENT_APP_AGENT`) and acts as that
@@ -68,7 +68,17 @@ passes it on any one of four proofs: its tip is on `main`; merging it into
 `main` would change nothing; its PR merged and the tip is the PR's head; or its
 PR merged and every commit after the head is empty, a merge with no hand-made
 resolution, or a patch `main` already has. Everything else is kept, including
-work that looks abandoned: deleting that is a person's call, on GitHub. The
+work that looks abandoned, unless it is named with `--abandoned`.
+
+**`branch-delete --abandoned <pr> <branch>`** deletes one branch whose work
+never landed, such as one whose PR was replaced by another. It takes exactly
+one branch and deletes it only if PR `<pr>` was closed without merging, was
+opened from this repository's `<branch>` (not a fork's), and the branch on
+GitHub still points at that PR's last commit. Then nothing is lost: GitHub
+keeps a closed PR's commits, and the PR page's "Restore branch" brings the
+branch back. A merged PR is refused (the landed gate decides those), and so is
+a branch with commits the PR never had. Use it only when someone has decided
+the work is not wanted, and say why in the PR's closing comment. The
 gate is the `//tools/landed` binary built with agent-app, found beside it (in
 `bazel-bin`) or in its runfiles, never in the source checkout, which has no
 copy. `AGENT_APP_LANDED` replaces it only under `bazel test`, so an agent
@@ -91,6 +101,7 @@ bazel run //tools/agent-app -- pr-enqueue 123          # arm auto-merge, confirm
 bazel run //tools/agent-app -- run-rerun 18000000000 --failed
 bazel run //tools/agent-app -- workflow-run catalog-bump.yaml
 bazel run //tools/agent-app -- branch-delete --agent atlas old/branch other/branch
+bazel run //tools/agent-app -- branch-delete --agent atlas --abandoned 4609 rename/old-branch
 bazel run //tools/agent-app -- installations 4520098 ~/keys/beacon.pem
 bazel test //tools/agent-app/...
 bazel run //tools/agent-app:permission-drift          # GitHub vs permissions.tsv

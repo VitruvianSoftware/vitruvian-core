@@ -80,7 +80,6 @@ doctor(
     ],
     required = [
         "bazel",
-        "node",
         "git",
     ],
 )

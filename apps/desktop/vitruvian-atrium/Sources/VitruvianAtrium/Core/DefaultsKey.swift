@@ -56,6 +56,8 @@ package enum DefaultsKey {
     package static let scrollInverterHorizontalEnabled = "scrollInverterHorizontalEnabled"
     package static let scrollHorizontalEnabled = "scrollHorizontalEnabled"
     package static let scrollHorizontalModifier = "scrollHorizontalModifier"
+    package static let pinchZoomEnabled = "pinchZoomEnabled"
+    package static let pinchZoomModifier = "pinchZoomModifier"
     package static let focusFollowsMouseEnabled = "focusFollowsMouseEnabled"
     package static let focusFollowsMouseRaise = "focusFollowsMouseRaise"
     package static let focusFollowsMouseWaitForStop = "focusFollowsMouseWaitForStop"
@@ -65,6 +67,9 @@ package enum DefaultsKey {
     package static let smoothScrollStep = "smoothScrollStep"      // pixels per wheel tick
     package static let linearScrollEnabled = "linearScrollEnabled" // every mouse wheel notch scrolls the same lines (issue #403)
     package static let linearScrollLines = "linearScrollLines"     // lines per wheel notch while linear scrolling is on
+    package static let scrollSpeedEnabled = "scrollSpeedEnabled"   // hold a modifier to multiply mouse wheel distance (issue #521)
+    package static let scrollSpeedModifier = "scrollSpeedModifier"
+    package static let scrollSpeedMultiplier = "scrollSpeedMultiplier"
     package static let mouseAccelerationDisabled = "mouseAccelerationDisabled" // sets HIDMouseAcceleration to -1 for mice
     package static let smoothScrollResponse = "smoothScrollResponse" // 0...100, higher follows the wheel sooner
     package static let smoothScrollCoast = "smoothScrollCoast" // 0...100, higher coasts the same distance out longer
@@ -87,6 +92,7 @@ package enum DefaultsKey {
     // One list of bundle ids per mouse feature: apps it leaves alone (issue #358).
     package static let smoothScrollExceptions = "smoothScrollExceptions"
     package static let linearScrollExceptions = "linearScrollExceptions"
+    package static let scrollSpeedExceptions = "scrollSpeedExceptions"
     package static let scrollInverterExceptions = "scrollInverterExceptions"
     package static let mouseNavigationExceptions = "mouseNavigationExceptions"
     package static let mouseButtonExceptions = "mouseButtonExceptions"
@@ -227,6 +233,16 @@ package enum DefaultsKey {
     // answer reads. Kept local so wake handling does not repeatedly probe a
     // sensitive display path.
     package static let brightnessDDCWriteOnlyPaths = "brightnessDDCWriteOnlyPaths"
+    package static let displayVolumeEnabled = "displayVolumeEnabled" // speakers built into external monitors
+    package static let displayVolumeKeysEnabled = "displayVolumeKeysEnabled" // volume keys reach those speakers
+    package static let ddcVolumeStep = "ddcVolumeStep" // Double percent of the monitor's range per key press
+    package static let ddcVolumeMinimum = "ddcVolumeMinimum" // Int percent the volume keys stop at
+    package static let ddcVolumeMaximum = "ddcVolumeMaximum" // Int percent the volume keys stop at
+    // Per-monitor connection paths whose display answered the audio controls
+    // with no speakers behind them. Remembered for the same reason as the
+    // write-only paths: two extra reads on a bus paced in tens of
+    // milliseconds are not worth repeating on every scan.
+    package static let displayAudioSilentPaths = "displayAudioSilentPaths"
     // Set once the paths cached before paired discovery requests have been
     // dropped, so a monitor written off then is classified again exactly once.
     package static let brightnessDDCWriteOnlyPathsRechecked = "brightnessDDCWriteOnlyPathsRechecked"
@@ -315,6 +331,7 @@ package enum DefaultsKey {
     package static let panelUtilityURLCleaner = "panelUtilityURLCleaner"
     package static let panelUtilityUninstaller = "panelUtilityUninstaller"
     package static let uninstallerCommandBarEnabled = "uninstallerCommandBarEnabled"
+    package static let uninstallerWatchesTrash = "uninstallerWatchesTrash"
     package static let killProcessCommandBarEnabled = "killProcessCommandBarEnabled"
     package static let killProcessGroupRelated = "killProcessGroupRelated"
     package static let killProcessSortBy = "killProcessSortBy" // cpu | memory | name | pid

@@ -22,6 +22,7 @@ enum NotchMirrorContract {
         var orderedBelow = 0
         var presented: [(size: CGSize, geometry: NotchGeometry, animated: Bool, transition: NotchContentTransition)] = []
         var hides = 0, closes = 0
+        var hideAnimations: [Bool] = [], reveals: [Bool] = []
         var outline: (enabled: Bool, color: NSColor)?
         var activationRect = CGRect.zero
         /// Each name the copy's button was given, in order.
@@ -33,10 +34,12 @@ enum NotchMirrorContract {
         func holdWave() {}
         func keepWave() {}
         func releaseWave() {}
-        func presentCopy(size: CGSize, geometry: NotchGeometry, animated: Bool, transitionContent: NotchContentTransition) {
+        func presentCopy(size: CGSize, geometry: NotchGeometry, animated: Bool,
+                         transitionContent: NotchContentTransition, revealFromHidden: Bool) {
             presented.append((size, geometry, animated, transitionContent))
+            reveals.append(revealFromHidden)
         }
-        func hideCopy() { hides += 1; panelIsVisible = false }
+        func hideCopy(animated: Bool) { hides += 1; hideAnimations.append(animated); panelIsVisible = false }
         func close() { closes += 1; panelIsVisible = false }
         /// Whether the point a click lands on is over this copy's window.
         var covers = false
@@ -64,7 +67,10 @@ enum NotchMirrorContract {
     final class World {
         var screens: [Screen] = []
         var separateSpaces = false
+        /// The displays showing a full-screen Space, which slides the screen.
         var fullscreen: Set<CGDirectDisplayID> = []
+        /// The displays an app covers with a full screen of its own.
+        var appFullscreen: Set<CGDirectDisplayID> = []
         var hidesUntilHover = false, hiddenShowsActivity = false, coversMenus = true, showsInCaptures = true
         var outlineEnabled = false, hidesInFullscreen = false
         var showsOnAllDisplays = true, running = true, suspended = false, hasWindow = true
@@ -110,7 +116,10 @@ enum NotchMirrorContract {
                     baseGeometry: { [unowned self] id in
                         self.screens.first(where: { $0.id == id }).map(self.baseGeometry(for:))
                     },
-                    fullscreenDisplays: { [unowned self] ids in Set(ids.filter(self.fullscreen.contains)) },
+                    fullscreenDisplays: { [unowned self] ids in
+                        Set(ids.filter { self.fullscreen.contains($0) || self.appFullscreen.contains($0) })
+                    },
+                    fullscreenSpaceDisplays: { [unowned self] ids in Set(ids.filter(self.fullscreen.contains)) },
                     hidesUntilHover: { [unowned self] in self.hidesUntilHover },
                     hiddenShowsActivity: { [unowned self] in self.hiddenShowsActivity },
                     coversMenus: { [unowned self] in self.coversMenus },
@@ -279,8 +288,55 @@ enum NotchMirrorContract {
         suite.expect(mirrors.fullscreenDisplays.isEmpty, "only the choice to hide in full screen reads Spaces")
         world.fullscreen = []
         mirrors.sync()
-        suite.expect(notch?.model.shown == true && notch?.host.presented.last?.animated == false,
-                     "leaving full screen shows the copy again at once")
+        suite.expect(notch?.model.shown == true && notch?.host.presented.last?.animated == false
+                     && notch?.host.hideAnimations.last == false && notch?.host.reveals.last == false,
+                     "a full-screen Space hides and shows the copy at once")
+
+        // An app's own full screen eases the copy away and back: nothing else
+        // on that screen moves, so the copy goes as the island does at a hide.
+        func fullscreenChanged() {
+            mirrors.updateFullscreenDisplays(showsOnAllDisplays: world.showsOnAllDisplays)
+            mirrors.sync()
+        }
+        world.hidesInFullscreen = true
+        world.appFullscreen = [1]
+        fullscreenChanged()
+        suite.expect(mirrors.fullscreenDisplays == [1] && mirrors.fullscreenSpaceDisplays.isEmpty
+                     && notch?.model.shown == false && notch?.host.hideAnimations.last == true,
+                     "an app's own full screen hides the copy with the usual animation")
+        world.appFullscreen = []
+        fullscreenChanged()
+        suite.expect(notch?.model.shown == true && notch?.host.presented.last?.animated == true
+                     && notch?.host.reveals.last == true && mirrors.copiesHiddenByApp.isEmpty,
+                     "leaving an app's own full screen reveals the copy with the usual animation")
+        world.appFullscreen = [1]
+        fullscreenChanged()
+        world.fullscreen = [1]
+        world.appFullscreen = []
+        fullscreenChanged()
+        suite.expect(notch?.model.shown == false && !mirrors.copiesHiddenByApp.contains(1),
+                     "a Space taking over an app's full screen leaves the copy hidden")
+        world.fullscreen = []
+        fullscreenChanged()
+        suite.expect(notch?.model.shown == true && notch?.host.presented.last?.animated == false
+                     && notch?.host.reveals.last == false,
+                     "full screen last held by a Space ends at once")
+        world.fullscreen = [1]
+        fullscreenChanged()
+        let hidesBySpace = notch?.host.hides
+        world.fullscreen = []
+        world.appFullscreen = [1]
+        fullscreenChanged()
+        suite.expect(notch?.model.shown == false && notch?.host.hides == hidesBySpace
+                     && mirrors.copiesHiddenByApp == [1],
+                     "an app taking over a Space's full screen updates the hidden copy's reason without hiding it again")
+        world.appFullscreen = []
+        fullscreenChanged()
+        suite.expect(notch?.model.shown == true && notch?.host.presented.last?.animated == true
+                     && notch?.host.reveals.last == true && mirrors.copiesHiddenByApp.isEmpty,
+                     "full screen last held by an app reveals the copy with motion even when a Space hid it first")
+        world.hidesInFullscreen = false
+        fullscreenChanged()
 
         // Set to show activity, a hidden island's copies draw the activity it
         // shows, and go with it once nothing runs.
