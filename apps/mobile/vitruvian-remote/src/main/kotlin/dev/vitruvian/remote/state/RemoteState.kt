@@ -7820,51 +7820,10 @@ public class RemoteState(
         client.metrics()
       }
       result
-          .onSuccess { m ->
-            val prevSource = metricsSource
-            val transition = Derive.afterPoll(hosts.isNotEmpty(), demoMode, pollSucceeded = true)
-            applyAgentMetrics(m)
-            hostResponded = true
-            connection =
-                if (transition == Derive.PollOutcome.Unpaired) Connection.Unpaired
-                else Connection.Connected
-            if (prevSource != MetricsSource.Live) {
-              log("ok", "agent · live from ${agentHost?.hostname ?: "host"}")
-              // Only on the transition, and only when something was there to
-              // come back FROM: a first successful poll after launch is not a
-              // recovery and does not deserve a notification.
-              if (prevSource == MetricsSource.Unreachable && sawUnreachable) {
-                post("host", "$hostShortName is back", "the agent is answering again", Screen.Home)
-              }
-              sawUnreachable = false
-            }
-            metricsSource = MetricsSource.Live
-            agentError = ""
-          }
+          .onSuccess { m -> applyPollSuccess(host = null, metrics = m) }
           .onFailure { e ->
             val message = e.message ?: e::class.simpleName ?: "error"
-            val transition = Derive.afterPoll(hosts.isNotEmpty(), demoMode, pollSucceeded = false)
-            if (metricsSource == MetricsSource.Live) {
-              log("warn", "agent · unreachable: $message")
-              // The switch used to change only a dialog's wording. Now it does
-              // what it says: one magic packet the moment a live Mac stops
-              // answering, not one per tick -- a Mac that is off for the night
-              // does not need a packet every second.
-              if (wakeOnLan && agentMac.isNotBlank()) {
-                log("info", "power · Wake-on-LAN sent, the Mac stopped answering")
-                scope.launch { wakeHost() }
-              }
-              sawUnreachable = true
-              post("host", "$hostShortName is unreachable", message, Screen.Hosts)
-            }
-            connection =
-                when (transition) {
-                  Derive.PollOutcome.Offline -> Connection.Offline
-                  Derive.PollOutcome.Unpaired -> Connection.Unpaired
-                  else -> Connection.Connected
-                }
-            metricsSource = MetricsSource.Unreachable
-            agentError = message
+            applyPollFailure(message = message, allowWake = true)
           }
     }
     if (metricsSource == MetricsSource.Live) {
@@ -7880,6 +7839,97 @@ public class RemoteState(
       // the Mac is not answering is still "just opened" when it comes back.
       lastVisible = Derive.pollCadences(view, refreshMillis)
     }
+  }
+
+  /** Applies a successful metrics/host poll response to state. */
+  public fun applyPollSuccess(host: AgentHost? = null, metrics: AgentMetrics) {
+    if (host != null) {
+      agentHost = host
+      if (host.macAddress.isNotBlank() && host.macAddress != agentMac) {
+        updateSelected { entry -> entry.copy(mac = host.macAddress) }
+      }
+    }
+    val prevSource = metricsSource
+    val transition = Derive.afterPoll(hosts.isNotEmpty(), demoMode, pollSucceeded = true)
+    applyAgentMetrics(metrics)
+    hostResponded = true
+    connection =
+        if (transition == Derive.PollOutcome.Unpaired) Connection.Unpaired else Connection.Connected
+    if (prevSource != MetricsSource.Live) {
+      log("ok", "agent · live from ${agentHost?.hostname ?: "host"}")
+      // Only on the transition, and only when something was there to
+      // come back FROM: a first successful poll after launch is not a
+      // recovery and does not deserve a notification.
+      if (prevSource == MetricsSource.Unreachable && sawUnreachable) {
+        post("host", "$hostShortName is back", "the agent is answering again", Screen.Home)
+      }
+      sawUnreachable = false
+    }
+    metricsSource = MetricsSource.Live
+    agentError = ""
+  }
+
+  /** Transitions state when a poll fails to reach the selected Mac. */
+  public fun applyPollFailure(message: String, allowWake: Boolean = false) {
+    val transition = Derive.afterPoll(hosts.isNotEmpty(), demoMode, pollSucceeded = false)
+    if (metricsSource == MetricsSource.Live) {
+      log("warn", "agent · unreachable: $message")
+      // The switch used to change only a dialog's wording. Now it does
+      // what it says: one magic packet the moment a live Mac stops
+      // answering, not one per tick -- a Mac that is off for the night
+      // does not need a packet every second.
+      if (allowWake && wakeOnLan && agentMac.isNotBlank()) {
+        log("info", "power · Wake-on-LAN sent, the Mac stopped answering")
+        scope.launch { wakeHost() }
+      }
+      sawUnreachable = true
+      post("host", "$hostShortName is unreachable", message, Screen.Hosts)
+    }
+    connection =
+        when (transition) {
+          Derive.PollOutcome.Offline -> Connection.Offline
+          Derive.PollOutcome.Unpaired -> Connection.Unpaired
+          else -> Connection.Connected
+        }
+    metricsSource = MetricsSource.Unreachable
+    agentError = message
+  }
+
+  /**
+   * Records cached per-endpoint readings from a live poll pass (shared with offline-state tests).
+   */
+  public fun applyEndpointReadings(
+      processes: List<AgentProcess>? = agentProcesses,
+      vms: AgentList<AgentVm>? = agentVms,
+      containers: AgentList<AgentContainer>? = agentContainers,
+      k8s: AgentList<AgentNode>? = agentK8s,
+      claudeSessions: List<AgentClaudeSession>? = agentClaudeSessions,
+      sessions: AgentSessions? = agentSessions,
+      prs: AgentList<AgentPr>? = agentPrs,
+      argo: AgentList<AgentArgoApp>? = agentArgo,
+      ollama: AgentOllama? = agentOllama,
+      antigravity: AgentAntigravity? = agentAntigravity,
+      vitruvianSpeaker: AgentVitruvianSpeaker? = agentVitruvianSpeaker,
+      audio: AgentAudio? = agentAudio,
+      tools: AgentTools? = agentTools,
+      gpuPowerWatts: Double? = gpuWatts,
+      anePowerWatts: Double? = aneWatts,
+  ) {
+    agentProcesses = processes
+    agentVms = vms
+    agentContainers = containers
+    agentK8s = k8s
+    agentClaudeSessions = claudeSessions
+    agentSessions = sessions
+    agentPrs = prs
+    agentArgo = argo
+    agentOllama = ollama
+    agentAntigravity = antigravity
+    if (vitruvianSpeaker != null) applyAgentVitruvianSpeaker(vitruvianSpeaker)
+    agentAudio = audio
+    agentTools = tools
+    gpuWatts = gpuPowerWatts
+    aneWatts = anePowerWatts
   }
 
   private fun applyAgentMetrics(m: AgentMetrics) {

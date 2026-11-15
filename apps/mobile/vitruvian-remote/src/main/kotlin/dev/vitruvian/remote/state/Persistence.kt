@@ -70,6 +70,91 @@ private const val FIELD = "\u001F"
 private const val RECORD = "\u001E"
 
 /**
+ * Pure-Kotlin key-value backing store so [Persistence] can be exercised on JVM without Android
+ * framework stubs.
+ */
+public interface KeyValueStore {
+  public fun contains(key: String): Boolean
+
+  public fun getString(key: String, defValue: String?): String?
+
+  public fun getStringSet(key: String, defValues: Set<String>?): Set<String>?
+
+  public fun getInt(key: String, defValue: Int): Int
+
+  public fun getLong(key: String, defValue: Long): Long
+
+  public fun getBoolean(key: String, defValue: Boolean): Boolean
+
+  public fun edit(): Editor
+
+  public interface Editor {
+    public fun putString(key: String, value: String?): Editor
+
+    public fun putStringSet(key: String, values: Set<String>?): Editor
+
+    public fun putInt(key: String, value: Int): Editor
+
+    public fun putBoolean(key: String, value: Boolean): Editor
+
+    public fun putLong(key: String, value: Long): Editor
+
+    public fun remove(key: String): Editor
+
+    public fun apply()
+  }
+}
+
+private class AndroidKeyValueStore(private val raw: SharedPreferences) : KeyValueStore {
+  override fun contains(key: String): Boolean = raw.contains(key)
+
+  override fun getString(key: String, defValue: String?): String? = raw.getString(key, defValue)
+
+  override fun getStringSet(key: String, defValues: Set<String>?): Set<String>? =
+      raw.getStringSet(key, defValues)
+
+  override fun getInt(key: String, defValue: Int): Int = raw.getInt(key, defValue)
+
+  override fun getLong(key: String, defValue: Long): Long = raw.getLong(key, defValue)
+
+  override fun getBoolean(key: String, defValue: Boolean): Boolean = raw.getBoolean(key, defValue)
+
+  override fun edit(): KeyValueStore.Editor = AndroidEditor(raw.edit())
+
+  private class AndroidEditor(private val raw: SharedPreferences.Editor) : KeyValueStore.Editor {
+    override fun putString(key: String, value: String?): KeyValueStore.Editor = apply {
+      raw.putString(key, value)
+    }
+
+    override fun putStringSet(key: String, values: Set<String>?): KeyValueStore.Editor = apply {
+      raw.putStringSet(key, values)
+    }
+
+    override fun putInt(key: String, value: Int): KeyValueStore.Editor = apply {
+      raw.putInt(key, value)
+    }
+
+    override fun putBoolean(key: String, value: Boolean): KeyValueStore.Editor = apply {
+      raw.putBoolean(key, value)
+    }
+
+    override fun putLong(key: String, value: Long): KeyValueStore.Editor = apply {
+      raw.putLong(key, value)
+    }
+
+    override fun remove(key: String): KeyValueStore.Editor = apply { raw.remove(key) }
+
+    override fun apply() {
+      raw.apply()
+    }
+  }
+}
+
+private fun openAndroidStore(context: Context): KeyValueStore =
+    AndroidKeyValueStore(
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE))
+
+/**
  * The handful of things that survive a restart: installed modules, user macros, hidden widgets, the
  * selected host, the theme, the dock and how the trackpad feels.
  *
@@ -77,9 +162,8 @@ private const val RECORD = "\u001E"
  * read once at startup and written on user action, so the flow machinery would be all cost and no
  * benefit.
  */
-public class Persistence(context: Context) {
-  private val prefs: SharedPreferences =
-      context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+public class Persistence(private val prefs: KeyValueStore) {
+  public constructor(context: Context) : this(openAndroidStore(context))
 
   init {
     migrateSingleHost()

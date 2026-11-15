@@ -31,7 +31,9 @@
 # file is hand-authored.
 # gazelle:ignore
 
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("@rules_android//android:rules.bzl", "android_binary")
+load("@rules_java//java:java_import.bzl", "java_import")
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
 load("@rules_kotlin//kotlin:jvm.bzl", "kt_jvm_library", "kt_jvm_test")
 load("@rules_rust//rust:defs.bzl", "rust_test")
@@ -123,14 +125,23 @@ _VERSION_CODE_VALIDATED = (
     _VERSION_CODE if _VERSION_CODE > 1 else fail("versionCode must be > 1, got %s" % _VERSION_CODE)
 )
 
+_MANIFEST_VALUES = dict(
+    _MANIFEST_BASE,
+    versionCode = str(_VERSION_CODE_VALIDATED),
+)
+
+# Exposes the exact stamped versionCode string so tests verify what :app actually stamps.
+write_file(
+    name = "app_version_code",
+    out = "app_version_code.txt",
+    content = [_MANIFEST_VALUES["versionCode"]],
+)
+
 android_binary(
     name = "app",
     custom_package = "dev.vitruvian.remote",
     manifest = "src/main/AndroidManifest.xml",
-    manifest_values = dict(
-        _MANIFEST_BASE,
-        versionCode = str(_VERSION_CODE_VALIDATED),
-    ),
+    manifest_values = _MANIFEST_VALUES,
     # No explicit visibility: the package default above already scopes this to
     # the app's own subpackages, and `bazel build //<this app>:app` needs no
     # visibility at all. Making it public would punch a hole in the inter-app
@@ -200,6 +211,36 @@ kt_jvm_test(
     deps = [
         ":format",
         "@maven//:junit_junit",
+    ],
+)
+
+# Compose's Android runtime artifact implements android.os.Parcelable and
+# probes Looper.getMainLooper() inside catch (Exception); putting the SDK
+# stub jar on the JVM test runtime classpath matches Android unit tests.
+java_import(
+    name = "android_sdk_stub_jar",
+    testonly = True,
+    jars = ["@androidsdk//:platforms/android-35/android.jar"],
+)
+
+kt_jvm_test(
+    name = "mock_host_walk_test",
+    srcs = ["src/test/kotlin/dev/vitruvian/remote/state/MockHostWalkTest.kt"],
+    test_class = "dev.vitruvian.remote.state.MockHostWalkTest",
+    runtime_deps = [":android_sdk_stub_jar"],
+    deps = [
+        ":bridge_policy",
+        ":derive",
+        ":format",
+        ":hid_codes",
+        ":lib",
+        ":tuning",
+        ":wake_on_lan",
+        ":wire",
+        "//packages/design-system-android:lib",
+        "@maven//:androidx_compose_runtime_runtime",
+        "@maven//:junit_junit",
+        "@maven//:org_jetbrains_kotlinx_kotlinx_coroutines_android",
     ],
 )
 
@@ -436,6 +477,7 @@ pipeline_unit(
         ":format_test",
         ":hid_codes_test",
         ":lib",
+        ":mock_host_walk_test",
         ":tuning_test",
         ":wake_on_lan_test",
         ":wire_test",

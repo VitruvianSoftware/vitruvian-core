@@ -180,6 +180,7 @@ rust_test(
         "Sources/RemoteMenuCore/Version.swift",
         "atrium-extension/vitruvian-tool.json",
         "//apps/mobile/vitruvian-remote:BUILD",
+        "//apps/mobile/vitruvian-remote:app_version_code",
         "//apps/mobile/vitruvian-remote:release-please-config.json",
         "//apps/mobile/vitruvian-remote/macagent:rs/src/server.rs",
     ],
