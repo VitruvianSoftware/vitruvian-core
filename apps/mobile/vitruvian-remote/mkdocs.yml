@@ -28,6 +28,7 @@ plugins:
 
 nav:
   - Overview: index.md
+  - Privacy: PRIVACY.md
   - Phone Bridge: phone-bridge.md
   - Mac Agent API: macagent-api.md
 

@@ -10,8 +10,8 @@ posture.
 It drives the host (trackpad, keys, media, volume and brightness, power,
 clipboard, scripted macros, prompts to a coding agent), shows dashboards for the
 machine itself (CPU / GPU / Neural Engine, memory pressure, thermals, battery,
-disk, network, processes, Lima VMs and K3s nodes, Docker), and hosts **modules** —
-installable per-app dashboards with their own widgets and macros.
+disk, network, processes, Lima VMs and K3s nodes, Docker), and displays **modules** —
+per-app dashboards you can show or hide, with their own widgets and controls.
 
 ## Status
 
@@ -39,10 +39,36 @@ Two transports:
   unpairs and restarts it without a terminal. It is separate from
   Vitruvian Speaker on purpose.
 
-The Home screen carries a tag that is never hidden: `LIVE`, `SIMULATED`
-(no agent configured — the app runs on `state/MockHost.kt` exactly as it
-shipped) or `UNREACHABLE` (an agent is configured and not answering; the
-numbers freeze rather than pretend).
+The Home screen carries a status tag: `LIVE` (your Mac helper is answering),
+`SIMULATED` (when you choose **See a demo** on the start screen with no Mac paired), or
+`UNREACHABLE` (a paired Mac is not answering; readings freeze rather than pretend).
+
+## First run
+
+A fresh install opens unpaired. The first screen says **No Mac paired** and offers three choices: **Pair a Mac**, **Install guide**, and **See a demo**.
+
+- **See a demo** runs simulated dashboards for the current session only. Demo state is not saved, and **Exit demo** returns to the unpaired screen.
+- A real install starts with no default macros and no homelab or other extra modules enabled. Built-in sample macros appear only in demo mode.
+- You can create, edit, and delete macros in **Settings**.
+- In **Modules → Gallery**, modules are turned on and off with **Show** and **Hide** (they are not installed or removed).
+
+## Pairing
+
+1. On your phone, open Vitruvian Remote and tap **Pair a Mac**. A six-digit code appears.
+2. On your Mac, install the Mac helper by following the [setup guide](https://github.com/VitruvianSoftware/vitruvian-remote#readme).
+3. Click the Vitruvian Remote icon in your Mac's menu bar. Before the Mac helper is installed and running, the menu shows **Copy Install Command** instead of pairing options. Once the Mac helper is running, the menu shows **Pair with QR Code…** and **Pair with a Code…**:
+   - **Pair with QR Code…** shows a QR code on your Mac. Scan it with your phone's camera, open the link, tap **Open in Vitruvian Remote**, and confirm on your phone. QR pairing requires Tailscale on your Mac; if Tailscale is not connected, the Mac helper tells you to use the six-digit code instead.
+   - **Pair with a Code…** asks for the six-digit code shown on your phone.
+
+## Privacy
+
+Vitruvian Remote has no account and no ads. Crash reports are on by default and can be turned off in **Settings → About → Privacy**. Remote control and telemetry requests go only to the Macs you add, trackpad and keys go over Bluetooth, and Phone Bridge stays off until you turn it on. See the [Privacy guide](docs/PRIVACY.md) for the full list of what leaves the phone and what stays on it.
+
+## About and Support
+
+You can open the About screen from **Settings → About**. It shows the installed version, a **Support** section with **Donate** and **Star on GitHub**, and links for **Source code**, **Privacy**, **License** (MIT), **Open-source licenses**, **Help and feedback** (GitHub Issues), and **Setup guide** ("Install the Mac helper").
+
+Tapping **Donate** opens `https://vitruviansoftware.dev/donate/vitruvian-remote/` in your browser (with a source query tag added by the app), which forwards to the payment page. Apps never embed Stripe URLs.
 
 What is honestly **not** readable on macOS without root or extra tools, and
 is shown as such rather than guessed: SoC temperature and fan speed (the
@@ -115,8 +141,8 @@ Releases are managed via release-please (`release-please-config.json`, `.release
   written yet.
 - **Module gallery.** The "Xcode builds" module was removed (it was never wired).
   "Add by URL" was removed from the module gallery. "Install guide" opens
-  `apps/mobile/vitruvian-remote/macagent/README.md` on GitHub. Antigravity, Ollama,
-  Grafana, Docker, Lima, Sony TV, and Vitruvian Speaker are fully wired.
+  `https://github.com/VitruvianSoftware/vitruvian-remote#readme`. Antigravity, Ollama,
+  Grafana, Docker, Lima, Sony TV, and Vitruvian Speaker are wired.
 - **Vitruvian Speaker.** (`Apps → Vitruvian Speaker`, backed by
   [`macagent/rs/src/speaker.rs`](macagent/rs/src/speaker.rs) and
   [`Vitruvian Speaker`](../../desktop/vitruvian-speaker/README.md)). The door row (app vs

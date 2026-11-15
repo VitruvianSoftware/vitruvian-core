@@ -91,7 +91,13 @@ update `vitruvian-remote` in lockstep across these files:
      WAV playback, Android `TextToSpeech` fallback, transient audio focus, and headphone-only
      filtering)
 
+## App identity, licences, and crash reporting
+
+- **App identity and privacy copy.** Static identity, URLs (`donateURL`, `setupGuideURL`, `repositoryURL`, `issuesURL`), `openSourceLicenses`, and the Privacy screen copy live in [`src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt`](src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt).
+- **Open-source licences and test.** `AppInfo.openSourceLicenses` must list every `@maven` dependency in the `:lib` rule of [`BUILD`](BUILD). The JVM test `//apps/mobile/vitruvian-remote:app_info_test` (`AppInfoTest`) fails when a `@maven` dependency in `:lib` is missing from `openSourceLicenses`, when `src/main/res/raw/app_license.txt` differs from [`LICENSE`](LICENSE), or when any source or resource under `src/main` contains a `stripe.com` URL.
+- **Crash-report switch gates Sentry.** `Persistence.sendCrashReports` (default `true`) determines whether `MainActivity.configureSentry` initializes Sentry on launch. Turning **Send crash reports** off on the Privacy screen calls `configureSentry(enabled = false, ...)`, which closes Sentry immediately. Keep launch initialization and runtime toggling in step when changing crash reporting.
+
 ## Docs
 
-`docs/` is a TechDocs site (`mkdocs.yml`: index, macagent API, phone bridge);
+`docs/` is a TechDocs site (`mkdocs.yml`: index, privacy, phone bridge, macagent API);
 `bazel run //tools/techdocs:check` must still compile it after a docs change.
