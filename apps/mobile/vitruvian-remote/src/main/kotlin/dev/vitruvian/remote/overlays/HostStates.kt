@@ -73,10 +73,8 @@ public fun ColumnScope.OfflineBanner(state: RemoteState) {
 }
 
 /**
- * The unpaired empty state.
- *
- * Navigation is locked to Hosts while this shows, so both buttons lead somewhere that can actually
- * resolve it.
+ * The unpaired empty state rendered in-page on Mac-backed tabs (`Home`, `Mac`, `Modules`,
+ * `Console`), pointing users to Settings → Your Macs, the install guide, or Demo mode.
  */
 @Composable
 public fun ColumnScope.UnpairedState(state: RemoteState) {
@@ -86,8 +84,8 @@ public fun ColumnScope.UnpairedState(state: RemoteState) {
         label = "No Mac paired",
         title = "This remote has nothing to point at yet.",
         body =
-            "Install the agent on your Mac, then enter the pairing code shown here. " +
-                "Dashboards and modules appear once the first host connects.",
+            "Install the Mac helper on your Mac, then enter the pairing code shown here. " +
+                "Dashboards and modules appear once your first Mac connects.",
     ) {
       VButton(
           label = "Pair a Mac",
@@ -95,6 +93,11 @@ public fun ColumnScope.UnpairedState(state: RemoteState) {
           variant = ButtonVariant.Primary,
       )
       VButton("Install guide", state::openInstallGuide)
+      VButton(
+          label = "See a demo",
+          onClick = state::enterDemo,
+          variant = ButtonVariant.Secondary,
+      )
     }
   }
 }

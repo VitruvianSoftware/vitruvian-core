@@ -1013,18 +1013,18 @@ private fun ColumnScope.GalleryPane(state: RemoteState) {
   val colors = Vitruvian
   VText(
       // What is true: there are no bundles and no SSH. Every module is a view
-      // of something the agent already reads, tagged with the tool it runs.
+      // of something the Mac helper already reads.
       text =
-          "Each module is a view of something the Mac agent can see. " +
-              "Remove one to hide its dashboard.",
+          "Each module is a view of something the Mac helper can see. " +
+              "Hide one to remove its dashboard.",
       modifier = Modifier.padding(start = Space.s4, end = Space.s4, bottom = Space.s3),
       style = VitruvianType.listSub,
       color = colors.textDim,
   )
   MockHost.gallery.forEach { entry ->
-    val installed = entry.id in state.installed
+    val installed = entry.id in state.effectiveInstalled
     // Live, the gallery reflects the Mac: a module whose program is not
-    // there says so instead of offering an Install button for nothing.
+    // there says so instead of offering a Show button for nothing.
     val why = state.moduleUnavailableReason(entry.id)
     ListItem(
         title = entry.name,
@@ -1044,16 +1044,9 @@ private fun ColumnScope.GalleryPane(state: RemoteState) {
             enabled = installed || why == null,
             contentPadding = PaddingValues(horizontal = Space.s3),
         )
-      } else {
-        Tag(text = entry.source, tone = TagTone.Outline)
       }
       VButton(
-          label =
-              when {
-                installed -> "Remove"
-                why != null -> "Not here"
-                else -> "Install"
-              },
+          label = Derive.galleryActionLabel(shown = installed, unavailable = why != null),
           onClick = { state.toggleModule(entry.id) },
           modifier = Modifier.widthIn(min = INSTALL_BUTTON_MIN),
           variant = if (installed) ButtonVariant.Secondary else ButtonVariant.Primary,

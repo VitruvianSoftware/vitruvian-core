@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
@@ -46,6 +47,7 @@ import dev.vitruvian.design.VSwitch
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
+import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.MacroKind
 import dev.vitruvian.remote.state.RemoteState
 
@@ -62,13 +64,14 @@ private val COMMAND_FIELD_HEIGHT = 72.dp
 public fun MacroEditor(state: RemoteState) {
   if (!state.macroEditorOpen) return
   val colors = Vitruvian
+  val editing = state.editingMacroId != null
   BottomSheet(onDismissRequest = state::closeMacroEditor) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
       Column(
           modifier = Modifier.weight(1f),
           verticalArrangement = Arrangement.spacedBy(Space.s1),
       ) {
-        Label(text = "Macro · new", color = colors.accentText)
+        Label(text = if (editing) "Macro · edit" else "Macro · new", color = colors.accentText)
         VText(text = "Bind a button to a script", style = VitruvianType.h2)
       }
       VText(
@@ -82,7 +85,7 @@ public fun MacroEditor(state: RemoteState) {
           value = state.macroName,
           onValueChange = state::updateMacroName,
           modifier = Modifier.fillMaxWidth(),
-          placeholder = "Deploy staging",
+          placeholder = Derive.MACRO_NAME_HINT,
       )
     }
     Field(label = "Kind") {
@@ -102,7 +105,7 @@ public fun MacroEditor(state: RemoteState) {
           value = state.macroCommand,
           onValueChange = state::updateMacroCommand,
           modifier = Modifier.fillMaxWidth().heightIn(min = COMMAND_FIELD_HEIGHT),
-          placeholder = "bazel run //tools/gitops:sync -- staging",
+          placeholder = Derive.MACRO_COMMAND_HINT,
           textStyle = VitruvianType.mono,
           singleLine = false,
       )
@@ -125,7 +128,16 @@ public fun MacroEditor(state: RemoteState) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(Space.s3, Alignment.End),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
+      if (editing) {
+        VButton(
+            label = Derive.macroDeleteLabel(state.isMacroDeleteArmed),
+            onClick = state::tapDeleteEditingMacro,
+            variant = ButtonVariant.Danger,
+        )
+        Spacer(modifier = Modifier.weight(1f))
+      }
       VButton("Cancel", state::closeMacroEditor)
       VButton(
           label = "Save macro",

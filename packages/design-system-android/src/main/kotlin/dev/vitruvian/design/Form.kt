@@ -74,6 +74,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
+private const val PLACEHOLDER_ALPHA = 0.55f
+
 /**
  * `.input` - a square field on `color.surface` with a divider border.
  *
@@ -93,6 +95,8 @@ public fun VInput(
     onImeAction: (() -> Unit)? = null,
 ) {
   val colors = Vitruvian
+  val placeholderDescription =
+      A11y.inputPlaceholderDescription(value = value, placeholder = placeholder)
   BasicTextField(
       value = value,
       onValueChange = onValueChange,
@@ -101,7 +105,14 @@ public fun VInput(
               .defaultMinSize(minHeight = minHeight)
               .background(colors.surface)
               .border(1.dp, colors.divider)
-              .padding(horizontal = Space.s3, vertical = Space.s3),
+              .padding(horizontal = Space.s3, vertical = Space.s3)
+              .let { base ->
+                if (placeholderDescription != null) {
+                  base.semantics { contentDescription = placeholderDescription }
+                } else {
+                  base
+                }
+              },
       textStyle = textStyle.copy(color = colors.text),
       cursorBrush = SolidColor(colors.accentText),
       singleLine = singleLine,
@@ -112,8 +123,9 @@ public fun VInput(
           if (value.isEmpty() && placeholder.isNotEmpty()) {
             VText(
                 text = placeholder,
+                modifier = Modifier.clearAndSetSemantics {},
                 style = textStyle,
-                color = colors.textDim,
+                color = colors.textDim.copy(alpha = PLACEHOLDER_ALPHA),
                 maxLines = if (singleLine) 1 else Int.MAX_VALUE,
             )
           }

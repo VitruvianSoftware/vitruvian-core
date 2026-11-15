@@ -110,6 +110,147 @@ class A11yTest {
   }
 
   @Test
+  fun emptyStateActionsUseFlowRowSoButtonsWrapOnNarrowWidths() {
+    val src =
+        readDesignSource(
+            "packages/design-system-android/src/main/kotlin/dev/vitruvian/design/States.kt")
+    val emptyStateBlock =
+        src.substringAfter("public fun EmptyState(").substringBefore("public fun Skeleton(")
+    assertTrue("EmptyState must use FlowRow for actions", emptyStateBlock.contains("FlowRow("))
+    assertTrue(
+        "EmptyState actions parameter remains RowScope.() -> Unit",
+        emptyStateBlock.contains("RowScope.() -> Unit"),
+    )
+  }
+
+  @Test
+  fun topBarBackActionHidesMarkAndResolvesSpokenDescription() {
+    assertTrue(A11y.topBarShowMark(showMark = true, hasBackAction = false))
+    assertFalse(A11y.topBarShowMark(showMark = true, hasBackAction = true))
+    assertFalse(A11y.topBarShowMark(showMark = false, hasBackAction = false))
+    assertFalse(A11y.topBarShowMark(showMark = false, hasBackAction = true))
+
+    assertEquals("Back", A11y.topBarBackDescription(null))
+    assertEquals("Back", A11y.topBarBackDescription("   "))
+    assertEquals("Back to Settings", A11y.topBarBackDescription("Back to Settings"))
+  }
+
+  @Test
+  fun topBarLeadingBackActionUsesHitH1AndButtonSemantics() {
+    val src =
+        readDesignSource(
+            "packages/design-system-android/src/main/kotlin/dev/vitruvian/design/Nav.kt")
+    val topBarBlock =
+        src.substringAfter("public fun TopBar(").substringBefore("public fun HostChip(")
+    assertTrue(
+        "TopBar must accept optional onBack", topBarBlock.contains("onBack: (() -> Unit)? = null"))
+    assertTrue("TopBar back button must meet Hit.h1 touch target", topBarBlock.contains("Hit.h1"))
+    assertTrue("TopBar back button must expose Role.Button", topBarBlock.contains("Role.Button"))
+    assertTrue(
+        "TopBar back button must resolve spoken description via A11y",
+        topBarBlock.contains("A11y.topBarBackDescription"),
+    )
+    assertTrue(
+        "TopBar must gate VMark visibility via A11y.topBarShowMark",
+        topBarBlock.contains("A11y.topBarShowMark"),
+    )
+  }
+
+  @Test
+  fun topBarGivesTitlePriorityOverHostChipAt200PercentScale() {
+    // 100% scale on 360dp folded phone (277dp left after outer padding + 44dp back + 13dp gap):
+    // both full "Settings" (~82dp) and trailing (~140dp) fit comfortably.
+    val normal =
+        A11y.allocateTopBarWidths(
+            availableAfterLeadingPx = 277,
+            gapPx = 13,
+            titleIntrinsicWidthPx = 82,
+            minTitleWidthPx = 82,
+            hasTrailing = true,
+            trailingIntrinsicWidthPx = 140,
+            isSingleWordTitle = true,
+            minTrailingFloorPx = 96,
+        )
+    assertEquals(140, normal.trailingMaxWidthPx)
+    assertTrue(
+        "Expected full title width at 100%, was ${normal.titleWidthPx}", normal.titleWidthPx >= 82)
+
+    // 200% scale on 360dp folded phone: "Settings" needs 164dp, trailing wants 177dp (44 + 13 +
+    // 120).
+    // Title must keep the full word while trailing shrinks and ellipsizes the host chip first.
+    val foldedAt200 =
+        A11y.allocateTopBarWidths(
+            availableAfterLeadingPx = 277,
+            gapPx = 13,
+            titleIntrinsicWidthPx = 164,
+            minTitleWidthPx = 164,
+            hasTrailing = true,
+            trailingIntrinsicWidthPx = 177,
+            isSingleWordTitle = true,
+            minTrailingFloorPx = 96,
+        )
+    assertTrue(
+        "Expected full single-word title width >= 164 on 360dp at 200%, was ${foldedAt200.titleWidthPx}",
+        foldedAt200.titleWidthPx >= 164,
+    )
+    assertEquals(100, foldedAt200.trailingMaxWidthPx)
+
+    // 200% scale on 411dp phone (328dp after leading): full "Settings" kept and trailing gets
+    // remaining 151dp.
+    val widePhoneAt200 =
+        A11y.allocateTopBarWidths(
+            availableAfterLeadingPx = 328,
+            gapPx = 13,
+            titleIntrinsicWidthPx = 164,
+            minTitleWidthPx = 164,
+            hasTrailing = true,
+            trailingIntrinsicWidthPx = 177,
+            isSingleWordTitle = true,
+            minTrailingFloorPx = 96,
+        )
+    assertTrue(widePhoneAt200.titleWidthPx >= 164)
+    assertEquals(151, widePhoneAt200.trailingMaxWidthPx)
+
+    // Multi-word titles shrink trailing down to floor first and always protect the first word.
+    val wandFirstWord = A11y.estimateFirstWordWidthPx(360, "VITRUVIAN WAND // AIR MOUSE")
+    assertEquals("VITRUVIAN", A11y.firstTitleWord("VITRUVIAN WAND // AIR MOUSE"))
+    assertFalse(A11y.isSingleWordTitle("Phone Bridge"))
+    assertTrue(A11y.isSingleWordTitle("Settings"))
+    val multiWordTight =
+        A11y.allocateTopBarWidths(
+            availableAfterLeadingPx = 290,
+            gapPx = 13,
+            titleIntrinsicWidthPx = 360,
+            minTitleWidthPx = wandFirstWord,
+            hasTrailing = true,
+            trailingIntrinsicWidthPx = 200,
+            isSingleWordTitle = false,
+            minTrailingFloorPx = 96,
+        )
+    assertTrue(
+        "Expected multi-word title to keep at least first word ($wandFirstWord), got ${multiWordTight.titleWidthPx}",
+        multiWordTight.titleWidthPx >= wandFirstWord,
+    )
+    assertEquals(96, multiWordTight.trailingMaxWidthPx)
+
+    // HostChip tightens max width smoothly at large accessibility font scales.
+    assertEquals(160f, A11y.hostChipMaxWidthDp(1.0f))
+    assertEquals(160f, A11y.hostChipMaxWidthDp(1.15f))
+    assertEquals(120f, A11y.hostChipMaxWidthDp(1.6f))
+    assertEquals(120f, A11y.hostChipMaxWidthDp(2.0f))
+
+    val navSrc = stripKotlinComments(readDesignSource("Nav.kt"))
+    val topBarBody = extractKotlinBlock(navSrc, "public fun TopBar(")
+    assertTrue(
+        "TopBar must allocate widths via A11y.allocateTopBarWidths",
+        topBarBody.contains("A11y.allocateTopBarWidths("))
+    val hostChipBody = extractKotlinBlock(navSrc, "public fun HostChip(")
+    assertTrue(
+        "HostChip must scale cap via A11y.hostChipMaxWidthDp",
+        hostChipBody.contains("A11y.hostChipMaxWidthDp("))
+  }
+
+  @Test
   fun terminalPaletteMeetsWcagContrastInBothThemes() {
     val bg = terminalBackgroundColor().toArgb()
     assertEquals(darkColors().neutral900.toArgb(), bg)
@@ -324,6 +465,33 @@ class A11yTest {
     )
   }
 
+  @Test
+  fun vInputPlaceholderClearsChildTextSemanticsAndExposesEmptyHintDescription() {
+    assertEquals(
+        "e.g. Lock screen",
+        A11y.inputPlaceholderDescription(value = "", placeholder = "e.g. Lock screen"),
+    )
+    assertNull(A11y.inputPlaceholderDescription(value = "", placeholder = "   "))
+    assertNull(
+        A11y.inputPlaceholderDescription(value = "Sleep", placeholder = "e.g. Lock screen"),
+    )
+
+    val formSrc = stripKotlinComments(readDesignSource("Form.kt"))
+    val vInputBody = extractKotlinBlock(formSrc, "public fun VInput(")
+    assertTrue(
+        "VInput must compute empty-field hint description via A11y",
+        vInputBody.contains("A11y.inputPlaceholderDescription("),
+    )
+    assertTrue(
+        "VInput placeholder VText must clear semantics so accessibility trees do not read hints as text",
+        vInputBody.contains("clearAndSetSemantics {}"),
+    )
+    assertTrue(
+        "VInput placeholder must dim via PLACEHOLDER_ALPHA",
+        vInputBody.contains("PLACEHOLDER_ALPHA"),
+    )
+  }
+
   private fun stripKotlinComments(source: String): String {
     val out = StringBuilder(source.length)
     var i = 0
@@ -439,16 +607,26 @@ class A11yTest {
   }
 
   private fun readDesignSource(fileName: String): String {
-    val candidates =
+    val shortName = fileName.substringAfterLast('/')
+    val directCandidates =
         listOf(
-            "packages/design-system-android/src/main/kotlin/dev/vitruvian/design/$fileName",
-            "src/main/kotlin/dev/vitruvian/design/$fileName",
+            fileName,
+            "packages/design-system-android/src/main/kotlin/dev/vitruvian/design/$shortName",
+            "src/main/kotlin/dev/vitruvian/design/$shortName",
         )
+    val base = System.getenv("TEST_SRCDIR")
+    val runfileCandidates =
+        if (base != null) {
+          listOf("_main", "vitruvian_core", "").map { sub ->
+            if (sub.isEmpty()) File(base, fileName) else File(File(base, sub), fileName)
+          }
+        } else {
+          emptyList()
+        }
     val path =
-        candidates.map(::File).firstOrNull(File::isFile)
-            ?: File(System.getenv("TEST_SRCDIR") ?: ".").walkTopDown().firstOrNull {
-              it.isFile && it.name == fileName
-            }
+        directCandidates.map(::File).firstOrNull(File::isFile)
+            ?: runfileCandidates.firstOrNull(File::isFile)
+            ?: File(base ?: ".").walkTopDown().firstOrNull { it.isFile && it.name == shortName }
             ?: error("Unable to locate design-system source $fileName")
     return path.readText()
   }

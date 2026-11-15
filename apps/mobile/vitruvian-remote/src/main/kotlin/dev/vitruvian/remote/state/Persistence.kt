@@ -50,6 +50,10 @@ private const val KEY_BRIDGE_AUDIT = "bridgeAudit"
 private const val KEY_SPEAKER_SETTINGS_EXPANDED = "vitruvianSpeakerSettingsExpanded"
 private const val KEY_SPEAKER_MIRROR = "vitruvianSpeakerMirror"
 private const val KEY_ASKED_NOTIFICATIONS = "askedForNotifications"
+private const val KEY_WAKE_ON_LAN = "wakeOnLan"
+private const val KEY_CONFIRM_DESTRUCTIVE = "confirmDestructive"
+private const val KEY_REFRESH_INTERVAL = "refreshInterval"
+private const val KEY_SEND_CRASH_REPORTS = "sendCrashReports"
 private const val KEY_ASKED_BLUETOOTH = "askedForBluetooth"
 
 /** How many console commands are remembered. Beyond this the oldest fall off. */
@@ -244,6 +248,12 @@ public class Persistence public constructor(private val prefs: PrefsStore) {
     get() = BridgePolicy.decodeAudit(prefs.getString(KEY_BRIDGE_AUDIT, "").orEmpty())
     set(value) = prefs.edit().putString(KEY_BRIDGE_AUDIT, BridgePolicy.encodeAudit(value)).apply()
 
+  /**
+   * Whether the user has explicitly saved an installed-modules set rather than relying on defaults.
+   */
+  public val hasSavedInstalled: Boolean
+    get() = prefs.contains(KEY_INSTALLED)
+
   public var installed: List<String>
     get() =
         Derive.filterInstalledModules(
@@ -264,6 +274,21 @@ public class Persistence public constructor(private val prefs: PrefsStore) {
                 if (prefs.contains(KEY_THEME)) prefs.getBoolean(KEY_THEME, true) else null,
         )
     set(value) = prefs.edit().putString(KEY_THEME_MODE, value.name).apply()
+
+  public var wakeOnLan: Boolean
+    get() = prefs.getBoolean(KEY_WAKE_ON_LAN, false)
+    set(value) = prefs.edit().putBoolean(KEY_WAKE_ON_LAN, value).apply()
+
+  public var confirmDestructive: Boolean
+    get() = prefs.getBoolean(KEY_CONFIRM_DESTRUCTIVE, true)
+    set(value) = prefs.edit().putBoolean(KEY_CONFIRM_DESTRUCTIVE, value).apply()
+
+  public var refreshInterval: String
+    get() =
+        Derive.normalizeRefreshInterval(
+            prefs.getString(KEY_REFRESH_INTERVAL, Derive.DEFAULT_REFRESH_INTERVAL))
+    set(value) =
+        prefs.edit().putString(KEY_REFRESH_INTERVAL, Derive.normalizeRefreshInterval(value)).apply()
 
   public var dockOpen: Boolean
     get() = prefs.getBoolean(KEY_DOCK, true)
@@ -374,6 +399,11 @@ public class Persistence public constructor(private val prefs: PrefsStore) {
   public var askedForNotifications: Boolean
     get() = prefs.getBoolean(KEY_ASKED_NOTIFICATIONS, false)
     set(value) = prefs.edit().putBoolean(KEY_ASKED_NOTIFICATIONS, value).apply()
+
+  /** Whether crash reports are sent to Sentry. Default on; toggled on the Privacy screen. */
+  public var sendCrashReports: Boolean
+    get() = prefs.getBoolean(KEY_SEND_CRASH_REPORTS, true)
+    set(value) = prefs.edit().putBoolean(KEY_SEND_CRASH_REPORTS, value).apply()
 
   /**
    * Whether this install has ever prompted for `BLUETOOTH_CONNECT`, separating "not asked yet" from

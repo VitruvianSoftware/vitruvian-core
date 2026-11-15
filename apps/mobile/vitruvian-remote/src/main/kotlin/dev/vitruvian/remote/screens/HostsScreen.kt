@@ -60,32 +60,28 @@ import dev.vitruvian.design.StatusTone
 import dev.vitruvian.design.Tag
 import dev.vitruvian.design.TagTone
 import dev.vitruvian.design.VButton
+import dev.vitruvian.design.VIcon
 import dev.vitruvian.design.VInput
 import dev.vitruvian.design.VSwitch
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
+import dev.vitruvian.design.VitruvianIcons
 import dev.vitruvian.design.VitruvianType
+import dev.vitruvian.remote.state.AppInfo
 import dev.vitruvian.remote.state.Derive
-import dev.vitruvian.remote.state.Format
 import dev.vitruvian.remote.state.MetricsSource
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.ThemeMode
-import java.time.Instant
 
 private val PAIR_CODE_SIZE = 38.sp
 private val PAIR_CODE_TRACKING = 0.18.em
 private val REFRESH_INTERVALS = listOf("1 s", "5 s", "30 s")
 
 /**
- * How many audit rows the plate draws. The last 100 are kept; 20 is what fits and is worth reading.
- */
-private const val AUDIT_SHOWN = 20
-
-/**
- * Hosts: the paired Macs, pairing, connection settings and the macro list.
+ * Settings: paired Macs, Phone Bridge entry, notifications, appearance, safety, macros and About.
  *
- * Reached from the host chip in every posture, and the only screen the app shows at all until a Mac
- * is paired.
+ * Reached from the host chip in every posture, and the first screen the app shows until a Mac is
+ * paired.
  */
 @Composable
 public fun ColumnScope.HostsScreen(state: RemoteState) {
@@ -105,7 +101,7 @@ public fun ColumnScope.HostsScreen(state: RemoteState) {
               .fillMaxWidth(),
       verticalAlignment = Alignment.Bottom,
   ) {
-    Label(text = "Macs · ${state.hostRows.size}", modifier = Modifier.weight(1f))
+    Label(text = "Your Macs · ${state.hostRows.size}", modifier = Modifier.weight(1f))
     Status(tone = state.hostTone, text = state.connectionWord)
   }
 
@@ -142,7 +138,7 @@ public fun ColumnScope.HostsScreen(state: RemoteState) {
         value = state.newHostDraft,
         onValueChange = state::updateNewHostDraft,
         modifier = Modifier.weight(1f),
-        placeholder = "Add a Mac · 100.x.y.z or host.ts.net",
+        placeholder = "Add a Mac · your Mac's address",
         imeAction = ImeAction.Go,
         onImeAction = state::addTypedHost,
     )
@@ -153,24 +149,32 @@ public fun ColumnScope.HostsScreen(state: RemoteState) {
     AutoGrid(minItemWidth = TWO_UP_MIN, gap = Space.s4) {
       item { AgentPlate(state) }
       item { PairPlate(state) }
-      item { PhoneBridgePlate(state) }
-      item { ConnectionPlate(state) }
     }
   }
+
+  PhoneBridgeSection(state)
+  NotificationsSection(state)
+  AppearanceSection(state)
+  SafetySection(state)
 
   Column(
       modifier = Modifier.padding(horizontal = Space.s4, vertical = Space.s3).fillMaxWidth(),
       verticalArrangement = Arrangement.spacedBy(Space.s3),
   ) {
-    Label("Macros · bound to scripts")
+    Label("Macros")
     state.macros.forEach { macro ->
+      val editable = state.userMacros.any { it.id == macro.id }
       ListItem(
           title = macro.label,
           subtitle = macro.command,
           status = StatusTone.Ok,
+          onClick = if (editable) ({ state.editMacro(macro.id) }) else null,
           contentPadding = PaddingValues(vertical = Space.s3),
       ) {
         Tag(text = macro.kind.label, tone = TagTone.Outline)
+        if (editable) {
+          VText(text = "›", style = VitruvianType.listTitle, color = colors.textDim)
+        }
       }
     }
     VButton(
@@ -180,25 +184,218 @@ public fun ColumnScope.HostsScreen(state: RemoteState) {
         dashed = true,
     )
   }
+
+  AboutSection(state)
+}
+
+@Composable
+private fun PhoneBridgeSection(state: RemoteState) {
+  val colors = Vitruvian
+  val grantedCount = state.bridgePermissions.count { it.granted }
+  val summary =
+      Derive.phoneBridgeSummarySubtitle(
+          enabled = state.bridgeEnabled,
+          linked = state.bridgeLinked,
+          linkStatus = state.bridgeLinkStatus,
+          problemText = state.bridgeProblemText,
+          grantedCount = grantedCount,
+          totalCount = state.bridgePermissions.size,
+      )
+  val statusTone =
+      when {
+        state.bridgeLinked -> StatusTone.Ok
+        Derive.bridgeProblemIsBannerWorthy(state.bridgeProblem) -> StatusTone.Warn
+        else -> StatusTone.Neutral
+      }
+  Column(
+      modifier = Modifier.padding(horizontal = Space.s4, vertical = Space.s2).fillMaxWidth(),
+      verticalArrangement = Arrangement.spacedBy(Space.s2),
+  ) {
+    Label("Phone Bridge")
+  }
+  ListItem(
+      title = "Phone Bridge",
+      subtitle = summary,
+      status = statusTone,
+      onClick = state::openPhoneBridge,
+      contentPadding = PaddingValues(horizontal = Space.s4, vertical = Space.s3),
+  ) {
+    VIcon(path = VitruvianIcons.CHEVRON_RIGHT, color = colors.textDim, contentDescription = null)
+  }
+}
+
+@Composable
+private fun NotificationsSection(state: RemoteState) {
+  val colors = Vitruvian
+  Column(
+      modifier = Modifier.sectionPadding().fillMaxWidth(),
+      verticalArrangement = Arrangement.spacedBy(Space.s3),
+  ) {
+    Label("Notifications")
+    Plate(modifier = Modifier.fillMaxWidth()) {
+      Column(
+          modifier = Modifier.padding(Space.s4),
+          verticalArrangement = Arrangement.spacedBy(Space.s3),
+      ) {
+        val notif = state.notificationsRowSpec
+        ListItem(
+            title = notif.title,
+            subtitle = notif.subtitle,
+            status =
+                when {
+                  notif.statusLabel != null -> StatusTone.Ok
+                  notif.permanentlyBlocked -> StatusTone.Warn
+                  else -> StatusTone.Neutral
+                },
+            contentPadding = PaddingValues(vertical = Space.s2),
+            statusAdjacentText = notif.statusLabel,
+        ) {
+          when (notif.action) {
+            Derive.NotificationPermissionAction.None ->
+                notif.statusLabel?.let { Tag(text = it, tone = TagTone.Ok) }
+            Derive.NotificationPermissionAction.Allow ->
+                VButton(notif.actionLabel ?: "Allow", { state.requestNotificationsPermission() })
+            Derive.NotificationPermissionAction.OpenSettings ->
+                VButton(notif.actionLabel ?: "Open settings", state::openNotificationSettings)
+          }
+        }
+        Rule(modifier = Modifier.fillMaxWidth().height(1.dp))
+        val push = state.pushNotifySpec
+        VSwitch(
+            checked = push.checked,
+            onCheckedChange = state::setNotifications,
+            label = "Mac push notifications",
+            enabled = push.switchEnabled,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.s3),
+        ) {
+          VText(
+              text = push.subtitle,
+              modifier = Modifier.weight(1f),
+              style = VitruvianType.listSub,
+              color = colors.textDim,
+          )
+          VButton("Test push", state::testPush, enabled = push.testEnabled)
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun AppearanceSection(state: RemoteState) {
+  Column(
+      modifier = Modifier.sectionPadding().fillMaxWidth(),
+      verticalArrangement = Arrangement.spacedBy(Space.s3),
+  ) {
+    Label("Appearance")
+    Plate(modifier = Modifier.fillMaxWidth()) {
+      Column(
+          modifier = Modifier.padding(Space.s4),
+          verticalArrangement = Arrangement.spacedBy(Space.s4),
+      ) {
+        Label("Theme")
+        Segmented(
+            options =
+                ThemeMode.entries.map { mode ->
+                  SegmentOption(
+                      label = mode.label,
+                      selected = state.themeMode == mode,
+                      onSelect = { state.updateThemeMode(mode) },
+                  )
+                },
+        )
+        Label("Refresh interval")
+        Segmented(
+            options =
+                REFRESH_INTERVALS.map { interval ->
+                  SegmentOption(
+                      label = interval,
+                      selected = state.refreshInterval == interval,
+                      onSelect = { state.updateRefreshInterval(interval) },
+                  )
+                },
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun SafetySection(state: RemoteState) {
+  Column(
+      modifier = Modifier.sectionPadding().fillMaxWidth(),
+      verticalArrangement = Arrangement.spacedBy(Space.s3),
+  ) {
+    Label("Safety")
+    Plate(modifier = Modifier.fillMaxWidth()) {
+      Column(
+          modifier = Modifier.padding(Space.s4),
+          verticalArrangement = Arrangement.spacedBy(Space.s4),
+      ) {
+        VSwitch(
+            checked = state.confirmDestructive,
+            onCheckedChange = state::updateConfirmDestructive,
+            label = "Typed confirmation for restart / destroy",
+        )
+        VSwitch(
+            checked = state.wakeOnLan,
+            onCheckedChange = state::updateWakeOnLan,
+            label = "Send Wake-on-LAN when your Mac stops answering",
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun AboutSection(state: RemoteState) {
+  val colors = Vitruvian
+  Column(
+      modifier = Modifier.padding(horizontal = Space.s4, vertical = Space.s3).fillMaxWidth(),
+      verticalArrangement = Arrangement.spacedBy(Space.s2),
+  ) {
+    Label("About")
+  }
+  ListItem(
+      title = "About Vitruvian Remote",
+      subtitle = "Version ${state.appVersion}",
+      onClick = state::openAbout,
+      contentPadding = PaddingValues(horizontal = Space.s4, vertical = Space.s3),
+  ) {
+    VIcon(path = VitruvianIcons.CHEVRON_RIGHT, color = colors.textDim, contentDescription = null)
+  }
+  ListItem(
+      title = "Donate",
+      subtitle = "Support development",
+      onClick = { state.openExternalUrl(AppInfo.donateURL) },
+      contentPadding = PaddingValues(horizontal = Space.s4, vertical = Space.s3),
+  ) {
+    VIcon(path = VitruvianIcons.EXTERNAL_LINK, color = colors.textDim, contentDescription = null)
+  }
 }
 
 /**
- * The Mac agent: where it is, and whether it is answering.
+ * The Mac helper: where it is, and whether it is answering.
  *
- * This is the only setting that changes what the dashboards show. The URL is applied on Connect,
- * not per keystroke, and the status line says plainly which of three states the numbers are in.
+ * This is the only setting that changes what the dashboards show. The address is applied on
+ * Connect, not per keystroke, and the status line says plainly which state the numbers are in.
  */
 @Composable
 private fun AgentPlate(state: RemoteState) {
   val colors = Vitruvian
   val status =
-      when (state.metricsSource) {
-        MetricsSource.Simulated -> "no agent · dashboards are simulated"
+      when {
+        state.isDemoMode -> "no Mac helper · dashboards are simulated"
+        state.hostPhase == Derive.HostPhase.Unpaired -> "no Mac saved yet"
         // The tag beside this already says live / unreachable; repeating the
         // word made "LIVE live". The text carries what the tag cannot.
-        MetricsSource.Live ->
-            "${state.agentHost?.hostname ?: "host"} · agent v${state.agentHost?.agentVersion ?: "?"}"
-        MetricsSource.Unreachable -> state.agentError.ifBlank { "no answer yet" }
+        state.metricsSource == MetricsSource.Live ->
+            "${state.agentHost?.hostname ?: "host"} · helper v${state.agentHost?.agentVersion ?: "?"}"
+        else -> state.agentError.ifBlank { "no answer yet" }
       }
   Plate(modifier = Modifier.fillMaxWidth()) {
     Column(
@@ -206,11 +403,12 @@ private fun AgentPlate(state: RemoteState) {
         verticalArrangement = Arrangement.spacedBy(Space.s3),
     ) {
       // Says WHICH Mac is being edited. With more than one saved, a plate
-      // headed "Mac agent" over a URL field is an invitation to retype the
+      // headed "Mac helper" over a URL field is an invitation to retype the
       // wrong machine's address.
-      Label("Mac agent · ${state.selectedHost?.alias?.ifBlank { null } ?: "none selected"}")
+      Label("Mac helper · ${state.selectedHost?.alias?.ifBlank { null } ?: "none selected"}")
       VText(
-          text = "Run the agent on the Mac and enter its Tailscale address. Edits the host above.",
+          text =
+              "Run the Mac helper on your Mac and enter your Mac's address. Edits the Mac above.",
           style = VitruvianType.body.copy(fontSize = VitruvianType.mono.fontSize),
           color = colors.textDim,
       )
@@ -218,7 +416,7 @@ private fun AgentPlate(state: RemoteState) {
           value = state.agentUrlDraft,
           onValueChange = state::updateAgentUrlDraft,
           modifier = Modifier.fillMaxWidth(),
-          placeholder = "100.x.y.z or host.tailnet.ts.net",
+          placeholder = "your Mac's address",
       )
       // The Mac calls itself James-MacBook-Pro, which is what the top bar,
       // the rail and three screen headers would otherwise shout. A short
@@ -248,8 +446,9 @@ private fun AgentPlate(state: RemoteState) {
         )
         VButton(
             label = "Forget",
-            onClick = state::forgetAgent,
+            onClick = state::requestForgetAgent,
             modifier = Modifier.weight(1f),
+            variant = ButtonVariant.Danger,
             enabled = state.selectedHost != null,
         )
       }
@@ -258,7 +457,7 @@ private fun AgentPlate(state: RemoteState) {
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(Space.s3),
       ) {
-        Tag(text = state.metricsSource.label, tone = state.metricsTagTone)
+        Tag(text = state.metricsTagLabel, tone = state.metricsTagTone)
         VText(
             text = status,
             modifier = Modifier.weight(1f),
@@ -266,32 +465,6 @@ private fun AgentPlate(state: RemoteState) {
             color = colors.textDim,
         )
       }
-      // Where the Mac's own notifications go, and a way to prove the whole
-      // path rather than the flags. The agent publishes to ntfy itself; if
-      // this is not configured, nothing the Mac notices ever reaches a phone
-      // that is not looking at the app.
-      Row(
-          modifier = Modifier.fillMaxWidth(),
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(Space.s3),
-      ) {
-        VText(
-            text = state.notifyLine,
-            modifier = Modifier.weight(1f),
-            style = VitruvianType.listSub,
-            color = colors.textDim,
-        )
-        VButton("Test push", state::testPush, enabled = state.paired)
-      }
-      // The mute switch. Disabled when the Mac has no ntfy configuration at
-      // all, because there is nothing to mute and a switch that flipped
-      // without effect would be the more confusing control.
-      VSwitch(
-          checked = state.notificationsEnabled,
-          onCheckedChange = state::setNotifications,
-          label = "Push notifications",
-          enabled = state.paired && state.agentNotify?.configured == true,
-      )
     }
   }
 }
@@ -358,12 +531,9 @@ private fun PairPlate(state: RemoteState) {
         VText(text = body, style = VitruvianType.listSub, color = colors.warn)
       }
       VText(
-          // The exact command, because a paraphrase of it is a command nobody
-          // can run. The phone invents the code; the Mac is told what it is.
           text =
-              "Easiest: on the Mac, choose Pair with QR Code from the V menu and scan it. " +
-                  "Or run: bazel run //apps/mobile/vitruvian-remote/macagent:pair -- " +
-                  state.pairDigits,
+              "On your Mac, click Vitruvian Remote in the menu bar and choose Pair with QR Code, " +
+                  "then scan it. Or enter this code there:",
           style = VitruvianType.body.copy(fontSize = VitruvianType.mono.fontSize),
           color = colors.textDim,
       )
@@ -390,293 +560,6 @@ private fun PairPlate(state: RemoteState) {
         )
         VButton("New code", state::regeneratePairCode)
       }
-    }
-  }
-}
-
-/**
- * The phone bridge: the switch, the trust window, the permissions and what agents have done.
- *
- * Everything on this plate is a claim about a capability that is otherwise invisible. A phone that
- * has quietly stopped answering the Mac, a trust window that is still open an hour after you forgot
- * about it, and a tool that cannot run because one permission was never granted all look exactly
- * like a working bridge from the Mac's side -- so each of them is a line here, with the next step
- * written out.
- */
-@Composable
-private fun PhoneBridgePlate(state: RemoteState) {
-  val colors = Vitruvian
-  Plate(modifier = Modifier.fillMaxWidth()) {
-    Column(
-        modifier = Modifier.padding(Space.s4),
-        verticalArrangement = Arrangement.spacedBy(Space.s3),
-    ) {
-      Row(
-          modifier = Modifier.fillMaxWidth(),
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(Space.s3),
-      ) {
-        Label(text = "Phone bridge", modifier = Modifier.weight(1f))
-        Tag(
-            text = if (state.bridgeLinked) "linked" else "not linked",
-            tone =
-                when {
-                  state.bridgeLinked -> TagTone.Ok
-                  // On and not linked is a problem; off and not linked is a choice.
-                  Derive.bridgeProblemIsBannerWorthy(state.bridgeProblem) -> TagTone.Warn
-                  else -> TagTone.Outline
-                },
-        )
-      }
-      VText(
-          text =
-              "Agents on the Mac get a phone MCP server: messages, contacts, calls, location. " +
-                  "Every call is listed below.",
-          style = VitruvianType.body.copy(fontSize = VitruvianType.mono.fontSize),
-          color = colors.textDim,
-      )
-      VSwitch(
-          checked = state.bridgeEnabled,
-          onCheckedChange = state::updateBridgeEnabled,
-          label = "Run the bridge",
-          enabled = state.bridgeAvailable,
-      )
-      state.bridgeNotificationSpec?.let { notif ->
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Space.s3),
-        ) {
-          VText(
-              text = notif.note,
-              modifier = Modifier.weight(1f),
-              style = VitruvianType.listSub,
-              color = colors.warn,
-          )
-          VButton(
-              label = notif.actionLabel,
-              onClick = {
-                when (notif.action) {
-                  Derive.NotificationPermissionAction.Allow ->
-                      state.requestNotificationsPermission()
-                  Derive.NotificationPermissionAction.OpenSettings ->
-                      state.openNotificationSettings()
-                  Derive.NotificationPermissionAction.None -> Unit
-                }
-              },
-          )
-        }
-      }
-      // The link's own words. "not linked" with no reason is the one state
-      // nobody can act on, so the reason is always on screen.
-      VText(
-          text = if (state.bridgeLinked) "linked to the Mac agent" else state.bridgeLinkStatus,
-          style = VitruvianType.listSub,
-          color = colors.textDim,
-      )
-      // On but not linked: the reason in plain words, and the fix beside it.
-      // Not paired gets "Pair now" -- retrying a refused link would only be
-      // refused again.
-      val problem = state.bridgeProblem
-      state.bridgeProblemText?.let { text ->
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Space.s3),
-        ) {
-          VText(
-              text = text,
-              modifier = Modifier.weight(1f),
-              style = VitruvianType.listSub,
-              color =
-                  if (Derive.bridgeProblemIsBannerWorthy(problem)) colors.warn else colors.textDim,
-          )
-          when (problem) {
-            Derive.BridgeProblem.NotPaired -> VButton("Pair now", state::openPairing)
-            Derive.BridgeProblem.Stopped -> VButton("Start", state::reconnectBridge)
-            else -> VButton("Reconnect", state::reconnectBridge)
-          }
-        }
-      }
-
-      Rule(modifier = Modifier.fillMaxWidth().height(1.dp))
-
-      // The trust window. Open, it says how long is left and offers to close
-      // it; shut, it is one button and the plainest possible label.
-      if (state.trustOpen) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Space.s3),
-        ) {
-          VText(
-              text = "Agents trusted · ${state.trustRemaining}",
-              modifier = Modifier.weight(1f),
-              style = VitruvianType.listSub,
-          )
-          VButton("End trust", state::endTrust)
-        }
-      } else {
-        VButton(
-            label = "Trust agents for 1 hour",
-            onClick = state::trustAgents,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = state.bridgeAvailable,
-        )
-        VText(
-            text =
-                "Off, screen control and opening apps are refused and texts and calls ask here " +
-                    "first.",
-            style = VitruvianType.listSub,
-            color = colors.textDim,
-        )
-      }
-
-      // The pending approval, in the app as well as in the shade: a
-      // notification that was swiped away would otherwise leave the agent
-      // waiting out the whole minute with nowhere to say yes.
-      state.pendingApproval?.let { pending ->
-        Rule(modifier = Modifier.fillMaxWidth().height(1.dp))
-        Label("Waiting for you")
-        VText(text = "Agent wants to: ${pending.question}", style = VitruvianType.listSub)
-        Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
-          VButton(
-              label = "Approve",
-              onClick = state::approvePending,
-              modifier = Modifier.weight(1f),
-              variant = ButtonVariant.Primary,
-          )
-          VButton(
-              label = "Deny",
-              onClick = state::denyPending,
-              modifier = Modifier.weight(1f),
-              variant = ButtonVariant.Danger,
-          )
-        }
-      }
-
-      Rule(modifier = Modifier.fillMaxWidth().height(1.dp))
-      Label("Permissions")
-      state.bridgePermissions.forEach { permission ->
-        ListItem(
-            title = permission.label,
-            // Never blank: an ungranted row says which tools it stops and how
-            // to fix it, because the alternative is a tool that returns
-            // nothing on the Mac for no visible reason.
-            subtitle =
-                if (permission.granted) permission.tools else "${permission.tools} · not granted",
-            status = if (permission.granted) StatusTone.Ok else StatusTone.Warn,
-            contentPadding = PaddingValues(vertical = Space.s3),
-        ) {
-          if (permission.granted) {
-            Tag(text = "granted", tone = TagTone.Ok)
-          } else if (permission.grantable) {
-            VButton("Grant", { state.grantBridgePermission(permission.id) })
-          } else {
-            // Part 2's rows land here: notification access and the
-            // accessibility service are granted in Settings, not by a dialog,
-            // so the row carries the path instead of a button.
-            Tag(text = "in Settings", tone = TagTone.Outline)
-          }
-        }
-      }
-
-      Rule(modifier = Modifier.fillMaxWidth().height(1.dp))
-      Label("Recent calls · ${state.bridgeAudit.size} kept")
-      if (state.bridgeAudit.isEmpty()) {
-        VText(
-            text = "No agent has called a tool on this phone yet.",
-            style = VitruvianType.listSub,
-            color = colors.textDim,
-        )
-      }
-      state.bridgeAudit.take(AUDIT_SHOWN).forEach { entry ->
-        ListItem(
-            title = entry.tool,
-            subtitle =
-                Format.parts(
-                    Format.relativeTime(
-                        Instant.ofEpochMilli(entry.atMs).toString(), state.bridgeNowMs),
-                    entry.arguments,
-                    entry.approver,
-                ),
-            status = if (entry.outcome == "ok") StatusTone.Ok else StatusTone.Warn,
-            contentPadding = PaddingValues(vertical = Space.s3),
-            statusAdjacentText = entry.outcome,
-        ) {
-          Tag(
-              text = entry.outcome,
-              tone = if (entry.outcome == "ok") TagTone.Ok else TagTone.Outline)
-        }
-      }
-    }
-  }
-}
-
-/** Connection, notifications, appearance and refresh settings. */
-@Composable
-private fun ConnectionPlate(state: RemoteState) {
-  Plate(modifier = Modifier.fillMaxWidth()) {
-    Column(
-        modifier = Modifier.padding(Space.s4),
-        verticalArrangement = Arrangement.spacedBy(Space.s4),
-    ) {
-      Label("Connection")
-      VSwitch(
-          checked = state.wakeOnLan,
-          onCheckedChange = state::updateWakeOnLan,
-          label = "Send Wake-on-LAN when the Mac stops answering",
-      )
-      VSwitch(
-          checked = state.confirmDestructive,
-          onCheckedChange = state::updateConfirmDestructive,
-          label = "Typed confirmation for restart / destroy",
-      )
-      Rule(modifier = Modifier.fillMaxWidth().height(1.dp))
-      val notif = state.notificationsRowSpec
-      ListItem(
-          title = notif.title,
-          subtitle = notif.subtitle,
-          status =
-              when {
-                notif.statusLabel != null -> StatusTone.Ok
-                notif.permanentlyBlocked -> StatusTone.Warn
-                else -> StatusTone.Neutral
-              },
-          contentPadding = PaddingValues(vertical = Space.s3),
-          statusAdjacentText = notif.statusLabel,
-      ) {
-        when (notif.action) {
-          Derive.NotificationPermissionAction.None ->
-              notif.statusLabel?.let { Tag(text = it, tone = TagTone.Ok) }
-          Derive.NotificationPermissionAction.Allow ->
-              VButton(notif.actionLabel ?: "Allow", { state.requestNotificationsPermission() })
-          Derive.NotificationPermissionAction.OpenSettings ->
-              VButton(notif.actionLabel ?: "Open settings", state::openNotificationSettings)
-        }
-      }
-      Label("Appearance")
-      Segmented(
-          options =
-              ThemeMode.entries.map { mode ->
-                SegmentOption(
-                    label = mode.label,
-                    selected = state.themeMode == mode,
-                    onSelect = { state.updateThemeMode(mode) },
-                )
-              },
-      )
-      Label("Refresh interval")
-      Segmented(
-          options =
-              REFRESH_INTERVALS.map { interval ->
-                SegmentOption(
-                    label = interval,
-                    selected = state.refreshInterval == interval,
-                    onSelect = { state.updateRefreshInterval(interval) },
-                )
-              },
-      )
     }
   }
 }

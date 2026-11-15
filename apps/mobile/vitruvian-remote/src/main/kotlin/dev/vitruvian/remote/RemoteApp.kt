@@ -21,6 +21,7 @@
 package dev.vitruvian.remote
 
 import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
@@ -35,11 +36,14 @@ import dev.vitruvian.remote.overlays.MacroEditor
 import dev.vitruvian.remote.overlays.OfflineBanner
 import dev.vitruvian.remote.overlays.PairingBanner
 import dev.vitruvian.remote.overlays.UnpairedState
+import dev.vitruvian.remote.screens.AboutScreen
 import dev.vitruvian.remote.screens.AppsScreen
 import dev.vitruvian.remote.screens.ConsoleScreen
+import dev.vitruvian.remote.screens.FallbackUrlDialog
 import dev.vitruvian.remote.screens.HomeScreen
 import dev.vitruvian.remote.screens.HostsScreen
 import dev.vitruvian.remote.screens.MacScreen
+import dev.vitruvian.remote.screens.PhoneBridgeScreen
 import dev.vitruvian.remote.screens.RemoteScreen
 import dev.vitruvian.remote.shell.RemoteShell
 import dev.vitruvian.remote.shell.rememberDeviceLayout
@@ -55,6 +59,7 @@ import dev.vitruvian.remote.state.Screen
  */
 @Composable
 public fun RemoteApp(state: RemoteState) {
+  BackHandler(enabled = state.canGoBack) { state.navigateBack() }
   LaunchedEffect(state) { state.runMetrics() }
   // Its own loop: Claude prompts need a two-second cadence whatever the
   // Hosts screen's refresh setting says.
@@ -67,32 +72,36 @@ public fun RemoteApp(state: RemoteState) {
       OfflineBanner(state)
       PairingBanner(state)
       BridgeBanner(state)
-      if (state.isUnpaired) {
+      if (Derive.showsUnpairedEmptyState(screen, state.isUnpaired)) {
         UnpairedState(state)
+      } else {
+        ScreenContent(state = state, screen = screen)
       }
-      ScreenContent(state = state, screen = screen)
     }
     ConfirmDialog(state)
     MacroEditor(state)
+    FallbackUrlDialog(state)
   }
 }
 
 /**
  * The screen switch.
  *
- * Home is suppressed while unpaired because the empty state has already taken the pane; every other
- * screen still draws, since Hosts is where the user is being sent and the rest are simply
- * unreachable.
+ * Mac-backed tabs (`Home`, `Mac`, `Modules`, `Console`) show [UnpairedState] in-page while
+ * unpaired; `Remote` remains live over Bluetooth HID, and `Settings`, `Phone Bridge`, and `About`
+ * render directly.
  */
 @Composable
 private fun ColumnScope.ScreenContent(state: RemoteState, screen: Screen) {
   when (screen) {
-    Screen.Home -> if (!state.isUnpaired) HomeScreen(state)
+    Screen.Home -> HomeScreen(state)
     Screen.Remote -> RemoteScreen(state)
     Screen.Mac -> MacScreen(state)
     Screen.Apps -> AppsScreen(state)
     Screen.Console -> ConsoleScreen(state)
     Screen.Hosts -> HostsScreen(state)
+    Screen.PhoneBridge -> PhoneBridgeScreen(state)
+    Screen.About -> AboutScreen(state)
   }
 }
 

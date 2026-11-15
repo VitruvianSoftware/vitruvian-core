@@ -20,6 +20,8 @@
 
 package dev.vitruvian.design
 
+import kotlin.math.ceil
+
 /** The status square's five states. */
 public enum class StatusTone {
   Neutral,
@@ -223,6 +225,17 @@ public object A11y {
           }
 
   /**
+   * Whether [TopBar] draws [VMark]: hidden whenever a leading back action occupies the leading
+   * slot, or when the rail already shows the mark ([showMark] == false).
+   */
+  public fun topBarShowMark(showMark: Boolean, hasBackAction: Boolean): Boolean =
+      showMark && !hasBackAction
+
+  /** Spoken description for [TopBar]'s leading back action. */
+  public fun topBarBackDescription(contentDescription: String? = null): String =
+      contentDescription?.takeIf { it.isNotBlank() } ?: "Back"
+
+  /**
    * Scales rail navigation label font size down at large accessibility font scales so the rendered
    * size caps at [maxScaledDp] (e.g., [FontSize.label]) instead of truncating.
    */
@@ -233,5 +246,121 @@ public object A11y {
   ): Float {
     val scale = fontScale.coerceAtLeast(1f)
     return if (baseSp * scale <= maxScaledDp) baseSp else maxScaledDp / scale
+  }
+
+  /**
+   * Spoken hint description for an empty [VInput]: exposed on the editable field itself when
+   * [value] is empty and [placeholder] is non-blank, while the visual placeholder `VText` clears
+   * its own semantics so accessibility / UIAutomator trees never report placeholder hints as
+   * prefilled field text.
+   */
+  public fun inputPlaceholderDescription(value: String, placeholder: String): String? =
+      if (value.isEmpty()) placeholder.trim().takeIf { it.isNotEmpty() } else null
+
+  /** Width budget returned by [allocateTopBarWidths] for [TopBar]'s title and trailing slots. */
+  public data class TopBarWidthAllocation(
+      val titleWidthPx: Int,
+      val trailingMaxWidthPx: Int,
+  )
+
+  /**
+   * Caps [HostChip] maximum width tighter at large accessibility font scales so [TopBar] titles
+   * stay legible alongside settings/status chrome. Keeps [baseMaxDp] (`160.dp`) at normal text
+   * scales and smoothly tightens to [largeTextMaxDp] (`120.dp`) at `1.6x`–`2.0x`.
+   */
+  public fun hostChipMaxWidthDp(
+      fontScale: Float,
+      baseMaxDp: Float = 160f,
+      largeTextMaxDp: Float = 120f,
+  ): Float {
+    if (fontScale <= 1.15f) return baseMaxDp
+    if (fontScale >= 1.6f) return largeTextMaxDp
+    val t = ((fontScale - 1.15f) / (1.6f - 1.15f)).coerceIn(0f, 1f)
+    return baseMaxDp - (baseMaxDp - largeTextMaxDp) * t
+  }
+
+  /** Whether [title] is a single whitespace-free token (e.g. `"Settings"`, `"Modules"`). */
+  public fun isSingleWordTitle(title: String): Boolean {
+    val trimmed = title.trim()
+    return trimmed.isNotEmpty() && !trimmed.any(Char::isWhitespace)
+  }
+
+  /** The first whitespace-delimited word of [title], or empty when blank. */
+  public fun firstTitleWord(title: String): String =
+      title.trim().split(Regex("\\s+")).firstOrNull().orEmpty()
+
+  /**
+   * Conservative intrinsic-width estimate for the first word of [title] given its full intrinsic
+   * width, so multi-word bars keep at least the first word readable when space is exhausted.
+   */
+  public fun estimateFirstWordWidthPx(fullTitleIntrinsicWidthPx: Int, title: String): Int {
+    val full = fullTitleIntrinsicWidthPx.coerceAtLeast(0)
+    val trimmed = title.trim()
+    if (trimmed.isEmpty() || isSingleWordTitle(trimmed)) return full
+    val firstWord = firstTitleWord(trimmed)
+    return ceil(full * (firstWord.length.toDouble() / trimmed.length.toDouble())).toInt()
+  }
+
+  /**
+   * Allocates horizontal space in [TopBar] after the leading slot, prioritizing the title over
+   * trailing chrome (such as [HostChip]) so the trailing chip caps and ellipsizes before the title
+   * truncates. Single-word titles keep their full width whenever possible; multi-word titles shrink
+   * the trailing slot down to [minTrailingFloorPx] first and always protect at least
+   * [minTitleWidthPx] (typically the first word).
+   */
+  public fun allocateTopBarWidths(
+      availableAfterLeadingPx: Int,
+      gapPx: Int,
+      titleIntrinsicWidthPx: Int,
+      minTitleWidthPx: Int,
+      hasTrailing: Boolean,
+      trailingIntrinsicWidthPx: Int,
+      isSingleWordTitle: Boolean = true,
+      minTrailingFloorPx: Int = 0,
+  ): TopBarWidthAllocation {
+    val avail = availableAfterLeadingPx.coerceAtLeast(0)
+    val gap = gapPx.coerceAtLeast(0)
+    val desiredTrailing = trailingIntrinsicWidthPx.coerceAtLeast(0)
+    if (!hasTrailing || desiredTrailing <= 0) {
+      return TopBarWidthAllocation(titleWidthPx = avail, trailingMaxWidthPx = 0)
+    }
+    val desiredTitle = titleIntrinsicWidthPx.coerceAtLeast(0)
+    if (desiredTitle + gap + desiredTrailing <= avail) {
+      return TopBarWidthAllocation(
+          titleWidthPx = (avail - gap - desiredTrailing).coerceAtLeast(desiredTitle),
+          trailingMaxWidthPx = desiredTrailing,
+      )
+    }
+    if (isSingleWordTitle) {
+      val protectedTitle = desiredTitle.coerceAtMost(avail)
+      val trailingMax = (avail - protectedTitle - gap).coerceIn(0, desiredTrailing)
+      val titleW =
+          if (trailingMax > 0) (avail - gap - trailingMax).coerceAtLeast(protectedTitle) else avail
+      return TopBarWidthAllocation(titleWidthPx = titleW, trailingMaxWidthPx = trailingMax)
+    }
+    val protectedFirstWord = minTitleWidthPx.coerceIn(0, desiredTitle).coerceAtMost(avail)
+    val floor = minTrailingFloorPx.coerceIn(0, desiredTrailing)
+    return when {
+      desiredTitle + gap + floor <= avail -> {
+        val trailingMax = (avail - desiredTitle - gap).coerceIn(floor, desiredTrailing)
+        TopBarWidthAllocation(
+            titleWidthPx = (avail - gap - trailingMax).coerceAtLeast(desiredTitle),
+            trailingMaxWidthPx = trailingMax,
+        )
+      }
+      protectedFirstWord + gap + floor <= avail -> {
+        TopBarWidthAllocation(
+            titleWidthPx = (avail - gap - floor).coerceAtLeast(protectedFirstWord),
+            trailingMaxWidthPx = floor,
+        )
+      }
+      else -> {
+        val trailingMax = (avail - protectedFirstWord - gap).coerceIn(0, desiredTrailing)
+        val titleW =
+            if (trailingMax > 0) (avail - gap - trailingMax).coerceAtLeast(protectedFirstWord)
+            else avail
+        TopBarWidthAllocation(titleWidthPx = titleW, trailingMaxWidthPx = trailingMax)
+      }
+    }
   }
 }

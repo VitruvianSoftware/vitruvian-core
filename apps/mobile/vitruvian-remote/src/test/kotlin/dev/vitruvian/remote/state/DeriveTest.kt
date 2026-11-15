@@ -539,8 +539,8 @@ public class DeriveTest {
 
   @Test
   public fun `a missing battery temperature is said, never printed as 0 degrees`() {
-    assertEquals("no battery reading", Derive.batteryTemperatureLabel(null))
-    assertEquals("no battery reading", Derive.batteryTemperatureLabel(Double.NaN))
+    assertEquals("no temperature reading", Derive.batteryTemperatureLabel(null))
+    assertEquals("no temperature reading", Derive.batteryTemperatureLabel(Double.NaN))
     assertEquals("battery 31°", Derive.batteryTemperatureLabel(30.6))
     // A real zero is still a reading.
     assertEquals("battery 0°", Derive.batteryTemperatureLabel(0.0))
@@ -2192,8 +2192,9 @@ public class DeriveTest {
     assertFalse(courierSavedUnpaired.promptEnabled)
 
     val legacyReady = Derive.legacyLaunchAgentRow(canAct = true, busy = false)
-    assertEquals("Legacy chat-monitor launch agent", legacyReady.title)
-    assertEquals("Remove", legacyReady.actionLabel)
+    assertEquals("Old chat monitor (from an earlier version)", legacyReady.title)
+    assertEquals("", legacyReady.trailing)
+    assertEquals("Stop and remove", legacyReady.actionLabel)
     assertTrue(legacyReady.actionEnabled)
 
     assertFalse(Derive.legacyLaunchAgentRow(canAct = false, busy = false).actionEnabled)
@@ -3632,6 +3633,520 @@ public class DeriveTest {
         Regex("""placed\("mute_own_messages"\)\s*\{\s*if \(anyChat\)""").containsMatchIn(remoteSrc))
   }
 
+  // --- F2: honest connection state & cold launch polling -----------------
+
+  @Test
+  public fun `cold launch starts asking and poll failure sets offline without red flash`() {
+    // Saved host before first reply -> "asking…", neither offline nor simulated demo data.
+    val initialPhase =
+        Derive.hostPhase(
+            hasHosts = true,
+            demoMode = false,
+            hasResponded = false,
+            isOffline = false,
+        )
+    assertEquals(Derive.HostPhase.Asking, initialPhase)
+    assertEquals("asking…", Derive.sourceBadgeLabel(initialPhase, needsPairing = false))
+    assertEquals(
+        "asking…",
+        Derive.hostStatusWord(
+            initialPhase,
+            Derive.Pairing.Paired,
+            needsPairing = false,
+        ),
+    )
+    assertFalse(Derive.isStaleReading(initialPhase))
+    assertFalse(Derive.mayShowDemoData(initialPhase))
+
+    // First poll fails -> PollOutcome.Offline, turning status red/offline.
+    assertEquals(
+        Derive.PollOutcome.Offline,
+        Derive.afterPoll(hasHosts = true, demoMode = false, pollSucceeded = false),
+    )
+    val offlinePhase =
+        Derive.hostPhase(
+            hasHosts = true,
+            demoMode = false,
+            hasResponded = false,
+            isOffline = true,
+        )
+    assertEquals(Derive.HostPhase.Offline, offlinePhase)
+    assertEquals("unreachable", Derive.sourceBadgeLabel(offlinePhase, needsPairing = false))
+    assertTrue(Derive.isStaleReading(offlinePhase))
+
+    // Poll succeeds -> PollOutcome.Live -> live badge.
+    assertEquals(
+        Derive.PollOutcome.Live,
+        Derive.afterPoll(hasHosts = true, demoMode = false, pollSucceeded = true),
+    )
+    val livePhase =
+        Derive.hostPhase(
+            hasHosts = true,
+            demoMode = false,
+            hasResponded = true,
+            isOffline = false,
+        )
+    assertEquals(Derive.HostPhase.Live, livePhase)
+    assertEquals("live", Derive.sourceBadgeLabel(livePhase, needsPairing = false))
+    assertEquals("not paired", Derive.sourceBadgeLabel(livePhase, needsPairing = true))
+
+    val remoteSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
+    assertTrue(remoteSrc.contains("Derive.afterPoll("))
+    assertTrue(remoteSrc.contains("Derive.PollOutcome.Offline -> Connection.Offline"))
+  }
+
+  // --- F1 & F5: no MockHost data for a saved-but-offline Mac & forgetHost -
+
+  @Test
+  public fun `saved but offline host derived Home Mac Remote state never emits MockHost values`() {
+    // 1) Never answered offline host.
+    val neverReadPhase =
+        Derive.hostPhase(hasHosts = true, demoMode = false, hasResponded = false, isOffline = true)
+    assertFalse(Derive.mayShowDemoData(neverReadPhase))
+    val unansweredHome =
+        listOf(
+            Derive.sourceBadgeLabel(neverReadPhase, needsPairing = false),
+            Derive.hostSummarySubline(
+                neverReadPhase,
+                osVersion = null,
+                agentVersion = null,
+                uptimeDays = null,
+                lastSeen = ""),
+            Derive.unansweredHostLine("macbook"),
+            Derive.runningNowEmptyMessage(neverReadPhase, hasFirstReading = false).orEmpty(),
+        )
+    assertEquals("unreachable", unansweredHome[0])
+    assertEquals("unreachable", unansweredHome[1])
+    assertEquals("macbook isn't answering", unansweredHome[2])
+
+    // 2) Previously answered host now offline keeps real cached reading with "last seen …".
+    val stalePhase =
+        Derive.hostPhase(hasHosts = true, demoMode = false, hasResponded = true, isOffline = true)
+    assertTrue(Derive.isStaleReading(stalePhase))
+    assertFalse(Derive.mayShowDemoData(stalePhase))
+    val lastSeen = Format.lastSeen("2026-11-15T00:00:00Z", 1794700920_000L)
+    val cachedSummary =
+        Derive.hostSummarySubline(
+            stalePhase,
+            osVersion = "15.3",
+            agentVersion = "0.1.40",
+            uptimeDays = 5,
+            lastSeen = lastSeen,
+        )
+    val cachedTile = Derive.readingSubline("26.4 / 64 GB used", stale = true, lastSeen = lastSeen)
+    assertTrue(cachedSummary.contains("macOS 15.3"))
+    assertTrue(cachedSummary.contains("Mac helper v0.1.40"))
+    assertFalse(cachedSummary.contains("agent v"))
+    assertTrue(cachedSummary.contains("last seen"))
+    assertTrue(cachedTile.contains("last seen"))
+
+    assertEquals(
+        "macOS 15.3 · Mac helper v0.1.40 · up 5d",
+        Derive.hostSummarySubline(
+            Derive.HostPhase.Live,
+            osVersion = "15.3",
+            agentVersion = "0.1.40",
+            uptimeDays = 5,
+            lastSeen = "",
+        ),
+    )
+    assertFalse(
+        Derive.hostSummarySubline(
+                Derive.HostPhase.Demo,
+                osVersion = null,
+                agentVersion = null,
+                uptimeDays = null,
+                lastSeen = "",
+            )
+            .contains("Tailscale", ignoreCase = true),
+    )
+
+    // Assert zero fabricated MockHost literals appear anywhere in offline derived outputs.
+    val mockMarkers = listOf("M4 Max", "64 GB", "2 TB", "492 W", "Brew upgrade", "Screenshot")
+    for (line in unansweredHome + cachedSummary) {
+      for (marker in mockMarkers) {
+        assertFalse(
+            "Saved-but-offline derived output leaked mock marker '$marker': $line",
+            line.contains(marker),
+        )
+      }
+    }
+
+    // F5: forgetHost state transition & source checks.
+    assertEquals(Derive.PollOutcome.Unpaired, Derive.afterForgetHost(0))
+    assertEquals(Derive.PollOutcome.Asking, Derive.afterForgetHost(1))
+
+    val remoteSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
+    val forgetBlock =
+        remoteSrc
+            .substringAfter("public fun forgetHost(id: String)")
+            .substringBefore("public fun updateHostAliasDraft")
+    assertTrue(forgetBlock.contains("demoMode = false"))
+    assertTrue(forgetBlock.contains("resetHostSnapshots()"))
+    assertTrue(forgetBlock.contains("metricsSource ="))
+
+    // Every runtime MockHost data read (outside gallery metadata and constructor seed) uses
+    // isDemoMode.
+    val mockDataReads =
+        Regex(
+            """MockHost\.(hosts|processes|vms|containers|runningNow|recentCommands|dashboards|builtInMacros|demoInstalled)""")
+    val matchingLines =
+        remoteSrc.lines().filter { line ->
+          mockDataReads.containsMatchIn(line) && !line.trimStart().startsWith("MockHost.")
+        }
+    assertTrue(
+        "Unexpected un-gated MockHost data access in RemoteState.kt: $matchingLines",
+        matchingLines.all { it.contains("isDemoMode") },
+    )
+    assertFalse(
+        "MockHost.runningNow must not be returned when !isLive",
+        remoteSrc.contains("if (!isLive) return MockHost.runningNow"),
+    )
+    val remoteScreenSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/RemoteScreen.kt")
+    assertTrue(
+        remoteScreenSrc.contains("if (state.isDemoMode) \"Media · Music\" else \"Media keys\""))
+    assertTrue(remoteScreenSrc.contains("if (state.isDemoMode) {"))
+  }
+
+  // --- F3: first run starts unpaired & demo mode is explicit + non-persisted
+
+  @Test
+  public fun `first run starts unpaired with demo behind See a demo banner`() {
+    val unpaired =
+        Derive.hostPhase(
+            hasHosts = false, demoMode = false, hasResponded = false, isOffline = false)
+    assertEquals(Derive.HostPhase.Unpaired, unpaired)
+    assertEquals(
+        Derive.PollOutcome.Unpaired,
+        Derive.afterPoll(hasHosts = false, demoMode = false, pollSucceeded = false),
+    )
+    val demo =
+        Derive.hostPhase(hasHosts = false, demoMode = true, hasResponded = false, isOffline = false)
+    assertEquals(Derive.HostPhase.Demo, demo)
+    assertTrue(Derive.mayShowDemoData(demo))
+    assertEquals("simulated", Derive.sourceBadgeLabel(demo, needsPairing = false))
+
+    val hostStatesSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/overlays/HostStates.kt")
+    assertTrue(hostStatesSrc.contains("\"See a demo\""))
+    assertTrue(hostStatesSrc.contains("state::enterDemo"))
+
+    val shellSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/shell/Shell.kt")
+    assertTrue(shellSrc.contains("if (state.isDemoMode)"))
+    assertTrue(shellSrc.contains("\"Demo data\""))
+    assertTrue(shellSrc.contains("\"Exit demo\""))
+
+    val persistSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/Persistence.kt")
+    assertFalse(persistSrc.contains("demoMode"))
+    assertFalse(persistSrc.contains("demo_mode"))
+  }
+
+  // --- F4: persisted settings & defaults --------------------------------
+
+  @Test
+  public fun `normalizeRefreshInterval clamps null and unknown values to default`() {
+    assertEquals(Derive.DEFAULT_REFRESH_INTERVAL, Derive.normalizeRefreshInterval(null))
+    assertEquals(Derive.DEFAULT_REFRESH_INTERVAL, Derive.normalizeRefreshInterval("invalid"))
+    assertEquals("5 s", Derive.normalizeRefreshInterval("5 s"))
+    assertEquals("30 s", Derive.normalizeRefreshInterval("30 s"))
+  }
+
+  // --- F15 & F16: neutral defaults, module discovery, macro edit/delete ---
+
+  @Test
+  public fun `neutral defaults ship only discovered modules and Shell macro kind`() {
+    val rules =
+        listOf(
+            Derive.ModuleDiscoveryRule("claude", "claude", autoShow = true),
+            Derive.ModuleDiscoveryRule("homelab", "kubectl", autoShow = false),
+            Derive.ModuleDiscoveryRule("lima", "limactl", autoShow = false),
+            Derive.ModuleDiscoveryRule("speaker", "speaker", autoShow = true),
+            Derive.ModuleDiscoveryRule("tv", "adb", autoShow = false),
+        )
+    assertEquals(setOf("claude"), Derive.discoveredModuleIds(rules, emptySet()))
+    assertEquals(
+        setOf("claude", "speaker"),
+        Derive.discoveredModuleIds(rules, setOf("limactl", "kubectl", "adb", "speaker")),
+    )
+
+    assertEquals("Delete", Derive.macroDeleteLabel(armed = false))
+    assertEquals("Confirm delete", Derive.macroDeleteLabel(armed = true))
+
+    val mockSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/MockHost.kt")
+    assertTrue(mockSrc.contains("defaultInstalled: Set<String> = setOf(\"claude\")"))
+
+    val modelsSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/Models.kt")
+    assertTrue(
+        "Persisted enum name Ssh stays intact with Shell label",
+        modelsSrc.contains("Ssh(\"Shell\")"))
+
+    val remoteSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
+    val restartBlock =
+        remoteSrc
+            .substringAfter("public data class DialogSpec(")
+            .substringAfter("DialogKind.Restart ->")
+            .substringBefore("is DialogKind.MergePr ->")
+    assertTrue(
+        restartBlock.contains("\"Your Mac will restart. Unsaved work in open apps may be lost.\""))
+    assertFalse(restartBlock.contains("Lima VMs"))
+    assertFalse(restartBlock.contains("homelab node"))
+
+    val editorSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/overlays/MacroEditor.kt")
+    assertTrue(editorSrc.contains("Derive.macroDeleteLabel"))
+    assertTrue(editorSrc.contains("ButtonVariant.Danger"))
+    assertTrue(editorSrc.contains("placeholder = Derive.MACRO_NAME_HINT"))
+    assertTrue(editorSrc.contains("placeholder = Derive.MACRO_COMMAND_HINT"))
+    assertTrue(Derive.MACRO_NAME_HINT.contains("Lock screen"))
+    assertTrue(Derive.MACRO_COMMAND_HINT.contains("pmset displaysleepnow"))
+    assertFalse(editorSrc.contains("Deploy staging"))
+    assertFalse(editorSrc.contains("bazel run //tools/gitops:sync"))
+
+    val hostsSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/HostsScreen.kt")
+    assertTrue(hostsSrc.contains("state.editMacro(macro.id)"))
+  }
+
+  @Test
+  public fun `discoveredModuleIds auto-shows only module-specific tools and never tv homelab or lima`() {
+    val rules = MockHost.discoveryRules()
+    assertEquals(
+        setOf("claude"),
+        Derive.discoveredModuleIds(rules, setOf("adb", "kubectl", "limactl", "docker")),
+    )
+    assertEquals(
+        setOf("claude", "antigravity", "prs", "ollama", "speaker"),
+        Derive.discoveredModuleIds(
+            rules,
+            setOf("adb", "kubectl", "limactl", "agy", "gh", "ollama", "speaker"),
+        ),
+    )
+  }
+
+  // --- F6, F33, F36: memory warn parity, push spec, running now empty copy
+
+  @Test
+  public fun `small copy and Home memory warn match Mac screen`() {
+    assertFalse(Derive.isMemoryWarn(74))
+    assertTrue(Derive.isMemoryWarn(75))
+    assertTrue(Derive.isMemoryWarn(100))
+    assertEquals(100, Derive.memoryUsedPercent(100L, 100L, freePercent = 0))
+    assertEquals(100, Derive.memoryUsedPercent(0L, 0L, freePercent = 0))
+
+    val remoteSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
+    val warnCalls = Regex("""Derive\.isMemoryWarn\(""").findAll(remoteSrc).count()
+    assertTrue(
+        "Expected both Mac memoryPlate and Home mem widget to use Derive.isMemoryWarn",
+        warnCalls >= 2)
+
+    val unconfigured =
+        Derive.pushNotifySpec(
+            paired = true,
+            reported = false,
+            configured = false,
+            enabled = true,
+            topic = "",
+        )
+    assertFalse(unconfigured.checked)
+    assertFalse(unconfigured.switchEnabled)
+    assertFalse(unconfigured.testEnabled)
+    assertEquals("Set up ntfy on the Mac to get alerts.", unconfigured.subtitle)
+
+    val unconfiguredFalse =
+        Derive.pushNotifySpec(
+            paired = true,
+            reported = true,
+            configured = false,
+            enabled = true,
+            topic = "",
+        )
+    assertFalse(unconfiguredFalse.checked)
+    assertFalse(unconfiguredFalse.switchEnabled)
+    assertFalse(unconfiguredFalse.testEnabled)
+    assertEquals("Set up ntfy on the Mac to get alerts.", unconfiguredFalse.subtitle)
+
+    val configured =
+        Derive.pushNotifySpec(
+            paired = true,
+            reported = true,
+            configured = true,
+            enabled = true,
+            topic = "vitruvian",
+        )
+    assertTrue(configured.checked)
+    assertTrue(configured.switchEnabled)
+    assertTrue(configured.testEnabled)
+    assertEquals("push · topic vitruvian", configured.subtitle)
+
+    val muted =
+        Derive.pushNotifySpec(
+            paired = true,
+            reported = true,
+            configured = true,
+            enabled = false,
+            topic = "vitruvian",
+        )
+    assertFalse(muted.checked)
+    assertTrue(muted.switchEnabled)
+    assertTrue(muted.testEnabled)
+    assertEquals("push · topic vitruvian · muted", muted.subtitle)
+
+    assertEquals(
+        "Checking…",
+        Derive.runningNowEmptyMessage(Derive.HostPhase.Asking, hasFirstReading = false),
+    )
+    assertEquals(
+        "Checking…",
+        Derive.runningNowEmptyMessage(Derive.HostPhase.Live, hasFirstReading = false),
+    )
+    assertEquals(
+        "Nothing running",
+        Derive.runningNowEmptyMessage(Derive.HostPhase.Live, hasFirstReading = true),
+    )
+    assertNull(Derive.runningNowEmptyMessage(Derive.HostPhase.Offline, hasFirstReading = false))
+    assertNull(Derive.runningNowEmptyMessage(Derive.HostPhase.Demo, hasFirstReading = false))
+  }
+
+  @Test
+  public fun `disableCrashReporting closes Sentry then removes sentry cache tree without recreating it`() {
+    val cacheDir = java.nio.file.Files.createTempDirectory("vitruvian-remote-sentry-off").toFile()
+    try {
+      val sentryDir = AppInfo.sentryCacheDir(cacheDir)
+      val nestedOutbox = java.io.File(sentryDir, "dsn-cache/outbox").apply { mkdirs() }
+      java.io.File(sentryDir, "state.json").writeText("enabled=true")
+      java.io.File(nestedOutbox, "queued.envelope").writeText("pending")
+      val unrelatedFile =
+          java.io.File(java.io.File(cacheDir, "http").apply { mkdirs() }, "keep.bin").apply {
+            writeText("keep")
+          }
+
+      var closed = false
+      AppInfo.disableCrashReporting(
+          appCacheDir = cacheDir,
+          closeSentry = {
+            assertTrue("Sentry cache should still exist before close finishes", sentryDir.exists())
+            java.io.File(sentryDir, "dsn-cache/flushed-on-close.envelope").writeText("late")
+            closed = true
+          },
+      )
+      assertTrue(closed)
+      assertFalse("<cacheDir>/sentry tree must be deleted", sentryDir.exists())
+      assertTrue("Unrelated cache files must stay untouched", unrelatedFile.exists())
+
+      // Also verify with real Sentry SDK init/close that nothing re-creates <cacheDir>/sentry.
+      java.io.File(sentryDir, "nested").mkdirs()
+      java.io.File(sentryDir, "nested/queued.envelope").writeText("pending")
+      java.io.File(sentryDir, "root.txt").writeText("marker")
+      io.sentry.Sentry.init { opts ->
+        AppInfo.configureSentryOptions(
+            options = opts,
+            dsn = "https://public@127.0.0.1:1/0",
+            appVersion = "0.1.41",
+            appCacheDir = cacheDir,
+        )
+      }
+      assertTrue(io.sentry.Sentry.isEnabled())
+      assertTrue(sentryDir.exists())
+
+      AppInfo.disableCrashReporting(cacheDir)
+      assertFalse(io.sentry.Sentry.isEnabled())
+      assertFalse(
+          "<cacheDir>/sentry must not exist after disableCrashReporting", sentryDir.exists())
+
+      io.sentry.Sentry.captureException(RuntimeException("after switch-off"))
+      assertFalse(
+          "Capture after disableCrashReporting must not recreate <cacheDir>/sentry",
+          sentryDir.exists(),
+      )
+    } finally {
+      io.sentry.Sentry.close()
+      cacheDir.deleteRecursively()
+    }
+  }
+
+  @Test
+  public fun `disableCrashReporting sets shutdownTimeoutMillis to zero before closing and clearing cache`() {
+    val cacheDir =
+        java.nio.file.Files.createTempDirectory("vitruvian-remote-sentry-timeout").toFile()
+    try {
+      val sentryDir = AppInfo.sentryCacheDir(cacheDir)
+      java.io.File(sentryDir, "outbox").apply { mkdirs() }
+      val queued = java.io.File(sentryDir, "outbox/queued.envelope").apply { writeText("queued") }
+      val steps = mutableListOf<String>()
+      val recordingOptions =
+          object : io.sentry.SentryOptions() {
+            override fun setShutdownTimeoutMillis(shutdownTimeoutMillis: Long) {
+              super.setShutdownTimeoutMillis(shutdownTimeoutMillis)
+              steps += "setTimeout:$shutdownTimeoutMillis"
+            }
+          }
+      assertTrue(recordingOptions.shutdownTimeoutMillis > 0L)
+
+      AppInfo.disableCrashReporting(
+          appCacheDir = cacheDir,
+          options = recordingOptions,
+          closeSentry = {
+            assertEquals(0L, recordingOptions.shutdownTimeoutMillis)
+            assertTrue(sentryDir.exists())
+            steps += "close"
+          },
+          deleteCache = { dir ->
+            steps += "deleteCache"
+            AppInfo.clearSentryCache(dir)
+          },
+      )
+
+      assertEquals(listOf("setTimeout:0", "close", "deleteCache"), steps)
+      assertEquals(0L, recordingOptions.shutdownTimeoutMillis)
+      assertFalse(queued.exists())
+      assertFalse(sentryDir.exists())
+
+      // Also verify default options wiring against a real initialized hub.
+      java.io.File(sentryDir, "outbox").apply { mkdirs() }
+      java.io.File(sentryDir, "outbox/queued.envelope").writeText("queued")
+      io.sentry.Sentry.init { opts ->
+        AppInfo.configureSentryOptions(
+            options = opts,
+            dsn = "https://public@127.0.0.1:1/0",
+            appVersion = "0.1.41",
+            appCacheDir = cacheDir,
+        )
+      }
+      val liveOptions = io.sentry.Sentry.getCurrentHub().options
+      assertEquals(2000L, liveOptions.shutdownTimeoutMillis)
+
+      AppInfo.disableCrashReporting(cacheDir)
+
+      assertEquals(0L, liveOptions.shutdownTimeoutMillis)
+      assertFalse(io.sentry.Sentry.isEnabled())
+      assertFalse(sentryDir.exists())
+    } finally {
+      io.sentry.Sentry.close()
+      cacheDir.deleteRecursively()
+    }
+  }
+
   @Test
   fun themeModeMigrationAndDarkResolution() {
     // New installs default to System; existing darkTheme booleans migrate once to Dark/Light.
@@ -4374,6 +4889,403 @@ public class DeriveTest {
   }
 
   @Test
+  public fun `Shell and HostsScreen wire About and PhoneBridge outside tabs and rail with back handling`() {
+    val shell =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/shell/Shell.kt")
+    val navItemsBlock =
+        shell.substringAfter("private fun navItems(").substringBefore("private fun SettingsButton(")
+    assertTrue("navItems must use RAIL_SCREENS", navItemsBlock.contains("RAIL_SCREENS.map"))
+    val railScreensBlock =
+        shell.substringAfter("private val RAIL_SCREENS").substringBefore("private val ICONS")
+    assertFalse("RAIL_SCREENS must exclude Screen.About", railScreensBlock.contains("Screen.About"))
+    assertFalse(
+        "RAIL_SCREENS must exclude Screen.PhoneBridge",
+        railScreensBlock.contains("Screen.PhoneBridge"),
+    )
+    assertTrue(
+        "TopBar must pass onBack from state.canGoBack",
+        shell.contains("val showBack = state.canGoBack") &&
+            shell.contains("onBack = if (showBack) ({ state.navigateBack() }) else null"),
+    )
+
+    val remoteApp =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/RemoteApp.kt")
+    assertTrue(
+        "RemoteApp must handle system Back via state.canGoBack",
+        remoteApp.contains("BackHandler(enabled = state.canGoBack) { state.navigateBack() }"),
+    )
+
+    val hosts =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/HostsScreen.kt")
+    assertTrue(hosts.contains("AboutSection(state)"))
+    assertTrue(hosts.contains("\"About Vitruvian Remote\""))
+    assertTrue(hosts.contains("\"Donate\""))
+    assertTrue(hosts.contains("AppInfo.donateURL"))
+  }
+
+  @Test
+  public fun `F19 secondary navigation stack supports Settings, PhoneBridge, About and back`() {
+    val start = Derive.NavState(current = "Home")
+    assertFalse(Derive.canGoBack(start, isUnpaired = false))
+    assertNull(Derive.popNav(start, isUnpaired = false))
+
+    val onSettings = Derive.navigateToScreen(start, "Hosts", isUnpaired = false)
+    assertEquals("Hosts", onSettings.current)
+    assertEquals(listOf("Home"), onSettings.backStack)
+    assertTrue(Derive.canGoBack(onSettings, isUnpaired = false))
+
+    val onBridge = Derive.navigateToScreen(onSettings, "PhoneBridge", isUnpaired = false)
+    assertEquals("PhoneBridge", onBridge.current)
+    assertEquals(listOf("Home", "Hosts"), onBridge.backStack)
+
+    val backToSettings = Derive.popNav(onBridge, isUnpaired = false)!!
+    assertEquals("Hosts", backToSettings.current)
+    assertEquals(listOf("Home"), backToSettings.backStack)
+
+    val onAbout = Derive.navigateToAboutSubPage(backToSettings, "Privacy", isUnpaired = false)
+    assertEquals("About", onAbout.current)
+    assertEquals("Privacy", onAbout.aboutSubPage)
+    assertEquals(listOf("Home", "Hosts"), onAbout.backStack)
+
+    val backToAboutMain = Derive.popNav(onAbout, isUnpaired = false)!!
+    assertEquals("About", backToAboutMain.current)
+    assertNull(backToAboutMain.aboutSubPage)
+
+    val backToSettingsFromAbout = Derive.popNav(backToAboutMain, isUnpaired = false)!!
+    assertEquals("Hosts", backToSettingsFromAbout.current)
+
+    val backToHome = Derive.popNav(backToSettingsFromAbout, isUnpaired = false)!!
+    assertEquals("Home", backToHome.current)
+    assertTrue(backToHome.backStack.isEmpty())
+    assertFalse(Derive.canGoBack(backToHome, isUnpaired = false))
+
+    // Unpaired mode uses the same navigation rules: secondary screens push prior screens and step
+    // back.
+    val unpairedHosts = Derive.NavState(current = "Hosts")
+    assertTrue(Derive.canGoBack(unpairedHosts, isUnpaired = true))
+    assertEquals("Home", Derive.popNav(unpairedHosts, isUnpaired = true)?.current)
+    val unpairedBridge = Derive.navigateToScreen(unpairedHosts, "PhoneBridge", isUnpaired = true)
+    assertTrue(Derive.canGoBack(unpairedBridge, isUnpaired = true))
+    assertEquals("Hosts", Derive.popNav(unpairedBridge, isUnpaired = true)?.current)
+  }
+
+  @Test
+  public fun `unpaired tabs open their own screen and show UnpairedState only on Mac-backed tabs`() {
+    val start = Derive.NavState(current = "Home")
+    for (tab in listOf("Home", "Remote", "Mac", "Apps", "Console")) {
+      val next = Derive.navigateToScreen(start, tab, isUnpaired = true)
+      assertEquals(tab, next.current)
+      assertTrue(next.backStack.isEmpty())
+    }
+
+    val fromMacToSettings =
+        Derive.navigateToScreen(Derive.NavState(current = "Mac"), "Hosts", isUnpaired = true)
+    assertEquals("Hosts", fromMacToSettings.current)
+    assertEquals(listOf("Mac"), fromMacToSettings.backStack)
+    assertEquals("Mac", Derive.popNav(fromMacToSettings, isUnpaired = true)?.current)
+
+    for (screen in listOf(Screen.Home, Screen.Mac, Screen.Apps, Screen.Console)) {
+      assertTrue(Derive.showsUnpairedEmptyState(screen, isUnpaired = true))
+      assertFalse(Derive.showsUnpairedEmptyState(screen, isUnpaired = false))
+    }
+    for (screen in listOf(Screen.Remote, Screen.Hosts, Screen.PhoneBridge, Screen.About)) {
+      assertFalse(Derive.showsUnpairedEmptyState(screen, isUnpaired = true))
+      assertFalse(Derive.showsUnpairedEmptyState(screen, isUnpaired = false))
+    }
+  }
+
+  @Test
+  public fun `F35 phone bridge summary and permission subtitles use plain English without raw tool IDs`() {
+    val offSummary =
+        Derive.phoneBridgeSummarySubtitle(
+            enabled = false,
+            linked = false,
+            linkStatus = "off",
+            problemText = null,
+            grantedCount = 0,
+            totalCount = 8,
+        )
+    assertEquals(
+        "Off · texts, contacts, call history, location, notifications and screen control",
+        offSummary,
+    )
+    for (capability in AppInfo.phoneBridgeCapabilities) {
+      assertTrue(
+          "Settings summary missing capability '$capability'",
+          offSummary.contains(capability),
+      )
+      assertTrue(
+          "PhoneBridgeScreen summary missing capability '$capability'",
+          AppInfo.phoneBridgeScreenSummary.contains(capability),
+      )
+      assertTrue(
+          "Privacy statement missing capability '$capability'",
+          AppInfo.privacyTrailingStatements[1].contains(capability),
+      )
+    }
+    assertEquals(
+        "On · linked · 5 of 8 permissions granted",
+        Derive.phoneBridgeSummarySubtitle(
+            enabled = true,
+            linked = true,
+            linkStatus = "linked",
+            problemText = null,
+            grantedCount = 5,
+            totalCount = 8,
+        ),
+    )
+    assertEquals(
+        "On · Phone Bridge is turned off",
+        Derive.phoneBridgeSummarySubtitle(
+            enabled = true,
+            linked = false,
+            linkStatus = "not linked",
+            problemText = "Phone Bridge is turned off",
+            grantedCount = 2,
+            totalCount = 8,
+        ),
+    )
+
+    val ids =
+        listOf(
+            "read_sms",
+            "send_sms",
+            "read_contacts",
+            "read_call_log",
+            "call_phone",
+            "location",
+            "notification_access",
+            "accessibility",
+        )
+    for (id in ids) {
+      val grantedLine = Derive.bridgePermissionSubtitle(id, granted = true)
+      val deniedLine = Derive.bridgePermissionSubtitle(id, granted = false)
+      assertFalse("$id subtitle leaked raw tool dot: $grantedLine", grantedLine.contains('.'))
+      assertTrue(deniedLine.endsWith("· not granted"))
+    }
+  }
+
+  @Test
+  public fun `F20 gallery labels use Show, Hide and Not on this Mac without source tags`() {
+    assertEquals("Hide", Derive.galleryActionLabel(shown = true, unavailable = false))
+    assertEquals("Hide", Derive.galleryActionLabel(shown = true, unavailable = true))
+    assertEquals("Not on this Mac", Derive.galleryActionLabel(shown = false, unavailable = true))
+    assertEquals("Show", Derive.galleryActionLabel(shown = false, unavailable = false))
+
+    val appsScreen =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/AppsScreen.kt")
+    val galleryPane =
+        appsScreen.substringAfter("fun ColumnScope.GalleryPane(").substringBefore("\n@Composable")
+    assertFalse(
+        "GalleryPane must not show raw command-name tags",
+        galleryPane.contains("Tag(text = entry.source"))
+    assertTrue(
+        "GalleryPane must use Derive.galleryActionLabel",
+        galleryPane.contains("Derive.galleryActionLabel("))
+  }
+
+  @Test
+  public fun `F21 Mac developer tools stay hidden until reported and errors lead with plain text`() {
+    val noDevToolsSpec =
+        Derive.macDeveloperTools(
+            isDemoMode = false,
+            availableTools = setOf("git", "claude"),
+            containersAvailable = false,
+            vmsAvailable = false,
+            k8sAvailable = false,
+            prometheusReported = false,
+        )
+    assertFalse(noDevToolsSpec.anyVisible)
+    assertFalse(noDevToolsSpec.showContainers)
+
+    listOf("docker", "podman", "colima").forEach { runtime ->
+      val containerOnlySpec =
+          Derive.macDeveloperTools(
+              isDemoMode = false,
+              availableTools = setOf(runtime),
+              containersAvailable = null,
+              vmsAvailable = false,
+              k8sAvailable = false,
+              prometheusReported = false,
+          )
+      assertTrue(
+          "Expected $runtime to show Containers in Developer tools", containerOnlySpec.anyVisible)
+      assertTrue(containerOnlySpec.showContainers)
+      assertFalse(containerOnlySpec.showLimaVms)
+      assertFalse(containerOnlySpec.showK3sNodes)
+      assertFalse(containerOnlySpec.showCustomPanel)
+    }
+
+    val liveContainersSpec =
+        Derive.macDeveloperTools(
+            isDemoMode = false,
+            availableTools = emptySet(),
+            containersAvailable = true,
+            vmsAvailable = false,
+            k8sAvailable = false,
+            prometheusReported = false,
+        )
+    assertTrue(liveContainersSpec.anyVisible)
+    assertTrue(liveContainersSpec.showContainers)
+
+    val toolsSpec =
+        Derive.macDeveloperTools(
+            isDemoMode = false,
+            availableTools = setOf("limactl", "kubectl"),
+            containersAvailable = false,
+            vmsAvailable = null,
+            k8sAvailable = null,
+            prometheusReported = true,
+        )
+    assertTrue(toolsSpec.anyVisible)
+    assertFalse(toolsSpec.showContainers)
+    assertTrue(toolsSpec.showLimaVms)
+    assertTrue(toolsSpec.showK3sNodes)
+    assertTrue(toolsSpec.showCustomPanel)
+
+    val demoSpec =
+        Derive.macDeveloperTools(
+            isDemoMode = true,
+            availableTools = emptySet(),
+            containersAvailable = null,
+            vmsAvailable = null,
+            k8sAvailable = null,
+            prometheusReported = false,
+        )
+    assertTrue(demoSpec.showContainers)
+    assertTrue(demoSpec.showLimaVms)
+    assertFalse(demoSpec.showK3sNodes)
+    assertTrue(demoSpec.showCustomPanel)
+
+    val (vmHeadline, vmDetail) =
+        Derive.macToolNoticeLines("limactl", "exec: \"limactl\": executable file not found in PATH")
+    assertEquals("Lima isn't installed on this Mac.", vmHeadline)
+    assertTrue(vmDetail.contains("executable file not found"))
+
+    val (promHeadline, promDetail) =
+        Derive.promqlStatusLines("java.net.ConnectException: Failed to connect to /100.64.0.2:7411")
+    assertEquals("Couldn't reach the Mac helper to run this query.", promHeadline)
+    assertEquals("Failed to connect to /100.64.0.2:7411", promDetail)
+
+    val (unconfiguredHeadline, unconfiguredDetail) =
+        Derive.promqlStatusLines("no Mac helper configured")
+    assertEquals("Add a Mac in Settings before running a query.", unconfiguredHeadline)
+    assertNull(unconfiguredDetail)
+
+    val macScreen =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/MacScreen.kt")
+    assertTrue(macScreen.contains("state.macDeveloperTools"))
+    assertTrue(macScreen.contains("Label(text = \"Developer tools\""))
+    assertTrue(macScreen.contains("var devToolsOpen by rememberSaveable { mutableStateOf(false) }"))
+    val devToolsIndex = macScreen.indexOf("Label(text = \"Developer tools\"")
+    val devToolsOpenIndex = macScreen.indexOf("if (devToolsOpen) {")
+    val showContainersIndex = macScreen.indexOf("if (devTools.showContainers) {")
+    val containersLabelIndex = macScreen.indexOf("Label(text = state.containersLabel")
+    assertTrue(devToolsIndex in 0 until devToolsOpenIndex)
+    assertTrue(devToolsOpenIndex in 0 until showContainersIndex)
+    assertTrue(showContainersIndex in 0 until containersLabelIndex)
+    assertTrue(macScreen.contains("Derive.promqlStatusLines(state.promqlStatus)"))
+  }
+
+  @Test
+  public fun `F22 Home edit layout offers hidden widgets sheet and uses CLOSE icon`() {
+    val allHidden = setOf("cpu", "mem", "temp", "bat")
+    assertEquals(
+        listOf("cpu", "mem", "temp", "bat"),
+        Derive.hiddenWidgetOptions(allHidden).map { it.id },
+    )
+    assertFalse(Derive.shouldShowAddWidget(editMode = true, hiddenIds = emptySet()))
+    assertFalse(Derive.shouldShowAddWidget(editMode = false, hiddenIds = setOf("cpu")))
+    assertTrue(Derive.shouldShowAddWidget(editMode = true, hiddenIds = setOf("cpu")))
+
+    val homeScreen =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/HomeScreen.kt")
+    assertTrue(homeScreen.contains("OptionSheet("))
+    assertTrue(homeScreen.contains("VitruvianIcons.CLOSE"))
+    assertFalse(homeScreen.contains("label = \"×\""))
+  }
+
+  @Test
+  public fun `F12, F14, F17, F34 Settings order, pairing copy, Forget danger confirmation and plain copy`() {
+    val hosts =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/HostsScreen.kt")
+    assertTrue(
+        hosts.contains(
+            "On your Mac, click Vitruvian Remote in the menu bar and choose Pair with QR Code,"))
+    assertTrue(hosts.contains("then scan it. Or enter this code there:"))
+    assertTrue(hosts.contains("onClick = state::requestForgetAgent"))
+    assertTrue(hosts.contains("variant = ButtonVariant.Danger"))
+
+    val sectionOrder =
+        listOf(
+            "Label(text = \"Your Macs ·",
+            "PhoneBridgeSection(state)",
+            "NotificationsSection(state)",
+            "AppearanceSection(state)",
+            "SafetySection(state)",
+            "Label(\"Macros\")",
+            "AboutSection(state)",
+        )
+    val positions = sectionOrder.map { hosts.indexOf(it) }
+    assertTrue(
+        "All ordered Settings sections must be present: $positions",
+        positions.all { it >= 0 },
+    )
+    assertEquals(
+        "Settings sections must follow Your Macs -> Phone Bridge -> Notifications -> Appearance -> Safety -> Macros -> About",
+        positions.sorted(),
+        positions,
+    )
+
+    val phoneBridge =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/PhoneBridgeScreen.kt")
+    assertTrue(phoneBridge.contains("AppInfo.phoneBridgeScreenSummary"))
+
+    val remoteScreen =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/RemoteScreen.kt")
+    assertTrue(remoteScreen.contains("FoldingSection(state, RemoteSection.AGENT, \"Mac helper\")"))
+
+    val userFacingFiles =
+        listOf(
+            hosts,
+            phoneBridge,
+            remoteScreen,
+            readRunfile(
+                "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/ConsoleScreen.kt"),
+            readRunfile(
+                "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/AppsScreen.kt"),
+            readRunfile(
+                "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/MacScreen.kt"),
+            readRunfile(
+                "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/HomeScreen.kt"),
+            readRunfile(
+                "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/overlays/HostStates.kt"),
+        )
+    val bannedTerms =
+        listOf(
+            "Mac agent",
+            "Tailscale address",
+            "Parchment (light) theme",
+            "Macros · bound to scripts",
+            "MCP server",
+        )
+    for (fileText in userFacingFiles) {
+      for (term in bannedTerms) {
+        assertFalse("Banned jargon '$term' found in UI screen", fileText.contains(term))
+      }
+    }
+  }
+
+  @Test
   fun foldableHalfOpenDockHidesMainTrackpad() {
     assertTrue(
         Derive.showsDockTrackpad(
@@ -4638,6 +5550,72 @@ public class DeriveTest {
     )
   }
 
+  @Test
+  public fun `demo sample data uses neutral commands and avoids owner repo or homelab CLI specifics`() {
+    val forbidden =
+        listOf(
+            "bazel",
+            "//tools",
+            "gitops",
+            "staging",
+            "homelab status",
+            "my-homelab",
+            "vitruvian-core")
+    val demoStrings = buildList {
+      MockHost.builtInMacros.forEach {
+        add(it.id)
+        add(it.label)
+        add(it.command)
+      }
+      MockHost.runningNow.forEach {
+        add(it.title)
+        add(it.subtitle)
+      }
+      MockHost.processes.forEach { add(it.name) }
+      MockHost.vms.forEach {
+        add(it.name)
+        add(it.subtitle)
+      }
+      MockHost.initialTerminal.forEach {
+        add(it.prefix)
+        add(it.text)
+      }
+      MockHost.initialAgentTranscript.forEach {
+        add(it.prefix)
+        add(it.text)
+      }
+      addAll(MockHost.recentCommands)
+      MockHost.dashboards(MockHost.initialAgentTranscript, agentRunning = true).values.forEach { d
+        ->
+        add(d.meta)
+        add(d.streamLabel)
+        d.metrics.forEach {
+          add(it.label)
+          add(it.value)
+          add(it.sub)
+        }
+        d.lines.forEach {
+          add(it.prefix)
+          add(it.text)
+        }
+        d.rows.forEach {
+          add(it.title)
+          add(it.subtitle)
+        }
+      }
+    }
+    forbidden.forEach { token ->
+      val hit = demoStrings.firstOrNull { it.contains(token, ignoreCase = true) }
+      assertNull("Found owner-specific demo token '$token' in '$hit'", hit)
+    }
+    assertTrue(MockHost.builtInMacros.any { it.label == "Lock screen" })
+    assertTrue(MockHost.builtInMacros.any { it.label == "Mute" })
+    assertTrue(MockHost.builtInMacros.any { it.command == "brew upgrade" })
+    assertTrue("git status" in MockHost.recentCommands)
+    assertTrue("npm test" in MockHost.recentCommands)
+    assertTrue("brew upgrade" in MockHost.recentCommands)
+  }
+
   private class FakeBluetoothControl(
       var hidSupported: Boolean = true,
       var hasAdapter: Boolean = true,
@@ -4752,5 +5730,32 @@ public class DeriveTest {
         }
       }
     }
+  }
+
+  @Test
+  public fun `running now hides modules the user has not shown and tools this Mac lacks`() {
+    val gallery = setOf("claude", "lima", "homelab", "speaker", "docker")
+    // (moduleId, tag) rows, the shape Home builds.
+    val rows =
+        listOf(
+            "claude" to "running",
+            "lima" to "1 running",
+            "homelab" to "3 ready",
+            "docker" to Derive.RUNNING_NO_SOURCE_TAG,
+            "speaker" to "ready",
+            "prs" to "2 open", // not a gallery module
+            "ollama" to Derive.RUNNING_NO_SOURCE_TAG, // not in the gallery, no source
+        )
+    val visible =
+        Derive.visibleRunningNow(
+                rows,
+                gallery,
+                shownIds = setOf("claude", "docker"),
+                moduleId = { it.first },
+                tag = { it.second },
+            )
+            .map { it.first }
+    // lima/homelab/speaker are hidden in the gallery; docker is shown but has no source.
+    assertEquals(listOf("claude", "prs"), visible)
   }
 }

@@ -32,6 +32,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -121,6 +123,7 @@ public fun Banner(
  *
  * Used for "no Mac paired", which also locks navigation to Hosts.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 public fun EmptyState(
     label: String,
@@ -144,7 +147,12 @@ public fun EmptyState(
           color = colors.textDim,
       )
       if (actions != null) {
-        Row(horizontalArrangement = Arrangement.spacedBy(Space.s3), content = actions)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Space.s3),
+            verticalArrangement = Arrangement.spacedBy(Space.s2),
+        ) {
+          actions()
+        }
       }
     }
   }

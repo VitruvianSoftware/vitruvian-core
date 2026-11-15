@@ -1007,10 +1007,12 @@ public object Derive {
       busy: Boolean = false,
   ): LegacyLaunchAgentRowSpec =
       LegacyLaunchAgentRowSpec(
-          title = "Legacy chat-monitor launch agent",
-          subtitle = "Installed by Vitruvian Speaker 1.x. Chat monitoring now runs inside the app.",
-          trailing = "legacy",
-          actionLabel = "Remove",
+          title = "Old chat monitor (from an earlier version)",
+          subtitle =
+              "Stops and deletes the Vitruvian Speaker 1.x background monitor. " +
+                  "Chat monitoring now runs inside the app.",
+          trailing = "",
+          actionLabel = "Stop and remove",
           actionEnabled = canAct && !busy,
       )
 
@@ -1684,7 +1686,7 @@ public object Derive {
   private val LEAKED_PATH_OR_CODE_REGEX = Regex("""(?:/v\d+/|https?://)""", RegexOption.IGNORE_CASE)
   private val TECHNICAL_PREFIX_REGEX =
       Regex(
-          """^(?:[✗✓!]\s*|(?:agent|speaker|google\s+home|google\s+chat|gws|oauth)\s*(?:·\s*[^:]+)?:\s*|(?:error|failed|failure)\s*:\s*|[a-z][a-z ]{0,40}?\s+(?:failed|error)\s*:\s*|http\s+\d{3}(?:\s+[a-z][a-z ]*)?\s*:\s*)+""",
+          """^(?:[✗✓!]\s*|(?:mac\s+helper|agent|speaker|google\s+home|google\s+chat|gws|oauth)\s*(?:·\s*[^:]+)?:\s*|(?:error|failed|failure)\s*:\s*|[a-z][a-z ]{0,40}?\s+(?:failed|error)\s*:\s*|http\s+\d{3}(?:\s+[a-z][a-z ]*)?\s*:\s*)+""",
           RegexOption.IGNORE_CASE,
       )
   private val TRAILING_HTTP_REGEX =
@@ -1838,7 +1840,7 @@ public object Derive {
    * it might.
    */
   public fun batteryTemperatureLabel(celsius: Double?): String =
-      if (celsius == null || celsius.isNaN()) "no battery reading"
+      if (celsius == null || celsius.isNaN()) "no temperature reading"
       else "battery ${celsius.roundToInt()}°"
 
   /**
@@ -3580,7 +3582,13 @@ public object Derive {
       isUnpaired: Boolean,
       isHalfOpen: Boolean,
   ): Boolean {
-    if (!showRail || !dockOpen || screen == Screen.Console) return false
+    if (!showRail ||
+        !dockOpen ||
+        screen == Screen.Console ||
+        screen == Screen.About ||
+        screen == Screen.PhoneBridge) {
+      return false
+    }
     if (isHalfOpen && screen == Screen.Remote) return true
     return !isUnpaired
   }
@@ -3764,9 +3772,557 @@ public object Derive {
     val rounded = Math.round(value * 10) / 10.0
     return String.format(Locale.ROOT, "%.1f", rounded).removeSuffix(".0")
   }
+
+  // --- connection, demo mode & honest state -----------------------------
+
+  public const val MEMORY_SEGMENTS: Int = 16
+
+  /** Where the memory pressure bar turns amber on both Mac and Home screens. */
+  public const val MEMORY_WARN_PERCENT: Int = 75
+
+  /** Default and supported poll cadence chips on Settings. */
+  public const val DEFAULT_REFRESH_INTERVAL: String = "1 s"
+  public val REFRESH_INTERVAL_OPTIONS: List<String> = listOf("1 s", "5 s", "30 s")
+
+  public fun isMemoryWarn(percent: Int): Boolean = percent >= MEMORY_WARN_PERCENT
+
+  public fun memoryUsedPercent(usedBytes: Long, totalBytes: Long, freePercent: Int): Int =
+      if (totalBytes > 0L) {
+        ((usedBytes.toDouble() / totalBytes.toDouble()) * 100.0).roundToInt().coerceIn(0, 100)
+      } else {
+        (100 - freePercent).coerceIn(0, 100)
+      }
+
+  public fun normalizeRefreshInterval(raw: String?): String =
+      if (raw != null && raw in REFRESH_INTERVAL_OPTIONS) raw else DEFAULT_REFRESH_INTERVAL
+
+  /** The five observable states of the selected Mac session. */
+  public enum class HostPhase {
+    /** No saved Mac and demo mode is off. */
+    Unpaired,
+    /** Explicit simulated demo entered from the unpaired screen. */
+    Demo,
+    /** A saved Mac exists, awaiting its first reply after launch or host switch. */
+    Asking,
+    /** A saved Mac answered its last poll. */
+    Live,
+    /** A saved Mac failed its last poll (with or without a cached prior reading). */
+    Offline,
+  }
+
+  /** Connection + metrics-source outcome of a host transition, in pure JVM types. */
+  public enum class PollOutcome {
+    Unpaired,
+    Demo,
+    Asking,
+    Live,
+    Offline,
+  }
+
+  /**
+   * Computes [HostPhase] from saved host presence, session demo flag, whether the current host has
+   * replied yet, and whether its latest state is offline.
+   */
+  public fun hostPhase(
+      hasHosts: Boolean,
+      demoMode: Boolean,
+      hasResponded: Boolean,
+      isOffline: Boolean,
+  ): HostPhase =
+      when {
+        !hasHosts && demoMode -> HostPhase.Demo
+        !hasHosts -> HostPhase.Unpaired
+        isOffline -> HostPhase.Offline
+        hasResponded -> HostPhase.Live
+        else -> HostPhase.Asking
+      }
+
+  /**
+   * Transitions host connectivity after a poll finishes.
+   *
+   * On poll failure for a saved Mac, returns [PollOutcome.Offline] (never staying Connected); on
+   * poll success, returns [PollOutcome.Live]. Without a saved Mac, returns [PollOutcome.Demo] or
+   * [PollOutcome.Unpaired].
+   */
+  public fun afterPoll(
+      hasHosts: Boolean,
+      demoMode: Boolean,
+      pollSucceeded: Boolean,
+  ): PollOutcome =
+      when {
+        !hasHosts && demoMode -> PollOutcome.Demo
+        !hasHosts -> PollOutcome.Unpaired
+        pollSucceeded -> PollOutcome.Live
+        else -> PollOutcome.Offline
+      }
+
+  /**
+   * State after forgetting a host. Zero remaining hosts return to [PollOutcome.Unpaired] (and
+   * callers must exit demo mode and reset metrics source). When another host remains, it starts in
+   * [PollOutcome.Asking] until it answers.
+   */
+  public fun afterForgetHost(remainingHosts: Int): PollOutcome =
+      if (remainingHosts <= 0) PollOutcome.Unpaired else PollOutcome.Asking
+
+  /** True only when showing cached real data from an unreachable saved Mac. */
+  public fun isStaleReading(phase: HostPhase): Boolean = phase == HostPhase.Offline
+
+  /** Whether simulated mock values (`MockHost.*`) may be rendered on screen. */
+  public fun mayShowDemoData(phase: HostPhase): Boolean = phase == HostPhase.Demo
+
+  /** Status word beside the Settings host row or top-bar host chip. */
+  public fun hostStatusWord(phase: HostPhase, pairing: Pairing, needsPairing: Boolean): String =
+      when (phase) {
+        HostPhase.Unpaired -> "unpaired"
+        HostPhase.Demo -> "demo"
+        HostPhase.Asking -> "asking…"
+        HostPhase.Offline -> "unreachable"
+        HostPhase.Live -> if (needsPairing) connectionWord(pairing, "connected") else "connected"
+      }
+
+  /** Home / Mac dashboard source badge label. */
+  public fun sourceBadgeLabel(phase: HostPhase, needsPairing: Boolean): String =
+      when (phase) {
+        HostPhase.Demo -> "simulated"
+        HostPhase.Asking -> "asking…"
+        HostPhase.Offline -> "unreachable"
+        HostPhase.Unpaired -> "unpaired"
+        HostPhase.Live -> if (needsPairing) "not paired" else "live"
+      }
+
+  /** Compute / top-host subline without inventing hardware specs for an unanswered Mac. */
+  public fun hostSummarySubline(
+      phase: HostPhase,
+      osVersion: String?,
+      agentVersion: String?,
+      uptimeDays: Long?,
+      lastSeen: String,
+  ): String =
+      when (phase) {
+        HostPhase.Demo -> "macOS 26.1 · demo · 4 ms"
+        HostPhase.Unpaired -> "no host"
+        HostPhase.Asking -> "asking…"
+        HostPhase.Offline -> {
+          val ver =
+              if (!osVersion.isNullOrBlank() && !agentVersion.isNullOrBlank()) {
+                "macOS $osVersion · Mac helper v$agentVersion"
+              } else {
+                ""
+              }
+          when {
+            ver.isNotEmpty() && lastSeen.isNotBlank() -> "$ver · $lastSeen"
+            ver.isNotEmpty() -> "$ver · unreachable"
+            lastSeen.isNotBlank() -> lastSeen
+            else -> "unreachable"
+          }
+        }
+        HostPhase.Live ->
+            if (!osVersion.isNullOrBlank() && !agentVersion.isNullOrBlank() && uptimeDays != null) {
+              "macOS $osVersion · Mac helper v$agentVersion · up ${uptimeDays}d"
+            } else {
+              "connected"
+            }
+      }
+
+  /** Single-row headline when a saved Mac has never responded and is unreachable. */
+  public fun unansweredHostLine(hostName: String, lastSeen: String = ""): String {
+    val name = hostName.trim().ifEmpty { "the Mac" }
+    return if (lastSeen.isNotBlank()) "$name isn't answering · $lastSeen"
+    else "$name isn't answering"
+  }
+
+  /** Appends `"last seen <relative>"` when showing a cached reading from an offline host. */
+  public fun readingSubline(detail: String, stale: Boolean, lastSeen: String): String {
+    if (!stale || lastSeen.isBlank()) return detail
+    return if (detail.isBlank()) lastSeen else "$detail · $lastSeen"
+  }
+
+  /** Empty-list message under Home's "Running now" heading, or null when items exist. */
+  public fun runningNowEmptyMessage(phase: HostPhase, hasFirstReading: Boolean = false): String? =
+      when (phase) {
+        HostPhase.Asking -> "Checking…"
+        HostPhase.Live -> if (hasFirstReading) "Nothing running" else "Checking…"
+        else -> null
+      }
+
+  /** Gallery discovery metadata needed to decide whether a module auto-shows on discovery. */
+  public data class ModuleDiscoveryRule(
+      val id: String,
+      val requires: String?,
+      val autoShow: Boolean = false,
+  )
+
+  /**
+   * Discovered module IDs: `"claude"` plus any module opted into [ModuleDiscoveryRule.autoShow]
+   * whose required module-specific CLI tool is available.
+   */
+  public fun discoveredModuleIds(
+      modules: List<ModuleDiscoveryRule>,
+      availableTools: Set<String>,
+  ): Set<String> {
+    val out = linkedSetOf("claude")
+    for (module in modules) {
+      val req = module.requires ?: continue
+      if (module.autoShow && req in availableTools) out.add(module.id)
+    }
+    return out
+  }
+
+  /** Label for the two-tap danger Delete button inside `MacroEditor`. */
+  public fun macroDeleteLabel(armed: Boolean): String = if (armed) "Confirm delete" else "Delete"
+
+  /** Honest UI spec for Settings › Mac agent › Push notifications. */
+  public data class PushNotifySpec(
+      val subtitle: String,
+      val checked: Boolean,
+      val switchEnabled: Boolean,
+      val testEnabled: Boolean,
+  )
+
+  public fun pushNotifySpec(
+      paired: Boolean,
+      reported: Boolean,
+      configured: Boolean,
+      enabled: Boolean,
+      topic: String,
+  ): PushNotifySpec {
+    if (!reported || !configured) {
+      return PushNotifySpec(
+          subtitle = "Set up ntfy on the Mac to get alerts.",
+          checked = false,
+          switchEnabled = false,
+          testEnabled = false,
+      )
+    }
+    val topicName = topic.trim().ifEmpty { "unnamed" }
+    val subtitle = if (enabled) "push · topic $topicName" else "push · topic $topicName · muted"
+    return PushNotifySpec(
+        subtitle = subtitle,
+        checked = enabled,
+        switchEnabled = paired,
+        testEnabled = paired,
+    )
+  }
+
+  // --- navigation stack, deep links, Phone Bridge, Gallery, Mac, Home ---
+
+  private val TAB_SCREEN_NAMES: Set<String> = setOf("Home", "Remote", "Mac", "Apps", "Console")
+
+  /** True when [screenName] is one of the primary bottom-tab destinations. */
+  public fun isTabScreen(screenName: String): Boolean = screenName in TAB_SCREEN_NAMES
+
+  /**
+   * Whether [screen] shows the in-page unpaired empty state when no Mac is paired.
+   *
+   * Remote runs over Bluetooth HID without needing a Mac, and Settings / Phone Bridge / About
+   * remain directly usable while unpaired.
+   */
+  public fun showsUnpairedEmptyState(screen: Screen, isUnpaired: Boolean): Boolean =
+      isUnpaired &&
+          when (screen) {
+            Screen.Home,
+            Screen.Mac,
+            Screen.Apps,
+            Screen.Console -> true
+            Screen.Remote,
+            Screen.Hosts,
+            Screen.PhoneBridge,
+            Screen.About -> false
+          }
+
+  /** Pure navigation snapshot: current destination, prior screen stack, and active About page. */
+  public data class NavState(
+      val current: String = "Home",
+      val backStack: List<String> = emptyList(),
+      val aboutSubPage: String? = null,
+  )
+
+  /**
+   * Navigates to [target], maintaining back history for secondary screens (Settings, Phone Bridge,
+   * About). Unpaired tabs open their own screen directly rather than redirecting to Settings.
+   */
+  public fun navigateToScreen(
+      state: NavState,
+      target: String,
+      isUnpaired: Boolean = false,
+  ): NavState {
+    if (isTabScreen(target)) {
+      return NavState(current = target, backStack = emptyList(), aboutSubPage = null)
+    }
+    if (state.current == target) {
+      return state.copy(current = target, aboutSubPage = null)
+    }
+    val cycleIndex = state.backStack.indexOf(target)
+    if (cycleIndex >= 0) {
+      return NavState(
+          current = target,
+          backStack = state.backStack.take(cycleIndex),
+          aboutSubPage = null,
+      )
+    }
+    return NavState(
+        current = target,
+        backStack = state.backStack + state.current,
+        aboutSubPage = null,
+    )
+  }
+
+  /**
+   * Navigates to [subPage] inside `Screen.About`, preserving prior Settings history when entered
+   * directly.
+   */
+  public fun navigateToAboutSubPage(
+      state: NavState,
+      subPage: String?,
+      isUnpaired: Boolean = false,
+  ): NavState {
+    val base = if (state.current == "About") state else navigateToScreen(state, "About", isUnpaired)
+    return base.copy(aboutSubPage = subPage)
+  }
+
+  /**
+   * Pops one step from secondary navigation (About sub-page → About → Settings → previous tab), or
+   * null to exit.
+   */
+  public fun popNav(state: NavState, isUnpaired: Boolean = false): NavState? {
+    if (state.current == "About" && state.aboutSubPage != null) {
+      return state.copy(current = "About", aboutSubPage = null)
+    }
+    if (isTabScreen(state.current)) return null
+    if (state.backStack.isNotEmpty()) {
+      return NavState(
+          current = state.backStack.last(),
+          backStack = state.backStack.dropLast(1),
+          aboutSubPage = null,
+      )
+    }
+    return when (state.current) {
+      "About",
+      "PhoneBridge" -> NavState(current = "Hosts", backStack = emptyList(), aboutSubPage = null)
+      else -> NavState(current = "Home", backStack = emptyList(), aboutSubPage = null)
+    }
+  }
+
+  /** True when Back/chevron returns to an in-app screen rather than exiting the activity. */
+  public fun canGoBack(state: NavState, isUnpaired: Boolean = false): Boolean =
+      popNav(state, isUnpaired) != null
+
+  /** Plain-English summary line for Settings › Phone Bridge. */
+  public fun phoneBridgeSummarySubtitle(
+      enabled: Boolean,
+      linked: Boolean,
+      linkStatus: String,
+      problemText: String?,
+      grantedCount: Int,
+      totalCount: Int,
+  ): String {
+    if (!enabled) return "Off · ${AppInfo.phoneBridgeCapabilitiesProseList}"
+    if (linked) return "On · linked · $grantedCount of $totalCount permissions granted"
+    val detail = (problemText ?: linkStatus).trim().ifEmpty { "connecting…" }
+    return "On · $detail"
+  }
+
+  /**
+   * Plain-English permission capability line for Phone Bridge rows without exposing raw tool IDs.
+   */
+  public fun bridgePermissionSubtitle(id: String, granted: Boolean): String {
+    val base =
+        when (id) {
+          "read_sms" -> "Read text messages"
+          "send_sms" -> "Send text messages (asks first)"
+          "read_contacts" -> "Look up contacts"
+          "read_call_log" -> "Read call history"
+          "call_phone" -> "Place phone calls (asks first)"
+          "location" -> "Read current location"
+          "notification_access" -> "Read, reply to and dismiss notifications"
+          "accessibility" -> "Read and control the screen"
+          else -> "Phone access"
+        }
+    return if (granted) base else "$base · not granted"
+  }
+
+  /** Tag a Running Now row carries when the Mac has no source for it (tool missing). */
+  public const val RUNNING_NO_SOURCE_TAG: String = "no source"
+
+  /**
+   * Which Running Now rows Home shows. A module the user hasn't chosen to show (hidden in the
+   * gallery) never appears, so Home and the gallery agree, and a row with no source on this Mac
+   * (the tool isn't installed) is not "running" and is dropped. Rows that aren't gallery modules
+   * keep only the no-source rule.
+   */
+  public fun <T> visibleRunningNow(
+      rows: List<T>,
+      galleryIds: Set<String>,
+      shownIds: Set<String>,
+      moduleId: (T) -> String,
+      tag: (T) -> String,
+  ): List<T> =
+      rows.filter {
+        val id = moduleId(it)
+        tag(it) != RUNNING_NO_SOURCE_TAG && (id !in galleryIds || id in shownIds)
+      }
+
+  /** Action label on each Modules Gallery row. */
+  public fun galleryActionLabel(shown: Boolean, unavailable: Boolean): String =
+      when {
+        shown -> "Hide"
+        unavailable -> "Not on this Mac"
+        else -> "Show"
+      }
+
+  private val CONTAINER_TOOLS: Set<String> = setOf("docker", "podman", "colima")
+
+  /** Which Mac screen developer-tool sections have backing tools on this Mac. */
+  public data class MacDeveloperToolsSpec(
+      val showContainers: Boolean,
+      val showLimaVms: Boolean,
+      val showK3sNodes: Boolean,
+      val showCustomPanel: Boolean,
+  ) {
+    public val anyVisible: Boolean
+      get() = showContainers || showLimaVms || showK3sNodes || showCustomPanel
+  }
+
+  /** Reveals each developer-tool section only when the Mac reports that tool (or in demo mode). */
+  public fun macDeveloperTools(
+      isDemoMode: Boolean,
+      availableTools: Set<String>,
+      containersAvailable: Boolean? = null,
+      vmsAvailable: Boolean?,
+      k8sAvailable: Boolean?,
+      prometheusReported: Boolean,
+  ): MacDeveloperToolsSpec =
+      if (isDemoMode) {
+        MacDeveloperToolsSpec(
+            showContainers = true,
+            showLimaVms = true,
+            showK3sNodes = false,
+            showCustomPanel = true,
+        )
+      } else {
+        MacDeveloperToolsSpec(
+            showContainers =
+                availableTools.any { it in CONTAINER_TOOLS } || containersAvailable == true,
+            showLimaVms = "limactl" in availableTools || vmsAvailable == true,
+            showK3sNodes = "kubectl" in availableTools || k8sAvailable == true,
+            showCustomPanel = prometheusReported,
+        )
+      }
+
+  private val EXCEPTION_PREFIX_REGEX =
+      Regex(
+          """^(?:(?:java|javax|kotlinx?|android|okhttp3)\.[A-Za-z0-9_.]+Exception|[A-Za-z0-9_]+Exception):\s*""",
+          RegexOption.IGNORE_CASE,
+      )
+
+  /** Strips noisy exception/agent prefixes and clips to one readable line. */
+  public fun stripRawErrorPrefix(raw: String): String {
+    var cleaned = stripVitruvianSpeakerErrorPrefixes(raw.trim())
+    while (true) {
+      val next = EXCEPTION_PREFIX_REGEX.replaceFirst(cleaned, "").trim()
+      if (next == cleaned) break
+      cleaned = next
+    }
+    return Format.clip(stripVitruvianSpeakerErrorPrefixes(cleaned))
+  }
+
+  /** Plain headline first, stripped raw tool detail second for Mac tool notices. */
+  public fun macToolNoticeLines(tool: String, rawReason: String): Pair<String, String> {
+    val stripped = stripRawErrorPrefix(rawReason)
+    val lower = stripped.lowercase(Locale.ROOT)
+    val missingTool =
+        lower.contains("not installed") ||
+            lower.contains("not found") ||
+            lower.contains("no such file") ||
+            lower.contains("executable file not found")
+    val headline =
+        when (tool) {
+          "limactl" ->
+              if (missingTool) "Lima isn't installed on this Mac."
+              else "Couldn't read Lima virtual machines."
+          "kubectl" ->
+              when {
+                missingTool -> "kubectl isn't installed on this Mac."
+                lower.contains("connection") && lower.contains("refused") ||
+                    lower.contains("unable to connect") ||
+                    lower.contains("i/o timeout") ->
+                    "Couldn't reach the Kubernetes cluster from this Mac."
+                else -> "Couldn't read Kubernetes nodes."
+              }
+          "docker",
+          "docker / podman" -> Format.containerTitle(rawReason)
+          else -> "Tool unavailable on this Mac."
+        }
+    return headline to stripped
+  }
+
+  /** Plain-first status headline and optional raw detail for the Mac screen's PromQL panel. */
+  public fun promqlStatusLines(rawStatus: String): Pair<String, String?> {
+    val trimmed = rawStatus.trim()
+    val lower = trimmed.lowercase(Locale.ROOT)
+    if (trimmed.isEmpty() || lower == "run a query to fill this panel" || lower == "no query run") {
+      return "Run a PromQL query to inspect live series." to null
+    }
+    if (lower == "querying…" || lower == "querying...") {
+      return "Querying…" to null
+    }
+    if (lower == "no agent configured" || lower == "no mac helper configured") {
+      return "Add a Mac in Settings before running a query." to null
+    }
+    if (lower.startsWith("vector · ") ||
+        lower.startsWith("matrix · ") ||
+        lower.startsWith("scalar · ") ||
+        lower.startsWith("string · ") ||
+        lower.startsWith("result · ")) {
+      return trimmed to null
+    }
+    val stripped = stripRawErrorPrefix(trimmed)
+    val sLower = stripped.lowercase(Locale.ROOT)
+    val headline =
+        when {
+          AUTH_CODE_REGEX.containsMatchIn(trimmed) ||
+              sLower.contains("not paired") ||
+              sLower.contains("unauthorized") ||
+              sLower.contains("forbidden") -> "Couldn't run query: this phone isn't paired."
+          sLower.contains("not configured") -> "Prometheus isn't set up on this Mac."
+          sLower.contains("failed to connect") ||
+              sLower.contains("connection refused") ||
+              sLower.contains("timed out") ||
+              sLower.contains("timeout") ||
+              sLower.contains("unreachable") ||
+              sLower.contains("connectexception") ||
+              sLower.contains("socketexception") ||
+              sLower.contains("unknownhost") ||
+              sLower.contains("no route") -> "Couldn't reach the Mac helper to run this query."
+          else -> "Couldn't run PromQL query."
+        }
+    return headline to stripped.takeIf { it.isNotEmpty() }
+  }
+
+  /** One widget option for Home edit mode's "+ Add widget" picker. */
+  public data class HomeWidgetOption(val id: String, val label: String)
+
+  private val HOME_WIDGET_CATALOG: List<HomeWidgetOption> =
+      listOf(
+          HomeWidgetOption("cpu", "CPU"),
+          HomeWidgetOption("mem", "Memory pressure"),
+          HomeWidgetOption("temp", "Thermals"),
+          HomeWidgetOption("bat", "Battery"),
+      )
+
+  /** Hidden Home widgets in canonical display order for the "+ Add widget" sheet. */
+  public fun hiddenWidgetOptions(hiddenIds: Set<String>): List<HomeWidgetOption> =
+      HOME_WIDGET_CATALOG.filter { it.id in hiddenIds }
+
+  /** Shows "+ Add widget" only while editing Home and at least one widget is hidden. */
+  public fun shouldShowAddWidget(editMode: Boolean, hiddenIds: Set<String>): Boolean =
+      editMode && hiddenIds.isNotEmpty()
+
+  public const val MACRO_NAME_HINT: String = "e.g. Lock screen"
+  public const val MACRO_COMMAND_HINT: String = "e.g. pmset displaysleepnow"
 }
 
-/** The six destinations. Settings (Hosts) is reachable from the host chip and the rail only. */
+/** The six primary destinations plus Settings sub-screens (`PhoneBridge`, `About`). */
 public enum class Screen(public val title: String) {
   Home("Home"),
   Remote("Remote"),
@@ -3774,6 +4330,8 @@ public enum class Screen(public val title: String) {
   Apps("Modules"),
   Console("Console"),
   Hosts("Settings"),
+  PhoneBridge("Phone Bridge"),
+  About("About"),
 }
 
 /**

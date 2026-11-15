@@ -56,6 +56,11 @@ pub fn parse_semver(text: &str) -> Option<(u32, u32, u32)> {
     ))
 }
 
+pub fn version_code_from_semver(text: &str) -> Option<u32> {
+    let (major, minor, patch) = parse_semver(text)?;
+    Some(major * 10000 + minor * 100 + patch)
+}
+
 pub fn swift_version_line(text: &str) -> Option<String> {
     let marker = "// x-release-please-version";
     for line in text.lines() {
@@ -173,6 +178,7 @@ pub fn check_all_versions(
     build_text: &str,
     plist_text: &str,
     rp_config_text: &str,
+    stamped_version_code: &str,
 ) -> Vec<String> {
     let mut problems = Vec::new();
 
@@ -227,6 +233,41 @@ pub fn check_all_versions(
             "vitruvian-remote/BUILD says {:?}, vitruvian-tool.json says {manifest_version}",
             build_ver
         ));
+    }
+
+    if build_text.contains("\"versionCode\": \"1\"") {
+        problems.push(
+            "vitruvian-remote/BUILD hardcodes \"versionCode\": \"1\"; derive it from major*10000+minor*100+patch"
+                .to_string(),
+        );
+    }
+    if build_text.contains("android_binary(")
+        && !build_text.contains("manifest_values = _MANIFEST_VALUES")
+    {
+        problems.push(
+            "android_binary in vitruvian-remote/BUILD must stamp manifest_values = _MANIFEST_VALUES"
+                .to_string(),
+        );
+    }
+    match stamped_version_code.trim().parse::<u32>() {
+        Ok(stamped_code) => {
+            if stamped_code <= 1 {
+                problems.push(format!("stamped versionCode {stamped_code} must be > 1"));
+            }
+            if let Some(expected_code) = version_code_from_semver(manifest_version) {
+                if stamped_code != expected_code {
+                    problems.push(format!(
+                        "stamped versionCode is {stamped_code}, expected {expected_code} (major*10000+minor*100+patch) for manifest version '{manifest_version}'"
+                    ));
+                }
+            }
+        }
+        Err(_) => {
+            problems.push(format!(
+                "stamped versionCode '{}' is not an unsigned integer",
+                stamped_version_code.trim()
+            ));
+        }
     }
 
     for key in ["CFBundleShortVersionString", "CFBundleVersion"] {
@@ -307,8 +348,20 @@ fn live_tool_versions_and_release_please_config_in_sync() {
         "apps/mobile/vitruvian-remote/release-please-config.json",
     ))
     .unwrap();
+    let stamped_version_code = fs::read_to_string(find_runfile(
+        "apps/mobile/vitruvian-remote/app_version_code.txt",
+    ))
+    .unwrap();
 
-    let problems = check_all_versions(&manifest, &swift, &server_rs, &build, &plist, &rp_config);
+    let problems = check_all_versions(
+        &manifest,
+        &swift,
+        &server_rs,
+        &build,
+        &plist,
+        &rp_config,
+        &stamped_version_code,
+    );
     assert!(
         problems.is_empty(),
         "version check failed:\n{}",
@@ -335,7 +388,7 @@ fn detects_mismatch_across_files() {
     let plist = "<plist><dict><key>CFBundleShortVersionString</key><string>0.1.18</string><key>CFBundleVersion</key><string>0.1.21</string></dict></plist>";
     let rp = "{\"packages\": {\"apps/mobile/vitruvian-remote\": {\"extra-files\": []}}}";
 
-    let problems = check_all_versions(manifest, swift, server_rs, build, plist, rp);
+    let problems = check_all_versions(manifest, swift, server_rs, build, plist, rp, "121");
     assert!(problems.iter().any(|p| p.contains("Version.swift")));
     assert!(problems
         .iter()
@@ -349,4 +402,47 @@ fn detects_mismatch_across_files() {
     assert!(problems
         .iter()
         .any(|p| p.contains("release-please-config.json")));
+}
+
+#[test]
+fn derives_version_code_from_semver() {
+    assert_eq!(version_code_from_semver("0.1.40"), Some(140));
+    assert_eq!(version_code_from_semver("1.2.3"), Some(10203));
+    assert_eq!(version_code_from_semver("0.0.1"), Some(1));
+}
+
+#[test]
+fn rejects_hardcoded_version_code_one() {
+    let manifest = "{\n  \"version\": \"0.1.40\"\n}\n";
+    let swift = "public static let current = \"0.1.40\" // x-release-please-version\n";
+    let server_rs = "pub const VERSION: &str = \"0.1.40\"; // x-release-please-version\n";
+    let build = "android_binary(\n    manifest_values = {\n        \"versionCode\": \"1\",\n        \"versionName\": \"0.1.40\",  # x-release-please-version\n    },\n)\n";
+    let plist = "<plist><dict><key>CFBundleShortVersionString</key><string>0.1.40</string><key>CFBundleVersion</key><string>0.1.40</string></dict></plist>";
+    let rp = "{\"packages\": {\"apps/mobile/vitruvian-remote\": {\"extra-files\": [\"BUILD\", \"macmenu/Sources/RemoteMenuCore/Version.swift\", \"macagent/rs/src/server.rs\", \"macmenu/atrium-extension/vitruvian-tool.json\", \"macmenu/Resources/Info.plist\"]}}}";
+
+    let problems = check_all_versions(manifest, swift, server_rs, build, plist, rp, "140");
+    assert!(problems
+        .iter()
+        .any(|p| p.contains("\"versionCode\": \"1\"")));
+}
+
+#[test]
+fn rejects_wrong_stamped_version_code() {
+    let manifest = "{\n  \"version\": \"0.1.40\"\n}\n";
+    let swift = "public static let current = \"0.1.40\" // x-release-please-version\n";
+    let server_rs = "pub const VERSION: &str = \"0.1.40\"; // x-release-please-version\n";
+    let build = "    \"versionName\": \"0.1.40\",  # x-release-please-version\nandroid_binary(\n    manifest_values = _MANIFEST_VALUES,\n)\n";
+    let plist = "<plist><dict><key>CFBundleShortVersionString</key><string>0.1.40</string><key>CFBundleVersion</key><string>0.1.40</string></dict></plist>";
+    let rp = "{\"packages\": {\"apps/mobile/vitruvian-remote\": {\"extra-files\": [\"BUILD\", \"macmenu/Sources/RemoteMenuCore/Version.swift\", \"macagent/rs/src/server.rs\", \"macmenu/atrium-extension/vitruvian-tool.json\", \"macmenu/Resources/Info.plist\"]}}}";
+
+    let wrong = check_all_versions(manifest, swift, server_rs, build, plist, rp, "50");
+    assert!(
+        wrong
+            .iter()
+            .any(|p| p.contains("stamped versionCode is 50, expected 140")),
+        "expected wrong versionCode diagnostic, got: {wrong:?}"
+    );
+
+    let ok = check_all_versions(manifest, swift, server_rs, build, plist, rp, "140");
+    assert!(ok.is_empty(), "expected no problems for 140, got: {ok:?}");
 }

@@ -68,6 +68,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
+import dev.vitruvian.design.Banner
+import dev.vitruvian.design.BannerTone
 import dev.vitruvian.design.Duration
 import dev.vitruvian.design.Easing
 import dev.vitruvian.design.Hit
@@ -77,11 +79,11 @@ import dev.vitruvian.design.Rail
 import dev.vitruvian.design.Space
 import dev.vitruvian.design.TabBar
 import dev.vitruvian.design.TopBar
+import dev.vitruvian.design.VButton
 import dev.vitruvian.design.VIcon
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianIcons
 import dev.vitruvian.design.motion
-import dev.vitruvian.remote.state.Connection
 import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.Screen
@@ -106,6 +108,10 @@ private val PUSH_SLIDE = 5.dp
 /** The first five destinations are the tab bar; Hosts is rail- and chip-only. */
 private val TAB_SCREENS =
     listOf(Screen.Home, Screen.Remote, Screen.Mac, Screen.Apps, Screen.Console)
+
+/** The six primary destinations shown on the navigation rail. */
+private val RAIL_SCREENS =
+    listOf(Screen.Home, Screen.Remote, Screen.Mac, Screen.Apps, Screen.Console, Screen.Hosts)
 
 private val ICONS =
     mapOf(
@@ -139,7 +145,7 @@ public fun RemoteShell(
           showRail = layout.showRail,
           dockOpen = state.dockOpen,
           screen = screen,
-          isUnpaired = state.connection == Connection.Unpaired,
+          isUnpaired = state.isUnpaired,
           isHalfOpen = isHalfOpen,
       )
   val dockShowsTrackpad =
@@ -164,7 +170,13 @@ public fun RemoteShell(
         )
       }
       Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-        TopBar(title = screen.title, showMark = !layout.showRail) {
+        val isAbout = screen == Screen.About
+        val showBack = state.canGoBack
+        TopBar(
+            title = if (isAbout) state.aboutPage.title else screen.title,
+            showMark = !layout.showRail && !showBack,
+            onBack = if (showBack) ({ state.navigateBack() }) else null,
+        ) {
           // Folded, the rail is absent and Hosts is not on the tab bar, so keep the gear beside
           // the host chip; unfolded, the rail already holds the Hosts destination.
           if (Derive.showsTopBarSettings(layout.showRail)) {
@@ -177,6 +189,15 @@ public fun RemoteShell(
               hostName = state.hostShortName,
               stateLabel = state.connectionWord,
           )
+        }
+        if (state.isDemoMode) {
+          Banner(
+              tone = BannerTone.Info,
+              label = "Demo data",
+              body = "Simulated Mac dashboard. Pair a Mac to replace it.",
+          ) {
+            VButton("Exit demo", state::exitDemo)
+          }
         }
         ShellBody(
             state = state,
@@ -230,10 +251,16 @@ private fun ShellBody(
         },
         label = "screen",
     ) { target ->
+      val subKey =
+          when (target) {
+            Screen.Apps -> "${state.appsView.name}:${state.module}"
+            Screen.About -> state.aboutPage.name
+            else -> ""
+          }
       val scrollState =
           rememberSaveable(
               target.name,
-              if (target == Screen.Apps) "${state.appsView.name}:${state.module}" else "",
+              subKey,
               saver = ScrollState.Saver,
           ) {
             ScrollState(0)
@@ -321,10 +348,10 @@ private fun ShellBody(
   }
 }
 
-/** The six destinations, wired to navigation. */
+/** The six primary destinations, wired to navigation (excludes sub-screens like About). */
 @Composable
 private fun navItems(state: RemoteState): List<NavItem> =
-    Screen.entries.map { screen ->
+    RAIL_SCREENS.map { screen ->
       NavItem(
           key = screen.name,
           label = screen.title,

@@ -31,7 +31,9 @@
 # file is hand-authored.
 # gazelle:ignore
 
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("@rules_android//android:rules.bzl", "android_binary")
+load("@rules_java//java:java_import.bzl", "java_import")
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
 load("@rules_kotlin//kotlin:jvm.bzl", "kt_jvm_library", "kt_jvm_test")
 load("@rules_rust//rust:defs.bzl", "rust_test")
@@ -42,6 +44,7 @@ package(default_visibility = ["//apps/mobile/vitruvian-remote:__subpackages__"])
 
 exports_files([
     "BUILD",
+    "LICENSE",
     "release-please-config.json",
 ])
 
@@ -58,6 +61,7 @@ kt_android_library(
         # taking them here too would define every symbol twice.
         exclude = [
             "src/main/kotlin/dev/vitruvian/remote/hid/HidCodes.kt",
+            "src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/BridgePolicy.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Derive.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Format.kt",
@@ -73,6 +77,7 @@ kt_android_library(
     plugins = ["//packages/design-system-android:compose_compiler"],
     resource_files = glob(["src/main/res/**"]),
     deps = [
+        ":app_info",
         ":bridge_policy",
         ":derive",
         ":format",
@@ -103,20 +108,43 @@ kt_android_library(
 #
 # Multi-ABI APK packaged for release and distribution by
 # vitruvian-remote-release.yaml and scripts/publish.sh.
+_MANIFEST_BASE = {
+    "applicationId": "dev.vitruvian.remote",
+    # API 26 is the floor because the launcher icon is adaptive; the
+    # glass surfaces need 31 and fall back to an opaque surface below it,
+    # exactly as ANDROID.md prescribes.
+    "minSdkVersion": "26",
+    "targetSdkVersion": "35",
+    "versionName": "0.1.41",  # x-release-please-version
+}
+
+_VERSION_PARTS = [int(p) for p in _MANIFEST_BASE["versionName"].split(".")]
+
+_VERSION_CODE = (
+    _VERSION_PARTS[0] * 10000 + _VERSION_PARTS[1] * 100 + _VERSION_PARTS[2] if len(_VERSION_PARTS) == 3 else fail("versionName must be major.minor.patch, got %s" % _MANIFEST_BASE["versionName"])
+)
+
+_VERSION_CODE_VALIDATED = (
+    _VERSION_CODE if _VERSION_CODE > 1 else fail("versionCode must be > 1, got %s" % _VERSION_CODE)
+)
+
+_MANIFEST_VALUES = dict(
+    _MANIFEST_BASE,
+    versionCode = str(_VERSION_CODE_VALIDATED),
+)
+
+# Exposes the exact stamped versionCode string so tests verify what :app actually stamps.
+write_file(
+    name = "app_version_code",
+    out = "app_version_code.txt",
+    content = [_MANIFEST_VALUES["versionCode"]],
+)
+
 android_binary(
     name = "app",
     custom_package = "dev.vitruvian.remote",
     manifest = "src/main/AndroidManifest.xml",
-    manifest_values = {
-        "applicationId": "dev.vitruvian.remote",
-        # API 26 is the floor because the launcher icon is adaptive; the
-        # glass surfaces need 31 and fall back to an opaque surface below it,
-        # exactly as ANDROID.md prescribes.
-        "minSdkVersion": "26",
-        "targetSdkVersion": "35",
-        "versionCode": "1",
-        "versionName": "0.1.41",  # x-release-please-version
-    },
+    manifest_values = _MANIFEST_VALUES,
     # No explicit visibility: the package default above already scopes this to
     # the app's own subpackages, and `bazel build //<this app>:app` needs no
     # visibility at all. Making it public would punch a hole in the inter-app
@@ -189,6 +217,37 @@ kt_jvm_test(
     ],
 )
 
+# Compose's Android runtime artifact implements android.os.Parcelable and
+# probes Looper.getMainLooper() inside catch (Exception); putting the SDK
+# stub jar on the JVM test runtime classpath matches Android unit tests.
+java_import(
+    name = "android_sdk_stub_jar",
+    testonly = True,
+    jars = ["@androidsdk//:platforms/android-35/android.jar"],
+)
+
+kt_jvm_test(
+    name = "mock_host_walk_test",
+    srcs = ["src/test/kotlin/dev/vitruvian/remote/state/MockHostWalkTest.kt"],
+    test_class = "dev.vitruvian.remote.state.MockHostWalkTest",
+    runtime_deps = [":android_sdk_stub_jar"],
+    deps = [
+        ":app_info",
+        ":bridge_policy",
+        ":derive",
+        ":format",
+        ":hid_codes",
+        ":lib",
+        ":tuning",
+        ":wake_on_lan",
+        ":wire",
+        "//packages/design-system-android:lib",
+        "@maven//:androidx_compose_runtime_runtime",
+        "@maven//:junit_junit",
+        "@maven//:org_jetbrains_kotlinx_kotlinx_coroutines_android",
+    ],
+)
+
 # What the v1.2 dashboards CONCLUDE from what the Mac said, split out of :lib
 # for the same reason as :format -- a plain JVM test reaches it without Compose.
 #
@@ -199,9 +258,37 @@ kt_jvm_test(
 # Depends on :wire for the Vitruvian Speaker wire types (AgentCustomVoice) rather
 # than carrying a copy of them.
 kt_jvm_library(
+    name = "app_info",
+    srcs = ["src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt"],
+    deps = ["@maven//:io_sentry_sentry"],
+)
+
+kt_jvm_test(
+    name = "app_info_test",
+    size = "small",
+    srcs = ["src/test/kotlin/dev/vitruvian/remote/state/AppInfoTest.kt"],
+    data = [
+        "BUILD",
+        "LICENSE",
+        "src/main/AndroidManifest.xml",
+        "//packages/design-system-android:BUILD",
+    ] + glob([
+        "src/main/kotlin/**/*.kt",
+        "src/main/res/**",
+    ]),
+    test_class = "dev.vitruvian.remote.state.AppInfoTest",
+    deps = [
+        ":app_info",
+        "@maven//:io_sentry_sentry",
+        "@maven//:junit_junit",
+    ],
+)
+
+kt_jvm_library(
     name = "derive",
     srcs = ["src/main/kotlin/dev/vitruvian/remote/state/Derive.kt"],
     deps = [
+        ":app_info",
         ":format",
         ":wire",
     ],
@@ -213,9 +300,15 @@ kt_jvm_test(
     data = [
         "src/main/AndroidManifest.xml",
         "src/main/kotlin/dev/vitruvian/remote/MainActivity.kt",
+        "src/main/kotlin/dev/vitruvian/remote/RemoteApp.kt",
+        "src/main/kotlin/dev/vitruvian/remote/overlays/HostStates.kt",
+        "src/main/kotlin/dev/vitruvian/remote/overlays/MacroEditor.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/AgentClient.kt",
+        "src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/Derive.kt",
+        "src/main/kotlin/dev/vitruvian/remote/state/MockHost.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/Models.kt",
+        "src/main/kotlin/dev/vitruvian/remote/state/Persistence.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/Wire.kt",
         "//apps/desktop/vitruvian-speaker:Sources/VitruvianSpeakerToolCore/Pages.swift",
@@ -227,6 +320,7 @@ kt_jvm_test(
     ]),
     test_class = "dev.vitruvian.remote.state.DeriveTest",
     deps = [
+        ":app_info",
         ":derive",
         ":format",
         ":hid_codes",
@@ -418,11 +512,13 @@ pipeline_unit(
     runner = "ubuntu-26.04",
     test_targets = [
         ":app",
+        ":app_info_test",
         ":bridge_policy_test",
         ":derive_test",
         ":format_test",
         ":hid_codes_test",
         ":lib",
+        ":mock_host_walk_test",
         ":tuning_test",
         ":wake_on_lan_test",
         ":wire_test",

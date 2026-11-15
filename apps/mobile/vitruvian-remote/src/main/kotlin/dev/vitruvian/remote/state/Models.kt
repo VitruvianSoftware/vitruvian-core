@@ -59,9 +59,9 @@ public enum class AppsView {
   Gallery
 }
 
-/** How a macro reaches the Mac. */
+/** How a macro reaches the Mac. Kept named `Ssh` in enum for saved preferences compatibility. */
 public enum class MacroKind(public val label: String) {
-  Ssh("SSH"),
+  Ssh("Shell"),
   AppleScript("AppleScript"),
   Shortcut("Shortcut"),
 }
@@ -93,6 +93,7 @@ public data class Widget(
     val sub: String,
     val percent: Int,
     val warn: Boolean = false,
+    val stale: Boolean = false,
 )
 
 /** A row of the Home screen's "Running now" list. */
@@ -120,6 +121,7 @@ public data class HonestMetric(
     val warn: Boolean = false,
     /** Worse than [warn]: drawn in the error colour. A disk at 95% is the first user. */
     val crit: Boolean = false,
+    val stale: Boolean = false,
 )
 
 /**
@@ -325,6 +327,13 @@ public data class GalleryEntry(
      * suffices.
      */
     val requires: String? = null,
+    /**
+     * Whether this module is auto-shown when its required CLI tool is present on the Mac before the
+     * user has saved module choices. Only modules whose required tool is specific to that module
+     * auto-show; general-purpose CLIs (`adb`, `kubectl`, `limactl`, `docker`) stay hidden until the
+     * user taps Show in the gallery.
+     */
+    val autoShow: Boolean = false,
 )
 
 /** A row of the Mac screen's process table. */
@@ -699,6 +708,9 @@ public sealed interface DialogKind {
    * from any web page, and pairing gives that Mac this phone's bridge.
    */
   public data class PairFromQr(val link: PairLink) : DialogKind
+
+  /** Forget a paired Mac and drop its token after explicit confirmation. */
+  public data class ForgetHost(val id: String, val name: String) : DialogKind
 }
 
 /**

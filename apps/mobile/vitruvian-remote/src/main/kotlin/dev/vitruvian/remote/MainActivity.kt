@@ -21,6 +21,7 @@
 package dev.vitruvian.remote
 
 import android.Manifest
+import android.app.ActivityManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -53,6 +54,7 @@ import dev.vitruvian.remote.bridge.PhoneTools
 import dev.vitruvian.remote.hid.BluetoothHidTransport
 import dev.vitruvian.remote.hid.HidAction
 import dev.vitruvian.remote.state.AgentClient
+import dev.vitruvian.remote.state.AppInfo
 import dev.vitruvian.remote.state.BluetoothControl
 import dev.vitruvian.remote.state.BridgeControl
 import dev.vitruvian.remote.state.BridgePending
@@ -158,14 +160,73 @@ public class MainActivity : ComponentActivity() {
         }
       }
 
-  override fun onCreate(savedInstanceState: Bundle?) {
-    val sentryDsn =
-        System.getenv("SENTRY_DSN")
-            ?: "https://ae2f3e2be71221701a6608b02c1bc344@sentry-ingest.ipv1337.dev/4"
+  private fun readAppVersion(): String {
+    val rawVersion =
+        runCatching {
+              val info =
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    packageManager.getPackageInfo(
+                        packageName,
+                        PackageManager.PackageInfoFlags.of(0),
+                    )
+                  } else {
+                    @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0)
+                  }
+              info.versionName
+            }
+            .getOrNull()
+    return AppInfo.normalizeVersion(rawVersion)
+  }
+
+  private fun readCrashReportDeviceDetails(): AppInfo.CrashReportDeviceDetails {
+    val metrics = runCatching { resources?.displayMetrics }.getOrNull()
+    val memorySizeBytes =
+        runCatching {
+              val manager = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+              if (manager != null) {
+                ActivityManager.MemoryInfo()
+                    .also { manager.getMemoryInfo(it) }
+                    .totalMem
+                    .takeIf { it > 0L }
+              } else {
+                null
+              }
+            }
+            .getOrNull()
+    return AppInfo.CrashReportDeviceDetails(
+        androidRelease = Build.VERSION.RELEASE.orEmpty(),
+        model = Build.MODEL.orEmpty(),
+        screenWidthPx = metrics?.widthPixels?.takeIf { it > 0 },
+        screenHeightPx = metrics?.heightPixels?.takeIf { it > 0 },
+        memorySizeBytes = memorySizeBytes,
+    )
+  }
+
+  private fun configureSentry(enabled: Boolean, appVersion: String) {
+    if (!enabled) {
+      AppInfo.disableCrashReporting(cacheDir)
+      return
+    }
+    val sentryDsn = System.getenv("SENTRY_DSN") ?: AppInfo.DEFAULT_SENTRY_DSN
+    val device = readCrashReportDeviceDetails()
     io.sentry.Sentry.init { options ->
-      options.dsn = sentryDsn
-      options.release = "vitruvian-remote@1.0"
-      options.environment = "production"
+      AppInfo.configureSentryOptions(
+          options = options,
+          dsn = sentryDsn,
+          appVersion = appVersion,
+          device = device,
+          appCacheDir = cacheDir,
+      )
+    }
+  }
+
+  override fun onCreate(savedInstanceState: Bundle?) {
+    persistence = Persistence(this)
+    val appVersion = readAppVersion()
+    if (persistence.sendCrashReports) {
+      configureSentry(enabled = true, appVersion = appVersion)
+    } else {
+      AppInfo.clearSentryCache(cacheDir)
     }
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
@@ -177,7 +238,6 @@ public class MainActivity : ComponentActivity() {
     // the foreground, so it costs nothing when the app is not on screen.
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-    persistence = Persistence(this)
     askedForNotifications = persistence.askedForNotifications
     askedForBluetooth = persistence.askedForBluetooth
     // The state holder is created first so the transport can report link
@@ -202,6 +262,10 @@ public class MainActivity : ComponentActivity() {
                 ),
             bridge = ServiceBridge(),
             openUrl = { url -> PhoneTools.openUrl(this, url).isSuccess },
+            appVersion = appVersion,
+            androidRelease = Build.VERSION.RELEASE.orEmpty(),
+            deviceModel = Build.MODEL.orEmpty(),
+            onCrashReportsChanged = { enabled -> configureSentry(enabled, appVersion) },
             bluetooth =
                 ActivityBluetoothControl(
                     context = this,

@@ -158,12 +158,16 @@ internal fun View.hapticTick() {
   performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
 }
 
+private fun RemoteState.remoteTargetLabel(): String =
+    hostShortName.takeIf { !isUnpaired && it.isNotBlank() && it != "no host" } ?: "the Mac"
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 public fun ColumnScope.RemoteScreen(state: RemoteState) {
   val colors = Vitruvian
   val view = LocalView.current
   val showMainTrackpad = Derive.showsMainTrackpad(LocalDockShowsTrackpad.current)
+  val hostLabel = state.remoteTargetLabel()
 
   // Refresh Bluetooth readiness when entering Remote; permission is only requested when the user
   // taps the banner's button.
@@ -282,7 +286,7 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
                   value = state.typed,
                   onValueChange = state::updateTyped,
                   modifier = Modifier.weight(1f),
-                  placeholder = "Type on ${state.hostShortName}…",
+                  placeholder = "Type on $hostLabel…",
               )
               VButton("Send", state::sendTyped, variant = ButtonVariant.Primary)
             }
@@ -318,7 +322,7 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
   // Everything below the two-up board folds away: it is reached for far less
   // often than the pad, and with all of it open the screen was three phones
   // tall. Open or closed is remembered per section.
-  FoldingSection(state, RemoteSection.AGENT, "Agent") {
+  FoldingSection(state, RemoteSection.AGENT, "Mac helper") {
     Row(
         modifier = Modifier.padding(horizontal = Space.s4),
         horizontalArrangement = Arrangement.spacedBy(Space.s3),
@@ -327,7 +331,7 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
           value = state.prompt,
           onValueChange = state::updatePrompt,
           modifier = Modifier.weight(1f),
-          placeholder = "Ask Claude Code on ${state.hostShortName}…",
+          placeholder = "Ask Claude Code on $hostLabel…",
       )
       DictateButton(state) { spoken ->
         state.updatePrompt(
@@ -343,13 +347,25 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
   }
 
   FoldingSection(state, RemoteSection.MACROS, "Macros · scripts") {
-    state.macros.forEach { macro ->
-      ListItem(
-          title = macro.label,
-          subtitle = macro.command,
-          status = StatusTone.Ok,
-      ) {
-        VButton("Run", { state.runMacro(macro) }, enabled = !state.actsNeedPairing)
+    if (state.macros.isEmpty()) {
+      Box(modifier = Modifier.padding(horizontal = Space.s4)) {
+        VButton(
+            label = "+ New macro",
+            onClick = state::openMacroEditor,
+            modifier = Modifier.fillMaxWidth(),
+            dashed = true,
+            contentColor = Vitruvian.textDim,
+        )
+      }
+    } else {
+      state.macros.forEach { macro ->
+        ListItem(
+            title = macro.label,
+            subtitle = macro.command,
+            status = StatusTone.Ok,
+        ) {
+          VButton("Run", { state.runMacro(macro) }, enabled = !state.actsNeedPairing)
+        }
       }
     }
   }
@@ -361,7 +377,13 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
       Terminal(
-          lines = listOf(TerminalLine(" ", state.clipboard, TerminalTone.Dim)),
+          lines =
+              listOf(
+                  TerminalLine(
+                      " ",
+                      state.clipboard.ifBlank { "No clipboard fetched yet" },
+                      TerminalTone.Dim,
+                  )),
           modifier = Modifier.weight(1f),
           fontSize = 12.sp,
       )
@@ -575,11 +597,12 @@ private fun PeekPlate(state: RemoteState, onMeasured: (Int) -> Unit) {
             },
         verticalArrangement = Arrangement.spacedBy(Space.s3),
     ) {
+      val hostLabel = state.remoteTargetLabel()
       val region = state.peekRegion
       Label(
-          if (region.isFull) "Screen · ${state.hostShortName.ifBlank { "the Mac" }}"
+          if (region.isFull) "Screen · $hostLabel"
           else
-              "Screen · ${state.hostShortName.ifBlank { "the Mac" }} · " +
+              "Screen · $hostLabel · " +
                   String.format(Locale.ROOT, "%.1f", region.zoom) +
                   "× · double-tap to reset")
       when {
@@ -1009,30 +1032,31 @@ private val GRID_KEY_PADDING = PaddingValues(horizontal = Space.s2)
 @Composable
 private fun MediaPlate(state: RemoteState) {
   val colors = Vitruvian
-  FoldingPlate(state, RemoteSection.MEDIA, if (state.isLive) "Media keys" else "Media · Music") {
-    if (!state.isLive) {
-      Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.spacedBy(Space.s3),
-          verticalAlignment = Alignment.Bottom,
-      ) {
-        VText(
-            text = state.mediaTitle,
-            modifier = Modifier.weight(1f),
-            style = VitruvianType.barTitle,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        VText(
-            text = state.mediaSub,
-            style = VitruvianType.listSub,
-            color = colors.textDim,
-        )
+  FoldingPlate(
+      state, RemoteSection.MEDIA, if (state.isDemoMode) "Media · Music" else "Media keys") {
+        if (state.isDemoMode) {
+          Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.spacedBy(Space.s3),
+              verticalAlignment = Alignment.Bottom,
+          ) {
+            VText(
+                text = state.mediaTitle,
+                modifier = Modifier.weight(1f),
+                style = VitruvianType.barTitle,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            VText(
+                text = state.mediaSub,
+                style = VitruvianType.listSub,
+                color = colors.textDim,
+            )
+          }
+          Meter(fraction = TRACK_PERCENT / 100f)
+        }
+        MediaTransportRow(state = state)
       }
-      Meter(fraction = TRACK_PERCENT / 100f)
-    }
-    MediaTransportRow(state = state)
-  }
 }
 
 /** Shared transport key row (`Previous`, `Play/Pause` or `Play`/`Pause`, `Next`) with haptics. */
@@ -1052,7 +1076,7 @@ internal fun MediaTransportRow(state: RemoteState, modifier: Modifier = Modifier
         contentPadding = GRID_KEY_PADDING,
         contentDescription = "Previous track",
     )
-    if (state.isLive) {
+    if (!state.isDemoMode) {
       VButton(
           label = "",
           icon = VitruvianIcons.PLAY_PAUSE,

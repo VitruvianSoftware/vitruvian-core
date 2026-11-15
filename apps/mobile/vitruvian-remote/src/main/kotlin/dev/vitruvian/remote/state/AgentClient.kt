@@ -1311,7 +1311,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
     val document = error?.let { runCatching { JSONObject(it) }.getOrNull() }
     if (code == HttpURLConnection.HTTP_NOT_FOUND) {
       val detail = document?.optString("error").orEmpty()
-      throw AgentNotFoundException(detail.ifBlank { "agent: HTTP 404 for $path" })
+      throw AgentNotFoundException(detail.ifBlank { "Mac helper: HTTP 404 for $path" })
     }
     // 503 is the Mac saying no for a reason the user can fix -- Screen
     // Recording is not granted -- rather than the network failing. It carries
@@ -1319,11 +1319,13 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
     if (code == HTTP_UNAVAILABLE) {
       val reason = document?.optString("reason").orEmpty()
       throw AgentUnavailableException(
-          reason.ifBlank { "the agent cannot serve this, and it did not say why" })
+          reason.ifBlank { "the Mac helper cannot serve this, and it did not say why" })
     }
     val detail = document?.optString("error").orEmpty()
     throw AgentRequestException(
-        code, detail, if (detail.isBlank()) "agent: HTTP $code for $path" else "agent: $detail")
+        code,
+        detail,
+        if (detail.isBlank()) "Mac helper: HTTP $code for $path" else "Mac helper: $detail")
   }
 
   /** An exec's read timeout has to outlast the command the Mac is running, plus a beat. */
