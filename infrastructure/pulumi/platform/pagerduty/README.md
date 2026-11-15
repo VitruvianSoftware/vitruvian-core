@@ -57,7 +57,10 @@ present.
 - **Bitwarden**: item `vitruviansoftware.pagerduty.com`, hidden field
   `PULUMI_API_KEY`.
 - **CI**: supplied as the `PAGERDUTY_TOKEN` secret in the `pagerduty-production`
-  GitHub Environment (wired by a separate delivery task).
+  GitHub Environment (declared in
+  [repo-config](../repo-config/pagerduty_environments.go), bound by
+  [delivery-pagerduty.yaml](../../../../.github/workflows/delivery-pagerduty.yaml),
+  and seeded via [`//tools/sync-env-secrets`](../../../../tools/sync-env-secrets/README.md#pagerduty-production)).
 
 ## Preview and apply
 

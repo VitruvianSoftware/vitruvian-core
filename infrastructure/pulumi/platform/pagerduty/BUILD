@@ -18,6 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/pulumi:defs.bzl", "pulumi_go_test", "pulumi_project")
 
 # `bazel run //infrastructure/pulumi/platform/pagerduty:{setup,preview,config}`.
@@ -33,4 +34,25 @@ pulumi_go_test(
     # Cold `go test` compilation of the Pulumi SDKs can exceed the 300 s default.
     timeout = "long",
     extra_data = ["Pulumi.production.yaml"],
+)
+
+# Applies the production stack from .github/workflows/delivery-pagerduty.yaml
+# on every push to main that touches it (and on dispatch). PAGERDUTY_TOKEN is
+# the pagerduty-production GitHub Environment's secret (main only, declared in
+# repo-config). With no token there yet, the job emits a notice and applies
+# nothing so main stays green. The job's steps live in //tools/delivery/gen
+# (render_pagerduty_steps): this stack never had a hand-written workflow.
+delivery(
+    name = "pagerduty",
+    app = "pagerduty",
+    environments = [
+        "production",
+    ],
+    extra_paths = [
+        "infrastructure/pulumi/platform/pagerduty/",
+    ],
+    github_environment = "pagerduty-{env}",
+    kind = "pulumi",
+    render = "transcribed",
+    run = "//infrastructure/pulumi/platform/pagerduty:up",
 )
