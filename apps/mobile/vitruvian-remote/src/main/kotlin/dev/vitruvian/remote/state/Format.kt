@@ -161,7 +161,7 @@ public object Format {
   public fun offlineBannerBody(lastSampleIso: String?, now: Long): String {
     val rel = relativeTime(lastSampleIso.orEmpty(), now)
     return if (rel.isNotBlank()) {
-      "Last seen $rel via Tailscale. Controls are disabled; dashboards show the last sample."
+      "Last seen $rel over your network. Controls are disabled; dashboards show the last sample."
     } else {
       "Controls are disabled; dashboards show the last sample."
     }

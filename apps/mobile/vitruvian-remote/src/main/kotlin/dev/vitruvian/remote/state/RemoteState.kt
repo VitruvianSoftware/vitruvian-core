@@ -1012,7 +1012,7 @@ public class RemoteState(
                   LogEntry("04:36:51", "warn", "lima · k8s-node-3 stopped (manual)"),
                   LogEntry("04:36:44", "info", "claude code · session 2 resumed"),
                   LogEntry("04:35:10", "ok", "antigravity · build #412 green"),
-                  LogEntry("04:31:00", "info", "atlas · connected via tailscale (4 ms)"),
+                  LogEntry("04:31:00", "info", "atlas · connected over your network (4 ms)"),
               )
           else emptyList())
           .toMutableStateList()
@@ -1724,8 +1724,8 @@ public class RemoteState(
   public val consoleSubtitle: String
     get() =
         when {
-          agentUrl.isBlank() -> "zsh · no agent configured"
-          else -> Format.parts("zsh -lc", hostShortName, "via the agent")
+          agentUrl.isBlank() -> "No Mac connected"
+          else -> "Runs on your Mac"
         }
 
   /** Where a PromQL query would go, named rather than asserted. */
@@ -4533,7 +4533,7 @@ public class RemoteState(
                                       controlId = VitruvianSpeakerControls.REMOVE_LEGACY_AGENT,
                                   ) {
                                     setVitruvianSpeaker(
-                                        "remove legacy agent",
+                                        "stop and remove old chat monitor",
                                         agentHookAction = "remove-legacy-agent",
                                         controlId = legacySpec.title,
                                     )
@@ -6355,7 +6355,7 @@ public class RemoteState(
                   listOf(
                       ModuleRow(
                           "No conversations",
-                          Format.clip(list.reason.ifBlank { "the agent did not say why" }),
+                          Format.clip(list.reason.ifBlank { "the Mac helper did not say why" }),
                           "",
                           StatusTone.Neutral))
               sessions.isEmpty() ->
@@ -6512,7 +6512,7 @@ public class RemoteState(
         .onFailure { e ->
           if (e is AgentNotFoundException) {
             if (antigravitySessionsSupported != false) {
-              log("info", "antigravity · this Mac agent predates sessions and prompts")
+              log("info", "antigravity · this Mac helper predates sessions and prompts")
             }
             antigravitySessionsSupported = false
             agentAntigravitySessions = null
@@ -6744,7 +6744,7 @@ public class RemoteState(
                     moduleUnavailableReason(id) ?: "Not wired to this Mac yet",
                     if (moduleUnavailableReason(id) != null)
                         "install it on the Mac and it will show up here"
-                    else "the agent has no endpoint for it",
+                    else "this Mac helper version doesn't support it yet",
                     "n/a",
                     StatusTone.Neutral,
                 )),
@@ -7832,9 +7832,9 @@ public class RemoteState(
     resetHostSnapshots()
     if (next.isBlank()) {
       connection = if (hosts.isEmpty()) Connection.Unpaired else Connection.Connected
-      log("info", "agent · none configured")
+      log("info", "Mac helper · none configured")
     } else {
-      log("info", "agent · ${AgentClient.normalize(next)}")
+      log("info", "Mac helper · ${AgentClient.normalize(next)}")
     }
   }
 
@@ -7998,12 +7998,12 @@ public class RemoteState(
     connection =
         if (transition == Derive.PollOutcome.Unpaired) Connection.Unpaired else Connection.Connected
     if (prevSource != MetricsSource.Live) {
-      log("ok", "agent · live from ${agentHost?.hostname ?: "host"}")
+      log("ok", "Mac helper · live from ${agentHost?.hostname ?: "host"}")
       // Only on the transition, and only when something was there to
       // come back FROM: a first successful poll after launch is not a
       // recovery and does not deserve a notification.
       if (prevSource == MetricsSource.Unreachable && sawUnreachable) {
-        post("host", "$hostShortName is back", "the agent is answering again", Screen.Home)
+        post("host", "$hostShortName is back", "the Mac helper is answering again", Screen.Home)
       }
       sawUnreachable = false
     }
@@ -8015,7 +8015,7 @@ public class RemoteState(
   public fun applyPollFailure(message: String, allowWake: Boolean = false) {
     val transition = Derive.afterPoll(hosts.isNotEmpty(), demoMode, pollSucceeded = false)
     if (metricsSource == MetricsSource.Live) {
-      log("warn", "agent · unreachable: $message")
+      log("warn", "Mac helper · unreachable: $message")
       // The switch used to change only a dialog's wording. Now it does
       // what it says: one magic packet the moment a live Mac stops
       // answering, not one per tick -- a Mac that is off for the night
@@ -8776,7 +8776,7 @@ public class RemoteState(
    */
   public fun runPromql() {
     if (agentUrl.isBlank()) {
-      promqlStatus = "no agent configured"
+      promqlStatus = "no Mac helper configured"
       return
     }
     val query = promql.trim()
@@ -8893,7 +8893,7 @@ public class RemoteState(
    */
   public fun retryHost() {
     if (agentUrl.isBlank()) {
-      log("warn", "host · no agent configured to retry")
+      log("warn", "host · no Mac helper configured to retry")
       return
     }
     log("info", "host · retrying ${AgentClient.normalize(agentUrl)}")
@@ -8953,7 +8953,7 @@ public class RemoteState(
           when (e) {
             is AgentNotFoundException -> {
               if (claudeApprovalsSupported != false) {
-                log("info", "claude · this Mac agent predates phone approvals")
+                log("info", "claude · this Mac helper predates phone approvals")
               }
               claudeApprovalsSupported = false
               claudePending = emptyList()
@@ -9009,7 +9009,7 @@ public class RemoteState(
             when (e) {
               is AgentNotFoundException -> {
                 claudeApprovalsSupported = false
-                log("warn", "$what · update the Mac agent to answer prompts here")
+                log("warn", "$what · update the Mac helper to answer prompts here")
               }
               // The Mac's own words, e.g. settings.json is not valid JSON: the
               // one thing that tells the person what to fix.
@@ -9387,7 +9387,7 @@ public class RemoteState(
    */
   private fun actClient(what: String): AgentClient? {
     if (agentUrl.isBlank()) {
-      log("warn", "$what · no agent configured")
+      log("warn", "$what · no Mac helper configured")
       return null
     }
     if (!paired) {
@@ -9558,8 +9558,12 @@ public data class DialogSpec(
                   destructive = false,
                   title = "Sleep $host?",
                   body =
-                      "Displays off, SSH session kept alive by Tailscale. " +
-                          "Wake on LAN is ${if (wakeOnLan) "on" else "off"}.",
+                      "Turns off your Mac's display without closing open apps. " +
+                          if (wakeOnLan) {
+                            "Move the trackpad, press a key, or use Wake on LAN to wake it."
+                          } else {
+                            "Move the trackpad or press a key to wake it (Wake on LAN is off)."
+                          },
                   action = "Sleep",
                   word = null,
               )

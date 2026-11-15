@@ -870,4 +870,42 @@ public class MockHostWalkTest {
     assertFalse(state.widgets.any { it.id == "bat" })
     assertEquals(listOf("bat"), state.hiddenWidgetOptions.map { it.id })
   }
+
+  @Test
+  public fun `consoleSubtitle and sleep dialog copy use plain wording without SSH or Tailscale`() {
+    val unpaired =
+        RemoteState(
+            persistence = Persistence(InMemoryKeyValueStore()),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+    assertEquals("No Mac connected", unpaired.consoleSubtitle)
+
+    val saved = newSavedMacState()
+    assertEquals("Runs on your Mac", saved.consoleSubtitle)
+    assertFalse(saved.consoleSubtitle.contains("zsh", ignoreCase = true))
+    assertFalse(saved.consoleSubtitle.contains("agent", ignoreCase = true))
+
+    val sleepWolOn =
+        DialogSpec.of(
+            DialogKind.Sleep,
+            wakeOnLan = true,
+            confirmDestructive = true,
+            host = "atlas",
+        )
+    assertEquals("Sleep atlas?", sleepWolOn.title)
+    assertFalse(sleepWolOn.body.contains("SSH", ignoreCase = true))
+    assertFalse(sleepWolOn.body.contains("Tailscale", ignoreCase = true))
+    assertTrue(sleepWolOn.body.contains("Wake on LAN to wake it"))
+
+    val sleepWolOff =
+        DialogSpec.of(
+            DialogKind.Sleep,
+            wakeOnLan = false,
+            confirmDestructive = true,
+            host = "atlas",
+        )
+    assertFalse(sleepWolOff.body.contains("SSH", ignoreCase = true))
+    assertFalse(sleepWolOff.body.contains("Tailscale", ignoreCase = true))
+    assertTrue(sleepWolOff.body.contains("Wake on LAN is off"))
+  }
 }

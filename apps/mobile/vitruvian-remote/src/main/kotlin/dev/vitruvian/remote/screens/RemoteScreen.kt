@@ -279,7 +279,7 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
   // Everything below the two-up board folds away: it is reached for far less
   // often than the pad, and with all of it open the screen was three phones
   // tall. Open or closed is remembered per section.
-  FoldingSection(state, RemoteSection.AGENT, "Agent") {
+  FoldingSection(state, RemoteSection.AGENT, "Mac helper") {
     Row(
         modifier = Modifier.padding(horizontal = Space.s4),
         horizontalArrangement = Arrangement.spacedBy(Space.s3),

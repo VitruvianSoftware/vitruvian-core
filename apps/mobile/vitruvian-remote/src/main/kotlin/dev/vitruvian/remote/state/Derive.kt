@@ -1007,10 +1007,12 @@ public object Derive {
       busy: Boolean = false,
   ): LegacyLaunchAgentRowSpec =
       LegacyLaunchAgentRowSpec(
-          title = "Legacy chat-monitor launch agent",
-          subtitle = "Installed by Vitruvian Speaker 1.x. Chat monitoring now runs inside the app.",
-          trailing = "legacy",
-          actionLabel = "Remove",
+          title = "Old chat monitor (from an earlier version)",
+          subtitle =
+              "Stops and deletes the Vitruvian Speaker 1.x background monitor. " +
+                  "Chat monitoring now runs inside the app.",
+          trailing = "",
+          actionLabel = "Stop and remove",
           actionEnabled = canAct && !busy,
       )
 
@@ -1684,7 +1686,7 @@ public object Derive {
   private val LEAKED_PATH_OR_CODE_REGEX = Regex("""(?:/v\d+/|https?://)""", RegexOption.IGNORE_CASE)
   private val TECHNICAL_PREFIX_REGEX =
       Regex(
-          """^(?:[✗✓!]\s*|(?:agent|speaker|google\s+home|google\s+chat|gws|oauth)\s*(?:·\s*[^:]+)?:\s*|(?:error|failed|failure)\s*:\s*|[a-z][a-z ]{0,40}?\s+(?:failed|error)\s*:\s*|http\s+\d{3}(?:\s+[a-z][a-z ]*)?\s*:\s*)+""",
+          """^(?:[✗✓!]\s*|(?:mac\s+helper|agent|speaker|google\s+home|google\s+chat|gws|oauth)\s*(?:·\s*[^:]+)?:\s*|(?:error|failed|failure)\s*:\s*|[a-z][a-z ]{0,40}?\s+(?:failed|error)\s*:\s*|http\s+\d{3}(?:\s+[a-z][a-z ]*)?\s*:\s*)+""",
           RegexOption.IGNORE_CASE,
       )
   private val TRAILING_HTTP_REGEX =
@@ -3473,13 +3475,13 @@ public object Derive {
       lastSeen: String,
   ): String =
       when (phase) {
-        HostPhase.Demo -> "macOS 26.1 · Tailscale · 4 ms"
+        HostPhase.Demo -> "macOS 26.1 · demo · 4 ms"
         HostPhase.Unpaired -> "no host"
         HostPhase.Asking -> "asking…"
         HostPhase.Offline -> {
           val ver =
               if (!osVersion.isNullOrBlank() && !agentVersion.isNullOrBlank()) {
-                "macOS $osVersion · agent v$agentVersion"
+                "macOS $osVersion · Mac helper v$agentVersion"
               } else {
                 ""
               }
@@ -3492,7 +3494,7 @@ public object Derive {
         }
         HostPhase.Live ->
             if (!osVersion.isNullOrBlank() && !agentVersion.isNullOrBlank() && uptimeDays != null) {
-              "macOS $osVersion · agent v$agentVersion · up ${uptimeDays}d"
+              "macOS $osVersion · Mac helper v$agentVersion · up ${uptimeDays}d"
             } else {
               "connected"
             }
@@ -3805,7 +3807,7 @@ public object Derive {
     if (lower == "querying…" || lower == "querying...") {
       return "Querying…" to null
     }
-    if (lower == "no agent configured") {
+    if (lower == "no agent configured" || lower == "no mac helper configured") {
       return "Add a Mac in Settings before running a query." to null
     }
     if (lower.startsWith("vector · ") ||

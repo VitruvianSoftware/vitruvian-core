@@ -266,7 +266,7 @@ public class FormatTest {
   public fun `offline banner body uses real relative time and drops clause when unknown`() {
     val sampleIso = Instant.ofEpochMilli(now).minusSeconds(3 * 60).toString()
     assertEquals(
-        "Last seen 3 min ago via Tailscale. Controls are disabled; dashboards show the last sample.",
+        "Last seen 3 min ago over your network. Controls are disabled; dashboards show the last sample.",
         Format.offlineBannerBody(sampleIso, now))
     assertEquals(
         "Controls are disabled; dashboards show the last sample.",

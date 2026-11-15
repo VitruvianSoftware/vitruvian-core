@@ -2190,8 +2190,9 @@ public class DeriveTest {
     assertFalse(courierSavedUnpaired.promptEnabled)
 
     val legacyReady = Derive.legacyLaunchAgentRow(canAct = true, busy = false)
-    assertEquals("Legacy chat-monitor launch agent", legacyReady.title)
-    assertEquals("Remove", legacyReady.actionLabel)
+    assertEquals("Old chat monitor (from an earlier version)", legacyReady.title)
+    assertEquals("", legacyReady.trailing)
+    assertEquals("Stop and remove", legacyReady.actionLabel)
     assertTrue(legacyReady.actionEnabled)
 
     assertFalse(Derive.legacyLaunchAgentRow(canAct = false, busy = false).actionEnabled)
@@ -3734,8 +3735,31 @@ public class DeriveTest {
         )
     val cachedTile = Derive.readingSubline("26.4 / 64 GB used", stale = true, lastSeen = lastSeen)
     assertTrue(cachedSummary.contains("macOS 15.3"))
+    assertTrue(cachedSummary.contains("Mac helper v0.1.40"))
+    assertFalse(cachedSummary.contains("agent v"))
     assertTrue(cachedSummary.contains("last seen"))
     assertTrue(cachedTile.contains("last seen"))
+
+    assertEquals(
+        "macOS 15.3 · Mac helper v0.1.40 · up 5d",
+        Derive.hostSummarySubline(
+            Derive.HostPhase.Live,
+            osVersion = "15.3",
+            agentVersion = "0.1.40",
+            uptimeDays = 5,
+            lastSeen = "",
+        ),
+    )
+    assertFalse(
+        Derive.hostSummarySubline(
+                Derive.HostPhase.Demo,
+                osVersion = null,
+                agentVersion = null,
+                uptimeDays = null,
+                lastSeen = "",
+            )
+            .contains("Tailscale", ignoreCase = true),
+    )
 
     // Assert zero fabricated MockHost literals appear anywhere in offline derived outputs.
     val mockMarkers = listOf("M4 Max", "64 GB", "2 TB", "492 W", "Deploy staging", "Tidy repo")
@@ -4231,6 +4255,11 @@ public class DeriveTest {
     assertEquals("Couldn't reach the Mac helper to run this query.", promHeadline)
     assertEquals("Failed to connect to /100.64.0.2:7411", promDetail)
 
+    val (unconfiguredHeadline, unconfiguredDetail) =
+        Derive.promqlStatusLines("no Mac helper configured")
+    assertEquals("Add a Mac in Settings before running a query.", unconfiguredHeadline)
+    assertNull(unconfiguredDetail)
+
     val macScreen =
         readRunfile(
             "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/MacScreen.kt")
@@ -4302,10 +4331,18 @@ public class DeriveTest {
         phoneBridge.contains(
             "call history and location from this phone, and ask before sending or calling."))
 
+    val remoteScreen =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/RemoteScreen.kt")
+    assertTrue(remoteScreen.contains("FoldingSection(state, RemoteSection.AGENT, \"Mac helper\")"))
+
     val userFacingFiles =
         listOf(
             hosts,
             phoneBridge,
+            remoteScreen,
+            readRunfile(
+                "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/ConsoleScreen.kt"),
             readRunfile(
                 "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/AppsScreen.kt"),
             readRunfile(
