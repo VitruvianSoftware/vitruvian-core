@@ -354,6 +354,16 @@ public final class VitruvianCodeTool {
         if openPanels.isEmpty { parts.engine.stopPolling() }
     }
 
+    /// The page `panel` would open on now, with none of what opening it
+    /// does: for `PanelOpen` to answer with while the main thread is busy.
+    public func pagePreview(_ panel: String) -> UITree? {
+        switch panel {
+        case Self.islandPanel: Pages.island(status(), language: language)
+        case Self.settingsPanel: settingsTree()
+        default: nil
+        }
+    }
+
     private func settingsTree() -> UITree {
         Pages.settings(status(), draft: draft, saved: parts.engine.configuration,
                        logLines: parts.engine.logLines, language: language,
