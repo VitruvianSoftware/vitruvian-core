@@ -142,3 +142,9 @@ USER nodejs
 
 EXPOSE 7007
 CMD ["node", "packages/backend/dist/index.cjs.js", "--config", "app-config.yaml"]
+
+# Provenance: tie the published digest back to its source commit. Placed last
+# so changing GIT_REVISION on every commit never invalidates build/dep layers.
+ARG GIT_REVISION=unknown
+LABEL org.opencontainers.image.source="https://github.com/VitruvianSoftware/vitruvian-core" \
+      org.opencontainers.image.revision="${GIT_REVISION}"

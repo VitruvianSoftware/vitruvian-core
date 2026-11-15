@@ -77,3 +77,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8080/healthz || exit 1
 
 CMD ["node", "server.mjs"]
+
+# Provenance: tie the published digest back to its source commit. Placed last
+# so changing GIT_REVISION on every commit never invalidates build/dep layers.
+ARG GIT_REVISION=unknown
+LABEL org.opencontainers.image.source="https://github.com/VitruvianSoftware/vitruvian-core" \
+      org.opencontainers.image.revision="${GIT_REVISION}"
