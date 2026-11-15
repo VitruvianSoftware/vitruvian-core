@@ -48,7 +48,9 @@ provider.
   high urgency (phone, escalates); `warning` and `info` are low urgency.
 - **Stack outputs**: exports `<key>IntegrationKey` as a Pulumi secret (for
   downstream consumers such as the Sentry stack via `StackReference`), along
-  with `<key>ServiceId` and `escalationPolicyId` in plain text.
+  with `<key>ServiceId` and `escalationPolicyId` in plain text. `repo-config`
+  reads `ciIntegrationKey` the same way and stores it as the repository secret
+  `PAGERDUTY_CI_ROUTING_KEY`, which `notify-ci-issues` sends CI failures with.
 
 The Pulumi project is named `vitruvian-pagerduty` rather than `pagerduty`
 because `pagerduty:` is the provider's own config namespace (such as

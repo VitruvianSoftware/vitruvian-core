@@ -99,6 +99,11 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       NTFY_PASSWORD: ${{ secrets.NTFY_GITHUB_ACTIONS_PASSWORD }}
+      # Events API v2 key of the PagerDuty "CI / delivery" service. repo-config
+      # copies it from the PagerDuty stack's ciIntegrationKey output
+      # (infrastructure/pulumi/platform/repo-config/pagerduty_environments.go).
+      # Unset, the tool warns and sends ntfy only.
+      PAGERDUTY_ROUTING_KEY: ${{ secrets.PAGERDUTY_CI_ROUTING_KEY }}
       REPO: ${{ github.repository }}
       # Event-triggered runs fire right after the thing they report, so a
       # short look-back is enough and keeps repeat alerts down. The schedule
@@ -147,9 +152,9 @@ jobs:
         run: '"$NOTIFY_BIN"'
 
       # The notifier is the thing that tells us CI broke, so a notifier that
-      # cannot build would otherwise fail in silence. Say so on ntfy directly:
-      # fixed text, no jq, the same endpoint and login the tool uses.
-      - name: Tell ntfy the notifier could not be built
+      # cannot build would otherwise fail in silence. Say so on ntfy and
+      # PagerDuty directly: fixed text, no jq, the same endpoints the tool uses.
+      - name: Tell ntfy and PagerDuty the notifier could not be built
         if: ${{ failure() && steps.notify-bin.outcome == 'failure' }}
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -158,4 +163,13 @@ jobs:
           curl -fsS -u "github-actions:${NTFY_PASSWORD}" \
             -H "Content-Type: application/json" \
             -H "User-Agent: vitruvian-ci-notify/1.0" \
-            -X POST https://ntfy.ipv1337.dev -d "$body" >/dev/null
+            -X POST https://ntfy.ipv1337.dev -d "$body" >/dev/null || echo "WARN: ntfy push failed" >&2
+          # Critical, so it pages: nothing else is watching main while this is
+          # broken. The body goes on stdin to keep the key out of the process list.
+          if [ -n "${PAGERDUTY_ROUTING_KEY}" ]; then
+            printf '{"routing_key":"%s","event_action":"trigger","dedup_key":"notify-ci-issues/cannot-build","payload":{"summary":"[ci] notify-ci-issues cannot build","source":"github-actions/notify-ci-issues","severity":"critical","group":"ci","custom_details":{"url":"%s"}},"links":[{"href":"%s","text":"Open in GitHub"}]}' \
+              "$PAGERDUTY_ROUTING_KEY" "$RUN_URL" "$RUN_URL" \
+              | curl -q -fsS --max-time 15 -H "Content-Type: application/json" \
+                  -X POST https://events.pagerduty.com/v2/enqueue --data-binary @- >/dev/null \
+              || echo "WARN: PagerDuty event failed" >&2
+          fi

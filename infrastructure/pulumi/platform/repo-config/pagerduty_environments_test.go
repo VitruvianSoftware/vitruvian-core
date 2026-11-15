@@ -28,7 +28,8 @@ import (
 )
 
 func TestPagerdutyEnvironmentIsPinnedToMainWithoutReviewers(t *testing.T) {
-	mocks := &recordingMocks{resources: map[string][]resource.PropertyMap{}}
+	// pdStackMocks: pagerdutyEnvironment also reads the PagerDuty stack.
+	mocks := &pdStackMocks{outputs: resource.PropertyMap{}, resources: map[string][]resource.PropertyMap{}}
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		repo, err := github.NewRepository(ctx, "vitruvian-core", &github.RepositoryArgs{
 			Name: pulumi.String("vitruvian-core"),
