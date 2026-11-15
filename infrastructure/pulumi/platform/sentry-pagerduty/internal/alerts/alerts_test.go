@@ -451,7 +451,9 @@ func (m *sentryMocks) NewResource(args pulumi.MockResourceArgs) (string, resourc
 	case "pulumi:pulumi:StackReference":
 		id = args.Inputs["name"].StringValue()
 		outputs["outputs"] = resource.NewObjectProperty(resource.PropertyMap{
-			"sentryIntegrationKey": resource.MakeSecret(resource.NewStringProperty("mock-pd-routing-key-secret")),
+			// Plain on purpose: the program must mark the key secret itself,
+			// so the assertion below fails if alerts.go drops ToSecret.
+			"sentryIntegrationKey": resource.NewStringProperty("mock-pd-routing-key-secret"),
 		})
 	case "sentry:index/integrationPagerduty:IntegrationPagerduty":
 		id = "pd-svc-row-99"

@@ -72,7 +72,8 @@ this provider".
 1. Install the `"Vitruvian Software"` PagerDuty organization integration in
    Sentry:
    ```sh
-   bazel run //tools/sentry:pagerduty-install
+   export SENTRY_TOKEN=...   # Bitwarden item sentry.lab.ipv1337.dev, field SENTRY_TOKEN
+   bazel run //tools/sentry:pagerduty-install -- --subdomain vitruviansoftware --name "Vitruvian Software"
    ```
 2. Apply `infrastructure/pulumi/platform/pagerduty` (`production` stack) so
    `ipv1337/vitruvian-pagerduty/production` exports `sentryIntegrationKey`.
