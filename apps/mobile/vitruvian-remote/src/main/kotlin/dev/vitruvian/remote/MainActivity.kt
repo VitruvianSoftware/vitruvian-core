@@ -49,6 +49,7 @@ import dev.vitruvian.remote.bridge.PhoneTools
 import dev.vitruvian.remote.hid.BluetoothHidTransport
 import dev.vitruvian.remote.hid.HidAction
 import dev.vitruvian.remote.state.AgentClient
+import dev.vitruvian.remote.state.AppInfo
 import dev.vitruvian.remote.state.BridgeControl
 import dev.vitruvian.remote.state.BridgePending
 import dev.vitruvian.remote.state.BridgePermissionState
@@ -132,14 +133,48 @@ public class MainActivity : ComponentActivity() {
         if (granted) hid.start()
       }
 
-  override fun onCreate(savedInstanceState: Bundle?) {
+  private fun readAppVersion(): String {
+    val rawVersion =
+        runCatching {
+              val info =
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    packageManager.getPackageInfo(
+                        packageName,
+                        PackageManager.PackageInfoFlags.of(0),
+                    )
+                  } else {
+                    @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0)
+                  }
+              info.versionName
+            }
+            .getOrNull()
+    return AppInfo.normalizeVersion(rawVersion)
+  }
+
+  private fun configureSentry(enabled: Boolean, appVersion: String) {
+    if (!enabled) {
+      io.sentry.Sentry.close()
+      return
+    }
     val sentryDsn =
         System.getenv("SENTRY_DSN")
             ?: "https://ae2f3e2be71221701a6608b02c1bc344@sentry-ingest.ipv1337.dev/4"
     io.sentry.Sentry.init { options ->
       options.dsn = sentryDsn
-      options.release = "vitruvian-remote@1.0"
+      options.release = AppInfo.sentryRelease(appVersion)
       options.environment = "production"
+      options.isSendDefaultPii = false
+      options.isAttachServerName = false
+      Build.MODEL?.takeIf { it.isNotBlank() }?.let { options.setTag("device.model", it) }
+      Build.VERSION.RELEASE?.takeIf { it.isNotBlank() }?.let { options.setTag("os.version", it) }
+    }
+  }
+
+  override fun onCreate(savedInstanceState: Bundle?) {
+    persistence = Persistence(this)
+    val appVersion = readAppVersion()
+    if (persistence.sendCrashReports) {
+      configureSentry(enabled = true, appVersion = appVersion)
     }
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
@@ -151,7 +186,6 @@ public class MainActivity : ComponentActivity() {
     // the foreground, so it costs nothing when the app is not on screen.
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-    persistence = Persistence(this)
     askedForNotifications = persistence.askedForNotifications
     // The state holder is created first so the transport can report link
     // changes straight into it -- that is what drives the trackpad caption
@@ -175,6 +209,10 @@ public class MainActivity : ComponentActivity() {
                 ),
             bridge = ServiceBridge(),
             openUrl = { url -> PhoneTools.openUrl(this, url).isSuccess },
+            appVersion = appVersion,
+            androidRelease = Build.VERSION.RELEASE.orEmpty(),
+            deviceModel = Build.MODEL.orEmpty(),
+            onCrashReportsChanged = { enabled -> configureSentry(enabled, appVersion) },
         )
     BridgeHub.addListener(bridgeListener)
     pushBridgeStatus()

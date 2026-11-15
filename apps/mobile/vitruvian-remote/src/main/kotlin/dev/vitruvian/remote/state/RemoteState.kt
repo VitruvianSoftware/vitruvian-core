@@ -128,6 +128,10 @@ public class RemoteState(
      * one. Null in previews and tests.
      */
     private val openUrl: ((String) -> Boolean)? = null,
+    public val appVersion: String = "dev",
+    public val androidRelease: String = "",
+    public val deviceModel: String = "",
+    private val onCrashReportsChanged: ((Boolean) -> Unit)? = null,
     /**
      * Where fire-and-forget actions run.
      *
@@ -140,6 +144,18 @@ public class RemoteState(
 ) {
   // --- navigation -------------------------------------------------------
   public var screen: Screen by mutableStateOf(Screen.Home)
+    private set
+
+  public var aboutPage: AboutPage by mutableStateOf(AboutPage.Main)
+    private set
+
+  public var sendCrashReports: Boolean by mutableStateOf(persistence.sendCrashReports)
+    private set
+
+  public var fallbackUrl: String? by mutableStateOf(null)
+    private set
+
+  public var versionCopied: Boolean by mutableStateOf(false)
     private set
 
   public var dockOpen: Boolean by mutableStateOf(persistence.dockOpen)
@@ -1037,9 +1053,13 @@ public class RemoteState(
 
   // --- derived ----------------------------------------------------------
 
-  /** Navigation is locked to Hosts until a Mac is paired or Demo mode is opened. */
+  /**
+   * Navigation is locked to Hosts (and About/Privacy/License reached from Settings) until a Mac is
+   * paired or Demo mode is opened.
+   */
   public val effectiveScreen: Screen
-    get() = if (isUnpaired) Screen.Hosts else screen
+    get() =
+        if (isUnpaired && !AppInfo.shouldAllowWhileUnpaired(screen.name)) Screen.Hosts else screen
 
   public val isOffline: Boolean
     get() = connection == Connection.Offline
@@ -1136,6 +1156,14 @@ public class RemoteState(
             }
           }
         }
+
+  public val aboutMacHelperLine: String?
+    get() =
+        AppInfo.macHelperLine(
+            isLive = metricsSource == MetricsSource.Live,
+            agentVersion = agentHost?.agentVersion,
+            shortHostName = hostShortName,
+        )
 
   /**
    * The alias, or the Mac's hostname cut down to something readable.
@@ -6907,6 +6935,7 @@ public class RemoteState(
                   Screen.Apps -> Derive.PollPage.Apps
                   Screen.Console -> Derive.PollPage.Console
                   Screen.Hosts -> Derive.PollPage.Hosts
+                  Screen.About -> Derive.PollPage.Hosts
                 },
             module = currentModuleId,
             appsDashboards = appsView == AppsView.Dashboards,
@@ -6969,7 +6998,67 @@ public class RemoteState(
   // --- actions ----------------------------------------------------------
 
   public fun go(target: Screen) {
+    aboutPage = AboutPage.Main
+    versionCopied = false
     screen = target
+  }
+
+  public fun openAbout() {
+    aboutPage = AboutPage.Main
+    versionCopied = false
+    screen = Screen.About
+  }
+
+  public fun openAboutPage(page: AboutPage) {
+    versionCopied = false
+    aboutPage = page
+    screen = Screen.About
+  }
+
+  public fun backFromAbout() {
+    versionCopied = false
+    val parent = AppInfo.parentOfAboutPage(aboutPage)
+    if (parent != null) {
+      aboutPage = parent
+    } else {
+      aboutPage = AboutPage.Main
+      screen = Screen.Hosts
+    }
+  }
+
+  public fun copyVersionInfo() {
+    val text = AppInfo.versionCopyLine(appVersion, androidRelease, deviceModel)
+    phoneClipboard?.write(text)
+    versionCopied = true
+  }
+
+  public fun clearVersionCopied() {
+    versionCopied = false
+  }
+
+  public fun openExternalUrl(url: String): Boolean {
+    return if (openUrl?.invoke(url) == true) {
+      fallbackUrl = null
+      true
+    } else {
+      fallbackUrl = url
+      false
+    }
+  }
+
+  public fun copyFallbackUrl() {
+    val url = fallbackUrl ?: return
+    phoneClipboard?.write(url)
+  }
+
+  public fun dismissFallbackUrl() {
+    fallbackUrl = null
+  }
+
+  public fun updateSendCrashReports(enabled: Boolean) {
+    sendCrashReports = enabled
+    persistence.sendCrashReports = enabled
+    onCrashReportsChanged?.invoke(enabled)
   }
 
   public fun openModule(id: String) {
@@ -7262,14 +7351,10 @@ public class RemoteState(
   }
 
   public fun openInstallGuide() {
-    if (openUrl?.invoke(INSTALL_GUIDE_URL) == true) {
-      log(
-          "info",
-          "pairing · opened install guide (apps/mobile/vitruvian-remote/macagent/README.md)")
+    if (openExternalUrl(INSTALL_GUIDE_URL)) {
+      log("info", "pairing · opened install guide (${AppInfo.setupGuideURL})")
     } else {
-      log(
-          "warn",
-          "pairing · could not open browser; see apps/mobile/vitruvian-remote/macagent/README.md")
+      log("warn", "pairing · could not open browser; showing ${AppInfo.setupGuideURL}")
     }
   }
 
@@ -9309,8 +9394,7 @@ public class RemoteState(
     /** How `AgentAuthException` words a refusal, and so how the bridge's link status reads one. */
     const val LINK_REFUSED_PREFIX = "not paired (HTTP"
 
-    const val INSTALL_GUIDE_URL =
-        "https://github.com/VitruvianSoftware/vitruvian-core/blob/main/apps/mobile/vitruvian-remote/macagent/README.md"
+    const val INSTALL_GUIDE_URL = AppInfo.setupGuideURL
 
     const val POINTER_HINT = "drag · tap · 2-finger scroll · hold to drag · 3-finger swipe"
 

@@ -3997,4 +3997,68 @@ public class DeriveTest {
     assertNull(Derive.runningNowEmptyMessage(Derive.HostPhase.Offline, hasFirstReading = false))
     assertNull(Derive.runningNowEmptyMessage(Derive.HostPhase.Demo, hasFirstReading = false))
   }
+
+  @Test
+  public fun `MainActivity gates Sentry init on persistence and uses real release version`() {
+    val mainActivity =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/MainActivity.kt")
+    assertTrue(
+        "MainActivity must check persistence.sendCrashReports before Sentry init",
+        mainActivity.contains("if (persistence.sendCrashReports)"),
+    )
+    assertTrue(
+        "MainActivity must compute options.release from AppInfo.sentryRelease",
+        mainActivity.contains("options.release = AppInfo.sentryRelease(appVersion)"),
+    )
+    assertFalse(
+        "MainActivity must not hardcode vitruvian-remote@1.0",
+        mainActivity.contains("vitruvian-remote@1.0"),
+    )
+    assertTrue(
+        "MainActivity must keep sendDefaultPii false",
+        mainActivity.contains("options.isSendDefaultPii = false"),
+    )
+    assertTrue(
+        "MainActivity must close Sentry when disabled at runtime",
+        mainActivity.contains("io.sentry.Sentry.close()"),
+    )
+  }
+
+  @Test
+  public fun `Shell and HostsScreen wire About outside tabs and rail with back handling`() {
+    val shell =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/shell/Shell.kt")
+    val navItemsBlock =
+        shell.substringAfter("private fun navItems(").substringBefore("private fun SettingsButton(")
+    assertTrue("navItems must use RAIL_SCREENS", navItemsBlock.contains("RAIL_SCREENS.map"))
+    assertFalse(
+        "RAIL_SCREENS must exclude Screen.About",
+        shell
+            .substringAfter("private val RAIL_SCREENS")
+            .substringBefore("private val ICONS")
+            .contains("Screen.About"),
+    )
+    assertTrue(
+        "TopBar must pass onBack for Screen.About",
+        shell.contains("onBack = if (isAbout) state::backFromAbout else null"),
+    )
+
+    val remoteApp =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/RemoteApp.kt")
+    assertTrue(
+        "RemoteApp must handle system Back on Screen.About",
+        remoteApp.contains("BackHandler(enabled = state.effectiveScreen == Screen.About)"),
+    )
+
+    val hosts =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/HostsScreen.kt")
+    assertTrue(hosts.contains("AboutSection(state)"))
+    assertTrue(hosts.contains("\"About Vitruvian Remote\""))
+    assertTrue(hosts.contains("\"Donate\""))
+    assertTrue(hosts.contains("AppInfo.donateURL"))
+  }
 }

@@ -60,11 +60,14 @@ import dev.vitruvian.design.StatusTone
 import dev.vitruvian.design.Tag
 import dev.vitruvian.design.TagTone
 import dev.vitruvian.design.VButton
+import dev.vitruvian.design.VIcon
 import dev.vitruvian.design.VInput
 import dev.vitruvian.design.VSwitch
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
+import dev.vitruvian.design.VitruvianIcons
 import dev.vitruvian.design.VitruvianType
+import dev.vitruvian.remote.state.AppInfo
 import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.Format
 import dev.vitruvian.remote.state.MetricsSource
@@ -182,6 +185,35 @@ public fun ColumnScope.HostsScreen(state: RemoteState) {
         modifier = Modifier.fillMaxWidth().padding(top = Space.s4),
         dashed = true,
     )
+  }
+
+  AboutSection(state)
+}
+
+@Composable
+private fun AboutSection(state: RemoteState) {
+  val colors = Vitruvian
+  Column(
+      modifier = Modifier.padding(horizontal = Space.s4, vertical = Space.s3).fillMaxWidth(),
+      verticalArrangement = Arrangement.spacedBy(Space.s2),
+  ) {
+    Label("About")
+  }
+  ListItem(
+      title = "About Vitruvian Remote",
+      subtitle = "Version ${state.appVersion}",
+      onClick = state::openAbout,
+      contentPadding = PaddingValues(horizontal = Space.s4, vertical = Space.s3),
+  ) {
+    VIcon(path = VitruvianIcons.CHEVRON_RIGHT, color = colors.textDim, contentDescription = null)
+  }
+  ListItem(
+      title = "Donate",
+      subtitle = "Support development",
+      onClick = { state.openExternalUrl(AppInfo.donateURL) },
+      contentPadding = PaddingValues(horizontal = Space.s4, vertical = Space.s3),
+  ) {
+    VIcon(path = VitruvianIcons.EXTERNAL_LINK, color = colors.textDim, contentDescription = null)
   }
 }
 

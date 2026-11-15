@@ -103,6 +103,10 @@ private val PUSH_SLIDE = 5.dp
 private val TAB_SCREENS =
     listOf(Screen.Home, Screen.Remote, Screen.Mac, Screen.Apps, Screen.Console)
 
+/** The six primary destinations shown on the navigation rail. */
+private val RAIL_SCREENS =
+    listOf(Screen.Home, Screen.Remote, Screen.Mac, Screen.Apps, Screen.Console, Screen.Hosts)
+
 private val ICONS =
     mapOf(
         Screen.Home to VitruvianIcons.HOME,
@@ -129,7 +133,12 @@ public fun RemoteShell(
   val colors = Vitruvian
   val screen = state.effectiveScreen
   val navItems = navItems(state)
-  val showDock = layout.showRail && state.dockOpen && screen != Screen.Console && !state.isUnpaired
+  val showDock =
+      layout.showRail &&
+          state.dockOpen &&
+          screen != Screen.Console &&
+          screen != Screen.About &&
+          !state.isUnpaired
   CompositionLocalProvider(LocalShowDock provides showDock) {
     Row(modifier = modifier.fillMaxSize().background(colors.bg)) {
       if (layout.showRail) {
@@ -143,7 +152,12 @@ public fun RemoteShell(
         )
       }
       Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-        TopBar(title = screen.title, showMark = !layout.showRail) {
+        val isAbout = screen == Screen.About
+        TopBar(
+            title = if (isAbout) state.aboutPage.title else screen.title,
+            showMark = !layout.showRail && !isAbout,
+            onBack = if (isAbout) state::backFromAbout else null,
+        ) {
           // Hosts is not a tab. The chip beside this already went there, but
           // nothing about a status chip says "settings"; a gear does.
           SettingsButton(onClick = { state.go(Screen.Hosts) })
@@ -214,10 +228,16 @@ private fun ShellBody(
         },
         label = "screen",
     ) { target ->
+      val subKey =
+          when (target) {
+            Screen.Apps -> "${state.appsView.name}:${state.module}"
+            Screen.About -> state.aboutPage.name
+            else -> ""
+          }
       val scrollState =
           rememberSaveable(
               target.name,
-              if (target == Screen.Apps) "${state.appsView.name}:${state.module}" else "",
+              subKey,
               saver = ScrollState.Saver,
           ) {
             ScrollState(0)
@@ -305,10 +325,10 @@ private fun ShellBody(
   }
 }
 
-/** The six destinations, wired to navigation. */
+/** The six primary destinations, wired to navigation (excludes sub-screens like About). */
 @Composable
 private fun navItems(state: RemoteState): List<NavItem> =
-    Screen.entries.map { screen ->
+    RAIL_SCREENS.map { screen ->
       NavItem(
           key = screen.name,
           label = screen.title,

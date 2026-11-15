@@ -44,6 +44,7 @@ package(default_visibility = ["//apps/mobile/vitruvian-remote:__subpackages__"])
 
 exports_files([
     "BUILD",
+    "LICENSE",
     "release-please-config.json",
 ])
 
@@ -60,6 +61,7 @@ kt_android_library(
         # taking them here too would define every symbol twice.
         exclude = [
             "src/main/kotlin/dev/vitruvian/remote/hid/HidCodes.kt",
+            "src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/BridgePolicy.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Derive.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Format.kt",
@@ -75,6 +77,7 @@ kt_android_library(
     plugins = ["//packages/design-system-android:compose_compiler"],
     resource_files = glob(["src/main/res/**"]),
     deps = [
+        ":app_info",
         ":bridge_policy",
         ":derive",
         ":format",
@@ -229,6 +232,7 @@ kt_jvm_test(
     test_class = "dev.vitruvian.remote.state.MockHostWalkTest",
     runtime_deps = [":android_sdk_stub_jar"],
     deps = [
+        ":app_info",
         ":bridge_policy",
         ":derive",
         ":format",
@@ -254,6 +258,30 @@ kt_jvm_test(
 # Depends on :wire for the Vitruvian Speaker wire types (AgentCustomVoice) rather
 # than carrying a copy of them.
 kt_jvm_library(
+    name = "app_info",
+    srcs = ["src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt"],
+)
+
+kt_jvm_test(
+    name = "app_info_test",
+    size = "small",
+    srcs = ["src/test/kotlin/dev/vitruvian/remote/state/AppInfoTest.kt"],
+    data = [
+        "BUILD",
+        "LICENSE",
+        "src/main/AndroidManifest.xml",
+    ] + glob([
+        "src/main/kotlin/**/*.kt",
+        "src/main/res/**",
+    ]),
+    test_class = "dev.vitruvian.remote.state.AppInfoTest",
+    deps = [
+        ":app_info",
+        "@maven//:junit_junit",
+    ],
+)
+
+kt_jvm_library(
     name = "derive",
     srcs = ["src/main/kotlin/dev/vitruvian/remote/state/Derive.kt"],
     deps = [
@@ -267,11 +295,13 @@ kt_jvm_test(
     srcs = ["src/test/kotlin/dev/vitruvian/remote/state/DeriveTest.kt"],
     data = [
         "src/main/kotlin/dev/vitruvian/remote/MainActivity.kt",
+        "src/main/kotlin/dev/vitruvian/remote/RemoteApp.kt",
         "src/main/kotlin/dev/vitruvian/remote/overlays/HostStates.kt",
         "src/main/kotlin/dev/vitruvian/remote/overlays/MacroEditor.kt",
         "src/main/kotlin/dev/vitruvian/remote/shell/Dock.kt",
         "src/main/kotlin/dev/vitruvian/remote/shell/Shell.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/AgentClient.kt",
+        "src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/Derive.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/MockHost.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/Models.kt",
@@ -472,6 +502,7 @@ pipeline_unit(
     runner = "ubuntu-26.04",
     test_targets = [
         ":app",
+        ":app_info_test",
         ":bridge_policy_test",
         ":derive_test",
         ":format_test",

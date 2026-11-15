@@ -612,4 +612,127 @@ public class MockHostWalkTest {
       fail("Positive control failed: demo mode did not expose any MockHost value to walker")
     }
   }
+
+  @Test
+  public fun `about navigation works when unpaired and returns step by step to Settings`() {
+    val state =
+        RemoteState(
+            persistence = Persistence(InMemoryKeyValueStore()),
+            appVersion = "0.1.40",
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+    assertTrue(state.isUnpaired)
+    assertEquals(Screen.Hosts, state.effectiveScreen)
+
+    state.openAbout()
+    assertEquals(Screen.About, state.effectiveScreen)
+    assertEquals(AboutPage.Main, state.aboutPage)
+
+    state.openAboutPage(AboutPage.Privacy)
+    assertEquals(Screen.About, state.effectiveScreen)
+    assertEquals(AboutPage.Privacy, state.aboutPage)
+
+    state.backFromAbout()
+    assertEquals(Screen.About, state.effectiveScreen)
+    assertEquals(AboutPage.Main, state.aboutPage)
+
+    state.backFromAbout()
+    assertEquals(Screen.Hosts, state.effectiveScreen)
+    assertEquals(AboutPage.Main, state.aboutPage)
+  }
+
+  @Test
+  public fun `send crash reports defaults true persists across restart and notifies callback`() {
+    val store = InMemoryKeyValueStore()
+    val events = mutableListOf<Boolean>()
+    val first =
+        RemoteState(
+            persistence = Persistence(store),
+            onCrashReportsChanged = { events.add(it) },
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+    assertTrue(first.sendCrashReports)
+
+    first.updateSendCrashReports(false)
+    assertFalse(first.sendCrashReports)
+    assertEquals(listOf(false), events)
+
+    val restarted =
+        RemoteState(
+            persistence = Persistence(store),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+    assertFalse(restarted.sendCrashReports)
+
+    restarted.updateSendCrashReports(true)
+    assertTrue(restarted.sendCrashReports)
+    assertTrue(Persistence(store).sendCrashReports)
+  }
+
+  @Test
+  public fun `openExternalUrl populates fallback URL dialog when no browser handles intent`() {
+    val written = mutableListOf<String>()
+    val clipboard =
+        object : PhoneClipboard {
+          override fun read(): String = written.lastOrNull().orEmpty()
+
+          override fun write(text: String) {
+            written.add(text)
+          }
+        }
+    val noBrowserState =
+        RemoteState(
+            persistence = Persistence(InMemoryKeyValueStore()),
+            phoneClipboard = clipboard,
+            openUrl = { false },
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+    assertNull(noBrowserState.fallbackUrl)
+    assertFalse(noBrowserState.openExternalUrl(AppInfo.donateURL))
+    assertEquals(AppInfo.donateURL, noBrowserState.fallbackUrl)
+
+    noBrowserState.copyFallbackUrl()
+    assertEquals(listOf(AppInfo.donateURL), written)
+
+    noBrowserState.dismissFallbackUrl()
+    assertNull(noBrowserState.fallbackUrl)
+
+    val withBrowserState =
+        RemoteState(
+            persistence = Persistence(InMemoryKeyValueStore()),
+            openUrl = { true },
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+    assertTrue(withBrowserState.openExternalUrl(AppInfo.donateURL))
+    assertNull(withBrowserState.fallbackUrl)
+  }
+
+  @Test
+  public fun `copyVersionInfo writes Android device summary to clipboard and sets confirmation`() {
+    val written = mutableListOf<String>()
+    val clipboard =
+        object : PhoneClipboard {
+          override fun read(): String = written.lastOrNull().orEmpty()
+
+          override fun write(text: String) {
+            written.add(text)
+          }
+        }
+    val state =
+        RemoteState(
+            persistence = Persistence(InMemoryKeyValueStore()),
+            phoneClipboard = clipboard,
+            appVersion = "0.1.40",
+            androidRelease = "15",
+            deviceModel = "Pixel Fold",
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+    assertFalse(state.versionCopied)
+    state.copyVersionInfo()
+    assertTrue(state.versionCopied)
+    assertEquals(listOf("Vitruvian Remote 0.1.40 (Android 15, Pixel Fold)"), written)
+
+    state.clearVersionCopied()
+    assertFalse(state.versionCopied)
+  }
 }

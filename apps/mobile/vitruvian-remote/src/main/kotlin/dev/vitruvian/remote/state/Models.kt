@@ -24,7 +24,7 @@ import dev.vitruvian.design.StatusTone
 import dev.vitruvian.design.TagTone
 import dev.vitruvian.design.TerminalLine
 
-/** The six destinations. Settings (Hosts) is reachable from the host chip and the rail only. */
+/** The six primary destinations plus the About sub-screen reached from Settings. */
 public enum class Screen(public val title: String) {
   Home("Home"),
   Remote("Remote"),
@@ -32,6 +32,7 @@ public enum class Screen(public val title: String) {
   Apps("Modules"),
   Console("Console"),
   Hosts("Settings"),
+  About("About"),
 }
 
 /**

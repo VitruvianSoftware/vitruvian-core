@@ -52,6 +52,7 @@ private const val KEY_ASKED_NOTIFICATIONS = "askedForNotifications"
 private const val KEY_WAKE_ON_LAN = "wakeOnLan"
 private const val KEY_CONFIRM_DESTRUCTIVE = "confirmDestructive"
 private const val KEY_REFRESH_INTERVAL = "refreshInterval"
+private const val KEY_SEND_CRASH_REPORTS = "sendCrashReports"
 
 /** Keys the HomeSpeaker to Vitruvian Speaker rename retired, and the key each one became. */
 private val RENAMED_BOOLEAN_KEYS: Map<String, String> =
@@ -434,6 +435,11 @@ public class Persistence(private val prefs: KeyValueStore) {
   public var askedForNotifications: Boolean
     get() = prefs.getBoolean(KEY_ASKED_NOTIFICATIONS, false)
     set(value) = prefs.edit().putBoolean(KEY_ASKED_NOTIFICATIONS, value).apply()
+
+  /** Whether crash reports are sent to Sentry. Default on; toggled on the Privacy screen. */
+  public var sendCrashReports: Boolean
+    get() = prefs.getBoolean(KEY_SEND_CRASH_REPORTS, true)
+    set(value) = prefs.edit().putBoolean(KEY_SEND_CRASH_REPORTS, value).apply()
 
   private companion object {
     const val FIELD_COUNT = 5
