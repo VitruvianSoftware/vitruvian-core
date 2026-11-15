@@ -157,6 +157,100 @@ class A11yTest {
   }
 
   @Test
+  fun topBarGivesTitlePriorityOverHostChipAt200PercentScale() {
+    // 100% scale on 360dp folded phone (277dp left after outer padding + 44dp back + 13dp gap):
+    // both full "Settings" (~82dp) and trailing (~140dp) fit comfortably.
+    val normal =
+        A11y.allocateTopBarWidths(
+            availableAfterLeadingPx = 277,
+            gapPx = 13,
+            titleIntrinsicWidthPx = 82,
+            minTitleWidthPx = 82,
+            hasTrailing = true,
+            trailingIntrinsicWidthPx = 140,
+            isSingleWordTitle = true,
+            minTrailingFloorPx = 96,
+        )
+    assertEquals(140, normal.trailingMaxWidthPx)
+    assertTrue(
+        "Expected full title width at 100%, was ${normal.titleWidthPx}", normal.titleWidthPx >= 82)
+
+    // 200% scale on 360dp folded phone: "Settings" needs 164dp, trailing wants 177dp (44 + 13 +
+    // 120).
+    // Title must keep the full word while trailing shrinks and ellipsizes the host chip first.
+    val foldedAt200 =
+        A11y.allocateTopBarWidths(
+            availableAfterLeadingPx = 277,
+            gapPx = 13,
+            titleIntrinsicWidthPx = 164,
+            minTitleWidthPx = 164,
+            hasTrailing = true,
+            trailingIntrinsicWidthPx = 177,
+            isSingleWordTitle = true,
+            minTrailingFloorPx = 96,
+        )
+    assertTrue(
+        "Expected full single-word title width >= 164 on 360dp at 200%, was ${foldedAt200.titleWidthPx}",
+        foldedAt200.titleWidthPx >= 164,
+    )
+    assertEquals(100, foldedAt200.trailingMaxWidthPx)
+
+    // 200% scale on 411dp phone (328dp after leading): full "Settings" kept and trailing gets
+    // remaining 151dp.
+    val widePhoneAt200 =
+        A11y.allocateTopBarWidths(
+            availableAfterLeadingPx = 328,
+            gapPx = 13,
+            titleIntrinsicWidthPx = 164,
+            minTitleWidthPx = 164,
+            hasTrailing = true,
+            trailingIntrinsicWidthPx = 177,
+            isSingleWordTitle = true,
+            minTrailingFloorPx = 96,
+        )
+    assertTrue(widePhoneAt200.titleWidthPx >= 164)
+    assertEquals(151, widePhoneAt200.trailingMaxWidthPx)
+
+    // Multi-word titles shrink trailing down to floor first and always protect the first word.
+    val wandFirstWord = A11y.estimateFirstWordWidthPx(360, "VITRUVIAN WAND // AIR MOUSE")
+    assertEquals("VITRUVIAN", A11y.firstTitleWord("VITRUVIAN WAND // AIR MOUSE"))
+    assertFalse(A11y.isSingleWordTitle("Phone Bridge"))
+    assertTrue(A11y.isSingleWordTitle("Settings"))
+    val multiWordTight =
+        A11y.allocateTopBarWidths(
+            availableAfterLeadingPx = 290,
+            gapPx = 13,
+            titleIntrinsicWidthPx = 360,
+            minTitleWidthPx = wandFirstWord,
+            hasTrailing = true,
+            trailingIntrinsicWidthPx = 200,
+            isSingleWordTitle = false,
+            minTrailingFloorPx = 96,
+        )
+    assertTrue(
+        "Expected multi-word title to keep at least first word ($wandFirstWord), got ${multiWordTight.titleWidthPx}",
+        multiWordTight.titleWidthPx >= wandFirstWord,
+    )
+    assertEquals(96, multiWordTight.trailingMaxWidthPx)
+
+    // HostChip tightens max width smoothly at large accessibility font scales.
+    assertEquals(160f, A11y.hostChipMaxWidthDp(1.0f))
+    assertEquals(160f, A11y.hostChipMaxWidthDp(1.15f))
+    assertEquals(120f, A11y.hostChipMaxWidthDp(1.6f))
+    assertEquals(120f, A11y.hostChipMaxWidthDp(2.0f))
+
+    val navSrc = stripKotlinComments(readDesignSource("Nav.kt"))
+    val topBarBody = extractKotlinBlock(navSrc, "public fun TopBar(")
+    assertTrue(
+        "TopBar must allocate widths via A11y.allocateTopBarWidths",
+        topBarBody.contains("A11y.allocateTopBarWidths("))
+    val hostChipBody = extractKotlinBlock(navSrc, "public fun HostChip(")
+    assertTrue(
+        "HostChip must scale cap via A11y.hostChipMaxWidthDp",
+        hostChipBody.contains("A11y.hostChipMaxWidthDp("))
+  }
+
+  @Test
   fun terminalPaletteMeetsWcagContrastInBothThemes() {
     val bg = terminalBackgroundColor().toArgb()
     assertEquals(darkColors().neutral900.toArgb(), bg)

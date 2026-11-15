@@ -52,7 +52,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -81,11 +84,17 @@ private const val RULE_INSET = 0.25f
 /** Mirror of `VitruvianIcons.CHEVRON_RIGHT` kept private so `Icons.kt` stays in web parity. */
 private const val BACK_CHEVRON_PATH = "M15 18l-6-6 6-6"
 
+private val TOP_BAR_TRAILING_FLOOR = 96.dp
+
 /**
  * `.m-bar` - the 55 dp top bar.
  *
  * The VMark is hidden when the rail is showing it instead or when a leading back action is shown,
  * which is why [showMark] and [onBack] are parameters rather than something the bar guesses.
+ *
+ * Uses a custom [Layout] so the title has width priority over [trailing] (such as [HostChip]):
+ * single-word titles keep their full width before the chip shrinks and ellipsizes, and multi-word
+ * titles keep at least their first word visible at large accessibility text scales.
  */
 @Composable
 public fun TopBar(
@@ -97,7 +106,12 @@ public fun TopBar(
     trailing: @Composable (RowScope.() -> Unit)? = null,
 ) {
   val colors = Vitruvian
-  Row(
+  val density = LocalDensity.current
+  val gapPx = with(density) { Space.s4.roundToPx() }
+  val trailingFloorPx = with(density) { TOP_BAR_TRAILING_FLOOR.roundToPx() }
+  val hasTrailing = trailing != null
+  val singleWord = A11y.isSingleWordTitle(title)
+  Layout(
       modifier =
           modifier
               .fillMaxWidth()
@@ -105,37 +119,128 @@ public fun TopBar(
               .defaultMinSize(minHeight = Hit.h2)
               .bottomHairline(colors.divider)
               .padding(horizontal = Space.s4),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(Space.s4),
-  ) {
-    if (onBack != null) {
-      val backDesc = A11y.topBarBackDescription(backContentDescription)
-      Box(
-          modifier =
-              Modifier.size(Hit.h1).clickable(role = Role.Button, onClick = onBack).semantics {
-                contentDescription = backDesc
-              },
-          contentAlignment = Alignment.Center,
-      ) {
-        VIcon(
-            path = BACK_CHEVRON_PATH,
+      content = {
+        if (onBack != null) {
+          val backDesc = A11y.topBarBackDescription(backContentDescription)
+          Box(
+              modifier =
+                  Modifier.layoutId("leading")
+                      .size(Hit.h1)
+                      .clickable(role = Role.Button, onClick = onBack)
+                      .semantics { contentDescription = backDesc },
+              contentAlignment = Alignment.Center,
+          ) {
+            VIcon(
+                path = BACK_CHEVRON_PATH,
+                color = colors.text,
+                contentDescription = null,
+            )
+          }
+        } else if (A11y.topBarShowMark(showMark = showMark, hasBackAction = false)) {
+          Box(modifier = Modifier.layoutId("leading")) { VMark(markSize = 17.dp) }
+        }
+        VText(
+            text = title,
+            modifier = Modifier.layoutId("title"),
+            style = VitruvianType.barTitle,
             color = colors.text,
-            contentDescription = null,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            softWrap = false,
         )
-      }
-    } else if (A11y.topBarShowMark(showMark = showMark, hasBackAction = false)) {
-      VMark(markSize = 17.dp)
+        if (trailing != null) {
+          Row(
+              modifier = Modifier.layoutId("trailing"),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(Space.s4),
+              content = trailing,
+          )
+        }
+      },
+  ) { measurables, constraints ->
+    val leadingMeasurable = measurables.firstOrNull { it.layoutId == "leading" }
+    val titleMeasurable = measurables.first { it.layoutId == "title" }
+    val trailingMeasurable = measurables.firstOrNull { it.layoutId == "trailing" }
+
+    val leadingPlaceable = leadingMeasurable?.measure(constraints.copy(minWidth = 0, minHeight = 0))
+    val leadingWidth = leadingPlaceable?.width ?: 0
+    val leadingGap = if (leadingPlaceable != null) gapPx else 0
+
+    val titleIntrinsic = titleMeasurable.maxIntrinsicWidth(constraints.maxHeight).coerceAtLeast(0)
+    val trailingIntrinsic =
+        trailingMeasurable?.maxIntrinsicWidth(constraints.maxHeight)?.coerceAtLeast(0) ?: 0
+    val trailingGap = if (trailingMeasurable != null && trailingIntrinsic > 0) gapPx else 0
+
+    val layoutWidth =
+        if (constraints.hasBoundedWidth) {
+          constraints.maxWidth
+        } else {
+          (leadingWidth + leadingGap + titleIntrinsic + trailingGap + trailingIntrinsic)
+              .coerceAtLeast(constraints.minWidth)
+        }
+    val availableAfterLeading = (layoutWidth - leadingWidth - leadingGap).coerceAtLeast(0)
+    val minTitleWidth =
+        if (singleWord) titleIntrinsic else A11y.estimateFirstWordWidthPx(titleIntrinsic, title)
+
+    val allocation =
+        A11y.allocateTopBarWidths(
+            availableAfterLeadingPx = availableAfterLeading,
+            gapPx = gapPx,
+            titleIntrinsicWidthPx = titleIntrinsic,
+            minTitleWidthPx = minTitleWidth,
+            hasTrailing = hasTrailing && trailingMeasurable != null,
+            trailingIntrinsicWidthPx = trailingIntrinsic,
+            isSingleWordTitle = singleWord,
+            minTrailingFloorPx = trailingFloorPx,
+        )
+
+    val trailingPlaceable =
+        if (trailingMeasurable != null && allocation.trailingMaxWidthPx > 0) {
+          trailingMeasurable.measure(
+              constraints.copy(
+                  minWidth = 0,
+                  maxWidth = allocation.trailingMaxWidthPx,
+                  minHeight = 0,
+              ),
+          )
+        } else {
+          null
+        }
+    val actualTrailingWidth = trailingPlaceable?.width ?: 0
+    val actualTrailingGap = if (trailingPlaceable != null && actualTrailingWidth > 0) gapPx else 0
+    val actualTitleWidth =
+        (availableAfterLeading - actualTrailingGap - actualTrailingWidth).coerceAtLeast(0)
+
+    val titlePlaceable =
+        titleMeasurable.measure(
+            constraints.copy(
+                minWidth = actualTitleWidth,
+                maxWidth = actualTitleWidth,
+                minHeight = 0,
+            ),
+        )
+
+    val layoutHeight =
+        maxOf(
+            constraints.minHeight,
+            leadingPlaceable?.height ?: 0,
+            titlePlaceable.height,
+            trailingPlaceable?.height ?: 0,
+        )
+    layout(layoutWidth, layoutHeight) {
+      leadingPlaceable?.placeRelative(
+          x = 0,
+          y = (layoutHeight - leadingPlaceable.height) / 2,
+      )
+      titlePlaceable.placeRelative(
+          x = leadingWidth + leadingGap,
+          y = (layoutHeight - titlePlaceable.height) / 2,
+      )
+      trailingPlaceable?.placeRelative(
+          x = layoutWidth - actualTrailingWidth,
+          y = (layoutHeight - trailingPlaceable.height) / 2,
+      )
     }
-    VText(
-        text = title,
-        modifier = Modifier.weight(1f),
-        style = VitruvianType.barTitle,
-        color = colors.text,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        softWrap = false,
-    )
-    trailing?.invoke(this)
   }
 }
 
@@ -154,10 +259,12 @@ public fun HostChip(
     hostName: String = text,
     stateLabel: String = A11y.toneStateWord(tone),
 ) {
+  val fontScale = LocalConfiguration.current.fontScale
   Box(
       modifier =
           modifier
               .widthIn(max = 160.dp)
+              .widthIn(max = A11y.hostChipMaxWidthDp(fontScale).dp)
               .defaultMinSize(minHeight = Hit.h1)
               .clickable(role = Role.Button, onClick = onClick)
               .semantics {
