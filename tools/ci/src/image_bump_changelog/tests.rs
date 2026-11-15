@@ -263,13 +263,18 @@ fn missing_old_revision_label_is_reported_honestly() {
         format!(r#"{{"config":{{"Labels":{{"org.opencontainers.image.revision":"{new_sha}"}}}}}}"#),
     );
     write(
+        fix.join("tags_empty.json"),
+        r#"{"name":"vitruviansoftware/backstage","tags":["latest"]}"#,
+    );
+    write(
         fix.join("map.tsv"),
         format!(
             "/token?\tok\ttoken.json\n\
              /manifests/{d_old}\tok\tm_old.json\n\
              /manifests/{d_new}\tok\tm_new.json\n\
              /blobs/{d_cfg_old}\tok\tcfg_old.json\n\
-             /blobs/{d_cfg_new}\tok\tcfg_new.json\n"
+             /blobs/{d_cfg_new}\tok\tcfg_new.json\n\
+             /tags/list\tok\ttags_empty.json\n"
         ),
     );
 
@@ -339,6 +344,10 @@ fn upstream_mode_handles_compare_and_unlabeled_and_errors() {
     );
     write(fix.join("cfg_unl.json"), r#"{"config":{"Labels":{}}}"#);
     write(
+        fix.join("tags_empty.json"),
+        r#"{"name":"block/buzz","tags":["main","latest"]}"#,
+    );
+    write(
         fix.join("compare.json"),
         format!(
             r#"{{"total_commits":1,"commits":[{{"sha":"{rev_new}","commit":{{"message":"feat: upstream change (#12)"}}}}]}}"#
@@ -354,6 +363,7 @@ fn upstream_mode_handles_compare_and_unlabeled_and_errors() {
              /blobs/{d_cfg_old}\tok\tcfg_old.json\n\
              /blobs/{d_cfg_new}\tok\tcfg_new.json\n\
              /blobs/{d_cfg_unl}\tok\tcfg_unl.json\n\
+             /tags/list\tok\ttags_empty.json\n\
              api.github.com/repos/block/buzz/compare/\tok\tcompare.json\n"
         ),
     );
@@ -431,4 +441,284 @@ fn upstream_mode_handles_compare_and_unlabeled_and_errors() {
         "image-bump-changelog:",
         "error prefix on stderr",
     );
+}
+
+#[test]
+fn tag_fallback_resolves_commit_from_matching_40_hex_tag() {
+    let bin = bin("BIN");
+    let tmp = TempDir::new();
+    let repo = tmp.join("repo");
+    git_init(&repo);
+
+    let old_sha = commit_file(
+        &repo,
+        "apps/web/gods-eye-view/index.ts",
+        "v1\n",
+        "init (#200)",
+    );
+    let _app_sha = commit_file(
+        &repo,
+        "apps/web/gods-eye-view/index.ts",
+        "v2\n",
+        "feat(gev): show cluster view (#201)",
+    );
+    let new_sha = commit_file(&repo, "MODULE.bazel", "bump\n", "chore(deps): bump (#202)");
+
+    let d_old = format!("sha256:{}", pad64('1'));
+    let d_new = format!("sha256:{}", pad64('2'));
+    let d_other = format!("sha256:{}", pad64('9'));
+    let d_cfg_old = format!("sha256:{}", pad64('a'));
+    let d_cfg_new = format!("sha256:{}", pad64('b'));
+    let other_sha = "0000000000000000000000000000000000000001";
+
+    let fix = tmp.join("fixtures");
+    write(fix.join("token.json"), r#"{"token":"tok"}"#);
+    write(
+        fix.join("m_old.json"),
+        format!(r#"{{"config":{{"digest":"{d_cfg_old}"}}}}"#),
+    );
+    write(
+        fix.join("m_new.json"),
+        format!(r#"{{"config":{{"digest":"{d_cfg_new}"}}}}"#),
+    );
+    write(fix.join("cfg_empty.json"), r#"{"config":{"Labels":{}}}"#);
+    write(
+        fix.join("tags.json"),
+        format!(
+            r#"{{"name":"vitruviansoftware/gods-eye-view","tags":["latest","buildcache","{other_sha}","{old_sha}","{new_sha}"]}}"#
+        ),
+    );
+    write(
+        fix.join("head_old.txt"),
+        format!("HTTP/2 200\r\ndocker-content-digest: {d_old}\r\n\r\n"),
+    );
+    write(
+        fix.join("head_new.txt"),
+        format!("HTTP/2 200\r\ndocker-content-digest: {d_new}\r\n\r\n"),
+    );
+    write(
+        fix.join("head_other.txt"),
+        format!("HTTP/2 200\r\ndocker-content-digest: {d_other}\r\n\r\n"),
+    );
+    write(
+        fix.join("map.tsv"),
+        format!(
+            "/token?\tok\ttoken.json\n\
+             /manifests/{d_old}\tok\tm_old.json\n\
+             /manifests/{d_new}\tok\tm_new.json\n\
+             /blobs/{d_cfg_old}\tok\tcfg_empty.json\n\
+             /blobs/{d_cfg_new}\tok\tcfg_empty.json\n\
+             /tags/list\tok\ttags.json\n\
+             /manifests/{old_sha}\tok\thead_old.txt\n\
+             /manifests/{new_sha}\tok\thead_new.txt\n\
+             /manifests/{other_sha}\tok\thead_other.txt\n"
+        ),
+    );
+
+    let fakebin = tmp.join("bin");
+    setup_fake_curl(&fakebin, &fix);
+
+    let o = Run::new(&bin)
+        .cwd(&repo)
+        .path_first(&fakebin)
+        .args([
+            "--image",
+            "ghcr.io/vitruviansoftware/gods-eye-view",
+            "--old-digest",
+            &d_old,
+            "--new-digest",
+            &d_new,
+            "--path",
+            "apps/web/gods-eye-view",
+            "--shared-path",
+            "MODULE.bazel",
+        ])
+        .go();
+
+    assert_eq!(o.code, 0, "stderr={}\nstdout={}", o.stderr, o.stdout);
+    let old7 = &old_sha[..7];
+    let new7 = &new_sha[..7];
+    assert_has(
+        &o.stdout,
+        &format!("Built from [`{old7}..{new7}`](https://github.com/VitruvianSoftware/vitruvian-core/compare/{old_sha}...{new_sha})."),
+        "compare header resolved via 40-hex tags",
+    );
+    assert_has(
+        &o.stdout,
+        "feat(gev): show cluster view (#201)",
+        "app commit resolved via 40-hex tag range",
+    );
+    assert_has(
+        &o.stdout,
+        "1 other commit in this range changed shared build inputs.",
+        "shared count line",
+    );
+}
+
+#[test]
+fn tag_fallback_reports_unknown_when_only_non_matching_tags_exist() {
+    let bin = bin("BIN");
+    let tmp = TempDir::new();
+    let repo = tmp.join("repo");
+    let new_sha = git_init(&repo);
+
+    let d_old = format!("sha256:{}", pad64('3'));
+    let d_new = format!("sha256:{}", pad64('4'));
+    let d_other = format!("sha256:{}", pad64('8'));
+    let d_cfg_old = format!("sha256:{}", pad64('5'));
+    let d_cfg_new = format!("sha256:{}", pad64('6'));
+
+    let tag_a = "1111111111111111111111111111111111111111";
+    let tag_b = "2222222222222222222222222222222222222222";
+
+    let fix = tmp.join("fixtures");
+    write(fix.join("token.json"), r#"{"token":"tok"}"#);
+    write(
+        fix.join("m_old.json"),
+        format!(r#"{{"config":{{"digest":"{d_cfg_old}"}}}}"#),
+    );
+    write(
+        fix.join("m_new.json"),
+        format!(r#"{{"config":{{"digest":"{d_cfg_new}"}}}}"#),
+    );
+    write(fix.join("cfg_old.json"), r#"{"config":{"Labels":{}}}"#);
+    write(
+        fix.join("cfg_new.json"),
+        format!(r#"{{"config":{{"Labels":{{"org.opencontainers.image.revision":"{new_sha}"}}}}}}"#),
+    );
+    write(
+        fix.join("tags.json"),
+        format!(r#"{{"name":"vitruviansoftware/backstage","tags":["{tag_a}","{tag_b}"]}}"#),
+    );
+    write(
+        fix.join("head_other.txt"),
+        format!("HTTP/2 200\r\ndocker-content-digest: {d_other}\r\n\r\n"),
+    );
+    write(
+        fix.join("map.tsv"),
+        format!(
+            "/token?\tok\ttoken.json\n\
+             /manifests/{d_old}\tok\tm_old.json\n\
+             /manifests/{d_new}\tok\tm_new.json\n\
+             /blobs/{d_cfg_old}\tok\tcfg_old.json\n\
+             /blobs/{d_cfg_new}\tok\tcfg_new.json\n\
+             /tags/list\tok\ttags.json\n\
+             /manifests/{tag_a}\tok\thead_other.txt\n\
+             /manifests/{tag_b}\tfail\t404\n"
+        ),
+    );
+
+    let fakebin = tmp.join("bin");
+    setup_fake_curl(&fakebin, &fix);
+
+    let o = Run::new(&bin)
+        .cwd(&repo)
+        .path_first(&fakebin)
+        .args([
+            "--image",
+            "ghcr.io/vitruviansoftware/backstage",
+            "--old-digest",
+            &d_old,
+            "--new-digest",
+            &d_new,
+            "--path",
+            "apps/web/backstage",
+        ])
+        .go();
+
+    assert_eq!(o.code, 0, "stderr={}", o.stderr);
+    assert_has(
+        &o.stdout,
+        "previous revision unknown",
+        "non-matching 40-hex tags yield unknown",
+    );
+    assert_has(&o.stdout, &new_sha[..7], "new revision still shown");
+}
+
+#[test]
+fn tag_fallback_ignores_short_sha_and_non_hex_tags() {
+    let bin = bin("BIN");
+    let tmp = TempDir::new();
+    let repo = tmp.join("repo");
+    let new_sha = git_init(&repo);
+
+    let d_old = format!("sha256:{}", pad64('3'));
+    let d_new = format!("sha256:{}", pad64('4'));
+    let d_cfg_old = format!("sha256:{}", pad64('5'));
+    let d_cfg_new = format!("sha256:{}", pad64('6'));
+
+    let short_sha = "1fb33e4";
+    let prefixed_sha = "sha-1fa63ba";
+    let non_hex_40 = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz";
+    let upper_hex_40 = "ABCDEF0123456789ABCDEF0123456789ABCDEF01";
+
+    let fix = tmp.join("fixtures");
+    write(fix.join("token.json"), r#"{"token":"tok"}"#);
+    write(
+        fix.join("m_old.json"),
+        format!(r#"{{"config":{{"digest":"{d_cfg_old}"}}}}"#),
+    );
+    write(
+        fix.join("m_new.json"),
+        format!(r#"{{"config":{{"digest":"{d_cfg_new}"}}}}"#),
+    );
+    write(fix.join("cfg_old.json"), r#"{"config":{"Labels":{}}}"#);
+    write(
+        fix.join("cfg_new.json"),
+        format!(r#"{{"config":{{"Labels":{{"org.opencontainers.image.revision":"{new_sha}"}}}}}}"#),
+    );
+    write(
+        fix.join("tags.json"),
+        format!(
+            r#"{{"name":"vitruviansoftware/backstage","tags":["latest","{short_sha}","{prefixed_sha}","{non_hex_40}","{upper_hex_40}"]}}"#
+        ),
+    );
+    // Deliberately point every ignored tag's manifest HEAD at d_old so any
+    // failure to filter them out would falsely resolve old_rev.
+    write(
+        fix.join("head_trap.txt"),
+        format!("HTTP/2 200\r\ndocker-content-digest: {d_old}\r\n\r\n"),
+    );
+    write(
+        fix.join("map.tsv"),
+        format!(
+            "/token?\tok\ttoken.json\n\
+             /manifests/{d_old}\tok\tm_old.json\n\
+             /manifests/{d_new}\tok\tm_new.json\n\
+             /blobs/{d_cfg_old}\tok\tcfg_old.json\n\
+             /blobs/{d_cfg_new}\tok\tcfg_new.json\n\
+             /tags/list\tok\ttags.json\n\
+             /manifests/latest\tok\thead_trap.txt\n\
+             /manifests/{short_sha}\tok\thead_trap.txt\n\
+             /manifests/{prefixed_sha}\tok\thead_trap.txt\n\
+             /manifests/{non_hex_40}\tok\thead_trap.txt\n\
+             /manifests/{upper_hex_40}\tok\thead_trap.txt\n"
+        ),
+    );
+
+    let fakebin = tmp.join("bin");
+    setup_fake_curl(&fakebin, &fix);
+
+    let o = Run::new(&bin)
+        .cwd(&repo)
+        .path_first(&fakebin)
+        .args([
+            "--image",
+            "ghcr.io/vitruviansoftware/backstage",
+            "--old-digest",
+            &d_old,
+            "--new-digest",
+            &d_new,
+            "--path",
+            "apps/web/backstage",
+        ])
+        .go();
+
+    assert_eq!(o.code, 0, "stderr={}", o.stderr);
+    assert_has(
+        &o.stdout,
+        "previous revision unknown",
+        "short-sha, non-hex, and uppercase tags ignored",
+    );
+    assert_has(&o.stdout, &new_sha[..7], "new revision shown");
 }

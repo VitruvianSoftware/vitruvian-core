@@ -1,7 +1,7 @@
 # Image Bump Changelog
 
 ## Overview
-Component package providing `//tools/ci:image_bump_changelog` (`tools/ci/src/image_bump_changelog`). Resolves OCI image `org.opencontainers.image.revision` labels across multi-arch indexes and platform manifests for two digests and formats a Markdown changelog for automated digest-bump pull requests.
+Component package providing `//tools/ci:image_bump_changelog` (`tools/ci/src/image_bump_changelog`). Resolves OCI image `org.opencontainers.image.revision` labels across multi-arch indexes and platform manifests for two digests (falling back to 40-character lowercase hex repository tags when the label is absent) and formats a Markdown changelog for automated digest-bump pull requests.
 
 ## Interface
 - `[main.rs:main]`
@@ -10,10 +10,14 @@ Component package providing `//tools/ci:image_bump_changelog` (`tools/ci/src/ima
 - `[lib.rs:normalize_digest]`
 - `[lib.rs:extract_digest_from_manifest_text]`
 - `[lib.rs:select_platform_manifest]`
+- `[lib.rs:is_40_lowercase_hex]`
+- `[lib.rs:extract_40_hex_tags]`
+- `[lib.rs:extract_docker_content_digest]`
+- `[lib.rs:parse_next_link_url]`
 - `[lib.rs:render_markdown]`
 
 ## Side Effects
-- Executes `curl` against OCI registry `/token`, `/v2/.../manifests/...`, `/v2/.../blobs/...` endpoints (and `api.github.com/repos/.../compare/...` in `--upstream` mode).
+- Executes `curl` against OCI registry `/token`, `/v2/.../manifests/...`, `/v2/.../blobs/...`, and `/v2/.../tags/list` endpoints (and `api.github.com/repos/.../compare/...` in `--upstream` mode).
 - Executes read-only `git show` and `git log --no-merges` in local repository mode.
 
 ## Verification

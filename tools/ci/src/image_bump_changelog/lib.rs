@@ -28,12 +28,15 @@
 use shell_compat::{env, err, out};
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::Path;
-use std::process::{Command, Stdio};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const DEFAULT_REPO: &str = "VitruvianSoftware/vitruvian-core";
 const DEFAULT_BASE_REF: &str = "origin/main";
 const MAX_UPSTREAM_COMMITS: usize = 50;
+const MAX_TAG_PAGES: usize = 20;
+const TAG_HEAD_CONCURRENCY: usize = 8;
 
 const USAGE: &str = "image-bump-changelog: usage: image-bump-changelog \
 --image <registry/repo> \
@@ -451,6 +454,8 @@ struct RegistryAuth<'a> {
     bearer_token: Option<String>,
     gh_token: Option<String>,
     tried_gh_token: bool,
+    cached_hex_tags: Option<Vec<String>>,
+    tag_digest_cache: Vec<(String, Option<String>)>,
 }
 
 impl<'a> RegistryAuth<'a> {
@@ -462,6 +467,8 @@ impl<'a> RegistryAuth<'a> {
             bearer_token: None,
             gh_token,
             tried_gh_token: false,
+            cached_hex_tags: None,
+            tag_digest_cache: Vec::new(),
         }
     }
 
@@ -509,7 +516,106 @@ impl<'a> RegistryAuth<'a> {
         let rev = extract_revision_from_config(&config_json)
             .or_else(|| extract_revision_annotation(&platform_manifest))
             .or(index_rev);
-        Ok(rev)
+        if rev.is_some() {
+            return Ok(rev);
+        }
+        Ok(self.resolve_revision_from_tags(digest))
+    }
+
+    fn load_40_hex_tags(&mut self) -> Vec<String> {
+        if let Some(ref cached) = self.cached_hex_tags {
+            return cached.clone();
+        }
+        let mut all_tags = Vec::new();
+        let mut seen = BTreeSet::new();
+        let mut url = format!(
+            "https://{}/v2/{}/tags/list?n=1000",
+            self.registry, self.repository
+        );
+        for _ in 0..MAX_TAG_PAGES {
+            let Ok((body, hdrs)) = self.get_with_headers_and_auth_retry(&url, "application/json")
+            else {
+                break;
+            };
+            let Ok(json) = parse_json(&body) else {
+                break;
+            };
+            for tag in extract_40_hex_tags(&json) {
+                if seen.insert(tag.clone()) {
+                    all_tags.push(tag);
+                }
+            }
+            let Some(next_url) = parse_next_link_url(&hdrs, self.registry) else {
+                break;
+            };
+            if next_url == url {
+                break;
+            }
+            url = next_url;
+        }
+        self.cached_hex_tags = Some(all_tags.clone());
+        all_tags
+    }
+
+    fn resolve_revision_from_tags(&mut self, target_digest: &str) -> Option<String> {
+        if let Some((tag, _)) = self
+            .tag_digest_cache
+            .iter()
+            .find(|(_, d)| d.as_deref() == Some(target_digest))
+        {
+            return Some(tag.clone());
+        }
+
+        let all_tags = self.load_40_hex_tags();
+        let unprobed: Vec<String> = all_tags
+            .into_iter()
+            .rev()
+            .filter(|t| !self.tag_digest_cache.iter().any(|(cached, _)| cached == t))
+            .collect();
+        let secrets = self.auth_secrets();
+
+        for chunk in unprobed.chunks(TAG_HEAD_CONCURRENCY) {
+            let results: Vec<(String, Option<String>)> = {
+                let auth_ref: &RegistryAuth<'_> = &*self;
+                let secrets_ref: &[String] = &secrets;
+                std::thread::scope(|s| {
+                    let handles: Vec<_> = chunk
+                        .iter()
+                        .map(|tag| {
+                            let url = format!(
+                                "https://{}/v2/{}/manifests/{}",
+                                auth_ref.registry, auth_ref.repository, tag
+                            );
+                            s.spawn(move || {
+                                let digest = auth_ref
+                                    .do_head(&url, ACCEPT_ANY, secrets_ref)
+                                    .ok()
+                                    .and_then(|hdrs| extract_docker_content_digest(&hdrs));
+                                (tag.clone(), digest)
+                            })
+                        })
+                        .collect();
+                    handles
+                        .into_iter()
+                        .map(|h| h.join().unwrap_or_else(|_| (String::new(), None)))
+                        .collect()
+                })
+            };
+            let mut matched = None;
+            for (tag, maybe_digest) in results {
+                if tag.is_empty() {
+                    continue;
+                }
+                if matched.is_none() && maybe_digest.as_deref() == Some(target_digest) {
+                    matched = Some(tag.clone());
+                }
+                self.tag_digest_cache.push((tag, maybe_digest));
+            }
+            if matched.is_some() {
+                return matched;
+            }
+        }
+        None
     }
 
     fn ensure_initial_token(&mut self) -> Result<(), String> {
@@ -564,7 +670,7 @@ impl<'a> RegistryAuth<'a> {
         Ok(true)
     }
 
-    fn get_with_auth_retry(&mut self, url: &str, accept: &str) -> Result<Vec<u8>, String> {
+    fn auth_secrets(&self) -> Vec<String> {
         let mut secrets = Vec::new();
         if let Some(ref gh) = self.gh_token {
             secrets.push(gh.clone());
@@ -572,8 +678,16 @@ impl<'a> RegistryAuth<'a> {
         if let Some(ref tok) = self.bearer_token {
             secrets.push(tok.clone());
         }
-        let first_err = match self.do_get(url, accept, &secrets) {
-            Ok(bytes) => return Ok(bytes),
+        secrets
+    }
+
+    fn with_auth_retry<T>(
+        &mut self,
+        op: impl Fn(&Self, &[String]) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let secrets = self.auth_secrets();
+        let first_err = match op(self, &secrets) {
+            Ok(val) => return Ok(val),
             Err(e) => e,
         };
         if !self.tried_gh_token && self.gh_token.is_some() {
@@ -582,22 +696,33 @@ impl<'a> RegistryAuth<'a> {
                 self.registry, self.repository, self.registry
             );
             if self.try_upgrade_to_gh_token(&token_url)? {
-                let mut retry_secrets = Vec::new();
-                if let Some(ref gh) = self.gh_token {
-                    retry_secrets.push(gh.clone());
-                }
-                if let Some(ref tok) = self.bearer_token {
-                    retry_secrets.push(tok.clone());
-                }
-                if let Ok(bytes) = self.do_get(url, accept, &retry_secrets) {
-                    return Ok(bytes);
+                let retry_secrets = self.auth_secrets();
+                if let Ok(val) = op(self, &retry_secrets) {
+                    return Ok(val);
                 }
             }
         }
         Err(first_err)
     }
 
-    fn do_get(&self, url: &str, accept: &str, secrets: &[String]) -> Result<Vec<u8>, String> {
+    fn get_with_auth_retry(&mut self, url: &str, accept: &str) -> Result<Vec<u8>, String> {
+        self.with_auth_retry(|auth, secrets| auth.do_get(url, accept, secrets))
+    }
+
+    fn get_with_headers_and_auth_retry(
+        &mut self,
+        url: &str,
+        accept: &str,
+    ) -> Result<(Vec<u8>, Vec<u8>), String> {
+        self.with_auth_retry(|auth, secrets| auth.do_get_with_headers(url, accept, secrets))
+    }
+
+    fn call_with_headers<T>(
+        &self,
+        accept: &str,
+        secrets: &[String],
+        exec: impl FnOnce(&[&str], &[&str]) -> Result<T, String>,
+    ) -> Result<T, String> {
         let accept_hdr = format!("Accept: {accept}");
         let mut headers = vec![accept_hdr.as_str()];
         let auth_hdr;
@@ -606,7 +731,26 @@ impl<'a> RegistryAuth<'a> {
             headers.push(auth_hdr.as_str());
         }
         let scrub_refs: Vec<&str> = secrets.iter().map(String::as_str).collect();
-        curl_get(url, &headers, &scrub_refs)
+        exec(&headers, &scrub_refs)
+    }
+
+    fn do_get(&self, url: &str, accept: &str, secrets: &[String]) -> Result<Vec<u8>, String> {
+        self.call_with_headers(accept, secrets, |hdrs, scrub| curl_get(url, hdrs, scrub))
+    }
+
+    fn do_get_with_headers(
+        &self,
+        url: &str,
+        accept: &str,
+        secrets: &[String],
+    ) -> Result<(Vec<u8>, Vec<u8>), String> {
+        self.call_with_headers(accept, secrets, |hdrs, scrub| {
+            curl_get_with_headers(url, hdrs, scrub)
+        })
+    }
+
+    fn do_head(&self, url: &str, accept: &str, secrets: &[String]) -> Result<Vec<u8>, String> {
+        self.call_with_headers(accept, secrets, |hdrs, scrub| curl_head(url, hdrs, scrub))
     }
 }
 
@@ -730,6 +874,93 @@ fn extract_revision_annotation(val: &JsonValue) -> Option<String> {
         .get("org.opencontainers.image.revision")
         .and_then(JsonValue::as_str);
     normalize_revision(raw)
+}
+
+/// Returns `true` when `tag` is an exact 40-character lowercase hex git SHA.
+pub fn is_40_lowercase_hex(tag: &str) -> bool {
+    tag.len() == 40 && tag.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// Filters a `/v2/<name>/tags/list` JSON body down to 40-character lowercase
+/// hex commit tags, ignoring floating, short-sha, and non-hex tags.
+pub fn extract_40_hex_tags(json: &JsonValue) -> Vec<String> {
+    let Some(tags) = json.get("tags").and_then(JsonValue::as_array) else {
+        return Vec::new();
+    };
+    tags.iter()
+        .filter_map(JsonValue::as_str)
+        .filter(|t| is_40_lowercase_hex(t))
+        .map(str::to_string)
+        .collect()
+}
+
+/// Extracts the normalized `sha256:...` digest from the last
+/// `Docker-Content-Digest` HTTP response header.
+pub fn extract_docker_content_digest(headers_raw: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(headers_raw);
+    let mut found = None;
+    for line in text.lines() {
+        let line = line.trim_end_matches('\r');
+        if let Some((name, value)) = line.split_once(':') {
+            if name.trim().eq_ignore_ascii_case("docker-content-digest") {
+                let cleaned = value.trim().trim_matches('"');
+                if let Ok(digest) = normalize_digest(cleaned) {
+                    found = Some(digest);
+                }
+            }
+        }
+    }
+    found
+}
+
+/// Parses an RFC 5988 `Link: <...>; rel="next"` header from registry HTTP
+/// response headers and resolves relative targets against `registry`.
+pub fn parse_next_link_url(headers_raw: &[u8], registry: &str) -> Option<String> {
+    let text = String::from_utf8_lossy(headers_raw);
+    for line in text.lines() {
+        let line = line.trim_end_matches('\r');
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        if !name.trim().eq_ignore_ascii_case("link") {
+            continue;
+        }
+        let mut rest = value.trim();
+        while let Some(open) = rest.find('<') {
+            let after_open = &rest[open + 1..];
+            let Some(close) = after_open.find('>') else {
+                break;
+            };
+            let target = after_open[..close].trim();
+            let after_close = &after_open[close + 1..];
+            let (params_part, remainder) = match after_close.find(',') {
+                Some(comma) => (&after_close[..comma], &after_close[comma + 1..]),
+                None => (after_close, ""),
+            };
+            let is_next = params_part.split(';').any(|param| {
+                if let Some((k, v)) = param.trim().split_once('=') {
+                    k.trim().eq_ignore_ascii_case("rel")
+                        && v.trim()
+                            .trim_matches('"')
+                            .split_whitespace()
+                            .any(|tok| tok.eq_ignore_ascii_case("next"))
+                } else {
+                    false
+                }
+            });
+            if is_next && !target.is_empty() {
+                if target.starts_with("https://") || target.starts_with("http://") {
+                    return Some(target.to_string());
+                }
+                if target.starts_with('/') {
+                    return Some(format!("https://{registry}{target}"));
+                }
+                return Some(format!("https://{registry}/{target}"));
+            }
+            rest = remainder;
+        }
+    }
+    None
 }
 
 // ---------------------------------------------------------------------------
@@ -1027,9 +1258,27 @@ fn render_upstream(
 // Subprocess curl & utilities
 // ---------------------------------------------------------------------------
 
-fn curl_get(url: &str, headers: &[&str], secrets_to_scrub: &[&str]) -> Result<Vec<u8>, String> {
+static HDR_TMP_SEQ: AtomicUsize = AtomicUsize::new(0);
+
+fn format_curl_error(o: &Output, secrets_to_scrub: &[&str]) -> String {
+    let code = o.status.code().unwrap_or(1);
+    let raw_err = String::from_utf8_lossy(&o.stderr);
+    let cleaned = scrub_secrets(&single_line(&raw_err), secrets_to_scrub);
+    if cleaned.is_empty() {
+        format!("curl exited {code} fetching registry data")
+    } else {
+        cleaned
+    }
+}
+
+fn run_curl(
+    base_args: &[&str],
+    url: &str,
+    headers: &[&str],
+    secrets_to_scrub: &[&str],
+) -> Result<Vec<u8>, String> {
     let mut cmd = Command::new("curl");
-    cmd.args(["-fsSL", "--max-time", "20"]);
+    cmd.args(base_args);
     for h in headers {
         cmd.arg("-H").arg(h);
     }
@@ -1039,16 +1288,56 @@ fn curl_get(url: &str, headers: &[&str], secrets_to_scrub: &[&str]) -> Result<Ve
         .output()
         .map_err(|e| format!("failed to run curl: {e}"))?;
     if !o.status.success() {
-        let code = o.status.code().unwrap_or(1);
-        let raw_err = String::from_utf8_lossy(&o.stderr);
-        let cleaned = scrub_secrets(&single_line(&raw_err), secrets_to_scrub);
-        return if cleaned.is_empty() {
-            Err(format!("curl exited {code} fetching registry data"))
-        } else {
-            Err(cleaned)
-        };
+        return Err(format_curl_error(&o, secrets_to_scrub));
     }
     Ok(o.stdout)
+}
+
+fn curl_get(url: &str, headers: &[&str], secrets_to_scrub: &[&str]) -> Result<Vec<u8>, String> {
+    run_curl(
+        &["-fsSL", "--max-time", "20"],
+        url,
+        headers,
+        secrets_to_scrub,
+    )
+}
+
+fn curl_head(url: &str, headers: &[&str], secrets_to_scrub: &[&str]) -> Result<Vec<u8>, String> {
+    run_curl(
+        &["-fsSL", "-I", "--max-time", "20"],
+        url,
+        headers,
+        secrets_to_scrub,
+    )
+}
+
+fn curl_get_with_headers(
+    url: &str,
+    headers: &[&str],
+    secrets_to_scrub: &[&str],
+) -> Result<(Vec<u8>, Vec<u8>), String> {
+    let tmp_dir = env_string("TEST_TMPDIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+    let seq = HDR_TMP_SEQ.fetch_add(1, Ordering::Relaxed);
+    let hdr_path = tmp_dir.join(format!("ibc-hdr-{}-{seq}.txt", std::process::id()));
+
+    let mut cmd = Command::new("curl");
+    cmd.args(["-fsSL", "--max-time", "20", "-D"]);
+    cmd.arg(&hdr_path);
+    for h in headers {
+        cmd.arg("-H").arg(h);
+    }
+    cmd.arg(url);
+    cmd.stdin(Stdio::null());
+    let o = cmd.output();
+    let raw_headers = fs::read(&hdr_path).unwrap_or_default();
+    let _ = fs::remove_file(&hdr_path);
+    let o = o.map_err(|e| format!("failed to run curl: {e}"))?;
+    if !o.status.success() {
+        return Err(format_curl_error(&o, secrets_to_scrub));
+    }
+    Ok((o.stdout, raw_headers))
 }
 
 fn scrub_secrets(s: &str, secrets: &[&str]) -> String {
@@ -1607,5 +1896,55 @@ mod tests {
         assert_eq!(commits.len(), 2);
         assert_eq!(commits[0].subject, "feat: thing");
         assert_eq!(commits[1].subject, "fix: bug (#9)");
+    }
+
+    #[test]
+    fn tag_fallback_helpers_filter_40_lowercase_hex_and_parse_headers() {
+        let valid_sha = "6da38a7a64e677f03c8ba248a41c4129374a0696";
+        assert!(is_40_lowercase_hex(valid_sha));
+        assert!(!is_40_lowercase_hex("1fb33e4"));
+        assert!(!is_40_lowercase_hex("sha-1fa63ba"));
+        assert!(!is_40_lowercase_hex(&valid_sha[..39]));
+        assert!(!is_40_lowercase_hex(&format!("{valid_sha}a")));
+        assert!(!is_40_lowercase_hex(&valid_sha.to_ascii_uppercase()));
+        assert!(!is_40_lowercase_hex(
+            "gggggggggggggggggggggggggggggggggggggggg"
+        ));
+        assert!(!is_40_lowercase_hex("latest"));
+        assert!(!is_40_lowercase_hex("buildcache"));
+
+        let tags_json = parse_json(
+            format!(
+                r#"{{"name":"vitruviansoftware/gods-eye-view","tags":["latest","buildcache","1fb33e4","sha-1fa63ba","{upper}","{nonhex}","{valid_sha}"]}}"#,
+                upper = valid_sha.to_ascii_uppercase(),
+                nonhex = "gggggggggggggggggggggggggggggggggggggggg",
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(extract_40_hex_tags(&tags_json), vec![valid_sha.to_string()]);
+
+        let null_tags = parse_json(br#"{"name":"repo","tags":null}"#).unwrap();
+        assert!(extract_40_hex_tags(&null_tags).is_empty());
+
+        let hdrs = b"HTTP/2 302 \r\nLocation: https://example.com\r\n\r\nHTTP/2 200 \r\ncontent-type: application/vnd.oci.image.index.v1+json\r\ndocker-content-digest: sha256:989930A0DA11D3DCEC74ED4FEA9AD8FFB9E97F281F366942591567B6E518BC0F\r\n";
+        assert_eq!(
+            extract_docker_content_digest(hdrs).as_deref(),
+            Some("sha256:989930a0da11d3dcec74ed4fea9ad8ffb9e97f281f366942591567b6e518bc0f")
+        );
+
+        let redirect_hdrs = b"HTTP/2 200 \r\ndocker-content-digest: sha256:1111111111111111111111111111111111111111111111111111111111111111\r\n\r\nHTTP/2 200 \r\ndocker-content-digest: \"sha256:2222222222222222222222222222222222222222222222222222222222222222\"\r\n";
+        assert_eq!(
+            extract_docker_content_digest(redirect_hdrs).as_deref(),
+            Some("sha256:2222222222222222222222222222222222222222222222222222222222222222")
+        );
+
+        let link_hdr = b"HTTP/2 200 \r\nlink: </v2/vitruviansoftware/gods-eye-view/tags/list?last=abc&n=1000>; rel=\"next\"\r\n";
+        assert_eq!(
+            parse_next_link_url(link_hdr, "ghcr.io").as_deref(),
+            Some("https://ghcr.io/v2/vitruviansoftware/gods-eye-view/tags/list?last=abc&n=1000")
+        );
+        let prev_only_hdr = b"HTTP/2 200 \r\nlink: </v2/foo/tags/list?last=abc>; rel=\"prev\"\r\n";
+        assert_eq!(parse_next_link_url(prev_only_hdr, "ghcr.io"), None);
     }
 }
