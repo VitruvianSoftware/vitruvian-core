@@ -30,7 +30,7 @@
 #                                                  (manual, local: needs this runner's pgrep)
 #   //tools/ci:session_start_test                  .claude/session-start.sh and its steps
 #   //tools/ci:workflow_git_push_credentials_test  every workflow that pushes
-#   //tools/ci:require_pinned_actions_test         actionlint.yaml's rustc line
+#   //tools/ci:require_pinned_actions_test         ci.yaml's actionlint rustc line
 #   //tools/ci:build_ci_tool_test                  .github/actions/build-ci-tool and
 #                                                  every tool its callers build
 #   //tools/ci:workflow_rustc_test                 the remaining inline rustc lines

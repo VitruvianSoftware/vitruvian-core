@@ -25,15 +25,19 @@ import android.app.ActivityManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -51,6 +55,7 @@ import dev.vitruvian.remote.hid.BluetoothHidTransport
 import dev.vitruvian.remote.hid.HidAction
 import dev.vitruvian.remote.state.AgentClient
 import dev.vitruvian.remote.state.AppInfo
+import dev.vitruvian.remote.state.BluetoothControl
 import dev.vitruvian.remote.state.BridgeControl
 import dev.vitruvian.remote.state.BridgePending
 import dev.vitruvian.remote.state.BridgePermissionState
@@ -63,7 +68,6 @@ import dev.vitruvian.remote.state.Notifier
 import dev.vitruvian.remote.state.Persistence
 import dev.vitruvian.remote.state.PhoneClipboard
 import dev.vitruvian.remote.state.RemoteState
-import dev.vitruvian.remote.state.Screen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -80,9 +84,11 @@ public class MainActivity : ComponentActivity() {
   private lateinit var persistence: Persistence
   private lateinit var hid: BluetoothHidTransport
   private lateinit var state: RemoteState
+  private var handledIntentKey: String? = null
 
-  /** Ask once per launch, not on every focus change (returning from the dialog is one). */
+  /** Backed by [Persistence] so "not asked yet" vs permanent denial stay distinguishable. */
   private var askedForBluetooth = false
+  private var pendingBluetoothPermissionCallback: ((Boolean, Boolean) -> Unit)? = null
   /**
    * Whether this install has ever asked for `POST_NOTIFICATIONS`. Backed by [Persistence] so we can
    * distinguish "not asked yet" (`shouldShowRationale == false`) from "permanently blocked".
@@ -129,10 +135,29 @@ public class MainActivity : ComponentActivity() {
   // so it cannot be created lazily inside the version check below.
   private val requestBluetooth =
       registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        // start() is safe either way -- without the permission it stays
-        // Unavailable rather than throwing. Calling it on denial keeps the one
-        // code path instead of two.
-        if (granted) hid.start()
+        val callback = pendingBluetoothPermissionCallback
+        pendingBluetoothPermissionCallback = null
+        askedForBluetooth = true
+        persistence.askedForBluetooth = true
+        val reallyGranted = granted && hid.hasConnectPermission()
+        val shouldShowRationale = !reallyGranted && shouldShowBluetoothRationale()
+        if (reallyGranted) hid.start()
+        state.refreshBluetoothStatus()
+        callback?.invoke(reallyGranted, shouldShowRationale)
+      }
+
+  private val enableBluetoothLauncher =
+      registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (hid.isBluetoothEnabled()) hid.start()
+        state.refreshBluetoothStatus()
+      }
+
+  private val bluetoothReceiver =
+      object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+          if (hid.isBluetoothEnabled()) hid.start()
+          state.refreshBluetoothStatus()
+        }
       }
 
   private fun readAppVersion(): String {
@@ -215,6 +240,7 @@ public class MainActivity : ComponentActivity() {
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
     askedForNotifications = persistence.askedForNotifications
+    askedForBluetooth = persistence.askedForBluetooth
     // The state holder is created first so the transport can report link
     // changes straight into it -- that is what drives the trackpad caption
     // between "drag to move" and "not connected".
@@ -241,6 +267,15 @@ public class MainActivity : ComponentActivity() {
             androidRelease = Build.VERSION.RELEASE.orEmpty(),
             deviceModel = Build.MODEL.orEmpty(),
             onCrashReportsChanged = { enabled -> configureSentry(enabled, appVersion) },
+            bluetooth =
+                ActivityBluetoothControl(
+                    context = this,
+                    hid = hid,
+                    hasAsked = ::hasAskedForBluetoothPermission,
+                    shouldShowRationale = ::shouldShowBluetoothRationale,
+                    ensurePermission = ::ensureBluetoothPermission,
+                    enableBluetooth = ::requestEnableBluetoothSystem,
+                ),
         )
     BridgeHub.addListener(bridgeListener)
     pushBridgeStatus()
@@ -254,9 +289,20 @@ public class MainActivity : ComponentActivity() {
       PhoneBridgeService.start(this)
     }
     setContent { RemoteApp(state) }
-    if (Derive.shouldHandleLaunchIntent(savedInstanceState == null)) {
-      handleIntent(intent)
+    handledIntentKey = savedInstanceState?.getString(KEY_HANDLED_INTENT)
+    routeIntent(
+        intent = intent,
+        savedScreen = savedInstanceState?.getString(KEY_SAVED_SCREEN),
+        isNewIntent = false,
+    )
+  }
+
+  override fun onSaveInstanceState(outState: Bundle) {
+    super.onSaveInstanceState(outState)
+    if (::state.isInitialized) {
+      outState.putString(KEY_SAVED_SCREEN, state.screen.name)
     }
+    handledIntentKey?.let { outState.putString(KEY_HANDLED_INTENT, it) }
   }
 
   /** Copies the hub's view of the bridge into the state the screens read. */
@@ -354,7 +400,45 @@ public class MainActivity : ComponentActivity() {
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
     setIntent(intent)
-    handleIntent(intent)
+    routeIntent(intent = intent, savedScreen = null, isNewIntent = true)
+  }
+
+  private fun routeIntent(intent: Intent?, savedScreen: String?, isNewIntent: Boolean) {
+    val dataUri = intent?.data?.toString()
+    val actionExtra = intent?.getStringExtra(EXTRA_ACTION)
+    val createdAt =
+        if (intent != null && intent.hasExtra(EXTRA_CREATED_AT)) {
+          intent.getLongExtra(EXTRA_CREATED_AT, 0L)
+        } else {
+          null
+        }
+    val key =
+        Derive.intentKey(
+            dataUri = dataUri,
+            actionExtra = actionExtra,
+            createdAt = createdAt,
+        )
+    val actionable =
+        Derive.hasActionableIntentData(
+            dataUri = dataUri,
+            actionExtra = actionExtra,
+        )
+    when (Derive.intentDecision(
+        intentKey = key,
+        savedHandledKey = handledIntentKey,
+        hasActionableData = actionable,
+        isNewIntent = isNewIntent,
+    )) {
+      Derive.IntentDecision.Handle -> {
+        handledIntentKey = key
+        handleIntent(intent)
+      }
+      Derive.IntentDecision.Restore -> {
+        if (!isNewIntent) {
+          state.restoreScreen(savedScreen)
+        }
+      }
+    }
   }
 
   /**
@@ -367,9 +451,7 @@ public class MainActivity : ComponentActivity() {
   private fun handleIntent(intent: Intent?) {
     if (intent == null) return
     val link = intent.data?.toString()
-    DeepLink.screen(link)?.let { key ->
-      Screen.entries.firstOrNull { it.name.equals(key, ignoreCase = true) }?.let(state::go)
-    }
+    DeepLink.screen(link)?.let { key -> Derive.restoredScreen(key)?.let { state.go(it) } }
     // `apps/claude` is what the agent's permission-prompt notification opens: the
     // Claude dashboard itself, where the prompt can be answered.
     DeepLink.appsModule(link)?.let(state::openLinkedModule)
@@ -380,10 +462,6 @@ public class MainActivity : ComponentActivity() {
       ACTION_LOCK_MAC -> state.runTileAction(HidAction.LockScreen)
       else -> Unit
     }
-    // Consumed: without this, every configuration change or back navigation re-delivers the same
-    // deep link / extra (re-opening pairing dialogs or sleeping the Mac's display again).
-    intent.removeExtra(EXTRA_ACTION)
-    intent.data = null
   }
 
   override fun onResume() {
@@ -414,35 +492,63 @@ public class MainActivity : ComponentActivity() {
     // throwing, so there is one path here instead of two, and a user who
     // already granted the permission is connected before the window is even up.
     hid.start()
+    val btFilter =
+        IntentFilter().apply {
+          addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
+          addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+        }
+    ContextCompat.registerReceiver(
+        this, bluetoothReceiver, btFilter, ContextCompat.RECEIVER_EXPORTED)
+    state.refreshBluetoothStatus()
   }
 
   override fun onWindowFocusChanged(hasFocus: Boolean) {
     super.onWindowFocusChanged(hasFocus)
-    if (!hasFocus || askedForBluetooth) return
-    askedForBluetooth = true
+    // Refresh status when returning from the system BT/permission sheets; the runtime prompt is
+    // only raised contextually when visiting the Remote tab, never at cold launch.
+    if (hasFocus) {
+      if (hid.isBluetoothEnabled()) hid.start()
+      state.refreshBluetoothStatus()
+    }
+  }
 
-    // Ask only once the window is actually up, NOT in onStart.
-    //
-    // Requesting during startup puts the system permission dialog in front of
-    // an app that has not painted yet, and on a fresh install the activity then
-    // never draws at all -- GrantPermissionsActivity is simply left on top.
-    // Verified on an emulator: with the permission ungranted the app logs no
-    // first frame whatsoever; granted, it draws in ~900 ms. That is a first-run
-    // bug in its own right, and it is what //mobile/android/remote:boot_smoke
-    // caught.
-    //
-    // onWindowFocusChanged(true) is the first callback that is guaranteed to
-    // follow the first frame, which is exactly the ordering needed.
-    //
-    // BLUETOOTH_CONNECT became a runtime permission in API 31; below that the
-    // install-time permissions in the manifest cover it and asking would fail
-    // on a permission the platform does not know.
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-    if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) ==
-        PackageManager.PERMISSION_GRANTED) {
+  private fun shouldShowBluetoothRationale(): Boolean =
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+          shouldShowRequestPermissionRationale(Manifest.permission.BLUETOOTH_CONNECT)
+
+  private fun hasAskedForBluetoothPermission(): Boolean {
+    if (hid.hasConnectPermission()) return true
+    return askedForBluetooth || shouldShowBluetoothRationale()
+  }
+
+  private fun ensureBluetoothPermission(onResult: (Boolean, Boolean) -> Unit) {
+    if (hid.hasConnectPermission()) {
+      onResult(true, false)
       return
     }
-    requestBluetooth.launch(Manifest.permission.BLUETOOTH_CONNECT)
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+      onResult(false, false)
+      return
+    }
+    val previous = pendingBluetoothPermissionCallback
+    pendingBluetoothPermissionCallback =
+        if (previous == null) {
+          onResult
+        } else {
+          { granted, shouldShowRationale ->
+            previous(granted, shouldShowRationale)
+            onResult(granted, shouldShowRationale)
+          }
+        }
+    if (previous == null) {
+      requestBluetooth.launch(Manifest.permission.BLUETOOTH_CONNECT)
+    }
+  }
+
+  private fun requestEnableBluetoothSystem() {
+    val intent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+    runCatching { enableBluetoothLauncher.launch(intent) }
+        .onFailure { runCatching { startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) } }
   }
 
   private fun hasPostNotificationsPermission(): Boolean {
@@ -506,6 +612,7 @@ public class MainActivity : ComponentActivity() {
     // Give the HID profile back when we are not on screen. Holding it would
     // keep the phone advertising as a keyboard indefinitely, which is both
     // rude to the Mac and a battery cost for a remote nobody is looking at.
+    runCatching { unregisterReceiver(bluetoothReceiver) }
     hid.stop()
     super.onStop()
   }
@@ -513,8 +620,11 @@ public class MainActivity : ComponentActivity() {
   public companion object {
     /** The extra a Quick Settings tile sets, and the two values it can carry. */
     public const val EXTRA_ACTION: String = "action"
-    public const val ACTION_DISPLAY_SLEEP: String = "display_sleep"
-    public const val ACTION_LOCK_MAC: String = "lock_mac"
+    public const val EXTRA_CREATED_AT: String = "created_at"
+    public const val ACTION_DISPLAY_SLEEP: String = Derive.ACTION_DISPLAY_SLEEP
+    public const val ACTION_LOCK_MAC: String = Derive.ACTION_LOCK_MAC
+    internal const val KEY_SAVED_SCREEN: String = "saved_screen"
+    internal const val KEY_HANDLED_INTENT: String = "handled_intent_key"
 
     /**
      * `Manifest.permission.POST_NOTIFICATIONS` by name.
@@ -601,6 +711,7 @@ private class ShadeNotifier(
     val intent =
         Intent(Intent.ACTION_VIEW, Uri.parse(deepLink), context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(MainActivity.EXTRA_CREATED_AT, SystemClock.elapsedRealtimeNanos())
     val pending =
         PendingIntent.getActivity(
             context,
@@ -636,6 +747,7 @@ private class ShadeNotifier(
                 MainActivity::class.java,
             )
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(MainActivity.EXTRA_CREATED_AT, SystemClock.elapsedRealtimeNanos())
     val openPending =
         PendingIntent.getActivity(
             context,
@@ -804,5 +916,59 @@ private class SystemClipboard(private val context: Context) : PhoneClipboard {
 
   override fun write(text: String) {
     manager.setPrimaryClip(ClipData.newPlainText("Vitruvian Remote", text))
+  }
+}
+
+/**
+ * The phone's Bluetooth readiness and Settings bridge behind [BluetoothControl].
+ *
+ * Isolates all `Context`, `BluetoothAdapter`, and `ActivityResultLauncher` calls from
+ * [RemoteState], mirroring [ShadeNotifier].
+ */
+private class ActivityBluetoothControl(
+    private val context: Context,
+    private val hid: BluetoothHidTransport,
+    private val hasAsked: () -> Boolean,
+    private val shouldShowRationale: () -> Boolean,
+    private val ensurePermission: ((Boolean, Boolean) -> Unit) -> Unit,
+    private val enableBluetooth: () -> Unit,
+) : BluetoothControl {
+  override fun isBluetoothHidSupported(): Boolean = hid.isHidSupported()
+
+  override fun hasBluetoothAdapter(): Boolean = hid.hasBluetoothAdapter()
+
+  override fun hasBluetoothPermission(): Boolean = hid.hasConnectPermission()
+
+  override fun hasAskedBluetoothPermission(): Boolean = hasAsked()
+
+  override fun shouldShowBluetoothRationale(): Boolean = shouldShowRationale()
+
+  override fun isBluetoothEnabled(): Boolean = hid.isBluetoothEnabled()
+
+  override fun hasPairedComputer(): Boolean = hid.hasPairedComputer()
+
+  override fun ensureBluetoothPermission(
+      onResult: (granted: Boolean, shouldShowRationale: Boolean) -> Unit,
+  ) {
+    ensurePermission(onResult)
+  }
+
+  override fun openAppSettings() {
+    val intent =
+        Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", context.packageName, null),
+            )
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(intent) }
+  }
+
+  override fun requestEnableBluetooth() {
+    enableBluetooth()
+  }
+
+  override fun openBluetoothSettings() {
+    val intent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(intent) }
   }
 }

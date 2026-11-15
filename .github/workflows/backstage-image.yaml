@@ -116,12 +116,17 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push container image
+        id: publish
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: apps/web/backstage/Dockerfile
           platforms: ${{ env.PLATFORMS }}
           push: ${{ github.event_name != 'pull_request' }}
+          build-args: |
+            GIT_REVISION=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ github.sha }}
@@ -155,12 +160,27 @@ jobs:
           file: apps/web/backstage/Dockerfile
           platforms: linux/amd64
           load: true
+          build-args: |
+            GIT_REVISION=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
           tags: backstage:smoke
           # Same two sources as the build above, so this step reuses what it
           # just built on either lane.
           cache-from: |
             type=registry,ref=${{ env.IMAGE }}:buildcache
             type=gha,scope=backstage-image
+
+      - name: Verify the revision label on the built image
+        run: |
+          set -euo pipefail
+          got="$(docker image inspect backstage:smoke \
+            --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
+          if [ "$got" != "${GITHUB_SHA}" ]; then
+            echo "::error::org.opencontainers.image.revision is '${got}', expected '${GITHUB_SHA}'"
+            exit 1
+          fi
+          echo "revision label = ${got}"
 
       # Boots the image and asserts every plugin initializes and readiness
       # serves 200. Unit tests cannot catch a plugin that fails to REGISTER --
@@ -177,3 +197,30 @@ jobs:
         run: |
           set -euo pipefail
           "$BOOT_SMOKE" backstage:smoke
+
+      - name: Verify the pushed manifest
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          DIGEST: ${{ steps.publish.outputs.digest }}
+        run: |
+          set -euo pipefail
+          digest="${DIGEST:-}"
+          if [ -z "$digest" ]; then
+            digest="$(docker buildx imagetools inspect "${IMAGE}:${GITHUB_SHA}" \
+              --format '{{.Manifest.Digest}}')"
+          fi
+          ref="${IMAGE}@${digest}"
+          img="$(docker buildx imagetools inspect "${ref}" --format '{{json .Image}}')"
+          for want in linux/amd64 linux/arm64; do
+            got="$(echo "$img" | jq -r --arg p "$want" \
+              '.[$p].config.Labels["org.opencontainers.image.revision"] // "ABSENT"')"
+            if [ "$got" = "null" ] || [ "$got" = "ABSENT" ]; then
+              echo "::error::pushed index has no ${want} image with a revision label — the cluster has nodes of that architecture"
+              exit 1
+            fi
+            if [ "$got" != "${GITHUB_SHA}" ]; then
+              echo "::error::${want} revision label is '${got}', expected '${GITHUB_SHA}'"
+              exit 1
+            fi
+            echo "${want}: revision=${got}"
+          done

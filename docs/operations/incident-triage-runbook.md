@@ -102,7 +102,8 @@ This document serves as the standard operational incident response guide across 
 
 - **Grafana Alerts**: `https://grafana.lab.ipv1337.dev/alerting/list`
 - **ArgoCD Operations**: `https://argocd.lab.ipv1337.dev`
-- **ntfy Push Notifications**: `https://ntfy.ipv1337.dev`
+- **PagerDuty (primary pager)**: `https://vitruviansoftware.pagerduty.com`. Homelab alerts open incidents on the Homelab cluster, Homelab databases and backups, or Homelab apps and GitOps service.
+- **ntfy Push Notifications (copy of every alert)**: `https://ntfy.ipv1337.dev`
 - **Zitadel SSO Status**: `https://auth.ipv1337.dev`
 - **Uptime Kuma Status Page**: `https://status.ipv1337.dev`
 - **K3s HA API**: `https://k8s-api.lab.ipv1337.dev:6443`

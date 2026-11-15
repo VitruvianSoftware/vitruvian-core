@@ -71,6 +71,7 @@ import dev.vitruvian.remote.state.AppInfo
 import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.MetricsSource
 import dev.vitruvian.remote.state.RemoteState
+import dev.vitruvian.remote.state.ThemeMode
 
 private val PAIR_CODE_SIZE = 38.sp
 private val PAIR_CODE_TRACKING = 0.18.em
@@ -119,6 +120,7 @@ public fun ColumnScope.HostsScreen(state: RemoteState) {
         status = host.tone,
         onClick = { state.selectHost(host.id) },
         selectedRule = if (state.selectedHost?.id == host.id) colors.accent else Color.Transparent,
+        statusAdjacentText = host.tag,
     ) {
       Tag(text = host.tag, tone = host.tagTone)
     }
@@ -246,6 +248,7 @@ private fun NotificationsSection(state: RemoteState) {
                   else -> StatusTone.Neutral
                 },
             contentPadding = PaddingValues(vertical = Space.s2),
+            statusAdjacentText = notif.statusLabel,
         ) {
           when (notif.action) {
             Derive.NotificationPermissionAction.None ->
@@ -294,10 +297,16 @@ private fun AppearanceSection(state: RemoteState) {
           modifier = Modifier.padding(Space.s4),
           verticalArrangement = Arrangement.spacedBy(Space.s4),
       ) {
-        VSwitch(
-            checked = !state.darkTheme,
-            onCheckedChange = { state.toggleTheme() },
-            label = "Light theme",
+        Label("Theme")
+        Segmented(
+            options =
+                ThemeMode.entries.map { mode ->
+                  SegmentOption(
+                      label = mode.label,
+                      selected = state.themeMode == mode,
+                      onSelect = { state.updateThemeMode(mode) },
+                  )
+                },
         )
         Label("Refresh interval")
         Segmented(

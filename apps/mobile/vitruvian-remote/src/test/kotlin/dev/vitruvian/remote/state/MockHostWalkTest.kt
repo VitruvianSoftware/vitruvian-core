@@ -38,7 +38,7 @@ import org.junit.Test
  */
 public class MockHostWalkTest {
 
-  private class InMemoryKeyValueStore : KeyValueStore {
+  private class InMemoryKeyValueStore : PrefsStore {
     private val data = linkedMapOf<String, Any?>()
 
     override fun contains(key: String): Boolean = data.containsKey(key)
@@ -57,33 +57,33 @@ public class MockHostWalkTest {
     override fun getBoolean(key: String, defValue: Boolean): Boolean =
         (data[key] as? Boolean) ?: defValue
 
-    override fun edit(): KeyValueStore.Editor = InMemoryEditor()
+    override fun edit(): PrefsStore.Editor = InMemoryEditor()
 
-    private inner class InMemoryEditor : KeyValueStore.Editor {
+    private inner class InMemoryEditor : PrefsStore.Editor {
       private val pending = linkedMapOf<String, Any?>()
       private val removals = linkedSetOf<String>()
 
-      override fun putString(key: String, value: String?): KeyValueStore.Editor = apply {
+      override fun putString(key: String, value: String?): PrefsStore.Editor = apply {
         if (value == null) removals.add(key) else pending[key] = value
       }
 
-      override fun putStringSet(key: String, values: Set<String>?): KeyValueStore.Editor = apply {
+      override fun putStringSet(key: String, values: Set<String>?): PrefsStore.Editor = apply {
         if (values == null) removals.add(key) else pending[key] = values.toSet()
       }
 
-      override fun putInt(key: String, value: Int): KeyValueStore.Editor = apply {
+      override fun putInt(key: String, value: Int): PrefsStore.Editor = apply {
         pending[key] = value
       }
 
-      override fun putLong(key: String, value: Long): KeyValueStore.Editor = apply {
+      override fun putLong(key: String, value: Long): PrefsStore.Editor = apply {
         pending[key] = value
       }
 
-      override fun putBoolean(key: String, value: Boolean): KeyValueStore.Editor = apply {
+      override fun putBoolean(key: String, value: Boolean): PrefsStore.Editor = apply {
         pending[key] = value
       }
 
-      override fun remove(key: String): KeyValueStore.Editor = apply { removals.add(key) }
+      override fun remove(key: String): PrefsStore.Editor = apply { removals.add(key) }
 
       override fun apply() {
         removals.forEach { data.remove(it) }

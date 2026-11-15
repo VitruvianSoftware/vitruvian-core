@@ -275,8 +275,14 @@ func TestCommittedProductionConfig(t *testing.T) {
 	if s.Escalation.AdoptID == "" {
 		t.Fatal("production must set escalation.adoptId: the free plan allows only one escalation policy")
 	}
-	if len(s.Services) != 1 || s.Services[0].Key != "sentry" {
-		t.Fatalf("expected initial sentry service, got %+v", s.Services)
+	var keys []string
+	for _, svc := range s.Services {
+		keys = append(keys, svc.Key)
+	}
+	// Alertmanager routes to cluster, data and apps by the pagerduty_service
+	// rule label; dropping one here silently strands those alerts.
+	if got, want := strings.Join(keys, ","), "sentry,cluster,data,apps"; got != want {
+		t.Fatalf("production services = %q, want %q", got, want)
 	}
 }
 
@@ -481,10 +487,20 @@ func TestReconcileWithMocks(t *testing.T) {
 	}
 
 	services := m.byType("pagerduty:index/service:Service")
-	if len(services) != 1 || services[0].Name != "sentry" {
-		t.Fatalf("expected 1 service named sentry, got %+v", services)
+	serviceByName := map[string]recordedResource{}
+	for _, svc := range services {
+		serviceByName[svc.Name] = svc
 	}
-	svc := services[0]
+	if _, ok := serviceByName["sentry"]; len(services) != len(s.Services) || !ok {
+		t.Fatalf("expected %d services including sentry, got %+v", len(s.Services), services)
+	}
+	for _, svc := range services {
+		rule := svc.Inputs["incidentUrgencyRule"].ObjectValue()
+		if rule["type"].StringValue() != "constant" || rule["urgency"].StringValue() != UrgencySeverityBased {
+			t.Fatalf("service %s: urgency rule = %v, want constant/%s so warnings stay low urgency", svc.Name, rule, UrgencySeverityBased)
+		}
+	}
+	svc := serviceByName["sentry"]
 	if got := svc.Inputs["escalationPolicy"].StringValue(); got != "PESCPOL01" {
 		t.Fatalf("expected sentry service to reference PESCPOL01, got %q", got)
 	}
@@ -493,10 +509,19 @@ func TestReconcileWithMocks(t *testing.T) {
 	}
 
 	integrations := m.byType("pagerduty:index/serviceIntegration:ServiceIntegration")
-	if len(integrations) != 1 || integrations[0].Name != "sentry-events-v2" {
-		t.Fatalf("expected 1 integration named sentry-events-v2, got %+v", integrations)
+	integrationByName := map[string]recordedResource{}
+	for _, in := range integrations {
+		integrationByName[in.Name] = in
 	}
-	integ := integrations[0]
+	for _, svc := range s.Services {
+		if _, ok := integrationByName[svc.Key+"-events-v2"]; !ok {
+			t.Fatalf("no Events API v2 integration for service %q, got %+v", svc.Key, integrations)
+		}
+	}
+	if len(integrations) != len(s.Services) {
+		t.Fatalf("expected %d integrations, got %d", len(s.Services), len(integrations))
+	}
+	integ := integrationByName["sentry-events-v2"]
 	if got := integ.Inputs["type"].StringValue(); got != "events_api_v2_inbound_integration" {
 		t.Fatalf("expected integration type events_api_v2_inbound_integration, got %q", got)
 	}

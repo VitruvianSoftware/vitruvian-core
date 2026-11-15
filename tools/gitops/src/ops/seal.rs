@@ -20,9 +20,9 @@
 
 //! The seal tools that write one SealedSecret into
 //! gitops/argocd/platform/sealed-secrets-manifests: seal_alert_ntfy.sh,
-//! seal_headplane_secret.sh, seal_zitadel_login_cookie_secret.sh and
-//! seal_arc_github_app.sh. Each value goes to kubectl on stdin, never on a
-//! command line, and is never printed.
+//! seal_headplane_secret.sh, seal_zitadel_login_cookie_secret.sh,
+//! seal_arc_github_app.sh and seal_alert_pagerduty.sh. Each value goes to
+//! kubectl or kubeseal on stdin, never on a command line, and is never printed.
 
 use std::os::unix::fs::PermissionsExt;
 
@@ -539,6 +539,158 @@ fn arc_seal(
     Ok(0)
 }
 
+// ---------------------------------------------------------------------------
+// seal_alert_pagerduty.sh
+// ---------------------------------------------------------------------------
+
+/// The PagerDuty services Alertmanager routes to, by `pagerduty_service`
+/// label. Each must be a `services` entry in
+/// infrastructure/pulumi/platform/pagerduty/Pulumi.production.yaml (which
+/// exports `<key>IntegrationKey`) and a `pagerduty-<key>` receiver reading
+/// /etc/alertmanager/pagerduty/<key> in
+/// gitops/argocd/platform/prometheus/applicationset.yaml.
+pub const PAGERDUTY_SERVICES: &[&str] = &["cluster", "data", "apps"];
+
+const PAGERDUTY_USAGE: &[u8] = b"usage: bazel run //infrastructure/pulumi/platform/pagerduty:stack -- output --json --show-secrets --stack production \\\n         | bazel run //tools/gitops:seal-alert-pagerduty [-- --apply]";
+
+/// An Events API v2 integration key: 32 lower-case letters and digits.
+fn valid_integration_key(k: &str) -> bool {
+    k.len() == 32
+        && k.bytes()
+            .all(|c| c.is_ascii_digit() || c.is_ascii_lowercase())
+}
+
+/// The Secret, as JSON for kubeseal's stdin, built from the PagerDuty stack's
+/// `pulumi stack output --json --show-secrets`. Err names what is wrong, never
+/// a key's value.
+pub fn pagerduty_secret_json(outputs: &[u8], ns: &str, secret: &str) -> Result<String, String> {
+    let text =
+        std::str::from_utf8(outputs).map_err(|_| "stack outputs are not UTF-8".to_string())?;
+    let v = crate::json::loads(text).map_err(|_| "stack outputs are not JSON".to_string())?;
+    let mut data = Vec::new();
+    for svc in PAGERDUTY_SERVICES {
+        let name = format!("{}IntegrationKey", svc);
+        match v.get(&name) {
+            Some(crate::json::Value::Str(k)) if valid_integration_key(k) => {
+                data.push(format!(
+                    "\"{}\":\"{}\"",
+                    svc,
+                    super::crypto::b64encode(k.as_bytes())
+                ));
+            }
+            Some(crate::json::Value::Str(k)) if k == "[secret]" => {
+                return Err(format!(
+                    "{} is masked: pass --show-secrets to pulumi stack output",
+                    name
+                ));
+            }
+            Some(crate::json::Value::Str(_)) => {
+                return Err(format!("{} is not a 32-character Events API v2 key", name));
+            }
+            Some(_) => return Err(format!("{} is not a string", name)),
+            None => {
+                return Err(format!(
+                "{} missing from the stack outputs: has the stack with that service been applied?",
+                name
+            ))
+            }
+        }
+    }
+    Ok(format!(
+        "{{\"apiVersion\":\"v1\",\"kind\":\"Secret\",\"type\":\"Opaque\",\"metadata\":{{\"name\":\"{}\",\"namespace\":\"{}\"}},\"data\":{{{}}}}}",
+        secret,
+        ns,
+        data.join(",")
+    ))
+}
+
+pub fn alert_pagerduty(args: &[Vec<u8>]) -> i32 {
+    code(alert_pagerduty_run(args))
+}
+
+fn alert_pagerduty_run(args: &[Vec<u8>]) -> Res<i32> {
+    default_kubeconfig(line!())?;
+    let k = kctx();
+    let (ns, secret) = ("monitoring", "alertmanager-pagerduty-keys");
+    let out = out_path(secret);
+    let mut apply = false;
+    for a in args {
+        if a == b"--apply" {
+            apply = true;
+        } else {
+            return die(
+                2,
+                &sc::cat(&[
+                    b"ERROR: unknown argument '",
+                    a,
+                    b"' (expected --apply or nothing).\n",
+                    PAGERDUTY_USAGE,
+                ]),
+            );
+        }
+    }
+    if sc::stdin_is_tty() {
+        return die(
+            2,
+            &sc::cat(&[
+                b"ERROR: pipe the PagerDuty stack outputs in on stdin.\n",
+                PAGERDUTY_USAGE,
+            ]),
+        );
+    }
+    let mut outputs = Vec::new();
+    if std::io::Read::read_to_end(&mut std::io::stdin(), &mut outputs).is_err() {
+        return die(1, b"ERROR: could not read stdin.");
+    }
+    let manifest = match pagerduty_secret_json(&outputs, ns, secret) {
+        Ok(m) => m,
+        Err(e) => {
+            return die(
+                1,
+                &sc::cat(&[b"ERROR: ", e.as_bytes(), b". Nothing was sealed."]),
+            )
+        }
+    };
+    need_tools(&["kubectl", "kubeseal"], false)?;
+    cd_workspace(line!())?;
+    let tmp = sc::cat(&[&out, b".tmp"]);
+    write_new(line!(), &tmp, LICENSE_HEADER.as_bytes())?;
+    let o = append_to(line!(), &tmp)?;
+    let st = feed(line!(), kubeseal_yaml(&k), manifest.as_bytes(), Some(o));
+    let text = std::fs::read(sc::path(&tmp)).unwrap_or_default();
+    if st != 0
+        || !PAGERDUTY_SERVICES
+            .iter()
+            .all(|svc| has_sealed_value(&text, svc))
+    {
+        let _ = std::fs::remove_file(sc::path(&tmp));
+        return die(
+            1,
+            b"ERROR: kubeseal did not seal every key. Nothing was written.",
+        );
+    }
+    mv(line!(), &tmp, &out)?;
+    say(&sc::cat(&[
+        "\u{2713} sealed \u{2192} ".as_bytes(),
+        &out,
+        format!(
+            " (SealedSecret {}/{}, keys {})",
+            ns,
+            secret,
+            PAGERDUTY_SERVICES.join(", ")
+        )
+        .as_bytes(),
+    ]));
+    apply_or_next(
+        &k,
+        &out,
+        ns,
+        secret,
+        apply,
+        "\u{2713} applied \u{2014} the sealed-secrets controller will materialize",
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -556,6 +708,67 @@ mod tests {
         assert!(!has_sealed_value(b"    K: \"\"\n", "K"));
     }
 
+    fn outputs(keys: &[(&str, &str)]) -> Vec<u8> {
+        let items: Vec<String> = keys
+            .iter()
+            .map(|(k, v)| format!("\"{}\": \"{}\"", k, v))
+            .collect();
+        format!(
+            "{{\"escalationPolicyId\": \"PS9GPWM\", {}}}",
+            items.join(", ")
+        )
+        .into_bytes()
+    }
+
+    const KEY: &str = "0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn pagerduty_secret_carries_every_service_key_base64() {
+        let o = outputs(&[
+            ("clusterIntegrationKey", KEY),
+            ("dataIntegrationKey", KEY),
+            ("appsIntegrationKey", KEY),
+            ("sentryIntegrationKey", KEY),
+        ]);
+        let j = pagerduty_secret_json(&o, "monitoring", "alertmanager-pagerduty-keys").unwrap();
+        let v = crate::json::loads(&j).unwrap();
+        assert!(matches!(v.get("kind"), Some(crate::json::Value::Str(s)) if s == "Secret"));
+        let data = v.get("data").unwrap();
+        for svc in PAGERDUTY_SERVICES {
+            match data.get(svc) {
+                Some(crate::json::Value::Str(b)) => {
+                    assert_eq!(
+                        super::super::crypto::b64decode(b.as_bytes()).unwrap(),
+                        KEY.as_bytes()
+                    )
+                }
+                other => panic!("{}: {:?}", svc, other.map(|x| x.type_name())),
+            }
+        }
+        // Sentry's key is not Alertmanager's business: it stays out.
+        assert!(data.get("sentry").is_none());
+        assert!(!j.contains(KEY), "the raw key must not appear unencoded");
+    }
+
+    #[test]
+    fn pagerduty_secret_refuses_missing_masked_or_malformed_keys() {
+        let all = |apps: &str| {
+            outputs(&[
+                ("clusterIntegrationKey", KEY),
+                ("dataIntegrationKey", KEY),
+                ("appsIntegrationKey", apps),
+            ])
+        };
+        let missing = outputs(&[("clusterIntegrationKey", KEY), ("dataIntegrationKey", KEY)]);
+        let e = pagerduty_secret_json(&missing, "n", "s").unwrap_err();
+        assert!(e.contains("appsIntegrationKey missing"), "{}", e);
+        let e = pagerduty_secret_json(&all("[secret]"), "n", "s").unwrap_err();
+        assert!(e.contains("--show-secrets"), "{}", e);
+        let e = pagerduty_secret_json(&all("short"), "n", "s").unwrap_err();
+        assert!(e.contains("32-character") && !e.contains("short"), "{}", e);
+        assert!(pagerduty_secret_json(b"not json", "n", "s").is_err());
+    }
+
     #[test]
     fn heartbeat_url_shape() {
         assert!(is_heartbeat_url(
@@ -566,5 +779,204 @@ mod tests {
         assert!(!is_heartbeat_url(b"https://hc-ping.com/abc def"));
         assert!(!is_heartbeat_url(b"https://hc-ping.com/abc\n"));
         assert!(!is_heartbeat_url(b""));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// seal-headscale-key-exporter: a Headscale API key of its own for
+// headscale-key-exporter (gitops/argocd/platform/headscale/), minted inside
+// the headscale pod and sealed in one go, so the key is never on screen, on
+// a command line or on disk.
+// ---------------------------------------------------------------------------
+
+/// What `headscale apikeys create` prints: `<7-char prefix>.<secret>`, both
+/// URL-safe (letters, digits, `_`, `-`). v0.26.1's secret is 32 characters.
+pub fn is_api_key(v: &[u8]) -> bool {
+    let url_safe = |s: &[u8]| {
+        s.iter()
+            .all(|c| c.is_ascii_alphanumeric() || *c == b'_' || *c == b'-')
+    };
+    match api_key_prefix(v) {
+        Some(prefix) => {
+            let secret = &v[prefix.len() + 1..];
+            url_safe(prefix) && secret.len() >= 16 && url_safe(secret)
+        }
+        None => false,
+    }
+}
+
+/// The 7-character prefix Headscale lists a key by (`headscale apikeys
+/// list`), safe to print: it identifies the key without being it.
+pub fn api_key_prefix(v: &[u8]) -> Option<&[u8]> {
+    let dot = v.iter().position(|c| *c == b'.')?;
+    if dot == 7 && v[dot + 1..].iter().all(|c| *c != b'.') {
+        Some(&v[..dot])
+    } else {
+        None
+    }
+}
+
+/// A Headscale duration such as 365d, 8760h or 90d: digits then one unit.
+pub fn is_duration(v: &[u8]) -> bool {
+    match v.split_last() {
+        Some((unit, digits)) => {
+            !digits.is_empty()
+                && digits.iter().all(u8::is_ascii_digit)
+                && matches!(unit, b'd' | b'h' | b'm')
+        }
+        None => false,
+    }
+}
+
+pub fn headscale_key_exporter(args: &[Vec<u8>]) -> i32 {
+    code(headscale_key_exporter_run(args))
+}
+
+fn headscale_key_exporter_run(args: &[Vec<u8>]) -> Res<i32> {
+    default_kubeconfig(54)?;
+    let k = kctx();
+    let (ns, secret, key) = ("headscale", "headscale-key-exporter", "api-key");
+    let out = out_path(secret);
+    let mut apply = false;
+    let mut expiration: Vec<u8> = b"365d".to_vec();
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        if a == b"--apply" {
+            apply = true;
+        } else if a == b"--expiration" {
+            match it.next() {
+                Some(v) if is_duration(v) => expiration = v.clone(),
+                _ => {
+                    return die(
+                        2,
+                        b"ERROR: --expiration needs a duration such as 365d or 8760h.",
+                    )
+                }
+            }
+        } else {
+            return die(
+                2,
+                &sc::cat(&[
+                    b"ERROR: unknown argument '",
+                    a,
+                    b"' (expected --expiration <duration> and/or --apply)",
+                ]),
+            );
+        }
+    }
+    need_tools(&["kubectl", "kubeseal"], false)?;
+    let pod = super::headscale::headscale_pod(&k)?;
+    let mint = kubectl(
+        &k,
+        &[
+            b"-n",
+            b"headscale",
+            b"exec",
+            b"-c",
+            b"headscale",
+            &pod,
+            b"--",
+            b"headscale",
+            b"apikeys",
+            b"create",
+            b"--expiration",
+            &expiration,
+        ],
+    );
+    // stdout is the key; headscale's own warnings go to stderr as usual.
+    let (st, minted) = capture(0, mint);
+    let api_key = sc::read_trim(&minted);
+    if st != 0 {
+        return die(
+            st,
+            b"ERROR: headscale apikeys create failed; nothing sealed.",
+        );
+    }
+    if !is_api_key(&api_key) {
+        return die(
+            1,
+            b"ERROR: headscale apikeys create did not print a key in the expected <prefix>.<secret> form; nothing sealed. If it minted one anyway, find the newest with bazel run //tools/gitops:headscale-apikey-list and expire it with :headscale-apikey-expire -- --prefix <prefix>.",
+        );
+    }
+    let prefix = api_key_prefix(&api_key).unwrap_or_default().to_vec();
+    // From here a live key exists. Any failure must say which one, so it can
+    // be expired rather than left valid and unrecorded.
+    let orphaned = |st: i32| -> Res<i32> {
+        die(
+            st,
+            &sc::cat(&[
+                b"ERROR: sealing failed after minting API key ",
+                &prefix,
+                b"; it is live but recorded nowhere. Expire it: bazel run //tools/gitops:headscale-apikey-expire -- --prefix ",
+                &prefix,
+            ]),
+        )
+    };
+    if let Err(st) = cd_workspace(88) {
+        return orphaned(st);
+    }
+    if let Err(st) = write_new(95, &out, LICENSE_HEADER.as_bytes()) {
+        return orphaned(st);
+    }
+    let st = seal_value(116, &k, ns, secret, key, &api_key, &out);
+    if st != 0 {
+        return orphaned(st);
+    }
+    say(&sealed_msg(&out, ns, secret, key));
+    say(&sc::cat(&[
+        b"minted Headscale API key ",
+        &prefix,
+        b", expiring in ",
+        &expiration,
+        b". Once the exporter reports up=1 on it, expire the key it replaces (bazel run //tools/gitops:headscale-apikey-list, then :headscale-apikey-expire -- --prefix <old prefix>) and update the key table in gitops/argocd/platform/headscale/README.md.",
+    ]));
+    apply_or_next(
+        &k,
+        &out,
+        ns,
+        secret,
+        apply,
+        "\u{2713} applied \u{2014} the sealed-secrets controller will materialize",
+    )
+}
+
+#[cfg(test)]
+mod headscale_key_exporter_tests {
+    use super::*;
+
+    #[test]
+    fn api_key_shape() {
+        assert!(is_api_key(b"TWRIQB0.abcdefghijklmnopqrstuvwxyz012345"));
+        assert!(is_api_key(b"4mP_vv5.ab-cd_efghijklmnopqrstuvwxyz0123"));
+        assert!(!is_api_key(b""));
+        assert!(!is_api_key(b"short"));
+        // A 20+ character token that is not a key: no prefix dot.
+        assert!(!is_api_key(b"abcdefghijklmnopqrstuvwxyz"));
+        assert!(!is_api_key(b"has a space in it, so not a key"));
+        assert!(!is_api_key(b"2026-11-15T00:00:00Z WRN An updated version"));
+        // Wrong prefix length, two dots, a short or non-URL-safe secret.
+        assert!(!is_api_key(b"TWRIQB.abcdefghijklmnopqrstuvwxyz012345"));
+        assert!(!is_api_key(b"TWRIQB0.abcdefghij.klmnopqrstuvwxyz012"));
+        assert!(!is_api_key(b"TWRIQB0.abc"));
+        assert!(!is_api_key(b"TWRIQB0.abcdefghijklmnop/qrstuvwxyz"));
+    }
+
+    #[test]
+    fn prefix_is_the_part_headscale_lists() {
+        assert_eq!(
+            api_key_prefix(b"TWRIQB0.abcdefghijklmnopqrstuvwxyz012345"),
+            Some(&b"TWRIQB0"[..])
+        );
+        assert_eq!(api_key_prefix(b"nodothere"), None);
+    }
+
+    #[test]
+    fn duration_shape() {
+        for ok in [&b"365d"[..], b"8760h", b"90m"] {
+            assert!(is_duration(ok), "{}", String::from_utf8_lossy(ok));
+        }
+        for bad in [&b""[..], b"d", b"365", b"1y", b"-1d", b"36 5d"] {
+            assert!(!is_duration(bad), "{}", String::from_utf8_lossy(bad));
+        }
     }
 }

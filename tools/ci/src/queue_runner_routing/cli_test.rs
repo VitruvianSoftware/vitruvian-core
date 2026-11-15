@@ -231,11 +231,7 @@ fn non_bazel_gate_and_lint_workflows_stay_on_hosted_runners() {
         .join(all.split_whitespace().next().unwrap());
     let dir = first.parent().unwrap();
 
-    for wf in [
-        "actionlint.yaml",
-        "release-scope.yaml",
-        "migration-safety.yaml",
-    ] {
+    for wf in ["release-scope.yaml"] {
         let raw = std::fs::read_to_string(dir.join(wf)).unwrap();
         let active: String = raw
             .lines()
@@ -251,7 +247,16 @@ fn non_bazel_gate_and_lint_workflows_stay_on_hosted_runners() {
     }
 
     let ci = std::fs::read_to_string(dir.join("ci.yaml")).unwrap();
-    for job in ["detect-macos:", "build-macos:", "changes:"] {
+    for job in [
+        "detect-macos:",
+        "build-macos:",
+        "changes:",
+        // The lint checks that moved here from their own workflows.
+        "gitops-validate:",
+        "migration-safety:",
+        "actionlint:",
+        "osv-scan:",
+    ] {
         let start = ci.find(&format!("  {job}\n")).expect(job);
         let active: String = ci[start..]
             .lines()

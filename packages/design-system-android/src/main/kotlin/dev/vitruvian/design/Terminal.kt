@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -57,21 +58,32 @@ public enum class TerminalTone {
   Err,
 }
 
-@Composable
-private fun terminalColor(tone: TerminalTone): Color =
-    when (tone) {
-      TerminalTone.Text -> Vitruvian.text
-      TerminalTone.Dim -> Vitruvian.textDim
-      TerminalTone.Ok -> Vitruvian.ok
-      TerminalTone.Warn -> Vitruvian.warn
-      TerminalTone.Err -> Vitruvian.sanguineText
+/** Fixed dark background used by terminal surfaces in both light and dark themes. */
+public fun terminalBackgroundColor(): Color = darkColors().neutral900
+
+/**
+ * Fixed light-on-dark colour for a [TerminalTone] in both themes so terminal output always meets
+ * contrast against `neutral900`.
+ */
+public fun TerminalTone.terminalColor(dark: VitruvianColors = darkColors()): Color =
+    when (this) {
+      TerminalTone.Text -> dark.text
+      TerminalTone.Dim -> dark.textDim
+      TerminalTone.Ok -> dark.ok
+      TerminalTone.Warn -> dark.warn
+      TerminalTone.Err -> dark.sanguineText
     }
+
+@Composable
+private fun terminalColor(tone: TerminalTone, dark: VitruvianColors = darkColors()): Color =
+    tone.terminalColor(dark)
 
 /**
  * `.term` - the terminal ground.
  *
  * The prefix column is always `accent-400`, which is what makes a `$` or a `>` read as a prompt
- * rather than as content.
+ * rather than as content. Terminal surfaces always use the fixed light-on-dark palette in both
+ * themes.
  */
 @Composable
 public fun Terminal(
@@ -82,11 +94,12 @@ public fun Terminal(
     bottomAnchored: Boolean = false,
 ) {
   val colors = Vitruvian
+  val dark = remember { darkColors() }
   Column(
       modifier =
           modifier
               .fillMaxWidth()
-              .background(colors.neutral900)
+              .background(dark.neutral900)
               .border(1.dp, colors.divider)
               .padding(horizontal = Space.s4, vertical = Space.s3),
       verticalArrangement = if (bottomAnchored) Arrangement.Bottom else Arrangement.Top,
@@ -96,13 +109,13 @@ public fun Terminal(
         VText(
             text = line.prefix,
             style = VitruvianType.terminal.copy(fontSize = fontSize),
-            color = colors.accent400,
+            color = dark.accent400,
             softWrap = false,
         )
         VText(
             text = line.text,
             style = VitruvianType.terminal.copy(fontSize = fontSize),
-            color = terminalColor(line.tone),
+            color = terminalColor(line.tone, dark),
         )
       }
     }
@@ -121,21 +134,22 @@ public fun Code(
     copyable: Boolean = false,
 ) {
   val colors = Vitruvian
+  val dark = remember { darkColors() }
   Column(
-      modifier = modifier.fillMaxWidth().background(colors.neutral900).border(1.dp, colors.divider),
+      modifier = modifier.fillMaxWidth().background(dark.neutral900).border(1.dp, colors.divider),
   ) {
     if (title != null || copyable) {
       Row(
           modifier =
               Modifier.fillMaxWidth()
-                  .bottomHairline(colors.divider)
+                  .bottomHairline(dark.divider)
                   .padding(horizontal = Space.s4, vertical = Space.s2),
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.SpaceBetween,
       ) {
-        Label(text = title ?: "SNIPPET")
+        Label(text = title ?: "SNIPPET", color = dark.textDim)
         if (copyable) {
-          CopyButton(value = code)
+          CopyButton(value = code, colors = dark)
         }
       }
     }
@@ -143,7 +157,7 @@ public fun Code(
         text = code,
         modifier = Modifier.fillMaxWidth().padding(horizontal = Space.s4, vertical = Space.s3),
         style = VitruvianType.terminal,
-        color = colors.text,
+        color = dark.text,
     )
   }
 }
@@ -156,7 +170,7 @@ public fun Code(
  */
 @Composable
 public fun BlinkingCursor(modifier: Modifier = Modifier) {
-  val colors = Vitruvian
+  val dark = remember { darkColors() }
   val lit =
       if (LocalReduceMotion.current) {
         true
@@ -181,7 +195,7 @@ public fun BlinkingCursor(modifier: Modifier = Modifier) {
               .width(CURSOR_WIDTH)
               .height(CURSOR_HEIGHT)
               .alpha(if (lit) 1f else 0f)
-              .background(colors.accentText),
+              .background(dark.accentText),
   )
 }
 

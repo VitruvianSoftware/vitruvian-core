@@ -115,7 +115,7 @@ _MANIFEST_BASE = {
     # exactly as ANDROID.md prescribes.
     "minSdkVersion": "26",
     "targetSdkVersion": "35",
-    "versionName": "0.1.40",  # x-release-please-version
+    "versionName": "0.1.41",  # x-release-please-version
 }
 
 _VERSION_PARTS = [int(p) for p in _MANIFEST_BASE["versionName"].split(".")]
@@ -298,12 +298,11 @@ kt_jvm_test(
     name = "derive_test",
     srcs = ["src/test/kotlin/dev/vitruvian/remote/state/DeriveTest.kt"],
     data = [
+        "src/main/AndroidManifest.xml",
         "src/main/kotlin/dev/vitruvian/remote/MainActivity.kt",
         "src/main/kotlin/dev/vitruvian/remote/RemoteApp.kt",
         "src/main/kotlin/dev/vitruvian/remote/overlays/HostStates.kt",
         "src/main/kotlin/dev/vitruvian/remote/overlays/MacroEditor.kt",
-        "src/main/kotlin/dev/vitruvian/remote/shell/Dock.kt",
-        "src/main/kotlin/dev/vitruvian/remote/shell/Shell.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/AgentClient.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/Derive.kt",
@@ -315,13 +314,19 @@ kt_jvm_test(
         "//apps/desktop/vitruvian-speaker:Sources/VitruvianSpeakerToolCore/Pages.swift",
         "//apps/desktop/vitruvian-speaker:testdata/controls.json",
         "//apps/mobile/vitruvian-remote/macagent:golden_speaker_v1",
-    ] + glob(["src/main/kotlin/dev/vitruvian/remote/screens/*.kt"]),
+    ] + glob([
+        "src/main/kotlin/dev/vitruvian/remote/screens/*.kt",
+        "src/main/kotlin/dev/vitruvian/remote/shell/*.kt",
+    ]),
     test_class = "dev.vitruvian.remote.state.DeriveTest",
     deps = [
         ":app_info",
         ":derive",
         ":format",
+        ":hid_codes",
+        ":lib",
         ":wire",
+        "//packages/design-system-android:lib",
         "@maven//:junit_junit",
     ],
 )

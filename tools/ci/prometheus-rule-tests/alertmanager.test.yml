@@ -1,0 +1,45 @@
+# Copyright (c) 2026 VitruvianSoftware
+# SPDX-License-Identifier: MIT
+#
+# AlertmanagerNotificationsFailing: Alertmanager could not hand an alert to
+# PagerDuty or the ntfy bridge. Every actionable alert goes to both, so this
+# alert is how a broken one shows up on the other.
+rule_files:
+  - rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    name: PagerDuty sends failing fires, labelled by integration
+    input_series:
+      # Two failures a minute, on one replica, for 30 minutes.
+      - series: 'alertmanager_notifications_failed_total{integration="pagerduty",pod="prometheus-alertmanager-0"}'
+        values: '0+2x30'
+      - series: 'alertmanager_notifications_failed_total{integration="webhook",pod="prometheus-alertmanager-0"}'
+        values: '0+0x30'
+    alert_rule_test:
+      # Below the 10m `for:` -- must not fire yet.
+      - eval_time: 9m
+        alertname: AlertmanagerNotificationsFailing
+        exp_alerts: []
+      - eval_time: 25m
+        alertname: AlertmanagerNotificationsFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              pagerduty_service: cluster
+              integration: pagerduty
+            exp_annotations:
+              summary: "Alertmanager cannot deliver to pagerduty"
+              description: "30 failed pagerduty notification(s) in 15m. For pagerduty, check the alertmanager-pagerduty-keys Secret (bazel run //tools/gitops:seal-alert-pagerduty) and the Alertmanager logs; for webhook, check alertmanager-ntfy-bridge."
+
+  - interval: 1m
+    name: A healthy Alertmanager stays quiet
+    input_series:
+      - series: 'alertmanager_notifications_failed_total{integration="pagerduty",pod="prometheus-alertmanager-0"}'
+        values: '5+0x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: AlertmanagerNotificationsFailing
+        exp_alerts: []

@@ -3343,6 +3343,430 @@ public object Derive {
     )
   }
 
+  /** Minimum Android API level (`Build.VERSION_CODES.P`) that provides `BluetoothHidDevice`. */
+  public const val MIN_BLUETOOTH_HID_SDK_INT: Int = 28
+
+  /** One-line explanation shown before asking for Bluetooth access on the Remote screen. */
+  public const val BLUETOOTH_RATIONALE_LINE: String =
+      "Bluetooth lets this phone act as your Mac's keyboard and trackpad."
+
+  /** Shown on Android 8.0/8.1 (API 26–27) where `BluetoothHidDevice` is unavailable. */
+  public const val BLUETOOTH_UNSUPPORTED_MESSAGE: String =
+      "This Android version can't act as a keyboard and trackpad. Android 9 or later is needed."
+
+  /** Whether [sdkInt] supports Android's `BluetoothHidDevice` profile (Android 9 / API 28+). */
+  public fun isBluetoothHidSupported(sdkInt: Int): Boolean = sdkInt >= MIN_BLUETOOTH_HID_SDK_INT
+
+  /** Root cause for the Remote screen's Bluetooth HID readiness banner. */
+  public enum class BluetoothBannerCause {
+    Unsupported,
+    PermissionNeeded,
+    PermissionDeclined,
+    PermissionPermanentlyDenied,
+    BluetoothOff,
+    MacNotPaired,
+    WaitingForHost,
+    LinkDown,
+  }
+
+  /** Action offered by the Remote screen's contextual Bluetooth banner. */
+  public enum class BluetoothBannerAction {
+    AllowPermission,
+    OpenAppSettings,
+    TurnOnBluetooth,
+    OpenBluetoothSettings,
+    Reconnect,
+  }
+
+  /** Button label + action pair derived for a [BluetoothBannerCause]. */
+  public data class BluetoothBannerButton(
+      val label: String,
+      val action: BluetoothBannerAction,
+  )
+
+  /** Cause-specific banner model for Bluetooth HID readiness on the Remote screen. */
+  public data class BluetoothBannerSpec(
+      val cause: BluetoothBannerCause,
+      val message: String,
+      val action: BluetoothBannerAction?,
+      val actionLabel: String?,
+      val steps: List<String> = emptyList(),
+      val rationale: String? = null,
+  )
+
+  /**
+   * Maps a [BluetoothBannerCause] to its action button label and [BluetoothBannerAction], or `null`
+   * when no user action on this device can resolve the cause (such as API 26–27).
+   */
+  public fun bluetoothBannerButton(cause: BluetoothBannerCause): BluetoothBannerButton? =
+      when (cause) {
+        BluetoothBannerCause.Unsupported -> null
+        BluetoothBannerCause.PermissionNeeded,
+        BluetoothBannerCause.PermissionDeclined ->
+            BluetoothBannerButton("Allow Bluetooth", BluetoothBannerAction.AllowPermission)
+        BluetoothBannerCause.PermissionPermanentlyDenied ->
+            BluetoothBannerButton("Open app settings", BluetoothBannerAction.OpenAppSettings)
+        BluetoothBannerCause.BluetoothOff ->
+            BluetoothBannerButton("Turn on Bluetooth", BluetoothBannerAction.TurnOnBluetooth)
+        BluetoothBannerCause.MacNotPaired ->
+            BluetoothBannerButton(
+                "Open Bluetooth settings", BluetoothBannerAction.OpenBluetoothSettings)
+        BluetoothBannerCause.WaitingForHost,
+        BluetoothBannerCause.LinkDown ->
+            BluetoothBannerButton("Reconnect", BluetoothBannerAction.Reconnect)
+      }
+
+  /** Pure action dispatcher for the Remote screen's Bluetooth banner button. */
+  public fun dispatchBluetoothBannerAction(
+      action: BluetoothBannerAction,
+      onAllowPermission: () -> Unit,
+      onOpenAppSettings: () -> Unit,
+      onTurnOnBluetooth: () -> Unit,
+      onOpenBluetoothSettings: () -> Unit,
+      onReconnect: () -> Unit,
+  ) {
+    when (action) {
+      BluetoothBannerAction.AllowPermission -> onAllowPermission()
+      BluetoothBannerAction.OpenAppSettings -> onOpenAppSettings()
+      BluetoothBannerAction.TurnOnBluetooth -> onTurnOnBluetooth()
+      BluetoothBannerAction.OpenBluetoothSettings -> onOpenBluetoothSettings()
+      BluetoothBannerAction.Reconnect -> onReconnect()
+    }
+  }
+
+  /**
+   * Pure decision logic for the Remote screen's Bluetooth banner, naming the exact root cause and
+   * matching recovery action (`Allow Bluetooth`, `Open app settings`, `Turn on Bluetooth`, `Open
+   * Bluetooth settings` + 2 pairing steps, `Reconnect`, or no button on unsupported Android < 9).
+   */
+  public fun remoteBluetoothBanner(
+      connected: Boolean,
+      waitingForHost: Boolean = false,
+      hostName: String,
+      hasAdapter: Boolean,
+      permissionGranted: Boolean,
+      askedBefore: Boolean,
+      shouldShowRationale: Boolean,
+      bluetoothEnabled: Boolean,
+      hasPairedComputer: Boolean,
+      hidSupported: Boolean = true,
+  ): BluetoothBannerSpec? {
+    if (connected) return null
+    if (!hidSupported) {
+      return bannerSpec(
+          cause = BluetoothBannerCause.Unsupported,
+          message = BLUETOOTH_UNSUPPORTED_MESSAGE,
+      )
+    }
+    if (!hasAdapter) return null
+    val displayHost = hostName.trim().ifEmpty { "Mac" }
+    if (!permissionGranted) {
+      val permanentlyDenied =
+          isNotificationPermissionBlocked(
+              granted = false,
+              shouldShowRationale = shouldShowRationale,
+              asked = askedBefore,
+          )
+      return when {
+        permanentlyDenied ->
+            bannerSpec(
+                cause = BluetoothBannerCause.PermissionPermanentlyDenied,
+                message = "Bluetooth permission declined.",
+                rationale = BLUETOOTH_RATIONALE_LINE,
+            )
+        askedBefore ->
+            bannerSpec(
+                cause = BluetoothBannerCause.PermissionDeclined,
+                message = "Bluetooth permission declined.",
+                rationale = BLUETOOTH_RATIONALE_LINE,
+            )
+        else ->
+            bannerSpec(
+                cause = BluetoothBannerCause.PermissionNeeded,
+                message = BLUETOOTH_RATIONALE_LINE,
+            )
+      }
+    }
+    if (!bluetoothEnabled) {
+      return bannerSpec(
+          cause = BluetoothBannerCause.BluetoothOff,
+          message = "Bluetooth is off.",
+      )
+    }
+    if (!hasPairedComputer) {
+      return bannerSpec(
+          cause = BluetoothBannerCause.MacNotPaired,
+          message = "$displayHost is not paired in Bluetooth.",
+          steps =
+              listOf(
+                  "1. Open Bluetooth settings on your phone and Mac.",
+                  "2. Pair with $displayHost, then return to Remote.",
+              ),
+      )
+    }
+    return if (waitingForHost) {
+      bannerSpec(
+          cause = BluetoothBannerCause.WaitingForHost,
+          message = "Bluetooth: connecting to $displayHost… buttons wait for it",
+      )
+    } else {
+      bannerSpec(
+          cause = BluetoothBannerCause.LinkDown,
+          message = "Bluetooth link is down. Buttons on this screen won't reach $displayHost.",
+      )
+    }
+  }
+
+  private fun bannerSpec(
+      cause: BluetoothBannerCause,
+      message: String,
+      steps: List<String> = emptyList(),
+      rationale: String? = null,
+  ): BluetoothBannerSpec {
+    val button = bluetoothBannerButton(cause)
+    return BluetoothBannerSpec(
+        cause = cause,
+        message = message,
+        action = button?.action,
+        actionLabel = button?.label,
+        steps = steps,
+        rationale = rationale,
+    )
+  }
+
+  /** Derives the trackpad footer caption from the live Bluetooth HID readiness state. */
+  public fun pointerCaption(
+      connected: Boolean,
+      waitingForHost: Boolean = false,
+      hostName: String,
+      pointerHint: String,
+      hasAdapter: Boolean,
+      permissionGranted: Boolean,
+      bluetoothEnabled: Boolean,
+      hasPairedComputer: Boolean,
+      hidSupported: Boolean = true,
+  ): String {
+    val displayHost = hostName.trim().ifEmpty { "Mac" }
+    return when {
+      connected -> pointerHint
+      !hidSupported -> BLUETOOTH_UNSUPPORTED_MESSAGE
+      !hasAdapter -> "bluetooth unavailable on this device"
+      !permissionGranted -> "allow Bluetooth to control $displayHost"
+      !bluetoothEnabled -> "turn on Bluetooth to connect"
+      !hasPairedComputer -> "pair $displayHost in Bluetooth settings"
+      waitingForHost -> "connecting to $displayHost…"
+      else -> "bluetooth link down · tap Reconnect"
+    }
+  }
+
+  /** Whether the lower/side dock renders the trackpad instead of the console. */
+  public fun showsDockTrackpad(
+      showDock: Boolean,
+      isHalfOpen: Boolean,
+      isRemoteScreen: Boolean,
+  ): Boolean = showDock && isHalfOpen && isRemoteScreen
+
+  /** Whether the Remote main pane should render its trackpad (hidden when the dock owns it). */
+  public fun showsMainTrackpad(dockShowsTrackpad: Boolean): Boolean = !dockShowsTrackpad
+
+  /**
+   * Whether the side/bottom dock pane is shown in [RemoteShell]: on [Screen.Remote] in half-open
+   * foldable postures (`Book` / `Tabletop`), the HID trackpad dock stays visible even when
+   * [isUnpaired] is true because pointer/keyboard controls run over Bluetooth HID rather than the
+   * Mac HTTP agent.
+   */
+  public fun showsShellDock(
+      showRail: Boolean,
+      dockOpen: Boolean,
+      screen: Screen,
+      isUnpaired: Boolean,
+      isHalfOpen: Boolean,
+  ): Boolean {
+    if (!showRail ||
+        !dockOpen ||
+        screen == Screen.Console ||
+        screen == Screen.About ||
+        screen == Screen.PhoneBridge) {
+      return false
+    }
+    if (isHalfOpen && screen == Screen.Remote) return true
+    return !isUnpaired
+  }
+
+  /**
+   * Returns the highest column count in `1..maxColumns` where every uppercase button label in
+   * [labels] wraps on whole words within [maxLines] without mid-word breaks at [fontScale]. Falls
+   * back to `1` column when labels cannot fit cleanly side by side.
+   */
+  public fun adaptiveButtonColumns(
+      availableWidthDp: Float,
+      fontScale: Float,
+      labels: List<String>,
+      maxColumns: Int,
+      gapDp: Float = 8f,
+      horizontalPaddingDp: Float = 21f,
+      maxLines: Int = 2,
+      baseFontSizeSp: Float = 13f,
+      letterSpacingEm: Float = 0.08f,
+  ): Int {
+    val ceiling = maxColumns.coerceAtLeast(1)
+    if (labels.isEmpty() || availableWidthDp <= 0f) return ceiling
+    val scale = fontScale.coerceAtLeast(1f)
+    val scaledSp = baseFontSizeSp * scale
+    fun wordWidthDp(chars: Int): Float =
+        if (chars <= 0) 0f else (chars * 0.61f + (chars - 1) * letterSpacingEm) * scaledSp
+    val spaceWidthDp = (0.61f + letterSpacingEm) * scaledSp
+    val whitespace = Regex("""\s+""")
+    for (cols in ceiling downTo 1) {
+      val cellWidth = (availableWidthDp - gapDp * (cols - 1)) / cols
+      val textWidth = cellWidth - 2f * horizontalPaddingDp
+      if (textWidth <= 0f) continue
+      val allFit =
+          labels.all { raw ->
+            val words =
+                raw.trim().uppercase(Locale.ROOT).split(whitespace).filter { it.isNotEmpty() }
+            if (words.isEmpty()) {
+              true
+            } else {
+              var lines = 1
+              var lineWidth = 0f
+              var fitsWords = true
+              for (word in words) {
+                val wordW = wordWidthDp(word.length)
+                if (wordW > textWidth) {
+                  fitsWords = false
+                  break
+                }
+                if (lineWidth == 0f) {
+                  lineWidth = wordW
+                } else if (lineWidth + spaceWidthDp + wordW <= textWidth) {
+                  lineWidth += spaceWidthDp + wordW
+                } else {
+                  lines++
+                  lineWidth = wordW
+                }
+              }
+              fitsWords && lines <= maxLines
+            }
+          }
+      if (allFit) return cols
+    }
+    return 1
+  }
+
+  /**
+   * Resolves persisted [ThemeMode] with one-time migration from the legacy [legacyDarkTheme]
+   * boolean preference:
+   * - explicit [storedMode] wins;
+   * - legacy `darkTheme = true` -> [ThemeMode.Dark], `false` -> [ThemeMode.Light];
+   * - fresh installs (`null`, `null`) -> [ThemeMode.System].
+   */
+  public fun migrateThemeMode(storedMode: String?, legacyDarkTheme: Boolean?): ThemeMode {
+    if (storedMode != null) {
+      return ThemeMode.entries.firstOrNull { it.name.equals(storedMode, ignoreCase = true) }
+          ?: ThemeMode.System
+    }
+    return when (legacyDarkTheme) {
+      true -> ThemeMode.Dark
+      false -> ThemeMode.Light
+      null -> ThemeMode.System
+    }
+  }
+
+  /** Whether the UI should render dark theme for [mode] given [systemDark]. */
+  public fun isDarkTheme(mode: ThemeMode, systemDark: Boolean): Boolean =
+      when (mode) {
+        ThemeMode.System -> systemDark
+        ThemeMode.Light -> false
+        ThemeMode.Dark -> true
+      }
+
+  /**
+   * Restores a previously active [Screen] from saved instance state, returning `null` if invalid.
+   */
+  public fun restoredScreen(savedName: String?): Screen? {
+    val key = savedName?.trim().orEmpty()
+    if (key.isEmpty()) return null
+    return Screen.entries.firstOrNull { it.name.equals(key, ignoreCase = true) }
+  }
+
+  public const val ACTION_DISPLAY_SLEEP: String = "display_sleep"
+  public const val ACTION_LOCK_MAC: String = "lock_mac"
+
+  /**
+   * Outcome of evaluating an incoming `MainActivity` intent against the last handled intent key.
+   */
+  public enum class IntentDecision {
+    Handle,
+    Restore,
+  }
+
+  /**
+   * Deterministic key for an incoming `MainActivity` intent from its data URI, Quick Settings tile
+   * `EXTRA_ACTION`, and optional creation-time extra, or `null` when neither URI nor action is
+   * present.
+   */
+  public fun intentKey(
+      dataUri: String?,
+      actionExtra: String?,
+      createdAt: Long? = null,
+  ): String? {
+    val uri = dataUri?.trim().orEmpty()
+    val action = actionExtra?.trim().orEmpty()
+    if (uri.isEmpty() && action.isEmpty()) return null
+    return buildString {
+      append("uri=").append(uri)
+      append("|action=").append(action)
+      if (createdAt != null) {
+        append("|created=").append(createdAt)
+      }
+    }
+  }
+
+  /**
+   * Whether an incoming `MainActivity` intent carries an actionable `vitruvian-remote://` link
+   * (screen, module, or pairing QR) or Quick Settings tile action.
+   */
+  public fun hasActionableIntentData(
+      dataUri: String?,
+      actionExtra: String?,
+  ): Boolean {
+    val hasLink = DeepLink.screen(dataUri) != null || DeepLink.pairing(dataUri) != null
+    val hasTileAction = actionExtra == ACTION_DISPLAY_SLEEP || actionExtra == ACTION_LOCK_MAC
+    return hasLink || hasTileAction
+  }
+
+  /**
+   * Decides whether `MainActivity` should handle an incoming intent or keep/restore saved screen
+   * state:
+   * - [IntentDecision.Handle] when [hasActionableData] is true and [intentKey] is non-empty and
+   *   differs from [savedHandledKey];
+   * - [IntentDecision.Restore] otherwise.
+   */
+  public fun intentDecision(
+      intentKey: String?,
+      savedHandledKey: String?,
+      hasActionableData: Boolean,
+      isNewIntent: Boolean = false,
+  ): IntentDecision {
+    if (!hasActionableData || intentKey.isNullOrEmpty()) {
+      return IntentDecision.Restore
+    }
+    // onNewIntent is always a fresh tap (a second notification for the same screen, the same
+    // pairing link scanned again), never Android re-delivering an old one, so it is always handled.
+    if (isNewIntent) return IntentDecision.Handle
+    return if (intentKey == savedHandledKey) {
+      IntentDecision.Restore
+    } else {
+      IntentDecision.Handle
+    }
+  }
+
+  /**
+   * Whether the top bar should render its Settings gear (hidden whenever the nav rail is visible).
+   */
+  public fun showsTopBarSettings(showRail: Boolean): Boolean = !showRail
+
   /** `0`, `6.4`, `31.6` -- `Format.decimal`'s shape; this library cannot depend on :format. */
   private fun decimal(value: Double): String {
     val rounded = Math.round(value * 10) / 10.0
@@ -3670,12 +4094,6 @@ public object Derive {
   public fun canGoBack(state: NavState, isUnpaired: Boolean): Boolean =
       popNav(state, isUnpaired) != null
 
-  /**
-   * Handles the initial Activity launch intent once (`savedInstanceState == null`), skipping
-   * recreation replays.
-   */
-  public fun shouldHandleLaunchIntent(isInitialCreate: Boolean): Boolean = isInitialCreate
-
   /** Plain-English summary line for Settings › Phone Bridge. */
   public fun phoneBridgeSummarySubtitle(
       enabled: Boolean,
@@ -3860,6 +4278,18 @@ public object Derive {
       editMode && hiddenIds.isNotEmpty()
 }
 
+/** The six primary destinations plus Settings sub-screens (`PhoneBridge`, `About`). */
+public enum class Screen(public val title: String) {
+  Home("Home"),
+  Remote("Remote"),
+  Mac("Mac"),
+  Apps("Modules"),
+  Console("Console"),
+  Hosts("Settings"),
+  PhoneBridge("Phone Bridge"),
+  About("About"),
+}
+
 /**
  * Manifest IDs for every phone-supported Vitruvian Speaker control, matching
  * `apps/desktop/vitruvian-speaker/testdata/controls.json`.
@@ -3907,4 +4337,11 @@ public object VitruvianSpeakerControls {
   public const val DOOR_SWITCH: String = "door-switch"
   public const val DOOR_COPY_SETTINGS: String = "door-copy-settings"
   public const val RESET: String = "reset"
+}
+
+/** User-selectable color theme mode, defaulting to following the system setting. */
+public enum class ThemeMode(public val label: String) {
+  System("System"),
+  Light("Light"),
+  Dark("Dark"),
 }

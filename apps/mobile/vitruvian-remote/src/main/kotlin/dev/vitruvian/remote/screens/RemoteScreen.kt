@@ -22,12 +22,14 @@ package dev.vitruvian.remote.screens
 
 import android.graphics.BitmapFactory
 import android.view.HapticFeedbackConstants
+import android.view.View
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -61,14 +63,18 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.vitruvian.design.A11y
 import dev.vitruvian.design.AutoGrid
 import dev.vitruvian.design.ButtonVariant
 import dev.vitruvian.design.Hit
@@ -83,16 +89,21 @@ import dev.vitruvian.design.Terminal
 import dev.vitruvian.design.TerminalLine
 import dev.vitruvian.design.TerminalTone
 import dev.vitruvian.design.VButton
+import dev.vitruvian.design.VIcon
 import dev.vitruvian.design.VInput
 import dev.vitruvian.design.VSwitch
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
+import dev.vitruvian.design.VitruvianIcons
 import dev.vitruvian.design.VitruvianType
 import dev.vitruvian.remote.hid.HidAction
-import dev.vitruvian.remote.hid.HidLinkState
 import dev.vitruvian.remote.overlays.DictateButton
+import dev.vitruvian.remote.shell.LocalDockShowsTrackpad
 import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.DialogKind
+import dev.vitruvian.remote.state.REMOTE_DESKTOP_ACTIONS
+import dev.vitruvian.remote.state.REMOTE_PALETTE_KEYS
+import dev.vitruvian.remote.state.REMOTE_WINDOW_ACTIONS
 import dev.vitruvian.remote.state.RemoteSection
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.TRACK_PERCENT
@@ -134,25 +145,7 @@ private val METER_HEIGHT = 8.dp
 private const val VOLUME_STEP = 6
 private const val BRIGHTNESS_STEP = 10
 
-/**
- * The on-screen key palette.
- *
- * Bare keys and one chord, NOT bare modifiers. A lone ⌘ is meaningless over HID: a modifier only
- * exists as part of a report that also carries a key, and there is nowhere to "hold" it between two
- * taps. The old palette showed ⌘ ⌥ ⌃ ⇧ as if they were buttons and none of them did anything.
- */
-private val PALETTE_KEYS: List<Triple<String, String?, HidAction>> =
-    listOf(
-        Triple("esc", "Escape", HidAction.Escape),
-        Triple("tab", "Tab", HidAction.Tab),
-        Triple("↩", "Return", HidAction.Return),
-        Triple("⌫", "Backspace", HidAction.Backspace),
-        Triple("↑", "Up arrow", HidAction.ArrowUp),
-        Triple("↓", "Down arrow", HidAction.ArrowDown),
-        Triple("←", "Left arrow", HidAction.ArrowLeft),
-        Triple("→", "Right arrow", HidAction.ArrowRight),
-        Triple("⌘ space", "Command Space (Spotlight)", HidAction.Spotlight),
-    )
+/** The on-screen key palette uses `state.REMOTE_PALETTE_KEYS` for pure JVM testability. */
 
 /**
  * Remote: the controls.
@@ -160,14 +153,21 @@ private val PALETTE_KEYS: List<Triple<String, String?, HidAction>> =
  * Trackpad and keys, media, volume and brightness, an agent prompt, the macros, the clipboard, and
  * power - in that order, because that is roughly how often each is reached for.
  */
+/** Light key/tap haptic shared by the trackpad, dock controls, key grids, media, and nudges. */
+internal fun View.hapticTick() {
+  performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 public fun ColumnScope.RemoteScreen(state: RemoteState) {
   val colors = Vitruvian
   val view = LocalView.current
-  // Same light tick the trackpad uses, so an explicit Click button and a tap on
-  // the pad feel identical -- they do the same thing.
-  fun tick() = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+  val showMainTrackpad = Derive.showsMainTrackpad(LocalDockShowsTrackpad.current)
+
+  // Refresh Bluetooth readiness when entering Remote; permission is only requested when the user
+  // taps the banner's button.
+  LaunchedEffect(state) { state.onRemoteScreenVisited() }
 
   // How wide a capture to ask the Mac for: the plate's own width in pixels, so
   // a foldable's open panel gets a sharper still than a phone does and neither
@@ -180,62 +180,98 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
       item {
         Column(verticalArrangement = Arrangement.spacedBy(Space.s3)) {
           Label("Trackpad")
-          // Every button on this screen is a Bluetooth keypress. When the
-          // link is down they all silently did nothing, and the only sign was
-          // a caption at the foot of the trackpad. Say it at the top, with the
-          // fix one tap away.
-          if (state.hidLink != HidLinkState.Connected) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(Space.s3),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-              VText(
-                  text =
-                      if (state.hidLink == HidLinkState.WaitingForHost)
-                          "Bluetooth: connecting to ${state.hostShortName}… buttons wait for it"
-                      else "Bluetooth link is down. Buttons on this screen won't reach the Mac.",
-                  style = VitruvianType.listSub,
-                  color = Vitruvian.warn,
-                  modifier = Modifier.weight(1f),
-              )
-              VButton("Reconnect", state::reconnectHid)
-            }
+          state.remoteBluetoothBanner?.let { banner ->
+            BluetoothStatusBanner(banner = banner, state = state)
           }
           // Above the pad, because it is what you are pointing AT: a still of
           // the Mac over the surface that moves its cursor.
           if (state.peekOpen) {
             PeekPlate(state = state, onMeasured = { peekWidth = it })
           }
-          Trackpad(state = state, modifier = Modifier.height(TRACKPAD_HEIGHT))
-          // Two rows, not one: five buttons across the folded width leave
-          // "Click" and "Right" no room and they ellipsise to "Cli…".
-          Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
-            VButton("Click", { if (state.click()) tick() }, modifier = Modifier.weight(1f))
-            VButton("Right", { if (state.rightClick()) tick() }, modifier = Modifier.weight(1f))
+          if (showMainTrackpad) {
+            Trackpad(state = state, modifier = Modifier.height(TRACKPAD_HEIGHT))
           }
-          Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
-            VButton(
-                label = "Keys",
-                onClick = state::toggleKeyboard,
-                modifier = Modifier.weight(1f),
-                contentColor = if (state.keyboardOpen) colors.accentText else null,
-            )
-            VButton(
-                label = "Feel",
-                onClick = state::toggleTuning,
-                modifier = Modifier.weight(1f),
-                contentColor = if (state.tuningOpen) colors.accentText else null,
-            )
-            VButton(
-                label = "Peek",
-                // The width is decided when the plate has measured itself;
-                // before it has, the contract's own default is the honest
-                // guess.
-                onClick = { state.togglePeek(peekWidth) },
-                modifier = Modifier.weight(1f),
-                contentColor = if (state.peekOpen) colors.accentText else null,
-            )
+          val fontScale = LocalConfiguration.current.fontScale
+          // Two groups: pointer buttons then secondary toggles. At large font scales, column
+          // counts adapt downward so multi-word labels wrap at word boundaries without clipping.
+          BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val cols =
+                Derive.adaptiveButtonColumns(
+                    availableWidthDp = maxWidth.value,
+                    fontScale = fontScale,
+                    labels = listOf("Click", "Right"),
+                    maxColumns = 2,
+                    gapDp = Space.s3.value,
+                    horizontalPaddingDp = Space.s3.value,
+                    maxLines = 2,
+                )
+            AutoGrid(minItemWidth = 1.dp, gap = Space.s3, maxColumns = cols) {
+              item {
+                VButton(
+                    label = "Click",
+                    onClick = { if (state.click()) view.hapticTick() },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = Space.s3),
+                    maxLines = 2,
+                )
+              }
+              item {
+                VButton(
+                    label = "Right",
+                    onClick = { if (state.rightClick()) view.hapticTick() },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = Space.s3),
+                    maxLines = 2,
+                )
+              }
+            }
+          }
+          BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val cols =
+                Derive.adaptiveButtonColumns(
+                    availableWidthDp = maxWidth.value,
+                    fontScale = fontScale,
+                    labels = listOf("Keys", "Trackpad settings", "View screen"),
+                    maxColumns = 3,
+                    gapDp = Space.s3.value,
+                    horizontalPaddingDp = Space.s3.value,
+                    maxLines = 2,
+                )
+            AutoGrid(minItemWidth = 1.dp, gap = Space.s3, maxColumns = cols) {
+              item {
+                VButton(
+                    label = "Keys",
+                    onClick = state::toggleKeyboard,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentColor = if (state.keyboardOpen) colors.accentText else null,
+                    contentPadding = PaddingValues(horizontal = Space.s3),
+                    maxLines = 2,
+                )
+              }
+              item {
+                VButton(
+                    label = "Trackpad settings",
+                    onClick = state::toggleTuning,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentColor = if (state.tuningOpen) colors.accentText else null,
+                    contentPadding = PaddingValues(horizontal = Space.s3),
+                    maxLines = 2,
+                )
+              }
+              item {
+                VButton(
+                    label = "View screen",
+                    // The width is decided when the plate has measured itself;
+                    // before it has, the contract's own default is the honest
+                    // guess.
+                    onClick = { state.togglePeek(peekWidth) },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentColor = if (state.peekOpen) colors.accentText else null,
+                    contentPadding = PaddingValues(horizontal = Space.s3),
+                    maxLines = 2,
+                )
+              }
+            }
           }
           if (state.tuningOpen) {
             TuningPlate(state)
@@ -254,10 +290,13 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
                 horizontalArrangement = Arrangement.spacedBy(Space.s2),
                 verticalArrangement = Arrangement.spacedBy(Space.s2),
             ) {
-              PALETTE_KEYS.forEach { (glyph, description, action) ->
+              REMOTE_PALETTE_KEYS.forEach { (glyph, description, action) ->
                 Kbd(
                     text = glyph,
-                    onClick = { state.sendMacChord(action) },
+                    onClick = {
+                      view.hapticTick()
+                      state.sendMacChord(action)
+                    },
                     contentDescription = description,
                 )
               }
@@ -350,18 +389,48 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
   }
 
   FoldingSection(state, RemoteSection.POWER, "Power") {
-    Row(
-        modifier = Modifier.padding(horizontal = Space.s4),
-        horizontalArrangement = Arrangement.spacedBy(Space.s3),
-    ) {
-      VButton("Lock", state::lock, modifier = Modifier.weight(1f))
-      VButton("Sleep", { state.openDialog(DialogKind.Sleep) }, modifier = Modifier.weight(1f))
-      VButton(
-          label = "Restart",
-          onClick = { state.openDialog(DialogKind.Restart) },
-          modifier = Modifier.weight(1f),
-          variant = ButtonVariant.Danger,
-      )
+    val fontScale = LocalConfiguration.current.fontScale
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(horizontal = Space.s4)) {
+      val cols =
+          Derive.adaptiveButtonColumns(
+              availableWidthDp = maxWidth.value,
+              fontScale = fontScale,
+              labels = listOf("Lock", "Sleep", "Restart"),
+              maxColumns = 3,
+              gapDp = Space.s3.value,
+              horizontalPaddingDp = Space.s3.value,
+              maxLines = 2,
+          )
+      AutoGrid(minItemWidth = 1.dp, gap = Space.s3, maxColumns = cols) {
+        item {
+          VButton(
+              label = "Lock",
+              onClick = state::lock,
+              modifier = Modifier.fillMaxWidth(),
+              contentPadding = PaddingValues(horizontal = Space.s3),
+              maxLines = 2,
+          )
+        }
+        item {
+          VButton(
+              label = "Sleep",
+              onClick = { state.openDialog(DialogKind.Sleep) },
+              modifier = Modifier.fillMaxWidth(),
+              contentPadding = PaddingValues(horizontal = Space.s3),
+              maxLines = 2,
+          )
+        }
+        item {
+          VButton(
+              label = "Restart",
+              onClick = { state.openDialog(DialogKind.Restart) },
+              modifier = Modifier.fillMaxWidth(),
+              variant = ButtonVariant.Danger,
+              contentPadding = PaddingValues(horizontal = Space.s3),
+              maxLines = 2,
+          )
+        }
+      }
     }
   }
 }
@@ -395,11 +464,56 @@ private fun FoldHeader(
       horizontalArrangement = Arrangement.spacedBy(Space.s3),
   ) {
     Label(text = title, modifier = Modifier.weight(1f))
-    VText(
-        text = if (open) "▾" else "▸",
-        style = VitruvianType.listTitle,
+    VIcon(
+        path = if (open) VitruvianIcons.CHEVRON_DOWN else VitruvianIcons.CHEVRON_RIGHT,
+        iconSize = 16.dp,
         color = Vitruvian.textDim,
     )
+  }
+}
+
+@Composable
+private fun BluetoothStatusBanner(banner: Derive.BluetoothBannerSpec, state: RemoteState) {
+  Column(verticalArrangement = Arrangement.spacedBy(Space.s2)) {
+    banner.rationale?.let { rationale ->
+      VText(
+          text = rationale,
+          style = VitruvianType.listSub,
+          color = Vitruvian.textDim,
+      )
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Space.s3),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Column(
+          modifier = Modifier.weight(1f),
+          verticalArrangement = Arrangement.spacedBy(Space.s1),
+      ) {
+        VText(
+            text = banner.message,
+            style = VitruvianType.listSub,
+            color = Vitruvian.warn,
+        )
+        banner.steps.forEach { stepText ->
+          VText(
+              text = stepText,
+              style = VitruvianType.listSub,
+              color = Vitruvian.textDim,
+          )
+        }
+      }
+      val action = banner.action
+      val actionLabel = banner.actionLabel
+      if (action != null && actionLabel != null) {
+        VButton(
+            label = actionLabel,
+            maxLines = 2,
+            onClick = { state.performBluetoothBannerAction(action) },
+        )
+      }
+    }
   }
 }
 
@@ -637,11 +751,7 @@ public fun Trackpad(
 ) {
   val colors = Vitruvian
   val view = LocalView.current
-  // Glass has no travel, so vibration is the only thing that can confirm a
-  // press without looking down -- and looking down is the thing this surface
-  // should never ask you to do. KEYBOARD_TAP is the light tick, not the heavy
-  // long-press thud. Same idea as the Vitruvian Deck's haptic_click().
-  fun tick() = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+  fun tick() = view.hapticTick()
   // Remembered, NOT allocated inline: `trackpadGestures` cannot key its pointer
   // loop on this object (see its docs), and a fresh instance every recomposition
   // would be a new identity for anything that later did. One instance for the
@@ -697,6 +807,7 @@ public fun Trackpad(
               .fillMaxWidth()
               .heightIn(min = TRACKPAD_HEIGHT)
               .clipToBounds()
+              .semantics { contentDescription = A11y.TRACKPAD_DESCRIPTION }
               .trackpadGestures(handlers, dragHoldMillis = state.tuning.dragHoldMillis),
       marks = true,
       gridField = true,
@@ -704,7 +815,9 @@ public fun Trackpad(
     Label(
         text = captionPrefix + state.pointerLabel,
         modifier =
-            Modifier.align(Alignment.BottomStart).padding(start = Space.s4, bottom = Space.s3),
+            Modifier.align(Alignment.BottomStart)
+                .padding(start = Space.s4, bottom = Space.s3)
+                .clearAndSetSemantics {},
         style = VitruvianType.tabLabel,
     )
   }
@@ -820,11 +933,27 @@ private fun TuneRow(
 @Composable
 private fun DesktopPlate(state: RemoteState) {
   FoldingPlate(state, RemoteSection.DESKTOP, "Desktop · Spaces") {
-    AutoGrid(minItemWidth = DESKTOP_CELL_MIN, gap = Space.s2) {
-      item { GridKey("Space ←") { state.sendMacChord(HidAction.SpaceLeft) } }
-      item { GridKey("Space →") { state.sendMacChord(HidAction.SpaceRight) } }
-      DESKTOP_ACTIONS.forEach { (label, action) ->
-        item { GridKey(label) { state.sendMacChord(action) } }
+    val labels = listOf("Space ←", "Space →") + REMOTE_DESKTOP_ACTIONS.map { it.first }
+    val fontScale = LocalConfiguration.current.fontScale
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+      val baselineCols =
+          ((maxWidth + Space.s2) / (DESKTOP_CELL_MIN + Space.s2)).toInt().coerceAtLeast(1)
+      val cols =
+          Derive.adaptiveButtonColumns(
+              availableWidthDp = maxWidth.value,
+              fontScale = fontScale,
+              labels = labels,
+              maxColumns = baselineCols,
+              gapDp = Space.s2.value,
+              horizontalPaddingDp = Space.s2.value,
+              maxLines = 2,
+          )
+      AutoGrid(minItemWidth = DESKTOP_CELL_MIN, gap = Space.s2, maxColumns = cols) {
+        item { GridKey("Space ←") { state.sendMacChord(HidAction.SpaceLeft) } }
+        item { GridKey("Space →") { state.sendMacChord(HidAction.SpaceRight) } }
+        REMOTE_DESKTOP_ACTIONS.forEach { (label, action) ->
+          item { GridKey(label) { state.sendMacChord(action) } }
+        }
       }
     }
   }
@@ -834,22 +963,46 @@ private fun DesktopPlate(state: RemoteState) {
 @Composable
 private fun WindowPlate(state: RemoteState) {
   FoldingPlate(state, RemoteSection.WINDOW, "Window") {
-    AutoGrid(minItemWidth = WINDOW_CELL_MIN, gap = Space.s2) {
-      WINDOW_ACTIONS.forEach { (label, action) ->
-        item { GridKey(label) { state.sendMacChord(action) } }
+    val labels = REMOTE_WINDOW_ACTIONS.map { it.first }
+    val fontScale = LocalConfiguration.current.fontScale
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+      val baselineCols =
+          ((maxWidth + Space.s2) / (WINDOW_CELL_MIN + Space.s2)).toInt().coerceAtLeast(1)
+      val cols =
+          Derive.adaptiveButtonColumns(
+              availableWidthDp = maxWidth.value,
+              fontScale = fontScale,
+              labels = labels,
+              maxColumns = baselineCols,
+              gapDp = Space.s2.value,
+              horizontalPaddingDp = Space.s2.value,
+              maxLines = 2,
+          )
+      AutoGrid(minItemWidth = WINDOW_CELL_MIN, gap = Space.s2, maxColumns = cols) {
+        REMOTE_WINDOW_ACTIONS.forEach { (label, action) ->
+          item { GridKey(label) { state.sendMacChord(action) } }
+        }
       }
     }
   }
 }
 
-/** One cell of a key grid: full cell width, and padding small enough that the label fits. */
+/**
+ * One cell of a key grid: full cell width, padding small enough that the label fits, and haptic
+ * tick.
+ */
 @Composable
 private fun GridKey(label: String, onClick: () -> Unit) {
+  val view = LocalView.current
   VButton(
       label = label,
-      onClick = onClick,
+      onClick = {
+        view.hapticTick()
+        onClick()
+      },
       modifier = Modifier.fillMaxWidth(),
       contentPadding = GRID_KEY_PADDING,
+      maxLines = 2,
   )
 }
 
@@ -861,26 +1014,6 @@ private val WINDOW_CELL_MIN = 95.dp
 
 /** VButton's default is 21 dp a side, which is most of a 110 dp cell. */
 private val GRID_KEY_PADDING = PaddingValues(horizontal = Space.s2)
-
-private val DESKTOP_ACTIONS: List<Pair<String, HidAction>> =
-    listOf(
-        "Mission Control" to HidAction.MissionControl,
-        "App Exposé" to HidAction.AppExpose,
-        "Show Desktop" to HidAction.ShowDesktop,
-        "Launchpad" to HidAction.Launchpad,
-        "Screenshot" to HidAction.ScreenshotFull,
-        "Capture…" to HidAction.ScreenshotUi,
-    )
-
-private val WINDOW_ACTIONS: List<Pair<String, HidAction>> =
-    listOf(
-        "Switch App" to HidAction.CmdTab,
-        "Cycle" to HidAction.CycleWindows,
-        "Fullscreen" to HidAction.Fullscreen,
-        "Minimise" to HidAction.MinimiseWindow,
-        "Hide" to HidAction.HideApp,
-        "Close" to HidAction.CloseWindow,
-    )
 
 /**
  * Media keys, and what is playing when anything can say.
@@ -917,36 +1050,65 @@ private fun MediaPlate(state: RemoteState) {
           }
           Meter(fraction = TRACK_PERCENT / 100f)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
-          VButton(
-              label = "⏮",
-              onClick = state::previousTrack,
-              modifier = Modifier.weight(1f),
-              contentDescription = "Previous track",
-          )
-          if (!state.isDemoMode) {
-            VButton(
-                label = "Play/Pause",
-                onClick = state::togglePlay,
-                modifier = Modifier.weight(1f),
-                contentPadding = GRID_KEY_PADDING,
-            )
-          } else {
-            VButton(
-                label = if (state.playing) "Pause" else "Play",
-                onClick = state::togglePlay,
-                modifier = Modifier.weight(1f),
-                variant = ButtonVariant.Primary,
-            )
-          }
-          VButton(
-              label = "⏭",
-              onClick = state::nextTrack,
-              modifier = Modifier.weight(1f),
-              contentDescription = "Next track",
-          )
-        }
+        MediaTransportRow(state = state)
       }
+}
+
+/** Shared transport key row (`Previous`, `Play/Pause` or `Play`/`Pause`, `Next`) with haptics. */
+@Composable
+internal fun MediaTransportRow(state: RemoteState, modifier: Modifier = Modifier) {
+  val view = LocalView.current
+  val spacing = if (modifier == Modifier) Space.s3 else Space.s2
+  Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(spacing)) {
+    VButton(
+        label = "",
+        icon = VitruvianIcons.PREVIOUS,
+        onClick = {
+          view.hapticTick()
+          state.previousTrack()
+        },
+        modifier = Modifier.weight(1f),
+        contentPadding = GRID_KEY_PADDING,
+        contentDescription = "Previous track",
+    )
+    if (!state.isDemoMode) {
+      VButton(
+          label = "",
+          icon = VitruvianIcons.PLAY_PAUSE,
+          onClick = {
+            view.hapticTick()
+            state.togglePlay()
+          },
+          modifier = Modifier.weight(1f),
+          contentPadding = GRID_KEY_PADDING,
+          contentDescription = "Play or pause",
+      )
+    } else {
+      VButton(
+          label = "",
+          icon = if (state.playing) VitruvianIcons.PAUSE else VitruvianIcons.PLAY,
+          onClick = {
+            view.hapticTick()
+            state.togglePlay()
+          },
+          modifier = Modifier.weight(1f),
+          variant = ButtonVariant.Primary,
+          contentPadding = GRID_KEY_PADDING,
+          contentDescription = if (state.playing) "Pause" else "Play",
+      )
+    }
+    VButton(
+        label = "",
+        icon = VitruvianIcons.NEXT,
+        onClick = {
+          view.hapticTick()
+          state.nextTrack()
+        },
+        modifier = Modifier.weight(1f),
+        contentPadding = GRID_KEY_PADDING,
+        contentDescription = "Next track",
+    )
+  }
 }
 
 /** Volume, brightness and the display mirror - the "output" plate. */
@@ -990,7 +1152,7 @@ private fun OutputPlate(state: RemoteState) {
  * looks exactly as authoritative as one that does not.
  */
 @Composable
-private fun NudgeRow(
+internal fun NudgeRow(
     label: String,
     value: String,
     fraction: Float?,
@@ -999,6 +1161,7 @@ private fun NudgeRow(
     downDescription: String = "$label down",
     upDescription: String = "$label up",
 ) {
+  val view = LocalView.current
   Column(verticalArrangement = Arrangement.spacedBy(Space.s3)) {
     Row(modifier = Modifier.fillMaxWidth()) {
       Label(text = label, modifier = Modifier.weight(1f))
@@ -1010,7 +1173,10 @@ private fun NudgeRow(
     ) {
       VButton(
           label = "−",
-          onClick = onDown,
+          onClick = {
+            view.hapticTick()
+            onDown()
+          },
           modifier = Modifier.width(NUDGE_SIZE),
           contentPadding = NUDGE_PADDING,
           contentDescription = downDescription,
@@ -1027,7 +1193,10 @@ private fun NudgeRow(
       }
       VButton(
           label = "+",
-          onClick = onUp,
+          onClick = {
+            view.hapticTick()
+            onUp()
+          },
           modifier = Modifier.width(NUDGE_SIZE),
           contentPadding = NUDGE_PADDING,
           contentDescription = upDescription,

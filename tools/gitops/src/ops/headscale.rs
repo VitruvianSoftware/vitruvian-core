@@ -47,28 +47,7 @@ fn run_ops(args: &[Vec<u8>]) -> Res<i32> {
     if !have("kubectl") {
         return die(1, b"ERROR: kubectl not found on PATH.");
     }
-    let (_, pod) = capture_quiet(
-        0,
-        kubectl(
-            &k,
-            &[
-                b"-n",
-                b"headscale",
-                b"get",
-                b"pods",
-                b"-l",
-                b"app.kubernetes.io/name=headscale",
-                b"-o",
-                b"jsonpath={.items[0].metadata.name}",
-            ],
-        ),
-    );
-    if pod.is_empty() {
-        return die(
-            1,
-            b"ERROR: no running headscale pod found in namespace 'headscale' (kubectl get pods -n headscale -l app.kubernetes.io/name=headscale). Is the headscale Application synced?",
-        );
-    }
+    let pod = headscale_pod(&k)?;
     let kexec = |words: &[&[u8]], rest: &[&[u8]]| -> i32 {
         let mut c = kubectl(
             &k,
@@ -134,6 +113,33 @@ fn run_ops(args: &[Vec<u8>]) -> Res<i32> {
         _ => return die(2, &sc::cat(&[b"ERROR: unknown subcmd '", &sub, b"'"])),
     };
     Ok(st)
+}
+
+/// The running headscale pod's name, or the "is it synced?" error.
+pub fn headscale_pod(k: &[u8]) -> Res<Vec<u8>> {
+    let (_, pod) = capture_quiet(
+        0,
+        kubectl(
+            k,
+            &[
+                b"-n",
+                b"headscale",
+                b"get",
+                b"pods",
+                b"-l",
+                b"app.kubernetes.io/name=headscale",
+                b"-o",
+                b"jsonpath={.items[0].metadata.name}",
+            ],
+        ),
+    );
+    if pod.is_empty() {
+        return die(
+            1,
+            b"ERROR: no running headscale pod found in namespace 'headscale' (kubectl get pods -n headscale -l app.kubernetes.io/name=headscale). Is the headscale Application synced?",
+        );
+    }
+    Ok(pod)
 }
 
 /// The policy file in git that `policy-check`/`policy-set` send by default.

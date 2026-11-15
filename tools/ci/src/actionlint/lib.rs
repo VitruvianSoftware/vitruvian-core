@@ -41,7 +41,7 @@ pub const SCRIPT: &str = "\
 #   bazel run //tools/ci:actionlint                  # every workflow, as CI checks them
 #   bazel run //tools/ci:actionlint -- <file>...     # just these workflow files
 #
-# The same two steps as .github/workflows/actionlint.yaml: actionlint (pinned in
+# The same two steps as the actionlint job in .github/workflows/ci.yaml: actionlint (pinned in
 # tools/tools.lock.json at the workflow's ACTIONLINT_VERSION) with shellcheck at
 # warning level over the `run:` blocks, then the check that every outside
 # action is pinned to a commit SHA (//tools/ci:require_pinned_actions).

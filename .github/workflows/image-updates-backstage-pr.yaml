@@ -24,9 +24,8 @@
 # This opens/updates a PR from that branch into main so the bump still goes
 # through the merge queue like every other change to this repo.
 #
-# Unlike the buzz equivalent there is no upstream changelog to resolve: this
-# image is built from this repository, so the digest simply corresponds to the
-# most recent main build.
+# Resolve the OCI revision labels behind the old and new digests to summarize
+# commits and shared build input changes included in the bump.
 name: Backstage image update PR
 
 on:
@@ -51,6 +50,56 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Build //tools/ci:image_bump_changelog (no Bazel on this job)
+        id: changelog-bin
+        continue-on-error: true
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: image_bump_changelog
+
+      - name: Resolve changelog for the digest bump
+        id: changelog
+        env:
+          CHANGELOG_BIN: ${{ steps.changelog-bin.outputs.path }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CHANGELOG_BIN:-}" ] || [ ! -x "$CHANGELOG_BIN" ]; then
+            changelog="changelog unavailable: failed to build image_bump_changelog"
+          else
+            err_file="$(mktemp)"
+            rc=0
+            out="$("$CHANGELOG_BIN" \
+              --image ghcr.io/vitruviansoftware/backstage \
+              --values-file gitops/argocd/platform/backstage/values.yaml \
+              --path apps/web/backstage \
+              --shared-path MODULE.bazel \
+              --shared-path MODULE.bazel.lock \
+              --shared-path .bazelversion \
+              --shared-path .nvmrc \
+              --shared-path package.json \
+              --shared-path pnpm-lock.yaml \
+              --shared-path pnpm-workspace.yaml \
+              --shared-path tools/ci/src/backstage_boot_smoke \
+              --shared-path tools/initializer \
+              --shared-path .github/workflows/backstage-image.yaml \
+              2>"$err_file")" || rc=$?
+            if [ "$rc" -eq 0 ] && [ -n "$out" ]; then
+              changelog="$out"
+            else
+              reason="$(head -n 1 "$err_file" | tr -d '\r')"
+              [ -n "$reason" ] || reason="image_bump_changelog exited ${rc}"
+              changelog="changelog unavailable: ${reason}"
+            fi
+            rm -f "$err_file"
+          fi
+          eof="CHANGELOG_EOF_$$"
+          {
+            echo "changelog<<${eof}"
+            printf '%s\n' "$changelog"
+            echo "${eof}"
+          } >> "$GITHUB_OUTPUT"
+
       # A PR authored by the default GITHUB_TOKEN does not trigger workflows, so
       # its required checks would never run and it could never leave the queue.
       - name: Mint a short-lived App token so the PR's checks actually run
@@ -64,12 +113,23 @@ jobs:
       - name: Open or update the PR into main
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          CHANGELOG: ${{ steps.changelog.outputs.changelog }}
         run: |
           set -euo pipefail
 
           body="Opened automatically by argocd-image-updater's git write-back after a new digest landed behind ghcr.io/vitruviansoftware/backstage:latest.
 
-          The image is built from this repository, so this digest is the most recent \`main\` build of \`backstage/\`. Review the resolved digest in \`gitops/argocd/platform/backstage/values.yaml\`, then merge through the normal queue -- ArgoCD rolls the new image out on merge, which is what removes the old manual \`kubectl rollout restart\` step."
+          The image is built from this repository, so this digest is the most recent \`main\` build of \`apps/web/backstage/\`. Review the resolved digest in \`gitops/argocd/platform/backstage/values.yaml\`, then merge through the normal queue -- ArgoCD rolls the new image out on merge, which is what removes the old manual \`kubectl rollout restart\` step."
+
+          section="${CHANGELOG:-changelog unavailable: empty changelog output}"
+          case "$section" in
+            "### Changes in this image"*)
+              body="$(printf '%s\n\n%s\n' "$body" "$section")"
+              ;;
+            *)
+              body="$(printf '%s\n\n### Changes in this image\n\n%s\n' "$body" "$section")"
+              ;;
+          esac
 
           # GitHub's API fails now and then with a server-side error that has
           # nothing to do with the request (2026-10-12: a GraphQL "Something

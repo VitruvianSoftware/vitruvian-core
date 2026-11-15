@@ -48,6 +48,10 @@ pub const TOOLS: &[(&str, &str)] = &[
     ),
     ("seal-headplane-secret", "seal_headplane_secret.sh"),
     (
+        "seal-headscale-key-exporter",
+        "seal_headscale_key_exporter.sh",
+    ),
+    (
         "seal-zitadel-login-cookie-secret",
         "seal_zitadel_login_cookie_secret.sh",
     ),
@@ -62,6 +66,7 @@ pub const TOOLS: &[(&str, &str)] = &[
     ),
     ("cicd-telemetry-smoke", "cicd_telemetry_smoke.sh"),
     ("seal-arc-github-app", "seal_arc_github_app.sh"),
+    ("seal-alert-pagerduty", "seal_alert_pagerduty.sh"),
 ];
 
 /// Run tool `name` with the script's arguments; None for an unknown name.
@@ -72,6 +77,7 @@ pub fn run_tool(name: &[u8], args: &[Vec<u8>]) -> Option<i32> {
         b"seal-alert-heartbeat" => seal::alert_heartbeat(args),
         b"seal-argocd-backstage-token" => backstage::main(args),
         b"seal-headplane-secret" => seal::headplane(args),
+        b"seal-headscale-key-exporter" => seal::headscale_key_exporter(args),
         b"seal-zitadel-login-cookie-secret" => seal::zitadel(args),
         b"sealed-secrets-keys" => bw_backup::sealed_secrets_keys(args),
         b"argocd-secret" => bw_backup::argocd_secret(args),
@@ -81,6 +87,7 @@ pub fn run_tool(name: &[u8], args: &[Vec<u8>]) -> Option<i32> {
         b"rotate-github-otel-webhook-secret" => rotate_otel::main(args),
         b"cicd-telemetry-smoke" => cicd_smoke::main(args),
         b"seal-arc-github-app" => seal::arc_github_app(args),
+        b"seal-alert-pagerduty" => seal::alert_pagerduty(args),
         _ => return None,
     })
 }
@@ -93,33 +100,57 @@ fn usage() -> String {
     s
 }
 
-/// The binary's entry point: `argv0` picks the tool when it is named after
-/// one; otherwise the first argument does.
-pub fn main(argv0: &[u8], args: &[Vec<u8>]) -> i32 {
+/// `args` without a leading copy of the tool's own name `base`.
+fn own_args<'a>(base: &[u8], args: &'a [Vec<u8>]) -> &'a [Vec<u8>] {
+    match args.first() {
+        Some(first) if first.as_slice() == base => &args[1..],
+        _ => args,
+    }
+}
+
+/// Which tool to run, and with which arguments. `argv0` picks the tool when
+/// its basename is a tool's name; otherwise the first argument does. `Err`
+/// carries the unknown name (empty when there were no arguments).
+fn resolve<'a>(
+    argv0: &'a [u8],
+    args: &'a [Vec<u8>],
+) -> Result<(&'a [u8], &'a [Vec<u8>]), &'a [u8]> {
+    let is_tool = |n: &[u8]| TOOLS.iter().any(|(t, _)| t.as_bytes() == n);
     let base = match argv0.iter().rposition(|&c| c == b'/') {
         Some(i) => &argv0[i + 1..],
         None => argv0,
     };
-    if let Some(code) = run_tool(base, args) {
-        return code;
+    if is_tool(base) {
+        // A target named after its tool (seal-alert-heartbeat, ...) is also
+        // given that name as its first argument by BUILD (`[TOOL_OF[script]]
+        // + args`); drop it, or the tool would read its own name as an
+        // argument.
+        return Ok((base, own_args(base, args)));
     }
     match args.first() {
-        Some(name) => match run_tool(name, &args[1..]) {
-            Some(code) => code,
-            None => {
-                shell_compat::err(
-                    format!(
-                        "gitops-cli: unknown tool '{}'\n{}",
-                        String::from_utf8_lossy(name),
-                        usage()
-                    )
-                    .as_bytes(),
-                );
-                2
-            }
-        },
-        None => {
+        Some(name) if is_tool(name) => Ok((name.as_slice(), &args[1..])),
+        Some(name) => Err(name.as_slice()),
+        None => Err(b""),
+    }
+}
+
+/// The binary's entry point: see [`resolve`].
+pub fn main(argv0: &[u8], args: &[Vec<u8>]) -> i32 {
+    match resolve(argv0, args) {
+        Ok((tool, rest)) => run_tool(tool, rest).unwrap_or(2),
+        Err(b"") => {
             shell_compat::err(usage().as_bytes());
+            2
+        }
+        Err(name) => {
+            shell_compat::err(
+                format!(
+                    "gitops-cli: unknown tool '{}'\n{}",
+                    String::from_utf8_lossy(name),
+                    usage()
+                )
+                .as_bytes(),
+            );
             2
         }
     }
@@ -139,7 +170,47 @@ mod tests {
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-'));
             assert!(script.ends_with(".sh"));
         }
-        assert_eq!(TOOLS.len(), 14);
+        assert_eq!(TOOLS.len(), 16);
         assert!(run_tool(b"no-such-tool", &[]).is_none());
+    }
+
+    #[test]
+    fn a_target_named_after_its_tool_does_not_see_its_own_name() {
+        let args = vec![b"seal-alert-heartbeat".to_vec(), b"--apply".to_vec()];
+        assert_eq!(own_args(b"seal-alert-heartbeat", &args), &args[1..]);
+        // Anything else is passed through untouched.
+        assert_eq!(own_args(b"seal-alert-ntfy", &args), &args[..]);
+        assert_eq!(own_args(b"seal-alert-heartbeat", &[]), &[] as &[Vec<u8>]);
+    }
+
+    fn v(xs: &[&str]) -> Vec<Vec<u8>> {
+        xs.iter().map(|x| x.as_bytes().to_vec()).collect()
+    }
+
+    #[test]
+    fn resolve_every_build_target_shape() {
+        // Named after its tool: BUILD passes [tool, args...].
+        let a = v(&["seal-headscale-key-exporter", "--apply"]);
+        assert_eq!(
+            resolve(b"/x/bazel-bin/tools/gitops/seal-headscale-key-exporter", &a),
+            Ok((&b"seal-headscale-key-exporter"[..], &a[1..]))
+        );
+        // Named otherwise (headscale-policy-check runs headscale-ops): BUILD
+        // passes [tool, subcommand, args...]; the subcommand survives.
+        let a = v(&["headscale-ops", "policy-check", "x.hujson"]);
+        assert_eq!(
+            resolve(b"/x/bazel-bin/tools/gitops/headscale-policy-check", &a),
+            Ok((&b"headscale-ops"[..], &a[1..]))
+        );
+        // The single binary: gitops-cli TOOL ARGS...
+        let a = v(&["seal-alert-ntfy", "pw"]);
+        assert_eq!(
+            resolve(b"gitops-cli", &a),
+            Ok((&b"seal-alert-ntfy"[..], &a[1..]))
+        );
+        // Unknown and empty.
+        let a = v(&["no-such-tool"]);
+        assert_eq!(resolve(b"gitops-cli", &a), Err(&b"no-such-tool"[..]));
+        assert_eq!(resolve(b"gitops-cli", &[]), Err(&b""[..]));
     }
 }

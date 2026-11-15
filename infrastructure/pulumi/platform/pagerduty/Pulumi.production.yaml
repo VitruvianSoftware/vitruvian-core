@@ -38,3 +38,17 @@ config:
     - key: sentry
       name: Sentry
       description: Errors and issues from the self-hosted Sentry at sentry.lab.ipv1337.dev
+    # One service per area of the homelab cluster, so an incident says where it
+    # came from. Alertmanager picks the service from each alert rule's
+    # pagerduty_service label (gitops/argocd/platform/prometheus); the keys
+    # reach the cluster as the alertmanager-pagerduty-keys SealedSecret
+    # (bazel run //tools/gitops:seal-alert-pagerduty).
+    - key: cluster
+      name: Homelab cluster
+      description: Nodes, etcd, workloads, storage, certificates and the monitoring stack on the dev-local k3s cluster
+    - key: data
+      name: Homelab databases and backups
+      description: CloudNativePG clusters, WAL archiving and backup jobs on the dev-local k3s cluster
+    - key: apps
+      name: Homelab apps and GitOps
+      description: Argo CD sync health and the apps it deploys (Vitruvian Slack MCP) on the dev-local k3s cluster

@@ -3218,3 +3218,50 @@ test("return round 2 acceptance 6: Board channel chip filter retains lead @all p
   assert.match(renderedItems[0].textContent, /Scope lock: PKCE only/);
   assert.match(renderedItems[1].textContent, /Check timingSafeEqual/);
 });
+
+test("Members tab labels a helper's second round on the same task", () => {
+  const { byId, renderState } = createPanelDomHarness();
+  const t0 = 1_762_400_000_000;
+  const run = (id, at) => ({
+    type: "run.start",
+    at,
+    id,
+    harness: "antigravity",
+    agent: "wren",
+    model: "pro",
+    title: "Ship fix",
+    role: "worker",
+  });
+  const flow = foldFlowEvents([
+    {
+      type: "plan",
+      at: t0,
+      title: "Rounds",
+      tasks: [
+        { title: "Ship fix", specialist: "wren", tier: "core", after: [] },
+      ],
+    },
+    run("wren-r1", t0 + 1000),
+    { type: "run.end", at: t0 + 2000, id: "wren-r1" },
+    {
+      type: "post",
+      at: t0 + 2500,
+      from: "lead",
+      to: ["wren"],
+      kind: "note",
+      text: "Fix the edge case",
+    },
+    run("wren-r2", t0 + 3000),
+  ]);
+  renderState(
+    buildPanelState(flow, { conversationId: "rounds-cid", now: t0 + 4000 }),
+  );
+  byId.get("tab-btn-members").dispatch("click");
+  const text = [
+    byId.get("members-active").textContent,
+    byId.get("members-standing").textContent,
+    byId.get("members-retired").textContent,
+  ].join("\n");
+  assert.equal((text.match(/round 2/g) || []).length, 1);
+  assert.doesNotMatch(text, /round 1/);
+});

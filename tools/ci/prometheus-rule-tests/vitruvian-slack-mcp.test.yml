@@ -44,7 +44,7 @@ tests:
       - expr: ALERTS{alertname="VitruvianSlackMcpSustained5xx", alertstate="firing"}
         eval_time: 20m
         exp_samples:
-          - labels: 'ALERTS{alertname="VitruvianSlackMcpSustained5xx", alertstate="firing", namespace="mcp-slack", severity="warning"}'
+          - labels: 'ALERTS{alertname="VitruvianSlackMcpSustained5xx", alertstate="firing", namespace="mcp-slack", pagerduty_service="apps", severity="warning"}'
             value: 1
 
   # ---------------------------------------------- VitruvianSlackMcpIdpUnavailable --
@@ -61,7 +61,7 @@ tests:
       - expr: ALERTS{alertname="VitruvianSlackMcpIdpUnavailable", alertstate="firing"}
         eval_time: 20m
         exp_samples:
-          - labels: 'ALERTS{alertname="VitruvianSlackMcpIdpUnavailable", alertstate="firing", namespace="mcp-slack", severity="warning"}'
+          - labels: 'ALERTS{alertname="VitruvianSlackMcpIdpUnavailable", alertstate="firing", namespace="mcp-slack", pagerduty_service="apps", severity="warning"}'
             value: 1
 
   # ------------------------------------------ VitruvianSlackMcpSustainedForbidden --
@@ -78,5 +78,5 @@ tests:
       - expr: ALERTS{alertname="VitruvianSlackMcpSustainedForbidden", alertstate="firing"}
         eval_time: 45m
         exp_samples:
-          - labels: 'ALERTS{alertname="VitruvianSlackMcpSustainedForbidden", alertstate="firing", namespace="mcp-slack", severity="warning"}'
+          - labels: 'ALERTS{alertname="VitruvianSlackMcpSustainedForbidden", alertstate="firing", namespace="mcp-slack", pagerduty_service="apps", severity="warning"}'
             value: 1

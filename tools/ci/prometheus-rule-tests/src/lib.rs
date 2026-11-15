@@ -48,6 +48,30 @@ rules = parsed.get("serverFiles", {}).get("alerting_rules.yml")
 if not rules or not rules.get("groups"):
     raise SystemExit("no alerting_rules.yml groups found -- extraction is broken, "
                      "not the rules; fix this script rather than deleting the test")
+
+# Every actionable rule must name the PagerDuty service it opens an incident
+# on, and Alertmanager must have a pagerduty-<service> receiver for it.
+# Without the label an alert still pages (the catch-all lands on cluster), but
+# on the wrong service -- the thing per-source services exist to prevent.
+am = parsed.get("alertmanager", {}).get("config", {})
+pd_services = {r["name"][len("pagerduty-"):] for r in am.get("receivers", [])
+               if r.get("name", "").startswith("pagerduty-")}
+if not pd_services:
+    raise SystemExit("no pagerduty-<service> receivers in alertmanager.config -- "
+                     "extraction is broken, or PagerDuty routing was removed")
+bad = []
+for g in rules["groups"]:
+    for r in g.get("rules", []):
+        labels = r.get("labels") or {}
+        if "alert" not in r or labels.get("severity") not in ("page", "warning"):
+            continue
+        svc = labels.get("pagerduty_service")
+        if svc not in pd_services:
+            bad.append(f"  {g['name']}/{r['alert']}: pagerduty_service={svc!r}")
+if bad:
+    raise SystemExit("actionable alert rules without a routable pagerduty_service label "
+                     f"(want one of {sorted(pd_services)}):\n" + "\n".join(bad))
+
 yaml.safe_dump(rules, open(out, "w"), default_flow_style=False)
 print(f"prometheus-rule-tests: extracted {len(rules['groups'])} rule group(s)")
 "#;

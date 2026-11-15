@@ -35,7 +35,11 @@ import {
   pendingWakes,
   reduce,
 } from "./lib/adapter.mjs";
-import { VALID_PHASES, VALID_TIERS } from "./lib/orchestrator-core.mjs";
+import {
+  checkBoardChannel,
+  VALID_PHASES,
+  VALID_TIERS,
+} from "./lib/orchestrator-core.mjs";
 
 export const PLUGIN_ID = "vitruvian-orchestrator";
 
@@ -921,6 +925,10 @@ export default {
             const flow = caller.rootID
               ? (flowsByRoot.get(caller.rootID) ?? null)
               : null;
+            const channelError = checkBoardChannel(flow, args?.channel);
+            if (channelError) {
+              throw new Error(channelError);
+            }
             const rows = applyBoardCall(
               flow,
               caller.callerAgent,

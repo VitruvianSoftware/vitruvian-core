@@ -2438,7 +2438,7 @@ enum SwitcherModelFeatureTests {
         suite.expect(!AppInfo.hasCommunityChannels && !SupportUpdateIntroInfo.isOffered
                      && !SupportUpdateIntroInfo.shouldShow(appVersion: "3.4.0", lastSeenVersion: nil),
                "Vitruvian Atrium has no community channels, so upstream's post-update support prompt never shows")
-        suite.expect(AppInfo.donateURL.absoluteString == "https://vitruviansoftware.dev/donate/vitruvian/"
+        suite.expect(AppInfo.donateURL.absoluteString == "https://vitruviansoftware.dev/donate/vitruvian/?src=app-vitruvian-atrium"
                      && AppInfo.coffeeURL == AppInfo.donateURL,
                "the Donate button opens our own redirect, never a Stripe URL that a replaced Payment Link would break")
         suite.expect(SettingsDirectory.sidebarSections(Strings.enUS, language: .enUS, isAvailable: { _ in true })

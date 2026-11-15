@@ -34,6 +34,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
+import dev.vitruvian.remote.state.Derive
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -204,6 +205,9 @@ public class BluetoothHidTransport(
         }
       }
 
+  /** Whether this Android OS version provides `BluetoothHidDevice` (Android 9 / API 28+). */
+  public fun isHidSupported(): Boolean = Derive.isBluetoothHidSupported(Build.VERSION.SDK_INT)
+
   /**
    * Starts advertising as a keyboard. Safe to call when Bluetooth is off or the permission is
    * missing -- it simply stays [HidLinkState.Unavailable].
@@ -213,7 +217,7 @@ public class BluetoothHidTransport(
     if (starting || proxy != null) return
     // BluetoothHidDevice is API 28+. The app's minSdk is 26, so this is a real
     // check rather than a formality: on 26/27 the whole class is absent.
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+    if (!isHidSupported()) {
       Log.i(TAG, "HID device profile needs API 28; this device is ${Build.VERSION.SDK_INT}")
       return
     }
@@ -420,7 +424,31 @@ public class BluetoothHidTransport(
     return true
   }
 
-  private fun hasConnectPermission(): Boolean =
+  /** Whether this device exposes a Bluetooth adapter at all. */
+  public fun hasBluetoothAdapter(): Boolean = resolveAdapter() != null
+
+  /** Whether Bluetooth is currently turned on. */
+  public fun isBluetoothEnabled(): Boolean = resolveAdapter()?.isEnabled == true
+
+  /** Whether at least one paired computer is bonded in Android Bluetooth settings. */
+  @SuppressLint("MissingPermission")
+  public fun hasPairedComputer(): Boolean {
+    if (!hasConnectPermission()) return false
+    val current = resolveAdapter() ?: return false
+    return current.bondedDevices.orEmpty().any {
+      it.bluetoothClass?.majorDeviceClass == BluetoothClass.Device.Major.COMPUTER
+    }
+  }
+
+  private fun resolveAdapter(): BluetoothAdapter? {
+    adapter?.let {
+      return it
+    }
+    val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+    return manager?.adapter
+  }
+
+  public fun hasConnectPermission(): Boolean =
       // BLUETOOTH_CONNECT only exists from API 31; below that the legacy
       // install-time BLUETOOTH permission covers it.
       Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||

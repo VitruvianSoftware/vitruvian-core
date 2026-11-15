@@ -51,7 +51,7 @@ The sidebar's **Overview** section gives a short data-only summary and shows onl
 
 ## Channels
 
-Posts belong to a channel (`main` by default; channel names match `[a-z0-9][a-z0-9-]{0,31}`, up to 20 channels). Only the lead can create or archive channels with `channel`; everyone can list channels, filter `board` by `channel`, and post to open channels. Posting to an unknown or archived channel fails with an error, and `main` cannot be archived. When the lead puts `Channel: <name>` in a task brief, the helper posts in that channel.
+Posts belong to a channel (`main` by default; channel names match `[a-z0-9][a-z0-9-]{0,31}`, up to 20 channels). Only the lead can create or archive channels with `channel`; everyone can list channels, filter `board` by `channel` (an unknown channel is an error that lists the real ones; archived channels can still be read), and post to open channels. Posting to an unknown or archived channel fails with an error, and `main` cannot be archived. When the lead puts `Channel: <name>` in a task brief, the helper posts in that channel.
 
 ## Safety
 

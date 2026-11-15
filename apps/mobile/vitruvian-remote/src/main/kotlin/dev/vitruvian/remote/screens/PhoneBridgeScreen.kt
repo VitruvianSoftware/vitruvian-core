@@ -248,6 +248,7 @@ public fun ColumnScope.PhoneBridgeScreen(state: RemoteState) {
                       entry.approver,
                   ),
               status = if (entry.outcome == "ok") StatusTone.Ok else StatusTone.Warn,
+              statusAdjacentText = entry.outcome,
               contentPadding = PaddingValues(vertical = Space.s3),
           ) {
             Tag(

@@ -1,0 +1,115 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# headscale-key-exporter: see configmap-key-exporter.yaml for what it reads and
+# serves. One stateless replica; a missed scrape during a restart only delays
+# an alert that is weeks ahead anyway. In the headscale namespace, next to the
+# API it reads. python:3.13-slim runs as root by default, so run it as an
+# arbitrary non-root uid, as alertmanager-ntfy-bridge does.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: headscale-key-exporter
+  namespace: headscale
+  labels:
+    app.kubernetes.io/name: headscale-key-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: headscale-key-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: headscale-key-exporter
+      annotations:
+        # exporter.py is read once at start, and a ConfigMap edit alone does
+        # not restart the pod. Bump this with every exporter.py change.
+        vitruvian.dev/key-exporter-code-version: "1"
+    spec:
+      # Wired nodes only: Docker Hub pulls time out on the WiFi nodes (see
+      # alertmanager-ntfy-bridge/deployment.yaml).
+      nodeSelector:
+        node.ipv1337.dev/link: wired
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: exporter
+          image: python:3.13-slim
+          command: ["python3", "/etc/exporter/exporter.py"]
+          env:
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+            - name: HEADSCALE_URL
+              value: "http://headscale.headscale.svc.cluster.local:8080"
+            - name: API_KEY_FILE
+              value: "/etc/exporter/secrets/api-key"
+          ports:
+            - name: metrics
+              containerPort: 9100
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9100
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9100
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 5m
+              memory: 24Mi
+            limits:
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: code
+              mountPath: /etc/exporter
+              readOnly: true
+            - name: api-key
+              mountPath: /etc/exporter/secrets
+              readOnly: true
+      volumes:
+        - name: code
+          configMap:
+            name: headscale-key-exporter
+        # A Headscale API key of its own (key api-key), minted and sealed by
+        # bazel run //tools/gitops:seal-headscale-key-exporter. Optional, so
+        # the pod runs (reporting up=0) before the Secret exists; the file is
+        # re-read on every refresh, so a rotated key needs no restart.
+        - name: api-key
+          secret:
+            secretName: headscale-key-exporter
+            optional: true

@@ -53,6 +53,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: page
+              pagerduty_service: data
               namespace: zitadel
               created_by_name: zitadel-db-cluster
             exp_annotations:
@@ -78,6 +79,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              pagerduty_service: data
               namespace: backstage
               created_by_name: backstage-db-cluster
             exp_annotations:
@@ -107,6 +109,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              pagerduty_service: data
               namespace: sentry
               cnpg_io_cluster: sentry-db
             exp_annotations:
@@ -140,6 +143,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              pagerduty_service: data
               namespace: zitadel
               cnpg_io_cluster: zitadel-db-cluster
             exp_annotations:
@@ -165,6 +169,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              pagerduty_service: data
               namespace: buzz
               cnpg_io_cluster: buzz-db
             exp_annotations:
@@ -193,6 +198,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              pagerduty_service: data
               namespace: cnpg-cluster
               cnpg_io_cluster: cnpg-cluster
             exp_annotations:

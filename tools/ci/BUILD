@@ -61,6 +61,7 @@ _BUILD_CI_TOOLS = [
     "gitops_validate",
     "gitops_values_render",
     "go_test_with_retry",
+    "image_bump_changelog",
     "image_sbom_scan",
     "install_pinned_tool",
     "llvm_cache_key",
@@ -179,7 +180,7 @@ rust_test(
     data = [
         ":actionlint",
         ":require_pinned_actions",
-        "//:.github/workflows/actionlint.yaml",
+        "//:.github/workflows/ci.yaml",
         "//tools:tools.lock.json",
         "@multitool//tools/actionlint",
         "@multitool//tools/shellcheck",
@@ -188,7 +189,7 @@ rust_test(
     env = {
         "BIN": "$(rootpath :actionlint)",
         "LOCK": "$(rootpath //tools:tools.lock.json)",
-        "WORKFLOW": "$(rootpath //:.github/workflows/actionlint.yaml)",
+        "WORKFLOW": "$(rootpath //:.github/workflows/ci.yaml)",
     },
     rustc_flags = ["-Copt-level=3"],
     deps = [":ci_testkit"],
@@ -202,6 +203,7 @@ rust_test(
     size = "medium",
     srcs = ["src/workflow_rustc/tests.rs"],
     data = [
+        "src/require_pinned_actions/main.rs",
         "src/transient_lib/lib.rs",
         "//:composite_actions",
         "//:github_files",
@@ -242,7 +244,7 @@ rust_test(
     data = [
         "src/require_pinned_actions/main.rs",
         ":require_pinned_actions",
-        "//:.github/workflows/actionlint.yaml",
+        "//:.github/workflows/ci.yaml",
         "@rules_rust//rust/toolchain:current_rust_stdlib_files",
         "@rules_rust//rust/toolchain:current_rust_toolchain",
         "@rules_rust//rust/toolchain:current_rustc_files",
@@ -252,7 +254,7 @@ rust_test(
     env = {
         "BIN": "$(rootpath :require_pinned_actions)",
         "RUSTC": "$(RUSTC)",
-        "WORKFLOW": "$(rootpath //:.github/workflows/actionlint.yaml)",
+        "WORKFLOW": "$(rootpath //:.github/workflows/ci.yaml)",
     },
     rustc_flags = ["-Copt-level=3"],
     toolchains = ["@rules_rust//rust/toolchain:current_rust_toolchain"],
@@ -2077,6 +2079,48 @@ rust_test(
     edition = "2021",
     env = {"WORKFLOW_FILES": "$(rootpaths //:workflow_files)"},
     rustc_flags = ["-Copt-level=3"],
+)
+
+# image-bump-changelog
+rust_library(
+    name = "image_bump_changelog_lib",
+    srcs = ["src/image_bump_changelog/lib.rs"],
+    crate_name = "image_bump_changelog",
+    crate_root = "src/image_bump_changelog/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//tools/shell-compat:shell_compat"],
+)
+
+rust_binary(
+    name = "image_bump_changelog",
+    srcs = ["src/image_bump_changelog/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":image_bump_changelog_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+rust_test(
+    name = "image_bump_changelog_lib_test",
+    size = "small",
+    crate = ":image_bump_changelog_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_test(
+    name = "image_bump_changelog_test",
+    size = "small",
+    srcs = ["src/image_bump_changelog/tests.rs"],
+    data = [":image_bump_changelog"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :image_bump_changelog)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # agent-guard reads this file to check its refusal advice names a real target

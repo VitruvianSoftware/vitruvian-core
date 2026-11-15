@@ -25,10 +25,12 @@
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 exports_files([
+    "alertmanager.test.yml",
     "argocd.test.yml",
     "vitruvian-slack-mcp.test.yml",
     "oom.test.yml",
     "cnpg.test.yml",
+    "headscale.test.yml",
 ])
 
 rust_library(

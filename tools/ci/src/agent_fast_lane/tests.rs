@@ -197,11 +197,20 @@ fn github_repository_unset() {
 #[test]
 fn ci_yaml_heavy_jobs_skip_on_the_fast_lane_and_fast_checks_never_do() {
     let ci = std::fs::read_to_string(CI).unwrap();
-    // The fast checks that live in ci.yaml. The rest (secret scan, osv-scan,
-    // conformance, tidy, actionlint) are other workflows and never see the label.
+    // The fast checks that live in ci.yaml. The rest (secret scan,
+    // conformance, tidy) are other workflows and never see the label.
     // `changes` counts as one: license-check and lint-naming read its answer,
     // so it must run on fast-lane PRs too.
-    let fast_checks = ["license-check", "lint-naming", "changes"];
+    let fast_checks = [
+        "license-check",
+        "lint-naming",
+        "changes",
+        // Moved here from their own workflows, which never saw the label.
+        "gitops-validate",
+        "migration-safety",
+        "actionlint",
+        "osv-scan",
+    ];
     let mut count = 0;
     let mut bad = Vec::new();
     for j in workflow_jobs(&ci) {

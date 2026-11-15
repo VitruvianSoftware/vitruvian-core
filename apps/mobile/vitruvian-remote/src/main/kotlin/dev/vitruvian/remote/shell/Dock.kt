@@ -36,13 +36,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import dev.vitruvian.design.AutoGrid
 import dev.vitruvian.design.ButtonVariant
 import dev.vitruvian.design.Label
 import dev.vitruvian.design.LogStream
-import dev.vitruvian.design.Meter
 import dev.vitruvian.design.Space
 import dev.vitruvian.design.Status
 import dev.vitruvian.design.Terminal
@@ -50,8 +50,10 @@ import dev.vitruvian.design.VButton
 import dev.vitruvian.design.VInput
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
+import dev.vitruvian.remote.screens.MediaTransportRow
+import dev.vitruvian.remote.screens.NudgeRow
 import dev.vitruvian.remote.screens.Trackpad
-import dev.vitruvian.remote.state.DialogKind
+import dev.vitruvian.remote.screens.hapticTick
 import dev.vitruvian.remote.state.RemoteState
 
 /** The dock's terminal is bottom-anchored and shows the last eight lines. */
@@ -81,6 +83,7 @@ public fun Dock(
 
 @Composable
 private fun TrackpadDock(state: RemoteState, modifier: Modifier = Modifier) {
+  val view = LocalView.current
   Row(
       modifier = modifier.fillMaxSize().padding(Space.s4),
       horizontalArrangement = Arrangement.spacedBy(Space.s4),
@@ -94,8 +97,16 @@ private fun TrackpadDock(state: RemoteState, modifier: Modifier = Modifier) {
         modifier = Modifier.width(DOCK_CONTROLS_WIDTH).fillMaxHeight(),
         verticalArrangement = Arrangement.spacedBy(Space.s3),
     ) {
-      VButton("Click", state::click, modifier = Modifier.fillMaxWidth())
-      VButton("Right", state::rightClick, modifier = Modifier.fillMaxWidth())
+      VButton(
+          label = "Click",
+          onClick = { if (state.click()) view.hapticTick() },
+          modifier = Modifier.fillMaxWidth(),
+      )
+      VButton(
+          label = "Right",
+          onClick = { if (state.rightClick()) view.hapticTick() },
+          modifier = Modifier.fillMaxWidth(),
+      )
       VButton(
           label = "Keys",
           onClick = state::toggleKeyboard,
@@ -103,49 +114,16 @@ private fun TrackpadDock(state: RemoteState, modifier: Modifier = Modifier) {
           contentColor = if (state.keyboardOpen) Vitruvian.accentText else null,
       )
       Box(modifier = Modifier.weight(1f))
-      Row(horizontalArrangement = Arrangement.spacedBy(Space.s2)) {
-        VButton(
-            label = "⏮",
-            onClick = state::previousTrack,
-            modifier = Modifier.weight(1f),
-            contentDescription = "Previous track",
-        )
-        VButton(
-            label = if (state.playing) "⏸" else "▶",
-            onClick = state::togglePlay,
-            modifier = Modifier.weight(1f),
-            variant = ButtonVariant.Primary,
-            contentDescription = if (state.playing) "Pause" else "Play",
-        )
-        VButton(
-            label = "⏭",
-            onClick = state::nextTrack,
-            modifier = Modifier.weight(1f),
-            contentDescription = "Next track",
-        )
-      }
-      Row(
-          horizontalArrangement = Arrangement.spacedBy(Space.s2),
-          verticalAlignment = Alignment.CenterVertically,
-      ) {
-        VButton(
-            label = "−",
-            onClick = { state.nudgeVolume(-VOLUME_STEP) },
-            modifier = Modifier.width(44.dp),
-            contentDescription = "Volume down",
-        )
-        Meter(
-            fraction = state.volumeFraction ?: 0f,
-            modifier = Modifier.weight(1f),
-            height = 8.dp,
-        )
-        VButton(
-            label = "+",
-            onClick = { state.nudgeVolume(VOLUME_STEP) },
-            modifier = Modifier.width(44.dp),
-            contentDescription = "Volume up",
-        )
-      }
+      MediaTransportRow(state = state)
+      NudgeRow(
+          label = "Volume",
+          value = state.volumeValue,
+          fraction = state.volumeFraction,
+          downDescription = "Volume down",
+          upDescription = "Volume up",
+          onDown = { state.nudgeVolume(-VOLUME_STEP) },
+          onUp = { state.nudgeVolume(VOLUME_STEP) },
+      )
     }
   }
 }
@@ -159,7 +137,7 @@ private fun ConsoleDock(state: RemoteState, modifier: Modifier = Modifier) {
                 .padding(start = Space.s4, end = Space.s4, top = Space.s5, bottom = Space.s3),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-      Label(text = "Console · ${state.hostShortName}", modifier = Modifier.weight(1f))
+      Label(text = "Console", modifier = Modifier.weight(1f))
       Status(tone = state.hostTone, text = state.connectionWord)
     }
     Column(
@@ -203,18 +181,9 @@ private fun ConsoleDock(state: RemoteState, modifier: Modifier = Modifier) {
                 onClick = { state.runMacro(macro) },
                 enabled = !state.actsNeedPairing,
                 modifier = Modifier.fillMaxWidth(),
+                maxLines = 2,
             )
           }
-        }
-        item { VButton("Lock", state::lock, modifier = Modifier.fillMaxWidth()) }
-        item {
-          VButton(
-              label = "Restart",
-              onClick = { state.openDialog(DialogKind.Restart) },
-              enabled = !state.actsNeedPairing,
-              modifier = Modifier.fillMaxWidth(),
-              variant = ButtonVariant.Danger,
-          )
         }
       }
     }

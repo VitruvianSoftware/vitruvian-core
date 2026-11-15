@@ -807,6 +807,221 @@ jobs:
           fi
           bazel run "${cache[@]}" //tools/ci:go_test_lanes
 
+  # The four required lint checks below used to be one-job workflows of their
+  # own (gitops-validate.yaml, migration-safety.yaml, actionlint.yaml, and
+  # osv-scan in supply-chain.yaml). A required check in its own workflow cannot
+  # skip without a runner: a workflow-level `paths:` filter never reports and
+  # wedges the PR, so each started a hosted runner on EVERY PR, mostly to do
+  # nothing (0.4-0.9 min each, plus the wait for a runner in the account's
+  # shared concurrent-job pool). Here the `changes` job decides for all of them
+  # at once and each skips at the job level, which GitHub reports as passing.
+  # Each skips on a PR only, and only when none of the files its filter lists
+  # changed; the merge queue and main run them as before.
+
+  gitops-validate:
+    # Job name = the required-check context in the merge-queue ruleset. Named
+    # `gitops-validate` (not a bare `validate`) so the required context is
+    # unambiguous.
+    needs: [queued, changes]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.gitops-validate != 'false') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # For the goTemplate render simulation in tools/gitops/appset-render. It
+      # uses only the standard library (text/template), so no module download
+      # happens here -- but the toolchain must be pinned rather than inherited
+      # from whatever the runner image ships, or the gate's fidelity to the
+      # ApplicationSet controller drifts with the image.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      # Shared with actionlint, chart-render, osv-scan and
+      # vitruvian-slack-mcp-image: .github/actions/install-pinned-tool.
+      - name: Install kubeconform (pinned + checksum-verified)
+        uses: ./.github/actions/install-pinned-tool
+        with:
+          base-url: https://github.com/yannh/kubeconform/releases/download/v0.8.0
+          asset: kubeconform-linux-amd64.tar.gz
+          bin-name: kubeconform
+          mode: tar
+
+      - name: Build //tools/ci:gitops_validate (no Bazel on this job)
+        id: gitops-validate-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: gitops_validate
+          deps: appset_render
+
+      - name: Validate gitops manifests
+        env:
+          GITOPS_VALIDATE: ${{ steps.gitops-validate-bin.outputs.path }}
+        run: |
+          set -euo pipefail
+          "$GITOPS_VALIDATE"
+
+  migration-safety:
+    # Squawk-lints Vitruvian Tabs's Prisma migrations (issue #819) so a
+    # backward-INCOMPATIBLE change (drop/rename a column, narrow a type, add a
+    # validated constraint) can't reach main and break the OLD Cloud Run
+    # revision during the blue-green traffic shift (see
+    # tools/ci/src/migration_safety/lib.rs and
+    # apps/suites/vitruvian-tabs/api/prisma/.squawk.toml).
+    #
+    # Hosted Linux, not vitruvian-queue: no Bazel (std-only rustc + squawk in a
+    # few seconds), so it does not use the vitruvian-queue-cache PVC and should
+    # not contend for the 8 Bazel merge-queue runner slots.
+    needs: [queued, changes]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.migration-safety != 'false') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Full history so the script's three-dot `git diff <base>...HEAD`
+          # against the merge base resolves the migrations THIS branch adds.
+          fetch-depth: 0
+
+      # On pull_request / merge_group, lint the migrations the change adds
+      # (base = the event's base sha). On push there is no meaningful base, so
+      # the script runs its self-test only and still reports.
+      - name: Build //tools/ci:migration_safety (no Bazel on this job)
+        id: migration-safety-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: migration_safety
+
+      - name: Squawk migration-safety
+        env:
+          MIGRATION_SAFETY: ${{ steps.migration-safety-bin.outputs.path }}
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          MG_BASE: ${{ github.event.merge_group.base_sha }}
+        run: |
+          set -euo pipefail
+          case "$EVENT" in
+            pull_request) BASE="$PR_BASE" ;;
+            merge_group)  BASE="$MG_BASE" ;;
+            *)            BASE="" ;;
+          esac
+          "$MIGRATION_SAFETY" "$BASE"
+
+  actionlint:
+    # Hosted Linux, not vitruvian-queue: no Bazel (runs actionlint + std-only
+    # rustc in a few seconds), so it does not use the vitruvian-queue-cache PVC
+    # and should not contend for the 8 Bazel merge-queue runner slots.
+    needs: [queued, changes]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.actionlint != 'false') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    env:
+      ACTIONLINT_VERSION: 1.7.12
+      # Controlled CI run-blocks: info-level shellcheck (e.g. SC2086 on a
+      # secret-key flag that carries no spaces/globs) is acceptable noise. Real
+      # shellcheck warnings/errors still fail, and every native actionlint check
+      # (job graph, expressions, deprecated actions, syntax) runs regardless.
+      SHELLCHECK_OPTS: --severity=warning
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Shared with gitops-validate, chart-render, osv-scan and
+      # vitruvian-slack-mcp-image: .github/actions/install-pinned-tool.
+      - name: Install actionlint (pinned + checksum-verified)
+        uses: ./.github/actions/install-pinned-tool
+        with:
+          base-url: https://github.com/rhysd/actionlint/releases/download/v${{ env.ACTIONLINT_VERSION }}
+          asset: actionlint_${{ env.ACTIONLINT_VERSION }}_linux_amd64.tar.gz
+          bin-name: actionlint
+          mode: tar
+
+      # actionlint auto-discovers .github/workflows/*.{yml,yaml} when run at the
+      # repo root; shellcheck is preinstalled on the runner.
+      - name: Lint workflows
+        run: actionlint -color
+
+      # Every action from outside this repo is pinned to a full commit SHA
+      # (with the version in a trailing comment, which Dependabot keeps in
+      # step). A tag can be moved to different code after review; a commit
+      # cannot. The rule lives in //tools/ci:require_pinned_actions, which
+      # `bazel run //tools/ci:actionlint` also runs, so the local check and this
+      # one agree. This job has no Bazel, and the check is one std-only file, so
+      # the runner's rustc builds it from the checkout (the homelab queue
+      # runner's image ships one, pinned, since #4202).
+      # //tools/ci:require_pinned_actions_test runs the rustc line below as
+      # written. Keep ACTIONLINT_VERSION above level with tools/tools.lock.json:
+      # //tools/ci:actionlint_test fails when they drift.
+      - name: Require commit-pinned actions
+        run: |
+          set -euo pipefail
+          # Fails here, by name, when the runner has no rustc (a missing one must
+          # not surface later as "rustc: command not found"). Every runner this
+          # job uses ships one, the homelab queue runner's image included (#4183).
+          # //tools/ci:workflow_rustc_test runs this block with no rustc.
+          if ! command -v rustc >/dev/null 2>&1; then
+            echo "::error::no rustc on this runner; the runner image must ship one"
+            exit 1
+          fi
+          rustc --edition 2021 -O tools/ci/src/require_pinned_actions/main.rs -o "$RUNNER_TEMP/require-pinned-actions"
+          "$RUNNER_TEMP/require-pinned-actions"
+
+  # Blocks a change whose lockfiles add a dependency with a known advisory --
+  # the pre-merge counterpart to Dependabot, which only opens a fix PR once the
+  # vulnerable version is already on main. Why osv-scanner and not GitHub's
+  # dependency-review, and the nightly full-tree run that blocks on every
+  # advisory: supply-chain.yaml (`osv-scan-nightly`).
+  #
+  # On a PR that touches no dependency manifest the scan can only REPORT, never
+  # block (tools/osv-scan: found advisories are pre-existing then), so `changes`
+  # skips it there unless a manifest, the scanner or its install changed.
+  osv-scan:
+    needs: [queued, changes]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.osv-scan != 'false') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The scan always covers the WHOLE tree; the base is used only to ask
+          # whether this change touched a dependency manifest, which decides
+          # block-vs-report when advisories are found. See tools/osv-scan.
+          fetch-depth: 0
+
+      # NOTE: this hardens fetching the SCANNER BINARY only. #1192 tracks the
+      # separate deps.dev resolution SPOF *inside* the scan itself.
+      - name: Install osv-scanner (pinned + checksum-verified)
+        uses: ./.github/actions/install-pinned-tool
+        with:
+          base-url: https://github.com/google/osv-scanner/releases/download/v2.6.0
+          asset: osv-scanner_linux_amd64
+          bin-name: osv-scanner
+          mode: raw
+
+      # The scan itself is always full-tree. BASE_REF/BASE_REV are used ONLY to
+      # decide whether found advisories block or report: a change that touches no
+      # dependency manifest cannot have introduced one, so blocking it would halt
+      # unrelated work for a vulnerability already present in the base (this
+      # wedged the merge queue on 2026-07-27, GO-2026-5841). A change that DOES
+      # touch a manifest is compared against a scan of the base and blocks only
+      # on advisories it ADDED, so dependency PRs that remove advisories can merge.
+      - name: Scan lockfiles for known advisories
+        env:
+          BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
+          BASE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
+        run: |
+          set -euo pipefail
+          rustc --edition 2021 --crate-type lib --crate-name osv_scan tools/osv-scan/src/lib.rs -o "$RUNNER_TEMP/libosv_scan.rlib"
+          rustc --edition 2021 tools/osv-scan/src/main.rs -L "$RUNNER_TEMP" --extern osv_scan="$RUNNER_TEMP/libosv_scan.rlib" -o "$RUNNER_TEMP/osv-scan"
+          "$RUNNER_TEMP/osv-scan"
+
   changes:
     # Decides ONCE, on one runner, whether each small path-gated job below has
     # any work to do. Those jobs then skip at the JOB level when they do not,
@@ -854,6 +1069,10 @@ jobs:
       license-check: ${{ steps.decide.outputs.license-check }}
       lint-naming-unit: ${{ steps.decide.outputs.lint-naming-unit }}
       go-test-lanes: ${{ steps.decide.outputs.go-test-lanes }}
+      gitops-validate: ${{ steps.decide.outputs.gitops-validate }}
+      migration-safety: ${{ steps.decide.outputs.migration-safety }}
+      actionlint: ${{ steps.decide.outputs.actionlint }}
+      osv-scan: ${{ steps.decide.outputs.osv-scan }}
       go-lint-devx: ${{ steps.decide.outputs.go-lint-devx }}
       go-lint-homelab: ${{ steps.decide.outputs.go-lint-homelab }}
       go-test-iac: ${{ steps.decide.outputs.go-test-iac }}
@@ -971,6 +1190,62 @@ jobs:
               # go_test_lanes links //tools/shell-compat:shell_compat.
               - 'tools/shell-compat/**'
               - '.github/workflows/ci.yaml'
+            # What each required lint check reads. Every one builds its tool
+            # with build-ci-tool (tools/ci/src + tools/shell-compat), and the
+            # installs check their pins in tools/tools.lock.json.
+            gitopsvalidate:
+              - 'gitops/**'
+              - 'tools/gitops/appset-render/**'
+              - 'go.mod'
+              - 'tools/ci/src/**'
+              - 'tools/shell-compat/**'
+              - 'tools/tools.lock.json'
+              - '.github/actions/build-ci-tool/**'
+              - '.github/actions/install-pinned-tool/**'
+              - '.github/workflows/ci.yaml'
+            migrationsafety:
+              - 'apps/suites/vitruvian-tabs/api/prisma/**'
+              - 'tools/ci/src/**'
+              - 'tools/shell-compat/**'
+              - '.github/actions/build-ci-tool/**'
+              - '.github/workflows/ci.yaml'
+            actionlint:
+              - '.github/workflows/**'
+              - '.github/actions/**'
+              - '.github/actionlint.yaml'
+              - 'apps/cli/vitruvian-devx/internal/scaffold/templates/**'
+              - 'tools/ci/src/**'
+              - 'tools/shell-compat/**'
+              - 'tools/tools.lock.json'
+            # tools/osv-scan/src/text.rs MANIFESTS, plus requirements*.txt,
+            # the scanner and its install. //tools/ci:relevant_paths_test
+            # fails if a name in MANIFESTS is missing here.
+            osvscan:
+              - '**/go.mod'
+              - '**/go.sum'
+              - '**/package.json'
+              - '**/package-lock.json'
+              - '**/pnpm-lock.yaml'
+              - '**/yarn.lock'
+              - '**/uv.lock'
+              - '**/poetry.lock'
+              - '**/Pipfile.lock'
+              - '**/pyproject.toml'
+              - '**/Cargo.toml'
+              - '**/Cargo.lock'
+              - '**/Gemfile'
+              - '**/Gemfile.lock'
+              - '**/composer.json'
+              - '**/composer.lock'
+              - '**/osv-scanner.toml'
+              - '**/requirements*.txt'
+              - 'tools/osv-scan/**'
+              - 'tools/ci/src/**'
+              - 'tools/shell-compat/**'
+              - 'tools/tools.lock.json'
+              - '.github/actions/build-ci-tool/**'
+              - '.github/actions/install-pinned-tool/**'
+              - '.github/workflows/ci.yaml'
 
       - name: Decide which jobs run
         id: decide
@@ -986,6 +1261,10 @@ jobs:
           LICENSE_RELEVANT: ${{ steps.license.outputs.relevant }}
           LINTNAMING: ${{ steps.filter.outputs.lintnaming }}
           GOLANES: ${{ steps.filter.outputs.golanes }}
+          GITOPSVALIDATE: ${{ steps.filter.outputs.gitopsvalidate }}
+          MIGRATIONSAFETY: ${{ steps.filter.outputs.migrationsafety }}
+          ACTIONLINT: ${{ steps.filter.outputs.actionlint }}
+          OSVSCAN: ${{ steps.filter.outputs.osvscan }}
         run: |
           set -u
           # The rule each job used inline before this job existed. Anything
@@ -1026,6 +1305,10 @@ jobs:
           on_pr license-check "$LICENSE_RELEVANT"
           on_pr lint-naming-unit "$LINTNAMING"
           on_pr go-test-lanes "$GOLANES"
+          on_pr gitops-validate "$GITOPSVALIDATE"
+          on_pr migration-safety "$MIGRATIONSAFETY"
+          on_pr actionlint "$ACTIONLINT"
+          on_pr osv-scan "$OSVSCAN"
 
   # Authoritative golangci-lint for the Go apps exported to standalone mirrors.
   # aspect_rules_lint has no golangci-lint aspect, and the per-app mirror CI is

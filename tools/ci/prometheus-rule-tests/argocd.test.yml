@@ -32,6 +32,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              pagerduty_service: apps
               name: backstage
               project: platform-project
               dest_namespace: backstage
@@ -76,6 +77,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              pagerduty_service: apps
               name: whoami
               project: platform-project
               dest_namespace: whoami
@@ -98,6 +100,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              pagerduty_service: apps
               name: ntfy
               project: platform-project
               dest_namespace: ntfy
@@ -121,6 +124,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              pagerduty_service: apps
               name: backstage
               project: platform-project
               dest_namespace: backstage
