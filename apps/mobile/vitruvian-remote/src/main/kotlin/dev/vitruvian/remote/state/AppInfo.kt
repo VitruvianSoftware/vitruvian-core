@@ -159,6 +159,34 @@ public object AppInfo {
           "memory. Never your texts, contacts, files, what you type, or your Macs' addresses. " +
           "You can turn this off below."
 
+  /** Canonical Phone Bridge capabilities shared across Settings, Phone Bridge, and Privacy. */
+  public val phoneBridgeCapabilities: List<String> =
+      listOf(
+          "texts",
+          "contacts",
+          "call history",
+          "location",
+          "notifications",
+          "screen control",
+      )
+
+  public val phoneBridgeCapabilitiesCommaList: String = phoneBridgeCapabilities.joinToString(", ")
+
+  public val phoneBridgeCapabilitiesProseList: String =
+      when (phoneBridgeCapabilities.size) {
+        0 -> ""
+        1 -> phoneBridgeCapabilities.single()
+        else ->
+            phoneBridgeCapabilities.dropLast(1).joinToString(", ") +
+                " and " +
+                phoneBridgeCapabilities.last()
+      }
+
+  public val phoneBridgeScreenSummary: String =
+      "Off by default. When on, AI agents on your own Mac can use " +
+          "$phoneBridgeCapabilitiesProseList on this phone within the permissions you grant, " +
+          "and ask before sending or calling."
+
   public val privacyLeadingStatements: List<String> = listOf("No account and no ads.")
 
   public val privacyTrailingStatements: List<String> =
@@ -166,8 +194,8 @@ public object AppInfo {
           "This phone talks to the Macs you add, and to Vitruvian Software's crash server if " +
               "crash reports are on. Trackpad and keys go straight to your Mac over Bluetooth.",
           "Phone Bridge is off until you turn it on. When it's on, AI agents on your own Mac " +
-              "can use only the permissions you grant (texts, contacts, call history, location, " +
-              "notifications, screen control), and every request is listed in Settings.",
+              "can use only the permissions you grant ($phoneBridgeCapabilitiesCommaList), " +
+              "and every request is listed in Settings.",
           "Alerts come from your Mac through the ntfy server you set up, if any.",
           "Dictation uses your phone's speech service, which may send audio to its provider.",
           "Donate and the links here open in your browser. The app never handles payment details.",

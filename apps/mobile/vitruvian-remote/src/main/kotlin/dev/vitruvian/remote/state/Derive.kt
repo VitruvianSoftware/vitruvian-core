@@ -3685,7 +3685,7 @@ public object Derive {
       grantedCount: Int,
       totalCount: Int,
   ): String {
-    if (!enabled) return "Off · texts, contacts, call history and location"
+    if (!enabled) return "Off · ${AppInfo.phoneBridgeCapabilitiesProseList}"
     if (linked) return "On · linked · $grantedCount of $totalCount permissions granted"
     val detail = (problemText ?: linkStatus).trim().ifEmpty { "connecting…" }
     return "On · $detail"

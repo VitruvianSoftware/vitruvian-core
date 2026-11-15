@@ -372,6 +372,28 @@ public class AppInfoTest {
                 "contacts, files, what you type, or your Macs' addresses.",
         ),
     )
+
+    assertEquals(
+        listOf(
+            "texts",
+            "contacts",
+            "call history",
+            "location",
+            "notifications",
+            "screen control",
+        ),
+        AppInfo.phoneBridgeCapabilities,
+    )
+    for (capability in AppInfo.phoneBridgeCapabilities) {
+      assertTrue(
+          "phoneBridgeScreenSummary missing '$capability'",
+          AppInfo.phoneBridgeScreenSummary.contains(capability),
+      )
+      assertTrue(
+          "privacyTrailingStatements[1] missing '$capability'",
+          AppInfo.privacyTrailingStatements[1].contains(capability),
+      )
+    }
   }
 
   @Test

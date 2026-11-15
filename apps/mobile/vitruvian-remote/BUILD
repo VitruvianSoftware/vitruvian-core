@@ -318,6 +318,7 @@ kt_jvm_test(
     ] + glob(["src/main/kotlin/dev/vitruvian/remote/screens/*.kt"]),
     test_class = "dev.vitruvian.remote.state.DeriveTest",
     deps = [
+        ":app_info",
         ":derive",
         ":format",
         ":wire",

@@ -48,6 +48,7 @@ import dev.vitruvian.design.VSwitch
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
+import dev.vitruvian.remote.state.AppInfo
 import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.Format
 import dev.vitruvian.remote.state.RemoteState
@@ -93,9 +94,7 @@ public fun ColumnScope.PhoneBridgeScreen(state: RemoteState) {
           )
         }
         VText(
-            text =
-                "Off by default. When on, AI agents on your own Mac can read texts, contacts, " +
-                    "call history and location from this phone, and ask before sending or calling.",
+            text = AppInfo.phoneBridgeScreenSummary,
             style = VitruvianType.body.copy(fontSize = VitruvianType.mono.fontSize),
             color = colors.textDim,
         )

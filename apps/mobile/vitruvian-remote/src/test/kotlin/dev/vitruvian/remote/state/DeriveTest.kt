@@ -4135,8 +4135,7 @@ public class DeriveTest {
 
   @Test
   public fun `F35 phone bridge summary and permission subtitles use plain English without raw tool IDs`() {
-    assertEquals(
-        "Off · texts, contacts, call history and location",
+    val offSummary =
         Derive.phoneBridgeSummarySubtitle(
             enabled = false,
             linked = false,
@@ -4144,8 +4143,25 @@ public class DeriveTest {
             problemText = null,
             grantedCount = 0,
             totalCount = 8,
-        ),
+        )
+    assertEquals(
+        "Off · texts, contacts, call history, location, notifications and screen control",
+        offSummary,
     )
+    for (capability in AppInfo.phoneBridgeCapabilities) {
+      assertTrue(
+          "Settings summary missing capability '$capability'",
+          offSummary.contains(capability),
+      )
+      assertTrue(
+          "PhoneBridgeScreen summary missing capability '$capability'",
+          AppInfo.phoneBridgeScreenSummary.contains(capability),
+      )
+      assertTrue(
+          "Privacy statement missing capability '$capability'",
+          AppInfo.privacyTrailingStatements[1].contains(capability),
+      )
+    }
     assertEquals(
         "On · linked · 5 of 8 permissions granted",
         Derive.phoneBridgeSummarySubtitle(
@@ -4324,12 +4340,7 @@ public class DeriveTest {
     val phoneBridge =
         readRunfile(
             "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/PhoneBridgeScreen.kt")
-    assertTrue(
-        phoneBridge.contains(
-            "Off by default. When on, AI agents on your own Mac can read texts, contacts,"))
-    assertTrue(
-        phoneBridge.contains(
-            "call history and location from this phone, and ask before sending or calling."))
+    assertTrue(phoneBridge.contains("AppInfo.phoneBridgeScreenSummary"))
 
     val remoteScreen =
         readRunfile(
