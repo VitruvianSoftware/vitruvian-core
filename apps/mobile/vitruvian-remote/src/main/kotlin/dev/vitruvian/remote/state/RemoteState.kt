@@ -6741,8 +6741,8 @@ public class RemoteState(
 
   // --- actions ----------------------------------------------------------
 
-  public fun go(target: Screen, userInitiated: Boolean = true) {
-    navTracker.go(target, userInitiated)
+  public fun go(target: Screen) {
+    navTracker.go(target)
     screen = target
   }
 
@@ -6752,10 +6752,9 @@ public class RemoteState(
   }
 
   public fun openModule(id: String) {
-    navTracker.enterNonRemote()
     module = id
     appsView = AppsView.Dashboards
-    screen = Screen.Apps
+    go(Screen.Apps)
   }
 
   /**
@@ -7283,24 +7282,17 @@ public class RemoteState(
   }
 
   /**
-   * Called once the Remote screen has painted its one-line explanation: asks for
-   * `BLUETOOTH_CONNECT` only when the user navigated to Remote themselves on a supported device and
-   * has not yet been asked or granted permission.
+   * Refreshes Bluetooth status when the Remote screen becomes visible. Permission prompts are never
+   * auto-launched here; only tapping the banner action requests permission.
    */
   public fun onRemoteScreenVisited() {
-    bluetoothCoordinator.onRemoteScreenVisited(navTracker.consumeRemoteEnteredByUser())
+    bluetoothCoordinator.onRemoteScreenVisited()
     syncBluetoothState()
   }
 
   /** Dispatches the action button of the Remote screen's Bluetooth readiness banner. */
   public fun performBluetoothBannerAction(action: Derive.BluetoothBannerAction) {
     bluetoothCoordinator.performBannerAction(action)
-    syncBluetoothState()
-  }
-
-  /** Asks for `BLUETOOTH_CONNECT` via [BluetoothControl] and updates observable readiness state. */
-  public fun requestBluetoothPermission() {
-    bluetoothCoordinator.requestPermission()
     syncBluetoothState()
   }
 

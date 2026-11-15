@@ -463,36 +463,21 @@ public interface BluetoothControl {
 }
 
 /**
- * Tracks the active [Screen] and whether the user explicitly navigated to [Screen.Remote] (as
- * opposed to cold-launch deep links, Quick Settings tiles, or saved-state restoration).
+ * Tracks the active [Screen]. Previously tracked whether Remote was user-entered for
+ * auto-prompting; kept clean now that Bluetooth permission is only requested via the banner button.
  */
 public class ScreenNavigationTracker(initialScreen: Screen = Screen.Home) {
   public var screen: Screen = initialScreen
     private set
 
-  public var remoteEnteredByUser: Boolean = false
-    private set
-
-  public fun go(target: Screen, userInitiated: Boolean = true) {
-    remoteEnteredByUser = userInitiated && target == Screen.Remote
+  public fun go(target: Screen) {
     screen = target
   }
 
   public fun restoreScreen(savedName: String?): Screen? {
     val restored = Derive.restoredScreen(savedName) ?: return null
-    remoteEnteredByUser = false
     screen = restored
     return restored
-  }
-
-  public fun enterNonRemote() {
-    remoteEnteredByUser = false
-  }
-
-  public fun consumeRemoteEnteredByUser(): Boolean {
-    val entered = remoteEnteredByUser
-    remoteEnteredByUser = false
-    return entered
   }
 }
 
@@ -539,17 +524,8 @@ public class BluetoothReadinessCoordinator(
     hasPairedComputer = if (nowGranted) bt.hasPairedComputer() else false
   }
 
-  public fun onRemoteScreenVisited(userNavigated: Boolean) {
+  public fun onRemoteScreenVisited() {
     refresh()
-    if (Derive.shouldAutoPromptBluetoothOnRemoteVisit(
-        hasAdapter = hasAdapter,
-        permissionGranted = granted,
-        askedBefore = asked,
-        hidSupported = hidSupported,
-        userNavigated = userNavigated,
-    )) {
-      requestPermission()
-    }
   }
 
   public fun performBannerAction(action: Derive.BluetoothBannerAction) {

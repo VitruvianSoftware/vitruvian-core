@@ -376,8 +376,8 @@ public class Persistence public constructor(private val prefs: PrefsStore) {
     set(value) = prefs.edit().putBoolean(KEY_ASKED_NOTIFICATIONS, value).apply()
 
   /**
-   * Whether this install has ever prompted for `BLUETOOTH_CONNECT`, separating first visit to
-   * Remote from declined / permanently denied states.
+   * Whether this install has ever prompted for `BLUETOOTH_CONNECT`, separating "not asked yet" from
+   * "permanently denied" when Android reports `shouldShowRequestPermissionRationale == false`.
    */
   public var askedForBluetooth: Boolean
     get() = prefs.getBoolean(KEY_ASKED_BLUETOOTH, false)

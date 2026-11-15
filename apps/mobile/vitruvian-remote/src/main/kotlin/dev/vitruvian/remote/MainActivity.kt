@@ -84,9 +84,7 @@ public class MainActivity : ComponentActivity() {
   private lateinit var state: RemoteState
   private var handledIntentKey: String? = null
 
-  /**
-   * Backed by [Persistence] so first-visit Remote prompt vs permanent denial stay distinguishable.
-   */
+  /** Backed by [Persistence] so "not asked yet" vs permanent denial stay distinguishable. */
   private var askedForBluetooth = false
   private var pendingBluetoothPermissionCallback: ((Boolean, Boolean) -> Unit)? = null
   /**
@@ -388,9 +386,7 @@ public class MainActivity : ComponentActivity() {
   private fun handleIntent(intent: Intent?) {
     if (intent == null) return
     val link = intent.data?.toString()
-    DeepLink.screen(link)?.let { key ->
-      Derive.restoredScreen(key)?.let { state.go(it, userInitiated = false) }
-    }
+    DeepLink.screen(link)?.let { key -> Derive.restoredScreen(key)?.let { state.go(it) } }
     // `apps/claude` is what the agent's permission-prompt notification opens: the
     // Claude dashboard itself, where the prompt can be answered.
     DeepLink.appsModule(link)?.let(state::openLinkedModule)

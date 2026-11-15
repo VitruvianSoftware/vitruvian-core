@@ -215,6 +215,7 @@ kt_jvm_test(
         "src/main/kotlin/dev/vitruvian/remote/MainActivity.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/AgentClient.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/Derive.kt",
+        "src/main/kotlin/dev/vitruvian/remote/state/Models.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/Wire.kt",
         "//apps/desktop/vitruvian-speaker:Sources/VitruvianSpeakerToolCore/Pages.swift",

@@ -3658,52 +3658,6 @@ public class DeriveTest {
   }
 
   @Test
-  fun bluetoothAutoPromptOnlyFiresOnExplicitUserNavigation() {
-    assertTrue(
-        Derive.shouldAutoPromptBluetoothOnRemoteVisit(
-            hasAdapter = true,
-            permissionGranted = false,
-            askedBefore = false,
-            hidSupported = true,
-            userNavigated = true,
-        ))
-    assertFalse(
-        Derive.shouldAutoPromptBluetoothOnRemoteVisit(
-            hasAdapter = true,
-            permissionGranted = false,
-            askedBefore = false,
-            hidSupported = true,
-            userNavigated = false,
-        ))
-    assertFalse(
-        Derive.shouldAutoPromptBluetoothOnRemoteVisit(
-            hasAdapter = true,
-            permissionGranted = false,
-            askedBefore = false,
-            hidSupported = false,
-            userNavigated = true,
-        ))
-    assertFalse(
-        Derive.shouldAutoPromptBluetoothOnRemoteVisit(
-            hasAdapter = false,
-            permissionGranted = false,
-            askedBefore = false,
-        ))
-    assertFalse(
-        Derive.shouldAutoPromptBluetoothOnRemoteVisit(
-            hasAdapter = true,
-            permissionGranted = true,
-            askedBefore = false,
-        ))
-    assertFalse(
-        Derive.shouldAutoPromptBluetoothOnRemoteVisit(
-            hasAdapter = true,
-            permissionGranted = false,
-            askedBefore = true,
-        ))
-  }
-
-  @Test
   fun remoteBluetoothBannerMatchesCauseAndActions() {
     // Connected HID link needs no banner regardless of flags.
     assertNull(
@@ -3960,7 +3914,7 @@ public class DeriveTest {
     val coordinator =
         BluetoothReadinessCoordinator(persistence = Persistence(FakePrefsStore()), bluetooth = bt)
     nav.go(Screen.Remote)
-    coordinator.onRemoteScreenVisited(nav.consumeRemoteEnteredByUser())
+    coordinator.onRemoteScreenVisited()
 
     assertEquals(0, bt.ensurePermissionCalls)
     val banner = coordinator.banner(connected = false, hostName = "Studio Mac")
@@ -3980,29 +3934,34 @@ public class DeriveTest {
   }
 
   @Test
-  fun bluetoothAutoPromptRunsOnlyOnUserNavigationToRemote() {
+  fun bluetoothPromptNeverAutoFiresOnRemoteVisit() {
     val bt = FakeBluetoothControl(permissionGranted = false, asked = false)
     val nav = ScreenNavigationTracker()
     val coordinator =
         BluetoothReadinessCoordinator(persistence = Persistence(FakePrefsStore()), bluetooth = bt)
 
-    // Cold launch into Remote via deep link: no dialog popup, banner offers Allow Bluetooth.
-    nav.go(Screen.Remote, userInitiated = false)
-    coordinator.onRemoteScreenVisited(nav.consumeRemoteEnteredByUser())
-    assertEquals(0, bt.ensurePermissionCalls)
-    assertEquals(
-        "Allow Bluetooth",
-        coordinator.banner(connected = false, hostName = "Studio Mac")?.actionLabel,
-    )
-
-    // Activity recreation / saved-state restore onto Remote: still no auto-prompt.
-    nav.restoreScreen("Remote")
-    coordinator.onRemoteScreenVisited(nav.consumeRemoteEnteredByUser())
-    assertEquals(0, bt.ensurePermissionCalls)
-
-    // Explicit user navigation via tab/rail: auto-prompts once.
+    // Cold launch / saved-state restore / explicit user navigation to Remote must all keep 0
+    // auto-prompts so the user can read the explanation before deciding.
     nav.go(Screen.Remote)
-    coordinator.onRemoteScreenVisited(nav.consumeRemoteEnteredByUser())
+    coordinator.onRemoteScreenVisited()
+    assertEquals(0, bt.ensurePermissionCalls)
+    val initialBanner = coordinator.banner(connected = false, hostName = "Studio Mac")
+    assertNotNull(initialBanner)
+    assertEquals(Derive.BluetoothBannerCause.PermissionNeeded, initialBanner!!.cause)
+    assertEquals(Derive.BLUETOOTH_RATIONALE_LINE, initialBanner.message)
+    assertEquals("Allow Bluetooth", initialBanner.actionLabel)
+
+    nav.restoreScreen("Remote")
+    coordinator.onRemoteScreenVisited()
+    assertEquals(0, bt.ensurePermissionCalls)
+
+    nav.go(Screen.Home)
+    nav.go(Screen.Remote)
+    coordinator.onRemoteScreenVisited()
+    assertEquals(0, bt.ensurePermissionCalls)
+
+    // Only tapping the banner's Allow Bluetooth action requests permission.
+    coordinator.performBannerAction(initialBanner.action!!)
     assertEquals(1, bt.ensurePermissionCalls)
   }
 
@@ -4354,6 +4313,10 @@ public class DeriveTest {
         stripKotlinComments(
             readRunfile(
                 "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt"))
+    val models =
+        stripKotlinComments(
+            readRunfile(
+                "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/Models.kt"))
     val launches = Regex("""\brequestBluetooth\.launch\(""").findAll(main).count()
     assertEquals(
         "requestBluetooth.launch may only be called from ensureBluetoothPermission",
@@ -4382,12 +4345,17 @@ public class DeriveTest {
                 extractKotlinBlock(remoteState, "public fun restoreScreen("),
             "RemoteState.onForeground" to
                 extractKotlinBlock(remoteState, "public fun onForeground("),
+            "RemoteState.onRemoteScreenVisited" to
+                extractKotlinBlock(remoteState, "public fun onRemoteScreenVisited("),
+            "BluetoothReadinessCoordinator.onRemoteScreenVisited" to
+                extractKotlinBlock(models, "public fun onRemoteScreenVisited("),
         )
     val forbiddenSymbols =
         listOf(
             "ensureBluetoothPermission",
             "requestBluetooth",
             "requestBluetoothPermission",
+            "requestPermission",
         )
     val violations = mutableListOf<String>()
     for ((pathName, body) in launchAndForegroundBodies) {

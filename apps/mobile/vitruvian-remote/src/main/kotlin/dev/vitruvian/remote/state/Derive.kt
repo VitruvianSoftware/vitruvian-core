@@ -3433,19 +3433,6 @@ public object Derive {
   }
 
   /**
-   * Whether the Remote screen should automatically trigger the runtime `BLUETOOTH_CONNECT` prompt:
-   * only when the user navigated to Remote themselves on a supported HID device and the app has not
-   * yet asked or been granted permission (never on cold launch / deep link / state restoration).
-   */
-  public fun shouldAutoPromptBluetoothOnRemoteVisit(
-      hasAdapter: Boolean,
-      permissionGranted: Boolean,
-      askedBefore: Boolean,
-      hidSupported: Boolean = true,
-      userNavigated: Boolean = true,
-  ): Boolean = userNavigated && hidSupported && hasAdapter && !permissionGranted && !askedBefore
-
-  /**
    * Pure decision logic for the Remote screen's Bluetooth banner, naming the exact root cause and
    * matching recovery action (`Allow Bluetooth`, `Open app settings`, `Turn on Bluetooth`, `Open
    * Bluetooth settings` + 2 pairing steps, `Reconnect`, or no button on unsupported Android < 9).

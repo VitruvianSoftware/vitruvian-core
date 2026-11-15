@@ -51,7 +51,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -164,12 +163,9 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
   val view = LocalView.current
   val showMainTrackpad = Derive.showsMainTrackpad(LocalDockShowsTrackpad.current)
 
-  // Paint the one-line Bluetooth explanation above the trackpad before asking for permission on
-  // the user's first visit to Remote.
-  LaunchedEffect(state) {
-    withFrameNanos {}
-    state.onRemoteScreenVisited()
-  }
+  // Refresh Bluetooth readiness when entering Remote; permission is only requested when the user
+  // taps the banner's button.
+  LaunchedEffect(state) { state.onRemoteScreenVisited() }
 
   // How wide a capture to ask the Mac for: the plate's own width in pixels, so
   // a foldable's open panel gets a sharper still than a phone does and neither
