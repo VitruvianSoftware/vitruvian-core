@@ -7522,6 +7522,10 @@ public class RemoteState(
     macroEditorOpen = false
     editingMacroId = null
     macroDeleteArmedAtMs = null
+    macroName = ""
+    macroCommand = ""
+    macroKind = MacroKind.Ssh
+    macroConfirm = false
   }
 
   public fun updateMacroName(value: String) {

@@ -3913,6 +3913,10 @@ public class DeriveTest {
             "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/overlays/MacroEditor.kt")
     assertTrue(editorSrc.contains("Derive.macroDeleteLabel"))
     assertTrue(editorSrc.contains("ButtonVariant.Danger"))
+    assertTrue(editorSrc.contains("placeholder = Derive.MACRO_NAME_HINT"))
+    assertTrue(editorSrc.contains("placeholder = Derive.MACRO_COMMAND_HINT"))
+    assertTrue(Derive.MACRO_NAME_HINT.contains("Lock screen"))
+    assertTrue(Derive.MACRO_COMMAND_HINT.contains("pmset displaysleepnow"))
     assertFalse(editorSrc.contains("Deploy staging"))
     assertFalse(editorSrc.contains("bazel run //tools/gitops:sync"))
 

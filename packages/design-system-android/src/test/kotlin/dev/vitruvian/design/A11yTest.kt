@@ -371,6 +371,33 @@ class A11yTest {
     )
   }
 
+  @Test
+  fun vInputPlaceholderClearsChildTextSemanticsAndExposesEmptyHintDescription() {
+    assertEquals(
+        "e.g. Lock screen",
+        A11y.inputPlaceholderDescription(value = "", placeholder = "e.g. Lock screen"),
+    )
+    assertNull(A11y.inputPlaceholderDescription(value = "", placeholder = "   "))
+    assertNull(
+        A11y.inputPlaceholderDescription(value = "Sleep", placeholder = "e.g. Lock screen"),
+    )
+
+    val formSrc = stripKotlinComments(readDesignSource("Form.kt"))
+    val vInputBody = extractKotlinBlock(formSrc, "public fun VInput(")
+    assertTrue(
+        "VInput must compute empty-field hint description via A11y",
+        vInputBody.contains("A11y.inputPlaceholderDescription("),
+    )
+    assertTrue(
+        "VInput placeholder VText must clear semantics so accessibility trees do not read hints as text",
+        vInputBody.contains("clearAndSetSemantics {}"),
+    )
+    assertTrue(
+        "VInput placeholder must dim via PLACEHOLDER_ALPHA",
+        vInputBody.contains("PLACEHOLDER_ALPHA"),
+    )
+  }
+
   private fun stripKotlinComments(source: String): String {
     val out = StringBuilder(source.length)
     var i = 0

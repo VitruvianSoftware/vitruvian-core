@@ -984,4 +984,56 @@ public class MockHostWalkTest {
     )
     assertEquals(setOf("claude", "homelab", "tv"), existingUser.effectiveInstalled)
   }
+
+  @Test
+  public fun `new macro editor opens empty while editing an existing macro prefills its values`() {
+    val state = newSavedMacState()
+    state.openMacroEditor()
+    assertTrue(state.macroEditorOpen)
+    assertNull(state.editingMacroId)
+    assertEquals("", state.macroName)
+    assertEquals("", state.macroCommand)
+    assertEquals(MacroKind.Ssh, state.macroKind)
+    assertFalse(state.macroConfirm)
+    assertTrue(state.macroSaveBlocked)
+
+    state.updateMacroName("Run tests")
+    state.updateMacroCommand("npm test")
+    state.updateMacroKind(MacroKind.AppleScript)
+    state.updateMacroConfirm(true)
+    assertFalse(state.macroSaveBlocked)
+    state.saveMacro()
+    assertFalse(state.macroEditorOpen)
+
+    val saved = state.userMacros.first()
+    state.editMacro(saved.id)
+    assertTrue(state.macroEditorOpen)
+    assertEquals(saved.id, state.editingMacroId)
+    assertEquals("Run tests", state.macroName)
+    assertEquals("npm test", state.macroCommand)
+    assertEquals(MacroKind.AppleScript, state.macroKind)
+    assertTrue(state.macroConfirm)
+    assertFalse(state.macroSaveBlocked)
+
+    // Opening a new macro while editing or after dismissing must still start empty.
+    state.openMacroEditor()
+    assertNull(state.editingMacroId)
+    assertEquals("", state.macroName)
+    assertEquals("", state.macroCommand)
+    assertEquals(MacroKind.Ssh, state.macroKind)
+    assertFalse(state.macroConfirm)
+    assertTrue(state.macroSaveBlocked)
+
+    state.updateMacroName("Draft")
+    state.updateMacroCommand("echo hi")
+    state.closeMacroEditor()
+    assertFalse(state.macroEditorOpen)
+    assertEquals("", state.macroName)
+    assertEquals("", state.macroCommand)
+
+    state.openMacroEditor()
+    assertEquals("", state.macroName)
+    assertEquals("", state.macroCommand)
+    assertTrue(state.macroSaveBlocked)
+  }
 }

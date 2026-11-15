@@ -4289,6 +4289,9 @@ public object Derive {
   /** Shows "+ Add widget" only while editing Home and at least one widget is hidden. */
   public fun shouldShowAddWidget(editMode: Boolean, hiddenIds: Set<String>): Boolean =
       editMode && hiddenIds.isNotEmpty()
+
+  public const val MACRO_NAME_HINT: String = "e.g. Lock screen"
+  public const val MACRO_COMMAND_HINT: String = "e.g. pmset displaysleepnow"
 }
 
 /** The six primary destinations plus Settings sub-screens (`PhoneBridge`, `About`). */

@@ -245,4 +245,13 @@ public object A11y {
     val scale = fontScale.coerceAtLeast(1f)
     return if (baseSp * scale <= maxScaledDp) baseSp else maxScaledDp / scale
   }
+
+  /**
+   * Spoken hint description for an empty [VInput]: exposed on the editable field itself when
+   * [value] is empty and [placeholder] is non-blank, while the visual placeholder `VText` clears
+   * its own semantics so accessibility / UIAutomator trees never report placeholder hints as
+   * prefilled field text.
+   */
+  public fun inputPlaceholderDescription(value: String, placeholder: String): String? =
+      if (value.isEmpty()) placeholder.trim().takeIf { it.isNotEmpty() } else null
 }

@@ -85,7 +85,7 @@ public fun MacroEditor(state: RemoteState) {
           value = state.macroName,
           onValueChange = state::updateMacroName,
           modifier = Modifier.fillMaxWidth(),
-          placeholder = "Lock screen",
+          placeholder = Derive.MACRO_NAME_HINT,
       )
     }
     Field(label = "Kind") {
@@ -105,7 +105,7 @@ public fun MacroEditor(state: RemoteState) {
           value = state.macroCommand,
           onValueChange = state::updateMacroCommand,
           modifier = Modifier.fillMaxWidth().heightIn(min = COMMAND_FIELD_HEIGHT),
-          placeholder = "pmset displaysleepnow",
+          placeholder = Derive.MACRO_COMMAND_HINT,
           textStyle = VitruvianType.mono,
           singleLine = false,
       )
