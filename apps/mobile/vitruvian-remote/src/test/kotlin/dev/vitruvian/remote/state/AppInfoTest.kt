@@ -394,6 +394,14 @@ public class AppInfoTest {
           AppInfo.privacyTrailingStatements[1].contains(capability),
       )
     }
+    assertTrue(
+        AppInfo.privacyTrailingStatements[1].endsWith(
+            "The most recent requests are listed on the Phone Bridge page.",
+        ),
+    )
+    assertFalse(
+        AppInfo.privacyTrailingStatements.any { it.contains("every request is listed") },
+    )
   }
 
   @Test

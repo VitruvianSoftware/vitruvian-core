@@ -194,8 +194,8 @@ public object AppInfo {
           "This phone talks to the Macs you add, and to Vitruvian Software's crash server if " +
               "crash reports are on. Trackpad and keys go straight to your Mac over Bluetooth.",
           "Phone Bridge is off until you turn it on. When it's on, AI agents on your own Mac " +
-              "can use only the permissions you grant ($phoneBridgeCapabilitiesCommaList), " +
-              "and every request is listed in Settings.",
+              "can use only the permissions you grant ($phoneBridgeCapabilitiesCommaList). " +
+              "The most recent requests are listed on the Phone Bridge page.",
           "Alerts come from your Mac through the ntfy server you set up, if any.",
           "Dictation uses your phone's speech service, which may send audio to its provider.",
           "Donate and the links here open in your browser. The app never handles payment details.",
