@@ -90,6 +90,7 @@ rust_test(
         "src/transient_lib/lib.rs",
         "//tools/gitops/appset-render:srcs",
         "@rules_rust//rust/toolchain:current_rust_stdlib_files",
+        "@rules_rust//rust/toolchain:current_rust_toolchain",
         "@rules_rust//rust/toolchain:current_rustc_files",
         "@rules_rust//rust/toolchain:current_rustc_lib_files",
         # The beta gate's fallback runs its real --jq through Bazel's jq.
@@ -207,6 +208,7 @@ rust_test(
         "//:workflow_files",
         "//tools/gomod:srcs",
         "@rules_rust//rust/toolchain:current_rust_stdlib_files",
+        "@rules_rust//rust/toolchain:current_rust_toolchain",
         "@rules_rust//rust/toolchain:current_rustc_files",
         "@rules_rust//rust/toolchain:current_rustc_lib_files",
     ],
@@ -242,6 +244,7 @@ rust_test(
         ":require_pinned_actions",
         "//:.github/workflows/actionlint.yaml",
         "@rules_rust//rust/toolchain:current_rust_stdlib_files",
+        "@rules_rust//rust/toolchain:current_rust_toolchain",
         "@rules_rust//rust/toolchain:current_rustc_files",
         "@rules_rust//rust/toolchain:current_rustc_lib_files",
     ],

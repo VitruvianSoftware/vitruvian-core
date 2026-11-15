@@ -31,10 +31,11 @@ name: _zitadel-apps-apply
 #   * job-level `environment: oauth-user-inspector-<environment>` supplies the
 #     keyless-WIF vars (GCP_WORKLOAD_IDENTITY_PROVIDER,
 #     GCP_DEPLOY_SERVICE_ACCOUNT) used for the stack's GCP Secret Manager
-#     resources — pass `secrets: inherit` (tailnet + Zitadel key + Pulumi
+#     resources — pass `secrets: inherit` (Headscale key + Zitadel key + Pulumi
 #     token).
-#   * The Zitadel management API is reached over TAILNET (the Envoy gateway LB
-#     10.44.86.211) — NOT the public Cloudflare edge, whose bot-protection
+#   * The Zitadel management API is reached over the Headscale mesh (the
+#     Envoy gateway NodePort on a cluster node; see zitadel-tunnel-setup)
+#     — NOT the public Cloudflare edge, whose bot-protection
 #     (HTTP 1010) blocks the provider's Go client. See
 #     infrastructure/pulumi/platform/zitadel-apps/APPLYING-FROM-CI.md.
 #   * The env's Cloud Run run.app redirect URI is only known after the app
@@ -74,11 +75,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up the Zitadel tunnel (tailnet join + TLS terminator prep)
+      - name: Set up the Zitadel tunnel (Headscale join + TLS terminator prep)
         uses: ./.github/actions/zitadel-tunnel-setup
         with:
-          tailscale-oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          tailscale-oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          headscale-authkey: ${{ secrets.HEADSCALE_CI_AUTHKEY }}
 
       # The stack writes the minted OIDC client id/secret into the env's oss
       # project's Secret Manager (cred-sync-to-GCP-SM), so it needs GCP
@@ -134,18 +134,17 @@ jobs:
           rustc --edition 2021 -O "$GITHUB_WORKSPACE/tools/pulumi/src/bin/retry_concurrent_update.rs" -o "$retry"
           # TLS terminator must live for this step (backgrounded processes don't
           # survive across steps): localhost:443 -> the Envoy gateway, Host preserved.
-          # Target the gateway's NodePort on a cluster node's TAILSCALE device
-          # (nuc9i9, a stable control-plane node), NOT the LB VIP 10.44.86.211:
-          # that VIP is a Cilium eBPF LB address and is unreachable from an
-          # off-cluster tailnet client (a subnet-router-forwarded packet to it is
-          # dropped by Cilium's datapath before LB — conntrack never sees it). A
-          # node's tailscale IP is a first-class tailnet device, and Cilium DOES
-          # load-balance NodePort for such traffic; with the gateway service now
-          # externalTrafficPolicy: Cluster (see envoyproxy.yaml), any node forwards
-          # to the Envoy endpoints. This also removes the dependency on the
-          # 10.44.86.0/24 subnet route entirely.
+          # Target the gateway's NodePort on a cluster node's Headscale address
+          # ($ZITADEL_GATEWAY, picked by the zitadel-tunnel-setup action from the
+          # wired nodes that answer), NOT the LB VIP 10.44.86.211: that VIP is a
+          # Cilium eBPF LB address and is unreachable from an off-cluster mesh
+          # client (a subnet-router-forwarded packet to it is dropped by Cilium's
+          # datapath before LB; conntrack never sees it). With the gateway service
+          # externalTrafficPolicy: Cluster (see envoyproxy.yaml), any node
+          # forwards to the Envoy endpoints.
+          : "${ZITADEL_GATEWAY:?zitadel-tunnel-setup did not pick a gateway node}"
           sudo socat OPENSSL-LISTEN:443,reuseaddr,fork,cert=/etc/auth-internal-ck.pem,verify=0 \
-            TCP:nuc9i9.coati-koi.ts.net:30265 &
+            TCP:"${ZITADEL_GATEWAY}" &
           trap 'sudo pkill -f "OPENSSL-LISTEN:443" 2>/dev/null || true' EXIT
           # confirm the internal path is up before applying (fail loudly otherwise)
           for _ in $(seq 1 15); do

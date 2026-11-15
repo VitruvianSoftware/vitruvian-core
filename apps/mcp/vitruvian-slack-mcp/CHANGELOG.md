@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.26.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-slack-mcp-v1.25.0...vitruvian-slack-mcp-v1.26.0) (2026-11-14)
+
+
+### Features
+
+* **telemetry:** instrument Suites and MCP bridges with Sentry ([#4835](https://github.com/VitruvianSoftware/vitruvian-core/issues/4835)) ([6da38a7](https://github.com/VitruvianSoftware/vitruvian-core/commit/6da38a7a64e677f03c8ba248a41c4129374a0696))
+
 ## [1.25.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-slack-mcp-v1.24.0...vitruvian-slack-mcp-v1.25.0) (2026-11-14)
 
 

@@ -416,8 +416,8 @@ jobs:
           # rust.toolchain). Released kits up to 1.9.0 carry it only as a
           # Python script, which this repository no longer has. Built
           # before HOME is changed: Cargo and rustup keep their files there.
-          rustup toolchain install 1.75.0 --profile minimal
-          cargo +1.75.0 build --locked --release \
+          rustup toolchain install 1.98.1 --profile minimal
+          cargo +1.98.1 build --locked --release \
             --manifest-path packages/vitruvian-sdk/verification/Cargo.toml --bin conformance
           mkdir -p "$RUNNER_TEMP/tool-home"
           HOME="$RUNNER_TEMP/tool-home" CFFIXED_USER_HOME="$RUNNER_TEMP/tool-home" \

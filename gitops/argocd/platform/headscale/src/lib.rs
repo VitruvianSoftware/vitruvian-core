@@ -59,6 +59,96 @@ pub fn load_headplane_config() -> Value {
     yaml::parse_doc(raw_cfg).expect("failed to parse Headplane config.yaml")
 }
 
+/// Parse `policy.hujson` text as JSON. The file keeps to whole-line `//`
+/// comments and no trailing commas, so this needs no HuJSON parser; comment
+/// lines are blanked rather than dropped so an error's line number is the
+/// file's. Headscale's own check is
+/// `bazel run //tools/gitops:headscale-policy-check`.
+pub fn parse_policy(raw: &str) -> Result<Value, String> {
+    let json: String = raw
+        .lines()
+        .map(|l| {
+            if l.trim_start().starts_with("//") {
+                ""
+            } else {
+                l
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    serde_json::from_str(&json).map_err(|e| {
+        format!(
+            "policy.hujson line {}: {e} \
+             (keep comments on lines of their own, and no trailing commas)",
+            e.line()
+        )
+    })
+}
+
+/// Load and parse `policy.hujson`.
+pub fn load_policy() -> Value {
+    let path = yaml::resolve_data_path(PKG_DIR, "policy.hujson");
+    let raw = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+    parse_policy(&raw).unwrap_or_else(|e| panic!("{e}"))
+}
+
+fn read_root_file(rel: &str) -> String {
+    let path = yaml::resolve_data_path(PKG_DIR, rel);
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()))
+}
+
+const TUNNEL_ACTION: &str = ".github/actions/zitadel-tunnel-setup/action.yml";
+
+/// The port the tunnel action probes and tunnels to, from its
+/// `"http://${ip}:PORT/..."` healthz URL.
+pub fn load_tunnel_port() -> String {
+    let raw = read_root_file(TUNNEL_ACTION);
+    let marker = "http://${ip}:";
+    let at = raw
+        .find(marker)
+        .unwrap_or_else(|| panic!("no {marker} probe in {TUNNEL_ACTION}"));
+    raw[at + marker.len()..]
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect()
+}
+
+/// The Envoy gateway's pinned HTTP nodePort (the `http-80` port entry).
+pub fn load_envoy_http_nodeport() -> String {
+    let raw = read_root_file("gitops/argocd/platform/envoy-gateway/gateway/envoyproxy.yaml");
+    let mut lines = raw.lines().skip_while(|l| l.trim() != "- name: http-80");
+    lines
+        .next()
+        .expect("no http-80 port entry in envoyproxy.yaml");
+    lines
+        .take_while(|l| !l.trim_start().starts_with("- "))
+        .find_map(|l| {
+            l.trim()
+                .strip_prefix("nodePort:")
+                .map(|v| v.trim().to_string())
+        })
+        .expect("http-80 has no nodePort in envoyproxy.yaml")
+}
+
+/// The candidate gateway IPs the Zitadel tunnel action tries, from its
+/// `candidates="..."` line.
+pub fn load_tunnel_candidates() -> Vec<String> {
+    let rel = TUNNEL_ACTION;
+    let raw = read_root_file(rel);
+    let line = raw
+        .lines()
+        .map(str::trim)
+        .find(|l| l.starts_with("candidates=\""))
+        .unwrap_or_else(|| panic!("no candidates=\"...\" line in {rel}"));
+    line.trim_start_matches("candidates=\"")
+        .trim_end_matches('"')
+        .split_whitespace()
+        .map(str::to_string)
+        .collect()
+}
+
 /// Validate that `HEADSCALE_POLICY_MODE=database` when Headplane has no `headscale.config_path`.
 pub fn check_policy_mode(hp_cfg: &Value, hs_values: &Value) -> Result<(), String> {
     let has_config_path = hp_cfg
@@ -293,6 +383,132 @@ mod tests {
             init_cmd.contains("k8s-api.lab.ipv1337.dev"),
             "Headscale config must include extra_records for k8s-api.lab.ipv1337.dev so Headscale clients do not dial commercial Tailscale 100.x IPs."
         );
+    }
+
+    #[test]
+    fn test_policy_has_no_wildcard_source() {
+        let policy = load_policy();
+        for rule in policy["acls"].as_array().expect("acls") {
+            let src: Vec<&str> = rule["src"]
+                .as_array()
+                .expect("src")
+                .iter()
+                .filter_map(Value::as_str)
+                .collect();
+            assert!(
+                !src.contains(&"*"),
+                "an ACL with src \"*\" would also cover tag:ci runners; name the sources instead: {rule}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_ci_tag_reaches_only_the_gateway_nodeport() {
+        let policy = load_policy();
+        assert!(
+            policy
+                .pointer("/tagOwners/tag:ci")
+                .and_then(Value::as_array)
+                .is_some_and(|o| !o.is_empty()),
+            "tag:ci needs a tagOwners entry"
+        );
+        let hosts = policy["hosts"].as_object().expect("hosts");
+        let mut ci_rules = 0;
+        for rule in policy["acls"].as_array().expect("acls") {
+            let src: Vec<&str> = rule["src"]
+                .as_array()
+                .expect("src")
+                .iter()
+                .filter_map(Value::as_str)
+                .collect();
+            if !src.contains(&"tag:ci") {
+                continue;
+            }
+            ci_rules += 1;
+            assert_eq!(src, vec!["tag:ci"], "keep tag:ci in a rule of its own");
+            assert_eq!(
+                rule.get("proto").and_then(Value::as_str),
+                Some("tcp"),
+                "the tag:ci rule must be TCP-only (no UDP or ICMP to the nodes)"
+            );
+            for d in rule["dst"]
+                .as_array()
+                .expect("dst")
+                .iter()
+                .filter_map(Value::as_str)
+            {
+                let (host, port) = d.rsplit_once(':').expect("dst host:port");
+                assert_eq!(
+                    port, "30265",
+                    "tag:ci may reach only the Envoy gateway NodePort, not {d}"
+                );
+                assert!(
+                    hosts.contains_key(host),
+                    "tag:ci dst {host} is not a named host"
+                );
+            }
+        }
+        assert_eq!(ci_rules, 1, "expected exactly one tag:ci rule");
+    }
+
+    #[test]
+    fn test_tunnel_candidates_match_policy_hosts() {
+        let policy = load_policy();
+        let mut hosts: Vec<String> = policy["hosts"]
+            .as_object()
+            .expect("hosts")
+            .values()
+            .filter_map(Value::as_str)
+            .map(|c| c.trim_end_matches("/32").to_string())
+            .collect();
+        let mut candidates = load_tunnel_candidates();
+        hosts.sort();
+        candidates.sort();
+        assert_eq!(
+            candidates, hosts,
+            "zitadel-tunnel-setup's candidate nodes must be exactly the policy's hosts, \
+             or CI would try a node the ACL blocks (or the ACL would open one CI never uses)"
+        );
+    }
+
+    #[test]
+    fn test_gateway_port_agrees_across_policy_tunnel_and_envoy() {
+        let envoy = load_envoy_http_nodeport();
+        assert_eq!(
+            load_tunnel_port(),
+            envoy,
+            "zitadel-tunnel-setup must probe the Envoy gateway's pinned HTTP nodePort"
+        );
+        let policy = load_policy();
+        for rule in policy["acls"].as_array().expect("acls") {
+            if rule["src"]
+                .as_array()
+                .expect("src")
+                .iter()
+                .any(|s| s == "tag:ci")
+            {
+                for d in rule["dst"]
+                    .as_array()
+                    .expect("dst")
+                    .iter()
+                    .filter_map(Value::as_str)
+                {
+                    assert_eq!(
+                        d.rsplit_once(':').map(|(_, p)| p),
+                        Some(envoy.as_str()),
+                        "tag:ci dst {d} must use the Envoy gateway nodePort {envoy}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_policy_parse_errors_name_the_real_line() {
+        let raw = "// header\n// more\n{\n  \"acls\": [],\n}\n";
+        let err = parse_policy(raw).unwrap_err();
+        assert!(err.starts_with("policy.hujson line 5:"), "{err}");
+        assert!(err.contains("trailing commas"), "{err}");
     }
 
     #[test]

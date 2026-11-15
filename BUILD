@@ -195,6 +195,13 @@ exports_files(
     visibility = ["//tools/delivery/gen:__pkg__"],
 )
 
+# Read by //gitops/argocd/platform/headscale's test, which keeps the nodes the
+# Zitadel tunnel tries in step with the Headscale ACL that lets tag:ci reach them.
+exports_files(
+    [".github/actions/zitadel-tunnel-setup/action.yml"],
+    visibility = ["//gitops/argocd/platform/headscale:__pkg__"],
+)
+
 # The rehearsal of the standalone Vitruvian Code's release, read by the test that
 # keeps it running the same steps as the release workflow the mirror runs.
 exports_files(

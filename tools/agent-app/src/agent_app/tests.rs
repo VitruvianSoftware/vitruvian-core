@@ -951,3 +951,133 @@ fn abandoned_deletes_only_a_closed_prs_own_branch_at_its_last_commit() {
     assert!(refuse(Vec::new(), tip).is_some());
     assert!(refuse(b"CLOSED rename/x".to_vec(), tip).is_some());
 }
+
+#[test]
+fn rewrite_pr_view_json_strips_merge_queue_entry_and_adds_id() {
+    let args = v(&[
+        "pr",
+        "view",
+        "4857",
+        "--json",
+        "state,mergeQueueEntry,reviewDecision,autoMergeRequest",
+    ]);
+    let rw = rewrite_pr_view_json_args(&args).unwrap();
+    assert!(!rw.id_was_requested);
+    assert_eq!(
+        rw.gh_args,
+        v(&[
+            "pr",
+            "view",
+            "4857",
+            "--json",
+            "state,reviewDecision,autoMergeRequest,id",
+        ])
+    );
+
+    // Inline --json= and --jq passthrough.
+    let inline = v(&["pr", "view", "4857", "--json=mergeQueueEntry,id"]);
+    let rw_inline = rewrite_pr_view_json_args(&inline).unwrap();
+    assert!(rw_inline.id_was_requested);
+    assert_eq!(rw_inline.gh_args, v(&["pr", "view", "4857", "--json=id"]));
+
+    let with_jq = v(&["pr", "view", "4857", "--json", "state", "--jq", ".state"]);
+    assert!(rewrite_pr_view_json_args(&with_jq).is_none());
+
+    let unrelated_fields = v(&["pr", "view", "4857", "--json", "title,url"]);
+    assert!(rewrite_pr_view_json_args(&unrelated_fields).is_none());
+}
+
+#[test]
+fn enrich_pr_view_json_surfaces_merge_queue_and_ruleset_approvals() {
+    let graphql = br#"{
+      "data": {
+        "node": {
+          "mergeQueueEntry": { "position": 3, "state": "AWAITING_CHECKS" },
+          "latestReviews": {
+            "nodes": [
+              { "author": { "login": "ipv1337" }, "state": "APPROVED" }
+            ]
+          }
+        }
+      }
+    }"#;
+    let enr = parse_pr_enrichment(graphql).unwrap();
+    assert_eq!(
+        enr.merge_queue_entry,
+        Some(MergeQueueEntry {
+            position: 3,
+            state: "AWAITING_CHECKS".to_string(),
+        })
+    );
+    assert_eq!(enr.approved_by, vec!["ipv1337".to_string()]);
+
+    let gh_out = br#"{
+      "id": "PR_kwDO123",
+      "state": "OPEN",
+      "mergeStateStatus": "UNKNOWN",
+      "reviewDecision": "",
+      "autoMergeRequest": null
+    }"#;
+    let requested = vec![
+        "state".to_string(),
+        "mergeStateStatus".to_string(),
+        "reviewDecision".to_string(),
+        "autoMergeRequest".to_string(),
+    ];
+    let enriched = enrich_pr_view_json(gh_out, &requested, false, Some(&enr)).unwrap();
+    let v: J = serde_json::from_slice(&enriched).unwrap();
+    // Unrequested `id` is stripped, while `mergeQueueEntry` and `approvedBy` are added.
+    assert_eq!(v.index("id").unwrap(), J::Null);
+    assert_eq!(
+        v.index("mergeQueueEntry")
+            .unwrap()
+            .index("position")
+            .unwrap(),
+        J::Uint(3)
+    );
+    assert_eq!(
+        v.index("mergeQueueEntry").unwrap().index("state").unwrap(),
+        J::Str("AWAITING_CHECKS".to_string())
+    );
+    assert_eq!(
+        v.index("approvedBy").unwrap(),
+        J::Arr(vec![J::Str("ipv1337".to_string())])
+    );
+    assert!(matches!(v.index("reviewDecisionNote").unwrap(), J::Str(_)));
+}
+
+#[test]
+fn format_pr_status_reports_queue_and_ruleset_approvals_clearly() {
+    let gh_out = br#"{
+      "id": "PR_kwDO123",
+      "number": 4857,
+      "title": "ci(zitadel): reach Zitadel over Headscale",
+      "url": "https://github.com/VitruvianSoftware/vitruvian-core/pull/4857",
+      "state": "OPEN",
+      "isDraft": false,
+      "mergeStateStatus": "UNKNOWN",
+      "reviewDecision": "",
+      "autoMergeRequest": null
+    }"#;
+    let enr = PrEnrichment {
+        merge_queue_entry: Some(MergeQueueEntry {
+            position: 1,
+            state: "AWAITING_CHECKS".to_string(),
+        }),
+        approved_by: vec!["ipv1337".to_string()],
+        changes_requested_by: Vec::new(),
+    };
+    let text = String::from_utf8(format_pr_status(gh_out, Some(&enr)).unwrap()).unwrap();
+    assert!(text.contains("PR #4857: ci(zitadel): reach Zitadel over Headscale"));
+    assert!(text.contains("IN MERGE QUEUE (position 1, state AWAITING_CHECKS)"));
+    assert!(text.contains("approved by ipv1337"));
+    assert!(text.contains("gh reviewDecision is empty under rulesets"));
+}
+
+#[test]
+fn pr_status_args_parses_repo_and_json() {
+    let parsed = pr_status_args("u", &v(&["--repo", "o/r", "--json"])).unwrap();
+    assert_eq!(parsed.repo, Some(b"o/r".to_vec()));
+    assert!(parsed.json);
+    assert!(pr_status_args("u", &v(&["--bogus"])).is_err());
+}

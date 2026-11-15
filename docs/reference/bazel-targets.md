@@ -140,6 +140,7 @@ Additional tooling:
 | `//tools/gitops:headscale-user-{create,list,destroy}` | Manage Headscale user accounts |
 | `//tools/gitops:headscale-node-{list,register,delete}` | Manage registered tailnet machines |
 | `//tools/gitops:headscale-preauthkey-{create,list}` | Mint and list pre-authentication keys for node onboarding |
+| `//tools/gitops:headscale-policy-{check,set}` | Validate, or validate then apply, the ACL policy in `gitops/argocd/platform/headscale/policy.hujson` |
 | `//tools/gitops:ntfy-bootstrap-users` | One-time user provisioning for self-hosted ntfy instance |
 | `//tools/gitops:ntfy-user-{list,add,del,change-pass,change-role,access}` | Full user lifecycle and topic ACL permissions management for ntfy |
 | `//tools/gitops:ntfy-rotate-ci-password` | Rotate the ntfy password CI uses: sets it on the server and as `NTFY_GITHUB_ACTIONS_PASSWORD`, checks it works, never prints it |

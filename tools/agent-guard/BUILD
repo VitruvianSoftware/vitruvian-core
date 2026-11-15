@@ -174,6 +174,7 @@ rust_test(
         "policy.json",
         ":wiring",
         "@rules_rust//rust/toolchain:current_rust_stdlib_files",
+        "@rules_rust//rust/toolchain:current_rust_toolchain",
         "@rules_rust//rust/toolchain:current_rustc_files",
         "@rules_rust//rust/toolchain:current_rustc_lib_files",
     ],
