@@ -5090,25 +5090,59 @@ public class DeriveTest {
 
   @Test
   public fun `F21 Mac developer tools stay hidden until reported and errors lead with plain text`() {
-    assertFalse(
+    val noDevToolsSpec =
         Derive.macDeveloperTools(
-                isDemoMode = false,
-                availableTools = setOf("docker"),
-                vmsAvailable = false,
-                k8sAvailable = false,
-                prometheusReported = false,
-            )
-            .anyVisible,
-    )
+            isDemoMode = false,
+            availableTools = setOf("git", "claude"),
+            containersAvailable = false,
+            vmsAvailable = false,
+            k8sAvailable = false,
+            prometheusReported = false,
+        )
+    assertFalse(noDevToolsSpec.anyVisible)
+    assertFalse(noDevToolsSpec.showContainers)
+
+    listOf("docker", "podman", "colima").forEach { runtime ->
+      val containerOnlySpec =
+          Derive.macDeveloperTools(
+              isDemoMode = false,
+              availableTools = setOf(runtime),
+              containersAvailable = null,
+              vmsAvailable = false,
+              k8sAvailable = false,
+              prometheusReported = false,
+          )
+      assertTrue(
+          "Expected $runtime to show Containers in Developer tools", containerOnlySpec.anyVisible)
+      assertTrue(containerOnlySpec.showContainers)
+      assertFalse(containerOnlySpec.showLimaVms)
+      assertFalse(containerOnlySpec.showK3sNodes)
+      assertFalse(containerOnlySpec.showCustomPanel)
+    }
+
+    val liveContainersSpec =
+        Derive.macDeveloperTools(
+            isDemoMode = false,
+            availableTools = emptySet(),
+            containersAvailable = true,
+            vmsAvailable = false,
+            k8sAvailable = false,
+            prometheusReported = false,
+        )
+    assertTrue(liveContainersSpec.anyVisible)
+    assertTrue(liveContainersSpec.showContainers)
+
     val toolsSpec =
         Derive.macDeveloperTools(
             isDemoMode = false,
             availableTools = setOf("limactl", "kubectl"),
+            containersAvailable = false,
             vmsAvailable = null,
             k8sAvailable = null,
             prometheusReported = true,
         )
     assertTrue(toolsSpec.anyVisible)
+    assertFalse(toolsSpec.showContainers)
     assertTrue(toolsSpec.showLimaVms)
     assertTrue(toolsSpec.showK3sNodes)
     assertTrue(toolsSpec.showCustomPanel)
@@ -5117,10 +5151,12 @@ public class DeriveTest {
         Derive.macDeveloperTools(
             isDemoMode = true,
             availableTools = emptySet(),
+            containersAvailable = null,
             vmsAvailable = null,
             k8sAvailable = null,
             prometheusReported = false,
         )
+    assertTrue(demoSpec.showContainers)
     assertTrue(demoSpec.showLimaVms)
     assertFalse(demoSpec.showK3sNodes)
     assertTrue(demoSpec.showCustomPanel)
@@ -5146,6 +5182,13 @@ public class DeriveTest {
     assertTrue(macScreen.contains("state.macDeveloperTools"))
     assertTrue(macScreen.contains("Label(text = \"Developer tools\""))
     assertTrue(macScreen.contains("var devToolsOpen by rememberSaveable { mutableStateOf(false) }"))
+    val devToolsIndex = macScreen.indexOf("Label(text = \"Developer tools\"")
+    val devToolsOpenIndex = macScreen.indexOf("if (devToolsOpen) {")
+    val showContainersIndex = macScreen.indexOf("if (devTools.showContainers) {")
+    val containersLabelIndex = macScreen.indexOf("Label(text = state.containersLabel")
+    assertTrue(devToolsIndex in 0 until devToolsOpenIndex)
+    assertTrue(devToolsOpenIndex in 0 until showContainersIndex)
+    assertTrue(showContainersIndex in 0 until containersLabelIndex)
     assertTrue(macScreen.contains("Derive.promqlStatusLines(state.promqlStatus)"))
   }
 

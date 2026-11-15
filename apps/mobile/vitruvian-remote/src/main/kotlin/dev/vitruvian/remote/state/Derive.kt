@@ -4149,32 +4149,39 @@ public object Derive {
         else -> "Show"
       }
 
+  private val CONTAINER_TOOLS: Set<String> = setOf("docker", "podman", "colima")
+
   /** Which Mac screen developer-tool sections have backing tools on this Mac. */
   public data class MacDeveloperToolsSpec(
+      val showContainers: Boolean,
       val showLimaVms: Boolean,
       val showK3sNodes: Boolean,
       val showCustomPanel: Boolean,
   ) {
     public val anyVisible: Boolean
-      get() = showLimaVms || showK3sNodes || showCustomPanel
+      get() = showContainers || showLimaVms || showK3sNodes || showCustomPanel
   }
 
   /** Reveals each developer-tool section only when the Mac reports that tool (or in demo mode). */
   public fun macDeveloperTools(
       isDemoMode: Boolean,
       availableTools: Set<String>,
+      containersAvailable: Boolean? = null,
       vmsAvailable: Boolean?,
       k8sAvailable: Boolean?,
       prometheusReported: Boolean,
   ): MacDeveloperToolsSpec =
       if (isDemoMode) {
         MacDeveloperToolsSpec(
+            showContainers = true,
             showLimaVms = true,
             showK3sNodes = false,
             showCustomPanel = true,
         )
       } else {
         MacDeveloperToolsSpec(
+            showContainers =
+                availableTools.any { it in CONTAINER_TOOLS } || containersAvailable == true,
             showLimaVms = "limactl" in availableTools || vmsAvailable == true,
             showK3sNodes = "kubectl" in availableTools || k8sAvailable == true,
             showCustomPanel = prometheusReported,

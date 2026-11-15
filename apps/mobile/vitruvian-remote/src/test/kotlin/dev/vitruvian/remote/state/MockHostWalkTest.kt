@@ -1036,4 +1036,41 @@ public class MockHostWalkTest {
     assertEquals("", state.macroCommand)
     assertTrue(state.macroSaveBlocked)
   }
+
+  @Test
+  public fun `Containers in Developer tools follow docker podman colima availability and demo mode`() {
+    val saved = newSavedMacState()
+    saved.applyEndpointReadings(
+        tools =
+            AgentTools(
+                mapOf(
+                    "claude" to AgentTool(true, "/usr/local/bin/claude"),
+                    "gh" to AgentTool(true, "/opt/homebrew/bin/gh"),
+                ),
+            ),
+    )
+    assertFalse(saved.macDeveloperTools.showContainers)
+    assertFalse(saved.macDeveloperTools.anyVisible)
+
+    listOf("docker", "podman", "colima").forEach { tool ->
+      val runtimeState = newSavedMacState()
+      runtimeState.applyEndpointReadings(
+          tools = AgentTools(mapOf(tool to AgentTool(true, "/opt/homebrew/bin/$tool"))),
+      )
+      assertTrue(
+          "Expected $tool to show Containers inside Developer tools",
+          runtimeState.macDeveloperTools.showContainers,
+      )
+      assertTrue(runtimeState.macDeveloperTools.anyVisible)
+    }
+
+    val demoState =
+        RemoteState(
+            persistence = Persistence(InMemoryKeyValueStore()),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+    demoState.enterDemo()
+    assertTrue(demoState.macDeveloperTools.showContainers)
+    assertTrue(demoState.macDeveloperTools.anyVisible)
+  }
 }

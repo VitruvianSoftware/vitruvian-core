@@ -1480,6 +1480,7 @@ public class RemoteState(
         Derive.macDeveloperTools(
             isDemoMode = isDemoMode,
             availableTools = agentTools?.tools?.filterValues { it.available }?.keys.orEmpty(),
+            containersAvailable = agentContainers?.available,
             vmsAvailable = agentVms?.available,
             k8sAvailable = agentK8s?.available,
             prometheusReported = prometheusConfigured == true,

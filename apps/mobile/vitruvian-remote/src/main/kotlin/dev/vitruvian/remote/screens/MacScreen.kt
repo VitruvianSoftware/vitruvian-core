@@ -255,53 +255,6 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
     )
   }
 
-  Label(text = state.containersLabel, modifier = Modifier.sectionPadding())
-  val containersNotice = state.containersNotice
-  if (containersNotice != null) {
-    Unavailable(containersNotice)
-  } else {
-    // Capped: even grouped, a busy cluster is a screenful of rows under the
-    // sections that come after it. The toggle says how many there are.
-    val all = state.containers
-    var showAll by remember { mutableStateOf(false) }
-    val shown = if (showAll) all else all.take(Derive.CONTAINER_ROWS)
-    shown.forEach { container ->
-      ListItem(
-          title = container.name,
-          subtitle = container.subtitle,
-          status = StatusTone.Ok,
-          statusAdjacentText = container.trailing,
-      ) {
-        VText(text = container.trailing, style = VitruvianType.listSub, color = colors.textDim)
-      }
-    }
-    val hidden = state.hiddenPauseContainers
-    if (all.size > Derive.CONTAINER_ROWS || hidden > 0) {
-      Row(
-          modifier = Modifier.padding(horizontal = Space.s4, vertical = Space.s2).fillMaxWidth(),
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(Space.s3),
-      ) {
-        // Said, not silently dropped: a pause sandbox is a real container
-        // and someone counting `docker ps` rows should be able to reconcile.
-        VText(
-            text =
-                if (hidden > 0) "$hidden pause sandbox${if (hidden == 1) "" else "es"} hidden"
-                else "",
-            modifier = Modifier.weight(1f),
-            style = VitruvianType.listSub,
-            color = colors.textDim,
-        )
-        if (all.size > Derive.CONTAINER_ROWS) {
-          VButton(
-              label = if (showAll) "Show fewer" else "Show all ${all.size}",
-              onClick = { showAll = !showAll },
-          )
-        }
-      }
-    }
-  }
-
   val devTools = state.macDeveloperTools
   if (devTools.anyVisible) {
     var devToolsOpen by rememberSaveable { mutableStateOf(false) }
@@ -328,6 +281,60 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
     }
 
     if (devToolsOpen) {
+      if (devTools.showContainers) {
+        Label(text = state.containersLabel, modifier = Modifier.sectionPadding())
+        val containersNotice = state.containersNotice
+        if (containersNotice != null) {
+          Unavailable(containersNotice)
+        } else {
+          // Capped: even grouped, a busy cluster is a screenful of rows under the
+          // sections that come after it. The toggle says how many there are.
+          val all = state.containers
+          var showAll by remember { mutableStateOf(false) }
+          val shown = if (showAll) all else all.take(Derive.CONTAINER_ROWS)
+          shown.forEach { container ->
+            ListItem(
+                title = container.name,
+                subtitle = container.subtitle,
+                status = StatusTone.Ok,
+                statusAdjacentText = container.trailing,
+            ) {
+              VText(
+                  text = container.trailing,
+                  style = VitruvianType.listSub,
+                  color = colors.textDim,
+              )
+            }
+          }
+          val hidden = state.hiddenPauseContainers
+          if (all.size > Derive.CONTAINER_ROWS || hidden > 0) {
+            Row(
+                modifier =
+                    Modifier.padding(horizontal = Space.s4, vertical = Space.s2).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Space.s3),
+            ) {
+              // Said, not silently dropped: a pause sandbox is a real container
+              // and someone counting `docker ps` rows should be able to reconcile.
+              VText(
+                  text =
+                      if (hidden > 0) "$hidden pause sandbox${if (hidden == 1) "" else "es"} hidden"
+                      else "",
+                  modifier = Modifier.weight(1f),
+                  style = VitruvianType.listSub,
+                  color = colors.textDim,
+              )
+              if (all.size > Derive.CONTAINER_ROWS) {
+                VButton(
+                    label = if (showAll) "Show fewer" else "Show all ${all.size}",
+                    onClick = { showAll = !showAll },
+                )
+              }
+            }
+          }
+        }
+      }
+
       if (devTools.showLimaVms) {
         Label(text = "Lima VMs", modifier = Modifier.sectionPadding())
         val vmsNotice = state.vmsNotice
