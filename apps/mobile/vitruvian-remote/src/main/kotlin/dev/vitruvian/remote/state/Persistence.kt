@@ -30,6 +30,7 @@ private const val KEY_SEEDED_PRS = "seeded.prs"
 private const val KEY_HIDDEN = "hiddenWidgets"
 private const val KEY_MACROS = "userMacros"
 private const val KEY_THEME = "darkTheme"
+private const val KEY_THEME_MODE = "themeMode"
 private const val KEY_DOCK = "dockOpen"
 private const val KEY_REMOTE_OPEN = "remoteOpenSections"
 private const val KEY_HOST = "selectedHost"
@@ -49,6 +50,7 @@ private const val KEY_BRIDGE_AUDIT = "bridgeAudit"
 private const val KEY_SPEAKER_SETTINGS_EXPANDED = "vitruvianSpeakerSettingsExpanded"
 private const val KEY_SPEAKER_MIRROR = "vitruvianSpeakerMirror"
 private const val KEY_ASKED_NOTIFICATIONS = "askedForNotifications"
+private const val KEY_ASKED_BLUETOOTH = "askedForBluetooth"
 
 /** Keys the HomeSpeaker to Vitruvian Speaker rename retired, and the key each one became. */
 private val RENAMED_BOOLEAN_KEYS: Map<String, String> =
@@ -81,7 +83,20 @@ public class Persistence(context: Context) {
   init {
     migrateSingleHost()
     migrateRenamedModules()
+    migrateThemeMode()
     seedPullRequestsModule()
+  }
+
+  /** Migrates the legacy boolean `darkTheme` preference once into `ThemeMode` (`Dark`/`Light`). */
+  private fun migrateThemeMode() {
+    if (!prefs.contains(KEY_THEME_MODE) && prefs.contains(KEY_THEME)) {
+      val migrated =
+          Derive.migrateThemeMode(
+              storedMode = null,
+              legacyDarkTheme = prefs.getBoolean(KEY_THEME, true),
+          )
+      prefs.edit().putString(KEY_THEME_MODE, migrated.name).remove(KEY_THEME).apply()
+    }
   }
 
   /**
@@ -213,9 +228,14 @@ public class Persistence(context: Context) {
     get() = prefs.getStringSet(KEY_HIDDEN, emptySet())?.toList() ?: emptyList()
     set(value) = prefs.edit().putStringSet(KEY_HIDDEN, value.toSet()).apply()
 
-  public var darkTheme: Boolean
-    get() = prefs.getBoolean(KEY_THEME, true)
-    set(value) = prefs.edit().putBoolean(KEY_THEME, value).apply()
+  public var themeMode: ThemeMode
+    get() =
+        Derive.migrateThemeMode(
+            storedMode = prefs.getString(KEY_THEME_MODE, null),
+            legacyDarkTheme =
+                if (prefs.contains(KEY_THEME)) prefs.getBoolean(KEY_THEME, true) else null,
+        )
+    set(value) = prefs.edit().putString(KEY_THEME_MODE, value.name).apply()
 
   public var dockOpen: Boolean
     get() = prefs.getBoolean(KEY_DOCK, true)
@@ -326,6 +346,14 @@ public class Persistence(context: Context) {
   public var askedForNotifications: Boolean
     get() = prefs.getBoolean(KEY_ASKED_NOTIFICATIONS, false)
     set(value) = prefs.edit().putBoolean(KEY_ASKED_NOTIFICATIONS, value).apply()
+
+  /**
+   * Whether this install has ever prompted for `BLUETOOTH_CONNECT`, separating first visit to
+   * Remote from declined / permanently denied states.
+   */
+  public var askedForBluetooth: Boolean
+    get() = prefs.getBoolean(KEY_ASKED_BLUETOOTH, false)
+    set(value) = prefs.edit().putBoolean(KEY_ASKED_BLUETOOTH, value).apply()
 
   private companion object {
     const val FIELD_COUNT = 5

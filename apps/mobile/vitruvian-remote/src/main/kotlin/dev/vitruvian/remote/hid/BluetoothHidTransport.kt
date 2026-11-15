@@ -420,7 +420,31 @@ public class BluetoothHidTransport(
     return true
   }
 
-  private fun hasConnectPermission(): Boolean =
+  /** Whether this device exposes a Bluetooth adapter at all. */
+  public fun hasBluetoothAdapter(): Boolean = resolveAdapter() != null
+
+  /** Whether Bluetooth is currently turned on. */
+  public fun isBluetoothEnabled(): Boolean = resolveAdapter()?.isEnabled == true
+
+  /** Whether at least one paired computer is bonded in Android Bluetooth settings. */
+  @SuppressLint("MissingPermission")
+  public fun hasPairedComputer(): Boolean {
+    if (!hasConnectPermission()) return false
+    val current = resolveAdapter() ?: return false
+    return current.bondedDevices.orEmpty().any {
+      it.bluetoothClass?.majorDeviceClass == BluetoothClass.Device.Major.COMPUTER
+    }
+  }
+
+  private fun resolveAdapter(): BluetoothAdapter? {
+    adapter?.let {
+      return it
+    }
+    val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+    return manager?.adapter
+  }
+
+  public fun hasConnectPermission(): Boolean =
       // BLUETOOTH_CONNECT only exists from API 31; below that the legacy
       // install-time BLUETOOTH permission covers it.
       Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||

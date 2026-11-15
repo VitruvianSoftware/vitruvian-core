@@ -424,6 +424,51 @@ public interface Notifier {
 }
 
 /**
+ * The phone's Bluetooth adapter, permission, and Settings bridge behind the model's port.
+ *
+ * A port rather than a `Context`, mirroring [Notifier]: unit tests and previews drive [RemoteState]
+ * with a pure stub, while [MainActivity] owns the permission launcher and intent receivers.
+ */
+public interface BluetoothControl {
+  /** Whether this device has a Bluetooth adapter. */
+  public fun hasBluetoothAdapter(): Boolean = true
+
+  /** Whether `BLUETOOTH_CONNECT` is granted (always true below Android 12). */
+  public fun hasBluetoothPermission(): Boolean = true
+
+  /** Whether this install has already asked for `BLUETOOTH_CONNECT`. */
+  public fun hasAskedBluetoothPermission(): Boolean = false
+
+  /** Whether Android says a rationale applies (`true` after a first denial on Android 12+). */
+  public fun shouldShowBluetoothRationale(): Boolean = false
+
+  /** Whether Bluetooth is currently turned on. */
+  public fun isBluetoothEnabled(): Boolean = true
+
+  /** Whether at least one paired computer is bonded in system Bluetooth settings. */
+  public fun hasPairedComputer(): Boolean = true
+
+  /**
+   * Ensures `BLUETOOTH_CONNECT` is granted, invoking [onResult] with `(granted,
+   * shouldShowRationale)`.
+   */
+  public fun ensureBluetoothPermission(
+      onResult: (granted: Boolean, shouldShowRationale: Boolean) -> Unit,
+  ) {
+    onResult(true, false)
+  }
+
+  /** Opens the app's system settings page (when permission was permanently denied). */
+  public fun openAppSettings() {}
+
+  /** Requests turning Bluetooth on. */
+  public fun requestEnableBluetooth() {}
+
+  /** Opens system Bluetooth settings so the user can pair their Mac. */
+  public fun openBluetoothSettings() {}
+}
+
+/**
  * One phone permission, as the Hosts plate draws it.
  *
  * [grantable] is what separates a runtime permission -- a dialog this app can raise -- from one

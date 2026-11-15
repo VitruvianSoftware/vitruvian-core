@@ -3341,6 +3341,175 @@ public object Derive {
     )
   }
 
+  /** One-line explanation shown before asking for Bluetooth access on the Remote screen. */
+  public const val BLUETOOTH_RATIONALE_LINE: String =
+      "Bluetooth lets this phone act as your Mac's keyboard and trackpad."
+
+  /** Action offered by the Remote screen's contextual Bluetooth banner. */
+  public enum class BluetoothBannerAction {
+    AllowPermission,
+    OpenAppSettings,
+    TurnOnBluetooth,
+    OpenBluetoothSettings,
+    Reconnect,
+  }
+
+  /** Cause-specific banner model for Bluetooth HID readiness on the Remote screen. */
+  public data class BluetoothBannerSpec(
+      val message: String,
+      val action: BluetoothBannerAction,
+      val actionLabel: String,
+      val steps: List<String> = emptyList(),
+      val rationale: String? = null,
+  )
+
+  /**
+   * Whether the Remote screen should automatically trigger the runtime `BLUETOOTH_CONNECT` prompt
+   * on first visit (never asked before and permission not yet granted on an adapter-equipped
+   * phone).
+   */
+  public fun shouldAutoPromptBluetoothOnRemoteVisit(
+      hasAdapter: Boolean,
+      permissionGranted: Boolean,
+      askedBefore: Boolean,
+  ): Boolean = hasAdapter && !permissionGranted && !askedBefore
+
+  /**
+   * Pure decision logic for the Remote screen's Bluetooth banner, naming the exact root cause and
+   * matching recovery action (`Allow Bluetooth`, `Open app settings`, `Turn on Bluetooth`, `Open
+   * Bluetooth settings` + 2 pairing steps, or `Reconnect`).
+   */
+  public fun remoteBluetoothBanner(
+      connected: Boolean,
+      waitingForHost: Boolean = false,
+      hostName: String,
+      hasAdapter: Boolean,
+      permissionGranted: Boolean,
+      askedBefore: Boolean,
+      shouldShowRationale: Boolean,
+      bluetoothEnabled: Boolean,
+      hasPairedComputer: Boolean,
+  ): BluetoothBannerSpec? {
+    if (connected || !hasAdapter) return null
+    val displayHost = hostName.trim().ifEmpty { "Mac" }
+    if (!permissionGranted) {
+      val permanentlyDenied =
+          isNotificationPermissionBlocked(
+              granted = false,
+              shouldShowRationale = shouldShowRationale,
+              asked = askedBefore,
+          )
+      return if (permanentlyDenied) {
+        BluetoothBannerSpec(
+            message = "Bluetooth permission declined.",
+            action = BluetoothBannerAction.OpenAppSettings,
+            actionLabel = "Open app settings",
+            rationale = BLUETOOTH_RATIONALE_LINE,
+        )
+      } else {
+        BluetoothBannerSpec(
+            message =
+                if (askedBefore) "Bluetooth permission declined." else BLUETOOTH_RATIONALE_LINE,
+            action = BluetoothBannerAction.AllowPermission,
+            actionLabel = "Allow Bluetooth",
+            rationale = if (askedBefore) BLUETOOTH_RATIONALE_LINE else null,
+        )
+      }
+    }
+    if (!bluetoothEnabled) {
+      return BluetoothBannerSpec(
+          message = "Bluetooth is off.",
+          action = BluetoothBannerAction.TurnOnBluetooth,
+          actionLabel = "Turn on Bluetooth",
+      )
+    }
+    if (!hasPairedComputer) {
+      return BluetoothBannerSpec(
+          message = "$displayHost is not paired in Bluetooth.",
+          action = BluetoothBannerAction.OpenBluetoothSettings,
+          actionLabel = "Open Bluetooth settings",
+          steps =
+              listOf(
+                  "1. Open Bluetooth settings on your phone and Mac.",
+                  "2. Pair with $displayHost, then return to Remote.",
+              ),
+      )
+    }
+    return if (waitingForHost) {
+      BluetoothBannerSpec(
+          message = "Bluetooth: connecting to $displayHost… buttons wait for it",
+          action = BluetoothBannerAction.Reconnect,
+          actionLabel = "Reconnect",
+      )
+    } else {
+      BluetoothBannerSpec(
+          message = "Bluetooth link is down. Buttons on this screen won't reach $displayHost.",
+          action = BluetoothBannerAction.Reconnect,
+          actionLabel = "Reconnect",
+      )
+    }
+  }
+
+  /** Derives the trackpad footer caption from the live Bluetooth HID readiness state. */
+  public fun pointerCaption(
+      connected: Boolean,
+      waitingForHost: Boolean = false,
+      hostName: String,
+      pointerHint: String,
+      hasAdapter: Boolean,
+      permissionGranted: Boolean,
+      bluetoothEnabled: Boolean,
+      hasPairedComputer: Boolean,
+  ): String {
+    val displayHost = hostName.trim().ifEmpty { "Mac" }
+    return when {
+      connected -> pointerHint
+      !hasAdapter -> "bluetooth unavailable on this device"
+      !permissionGranted -> "allow Bluetooth to control $displayHost"
+      !bluetoothEnabled -> "turn on Bluetooth to connect"
+      !hasPairedComputer -> "pair $displayHost in Bluetooth settings"
+      waitingForHost -> "connecting to $displayHost…"
+      else -> "bluetooth link down · tap Reconnect"
+    }
+  }
+
+  /** Whether the lower/side dock renders the trackpad instead of the console. */
+  public fun showsDockTrackpad(
+      showDock: Boolean,
+      isHalfOpen: Boolean,
+      isRemoteScreen: Boolean,
+  ): Boolean = showDock && isHalfOpen && isRemoteScreen
+
+  /** Whether the Remote main pane should render its trackpad (hidden when the dock owns it). */
+  public fun showsMainTrackpad(dockShowsTrackpad: Boolean): Boolean = !dockShowsTrackpad
+
+  /**
+   * Resolves persisted [ThemeMode] with one-time migration from the legacy [legacyDarkTheme]
+   * boolean preference:
+   * - explicit [storedMode] wins;
+   * - legacy `darkTheme = true` -> [ThemeMode.Dark], `false` -> [ThemeMode.Light];
+   * - fresh installs (`null`, `null`) -> [ThemeMode.System].
+   */
+  public fun migrateThemeMode(storedMode: String?, legacyDarkTheme: Boolean?): ThemeMode {
+    if (storedMode != null) {
+      return ThemeMode.entries.firstOrNull { it.name.equals(storedMode, ignoreCase = true) }
+          ?: ThemeMode.System
+    }
+    return when (legacyDarkTheme) {
+      true -> ThemeMode.Dark
+      false -> ThemeMode.Light
+      null -> ThemeMode.System
+    }
+  }
+
+  /** Whether the UI should render dark theme for [mode] given [systemDark]. */
+  public fun isDarkTheme(mode: ThemeMode, systemDark: Boolean): Boolean =
+      when (mode) {
+        ThemeMode.System -> systemDark
+        ThemeMode.Light -> false
+        ThemeMode.Dark -> true
+      }
+
   /** `0`, `6.4`, `31.6` -- `Format.decimal`'s shape; this library cannot depend on :format. */
   private fun decimal(value: Double): String {
     val rounded = Math.round(value * 10) / 10.0
@@ -3395,4 +3564,11 @@ public object VitruvianSpeakerControls {
   public const val DOOR_SWITCH: String = "door-switch"
   public const val DOOR_COPY_SETTINGS: String = "door-copy-settings"
   public const val RESET: String = "reset"
+}
+
+/** User-selectable color theme mode, defaulting to following the system setting. */
+public enum class ThemeMode(public val label: String) {
+  System("System"),
+  Light("Light"),
+  Dark("Dark"),
 }

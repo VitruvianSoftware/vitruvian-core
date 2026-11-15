@@ -82,6 +82,7 @@ import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianIcons
 import dev.vitruvian.design.motion
 import dev.vitruvian.remote.state.Connection
+import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.Screen
 
@@ -90,6 +91,11 @@ import dev.vitruvian.remote.state.Screen
  * repeating what the dock already shows -- Home's quick actions are the dock's macro list.
  */
 public val LocalShowDock: ProvidableCompositionLocal<Boolean> = compositionLocalOf { false }
+
+/** Whether the dock is currently showing the trackpad (so Remote hides the main-pane duplicate). */
+public val LocalDockShowsTrackpad: ProvidableCompositionLocal<Boolean> = compositionLocalOf {
+  false
+}
 
 /** The dock's width when it sits beside the content rather than under it. */
 private val DOCK_WIDTH = 300.dp
@@ -132,7 +138,16 @@ public fun RemoteShell(
           state.dockOpen &&
           screen != Screen.Console &&
           state.connection != Connection.Unpaired
-  CompositionLocalProvider(LocalShowDock provides showDock) {
+  val dockShowsTrackpad =
+      Derive.showsDockTrackpad(
+          showDock = showDock,
+          isHalfOpen = layout.isBook || layout.isTabletop,
+          isRemoteScreen = screen == Screen.Remote,
+      )
+  CompositionLocalProvider(
+      LocalShowDock provides showDock,
+      LocalDockShowsTrackpad provides dockShowsTrackpad,
+  ) {
     Row(modifier = modifier.fillMaxSize().background(colors.bg)) {
       if (layout.showRail) {
         Rail(
@@ -146,13 +161,17 @@ public fun RemoteShell(
       }
       Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
         TopBar(title = screen.title, showMark = !layout.showRail) {
-          // Hosts is not a tab. The chip beside this already went there, but
-          // nothing about a status chip says "settings"; a gear does.
-          SettingsButton(onClick = { state.go(Screen.Hosts) })
+          // Folded, the rail is absent and Hosts is not on the tab bar, so keep the gear beside
+          // the host chip; unfolded, the rail already holds the Hosts destination.
+          if (!layout.showRail) {
+            SettingsButton(onClick = { state.go(Screen.Hosts) })
+          }
           HostChip(
               text = state.hostChipText,
               tone = state.hostTone,
               onClick = { state.go(Screen.Hosts) },
+              hostName = state.hostShortName,
+              stateLabel = state.connectionWord,
           )
         }
         ShellBody(
@@ -250,7 +269,7 @@ private fun ShellBody(
           if (paneWidth != null) Modifier.width(with(density) { paneWidth.toDp() }).fillMaxHeight()
           else Modifier.weight(1f).fillMaxHeight())
       Box(modifier = Modifier.weight(1f).fillMaxHeight().drawBehind { hingeRule(true) }) {
-        Dock(state = state, showsTrackpad = screen == Screen.Remote)
+        Dock(state = state, showsTrackpad = LocalDockShowsTrackpad.current)
       }
     }
   } else if (layout.isTabletop && showDock) {
@@ -275,7 +294,7 @@ private fun ShellBody(
                 )
               },
       ) {
-        Dock(state = state, showsTrackpad = screen == Screen.Remote)
+        Dock(state = state, showsTrackpad = LocalDockShowsTrackpad.current)
       }
     }
   } else {
@@ -291,7 +310,7 @@ private fun ShellBody(
                   )
                 },
         ) {
-          Dock(state = state, showsTrackpad = false)
+          Dock(state = state, showsTrackpad = LocalDockShowsTrackpad.current)
         }
       }
     }

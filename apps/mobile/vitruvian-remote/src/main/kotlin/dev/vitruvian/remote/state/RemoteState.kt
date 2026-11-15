@@ -128,6 +128,11 @@ public class RemoteState(
      */
     private val openUrl: ((String) -> Boolean)? = null,
     /**
+     * The phone's Bluetooth adapter, permission and Settings port -- same shape as [notifier] and
+     * [bridge] because this class holds no `Context`.
+     */
+    private val bluetooth: BluetoothControl? = null,
+    /**
      * Where fire-and-forget actions run.
      *
      * Everything that reaches the Mac over HTTP is a round trip, and none of it may block the frame
@@ -205,7 +210,7 @@ public class RemoteState(
     private set
 
   // --- appearance -------------------------------------------------------
-  public var darkTheme: Boolean by mutableStateOf(persistence.darkTheme)
+  public var themeMode: ThemeMode by mutableStateOf(persistence.themeMode)
     private set
 
   // --- home -------------------------------------------------------------
@@ -294,6 +299,45 @@ public class RemoteState(
   public var hidLink: HidLinkState by mutableStateOf(HidLinkState.Unavailable)
     private set
 
+  public var bluetoothHasAdapter: Boolean by
+      mutableStateOf(bluetooth?.hasBluetoothAdapter() != false)
+    private set
+
+  public var bluetoothGranted: Boolean by
+      mutableStateOf(bluetooth?.hasBluetoothPermission() != false)
+    private set
+
+  public var bluetoothAsked: Boolean by
+      mutableStateOf(
+          (bluetooth?.hasAskedBluetoothPermission() == true) || persistence.askedForBluetooth)
+    private set
+
+  public var bluetoothShouldShowRationale: Boolean by
+      mutableStateOf(bluetooth?.shouldShowBluetoothRationale() == true)
+    private set
+
+  public var bluetoothEnabled: Boolean by mutableStateOf(bluetooth?.isBluetoothEnabled() != false)
+    private set
+
+  public var bluetoothHasPairedComputer: Boolean by
+      mutableStateOf(bluetooth?.hasPairedComputer() != false)
+    private set
+
+  /** Contextual banner shown above the Remote trackpad when HID cannot reach the Mac. */
+  public val remoteBluetoothBanner: Derive.BluetoothBannerSpec?
+    get() =
+        Derive.remoteBluetoothBanner(
+            connected = hidLink == HidLinkState.Connected,
+            waitingForHost = hidLink == HidLinkState.WaitingForHost,
+            hostName = hostShortName,
+            hasAdapter = bluetoothHasAdapter,
+            permissionGranted = bluetoothGranted,
+            askedBefore = bluetoothAsked,
+            shouldShowRationale = bluetoothShouldShowRationale,
+            bluetoothEnabled = bluetoothEnabled,
+            hasPairedComputer = bluetoothHasPairedComputer,
+        )
+
   /**
    * The trackpad caption.
    *
@@ -303,11 +347,16 @@ public class RemoteState(
    */
   public val pointerLabel: String
     get() =
-        when (hidLink) {
-          HidLinkState.Connected -> POINTER_HINT
-          HidLinkState.WaitingForHost -> "connecting to $hostShortName…"
-          HidLinkState.Unavailable -> "bluetooth link down · tap Reconnect"
-        }
+        Derive.pointerCaption(
+            connected = hidLink == HidLinkState.Connected,
+            waitingForHost = hidLink == HidLinkState.WaitingForHost,
+            hostName = hostShortName,
+            pointerHint = POINTER_HINT,
+            hasAdapter = bluetoothHasAdapter,
+            permissionGranted = bluetoothGranted,
+            bluetoothEnabled = bluetoothEnabled,
+            hasPairedComputer = bluetoothHasPairedComputer,
+        )
 
   public var keyboardOpen: Boolean by mutableStateOf(false)
     private set
@@ -6836,9 +6885,9 @@ public class RemoteState(
     persistence.hosts = hosts
   }
 
-  public fun toggleTheme() {
-    darkTheme = !darkTheme
-    persistence.darkTheme = darkTheme
+  public fun updateThemeMode(mode: ThemeMode) {
+    themeMode = mode
+    persistence.themeMode = mode
   }
 
   public fun updateWakeOnLan(value: Boolean) {
@@ -7197,6 +7246,65 @@ public class RemoteState(
   /** Called by the transport whenever the Bluetooth link changes. */
   public fun onHidLinkChanged(link: HidLinkState) {
     hidLink = link
+    refreshBluetoothStatus()
+  }
+
+  /** Re-reads Bluetooth adapter/permission/bond status without prompting the user. */
+  public fun refreshBluetoothStatus() {
+    val bt = bluetooth ?: return
+    bluetoothHasAdapter = bt.hasBluetoothAdapter()
+    val granted = bt.hasBluetoothPermission()
+    bluetoothGranted = granted
+    bluetoothAsked = bt.hasAskedBluetoothPermission() || persistence.askedForBluetooth
+    bluetoothShouldShowRationale = !granted && bt.shouldShowBluetoothRationale()
+    bluetoothEnabled = bt.isBluetoothEnabled()
+    bluetoothHasPairedComputer = if (granted) bt.hasPairedComputer() else false
+  }
+
+  /**
+   * Called once the Remote screen has painted its one-line explanation: asks for
+   * `BLUETOOTH_CONNECT` on the first visit to Remote if not yet asked or granted.
+   */
+  public fun onRemoteScreenVisited() {
+    refreshBluetoothStatus()
+    if (Derive.shouldAutoPromptBluetoothOnRemoteVisit(
+        hasAdapter = bluetoothHasAdapter,
+        permissionGranted = bluetoothGranted,
+        askedBefore = bluetoothAsked,
+    )) {
+      requestBluetoothPermission()
+    }
+  }
+
+  /** Asks for `BLUETOOTH_CONNECT` via [BluetoothControl] and updates observable readiness state. */
+  public fun requestBluetoothPermission() {
+    val bt = bluetooth
+    if (bt == null) {
+      bluetoothGranted = true
+      bluetoothAsked = true
+      persistence.askedForBluetooth = true
+      bluetoothShouldShowRationale = false
+      return
+    }
+    bt.ensureBluetoothPermission { granted, shouldShowRationale ->
+      bluetoothGranted = granted
+      bluetoothAsked = bt.hasAskedBluetoothPermission() || !granted
+      if (!granted) persistence.askedForBluetooth = true
+      bluetoothShouldShowRationale = !granted && shouldShowRationale
+      refreshBluetoothStatus()
+    }
+  }
+
+  public fun openBluetoothAppSettings() {
+    bluetooth?.openAppSettings()
+  }
+
+  public fun requestEnableBluetooth() {
+    bluetooth?.requestEnableBluetooth()
+  }
+
+  public fun openSystemBluetoothSettings() {
+    bluetooth?.openBluetoothSettings()
   }
 
   /** The Reconnect button above the trackpad. */
@@ -8495,6 +8603,7 @@ public class RemoteState(
     foreground = value
     if (value) {
       refreshNotificationPermission()
+      refreshBluetoothStatus()
     }
   }
 

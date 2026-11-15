@@ -219,7 +219,10 @@ kt_jvm_test(
         "//apps/desktop/vitruvian-speaker:Sources/VitruvianSpeakerToolCore/Pages.swift",
         "//apps/desktop/vitruvian-speaker:testdata/controls.json",
         "//apps/mobile/vitruvian-remote/macagent:golden_speaker_v1",
-    ] + glob(["src/main/kotlin/dev/vitruvian/remote/screens/*.kt"]),
+    ] + glob([
+        "src/main/kotlin/dev/vitruvian/remote/screens/*.kt",
+        "src/main/kotlin/dev/vitruvian/remote/shell/*.kt",
+    ]),
     test_class = "dev.vitruvian.remote.state.DeriveTest",
     deps = [
         ":derive",
