@@ -65,6 +65,7 @@ Component package providing implementation for `tools`.
 - Subdirectory: [scripts](./scripts/README.md)
 - Subdirectory: [sdk-codegen](./sdk-codegen/README.md)
 - Subdirectory: [secret-scan](./secret-scan/README.md)
+- Subdirectory: [sentry](./sentry/README.md)
 - Subdirectory: [shell-compat](./shell-compat/README.md)
 - Subdirectory: [src](./src/README.md)
 - Subdirectory: [sync-downloads](./sync-downloads/README.md)
