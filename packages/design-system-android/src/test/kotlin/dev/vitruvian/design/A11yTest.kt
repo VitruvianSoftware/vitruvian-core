@@ -105,4 +105,31 @@ class A11yTest {
     )
     assertNull(A11y.buttonContentDescription("Send"))
   }
+
+  @Test
+  fun emptyStateActionsUseFlowRowSoButtonsWrapOnNarrowWidths() {
+    val rel = "packages/design-system-android/src/main/kotlin/dev/vitruvian/design/States.kt"
+    val direct = java.io.File(rel)
+    val src =
+        if (direct.exists()) {
+          direct.readText()
+        } else {
+          val base = System.getenv("TEST_SRCDIR") ?: error("TEST_SRCDIR unset")
+          val candidate =
+              listOf("_main", "vitruvian_core", "")
+                  .map { sub ->
+                    if (sub.isEmpty()) java.io.File(base, rel)
+                    else java.io.File(java.io.File(base, sub), rel)
+                  }
+                  .firstOrNull { it.exists() } ?: error("Runfile not found: $rel")
+          candidate.readText()
+        }
+    val emptyStateBlock =
+        src.substringAfter("public fun EmptyState(").substringBefore("public fun Skeleton(")
+    assertTrue("EmptyState must use FlowRow for actions", emptyStateBlock.contains("FlowRow("))
+    assertTrue(
+        "EmptyState actions parameter remains RowScope.() -> Unit",
+        emptyStateBlock.contains("RowScope.() -> Unit"),
+    )
+  }
 }
