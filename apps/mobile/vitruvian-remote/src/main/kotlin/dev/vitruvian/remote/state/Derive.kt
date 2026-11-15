@@ -3673,10 +3673,14 @@ public object Derive {
       intentKey: String?,
       savedHandledKey: String?,
       hasActionableData: Boolean,
+      isNewIntent: Boolean = false,
   ): IntentDecision {
     if (!hasActionableData || intentKey.isNullOrEmpty()) {
       return IntentDecision.Restore
     }
+    // onNewIntent is always a fresh tap (a second notification for the same screen, the same
+    // pairing link scanned again), never Android re-delivering an old one, so it is always handled.
+    if (isNewIntent) return IntentDecision.Handle
     return if (intentKey == savedHandledKey) {
       IntentDecision.Restore
     } else {

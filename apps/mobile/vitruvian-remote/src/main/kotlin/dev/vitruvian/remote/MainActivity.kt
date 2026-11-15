@@ -364,6 +364,7 @@ public class MainActivity : ComponentActivity() {
         intentKey = key,
         savedHandledKey = handledIntentKey,
         hasActionableData = actionable,
+        isNewIntent = isNewIntent,
     )) {
       Derive.IntentDecision.Handle -> {
         handledIntentKey = key

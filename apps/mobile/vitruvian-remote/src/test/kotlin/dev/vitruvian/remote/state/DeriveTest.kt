@@ -4161,6 +4161,28 @@ public class DeriveTest {
         ),
     )
 
+    // 4b. onNewIntent with a link already handled (second notification for the same screen,
+    // same pairing QR scanned again): a new intent is always a fresh tap, so it is handled.
+    assertEquals(
+        Derive.IntentDecision.Handle,
+        Derive.intentDecision(
+            intentKey = pairKey,
+            savedHandledKey = pairKey,
+            hasActionableData = Derive.hasActionableIntentData(pairUri, null),
+            isNewIntent = true,
+        ),
+    )
+    // ...but a new intent with nothing actionable still does nothing.
+    assertEquals(
+        Derive.IntentDecision.Restore,
+        Derive.intentDecision(
+            intentKey = null,
+            savedHandledKey = pairKey,
+            hasActionableData = false,
+            isNewIntent = true,
+        ),
+    )
+
     // 5. Plain launch with no data (or unrecognized URI/action) restores instead of handling.
     val emptyKey = Derive.intentKey(dataUri = null, actionExtra = null, createdAt = null)
     assertNull(emptyKey)
