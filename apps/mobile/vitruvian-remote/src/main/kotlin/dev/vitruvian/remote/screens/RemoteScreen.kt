@@ -100,6 +100,9 @@ import dev.vitruvian.remote.overlays.DictateButton
 import dev.vitruvian.remote.shell.LocalDockShowsTrackpad
 import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.DialogKind
+import dev.vitruvian.remote.state.REMOTE_DESKTOP_ACTIONS
+import dev.vitruvian.remote.state.REMOTE_PALETTE_KEYS
+import dev.vitruvian.remote.state.REMOTE_WINDOW_ACTIONS
 import dev.vitruvian.remote.state.RemoteSection
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.TRACK_PERCENT
@@ -141,25 +144,7 @@ private val METER_HEIGHT = 8.dp
 private const val VOLUME_STEP = 6
 private const val BRIGHTNESS_STEP = 10
 
-/**
- * The on-screen key palette.
- *
- * Bare keys and one chord, NOT bare modifiers. A lone ⌘ is meaningless over HID: a modifier only
- * exists as part of a report that also carries a key, and there is nowhere to "hold" it between two
- * taps. The old palette showed ⌘ ⌥ ⌃ ⇧ as if they were buttons and none of them did anything.
- */
-private val PALETTE_KEYS: List<Triple<String, String?, HidAction>> =
-    listOf(
-        Triple("esc", "Escape", HidAction.Escape),
-        Triple("tab", "Tab", HidAction.Tab),
-        Triple("↩", "Return", HidAction.Return),
-        Triple("⌫", "Backspace", HidAction.Backspace),
-        Triple("↑", "Up arrow", HidAction.ArrowUp),
-        Triple("↓", "Down arrow", HidAction.ArrowDown),
-        Triple("←", "Left arrow", HidAction.ArrowLeft),
-        Triple("→", "Right arrow", HidAction.ArrowRight),
-        Triple("⌘ space", "Command Space (Spotlight)", HidAction.Spotlight),
-    )
+/** The on-screen key palette uses `state.REMOTE_PALETTE_KEYS` for pure JVM testability. */
 
 /**
  * Remote: the controls.
@@ -265,7 +250,7 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
                 horizontalArrangement = Arrangement.spacedBy(Space.s2),
                 verticalArrangement = Arrangement.spacedBy(Space.s2),
             ) {
-              PALETTE_KEYS.forEach { (glyph, description, action) ->
+              REMOTE_PALETTE_KEYS.forEach { (glyph, description, action) ->
                 Kbd(
                     text = glyph,
                     onClick = {
@@ -431,20 +416,15 @@ private fun BluetoothStatusBanner(banner: Derive.BluetoothBannerSpec, state: Rem
           )
         }
       }
-      VButton(
-          label = banner.actionLabel,
-          maxLines = 2,
-          onClick = {
-            when (banner.action) {
-              Derive.BluetoothBannerAction.AllowPermission -> state.requestBluetoothPermission()
-              Derive.BluetoothBannerAction.OpenAppSettings -> state.openBluetoothAppSettings()
-              Derive.BluetoothBannerAction.TurnOnBluetooth -> state.requestEnableBluetooth()
-              Derive.BluetoothBannerAction.OpenBluetoothSettings ->
-                  state.openSystemBluetoothSettings()
-              Derive.BluetoothBannerAction.Reconnect -> state.reconnectHid()
-            }
-          },
-      )
+      val action = banner.action
+      val actionLabel = banner.actionLabel
+      if (action != null && actionLabel != null) {
+        VButton(
+            label = actionLabel,
+            maxLines = 2,
+            onClick = { state.performBluetoothBannerAction(action) },
+        )
+      }
     }
   }
 }
@@ -868,7 +848,7 @@ private fun DesktopPlate(state: RemoteState) {
     AutoGrid(minItemWidth = DESKTOP_CELL_MIN, gap = Space.s2) {
       item { GridKey("Space ←") { state.sendMacChord(HidAction.SpaceLeft) } }
       item { GridKey("Space →") { state.sendMacChord(HidAction.SpaceRight) } }
-      DESKTOP_ACTIONS.forEach { (label, action) ->
+      REMOTE_DESKTOP_ACTIONS.forEach { (label, action) ->
         item { GridKey(label) { state.sendMacChord(action) } }
       }
     }
@@ -880,7 +860,7 @@ private fun DesktopPlate(state: RemoteState) {
 private fun WindowPlate(state: RemoteState) {
   FoldingPlate(state, RemoteSection.WINDOW, "Window") {
     AutoGrid(minItemWidth = WINDOW_CELL_MIN, gap = Space.s2) {
-      WINDOW_ACTIONS.forEach { (label, action) ->
+      REMOTE_WINDOW_ACTIONS.forEach { (label, action) ->
         item { GridKey(label) { state.sendMacChord(action) } }
       }
     }
@@ -914,26 +894,6 @@ private val WINDOW_CELL_MIN = 95.dp
 
 /** VButton's default is 21 dp a side, which is most of a 110 dp cell. */
 private val GRID_KEY_PADDING = PaddingValues(horizontal = Space.s2)
-
-private val DESKTOP_ACTIONS: List<Pair<String, HidAction>> =
-    listOf(
-        "Mission Control" to HidAction.MissionControl,
-        "App Exposé" to HidAction.AppExpose,
-        "Show Desktop" to HidAction.ShowDesktop,
-        "Launchpad" to HidAction.Launchpad,
-        "Screenshot" to HidAction.ScreenshotFull,
-        "Capture…" to HidAction.ScreenshotUi,
-    )
-
-private val WINDOW_ACTIONS: List<Pair<String, HidAction>> =
-    listOf(
-        "Switch App" to HidAction.CmdTab,
-        "Cycle" to HidAction.CycleWindows,
-        "Fullscreen" to HidAction.Fullscreen,
-        "Minimize" to HidAction.MinimiseWindow,
-        "Hide" to HidAction.HideApp,
-        "Close" to HidAction.CloseWindow,
-    )
 
 /**
  * Media keys, and what is playing when anything can say.

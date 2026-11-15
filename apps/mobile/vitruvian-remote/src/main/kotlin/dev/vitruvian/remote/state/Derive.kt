@@ -3341,9 +3341,31 @@ public object Derive {
     )
   }
 
+  /** Minimum Android API level (`Build.VERSION_CODES.P`) that provides `BluetoothHidDevice`. */
+  public const val MIN_BLUETOOTH_HID_SDK_INT: Int = 28
+
   /** One-line explanation shown before asking for Bluetooth access on the Remote screen. */
   public const val BLUETOOTH_RATIONALE_LINE: String =
       "Bluetooth lets this phone act as your Mac's keyboard and trackpad."
+
+  /** Shown on Android 8.0/8.1 (API 26–27) where `BluetoothHidDevice` is unavailable. */
+  public const val BLUETOOTH_UNSUPPORTED_MESSAGE: String =
+      "This Android version can't act as a keyboard and trackpad. Android 9 or later is needed."
+
+  /** Whether [sdkInt] supports Android's `BluetoothHidDevice` profile (Android 9 / API 28+). */
+  public fun isBluetoothHidSupported(sdkInt: Int): Boolean = sdkInt >= MIN_BLUETOOTH_HID_SDK_INT
+
+  /** Root cause for the Remote screen's Bluetooth HID readiness banner. */
+  public enum class BluetoothBannerCause {
+    Unsupported,
+    PermissionNeeded,
+    PermissionDeclined,
+    PermissionPermanentlyDenied,
+    BluetoothOff,
+    MacNotPaired,
+    WaitingForHost,
+    LinkDown,
+  }
 
   /** Action offered by the Remote screen's contextual Bluetooth banner. */
   public enum class BluetoothBannerAction {
@@ -3354,30 +3376,79 @@ public object Derive {
     Reconnect,
   }
 
+  /** Button label + action pair derived for a [BluetoothBannerCause]. */
+  public data class BluetoothBannerButton(
+      val label: String,
+      val action: BluetoothBannerAction,
+  )
+
   /** Cause-specific banner model for Bluetooth HID readiness on the Remote screen. */
   public data class BluetoothBannerSpec(
+      val cause: BluetoothBannerCause,
       val message: String,
-      val action: BluetoothBannerAction,
-      val actionLabel: String,
+      val action: BluetoothBannerAction?,
+      val actionLabel: String?,
       val steps: List<String> = emptyList(),
       val rationale: String? = null,
   )
 
   /**
-   * Whether the Remote screen should automatically trigger the runtime `BLUETOOTH_CONNECT` prompt
-   * on first visit (never asked before and permission not yet granted on an adapter-equipped
-   * phone).
+   * Maps a [BluetoothBannerCause] to its action button label and [BluetoothBannerAction], or `null`
+   * when no user action on this device can resolve the cause (such as API 26–27).
+   */
+  public fun bluetoothBannerButton(cause: BluetoothBannerCause): BluetoothBannerButton? =
+      when (cause) {
+        BluetoothBannerCause.Unsupported -> null
+        BluetoothBannerCause.PermissionNeeded,
+        BluetoothBannerCause.PermissionDeclined ->
+            BluetoothBannerButton("Allow Bluetooth", BluetoothBannerAction.AllowPermission)
+        BluetoothBannerCause.PermissionPermanentlyDenied ->
+            BluetoothBannerButton("Open app settings", BluetoothBannerAction.OpenAppSettings)
+        BluetoothBannerCause.BluetoothOff ->
+            BluetoothBannerButton("Turn on Bluetooth", BluetoothBannerAction.TurnOnBluetooth)
+        BluetoothBannerCause.MacNotPaired ->
+            BluetoothBannerButton(
+                "Open Bluetooth settings", BluetoothBannerAction.OpenBluetoothSettings)
+        BluetoothBannerCause.WaitingForHost,
+        BluetoothBannerCause.LinkDown ->
+            BluetoothBannerButton("Reconnect", BluetoothBannerAction.Reconnect)
+      }
+
+  /** Pure action dispatcher for the Remote screen's Bluetooth banner button. */
+  public fun dispatchBluetoothBannerAction(
+      action: BluetoothBannerAction,
+      onAllowPermission: () -> Unit,
+      onOpenAppSettings: () -> Unit,
+      onTurnOnBluetooth: () -> Unit,
+      onOpenBluetoothSettings: () -> Unit,
+      onReconnect: () -> Unit,
+  ) {
+    when (action) {
+      BluetoothBannerAction.AllowPermission -> onAllowPermission()
+      BluetoothBannerAction.OpenAppSettings -> onOpenAppSettings()
+      BluetoothBannerAction.TurnOnBluetooth -> onTurnOnBluetooth()
+      BluetoothBannerAction.OpenBluetoothSettings -> onOpenBluetoothSettings()
+      BluetoothBannerAction.Reconnect -> onReconnect()
+    }
+  }
+
+  /**
+   * Whether the Remote screen should automatically trigger the runtime `BLUETOOTH_CONNECT` prompt:
+   * only when the user navigated to Remote themselves on a supported HID device and the app has not
+   * yet asked or been granted permission (never on cold launch / deep link / state restoration).
    */
   public fun shouldAutoPromptBluetoothOnRemoteVisit(
       hasAdapter: Boolean,
       permissionGranted: Boolean,
       askedBefore: Boolean,
-  ): Boolean = hasAdapter && !permissionGranted && !askedBefore
+      hidSupported: Boolean = true,
+      userNavigated: Boolean = true,
+  ): Boolean = userNavigated && hidSupported && hasAdapter && !permissionGranted && !askedBefore
 
   /**
    * Pure decision logic for the Remote screen's Bluetooth banner, naming the exact root cause and
    * matching recovery action (`Allow Bluetooth`, `Open app settings`, `Turn on Bluetooth`, `Open
-   * Bluetooth settings` + 2 pairing steps, or `Reconnect`).
+   * Bluetooth settings` + 2 pairing steps, `Reconnect`, or no button on unsupported Android < 9).
    */
   public fun remoteBluetoothBanner(
       connected: Boolean,
@@ -3389,8 +3460,16 @@ public object Derive {
       shouldShowRationale: Boolean,
       bluetoothEnabled: Boolean,
       hasPairedComputer: Boolean,
+      hidSupported: Boolean = true,
   ): BluetoothBannerSpec? {
-    if (connected || !hasAdapter) return null
+    if (connected) return null
+    if (!hidSupported) {
+      return bannerSpec(
+          cause = BluetoothBannerCause.Unsupported,
+          message = BLUETOOTH_UNSUPPORTED_MESSAGE,
+      )
+    }
+    if (!hasAdapter) return null
     val displayHost = hostName.trim().ifEmpty { "Mac" }
     if (!permissionGranted) {
       val permanentlyDenied =
@@ -3399,35 +3478,36 @@ public object Derive {
               shouldShowRationale = shouldShowRationale,
               asked = askedBefore,
           )
-      return if (permanentlyDenied) {
-        BluetoothBannerSpec(
-            message = "Bluetooth permission declined.",
-            action = BluetoothBannerAction.OpenAppSettings,
-            actionLabel = "Open app settings",
-            rationale = BLUETOOTH_RATIONALE_LINE,
-        )
-      } else {
-        BluetoothBannerSpec(
-            message =
-                if (askedBefore) "Bluetooth permission declined." else BLUETOOTH_RATIONALE_LINE,
-            action = BluetoothBannerAction.AllowPermission,
-            actionLabel = "Allow Bluetooth",
-            rationale = if (askedBefore) BLUETOOTH_RATIONALE_LINE else null,
-        )
+      return when {
+        permanentlyDenied ->
+            bannerSpec(
+                cause = BluetoothBannerCause.PermissionPermanentlyDenied,
+                message = "Bluetooth permission declined.",
+                rationale = BLUETOOTH_RATIONALE_LINE,
+            )
+        askedBefore ->
+            bannerSpec(
+                cause = BluetoothBannerCause.PermissionDeclined,
+                message = "Bluetooth permission declined.",
+                rationale = BLUETOOTH_RATIONALE_LINE,
+            )
+        else ->
+            bannerSpec(
+                cause = BluetoothBannerCause.PermissionNeeded,
+                message = BLUETOOTH_RATIONALE_LINE,
+            )
       }
     }
     if (!bluetoothEnabled) {
-      return BluetoothBannerSpec(
+      return bannerSpec(
+          cause = BluetoothBannerCause.BluetoothOff,
           message = "Bluetooth is off.",
-          action = BluetoothBannerAction.TurnOnBluetooth,
-          actionLabel = "Turn on Bluetooth",
       )
     }
     if (!hasPairedComputer) {
-      return BluetoothBannerSpec(
+      return bannerSpec(
+          cause = BluetoothBannerCause.MacNotPaired,
           message = "$displayHost is not paired in Bluetooth.",
-          action = BluetoothBannerAction.OpenBluetoothSettings,
-          actionLabel = "Open Bluetooth settings",
           steps =
               listOf(
                   "1. Open Bluetooth settings on your phone and Mac.",
@@ -3436,18 +3516,33 @@ public object Derive {
       )
     }
     return if (waitingForHost) {
-      BluetoothBannerSpec(
+      bannerSpec(
+          cause = BluetoothBannerCause.WaitingForHost,
           message = "Bluetooth: connecting to $displayHost… buttons wait for it",
-          action = BluetoothBannerAction.Reconnect,
-          actionLabel = "Reconnect",
       )
     } else {
-      BluetoothBannerSpec(
+      bannerSpec(
+          cause = BluetoothBannerCause.LinkDown,
           message = "Bluetooth link is down. Buttons on this screen won't reach $displayHost.",
-          action = BluetoothBannerAction.Reconnect,
-          actionLabel = "Reconnect",
       )
     }
+  }
+
+  private fun bannerSpec(
+      cause: BluetoothBannerCause,
+      message: String,
+      steps: List<String> = emptyList(),
+      rationale: String? = null,
+  ): BluetoothBannerSpec {
+    val button = bluetoothBannerButton(cause)
+    return BluetoothBannerSpec(
+        cause = cause,
+        message = message,
+        action = button?.action,
+        actionLabel = button?.label,
+        steps = steps,
+        rationale = rationale,
+    )
   }
 
   /** Derives the trackpad footer caption from the live Bluetooth HID readiness state. */
@@ -3460,10 +3555,12 @@ public object Derive {
       permissionGranted: Boolean,
       bluetoothEnabled: Boolean,
       hasPairedComputer: Boolean,
+      hidSupported: Boolean = true,
   ): String {
     val displayHost = hostName.trim().ifEmpty { "Mac" }
     return when {
       connected -> pointerHint
+      !hidSupported -> BLUETOOTH_UNSUPPORTED_MESSAGE
       !hasAdapter -> "bluetooth unavailable on this device"
       !permissionGranted -> "allow Bluetooth to control $displayHost"
       !bluetoothEnabled -> "turn on Bluetooth to connect"
@@ -3510,11 +3607,42 @@ public object Derive {
         ThemeMode.Dark -> true
       }
 
+  /**
+   * Restores a previously active [Screen] from saved instance state, returning `null` if invalid.
+   */
+  public fun restoredScreen(savedName: String?): Screen? {
+    val key = savedName?.trim().orEmpty()
+    if (key.isEmpty()) return null
+    return Screen.entries.firstOrNull { it.name.equals(key, ignoreCase = true) }
+  }
+
+  /**
+   * Whether `MainActivity.onCreate` should route its initial launch `Intent` instead of restoring
+   * the user's saved screen after configuration recreation or process death.
+   */
+  public fun shouldHandleLaunchIntentOnCreate(hasSavedInstanceState: Boolean): Boolean =
+      !hasSavedInstanceState
+
+  /**
+   * Whether the top bar should render its Settings gear (hidden whenever the nav rail is visible).
+   */
+  public fun showsTopBarSettings(showRail: Boolean): Boolean = !showRail
+
   /** `0`, `6.4`, `31.6` -- `Format.decimal`'s shape; this library cannot depend on :format. */
   private fun decimal(value: Double): String {
     val rounded = Math.round(value * 10) / 10.0
     return String.format(Locale.ROOT, "%.1f", rounded).removeSuffix(".0")
   }
+}
+
+/** The six destinations. Settings (Hosts) is reachable from the host chip and the rail only. */
+public enum class Screen(public val title: String) {
+  Home("Home"),
+  Remote("Remote"),
+  Mac("Mac"),
+  Apps("Modules"),
+  Console("Console"),
+  Hosts("Settings"),
 }
 
 /**

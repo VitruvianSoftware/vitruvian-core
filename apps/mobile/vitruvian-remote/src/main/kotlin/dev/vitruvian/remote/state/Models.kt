@@ -23,16 +23,7 @@ package dev.vitruvian.remote.state
 import dev.vitruvian.design.StatusTone
 import dev.vitruvian.design.TagTone
 import dev.vitruvian.design.TerminalLine
-
-/** The six destinations. Settings (Hosts) is reachable from the host chip and the rail only. */
-public enum class Screen(public val title: String) {
-  Home("Home"),
-  Remote("Remote"),
-  Mac("Mac"),
-  Apps("Modules"),
-  Console("Console"),
-  Hosts("Settings"),
-}
+import dev.vitruvian.remote.hid.HidAction
 
 /**
  * Whether this remote has a Mac, whether it can reach it, and whether it may act on it.
@@ -430,6 +421,9 @@ public interface Notifier {
  * with a pure stub, while [MainActivity] owns the permission launcher and intent receivers.
  */
 public interface BluetoothControl {
+  /** Whether this device's Android API level supports Bluetooth HID device mode (API 28+). */
+  public fun isBluetoothHidSupported(): Boolean = true
+
   /** Whether this device has a Bluetooth adapter. */
   public fun hasBluetoothAdapter(): Boolean = true
 
@@ -466,6 +460,174 @@ public interface BluetoothControl {
 
   /** Opens system Bluetooth settings so the user can pair their Mac. */
   public fun openBluetoothSettings() {}
+}
+
+/**
+ * Tracks the active [Screen] and whether the user explicitly navigated to [Screen.Remote] (as
+ * opposed to cold-launch deep links, Quick Settings tiles, or saved-state restoration).
+ */
+public class ScreenNavigationTracker(initialScreen: Screen = Screen.Home) {
+  public var screen: Screen = initialScreen
+    private set
+
+  public var remoteEnteredByUser: Boolean = false
+    private set
+
+  public fun go(target: Screen, userInitiated: Boolean = true) {
+    remoteEnteredByUser = userInitiated && target == Screen.Remote
+    screen = target
+  }
+
+  public fun restoreScreen(savedName: String?): Screen? {
+    val restored = Derive.restoredScreen(savedName) ?: return null
+    remoteEnteredByUser = false
+    screen = restored
+    return restored
+  }
+
+  public fun enterNonRemote() {
+    remoteEnteredByUser = false
+  }
+
+  public fun consumeRemoteEnteredByUser(): Boolean {
+    val entered = remoteEnteredByUser
+    remoteEnteredByUser = false
+    return entered
+  }
+}
+
+/**
+ * Pure JVM-testable coordinator for Bluetooth HID support, permission prompting, banner state, and
+ * banner action dispatch, backed by [Persistence] and [BluetoothControl].
+ */
+public class BluetoothReadinessCoordinator(
+    private val persistence: Persistence,
+    private val bluetooth: BluetoothControl? = null,
+    private val onReconnect: () -> Unit = {},
+) {
+  public var hidSupported: Boolean = bluetooth?.isBluetoothHidSupported() != false
+    private set
+
+  public var hasAdapter: Boolean = bluetooth?.hasBluetoothAdapter() != false
+    private set
+
+  public var granted: Boolean = bluetooth?.hasBluetoothPermission() != false
+    private set
+
+  public var asked: Boolean =
+      (bluetooth?.hasAskedBluetoothPermission() == true) || persistence.askedForBluetooth
+    private set
+
+  public var shouldShowRationale: Boolean = bluetooth?.shouldShowBluetoothRationale() == true
+    private set
+
+  public var enabled: Boolean = bluetooth?.isBluetoothEnabled() != false
+    private set
+
+  public var hasPairedComputer: Boolean = bluetooth?.hasPairedComputer() != false
+    private set
+
+  public fun refresh() {
+    val bt = bluetooth ?: return
+    hidSupported = bt.isBluetoothHidSupported()
+    hasAdapter = bt.hasBluetoothAdapter()
+    val nowGranted = bt.hasBluetoothPermission()
+    granted = nowGranted
+    asked = bt.hasAskedBluetoothPermission() || persistence.askedForBluetooth
+    shouldShowRationale = !nowGranted && bt.shouldShowBluetoothRationale()
+    enabled = bt.isBluetoothEnabled()
+    hasPairedComputer = if (nowGranted) bt.hasPairedComputer() else false
+  }
+
+  public fun onRemoteScreenVisited(userNavigated: Boolean) {
+    refresh()
+    if (Derive.shouldAutoPromptBluetoothOnRemoteVisit(
+        hasAdapter = hasAdapter,
+        permissionGranted = granted,
+        askedBefore = asked,
+        hidSupported = hidSupported,
+        userNavigated = userNavigated,
+    )) {
+      requestPermission()
+    }
+  }
+
+  public fun performBannerAction(action: Derive.BluetoothBannerAction) {
+    Derive.dispatchBluetoothBannerAction(
+        action = action,
+        onAllowPermission = ::requestPermission,
+        onOpenAppSettings = ::openAppSettings,
+        onTurnOnBluetooth = ::requestEnableBluetooth,
+        onOpenBluetoothSettings = ::openBluetoothSettings,
+        onReconnect = onReconnect,
+    )
+  }
+
+  public fun requestPermission() {
+    val bt = bluetooth
+    if (bt == null) {
+      granted = true
+      asked = true
+      persistence.askedForBluetooth = true
+      shouldShowRationale = false
+      return
+    }
+    bt.ensureBluetoothPermission { nowGranted, rationale ->
+      granted = nowGranted
+      asked = bt.hasAskedBluetoothPermission() || !nowGranted
+      if (!nowGranted) persistence.askedForBluetooth = true
+      shouldShowRationale = !nowGranted && rationale
+      refresh()
+    }
+  }
+
+  public fun openAppSettings() {
+    bluetooth?.openAppSettings()
+  }
+
+  public fun requestEnableBluetooth() {
+    bluetooth?.requestEnableBluetooth()
+  }
+
+  public fun openBluetoothSettings() {
+    bluetooth?.openBluetoothSettings()
+  }
+
+  public fun banner(
+      connected: Boolean,
+      waitingForHost: Boolean = false,
+      hostName: String,
+  ): Derive.BluetoothBannerSpec? =
+      Derive.remoteBluetoothBanner(
+          connected = connected,
+          waitingForHost = waitingForHost,
+          hostName = hostName,
+          hasAdapter = hasAdapter,
+          permissionGranted = granted,
+          askedBefore = asked,
+          shouldShowRationale = shouldShowRationale,
+          bluetoothEnabled = enabled,
+          hasPairedComputer = hasPairedComputer,
+          hidSupported = hidSupported,
+      )
+
+  public fun pointerCaption(
+      connected: Boolean,
+      waitingForHost: Boolean = false,
+      hostName: String,
+      pointerHint: String,
+  ): String =
+      Derive.pointerCaption(
+          connected = connected,
+          waitingForHost = waitingForHost,
+          hostName = hostName,
+          pointerHint = pointerHint,
+          hasAdapter = hasAdapter,
+          permissionGranted = granted,
+          bluetoothEnabled = enabled,
+          hasPairedComputer = hasPairedComputer,
+          hidSupported = hidSupported,
+      )
 }
 
 /**
@@ -586,3 +748,39 @@ public object RemoteSection {
  */
 public val REMOTE_SECTIONS_OPEN_BY_DEFAULT: Set<String> =
     setOf(RemoteSection.DESKTOP, RemoteSection.WINDOW)
+
+/** Palette keys drawn in the trackpad keyboard bar, with spoken descriptions for accessibility. */
+public val REMOTE_PALETTE_KEYS: List<Triple<String, String?, HidAction>> =
+    listOf(
+        Triple("esc", "Escape", HidAction.Escape),
+        Triple("tab", "Tab", HidAction.Tab),
+        Triple("↩", "Return", HidAction.Return),
+        Triple("⌫", "Backspace", HidAction.Backspace),
+        Triple("↑", "Up arrow", HidAction.ArrowUp),
+        Triple("↓", "Down arrow", HidAction.ArrowDown),
+        Triple("←", "Left arrow", HidAction.ArrowLeft),
+        Triple("→", "Right arrow", HidAction.ArrowRight),
+        Triple("⌘ space", "Command Space (Spotlight)", HidAction.Spotlight),
+    )
+
+/** Desktop & Spaces shortcut buttons drawn on the Remote screen. */
+public val REMOTE_DESKTOP_ACTIONS: List<Pair<String, HidAction>> =
+    listOf(
+        "Mission Control" to HidAction.MissionControl,
+        "App Exposé" to HidAction.AppExpose,
+        "Show Desktop" to HidAction.ShowDesktop,
+        "Launchpad" to HidAction.Launchpad,
+        "Screenshot" to HidAction.ScreenshotFull,
+        "Capture…" to HidAction.ScreenshotUi,
+    )
+
+/** Window control shortcut buttons drawn on the Remote screen using American English copy. */
+public val REMOTE_WINDOW_ACTIONS: List<Pair<String, HidAction>> =
+    listOf(
+        "Switch App" to HidAction.CmdTab,
+        "Cycle" to HidAction.CycleWindows,
+        "Fullscreen" to HidAction.Fullscreen,
+        "Minimize" to HidAction.MinimiseWindow,
+        "Hide" to HidAction.HideApp,
+        "Close" to HidAction.CloseWindow,
+    )

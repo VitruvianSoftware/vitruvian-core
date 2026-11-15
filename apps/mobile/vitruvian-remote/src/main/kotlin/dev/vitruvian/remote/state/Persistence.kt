@@ -52,13 +52,6 @@ private const val KEY_SPEAKER_MIRROR = "vitruvianSpeakerMirror"
 private const val KEY_ASKED_NOTIFICATIONS = "askedForNotifications"
 private const val KEY_ASKED_BLUETOOTH = "askedForBluetooth"
 
-/** Keys the HomeSpeaker to Vitruvian Speaker rename retired, and the key each one became. */
-private val RENAMED_BOOLEAN_KEYS: Map<String, String> =
-    mapOf(
-        "homeSpeakerSettingsExpanded" to KEY_SPEAKER_SETTINGS_EXPANDED,
-        "homeSpeakerMirror" to KEY_SPEAKER_MIRROR,
-    )
-
 /** How many console commands are remembered. Beyond this the oldest fall off. */
 private const val RECENT_COMMAND_LIMIT = 20
 
@@ -69,16 +62,51 @@ private const val FIELD = "\u001F"
 private const val RECORD = "\u001E"
 
 /**
+ * Pure key-value storage port so [Persistence] tests run on the JVM without Android framework
+ * classes.
+ */
+public interface PrefsStore {
+  public fun contains(key: String): Boolean
+
+  public fun getString(key: String, defValue: String?): String?
+
+  public fun getStringSet(key: String, defValues: Set<String>?): Set<String>?
+
+  public fun getInt(key: String, defValue: Int): Int
+
+  public fun getLong(key: String, defValue: Long): Long
+
+  public fun getBoolean(key: String, defValue: Boolean): Boolean
+
+  public fun edit(): Editor
+
+  /** Batch mutation handle matching `SharedPreferences.Editor`. */
+  public interface Editor {
+    public fun putString(key: String, value: String?): Editor
+
+    public fun putStringSet(key: String, values: Set<String>?): Editor
+
+    public fun putInt(key: String, value: Int): Editor
+
+    public fun putLong(key: String, value: Long): Editor
+
+    public fun putBoolean(key: String, value: Boolean): Editor
+
+    public fun remove(key: String): Editor
+
+    public fun apply()
+  }
+}
+
+/**
  * The handful of things that survive a restart: installed modules, user macros, hidden widgets, the
  * selected host, the theme, the dock and how the trackpad feels.
  *
- * Deliberately `SharedPreferences` and not DataStore - this is five scalars and two small lists,
- * read once at startup and written on user action, so the flow machinery would be all cost and no
- * benefit.
+ * Deliberately backed by `SharedPreferences` and not DataStore - this is five scalars and two small
+ * lists, read once at startup and written on user action, so the flow machinery would be all cost
+ * and no benefit.
  */
-public class Persistence(context: Context) {
-  private val prefs: SharedPreferences =
-      context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+public class Persistence public constructor(private val prefs: PrefsStore) {
 
   init {
     migrateSingleHost()
@@ -357,5 +385,64 @@ public class Persistence(context: Context) {
 
   private companion object {
     const val FIELD_COUNT = 5
+
+    /** Keys the HomeSpeaker to Vitruvian Speaker rename retired, and the key each one became. */
+    val RENAMED_BOOLEAN_KEYS: Map<String, String> =
+        mapOf(
+            "homeSpeakerSettingsExpanded" to KEY_SPEAKER_SETTINGS_EXPANDED,
+            "homeSpeakerMirror" to KEY_SPEAKER_MIRROR,
+        )
+  }
+}
+
+/** Creates a [Persistence] backed by the app's Android [SharedPreferences]. */
+public fun Persistence(context: Context): Persistence =
+    Persistence(
+        AndroidPrefsStore(
+            context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)),
+    )
+
+private class AndroidPrefsStore(private val prefs: SharedPreferences) : PrefsStore {
+  override fun contains(key: String): Boolean = prefs.contains(key)
+
+  override fun getString(key: String, defValue: String?): String? = prefs.getString(key, defValue)
+
+  override fun getStringSet(key: String, defValues: Set<String>?): Set<String>? =
+      prefs.getStringSet(key, defValues)
+
+  override fun getInt(key: String, defValue: Int): Int = prefs.getInt(key, defValue)
+
+  override fun getLong(key: String, defValue: Long): Long = prefs.getLong(key, defValue)
+
+  override fun getBoolean(key: String, defValue: Boolean): Boolean = prefs.getBoolean(key, defValue)
+
+  override fun edit(): PrefsStore.Editor = AndroidEditor(prefs.edit())
+
+  private class AndroidEditor(private val editor: SharedPreferences.Editor) : PrefsStore.Editor {
+    override fun putString(key: String, value: String?): PrefsStore.Editor = apply {
+      editor.putString(key, value)
+    }
+
+    override fun putStringSet(key: String, values: Set<String>?): PrefsStore.Editor = apply {
+      editor.putStringSet(key, values)
+    }
+
+    override fun putInt(key: String, value: Int): PrefsStore.Editor = apply {
+      editor.putInt(key, value)
+    }
+
+    override fun putLong(key: String, value: Long): PrefsStore.Editor = apply {
+      editor.putLong(key, value)
+    }
+
+    override fun putBoolean(key: String, value: Boolean): PrefsStore.Editor = apply {
+      editor.putBoolean(key, value)
+    }
+
+    override fun remove(key: String): PrefsStore.Editor = apply { editor.remove(key) }
+
+    override fun apply() {
+      editor.apply()
+    }
   }
 }

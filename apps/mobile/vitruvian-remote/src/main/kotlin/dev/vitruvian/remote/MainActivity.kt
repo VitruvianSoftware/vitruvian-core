@@ -59,12 +59,12 @@ import dev.vitruvian.remote.state.BridgePermissionState
 import dev.vitruvian.remote.state.BridgePolicy
 import dev.vitruvian.remote.state.BridgeStatus
 import dev.vitruvian.remote.state.DeepLink
+import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.DialogKind
 import dev.vitruvian.remote.state.Notifier
 import dev.vitruvian.remote.state.Persistence
 import dev.vitruvian.remote.state.PhoneClipboard
 import dev.vitruvian.remote.state.RemoteState
-import dev.vitruvian.remote.state.Screen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -224,7 +224,18 @@ public class MainActivity : ComponentActivity() {
       PhoneBridgeService.start(this)
     }
     setContent { RemoteApp(state) }
-    handleIntent(intent)
+    if (Derive.shouldHandleLaunchIntentOnCreate(savedInstanceState != null)) {
+      handleIntent(intent)
+    } else {
+      state.restoreScreen(savedInstanceState?.getString(KEY_SAVED_SCREEN))
+    }
+  }
+
+  override fun onSaveInstanceState(outState: Bundle) {
+    super.onSaveInstanceState(outState)
+    if (::state.isInitialized) {
+      outState.putString(KEY_SAVED_SCREEN, state.screen.name)
+    }
   }
 
   /** Copies the hub's view of the bridge into the state the screens read. */
@@ -336,7 +347,7 @@ public class MainActivity : ComponentActivity() {
     if (intent == null) return
     val link = intent.data?.toString()
     DeepLink.screen(link)?.let { key ->
-      Screen.entries.firstOrNull { it.name.equals(key, ignoreCase = true) }?.let(state::go)
+      Derive.restoredScreen(key)?.let { state.go(it, userInitiated = false) }
     }
     // `apps/claude` is what the agent's permission-prompt notification opens: the
     // Claude dashboard itself, where the prompt can be answered.
@@ -511,6 +522,7 @@ public class MainActivity : ComponentActivity() {
     public const val EXTRA_ACTION: String = "action"
     public const val ACTION_DISPLAY_SLEEP: String = "display_sleep"
     public const val ACTION_LOCK_MAC: String = "lock_mac"
+    internal const val KEY_SAVED_SCREEN: String = "saved_screen"
 
     /**
      * `Manifest.permission.POST_NOTIFICATIONS` by name.
@@ -817,6 +829,8 @@ private class ActivityBluetoothControl(
     private val ensurePermission: ((Boolean, Boolean) -> Unit) -> Unit,
     private val enableBluetooth: () -> Unit,
 ) : BluetoothControl {
+  override fun isBluetoothHidSupported(): Boolean = hid.isHidSupported()
+
   override fun hasBluetoothAdapter(): Boolean = hid.hasBluetoothAdapter()
 
   override fun hasBluetoothPermission(): Boolean = hid.hasConnectPermission()

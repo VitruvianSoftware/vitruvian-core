@@ -163,7 +163,7 @@ public fun RemoteShell(
         TopBar(title = screen.title, showMark = !layout.showRail) {
           // Folded, the rail is absent and Hosts is not on the tab bar, so keep the gear beside
           // the host chip; unfolded, the rail already holds the Hosts destination.
-          if (!layout.showRail) {
+          if (Derive.showsTopBarSettings(layout.showRail)) {
             SettingsButton(onClick = { state.go(Screen.Hosts) })
           }
           HostChip(

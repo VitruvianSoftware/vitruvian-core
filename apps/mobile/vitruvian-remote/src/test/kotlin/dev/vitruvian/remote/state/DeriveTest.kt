@@ -20,6 +20,7 @@
 
 package dev.vitruvian.remote.state
 
+import dev.vitruvian.remote.hid.HidAction
 import dev.vitruvian.remote.state.Derive.PeekRegion
 import dev.vitruvian.remote.state.Derive.PollPage
 import dev.vitruvian.remote.state.Derive.PollSource
@@ -27,6 +28,7 @@ import dev.vitruvian.remote.state.Derive.PollView
 import dev.vitruvian.remote.state.Derive.PrCheck
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -3656,12 +3658,30 @@ public class DeriveTest {
   }
 
   @Test
-  fun bluetoothAutoPromptOnlyFiresOnceOnFirstRemoteVisit() {
+  fun bluetoothAutoPromptOnlyFiresOnExplicitUserNavigation() {
     assertTrue(
         Derive.shouldAutoPromptBluetoothOnRemoteVisit(
             hasAdapter = true,
             permissionGranted = false,
             askedBefore = false,
+            hidSupported = true,
+            userNavigated = true,
+        ))
+    assertFalse(
+        Derive.shouldAutoPromptBluetoothOnRemoteVisit(
+            hasAdapter = true,
+            permissionGranted = false,
+            askedBefore = false,
+            hidSupported = true,
+            userNavigated = false,
+        ))
+    assertFalse(
+        Derive.shouldAutoPromptBluetoothOnRemoteVisit(
+            hasAdapter = true,
+            permissionGranted = false,
+            askedBefore = false,
+            hidSupported = false,
+            userNavigated = true,
         ))
     assertFalse(
         Derive.shouldAutoPromptBluetoothOnRemoteVisit(
@@ -3698,7 +3718,25 @@ public class DeriveTest {
             hasPairedComputer = true,
         ))
 
-    // Device without Bluetooth adapter suppresses the banner.
+    // API 26-27 (HID unsupported) reports the unsupported notice with no action button.
+    val unsupported =
+        Derive.remoteBluetoothBanner(
+            connected = false,
+            hostName = "Studio Mac",
+            hasAdapter = true,
+            permissionGranted = true,
+            askedBefore = false,
+            shouldShowRationale = false,
+            bluetoothEnabled = true,
+            hasPairedComputer = false,
+            hidSupported = false,
+        )!!
+    assertEquals(Derive.BluetoothBannerCause.Unsupported, unsupported.cause)
+    assertEquals(Derive.BLUETOOTH_UNSUPPORTED_MESSAGE, unsupported.message)
+    assertNull(unsupported.action)
+    assertNull(unsupported.actionLabel)
+
+    // Device without Bluetooth adapter suppresses the banner when HID is supported.
     assertNull(
         Derive.remoteBluetoothBanner(
             connected = false,
@@ -3723,6 +3761,7 @@ public class DeriveTest {
             bluetoothEnabled = true,
             hasPairedComputer = false,
         )!!
+    assertEquals(Derive.BluetoothBannerCause.PermissionNeeded, initialPrompt.cause)
     assertEquals(Derive.BluetoothBannerAction.AllowPermission, initialPrompt.action)
     assertEquals("Allow Bluetooth", initialPrompt.actionLabel)
     assertEquals(Derive.BLUETOOTH_RATIONALE_LINE, initialPrompt.message)
@@ -3739,6 +3778,7 @@ public class DeriveTest {
             bluetoothEnabled = true,
             hasPairedComputer = false,
         )!!
+    assertEquals(Derive.BluetoothBannerCause.PermissionDeclined, declinedOnce.cause)
     assertEquals(Derive.BluetoothBannerAction.AllowPermission, declinedOnce.action)
     assertEquals("Allow Bluetooth", declinedOnce.actionLabel)
     assertEquals("Bluetooth permission declined.", declinedOnce.message)
@@ -3756,6 +3796,7 @@ public class DeriveTest {
             bluetoothEnabled = true,
             hasPairedComputer = false,
         )!!
+    assertEquals(Derive.BluetoothBannerCause.PermissionPermanentlyDenied, permanentlyDenied.cause)
     assertEquals(Derive.BluetoothBannerAction.OpenAppSettings, permanentlyDenied.action)
     assertEquals("Open app settings", permanentlyDenied.actionLabel)
 
@@ -3771,6 +3812,7 @@ public class DeriveTest {
             bluetoothEnabled = false,
             hasPairedComputer = false,
         )!!
+    assertEquals(Derive.BluetoothBannerCause.BluetoothOff, btOff.cause)
     assertEquals(Derive.BluetoothBannerAction.TurnOnBluetooth, btOff.action)
     assertEquals("Turn on Bluetooth", btOff.actionLabel)
 
@@ -3786,6 +3828,7 @@ public class DeriveTest {
             bluetoothEnabled = true,
             hasPairedComputer = false,
         )!!
+    assertEquals(Derive.BluetoothBannerCause.MacNotPaired, unpaired.cause)
     assertEquals(Derive.BluetoothBannerAction.OpenBluetoothSettings, unpaired.action)
     assertEquals("Open Bluetooth settings", unpaired.actionLabel)
     assertTrue(unpaired.message.contains("Studio Mac"))
@@ -3803,6 +3846,7 @@ public class DeriveTest {
             bluetoothEnabled = true,
             hasPairedComputer = true,
         )!!
+    assertEquals(Derive.BluetoothBannerCause.LinkDown, reconnect.cause)
     assertEquals(Derive.BluetoothBannerAction.Reconnect, reconnect.action)
     assertEquals("Reconnect", reconnect.actionLabel)
 
@@ -3818,8 +3862,210 @@ public class DeriveTest {
             bluetoothEnabled = true,
             hasPairedComputer = true,
         )!!
+    assertEquals(Derive.BluetoothBannerCause.WaitingForHost, waiting.cause)
     assertEquals(Derive.BluetoothBannerAction.Reconnect, waiting.action)
     assertTrue(waiting.message.contains("connecting to Studio Mac"))
+  }
+
+  @Test
+  fun bluetoothBannerCausesMapToExpectedButtonsAndDispatchActions() {
+    val expectedByCause =
+        mapOf(
+            Derive.BluetoothBannerCause.Unsupported to null,
+            Derive.BluetoothBannerCause.PermissionNeeded to
+                Derive.BluetoothBannerButton(
+                    "Allow Bluetooth", Derive.BluetoothBannerAction.AllowPermission),
+            Derive.BluetoothBannerCause.PermissionDeclined to
+                Derive.BluetoothBannerButton(
+                    "Allow Bluetooth", Derive.BluetoothBannerAction.AllowPermission),
+            Derive.BluetoothBannerCause.PermissionPermanentlyDenied to
+                Derive.BluetoothBannerButton(
+                    "Open app settings", Derive.BluetoothBannerAction.OpenAppSettings),
+            Derive.BluetoothBannerCause.BluetoothOff to
+                Derive.BluetoothBannerButton(
+                    "Turn on Bluetooth", Derive.BluetoothBannerAction.TurnOnBluetooth),
+            Derive.BluetoothBannerCause.MacNotPaired to
+                Derive.BluetoothBannerButton(
+                    "Open Bluetooth settings", Derive.BluetoothBannerAction.OpenBluetoothSettings),
+            Derive.BluetoothBannerCause.WaitingForHost to
+                Derive.BluetoothBannerButton("Reconnect", Derive.BluetoothBannerAction.Reconnect),
+            Derive.BluetoothBannerCause.LinkDown to
+                Derive.BluetoothBannerButton("Reconnect", Derive.BluetoothBannerAction.Reconnect),
+        )
+    assertEquals(Derive.BluetoothBannerCause.entries.toSet(), expectedByCause.keys)
+    for (cause in Derive.BluetoothBannerCause.entries) {
+      assertEquals(
+          "Unexpected mapping for $cause",
+          expectedByCause[cause],
+          Derive.bluetoothBannerButton(cause))
+    }
+
+    val bt = FakeBluetoothControl(permissionGranted = false, asked = false)
+    var reconnectCount = 0
+    val coordinator =
+        BluetoothReadinessCoordinator(
+            persistence = Persistence(FakePrefsStore()),
+            bluetooth = bt,
+            onReconnect = { reconnectCount++ },
+        )
+    coordinator.performBannerAction(Derive.BluetoothBannerAction.AllowPermission)
+    assertEquals(1, bt.ensurePermissionCalls)
+    coordinator.performBannerAction(Derive.BluetoothBannerAction.OpenAppSettings)
+    assertEquals(1, bt.openAppSettingsCalls)
+    coordinator.performBannerAction(Derive.BluetoothBannerAction.TurnOnBluetooth)
+    assertEquals(1, bt.enableBluetoothCalls)
+    coordinator.performBannerAction(Derive.BluetoothBannerAction.OpenBluetoothSettings)
+    assertEquals(1, bt.openBluetoothSettingsCalls)
+
+    coordinator.performBannerAction(Derive.BluetoothBannerAction.Reconnect)
+    assertEquals(1, reconnectCount)
+
+    // Also prove pure dispatch invokes only the requested callback.
+    for (action in Derive.BluetoothBannerAction.entries) {
+      val hits = mutableListOf<Derive.BluetoothBannerAction>()
+      Derive.dispatchBluetoothBannerAction(
+          action = action,
+          onAllowPermission = { hits += Derive.BluetoothBannerAction.AllowPermission },
+          onOpenAppSettings = { hits += Derive.BluetoothBannerAction.OpenAppSettings },
+          onTurnOnBluetooth = { hits += Derive.BluetoothBannerAction.TurnOnBluetooth },
+          onOpenBluetoothSettings = { hits += Derive.BluetoothBannerAction.OpenBluetoothSettings },
+          onReconnect = { hits += Derive.BluetoothBannerAction.Reconnect },
+      )
+      assertEquals(listOf(action), hits)
+    }
+  }
+
+  @Test
+  fun unsupportedAndroidSdkShowsNoActionBannerAndCaption() {
+    assertFalse(Derive.isBluetoothHidSupported(26))
+    assertFalse(Derive.isBluetoothHidSupported(27))
+    assertTrue(Derive.isBluetoothHidSupported(28))
+    assertTrue(Derive.isBluetoothHidSupported(35))
+
+    assertEquals(
+        Derive.BLUETOOTH_UNSUPPORTED_MESSAGE,
+        Derive.pointerCaption(
+            connected = false,
+            hostName = "Studio Mac",
+            pointerHint = "drag to move",
+            hasAdapter = true,
+            permissionGranted = true,
+            bluetoothEnabled = true,
+            hasPairedComputer = true,
+            hidSupported = false,
+        ))
+
+    val bt = FakeBluetoothControl(hidSupported = false, permissionGranted = false, asked = false)
+    val nav = ScreenNavigationTracker()
+    val coordinator =
+        BluetoothReadinessCoordinator(persistence = Persistence(FakePrefsStore()), bluetooth = bt)
+    nav.go(Screen.Remote)
+    coordinator.onRemoteScreenVisited(nav.consumeRemoteEnteredByUser())
+
+    assertEquals(0, bt.ensurePermissionCalls)
+    val banner = coordinator.banner(connected = false, hostName = "Studio Mac")
+    assertNotNull(banner)
+    assertEquals(Derive.BluetoothBannerCause.Unsupported, banner!!.cause)
+    assertEquals(Derive.BLUETOOTH_UNSUPPORTED_MESSAGE, banner.message)
+    assertNull(banner.action)
+    assertNull(banner.actionLabel)
+    assertEquals(
+        Derive.BLUETOOTH_UNSUPPORTED_MESSAGE,
+        coordinator.pointerCaption(
+            connected = false,
+            hostName = "Studio Mac",
+            pointerHint = "drag to move",
+        ),
+    )
+  }
+
+  @Test
+  fun bluetoothAutoPromptRunsOnlyOnUserNavigationToRemote() {
+    val bt = FakeBluetoothControl(permissionGranted = false, asked = false)
+    val nav = ScreenNavigationTracker()
+    val coordinator =
+        BluetoothReadinessCoordinator(persistence = Persistence(FakePrefsStore()), bluetooth = bt)
+
+    // Cold launch into Remote via deep link: no dialog popup, banner offers Allow Bluetooth.
+    nav.go(Screen.Remote, userInitiated = false)
+    coordinator.onRemoteScreenVisited(nav.consumeRemoteEnteredByUser())
+    assertEquals(0, bt.ensurePermissionCalls)
+    assertEquals(
+        "Allow Bluetooth",
+        coordinator.banner(connected = false, hostName = "Studio Mac")?.actionLabel,
+    )
+
+    // Activity recreation / saved-state restore onto Remote: still no auto-prompt.
+    nav.restoreScreen("Remote")
+    coordinator.onRemoteScreenVisited(nav.consumeRemoteEnteredByUser())
+    assertEquals(0, bt.ensurePermissionCalls)
+
+    // Explicit user navigation via tab/rail: auto-prompts once.
+    nav.go(Screen.Remote)
+    coordinator.onRemoteScreenVisited(nav.consumeRemoteEnteredByUser())
+    assertEquals(1, bt.ensurePermissionCalls)
+  }
+
+  @Test
+  fun restoredScreenAndInitialIntentPrecedence() {
+    assertEquals(Screen.Remote, Derive.restoredScreen("Remote"))
+    assertEquals(Screen.Hosts, Derive.restoredScreen(" hosts "))
+    assertNull(Derive.restoredScreen(null))
+    assertNull(Derive.restoredScreen("  "))
+    assertNull(Derive.restoredScreen("NotAScreen"))
+
+    assertTrue(Derive.shouldHandleLaunchIntentOnCreate(hasSavedInstanceState = false))
+    assertFalse(Derive.shouldHandleLaunchIntentOnCreate(hasSavedInstanceState = true))
+
+    val nav = ScreenNavigationTracker()
+    nav.restoreScreen("Console")
+    assertEquals(Screen.Console, nav.screen)
+    assertNull(nav.restoreScreen("invalid"))
+    assertEquals(Screen.Console, nav.screen)
+
+    // Manifest handles uiMode live so system dark/light switches don't restart MainActivity.
+    val manifest = readRunfile("apps/mobile/vitruvian-remote/src/main/AndroidManifest.xml")
+    val mainActivityStart = manifest.indexOf("android:name=\".MainActivity\"")
+    assertTrue("MainActivity declaration not found", mainActivityStart >= 0)
+    val tagStart = manifest.lastIndexOf("<activity", mainActivityStart)
+    val tagEnd = manifest.indexOf(">", mainActivityStart)
+    val activityTag = manifest.substring(tagStart, tagEnd + 1)
+    val configMatch = Regex("""android:configChanges="([^"]+)"""").find(activityTag)
+    assertNotNull("android:configChanges missing on MainActivity", configMatch)
+    val flags = configMatch!!.groupValues[1].split('|').toSet()
+    assertTrue("Expected uiMode in MainActivity configChanges: $flags", "uiMode" in flags)
+  }
+
+  @Test
+  fun persistenceOneTimeThemeMigrationAndIdempotence() {
+    // 1. Legacy darkTheme=true migrates to Dark and clears the old key.
+    val darkPrefs = FakePrefsStore().apply { edit().putBoolean("darkTheme", true).apply() }
+    val darkPersistence = Persistence(darkPrefs)
+    assertEquals(ThemeMode.Dark, darkPersistence.themeMode)
+    assertFalse(
+        "Legacy darkTheme key should be deleted after migration", darkPrefs.contains("darkTheme"))
+    assertEquals("Dark", darkPrefs.getString("themeMode", null))
+
+    // 2. Legacy darkTheme=false migrates to Light and clears the old key.
+    val lightPrefs = FakePrefsStore().apply { edit().putBoolean("darkTheme", false).apply() }
+    val lightPersistence = Persistence(lightPrefs)
+    assertEquals(ThemeMode.Light, lightPersistence.themeMode)
+    assertFalse(
+        "Legacy darkTheme key should be deleted after migration", lightPrefs.contains("darkTheme"))
+    assertEquals("Light", lightPrefs.getString("themeMode", null))
+
+    // 3. Fresh install with nothing stored defaults to System without writing themeMode.
+    val emptyPrefs = FakePrefsStore()
+    val emptyPersistence = Persistence(emptyPrefs)
+    assertEquals(ThemeMode.System, emptyPersistence.themeMode)
+    assertFalse(emptyPrefs.contains("themeMode"))
+
+    // 4. Subsequent startup does not re-migrate or override user's updated ThemeMode.
+    darkPersistence.themeMode = ThemeMode.System
+    darkPrefs.edit().putBoolean("darkTheme", true).apply()
+    val secondRun = Persistence(darkPrefs)
+    assertEquals(ThemeMode.System, secondRun.themeMode)
+    assertEquals("System", darkPrefs.getString("themeMode", null))
   }
 
   @Test
@@ -3915,6 +4161,9 @@ public class DeriveTest {
             "MainActivity.onResume" to extractKotlinBlock(main, "override fun onResume("),
             "MainActivity.onWindowFocusChanged" to
                 extractKotlinBlock(main, "override fun onWindowFocusChanged("),
+            "MainActivity.handleIntent" to extractKotlinBlock(main, "private fun handleIntent("),
+            "RemoteState.restoreScreen" to
+                extractKotlinBlock(remoteState, "public fun restoreScreen("),
             "RemoteState.onForeground" to
                 extractKotlinBlock(remoteState, "public fun onForeground("),
         )
@@ -3997,7 +4246,19 @@ public class DeriveTest {
   }
 
   @Test
-  fun uiPolishContractsRemainWired() {
+  fun topBarSettingsAndRemoteKeyTablesMatchPolishContracts() {
+    assertTrue(Derive.showsTopBarSettings(showRail = false))
+    assertFalse(Derive.showsTopBarSettings(showRail = true))
+
+    assertTrue(REMOTE_WINDOW_ACTIONS.contains("Minimize" to HidAction.MinimiseWindow))
+    assertFalse(
+        REMOTE_WINDOW_ACTIONS.any { (label, _) -> label.equals("Minimise", ignoreCase = true) })
+    assertTrue(REMOTE_DESKTOP_ACTIONS.any { (_, action) -> action == HidAction.MissionControl })
+    assertTrue(REMOTE_PALETTE_KEYS.all { (_, description, _) -> !description.isNullOrBlank() })
+
+    // Scoped composable wiring checks: @maven has runtime Compose artifacts only (no ui-test-junit4
+    // or Robolectric), so layout/icon composition inside @Composable functions is pinned per-block
+    // via extractKotlinBlock rather than whole-file string scans.
     val shell =
         stripKotlinComments(
             readRunfile(
@@ -4015,25 +4276,154 @@ public class DeriveTest {
             readRunfile(
                 "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/HomeScreen.kt"))
 
-    // F18: TopBar gear is hidden when the rail is visible.
-    assertTrue(shell.contains("if (!layout.showRail)"))
-    // F27: Lock/Restart removed from ConsoleDock; host name dropped from dock header.
-    assertFalse(dock.contains("\"Lock\""))
-    assertFalse(dock.contains("\"Restart\""))
-    assertTrue(dock.contains("\"Console\""))
-    // F23/F24: Dock reuses NudgeRow and MediaTransportRow.
-    assertTrue(dock.contains("NudgeRow("))
-    assertTrue(dock.contains("MediaTransportRow("))
-    // F30/F34: Plain American copy and VIcon chevrons (no literal Unicode chevron glyphs).
-    assertTrue(remote.contains("\"Trackpad settings\""))
-    assertTrue(remote.contains("\"View screen\""))
-    assertTrue(remote.contains("\"Minimize\""))
-    assertFalse(remote.contains("\"Minimise\""))
-    assertFalse(remote.contains("\"Feel\""))
-    assertFalse(remote.contains("\"Peek\""))
-    assertFalse(remote.contains("▸"))
-    assertFalse(remote.contains("▾"))
-    assertFalse(home.contains("›"))
-    assertTrue(remote.contains("VitruvianIcons.PLAY_PAUSE"))
+    val remoteShellBody = extractKotlinBlock(shell, "public fun RemoteShell(")
+    assertTrue(remoteShellBody.contains("Derive.showsTopBarSettings(layout.showRail)"))
+
+    val consoleDockBody = extractKotlinBlock(dock, "private fun ConsoleDock(")
+    assertFalse(consoleDockBody.contains("\"Lock\""))
+    assertFalse(consoleDockBody.contains("\"Restart\""))
+    assertTrue(consoleDockBody.contains("\"Console\""))
+
+    val trackpadDockBody = extractKotlinBlock(dock, "private fun TrackpadDock(")
+    assertTrue(trackpadDockBody.contains("NudgeRow("))
+    assertTrue(trackpadDockBody.contains("MediaTransportRow("))
+
+    val remoteScreenBody = extractKotlinBlock(remote, "public fun ColumnScope.RemoteScreen(")
+    assertTrue(remoteScreenBody.contains("\"Trackpad settings\""))
+    assertTrue(remoteScreenBody.contains("\"View screen\""))
+    assertFalse(remoteScreenBody.contains("\"Feel\""))
+    assertFalse(remoteScreenBody.contains("\"Peek\""))
+
+    val foldHeaderBody = extractKotlinBlock(remote, "private fun FoldHeader(")
+    assertTrue(foldHeaderBody.contains("VitruvianIcons.CHEVRON_DOWN"))
+    assertTrue(foldHeaderBody.contains("VitruvianIcons.CHEVRON_RIGHT"))
+    assertFalse(foldHeaderBody.contains("▸"))
+    assertFalse(foldHeaderBody.contains("▾"))
+
+    val mediaRowBody = extractKotlinBlock(remote, "internal fun MediaTransportRow(")
+    assertTrue(mediaRowBody.contains("VitruvianIcons.PLAY_PAUSE"))
+
+    val bannerBody = extractKotlinBlock(remote, "private fun BluetoothStatusBanner(")
+    assertTrue(bannerBody.contains("state.performBluetoothBannerAction("))
+
+    val homeScreenBody = extractKotlinBlock(home, "public fun ColumnScope.HomeScreen(")
+    assertTrue(homeScreenBody.contains("VitruvianIcons.CHEVRON_RIGHT"))
+    assertFalse(homeScreenBody.contains("›"))
+  }
+
+  private class FakeBluetoothControl(
+      var hidSupported: Boolean = true,
+      var hasAdapter: Boolean = true,
+      var permissionGranted: Boolean = true,
+      var asked: Boolean = false,
+      var rationale: Boolean = false,
+      var enabled: Boolean = true,
+      var pairedComputer: Boolean = true,
+      var grantOnEnsure: Boolean = false,
+      var rationaleOnEnsure: Boolean = false,
+  ) : BluetoothControl {
+    var ensurePermissionCalls: Int = 0
+    var openAppSettingsCalls: Int = 0
+    var enableBluetoothCalls: Int = 0
+    var openBluetoothSettingsCalls: Int = 0
+
+    override fun isBluetoothHidSupported(): Boolean = hidSupported
+
+    override fun hasBluetoothAdapter(): Boolean = hasAdapter
+
+    override fun hasBluetoothPermission(): Boolean = permissionGranted
+
+    override fun hasAskedBluetoothPermission(): Boolean = asked
+
+    override fun shouldShowBluetoothRationale(): Boolean = rationale
+
+    override fun isBluetoothEnabled(): Boolean = enabled
+
+    override fun hasPairedComputer(): Boolean = pairedComputer
+
+    override fun ensureBluetoothPermission(
+        onResult: (granted: Boolean, shouldShowRationale: Boolean) -> Unit,
+    ) {
+      ensurePermissionCalls++
+      asked = true
+      permissionGranted = grantOnEnsure
+      rationale = rationaleOnEnsure
+      onResult(permissionGranted, rationale)
+    }
+
+    override fun openAppSettings() {
+      openAppSettingsCalls++
+    }
+
+    override fun requestEnableBluetooth() {
+      enableBluetoothCalls++
+    }
+
+    override fun openBluetoothSettings() {
+      openBluetoothSettingsCalls++
+    }
+  }
+
+  private class FakePrefsStore : PrefsStore {
+    private val data = linkedMapOf<String, Any?>()
+
+    override fun contains(key: String): Boolean = data.containsKey(key)
+
+    override fun getString(key: String, defValue: String?): String? =
+        if (data.containsKey(key)) data[key] as? String ?: defValue else defValue
+
+    @Suppress("UNCHECKED_CAST")
+    override fun getStringSet(key: String, defValues: Set<String>?): Set<String>? {
+      val stored = (data[key] as? Set<String>) ?: return defValues
+      return stored.toSet()
+    }
+
+    override fun getInt(key: String, defValue: Int): Int =
+        if (data.containsKey(key)) data[key] as? Int ?: defValue else defValue
+
+    override fun getLong(key: String, defValue: Long): Long =
+        if (data.containsKey(key)) data[key] as? Long ?: defValue else defValue
+
+    override fun getBoolean(key: String, defValue: Boolean): Boolean =
+        if (data.containsKey(key)) data[key] as? Boolean ?: defValue else defValue
+
+    override fun edit(): PrefsStore.Editor = Editor()
+
+    private inner class Editor : PrefsStore.Editor {
+      private val pending = linkedMapOf<String, Any?>()
+      private val removals = linkedSetOf<String>()
+
+      override fun putString(key: String, value: String?): PrefsStore.Editor = apply {
+        pending[key] = value
+      }
+
+      override fun putStringSet(key: String, values: Set<String>?): PrefsStore.Editor = apply {
+        pending[key] = values?.toSet()
+      }
+
+      override fun putInt(key: String, value: Int): PrefsStore.Editor = apply {
+        pending[key] = value
+      }
+
+      override fun putLong(key: String, value: Long): PrefsStore.Editor = apply {
+        pending[key] = value
+      }
+
+      override fun putBoolean(key: String, value: Boolean): PrefsStore.Editor = apply {
+        pending[key] = value
+      }
+
+      override fun remove(key: String): PrefsStore.Editor = apply {
+        removals.add(key)
+        pending.remove(key)
+      }
+
+      override fun apply() {
+        removals.forEach { data.remove(it) }
+        for ((k, v) in pending) {
+          if (v == null) data.remove(k) else data[k] = v
+        }
+      }
+    }
   }
 }

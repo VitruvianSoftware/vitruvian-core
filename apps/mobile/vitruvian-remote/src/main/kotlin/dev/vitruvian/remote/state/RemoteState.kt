@@ -299,28 +299,34 @@ public class RemoteState(
   public var hidLink: HidLinkState by mutableStateOf(HidLinkState.Unavailable)
     private set
 
-  public var bluetoothHasAdapter: Boolean by
-      mutableStateOf(bluetooth?.hasBluetoothAdapter() != false)
+  private val bluetoothCoordinator =
+      BluetoothReadinessCoordinator(
+          persistence = persistence,
+          bluetooth = bluetooth,
+          onReconnect = ::reconnectHid,
+      )
+
+  public var bluetoothHidSupported: Boolean by mutableStateOf(bluetoothCoordinator.hidSupported)
     private set
 
-  public var bluetoothGranted: Boolean by
-      mutableStateOf(bluetooth?.hasBluetoothPermission() != false)
+  public var bluetoothHasAdapter: Boolean by mutableStateOf(bluetoothCoordinator.hasAdapter)
     private set
 
-  public var bluetoothAsked: Boolean by
-      mutableStateOf(
-          (bluetooth?.hasAskedBluetoothPermission() == true) || persistence.askedForBluetooth)
+  public var bluetoothGranted: Boolean by mutableStateOf(bluetoothCoordinator.granted)
+    private set
+
+  public var bluetoothAsked: Boolean by mutableStateOf(bluetoothCoordinator.asked)
     private set
 
   public var bluetoothShouldShowRationale: Boolean by
-      mutableStateOf(bluetooth?.shouldShowBluetoothRationale() == true)
+      mutableStateOf(bluetoothCoordinator.shouldShowRationale)
     private set
 
-  public var bluetoothEnabled: Boolean by mutableStateOf(bluetooth?.isBluetoothEnabled() != false)
+  public var bluetoothEnabled: Boolean by mutableStateOf(bluetoothCoordinator.enabled)
     private set
 
   public var bluetoothHasPairedComputer: Boolean by
-      mutableStateOf(bluetooth?.hasPairedComputer() != false)
+      mutableStateOf(bluetoothCoordinator.hasPairedComputer)
     private set
 
   /** Contextual banner shown above the Remote trackpad when HID cannot reach the Mac. */
@@ -336,6 +342,7 @@ public class RemoteState(
             shouldShowRationale = bluetoothShouldShowRationale,
             bluetoothEnabled = bluetoothEnabled,
             hasPairedComputer = bluetoothHasPairedComputer,
+            hidSupported = bluetoothHidSupported,
         )
 
   /**
@@ -356,6 +363,7 @@ public class RemoteState(
             permissionGranted = bluetoothGranted,
             bluetoothEnabled = bluetoothEnabled,
             hasPairedComputer = bluetoothHasPairedComputer,
+            hidSupported = bluetoothHidSupported,
         )
 
   public var keyboardOpen: Boolean by mutableStateOf(false)
@@ -6729,13 +6737,22 @@ public class RemoteState(
 
   private fun walk(step: Int): Int = ((random.nextDouble() - 0.5) * step).roundToInt()
 
+  private val navTracker = ScreenNavigationTracker()
+
   // --- actions ----------------------------------------------------------
 
-  public fun go(target: Screen) {
+  public fun go(target: Screen, userInitiated: Boolean = true) {
+    navTracker.go(target, userInitiated)
     screen = target
   }
 
+  public fun restoreScreen(savedName: String?) {
+    val restored = navTracker.restoreScreen(savedName) ?: return
+    screen = restored
+  }
+
   public fun openModule(id: String) {
+    navTracker.enterNonRemote()
     module = id
     appsView = AppsView.Dashboards
     screen = Screen.Apps
@@ -7249,62 +7266,54 @@ public class RemoteState(
     refreshBluetoothStatus()
   }
 
+  private fun syncBluetoothState() {
+    bluetoothHidSupported = bluetoothCoordinator.hidSupported
+    bluetoothHasAdapter = bluetoothCoordinator.hasAdapter
+    bluetoothGranted = bluetoothCoordinator.granted
+    bluetoothAsked = bluetoothCoordinator.asked
+    bluetoothShouldShowRationale = bluetoothCoordinator.shouldShowRationale
+    bluetoothEnabled = bluetoothCoordinator.enabled
+    bluetoothHasPairedComputer = bluetoothCoordinator.hasPairedComputer
+  }
+
   /** Re-reads Bluetooth adapter/permission/bond status without prompting the user. */
   public fun refreshBluetoothStatus() {
-    val bt = bluetooth ?: return
-    bluetoothHasAdapter = bt.hasBluetoothAdapter()
-    val granted = bt.hasBluetoothPermission()
-    bluetoothGranted = granted
-    bluetoothAsked = bt.hasAskedBluetoothPermission() || persistence.askedForBluetooth
-    bluetoothShouldShowRationale = !granted && bt.shouldShowBluetoothRationale()
-    bluetoothEnabled = bt.isBluetoothEnabled()
-    bluetoothHasPairedComputer = if (granted) bt.hasPairedComputer() else false
+    bluetoothCoordinator.refresh()
+    syncBluetoothState()
   }
 
   /**
    * Called once the Remote screen has painted its one-line explanation: asks for
-   * `BLUETOOTH_CONNECT` on the first visit to Remote if not yet asked or granted.
+   * `BLUETOOTH_CONNECT` only when the user navigated to Remote themselves on a supported device and
+   * has not yet been asked or granted permission.
    */
   public fun onRemoteScreenVisited() {
-    refreshBluetoothStatus()
-    if (Derive.shouldAutoPromptBluetoothOnRemoteVisit(
-        hasAdapter = bluetoothHasAdapter,
-        permissionGranted = bluetoothGranted,
-        askedBefore = bluetoothAsked,
-    )) {
-      requestBluetoothPermission()
-    }
+    bluetoothCoordinator.onRemoteScreenVisited(navTracker.consumeRemoteEnteredByUser())
+    syncBluetoothState()
+  }
+
+  /** Dispatches the action button of the Remote screen's Bluetooth readiness banner. */
+  public fun performBluetoothBannerAction(action: Derive.BluetoothBannerAction) {
+    bluetoothCoordinator.performBannerAction(action)
+    syncBluetoothState()
   }
 
   /** Asks for `BLUETOOTH_CONNECT` via [BluetoothControl] and updates observable readiness state. */
   public fun requestBluetoothPermission() {
-    val bt = bluetooth
-    if (bt == null) {
-      bluetoothGranted = true
-      bluetoothAsked = true
-      persistence.askedForBluetooth = true
-      bluetoothShouldShowRationale = false
-      return
-    }
-    bt.ensureBluetoothPermission { granted, shouldShowRationale ->
-      bluetoothGranted = granted
-      bluetoothAsked = bt.hasAskedBluetoothPermission() || !granted
-      if (!granted) persistence.askedForBluetooth = true
-      bluetoothShouldShowRationale = !granted && shouldShowRationale
-      refreshBluetoothStatus()
-    }
+    bluetoothCoordinator.requestPermission()
+    syncBluetoothState()
   }
 
   public fun openBluetoothAppSettings() {
-    bluetooth?.openAppSettings()
+    bluetoothCoordinator.openAppSettings()
   }
 
   public fun requestEnableBluetooth() {
-    bluetooth?.requestEnableBluetooth()
+    bluetoothCoordinator.requestEnableBluetooth()
   }
 
   public fun openSystemBluetoothSettings() {
-    bluetooth?.openBluetoothSettings()
+    bluetoothCoordinator.openBluetoothSettings()
   }
 
   /** The Reconnect button above the trackpad. */

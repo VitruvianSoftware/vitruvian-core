@@ -211,6 +211,7 @@ kt_jvm_test(
     name = "derive_test",
     srcs = ["src/test/kotlin/dev/vitruvian/remote/state/DeriveTest.kt"],
     data = [
+        "src/main/AndroidManifest.xml",
         "src/main/kotlin/dev/vitruvian/remote/MainActivity.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/AgentClient.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/Derive.kt",
@@ -227,7 +228,10 @@ kt_jvm_test(
     deps = [
         ":derive",
         ":format",
+        ":hid_codes",
+        ":lib",
         ":wire",
+        "//packages/design-system-android:lib",
         "@maven//:junit_junit",
     ],
 )
