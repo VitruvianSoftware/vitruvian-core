@@ -112,7 +112,10 @@ kt_jvm_test(
     name = "a11y_test",
     size = "small",
     srcs = ["src/test/kotlin/dev/vitruvian/design/A11yTest.kt"],
-    data = ["src/main/kotlin/dev/vitruvian/design/States.kt"],
+    data = [
+        "src/main/kotlin/dev/vitruvian/design/Nav.kt",
+        "src/main/kotlin/dev/vitruvian/design/States.kt",
+    ],
     test_class = "dev.vitruvian.design.A11yTest",
     deps = [
         ":lib",

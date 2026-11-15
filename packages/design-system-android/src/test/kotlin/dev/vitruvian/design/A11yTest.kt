@@ -106,30 +106,64 @@ class A11yTest {
     assertNull(A11y.buttonContentDescription("Send"))
   }
 
+  private fun readDesignSource(rel: String): String {
+    val direct = java.io.File(rel)
+    if (direct.exists()) return direct.readText()
+    val base = System.getenv("TEST_SRCDIR") ?: error("TEST_SRCDIR unset")
+    val candidate =
+        listOf("_main", "vitruvian_core", "")
+            .map { sub ->
+              if (sub.isEmpty()) java.io.File(base, rel)
+              else java.io.File(java.io.File(base, sub), rel)
+            }
+            .firstOrNull { it.exists() } ?: error("Runfile not found: $rel")
+    return candidate.readText()
+  }
+
   @Test
   fun emptyStateActionsUseFlowRowSoButtonsWrapOnNarrowWidths() {
-    val rel = "packages/design-system-android/src/main/kotlin/dev/vitruvian/design/States.kt"
-    val direct = java.io.File(rel)
     val src =
-        if (direct.exists()) {
-          direct.readText()
-        } else {
-          val base = System.getenv("TEST_SRCDIR") ?: error("TEST_SRCDIR unset")
-          val candidate =
-              listOf("_main", "vitruvian_core", "")
-                  .map { sub ->
-                    if (sub.isEmpty()) java.io.File(base, rel)
-                    else java.io.File(java.io.File(base, sub), rel)
-                  }
-                  .firstOrNull { it.exists() } ?: error("Runfile not found: $rel")
-          candidate.readText()
-        }
+        readDesignSource(
+            "packages/design-system-android/src/main/kotlin/dev/vitruvian/design/States.kt")
     val emptyStateBlock =
         src.substringAfter("public fun EmptyState(").substringBefore("public fun Skeleton(")
     assertTrue("EmptyState must use FlowRow for actions", emptyStateBlock.contains("FlowRow("))
     assertTrue(
         "EmptyState actions parameter remains RowScope.() -> Unit",
         emptyStateBlock.contains("RowScope.() -> Unit"),
+    )
+  }
+
+  @Test
+  fun topBarBackActionHidesMarkAndResolvesSpokenDescription() {
+    assertTrue(A11y.topBarShowMark(showMark = true, hasBackAction = false))
+    assertFalse(A11y.topBarShowMark(showMark = true, hasBackAction = true))
+    assertFalse(A11y.topBarShowMark(showMark = false, hasBackAction = false))
+    assertFalse(A11y.topBarShowMark(showMark = false, hasBackAction = true))
+
+    assertEquals("Back", A11y.topBarBackDescription(null))
+    assertEquals("Back", A11y.topBarBackDescription("   "))
+    assertEquals("Back to Settings", A11y.topBarBackDescription("Back to Settings"))
+  }
+
+  @Test
+  fun topBarLeadingBackActionUsesHitH1AndButtonSemantics() {
+    val src =
+        readDesignSource(
+            "packages/design-system-android/src/main/kotlin/dev/vitruvian/design/Nav.kt")
+    val topBarBlock =
+        src.substringAfter("public fun TopBar(").substringBefore("public fun HostChip(")
+    assertTrue(
+        "TopBar must accept optional onBack", topBarBlock.contains("onBack: (() -> Unit)? = null"))
+    assertTrue("TopBar back button must meet Hit.h1 touch target", topBarBlock.contains("Hit.h1"))
+    assertTrue("TopBar back button must expose Role.Button", topBarBlock.contains("Role.Button"))
+    assertTrue(
+        "TopBar back button must resolve spoken description via A11y",
+        topBarBlock.contains("A11y.topBarBackDescription"),
+    )
+    assertTrue(
+        "TopBar must gate VMark visibility via A11y.topBarShowMark",
+        topBarBlock.contains("A11y.topBarShowMark"),
     )
   }
 }

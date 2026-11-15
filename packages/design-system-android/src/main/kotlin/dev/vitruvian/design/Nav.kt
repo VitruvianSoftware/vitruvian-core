@@ -52,6 +52,8 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -71,17 +73,22 @@ private val ACTIVE_RULE = 2.dp
 /** The share of a tab's width the active rule spans - `left:25%; right:25%` in the CSS. */
 private const val RULE_INSET = 0.25f
 
+/** Mirror of `VitruvianIcons.CHEVRON_RIGHT` kept private so `Icons.kt` stays in web parity. */
+private const val BACK_CHEVRON_PATH = "M15 18l-6-6 6-6"
+
 /**
  * `.m-bar` - the 55 dp top bar.
  *
- * The VMark is hidden when the rail is showing it instead, which is why [showMark] is a parameter
- * rather than something the bar decides.
+ * The VMark is hidden when the rail is showing it instead or when a leading back action is shown,
+ * which is why [showMark] and [onBack] are parameters rather than something the bar guesses.
  */
 @Composable
 public fun TopBar(
     title: String,
     modifier: Modifier = Modifier,
     showMark: Boolean = true,
+    onBack: (() -> Unit)? = null,
+    backContentDescription: String? = null,
     trailing: @Composable (RowScope.() -> Unit)? = null,
 ) {
   val colors = Vitruvian
@@ -96,7 +103,22 @@ public fun TopBar(
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(Space.s4),
   ) {
-    if (showMark) {
+    if (onBack != null) {
+      val backDesc = A11y.topBarBackDescription(backContentDescription)
+      Box(
+          modifier =
+              Modifier.size(Hit.h1).clickable(role = Role.Button, onClick = onBack).semantics {
+                contentDescription = backDesc
+              },
+          contentAlignment = Alignment.Center,
+      ) {
+        VIcon(
+            path = BACK_CHEVRON_PATH,
+            color = colors.text,
+            contentDescription = null,
+        )
+      }
+    } else if (A11y.topBarShowMark(showMark = showMark, hasBackAction = false)) {
       VMark(markSize = 17.dp)
     }
     VText(

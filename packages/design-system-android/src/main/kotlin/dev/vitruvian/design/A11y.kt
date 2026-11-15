@@ -124,4 +124,15 @@ public object A11y {
             "⏭" -> "Next track"
             else -> null
           }
+
+  /**
+   * Whether [TopBar] draws [VMark]: hidden whenever a leading back action occupies the leading
+   * slot, or when the rail already shows the mark ([showMark] == false).
+   */
+  public fun topBarShowMark(showMark: Boolean, hasBackAction: Boolean): Boolean =
+      showMark && !hasBackAction
+
+  /** Spoken description for [TopBar]'s leading back action. */
+  public fun topBarBackDescription(contentDescription: String? = null): String =
+      contentDescription?.takeIf { it.isNotBlank() } ?: "Back"
 }
