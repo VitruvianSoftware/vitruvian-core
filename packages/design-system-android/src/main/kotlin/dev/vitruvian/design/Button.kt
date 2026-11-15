@@ -44,6 +44,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -194,11 +195,17 @@ private fun ButtonLabelContent(
     return
   }
   val softWrap = maxLines > 1
+  val textStyle =
+      if (softWrap) {
+        VitruvianType.buttonTouch.copy(textAlign = TextAlign.Center, lineBreak = LineBreak.Simple)
+      } else {
+        VitruvianType.buttonTouch.copy(textAlign = TextAlign.Center)
+      }
   if (icon == null && trailingIcon == null) {
     VText(
         text = label.uppercase(),
         modifier = labelSemantics,
-        style = VitruvianType.buttonTouch.copy(textAlign = TextAlign.Center),
+        style = textStyle,
         color = textColor,
         maxLines = maxLines,
         overflow = TextOverflow.Ellipsis,
@@ -216,7 +223,7 @@ private fun ButtonLabelContent(
     VText(
         text = label.uppercase(),
         modifier = Modifier.weight(1f, fill = false).then(labelSemantics),
-        style = VitruvianType.buttonTouch.copy(textAlign = TextAlign.Center),
+        style = textStyle,
         color = textColor,
         maxLines = maxLines,
         overflow = TextOverflow.Ellipsis,

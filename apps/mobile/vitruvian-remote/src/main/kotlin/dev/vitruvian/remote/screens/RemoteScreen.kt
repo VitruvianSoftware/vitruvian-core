@@ -29,6 +29,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -62,6 +63,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -189,45 +191,87 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
           if (showMainTrackpad) {
             Trackpad(state = state, modifier = Modifier.height(TRACKPAD_HEIGHT))
           }
-          // Two rows, not one: five buttons across the folded width leave
-          // "Click" and "Right" no room and they ellipsise to "Cli…".
-          Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
-            VButton(
-                label = "Click",
-                onClick = { if (state.click()) view.hapticTick() },
-                modifier = Modifier.weight(1f),
-            )
-            VButton(
-                label = "Right",
-                onClick = { if (state.rightClick()) view.hapticTick() },
-                modifier = Modifier.weight(1f),
-            )
+          val fontScale = LocalConfiguration.current.fontScale
+          // Two groups: pointer buttons then secondary toggles. At large font scales, column
+          // counts adapt downward so multi-word labels wrap at word boundaries without clipping.
+          BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val cols =
+                Derive.adaptiveButtonColumns(
+                    availableWidthDp = maxWidth.value,
+                    fontScale = fontScale,
+                    labels = listOf("Click", "Right"),
+                    maxColumns = 2,
+                    gapDp = Space.s3.value,
+                    horizontalPaddingDp = Space.s3.value,
+                    maxLines = 2,
+                )
+            AutoGrid(minItemWidth = 1.dp, gap = Space.s3, maxColumns = cols) {
+              item {
+                VButton(
+                    label = "Click",
+                    onClick = { if (state.click()) view.hapticTick() },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = Space.s3),
+                    maxLines = 2,
+                )
+              }
+              item {
+                VButton(
+                    label = "Right",
+                    onClick = { if (state.rightClick()) view.hapticTick() },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = Space.s3),
+                    maxLines = 2,
+                )
+              }
+            }
           }
-          Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
-            VButton(
-                label = "Keys",
-                onClick = state::toggleKeyboard,
-                modifier = Modifier.weight(1f),
-                contentColor = if (state.keyboardOpen) colors.accentText else null,
-                maxLines = 2,
-            )
-            VButton(
-                label = "Trackpad settings",
-                onClick = state::toggleTuning,
-                modifier = Modifier.weight(1f),
-                contentColor = if (state.tuningOpen) colors.accentText else null,
-                maxLines = 2,
-            )
-            VButton(
-                label = "View screen",
-                // The width is decided when the plate has measured itself;
-                // before it has, the contract's own default is the honest
-                // guess.
-                onClick = { state.togglePeek(peekWidth) },
-                modifier = Modifier.weight(1f),
-                contentColor = if (state.peekOpen) colors.accentText else null,
-                maxLines = 2,
-            )
+          BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val cols =
+                Derive.adaptiveButtonColumns(
+                    availableWidthDp = maxWidth.value,
+                    fontScale = fontScale,
+                    labels = listOf("Keys", "Trackpad settings", "View screen"),
+                    maxColumns = 3,
+                    gapDp = Space.s3.value,
+                    horizontalPaddingDp = Space.s3.value,
+                    maxLines = 2,
+                )
+            AutoGrid(minItemWidth = 1.dp, gap = Space.s3, maxColumns = cols) {
+              item {
+                VButton(
+                    label = "Keys",
+                    onClick = state::toggleKeyboard,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentColor = if (state.keyboardOpen) colors.accentText else null,
+                    contentPadding = PaddingValues(horizontal = Space.s3),
+                    maxLines = 2,
+                )
+              }
+              item {
+                VButton(
+                    label = "Trackpad settings",
+                    onClick = state::toggleTuning,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentColor = if (state.tuningOpen) colors.accentText else null,
+                    contentPadding = PaddingValues(horizontal = Space.s3),
+                    maxLines = 2,
+                )
+              }
+              item {
+                VButton(
+                    label = "View screen",
+                    // The width is decided when the plate has measured itself;
+                    // before it has, the contract's own default is the honest
+                    // guess.
+                    onClick = { state.togglePeek(peekWidth) },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentColor = if (state.peekOpen) colors.accentText else null,
+                    contentPadding = PaddingValues(horizontal = Space.s3),
+                    maxLines = 2,
+                )
+              }
+            }
           }
           if (state.tuningOpen) {
             TuningPlate(state)
@@ -327,18 +371,48 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
   }
 
   FoldingSection(state, RemoteSection.POWER, "Power") {
-    Row(
-        modifier = Modifier.padding(horizontal = Space.s4),
-        horizontalArrangement = Arrangement.spacedBy(Space.s3),
-    ) {
-      VButton("Lock", state::lock, modifier = Modifier.weight(1f))
-      VButton("Sleep", { state.openDialog(DialogKind.Sleep) }, modifier = Modifier.weight(1f))
-      VButton(
-          label = "Restart",
-          onClick = { state.openDialog(DialogKind.Restart) },
-          modifier = Modifier.weight(1f),
-          variant = ButtonVariant.Danger,
-      )
+    val fontScale = LocalConfiguration.current.fontScale
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(horizontal = Space.s4)) {
+      val cols =
+          Derive.adaptiveButtonColumns(
+              availableWidthDp = maxWidth.value,
+              fontScale = fontScale,
+              labels = listOf("Lock", "Sleep", "Restart"),
+              maxColumns = 3,
+              gapDp = Space.s3.value,
+              horizontalPaddingDp = Space.s3.value,
+              maxLines = 2,
+          )
+      AutoGrid(minItemWidth = 1.dp, gap = Space.s3, maxColumns = cols) {
+        item {
+          VButton(
+              label = "Lock",
+              onClick = state::lock,
+              modifier = Modifier.fillMaxWidth(),
+              contentPadding = PaddingValues(horizontal = Space.s3),
+              maxLines = 2,
+          )
+        }
+        item {
+          VButton(
+              label = "Sleep",
+              onClick = { state.openDialog(DialogKind.Sleep) },
+              modifier = Modifier.fillMaxWidth(),
+              contentPadding = PaddingValues(horizontal = Space.s3),
+              maxLines = 2,
+          )
+        }
+        item {
+          VButton(
+              label = "Restart",
+              onClick = { state.openDialog(DialogKind.Restart) },
+              modifier = Modifier.fillMaxWidth(),
+              variant = ButtonVariant.Danger,
+              contentPadding = PaddingValues(horizontal = Space.s3),
+              maxLines = 2,
+          )
+        }
+      }
     }
   }
 }
@@ -841,11 +915,27 @@ private fun TuneRow(
 @Composable
 private fun DesktopPlate(state: RemoteState) {
   FoldingPlate(state, RemoteSection.DESKTOP, "Desktop · Spaces") {
-    AutoGrid(minItemWidth = DESKTOP_CELL_MIN, gap = Space.s2) {
-      item { GridKey("Space ←") { state.sendMacChord(HidAction.SpaceLeft) } }
-      item { GridKey("Space →") { state.sendMacChord(HidAction.SpaceRight) } }
-      REMOTE_DESKTOP_ACTIONS.forEach { (label, action) ->
-        item { GridKey(label) { state.sendMacChord(action) } }
+    val labels = listOf("Space ←", "Space →") + REMOTE_DESKTOP_ACTIONS.map { it.first }
+    val fontScale = LocalConfiguration.current.fontScale
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+      val baselineCols =
+          ((maxWidth + Space.s2) / (DESKTOP_CELL_MIN + Space.s2)).toInt().coerceAtLeast(1)
+      val cols =
+          Derive.adaptiveButtonColumns(
+              availableWidthDp = maxWidth.value,
+              fontScale = fontScale,
+              labels = labels,
+              maxColumns = baselineCols,
+              gapDp = Space.s2.value,
+              horizontalPaddingDp = Space.s2.value,
+              maxLines = 2,
+          )
+      AutoGrid(minItemWidth = DESKTOP_CELL_MIN, gap = Space.s2, maxColumns = cols) {
+        item { GridKey("Space ←") { state.sendMacChord(HidAction.SpaceLeft) } }
+        item { GridKey("Space →") { state.sendMacChord(HidAction.SpaceRight) } }
+        REMOTE_DESKTOP_ACTIONS.forEach { (label, action) ->
+          item { GridKey(label) { state.sendMacChord(action) } }
+        }
       }
     }
   }
@@ -855,9 +945,25 @@ private fun DesktopPlate(state: RemoteState) {
 @Composable
 private fun WindowPlate(state: RemoteState) {
   FoldingPlate(state, RemoteSection.WINDOW, "Window") {
-    AutoGrid(minItemWidth = WINDOW_CELL_MIN, gap = Space.s2) {
-      REMOTE_WINDOW_ACTIONS.forEach { (label, action) ->
-        item { GridKey(label) { state.sendMacChord(action) } }
+    val labels = REMOTE_WINDOW_ACTIONS.map { it.first }
+    val fontScale = LocalConfiguration.current.fontScale
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+      val baselineCols =
+          ((maxWidth + Space.s2) / (WINDOW_CELL_MIN + Space.s2)).toInt().coerceAtLeast(1)
+      val cols =
+          Derive.adaptiveButtonColumns(
+              availableWidthDp = maxWidth.value,
+              fontScale = fontScale,
+              labels = labels,
+              maxColumns = baselineCols,
+              gapDp = Space.s2.value,
+              horizontalPaddingDp = Space.s2.value,
+              maxLines = 2,
+          )
+      AutoGrid(minItemWidth = WINDOW_CELL_MIN, gap = Space.s2, maxColumns = cols) {
+        REMOTE_WINDOW_ACTIONS.forEach { (label, action) ->
+          item { GridKey(label) { state.sendMacChord(action) } }
+        }
       }
     }
   }

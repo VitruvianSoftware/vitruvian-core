@@ -197,6 +197,15 @@ class A11yTest {
   }
 
   @Test
+  fun railLabelFontSizeScalesDownAt200PercentAndCapsAtLabelToken() {
+    assertEquals(9f, A11y.railLabelFontSizeSp(baseSp = 9f, fontScale = 1.0f, maxScaledDp = 10f))
+    assertEquals(9f, A11y.railLabelFontSizeSp(baseSp = 9f, fontScale = 1.1f, maxScaledDp = 10f))
+    val at200 = A11y.railLabelFontSizeSp(baseSp = 9f, fontScale = 2.0f, maxScaledDp = 10f)
+    assertEquals(5f, at200)
+    assertEquals(10f, at200 * 2.0f)
+  }
+
+  @Test
   fun hostChipDescriptionFormatsNameAndState() {
     assertEquals(
         "mac-mini, Connected. Opens settings.",
@@ -302,6 +311,17 @@ class A11yTest {
             ".windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical))")
     val drawBehindIndex = railBody.indexOf(".drawBehind {")
     assertTrue("Rail insetsIndex and drawBehind must exist", insetsIndex in 0 until drawBehindIndex)
+
+    val navCellBody = extractKotlinBlock(navSrc, "private fun NavCell(")
+    assertTrue(
+        "Rail labels must clamp font size via A11y.railLabelFontSizeSp",
+        navCellBody.contains("A11y.railLabelFontSizeSp("),
+    )
+    assertTrue(
+        "Rail labels must allow 2-line wrap without ellipsis truncation",
+        navCellBody.contains("maxLines = if (isRail) 2 else 1") &&
+            navCellBody.contains("if (isRail) TextOverflow.Clip else TextOverflow.Ellipsis"),
+    )
   }
 
   private fun stripKotlinComments(source: String): String {

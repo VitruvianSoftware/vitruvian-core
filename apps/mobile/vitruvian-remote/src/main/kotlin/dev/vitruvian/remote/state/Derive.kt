@@ -3568,6 +3568,67 @@ public object Derive {
   public fun showsMainTrackpad(dockShowsTrackpad: Boolean): Boolean = !dockShowsTrackpad
 
   /**
+   * Returns the highest column count in `1..maxColumns` where every uppercase button label in
+   * [labels] wraps on whole words within [maxLines] without mid-word breaks at [fontScale]. Falls
+   * back to `1` column when labels cannot fit cleanly side by side.
+   */
+  public fun adaptiveButtonColumns(
+      availableWidthDp: Float,
+      fontScale: Float,
+      labels: List<String>,
+      maxColumns: Int,
+      gapDp: Float = 8f,
+      horizontalPaddingDp: Float = 21f,
+      maxLines: Int = 2,
+      baseFontSizeSp: Float = 13f,
+      letterSpacingEm: Float = 0.08f,
+  ): Int {
+    val ceiling = maxColumns.coerceAtLeast(1)
+    if (labels.isEmpty() || availableWidthDp <= 0f) return ceiling
+    val scale = fontScale.coerceAtLeast(1f)
+    val scaledSp = baseFontSizeSp * scale
+    fun wordWidthDp(chars: Int): Float =
+        if (chars <= 0) 0f else (chars * 0.61f + (chars - 1) * letterSpacingEm) * scaledSp
+    val spaceWidthDp = (0.61f + letterSpacingEm) * scaledSp
+    val whitespace = Regex("""\s+""")
+    for (cols in ceiling downTo 1) {
+      val cellWidth = (availableWidthDp - gapDp * (cols - 1)) / cols
+      val textWidth = cellWidth - 2f * horizontalPaddingDp
+      if (textWidth <= 0f) continue
+      val allFit =
+          labels.all { raw ->
+            val words =
+                raw.trim().uppercase(Locale.ROOT).split(whitespace).filter { it.isNotEmpty() }
+            if (words.isEmpty()) {
+              true
+            } else {
+              var lines = 1
+              var lineWidth = 0f
+              var fitsWords = true
+              for (word in words) {
+                val wordW = wordWidthDp(word.length)
+                if (wordW > textWidth) {
+                  fitsWords = false
+                  break
+                }
+                if (lineWidth == 0f) {
+                  lineWidth = wordW
+                } else if (lineWidth + spaceWidthDp + wordW <= textWidth) {
+                  lineWidth += spaceWidthDp + wordW
+                } else {
+                  lines++
+                  lineWidth = wordW
+                }
+              }
+              fitsWords && lines <= maxLines
+            }
+          }
+      if (allFit) return cols
+    }
+    return 1
+  }
+
+  /**
    * Resolves persisted [ThemeMode] with one-time migration from the legacy [legacyDarkTheme]
    * boolean preference:
    * - explicit [storedMode] wins;

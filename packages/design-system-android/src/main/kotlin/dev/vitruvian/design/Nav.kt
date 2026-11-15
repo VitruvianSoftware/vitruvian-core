@@ -52,13 +52,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /** One navigation destination, as both the tab bar and the rail render it. */
 public data class NavItem(
@@ -241,14 +244,31 @@ private fun NavCell(
   ) {
     VIcon(path = item.iconPath, color = content, contentDescription = iconDescription)
     if (!item.iconOnly) {
+      val isRail = rule == NavRule.Left
+      val fontScale = LocalConfiguration.current.fontScale
+      val labelStyle =
+          if (isRail) {
+            VitruvianType.tabLabel.copy(
+                fontSize =
+                    A11y.railLabelFontSizeSp(
+                            baseSp = VitruvianType.tabLabel.fontSize.value,
+                            fontScale = fontScale,
+                            maxScaledDp = FontSize.label.value,
+                        )
+                        .sp,
+                textAlign = TextAlign.Center,
+            )
+          } else {
+            VitruvianType.tabLabel
+          }
       VText(
           text = item.label.uppercase(),
-          style = VitruvianType.tabLabel,
+          style = labelStyle,
           color = content,
           modifier = Modifier.padding(horizontal = Space.s1),
-          maxLines = 1,
-          overflow = TextOverflow.Ellipsis,
-          softWrap = false,
+          maxLines = if (isRail) 2 else 1,
+          overflow = if (isRail) TextOverflow.Clip else TextOverflow.Ellipsis,
+          softWrap = isRail,
       )
     }
   }

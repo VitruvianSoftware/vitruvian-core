@@ -221,4 +221,17 @@ public object A11y {
             "⏭" -> "Next track"
             else -> null
           }
+
+  /**
+   * Scales rail navigation label font size down at large accessibility font scales so the rendered
+   * size caps at [maxScaledDp] (e.g., [FontSize.label]) instead of truncating.
+   */
+  public fun railLabelFontSizeSp(
+      baseSp: Float = 9f,
+      fontScale: Float,
+      maxScaledDp: Float = 10f,
+  ): Float {
+    val scale = fontScale.coerceAtLeast(1f)
+    return if (baseSp * scale <= maxScaledDp) baseSp else maxScaledDp / scale
+  }
 }

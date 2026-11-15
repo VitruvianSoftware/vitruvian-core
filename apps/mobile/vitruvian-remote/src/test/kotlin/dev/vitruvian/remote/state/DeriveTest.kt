@@ -4430,6 +4430,68 @@ public class DeriveTest {
   }
 
   @Test
+  fun adaptiveButtonColumnsLowersAt200PercentScaleToAvoidMidWordTruncation() {
+    val secondaryLabels = listOf("Keys", "Trackpad settings", "View screen")
+    assertEquals(
+        3,
+        Derive.adaptiveButtonColumns(
+            availableWidthDp = 334f,
+            fontScale = 1.0f,
+            labels = secondaryLabels,
+            maxColumns = 3,
+            gapDp = 8f,
+            horizontalPaddingDp = 8f,
+        ),
+    )
+    assertEquals(
+        2,
+        Derive.adaptiveButtonColumns(
+            availableWidthDp = 384f,
+            fontScale = 2.0f,
+            labels = secondaryLabels,
+            maxColumns = 3,
+            gapDp = 8f,
+            horizontalPaddingDp = 8f,
+        ),
+    )
+    assertEquals(
+        1,
+        Derive.adaptiveButtonColumns(
+            availableWidthDp = 300f,
+            fontScale = 2.0f,
+            labels = secondaryLabels,
+            maxColumns = 3,
+            gapDp = 8f,
+            horizontalPaddingDp = 8f,
+        ),
+    )
+
+    val windowLabels = listOf("Minimize", "Close Tab", "Maximize", "Fullscreen")
+    assertEquals(
+        3,
+        Derive.adaptiveButtonColumns(
+            availableWidthDp = 308f,
+            fontScale = 1.0f,
+            labels = windowLabels,
+            maxColumns = 3,
+            gapDp = 5f,
+            horizontalPaddingDp = 5f,
+        ),
+    )
+    assertEquals(
+        1,
+        Derive.adaptiveButtonColumns(
+            availableWidthDp = 308f,
+            fontScale = 2.0f,
+            labels = windowLabels,
+            maxColumns = 3,
+            gapDp = 5f,
+            horizontalPaddingDp = 5f,
+        ),
+    )
+  }
+
+  @Test
   fun topBarSettingsAndRemoteKeyTablesMatchPolishContracts() {
     assertTrue(Derive.showsTopBarSettings(showRail = false))
     assertFalse(Derive.showsTopBarSettings(showRail = true))
