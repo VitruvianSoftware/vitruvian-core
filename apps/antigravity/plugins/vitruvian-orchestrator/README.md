@@ -24,7 +24,7 @@ Antigravity desktop plugin that coordinates specialist helpers across a planned 
   - `working`: The helper is actively running its turn or a background task.
   - `waiting`: The helper finished its turn and is standing by so an `@mention` on the board can wake it.
   - `paused`: The helper reported a pause reason (`quota` or `error`). While the flow is open, its row shows an amber `paused: <reason>` badge in place of `running`, and the **Members** tab shows its pause detail whether or not it has posted.
-  - `retired`: The helper is done for good — either retired early by the lead with `progress` (`retire`) or finished when the flow closes. Retired helpers are grouped under **Retired** in the **Members** tab and never change the status badge on **Flow** agent rows.
+  - `retired`: The helper is done for good — either retired early by the lead with `progress` (`retire`) or finished when the flow closes. Retired helpers are grouped under **Retired** in the **Members** tab and never change the status badge on **Flow** agent rows. A helper's second and later runs on the same task show `round N` next to the task in the **Members** tab.
   - `killed`: The lead marked the helper as killed with `progress` (`kill`). It shows a red `killed` badge and is no longer woken by board posts. This does not stop a helper that is still running; the lead stops it in the tool itself.
 
 ## Who talks to whom
@@ -45,7 +45,7 @@ The **Overview** tab gives a data-only snapshot of the flow and shows only non-e
 
 ## Channels
 
-Posts carry a `channel` (`main` by default; channel names match `[a-z0-9][a-z0-9-]{0,31}`, up to 20 channels). Only the lead can create or archive channels with `channel`; everyone can list channels, filter `board` by `channel`, and post to open channels. Posting to an unknown or archived channel is rejected with an error, and `main` cannot be archived. Once a non-`main` channel exists, channel chips (`All`, `#main`, `#<name>`) appear above the **Board** tab. When the lead puts `Channel: <name>` in a task brief, the helper posts in that channel.
+Posts carry a `channel` (`main` by default; channel names match `[a-z0-9][a-z0-9-]{0,31}`, up to 20 channels). Only the lead can create or archive channels with `channel`; everyone can list channels, filter `board` by `channel` (an unknown channel is an error that lists the real ones; archived channels can still be read), and post to open channels. Posting to an unknown or archived channel is rejected with an error, and `main` cannot be archived. Once a non-`main` channel exists, channel chips (`All`, `#main`, `#<name>`) appear above the **Board** tab. When the lead puts `Channel: <name>` in a task brief, the helper posts in that channel.
 
 ## Safety
 

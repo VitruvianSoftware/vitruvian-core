@@ -4333,3 +4333,87 @@ test("VALID_TIERS includes roster tiers (lead, build, deep, light) plus legacy t
     ["lead", "build", "deep", "light"],
   );
 });
+
+test("members() numbers each helper's rounds on the same task so repeated runs can be told apart", () => {
+  let flow = coreModule.reduce(null, {
+    type: "plan",
+    at: 100,
+    title: "Rounds",
+    tasks: [
+      { title: "Build it", specialist: "wren", tier: "core" },
+      { title: "Check it", specialist: "scout", tier: "core" },
+    ],
+  });
+  const start = (id, agent, title, at) => {
+    flow = coreModule.reduce(flow, {
+      type: "run.start",
+      at,
+      id,
+      harness: "claude-code",
+      agent,
+      model: "claude-haiku-5-5",
+      title,
+      role: "worker",
+    });
+    flow = coreModule.reduce(flow, { type: "run.end", at: at + 5, id });
+  };
+  start("w1", "wren", "Build it", 200);
+  start("s1", "scout", "Check it", 300);
+  start("w2", "Wren", "Build it", 400);
+  start("w3", "wren", "Build it", 500);
+  start("adhoc", "wren", "Something else", 600);
+
+  const rows = Object.values(coreModule.members(flow)).flat();
+  const roundOf = (id) => rows.find((r) => r.id === id)?.round;
+  assert.equal(roundOf("w1"), 1);
+  assert.equal(roundOf("w2"), 2);
+  assert.equal(roundOf("w3"), 3);
+  assert.equal(roundOf("s1"), 1);
+  assert.equal(roundOf("adhoc"), 1);
+});
+
+test("checkBoardChannel() refuses unknown channels and lists the real ones; main and archived channels read fine", () => {
+  let flow = coreModule.reduce(null, {
+    type: "plan",
+    at: 100,
+    title: "Channels",
+    tasks: [{ title: "T", specialist: "wren", tier: "core" }],
+  });
+  flow = coreModule.reduce(flow, {
+    type: "channel",
+    at: 110,
+    action: "create",
+    name: "infra",
+  });
+  flow = coreModule.reduce(flow, {
+    type: "channel",
+    at: 120,
+    action: "create",
+    name: "old",
+  });
+  flow = coreModule.reduce(flow, {
+    type: "channel",
+    at: 130,
+    action: "archive",
+    name: "old",
+  });
+
+  assert.equal(coreModule.checkBoardChannel(flow, undefined), null);
+  assert.equal(coreModule.checkBoardChannel(flow, "  "), null);
+  assert.equal(coreModule.checkBoardChannel(flow, "main"), null);
+  assert.equal(coreModule.checkBoardChannel(flow, "infra"), null);
+  assert.equal(coreModule.checkBoardChannel(flow, "old"), null);
+  assert.equal(
+    coreModule.checkBoardChannel(flow, "nope"),
+    'channel "nope" does not exist; existing channels: main, infra, old (archived)',
+  );
+  assert.equal(
+    coreModule.checkBoardChannel(null, "nope"),
+    'channel "nope" does not exist; existing channels: main',
+  );
+  const evil = coreModule.checkBoardChannel(flow, "x\u001b[31m‮​");
+  assert.ok(
+    evil && !/[\u001b‮​]/.test(evil),
+    "name is cleaned before it is echoed",
+  );
+});

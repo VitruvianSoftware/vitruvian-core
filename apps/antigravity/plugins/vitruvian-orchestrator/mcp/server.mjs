@@ -56,6 +56,7 @@ import { fileURLToPath } from "node:url";
 import {
   board as boardView,
   channels as channelsView,
+  checkBoardChannel,
   initialFlow,
   isValidWorktree,
   reduce,
@@ -1985,6 +1986,14 @@ export function handleJsonRpcMessage(message, options = {}) {
           : existsSync(filePath)
             ? readFlowFromJsonlFile(filePath, loaderOpts)
             : null;
+      const channelError = checkBoardChannel(currentFlow, toolArgs.channel);
+      if (channelError) {
+        return {
+          jsonrpc: "2.0",
+          id,
+          error: { code: -32602, message: channelError },
+        };
+      }
       const rows = queryBoard(toolArgs, meta, currentFlow, options.brainRoots);
       return {
         jsonrpc: "2.0",
