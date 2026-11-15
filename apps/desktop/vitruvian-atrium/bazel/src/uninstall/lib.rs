@@ -13,7 +13,7 @@ use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
-pub const DEFAULT_BUNDLE_ID: &str = "com.vitruviansoftware.atrium";
+pub const DEFAULT_BUNDLE_ID: &str = "com.vitruviansoftware.vitruvian";
 pub const DEFAULT_APP_PATH: &str = "/Applications/Vitruvian Atrium.app";
 pub const CLOSED_LID_RULE_PATHS: &[&str] = &["/etc/sudoers.d/vitruvian-atrium-clamshell"];
 
@@ -532,7 +532,7 @@ mod tests {
             std::process::id(),
             nanos
         ));
-        let bundle = "com.vitruviansoftware.atrium";
+        let bundle = "com.vitruviansoftware.vitruvian";
 
         fs::create_dir_all(scratch.join("Library/Preferences/ByHost")).unwrap();
         fs::create_dir_all(scratch.join(format!(

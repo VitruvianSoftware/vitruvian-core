@@ -63,7 +63,7 @@ def pipeline_unit(
         through to the tests. Only meaningful on a Linux runner: the emulator needs
         KVM, which macOS runners do not provide. Default: False.
       artifacts: dict of artifact name -> path RELATIVE TO bazel-bin, uploaded
-        after the unit's targets run (e.g. `apps/mobile/android-remote/app.apk`).
+        after the unit's targets run (e.g. `apps/mobile/vitruvian-remote/app.apk`).
         Resolved with `bazel info bazel-bin` under this unit's own flags, because
         flags like --android_platforms move outputs to a different bin directory
         than the workspace `bazel-bin` symlink points at.

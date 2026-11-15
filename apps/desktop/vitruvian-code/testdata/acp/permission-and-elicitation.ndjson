@@ -1,0 +1,17 @@
+{"direction":"client","method":"initialize"}
+{"direction":"agent","send":{"jsonrpc":"2.0","id":"$id","result":{"protocolVersion":1,"agentCapabilities":{"loadSession":false}}}}
+{"direction":"client","method":"session/new"}
+{"direction":"agent","send":{"jsonrpc":"2.0","id":"$id","result":{"sessionId":"sess-interactive"}}}
+{"direction":"client","method":"session/prompt"}
+{"direction":"agent","send":{"jsonrpc":"2.0","id":"perm-read-1","method":"session/request_permission","params":{"sessionId":"sess-interactive","toolCall":{"toolCallId":"tc-read","title":"Read README","kind":"read","locations":[{"path":"/workspace/README.md"}]},"options":[{"optionId":"opt-allow-once","name":"Allow once","kind":"allow_once"},{"optionId":"opt-reject","name":"Reject","kind":"reject_once"}]}}}
+{"direction":"client_response","id":"perm-read-1"}
+{"direction":"agent","send":{"jsonrpc":"2.0","id":"perm-exec-1","method":"session/request_permission","params":{"sessionId":"sess-interactive","toolCall":{"toolCallId":"tc-exec","title":"Run cleanup","kind":"execute","rawInput":{"command":"rm -rf build"}},"options":[{"optionId":"opt-allow-once","name":"Allow once","kind":"allow_once"},{"optionId":"opt-allow-always","name":"Allow always","kind":"allow_always"},{"optionId":"opt-reject","name":"Reject","kind":"reject_once"}]}}}
+{"direction":"client_response","id":"perm-exec-1"}
+{"direction":"agent","send":{"jsonrpc":"2.0","id":"elic-form-1","method":"elicitation/create","params":{"sessionId":"sess-interactive","mode":"form","title":"Deploy parameters","message":"Choose target branch","requestedSchema":{"type":"object","required":["branch"],"properties":{"branch":{"type":"string","title":"Branch","enum":["main","staging"]},"dryRun":{"type":"boolean","title":"Dry run"}}}}}}
+{"direction":"client_response","id":"elic-form-1"}
+{"direction":"agent","send":{"jsonrpc":"2.0","id":"elic-url-1","method":"elicitation/create","params":{"sessionId":"sess-interactive","mode":"url","title":"Device Login","message":"Open browser to authenticate","url":"https://auth.example.com/device"}}}
+{"direction":"client_response","id":"elic-url-1"}
+{"direction":"agent","send":{"jsonrpc":"2.0","id":"perm-exec-2","method":"session/request_permission","params":{"sessionId":"sess-interactive","toolCall":{"toolCallId":"tc-exec-2","title":"Run tests","kind":"execute","rawInput":{"command":"bazel test"}},"options":[{"optionId":"opt-allow-once","name":"Allow once","kind":"allow_once"},{"optionId":"opt-reject","name":"Reject","kind":"reject_once"}]}}}
+{"direction":"client_response","id":"perm-exec-2"}
+{"direction":"agent","send":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess-interactive","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Interactive flow complete."}}}}}
+{"direction":"agent","send":{"jsonrpc":"2.0","id":"$id","result":{"stopReason":"end_turn"}}}

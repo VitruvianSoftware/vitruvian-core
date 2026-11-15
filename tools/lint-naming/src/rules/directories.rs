@@ -55,13 +55,9 @@ pub const GO_PACKAGE_DIR_ROOTS: &[&str] = &[
     "infrastructure/pulumi",
     "packages/pulumi/library/go",
     "packages/pulumi/examples",
-    "pulumi/library/go",
-    "pulumi/examples",
     "apps/cli/vitruvian-devx",
     "apps/cli/vitruvian-homelab",
     "apps/web/oauth-user-inspector/infra",
-    "devx",
-    "homelab",
     "pkg",
 ];
 
@@ -226,8 +222,8 @@ mod tests {
             ids(validate_directory_name("tools/ci_preflight", false)),
             ["DIR003"]
         );
-        assert_eq!(ids(validate_directory_name("mcp_slack", true)), ["DIR002"]);
-        assert_eq!(ids(validate_directory_name("-mcp-slack", true)), ["DIR002"]);
+        assert_eq!(ids(validate_directory_name("bad_root", true)), ["DIR002"]);
+        assert_eq!(ids(validate_directory_name("-bad-root", true)), ["DIR002"]);
         assert!(validate_directory_name("a", true).is_empty());
         assert!(validate_directory_name("", false).is_empty());
         assert!(validate_directory_name(".", false).is_empty());
@@ -243,7 +239,7 @@ mod tests {
         )
         .is_empty());
         assert!(validate_directory_name(
-            "tabula/web/prisma/migrations/20260524120000_init_schema",
+            "apps/suites/vitruvian-tabs/api/prisma/migrations/20260524120000_init_schema",
             false
         )
         .is_empty());

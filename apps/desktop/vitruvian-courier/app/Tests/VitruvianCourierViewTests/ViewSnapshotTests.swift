@@ -4747,6 +4747,29 @@ final class ViewSnapshotTests: XCTestCase {
         }
     }
 
+    /// The colour and icon picker fits the label window it sits in. Its colour row once asked for ~456pt in a
+    /// 360pt window, and SwiftUI centred the overflow, clipping the text, the colours and the icons on both sides.
+    func testLabelPickerFitsTheLabelWindow() throws {
+        let available = LabelEditorWindow.width - 40 // the window's 20pt padding each side
+        let picker = NSHostingView(rootView: IconColorPicker(color: .constant(7), icon: .constant(LabelsModel.icons[0])))
+        XCTAssertLessThanOrEqual(picker.fittingSize.width, available,
+                                 "The colour and icon picker must fit the label window's \(available)pt")
+        try assertLightAndDarkSnapshot("label-picker-in-window-width", width: available) {
+            IconColorPicker(color: .constant(7), icon: .constant(LabelsModel.icons[0]))
+        }
+        // The whole New Label window, at the width it opens at: read the PNG for clipping before a change ships.
+        let app = offlineApp()
+        let store = defaults()
+        let inbox = InboxModel(appModel: app, preferences: InboxPreferences(defaults: store))
+        let lifecycle = SystemLifecycleModel(loginItemService: SnapshotLoginItemService(),
+                                             biometricService: SnapshotBiometricService(), defaults: store)
+        let spaces = SpacesModel(appModel: app, inbox: inbox, lifecycle: lifecycle)
+        let labels = LabelsModel(appModel: app, lifecycle: lifecycle)
+        try assertLightAndDarkSnapshot("label-editor-new", width: LabelEditorWindow.width) {
+            LabelEditorWindow(target: .new(applyTo: []), labels: labels, spaces: spaces, inbox: inbox)
+        }
+    }
+
     func testSection22IconCatalogPickerAndRemovedMediaSnapshotsLightAndDark() throws {
         try assertLightAndDarkSnapshot("m47-icon-color-picker-catalog", width: 500) {
             VStack(alignment: .leading, spacing: 16) {

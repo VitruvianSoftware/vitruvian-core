@@ -43,5 +43,24 @@ enum QuitProtectionSwitcherSessionTests {
         send(48, flags: [.maskCommand, .maskControl])
         send(48, flags: [.maskCommand, .maskAlternate])
         suite.expect(!session.isActive, "Control or Option with Command-Tab is not the native switcher")
+
+        // The live switcher shortcut decides, read only on Command key downs.
+        var tableReads = 0
+        func sendLive(_ key: Int64, _ type: CGEventType = .keyDown, flags: CGEventFlags = .maskCommand,
+                      opens: Bool) {
+            session.observe(type, flags: flags, keyCode: key, opensSwitcher: { tableReads += 1; return opens }) {
+                false
+            }
+        }
+        sendLive(48, opens: false)
+        suite.expect(!session.isActive && tableReads == 1,
+                     "Command-Tab with the system row off or remapped opens no native switcher")
+        sendLive(50, opens: true)
+        suite.expect(session.isActive, "a remapped system switcher key opens the native switcher")
+        sendLive(50, .keyUp, opens: true)
+        sendLive(0, .flagsChanged, flags: [], opens: true)
+        sendLive(6, flags: [], opens: true)
+        suite.expect(!session.isActive && tableReads == 2,
+                     "key ups, modifier changes and typing without Command never read the shortcut table")
     }
 }

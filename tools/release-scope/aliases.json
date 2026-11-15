@@ -10,8 +10,8 @@
       "why": "gravastar-mouse is released from packages/peripherals, and its titles say peripherals."
     },
     "remote": {
-      "components": ["android-remote"],
-      "why": "The Android remote's titles say remote; its component is android-remote."
+      "components": ["vitruvian-remote"],
+      "why": "Vitruvian Remote's titles say remote; its component is vitruvian-remote."
     }
   }
 }

@@ -51,7 +51,8 @@ enum OverlayPanelTests {
             ("the Finder cut feedback", FinderCutPaste.makePanel()),
             ("the brightness level indicator", BrightnessOSD.makePanel()),
             ("the cleaning mode cover", CleaningModeManager.makePanel(frame: frame)),
-            ("the recording pill and region guide", RecorderIndicator.makePanel(frame: frame)),
+            ("the recording pill", RecorderIndicator.makePanel(frame: frame)),
+            ("the capture region guide", CaptureRegionGuide.makePanel(frame: frame)),
         ]
         for (surface, panel) in surfaces {
             suite.expect(panel is OverlayPanel && panel.accessibilitySubrole() == .unknown,

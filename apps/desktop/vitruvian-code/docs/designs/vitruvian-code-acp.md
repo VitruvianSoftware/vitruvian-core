@@ -830,9 +830,11 @@ mode and sandbox setting. The app's agy decisions then use the same inputs as
 
 | App mode | T3 runtime mode | Sandbox |
 |---|---|---|
-| Full access | `full-access` | `danger-full-access` |
-| Auto-accept edits | `auto-accept-edits` | `workspace-write` |
-| Approval required | `approval-required` | none, which T3 Code reads as read-only |
+| Full access | `full-access` | `danger-full-access` (no sandbox policy for `agy`, as in T3 Code) |
+| Auto-accept edits | `auto-accept-edits` | `workspace-write` (no sandbox policy for `agy`, as in T3 Code) |
+| Approval required | `approval-required` | `read-only` (no sandbox policy for `agy`, as in T3 Code) |
+
+The sandbox values apply only to agents that are given a sandbox policy; `agy` runs with none, as in T3 Code.
 
 *   **Path checks** are symlink-aware and fail closed, following
     `acpCanonicalPathForContainment`.

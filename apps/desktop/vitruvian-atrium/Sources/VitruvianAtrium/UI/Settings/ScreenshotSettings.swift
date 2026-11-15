@@ -8,6 +8,7 @@ import VitruvianAtriumServices
 
 /// Screenshot-specific sections inside the shared screen-capture page.
 package struct ScreenshotCaptureSettings: View {
+    package var tool: ScreenCaptureTool = .screenshot
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = ScreenshotService.shared
@@ -18,6 +19,7 @@ package struct ScreenshotCaptureSettings: View {
     private var lastCaptureShortcutEnabled: Bool
     @AppStorage(Preferences.screenshotClipboardShortcutEnabled)
     private var clipboardShortcutEnabled: Bool
+    @AppStorage(Preferences.screenshotScrollingAutoScroll) private var autoScroll: Bool
     @AppStorage(Preferences.screenshotFreeze) private var freeze: Bool
     @AppStorage(Preferences.screenshotHideAtriumWindows) private var hideAtriumWindows: Bool
     @AppStorage(Preferences.screenshotSaveFolder) private var saveFolder: String
@@ -60,25 +62,27 @@ package struct ScreenshotCaptureSettings: View {
     package var body: some View {
         Group {
             Section {
-                HStack(spacing: 10) {
-                    Button {
-                        ScreenshotService.shared.capture()
-                    } label: {
-                        Label(strings.captureButton, systemImage: "camera.viewfinder")
-                            .frame(maxWidth: .infinity)
-                    }
-                    Button {
-                        ScreenshotService.shared.captureScrolling()
-                    } label: {
-                        Label(strings.scrollingCaptureButton, systemImage: "rectangle.stack")
-                            .frame(maxWidth: .infinity)
-                    }
+                Button {
+                    ScreenCaptureService.shared.capture(initial: tool)
+                } label: {
+                    Label(tool == .scrolling ? strings.scrollingCaptureButton : strings.captureButton,
+                          systemImage: tool.systemImageName)
+                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
-                Text(strings.panelCaption)
+                Text(tool == .scrolling ? strings.scrollingCaptureCaption : strings.panelCaption)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if tool == .scrolling {
+                    Toggle(strings.scrollingAutoScrollToggle, isOn: $autoScroll)
+                    Text(strings.scrollingAutoScrollCaption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if autoScroll, !permissions.accessibility {
+                        PermissionRow(kind: .accessibility)
+                    }
+                }
                 Toggle(strings.fullScreenShortcutTitle, isOn: $fullScreenShortcutEnabled)
                     .onChange(of: fullScreenShortcutEnabled) { _, _ in
                         ScreenshotService.shared.syncWithPreferences()
@@ -123,15 +127,17 @@ package struct ScreenshotCaptureSettings: View {
                     PermissionRow(kind: .screenRecording)
                 }
             } header: {
-                Text(strings.pageTitle)
+                Text(tool.settingsTitle(l10n.s, language: l10n.language))
             }
-            .settingsFormSectionAnchor(.screenshot)
+            .settingsFormSectionAnchor(tool == .scrolling ? .screenshotScrolling : .screenshot)
 
             Section {
-                Toggle(strings.freezeToggle, isOn: $freeze)
-                Text(strings.freezeCaption)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if tool != .scrolling {
+                    Toggle(strings.freezeToggle, isOn: $freeze)
+                    Text(strings.freezeCaption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Toggle(strings.hideAtriumWindowsToggle, isOn: $hideAtriumWindows)
                 Picker(strings.delayLabel, selection: $delay) {
                     ForEach(ScreenshotSupport.allowedDelays, id: \.self) { seconds in
@@ -143,7 +149,9 @@ package struct ScreenshotCaptureSettings: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                Toggle(strings.pointerToggle, isOn: $includePointer)
+                if tool != .scrolling {
+                    Toggle(strings.pointerToggle, isOn: $includePointer)
+                }
                 Toggle(strings.lastRegionToggle, isOn: $showLastRegion)
                 Toggle(strings.highlightWindowsToggle, isOn: $highlightWindows)
                 Text(strings.highlightWindowsCaption)

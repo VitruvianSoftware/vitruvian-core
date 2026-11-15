@@ -28,7 +28,7 @@ enum NotchTests {
     }
 
     private static func sectionOrderContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-section-order"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-section-order"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -81,7 +81,7 @@ enum NotchTests {
     }
 
     private static func sectionVisibilityContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-section-visibility"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-section-visibility"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -132,7 +132,7 @@ enum NotchTests {
     }
 
     private static func extensionQuickActionContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-extension-action"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-extension-action"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -228,7 +228,7 @@ enum NotchTests {
     /// What a quick-access button that opens a tool's island page says and
     /// whether the island shows it, from the page's declaration.
     private static func extensionActionLookupContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-extension-lookup"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-extension-lookup"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -269,7 +269,7 @@ enum NotchTests {
     }
 
     private static func railContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-fan-only"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-fan-only"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -1269,14 +1269,18 @@ enum NotchTests {
             }
         }
         for event in [NotchEvent.volume, .brightness, .keyboardLight] {
+            let widest = NotchNotice(event: event, title: "Level", detail: "100%",
+                                     symbol: "speaker.wave.2", level: 1).preferredWingWidth
             for percent in 0...100 {
                 let notice = NotchNotice(event: event, title: "Level", detail: "\(percent)%",
                                          symbol: "speaker.wave.2", level: Double(percent) / 100)
                 let wing = notice.preferredWingWidth
-                let content = width(notice.detail) + 18 + 8
+                let content = width("100%") + 18 + 8
                 suite.expect(content + NotchNoticeLayout.levelInset <= wing && wing < content + NotchNoticeLayout.levelInset + 1
                              && notice.inset(wing: wing) == NotchNoticeLayout.levelInset,
-                             "a level's wings fit its mark and reading, with no empty black at the end")
+                             "a level's wings fit its mark and widest reading, with no empty black at the end")
+                suite.expect(wing == widest,
+                             "a level's wings hold still as its reading gains or loses a digit")
                 suite.expect(wing - NotchNoticeLayout.levelInset >= 40,
                              "the opposite meter remains readable beside the shortest reading")
             }
@@ -1629,7 +1633,7 @@ enum NotchTests {
         suite.expect(extreme.width == 10 && extreme.height == -6, "a fit stays within its ranges")
         suite.expect(NotchCameraFit(width: .nan, height: .infinity) == .zero, "an unreadable fit means none")
 
-        let domain = "com.vitruviansoftware.atrium.tests.notch-camera-fit"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-camera-fit"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -1925,7 +1929,7 @@ enum NotchTests {
         suite.expect(backupKeys.contains(DefaultsKey.notchShortcut)
                 && backupKeys.contains(DefaultsKey.notchShortcutEnabled),
                "the island shortcut travels with the settings backup")
-        let domain = "com.vitruviansoftware.atrium.tests.notch-shortcut-\(UUID().uuidString)"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-shortcut-\(UUID().uuidString)"
         let defaults = ScratchDefaults.suite(named: domain)!
         defer { defaults.removePersistentDomain(forName: domain) }
         func holds(installed: Bool = true, island: Bool = true, shortcut: Bool = true) -> Bool {
@@ -1998,6 +2002,7 @@ enum NotchTests {
         NotchNoticeQueueTests.run(suite)
         NotchCaptureControlsStateTests.run(suite)
         NotchScreenEdgeClickTests.run(suite)
+        NotchClickElsewhereTests.run(suite)
         NotchPresentationRefreshContract.run(suite)
         NotchScreenRefreshContract.run(suite)
         NotchMirrorContract.run(suite)
@@ -2034,7 +2039,7 @@ enum NotchTests {
             suite.expect(strings.count == 4 && strings.allSatisfy { !$0.isEmpty && !$0.contains("—") },
                          "the clipboard entry size has complete strings in \(language.rawValue)")
         }
-        let sizeDomain = "com.vitruviansoftware.atrium.tests.notch-clipboard-size"
+        let sizeDomain = "com.vitruviansoftware.vitruvian.tests.notch-clipboard-size"
         let sizeDefaults = ScratchDefaults.suite(named: sizeDomain)!
         sizeDefaults.removePersistentDomain(forName: sizeDomain)
         defer { sizeDefaults.removePersistentDomain(forName: sizeDomain) }
@@ -2085,7 +2090,7 @@ enum NotchTests {
                      "an open image keeps its proportions within a range, and one with none is taken as wide")
         suite.expect(NotchLayout.clipboardCompactCardHeight < NotchLayout.clipboardCardHeight && NotchClipboardCardSize.dwell > 0,
                      "a compact entry is shorter than an open one and opens after a pause")
-        let domain = "com.vitruviansoftware.atrium.tests.notch"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -2098,7 +2103,7 @@ enum NotchTests {
             defaults.set(value, forKey: key)
         }
         for (key, value) in AppFeature.availabilityDefaults { defaults.set(value, forKey: key) }
-        let firstInstall = "com.vitruviansoftware.atrium.tests.notch-new-\(UUID().uuidString)"
+        let firstInstall = "com.vitruviansoftware.vitruvian.tests.notch-new-\(UUID().uuidString)"
         let fresh = ScratchDefaults.suite(named: firstInstall)!
         defer { fresh.removePersistentDomain(forName: firstInstall) }
         fresh.set(NotchControlItem.defaultHidden, forKey: DefaultsKey.notchHiddenControls)
@@ -2131,7 +2136,7 @@ enum NotchTests {
         suite.expect(firstDefaults[DefaultsKey.notchIncludeOtherPlayers] as? Bool == true,
                      "new island setups follow every player unless limited to music apps")
 
-        let priorInstall = "com.vitruviansoftware.atrium.tests.notch-existing-\(UUID().uuidString)"
+        let priorInstall = "com.vitruviansoftware.vitruvian.tests.notch-existing-\(UUID().uuidString)"
         let existing = ScratchDefaults.suite(named: priorInstall)!
         defer { existing.removePersistentDomain(forName: priorInstall) }
         existing.set(true, forKey: DefaultsKey.notchEnabled)
@@ -2163,7 +2168,7 @@ enum NotchTests {
         suite.expect(!existing.bool(forKey: DefaultsKey.notchAppPanel),
                      "the one-time migration does not run again after a later preference change")
 
-        let priorChoice = "com.vitruviansoftware.atrium.tests.notch-choice-\(UUID().uuidString)"
+        let priorChoice = "com.vitruviansoftware.vitruvian.tests.notch-choice-\(UUID().uuidString)"
         let configured = ScratchDefaults.suite(named: priorChoice)!
         defer { configured.removePersistentDomain(forName: priorChoice) }
         configured.set(true, forKey: DefaultsKey.notchReturnHome)
@@ -2298,20 +2303,20 @@ enum NotchTests {
                "hover activation times stay within usable bounds")
         suite.expect([Double.nan, .infinity, -.infinity].allSatisfy { NotchSupport.sanitizedHoverDelay($0) == 0.25 },
                "non-finite hover activation times fall back to the default")
-        suite.expect(defaults.double(forKey: DefaultsKey.notchCloseDelay) == 0.18
+        suite.expect(defaults.double(forKey: DefaultsKey.notchCloseDelay) == 0.5
                && NotchSupport.sanitizedCloseDelay(0.65) == 0.65
                && NotchSupport.sanitizedCloseDelay(-1) == 0.10 && NotchSupport.sanitizedCloseDelay(9) == 2.0
-               && NotchSupport.sanitizedCloseDelay(.nan) == 0.18,
-               "closing after the pointer leaves keeps its old pause and stays within usable bounds")
+               && NotchSupport.sanitizedCloseDelay(.nan) == 0.5,
+               "closing after the pointer leaves waits half a second and stays within usable bounds")
         defaults.set(1.5, forKey: DefaultsKey.notchCloseDelay)
         suite.expect(NotchSupport.closeDelay(in: defaults) == 1.5,
                      "the closing delay reads the saved preference")
         defaults.set("invalid", forKey: DefaultsKey.notchCloseDelay)
-        suite.expect(NotchSupport.closeDelay(in: defaults) == 0.18,
+        suite.expect(NotchSupport.closeDelay(in: defaults) == 0.5,
                      "a closing delay stored with the wrong type uses the default")
         defaults.removeObject(forKey: DefaultsKey.notchCloseDelay)
-        suite.expect(NotchSupport.closeDelay(in: defaults) == 0.18,
-                     "removing the closing preference restores the original delay")
+        suite.expect(NotchSupport.closeDelay(in: defaults) == 0.5,
+                     "removing the closing preference restores the default delay")
         suite.expect(!NotchSupport.routesAppPanel(in: defaults) && NotchSupport.routesQuickPanel(in: defaults)
                && NotchSupport.routesClipboardWindow(in: defaults) && NotchSupport.routesShelf(in: defaults)
                && NotchSupport.routesCaptureControls(in: defaults),
@@ -2605,7 +2610,26 @@ enum NotchTests {
         suite.expect(key(126) == .move(backwards: true) && key(125) == .move(backwards: false)
                 && key(36) == .paste && key(76) == .paste,
                "the arrow keys and Return drive the list while the search field has the focus")
+        suite.expect(key(45, "n", .control) == key(125) && key(35, "p", .control) == key(126)
+                && key(0, "N", [.control, .capsLock]) == key(125) && key(2, "P", .control) == key(126),
+               "Control-N/P follow the layout's letter and move like the arrows, including with Caps Lock")
+        suite.expect(key(45, "n", .control, composing: true) == nil
+                && key(35, "p", .control, composing: true) == nil,
+               "Control-N/P stay with an input method while it composes")
+        // Real Control events carry control characters; the letter comes from the layout.
+        suite.expect(NotchSupport.clipboardKeyCharacters(characters: "\u{e}", ignoringModifiers: "n", modifiers: .control) == "n"
+                && NotchSupport.clipboardKeyCharacters(characters: "\u{10}", ignoringModifiers: "P",
+                                                       modifiers: [.control, .capsLock]) == "P"
+                && NotchSupport.clipboardKeyCharacters(characters: "ñ", ignoringModifiers: "n", modifiers: []) == "ñ"
+                && NotchSupport.clipboardKeyCharacters(characters: nil, ignoringModifiers: nil, modifiers: .control).isEmpty,
+               "the clipboard page reads Control keys by the layout's letter and ordinary typing by its text")
+        for modifiers: NSEvent.ModifierFlags in [.command, .option, [.control, .shift],
+                                                 [.control, .command], [.control, .option]] {
+            suite.expect(key(45, "n", modifiers) == nil && key(35, "p", modifiers) == nil,
+                   "other shortcuts with N/P do not move the clipboard highlight")
+        }
         suite.expect(key(0, "a") == .reveal && key(0, "Ab") == .reveal && key(0, "ñ") == .reveal && key(40, "ㅎ") == .reveal
+                && key(45, "n") == .reveal && key(35, "p") == .reveal
                 && key(49, " ") == nil && key(48, "\t") == nil && key(51, "\u{7f}") == nil
                 && key(125, "\u{F701}") == .move(backwards: false),
                "a typed letter shows the search field and goes on to it, while a space and control keys stay as they are")
@@ -2674,11 +2698,11 @@ enum NotchTests {
         suite.expect(NotchSupport.filteredModules(allModules, query: "", title: { $0.rawValue }) == allModules
                && NotchSupport.filteredModules(allModules, query: "unmatched", title: { $0.rawValue }).isEmpty,
                "empty queries preserve configured ordering and unmatched queries have no action")
-        suite.expect(!NotchSupport.closesOnPointerExit(expanded: true, peeking: false, openedByHover: false),
-               "menu bar and keyboard openings survive a pointer outside the notch")
-        suite.expect(NotchSupport.closesOnPointerExit(expanded: true, peeking: false, openedByHover: true)
-               && NotchSupport.closesOnPointerExit(expanded: false, peeking: true, openedByHover: false),
-               "hover presentations still close when the pointer leaves")
+        suite.expect(!NotchSupport.closesOnPointerExit(expanded: true, peeking: false, pointerVisited: false),
+               "menu bar and keyboard openings survive a pointer that has not reached the island yet")
+        suite.expect(NotchSupport.closesOnPointerExit(expanded: true, peeking: false, pointerVisited: true)
+               && NotchSupport.closesOnPointerExit(expanded: false, peeking: true, pointerVisited: false),
+               "an open island the pointer has visited closes when it leaves, however it opened")
         var hover = NotchHoverState()
         hover.close(pointerInside: true)
         for _ in 0..<4 { hover.update(pointerInside: true) }
@@ -3797,9 +3821,9 @@ enum NotchTests {
                && !NotchSupport.keepsPermissionSurface(requesting: false, resolvedAt: 10, now: 11)
                && !NotchSupport.keepsPermissionSurface(requesting: false, resolvedAt: 10, now: 9),
                "permission resolution protects only the short reactivation interval")
-        let defaults = ScratchDefaults.suite(named: "com.vitruviansoftware.atrium.tests.notch-calendar")!
-        defaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.notch-calendar")
-        defer { defaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.notch-calendar") }
+        let defaults = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.notch-calendar")!
+        defaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.notch-calendar")
+        defer { defaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.notch-calendar") }
         for (key, value) in Defaults.registeredDefaults where key.hasPrefix("notch") { defaults.set(value, forKey: key) }
         for (key, value) in AppFeature.availabilityDefaults { defaults.set(value, forKey: key) }
         suite.expect(!NotchCalendarSupport.isEnabled(in: defaults), "calendar starts off")
@@ -3834,6 +3858,7 @@ enum NotchTests {
         suite.expect(!NotchCalendarSupport.isEnabled(in: defaults), "the master switch also stops calendar reads")
         suite.expect(SettingsBackupSupport.exportKeys().isSuperset(of: [DefaultsKey.notchCalendarEnabled,
                                                                  DefaultsKey.notchCalendarCountdown,
+                                                                 DefaultsKey.notchCalendarCountdownLead,
                                                                  DefaultsKey.notchCalendarTimeLeft,
                                                                  DefaultsKey.notchCalendarWeekNumbers,
                                                                  AppFeature.notchCalendar.availabilityKey]),
@@ -3882,13 +3907,17 @@ enum NotchTests {
                "an all-day-only calendar has no timed appointment")
         suite.expect(NotchCalendarSupport.nextRefresh(entries, now: now) == now.addingTimeInterval(300),
                "the next refresh chooses the nearest future event boundary")
-        let hour = NotchCalendarSupport.countdownLeadTime
+        let hour = NotchCalendarSupport.countdownLeadTime(in: defaults)
+        suite.expect(hour == 3600 && NotchCalendarSupport.timeLeftLeadTime == 3600,
+                     "a start keeps its hour lead until another is chosen, and an end always has its hour")
         func countdownFor(_ events: [NotchCalendarEvent], at offset: Double = 0, starts: Bool = true,
-                          ends: Bool = false) -> NotchCalendarCountdown? {
-            NotchCalendarSupport.countdown(events, now: now.addingTimeInterval(offset), starts: starts, ends: ends)
+                          ends: Bool = false, lead: TimeInterval = hour) -> NotchCalendarCountdown? {
+            NotchCalendarSupport.countdown(events, now: now.addingTimeInterval(offset), starts: starts, ends: ends,
+                                           leadTime: lead)
         }
-        func transition(_ events: [NotchCalendarEvent], starts: Bool = true, ends: Bool = false) -> Date? {
-            NotchCalendarSupport.countdownTransition(events, now: now, starts: starts, ends: ends)
+        func transition(_ events: [NotchCalendarEvent], starts: Bool = true, ends: Bool = false,
+                        lead: TimeInterval = hour) -> Date? {
+            NotchCalendarSupport.countdownTransition(events, now: now, starts: starts, ends: ends, leadTime: lead)
         }
         suite.expect(countdownFor(entries) == NotchCalendarCountdown(event: later, ongoing: false)
                      && countdownFor([allDay, current]) == nil,
@@ -3909,6 +3938,24 @@ enum NotchTests {
         suite.expect(transition([event("future", hour + 600, hour + 900)]) == now.addingTimeInterval(600)
                      && transition([later]) == later.start,
                      "a refresh is scheduled when the hour window opens and when an event starts")
+        let in45 = event("in 45", 45 * 60, 75 * 60)
+        let in90 = event("in 90", 90 * 60, 120 * 60)
+        suite.expect(countdownFor([in45], lead: 1800) == nil && countdownFor([in45])?.event == in45
+                     && countdownFor([in45], lead: 7200)?.event == in45,
+                     "an event 45 minutes away waits for a 30 minute lead and shows with one or two hours")
+        suite.expect(countdownFor([in90], lead: 1800) == nil && countdownFor([in90]) == nil
+                     && countdownFor([in90], lead: 7200)?.event == in90,
+                     "an event 90 minutes away shows only with a two hour lead")
+        suite.expect(transition([in45], lead: 1800) == now.addingTimeInterval(15 * 60)
+                     && countdownFor([in45], at: 15 * 60, lead: 1800)?.event == in45
+                     && transition([in90], lead: 7200) == in90.start,
+                     "a refresh is scheduled when the chosen lead opens, not the hour")
+        defaults.set(0, forKey: DefaultsKey.notchCalendarCountdownLead)
+        let shortest = NotchCalendarSupport.countdownLeadTime(in: defaults)
+        defaults.set(10_000, forKey: DefaultsKey.notchCalendarCountdownLead)
+        suite.expect(shortest == 5 * 60 && NotchCalendarSupport.countdownLeadTime(in: defaults) == 240 * 60,
+                     "a restored or hand-edited lead stays between five minutes and four hours")
+        defaults.removeObject(forKey: DefaultsKey.notchCalendarCountdownLead)
         // A meeting that ends in 30 minutes, 15 minutes before the next one starts.
         let meeting = event("meeting", -1800, 1800)
         let afterGap = event("after gap", 2700, 4500)
@@ -3933,8 +3980,12 @@ enum NotchTests {
                      && countdownFor([long], at: 600, ends: true) == NotchCalendarCountdown(event: long, ongoing: true)
                      && countdownFor([allDay], ends: true) == nil,
                      "time left appears only in the hour before a timed end")
-        suite.expect(!NotchCalendarCountdown(event: later, ongoing: true).isShown(at: now)
-                     && !NotchCalendarCountdown(event: meeting, ongoing: true).isShown(at: meeting.end),
+        suite.expect(countdownFor([meeting], starts: false, ends: true, lead: 900)?.target == meeting.end
+                     && countdownFor([long], starts: false, ends: true, lead: 7200) == nil
+                     && transition([long], starts: false, ends: true, lead: 7200) == now.addingTimeInterval(600),
+                     "the lead before a start leaves time left on its hour")
+        suite.expect(!NotchCalendarCountdown(event: later, ongoing: true).isShown(at: now, leadTime: hour)
+                     && !NotchCalendarCountdown(event: meeting, ongoing: true).isShown(at: meeting.end, leadTime: hour),
                      "an end is never shown before its event begins or once it has passed")
         suite.expect(transition([long], ends: true) == now.addingTimeInterval(600)
                      && transition([afterGap], starts: false, ends: true) == afterGap.start,
@@ -4007,7 +4058,7 @@ enum NotchTests {
     /// Events chosen from their menu in the island, with the countdown for
     /// every event off.
     private static func chosenCountdownContracts(_ suite: TestSuite, defaults: UserDefaults, now: Date) {
-        let hour = NotchCalendarSupport.countdownLeadTime
+        let hour = NotchCalendarSupport.timeLeftLeadTime
         func event(_ key: String, _ start: Double, _ end: Double) -> NotchCalendarEvent {
             NotchCalendarEvent(id: key + ":" + String(start), title: key, calendar: "Personal",
                                start: now.addingTimeInterval(start), end: now.addingTimeInterval(end),
@@ -4026,9 +4077,10 @@ enum NotchTests {
         let other = event("other", 600, 900)
         let unkeyed = event("", 300, 600)
         func countdown(_ events: [NotchCalendarEvent], at offset: Double = 0, starts: Bool = false,
-                       ends: Bool = false, choices: Set<String> = ["chosen"]) -> NotchCalendarCountdown? {
+                       ends: Bool = false, choices: Set<String> = ["chosen"],
+                       lead: TimeInterval = hour) -> NotchCalendarCountdown? {
             NotchCalendarSupport.countdown(events, now: now.addingTimeInterval(offset), starts: starts, ends: ends,
-                                           chosen: choices)
+                                           chosen: choices, leadTime: lead)
         }
         suite.expect(countdown([other, chosen]) == NotchCalendarCountdown(event: chosen, ongoing: false)
                      && countdown([other, chosen], choices: []) == nil,
@@ -4042,10 +4094,17 @@ enum NotchTests {
                      "a chosen event counts down to its start; time left in it follows its own option")
         let ahead = event("ahead", hour + 1800, hour + 3600)
         suite.expect(NotchCalendarSupport.countdownTransition([ahead], now: now, starts: false, ends: false,
-                                                              chosen: ["ahead"]) == now.addingTimeInterval(1800)
+                                                              chosen: ["ahead"], leadTime: hour)
+                        == now.addingTimeInterval(1800)
                      && NotchCalendarSupport.countdownTransition([ahead], now: now, starts: false, ends: false,
-                                                                 chosen: []) == nil,
-                     "a refresh is scheduled when a chosen event's hour opens, and none for an event not chosen")
+                                                                 chosen: [], leadTime: hour) == nil,
+                     "a refresh is scheduled when a chosen event's lead opens, and none for an event not chosen")
+        suite.expect(countdown([chosen], lead: 900) == nil
+                     && NotchCalendarSupport.countdownTransition([chosen], now: now, starts: false, ends: false,
+                                                                 chosen: ["chosen"], leadTime: 900)
+                        == now.addingTimeInterval(300)
+                     && countdown([ahead], choices: ["ahead"], lead: 7200)?.event == ahead,
+                     "a chosen event follows the lead with the countdown for every event off")
         suite.expect(NotchCalendarSupport.chosenCountdowns(in: defaults).isEmpty, "no event starts chosen")
         NotchCalendarSupport.setCountdown(true, for: chosen, in: defaults)
         NotchCalendarSupport.setCountdown(true, for: unkeyed, in: defaults)

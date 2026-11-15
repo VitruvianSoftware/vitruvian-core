@@ -52,7 +52,7 @@ MACOS_ONLY = ["@platforms//os:macos"]
 # Bundle identity: Vitruvian Atrium's own, never upstream's (TRADEMARKS.md). Nothing
 # built here is published yet -- CI builds and tests only; see UPSTREAM.md for
 # what has to exist before a first release.
-BUNDLE_ID = "com.vitruviansoftware.atrium"
+BUNDLE_ID = "com.vitruviansoftware.vitruvian"
 
 FAN_HELPER_ID = BUNDLE_ID + ".fan-control"
 
@@ -84,6 +84,56 @@ cc_library(
     hdrs = glob(["Sources/VMStatisticsCompat/include/*.h"]),
     aspect_hints = [":VMStatisticsCompat_interop"],
     target_compatible_with = MACOS_ONLY,
+)
+
+# Core Audio process taps created through Objective-C, so the executable
+# links no tap symbol that early macOS 14 lacks (see the header).
+swift_interop_hint(
+    name = "CoreAudioTapCompat_interop",
+    module_map = "Sources/CoreAudioTapCompat/module.modulemap",
+    module_name = "CoreAudioTapCompat",
+)
+
+cc_library(
+    name = "CoreAudioTapCompat",
+    hdrs = glob(["Sources/CoreAudioTapCompat/include/*.h"]),
+    aspect_hints = [":CoreAudioTapCompat_interop"],
+    target_compatible_with = MACOS_ONLY,
+)
+
+# The GIF export's indexed-frame encoder: upstream's wrapper and the vendored
+# cgif raw encoder (MIT, Sources/RecorderGIFCodec/vendor/cgif), compiled as
+# build.sh compiles them. Unlike the two above it has sources of its own.
+swift_interop_hint(
+    name = "RecorderGIFCodec_interop",
+    module_map = "Sources/RecorderGIFCodec/module.modulemap",
+    module_name = "RecorderGIFCodec",
+)
+
+cc_library(
+    name = "RecorderGIFCodec",
+    srcs = [
+        "Sources/RecorderGIFCodec/RecorderGIFCodec.c",
+        "Sources/RecorderGIFCodec/vendor/cgif/cgif.h",
+        "Sources/RecorderGIFCodec/vendor/cgif/cgif_raw.c",
+        "Sources/RecorderGIFCodec/vendor/cgif/cgif_raw.h",
+    ],
+    hdrs = ["Sources/RecorderGIFCodec/include/RecorderGIFCodec.h"],
+    aspect_hints = [":RecorderGIFCodec_interop"],
+    copts = [
+        "-O3",
+        "-std=c99",
+    ],
+    target_compatible_with = MACOS_ONLY,
+)
+
+# cgif's licence, which the bundle carries beside the encoder it covers, as
+# build.sh copies it.
+genrule(
+    name = "cgif_license",
+    srcs = ["Sources/RecorderGIFCodec/vendor/cgif/LICENSE"],
+    outs = ["bundle/cgif-LICENSE.txt"],
+    cmd = "cp $< $@",
 )
 
 # --- Modules ------------------------------------------------------------------
@@ -151,8 +201,10 @@ swift_library(
     module_name = "VitruvianAtriumServices",
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
+        ":CoreAudioTapCompat",
         ":FanControlKit",
         ":HIDEventSystem",
+        ":RecorderGIFCodec",
         ":VMStatisticsCompat",
         ":VitruvianAtriumCore",
         ":VitruvianAtriumDesign",
@@ -233,13 +285,16 @@ swift_library(
     module_name = "VitruvianAtrium",
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
+        ":CoreAudioTapCompat",
         ":FanControlKit",
         ":HIDEventSystem",
+        ":RecorderGIFCodec",
         ":VMStatisticsCompat",
         ":VitruvianAtriumCore",
         ":VitruvianAtriumDesign",
         ":VitruvianAtriumServices",
         ":VitruvianAtriumUI",
+        "//packages/swift/SentryLite",
     ],
 )
 
@@ -256,13 +311,16 @@ swift_library(
     module_name = "VitruvianAtrium",
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
+        ":CoreAudioTapCompat",
         ":FanControlKit",
         ":HIDEventSystem",
+        ":RecorderGIFCodec",
         ":VMStatisticsCompat",
         ":VitruvianAtriumCore",
         ":VitruvianAtriumDesign",
         ":VitruvianAtriumServices",
         ":VitruvianAtriumUI",
+        "//packages/swift/SentryLite",
     ],
 )
 
@@ -483,10 +541,10 @@ genrule(
     name = "fan_helper_version_plist",
     srcs = [
         ":" + FAN_HELPER_ID,
-        "Resources/com.vitruviansoftware.atrium.fan-control.plist",
+        "Resources/com.vitruviansoftware.vitruvian.fan-control.plist",
     ],
     outs = ["fan_helper_version/Info.plist"],
-    cmd = "$(execpath :helper_version_plist_tool) $(location :" + FAN_HELPER_ID + ") $(location Resources/com.vitruviansoftware.atrium.fan-control.plist) $@",
+    cmd = "$(execpath :helper_version_plist_tool) $(location :" + FAN_HELPER_ID + ") $(location Resources/com.vitruviansoftware.vitruvian.fan-control.plist) $@",
     tags = ["manual"],
     target_compatible_with = MACOS_ONLY,
     tools = [":helper_version_plist_tool"],
@@ -537,7 +595,7 @@ macos_application(
     name = "VitruvianAtrium",
     additional_contents = {
         ":" + FAN_HELPER_ID: "Library/LaunchServices",
-        "Resources/com.vitruviansoftware.atrium.fan-control.plist": "Library/LaunchDaemons",
+        "Resources/com.vitruviansoftware.vitruvian.fan-control.plist": "Library/LaunchDaemons",
         ":libVitruvianAtriumNowPlaying": "Frameworks",
         # The GravaStar mouse command (MIT, packages/peripherals), which the
         # GitHub tool from the catalog finds here for its status light.
@@ -555,6 +613,7 @@ macos_application(
         "CHANGELOG.md",
         "Resources/agent-prices.json",
         "Resources/now-playing.pl",
+        ":cgif_license",
         ":icons",
         ":structured_resources",
     ] + glob(["Resources/*.lproj/*.strings"]),
@@ -768,6 +827,7 @@ swift_test(
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":FanControlKit",
+        ":RecorderGIFCodec",
         ":VMStatisticsCompat",
         ":VitruvianAtriumCore",
         ":VitruvianAtriumDesign",
@@ -829,9 +889,15 @@ rust_test(
     # The tests' UserDefaults suites stay in a container under TEST_TMPDIR
     # (//tools/swift-test-preferences); the wrapper looks in the real
     # ~/Library/Preferences, and fails the run if one got there anyway.
+    #
+    # The result may be cached (no-remote-exec, not no-remote). This test was
+    # 580 of the Atrium Mac job's 700 seconds, and most runs repeated it on
+    # unchanged inputs. Everything it reads is declared above, and the test
+    # binary's compile actions carry XCODE_VERSION_OVERRIDE, so a new Xcode
+    # still runs it fresh. It cannot execute remotely: the pool is Linux.
     tags = [
         "manual",
-        "no-remote",
+        "no-remote-exec",
         "no-sandbox",
     ],
     target_compatible_with = MACOS_ONLY,
@@ -1270,6 +1336,10 @@ rust_test(
 
 # --- Pipeline -----------------------------------------------------------------
 
+# Mac runners are scarce (5 at a time on GitHub's free plan), so this unit
+# lists only what needs a Mac: Swift, app bundles, and tests whose code differs
+# on macOS. Tests that pass on Linux run in ci.yaml's build-test whenever they
+# are affected, so listing them here only spent Mac time running them twice.
 pipeline_unit(
     name = "vitruvian-atrium-macos",
     # Services builds with complete concurrency checking, REFACTOR.md 6zu,
@@ -1284,14 +1354,9 @@ pipeline_unit(
         ":VitruvianAtriumLibWithSampleTool",
         ":by-hand",
         ":fan_helper_selftest",
-        ":mutation_fixtures_test",
         ":selftest",
         # Its end-to-end check runs the stock LibreSSL /usr/bin/openssl, so
         # it only runs on a Mac.
-        ":setup_signing_test",
-        ":source_lints_test",
-        ":sources_in_sync_test",
-        ":tool_protocol_pin_test",
         ":unit_tests",
     ],
     tier = "L1",

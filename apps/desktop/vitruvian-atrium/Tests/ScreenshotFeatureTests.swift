@@ -94,7 +94,7 @@ enum ScreenshotFeatureTests {
         suite.expect(copyRetry.record(for: retryCaptureID, availableRecords: [copyRecord]) == nil,
                      "successful copying clears the pending retry")
 
-        let uploadDefaultsName = "com.vitruviansoftware.atrium.tests.screenshot-upload.\(UUID().uuidString)"
+        let uploadDefaultsName = "com.vitruviansoftware.vitruvian.tests.screenshot-upload.\(UUID().uuidString)"
         let uploadDefaults = ScratchDefaults.suite(named: uploadDefaultsName)!
         defer { uploadDefaults.removePersistentDomain(forName: uploadDefaultsName) }
         suite.expect(ScreenshotShareDuration.saved(in: uploadDefaults) == .oneHour,
@@ -996,7 +996,7 @@ enum ScreenshotFeatureTests {
                 && !persistentPolicy.takesFocus && persistentPolicy.closesOnCollapse
                 && persistentPolicy.showsDismissButton,
                "preview presentation keeps timed focus behavior while persistent confirmations stay dismissible without taking focus")
-        let focusDefaultsDomain = "com.vitruviansoftware.atrium.tests.screenshot-preview-focus.\(UUID().uuidString)"
+        let focusDefaultsDomain = "com.vitruviansoftware.vitruvian.tests.screenshot-preview-focus.\(UUID().uuidString)"
         let focusDefaults = ScratchDefaults.suite(named: focusDefaultsDomain)!
         defer { focusDefaults.removePersistentDomain(forName: focusDefaultsDomain) }
         focusDefaults.set(true, forKey: DefaultsKey.screenshotPreviewTakesFocus)
@@ -1045,7 +1045,7 @@ enum ScreenshotFeatureTests {
                                                               confirmationEnabled: false),
                "automatic actions honor confirmation preferences while failed or partial actions still expose recovery controls")
         // The decision route makes after the action ran, read from settings.
-        let routeDefaultsDomain = "com.vitruviansoftware.atrium.tests.screenshot-preview-route.\(UUID().uuidString)"
+        let routeDefaultsDomain = "com.vitruviansoftware.vitruvian.tests.screenshot-preview-route.\(UUID().uuidString)"
         let routeDefaults = ScratchDefaults.suite(named: routeDefaultsDomain)!
         defer { routeDefaults.removePersistentDomain(forName: routeDefaultsDomain) }
         func routePreview(_ action: ScreenshotDefaultAction, saved: Bool = false,
@@ -1133,7 +1133,7 @@ enum ScreenshotFeatureTests {
         suite.expect(!ScreenshotSupport.selectionAcceptsPointerInput(sessionIsOver: true,
                                                                capturePending: true),
                "both at once still ignores the pointer")
-        let captureMenuSuite = "com.vitruviansoftware.atrium.tests.capture-menu.\(UUID().uuidString)"
+        let captureMenuSuite = "com.vitruviansoftware.vitruvian.tests.capture-menu.\(UUID().uuidString)"
         let captureMenuDefaults = ScratchDefaults.suite(named: captureMenuSuite)!
         defer { captureMenuDefaults.removePersistentDomain(forName: captureMenuSuite) }
         for tool in ScreenCaptureTool.allCases {
@@ -1173,7 +1173,7 @@ enum ScreenshotFeatureTests {
         let captureFeatures: Set<AppFeature> = [.screenshot, .screenRecorder,
                                                 .screenOCR, .colorPicker]
         suite.expect(ScreenCaptureTool.available(isAvailable: captureFeatures.contains)
-                == [.screenshot, .recording, .text, .color],
+                == [.screenshot, .recording, .text, .color, .scrolling],
                "the capture chooser keeps a stable order for every installed mode")
         var topSectionsHoldBothShortcuts = true
         for selected in ScreenCaptureTool.allCases {
@@ -1238,13 +1238,33 @@ enum ScreenshotFeatureTests {
                     selected: .screenshot,
                     isAvailable: { _ in false }),
                "a capture result is routed only while its selected feature remains installed")
-        suite.expect(ScreenCaptureTool.allCases.map(\.shortcutKey) == ["1", "2", "3", "4"]
+        suite.expect(ScreenCaptureTool.allCases.map(\.shortcutKey) == ["1", "2", "3", "4", "5"]
                 && ScreenCaptureTool.matchingShortcut("1") == .screenshot
                 && ScreenCaptureTool.matchingShortcut("2") == .recording
                 && ScreenCaptureTool.matchingShortcut("3") == .text
                 && ScreenCaptureTool.matchingShortcut("4") == .color
-                && ScreenCaptureTool.matchingShortcut("5") == nil,
+                && ScreenCaptureTool.matchingShortcut("5") == .scrolling
+                && ScreenCaptureTool.matchingShortcut("6") == nil,
                "number keys select the same capture mode shown in the chooser")
+        suite.expect(ScreenCaptureTool.available(isAvailable: { $0 == .screenshot })
+                == [.screenshot, .scrolling]
+                && ScreenCaptureTool.scrolling.feature == .screenshot,
+               "scrolling capture is installed and removed with the screenshot feature")
+        let scrollingPolicy = ScreenshotSupport.unifiedCapturePolicy(
+            for: .scrolling,
+            screenshotFreeze: true,
+            screenshotIncludePointer: true,
+            screenshotHideAtriumWindows: false)
+        suite.expect(scrollingPolicy == .init(freeze: false, includePointer: false,
+                                              hideAtriumWindows: false,
+                                              keepsContentWindowsOut: false,
+                                              usesGeometry: true),
+               "scrolling capture selects a live region without repeated pointer marks")
+        suite.expect(GlobalShortcutRole.screenshotScrolling.requiredEnableKeys
+                == [DefaultsKey.screenshotScrollingShortcutEnabled]
+                && GlobalShortcutRole.screenshotScrolling.storageKey
+                    == DefaultsKey.screenshotScrollingShortcut,
+               "scrolling capture has its own optional shortcut and preferences")
         let liveScreenshotPolicy = ScreenshotSupport.unifiedCapturePolicy(
             for: .screenshot,
             screenshotFreeze: false,
@@ -3679,7 +3699,7 @@ enum ScreenshotFeatureTests {
                 }
             }
             GlobalShortcut.refreshLayoutLabels()
-            let suiteName = "com.vitruviansoftware.atrium.tests.editor-bindings.\(UUID().uuidString)"
+            let suiteName = "com.vitruviansoftware.vitruvian.tests.editor-bindings.\(UUID().uuidString)"
             let prefs = ScratchDefaults.suite(named: suiteName)!
             defer { prefs.removePersistentDomain(forName: suiteName) }
             prefs.set(false, forKey: DefaultsKey.screenshotToolShortcutsEnabled)
@@ -3941,7 +3961,7 @@ enum ScreenshotFeatureTests {
         suite.expect(Defaults.registeredDefaults[DefaultsKey.screenshotAddToShelf] as? Bool == false
                 && SettingsBackupSupport.exportKeys().contains(DefaultsKey.screenshotAddToShelf),
                "adding captures to the shelf ships off and travels in settings backups")
-        let captureShelfSuite = "com.vitruviansoftware.atrium.tests.capture-shelf.\(UUID().uuidString)"
+        let captureShelfSuite = "com.vitruviansoftware.vitruvian.tests.capture-shelf.\(UUID().uuidString)"
         let captureShelfDefaults = ScratchDefaults.suite(named: captureShelfSuite)!
         defer { captureShelfDefaults.removePersistentDomain(forName: captureShelfSuite) }
         func capturesGoToShelf(option: Bool, installed: Bool, on: Bool) -> Bool {
@@ -4009,7 +4029,7 @@ enum ScreenshotFeatureTests {
             developerOverride: "https://test.example/")
         suite.expect(testShareEndpoint.absoluteString == "https://test.example"
                 && ScreenshotSharingSupport.endpoint(
-                    bundleIdentifier: "com.vitruviansoftware.atrium",
+                    bundleIdentifier: "com.vitruviansoftware.vitruvian",
                     developerOverride: "https://test.example").absoluteString
                     == ScreenshotSharingSupport.productionEndpoint.absoluteString
                 && ScreenshotSharingSupport.endpoint(
@@ -4393,6 +4413,41 @@ enum ScreenshotFeatureTests {
                 && MicMuteSupport.absentClaims(recorded: nil, present: ["mic-a"]).isEmpty
                 && MicMuteSupport.absentClaims(recorded: ["headset"], present: []) == ["headset"],
                "a sweep keeps the claim on a microphone this app muted that is unplugged right now, so it is released when it returns")
+        suite.expect(!MicMuteSupport.shouldReplaceSavedVolume(existing: 0.4, current: 1.0)
+                && MicMuteSupport.shouldReplaceSavedVolume(existing: nil, current: 0.4)
+                && MicMuteSupport.shouldReplaceSavedVolume(existing: 0, current: 0.4)
+                && !MicMuteSupport.shouldReplaceSavedVolume(existing: nil, current: 0),
+               "a later re-apply keeps the first real level and never saves silence")
+        suite.expect(!MicMuteSupport.isCaptureSilenced(muteSwitch: 1, volume: 0.75)
+                && MicMuteSupport.isCaptureSilenced(muteSwitch: 0, volume: 0)
+                && MicMuteSupport.isCaptureSilenced(muteSwitch: 1, volume: 0.005)
+                && MicMuteSupport.isCaptureSilenced(muteSwitch: 1, volume: nil)
+                && !MicMuteSupport.isCaptureSilenced(muteSwitch: 0, volume: 0.4)
+                && !MicMuteSupport.isCaptureSilenced(muteSwitch: nil, volume: 0.4)
+                && !MicMuteSupport.isCaptureSilenced(muteSwitch: 0, volume: nil),
+               "a live volume is not silence even when the mute switch is on, and a mute-only device still counts the switch")
+        suite.expect(MicMuteSupport.shouldLeaveUntouched(owned: false, captureSilenced: true)
+                && !MicMuteSupport.shouldLeaveUntouched(owned: true, captureSilenced: true)
+                && !MicMuteSupport.shouldLeaveUntouched(owned: false, captureSilenced: false),
+               "a user-quiet microphone is left alone and one this app muted is still ours")
+        suite.expect(MicMuteSupport.restoreNeed(muteSwitch: 1, volume: 0)
+                == .restore(clearMute: true, restoreVolume: true)
+                && MicMuteSupport.restoreNeed(muteSwitch: 1, volume: 0.75)
+                == .restore(clearMute: true, restoreVolume: false)
+                && MicMuteSupport.restoreNeed(muteSwitch: 0, volume: 0)
+                == .restore(clearMute: false, restoreVolume: true)
+                && MicMuteSupport.restoreNeed(muteSwitch: 0, volume: 0.75) == .alreadyAudible
+                && MicMuteSupport.restoreNeed(muteSwitch: 1, volume: nil)
+                == .restore(clearMute: true, restoreVolume: false)
+                && MicMuteSupport.restoreNeed(muteSwitch: 1, volume: nil, hasSavedVolume: true)
+                == .unreadable
+                && MicMuteSupport.restoreNeed(muteSwitch: 0, volume: nil) == .unreadable,
+               "unmuting clears the mute switch and restores volume when each is needed, not one or the other")
+        suite.expect(MicMuteSupport.inputChannelElements(channelCount: 3) == [0, 1, 2, 3] as [UInt32]
+                && MicMuteSupport.inputChannelElements(channelCount: 1) == [0, 1, 2] as [UInt32]
+                && MicMuteSupport.inputChannelElements(channelCount: 0) == [0, 1, 2] as [UInt32]
+                && MicMuteSupport.inputChannelElements(channelCount: 2) == [0, 1, 2] as [UInt32],
+               "every input channel is muted, never fewer than the stereo pair")
         // The mute itself, on the audio rig its own contract drives: a
         // microphone arriving while an unmute is still queued, with the saved
         // flag still reading muted.
@@ -4481,7 +4536,7 @@ enum ScreenshotFeatureTests {
                     == DefaultsKey.screenshotShortcutEnabled,
                "the screenshot tool keeps the old general shortcut's keys as its own")
         suite.expect(ScreenCaptureTool.allCases.map { $0.dedicatedShortcut.role }
-                == [.screenshot, .screenRecorder, .screenOCR, .colorPicker],
+                == [.screenshot, .screenRecorder, .screenOCR, .colorPicker, .screenshotScrolling],
                "every capture tool owns a shortcut role, in tool order")
         // The keys a tool registers have to be the ones its settings row writes.
         // Three roles once had a row and no registrar, so the key was recorded

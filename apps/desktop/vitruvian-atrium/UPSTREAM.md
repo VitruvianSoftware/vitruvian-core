@@ -51,13 +51,14 @@ alone and its history has no upstream author. Not legal advice.
 
 ### Third-party code the app ships
 
-Besides upstream's code and ours, the app bundle holds one piece of software
-written by others. It arrives with the shared Nexus Agent chat view, not from
-this folder.
+Besides upstream's code and ours, the app bundle holds two pieces of software
+written by others. Mermaid arrives with the shared Nexus Agent chat view, not
+from this folder; cgif came with an upstream port (vorssaint-utils `d01ea2c6b9`).
 
 | What | Version | Licence | Where in the app | Notice |
 |---|---|---|---|---|
 | [Mermaid](https://github.com/mermaid-js/mermaid), which draws the diagrams in the Nexus Agent chat | 11.17.2, unmodified | MIT, which the GPL allows combining with | `Contents/Resources/mermaid.min.js`, with its licence text beside it as `mermaid-LICENSE.txt` | [`apps/desktop/vitruvian-code/THIRD_PARTY_NOTICES.md`](../vitruvian-code/THIRD_PARTY_NOTICES.md): where the file came from, its checksum, and the libraries built into it |
+| [cgif](https://github.com/dloebl/cgif)'s raw encoder, which writes the indexed frames of a fast GIF export | revision `b68f18ac`, unmodified | MIT, which the GPL allows combining with | compiled into the app binary from `Sources/RecorderGIFCodec/vendor/cgif`, with its licence as `Contents/Resources/cgif-LICENSE.txt` | [`Sources/RecorderGIFCodec/vendor/cgif/UPSTREAM.md`](Sources/RecorderGIFCodec/vendor/cgif/UPSTREAM.md): where the files came from and which ones are vendored |
 
 ## Trademarks and release blockers
 
@@ -67,7 +68,7 @@ icon, bundle identity, signing identity and update feed for upstream. The rename
 
 - **Name:** Vitruvian everywhere the app shows or reads it. Upstream's
   copyright lines stay, because they are legal notices, not branding (GPL-3.0 §5).
-- **Bundle IDs:** `com.vitruviansoftware.atrium`, plus its fan helper and Now
+- **Bundle IDs:** `com.vitruviansoftware.vitruvian`, plus its fan helper and Now
   Playing adapter IDs.
 - **Icon:** Vitruvian's own app icon and menu bar mark (VitruvianSoftware/vitruvian-core#2643),
   which replaced the placeholders the import used.
@@ -3059,6 +3060,14 @@ is that notice. Add an entry for every change to upstream files.
 - **2026-11-11**: Complete the Vitruvian Code cutover by removing retired built-in feature preference keys and updating comment wording:
   - `UI/Notch/NotchAgentStrip.swift` (upstream file) and `Tests/ToolStatusTests.swift`: update doc/assertion comments to `Vitruvian Code`.
   - `Core/Defaults.swift`, `Core/DefaultsKey.swift`, `Core/Preferences.swift`, `Core/GlobalShortcut.swift`, `Core/SettingsBackupSupport.swift`, and `Services/FeatureRuntime.swift` (upstream files): delete the retired `nexusAgent*` preference keys, shortcut default, and hand-off comment, and delete `Services/NexusAgent/NexusAgentHandoff.swift` and `Services/Platform/External/ToolIDMigration.swift`.
+- **2026-11-13**: One closing rule for the island: not pinned, it closes when the pointer leaves it, however it opened. Upstream closed only islands opened by hover; one opened by a click, the keyboard or the menu bar stayed until a click elsewhere, so the same page behaved two ways and pinning was not the only way to keep it.
+  - `Core/Notch/NotchSupport.swift` (upstream file): `closesOnPointerExit` takes `pointerVisited` (the pointer has been on the open island since it opened) in place of `openedByHover`. An island opened from the keyboard or the menu bar waits for the pointer to reach it before leaving can close it. `defaultCloseDelay` is 0.5 s instead of upstream's 0.18 s, so overshooting the edge while scrolling a page or reaching for a picker does not close it.
+  - `Services/Notch/NotchService.swift` (upstream file): tracks `pointerVisited` through opening, hover, the Command Bar and collapse, and keys typed in the island hold it open like an open menu. Pinning, a menu, a drag, a sheet or dialog still hold it as before.
+  - `UI/Settings/NotchSettings.swift` (upstream file): the closing time is always shown, since it now applies to every island, not only hover openings.
+  - `Tests/NotchTests.swift` and `Tests/NotchHoverTests.swift` (upstream files): expect the new rule and default; the hover checks pin the 0.18 s delay their timings were written for.
+- **2026-11-14**: A tool's own page, an extension's or a built-in utility's, closes when the pointer leaves like any other island page. Upstream counted it as work that holds the island, which also held it against the pointer leaving, so the one closing rule of 2026-11-13 never reached it.
+  - `Services/Notch/NotchService.swift` (upstream file): `keepsSurfaceOnClick` splits into `holdsSurface` (pinning, a menu, a dialog, a sheet, a chooser or prompt, a drag of sections or tools) and the tool-page clauses, which still keep a click in the page from closing the island. The pointer-exit checks use the new `keepsSurfaceOnPointerExit`, which leaves the tool page out.
+  - `Tests/NotchHoverTests.swift` (upstream file): an extension's page and a built-in utility's page each close after the closing time when the pointer leaves, and stay while pinned.
 
 ## Tracking and porting upstream
 
@@ -3185,7 +3194,7 @@ Run `triage` and commit the ledger, then decide each pending commit:
    Then build and test (see `README.md`).
 5. In the same PR, set each ported commit's ledger row to `ported` with the PR
    number (`#1234`). Set any commit dropped while porting to `skipped`, with why.
-6. Title the commit `fix(vitruvian): ...` or `feat(vitruvian): ...`, because
+6. Title the commit `fix(vitruvian-atrium): ...` or `feat(vitruvian-atrium): ...`, because
    release-please writes the release notes from these. End the message with
    `Upstream-Commit: vorssaint/vorssaint-utils@<sha>` for each upstream commit,
    and `Co-authored-by:` for each upstream author.

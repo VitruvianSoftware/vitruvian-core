@@ -20,7 +20,7 @@
 
 name: Copybara Export (mcp-slack)
 
-# Exports vitruvian-core/apps/mcp/vitruvian-slack-mcp/ to VitruvianSoftware/mcp-slack on every push
+# Exports vitruvian-core/apps/mcp/vitruvian-slack-mcp/ to VitruvianSoftware/vitruvian-slack-mcp on every push
 # under apps/mcp/vitruvian-slack-mcp/**. Thin caller — logic lives in _copybara-export.yaml.
 on:
     push:
@@ -35,6 +35,7 @@ on:
 
 permissions:
     contents: read
+    actions: read # _await-repo-config.yaml lists Repo Config Apply runs
 
 # Serialize exports so two pushes can't race on the same destination branch.
 concurrency:
@@ -42,10 +43,16 @@ concurrency:
     cancel-in-progress: false
 
 jobs:
+    # Holds the export (and the key mapping below) until no Repo Config
+    # Apply can still replace the mirror key: see _await-repo-config.yaml.
+    await-repo-config:
+        uses: ./.github/workflows/_await-repo-config.yaml
+
     export:
+        needs: await-repo-config
         uses: ./.github/workflows/_copybara-export.yaml
         with:
-            component: mcp-slack
+            component: vitruvian-slack-mcp
             standalone-only: "package-lock.json .github/workflows/sync-to-monorepo.yaml"
             copybara-options: ${{ inputs['copybara-options'] || github.event.inputs['copybara-options'] || '--force --ignore-noop' }}
         secrets:

@@ -27,6 +27,8 @@ use std::process::Command;
 // inside it has no space, as Swift and the brand standard (docs/standards/brand.md) name it.
 const APP_NAME: &str = "Vitruvian Code";
 const EXECUTABLE_NAME: &str = "VitruvianCode";
+const BOT_NAME: &str = "bot-engine";
+const BOT_SIGNING_ID: &str = "com.vitruviansoftware.code.bot-engine";
 const BUNDLE_ID: &str = "com.vitruviansoftware.code";
 const DISPLAY_NAME: &str = "Vitruvian Code";
 const UI_RESOURCES: &str = "VitruvianCode_VitruvianCodeUI.bundle";
@@ -85,9 +87,14 @@ pub fn run(args: &[String]) -> i32 {
     // Clean and create bundle structure
     let _ = fs::remove_dir_all(&app_bundle);
     let macos_dir = app_bundle.join("Contents/MacOS");
+    let helpers_dir = app_bundle.join("Contents/Helpers");
     let res_dir = app_bundle.join("Contents/Resources");
     if let Err(e) = fs::create_dir_all(&macos_dir) {
         eprintln!("error: cannot create {}: {}", macos_dir.display(), e);
+        return 1;
+    }
+    if let Err(e) = fs::create_dir_all(&helpers_dir) {
+        eprintln!("error: cannot create {}: {}", helpers_dir.display(), e);
         return 1;
     }
     if let Err(e) = fs::create_dir_all(&res_dir) {
@@ -131,6 +138,27 @@ pub fn run(args: &[String]) -> i32 {
         return 1;
     }
     println!("    \u{2713} Chat resources copied");
+
+    // Copy bundled Rust bot helper beside the main executable
+    let bot_src = exe_parent.join(BOT_NAME);
+    if !bot_src.is_file() {
+        eprintln!("error: {} not found at {}.", BOT_NAME, bot_src.display());
+        eprintln!(
+            "       Keep {} beside the executable before bundling.",
+            BOT_NAME
+        );
+        return 1;
+    }
+    let bot_dest = helpers_dir.join(BOT_NAME);
+    if let Err(e) = fs::copy(&bot_src, &bot_dest) {
+        eprintln!("error: cannot copy {}: {}", BOT_NAME, e);
+        return 1;
+    }
+    if let Err(e) = fs::set_permissions(&bot_dest, fs::Permissions::from_mode(0o755)) {
+        eprintln!("error: cannot mark {} executable: {}", BOT_NAME, e);
+        return 1;
+    }
+    println!("    \u{2713} {} copied", BOT_NAME);
 
     // Generate Info.plist
     let apple_events_usage = "\n    <key>NSAppleEventsUsageDescription</key>\n    <string>Vitruvian Code launches AI coding tools (such as Claude and Gemini) that may run AppleScript to automate other Mac apps when a task asks for it.</string>";
@@ -186,8 +214,23 @@ pub fn run(args: &[String]) -> i32 {
         return 1;
     }
 
-    // Ad-hoc sign the bundle
+    // Ad-hoc sign the nested helper first, then the app bundle (inside-out)
     println!("==> Signing {} with ad-hoc signature", app_bundle.display());
+    let helper_status = Command::new("codesign")
+        .args(["--force", "--sign", "-", "--identifier", BOT_SIGNING_ID])
+        .arg(&bot_dest)
+        .status();
+    match helper_status {
+        Ok(s) if s.success() => {}
+        Ok(s) => {
+            eprintln!("error: codesign helper exited {}", s.code().unwrap_or(-1));
+            return 1;
+        }
+        Err(e) => {
+            eprintln!("error: cannot run codesign on helper: {}", e);
+            return 1;
+        }
+    }
     let status = Command::new("codesign")
         .args(["--force", "--deep", "--sign", "-"])
         .arg(&app_bundle)

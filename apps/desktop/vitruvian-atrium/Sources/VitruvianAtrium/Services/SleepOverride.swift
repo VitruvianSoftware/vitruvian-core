@@ -44,7 +44,7 @@ package final class SleepOverride: @unchecked Sendable {
 
         /// One serial queue, `pmset` through `Shell` and the prompt through `AdminShell`.
         package static var live: Transport {
-            let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.pmset-state")
+            let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.pmset-state")
             return Transport(
                 async: { queue.async(execute: $0) },
                 sync: { queue.sync(execute: $0) },

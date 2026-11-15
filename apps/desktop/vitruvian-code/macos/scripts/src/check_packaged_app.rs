@@ -301,6 +301,51 @@ fn check_program_and_signature(
         }
     }
 
+    // Bundled bot helper check
+    let bot_rel = "Contents/Helpers/bot-engine";
+    let bot_exe = format!("{}/{}", app, bot_rel);
+    if !Path::new(&bot_exe).is_file() {
+        return fail(app, &format!("no executable at {}", bot_rel));
+    }
+    let bot_meta = fs::metadata(&bot_exe).unwrap();
+    if bot_meta.permissions().mode() & 0o111 == 0 {
+        return fail(app, &format!("{} is not executable", bot_rel));
+    }
+    let bot_lipo = Command::new("lipo").args(["-archs", &bot_exe]).output();
+    match bot_lipo {
+        Ok(o) if o.status.success() => {
+            let raw = String::from_utf8_lossy(&o.stdout);
+            let mut got: Vec<&str> = raw.split_whitespace().filter(|s| !s.is_empty()).collect();
+            got.sort();
+            let got_str = format!("{} ", got.join(" "));
+            if got_str != want_archs {
+                return fail(
+                    app,
+                    &format!(
+                        "{} is built for '{}', expected '{}'",
+                        bot_rel,
+                        got_str.trim(),
+                        want_archs.trim()
+                    ),
+                );
+            }
+            println!("    \u{2713} {}, built for {}", bot_rel, got_str.trim());
+        }
+        Ok(o) => {
+            return fail(
+                app,
+                &format!(
+                    "lipo -archs on {} failed: {}",
+                    bot_rel,
+                    String::from_utf8_lossy(&o.stderr)
+                ),
+            );
+        }
+        Err(e) => {
+            return fail(app, &format!("cannot run lipo on {}: {}", bot_rel, e));
+        }
+    }
+
     // Signature check
     let cs = Command::new("codesign")
         .args(["--verify", "--deep", "--strict", app])

@@ -23,7 +23,7 @@
         },
         {
           "type": "json",
-          "path": "macos/tool/vitruvian-tool.json",
+          "path": "macos/atrium-extension/vitruvian-tool.json",
           "jsonpath": "$.version"
         }
       ]

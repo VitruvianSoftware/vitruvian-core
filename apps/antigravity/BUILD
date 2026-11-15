@@ -19,6 +19,11 @@ PLUGINS = [
     "worktree-band",
 ]
 
+exports_files(
+    ["plugins/README.md"],
+    visibility = ["//apps/antigravity/plugins/ext-marketplace:__pkg__"],
+)
+
 CONFORMANCE = ["//apps/antigravity/plugins/%s:conformance_files" % p for p in PLUGINS]
 
 # The files the tests read reach them in $CONFORMANCE_FILES, not as

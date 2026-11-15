@@ -168,10 +168,11 @@ private struct FilterChip<Choices: View>: View {
                 .accessibilityLabel(String(localized: "Clear \(title)"))
             }
         }
-        .font(.callout)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(Capsule().fill(choice == nil ? Color.primary.opacity(0.06) : themeAccent.opacity(0.18)))
-        .overlay(Capsule().strokeBorder(choice == nil ? Color.primary.opacity(0.10) : themeAccent.opacity(0.45)))
+        .font(.callout.weight(.medium))
+        // A filled pill either way: a clear grey when no choice is made, the accent once one is.
+        .foregroundStyle(choice == nil ? Color.primary : Color.white)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(choice == nil ? Color.primary.opacity(0.14) : themeAccent))
     }
 }

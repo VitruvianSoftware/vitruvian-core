@@ -573,8 +573,8 @@ enum UpdateFeatureTests {
             SettingsSearchItem(id: .page(.features),
                                 destination: FeatureSettingsDestination(.features),
                                 title: "Features", icon: "square.grid.2x2",
-                                keywords: ["Homebrew", "Camera Preview"],
-                                keywordFeatures: [.homebrew, .cameraPreview]),
+                                terms: [.init(["Homebrew"], feature: .homebrew),
+                                        .init(["Camera Preview"], feature: .cameraPreview)]),
             SettingsSearchItem(id: .page(.appUpdates),
                                 destination: FeatureSettingsDestination(.appUpdates),
                                 title: "App Updates", icon: "arrow.down.app",
@@ -660,9 +660,9 @@ enum UpdateFeatureTests {
         let windowLayoutPage = SettingsSearchItem(
             id: .page(.windowLayout), destination: FeatureSettingsDestination(.windowLayout),
             title: "Window Layout", icon: "rectangle.3.group",
-            keywords: ["Snap to edges", "Keep full screen in these apps",
-                       WindowStageManagerStrings.localized(.enUS).title],
-            keywordFeatures: [.windowLayout, .windowMaximizer, nil])
+            terms: [.init(["Snap to edges"], feature: .windowLayout),
+                    .init(["Keep full screen in these apps"], feature: .windowMaximizer),
+                    .init([WindowStageManagerStrings.localized(.enUS).title])])
         let windowLayoutItems = SettingsSearchSupport.combinedItems(
             pageItems: [windowLayoutPage],
             featureItems: SettingsSearchSupport.featureItems(language: .enUS) { $0.rawValue })
@@ -785,13 +785,13 @@ enum UpdateFeatureTests {
         let availabilityPage = SettingsSearchItem(
             id: .page(.quickTools), destination: FeatureSettingsDestination(.quickTools),
             title: "Quick Tools", icon: "wand.and.rays",
-            keywords: ["Camera Preview", "Open camera automatically", "Scratchpad Notes"],
-            keywordFeatures: [.cameraPreview, .cameraPreview, .scratchpad])
+            terms: [.init(["Camera Preview", "Open camera automatically"], feature: .cameraPreview),
+                    .init(["Scratchpad Notes"], feature: .scratchpad)])
         let availabilityHub = SettingsSearchItem(
             id: .page(.features), destination: FeatureSettingsDestination(.features),
             title: "Features", icon: "square.grid.2x2",
-            keywords: ["Camera Preview", "scratchpad"],
-            keywordFeatures: [.cameraPreview, .scratchpad])
+            terms: [.init(["Camera Preview"], feature: .cameraPreview),
+                    .init(["scratchpad"], feature: .scratchpad)])
         let availabilityFeatures = featureSearchItems.filter {
             $0.id == .feature(.cameraPreview) || $0.id == .feature(.scratchpad)
         }
@@ -1206,8 +1206,8 @@ enum UpdateFeatureTests {
         suite.expect(Defaults.registeredDefaults[DefaultsKey.includeBetaUpdates] as? Bool == false,
                "includeBetaUpdates defaults to false in registeredDefaults")
 
-        let testDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.atrium.tests.betaActivation")!
-        testDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.betaActivation")
+        let testDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.betaActivation")!
+        testDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.betaActivation")
         Defaults.activateBetaChannelIfRunningBeta(in: testDefaults, version: "3.3.3-beta.1")
         suite.expect(testDefaults.bool(forKey: DefaultsKey.includeBetaUpdates) == true,
                "beta channel is activated automatically on a beta build")
@@ -1217,13 +1217,13 @@ enum UpdateFeatureTests {
                "manual opt-out on a beta build is preserved across launches")
 
         // Stable version does not activate beta channel
-        let stableDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.atrium.tests.stableActivation")!
-        stableDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.stableActivation")
+        let stableDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.stableActivation")!
+        stableDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.stableActivation")
         Defaults.activateBetaChannelIfRunningBeta(in: stableDefaults, version: "3.3.3")
         suite.expect(stableDefaults.object(forKey: DefaultsKey.includeBetaUpdates) == nil,
                "stable release does not touch beta channel default")
-        stableDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.stableActivation")
-        testDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.betaActivation")
+        stableDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.stableActivation")
+        testDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.betaActivation")
 
         // Localization completeness & formatting
         let originalLanguage = L10n.shared.language
@@ -2223,7 +2223,7 @@ enum UpdateFeatureTests {
                 == ["outdated", "--cask", "--greedy", "--json=v2"],
                "the update check asks for the apps that carry their own updater too")
         let caskJSON = #"{"formulae":[],"casks":[{"token":"editor","name":["Editor"],"installed":"1.129.0","artifacts":[{"app":["Source.app",{"target":"Editor.app"}],"target":"/Applications/Editor.app"},{"zap":[]}]},{"token":"tapped-tool","full_token":"example/tap/tapped-tool","name":["Tapped Tool"],"installed":"1.0.0","artifacts":[{"app":["Tapped Tool.app"]}]}]}"#
-        let parsedRecords = HomebrewParser.parseInstalledCaskRecords(caskJSON)
+        let parsedRecords = (try? HomebrewParser.parseInstalledCaskRecords(caskJSON)) ?? []
         suite.expect(parsedRecords.count == 2 && parsedRecords[0].appFileNames == ["Editor.app"]
                 && parsedRecords[0].appPaths == ["/Applications/Editor.app"]
                 && parsedRecords[0].displayName == "Editor"
@@ -2231,32 +2231,32 @@ enum UpdateFeatureTests {
                "an installed package is traced to the final app name after a rename")
         suite.expect(parsedRecords.first { $0.token == "tapped-tool" }?.displayName == "Tapped Tool",
                "parseInstalledCaskRecords keeps the short token brew outdated reports for a cask from a tap")
-        suite.expect(HomebrewParser.parseInstalledCaskRecords("garbage").isEmpty,
-               "unreadable package output yields no records")
-        let managedPackage = HomebrewOwnershipSupport.packageManagingApplication(
+        suite.expect((try? HomebrewParser.parseInstalledCaskRecords("garbage")) == nil,
+               "unreadable package output is distinct from an empty inventory")
+        let managedPackage = try? HomebrewOwnershipSupport.packageManagingApplication(
             atPath: "/Applications/Editor.app",
             installed: parsedRecords
-        )
+        ).get()
         suite.expect(managedPackage?.name == "editor" && managedPackage?.kind == .cask,
                "the exact installed app path resolves to its package")
-        suite.expect(HomebrewOwnershipSupport.packageManagingApplication(
+        suite.expect((try? HomebrewOwnershipSupport.packageManagingApplication(
             atPath: "/Users/test/Desktop/Editor.app",
             installed: parsedRecords
-        ) == nil,
+        ).get()) == nil,
         "a same-named app outside the managed path never resolves to a package")
         let legacyRecord = HomebrewCaskRecord(token: "legacy-tool",
                                               displayName: "Legacy Tool",
                                               installedVersion: "2.0",
                                               appFileNames: ["Legacy Tool.app"])
-        suite.expect(HomebrewOwnershipSupport.packageManagingApplication(
+        suite.expect((try? HomebrewOwnershipSupport.packageManagingApplication(
             atPath: "/Users/test/Applications/Legacy Tool.app",
             installed: [legacyRecord]
-        ) == nil,
+        ).get()) == nil,
         "package uninstall requires exact path ownership even when the catalog omits its target")
-        suite.expect(HomebrewOwnershipSupport.packageManagingApplication(
+        suite.expect((try? HomebrewOwnershipSupport.packageManagingApplication(
             atPath: "/Applications/Legacy Tool.app",
             installed: [legacyRecord, legacyRecord]
-        ) == nil,
+        ).get()) == nil,
         "ambiguous package ownership is never used for uninstall")
 
         suite.expect(Defaults.utilityOrderWithAppUpdates("screenshot,quickLauncher,cleaner,homebrew")

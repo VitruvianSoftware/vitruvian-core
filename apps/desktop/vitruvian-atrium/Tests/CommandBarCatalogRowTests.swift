@@ -20,7 +20,7 @@ enum CommandBarCatalogRowContract {
         let language = L10n.shared.language
         let s = L10n.shared.s
         let bar = FeatureStrings.commandBar(language)
-        let domain = "com.vitruviansoftware.atrium.tests.command-bar-catalog"
+        let domain = "com.vitruviansoftware.vitruvian.tests.command-bar-catalog"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

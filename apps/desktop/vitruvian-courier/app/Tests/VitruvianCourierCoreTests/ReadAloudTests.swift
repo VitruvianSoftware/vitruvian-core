@@ -347,11 +347,11 @@ final class ReadAloudTests: XCTestCase {
     }
 
     private let extensionTool =
-        "/Users/someone/Library/Application Support/com.vitruviansoftware.atrium/Tools/dev.vitruvian.speaker/bin/tool"
+        "/Users/someone/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/dev.vitruvian.speaker/bin/tool"
 
     func testTheVitruvianExtensionsVitruvianSpeakerIsFoundAndVitruvianIsWhatOpens() {
         let found = locator(executables: [extensionTool],
-                            apps: ["com.vitruviansoftware.atrium": "/Applications/Vitruvian Atrium.app"])
+                            apps: ["com.vitruviansoftware.vitruvian": "/Applications/Vitruvian Atrium.app"])
         XCTAssertEqual(found.binaryURL()?.path, extensionTool)
         XCTAssertEqual(found.applicationURL()?.path, "/Applications/Vitruvian Atrium.app")
     }

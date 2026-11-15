@@ -54,7 +54,7 @@ enum NotchDestinationContract {
     }
 
     static func run(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-destinations"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-destinations"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         Self.defaults = defaults

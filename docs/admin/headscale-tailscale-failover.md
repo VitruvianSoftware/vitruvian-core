@@ -2,18 +2,18 @@
 
 ## 1. Architectural Overview & The Circular Dependency Rule
 
-The homelab k3s cluster relies on Tailscale for internal cluster communication, etcd peer quorum, and remote administrative access. Headscale runs as a containerized workload **inside** the k3s cluster in the `headscale` namespace.
+The homelab k3s cluster uses the local homelab LAN (`192.168.86.0/24`) as its underlay for internal cluster communication, etcd peer quorum, and node-to-node Cilium traffic. Headscale runs as a containerized workload **inside** the k3s cluster in the `headscale` namespace for remote administrative access.
 
 > [!CAUTION]
 > **The Circular Dependency Hazard**:
-> Never migrate or reconfigure the host `tailscale0` interface on k3s control-plane nodes (`fedora`, `nuc9i5`, `nuc9i9`) to point to Headscale.
-> If host `tailscale0` relies on Headscale:
+> Never migrate or reconfigure k3s/etcd or the host `tailscale0` interface on k3s control-plane nodes (`fedora`, `nuc9i5`, `nuc9i9`) to depend on Headscale.
+> If k3s/etcd relies on Headscale:
 > 1. A cold restart or networking disruption takes down k3s.
-> 2. etcd nodes cannot communicate without Tailscale IPs.
+> 2. etcd nodes cannot communicate without Headscale IPs.
 > 3. Headscale cannot start because k3s cannot reach quorum.
 > 4. The cluster enters an unrecoverable deadlock.
 
-**Core Rule**: Commercial Tailscale (`tailscale0`) remains the immutable cluster underlay and break-glass network. Headscale is deployed strictly as an overlay mesh alongside it.
+**Core Rule**: The homelab LAN (`192.168.86.x`) is the cluster underlay (`fedora`: `.64`, `nuc9i5`: `.201`, `nuc9i9`: `.50`; Lima workers via `socket_vmnet`: `.25`, `.52`, `.47`). Commercial Tailscale (`tailscaled`) remains installed on the hosts in an offline/disabled state as a break-glass backup. Headscale is deployed strictly as an overlay mesh alongside it.
 
 ```mermaid
 flowchart TB
@@ -29,10 +29,10 @@ flowchart TB
   end
 
   subgraph Cluster["Homelab k3s Cluster (fedora · nuc9i5 · nuc9i9 + Lima Workers)"]
-    subgraph Underlay["Host Underlay (Immutable — Never Point at Headscale)"]
-      TS0["Host tailscaled (tailscale0)\nCommercial Tailscale (100.97.82.15, 100.96.128.107, 100.86.106.117)"]
+    subgraph Underlay["Host Underlay (Homelab LAN — Never Depend on Headscale)"]
+      LAN["Homelab LAN (192.168.86.0/24)\nCPs: .64, .201, .50 · Workers: .25, .52, .47\n(Offline commercial tailscaled kept for break-glass)"]
       K3S["k3s Apiserver (:6443) + etcd Quorum + Host sshd (:22)"]
-      TS0 --> K3S
+      LAN --> K3S
     end
 
     subgraph Overlay["Headscale Overlay Pods (namespace: headscale)"]
@@ -72,8 +72,8 @@ flowchart TB
 ## 2. Dynamic Node Discovery (`k8s-api.lab.ipv1337.dev`)
 
 The Kubernetes API endpoint `k8s-api.lab.ipv1337.dev` dynamically discovers control-plane node IPs:
-1. k3s registers each control plane's `--node-ip` (`100.97.82.15`, `100.96.128.107`, `100.86.106.117`) into the `kubernetes` Endpoints in the `default` namespace.
-2. The CronJob `k8s-api-dns-reconciler` in `external-dns` runs every 5 minutes, maps each healthy control-plane node's underlay IP to its Headscale tailnet IP (`100.64.0.6`, `100.64.0.7`, `100.64.0.8`), and updates the `k8s-api` `DNSEndpoint` custom resource so ExternalDNS syncs Cloudflare A records.
+1. k3s registers each control plane's `--node-ip` (`192.168.86.64`, `192.168.86.201`, `192.168.86.50`) into the `kubernetes` Endpoints in the `default` namespace.
+2. The CronJob `k8s-api-dns-reconciler` in `external-dns` runs every 5 minutes, maps each healthy control-plane node's LAN underlay IP to its Headscale tailnet IP (`100.64.0.6`, `100.64.0.7`, `100.64.0.8`), and updates the `k8s-api` `DNSEndpoint` custom resource so ExternalDNS syncs Cloudflare A records.
 3. CoreDNS on all nodes maintains static resolution in `/etc/coredns/NodeHosts`.
 
 ---
@@ -88,9 +88,9 @@ External and mobile clients on cellular data access the homelab LAN via the in-c
 - Clients connected to Headscale can reach any homelab node or service via its LAN IP (`192.168.86.x` or `10.44.86.x`) without modifying host node daemons.
 
 ### Layer 2: Automatic Per-Node Headscale Presence (`headscale-node-agent`)
-Every k3s cluster node (`fedora`, `nuc9i5`, `nuc9i9`, `james-macbook-pro`, `james-mbp`, `james-mbp16`, `james-mbp32`) also joins Headscale directly via an unprivileged userspace DaemonSet:
+Every k3s cluster node (`fedora`, `nuc9i5`, `nuc9i9`, `james-mbp`, `james-mbp16`, `james-mbp32`) also joins Headscale directly via an unprivileged userspace DaemonSet:
 - **DaemonSet**: `gitops/argocd/platform/headscale/daemonset-node-agent.yaml` in namespace `headscale` (`hostNetwork=true`, `TS_USERSPACE=true`, `TS_STATE_DIR=/var/tmp/headscale-node-agent`).
-- Each pod registers with `--hostname=$(NODE_NAME)` using the sealed pre-auth key `headscale-subnet-router-auth`, giving every node its own persistent `100.64.0.x` IP and `<node>.mesh.ipv1337.dev` MagicDNS name in Headscale and Headplane (forwarding incoming TCP `:22` and `:6443` via userspace `netstack` to host `127.0.0.1`) while leaving the host `tailscale0` daemon on commercial Tailscale untouched.
+- Each pod registers with `--hostname=$(NODE_NAME)` using the sealed pre-auth key `headscale-subnet-router-auth`, giving every node its own persistent `100.64.0.x` IP and `<node>.mesh.ipv1337.dev` MagicDNS name in Headscale and Headplane (forwarding incoming TCP `:22` and `:6443` via userspace `netstack` to host `127.0.0.1`).
 
 ### Layer 3: Operator Multi-Profile Switching (`tailscale switch`)
 Tailscale supports multiple control-plane profiles simultaneously on macOS, Linux, and Android:

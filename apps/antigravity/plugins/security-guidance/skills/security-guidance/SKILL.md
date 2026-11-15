@@ -22,6 +22,9 @@ reported in the Security Guidance sidecar panel.
 | `child_process.exec(\`cmd \${x}\`)` | `node-child-process-exec` | `child_process.execFile("cmd", [x])` |
 | ``SELECT * FROM t WHERE id = ${id}`` | `sql-string-concat` | Parameterized query (`WHERE id = $1`, `[id]`) |
 | `${{ github.event.issue.title }}` in `run:` | `github-actions-script-injection` | Bind to an `env:` variable first and reference `"$TITLE"` |
+| `curl -fsSL https://... \| sh` | `command-injection-curl-sh` | Download to a temporary file, verify its checksum or signature, then execute |
+| `../../etc/passwd` (unvalidated relative path) | `path-traversal` | Resolve paths with `path.resolve()` and verify they remain inside the allowed base directory |
+| `http://169.254.169.254/latest/meta-data/` | `ssrf-metadata-ip` | Block link-local metadata IPs in outbound HTTP validators and use official SDK credential providers |
 
 ## Inline Suppression Syntax
 

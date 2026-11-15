@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.43.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.43.1...vitruvian-speaker-v1.43.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* **vitruvian-speaker:** make the AGENTS.md instruction line name a speaker-broadcast the agent can run ([#4843](https://github.com/VitruvianSoftware/vitruvian-core/issues/4843)) ([4b24f3a](https://github.com/VitruvianSoftware/vitruvian-core/commit/4b24f3ad01a9e689e3a4e33d266c17d3cbb412cf))
+
+## [1.43.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.43.0...vitruvian-speaker-v1.43.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **vitruvian-speaker:** give the Antigravity and OpenCode skills a speaker-broadcast they can run ([#4812](https://github.com/VitruvianSoftware/vitruvian-core/issues/4812)) ([5475024](https://github.com/VitruvianSoftware/vitruvian-core/commit/54750240329828763b9ae8f689fc7952b80b9546))
+
+## [1.43.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.42.1...vitruvian-speaker-v1.43.0) (2026-11-14)
+
+
+### Features
+
+* **vitruvian-speaker:** ship speaker-broadcast and a per-agent plugin with a generated skill ([#4769](https://github.com/VitruvianSoftware/vitruvian-core/issues/4769)) ([79bdc13](https://github.com/VitruvianSoftware/vitruvian-core/commit/79bdc13dbec5e9d6ee918921486d8b1d35bebd9e))
+
+## [1.42.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.42.0...vitruvian-speaker-v1.42.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **vitruvian-atrium:** keep the bundle id com.vitruviansoftware.vitruvian through the rename ([#4668](https://github.com/VitruvianSoftware/vitruvian-core/issues/4668)) ([6438d01](https://github.com/VitruvianSoftware/vitruvian-core/commit/6438d01ac2a243b361f1aa34cec2fecb7970ee4e))
+
 ## [1.42.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.41.0...vitruvian-speaker-v1.42.0) (2026-11-12)
 
 

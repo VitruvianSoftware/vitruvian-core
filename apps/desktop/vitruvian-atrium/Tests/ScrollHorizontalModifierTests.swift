@@ -10,6 +10,14 @@ import VitruvianAtriumServices
 import VitruvianAtriumUI
 
 enum ScrollHorizontalModifierTests {
+    /// What Pinch Zoom posted and what it asked. Its closures are `@Sendable`,
+    /// and only the test's own thread touches it.
+    nonisolated final class PinchRecorder: @unchecked Sendable {
+        var pinches: [PinchZoomGesture.Pinch] = []
+        var switcherHoldsWheel = false
+        var overOwnWindow = false
+    }
+
     /// A plain wheel moves a strip that scrolls only sideways, but never one
     /// that also scrolls down or sits in a list that does.
     private static func sidewaysStrips(_ suite: TestSuite) {
@@ -87,6 +95,9 @@ enum ScrollHorizontalModifierTests {
     }
 
     static func run(_ suite: TestSuite) {
+        pinchZoomPreferences(suite)
+        pinchPreferenceTransition(suite)
+        pinchZoomGestures(suite)
         ownWindowGestures(suite)
         ownWindowTargetCache(suite)
         sidewaysStrips(suite)
@@ -216,6 +227,56 @@ enum ScrollHorizontalModifierTests {
         suite.expect(AppFeature.scrollHorizontal.settingsDestination
             == AppFeature.scrollInverter.settingsDestination,
             "both direction features open the same scroll settings section")
+        suite.expect(AppFeature.availabilityDefaults[AppFeature.scrollZoom.availabilityKey] as? Bool == false,
+                     "scroll zoom also ships uninstalled")
+        suite.expect(AppFeature.scrollZoom.enabledKeys == [DefaultsKey.pinchZoomEnabled]
+                && AppFeature.scrollZoom.settingsDestination.sectionAnchor == .scrollZoom,
+                     "scroll zoom is an independently configurable feature")
+        let installedZoom = ScrollDirectionPreferences(
+            isAvailable: { $0 == .scrollZoom },
+            boolFor: { $0 == DefaultsKey.pinchZoomEnabled },
+            stringFor: { _ in ScrollZoomModifier.control.rawValue }
+        )
+        suite.expect(installedZoom.isEnabled && installedZoom.zoom.pinchZoom == .control,
+                     "scroll zoom runs only while its feature is installed")
+        let removedZoom = ScrollDirectionPreferences(
+            isAvailable: { _ in false },
+            boolFor: { $0 == DefaultsKey.pinchZoomEnabled },
+            stringFor: { _ in ScrollZoomModifier.control.rawValue }
+        )
+        suite.expect(!removedZoom.isEnabled && !removedZoom.zoom.isEnabled,
+                     "removing Zoom stops a zoom-only shared tap after relaunch")
+        for modifier in ScrollZoomModifier.allCases.compactMap(\.modifier) {
+            let preferences = ScrollZoomPreferences(
+                isAvailable: true,
+                boolFor: { $0 == DefaultsKey.pinchZoomEnabled },
+                stringFor: { $0 == DefaultsKey.pinchZoomModifier ? modifier.rawValue : ScrollZoomModifier.none.rawValue }
+            )
+            let event = wheel(flags: modifier.flag, line: 1, point: 10, fixed: 1)
+            let action = preferences.action(for: event)
+            suite.expect(action?.axis == .vertical && action?.modifier == modifier,
+                         "Pinch Zoom accepts a wheel with \(modifier.rawValue) and no other zoom keys")
+        }
+        let optionPinch = ScrollZoomPreferences(
+            isAvailable: true,
+            boolFor: { $0 == DefaultsKey.pinchZoomEnabled },
+            stringFor: { $0 == DefaultsKey.pinchZoomModifier ? ScrollZoomModifier.option.rawValue : ScrollZoomModifier.none.rawValue }
+        )
+        let commandPinch = ScrollZoomPreferences(
+            isAvailable: true,
+            boolFor: { $0 == DefaultsKey.pinchZoomEnabled },
+            stringFor: { $0 == DefaultsKey.pinchZoomModifier ? ScrollZoomModifier.command.rawValue : ScrollZoomModifier.none.rawValue }
+        )
+        var switchingState = ScrollZoomGestureState()
+        _ = switchingState.update(commandPinch)
+        switchingState.start()
+        _ = switchingState.beginPinch(.command, at: .zero)
+        suite.expect(switchingState.update(optionPinch),
+                     "switching Pinch from Command to Option ends the old gesture")
+        switchingState.start()
+        suite.expect(switchingState.accepts(optionPinch) && !switchingState.accepts(commandPinch)
+                && optionPinch.action(for: wheel(flags: .maskAlternate, line: 1, point: 10, fixed: 1)) != nil,
+                     "the shared tap accepts the new Option assignment but rejects the old Command one")
 
         // Saved settings remain on through removal/reinstallation. Exercise all
         // installation and toggle combinations without changing the user's defaults.
@@ -481,6 +542,167 @@ enum ScrollHorizontalModifierTests {
          kCGWindowAlpha as String: alpha,
          kCGWindowBounds as String: ["X": frame.minX, "Y": frame.minY,
                                     "Width": frame.width, "Height": frame.height]]
+    }
+
+    /// Which wheels Pinch Zoom reads, and how far each one turns it.
+    private static func pinchZoomPreferences(_ suite: TestSuite) {
+        suite.expect(Defaults.registeredDefaults[DefaultsKey.pinchZoomModifier] as? String == "control"
+                && Defaults.registeredDefaults[DefaultsKey.pinchZoomEnabled] as? Bool == false,
+                     "Pinch defaults to Control, switched off")
+        suite.expect(SettingsBackupSupport.exportKeys().isSuperset(of: [DefaultsKey.pinchZoomEnabled,
+                                                                        DefaultsKey.pinchZoomModifier]),
+                     "the Pinch Zoom choices travel with the settings backup")
+        suite.expect(ScrollZoomModifier(rawValue: "shift") == nil
+                        && ScrollZoomModifier(storageValue: "shift") == .none,
+                     "Shift is unavailable and a saved Shift assignment becomes None")
+        let oldShift = ScrollZoomPreferences(isAvailable: true, boolFor: { _ in true }, stringFor: { _ in "shift" })
+        suite.expect(!oldShift.isEnabled,
+                     "a saved Shift assignment does not silently run under a different modifier")
+        let zoomWheel = wheel(flags: .maskControl, line: 0, point: -12, fixed: -1.2)
+        suite.expect(ScrollWheelSupport.zoomDelta(zoomWheel, modifier: .control, axis: .vertical) == -12,
+                     "the selected modifier zooms from vertical wheel movement")
+        suite.expect(ScrollWheelSupport.zoomDelta(point: -0.25, fixed: -1.2, line: -1) == -0.25,
+                     "fractional wheel ticks reach pinch zoom instead of being truncated")
+        suite.expect(ScrollWheelSupport.zoomDelta(point: 0, fixed: -1.2, line: -1) == -1.2
+                && ScrollWheelSupport.zoomDelta(point: 0, fixed: 0, line: -1) == -1
+                && ScrollWheelSupport.zoomDelta(point: 0, fixed: 0, line: 0) == nil,
+                     "a wheel without points zooms by its fixed-point or line distance, and one that does not move does not zoom")
+        zoomWheel.setIntegerValueField(.scrollWheelEventPointDeltaAxis1, value: 0)
+        zoomWheel.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: 0)
+        zoomWheel.setIntegerValueField(.scrollWheelEventDeltaAxis1, value: 0)
+        zoomWheel.setIntegerValueField(.scrollWheelEventPointDeltaAxis2, value: 9)
+        suite.expect(ScrollWheelSupport.zoomDelta(zoomWheel, modifier: .control, axis: .horizontal) == 9,
+                     "the selected modifier zooms from horizontal wheel movement")
+        let horizontalPinch = ScrollZoomPreferences(isAvailable: true,
+            boolFor: { $0 == DefaultsKey.pinchZoomEnabled }, stringFor: { _ in "control" })
+        suite.expect(horizontalPinch.action(for: zoomWheel)?.axis == .horizontal,
+                     "Pinch retains horizontal-wheel support")
+        zoomWheel.flags = [.maskControl, .maskShift]
+        suite.expect(ScrollWheelSupport.zoomDelta(zoomWheel, modifier: .control, axis: .horizontal) == nil,
+                     "other shortcut modifiers leave scrolling alone")
+        suite.expect(ScrollWheelSupport.zoomDelta(-12, axis: .vertical,
+                                                  invertVertical: true, invertHorizontal: false) == 12
+                && ScrollWheelSupport.zoomDelta(9, axis: .horizontal,
+                                                 invertVertical: false, invertHorizontal: true) == -9,
+                     "zoom follows the selected axis's inverted scroll direction")
+    }
+
+    private static func pinchPreferenceTransition(_ suite: TestSuite) {
+        let pinch = ScrollZoomPreferences(isAvailable: true,
+                                          boolFor: { $0 == DefaultsKey.pinchZoomEnabled },
+                                          stringFor: { _ in ScrollZoomModifier.command.rawValue })
+        let disabled = ScrollZoomPreferences(isAvailable: true,
+                                             boolFor: { _ in false },
+                                             stringFor: { _ in ScrollZoomModifier.command.rawValue })
+        var state = ScrollZoomGestureState()
+        suite.expect(!state.update(pinch), "enabling Pinch starts without an old gesture")
+        state.start()
+        suite.expect(state.accepts(pinch) && state.beginPinch(.command, at: .zero).begin,
+                     "an installed pinch modifier begins a gesture")
+        suite.expect(state.update(disabled) && state.pinchModifier == nil,
+                     "disabling Pinch ends its gesture while the shared tap remains installed")
+        let inversionOnly = ScrollDirectionPreferences(isAvailable: { _ in true },
+                                                       boolFor: { $0 == DefaultsKey.scrollInverterEnabled },
+                                                       stringFor: { _ in nil })
+        state.start()
+        suite.expect(inversionOnly.isEnabled && !inversionOnly.zoom.isEnabled
+                && !state.accepts(pinch) && !state.accepts(disabled) && !state.stop(),
+                     "inversion can keep the tap alive without accepting stale Pinch callbacks")
+    }
+
+    /// The gestures Pinch Zoom posts, on real wheel events. Only the switcher,
+    /// this app's windows and the poster are stand-ins: nothing is posted.
+    private static func pinchZoomGestures(_ suite: TestSuite) {
+        let recorder = PinchRecorder()
+        let gesture = PinchZoomGesture(switcherHoldsWheel: { recorder.switcherHoldsWheel },
+                                       isOwnWindow: { _ in recorder.overOwnWindow },
+                                       post: { recorder.pinches.append($0) })
+        func preferences(invertVertical: Bool = false, enabled: Bool = true) -> ScrollDirectionPreferences {
+            ScrollDirectionPreferences(
+                isAvailable: { $0 == .scrollZoom || $0 == .scrollInverter },
+                boolFor: { ($0 == DefaultsKey.pinchZoomEnabled && enabled)
+                    || ($0 == DefaultsKey.scrollInverterEnabled && invertVertical) },
+                stringFor: { $0 == DefaultsKey.pinchZoomModifier ? ScrollZoomModifier.control.rawValue : nil })
+        }
+        let control = preferences()
+        let here = CGPoint(x: 120, y: 80)
+        let there = CGPoint(x: 320, y: 240)
+        func tick(at point: CGPoint, flags: CGEventFlags = .maskControl) -> CGEvent {
+            let event = wheel(flags: flags, line: 1, point: 10, fixed: 1)
+            event.location = point
+            return event
+        }
+        func phases() -> [PinchZoomGesture.Phase] { recorder.pinches.map(\.phase) }
+
+        suite.expect(gesture.consume(tick(at: here), direction: control) == .declined && recorder.pinches.isEmpty,
+                     "Pinch Zoom turns nothing before the tap arms its settings")
+        gesture.update(control.zoom)
+        gesture.start()
+        suite.expect(gesture.consume(tick(at: here), direction: control) == .consumed
+                && phases() == [.began, .changed]
+                && recorder.pinches.last?.magnification == 10 * 0.005
+                && recorder.pinches.allSatisfy { $0.location == here },
+                     "the first zoom tick begins a magnification at the pointer and steps it")
+        recorder.pinches = []
+        _ = gesture.consume(tick(at: here), direction: control)
+        suite.expect(phases() == [.changed], "the next tick at the same place continues the gesture")
+        recorder.pinches = []
+        _ = gesture.consume(tick(at: there), direction: control)
+        suite.expect(phases() == [.ended, .began, .changed]
+                && recorder.pinches.first?.location == here && recorder.pinches.last?.location == there,
+                     "a moved pointer ends the gesture where it was and begins one where it is")
+        recorder.pinches = []
+        gesture.modifiersChanged([.maskControl, .maskAlphaShift])
+        suite.expect(recorder.pinches.isEmpty, "holding the modifier, Caps Lock or not, keeps the gesture")
+        gesture.modifiersChanged([])
+        suite.expect(phases() == [.ended] && recorder.pinches.first?.location == there,
+                     "letting go of the modifier ends the gesture")
+        recorder.pinches = []
+        gesture.modifiersChanged([])
+        suite.expect(recorder.pinches.isEmpty, "a gesture is ended only once")
+
+        recorder.switcherHoldsWheel = true
+        suite.expect(gesture.consume(tick(at: here), direction: control) == .notZoom && recorder.pinches.isEmpty,
+                     "the open switcher keeps its wheel")
+        recorder.switcherHoldsWheel = false
+        suite.expect(gesture.consume(tick(at: here, flags: [.maskControl, .maskShift]), direction: control) == .notZoom
+                && gesture.consume(tick(at: here, flags: []), direction: control) == .notZoom
+                && recorder.pinches.isEmpty,
+                     "a wheel without the modifier alone is no zoom wheel")
+
+        _ = gesture.consume(tick(at: here), direction: control)
+        recorder.pinches = []
+        recorder.overOwnWindow = true
+        suite.expect(gesture.consume(tick(at: here), direction: control) == .declined && phases() == [.ended],
+                     "over one of this app's windows Pinch Zoom ends its gesture and leaves the wheel to the window")
+        recorder.overOwnWindow = false
+
+        _ = gesture.consume(tick(at: here), direction: control)
+        recorder.pinches = []
+        let off = preferences(enabled: false)
+        gesture.update(off.zoom)
+        suite.expect(phases() == [.ended], "turning Pinch Zoom off ends its gesture")
+        recorder.pinches = []
+        suite.expect(gesture.consume(tick(at: here), direction: control) == .declined && recorder.pinches.isEmpty,
+                     "settings the tap has not armed are never turned")
+
+        gesture.update(control.zoom)
+        gesture.start()
+        _ = gesture.consume(tick(at: here), direction: control)
+        recorder.pinches = []
+        gesture.stop()
+        suite.expect(phases() == [.ended]
+                && gesture.consume(tick(at: here), direction: control) == .declined,
+                     "the tap going away ends the gesture and turns nothing more")
+
+        let inverted = preferences(invertVertical: true)
+        gesture.update(inverted.zoom)
+        gesture.start()
+        recorder.pinches = []
+        _ = gesture.consume(tick(at: here), direction: inverted)
+        suite.expect(recorder.pinches.last?.magnification == -10 * 0.005,
+                     "inverted vertical scrolling turns the pinch the other way too")
+        gesture.stop()
     }
 
     private static func wheel(continuous: Bool = false, flags: CGEventFlags,

@@ -4,6 +4,76 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.98.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.98.0...vitruvian-atrium-v3.98.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **vitruvian-atrium:** close every unpinned island when the pointer leaves ([#4784](https://github.com/VitruvianSoftware/vitruvian-core/issues/4784)) ([74665ec](https://github.com/VitruvianSoftware/vitruvian-core/commit/74665ecb898ae303b25b78a625060c268db6351b))
+
+## [3.98.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.97.0...vitruvian-atrium-v3.98.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 41, switcher under secure input, Trash leftovers review and 2 more ([#4732](https://github.com/VitruvianSoftware/vitruvian-core/issues/4732)) ([1f8e46d](https://github.com/VitruvianSoftware/vitruvian-core/commit/1f8e46d9459ec3ddbec20cfa5770c67cdfc25bf6))
+
+## [3.97.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.96.0...vitruvian-atrium-v3.97.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 40, Pinch Zoom and modifier scroll speed ([#4727](https://github.com/VitruvianSoftware/vitruvian-core/issues/4727)) ([9d00902](https://github.com/VitruvianSoftware/vitruvian-core/commit/9d00902f54f3e425298b3e47a267eb9df837de60))
+
+## [3.96.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.95.0...vitruvian-atrium-v3.96.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 39, monitor speakers, visible-control Settings search ([#4725](https://github.com/VitruvianSoftware/vitruvian-core/issues/4725)) ([1d4357d](https://github.com/VitruvianSoftware/vitruvian-core/commit/1d4357dadb2aa5bd1f34e126f8ac9f34aea95317))
+
+## [3.95.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.94.0...vitruvian-atrium-v3.95.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 38, settings file after migrations, locked-wake display, mixed feet and inches and 9 more ([#4723](https://github.com/VitruvianSoftware/vitruvian-core/issues/4723)) ([4896ae0](https://github.com/VitruvianSoftware/vitruvian-core/commit/4896ae0df884a3fc74446e9fa368d9438a52016a))
+
+## [3.94.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.93.0...vitruvian-atrium-v3.94.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 37, read-only XDG settings, scrolling screenshots, GPU GIF export and 12 more ([#4719](https://github.com/VitruvianSoftware/vitruvian-core/issues/4719)) ([6203948](https://github.com/VitruvianSoftware/vitruvian-core/commit/620394878d89f8ffab56a4c5f355f8902ec660ee))
+
+## [3.93.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.92.0...vitruvian-atrium-v3.93.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 36, GIF export controls, software dimming for DDC monitors, large-image resize and 12 more ([#4715](https://github.com/VitruvianSoftware/vitruvian-core/issues/4715)) ([74ebd56](https://github.com/VitruvianSoftware/vitruvian-core/commit/74ebd565273b57b05d967bb6f6f9b91dc4c18006))
+
+## [3.92.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.91.0...vitruvian-atrium-v3.92.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 35, Mic Mute zeroes input gain, mixer volume slides, display stays off after wake and 12 more ([#4710](https://github.com/VitruvianSoftware/vitruvian-core/issues/4710)) ([2955e5d](https://github.com/VitruvianSoftware/vitruvian-core/commit/2955e5dc971383e04d58c667487c9521a3ad08ea))
+
+## [3.91.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.90.1...vitruvian-atrium-v3.91.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 34, Quit apps window, all-windows switcher shortcut, event countdown lead and 10 more ([#4708](https://github.com/VitruvianSoftware/vitruvian-core/issues/4708)) ([491ba91](https://github.com/VitruvianSoftware/vitruvian-core/commit/491ba91e0ab58a7dc0e6fb0e5d9a1f07cb711f70))
+
+## [3.90.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.90.0...vitruvian-atrium-v3.90.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **vitruvian-atrium:** keep the bundle id com.vitruviansoftware.vitruvian through the rename ([#4668](https://github.com/VitruvianSoftware/vitruvian-core/issues/4668)) ([6438d01](https://github.com/VitruvianSoftware/vitruvian-core/commit/6438d01ac2a243b361f1aa34cec2fecb7970ee4e))
+
 ## [3.90.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.89.0...vitruvian-atrium-v3.90.0) (2026-11-12)
 
 

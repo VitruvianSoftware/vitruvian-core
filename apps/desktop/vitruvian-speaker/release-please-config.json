@@ -23,7 +23,7 @@
         },
         {
           "type": "json",
-          "path": "tool/vitruvian-tool.json",
+          "path": "atrium-extension/vitruvian-tool.json",
           "jsonpath": "$.version"
         },
         {

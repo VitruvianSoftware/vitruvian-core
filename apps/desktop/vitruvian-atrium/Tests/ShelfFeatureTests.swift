@@ -132,10 +132,30 @@ enum ShelfFeatureTests {
         suite.expect(ShelfInteractionSupport.removableAfterDrag([pinnedDragID, looseDragID],
                                                                 protectedIDs: [pinnedDragID]) == [looseDragID],
                "a pinned shelf item stays after a drag-out while the rest of the drag leaves")
-        suite.expect(ShelfInteractionSupport.offersMoveOutside(removeAfterDrop: true, dragIncludesPinned: false)
-                && !ShelfInteractionSupport.offersMoveOutside(removeAfterDrop: true, dragIncludesPinned: true)
-                && !ShelfInteractionSupport.offersMoveOutside(removeAfterDrop: false, dragIncludesPinned: false),
+        suite.expect(ShelfInteractionSupport.offersMoveOutside(removeAfterDrop: true, dragIncludesPinned: false,
+                                                               dragIncludesPackageContent: false)
+                && !ShelfInteractionSupport.offersMoveOutside(removeAfterDrop: true, dragIncludesPinned: true,
+                                                              dragIncludesPackageContent: false)
+                && !ShelfInteractionSupport.offersMoveOutside(removeAfterDrop: false, dragIncludesPinned: false,
+                                                              dragIncludesPackageContent: false),
                "a drag holding a pinned shelf item only offers a copy outside the app")
+        suite.expect(!ShelfInteractionSupport.offersMoveOutside(removeAfterDrop: true, dragIncludesPinned: false,
+                                                                dragIncludesPackageContent: true),
+               "a drag holding package content only offers a copy outside the app")
+        let packages: (URL) -> Bool = { ["photoslibrary", "app"].contains($0.pathExtension) }
+        suite.expect(ShelfInteractionSupport.isInsidePackage(URL(fileURLWithPath:
+            "/Users/me/Pictures/Photos Library.photoslibrary/resources/derivatives/E/photo.jpeg"),
+                                                             isPackage: packages)
+                && ShelfInteractionSupport.isInsidePackage(URL(fileURLWithPath:
+            "/Applications/Tool.app/Contents/Resources/icon.png"), isPackage: packages),
+               "a file stored deep inside a package is package content")
+        suite.expect(!ShelfInteractionSupport.isInsidePackage(URL(fileURLWithPath:
+            "/Users/me/Desktop/Exports/photo.jpeg"), isPackage: packages)
+                && !ShelfInteractionSupport.isInsidePackage(URL(fileURLWithPath:
+            "/Users/me/Pictures/Photos Library.photoslibrary"), isPackage: packages)
+                && !ShelfInteractionSupport.isInsidePackage(URL(fileURLWithPath:
+            "/Applications/Tool.app"), isPackage: packages),
+               "ordinary files and whole packages may still be moved")
 
         suite.expect(!ShelfInteractionSupport.isContentDrag(
             gestureChangeCount: 5, restingChangeCount: 5, changeCount: 5, beganInDock: false,
@@ -201,7 +221,7 @@ enum ShelfFeatureTests {
             NSPasteboard.PasteboardType.string.rawValue),
                "plain text still counts as droppable shelf content")
         suite.expect(!ShelfPasteboardSupport.isDroppablePasteboardType(
-            "com.vitruviansoftware.atrium.tests.not-a-real-pasteboard-type"),
+            "com.vitruviansoftware.vitruvian.tests.not-a-real-pasteboard-type"),
                "unrelated pasteboard types do not activate the shelf")
         ShelfFilePromiseTests.run(suite)
         ShelfDropRoutingTests.run(suite)
@@ -481,7 +501,7 @@ enum ShelfFeatureTests {
 
         // MARK: Shelf dock placement
 
-        let placementDomain = "com.vitruviansoftware.atrium.tests.shelf-dock-placement"
+        let placementDomain = "com.vitruviansoftware.vitruvian.tests.shelf-dock-placement"
         let placementDefaults = ScratchDefaults.suite(named: placementDomain)!
         placementDefaults.removePersistentDomain(forName: placementDomain)
         defer { placementDefaults.removePersistentDomain(forName: placementDomain) }

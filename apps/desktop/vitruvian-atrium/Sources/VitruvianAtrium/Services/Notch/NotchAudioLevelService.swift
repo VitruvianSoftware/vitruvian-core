@@ -5,6 +5,7 @@ import Accelerate
 import AppKit
 import Combine
 import CoreAudio
+import CoreAudioTapCompat
 import Foundation
 import VitruvianAtriumCore
 import VitruvianAtriumDesign
@@ -269,8 +270,8 @@ package protocol NotchAudioLevelReading: AnyObject {
 /// starting a device can block for as long as a Bluetooth or USB device takes
 /// to reconnect, and the island must never wait on that.
 private final class NotchAudioLevelReader: NotchAudioLevelReading {
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.notch-audio-levels", qos: .utility)
-    private static let teardownQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.notch-audio-levels.teardown", qos: .utility)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-audio-levels", qos: .utility)
+    private static let teardownQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-audio-levels.teardown", qos: .utility)
     private let pid: pid_t
     private let onLevels: ([Double]) -> Void
     private let onSilence: () -> Void
@@ -346,14 +347,12 @@ private final class NotchAudioLevelReader: NotchAudioLevelReading {
         let objects = Self.processObjects(for: pid)
         guard !objects.isEmpty else { return false }
         tapped = objects
-        let description = CATapDescription(stereoMixdownOfProcesses: objects)
-        description.name = "Vitruvian Atrium Island Levels"
-        description.isPrivate = true
-        description.muteBehavior = .unmuted
         var tapID = AudioObjectID(0)
-        guard AudioHardwareCreateProcessTap(description, &tapID) == noErr, tapID != 0 else { return false }
+        guard let uuid = createPrivateAudioTap(.stereoMixdown, processes: objects as [NSNumber], deviceUID: nil,
+                                               name: "Vitruvian Atrium Island Levels", muteBehavior: .unmuted, id: &tapID)
+        else { return false }
         self.tapID = tapID
-        tapUID = description.uuid.uuidString
+        tapUID = uuid.uuidString
         var format = AudioStreamBasicDescription()
         if Self.read(tapID, kAudioTapPropertyFormat, &format), format.mChannelsPerFrame > 0 {
             tapChannels = Int(format.mChannelsPerFrame)

@@ -26,7 +26,7 @@ use shell_compat as sc;
 
 use super::common::*;
 
-const SUBCMDS: &str = "raw|apikey-create|apikey-list|apikey-expire|user-create|user-list|user-destroy|node-list|node-register|node-delete|preauthkey-create|preauthkey-list";
+const SUBCMDS: &str = "raw|apikey-create|apikey-list|apikey-expire|user-create|user-list|user-destroy|node-list|node-register|node-delete|preauthkey-create|preauthkey-list|policy-check|policy-set";
 
 pub fn main(args: &[Vec<u8>]) -> i32 {
     match run_ops(args) {
@@ -114,7 +114,115 @@ fn run_ops(args: &[Vec<u8>]) -> Res<i32> {
         }
         b"preauthkey-create" => kexec(&[b"preauthkeys", b"create"], &a),
         b"preauthkey-list" => kexec(&[b"preauthkeys", b"list"], &a),
+        b"policy-check" => {
+            let policy = read_policy(&a)?;
+            policy_exec(&k, &pod, b"check", &policy)?
+        }
+        b"policy-set" => {
+            // Read once, so the bytes `set` sends are the bytes `check` passed
+            // even if the file changes in between.
+            let policy = read_policy(&a)?;
+            let st = policy_exec(&k, &pod, b"check", &policy)?;
+            if st != 0 {
+                return die(
+                    st,
+                    b"ERROR: policy check did not pass (see the output above); the live policy was not changed.",
+                );
+            }
+            policy_exec(&k, &pod, b"set", &policy)?
+        }
         _ => return die(2, &sc::cat(&[b"ERROR: unknown subcmd '", &sub, b"'"])),
     };
     Ok(st)
+}
+
+/// The policy file in git that `policy-check`/`policy-set` send by default.
+const POLICY_FILE: &str = "gitops/argocd/platform/headscale/policy.hujson";
+
+/// The policy file's contents: $1 (relative to the workspace) or
+/// [`POLICY_FILE`]. An unreadable file is its own error, never reported as a
+/// failed policy check.
+fn read_policy(rest: &[&[u8]]) -> Res<Vec<u8>> {
+    cd_workspace(120)?;
+    let path: Vec<u8> = rest
+        .first()
+        .map(|p| p.to_vec())
+        .unwrap_or_else(|| POLICY_FILE.as_bytes().to_vec());
+    match std::fs::read(sc::path(&path)) {
+        Ok(b) => Ok(b),
+        Err(e) => die(
+            1,
+            &sc::cat(&[
+                b"ERROR: cannot read ",
+                &path,
+                b": ",
+                sc::strerror(&e).as_bytes(),
+            ]),
+        ),
+    }
+}
+
+/// `headscale policy {check,set} -f /dev/stdin` with `policy` written to the
+/// command's stdin over `kubectl exec -i`, so nothing has to be copied into
+/// the pod.
+fn policy_exec(k: &[u8], pod: &[u8], verb: &[u8], policy: &[u8]) -> Res<i32> {
+    use std::io::Write;
+    use std::process::Stdio;
+    let mut c = kubectl(
+        k,
+        &[
+            b"-n",
+            b"headscale",
+            b"exec",
+            b"-i",
+            b"-c",
+            b"headscale",
+            pod,
+            b"--",
+            b"headscale",
+            b"policy",
+            verb,
+            b"-f",
+            b"/dev/stdin",
+        ],
+    );
+    c.stdin(Stdio::piped());
+    let mut child = match c.spawn() {
+        Ok(ch) => ch,
+        Err(e) => {
+            return die(
+                1,
+                &sc::cat(&[b"ERROR: kubectl: ", sc::strerror(&e).as_bytes()]),
+            )
+        }
+    };
+    {
+        let mut sin = child.stdin.take().expect("piped stdin");
+        if let Err(e) = sin.write_all(policy) {
+            // kubectl may have exited before reading (bad context, no pod);
+            // its own status and message say why, so report that first.
+            drop(sin);
+            if let Ok(st) = child.wait() {
+                let code = sc::status_code(st);
+                if code != 0 {
+                    return Ok(code);
+                }
+            }
+            return die(
+                1,
+                &sc::cat(&[
+                    b"ERROR: writing the policy to kubectl: ",
+                    sc::strerror(&e).as_bytes(),
+                ]),
+            );
+        }
+        // Dropping stdin closes it, so headscale sees EOF.
+    }
+    match child.wait() {
+        Ok(st) => Ok(sc::status_code(st)),
+        Err(e) => die(
+            1,
+            &sc::cat(&[b"ERROR: kubectl: ", sc::strerror(&e).as_bytes()]),
+        ),
+    }
 }

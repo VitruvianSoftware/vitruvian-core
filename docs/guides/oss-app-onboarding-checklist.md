@@ -205,7 +205,7 @@ Keep the three homes straight; never commit a secret, not even Pulumi-encrypted.
       > *deletes* the live client (a real incident). Create + own; sync the
       > minted id/secret into each env's Secret Manager (`ossProject`-gated).
 - [ ] If CI must reach a self-hosted IdP on the cluster, target the gateway
-      **NodePort on a node's tailscale IP**, not the LB VIP over the subnet
+      **NodePort on a node's mesh (Headscale) IP**, not the LB VIP over the subnet
       router, and not the public edge.
       > ⚠️ **Why:** `externalTrafficPolicy: Local` drops subnet-router-forwarded
       > traffic on nodes with no local backend; the public edge returns
@@ -272,7 +272,7 @@ repo_config (envs + WIF vars)
 | Managed cert won't validate | Grey-cloud (`Proxied: false`) Cloudflare record |
 | Site Verification 403 from IaC | Enable the API by hand in the console, once per project |
 | OIDC client deleted on apply | **Create + own** the client; never import |
-| CI can't reach the IdP | NodePort on a node's tailscale IP (not the LB VIP / public edge) |
+| CI can't reach the IdP | NodePort on a node's mesh (Headscale) IP (not the LB VIP / public edge) |
 | Redirect rejected despite creds | Register each env's exact redirect URI (trailing slash) in the provider console |
 | "Done" but not really | Verify squash commit with `bazel run //tools/landed -- <pr#|branch|sha>`; refresh checkout |
 | Monorepo breaks `/releases/latest` | Stand up vanity redirects on `vitruviansoftware.dev/downloads/latest/<app>` (see [`copybara-sync.md`](../admin/copybara-sync.md#8g-release-distribution--migration-invariants)) |

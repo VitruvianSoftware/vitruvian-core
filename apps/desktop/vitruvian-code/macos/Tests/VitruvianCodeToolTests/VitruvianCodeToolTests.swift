@@ -110,9 +110,8 @@ final class VitruvianCodeToolTests: XCTestCase {
 
         func installBot(token: String = "1:real") {
             files[bot] = ""
-            files[bot + "/src/bot.js"] = "// bot"
             files[bot + "/.env"] = "TELEGRAM_BOT_TOKEN=\(token)\nAGY_TIMEOUT_MS=1\n"
-            executables.insert("/opt/homebrew/bin/node")
+            executables.insert(VitruvianCodeSupport.defaultBundledBotCandidate)
         }
 
         func drain() {
@@ -285,7 +284,6 @@ final class VitruvianCodeToolTests: XCTestCase {
     func testAChangedBotFolderIsReadAgainAndPlanModeReachesTheChat() {
         rig.installBot()
         rig.files["/Users/rig/other"] = ""
-        rig.files["/Users/rig/other/src/bot.js"] = "// bot"
         rig.files["/Users/rig/other/.env"] = "TELEGRAM_BOT_TOKEN=2:other\n"
         let tool = tool()
         tool.start(language: "en", handed: [:])

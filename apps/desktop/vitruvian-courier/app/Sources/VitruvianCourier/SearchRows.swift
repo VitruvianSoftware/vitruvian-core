@@ -75,7 +75,6 @@ private struct ChatResultRow: View {
         HStack(spacing: 10) {
             ChatAvatar(row: row)
                 .blur(radius: isRedacted ? 6 : 0)
-                .clipShape(Circle())
                 .frame(width: 32, height: 32)
                 .overlay(alignment: .bottomTrailing) { badge(row.network) }
             VStack(alignment: .leading, spacing: 2) {

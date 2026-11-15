@@ -143,3 +143,9 @@ delivery(
         "workload-migrated": False,
     },
 )
+
+filegroup(
+    name = "docs_files",
+    srcs = ["BUILD"],
+    visibility = ["//apps/suites/vitruvian-tabs:__pkg__"],
+)

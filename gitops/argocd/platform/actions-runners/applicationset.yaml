@@ -129,9 +129,20 @@ spec:
                         subPath: bazelisk
                     resources:
                       requests:
-                        # 3500m lets all 8 maxRunners schedule across fedora (5 pods)
-                        # and nuc9i9 (3 pods beside ~4.14 CPU of baseline workloads).
-                        cpu: "3500m"
+                        # 1 CPU, not 3500m. A reservation is what the scheduler
+                        # needs free before it starts a pod, not what the pod
+                        # uses. Over 24h (2026-11-13), 722 runner pods used a
+                        # median 0.19 CPU at their busiest (p90 0.64, max 6.5:
+                        # most build work runs on BuildBuddy). At 3500m only ~7
+                        # fit beside the nodes' other workloads, so runner pods
+                        # sat unschedulable for 304 minutes that day and each
+                        # merge-queue entry waited ~6 min for one. The 8-CPU
+                        # limit stays, so a pod that does build locally can
+                        # still use the spare cores. Memory (8Gi) is now what
+                        # bounds packing: about 6 fit on fedora, 5 on nuc9i9.
+                        # RunnerPodsUnschedulable (prometheus) fires if they
+                        # stop fitting again.
+                        cpu: "1"
                         memory: 8Gi
                         # 15Gi prevents scheduler from packing runner pods onto nodes lacking free rootfs disk.
                         ephemeral-storage: 15Gi

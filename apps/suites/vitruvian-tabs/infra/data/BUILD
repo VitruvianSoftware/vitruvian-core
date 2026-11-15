@@ -24,3 +24,9 @@ pulumi_project(
     name = "vitruvian-tabs-data",
     dir = "apps/suites/vitruvian-tabs/infra/data",
 )
+
+filegroup(
+    name = "docs_files",
+    srcs = ["BUILD"],
+    visibility = ["//apps/suites/vitruvian-tabs:__pkg__"],
+)

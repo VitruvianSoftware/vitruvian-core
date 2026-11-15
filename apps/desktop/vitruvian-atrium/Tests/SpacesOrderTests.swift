@@ -174,7 +174,7 @@ enum SpacesOrderTests {
     }
 
     static func run(_ suite: TestSuite) {
-        let name = "com.vitruviansoftware.atrium.tests.spaces-order.\(UUID().uuidString)"
+        let name = "com.vitruviansoftware.vitruvian.tests.spaces-order.\(UUID().uuidString)"
         let defaults = ScratchDefaults.suite(named: name)!
         defer { defaults.removePersistentDomain(forName: name) }
         let marker = DefaultsKey.spacesOrderRestore
@@ -934,7 +934,7 @@ enum SpacesOrderTests {
         /// given, both already saved.
         func host(enabled isEnabled: Bool = true, marker saved: String? = nil,
                   value: SpacesRearrangeSetting = .on) -> ContractHost {
-            let name = "com.vitruviansoftware.atrium.tests.spaces-order-contract.\(UUID().uuidString)"
+            let name = "com.vitruviansoftware.vitruvian.tests.spaces-order-contract.\(UUID().uuidString)"
             suites.append(name)
             let defaults = ScriptedDefaults(suiteName: name)!
             defaults.tracked = [enabled, marker]

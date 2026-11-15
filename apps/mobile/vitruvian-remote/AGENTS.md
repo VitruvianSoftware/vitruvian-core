@@ -1,0 +1,97 @@
+# Vitruvian Remote (vitruvian-remote) — agent guide
+
+> Scoped to `apps/mobile/vitruvian-remote/`. Repo-wide rules live in the root
+> [`AGENTS.md`](../../../AGENTS.md); the developer SOP is
+> [`CONTRIBUTING.md`](../../../CONTRIBUTING.md), which wins on any conflict. This app's own
+> [`CONTRIBUTING.md`](CONTRIBUTING.md) holds the house rules in full; this file is the short
+> version for coding agents.
+
+## What this is
+
+A Kotlin / Jetpack Compose Android app: a remote control and observability console for a Mac,
+shaped for a foldable (folded, unfolded and tabletop postures). Two transports: Bluetooth HID
+(nothing installed on the Mac) and [`macagent/`](macagent/README.md), a Rust daemon on the Mac
+reached over Tailscale. The app ↔ daemon contract is [`macagent/API.md`](macagent/API.md).
+Every colour, size and font comes from `//packages/design-system-android`; this app defines
+no design value of its own.
+
+## Build, test, run
+
+- **Toolchain.** The Android SDK is the one non-hermetic toolchain in the monorepo: set
+  `ANDROID_HOME` to a local SDK with the API 35 platform and build-tools.
+  `bazel run //apps/mobile/vitruvian-remote:doctor` checks bazel and git only — it has no SDK probe;
+  `bazel build //apps/mobile/vitruvian-remote:app` fails with a clear message when `ANDROID_HOME`
+  is unset. The NDK is hermetic (`//tools/android_ndk`).
+- **Build and install.** `bazel build //apps/mobile/vitruvian-remote:app`, then
+  `adb install -r bazel-bin/apps/mobile/vitruvian-remote/app.apk`. For wireless debugging's
+  ephemeral ports use `bazel run //tools/adb-connect`.
+- **Tests.** `bazel test //apps/mobile/vitruvian-remote/...` runs the `kt_jvm_test` targets
+  (`hid_codes_test`, `format_test`, `derive_test`, `wire_test`, `wake_on_lan_test`,
+  `bridge_policy_test`, `tuning_test`) and the `macagent` Rust tests (`:macagent_test`,
+  `:macagent_scripts_lib_test`, `//apps/mobile/vitruvian-remote/macagent/metrics:metrics_test`).
+  `:boot_smoke` installs the APK on an attached device or emulator and launches
+  `MainActivity`; it is `large` and needs that device, so run it by explicit label.
+- **Daemon.** `macagent/BUILD` carries the Rust binary (`:macagent`, built with rules_rust)
+  plus its `install` and `pair` helpers (`:install`, `:pair`); the six-digit pairing code
+  gates the macros, console and clipboard endpoints.
+- **Release and distribution.** Release-please cuts `vitruvian-remote-vX.Y.Z` on merge to `main`.
+  `.github/workflows/vitruvian-remote-release.yaml` packages the release APK with multi-ABI support
+  via `scripts/publish.sh` and attaches `VitruvianRemote-X.Y.Z.apk` to GitHub Releases. A macOS
+  job runs `bazel run //apps/mobile/vitruvian-remote/macmenu:publish-tool`, which attaches `VitruvianRemote-X.Y.Z-tool.zip`,
+  the Mac extension as the Vitruvian catalog installs it (universal, ad hoc signed).
+
+## House rules
+
+- **Never hardcode a design value.** No `Color(...)`, no bare `.dp` spacing, no font size off
+  the ramp. Missing values go in `packages/design-system/src/tokens.json` and reach Kotlin
+  through the generator. The Fibonacci scale (`Space.s1`…`s8`) is the only source of padding.
+- **Never edit `VitruvianTokens.kt`.** It is generated;
+  `//packages/design-system-android:tokens_are_current` fails the build if you do.
+- **New components belong in the design system, not here.** This app is screens, state and
+  wiring (`state/`, `shell/`, `screens/`, `overlays/`).
+- **Check all three postures** before calling a UI change done.
+- **Be honest on screen.** Every number is measured or labelled unavailable; the Home tag is
+  `LIVE`, `SIMULATED` (running on `state/MockHost.kt`) or `UNREACHABLE` — never a guess.
+- **`BUILD` is hand-authored.** Gazelle has no Kotlin/Android extension in this repo
+  (`# gazelle:ignore`), so a new `.kt` file must be added to the right target yourself. The
+  package defaults to app-private visibility (inter-app boundary); keep it that way.
+- **Cross-workspace contracts.** A change to `macagent/API.md` is a change to the app and the
+  daemon in one PR. The Vitruvian Speaker module asks the chosen
+  Vitruvian Speaker program (`--state --json`, `--apply --json`, after `--version` against
+  `MIN_SPEAKER_VERSION`) and never reads or writes its settings, secrets, history, status or
+  hook files; the one file it reads is `~/.gemini/speaker_door.json`, to learn which program (app or
+  Vitruvian extension) is chosen. Its test is the golden `apps/desktop/vitruvian-speaker/testdata/state_v1.json`.
+- **Not mirrored.** Unlike `devx`, `vitruvian-slack-mcp` and `vitruvian-code` there is no Copybara export;
+  this directory is the only place the app is edited.
+
+## Vitruvian Speaker Parity Checklist
+
+When `apps/desktop/vitruvian-speaker` changes its config schema, secret store, or distribution doors,
+update `vitruvian-remote` in lockstep across these files:
+
+- **Source of truth in `apps/desktop/vitruvian-speaker/Sources/VitruvianSpeakerCore/`:**
+  - `Models.swift` (`SpeakerConfig`, `SpeechLength`, `LocalSpeechEngine`, `GeminiVoice`,
+    `AnnouncementStyle`, `StyleModel`, `BroadcastSource`)
+  - `Door.swift` & `Profile.swift` (`~/.gemini/speaker_door.json` active door resolution,
+    `ToolData/dev.vitruvian.speaker/{settings.json,history.json,secrets.json,running.lock}`)
+  - `SecretStore.swift` (`secrets.json` `google.refreshToken` and `geminiAPIKey`)
+- **Counterparts in `apps/mobile/vitruvian-remote/`:**
+  1. `macagent/rs/src/speaker.rs` & `macagent_test` (`active_program()`, `state()`,
+     `plan_ops()`, `apply()`, `handle_say`, `handle_phone_say`, `run_volume`, `speak_phone`,
+     `phone_pause_media`, `phone_headphones_only`)
+  2. `macagent/API.md` (contract documentation for `/v1/speaker` and
+     `/v1/speaker/phone-say`)
+  3. `src/main/kotlin/dev/vitruvian/remote/state/Wire.kt` (`VitruvianSpeakerSources`, `VitruvianSpeakerWire`)
+  4. `src/main/kotlin/dev/vitruvian/remote/state/AgentClient.kt` (`AgentVitruvianSpeaker`,
+     `parseVitruvianSpeaker`, `setVitruvianSpeaker`)
+  5. `src/main/kotlin/dev/vitruvian/remote/state/Derive.kt` &
+     `src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt` (`vitruvianSpeakerRows`,
+     `vitruvianSpeakerExtraLists`, `setVitruvianSpeaker`)
+  6. `src/main/kotlin/dev/vitruvian/remote/bridge/Tools.kt` (`PhoneTools.speak` for `phone.speak`
+     WAV playback, Android `TextToSpeech` fallback, transient audio focus, and headphone-only
+     filtering)
+
+## Docs
+
+`docs/` is a TechDocs site (`mkdocs.yml`: index, macagent API, phone bridge);
+`bazel run //tools/techdocs:check` must still compile it after a docs change.

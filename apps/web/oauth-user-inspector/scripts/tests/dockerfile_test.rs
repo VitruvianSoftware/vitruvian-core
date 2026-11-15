@@ -410,3 +410,12 @@ fn copied_context_paths_are_not_dockerignored() {
         );
     }
 }
+
+#[test]
+fn frontend_tsconfig_includes_vite_client_types() {
+    let tsconfig = read("FRONTEND_TSCONFIG");
+    assert!(
+        tsconfig.contains("\"vite/client\""),
+        "frontend/tsconfig.json compilerOptions.types must include \"vite/client\" so import.meta.env compiles in Dockerfile: {tsconfig}"
+    );
+}

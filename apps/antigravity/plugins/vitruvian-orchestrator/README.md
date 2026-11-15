@@ -5,6 +5,7 @@ Antigravity desktop plugin that coordinates specialist helpers across a planned 
 ## What is in this plugin
 
 - **`orchestrate` lead skill (`skills/orchestrate/SKILL.md`)**: Turns the active Antigravity session into the lead that plans across five phases (`plan` → `design` → `delegate` → `review` → `close`), dispatches specialist helpers (`wren`, `scout`, `compass`, `quill`, and peers), reviews their work, and closes the flow. See [How the agent team works](../../../../docs/concepts/agent-team.md).
+- **Specialist subagents (`agents/*.md`)**: Generated from `.agents/roster/` and shipped directly inside this plugin so Antigravity discovers them natively (`<plugin>/agents/*.md`) even outside this repository.
 - **Live Orchestrator panel (`sidecars/panel/`)**: Shows five **Flow** cards — **Header**, **Burn-down**, **Task Board**, **Agents**, and **Spend**. Flows with no board posts, no extra channels, and no pause, retire, or kill events stay on this single **Flow** view. Once any of those appear, a tab bar adds **Board**, **Members**, **Graph**, and **Overview**.
 - **Orchestration rule (`rules/AGENTS.md`)**: Reminds the lead and helpers to report progress and surfaces the `[Orchestrator](sidecar://vitruvian-orchestrator/panel/)` pill in chat.
 

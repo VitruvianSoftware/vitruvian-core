@@ -15,7 +15,7 @@
     "//catalog:release_trigger_test fails when a row released from here has",
     "none, or when catalog-bump's workflow_run list differs from this column.",
     "manual: entries that are only ever changed by hand, and why.",
-    "//catalog:bump_test fails when an entry is in neither list."
+    "//catalog:catalog_test fails when an entry is in neither list, or a row or a manual name is no entry."
   ],
   "sources": [
     {
@@ -29,7 +29,7 @@
     },
     {
       "id": "dev.vitruvian.github",
-      "repo": "VitruvianSoftware/vitruvian-tool-github",
+      "repo": "VitruvianSoftware/vitruvian-github",
       "tagPrefix": "v",
       "asset": "github-tool-{version}.zip",
       "uploader": "github-actions[bot]",
@@ -46,20 +46,20 @@
     {
       "id": "dev.vitruvian.remote",
       "repo": "VitruvianSoftware/vitruvian-core",
-      "tagPrefix": "android-remote-v",
+      "tagPrefix": "vitruvian-remote-v",
       "asset": "VitruvianRemote-{version}-tool.zip",
       "uploader": "github-actions[bot]",
       "universal": true,
-      "releaseWorkflow": "android-remote-release"
+      "releaseWorkflow": "vitruvian-remote-release"
     },
     {
       "id": "dev.vitruvian.tv",
       "repo": "VitruvianSoftware/vitruvian-core",
-      "tagPrefix": "vitruvian-tool-tv-v",
+      "tagPrefix": "vitruvian-tv-v",
       "asset": "VitruvianTV-{version}-tool.zip",
       "uploader": "github-actions[bot]",
       "universal": false,
-      "releaseWorkflow": "vitruvian-tool-tv-release"
+      "releaseWorkflow": "vitruvian-tv-release"
     }
   ],
   "manual": {

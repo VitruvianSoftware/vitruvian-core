@@ -542,8 +542,8 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
         }
     }
     expect(
-        "three uploaded paths: the executable, the resource folder and the tool",
-        paths.len() == 3,
+        "four uploaded paths: the executable, the resource folder, the tool and the bot engine",
+        paths.len() == 4,
     );
     expect(
         "`if-no-files-found: error` on the upload",

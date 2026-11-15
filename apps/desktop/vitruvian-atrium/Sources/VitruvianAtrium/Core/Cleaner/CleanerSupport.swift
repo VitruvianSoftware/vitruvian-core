@@ -62,7 +62,7 @@ package enum CleanerSupport {
     package static func isProtectedBundleID(_ id: String) -> Bool {
         let lowered = id.lowercased()
         let wrapped = "." + lowered + "."
-        if wrapped.contains(".com.apple.") || wrapped.contains(".com.vitruviansoftware.atrium.")
+        if wrapped.contains(".com.apple.") || wrapped.contains(".com.vitruviansoftware.vitruvian.")
             || wrapped.contains(".developer.apple.") || wrapped.contains(".is.workflow.") {
             return true
         }
@@ -244,6 +244,17 @@ package enum CleanerSupport {
             if lowered.hasPrefix(id + ".") || id.hasPrefix(lowered + ".") { return true }
         }
         return false
+    }
+
+    /// Vendors sometimes use their domain as the support directory name.
+    /// An installed net.battle.app keeps Battle.net on a dot boundary.
+    package static func isOwnedSupportDomain(_ name: String, byInstalled installed: Set<String>) -> Bool {
+        let parts = name.lowercased().split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty,
+              !hostingNamespaces.contains(String(parts[0])) else { return false }
+        let namespace = "\(parts[1]).\(parts[0])"
+        let prefix = namespace + "."
+        return installed.contains(namespace) || installed.contains { $0.hasPrefix(prefix) }
     }
 
     /// The executables a launchd property list points at, in the order they

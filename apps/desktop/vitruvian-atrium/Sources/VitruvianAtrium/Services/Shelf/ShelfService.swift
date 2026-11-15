@@ -263,7 +263,7 @@ package final class ShelfService: ObservableObject {
     private var promiseTransfers: [UUID: (target: UUID?, transfer: ShelfFilePromiseTransfer, additions: [Item])] = [:]
 
     nonisolated private let tempDir: URL = {
-        let id = Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.atrium"
+        let id = Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.vitruvian"
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("VitruvianAtriumShelf", isDirectory: true)
             .appendingPathComponent(id, isDirectory: true)
@@ -281,7 +281,7 @@ package final class ShelfService: ObservableObject {
     /// Writes coalesce per mutation cycle already; the JSON encode itself
     /// also stays off the main thread (a full shelf of large texts is real
     /// work), serialized so blobs land in mutation order.
-    nonisolated private static let persistQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.shelf-persist",
+    nonisolated private static let persistQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.shelf-persist",
                                                     qos: .utility)
 
     private var persistScheduled = false
@@ -1376,8 +1376,16 @@ package final class ShelfService: ObservableObject {
         }
     }
 
-    package func beginInternalDrag(ids: [UUID], from window: NSWindow?) {
-        internalDrag.begin(ids: ids, from: window)
+    package func beginInternalDrag(items draggedItems: [Item], from window: NSWindow?) {
+        // Use the same resolved payloads as the pasteboard. A healed bookmark
+        // does not replace its saved item until the next main-loop turn.
+        // Cache the result because AppKit asks for the mask throughout a drag.
+        let files = draggedItems.compactMap { item -> URL? in
+            guard case let .file(url) = item.payload else { return nil }
+            return url
+        }
+        internalDrag.begin(ids: draggedItems.map(\.id), from: window,
+                           holdsPackageContent: ShelfInteractionSupport.holdsPackageContent(files))
     }
 
     /// Where a tile drag is now, so the island can step aside once its
@@ -1398,7 +1406,8 @@ package final class ShelfService: ObservableObject {
         let protected = protectedIDs
         return ShelfInteractionSupport.offersMoveOutside(
             removeAfterDrop: UserDefaults.standard[Preferences.shelfRemoveAfterDrop],
-            dragIncludesPinned: internalDrag.ids.contains(where: protected.contains))
+            dragIncludesPinned: internalDrag.ids.contains(where: protected.contains),
+            dragIncludesPackageContent: internalDrag.holdsPackageContent)
             ? [.copy, .move]
             : .copy
     }

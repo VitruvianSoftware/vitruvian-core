@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
+import ImageIO
 import VitruvianCourierCore
 import Quartz
 import SwiftUI
@@ -786,9 +787,11 @@ public struct EnhancedImageView: View {
     @State private var loadedCGImage: CGImage?
     @State private var loadedAnimatedImage: NSImage?
     @State private var failed = false
+    /// The picture's real pixel size read from disk, when the message carries no width/height (common for bridged images).
+    @State private var diskSize: CGSize?
 
     /// The longest side of a picture in the timeline, in points.
-    public static let longestSide: CGFloat = 320
+    public static let longestSide: CGFloat = 400
 
     public init(
         message: TimelineMessage,
@@ -820,70 +823,80 @@ public struct EnhancedImageView: View {
     }
 
     public var body: some View {
+        // A flexible box of the picture's proportions (never wider than its natural size, narrower when the window is);
+        // the picture fills it and is clipped to it.
+        Color.clear
+            .aspectRatio(size.width / size.height, contentMode: .fit)
+            .frame(maxWidth: size.width)
+            .overlay { mediaStack }
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard !forceErrorState, !failed else { return }
+                onOpenLightbox(message.id)
+            }
+            .task(id: message.mediaPath) { await loadImage() }
+            .accessibilityElement()
+            .accessibilityLabel(message.fileName.isEmpty ? String(localized: "Image") : message.fileName)
+            .accessibilityAddTraits(.isImage)
+    }
+
+    @ViewBuilder
+    private var mediaStack: some View {
         ZStack {
             if forceErrorState || failed {
                 ImageErrorCard(fileName: message.fileName, size: size)
             } else if !forceBlurHashPlaceholder, let preloadedImage {
                 if message.isGIF {
                     AnimatedGIFImageView(image: preloadedImage)
-                        .frame(width: size.width, height: size.height)
                 } else {
                     Image(nsImage: preloadedImage)
                         .resizable()
                         .scaledToFill()
-                        .frame(width: size.width, height: size.height)
                 }
                 badgesOverlay
             } else if !forceBlurHashPlaceholder, let loadedAnimatedImage, message.isGIF {
                 AnimatedGIFImageView(image: loadedAnimatedImage)
-                    .frame(width: size.width, height: size.height)
                 badgesOverlay
             } else if !forceBlurHashPlaceholder, let loadedCGImage {
                 Image(decorative: loadedCGImage, scale: 2)
                     .resizable()
                     .scaledToFill()
-                    .frame(width: size.width, height: size.height)
                 badgesOverlay
             } else {
                 placeholderView
             }
         }
-        .frame(width: size.width, height: size.height)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .contentShape(Rectangle())
-        .onTapGesture {
-            guard !forceErrorState, !failed else { return }
-            onOpenLightbox(message.id)
+    }
+
+    private func loadImage() async {
+        if (message.width ?? 0) <= 0 || (message.height ?? 0) <= 0 {
+            diskSize = await ImagePixelSizeReader.shared.size(ofFirstReadable: [message.mediaPath, message.thumbnailPath])
         }
-        .task(id: message.mediaPath) {
-            guard !forceBlurHashPlaceholder, preloadedImage == nil else { return }
-            if forceErrorState {
-                failed = true
-                return
-            }
-            loadedCGImage = nil
-            loadedAnimatedImage = nil
-            failed = false
-            guard let path = localPath else {
-                if !message.mediaPath.isEmpty {
-                    // Reject non-local paths immediately as an error.
-                    failed = true
-                }
-                return
-            }
-            if message.isGIF, let nsImage = NSImage(contentsOfFile: path) {
-                loadedAnimatedImage = nsImage
-                return
-            }
-            if let thumbnail = await ThumbnailLoader.shared.thumbnail(atPath: path) {
-                loadedCGImage = thumbnail.image
-            } else {
+        guard !forceBlurHashPlaceholder, preloadedImage == nil else { return }
+        if forceErrorState {
+            failed = true
+            return
+        }
+        loadedCGImage = nil
+        loadedAnimatedImage = nil
+        failed = false
+        guard let path = localPath else {
+            if !message.mediaPath.isEmpty {
+                // Reject non-local paths immediately as an error.
                 failed = true
             }
+            return
         }
-        .accessibilityElement()
-        .accessibilityLabel(message.fileName.isEmpty ? String(localized: "Image") : message.fileName)
-        .accessibilityAddTraits(.isImage)
+        if message.isGIF, let nsImage = NSImage(contentsOfFile: path) {
+            loadedAnimatedImage = nsImage
+            return
+        }
+        if let thumbnail = await ThumbnailLoader.shared.thumbnail(atPath: path) {
+            loadedCGImage = thumbnail.image
+        } else {
+            failed = true
+        }
     }
 
     @ViewBuilder
@@ -894,7 +907,6 @@ public struct EnhancedImageView: View {
                     .resizable()
                     .interpolation(.high)
                     .scaledToFill()
-                    .frame(width: size.width, height: size.height)
             } else {
                 RoundedRectangle(cornerRadius: 8).fill(.quaternary)
             }
@@ -950,7 +962,13 @@ public struct EnhancedImageView: View {
 
     /// The picture's own proportions within the longest side, or a plain rectangle when they are not known.
     public var size: CGSize {
-        Self.proportionalSize(width: message.width, height: message.height)
+        if let w = message.width, let h = message.height, w > 0, h > 0 {
+            return Self.proportionalSize(width: w, height: h)
+        }
+        if let diskSize {
+            return Self.proportionalSize(width: Int(diskSize.width), height: Int(diskSize.height))
+        }
+        return Self.proportionalSize(width: nil, height: nil)
     }
 
     /// Computes a proportional inline media frame within `longestSide`, falling back to `fallback` when dimensions are absent.
@@ -958,13 +976,42 @@ public struct EnhancedImageView: View {
         width: Int?,
         height: Int?,
         longestSide: CGFloat = longestSide,
-        fallback: CGSize = CGSize(width: 240, height: 180)
+        fallback: CGSize = CGSize(width: 300, height: 225)
     ) -> CGSize {
         guard let width, let height, width > 0, height > 0 else {
             return fallback
         }
         let scale = min(1, longestSide / CGFloat(max(width, height)))
         return CGSize(width: max(80, CGFloat(width) * scale), height: max(60, CGFloat(height) * scale))
+    }
+}
+
+/// Reads a picture's real pixel size from its file header (no decoding), cached, for bridged images that arrive
+/// without width/height.
+actor ImagePixelSizeReader {
+    static let shared = ImagePixelSizeReader()
+    private var cache: [String: CGSize] = [:]
+
+    func size(ofFirstReadable paths: [String?]) -> CGSize? {
+        for path in paths.compactMap({ $0 }) where isLocalMediaStorePath(path) {
+            if let known = cache[path] { return known }
+            if let size = Self.read(path) {
+                cache[path] = size
+                return size
+            }
+        }
+        return nil
+    }
+
+    nonisolated static func read(_ path: String) -> CGSize? {
+        guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              var w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
+              var h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue,
+              w > 0, h > 0 else { return nil }
+        // EXIF orientations 5-8 are rotated a quarter turn.
+        if let o = (props[kCGImagePropertyOrientation] as? NSNumber)?.intValue, (5 ... 8).contains(o) { swap(&w, &h) }
+        return CGSize(width: w, height: h)
     }
 }
 

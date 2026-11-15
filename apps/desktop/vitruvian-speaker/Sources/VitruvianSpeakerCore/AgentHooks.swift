@@ -103,6 +103,24 @@ public enum AntigravityHook {
         return reason == "NO_TOOL_CALL" && idle
     }
 
+    /// True when any conversation folder under `brainDirectory` records
+    /// `conversationID` in `.system_generated/subagents/<conversationID>.json`.
+    public static func hasSubagentMarker(
+        conversationID: String,
+        brainDirectory: URL,
+        fileManager: FileManager = .default
+    ) -> Bool {
+        guard !conversationID.isEmpty,
+              let siblings = try? fileManager.contentsOfDirectory(
+                  at: brainDirectory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else {
+            return false
+        }
+        let markerRelPath = ".system_generated/subagents/\(conversationID).json"
+        return siblings.contains { folder in
+            fileManager.fileExists(atPath: folder.appendingPathComponent(markerRelPath).path)
+        }
+    }
+
     /// True when `path` belongs to an Antigravity subagent conversation:
     /// Antigravity records every subagent in its parent conversation's
     /// `<brain>/<parent>/.system_generated/subagents/<id>.json`.
@@ -113,14 +131,8 @@ public enum AntigravityHook {
               sysGenDir.lastPathComponent == ".system_generated" else { return false }
         let convDir = sysGenDir.deletingLastPathComponent()
         let convID = convDir.lastPathComponent
-        guard !convID.isEmpty else { return false }
         let brainDir = convDir.deletingLastPathComponent()
-        guard let siblings = try? FileManager.default.contentsOfDirectory(
-            at: brainDir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { return false }
-        let markerRelPath = ".system_generated/subagents/\(convID).json"
-        return siblings.contains { folder in
-            FileManager.default.fileExists(atPath: folder.appendingPathComponent(markerRelPath).path)
-        }
+        return hasSubagentMarker(conversationID: convID, brainDirectory: brainDir)
     }
 
     /// Entry point for `VitruvianSpeaker --antigravity-hook`.

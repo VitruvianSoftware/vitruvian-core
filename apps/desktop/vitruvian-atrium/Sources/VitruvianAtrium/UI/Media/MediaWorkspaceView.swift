@@ -20,7 +20,8 @@ package struct PanelMediaView: View {
     package var onClose: () -> Void
 
     package var body: some View {
-        MediaWorkspaceView(compact: true, onClose: onClose)
+        // Both the menu panel and launcher already scroll their utility content.
+        MediaWorkspaceView(compact: true, onClose: onClose, scrollsContent: false)
             .onAppear { PanelInteractionState.shared.viewKeepsPopoverOpen = true }
             .onDisappear { PanelInteractionState.shared.viewKeepsPopoverOpen = false }
     }
@@ -136,13 +137,15 @@ package struct MediaWorkspaceView: View {
     private let preservesServiceState: Bool
     private let onContentHeightChange: ((CGFloat) -> Void)?
     private let onToolChange: (() -> Void)?
+    private let scrollsContent: Bool
 
     package init(compact: Bool, onClose: (() -> Void)? = nil,
          media: MediaService = .shared, initialInputs: [URL] = [],
          initialTool: MediaTool? = nil, preservesServiceState: Bool = false,
          workspace: MediaWorkspaceSelection? = nil,
          onContentHeightChange: ((CGFloat) -> Void)? = nil,
-         onToolChange: (() -> Void)? = nil) {
+         onToolChange: (() -> Void)? = nil,
+         scrollsContent: Bool = true) {
         self.compact = compact
         self.onClose = onClose
         self.media = media
@@ -151,6 +154,7 @@ package struct MediaWorkspaceView: View {
         self.preservesServiceState = preservesServiceState
         self.onContentHeightChange = onContentHeightChange
         self.onToolChange = onToolChange
+        self.scrollsContent = scrollsContent
         _workspace = StateObject(wrappedValue: workspace ?? MediaWorkspaceSelection())
     }
 
@@ -251,7 +255,8 @@ package struct MediaWorkspaceView: View {
     }
 
     private var layout: some View {
-        MediaWorkspaceStack(compact: compact, onContentHeightChange: onContentHeightChange) {
+        MediaWorkspaceStack(compact: compact, onContentHeightChange: onContentHeightChange,
+                            scrollsContent: scrollsContent) {
             header
         } toolPicker: {
             toolPicker
@@ -1692,50 +1697,48 @@ package struct MediaWorkspaceView: View {
     }()
 }
 
-/// The workspace's header, tool picker and content. In the island it reports
-/// its content's natural height, so the island can fit it; on its own, the
-/// content scrolls under a fixed header and picker.
+/// The workspace's header, tool picker and content, at their natural height,
+/// which the island is told so it can fit them. They scroll as one region,
+/// the picker with the options, so a short viewport still reaches the last
+/// setting; a host that already scrolls passes `scrollsContent: false`.
 package struct MediaWorkspaceStack<Header: View, ToolPicker: View, Content: View>: View {
     private let compact: Bool
     private let onContentHeightChange: ((CGFloat) -> Void)?
+    private let scrollsContent: Bool
     private let header: Header
     private let toolPicker: ToolPicker
     private let content: Content
 
-    package init(compact: Bool, onContentHeightChange: ((CGFloat) -> Void)?,
+    package init(compact: Bool, onContentHeightChange: ((CGFloat) -> Void)?, scrollsContent: Bool = true,
                  @ViewBuilder header: () -> Header, @ViewBuilder toolPicker: () -> ToolPicker,
                  @ViewBuilder content: () -> Content) {
         self.compact = compact
         self.onContentHeightChange = onContentHeightChange
+        self.scrollsContent = scrollsContent
         self.header = header()
         self.toolPicker = toolPicker()
         self.content = content()
     }
 
-    package var body: some View {
-        Group {
-            if let onContentHeightChange {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: compact ? 10 : 14) {
-                        header
-                        toolPicker
-                        content.padding(.trailing, 1)
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
-                        onContentHeightChange($0)
-                    }
-                }
-            } else {
-                VStack(alignment: .leading, spacing: compact ? 10 : 14) {
-                    header
-                    toolPicker
-                    ScrollView {
-                        content.padding(.trailing, 1)
-                    }
-                    .frame(maxHeight: compact ? 430 : .infinity)
-                }
-            }
+    @ViewBuilder package var body: some View {
+        // One scroll region: the workspace's own, or, in the menu panel and
+        // the launcher, which already scroll their content, theirs.
+        if scrollsContent {
+            ScrollView { workspaceContent }
+        } else {
+            workspaceContent
+        }
+    }
+
+    private var workspaceContent: some View {
+        VStack(alignment: .leading, spacing: compact ? 10 : 14) {
+            header
+            toolPicker
+            content.padding(.trailing, 1)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+            onContentHeightChange?($0)
         }
     }
 }

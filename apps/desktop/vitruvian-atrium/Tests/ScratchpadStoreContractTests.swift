@@ -29,7 +29,7 @@ enum ScratchpadStoreContractTests {
 
         func fixture(_ check: (URL, UserDefaults, inout ScratchpadStore) throws -> Void) {
             let directory = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-            let suiteName = "com.vitruviansoftware.atrium.tests.scratchpad.\(UUID().uuidString)"
+            let suiteName = "com.vitruviansoftware.vitruvian.tests.scratchpad.\(UUID().uuidString)"
             let defaults = ScratchDefaults.suite(named: suiteName)!
             defer {
                 try? manager.removeItem(at: directory)
@@ -223,7 +223,7 @@ final class ScratchpadHarness {
     }
 
     let directory: URL
-    private let suiteName = "com.vitruviansoftware.atrium.tests.scratchpad-service.\(UUID().uuidString)"
+    private let suiteName = "com.vitruviansoftware.vitruvian.tests.scratchpad-service.\(UUID().uuidString)"
     var island: Window?
     var warnings: [String] = []
     var autosaves: [(delay: TimeInterval, work: DispatchWorkItem)] = []

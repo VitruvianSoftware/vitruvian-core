@@ -36,8 +36,9 @@ pub use gates::{
     INERT_TOOLS,
 };
 pub use query::{
-    build_test_rdeps_query, compute_rdeps_map, earlier_map_base, internal_query_errors, last_lines,
-    load_rdeps_map, parse_graph_edges, peek_rdeps_map_commit, RdepsMap,
+    build_test_rdeps_query, compute_rdeps_map, compute_unit_packages, earlier_map_base,
+    internal_query_errors, is_mac_runner, last_lines, load_rdeps_map, parse_graph_edges,
+    peek_rdeps_map_commit, RdepsMap, RDEPS_MAP_SCHEMA,
 };
 
 use std::time::Instant;
@@ -365,7 +366,30 @@ impl<'a> Engine<'a> {
                 c.strip_suffix(":all").unwrap_or(c).to_string()
             })
             .collect();
+        // A macOS unit the map describes wakes only when a changed package
+        // is one its own targets reach (or its own package, where it is
+        // declared). The rule below is broader: any affected test anywhere
+        // under the unit's package wakes it, so an Android-only change in a
+        // suite woke the suite's Mac unit. Mac runners are the scarcest we
+        // have (5 at a time), so they get the exact answer when we have it.
+        let unit_packages = if used_map {
+            self.rdeps_map
+                .as_ref()
+                .and_then(|m| m.unit_packages.as_ref())
+        } else {
+            None
+        };
         for u in &all_units {
+            if let Some(reach) = unit_packages.and_then(|up| up.get(&u.name)) {
+                if query::is_mac_runner(&u.runner) {
+                    if pkg_prefixes.contains(&u.package)
+                        || reach.iter().any(|p| pkg_prefixes.contains(p))
+                    {
+                        plan.matrix.push(entry(u));
+                    }
+                    continue;
+                }
+            }
             let mut affected = pkg_prefixes.contains(&u.package);
             if used_map {
                 let inside = format!("{}/", u.package);

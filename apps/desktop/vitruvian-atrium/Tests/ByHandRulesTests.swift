@@ -19,6 +19,20 @@ enum ByHandRulesTests {
         answers(suite)
         keyTargets(suite)
         extensionsPage(suite)
+        theRunningApp(suite)
+    }
+
+    static func theRunningApp(_ suite: TestSuite) {
+        typealias Listed = ByHandRules.Listed
+        let ghost = Listed(pid: -1, hasProgram: false)
+        let app = Listed(pid: 11057, hasProgram: true)
+        suite.expect(ByHandRules.running(among: [ghost, app]) == 1
+                         && ByHandRules.running(among: [app]) == 0
+                         && ByHandRules.running(among: [Listed(pid: 9, hasProgram: true, isTerminated: true), app]) == 1
+                         && ByHandRules.running(among: [ghost]) == nil
+                         && ByHandRules.running(among: []) == nil,
+                     "the app is the entry with a program running behind it, not an entry macOS kept after the "
+                         + "app updated itself into a bundle of a new name")
     }
 
     static func extensionsPage(_ suite: TestSuite) {

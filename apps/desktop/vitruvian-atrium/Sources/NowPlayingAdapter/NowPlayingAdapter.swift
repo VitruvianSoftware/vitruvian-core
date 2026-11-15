@@ -119,7 +119,7 @@ public func vitruvianAtriumNowPlayingGet() {
         NotchNativeQueue.observe([:])
         return
     }
-    let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.now-playing-adapter")
+    let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.now-playing-adapter")
     let group = DispatchGroup()
     let lock = NSLock()
     var reply: [String: Any] = [:]
@@ -285,7 +285,7 @@ public func vitruvianAtriumNowPlayingWatch() {
     }
     watching = true
     register(.main)
-    let reader = DispatchQueue(label: "com.vitruviansoftware.atrium.now-playing-watch")
+    let reader = DispatchQueue(label: "com.vitruviansoftware.vitruvian.now-playing-watch")
     // `nonisolated(unsafe)`: `refresh()` runs only on the main queue, from the
     // notification observers and `readAt`, so only the main queue touches it.
     nonisolated(unsafe) var pending: DispatchWorkItem?

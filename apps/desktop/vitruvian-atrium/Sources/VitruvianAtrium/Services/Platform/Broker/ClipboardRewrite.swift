@@ -20,14 +20,34 @@ package struct ClipboardRewriteRule: Sendable {
     /// Asked only when the copy also carries HTML, which the rewrite drops:
     /// whether dropping it loses nothing.
     package var dropsMarkup: @Sendable (_ html: String, _ text: String) -> Bool
+    /// Types the rewrite may carry over beside the replacement. Each one on
+    /// the clipboard is read, once the replacement is known, and `carry`
+    /// decides what becomes of it.
+    package var carriedTypes: [String]
+    /// Asked with a carried type, its data and the copied text.
+    package var carry: @Sendable (_ type: String, _ data: Data?, _ text: String) -> ClipboardCarriedData
 
     package init(readsText: @escaping @Sendable ([String]) -> Bool,
                  replacement: @escaping @Sendable (String) -> ClipboardReplacement?,
-                 dropsMarkup: @escaping @Sendable (String, String) -> Bool) {
+                 dropsMarkup: @escaping @Sendable (String, String) -> Bool,
+                 carriedTypes: [String] = [],
+                 carry: @escaping @Sendable (String, Data?, String) -> ClipboardCarriedData = { _, _, _ in .drop }) {
         self.readsText = readsText
         self.replacement = replacement
         self.dropsMarkup = dropsMarkup
+        self.carriedTypes = carriedTypes
+        self.carry = carry
     }
+}
+
+/// What becomes of a carried type when the copy is rewritten.
+package enum ClipboardCarriedData: Equatable, Sendable {
+    /// Written back beside the replacement, as this data.
+    case keep(Data)
+    /// Left out of the rewrite.
+    case drop
+    /// The copy is left exactly as it is.
+    case refuse
 }
 
 /// What a rule puts in place of a copied link.
@@ -111,6 +131,20 @@ package enum ClipboardRewrite {
            !rule.dropsMarkup(pasteboard.string(forType: .html) ?? "", text) {
             return ClipboardPoll(changeCount: changeCount, replaced: nil)
         }
+        // Data the rule carries over, such as a link's preview, is read and
+        // decided before the last check, like the source below.
+        var carried: [(type: String, data: Data)] = []
+        for type in rule.carriedTypes where types.contains(type) {
+            let data = pasteboard.data(forType: NSPasteboard.PasteboardType(type))
+            guard pasteboard.changeCount == changeCount, !token.isCancelled else {
+                return ClipboardPoll(changeCount: changeCount, replaced: nil)
+            }
+            switch rule.carry(type, data, text) {
+            case .keep(let kept): carried.append((type, kept))
+            case .drop: break
+            case .refuse: return ClipboardPoll(changeCount: changeCount, replaced: nil)
+            }
+        }
         // A promised source can block too. Read it before the last check,
         // so a replacement copy or cancellation during that wait wins.
         let source = pasteboard.string(forType: .source)
@@ -125,18 +159,20 @@ package enum ClipboardRewrite {
         // not credit the rewritten link to the app in front.
         let rewrittenChangeCount = write(replacement.text, source: source,
                                          remote: types.contains("com.apple.is-remote-clipboard"),
-                                         to: pasteboard)
+                                         carried: carried, to: pasteboard)
         return ClipboardPoll(changeCount: rewrittenChangeCount, replaced: replacement)
     }
 
-    /// Replaces the clipboard with a link, as text and as a URL, and
-    /// answers with the change count after it.
+    /// Replaces the clipboard with a link, as text and as a URL, with any
+    /// carried data beside it, and answers with the change count after it.
     @discardableResult
     package static func write(_ link: String, source: String? = nil, remote: Bool = false,
+                              carried: [(type: String, data: Data)] = [],
                               to pasteboard: NSPasteboard) -> Int {
         pasteboard.clearContents()
         pasteboard.setString(link, forType: .string)
         pasteboard.setString(link, forType: urlType)
+        for item in carried { pasteboard.setData(item.data, forType: NSPasteboard.PasteboardType(item.type)) }
         if let source { pasteboard.setString(source, forType: .source) }
         if remote { pasteboard.setData(Data(), forType: .remoteClipboard) }
         return pasteboard.changeCount

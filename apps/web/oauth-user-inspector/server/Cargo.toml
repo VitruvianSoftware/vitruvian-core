@@ -38,5 +38,8 @@ name = "oauth-user-inspector-server"
 path = "src/bin/server.rs"
 
 [dependencies]
+rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"] }
+sentry = { version = "0.35", default-features = false, features = ["backtrace", "contexts", "panic", "ureq"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+ureq = { version = "2.12", default-features = false, features = ["tls"] }

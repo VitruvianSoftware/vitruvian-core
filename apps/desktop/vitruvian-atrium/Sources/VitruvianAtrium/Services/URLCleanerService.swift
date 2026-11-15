@@ -128,7 +128,18 @@ package final class URLCleanerService: ObservableObject {
             },
             // The rewrite drops the HTML, which is only right when the HTML adds
             // nothing to the link but formatting.
-            dropsMarkup: { URLCleaning.markupAddsOnlyFormatting($0, to: $1) })
+            dropsMarkup: { URLCleaning.markupAddsOnlyFormatting($0, to: $1) },
+            // Safari can put a rich preview beside a copied link. It is kept
+            // with both of its addresses cleaned, so a rich paste cannot bring
+            // the tracking back; a preview of another link keeps the copy as it is.
+            carriedTypes: [URLCleanerLinkMetadata.pasteboardType.rawValue],
+            carry: { _, data, text in
+                switch URLCleanerLinkMetadata.rewrite(data, matching: text, rules: rules()) {
+                case .preserved(let data): return .keep(data)
+                case .discard: return .drop
+                case .incompatible: return .refuse
+                }
+            })
     }
 
     /// The saved rules. With no reader, the built-in rules alone.

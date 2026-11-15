@@ -54,6 +54,7 @@
     "io.opencensus:opencensus-api": 2042364617,
     "io.opencensus:opencensus-contrib-grpc-metrics": 317094357,
     "io.perfmark:perfmark-api": 1019157794,
+    "io.sentry:sentry": -1795538956,
     "junit:junit": -744267592,
     "org.checkerframework:checker-qual": -819031361,
     "org.codehaus.mojo:animal-sniffer-annotations": -1634689353,
@@ -181,6 +182,7 @@
     "io.opencensus:opencensus-contrib-grpc-metrics": 1140516600,
     "io.opencensus:opencensus-contrib-http-util": 1172924790,
     "io.perfmark:perfmark-api": -1795841558,
+    "io.sentry:sentry": 1813982308,
     "javax.annotation:javax.annotation-api": -1009230154,
     "junit:junit": -1256429642,
     "org.apache.httpcomponents:httpclient": -1749744464,
@@ -901,6 +903,12 @@
         "jar": "c7b478503ec524e55df19b424d46d27c8a68aeb801664fadd4f069b71f52d0f6"
       },
       "version": "0.27.0"
+    },
+    "io.sentry:sentry": {
+      "shasums": {
+        "jar": "62f2d01013a6c3592f2a079f56b28db0971f6413991edb20c4a51ff4a9da36ff"
+      },
+      "version": "7.14.0"
     },
     "javax.annotation:javax.annotation-api": {
       "shasums": {
@@ -2017,6 +2025,30 @@
     "io.perfmark:perfmark-api": [
       "io.perfmark"
     ],
+    "io.sentry:sentry": [
+      "io.sentry",
+      "io.sentry.backpressure",
+      "io.sentry.cache",
+      "io.sentry.clientreport",
+      "io.sentry.config",
+      "io.sentry.exception",
+      "io.sentry.hints",
+      "io.sentry.instrumentation.file",
+      "io.sentry.internal.debugmeta",
+      "io.sentry.internal.gestures",
+      "io.sentry.internal.modules",
+      "io.sentry.internal.viewhierarchy",
+      "io.sentry.metrics",
+      "io.sentry.profilemeasurements",
+      "io.sentry.protocol",
+      "io.sentry.rrweb",
+      "io.sentry.transport",
+      "io.sentry.util",
+      "io.sentry.util.thread",
+      "io.sentry.vendor",
+      "io.sentry.vendor.gson.internal.bind.util",
+      "io.sentry.vendor.gson.stream"
+    ],
     "javax.annotation:javax.annotation-api": [
       "javax.annotation",
       "javax.annotation.security",
@@ -2354,6 +2386,7 @@
       "io.opencensus:opencensus-contrib-grpc-metrics",
       "io.opencensus:opencensus-contrib-http-util",
       "io.perfmark:perfmark-api",
+      "io.sentry:sentry",
       "javax.annotation:javax.annotation-api",
       "junit:junit",
       "org.apache.httpcomponents:httpclient",
@@ -2493,6 +2526,7 @@
       "io.opencensus:opencensus-contrib-grpc-metrics",
       "io.opencensus:opencensus-contrib-http-util",
       "io.perfmark:perfmark-api",
+      "io.sentry:sentry",
       "javax.annotation:javax.annotation-api",
       "junit:junit",
       "org.apache.httpcomponents:httpclient",

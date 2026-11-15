@@ -53,8 +53,8 @@ pub const LEDGER_PREAMBLE: &str = "\
 ";
 
 pub const BRAND_SUBSTITUTIONS: &[(&str, &str)] = &[
-    ("com.vorssaint.utils", "com.vitruviansoftware.atrium"),
-    ("com.vorssaint.", "com.vitruviansoftware.atrium."),
+    ("com.vorssaint.utils", "com.vitruviansoftware.vitruvian"),
+    ("com.vorssaint.", "com.vitruviansoftware.vitruvian."),
     ("import Vorssaint", "import VitruvianAtrium"),
     ("Vorssaint", "VitruvianAtrium"),
     ("vorssaint", "vitruvian"),
@@ -2488,7 +2488,7 @@ mod tests {
         );
         assert_eq!(
             to_fork_line("let id = \"com.vorssaint.utils.helper\"\n"),
-            "let id = \"com.vitruviansoftware.atrium.helper\"\n"
+            "let id = \"com.vitruviansoftware.vitruvian.helper\"\n"
         );
         assert_eq!(
             to_fork_line("let s = \"vorssaint://x\" // VORSSAINT\n"),
@@ -2790,7 +2790,7 @@ suite.expect(keyCode == 53)
             Self::write(
                 &mono,
                 &format!("{}/Sources/VitruvianAtrium/Core/App.swift", APP_DIR),
-                "// Copyright (C) 2026 Vorssaint\nimport Foundation\npackage struct VitruvianAtriumApp {\n    package let forkOnly = true\n    package let id = \"com.vitruviansoftware.atrium\"\n    package let count = 1\n}\n",
+                "// Copyright (C) 2026 Vorssaint\nimport Foundation\npackage struct VitruvianAtriumApp {\n    package let forkOnly = true\n    package let id = \"com.vitruviansoftware.vitruvian\"\n    package let count = 1\n}\n",
             );
             Self::write(
                 &mono,

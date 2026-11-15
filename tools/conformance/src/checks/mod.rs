@@ -28,6 +28,7 @@ mod delivery;
 mod governance;
 mod iac;
 mod labels;
+mod layout;
 mod security;
 mod swift_tests;
 mod versions;
@@ -70,9 +71,11 @@ pub fn run_all(ctx: &Context) {
     iac::check_copybara_infra_exclude(ctx);
     iac::check_copybara_version_maps(ctx);
     iac::check_copybara_export_triggers(ctx);
+    iac::check_copybara_export_awaits_key_rotation(ctx);
     iac::check_copybara_component_lists(ctx);
 
     iac::check_release_infra_exclude(ctx);
+    versions::check_release_json_extra_files(ctx);
     delivery::check_no_local_paths(ctx);
     ci::check_ci_gate_lists_match(ctx);
     delivery::check_deploy_sequencer_gate(ctx);
@@ -93,6 +96,7 @@ pub fn run_all(ctx: &Context) {
     governance::check_preview_governance(ctx);
     governance::check_lab_hostnames_served(ctx);
     brew::check_brew_tap_instructions(ctx);
+    layout::check_extension_layout(ctx);
 
     security::check_checkout_credentials(ctx);
     security::check_dependabot_action_coverage(ctx);

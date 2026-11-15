@@ -26,10 +26,10 @@ use release_exec::{
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const APP_BUNDLE_ID: &str = "com.vitruviansoftware.atrium";
-pub const FAN_HELPER_ID: &str = "com.vitruviansoftware.atrium.fan-control";
-pub const NOW_PLAYING_ADAPTER_ID: &str = "com.vitruviansoftware.atrium.now-playing";
-pub const MOUSE_TOOL_ID: &str = "com.vitruviansoftware.atrium.gravastar-mouse";
+pub const APP_BUNDLE_ID: &str = "com.vitruviansoftware.vitruvian";
+pub const FAN_HELPER_ID: &str = "com.vitruviansoftware.vitruvian.fan-control";
+pub const NOW_PLAYING_ADAPTER_ID: &str = "com.vitruviansoftware.vitruvian.now-playing";
+pub const MOUSE_TOOL_ID: &str = "com.vitruviansoftware.vitruvian.gravastar-mouse";
 pub const ENTITLEMENTS_REL: &str = "Resources/VitruvianAtrium.entitlements";
 pub const USAGE: &str = "usage: package-release <path to the Bazel-built VitruvianAtrium.zip>";
 

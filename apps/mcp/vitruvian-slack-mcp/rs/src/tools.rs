@@ -44,6 +44,7 @@ pub const HTTP_WITHHELD_DESTRUCTIVE: &[&str] = &[
     "slack_delete_canvas",
     "slack_set_user_group_enabled",
     "slack_set_user_group_members",
+    "slack_delete_scheduled_message",
 ];
 
 pub const HTTP_WITHHELD_WITHOUT_USER_TOKEN: &[&str] = &[
@@ -68,6 +69,10 @@ pub const HTTP_WITHHELD_WITHOUT_USER_TOKEN: &[&str] = &[
     "slack_update_user_group",
     "slack_set_user_group_members",
     "slack_set_user_group_enabled",
+    "slack_open_dm",
+    "slack_schedule_message",
+    "slack_list_scheduled_messages",
+    "slack_delete_scheduled_message",
 ];
 
 pub const HTTP_WITHHELD_TOOLS: &[&str] = HTTP_WITHHELD_WITHOUT_USER_TOKEN;
@@ -657,6 +662,56 @@ pub fn all_tools_with_compact_default(compact_default: bool) -> Vec<ToolDefiniti
                 &["usergroup_id", "enabled"],
             ),
         },
+
+        // Direct messages & scheduled messages
+        ToolDefinition {
+            name: "slack_open_dm",
+            description: "Open or retrieve a direct message (1 user) or group DM (2-8 users) as the authenticated user and return its channel ID",
+            input_schema: schema(
+                vec![(
+                    "users",
+                    str_array_prop("1 to 8 user IDs (e.g. U1234ABCD) or @handles to open a DM or group DM with"),
+                )],
+                &["users"],
+            ),
+        },
+        ToolDefinition {
+            name: "slack_schedule_message",
+            description: "Schedule a message to be sent later as the authenticated user (up to 120 days in advance)",
+            input_schema: schema(
+                vec![
+                    ("channel_id", str_prop("Target channel ID (C/G/D...) or #channel name")),
+                    ("text", str_prop("Message text (supports Slack mrkdwn formatting)")),
+                    ("post_at", str_prop("When to post: Unix timestamp in seconds or ISO 8601 date-time with timezone offset (e.g. '2026-11-20T09:00:00-08:00'); must be in the future and within 120 days")),
+                    ("thread_ts", str_prop("Optional parent message timestamp to reply in a thread")),
+                    ("reply_broadcast", bool_prop("When replying to a thread, also post to the channel (default false)", Some(false))),
+                ],
+                &["channel_id", "text", "post_at"],
+            ),
+        },
+        ToolDefinition {
+            name: "slack_list_scheduled_messages",
+            description: "List pending scheduled messages created by the authenticated user",
+            input_schema: schema(
+                vec![
+                    ("channel_id", str_prop("Optional channel ID or #channel name to filter scheduled messages")),
+                    ("cursor", str_prop("Pagination cursor from response_metadata.next_cursor")),
+                    ("limit", num_prop("Maximum number of scheduled messages to return", None)),
+                ],
+                &[],
+            ),
+        },
+        ToolDefinition {
+            name: "slack_delete_scheduled_message",
+            description: "Cancel and delete a pending scheduled message before it is sent",
+            input_schema: schema(
+                vec![
+                    ("channel_id", str_prop("Channel ID or #channel name where the message is scheduled")),
+                    ("scheduled_message_id", str_prop("The scheduled_message_id returned when scheduling or listing (e.g. Q1234ABCD)")),
+                ],
+                &["channel_id", "scheduled_message_id"],
+            ),
+        },
     ];
     for tool in &mut tools {
         if let Some(entries) = tool.input_schema.as_object_mut() {
@@ -777,12 +832,16 @@ mod tests {
     }
 
     #[test]
-    fn tool_count_is_43_and_every_tool_declares_compact_param() {
+    fn tool_count_is_47_and_every_tool_declares_compact_param() {
         let default_tools = all_tools();
-        assert_eq!(default_tools.len(), 43);
+        assert_eq!(default_tools.len(), 47);
         let names: Vec<&str> = default_tools.iter().map(|t| t.name).collect();
         assert!(names.contains(&"slack_whoami"));
         assert!(names.contains(&"slack_remove_reaction"));
+        assert!(names.contains(&"slack_open_dm"));
+        assert!(names.contains(&"slack_schedule_message"));
+        assert!(names.contains(&"slack_list_scheduled_messages"));
+        assert!(names.contains(&"slack_delete_scheduled_message"));
 
         for tool in &default_tools {
             let compact = tool
@@ -812,8 +871,6 @@ mod tests {
 
     #[test]
     fn http_tool_list_matches_live_config_and_withholds_destructive_when_unset() {
-        // Prior 40 HTTP impersonation tools on main (41 minus stdio-only slack_download_file)
-        // plus slack_whoami and slack_remove_reaction.
         let mut expected_live: Vec<&str> = vec![
             "slack_list_channels",
             "slack_get_channel_info",
@@ -857,10 +914,14 @@ mod tests {
             "slack_update_user_group",
             "slack_set_user_group_members",
             "slack_set_user_group_enabled",
+            "slack_open_dm",
+            "slack_schedule_message",
+            "slack_list_scheduled_messages",
+            "slack_delete_scheduled_message",
         ];
 
         // Live deployment config sets SLACK_HTTP_ALLOW_DESTRUCTIVE=true in gitops values.yaml:
-        // preserves all destructive tools alongside slack_whoami and slack_remove_reaction.
+        // preserves all destructive tools alongside the user-token tools.
         let mut live_env = live_http_env_without_destructive_flag();
         live_env.insert(
             "SLACK_HTTP_ALLOW_DESTRUCTIVE".to_string(),
@@ -868,23 +929,24 @@ mod tests {
         );
         let live_cfg = resolve_config(&live_env).unwrap();
         let mut live_names: Vec<&str> = tools_for(&live_cfg).iter().map(|t| t.name).collect();
-        assert_eq!(live_names.len(), 42);
+        assert_eq!(live_names.len(), 46);
         assert!(live_names.contains(&"slack_whoami"));
         assert!(live_names.contains(&"slack_remove_reaction"));
         assert!(live_names.contains(&"slack_delete_canvas"));
         assert!(live_names.contains(&"slack_set_user_group_enabled"));
         assert!(live_names.contains(&"slack_set_user_group_members"));
+        assert!(live_names.contains(&"slack_delete_scheduled_message"));
         assert!(!live_names.contains(&"slack_download_file"));
         live_names.sort_unstable();
         expected_live.sort_unstable();
         assert_eq!(live_names, expected_live);
 
         // When SLACK_HTTP_ALLOW_DESTRUCTIVE is unset (new-install chart default),
-        // the 3 destructive tools are excluded while slack_whoami and slack_remove_reaction remain.
+        // the 4 destructive tools are excluded while non-destructive user tools remain.
         let unset_env = live_http_env_without_destructive_flag();
         let unset_cfg = resolve_config(&unset_env).unwrap();
         let unset_names: Vec<&str> = tools_for(&unset_cfg).iter().map(|t| t.name).collect();
-        assert_eq!(unset_names.len(), 39);
+        assert_eq!(unset_names.len(), 42);
         assert!(unset_names.contains(&"slack_whoami"));
         assert!(unset_names.contains(&"slack_remove_reaction"));
         for withheld in HTTP_WITHHELD_DESTRUCTIVE {
@@ -1018,5 +1080,220 @@ mod tests {
         let emoji = stripped.get("emoji").unwrap();
         assert!(emoji.contains_key("team"));
         assert!(emoji.contains_key("icons"));
+    }
+
+    #[test]
+    fn tools_list_per_http_config_has_expected_names_and_existing_entries_match_main_byte_for_byte()
+    {
+        use crate::http_transport::{McpServer, SERVER_NAME, SERVER_VERSION};
+        use crate::slack_client::SlackClient;
+        use std::sync::Arc;
+
+        const NEW_TOOLS: &[&str] = &[
+            "slack_open_dm",
+            "slack_schedule_message",
+            "slack_list_scheduled_messages",
+            "slack_delete_scheduled_message",
+        ];
+
+        let golden_raw = std::fs::read_to_string(
+            "apps/mcp/vitruvian-slack-mcp/rs/src/testdata_main_tools_list.json",
+        )
+        .or_else(|_| std::fs::read_to_string("rs/src/testdata_main_tools_list.json"))
+        .or_else(|_| std::fs::read_to_string("src/testdata_main_tools_list.json"))
+        .expect("golden tools/list fixture from main must be readable");
+        let golden = JsonValue::parse(&golden_raw).expect("valid golden JSON");
+        let golden_tools = golden
+            .as_array()
+            .expect("golden tools/list must be a single top-level JSON array of main's 43 tools");
+        assert_eq!(
+            golden_tools.len(),
+            43,
+            "golden tools/list must hold exactly one copy of main's 43 tools"
+        );
+        let mut unique_golden_names = std::collections::BTreeSet::new();
+        for entry in golden_tools {
+            let name = entry
+                .get("name")
+                .and_then(|v| v.as_str())
+                .expect("every golden tool entry must have a string name");
+            assert!(
+                unique_golden_names.insert(name),
+                "duplicate tool entry {name:?} in testdata_main_tools_list.json"
+            );
+        }
+
+        let server_for = |env: &BTreeMap<String, String>| -> McpServer {
+            let cfg = resolve_config(env).unwrap();
+            let client = Arc::new(SlackClient::new(
+                cfg.slack.clone(),
+                cfg.channel_guard.clone(),
+                cfg.write_token,
+            ));
+            McpServer::with_slack(SERVER_NAME, SERVER_VERSION, client, tools_for(&cfg))
+                .with_compact_output(cfg.compact_output)
+        };
+
+        let tools_list_for = |env: &BTreeMap<String, String>| -> Vec<JsonValue> {
+            let server = server_for(env);
+            let resp = server.handle_request(&JsonValue::Number(1.0), "tools/list", None);
+            resp.get("result")
+                .and_then(|r| r.get("tools"))
+                .and_then(|t| t.as_array())
+                .unwrap()
+                .clone()
+        };
+
+        let mut stdio = BTreeMap::new();
+        stdio.insert("SLACK_BOT_TOKEN".to_string(), "xoxb-test".to_string());
+        stdio.insert("SLACK_USER_TOKEN".to_string(), "xoxp-test".to_string());
+        stdio.insert("SLACK_TEAM_ID".to_string(), "T123".to_string());
+
+        let http_user_off = live_http_env_without_destructive_flag();
+        let mut http_user_on = http_user_off.clone();
+        http_user_on.insert(
+            "SLACK_HTTP_ALLOW_DESTRUCTIVE".to_string(),
+            "true".to_string(),
+        );
+
+        let mut http_bot_off = live_http_env_without_destructive_flag();
+        http_bot_off.remove("SLACK_USER_TOKEN");
+        http_bot_off.remove("SLACK_WRITE_MODE");
+        http_bot_off.insert("SLACK_CHANNEL_IDS".to_string(), "C1".to_string());
+        let mut http_bot_on = http_bot_off.clone();
+        http_bot_on.insert(
+            "SLACK_HTTP_ALLOW_DESTRUCTIVE".to_string(),
+            "true".to_string(),
+        );
+
+        let cases: &[(
+            &str,
+            &BTreeMap<String, String>,
+            usize,
+            &[&str],
+            bool,
+            bool,
+            bool,
+        )] = &[
+            ("stdio", &stdio, 47, NEW_TOOLS, false, true, true),
+            (
+                "http_user_destructive_on",
+                &http_user_on,
+                46,
+                NEW_TOOLS,
+                true,
+                true,
+                true,
+            ),
+            (
+                "http_user_destructive_off",
+                &http_user_off,
+                42,
+                &[
+                    "slack_open_dm",
+                    "slack_schedule_message",
+                    "slack_list_scheduled_messages",
+                ],
+                true,
+                true,
+                false,
+            ),
+            (
+                "http_bot_destructive_on",
+                &http_bot_on,
+                21,
+                &[],
+                true,
+                false,
+                true,
+            ),
+            (
+                "http_bot_destructive_off",
+                &http_bot_off,
+                21,
+                &[],
+                true,
+                false,
+                false,
+            ),
+        ];
+
+        for (
+            label,
+            env,
+            expected_count,
+            expected_new_present,
+            is_http,
+            has_user_token,
+            allow_destructive,
+        ) in cases
+        {
+            let entries = tools_list_for(env);
+            let names: Vec<&str> = entries
+                .iter()
+                .map(|e| e.get("name").and_then(|v| v.as_str()).unwrap())
+                .collect();
+            assert_eq!(
+                entries.len(),
+                *expected_count,
+                "{label}: unexpected tools/list count (names={names:?})"
+            );
+            for new_tool in NEW_TOOLS {
+                assert_eq!(
+                    names.contains(new_tool),
+                    expected_new_present.contains(new_tool),
+                    "{label}: unexpected presence for {new_tool}"
+                );
+            }
+
+            // Strip the 4 new tools and assert the remaining entries match main's derived config byte-for-byte.
+            let existing_only: Vec<JsonValue> = entries
+                .into_iter()
+                .filter(|e| {
+                    let n = e.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                    !NEW_TOOLS.contains(&n)
+                })
+                .collect();
+            let expected_main: Vec<JsonValue> = golden_tools
+                .iter()
+                .filter(|e| {
+                    let n = e.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                    if !*is_http {
+                        return true;
+                    }
+                    !HTTP_WITHHELD_ALWAYS.contains(&n)
+                        && (*has_user_token || !HTTP_WITHHELD_WITHOUT_USER_TOKEN.contains(&n))
+                        && (*allow_destructive || !HTTP_WITHHELD_DESTRUCTIVE.contains(&n))
+                })
+                .cloned()
+                .collect();
+            assert_eq!(
+                JsonValue::Array(existing_only).to_json_string(),
+                JsonValue::Array(expected_main).to_json_string(),
+                "{label}: existing tool entries drifted from main"
+            );
+        }
+
+        // Also confirm slack_delete_scheduled_message is refused on tools/call when destructive is off.
+        let server_off = server_for(&http_user_off);
+        let call_resp = server_off.handle_request(
+            &JsonValue::Number(2.0),
+            "tools/call",
+            Some(
+                &JsonValue::parse(
+                    r#"{"name":"slack_delete_scheduled_message","arguments":{"channel_id":"C1","scheduled_message_id":"Q1"}}"#,
+                )
+                .unwrap(),
+            ),
+        );
+        let err_text = call_resp
+            .get("result")
+            .and_then(|r| r.get("content"))
+            .and_then(|c| c.as_array())
+            .unwrap()[0]
+            .get("text")
+            .and_then(|v| v.as_str())
+            .unwrap();
+        assert!(err_text.contains("is not available on this transport"));
     }
 }

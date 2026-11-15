@@ -8,7 +8,7 @@
 # closed-lid sudoers rule. Leaves no dead entries behind.
 set -uo pipefail
 
-BUNDLE="com.vitruviansoftware.atrium"
+BUNDLE="com.vitruviansoftware.vitruvian"
 APP="/Applications/Vitruvian Atrium.app"
 
 # What the app keeps under a home folder, for its bundle id: preferences, saved

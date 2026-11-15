@@ -21,6 +21,8 @@ package struct MouseSettings: View {
     @AppStorage(Preferences.scrollInverterHorizontalEnabled) private var invertHorizontal: Bool
     @AppStorage(Preferences.scrollHorizontalEnabled) private var horizontalScrollEnabled: Bool
     @AppStorage(Preferences.scrollHorizontalModifier) private var horizontalScrollModifier: ScrollHorizontalModifier
+    @AppStorage(Preferences.pinchZoomEnabled) private var pinchZoomEnabled: Bool
+    @AppStorage(Preferences.pinchZoomModifier) private var pinchZoomModifier: String
     @AppStorage(Preferences.focusFollowsMouseEnabled) private var focusFollowsMouseEnabled: Bool
     @AppStorage(Preferences.focusFollowsMouseRaise) private var focusFollowsMouseRaise: Bool
     @AppStorage(Preferences.focusFollowsMouseWaitForStop) private var focusFollowsMouseWaitForStop: Bool
@@ -30,6 +32,9 @@ package struct MouseSettings: View {
     @AppStorage(Preferences.mouseAccelerationDisabled) private var mouseAccelerationDisabled: Bool
     @AppStorage(Preferences.linearScrollEnabled) private var linearScrollEnabled: Bool
     @AppStorage(Preferences.linearScrollLines) private var linearScrollLines: Int
+    @AppStorage(Preferences.scrollSpeedEnabled) private var scrollSpeedEnabled: Bool
+    @AppStorage(Preferences.scrollSpeedModifier) private var scrollSpeedModifier: ScrollHorizontalModifier
+    @AppStorage(Preferences.scrollSpeedMultiplier) private var scrollSpeedMultiplier: Int
     @AppStorage(Preferences.smoothScrollResponse) private var smoothScrollResponse: Int
     @AppStorage(Preferences.smoothScrollCoast) private var smoothScrollCoast: Int
     @AppStorage(Preferences.mouseNavigationEnabled) private var mouseNavigationEnabled: Bool
@@ -64,6 +69,10 @@ package struct MouseSettings: View {
                     scrollCard
                         .settingsSectionAnchor(.scrollDirection, cornerRadius: 16)
                 }
+                if AppFeature.scrollZoom.isAvailable {
+                    zoomCard
+                        .settingsSectionAnchor(.scrollZoom, cornerRadius: 16)
+                }
                 if AppFeature.focusFollowsMouse.isAvailable {
                     focusFollowsMouseCard
                         .settingsSectionAnchor(.focusFollowsMouse, cornerRadius: 16)
@@ -75,6 +84,10 @@ package struct MouseSettings: View {
                 if AppFeature.linearScroll.isAvailable {
                     linearScrollCard
                         .settingsSectionAnchor(.linearScroll, cornerRadius: 16)
+                }
+                if AppFeature.scrollSpeed.isAvailable {
+                    scrollSpeedCard
+                        .settingsSectionAnchor(.scrollSpeed, cornerRadius: 16)
                 }
                 if AppFeature.mouseAcceleration.isAvailable {
                     accelerationCard
@@ -115,7 +128,7 @@ package struct MouseSettings: View {
 
     /// The mouse features on this page, in page order, for the legend.
     private var legendFeatures: [AppFeature] {
-        [.scrollInverter, .scrollHorizontal, .focusFollowsMouse, .smoothScroll, .linearScroll, .mouseAcceleration,
+        [.scrollInverter, .scrollHorizontal, .scrollZoom, .focusFollowsMouse, .smoothScroll, .linearScroll, .scrollSpeed, .mouseAcceleration,
          .mouseNavigation, .mouseButtonShortcuts, .mouseClickDebounce, .middleClick]
             .filter(\.isAvailable)
     }
@@ -126,9 +139,11 @@ package struct MouseSettings: View {
         switch feature {
         case .scrollInverter: return invertVertical || invertHorizontal
         case .scrollHorizontal: return horizontalScrollEnabled
+        case .scrollZoom: return scrollZoomEnabled
         case .focusFollowsMouse: return focusFollowsMouseEnabled
         case .smoothScroll: return smoothScrollEnabled
         case .linearScroll: return linearScrollEnabled
+        case .scrollSpeed: return scrollSpeedEnabled
         case .mouseAcceleration: return mouseAccelerationDisabled
         case .mouseNavigation: return mouseNavigationEnabled
         case .mouseButtonShortcuts:
@@ -206,7 +221,7 @@ package struct MouseSettings: View {
                         }
                 }
                 if horizontalScrollEnabled {
-                    modifierKeys
+                    modifierKeys($horizontalScrollModifier)
                         .padding(.leading, settingsRowTextInset)
                 }
             }
@@ -223,8 +238,25 @@ package struct MouseSettings: View {
         }
     }
 
+    private var zoomCard: some View {
+        SettingsCard(title: l10n.s.zoomSection) {
+            scrollZoomControl(l10n.s.pinchZoom, enabled: $pinchZoomEnabled,
+                              modifier: $pinchZoomModifier)
+            Text(l10n.s.zoomControlNote)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            // The direction card holds the shared exception list; with
+            // neither direction feature installed, it is here instead.
+            if !AppFeature.scrollInverter.isAvailable && !AppFeature.scrollHorizontal.isAvailable,
+               scrollDirectionEnabled {
+                MouseExceptionsList(scope: .scrollDirection)
+            }
+        }
+    }
+
     /// The key to hold, as keycaps: one glance says which key, no menu.
-    private var modifierKeys: some View {
+    private func modifierKeys(_ selection: Binding<ScrollHorizontalModifier>) -> some View {
         let modifierStrings = FeatureStrings.quitProtection(l10n.language)
         let choices: [(ScrollHorizontalModifier, String, String)] = [
             (.shift, "⇧", modifierStrings.shiftKey),
@@ -237,9 +269,9 @@ package struct MouseSettings: View {
                 .font(.subheadline.weight(.medium))
             HStack(spacing: 8) {
                 ForEach(choices, id: \.0) { modifier, glyph, name in
-                    let selected = horizontalScrollModifier == modifier
+                    let selected = selection.wrappedValue == modifier
                     Button {
-                        horizontalScrollModifier = modifier
+                        selection.wrappedValue = modifier
                     } label: {
                         HStack(spacing: 6) {
                             Text(glyph)
@@ -264,6 +296,37 @@ package struct MouseSettings: View {
                     .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
+        }
+    }
+
+    private func scrollZoomControl(_ title: String, enabled: Binding<Bool>,
+                                    modifier: Binding<String>) -> some View {
+        let modifierStrings = FeatureStrings.quitProtection(l10n.language)
+        let selection = Binding(get: { ScrollZoomModifier(storageValue: modifier.wrappedValue) },
+                                set: { modifier.wrappedValue = $0.rawValue })
+        return HStack(spacing: 16) {
+            Text(title)
+                .frame(width: 180, alignment: .leading)
+            Picker("", selection: selection) {
+                Text(l10n.s.shortcutNone).tag(ScrollZoomModifier.none)
+                Text("⌥ \(modifierStrings.optionKey)").tag(ScrollZoomModifier.option)
+                Text("⌃ \(modifierStrings.controlKey)").tag(ScrollZoomModifier.control)
+                Text("⌘ \(l10n.s.scrollHorizontalCommandKey)").tag(ScrollZoomModifier.command)
+            }
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity)
+            .disabled(!enabled.wrappedValue)
+            .accessibilityLabel(title)
+            .onChange(of: modifier.wrappedValue) { _, _ in
+                ScrollInverter.shared.syncWithPreferences()
+            }
+            Toggle(title, isOn: enabled)
+                .labelsHidden()
+                .frame(width: 52, alignment: .trailing)
+                .onChange(of: enabled.wrappedValue) { _, active in
+                    ScrollInverter.shared.syncWithPreferences()
+                    if active { permissions.requestAccessibility() }
+                }
         }
     }
 
@@ -367,6 +430,38 @@ package struct MouseSettings: View {
                               step: 1,
                               readout: "\(ScrollWheelSupport.sanitizedLinesPerNotch(linearScrollLines))")
                     MouseExceptionsList(scope: .linearScroll)
+                }
+                .padding(.leading, settingsRowTextInset)
+            }
+        }
+    }
+
+    // MARK: - Modifier-held scroll speed
+
+    private var scrollSpeedCard: some View {
+        SettingsCard {
+            SettingsRow(symbol: AppFeature.scrollSpeed.symbolName, title: l10n.s.scrollSpeedName,
+                        caption: l10n.s.scrollSpeedCaption) {
+                Toggle(l10n.s.scrollSpeedName, isOn: $scrollSpeedEnabled)
+                    .labelsHidden()
+                    .onChange(of: scrollSpeedEnabled) { _, enabled in
+                        ScrollInverter.shared.syncWithPreferences()
+                        if enabled { permissions.requestAccessibility() }
+                    }
+            }
+            if scrollSpeedEnabled {
+                VStack(alignment: .leading, spacing: 10) {
+                    modifierKeys($scrollSpeedModifier)
+                        .onChange(of: scrollSpeedModifier) { _, _ in
+                            ScrollInverter.shared.syncWithPreferences()
+                        }
+                    sliderRow(l10n.s.scrollSpeedMultiplierLabel,
+                              value: scrollSpeedMultiplierBinding,
+                              range: Double(ScrollWheelSupport.speedMultiplierRange.lowerBound)
+                                  ... Double(ScrollWheelSupport.speedMultiplierRange.upperBound),
+                              step: 1,
+                              readout: "\(ScrollWheelSupport.sanitizedSpeedMultiplier(scrollSpeedMultiplier))×")
+                    MouseExceptionsList(scope: .scrollSpeed)
                 }
                 .padding(.leading, settingsRowTextInset)
             }
@@ -542,6 +637,7 @@ package struct MouseSettings: View {
             || (focusFollowsMouseEnabled && AppFeature.focusFollowsMouse.isAvailable)
             || (smoothScrollEnabled && AppFeature.smoothScroll.isAvailable)
             || (linearScrollEnabled && AppFeature.linearScroll.isAvailable)
+            || (scrollSpeedEnabled && AppFeature.scrollSpeed.isAvailable)
             || (mouseNavigationEnabled && AppFeature.mouseNavigation.isAvailable)
             || (MouseButtonCapture.isEngaged(shortcuts: mouseButtonShortcutsEnabled, spaces: spacesEnabled)
                 && AppFeature.mouseButtonShortcuts.isAvailable)
@@ -557,6 +653,11 @@ package struct MouseSettings: View {
     private var scrollDirectionEnabled: Bool {
         scrollInversionEnabled
             || (AppFeature.scrollHorizontal.isAvailable && horizontalScrollEnabled)
+            || (AppFeature.scrollZoom.isAvailable && scrollZoomEnabled)
+    }
+
+    private var scrollZoomEnabled: Bool {
+        pinchZoomEnabled && ScrollZoomModifier(storageValue: pinchZoomModifier) != .none
     }
 
     private var smoothScrollStepBinding: Binding<Double> {
@@ -584,6 +685,13 @@ package struct MouseSettings: View {
         Binding(
             get: { Double(ScrollWheelSupport.sanitizedLinesPerNotch(linearScrollLines)) },
             set: { linearScrollLines = Int($0) }
+        )
+    }
+
+    private var scrollSpeedMultiplierBinding: Binding<Double> {
+        Binding(
+            get: { Double(ScrollWheelSupport.sanitizedSpeedMultiplier(scrollSpeedMultiplier)) },
+            set: { scrollSpeedMultiplier = Int($0) }
         )
     }
 

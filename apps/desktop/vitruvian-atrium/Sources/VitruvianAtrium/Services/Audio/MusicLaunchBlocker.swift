@@ -351,7 +351,7 @@ private final class MusicReplacementLauncher {
 /// comes from that app's own scripting dictionary, so an app that declares
 /// none is only opened, as before, and the media key is never replayed.
 private enum MusicReplacementPlayback {
-    private static let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.music-block.playback",
+    private static let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.music-block.playback",
                                              qos: .userInitiated)
 
     static func start(_ app: NSRunningApplication) {

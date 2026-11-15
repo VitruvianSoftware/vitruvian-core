@@ -118,6 +118,43 @@ fn clone_shallow(url: &[u8], dest: &[u8], cone: &[u8]) -> bool {
     false
 }
 
+/// Every `$values/<path>` reference in `text` (the multi-source Application
+/// form of a repo-relative values file), in order of appearance.
+fn values_refs(text: &str) -> Vec<String> {
+    let mut refs = Vec::new();
+    let mut rest = text;
+    while let Some(i) = rest.find("$values/") {
+        let tail = &rest[i + "$values/".len()..];
+        let end = tail
+            .find(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == ',' || c == ']')
+            .unwrap_or(tail.len());
+        let path = &tail[..end];
+        if !path.is_empty() {
+            refs.push(path.to_string());
+        }
+        rest = &tail[end..];
+    }
+    refs
+}
+
+/// `(file, path)` for each `$values/<path>` in `files` that `exists` says is
+/// missing. Argo CD reports such an app as sync status Unknown and stops
+/// rolling it out, while every other check here still passes.
+fn missing_values_refs(
+    files: &[(String, String)],
+    exists: impl Fn(&str) -> bool,
+) -> Vec<(String, String)> {
+    let mut missing = Vec::new();
+    for (file, text) in files {
+        for r in values_refs(text) {
+            if !exists(&r) {
+                missing.push((file.clone(), r));
+            }
+        }
+    }
+    missing
+}
+
 fn find_yaml_files(dir: &[u8], exclude_values: bool) -> Vec<Vec<u8>> {
     let mut cmd = Command::new("find");
     cmd.arg(os(dir)).arg("-name").arg("*.yaml");
@@ -213,6 +250,29 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     };
     if std::env::set_current_dir(shell_compat::path(&repo)).is_err() {
         err(&cat(&[b"gitops-validate: cannot cd to ", &repo, b"\n"]));
+        return 1;
+    }
+
+    // --- 0. Every `$values/` file an Application names must exist ---
+    out(b"gitops-validate: checking $values/ file references ...\n");
+    let mut sources = Vec::new();
+    for f in find_yaml_files(b"gitops/argocd", true) {
+        if let Ok(text) = std::fs::read_to_string(shell_compat::path(&f)) {
+            sources.push((String::from_utf8_lossy(&f).into_owned(), text));
+        }
+    }
+    let missing = missing_values_refs(&sources, |p| std::path::Path::new(p).is_file());
+    if !missing.is_empty() {
+        for (file, path) in &missing {
+            err(&cat(&[
+                b"gitops-validate: ",
+                file.as_bytes(),
+                b" names $values/",
+                path.as_bytes(),
+                b", which does not exist\n",
+            ]));
+        }
+        err(b"gitops-validate: Argo CD cannot render these apps and stops deploying them.\n");
         return 1;
     }
 
@@ -493,5 +553,34 @@ mod tests {
             dest.truncate(dest.len() - b".disabled".len());
         }
         assert_eq!(dest, b"something/else.yaml");
+    }
+
+    #[test]
+    fn values_refs_finds_each_reference() {
+        let text =
+            "valueFiles:\n  - $values/gitops/a/values.yaml\n  - \"$values/gitops/b/values.yaml\"\n";
+        assert_eq!(
+            values_refs(text),
+            vec!["gitops/a/values.yaml", "gitops/b/values.yaml"]
+        );
+    }
+
+    #[test]
+    fn missing_values_refs_reports_only_absent_files() {
+        // The 2026-11-12 case: a rename pointed the app at a folder that was never renamed.
+        let files = vec![(
+            "gitops/argocd/applications/mcp-slack.yaml".to_string(),
+            "- $values/gitops/argocd/platform/vitruvian-slack-mcp/values.yaml\n- $values/gitops/argocd/platform/mcp-slack/values.yaml\n".to_string(),
+        )];
+        let missing = missing_values_refs(&files, |p| {
+            p == "gitops/argocd/platform/mcp-slack/values.yaml"
+        });
+        assert_eq!(
+            missing,
+            vec![(
+                "gitops/argocd/applications/mcp-slack.yaml".to_string(),
+                "gitops/argocd/platform/vitruvian-slack-mcp/values.yaml".to_string()
+            )]
+        );
     }
 }

@@ -148,6 +148,11 @@ func main() {
 		// either way, so the mapping is unaffected by how the service is built.
 		var routeName pulumi.StringInput = pulumi.String(serviceName)
 
+		sentryDsn := cfg.Get("sentryDsn")
+		if sentryDsn == "" {
+			sentryDsn = "https://b5f2531a96fc15a51fd199825daf0be4@sentry-ingest.ipv1337.dev/7"
+		}
+
 		// App OWNS the Cloud Run workload (foundation gcp-app-infra is scaffolding-only).
 		app, err := cloud_run.NewCloudRun(ctx, "oauth-user-inspector", &cloud_run.CloudRunArgs{
 			ProjectID:           pulumi.String(project),
@@ -159,6 +164,8 @@ func main() {
 				"NODE_ENV":             "production",
 				"GOOGLE_CLOUD_PROJECT": project,
 				"SECRET_PREFIX":        secretPrefix,
+				"SENTRY_DSN":           sentryDsn,
+				"VITE_SENTRY_DSN":      sentryDsn,
 			},
 			MinInstances: 0,
 			MaxInstances: 1,

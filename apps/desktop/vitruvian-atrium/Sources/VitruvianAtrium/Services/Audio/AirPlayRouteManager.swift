@@ -743,7 +743,7 @@ package final class AirPlayStreamRegistration: @unchecked Sendable {
 /// of them never read the mixing source at once. `stop()` returns only after a
 /// step that is already running has finished, and no step starts afterwards.
 package final class AirPlayFeedDriver: @unchecked Sendable {
-    package static let sharedQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.airplay.render", qos: .userInitiated)
+    package static let sharedQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.airplay.render", qos: .userInitiated)
     private static let queueKey = DispatchSpecificKey<Void>()
 
     private let queue: DispatchQueue

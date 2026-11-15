@@ -68,7 +68,7 @@ package final class DiskImageInstallerService {
         let output: Data
     }
 
-    private let workQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.disk-image-installer",
+    private let workQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.disk-image-installer",
                                           qos: .utility)
     private var mountObserver: NSObjectProtocol?
     private var pending: [Candidate] = []

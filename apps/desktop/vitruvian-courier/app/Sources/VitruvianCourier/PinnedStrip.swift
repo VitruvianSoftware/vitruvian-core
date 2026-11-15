@@ -5,7 +5,7 @@ import AppKit
 import VitruvianCourierCore
 import SwiftUI
 
-/// Pinned chats above the list, as compact avatars (Settings ▸ Inbox ▸ "Show pinned chats as full rows" puts them
+/// Pinned chats above the list, as Beeper-like tiles (a 48 pt avatar, the name under it) (Settings ▸ Inbox ▸ "Show pinned chats as full rows" puts them
 /// in the list instead). A click opens the chat, or while selecting, selects it.
 struct PinnedStrip: View {
     @ObservedObject var inbox: InboxModel
@@ -15,7 +15,7 @@ struct PinnedStrip: View {
     let doubleClick: (InboxRow) -> Void
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 54, maximum: 64), spacing: 4)], spacing: 8) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 84, maximum: 112), spacing: 6)], spacing: 6) {
             ForEach(rows, id: \.id) { row in
                 PinnedChat(row: row, networkName: inbox.networkName(row.network),
                            isOpen: !inbox.isSelecting && inbox.isOpen(row.id),
@@ -34,6 +34,8 @@ struct PinnedStrip: View {
                             click(row)
                         }
                     }
+                    // VoiceOver (and any accessibility client) presses the tile as it would a button.
+                    .accessibilityAction { click(row) }
                     .contextMenu {
                         ChatContextMenu(inbox: inbox, spaces: spaces, ui: ui, ids: menuIDs(row))
                     }
@@ -60,7 +62,7 @@ struct PinnedStrip: View {
     }
 }
 
-private struct PinnedChat: View {
+struct PinnedChat: View {
     let row: InboxRow
     let networkName: String
     let isOpen: Bool
@@ -76,17 +78,18 @@ private struct PinnedChat: View {
         return isRedacted ? AppearancePreferences.redactedText(raw, kind: .chatTitle) : raw
     }
 
+    @State private var hovering = false
+
     var body: some View {
-        VStack(spacing: 3) {
-            ChatAvatar(row: row)
+        VStack(spacing: 4) {
+            ChatAvatar(row: row, size: 48)
                 .blur(radius: isRedacted ? 6 : 0)
-                .clipShape(Circle())
-                .frame(width: 40, height: 40)
+                .clipShape(Rectangle())
+                .frame(width: 48, height: 48)
                 .overlay(alignment: .bottomTrailing) {
                     if showsBadge {
-                        NetworkBadge(network: row.network, name: networkName, size: 13, tinted: tinted)
-                            .background(Circle().fill(.background))
-                            .offset(x: 2, y: 2)
+                        NetworkBadge(network: row.network, name: networkName, size: 16, tinted: tinted, ringed: true)
+                            .offset(x: 4, y: 4)
                     }
                 }
                 .overlay(alignment: .topTrailing) {
@@ -94,25 +97,33 @@ private struct PinnedChat: View {
                         Circle()
                             // Grey when the chat is muted itself or by its label or account, as in the chat list.
                             .fill(row.muted || row.mutedBy != .none ? Color.gray : themeAccent)
-                            .frame(width: 10, height: 10)
+                            .frame(width: 11, height: 11)
                             .overlay(Circle().strokeBorder(.background, lineWidth: 1.5))
+                            .offset(x: 2, y: -2)
                             .accessibilityLabel(String(localized: "Unread"))
                     }
                 }
-                .padding(3)
-                .background {
-                    if isOpen || isSelected {
-                        Circle().strokeBorder(themeAccent, lineWidth: 2)
-                    }
-                }
             Text(displayName)
-                .font(.caption2)
-                .lineLimit(1)
-                .foregroundStyle(.secondary)
+                .font(.caption)
+                .fontWeight(row.isUnread ? .semibold : .regular)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .foregroundStyle(isOpen || isSelected ? Color.primary : Color.secondary)
         }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isOpen || isSelected ? themeAccent.opacity(0.22)
+                    : hovering ? Color.primary.opacity(0.08) : Color.clear)
+        )
         .contentShape(Rectangle())
+        .onHover { hovering = $0 }
         .help(displayName)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(isOpen || isSelected ? .isSelected : [])
     }
 }

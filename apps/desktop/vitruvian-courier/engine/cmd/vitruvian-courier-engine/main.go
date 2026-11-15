@@ -36,6 +36,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/rs/zerolog"
 
 	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/actions"
@@ -90,8 +91,24 @@ type config struct {
 	nets []networks.Network
 }
 
+const defaultSentryDSN = "https://2fc1a74b9689b056842028164e4baaca@sentry-ingest.ipv1337.dev/13"
+
 func main() {
-	os.Exit(realMain(os.Args[1:], os.Stdout, os.Stderr))
+	dsn := os.Getenv("SENTRY_DSN")
+	if dsn == "" {
+		dsn = defaultSentryDSN
+	}
+	_ = sentry.Init(sentry.ClientOptions{
+		Dsn:              dsn,
+		Release:          "vitruvian-courier-engine@" + version,
+		AttachStacktrace: true,
+	})
+	defer sentry.Flush(2 * time.Second)
+	defer sentry.Recover()
+
+	code := realMain(os.Args[1:], os.Stdout, os.Stderr)
+	sentry.Flush(2 * time.Second)
+	os.Exit(code)
 }
 
 func realMain(argv []string, stdout, stderr io.Writer) int {

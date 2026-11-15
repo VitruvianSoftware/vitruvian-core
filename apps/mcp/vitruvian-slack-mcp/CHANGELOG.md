@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.26.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-slack-mcp-v1.25.0...vitruvian-slack-mcp-v1.26.0) (2026-11-14)
+
+
+### Features
+
+* **telemetry:** instrument Suites and MCP bridges with Sentry ([#4835](https://github.com/VitruvianSoftware/vitruvian-core/issues/4835)) ([6da38a7](https://github.com/VitruvianSoftware/vitruvian-core/commit/6da38a7a64e677f03c8ba248a41c4129374a0696))
+
+## [1.25.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-slack-mcp-v1.24.0...vitruvian-slack-mcp-v1.25.0) (2026-11-14)
+
+
+### Features
+
+* **telemetry:** wire Sentry DSNs for Cloud Run and GitOps workloads ([#4839](https://github.com/VitruvianSoftware/vitruvian-core/issues/4839)) ([879e439](https://github.com/VitruvianSoftware/vitruvian-core/commit/879e439da101a9f53c7dffb3acb3223829a2b9fe))
+
+## [1.24.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-slack-mcp-v1.23.0...vitruvian-slack-mcp-v1.24.0) (2026-11-13)
+
+
+### Features
+
+* **vitruvian-slack-mcp:** accept #channel and [@user](https://github.com/user) names, open DMs and schedule messages ([#4680](https://github.com/VitruvianSoftware/vitruvian-core/issues/4680)) ([c13441a](https://github.com/VitruvianSoftware/vitruvian-core/commit/c13441a22c8b410b335dfc959950a9282dd01be3))
+
 ## [1.23.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.22.1...mcp-slack-v1.23.0) (2026-11-12)
 
 

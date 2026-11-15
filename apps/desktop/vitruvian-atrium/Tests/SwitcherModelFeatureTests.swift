@@ -207,9 +207,182 @@ enum SwitcherModelFeatureTests {
         // in bazel/source_lints.py.
     }
 
+    private static func secureInputRegressionChecks(_ suite: TestSuite) {
+        let optionTab = GlobalShortcut(keyCode: Int64(kVK_Tab), modifiers: [.option])
+        let commandTab = GlobalShortcut.switcherDefault
+        let commandShiftTab = GlobalShortcut(keyCode: Int64(kVK_Tab), modifiers: [.command, .shift])
+        let shortcuts = SwitcherSupport.secureInputHotKeyShortcuts(
+            appsShortcut: optionTab, windowShortcut: .switcherWindowDefault,
+            allWindowsShortcut: commandTab)
+        let native: [SwitcherNativeSymbolicHotKey: GlobalShortcut] = [
+            .commandTab: commandTab, .commandShiftTab: commandShiftTab,
+            .nextWindow: .switcherWindowDefault,
+            .previousWindow: GlobalShortcut(keyCode: Int64(kVK_ANSI_Grave), modifiers: [.command, .shift]),
+        ]
+        let suppressed = SwitcherSupport.nativeHotkeysToSuppress(
+            takeOverSystemShortcuts: true, appsShortcut: optionTab,
+            windowShortcut: .switcherWindowDefault, allWindowsShortcut: commandTab,
+            nativeShortcuts: native)
+        suite.expect(suppressed == Set(native.keys)
+            && suppressed.allSatisfy { shortcuts.contains(native[$0]!) },
+            "every suppressed native key has a Carbon replacement when all windows owns Command-Tab")
+        suite.expect(!SwitcherSupport.secureInputHotKeyShortcuts(
+            appsShortcut: commandTab, windowShortcut: .switcherWindowDefault).contains(optionTab),
+            "a disabled all-windows shortcut never claims its default Option-Tab")
+        let duplicates = SwitcherSupport.secureInputHotKeyShortcuts(
+            appsShortcut: commandTab, windowShortcut: commandTab, allWindowsShortcut: commandShiftTab)
+        suite.expect(duplicates == [commandTab, commandShiftTab],
+            "shared all-windows and Shift combinations register exactly once")
+        let grave = Int64(kVK_ANSI_Grave)
+        suite.expect(SwitcherSupport.secureInputHotKeyShortcuts(appsShortcut: .switcherDefault,
+                                                                windowShortcut: .switcherWindowDefault)
+            == [.switcherDefault, commandShiftTab, .switcherWindowDefault,
+                GlobalShortcut(keyCode: grave, modifiers: [.command, .shift])],
+            "under secure input Carbon stands in for Command-Tab, Shift-Command-Tab, Command-` and Shift-Command-`")
+        let shiftedApps = GlobalShortcut(keyCode: Int64(kVK_Tab), modifiers: [.option, .shift])
+        suite.expect(SwitcherSupport.secureInputHotKeyShortcuts(appsShortcut: shiftedApps,
+                                                                windowShortcut: shiftedApps) == [shiftedApps],
+            "a shortcut that already uses Shift gets no backward variant, and a shared combination registers once")
+
+        let registrationCases: [(canStart: Bool, capturing: Bool, takeOver: Bool, secure: Bool, failed: Bool, wanted: Bool)] = [
+            (true, false, true, true, false, true),
+            (true, true, true, true, false, false),
+            (false, false, true, true, false, false),
+            (true, false, false, true, false, false),
+            (true, false, true, false, false, false),
+            (true, false, true, true, true, false),
+        ]
+        for scenario in registrationCases {
+            suite.expect(SwitcherSupport.secureInputHotKeysWanted(
+                canStartSession: scenario.canStart, capturingShortcut: scenario.capturing,
+                takeOverSystemShortcuts: scenario.takeOver, secureInputEnabled: scenario.secure,
+                registrationFailed: scenario.failed) == scenario.wanted,
+                "Carbon yields during recording, disablement and failed registration, and resumes only when usable")
+        }
+
+        var delayed = SwitcherPendingSessionStart(generation: 7, shortcut: commandTab,
+            scope: .allApps, reversed: false, additionalNavigation: 2, isSecureInputReplay: true)
+        delayed.reconcileReplayedModifiers([])
+        suite.expect(delayed.commitWhenReady && delayed.additionalNavigation == 2,
+            "a delayed Carbon press commits without showing a panel after modifier-up preceded replay")
+        var held = SwitcherPendingSessionStart(generation: 8, shortcut: commandTab,
+            scope: .allApps, reversed: true, isSecureInputReplay: true)
+        held.reconcileReplayedModifiers([.maskCommand, .maskShift])
+        suite.expect(!held.commitWhenReady && held.reversed,
+            "holding Command still opens the reversed Carbon session normally")
+        held.observeModifiers([])
+        held.reconcileReplayedModifiers(.maskCommand)
+        suite.expect(held.commitWhenReady,
+            "a modifier release after replay stays latched even when a new chord is held")
+        var shifted = SwitcherPendingSessionStart(generation: 9, shortcut: commandShiftTab,
+            scope: .allWindows, reversed: false, isSecureInputReplay: true)
+        shifted.reconcileReplayedModifiers(.maskCommand)
+        suite.expect(shifted.commitWhenReady,
+            "releasing a required Shift commits a Carbon session as well as releasing Command")
+        var flagReads = 0
+        func readFlags() -> CGEventFlags { flagReads += 1; return [] }
+        var tapped = SwitcherPendingSessionStart(generation: 10, shortcut: commandTab,
+            scope: .allApps, reversed: false)
+        tapped.reconcileReplayedModifiers(readFlags())
+        suite.expect(!tapped.commitWhenReady && flagReads == 0,
+            "ordinary tap sessions keep event ordering without polling physical modifiers")
+
+        var queued = SwitcherSecureInputReplayState()
+        let firstReplay = queued.enqueue(shortcut: commandTab)
+        let nextReplay = queued.enqueue(shortcut: optionTab)
+        suite.expect(firstReplay == nextReplay && queued.hasPending && queued.pendingCount == 2
+            && queued.shortcut == commandTab,
+            "queued Carbon presses own input and preserve their first session's guarded modifiers")
+        queued.finish(firstReplay)
+        suite.expect(queued.hasPending && queued.pendingCount == 1,
+            "Q/W guards remain needed until every queued Carbon press reaches the tap")
+        queued.invalidate()
+        suite.expect(!queued.hasPending && !queued.contains(nextReplay) && queued.shortcut == nil,
+            "a cancelling click or failure invalidates queued Carbon presses before opening")
+        let replacement = queued.enqueue(shortcut: optionTab)
+        queued.finish(nextReplay)
+        suite.expect(queued.contains(replacement) && queued.pendingCount == 1 && queued.shortcut == optionTab,
+            "completion of a cancelled replay never releases a newer session's guards")
+        queued.finish(replacement)
+        suite.expect(!queued.hasPending && queued.shortcut == nil,
+            "the final replay releases queued ownership when no session claimed it")
+
+        let guarded = SwitcherSupport.secureInputActionShortcuts(for: commandTab, keyLabel: { _, _, _ in nil })
+        let guardedModifiers: [GlobalShortcutModifiers] = [[.command], [.command, .shift], [.command, .option],
+                                                           [.command, .control, .option, .shift]]
+        for modifiers in guardedModifiers {
+            for keyCode in [Int64(kVK_ANSI_Q), Int64(kVK_ANSI_W)] {
+                suite.expect(guarded.contains(GlobalShortcut(keyCode: keyCode, modifiers: modifiers)),
+                    "secure sessions swallow Q/W including shifted and extra-modifier combinations")
+            }
+        }
+        suite.expect(guarded.count == 16 && Set(guarded).count == guarded.count
+            && guarded.allSatisfy { $0.modifiers.contains(.command) }
+            && !guarded.contains(GlobalShortcut(keyCode: Int64(kVK_ANSI_Q), modifiers: [])),
+            "session guards are bounded and never claim bare password letters")
+        var labelReads = 0
+        let localized = SwitcherSupport.secureInputActionShortcuts(for: commandTab, keyLabel: { code, command, shift in
+            labelReads += 1
+            if command && code == 0 { return shift ? "Q" : "q" }
+            if command && code == 6 { return "W" }
+            return nil
+        })
+        suite.expect(localized.contains(GlobalShortcut(keyCode: 0, modifiers: [.command, .shift]))
+            && localized.contains(GlobalShortcut(keyCode: 6, modifiers: [.command])),
+            "secure action guards follow the layout's Command Q/W positions")
+        suite.expect(labelReads <= 2 * 128,
+            "opening Command-Tab under secure input scans each Command/Shift table at most once")
+        let optionGuards = SwitcherSupport.secureInputActionShortcuts(for: optionTab, keyLabel: { _, _, _ in nil })
+        suite.expect(optionGuards.allSatisfy { $0.modifiers.contains(.option) }
+            && optionGuards.contains(GlobalShortcut(keyCode: Int64(kVK_ANSI_Q), modifiers: [.option, .command])),
+            "custom session modifiers remain required while extra Command cannot leak a quit")
+
+        // Modifier-up may precede or follow the second Carbon callback. Both
+        // openings must be protected before either replay reaches the tap.
+        let existingGuards = Set(optionGuards)
+        let commandGuards = SwitcherSupport.secureInputActionShortcuts(
+            for: commandTab, excluding: existingGuards, keyLabel: { _, _, _ in nil })
+        let combinedGuards = existingGuards.union(commandGuards)
+        suite.expect(Set(commandGuards).isDisjoint(with: existingGuards)
+            && combinedGuards == existingGuards.union(guarded),
+            "a replacement Command trigger adds its guards without unregistering or duplicating the Option guards")
+        for modifiers: GlobalShortcutModifiers in [[.command], [.option], [.command, .option, .shift]] {
+            for keyCode in [Int64(kVK_ANSI_Q), Int64(kVK_ANSI_W)] {
+                suite.expect(combinedGuards.contains(GlobalShortcut(keyCode: keyCode, modifiers: modifiers)),
+                    "Q/W stay protected across a queued Option-to-Command replacement, before or after modifier-up")
+            }
+        }
+        suite.expect(SwitcherSupport.secureInputActionShortcuts(
+            for: commandTab, excluding: combinedGuards, keyLabel: { _, _, _ in nil }).isEmpty,
+            "a repeated replacement never registers the same Carbon action twice")
+        let commandQ = GlobalShortcut(keyCode: Int64(kVK_ANSI_Q), modifiers: [.command])
+        suite.expect(!SwitcherSupport.secureInputActionShortcuts(
+            for: commandTab, excluding: [commandQ], keyLabel: { _, _, _ in nil }).contains(commandQ),
+            "an action already consumed by an opening shortcut needs no duplicate Carbon registration")
+
+        for failureIndex in shortcuts.indices {
+            var registered: [Int] = []
+            var released: [Int] = []
+            let result = SwitcherSupport.registerSecureInputHotKeys(shortcuts, register: { _, id -> Int? in
+                guard Int(id) != failureIndex + 1 else { return nil }
+                registered.append(Int(id))
+                return Int(id)
+            }, unregister: { released.append($0) })
+            suite.expect(result == nil && registered.count == failureIndex && Set(released) == Set(registered),
+                "a failed Carbon registration releases every earlier reference and reports no coverage")
+        }
+        var released: [Int] = []
+        let successful = SwitcherSupport.registerSecureInputHotKeys(shortcuts,
+            register: { _, id in Int(id) }, unregister: { released.append($0) })
+        suite.expect(successful?.count == shortcuts.count && released.isEmpty
+            && successful?[1]?.shortcut == shortcuts[0],
+            "successful Carbon registration retains the exact shortcut-to-reference mapping")
+    }
+
     static func run(_ suite: TestSuite) {
         ScrollingTitleMotionTests.run(suite)
         scrollNavigationChecks(suite)
+        secureInputRegressionChecks(suite)
         func expectEqual(_ actual: String, _ expected: String, _ label: String,
                          file: StaticString = #filePath, line: UInt = #line) {
             suite.expect(actual == expected, "\(label): got \(actual), expected \(expected)",
@@ -322,19 +495,40 @@ enum SwitcherModelFeatureTests {
             suite.expect(migrationDefaults.object(forKey: DefaultsKey.switcherWindowlessApps) == nil,
                    "a setup that kept the windowless desktop app is left exactly as it was")
 
-            migrationDefaults.set(["display|port"],
-                                  forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
-            Defaults.recheckBrightnessDDCWriteOnlyPaths(in: migrationDefaults)
-            suite.expect(migrationDefaults.object(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths) == nil
-                   && migrationDefaults.bool(
-                    forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked),
-                   "verdicts cached before paired discovery requests are classified again")
-            migrationDefaults.set(["display|port"],
-                                  forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
-            Defaults.recheckBrightnessDDCWriteOnlyPaths(in: migrationDefaults)
-            suite.expect(migrationDefaults.stringArray(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
-                   == ["display|port"],
-                   "the recheck runs once and keeps later verdicts")
+            for pairedRecheckCompleted in [false, true] {
+                migrationDefaults.set(pairedRecheckCompleted,
+                                      forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked)
+                migrationDefaults.removeObject(forKey: DefaultsKey.brightnessDDCReadChecksumRechecked)
+                migrationDefaults.set(["display|port"],
+                                      forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+                migrationDefaults.set(["manual|port"],
+                                      forKey: DefaultsKey.brightnessForcedSoftwarePaths)
+                migrationDefaults.set(["display|port"],
+                                      forKey: DefaultsKey.brightnessExtendedDimmingPaths)
+                Defaults.recheckBrightnessDDCWriteOnlyPaths(in: migrationDefaults)
+                let recheckedPaths = migrationDefaults.stringArray(
+                    forKey: DefaultsKey.brightnessDDCWriteOnlyPaths) ?? []
+                suite.expect(migrationDefaults.object(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths) == nil
+                       && migrationDefaults.bool(forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked)
+                       && migrationDefaults.bool(forKey: DefaultsKey.brightnessDDCReadChecksumRechecked)
+                       && BrightnessSupport.shouldProbe(pathKey: "display|port",
+                                                          rememberedPaths: Set(recheckedPaths)),
+                       "the checksum fix reopens cached paths with the paired recheck flag \(pairedRecheckCompleted)")
+                suite.expect(migrationDefaults.stringArray(forKey: DefaultsKey.brightnessForcedSoftwarePaths)
+                       == ["manual|port"]
+                       && migrationDefaults.stringArray(forKey: DefaultsKey.brightnessExtendedDimmingPaths)
+                       == ["display|port"],
+                       "rechecking DDC capability preserves manual dimming choices")
+                migrationDefaults.set(["display|port"],
+                                      forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+                Defaults.recheckBrightnessDDCWriteOnlyPaths(in: migrationDefaults)
+                let laterPaths = migrationDefaults.stringArray(
+                    forKey: DefaultsKey.brightnessDDCWriteOnlyPaths) ?? []
+                suite.expect(laterPaths == ["display|port"]
+                       && !BrightnessSupport.shouldProbe(pathKey: "display|port",
+                                                           rememberedPaths: Set(laterPaths)),
+                       "the checksum recheck runs once and keeps later write-only verdicts")
+            }
 
             migrationDefaults.set("microphone,panel", forKey: DefaultsKey.notchHiddenControls)
             Defaults.hideScratchpadControlOnce(in: migrationDefaults)
@@ -491,6 +685,30 @@ enum SwitcherModelFeatureTests {
         }
         suite.expect(SettingsBackupSupport.sanitizedSettings(from: instantSelectionBackup)?[DefaultsKey.switcherInstantSelection] as? Bool == true,
                "App Switcher restores the instant selection choice from a settings backup")
+        suite.expect(registeredDefaults[DefaultsKey.switcherIgnoreHoverSelection] as? Bool == false
+               && SettingsBackupSupport.exportKeys().contains(DefaultsKey.switcherIgnoreHoverSelection),
+               "App Switcher keeps hover selection by default and carries ignore-hover selection in backups")
+        for value in [false, true] {
+            let ignoreHoverBackup = SettingsBackupSupport.payload(appVersion: "test") { key in
+                key == DefaultsKey.switcherIgnoreHoverSelection ? value : nil
+            }
+            suite.expect(SettingsBackupSupport.sanitizedSettings(from: ignoreHoverBackup)?[DefaultsKey.switcherIgnoreHoverSelection] as? Bool == value,
+                   "App Switcher restores either ignore-hover selection choice from a settings backup")
+        }
+        for value in ["true", 1, [true]] as [Any] {
+            let invalidBackup = SettingsBackupSupport.payload(appVersion: "test") { key in
+                key == DefaultsKey.switcherIgnoreHoverSelection ? value : nil
+            }
+            suite.expect(SettingsBackupSupport.sanitizedSettings(from: invalidBackup)?[DefaultsKey.switcherIgnoreHoverSelection] == nil,
+                   "App Switcher rejects non-boolean ignore-hover selection values in backups")
+        }
+        let oldBackup = SettingsBackupSupport.payload(appVersion: "test") { _ in nil }
+        suite.expect(SettingsBackupSupport.sanitizedSettings(from: oldBackup)?[DefaultsKey.switcherIgnoreHoverSelection] == nil
+                     && SettingsBackupSupport.keysToClear(whenImporting: [:]).contains(DefaultsKey.switcherIgnoreHoverSelection),
+                     "an older backup clears the ignore-hover choice back to its registered false default")
+        suite.expect(SwitcherSupport.hoverMovesSelection(ignoreHoverSelection: false)
+               && !SwitcherSupport.hoverMovesSelection(ignoreHoverSelection: true),
+               "hover moves the highlight until ignore-hover selection is on, and then leaves it")
         suite.expect(SwitcherSupport.appearanceDelayMillisecondsRange
                .contains(SwitcherSupport.defaultAppearanceDelayMilliseconds),
                "the default App Switcher appearance delay is one the slider accepts")
@@ -1879,7 +2097,7 @@ enum SwitcherModelFeatureTests {
                                                                   DefaultsKey.monitorPwrTemperature,
                                                                   DefaultsKey.monitorSysBattery]),
                "preview appearance and moved battery visibility travel in settings backups")
-        let batteryVisibilitySuite = "com.vitruviansoftware.atrium.tests.batteryVisibility.\(UUID().uuidString)"
+        let batteryVisibilitySuite = "com.vitruviansoftware.vitruvian.tests.batteryVisibility.\(UUID().uuidString)"
         if let batteryVisibilityDefaults = ScratchDefaults.suite(named: batteryVisibilitySuite) {
             batteryVisibilityDefaults.removePersistentDomain(forName: batteryVisibilitySuite)
             batteryVisibilityDefaults.set(false, forKey: DefaultsKey.monitorSysTemps)
@@ -2360,6 +2578,12 @@ enum SwitcherModelFeatureTests {
                 && registeredDefaults[DefaultsKey.spacesOrderRestore] == nil
                 && registeredDefaults[DefaultsKey.spacesOrderRestartPending] == nil,
                "fixed Space order is opt-in, visible in the panel when installed, and its restore state is never registered")
+        suite.expect(registeredDefaults[DefaultsKey.scrollSpeedEnabled] as? Bool == false
+                && registeredDefaults[DefaultsKey.scrollSpeedModifier] as? String
+                    == ScrollHorizontalModifier.option.rawValue
+                && registeredDefaults[DefaultsKey.scrollSpeedMultiplier] as? Int
+                    == ScrollWheelSupport.defaultSpeedMultiplier,
+               "modifier-held scroll speed is opt-in with Option and a 3× default")
         suite.expect(registeredDefaults[DefaultsKey.mouseClickDebounceEnabled] as? Bool == false,
                "mouse click debounce is opt-in")
         suite.expect(registeredDefaults[DefaultsKey.mouseClickDebounceWindowMs] as? Int
@@ -2846,7 +3070,7 @@ enum SwitcherModelFeatureTests {
         // back to the app.
         suite.expect(registeredDefaults[DefaultsKey.notchHidesMenuBarIcon] as? Bool == false,
                "Dynamic Island only takes the icon's place when asked")
-        let islandIconSuite = "com.vitruviansoftware.atrium.tests.islandMenuBarIcon"
+        let islandIconSuite = "com.vitruviansoftware.vitruvian.tests.islandMenuBarIcon"
         if let islandDefaults = ScratchDefaults.suite(named: islandIconSuite) {
             islandDefaults.removePersistentDomain(forName: islandIconSuite)
             defer { islandDefaults.removePersistentDomain(forName: islandIconSuite) }
@@ -2910,7 +3134,7 @@ enum SwitcherModelFeatureTests {
                                                                   showsCountdown: true,
                                                                   hasEndDate: false),
                "idle, hidden and indefinite Keep Awake titles need no timer")
-        let statusPlacementSuite = "com.vitruviansoftware.atrium.tests.statusItemPlacement"
+        let statusPlacementSuite = "com.vitruviansoftware.vitruvian.tests.statusItemPlacement"
         if let statusDefaults = ScratchDefaults.suite(named: statusPlacementSuite) {
             statusDefaults.removePersistentDomain(forName: statusPlacementSuite)
             suite.expect(StatusItemPlacementSupport.placementGeneration(in: statusDefaults) == 0,
@@ -3168,13 +3392,13 @@ enum SwitcherModelFeatureTests {
             return [["bundle": ["_0": bundleID]], entry]
         }
         let trackedApplications: [Any] = tracked("com.lowtechguys.Clop", allowed: true)
-            + tracked("com.vitruviansoftware.atrium", allowed: false)
-            + tracked("com.vitruviansoftware.atrium.dev", allowed: true)
+            + tracked("com.vitruviansoftware.vitruvian", allowed: false)
+            + tracked("com.vitruviansoftware.vitruvian.dev", allowed: true)
             + tracked("com.example.legacy", allowed: nil)
-        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.atrium",
+        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.vitruvian",
                                                        trackedApplications: trackedApplications) == .disallowed,
                "an app switched off under Allow in the Menu Bar reads as disallowed")
-        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.atrium.dev",
+        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.vitruvian.dev",
                                                        trackedApplications: trackedApplications) == .allowed,
                "a sibling bundle id with its own entry does not bleed over")
         suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.example.legacy",
@@ -3183,7 +3407,7 @@ enum SwitcherModelFeatureTests {
         suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.example.absent",
                                                        trackedApplications: trackedApplications) == .unknown,
                "an app Control Center has never tracked is unknown")
-        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.atrium",
+        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.vitruvian",
                                                        trackedApplications: ["garbage", 3]) == .unknown,
                "a malformed store is unknown rather than a crash or a verdict")
         // The on-disk shape: an outer plist whose trackedApplications value is
@@ -3196,10 +3420,10 @@ enum SwitcherModelFeatureTests {
                                                 format: .binary, options: 0)
         }
         suite.expect(outerData.map {
-                MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.atrium", groupContainerPlist: $0)
+                MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.vitruvian", groupContainerPlist: $0)
             } == .disallowed,
                "the nested Control Center store decodes down to the per-app verdict")
-        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.atrium",
+        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.vitruvian",
                                                        groupContainerPlist: Data([0x00, 0x01])) == .unknown,
                "an unreadable store is unknown")
         do {
@@ -3387,7 +3611,7 @@ enum SwitcherModelFeatureTests {
                "battery time is shown in the Power panel by default")
         suite.expect(registeredDefaults[DefaultsKey.monitorPwrPeripherals] as? Bool == false,
                "peripheral batteries stay out of the Power card until turned on")
-        let peripheralsSuite = "com.vitruviansoftware.atrium.tests.powerPeripherals.\(UUID().uuidString)"
+        let peripheralsSuite = "com.vitruviansoftware.vitruvian.tests.powerPeripherals.\(UUID().uuidString)"
         if let peripheralsDefaults = ScratchDefaults.suite(named: peripheralsSuite) {
             peripheralsDefaults.removePersistentDomain(forName: peripheralsSuite)
             peripheralsDefaults.set(false, forKey: DefaultsKey.menuBarPeripheralBattery)
@@ -3796,7 +4020,10 @@ enum SwitcherModelFeatureTests {
                && SwitcherSupport.sanitizedMaxColumns(-3) == nil
                && SwitcherSupport.sanitizedMaxColumns(1) == SwitcherSupport.maxColumnsRange.lowerBound
                && SwitcherSupport.sanitizedMaxColumns(6) == 6
-               && SwitcherSupport.sanitizedMaxColumns(99) == SwitcherSupport.maxColumnsRange.upperBound,
+               && SwitcherSupport.sanitizedMaxColumns(9) == 9
+               && SwitcherSupport.sanitizedMaxColumns(10) == 10
+               && SwitcherSupport.sanitizedMaxColumns(11) == 10
+               && SwitcherSupport.sanitizedMaxColumns(99) == 10,
                "App Switcher column cap treats zero as Auto and clamps the rest")
         suite.expect(SwitcherSupport.cappedColumnCount(fitByWidth: 15, userMax: 6) == 6
                && SwitcherSupport.cappedColumnCount(fitByWidth: 4, userMax: 6) == 4
@@ -3819,6 +4046,17 @@ enum SwitcherModelFeatureTests {
                && SwitcherSupport.wrappingColumnCount(itemCount: 12, fitByWidth: 10, userMax: 8) == 6,
                "App Switcher column cap never makes the grid wider than Auto")
         let ultrawide = CGRect(x: 0, y: 0, width: 5120, height: 1415)
+        for columns in [9, 10] {
+            let layout = SwitcherIconRowLayout.compute(appCount: 30, selectedWindowCount: 1,
+                                                       screenVisibleFrame: ultrawide,
+                                                       maxColumns: SwitcherSupport.sanitizedMaxColumns(columns))
+            suite.expect(layout.columns == columns && layout.rows == (30 + columns - 1) / columns,
+                   "App Switcher icon row preserves a chosen cap of \(columns) columns")
+            suite.expect(SwitcherSupport.wrappingColumnCount(itemCount: 30, fitByWidth: 15,
+                                                              userMax: SwitcherSupport.sanitizedMaxColumns(columns)) == columns
+                   && SwitcherSupport.cappedColumnCount(fitByWidth: 4, userMax: columns) == 4,
+                   "App Switcher accepts a cap of \(columns) columns while respecting screen width")
+        }
         let strictIcons = SwitcherIconRowLayout.compute(appCount: 4, selectedWindowCount: 1,
                                                         screenVisibleFrame: ultrawide, maxColumns: 3)
         suite.expect(strictIcons.columns == 3 && strictIcons.rows == 2,
@@ -4053,7 +4291,7 @@ enum SwitcherModelFeatureTests {
         } else {
             UserDefaults.standard.removeObject(forKey: DefaultsKey.switcherPreviewSize)
         }
-        let previewSizeSuite = "com.vitruviansoftware.atrium.tests.switcher-preview-size.\(UUID().uuidString)"
+        let previewSizeSuite = "com.vitruviansoftware.vitruvian.tests.switcher-preview-size.\(UUID().uuidString)"
         if let previewSizeDefaults = ScratchDefaults.suite(named: previewSizeSuite) {
             previewSizeDefaults.set("large", forKey: DefaultsKey.previewSize)
             Defaults.migrateSwitcherPreviewSize(in: previewSizeDefaults)
@@ -4072,7 +4310,7 @@ enum SwitcherModelFeatureTests {
                    "a Dock Preview size chosen after the first launch leaves the switcher at its default size")
             previewSizeDefaults.removePersistentDomain(forName: previewSizeSuite)
         }
-        let excludedAppsSuite = "com.vitruviansoftware.atrium.tests.switcher-preview-excluded-apps.\(UUID().uuidString)"
+        let excludedAppsSuite = "com.vitruviansoftware.vitruvian.tests.switcher-preview-excluded-apps.\(UUID().uuidString)"
         if let excludedAppsDefaults = ScratchDefaults.suite(named: excludedAppsSuite) {
             excludedAppsDefaults.set(["com.example.vault"], forKey: DefaultsKey.windowPreviewExcludedApps)
             Defaults.migrateSwitcherPreviewExcludedApps(in: excludedAppsDefaults)
@@ -4092,7 +4330,7 @@ enum SwitcherModelFeatureTests {
         }
         // The module's own check, with preferences of its own and the app in
         // front passed in.
-        let previewSuite = "com.vitruviansoftware.atrium.tests.preview-pause"
+        let previewSuite = "com.vitruviansoftware.vitruvian.tests.preview-pause"
         let previewDefaults = ScratchDefaults.suite(named: previewSuite)!
         previewDefaults.removePersistentDomain(forName: previewSuite)
         previewDefaults.set(["com.example.vault"], forKey: DefaultsKey.windowPreviewExcludedApps)
@@ -4583,8 +4821,8 @@ enum SwitcherModelFeatureTests {
                "a click after hiding lets the Dock bring the app back")
         suite.expect(DockClickSupport.repeatDecision(lastAction: .hide, elapsed: 0.1) == .swallow,
                "an accidental double-click never hides and immediately reopens the app")
-        suite.expect(DockClickSupport.isOwnBundleIdentifier("com.vitruviansoftware.atrium")
-                && DockClickSupport.isOwnBundleIdentifier("com.vitruviansoftware.atrium.dev")
+        suite.expect(DockClickSupport.isOwnBundleIdentifier("com.vitruviansoftware.vitruvian")
+                && DockClickSupport.isOwnBundleIdentifier("com.vitruviansoftware.vitruvian.dev")
                 && !DockClickSupport.isOwnBundleIdentifier("com.example.editor")
                 && !DockClickSupport.isOwnBundleIdentifier(nil),
                "Dock clicks never target either build of this app")
@@ -6750,7 +6988,7 @@ enum SwitcherModelFeatureTests {
                && SystemShortcutTakeoverSupport.recorderDecision(shortcut: .screenshotDefault, conflictsWithMacOS: false,
                                                                  takenOver: true, current: areaShot) == .save(clearTakeOver: true),
                "a taken-over row re-records its own key silently, is asked again for any other macOS key or when no key is recorded, and forgets the take-over when it leaves macOS keys")
-        suite.expect(GlobalShortcutRole.allCases.filter { !$0.supportsTakeOver } == [.switcher, .switcherWindow, .radialMenu]
+        suite.expect(GlobalShortcutRole.allCases.filter { !$0.supportsTakeOver } == [.switcher, .switcherWindow, .switcherAllWindows, .radialMenu]
                && GlobalShortcutRole.keepAwake.supportsTakeOver && GlobalShortcutRole.finderRename.supportsTakeOver,
                "only the rows whose key a feature claims may offer to take a macOS shortcut over")
         suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.systemShortcutTakeOverKeys)

@@ -1,6 +1,6 @@
 # `//tools/agent-roster`
 
-Generates per-harness agent files for Claude Code (`.claude/agents/*.md`), Antigravity (`.agents/agents/*.md`), and OpenCode (`.opencode/agents/*.md`) and each harness's `orchestrate` lead skill (`SKILL.md`) from the single roster under `.agents/roster/`.
+Generates per-harness agent files for Claude Code (`.claude/agents/*.md` and `apps/claude-code/plugins/vitruvian-orchestrator/agents/*.md`), Antigravity (`.agents/agents/*.md` and `apps/antigravity/plugins/vitruvian-orchestrator/agents/*.md`), and OpenCode (`.opencode/agents/*.md`), plus each harness's `orchestrate` lead skill (`SKILL.md`), from the single roster under `.agents/roster/`.
 
 ## Commands
 

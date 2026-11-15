@@ -33,7 +33,7 @@ let package = Package(
     dependencies: [
         // The Vitruvian tool kit, for the tool target below. The tool needs
         // 1.9.0: `onSlot`, `dockToSlot`, `showNotice`, `Panel.onClose`, and
-        // `picker: "folder"` came with 1.9.0 (`tool/src/version_test.rs` holds
+        // `picker: "folder"` came with 1.9.0 (`atrium-extension/src/version_test.rs` holds
         // this line to it).
         .package(url: "https://github.com/VitruvianSoftware/vitruvian-sdk", from: "1.9.0"),
     ],

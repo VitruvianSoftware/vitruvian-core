@@ -25,6 +25,7 @@
 use crate::arith::{self, Vars};
 use crate::checks::parse_checks_json;
 use crate::post_merge::{decide, Decision, EXIT_TIMEOUT, POST_MERGE_GRACE};
+use crate::queue::{self, Verdict};
 use crate::sh::{
     self, capture, capture_merged, capture_or_echo, die, env_or, info, now, ok, on_path, prefix,
     read_fields, run_ids, test_cmp, warn,
@@ -221,6 +222,66 @@ fn pr_view(pr: &str, repo: &str) -> String {
     .out
 }
 
+/// Consecutive unreadable polls of the queue phase before giving up. A
+/// failed read is never shown as a state (it once printed "QUEUED", which
+/// GitHub has no such value for, for an hour after the PR left the queue).
+const MAX_READ_FAILURES: u32 = 5;
+
+/// Re-mint the agent token this long after minting it: they last an hour.
+const TOKEN_REFRESH_SECS: i64 = 45 * 60;
+
+/// The PR's queue state from GitHub, or why it could not be read.
+fn queue_status(pr: &str, repo: &str) -> Result<queue::Status, String> {
+    let (owner, name) = repo.split_once('/').unwrap_or((repo, ""));
+    let got = capture_merged(
+        "gh",
+        &[
+            "api",
+            "graphql",
+            "-f",
+            &format!("query={}", queue::QUERY),
+            "-F",
+            &format!("owner={owner}"),
+            "-F",
+            &format!("name={name}"),
+            "-F",
+            &format!("number={pr}"),
+        ],
+    );
+    if got.status != 0 {
+        let first = got.out.lines().next().unwrap_or("").trim();
+        return Err(format!("gh api graphql exited {}: {first}", got.status));
+    }
+    queue::parse(&got.out)
+}
+
+/// The token watch-pr minted for itself (as scout), so it can mint a new
+/// one before the hour runs out. None when the caller brought its own.
+struct MintedToken {
+    at: i64,
+}
+
+fn mint_token(shell: &mut Shell) -> bool {
+    let exports = capture("bazel", &["run", "//tools/agent-app", "--", "env", "scout"]).out;
+    apply_exports(&exports, shell);
+    !exports.is_empty()
+}
+
+/// Re-mint our own token when it is old, or when `force` (a read failed).
+fn refresh_token(minted: &mut Option<MintedToken>, shell: &mut Shell, force: bool) {
+    let Some(token) = minted.as_mut() else { return };
+    let t = now();
+    if !force && t - token.at < TOKEN_REFRESH_SECS {
+        return;
+    }
+    if mint_token(shell) {
+        info("Minted a fresh GitHub token (agent tokens last an hour).");
+        token.at = t;
+    } else {
+        warn("Could not mint a fresh GitHub token.");
+    }
+}
+
 /// Run watch-pr with `args` (no program name); the exit status.
 pub fn run(script: &str, args: &[String]) -> i32 {
     let mut shell = Shell {
@@ -302,14 +363,15 @@ pub fn run(script: &str, args: &[String]) -> i32 {
         return 3;
     }
 
+    let mut minted = None;
     if std::env::var("GH_TOKEN")
         .map(|t| t.is_empty())
         .unwrap_or(true)
         && sh::is_file("tools/agent-app/BUILD")
         && on_path("bazel")
     {
-        let exports = capture("bazel", &["run", "//tools/agent-app", "--", "env", "scout"]).out;
-        apply_exports(&exports, &mut shell);
+        mint_token(&mut shell);
+        minted = Some(MintedToken { at: now() });
         target = shell.var("target");
     }
 
@@ -392,6 +454,7 @@ pub fn run(script: &str, args: &[String]) -> i32 {
             return EXIT_TIMEOUT;
         }
         let elapsed = now - start_time;
+        refresh_token(&mut minted, &mut shell, false);
 
         if field(&pr_view(&pr, &repo), "state") == "MERGED" {
             ok(&format!("PR #{pr} has already merged into main!"));
@@ -480,6 +543,7 @@ pub fn run(script: &str, args: &[String]) -> i32 {
         info(&format!(
             "Monitoring merge queue / squash merge for PR #{pr} into main..."
         ));
+        let mut read_failures = 0;
         loop {
             let now = now();
             if now >= deadline {
@@ -500,29 +564,61 @@ pub fn run(script: &str, args: &[String]) -> i32 {
                 break;
             }
 
-            let view = pr_view(&pr, &repo);
-            let state = field(&view, "state");
-            if state == "MERGED" {
-                ok(&format!("PR #{pr} is marked MERGED in GitHub!"));
-                break;
-            } else if state == "CLOSED" {
-                die(&format!("PR #{pr} was closed without being merged!"));
-                return 1;
-            }
-
-            let merge_state = match sh::json_field_values(&view, "mergeStateStatus") {
-                (values, true) => sh::subst_text(values.join("\n").as_bytes()),
-                (_, false) => "QUEUED".to_string(),
+            refresh_token(&mut minted, &mut shell, false);
+            let status = match queue_status(&pr, &repo) {
+                Ok(status) => {
+                    read_failures = 0;
+                    status
+                }
+                Err(why) => {
+                    read_failures += 1;
+                    if read_failures >= MAX_READ_FAILURES {
+                        die(&format!(
+                            "Could not read PR #{pr}'s merge-queue state from GitHub {read_failures} times in a row; giving up rather than guessing. Last error: {why}"
+                        ));
+                        return 1;
+                    }
+                    warn(&format!(
+                        "Could not read PR #{pr}'s merge-queue state ({read_failures}/{MAX_READ_FAILURES}): {why}"
+                    ));
+                    refresh_token(&mut minted, &mut shell, true);
+                    sh::sleep(&interval);
+                    continue;
+                }
             };
-            let shown_state = if state.is_empty() { "OPEN" } else { &state };
-            let shown_merge = if merge_state.is_empty() {
-                "QUEUED"
+            let merge = if status.merge_state.is_empty() {
+                "unknown".to_string()
             } else {
-                &merge_state
+                status.merge_state.clone()
             };
-            info(&format!(
-                "PR #{pr} status: {shown_state} (mergeStateStatus: {shown_merge}). Waiting for squash merge... ({elapsed}s elapsed)"
-            ));
+            match status.verdict {
+                Verdict::Merged => {
+                    ok(&format!("PR #{pr} is marked MERGED in GitHub!"));
+                    break;
+                }
+                Verdict::Closed => {
+                    die(&format!("PR #{pr} was closed without being merged!"));
+                    return 1;
+                }
+                Verdict::Removed { reason, at } => {
+                    die(&format!(
+                        "PR #{pr} was removed from the merge queue at {at} (reason: {reason}) and is not queued now. Fix the cause and enqueue it again."
+                    ));
+                    return 1;
+                }
+                Verdict::Queued { state, position } => info(&format!(
+                    "PR #{pr} is in the merge queue (position {position}, {state}; mergeStateStatus: {merge}). Waiting for squash merge... ({elapsed}s elapsed)"
+                )),
+                Verdict::Merging => info(&format!(
+                    "PR #{pr} left the merge queue as merged; waiting for GitHub to mark it MERGED... ({elapsed}s elapsed)"
+                )),
+                Verdict::AutoMergeArmed => info(&format!(
+                    "PR #{pr} is not in the merge queue yet; auto-merge is armed (mergeStateStatus: {merge}). Waiting... ({elapsed}s elapsed)"
+                )),
+                Verdict::NotQueued => warn(&format!(
+                    "PR #{pr} is OPEN but not in the merge queue and auto-merge is not armed (mergeStateStatus: {merge}). Waiting for it to be enqueued... ({elapsed}s elapsed)"
+                )),
+            }
             sh::sleep(&interval);
         }
     }

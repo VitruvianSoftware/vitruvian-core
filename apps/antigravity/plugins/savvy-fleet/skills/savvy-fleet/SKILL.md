@@ -19,4 +19,4 @@ Surface a clickable sidecar link in your response whenever you launch a fleet of
 
 1. **Transcript Inspection**: The sidecar inspects `~/.gemini/antigravity/brain/<conversation-id>/.system_generated/logs/transcript.jsonl` to count steps, tool calls, and `invoke_subagent` / `send_message` interactions.
 2. **Hook Inbox**: `hooks/track-subagent.sh` captures `PostToolUse` events on `invoke_subagent` and `send_message` in `~/.gemini/antigravity/savvy-fleet-inbox/`.
-3. **Flow & Step API**: The panel exposes `/api/state`, `/api/openui`, `/api/progress` (to set flow title, phase, and planned tasks), and `/api/step` (to update worker step progress).
+3. **Flow & State API**: The panel exposes `/api/state`, `/api/openui`, `/api/progress` (to set flow title, phase, and planned tasks), and `/api/reset`.

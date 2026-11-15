@@ -19,6 +19,23 @@ enum ByHandRules {
         }
     }
 
+    /// One entry macOS lists for the app: its process id, and whether a
+    /// program is running behind it.
+    struct Listed: Equatable {
+        var pid: Int32
+        var hasProgram: Bool
+        var isTerminated: Bool = false
+    }
+
+    /// Which of the entries macOS lists under the app's bundle id is the app
+    /// that runs. After the app updated itself into a bundle of a new name
+    /// (3.89.0 to 3.90.1, on 2026-11-12) macOS kept an entry for it with no
+    /// program behind it, listed first and marked as the app in front, so
+    /// taking the first entry found no windows and no menu.
+    static func running(among listed: [Listed]) -> Int? {
+        listed.firstIndex { $0.pid > 0 && $0.hasProgram && !$0.isTerminated }
+    }
+
     /// Which control to press for a name: one whose title or description IS
     /// the name, and of several the last, because a sheet's controls come
     /// after its window's. Never one that merely contains the name: a loose

@@ -19,7 +19,7 @@ import VitruvianAtriumDesign
 /// and awaited, so no buffer can still be in flight.
 package final class RecorderWriter {
 
-    private static let preparationQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.recorder.prepare",
+    private static let preparationQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recorder.prepare",
                                                          qos: .userInitiated)
     private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "atrium",
                                     category: "recorder")

@@ -17,7 +17,7 @@ enum FeatureRuntimeContract {
     }
 
     static func run(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.feature-runtime"
+        let domain = "com.vitruviansoftware.vitruvian.tests.feature-runtime"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -87,9 +87,13 @@ enum FeatureRuntimeContract {
         suite.expect([AppFeature.monitorCPU, .monitorGPU, .monitorMemory, .monitorNetwork, .monitorDisk, .monitorPower,
                       .connectedDevices].allSatisfy { actions($0) == [.monitorPlan, .monitorAlerts] },
                      "every metric family and connected devices recompute the sampling plan")
-        suite.expect([AppFeature.quickToggles, .cleaningMode, .uninstaller, .homebrew, .killProcess, .portManager]
+        suite.expect([AppFeature.cleaningMode, .homebrew, .killProcess, .portManager]
                         .allSatisfy { actions($0).isEmpty },
                      "an on-demand tool has nothing to start or stop")
+        suite.expect(actions(.uninstaller) == [.trashAppWatcher],
+                     "the uninstaller drives its watch on the Trash and nothing else")
+        suite.expect(actions(.quickToggles) == [.quickToggles] && actions(.quitApps) == [.quickToggles],
+                     "Quick toggles and Quit apps both resync the service that owns the Quit apps shortcuts")
         suite.expect(actions(.urlCleaner) == [.tool(URLCleanerService.manifest.id)],
                      "a feature that has become a tool is handed to the tool host")
         let pasteTool = FeatureBindingAction.tool(PastePlainService.manifest.id)

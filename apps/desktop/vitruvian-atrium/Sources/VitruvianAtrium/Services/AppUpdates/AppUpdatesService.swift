@@ -143,7 +143,7 @@ package final class AppUpdatesService: ObservableObject {
     @Published package private(set) var hasCheckedThisSession = false
     @Published package private(set) var lastError: String?
 
-    package let workQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.appupdates", qos: .utility)
+    package let workQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.appupdates", qos: .utility)
     private let lookupSession: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 10
@@ -460,7 +460,7 @@ package final class AppUpdatesService: ObservableObject {
         let installedOutput = Self.runCommand(HomebrewCommandBuilder.installed(brewPath: brewPath),
                                               environment: HomebrewEnvironment.forBrew)
         let records = installedOutput.status == 0
-            ? HomebrewParser.parseInstalledCaskRecords(installedOutput.output)
+            ? (try? HomebrewParser.parseInstalledCaskRecords(installedOutput.output)) ?? []
             : []
         let coveredPaths = Set(records.compactMap {
             AppUpdatesSupport.packageBundle(for: $0, apps: apps)?.path

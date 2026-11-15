@@ -24,6 +24,7 @@
 # gazelle:ignore
 
 load("@aspect_rules_js//js:defs.bzl", "js_library")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/doctor:defs.bzl", "doctor")
 
 # Inter-app boundary (#82): targets in this package default to vitruvian-tabs-internal
@@ -56,4 +57,43 @@ doctor(
         "pnpm",
         "git",
     ],
+)
+
+sh_test(
+    name = "agent_docs_test",
+    size = "small",
+    srcs = ["//tools/conformance:skill_docs_check.sh"],
+    args = [
+        "--root",
+        "apps/suites/vitruvian-tabs",
+        "apps/suites/vitruvian-tabs/.agent/rules/browser-subagent.md",
+        "apps/suites/vitruvian-tabs/.agent/rules/standard-operating-procedure.md",
+        "apps/suites/vitruvian-tabs/.agent/skills/README.md",
+        "apps/suites/vitruvian-tabs/.agent/skills/backend-api-developer/SKILL.md",
+        "apps/suites/vitruvian-tabs/.agent/skills/devops-cli-developer/SKILL.md",
+        "apps/suites/vitruvian-tabs/.agent/skills/frontend-extension-developer/SKILL.md",
+        "apps/suites/vitruvian-tabs/.agent/skills/infrastructure-engineer/SKILL.md",
+        "apps/suites/vitruvian-tabs/.agent/skills/qa-engineer/SKILL.md",
+        "apps/suites/vitruvian-tabs/.agent/skills/security-analyst/SKILL.md",
+        "apps/suites/vitruvian-tabs/.agent/skills/technical-writer/SKILL.md",
+        "apps/suites/vitruvian-tabs/.agent/workflows/browser-subagent-qa.md",
+        "apps/suites/vitruvian-tabs/.agent/workflows/commit-readiness.md",
+    ],
+    data = [
+        "AGENTS.md",
+        "CONTRIBUTING.md",
+        "README.md",
+        "SECURITY.md",
+        "infra/README.md",
+        "mkdocs.yml",
+        "//apps/suites/vitruvian-tabs/api:docs_files",
+        "//apps/suites/vitruvian-tabs/cli:docs_files",
+        "//apps/suites/vitruvian-tabs/extension:docs_files",
+        "//apps/suites/vitruvian-tabs/infra/app:docs_files",
+        "//apps/suites/vitruvian-tabs/infra/data:docs_files",
+        "//apps/suites/vitruvian-tabs/infra/web:docs_files",
+    ] + glob([
+        ".agent/**/*.md",
+        "docs/**/*.md",
+    ]),
 )

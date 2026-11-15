@@ -173,7 +173,8 @@ package final class QuitProtectionService: ObservableObject {
 
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            // The key up that ends the swallow may be among the events missed.
+            // The key up that ends the swallow, or the release of Command that
+            // closes the native switcher, may be among the events missed.
             swallowShortcut = nil
             nativeSwitcher.end()
             cancelPending()
@@ -203,7 +204,10 @@ package final class QuitProtectionService: ObservableObject {
         // targeting that original app. Track the Command chord without an AX
         // query on the tap, including reverse navigation and dismissal.
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        nativeSwitcher.observe(type, flags: event.flags, keyCode: keyCode) {
+        let flags = event.flags
+        nativeSwitcher.observe(type, flags: flags, keyCode: keyCode, opensSwitcher: {
+            Self.opensNativeSwitcher(keyCode: keyCode, flags: flags)
+        }) {
             GlobalShortcut.layoutKeyLabel(for: keyCode, usesCommand: true) == "."
         }
 
@@ -223,6 +227,15 @@ package final class QuitProtectionService: ObservableObject {
         default:
             return Unmanaged.passUnretained(event)
         }
+    }
+
+    /// Read only the two app-switcher rows on Command key downs. Both the
+    /// combination and its enabled state can change while this tap is running;
+    /// ordinary typing, key releases and modifier changes never query the table.
+    nonisolated private static func opensNativeSwitcher(keyCode: Int64, flags: CGEventFlags) -> Bool {
+        QuitProtectionSupport.opensNativeSwitcher(
+            keyCode: keyCode, flags: flags,
+            entries: SymbolicHotKeys.entries(for: QuitProtectionSupport.nativeAppSwitcherIDs))
     }
 
     private func handleKeyDown(_ event: CGEvent) -> Unmanaged<CGEvent>? {
@@ -700,19 +713,25 @@ package final class QuitProtectionService: ObservableObject {
 }
 
 /// The native Command-Tab switcher, followed from the tap's own events: it
-/// opens on Command-Tab without Control or Option, and closes when Command is
-/// let go, on Escape, or on Command-period while it is open.
+/// opens on the WindowServer's live switcher shortcut (`opensSwitcher`; the
+/// factory Command-Tab without Control or Option when none is given), and
+/// closes when Command is let go, on Escape, or on Command-period while it is
+/// open.
 package struct NativeSwitcherSession: Equatable {
     package private(set) var isActive = false
 
     package init() {}
 
     /// `isPeriod` reads the keyboard layout, so it is asked only while open.
+    /// `opensSwitcher` reads the system shortcut table, so it is asked only
+    /// on Command key downs.
     package mutating func observe(_ type: CGEventType, flags: CGEventFlags, keyCode: Int64,
-                                  isPeriod: () -> Bool) {
+                                  opensSwitcher: (() -> Bool)? = nil, isPeriod: () -> Bool) {
         guard flags.contains(.maskCommand) else { isActive = false; return }
         guard type == .keyDown else { return }
-        if keyCode == 48, !flags.contains(.maskControl), !flags.contains(.maskAlternate) {
+        let opens = opensSwitcher?()
+            ?? (keyCode == 48 && !flags.contains(.maskControl) && !flags.contains(.maskAlternate))
+        if opens {
             isActive = true
         } else if keyCode == 53 || (isActive && isPeriod()) {
             isActive = false

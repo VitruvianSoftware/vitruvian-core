@@ -95,7 +95,7 @@ squashes here. So a one-commit pull request is fixed by changing the commit
    request's description:
 
    ```text
-   Releases: vitruvian-sdk, vitruvian-tool-github
+   Releases: vitruvian-sdk, vitruvian-github
    ```
 
    The names are components, as in each `release-please-config.json`.

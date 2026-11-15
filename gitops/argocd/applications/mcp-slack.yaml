@@ -361,9 +361,9 @@ spec:
       path: apps/mcp/vitruvian-slack-mcp/deploy/chart
       helm:
         valueFiles:
-          - $values/gitops/argocd/platform/vitruvian-slack-mcp/values.yaml
+          - $values/gitops/argocd/platform/mcp-slack/values.yaml
 
-    # Source 2: Values file kept in platform/vitruvian-slack-mcp, referenced from source 1
+    # Source 2: Values file kept in platform/mcp-slack, referenced from source 1
     # as `$values`. Extracted so argocd-image-updater can write resolved image
     # digests directly into a real file.
     - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git

@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -99,6 +100,14 @@ fn test_mirror_build() {
     );
     let built = PathBuf::from(String::from_utf8_lossy(&bin_path_out.stdout).trim());
 
+    let bot_bin_rel = std::env::var("BOT_BIN").expect("BOT_BIN not set");
+    let bot_bin_src = PathBuf::from(&test_srcdir)
+        .join(&test_workspace)
+        .join(bot_bin_rel);
+    let bot_bin_dst = built.join("bot-engine");
+    fs::copy(&bot_bin_src, &bot_bin_dst).expect("copy bot-engine beside built VitruvianCode");
+    fs::set_permissions(&bot_bin_dst, fs::Permissions::from_mode(0o755)).expect("chmod bot-engine");
+
     let bundle_bin_rel = std::env::var("BUNDLE_BIN").expect("BUNDLE_BIN not set");
     let bundle_bin = PathBuf::from(&test_srcdir)
         .join(&test_workspace)
@@ -114,6 +123,10 @@ fn test_mirror_build() {
     assert!(status.success(), "bundle-app failed");
 
     let packaged = dist_dir.join("Vitruvian Code.app");
+    assert!(
+        packaged.join("Contents/Helpers/bot-engine").is_file(),
+        "packaged app must bundle Contents/Helpers/bot-engine"
+    );
     let status = Command::new("codesign")
         .args(["--verify", "--deep", "--strict"])
         .arg(&packaged)

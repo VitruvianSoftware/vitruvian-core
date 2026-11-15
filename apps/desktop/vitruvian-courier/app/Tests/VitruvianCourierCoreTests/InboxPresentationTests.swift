@@ -42,41 +42,52 @@ final class InboxPresentationTests: XCTestCase {
                                                locale: Locale(identifier: "de_DE"))), "15:05")
     }
 
-    func testTheLastSixDaysShowTheWeekday() {
-        XCTAssertEqual(text(time(daysAgo: 1)), "Thursday")
+    func testYesterdayIsSaidAsSuch() {
+        XCTAssertEqual(text(time(daysAgo: 1)), "Yesterday")
+    }
+
+    func testTwoToSixDaysShowTheWeekday() {
+        XCTAssertEqual(text(time(daysAgo: 2)), "Wednesday")
         XCTAssertEqual(text(time(daysAgo: 6)), "Saturday")
     }
 
-    func testOlderShowsTheShortDate() {
-        XCTAssertEqual(text(time(daysAgo: 7)), "10/9/26")
-        XCTAssertEqual(text(time(daysAgo: 200)), "3/30/26")
+    func testEarlierThisYearShowsMonthAndDay() {
+        XCTAssertEqual(text(time(daysAgo: 7)), "October 9")
+        XCTAssertEqual(text(time(daysAgo: 200)), "March 30")
         XCTAssertEqual(plain(RelativeTime.text(forMillis: time(daysAgo: 7), now: now, calendar: calendar,
-                                               locale: Locale(identifier: "en_GB"))), "09/10/2026")
+                                               locale: Locale(identifier: "en_GB"))), "9 October")
+    }
+
+    func testBeforeThisYearShowsTheYear() {
+        XCTAssertEqual(text(time(daysAgo: 400)), "Sep 11, 2025")
+        XCTAssertEqual(plain(RelativeTime.text(forMillis: time(daysAgo: 400), now: now, calendar: calendar,
+                                               locale: Locale(identifier: "en_GB"))), "11 Sep 2025")
     }
 
     func testNoTimeAndTheFutureAreHandled() {
         XCTAssertEqual(text(0), "", "a chat with no message yet shows no time")
         // A clock a little ahead is still today; a day ahead is a date, not a weekday.
         XCTAssertEqual(text(time(daysAgo: 0, hour: 23, minute: 59)), "11:59 PM")
-        XCTAssertEqual(text(time(daysAgo: -1)), "10/17/26")
+        XCTAssertEqual(text(time(daysAgo: -1)), "October 17")
     }
 
     func testFormattersAreKeptNotBuiltPerRow() {
         _ = text(time(daysAgo: 0))
-        _ = text(time(daysAgo: 1))
+        _ = text(time(daysAgo: 2))
         _ = text(time(daysAgo: 9))
+        _ = text(time(daysAgo: 400))
         let kept = RelativeTime.cachedFormatterCount
         for index in 0 ..< 500 { _ = text(time(daysAgo: index % 12)) }
         XCTAssertEqual(RelativeTime.cachedFormatterCount, kept, "500 rows, no new formatter")
-        XCTAssertEqual(text(time(daysAgo: 1)), "Thursday")
+        XCTAssertEqual(text(time(daysAgo: 2)), "Wednesday")
     }
 
     func testTheTimeFollowsNow() {
-        // The same message reads as today's time in the evening and as the weekday the next morning.
+        // The same message reads as today's time in the evening and as "Yesterday" the next morning.
         let sent = time(daysAgo: 0)
         XCTAssertEqual(text(sent), "9:05 AM")
         let tomorrow = now.addingTimeInterval(24 * 3600)
-        XCTAssertEqual(RelativeTime.text(forMillis: sent, now: tomorrow, calendar: calendar, locale: locale), "Friday")
+        XCTAssertEqual(RelativeTime.text(forMillis: sent, now: tomorrow, calendar: calendar, locale: locale), "Yesterday")
     }
 
     func testInitials() {

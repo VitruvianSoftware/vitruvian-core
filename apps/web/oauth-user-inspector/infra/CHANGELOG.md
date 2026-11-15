@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-infra-v1.6.1...oauth-user-inspector-infra-v1.7.0) (2026-11-14)
+
+
+### Features
+
+* **telemetry:** wire Sentry DSNs for Cloud Run and GitOps workloads ([#4839](https://github.com/VitruvianSoftware/vitruvian-core/issues/4839)) ([879e439](https://github.com/VitruvianSoftware/vitruvian-core/commit/879e439da101a9f53c7dffb3acb3223829a2b9fe))
+
 ## [1.6.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-infra-v1.6.0...oauth-user-inspector-infra-v1.6.1) (2026-09-02)
 
 

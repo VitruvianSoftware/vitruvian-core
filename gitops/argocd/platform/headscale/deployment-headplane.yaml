@@ -96,6 +96,9 @@ spec:
             - name: secret
               mountPath: /var/run/secrets/headplane
               readOnly: true
+            - name: oidc-secret
+              mountPath: /var/run/secrets/headplane-oidc
+              readOnly: true
             - name: data
               mountPath: /var/lib/headplane
             - name: tmp
@@ -107,6 +110,9 @@ spec:
         - name: secret
           secret:
             secretName: headplane-secret
+        - name: oidc-secret
+          secret:
+            secretName: headplane-oidc-secret
         # Persistent volume — sessions and cache survive pod restarts.
         # Without this, every Argo sync or reschedule logs everyone out.
         # local-path matches the headscale chart's own config PVC and the

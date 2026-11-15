@@ -11,7 +11,7 @@ import VitruvianAtriumUI
 /// agent logs, network or notification windows.
 enum AgentUsageEventDeliveryTests {
     static func run(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.agent-usage-events"
+        let domain = "com.vitruviansoftware.vitruvian.tests.agent-usage-events"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

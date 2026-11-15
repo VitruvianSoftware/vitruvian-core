@@ -12,6 +12,34 @@ package enum SettingsBackupSupport {
     package static let settingsKey = "settings"
     package static let formatVersion = 1
 
+    /// `VitruvianAtrium --export-settings FILE` and `VitruvianAtrium --import-settings FILE`
+    /// write and apply the same file as the buttons in Advanced settings.
+    package enum Command: Equatable {
+        case export(path: String)
+        case `import`(path: String)
+        case missingFile(flag: String)
+        case conflictingFlags
+    }
+
+    package static let exportFlag = "--export-settings"
+    package static let importFlag = "--import-settings"
+
+    /// nil when neither flag is given. A flag followed by another option or by
+    /// nothing has no file to work on.
+    package static func command(in arguments: [String]) -> Command? {
+        let flags = arguments.filter { $0 == exportFlag || $0 == importFlag }
+        guard !flags.isEmpty else { return nil }
+        guard flags.count == 1 else { return .conflictingFlags }
+        for (flag, command) in [(exportFlag, Command.export), (importFlag, Command.import)] {
+            guard let index = arguments.firstIndex(of: flag) else { continue }
+            guard let path = arguments.dropFirst(index + 1).first, !path.hasPrefix("-") else {
+                return .missingFile(flag: flag)
+            }
+            return command(path)
+        }
+        return nil
+    }
+
     /// Keys the backup carries: every registered preference, the availability
     /// layer, and the deliberately unregistered selection/layout keys — minus
     /// state that belongs to one machine or one moment.
@@ -123,6 +151,7 @@ package enum SettingsBackupSupport {
         // Levels and device ids belong to the microphones of one Mac.
         DefaultsKey.micMuteSavedVolumes,
         DefaultsKey.micMuteSavedChannelVolumes,
+        DefaultsKey.micMuteSavedControls,
         DefaultsKey.micMuteMutedDevices,
         DefaultsKey.cleanerLastAutoRun,
         // When the last check ran and what it found belong to one Mac.
@@ -174,6 +203,8 @@ package enum SettingsBackupSupport {
         DefaultsKey.settingsWindowHeight,
         DefaultsKey.clipboardHistoryWindowWidth,
         DefaultsKey.clipboardHistoryWindowHeight,
+        DefaultsKey.clipboardHistoryWindowX,
+        DefaultsKey.clipboardHistoryWindowY,
         // The last magnifier level is session history; its remembered/default
         // policy remains portable, but another Mac need not inherit the value.
         DefaultsKey.screenshotLoupeLastZoom,
@@ -189,9 +220,13 @@ package enum SettingsBackupSupport {
         DefaultsKey.systemShortcutsSuppressed,
         // DDC capability belongs to one physical monitor on one Mac port.
         DefaultsKey.brightnessDDCWriteOnlyPaths,
+        // Speaker probe verdicts: the same stated reason as the write-only paths.
+        DefaultsKey.displayAudioSilentPaths,
         // Restoring it would skip the one-time recheck of the cache above on
         // a Mac that still holds its own stale verdicts.
         DefaultsKey.brightnessDDCWriteOnlyPathsRechecked,
+        DefaultsKey.brightnessDDCReadChecksumRechecked,
+        DefaultsKey.brightnessDDCReadChecksumRechecked,
         DefaultsKey.brightnessForcedSoftwarePaths,
         DefaultsKey.brightnessExtendedDimmingPaths,
         // A fit measured against one Mac's camera housing would misfit another's.
@@ -209,17 +244,17 @@ package enum SettingsBackupSupport {
                 settings[key] = value
             }
         }
-        settings = portableNotchDisplay(settings)
-        settings = portableMediaSettings(settings)
-        settings = portableMouseExceptions(settings)
-        settings = portableWindowLayoutIgnoredApps(settings)
-        settings = portableThumbnailPauseLists(settings)
-        settings = exportedAppVolumes(settings)
         return [
             formatVersionKey: formatVersion,
             appVersionKey: appVersion,
-            settingsKey: settings,
+            settingsKey: portableSettings(settings),
         ]
+    }
+
+    package static func portableSettings(_ settings: [String: Any]) -> [String: Any] {
+        let media = portableMediaSettings(portableNotchDisplay(settings))
+        let exceptions = portableWindowLayoutIgnoredApps(portableMouseExceptions(media))
+        return exportedAppVolumes(portableThumbnailPauseLists(exceptions))
     }
 
     /// Validates an incoming file and returns only the keys this build knows
@@ -258,6 +293,94 @@ package enum SettingsBackupSupport {
         var result = settings
         if let mode = result[DefaultsKey.notchDisplay] as? String, NotchDisplay(rawValue: mode) == nil {
             result[DefaultsKey.notchDisplay] = NotchDisplay.automatic.rawValue
+        }
+        return result
+    }
+
+    /// An optional settings file the app reads at launch (issue #497): `$XDG_CONFIG_HOME/vitruvian/settings.plist`, or
+    /// `~/.config` in its place when the variable is unset, empty or relative,
+    /// as the XDG spec asks. The Developer build reads its own folder.
+    package static func configFileURL(environment: [String: String],
+                                      home: URL,
+                                      isDeveloperBuild: Bool) -> URL {
+        var base = home.appendingPathComponent(".config", isDirectory: true)
+        if let xdg = environment["XDG_CONFIG_HOME"], xdg.hasPrefix("/") {
+            base = URL(fileURLWithPath: xdg, isDirectory: true)
+        }
+        var folder = "vitruvian"
+        if isDeveloperBuild {
+            folder += "-dev"
+        }
+        return base
+            .appendingPathComponent(folder, isDirectory: true)
+            .appendingPathComponent("settings.plist")
+    }
+
+    /// Every cleanup, diagnostic and backup mode is a `--` flag, and none of
+    /// them should take on the file's settings; only a plain launch does.
+    package static func appliesConfigFile(arguments: [String]) -> Bool {
+        !arguments.dropFirst().contains { $0.hasPrefix("--") }
+    }
+
+    /// These keys have no registered type for the ordinary backup validator
+    /// to inspect. A damaged declaration must leave the local choice intact.
+    /// `snippetsAreValid` decodes a snippet library, whose type lives in
+    /// Services.
+    package static func configOverrides(from settings: [String: Any],
+                                        snippetsAreValid: (Data) -> Bool) -> [String: Any] {
+        let availability = AppFeature.availabilityDefaults
+        var values = settings.filter { key, value in
+            if availability[key] != nil { return isBoolean(value) }
+            switch key {
+            case DefaultsKey.autoQuitEnabled, DefaultsKey.shelfEnabled, DefaultsKey.finderCutPasteEnabled,
+                 DefaultsKey.hasOnboarded:
+                return isBoolean(value)
+            case DefaultsKey.onboardingStep:
+                return isInteger(value)
+            case DefaultsKey.textSnippets:
+                guard let data = value as? Data else { return false }
+                return snippetsAreValid(data)
+            case DefaultsKey.recorderEditorPresets:
+                guard let data = value as? Data else { return false }
+                return data.isEmpty || (try? JSONDecoder().decode([RecorderEditPreset].self, from: data)) != nil
+            case DefaultsKey.appVolumes:
+                guard let levels = value as? [String: Any] else { return false }
+                let validUnit = settings[DefaultsKey.appVolumesArePositions].map(isBoolean) ?? true
+                return validUnit && levels.values.allSatisfy(isNumber)
+            default: return true
+            }
+        }
+        if values[DefaultsKey.appVolumes] == nil {
+            values.removeValue(forKey: DefaultsKey.appVolumesArePositions)
+        }
+        // These retired switches name choices in the current pickers. Resolve
+        // them in the file so they cannot retrigger a Mac migration next time.
+        if values.removeValue(forKey: DefaultsKey.switcherShowWindowlessFinder) as? Bool == false,
+           values[DefaultsKey.switcherWindowlessApps] == nil {
+            values[DefaultsKey.switcherWindowlessApps] = SwitcherWindowlessApps.migrated(showsWindowlessFinder: false).rawValue
+        }
+        if values.removeValue(forKey: DefaultsKey.screenshotOpenEditorDirectly) as? Bool == true,
+           (values[DefaultsKey.screenshotDefaultAction] as? String ?? "").isEmpty {
+            values[DefaultsKey.screenshotDefaultAction] = ScreenshotDefaultAction.edit.rawValue
+        }
+        return values
+    }
+
+    /// The portable form leaves out media logos, which name files on one Mac.
+    /// Where the file holds exactly that form of this Mac's value, this Mac's
+    /// value stays, so applying the file where it was exported keeps the logo.
+    package static func keepingLocalMediaLogos(_ settings: [String: Any],
+                                               local: [String: Any]) -> [String: Any] {
+        var result = settings
+        let kindKey = DefaultsKey.mediaImageWatermarkKind
+        let text = local[DefaultsKey.mediaImageWatermarkText] as? String ?? ""
+        if let raw = local[kindKey] as? String, let kind = MediaImageWatermarkKind(rawValue: raw),
+           settings[kindKey] as? String == kind.withoutLogo(text: text).rawValue {
+            result[kindKey] = raw
+        }
+        let profilesKey = DefaultsKey.mediaImageProfiles
+        if let portable = settings[profilesKey] as? String, let saved = local[profilesKey] as? String {
+            result[profilesKey] = MediaSupport.restoringProfileLogos(portable, local: saved)
         }
         return result
     }
@@ -402,16 +525,9 @@ package enum SettingsBackupSupport {
         guard let kind = settings[DefaultsKey.mediaImageWatermarkKind] as? String else {
             return settings
         }
-        let hasText = ((settings[DefaultsKey.mediaImageWatermarkText] as? String) ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-        switch MediaImageWatermarkKind.sanitized(kind) {
-        case .logo:
-            settings[DefaultsKey.mediaImageWatermarkKind] = MediaImageWatermarkKind.off.rawValue
-        case .textAndLogo:
-            settings[DefaultsKey.mediaImageWatermarkKind] = hasText
-                ? MediaImageWatermarkKind.text.rawValue : MediaImageWatermarkKind.off.rawValue
-        case .off, .text:
-            break
+        if let known = MediaImageWatermarkKind(rawValue: kind) {
+            let text = settings[DefaultsKey.mediaImageWatermarkText] as? String ?? ""
+            settings[DefaultsKey.mediaImageWatermarkKind] = known.withoutLogo(text: text).rawValue
         }
         return settings
     }

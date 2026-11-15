@@ -352,7 +352,7 @@ package final class FeatureRuntime: ObservableObject {
         case .windowLayout: return [.windowUseTracker, .windowLayout, .pointerDisplay]
         case .autoQuit: return [.autoQuit]
         case .spacesOrder: return [.spacesOrder]
-        case .scrollInverter, .scrollHorizontal, .linearScroll: return [.scrollInverter]
+        case .scrollInverter, .scrollHorizontal, .scrollZoom, .linearScroll, .scrollSpeed: return [.scrollInverter]
         case .focusFollowsMouse: return [.focusFollowsMouse]
         case .smoothScroll: return [.smoothScroll]
         case .mouseAcceleration: return [.mouseAcceleration]
@@ -392,6 +392,9 @@ package final class FeatureRuntime: ObservableObject {
         case .extraBrightness: return [.extraBrightness]
         case .bluetoothSleep: return [.bluetoothSleep]
         case .quickLauncher: return [.quickLauncher]
+        // The Quit apps shortcuts live on the quick toggles service, so
+        // either feature changing re-registers or drops them.
+        case .quickToggles, .quitApps: return [.quickToggles]
         case .colorPicker: return [.screenCapture]
         case .screenOCR: return [.screenCapture, .screenText]
         case .screenshot: return [.screenCapture, .screenshot, .recentCaptures]
@@ -434,9 +437,12 @@ package final class FeatureRuntime: ObservableObject {
             let hasRegisteredHelper = !(defaults[Preferences.fanControlHelperVersion]).isEmpty
             let syncsHelper = needsRecovery || (!AppFeature.fanControl.isAvailable(in: defaults) && hasRegisteredHelper)
             return syncsHelper ? [.monitorPlan, .fanControl] : [.monitorPlan]
+        // Its watch on the Trash, which offers a leftovers review when
+        // Finder moves an app there.
+        case .uninstaller: return [.trashAppWatcher]
         // On-demand tools: they check what they need each time they run, so
         // there is nothing to start, stop or re-evaluate.
-        case .quickToggles, .cleaningMode, .uninstaller, .homebrew, .killProcess, .portManager:
+        case .cleaningMode, .homebrew, .killProcess, .portManager:
             return []
         }
     }
@@ -488,6 +494,7 @@ package final class FeatureRuntime: ObservableObject {
         case .extraBrightness: ExtraBrightnessService.shared.syncWithPreferences()
         case .bluetoothSleep: BluetoothSleepService.shared.syncWithPreferences()
         case .quickLauncher: QuickLauncherService.shared.syncWithPreferences()
+        case .quickToggles: QuickTogglesService.shared.syncWithPreferences()
         case .screenCapture: ScreenCaptureService.shared.syncWithPreferences()
         case .screenText: ScreenTextService.shared.syncWithPreferences()
         case .screenshot: ScreenshotService.shared.syncWithPreferences()
@@ -515,6 +522,7 @@ package final class FeatureRuntime: ObservableObject {
         case .resetWhatsAppDownloads: WhatsAppDownloadManager.shared.reset()
         case .stopWhatsAppOrganizer: WhatsAppDownloadOrganizer.shared.stop()
         case .appUpdates: AppUpdatesService.shared.syncWithPreferences()
+        case .trashAppWatcher: TrashAppWatcher.shared.syncWithPreferences()
         case .monitorPlan: SystemMonitor.shared.planDidChange()
         case .monitorAlerts: MonitorAlertService.shared.syncWithPreferences()
         case .fanControl: FanControlService.shared.syncWithPreferences()
@@ -538,13 +546,13 @@ package enum FeatureBindingAction: Hashable {
     case finderCutPaste, finderRename, shelf, diskImageInstaller
     case preciseVolumeRoller, appVolumeMixer, audioInputDevices, soundOutputSwitcher, audioPriority
     case micMute, musicLaunchBlocker, keepAwake, hotkeys, brightness, extraBrightness, bluetoothSleep
-    case quickLauncher, screenCapture, screenText, screenshot, screenRecorder, recentCaptures
+    case quickLauncher, quickToggles, screenCapture, screenText, screenshot, screenRecorder, recentCaptures
     case cameraPreview, wallpaper, radialMenu
     case notch, stopNotchTimer, stopNotchAccessories, stopNotchLyrics, notchQueue, notchAudioLevel
     case stopNotchNotifications, stopNotchDownloads, stopNotchCalendar, stopAgentUsage, stopNotchWatch
     case scratchpad, commandBar
     case cleanerScheduler, whatsAppScheduler, whatsAppOrganizer, resetWhatsAppDownloads, stopWhatsAppOrganizer
-    case appUpdates, monitorPlan, monitorAlerts, fanControl
+    case appUpdates, trashAppWatcher, monitorPlan, monitorAlerts, fanControl
     /// A feature that has become a tool: the tool host starts or stops it.
     case tool(ToolID)
 }

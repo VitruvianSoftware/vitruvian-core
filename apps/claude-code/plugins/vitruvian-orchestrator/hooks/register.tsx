@@ -100,7 +100,14 @@ const PHASES: readonly Phase[] = [
   "review",
   "close",
 ];
-const TIERS: readonly Tier[] = ["lead", "core", "fast"];
+const TIERS: readonly Tier[] = [
+  "lead",
+  "build",
+  "deep",
+  "light",
+  "core",
+  "fast",
+];
 
 const flow = atom(
   { plugin: "vitruvian-orchestrator", key: "flow" } as const,
@@ -304,13 +311,15 @@ const fitText = (s: string, size: number, maxW: number): string => {
 
 const TIER_COLOR: Record<string, string> = {
   lead: "#BA7517",
+  build: "#378ADD",
+  deep: "#7F77DD",
+  light: "#1D9E75",
   core: "#378ADD",
   fast: "#1D9E75",
   fable: "#7F77DD",
   heavy: "#D85A30",
   careful: "#BA7517",
   medium: "#378ADD",
-  light: "#1D9E75",
   other: "#888780",
 };
 
@@ -2444,16 +2453,33 @@ async function autoOpen($: EngineInterface, key: string): Promise<void> {
   void $.ui.open({ id: PANE, title: PANE_TITLE });
 }
 
+const validateProgressInput = (input: ProgressInput): string | null => {
+  if (input.phase !== undefined) {
+    const phase = typeof input.phase === "string" ? input.phase.trim() : "";
+    if (!(PHASES as readonly string[]).includes(phase)) {
+      return `invalid phase ${JSON.stringify(input.phase)}: expected one of ${PHASES.join(", ")}`;
+    }
+  }
+  if (Array.isArray(input.tasks)) {
+    for (let i = 0; i < input.tasks.length; i += 1) {
+      const rawTier = input.tasks[i]?.tier;
+      const tier =
+        typeof rawTier === "string" ? rawTier.trim().toLowerCase() : "";
+      if (!(TIERS as readonly string[]).includes(tier)) {
+        return `invalid tier ${JSON.stringify(rawTier)} for task ${i + 1}: expected one of ${TIERS.join(", ")}`;
+      }
+    }
+  }
+  return null;
+};
+
 const cleanTasks = (raw: ProgressInput["tasks"]): PlanTaskInput[] =>
   (raw ?? [])
     .filter((t) => typeof t.title === "string" && t.title.trim().length > 0)
     .map((t) => {
-      const rawTier = String(t.tier ?? "core")
+      const tier = String(t.tier ?? "")
         .trim()
-        .toLowerCase();
-      const tier: Tier = (TIERS as readonly string[]).includes(rawTier)
-        ? (rawTier as Tier)
-        : "core";
+        .toLowerCase() as Tier;
       return {
         title: String(t.title ?? "").trim(),
         specialist: String(t.specialist ?? "wren").trim(),
@@ -2949,6 +2975,10 @@ export const register: Register = (on) => {
       return { result: "progress is for the lead only", isError: true };
     }
     const input = e as unknown as ProgressInput;
+    const validationError = validateProgressInput(input);
+    if (validationError) {
+      return { result: validationError, isError: true };
+    }
     const at = await $.clock.now();
     const prevFlow = await read($, flow);
     const isFirstPlan = prevFlow === null && Array.isArray(input.tasks);

@@ -47,13 +47,17 @@ pub const HIGH_RISK_PREFIXES: &[&str] = &[
     ".github/workflows",
     "gitops",
     "packages/design-system",
-    "tabula/extension/public",
-    "tabula/web/prisma",
+    "apps/suites/vitruvian-tabs/extension/src",
+    "apps/suites/vitruvian-tabs/api/prisma",
 ];
 
 /// MEDIUM_RISK_PREFIXES.
-pub const MEDIUM_RISK_PREFIXES: &[&str] =
-    &["infrastructure/pulumi", "pulumi/library", "devx", "tools"];
+pub const MEDIUM_RISK_PREFIXES: &[&str] = &[
+    "infrastructure/pulumi",
+    "packages/pulumi/library",
+    "apps/cli/vitruvian-devx",
+    "tools",
+];
 
 /// assess_rename_risk. The target path does not enter into it.
 pub fn assess_rename_risk(source_path: &str, _target_path: &str) -> RiskLevel {

@@ -319,7 +319,7 @@ enum CodexAccountLimitsTests {
     }
 
     private static func lifecycle(_ suite: TestSuite, profiles: [CodexAccountProfile]) {
-        let domain = "com.vitruviansoftware.atrium.tests.codex-accounts." + UUID().uuidString
+        let domain = "com.vitruviansoftware.vitruvian.tests.codex-accounts." + UUID().uuidString
         let defaults = ScratchDefaults.suite(named: domain)!
         defer { defaults.removePersistentDomain(forName: domain) }
         // The registration domain is shared with other suites, so this one

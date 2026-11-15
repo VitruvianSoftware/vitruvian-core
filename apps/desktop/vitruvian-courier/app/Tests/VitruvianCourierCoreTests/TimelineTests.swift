@@ -506,9 +506,11 @@ final class TimelineTests: XCTestCase {
             return String(format: "%02d:%02d", parts.hour!, parts.minute!)
         }
         XCTAssertEqual(StatusLine.seenText(.seen(by: [], at: nil), time: time), "Seen")
-        XCTAssertEqual(StatusLine.seenText(.seen(by: [], at: at(14, 10, 42)), time: time), "Seen 10:42")
+        XCTAssertEqual(StatusLine.seenText(.seen(by: [], at: at(14, 10, 42)), time: time,
+                                           now: Date(timeIntervalSince1970: Double(at(14, 18, 0)) / 1000),
+                                           calendar: utc), "Seen at 10:42")
         XCTAssertEqual(StatusLine.seenText(.seen(by: ["Ana"], at: nil), time: time), "Seen by Ana")
-        XCTAssertEqual(StatusLine.seenText(.seen(by: ["Ana", "Bo"], at: nil), time: time), "Seen by Ana & 1 other")
+        XCTAssertEqual(StatusLine.seenText(.seen(by: ["Ana", "Bo"], at: nil), time: time), "Seen by Ana & Bo")
         XCTAssertEqual(StatusLine.seenText(.seen(by: ["Ana", "Bo", "Cy"], at: nil), time: time),
                        "Seen by Ana & 2 others")
         for other in [StatusLine.sent, .delivered, .sending, .queued, .waiting, .noAccount, .failed(reason: "")] {

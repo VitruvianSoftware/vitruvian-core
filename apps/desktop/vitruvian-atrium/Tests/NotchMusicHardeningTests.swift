@@ -1281,7 +1281,7 @@ enum NotchMusicHardeningTests {
         suite.expect(!selection(UUID(), item: "bad\0item").isValid,
                "the row, writer and native bridge share rejection of NUL identifiers")
 
-        let domain = "com.vitruviansoftware.atrium.tests.notch-queue-selection"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-queue-selection"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

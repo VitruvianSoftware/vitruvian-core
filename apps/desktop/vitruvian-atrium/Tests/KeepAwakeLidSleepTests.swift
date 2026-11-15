@@ -48,6 +48,10 @@ enum KeepAwakeLidSleepContract {
         var lid: Bool? = true
         var policy: Bool? = true
         var assertions: [[String: Any]]? = []
+        /// Whether a monitor is online; nil when the display list is unreadable.
+        var externalDisplay: Bool? = false
+        /// The power source; nil when it cannot be read.
+        var power: BatteryInfo?
         /// Whether there is a power manager to ask.
         var available = true
         /// What each sleep request answers; the last one repeats.
@@ -127,7 +131,7 @@ enum KeepAwakeLidSleepContract {
                     return id
                 },
                 releaseAssertion: { [self] in _ = held.remove($0) },
-                battery: { nil },
+                battery: { [self] in power },
                 watchLock: { [self] changed in
                     lockChanged = changed
                     return { [self] in lockChanged = nil }
@@ -156,7 +160,15 @@ enum KeepAwakeLidSleepContract {
                     written.append(value)
                     reading = value
                     return true
-                })
+                },
+                externalDisplay: { [self] in externalDisplay })
+        }
+
+        /// The power source as on battery (true), on external power (false)
+        /// or unreadable (nil).
+        func onBattery(_ battery: Bool?) {
+            power = battery.map { BatteryInfo(percent: 50, isCharging: false, isOnBattery: $0,
+                                              isOnExternalPower: !$0) }
         }
 
         func runLane() {
@@ -260,14 +272,78 @@ enum KeepAwakeLidSleepContract {
 enum KeepAwakeLidSleepTests {
     private typealias C = KeepAwakeLidSleepContract
 
+    /// A manual session survives a quit and resumes at the next launch; any
+    /// other end, and an end time that passed while the app was closed, is final.
+    static func runSessionRestore(expect: (Bool, String) -> Void) {
+        func relaunch(_ rig: C.Rig) -> KeepAwakeManager {
+            let manager = KeepAwakeManager(system: rig.machine.system(defaults: rig.defaults))
+            rig.machine.drain()
+            manager.activateOnLaunchIfNeeded()
+            rig.machine.drain()
+            return manager
+        }
+        let timed = C.make()
+        timed.manager.activate(minutes: 30)
+        timed.machine.drain()
+        let record = timed.defaults.dictionary(forKey: DefaultsKey.keepAwakeSessionEnd)
+        expect(record?["minutes"] as? Int == 30 && (record?["end"] as? Double ?? 0) > 0,
+               "a manual session records its end and its preset")
+        timed.manager.deactivate(reason: .quit)
+        timed.machine.drain()
+        expect(timed.defaults.object(forKey: DefaultsKey.keepAwakeSessionEnd) != nil,
+               "quitting keeps the record so the next launch resumes the session")
+        let resumed = relaunch(timed)
+        expect(resumed.isActive && resumed.sessionTrigger == .manual && resumed.sessionMinutes == 30
+               && resumed.endDate.map { $0 > Date() } == true,
+               "the next launch resumes the manual session with the time it has left")
+        resumed.deactivate(reason: .manual)
+        timed.machine.drain()
+        expect(timed.defaults.object(forKey: DefaultsKey.keepAwakeSessionEnd) == nil
+               && !relaunch(timed).isActive,
+               "a session the person ended stays ended after a relaunch")
+
+        let expired = C.make()
+        expired.defaults.set(["end": Date().addingTimeInterval(-60).timeIntervalSinceReferenceDate,
+                              "minutes": 15], forKey: DefaultsKey.keepAwakeSessionEnd)
+        expect(!relaunch(expired).isActive
+               && expired.defaults.object(forKey: DefaultsKey.keepAwakeSessionEnd) == nil,
+               "a session whose end passed while the app was closed stays ended")
+
+        let indefinite = C.make()
+        indefinite.defaults.set(["end": 0.0], forKey: DefaultsKey.keepAwakeSessionEnd)
+        let open = relaunch(indefinite)
+        expect(open.isActive && open.endDate == nil && open.sessionMinutes == 0,
+               "an indefinite session resumes indefinitely")
+        open.deactivate(reason: .quit)
+        indefinite.machine.drain()
+    }
+
     static func run(expect: (Bool, String) -> Void) {
-        func allowed(_ policy: Bool?, _ assertions: [[String: Any]]?) -> Bool {
-            KeepAwakeAutomationSupport.lidSleepIsAllowed(systemAllowsSleep: policy, assertions: assertions)
+        runSessionRestore(expect: expect)
+        func allowed(_ policy: Bool?, _ assertions: [[String: Any]]?,
+                     external: Bool? = false, power: Bool? = true) -> Bool {
+            KeepAwakeAutomationSupport.lidSleepIsAllowed(systemAllowsSleep: policy,
+                                                         externalDisplayConnected: external,
+                                                         connectedToPower: power,
+                                                         assertions: assertions)
         }
         let connection: [String: Any] = ["AssertType": "PreventSystemSleep", "AssertLevel": 1,
                                           "ProcessingHotPlug": true]
         expect(!allowed(true, [connection]),
                "a live monitor transition overrides a stale allowed lid policy")
+        expect(!allowed(true, [], external: true),
+               "closed-display mode with an external monitor is never forced to sleep")
+        expect(!allowed(true, [], external: nil),
+               "on external power an unreadable display list never authorizes forced sleep")
+        expect(!allowed(true, [connection], external: nil, power: false)
+               && !allowed(true, nil, external: nil, power: false),
+               "the battery cutoff still checks live lid protections when the display list is unreadable")
+        expect(allowed(true, [], external: true, power: false),
+               "a monitor on battery is not closed-display mode, so the battery cutoff still sleeps")
+        expect(!allowed(true, [], external: true, power: nil),
+               "an unreadable power source with a monitor never authorizes forced sleep")
+        expect(allowed(true, [], external: false, power: false) && allowed(true, [], external: false, power: nil),
+               "without a monitor the power source does not matter")
         expect(!allowed(false, []) && !allowed(nil, []) && !allowed(true, nil),
                "closed-display mode and unavailable system facts never authorize forced sleep")
         expect(allowed(true, []) && allowed(true, [["AssertType": "PreventUserIdleSystemSleep", "AssertLevel": 1]]),
@@ -302,6 +378,18 @@ enum KeepAwakeLidSleepTests {
                 expect(rig.machine.later.isEmpty, "successful or inapplicable requests do not poll")
             }
         }
+        let docked = C.active()
+        docked.machine.externalDisplay = true
+        docked.machine.onBattery(false)
+        docked.manager.deactivate(reason: .manual)
+        docked.machine.drain()
+        expect(docked.machine.sleeps == 0, "ending a session docked to a monitor does not blank it with a sleep")
+        let unplugged = C.active()
+        unplugged.machine.externalDisplay = true
+        unplugged.machine.onBattery(true)
+        unplugged.manager.deactivate(reason: .manual)
+        unplugged.machine.drain()
+        expect(unplugged.machine.sleeps == 1, "the battery cutoff still sleeps a closed lid with a monitor on battery")
         let blocked = C.active()
         blocked.machine.assertions = [connection]
         blocked.manager.deactivate(reason: .manual)

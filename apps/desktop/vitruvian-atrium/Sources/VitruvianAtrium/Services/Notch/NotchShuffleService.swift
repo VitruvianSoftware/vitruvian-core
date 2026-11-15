@@ -20,7 +20,7 @@ package final class NotchShuffleService: ObservableObject, @unchecked Sendable {
     @Published package private(set) var allowed = true
     @Published package private(set) var pending = false
     @Published package private(set) var requestingAccess = false
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.notch-shuffle", qos: .utility)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-shuffle", qos: .utility)
     private var generation = UUID()
     /// The latest switch; a later one, another player or a closed page
     /// makes an earlier reply and check stale.

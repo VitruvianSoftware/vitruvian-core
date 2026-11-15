@@ -73,7 +73,7 @@ enum PeripheralBatteryLifecycleTests {
     }
 
     private static func cachedSources(_ suite: TestSuite) {
-        let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.tests.battery-cache")
+        let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.tests.battery-cache")
         var clock: TimeInterval = 1
         var fast: [PeripheralBatteryDevice] = []
         var readers: [Reader] = [] // Access only while the serial queue is drained or inside it.
@@ -115,7 +115,7 @@ enum PeripheralBatteryLifecycleTests {
     /// A finished Bluetooth refresh tells the monitor to read at once, and
     /// devices left from a pause longer than the refresh interval are dropped.
     private static func refreshHandoff(_ suite: TestSuite) {
-        let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.tests.battery-handoff")
+        let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.tests.battery-handoff")
         var clock: TimeInterval = 1
         var readers: [Reader] = [] // Access only while the serial queue is drained or inside it.
         nonisolated(unsafe) var refreshes = 0 // Bumped on the serial queue, read once it is drained.
@@ -157,7 +157,7 @@ enum PeripheralBatteryLifecycleTests {
     }
 
     private static func cancellation(_ suite: TestSuite) {
-        let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.tests.battery-cancel")
+        let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.tests.battery-cancel")
         var readers: [Reader] = []
         let sampler = PeripheralBatterySampler(bluetoothQueue: queue, readFast: { [] },
             readProfiler: { _ in Data() }, makeBluetoothRead: { _, cancellation, completion in
@@ -199,7 +199,7 @@ enum PeripheralBatteryLifecycleTests {
     }
 
     private static func cancelledProfiler(_ suite: TestSuite) {
-        let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.tests.battery-profiler")
+        let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.tests.battery-profiler")
         let entered = DispatchSemaphore(value: 0)
         let release = DispatchSemaphore(value: 0)
         var readers = 0
@@ -226,7 +226,7 @@ enum PeripheralBatteryLifecycleTests {
     }
 
     private static func cancelledFastRead(_ suite: TestSuite) {
-        let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.tests.battery-fast-read")
+        let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.tests.battery-fast-read")
         var sampler: PeripheralBatterySampler!
         sampler = PeripheralBatterySampler(bluetoothQueue: queue, readFast: {
             sampler.setEnabled(false)

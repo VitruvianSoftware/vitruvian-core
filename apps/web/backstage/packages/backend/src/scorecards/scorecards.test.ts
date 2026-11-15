@@ -190,11 +190,11 @@ describe("Level 3 Multi-Track Scorecard Evaluator", () => {
           "vitruvian.dev/release-workflow": "apps-release.yaml",
           "vitruvian.dev/release-model": "goreleaser",
           "vitruvian.dev/environments": "production",
-          "vitruvian.dev/mirror": "VitruvianSoftware/devx",
+          "vitruvian.dev/mirror": "VitruvianSoftware/vitruvian-devx",
         },
         links: [
           {
-            url: "https://github.com/VitruvianSoftware/devx/releases",
+            url: "https://github.com/VitruvianSoftware/vitruvian-devx/releases",
             title: "Releases",
           },
         ],

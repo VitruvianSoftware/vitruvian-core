@@ -60,8 +60,8 @@
 #     (https://docs.github.com/en/actions/concepts/security/github_token).
 #     workflow_run is not caused by the token: GitHub sends it when a run ends
 #     (https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#workflow_run).
-#   - The GitHub tool is released from another repository,
-#     VitruvianSoftware/vitruvian-tool-github, by its own release.yml. A run
+#   - Vitruvian GitHub is released from another repository,
+#     VitruvianSoftware/vitruvian-github, by its own release.yml. A run
 #     there cannot wake a workflow here without a token for this repository,
 #     and none is kept there. Only the hourly run picks its releases up.
 #
@@ -105,8 +105,8 @@ on:
   workflow_run:
     workflows:
       - vitruvian-speaker-release
-      - android-remote-release
-      - vitruvian-tool-tv-release
+      - vitruvian-remote-release
+      - vitruvian-tv-release
     types: [completed]
     branches: [main]
   # A merged bump, or any other change to the catalog: rebuild the bump pull

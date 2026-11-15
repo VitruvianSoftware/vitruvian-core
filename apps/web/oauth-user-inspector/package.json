@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "oauth-user-inspector",
-  "version": "1.15.6",
+  "version": "1.16.1",
   "description": "OAuth User Inspector with a secure backend for token exchange.",
   "main": "dist-server/server.js",
   "scripts": {
@@ -22,6 +22,7 @@
   "dependencies": {
     "@google-cloud/logging-winston": "^7.3.0",
     "@google-cloud/secret-manager": "^7.2.0",
+    "@sentry/react": "^11.12.0",
     "dotenv": "^18.0.9",
     "express": "^5.3.0",
     "js-base64": "^3.9.6",

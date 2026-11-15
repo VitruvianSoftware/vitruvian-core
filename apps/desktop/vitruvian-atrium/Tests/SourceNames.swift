@@ -77,6 +77,7 @@ enum SourceNames {
         "eye.slash.fill",
         "folder",
         "folder.fill",
+        "gauge.with.dots.needle.67percent",
         "gearshape",
         "gearshape.circle.fill",
         "gearshape.fill",

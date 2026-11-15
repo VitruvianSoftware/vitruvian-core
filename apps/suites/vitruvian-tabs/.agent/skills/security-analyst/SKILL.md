@@ -11,31 +11,16 @@ You are an expert security analyst specializing in reviewing and hardening the V
 
 ### Authentication Flow
 
-1. User submits credentials to `/api/v1/auth/login`
-2. API validates password against bcrypt hash (cost factor: 12)
-3. Returns JWT access token (15min) + refresh token (7 days)
-4. Refresh token stored in Redis with hash
-5. Access tokens use RS256 signing algorithm
+1. Extension opens `/api/v1/auth/login` which validates the origin and redirects to WorkOS OAuth
+2. WorkOS returns to `/api/v1/auth/callback`
+3. API issues **HS256** JWT access and refresh tokens (`api/rs/src/crypto.rs`, `api/rs/src/auth_lib.rs`)
+4. Refresh/logout/session checks coordinate with Redis (`api/rs/src/store.rs`)
 
 ### Token Security
 
-```typescript
-// JWT Configuration
-const jwtConfig = {
-  algorithm: 'RS256',
-  accessTokenExpiry: '15m',
-  refreshTokenExpiry: '7d',
-  issuer: 'vitruvian-tabs-api',
-  audience: 'vitruvian-tabs-extension',
-};
-```
-
-**Security Controls**:
-
-- Short-lived access tokens
-- Refresh token rotation on use
-- Session invalidation on logout
-- Token revocation via Redis blacklist
+- JWTs are signed with **HS256** (`JWT_SECRET`, `api/rs/src/crypto.rs`)
+- Short-lived access tokens (`ACCESS_TOKEN_TTL_SECS`) + refresh token flow (`/api/v1/auth/refresh`)
+- Session invalidation on `/api/v1/auth/logout`
 
 ## Key Security Areas
 
@@ -51,40 +36,31 @@ const jwtConfig = {
 }
 ```
 
-**Permissions Audit**:
+**Permissions Audit** (`extension/src/manifest.json`):
 
 - `tabs` - Required for tab management (justified)
 - `storage` - Required for local persistence (justified)
 - `alarms` - Required for periodic tasks (justified)
-- `host_permissions` - Access tab URLs (review carefully)
+- `tabGroups` - Required for Chrome tab group sync (justified)
+- `idle` - Required for idle/auto-suspend detection (justified)
+- `host_permissions` - API endpoint access (rewritten at release build time via `API_URL`)
 
 ### API Security
 
-**Rate Limiting**:
+**Rate Limiting** (`api/rs/src/tiers.rs`):
 
-```typescript
-// 100 requests per minute per user
-const rateLimitConfig = {
-  max: 100,
-  timeWindow: '1 minute',
-  keyGenerator: (req) => req.user?.id || req.ip,
-};
-```
+- Per-tier per-minute limits: `60` (free), `300`, `1000` (overridable via `RATE_LIMIT_MAX` in test environments)
 
-**Input Validation**:
+**Input Validation & Database**:
 
-- All inputs validated with Zod schemas
-- SQL injection prevented via Prisma parameterized queries
-- XSS prevented via CSP and output encoding
+- All JSON payloads validated in Rust (`api/rs/src/schemas.rs`)
+- Scanner probe paths rejected early (`api/rs/src/scanner_reject.rs`)
+- XSS prevented via CSP (`script-src 'self'; object-src 'self'`) and output encoding
 
 **CORS Configuration**:
 
-```typescript
-const corsConfig = {
-  origin: ['chrome-extension://*', 'https://tabula.dev', 'https://dashboard.tabula.dev'],
-  credentials: true,
-};
-```
+- Configured via `CORS_ORIGIN` env var (`api/rs/src/bin/server.rs`, `api/rs/src/server.rs`)
+- Extension `externally_connectable` matches `*.tabula.com`, `*.tabula-staging.com`, `*.vitruviansoftware.dev`, and localhost (`extension/src/manifest.json`)
 
 ### Data Protection
 
@@ -116,10 +92,10 @@ const corsConfig = {
 
 | Threat                  | Mitigation                     |
 | ----------------------- | ------------------------------ |
-| Brute force login       | Rate limiting, lockout         |
-| Token theft             | Short expiry, refresh rotation |
-| IDOR (workspace access) | Owner validation on all routes |
-| Data injection          | Zod validation, Prisma         |
+| Brute force / abuse     | Per-tier rate limiting           |
+| Token theft             | Short expiry, refresh rotation   |
+| IDOR (workspace access) | Owner/collaborator checks        |
+| Malformed input         | Rust schema validation           |
 
 ### Infrastructure Threats
 
@@ -138,7 +114,7 @@ const corsConfig = {
 - [ ] CORS whitelist reviewed
 - [ ] Rate limits configured
 - [ ] CSP headers verified
-- [ ] Dependencies audited (`npm audit`)
+- [ ] Dependencies & lockfiles audited
 
 ### Code Review
 
@@ -151,14 +127,11 @@ const corsConfig = {
 ## Security Commands
 
 ```bash
-# Check for vulnerabilities
-npm audit
+# Scan for secrets
+bazel run //tools/secret-scan
 
-# Run security-focused tests
-npm test -- --testPathPattern=security
-
-# Review secret usage
-vitruvian-tabs infra secrets list
+# Run API & extension tests
+bazel test //apps/suites/vitruvian-tabs/...
 ```
 
 ## Key Security Files

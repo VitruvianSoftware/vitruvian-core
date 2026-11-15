@@ -55,8 +55,8 @@ package_group(
     packages = [
         "//apps/desktop/vitruvian-code/macos",
         "//apps/desktop/vitruvian-speaker",
-        "//apps/desktop/vitruvian-tool-github",
-        "//apps/desktop/vitruvian-tool-tv",
-        "//apps/mobile/android-remote/macmenu",
+        "//apps/extensions/atrium/vitruvian-github",
+        "//apps/extensions/atrium/vitruvian-tv",
+        "//apps/mobile/vitruvian-remote/macmenu",
     ],
 )

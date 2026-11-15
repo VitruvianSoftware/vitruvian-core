@@ -363,15 +363,23 @@ enum AppManagementFeatureTests {
                                                    engaged: false, disengagedTicks: 1) == 1.10,
                "grace never lifts a factor that had no boost to protect")
         suite.expect(ExtraBrightnessSupport.canReuseSpaceWindows(
-                   sameDisplay: true, overlayOnActiveSpace: true, triggerOnActiveSpace: true),
+                   sameDisplay: true, inOwnSpace: false, overlayOnActiveSpace: true, triggerOnActiveSpace: true),
                "fullscreen handoff keeps the live overlay pair when both windows followed")
         suite.expect(!ExtraBrightnessSupport.canReuseSpaceWindows(
-                   sameDisplay: false, overlayOnActiveSpace: true, triggerOnActiveSpace: true)
+                   sameDisplay: false, inOwnSpace: false, overlayOnActiveSpace: true, triggerOnActiveSpace: true)
                && !ExtraBrightnessSupport.canReuseSpaceWindows(
-                   sameDisplay: true, overlayOnActiveSpace: false, triggerOnActiveSpace: true)
+                   sameDisplay: true, inOwnSpace: false, overlayOnActiveSpace: false, triggerOnActiveSpace: true)
                && !ExtraBrightnessSupport.canReuseSpaceWindows(
-                   sameDisplay: true, overlayOnActiveSpace: true, triggerOnActiveSpace: false),
+                   sameDisplay: true, inOwnSpace: false, overlayOnActiveSpace: true, triggerOnActiveSpace: false),
                "display changes and incomplete Space handoffs still rebuild the overlay pair")
+        // AppKit never reports windows of the overlay's own Space as on the
+        // active Space; rebuilding on that blinked the boost on every switch.
+        suite.expect(ExtraBrightnessSupport.canReuseSpaceWindows(
+                   sameDisplay: true, inOwnSpace: true, overlayOnActiveSpace: false, triggerOnActiveSpace: false),
+               "the overlay's own Space keeps the live windows across desktop switches")
+        suite.expect(!ExtraBrightnessSupport.canReuseSpaceWindows(
+                   sameDisplay: false, inOwnSpace: true, overlayOnActiveSpace: false, triggerOnActiveSpace: false),
+               "a different display still rebuilds the overlay in its own Space")
         for ebScreen in [CGRect(x: 0, y: 0, width: 1512, height: 982),
                          CGRect(x: 0, y: 0, width: 1728, height: 1117),
                          CGRect(x: -1800, y: 140, width: 1800, height: 1169)] {
@@ -388,9 +396,7 @@ enum AppManagementFeatureTests {
                    "the extra brightness overlay windows tile \(ebScreen) on whole points")
             // AppKit reports a window above the main menu whose frame contains
             // the screen's safe area (the screen below the camera housing) as a
-            // full screen window, which left only the wallpaper in Mission
-            // Control's desktop thumbnails (#3292). A generous 64 pt housing
-            // covers every notch.
+            // full screen window. A generous 64 pt housing covers every notch.
             let ebSafeArea = CGRect(x: ebScreen.minX, y: ebScreen.minY,
                                     width: ebScreen.width, height: ebScreen.height - 64)
             suite.expect(!ebFrames.contains { $0.contains(ebSafeArea) },
@@ -439,7 +445,7 @@ enum AppManagementFeatureTests {
         suite.expect(CleanerSupport.isProtectedBundleID("com.apple.Music")
                && CleanerSupport.isProtectedBundleID("com.apple")
                && CleanerSupport.isProtectedBundleID("group.com.apple.notes")
-               && CleanerSupport.isProtectedBundleID("com.vitruviansoftware.atrium"),
+               && CleanerSupport.isProtectedBundleID("com.vitruviansoftware.vitruvian"),
                "system domains and this app can never be junk owners")
         suite.expect(!CleanerSupport.isProtectedBundleID("com.vendor.editor"),
                "third party identifiers are eligible for the leftover check")
@@ -452,7 +458,7 @@ enum AppManagementFeatureTests {
                && UninstallerSupport.verifiedBundleID("") == nil
                && UninstallerSupport.verifiedBundleID("plain-name") == nil
                && UninstallerSupport.verifiedBundleID("com.vendor../escape") == nil
-               && UninstallerSupport.verifiedBundleID("com.vitruviansoftware.atrium") == nil
+               && UninstallerSupport.verifiedBundleID("com.vitruviansoftware.vitruvian") == nil
                && UninstallerSupport.verifiedBundleID("com.apple.system") == nil,
                "malformed, protected and current app identifiers never enter uninstall paths")
         let selectionFixture = FileManager.default.temporaryDirectory
@@ -504,6 +510,25 @@ enum AppManagementFeatureTests {
         suite.expect(Bundle(url: flatApp)?.bundleIdentifier == "com.vendor.flat"
                && UninstallerSupport.selection(for: flatApp) == nil,
                "a bare iPhone-style bundle with no Contents/Info.plist is refused")
+        // Bundle(url:) caches by path for the whole process, so a different
+        // app that later sits at a path already read (a Trash name reused
+        // after Empty Trash) must still be read from disk.
+        let reusedApp = selectionFixture.appendingPathComponent("Reused.app", isDirectory: true)
+        writeInfo("com.vendor.first", to: reusedApp.appendingPathComponent("Contents/Info.plist"))
+        let firstReused = UninstallerSupport.selection(for: reusedApp)?.bundleID
+        _ = Bundle(url: reusedApp)?.bundleIdentifier
+        try? FileManager.default.removeItem(at: reusedApp)
+        writeInfo("com.vendor.second", to: reusedApp.appendingPathComponent("Contents/Info.plist"))
+        suite.expect(firstReused == "com.vendor.first"
+               && UninstallerSupport.selection(for: reusedApp)?.bundleID == "com.vendor.second"
+               && UninstallerSupport.bundleIdentifier(of: reusedApp) == "com.vendor.second",
+               "a different app at a path already read is selected by its own bundle ID")
+        let reviewed = UninstallerSupport.selection(for: reusedApp)
+        suite.expect(reviewed?.isCurrent == true, "the current selection matches its app on disk")
+        let reusedInfo = reusedApp.appendingPathComponent("Contents/Info.plist")
+        try? Data(contentsOf: reusedInfo).write(to: reusedInfo, options: .atomic)
+        suite.expect(reviewed?.isCurrent == false,
+               "replacing the Info.plist invalidates the earlier selection")
         // An iPhone or iPad app installed on a Mac with Apple silicon (#1582):
         // the App Store keeps the real bundle in Wrapper with its Info.plist at
         // the top, and Bundle reads it through the WrappedBundle link.
@@ -601,7 +626,7 @@ enum AppManagementFeatureTests {
             if case let .failure(reason) = UninstallerSupport.evaluate(url) { return reason }
             return nil
         }
-        let ownApp = selectionBundle("Copy.app", bundleID: "com.vitruviansoftware.atrium.dev")
+        let ownApp = selectionBundle("Copy.app", bundleID: "com.vitruviansoftware.vitruvian.dev")
         let plainFolder = selectionFixture.appendingPathComponent("Folder", isDirectory: true)
         try? FileManager.default.createDirectory(at: plainFolder, withIntermediateDirectories: true)
         let document = selectionFixture.appendingPathComponent("Notes.txt")
@@ -730,6 +755,14 @@ enum AppManagementFeatureTests {
                 URL(fileURLWithPath: "/Users/test/Downloads/Editor.app"),
                 home: URL(fileURLWithPath: "/Users/test")),
                "embedded helpers belong to the selected app while unregistered download copies never own shared data")
+        let trashHome = URL(fileURLWithPath: "/Users/test")
+        suite.expect(!UninstallerSupport.applicationIsInTrustedInstallRoot(
+                URL(fileURLWithPath: "/Users/test/.Trash/Editor.app"), home: trashHome)
+            && !UninstallerSupport.applicationIsInTrustedInstallRoot(
+                URL(fileURLWithPath: "/Users/test/.Trash/Old Stuff/Editor.app"), home: trashHome)
+            && !UninstallerSupport.isInTrash(
+                URL(fileURLWithPath: "/Users/test/.Trash"), home: trashHome),
+               "a Trash path alone never grants ownership of shared data")
         let uninstallCandidateIDs: Set<String> = ["com.vendor.editor", "com.vendor.editor.helper"]
         suite.expect(UninstallerSupport.exclusiveBundleIDs(
                    uninstallCandidateIDs,
@@ -1063,22 +1096,47 @@ enum AppManagementFeatureTests {
         }
         let rosterSelection = UninstallerSupport.selection(for: rosterApp)
         var rosterBuilds = 0
-        func rosterRemoval(appIdentity: UninstallerSupport.FileIdentity?) -> AppUninstaller.Removal {
-            AppUninstaller.Removal(chosen: [], allowedPaths: [], targetURL: rosterSelection?.url,
-                                   targetIdentity: appIdentity, infoIdentity: rosterSelection?.infoIdentity,
+        // One chosen row claiming the app's own data: without a row to claim,
+        // no removal reads the roster at all.
+        let rosterRow = AppUninstaller.Leftover(
+            url: rosterFixture.appendingPathComponent("com.vendor.roster.plist"),
+            category: .preferences, size: 1, ownerBundleID: "com.vendor.roster", ownerGroupID: nil,
+            evidenceBundleID: nil, confidence: .exact, fileIdentity: .init(device: 0, inode: 7))
+        func rosterRemoval(_ selection: UninstallerSupport.Selection) -> AppUninstaller.Removal {
+            AppUninstaller.Removal(chosen: [rosterRow], allowedPaths: [], selection: selection,
                                    alreadyFreed: 0, packageRemovedApplication: false)
         }
-        _ = AppUninstaller.remove(rosterRemoval(appIdentity: UninstallerSupport.FileIdentity(device: 0, inode: 0))) { _ in
-            rosterBuilds += 1
-            return []
+        // The same app at the same path, but not the bundle that was selected.
+        if let rosterSelection {
+            let replaced = UninstallerSupport.Selection(
+                bundleID: rosterSelection.bundleID, url: rosterSelection.url,
+                identity: UninstallerSupport.FileIdentity(device: 0, inode: 0),
+                infoIdentity: rosterSelection.infoIdentity)
+            _ = AppUninstaller.remove(rosterRemoval(replaced)) { _ in
+                rosterBuilds += 1
+                return []
+            }
         }
         let rosterBuildsForReplacedApp = rosterBuilds
-        _ = AppUninstaller.remove(rosterRemoval(appIdentity: rosterSelection?.identity)) { _ in
-            rosterBuilds += 1
-            return []
+        if let rosterSelection {
+            _ = AppUninstaller.remove(rosterRemoval(rosterSelection)) { _ in
+                rosterBuilds += 1
+                return []
+            }
         }
         suite.expect(rosterSelection != nil && rosterBuildsForReplacedApp == 0 && rosterBuilds == 1,
                "a removal builds the known-application roster only when it may claim shared data")
+        // A removal with nothing to claim never pays for the roster either.
+        if let rosterSelection {
+            var emptyBuilds = 0
+            _ = AppUninstaller.remove(
+                AppUninstaller.Removal(chosen: [], allowedPaths: [], selection: rosterSelection,
+                                       alreadyFreed: 0, packageRemovedApplication: false)) { _ in
+                emptyBuilds += 1
+                return []
+            }
+            suite.expect(emptyBuilds == 0, "a removal with no shared-data row skips the roster")
+        }
         try? FileManager.default.removeItem(at: rosterFixture)
         // A row the Trash move did not take counts as freed only once its
         // absence is confirmed. `UninstallerFlowTests` drives the package
@@ -1285,6 +1343,14 @@ enum AppManagementFeatureTests {
                "identifiers with no installed relative are unowned")
         suite.expect(!CleanerSupport.isOwned(candidate: "com.makerapp.tool", byInstalled: ["com.maker.app"]),
                "prefix ownership requires a dot boundary, not a string prefix")
+        suite.expect(CleanerSupport.isOwnedSupportDomain("Battle.net", byInstalled: ["net.battle.app"])
+               && CleanerSupport.isOwnedSupportDomain("maker.com", byInstalled: ["com.maker"]),
+               "a domain named support folder is owned by the installed app under its reverse")
+        suite.expect(!CleanerSupport.isOwnedSupportDomain("battle.net", byInstalled: ["net.battlefield.app"])
+               && !CleanerSupport.isOwnedSupportDomain("battle.net", byInstalled: ["com.battle.app"])
+               && !CleanerSupport.isOwnedSupportDomain("github.io", byInstalled: ["io.github.someone.tool"])
+               && !CleanerSupport.isOwnedSupportDomain("com.maker.app", byInstalled: ["app.maker.com"]),
+               "reverse ownership needs a dot boundary, two parts and no hosting namespace")
         suite.expect(CleanerSupport.executablePaths(inLaunchPlist: [
                    "Program": "/Applications/Gone.app/Contents/MacOS/agent",
                    "ProgramArguments": ["/usr/local/bin/gone-tool", "--flag"],

@@ -170,40 +170,53 @@ type reminderJSON struct {
 }
 
 type inboxRow struct {
-	RoomID           string        `json:"room_id"`
-	Network          string        `json:"network"`
-	Name             string        `json:"name"`
-	RemoteName       string        `json:"remote_name"`
-	LocalName        string        `json:"local_name"`
-	AvatarPath       string        `json:"avatar_path"`
-	LocalAvatarPath  string        `json:"local_avatar_path"`
-	MergeID          string        `json:"merge_id"`
-	IsDirect         bool          `json:"is_direct"`
-	LastTS           int64         `json:"last_ts"`
-	Preview          string        `json:"preview"`
-	PreviewKind      string        `json:"preview_kind"`
-	PreviewMine      bool          `json:"preview_mine"`
-	PreviewInThread  bool          `json:"preview_in_thread"`
-	PreviewStatus    string        `json:"preview_status"`
-	LoginName        string        `json:"login_name"`
-	Unread           int           `json:"unread"`
-	Muted            bool          `json:"muted"`
-	Pinned           bool          `json:"pinned"`
-	Archived         bool          `json:"archived"`
-	LowPriority      bool          `json:"low_priority"`
-	Hidden           bool          `json:"hidden"`
-	MarkedUnread     bool          `json:"marked_unread"`
-	Request          bool          `json:"request"`
-	Draft            string        `json:"draft"`
-	Labels           []int64       `json:"labels"`
-	MutedBy          string        `json:"muted_by"`
-	MutedByName      string        `json:"muted_by_name"`
-	Reminder         *reminderJSON `json:"reminder"`
-	Typing           []string      `json:"typing"`
-	UnreadMentions   int           `json:"unread_mentions"`
-	PreviewMediaPath string        `json:"preview_media_path"`
-	PreviewCall      *callJSON     `json:"preview_call"` // null unless preview_kind is call
-	ReadAloud        string        `json:"read_aloud,omitempty"`
+	RoomID          string `json:"room_id"`
+	Network         string `json:"network"`
+	Name            string `json:"name"`
+	RemoteName      string `json:"remote_name"`
+	LocalName       string `json:"local_name"`
+	AvatarPath      string `json:"avatar_path"`
+	LocalAvatarPath string `json:"local_avatar_path"`
+	MergeID         string `json:"merge_id"`
+	IsDirect        bool   `json:"is_direct"`
+	LastTS          int64  `json:"last_ts"`
+	Preview         string `json:"preview"`
+	PreviewKind     string `json:"preview_kind"`
+	PreviewMine     bool   `json:"preview_mine"`
+	// PreviewSenderName is who wrote the newest message, or made the newest reaction; left out when "" (mine).
+	PreviewSenderName string        `json:"preview_sender_name,omitempty"`
+	PreviewInThread   bool          `json:"preview_in_thread"`
+	PreviewStatus     string        `json:"preview_status"`
+	LoginName         string        `json:"login_name"`
+	Unread            int           `json:"unread"`
+	Muted             bool          `json:"muted"`
+	Pinned            bool          `json:"pinned"`
+	Archived          bool          `json:"archived"`
+	LowPriority       bool          `json:"low_priority"`
+	Hidden            bool          `json:"hidden"`
+	MarkedUnread      bool          `json:"marked_unread"`
+	Request           bool          `json:"request"`
+	Draft             string        `json:"draft"`
+	Labels            []int64       `json:"labels"`
+	MutedBy           string        `json:"muted_by"`
+	MutedByName       string        `json:"muted_by_name"`
+	Reminder          *reminderJSON `json:"reminder"`
+	Typing            []string      `json:"typing"`
+	UnreadMentions    int           `json:"unread_mentions"`
+	PreviewMediaPath  string        `json:"preview_media_path"`
+	PreviewCall       *callJSON     `json:"preview_call"` // null unless preview_kind is call
+	ReadAloud         string        `json:"read_aloud,omitempty"`
+	// MembersPreview is up to store.MaxRowMembers people in a group with no picture of its own, for the row's
+	// stacked picture; left out (as an engine before it leaves it out) for a one-to-one chat, a group with a
+	// picture and one with nobody else.
+	MembersPreview []rowMemberJSON `json:"members_preview,omitempty"`
+}
+
+// rowMemberJSON is a RowMember: someone in a chat, for its inbox row's picture.
+type rowMemberJSON struct {
+	UserID     string `json:"user_id"`
+	Name       string `json:"name"`
+	AvatarPath string `json:"avatar_path"`
 }
 
 // callJSON is a CallNote: what a bridge's call notice says, as Vitruvian Courier reads it.
@@ -323,11 +336,22 @@ func fitting[T any](rows []T, budget int) int {
 }
 
 // toRows turns the store's rows into the wire's. Each network's accounts are read once per page, for the rows'
-// account tags (accountNames).
+// account tags (accountNames), and the members of the page's groups without a picture once, in one query
+// (store.MemberPreviews), for their stacked pictures.
 func (d *Deps) toRows(ctx context.Context, rows []store.InboxRow) ([]inboxRow, error) {
 	out := make([]inboxRow, 0, len(rows))
 	names := map[string]string{} // user ID → profile name, across the page
 	accounts := map[string]map[string]string{}
+	var faceless []string
+	for _, r := range rows {
+		if needsMembersPreview(r) {
+			faceless = append(faceless, r.ID)
+		}
+	}
+	previews, err := d.Store.MemberPreviews(ctx, faceless)
+	if err != nil {
+		return nil, err
+	}
 	for _, r := range rows {
 		typing, err := d.typingNames(ctx, r.ID, names)
 		if err != nil {
@@ -353,6 +377,10 @@ func (d *Deps) toRows(ctx context.Context, rows []store.InboxRow) ([]inboxRow, e
 			Hidden: r.Hidden, MarkedUnread: r.MarkedUnread, Request: r.Request, Draft: r.Draft, Labels: labels,
 			MutedBy: r.MutedBy, MutedByName: r.MutedByName, Typing: typing, UnreadMentions: r.UnreadMentions,
 			PreviewMediaPath: d.path(r.PreviewMediaURI), ReadAloud: r.ReadAloud,
+			PreviewSenderName: r.PreviewSenderName,
+		}
+		for _, m := range previews[r.ID] {
+			row.MembersPreview = append(row.MembersPreview, rowMemberJSON{UserID: m.UserID, Name: m.Name, AvatarPath: d.path(m.AvatarURI)})
 		}
 		if rm := r.Reminder; rm != nil {
 			row.Reminder = &reminderJSON{DueAt: ms(rm.DueAt), Condition: rm.Condition, Fired: !rm.FiredAt.IsZero()}
@@ -363,6 +391,12 @@ func (d *Deps) toRows(ctx context.Context, rows []store.InboxRow) ([]inboxRow, e
 		out = append(out, row)
 	}
 	return out, nil
+}
+
+// needsMembersPreview is whether a row gets members_preview: a group (not one-to-one) with no picture of its own,
+// on the network or set on this Mac.
+func needsMembersPreview(r store.InboxRow) bool {
+	return !r.IsDirect && r.AvatarURI == "" && r.LocalAvatarURI == ""
 }
 
 // accountNames is the name of each of network's accounts, by account ID, for an inbox row's account tag

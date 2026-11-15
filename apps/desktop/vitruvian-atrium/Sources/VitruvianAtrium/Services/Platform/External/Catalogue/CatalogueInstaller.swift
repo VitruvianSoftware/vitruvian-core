@@ -74,7 +74,7 @@ package final class CatalogueInstaller {
         @MainActor package static var live: Parts {
             Parts(fetcher: URLSessionCatalogueFetcher(), source: CatalogueSource.inUse,
                   scratch: FileManager.default.temporaryDirectory
-                      .appendingPathComponent("com.vitruviansoftware.atrium.catalog", isDirectory: true),
+                      .appendingPathComponent("com.vitruviansoftware.vitruvian.catalog", isDirectory: true),
                   work: { DispatchQueue.global(qos: .utility).async(execute: $0) },
                   toMain: { work in DispatchQueue.main.async { MainActor.assumeIsolated { work() } } })
         }

@@ -274,13 +274,9 @@ package struct URLCleanerSettings: View {
     }
 
     private func addSite() {
-        guard let site = URLCleaning.siteKey(from: siteDraft),
-              let name = URLCleaning.parameterName(from: siteParameterDraft) else { return }
+        guard storedRules.addSite(siteDraft, parameter: siteParameterDraft) else { return }
         siteDraft = ""
         siteParameterDraft = ""
-        var added = URLCleaning.tokens(from: siteNames)
-        added[site, default: []].insert(name)
-        siteNames = URLCleaning.storageValue(forTokens: added)
     }
 
     private func addParameter(to site: String) {

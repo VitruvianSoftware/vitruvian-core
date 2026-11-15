@@ -3,6 +3,7 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "localmatrix",
     srcs = [
+        "arrived.go",
         "connector.go",
         "intent.go",
     ],
@@ -26,6 +27,7 @@ go_library(
 go_test(
     name = "localmatrix_test",
     srcs = [
+        "arrived_test.go",
         "connector_test.go",
         "intent_test.go",
     ],

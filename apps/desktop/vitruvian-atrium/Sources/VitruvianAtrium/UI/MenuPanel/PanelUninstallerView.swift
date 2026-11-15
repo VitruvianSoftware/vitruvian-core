@@ -17,7 +17,6 @@ package struct PanelUninstallerView: View {
     @State private var dropTargeted = false
     @State private var showingAppPicker = false
     @State private var pendingHomebrewRemoval: AppUninstaller.HomebrewRemovalConfirmation?
-    @State private var showHomebrewDetails = false
 
     package var onClose: () -> Void
 
@@ -25,6 +24,7 @@ package struct PanelUninstallerView: View {
         VStack(alignment: .leading, spacing: 10) {
             header
             content
+            UninstallerHomebrewLastLog(compact: true)
         }
         .dropDestination(for: URL.self) { urls, _ in
             let selected = uninstaller.selectDropped(urls)
@@ -305,7 +305,16 @@ package struct PanelUninstallerView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            HStack(spacing: 8) {
+                MixedStateCheckbox(
+                    title: l10n.s.uninstallerSelectAll,
+                    isOn: uninstaller.bulkSelection == .all,
+                    isMixed: uninstaller.bulkSelection == .some,
+                    isEnabled: !uninstaller.isRemoving && !uninstaller.items.isEmpty,
+                    fontSize: 11
+                ) {
+                    uninstaller.setAllIncluded(uninstaller.bulkSelection.nextInclude)
+                }
                 Text(String(format: l10n.s.uninstallerSelectedFormat,
                             uninstaller.items.filter(\.include).count, uninstaller.items.count))
                     .font(.system(size: 11, weight: .medium))
@@ -336,7 +345,7 @@ package struct PanelUninstallerView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .tint(.red)
-                .disabled(!uninstaller.items.contains(where: \.include)
+                .disabled(!uninstaller.canRemoveSelected
                           || (uninstaller.selectedHomebrewPackage != nil && homebrew.isBusy))
             }
         }
@@ -378,18 +387,13 @@ package struct PanelUninstallerView: View {
 
     @ViewBuilder
     private var homebrewStatus: some View {
-        if let package = uninstaller.selectedHomebrewPackage {
+        if uninstaller.homebrewCheckFailed {
+            UninstallerHomebrewFailureNote(onRetry: { uninstaller.retryHomebrewCheck() })
+        } else if let package = uninstaller.selectedHomebrewPackage {
             if let status = homebrew.operationStatus,
                status.action == .uninstall,
                status.package?.id == package.id {
-                HomebrewOperationStatusView(status: status,
-                                            log: homebrew.log,
-                                            terminalFallbackCommand: homebrew.terminalFallbackCommand,
-                                            compact: true,
-                                            showDetails: $showHomebrewDetails,
-                                            onCancel: homebrew.cancelOperation,
-                                            onClear: homebrew.clearLog,
-                                            onOpenTerminal: homebrew.openTerminalFallback)
+                HomebrewOperationOutputView(homebrew: homebrew, output: .status(status), compact: true)
                 if let tap = homebrew.untrustedTap {
                     HomebrewTrustCard(tap: tap, compact: true)
                 }

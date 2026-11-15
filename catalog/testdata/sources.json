@@ -22,7 +22,7 @@
     },
     {
       "id": "dev.vitruvian.github",
-      "repo": "VitruvianSoftware/vitruvian-tool-github",
+      "repo": "VitruvianSoftware/vitruvian-github",
       "tagPrefix": "v",
       "asset": "github-tool-{version}.zip",
       "uploader": "github-actions[bot]",
@@ -31,7 +31,7 @@
     {
       "id": "dev.vitruvian.remote",
       "repo": "VitruvianSoftware/vitruvian-core",
-      "tagPrefix": "android-remote-v",
+      "tagPrefix": "vitruvian-remote-v",
       "asset": "VitruvianRemote-{version}-tool.zip",
       "uploader": "github-actions[bot]"
     }

@@ -2,6 +2,13 @@
 
 All notable changes to gh-watch are recorded here.
 
+## [0.8.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/gh-watch-v0.8.3...gh-watch-v0.8.4) (2026-11-14)
+
+
+### Bug Fixes
+
+* **antigravity,claude-code:** make the shipped plugin instructions match the code, with drift tests ([#4771](https://github.com/VitruvianSoftware/vitruvian-core/issues/4771)) ([028ce19](https://github.com/VitruvianSoftware/vitruvian-core/commit/028ce197df5ae4544e46733da9ee9cc53c38f210))
+
 ## [0.8.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/gh-watch-v0.8.2...gh-watch-v0.8.3) (2026-11-01)
 
 

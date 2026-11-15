@@ -26,19 +26,29 @@ package struct RecorderExportProgressChip: View {
 
     package var body: some View {
         HStack(spacing: 8) {
-            if uploading {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(width: 20)
-            } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    if uploading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: 20)
+                    } else {
+                        ProgressView(value: progress)
+                            .progressViewStyle(.linear)
+                            .frame(minWidth: 24, idealWidth: 110, maxWidth: 110)
+                    }
+                    Text(label)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color(white: 0.8))
+                        .fixedSize()
+                }
+                .fixedSize()
                 ProgressView(value: progress)
                     .progressViewStyle(.linear)
-                    .frame(minWidth: 24, idealWidth: 110, maxWidth: 110)
+                    .frame(width: 24)
+                    .accessibilityLabel(label)
             }
-            Text(label)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color(white: 0.8))
-                .fixedSize()
+            .layoutPriority(-1)
             Button(cancelTitle) { cancel() }
                 .buttonStyle(.borderless)
                 .font(.system(size: 11))

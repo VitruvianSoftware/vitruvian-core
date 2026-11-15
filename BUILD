@@ -74,11 +74,17 @@ exports_files(
 
 exports_files(
     [
+        ".agents/roster/agents.tsv",
+        ".agents/roster/tiers.tsv",
         ".agents/roster/skills/orchestrate/antigravity.md",
         ".agents/roster/skills/orchestrate/claude-code.md",
         ".agents/roster/skills/orchestrate/opencode.md",
     ],
-    visibility = ["//tools/agent-roster:__pkg__"],
+    visibility = [
+        "//apps/antigravity/plugins/vitruvian-orchestrator:__pkg__",
+        "//apps/claude-code/plugins/vitruvian-orchestrator:__pkg__",
+        "//tools/agent-roster:__pkg__",
+    ],
 )
 
 # //tools/ci's hook tests read settings.json too, to check each hook is wired.
@@ -189,6 +195,13 @@ exports_files(
     visibility = ["//tools/delivery/gen:__pkg__"],
 )
 
+# Read by //gitops/argocd/platform/headscale's test, which keeps the nodes the
+# Zitadel tunnel tries in step with the Headscale ACL that lets tag:ci reach them.
+exports_files(
+    [".github/actions/zitadel-tunnel-setup/action.yml"],
+    visibility = ["//gitops/argocd/platform/headscale:__pkg__"],
+)
+
 # The rehearsal of the standalone Vitruvian Code's release, read by the test that
 # keeps it running the same steps as the release workflow the mirror runs.
 exports_files(
@@ -248,8 +261,8 @@ exports_files(
 # gazelle:exclude apps/desktop/vitruvian-speaker
 # gazelle:exclude apps/desktop/vitruvian-atrium
 # gazelle:exclude apps/desktop/vitruvian-code
-# gazelle:exclude apps/desktop/vitruvian-tool-github
-# gazelle:exclude apps/desktop/vitruvian-tool-tv
+# gazelle:exclude apps/extensions/atrium/vitruvian-github
+# gazelle:exclude apps/extensions/atrium/vitruvian-tv
 # gazelle:exclude apps/embedded
 # gazelle:exclude apps/mcp
 # gazelle:exclude apps/mobile
@@ -376,4 +389,12 @@ exports_files(
         "packages/pulumi/library/.github/FUNDING.yml",
     ],
     visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],
+)
+
+exports_files(
+    [
+        "packages/pulumi/library/.agents/skills/pulumi-library-ci/SKILL.md",
+        "packages/pulumi/library/.github/workflows/release.yml",
+    ],
+    visibility = ["//packages/pulumi/library/go:__pkg__"],
 )

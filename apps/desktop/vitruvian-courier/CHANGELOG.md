@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.3.21](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.20...vitruvian-courier-v0.3.21) (2026-11-14)
+
+
+### Features
+
+* **vitruvian-courier:** close 16 UX gaps with Beeper: instant chat switching, open at newest, seen-by, Beeper-style bubbles, list and chrome ([#4782](https://github.com/VitruvianSoftware/vitruvian-core/issues/4782)) ([f3428de](https://github.com/VitruvianSoftware/vitruvian-core/commit/f3428de834e1e98e10046d309df278d7319b0c36))
+
+## [0.3.20](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.19...vitruvian-courier-v0.3.20) (2026-11-13)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** fit the New Label window's colours and icons inside it ([#4730](https://github.com/VitruvianSoftware/vitruvian-core/issues/4730)) ([c0710df](https://github.com/VitruvianSoftware/vitruvian-core/commit/c0710df308ce72ed7f9118510d81ff961e81493d))
+
+## [0.3.19](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.18...vitruvian-courier-v0.3.19) (2026-11-13)
+
+
+### Bug Fixes
+
+* **vitruvian-atrium:** keep the bundle id com.vitruviansoftware.vitruvian through the rename ([#4668](https://github.com/VitruvianSoftware/vitruvian-core/issues/4668)) ([6438d01](https://github.com/VitruvianSoftware/vitruvian-core/commit/6438d01ac2a243b361f1aa34cec2fecb7970ee4e))
+
 ## [0.3.18](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.17...vitruvian-courier-v0.3.18) (2026-11-12)
 
 

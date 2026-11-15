@@ -205,6 +205,5 @@ class BridgeTest(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError):
             server.ping_heartbeat()
 
-
 if __name__ == "__main__":
     unittest.main()

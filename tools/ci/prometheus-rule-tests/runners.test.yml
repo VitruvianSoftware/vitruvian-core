@@ -1,0 +1,48 @@
+# Copyright (c) 2026 VitruvianSoftware
+# SPDX-License-Identifier: MIT
+#
+# Unit tests for RunnerPodsUnschedulable in
+# gitops/argocd/platform/prometheus/applicationset.yaml.
+#
+# Merge-queue runner pods that cannot be placed leave queue jobs waiting with
+# nothing to run them (2026-11-13: 304 minutes in one day). The alert must fire
+# after 10 minutes of it, clear once the pod is placed, and ignore unschedulable
+# pods in any other namespace.
+rule_files:
+  - rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    name: A runner pod unschedulable for 10m fires, and clears once placed
+    input_series:
+      # Unschedulable from t=1m to t=25m, then placed.
+      - series: 'kube_pod_status_unschedulable{namespace="arc-runners",pod="vitruvian-queue-runner-abcde"}'
+        values: '0 1+0x24 0+0x20'
+    alert_rule_test:
+      # Pending for 8m: still inside `for: 10m`.
+      - eval_time: 9m
+        alertname: RunnerPodsUnschedulable
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: RunnerPodsUnschedulable
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Merge-queue runner pods cannot be placed"
+              description: "1 runner pod(s) in arc-runners have been unschedulable for 10m, so merge-queue jobs are waiting for a runner that cannot start. Usually the nodes ran out of free CPU or memory requests: compare the pods' requests in gitops/argocd/platform/actions-runners/applicationset.yaml with what fedora and nuc9i9 have left. On 2026-11-13 this cost every queue entry ~6 min."
+      - eval_time: 30m
+        alertname: RunnerPodsUnschedulable
+        exp_alerts: []
+
+  - interval: 1m
+    name: Unschedulable pods elsewhere do not fire it
+    input_series:
+      - series: 'kube_pod_status_unschedulable{namespace="monitoring",pod="thanos-query-0"}'
+        values: '1+0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: RunnerPodsUnschedulable
+        exp_alerts: []

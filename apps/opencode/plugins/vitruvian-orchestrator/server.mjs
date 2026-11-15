@@ -35,6 +35,7 @@ import {
   pendingWakes,
   reduce,
 } from "./lib/adapter.mjs";
+import { VALID_PHASES, VALID_TIERS } from "./lib/orchestrator-core.mjs";
 
 export const PLUGIN_ID = "vitruvian-orchestrator";
 
@@ -105,7 +106,10 @@ const PROGRESS_INPUT_SCHEMA = {
           id: { type: "string" },
           title: { type: "string" },
           specialist: { type: "string" },
-          tier: { type: "string" },
+          tier: {
+            type: "string",
+            enum: [...VALID_TIERS],
+          },
           after: {
             type: "array",
             items: { type: "number" },
@@ -786,6 +790,29 @@ export default {
             }
             if (caller.isHelper) {
               throw new Error("progress is for the lead only");
+            }
+            if (args?.phase !== undefined) {
+              const phase =
+                typeof args.phase === "string" ? args.phase.trim() : "";
+              if (!VALID_PHASES.has(phase)) {
+                throw new Error(
+                  `invalid phase ${JSON.stringify(args.phase)}: expected one of ${[...VALID_PHASES].join(", ")}`,
+                );
+              }
+            }
+            if (Array.isArray(args?.tasks)) {
+              for (let i = 0; i < args.tasks.length; i += 1) {
+                const rawTier = args.tasks[i]?.tier;
+                const tier =
+                  typeof rawTier === "string"
+                    ? rawTier.trim().toLowerCase()
+                    : "";
+                if (!VALID_TIERS.has(tier)) {
+                  throw new Error(
+                    `invalid tier ${JSON.stringify(rawTier)} for task ${i + 1}: expected one of ${[...VALID_TIERS].join(", ")}`,
+                  );
+                }
+              }
             }
             const rootID = caller.rootID;
             const prevFlow = flowsByRoot.get(rootID) ?? null;

@@ -232,6 +232,25 @@ fn test_each_rule_refuses() {
             reason
         );
     }
+    let renamed = entry(&[("replaces", json::loads(r#"["dev.vitruvian.old"]"#).unwrap())]);
+    assert_eq!(
+        refused(&schema, &catalog_with(vec![renamed.clone()])),
+        Vec::<String>::new(),
+        "an entry may name the id it was listed under before"
+    );
+    let own = entry(&[(
+        "replaces",
+        json::loads(r#"["dev.vitruvian.reference"]"#).unwrap(),
+    )]);
+    assert!(refused(&schema, &catalog_with(vec![own]))
+        .join(" ")
+        .contains("replaces its own id"));
+    let still = catalog_with(vec![renamed, entry(&[("id", py::s("dev.vitruvian.old"))])]);
+    assert!(refused(&schema, &still)
+        .join(" ")
+        .contains("which the catalog still lists"));
+    let malformed = entry(&[("replaces", json::loads(r#"["nodot"]"#).unwrap())]);
+    assert!(!refused(&schema, &catalog_with(vec![malformed])).is_empty());
     let twice = catalog_with(vec![good(), good()]);
     assert!(refused(&schema, &twice).join(" ").contains("listed twice"));
     let mut undated = catalog_with(vec![good()]);
@@ -291,5 +310,50 @@ fn test_only_new_or_changed_entries_are_fetched() {
     assert_eq!(
         rules::changed(&catalog_with(vec![good()]), &catalog_with(vec![good()])).unwrap(),
         Vec::<Value>::new()
+    );
+}
+
+/// Every entry of the catalog is updated by a release (a row of
+/// sources.json) or only ever by hand (its `manual` list), and each row and
+/// each name in `manual` is an entry. An entry in neither is never updated,
+/// and nothing says so: catalog-bump walks the rows, not the entries. That
+/// is how HomeSpeaker 1.41.0 stayed listed after the rename gave its row the
+/// id dev.vitruvian.speaker.
+#[test]
+fn test_every_entry_is_updated_by_a_release_or_by_hand() {
+    let (_, catalog) = rules::load(&here::catalog_dir().join("tools.json")).unwrap();
+    let text = std::fs::read_to_string(here::catalog_dir().join("sources.json")).unwrap();
+    let sources = json::loads(&text).unwrap();
+    let mut rows: Vec<String> = Vec::new();
+    for row in py::iterate(&py::get_or(&sources, "sources", Value::List(vec![])).unwrap()).unwrap()
+    {
+        rows.push(py::get_null(&row, "id").unwrap().py_str());
+    }
+    let manual: Vec<String> = match sources.field("manual") {
+        Some(Value::Dict(d)) => d.keys().map(|k| k.to_string()).collect(),
+        _ => Vec::new(),
+    };
+    let mut entries: Vec<String> = Vec::new();
+    for tool in py::iterate(&py::get_or(&catalog, "tools", Value::List(vec![])).unwrap()).unwrap() {
+        entries.push(py::get_null(&tool, "id").unwrap().py_str());
+    }
+    let orphans: Vec<&String> = entries
+        .iter()
+        .filter(|id| !rows.contains(id) && !manual.contains(id))
+        .collect();
+    assert!(
+        orphans.is_empty(),
+        "these catalog entries have no row in catalog/sources.json and are not in its manual list, so no release updates them: {:?}",
+        orphans
+    );
+    let missing: Vec<&String> = rows
+        .iter()
+        .chain(manual.iter())
+        .filter(|id| !entries.contains(id))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "these rows of catalog/sources.json name no catalog entry: {:?}",
+        missing
     );
 }

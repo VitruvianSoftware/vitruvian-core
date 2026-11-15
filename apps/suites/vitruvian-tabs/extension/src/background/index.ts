@@ -25,6 +25,7 @@
  * Handles tab management, sync, and background tasks
  */
 
+import * as Sentry from "@sentry/browser";
 import { StorageService } from "../services/storage";
 import { TabService } from "../services/tabs";
 import { SyncService } from "../services/sync";
@@ -32,6 +33,18 @@ import {
   clearWindowOwnership,
   clearAllWindowOwnership,
 } from "../services/window-ownership";
+
+const SENTRY_DSN =
+  process.env.SENTRY_DSN ||
+  "https://e68b62b2a2f4064278c4e6915c1b4766@sentry-ingest.ipv1337.dev/11";
+
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    defaultIntegrations: false,
+    tracesSampleRate: 0.1,
+  });
+}
 // import { WorkspaceService } from '../services/workspace';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

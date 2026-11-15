@@ -51,7 +51,7 @@ package final class ShelfFilePromiseTransfer: @unchecked Sendable {
         self.storeDirectory = storeDirectory
         self.maximumFiles = maximumFiles
         self.completion = completion
-        queue.name = "com.vitruviansoftware.atrium.shelf-file-promises"
+        queue.name = "com.vitruviansoftware.vitruvian.shelf-file-promises"
         queue.qualityOfService = .utility
         queue.maxConcurrentOperationCount = 1
     }

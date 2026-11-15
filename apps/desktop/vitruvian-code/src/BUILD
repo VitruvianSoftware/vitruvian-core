@@ -112,3 +112,12 @@ exports_files(
     ],
     visibility = ["//apps/desktop/vitruvian-code:__pkg__"],
 )
+
+filegroup(
+    name = "docs_files",
+    srcs = [
+        "BUILD",
+        "README.md",
+    ] + glob(["rs/**"]),
+    visibility = ["//apps/desktop/vitruvian-code:__pkg__"],
+)

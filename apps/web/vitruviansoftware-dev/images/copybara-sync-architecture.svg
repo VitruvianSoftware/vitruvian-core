@@ -76,10 +76,10 @@
     <rect x="16" y="118" width="253" height="26" fill="#11221a" stroke="#235439" rx="3" />
     <text x="24" y="135" class="ok-text">Production: vitruviansoftware.dev</text>
 
-    <!-- Mirror 2: devx standalone repo -->
+    <!-- Mirror 2: vitruvian-devx standalone repo -->
     <g transform="translate(305, 0)">
       <rect width="285" height="155" class="mirror-box" />
-      <text x="20" y="28" class="box-head">VitruvianSoftware/devx</text>
+      <text x="20" y="28" class="box-head">VitruvianSoftware/vitruvian-devx</text>
       <text x="20" y="46" class="box-sub">Standalone Open Source Mirror</text>
       <text x="20" y="70" class="box-body">• Exported automatically on trunk push</text>
       <text x="20" y="88" class="box-body">• Releases generated from mirror tags</text>

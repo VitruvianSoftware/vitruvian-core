@@ -23,7 +23,7 @@ package final class FanControlService: ObservableObject {
     @Published package private(set) var error: FanControlErrorCode?
     @Published package private(set) var isWorking = false
 
-    private let probeQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.fan-control.probe",
+    private let probeQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.fan-control.probe",
                                            qos: .utility)
     // Only probeQueue touches it.
     nonisolated(unsafe) private var probeHardware: FanControlHardware?

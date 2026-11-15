@@ -31,7 +31,7 @@ enum NotchActivityTests {
     /// Keep Awake as an activity: off until turned on, gated like the others,
     /// last in the automatic order, and read in whole minutes like a timer.
     private static func keepAwakeContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-keep-awake"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-keep-awake"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -143,7 +143,7 @@ enum NotchActivityTests {
                      && NotchSupport.earlyBatteryThreshold(150, above: 10) == 100
                      && NotchSupport.earlyBatteryThreshold(99, above: 150) == 100,
                      "the amber level stays within its range and above the red level")
-        let domain = "com.vitruviansoftware.atrium.tests.low-battery"
+        let domain = "com.vitruviansoftware.vitruvian.tests.low-battery"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -165,7 +165,7 @@ enum NotchActivityTests {
     }
 
     private static func alertContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.timer-alert"
+        let domain = "com.vitruviansoftware.vitruvian.tests.timer-alert"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -412,7 +412,7 @@ enum NotchActivityTests {
         suite.expect(bounded.focusMinutes == 180 && bounded.shortBreakMinutes == 1 && bounded.longBreakMinutes == 60
                && bounded.longBreakInterval == 1 && bounded.totalSessions == 24,
                "restored out-of-range values cannot overflow deadlines or create invalid cycle intervals")
-        let domain = "com.vitruviansoftware.atrium.tests.pomodoro"
+        let domain = "com.vitruviansoftware.vitruvian.tests.pomodoro"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -548,7 +548,7 @@ enum NotchActivityTests {
                && NotchTimerSupport.compactText(for: hours, at: 3601, locale: locale) == "59m",
                "compact countdowns still switch from hours to minutes at the hour boundary")
 
-        let domain = "com.vitruviansoftware.atrium.tests.timer-mode"
+        let domain = "com.vitruviansoftware.vitruvian.tests.timer-mode"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -688,8 +688,33 @@ enum NotchActivityTests {
         }
         for minute in [1, 15, 90, 180] {
             suite.expect(NotchTimerRulerScale.offset(of: minute, selected: minute) == 0,
-                   "the chosen minute stays under the center pointer, including the initial value and both endpoints")
+                   "the chosen minute stays under the pointer, including the initial value and both endpoints")
         }
+        for width in [96.0, 180, 300, 560] {
+            var filled = true
+            var selectedVisible = true
+            var clicksMatch = true
+            for selected in 1...180 {
+                let pointer = NotchTimerRulerScale.selectionX(selected: selected, width: width)
+                let first = pointer + NotchTimerRulerScale.offset(of: 1, selected: selected)
+                let last = pointer + NotchTimerRulerScale.offset(of: 180, selected: selected)
+                filled = filled && first <= 24 && last >= width - 24
+                selectedVisible = selectedVisible && pointer >= 24 && pointer <= width - 24
+                for minute in 1...180 {
+                    let x = pointer + NotchTimerRulerScale.offset(of: minute, selected: selected)
+                    guard (0...width).contains(x) else { continue }
+                    let clicked = NotchTimerRulerScale.moving(Double(selected), by: -(x - pointer))
+                    clicksMatch = clicksMatch && NotchTimerRulerScale.minute(clicked) == minute
+                }
+            }
+            suite.expect(filled, "the timer ruler fills its width near both limits without an empty half at \(width) points")
+            suite.expect(selectedVisible, "every selected minute stays visible with room for its label at \(width) points")
+            suite.expect(clicksMatch, "visible ruler ticks select their own minute even when the pointer leaves the center at \(width) points")
+        }
+        suite.expect(NotchTimerRulerScale.selectionX(selected: 5, width: 300) == 80
+               && NotchTimerRulerScale.selectionX(selected: 90, width: 300) == 150
+               && NotchTimerRulerScale.selectionX(selected: 180, width: 300) == 276,
+               "short durations start near the leading edge, middle durations stay centered and the maximum reaches the trailing edge")
         suite.expect(NotchTimerRulerScale.minute(NotchTimerRulerScale.moving(15, by: 14)) == 14
                && NotchTimerRulerScale.minute(NotchTimerRulerScale.moving(15, by: -14)) == 16,
                "dragging the ruler by one tick changes one minute in the matching direction")
@@ -993,7 +1018,7 @@ enum NotchActivityTests {
     }
 
     private static func gateContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-activities"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-activities"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

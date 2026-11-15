@@ -45,7 +45,7 @@ metadata:
     vitruvian.dev/release-workflow: apps-release.yaml
     vitruvian.dev/release-model: gitops-argocd
     vitruvian.dev/environments: production
-    vitruvian.dev/mirror: VitruvianSoftware/mcp-slack
+    vitruvian.dev/mirror: VitruvianSoftware/vitruvian-slack-mcp
   links:
     - url: https://status.ipv1337.dev
       title: Uptime Status
@@ -53,7 +53,7 @@ metadata:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/vitruvian-slack-mcp
       title: Container Image
       icon: web
-    - url: https://github.com/VitruvianSoftware/mcp-slack
+    - url: https://github.com/VitruvianSoftware/vitruvian-slack-mcp
       title: GitHub Mirror
       icon: github
     - url: https://argocd.lab.ipv1337.dev/applications/mcp-slack

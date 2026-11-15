@@ -23,6 +23,7 @@
           "preview": "See you at the example meeting",
           "preview_kind": "text",
           "preview_mine": false,
+          "preview_sender_name": "Contact One",
           "preview_in_thread": false,
           "preview_status": "",
           "login_name": "",
@@ -117,6 +118,54 @@
           "unread_mentions": 0,
           "preview_media_path": "",
           "preview_call": { "state": "missed", "media": "video" }
+        },
+        {
+          "room_id": "!3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b:courier.local",
+          "network": "gchat",
+          "name": "Example Group",
+          "remote_name": "Example Group",
+          "local_name": "",
+          "avatar_path": "",
+          "local_avatar_path": "",
+          "merge_id": "",
+          "is_direct": false,
+          "last_ts": 1760300000000,
+          "preview": "😂 to “Maybe in his mind he did…”",
+          "preview_kind": "reaction",
+          "preview_mine": false,
+          "preview_sender_name": "Contact Four",
+          "preview_in_thread": false,
+          "preview_status": "",
+          "login_name": "",
+          "unread": 0,
+          "muted": false,
+          "pinned": false,
+          "archived": false,
+          "low_priority": false,
+          "hidden": false,
+          "marked_unread": false,
+          "request": false,
+          "draft": "",
+          "labels": [],
+          "muted_by": "",
+          "muted_by_name": "",
+          "reminder": null,
+          "typing": [],
+          "unread_mentions": 0,
+          "preview_media_path": "",
+          "preview_call": null,
+          "members_preview": [
+            {
+              "user_id": "@gchat_104:courier.local",
+              "name": "Contact Four",
+              "avatar_path": "/Users/example/Library/Application Support/Courier/media/2c/2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+            },
+            {
+              "user_id": "@gchat_105:courier.local",
+              "name": "Contact Five",
+              "avatar_path": ""
+            }
+          ]
         }
       ],
       "next_cursor": null

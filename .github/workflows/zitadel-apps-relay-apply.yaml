@@ -53,7 +53,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-    # Holds TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET and ZITADEL_MACHINE_KEY_JSON:
+    # Holds HEADSCALE_CI_AUTHKEY and ZITADEL_MACHINE_KEY_JSON:
     # instance-wide credentials first seeded under this environment's name.
     environment: oauth-user-inspector-development
     env:
@@ -65,11 +65,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up the Zitadel tunnel (tailnet join + TLS terminator prep)
+      - name: Set up the Zitadel tunnel (Headscale join + TLS terminator prep)
         uses: ./.github/actions/zitadel-tunnel-setup
         with:
-          tailscale-oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          tailscale-oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          headscale-authkey: ${{ secrets.HEADSCALE_CI_AUTHKEY }}
 
       - name: Install Pulumi
         uses: pulumi/actions@96c7761824268174e0d2a4e8c7d75671eebd24a7 # v7.1.0
@@ -86,9 +85,11 @@ jobs:
           retry="${RUNNER_TEMP}/retry-concurrent-update"
           rustc --edition 2021 -O "$GITHUB_WORKSPACE/tools/pulumi/src/bin/retry_concurrent_update.rs" -o "$retry"
 
-          # Internal route to Zitadel over tailnet (the public edge 403s the API).
+          # Internal route to Zitadel over the Headscale mesh (the public edge 403s
+          # the API). $ZITADEL_GATEWAY comes from the zitadel-tunnel-setup action.
+          : "${ZITADEL_GATEWAY:?zitadel-tunnel-setup did not pick a gateway node}"
           sudo socat OPENSSL-LISTEN:443,reuseaddr,fork,cert=/etc/auth-internal-ck.pem,verify=0 \
-            TCP:nuc9i9.coati-koi.ts.net:30265 &
+            TCP:"${ZITADEL_GATEWAY}" &
           trap 'sudo pkill -f "OPENSSL-LISTEN:443" 2>/dev/null || true' EXIT
           for _ in $(seq 1 15); do
             curl -fsS --max-time 5 https://auth.ipv1337.dev/debug/healthz >/dev/null 2>&1 && break
@@ -113,7 +114,9 @@ jobs:
 
           # Report what is live. Refresh first so ignored fields show Zitadel's
           # current values, not the last ones Pulumi wrote. Nothing printed here
-          # is secret: every client is public (no client secret exists).
+          # is secret: client ids are not credentials, and geminiClientSecret
+          # (the one confidential client's secret) is never printed. Read it
+          # locally with the :stack target (see the stack's README).
           "$retry" pulumi refresh --yes
           for o in projectId projectRoleCheck scopes connectorClientId claudeClientId; do
             v="$(pulumi stack output "$o")"
@@ -123,14 +126,36 @@ jobs:
             fi
             printf '%-26s %s\n' "$o" "$v"
           done
-          if pulumi stack output chatgptClientId >/dev/null 2>&1; then
-            printf '%-26s %s\n' chatgptClientId "$(pulumi stack output chatgptClientId)"
+          # Read every output once. Under bash -e a failed read stops the run
+          # here, so a transient Pulumi error can't make a client look absent.
+          outputs="$(pulumi stack output --json)"
+          # has() runs jq inside an `if`, where a parse error would read as
+          # "key absent" and skip a client's check. Prove it's a JSON object first.
+          if ! jq -e 'type == "object"' <<<"$outputs" >/dev/null; then
+            echo "::error::pulumi stack output --json did not return a JSON object" >&2
+            exit 1
           fi
+          has() { jq -e --arg k "$1" 'has($k)' <<<"$outputs" >/dev/null; }
+          get() { jq -r --arg k "$1" '.[$k]' <<<"$outputs"; }
+          for c in chatgpt gemini; do
+            if has "${c}ClientId"; then
+              printf '%-26s %s\n' "${c}ClientId" "$(get "${c}ClientId")"
+            fi
+          done
           # The relay validates JWTs locally; an opaque token on any client would
           # fail every request while the stack reports clean.
-          for c in connector claude chatgpt; do
-            att="$(pulumi stack output "${c}AccessTokenType" 2>/dev/null || true)"
-            [ -z "$att" ] && [ "$c" = chatgpt ] && continue
+          for c in connector claude chatgpt gemini; do
+            # chatgpt and gemini exist only when their callbacks are configured.
+            # Skip one only when the stack has no client for it; a configured
+            # client with no token type fails the run.
+            if { [ "$c" = chatgpt ] || [ "$c" = gemini ]; } && ! has "${c}ClientId"; then
+              continue
+            fi
+            if ! has "${c}AccessTokenType"; then
+              echo "::error::${c} client exists but has no ${c}AccessTokenType output" >&2
+              exit 1
+            fi
+            att="$(get "${c}AccessTokenType")"
             if [ "$att" != "OIDC_TOKEN_TYPE_JWT" ]; then
               echo "::error::${c} access token type is '${att}', not OIDC_TOKEN_TYPE_JWT" >&2
               exit 1

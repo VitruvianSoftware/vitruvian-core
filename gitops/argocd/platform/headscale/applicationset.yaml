@@ -77,6 +77,16 @@ spec:
                     derp:
                       server:
                         private_key_path: /etc/headscale/derp_server_private.key
+                    oidc:
+                      only_start_if_oidc_is_available: true
+                      issuer: https://accounts.google.com
+                      client_id: 713543034670-ksu8dsg664kbd1thbdk2134fhsflpj7e.apps.googleusercontent.com
+                      scope:
+                        - openid
+                        - profile
+                        - email
+                      allowed_users:
+                        - james.nguyen@gmail.com
                     EOF
             env:
               HEADSCALE_SERVER_URL: https://headscale.ipv1337.dev
@@ -86,6 +96,11 @@ spec:
               HEADSCALE_DNS_MAGIC_DNS: "true"
               HEADSCALE_DNS_BASE_DOMAIN: mesh.ipv1337.dev
               HEADSCALE_POLICY_MODE: database
+              HEADSCALE_OIDC_CLIENT_SECRET:
+                valueFrom:
+                  secretKeyRef:
+                    name: headscale-oidc-secret
+                    key: oidc-client-secret
             persistence:
               config:
                 enabled: true

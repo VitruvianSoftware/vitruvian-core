@@ -377,6 +377,20 @@ enum ToolPlatformTests {
         }
         suite.expect(shown([open, paused, gone, app]) == [open, app],
                      "the wheel shows a command slice only while its command can run")
+        // Quit all apps belongs to the Quit apps feature, the other toggles
+        // to Quick toggles; each slice follows its own feature.
+        let quitSlice = RadialMenuItem(kind: .quickToggle, payload: RadialMenuQuickToggle.quitAllApps.rawValue)
+        let trashSlice = RadialMenuItem(kind: .quickToggle, payload: RadialMenuQuickToggle.emptyTrash.rawValue)
+        for toggles in [false, true] {
+            for quit in [false, true] {
+                let kept = RadialMenuService.availableItems(
+                    [quitSlice, trashSlice], registry: world.registry,
+                    isFeatureAvailable: { $0 == .quitApps ? quit : $0 == .quickToggles ? toggles : true },
+                    toolIsRunnable: { _ in true })
+                suite.expect(kept.contains(quitSlice) == quit && kept.contains(trashSlice) == toggles,
+                             "radial toggle slices follow Quick toggles and Quit apps independently")
+            }
+        }
 
         // The wheel's slices are chosen when it opens. A command can stop
         // being runnable while it is open, and its slice is still there.
@@ -808,7 +822,7 @@ enum ToolPlatformTests {
         suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.toolCommandShortcuts),
                      "tool command shortcuts travel with a settings backup")
 
-        let domain = "com.vitruviansoftware.atrium.tests.toolCommandShortcuts"
+        let domain = "com.vitruviansoftware.vitruvian.tests.toolCommandShortcuts"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -1366,7 +1380,7 @@ enum ToolPlatformTests {
         let optionN = GlobalShortcut(keyCode: 45, modifiers: [.option])
         let optionM = GlobalShortcut(keyCode: 46, modifiers: [.option])
         let optionK = GlobalShortcut(keyCode: 40, modifiers: [.option])
-        let domain = "com.vitruviansoftware.atrium.tests.toolShortcutRegistrar"
+        let domain = "com.vitruviansoftware.vitruvian.tests.toolShortcutRegistrar"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

@@ -52,8 +52,12 @@ ts_project(
             "**/*.spec.tsx",
         ],
     ) + [
+        "instrumentation.ts",
         "next.config.ts",
         "proxy.ts",
+        "sentry.client.config.ts",
+        "sentry.edge.config.ts",
+        "sentry.server.config.ts",
     ],
     allow_js = True,
     declaration = False,
@@ -65,6 +69,7 @@ ts_project(
     transpiler = "tsc",
     tsconfig = "tsconfig.typecheck.json",
     deps = [
+        ":node_modules/@sentry/nextjs",
         ":node_modules/@types/chrome",
         ":node_modules/@types/node",
         ":node_modules/@types/react",

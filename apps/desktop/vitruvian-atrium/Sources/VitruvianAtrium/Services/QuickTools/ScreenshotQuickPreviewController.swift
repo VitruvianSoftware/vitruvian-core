@@ -255,6 +255,7 @@ package final class ScreenshotQuickPreviewController {
                 self.show(inNotch: false)
             },
             close: { [weak self] in self?.close() },
+            dismiss: { [weak self] in self?.dismissForClickElsewhere() },
             hover: { [weak self] inside in self?.hoverChanged(inside) }) {
             shownInNotch = true
             if let window = presentation.island().presentationWindow { installKeyMonitor(for: window) }
@@ -298,6 +299,12 @@ package final class ScreenshotQuickPreviewController {
             scanForQR()
         }
         scheduleAutoDismiss()
+    }
+
+    /// Closing while a share link is being made would delete that link.
+    private func dismissForClickElsewhere() {
+        guard NotchClickElsewhere.closesPreview(sharing: model.sharing) else { return }
+        close()
     }
 
     /// The island tracks the image and header together. Leaving just the

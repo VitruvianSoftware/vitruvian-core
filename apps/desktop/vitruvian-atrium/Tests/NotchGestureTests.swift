@@ -198,7 +198,7 @@ enum NotchGestureTests {
                && NotchGestureSupport.movement(-1, precise: false, inverted: false) == 24,
                "gesture direction is consistent across natural scrolling and wheel devices")
 
-        let domain = "com.vitruviansoftware.atrium.tests.notch-gestures"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-gestures"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

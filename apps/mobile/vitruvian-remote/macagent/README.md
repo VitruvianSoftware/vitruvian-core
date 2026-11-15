@@ -1,0 +1,571 @@
+# vitruvian-remote-agent
+
+The Mac half of [Vitruvian Remote](../README.md): a small Rust daemon that
+serves the machine's vital signs over HTTP so the phone can show real numbers
+instead of `MockHost`, and — once you have paired a phone from this Mac's
+keyboard — runs commands for it.
+
+The full request/response contract is [API.md](API.md). This file is the
+operator's view: what it can do to your machine, and how to turn that on.
+
+## The trust model, stated plainly
+
+There are two tiers, and only one of them is dangerous.
+
+**Reading** needs nothing but reachability. Metrics, host, processes, VMs,
+containers, Kubernetes nodes, volume, Claude Code sessions, a PromQL proxy.
+Everything there is what Activity Monitor already shows anyone sitting at the
+keyboard, so the tailnet is the boundary and there is no token.
+
+**Acting** needs a bearer token: `/v1/exec` and `/v1/exec/stream`, both
+clipboard verbs, `POST /v1/audio`, `POST /v1/power`, and the v1.2 additions —
+`/v1/claude/resume`, `/v1/prs/action`, `/v1/argocd/sync`, `/v1/screen`,
+`/v1/notify/test`. A phone holding that token can run
+arbitrary commands as your user. There is no sandbox, no allowlist and no
+confirmation prompt — `exec` with `kind: "shell"` is a login `zsh`. That is
+the feature; pretending otherwise would be the security problem.
+
+What bounds it:
+
+- The token is 64 hex characters, lives in `~/.config/vitruvian-remote-agent/token`
+  at mode `0600`, and is compared in constant time.
+- The **only** way to get one is pairing, and pairing needs someone typing a
+  code into a terminal on this Mac. A five-minute window, and five different
+  wrong codes delete it. Repeating a code is not guessing, so it is not counted.
+- Every act call is logged with its kind and the first 80 characters of the
+  command, so the Mac keeps a record of what the phone did.
+- `vitruvian-remote-agent token --rotate` un-pairs every phone, immediately.
+
+v1.0 of this agent was read-only and said so everywhere. v1.1 is not, and
+`/healthz` reports `read_only: false` so a client can tell which one it is
+talking to. Both `/healthz` and `/v1/host` report `agent_version`, which reports the version
+of the installed release.
+
+## Install and pair
+
+The agent runs on your Mac and connects to your phone over your local network or Tailscale.
+
+### 1. Install the agent on your Mac
+
+There are two ways to install and run the agent:
+
+- **As a Vitruvian Atrium tool:** The agent ships as a built-in Vitruvian tool. In Vitruvian Atrium (`Vitruvian Atrium.app`), open the Tools catalog and enable **Vitruvian Remote**. This runs the background daemon and provides a menu bar status app.
+- **From source with Bazel (development):** Install the agent as a user LaunchAgent:
+
+  ```sh
+  bazel run //apps/mobile/vitruvian-remote/macagent:install
+  ```
+
+  This builds the daemon, copies the binary to `~/.local/bin/vitruvian-remote-agent`, and starts the background service.
+
+### 2. Pair your phone
+
+You can pair your phone using a QR code or a six-digit code:
+
+- **Pair with QR code:** In the Vitruvian Remote menu bar app, choose **Pair with QR Code…**. A window opens showing a QR code for `http://<Tailscale IP>:7411/pair?code=NNNNNN`. Scan the code with your phone's camera, tap the link to open Vitruvian Remote, and confirm pairing.
+- **Pair with six-digit code:**
+  1. Open the Vitruvian Remote app on your phone. When unpaired, the app displays a six-digit code with a five-minute life.
+  2. On your Mac, enter the code in the Vitruvian Remote menu bar app, or run:
+
+     ```sh
+     bazel run //apps/mobile/vitruvian-remote/macagent:pair -- 482917
+     ```
+
+     That writes `~/.config/vitruvian-remote-agent/pair.json`. A running agent picks it up on its next request — nothing to restart.
+  3. The phone polls `POST /v1/pair` until it gets a token, then keeps it.
+
+The window is one-shot: the first phone through it closes it, so a second device that overheard the code gets nothing.
+
+The agent listens on `127.0.0.1:7411` and this Mac's Tailscale address whenever there is one. It checks every five seconds, so an agent that started at login before Tailscale was up starts serving the phone as soon as Tailscale connects. It reports the version of the installed release.
+
+## Endpoints
+
+Read (no auth):
+
+| Method | Path             | What                                                                          |
+| ------ | ---------------- | ----------------------------------------------------------------------------- |
+| GET    | `/v1/metrics`    | CPU, memory, battery, disk, network, thermal, uptime                          |
+| GET    | `/v1/host`       | hostname, model, chip, cores, memory, OS, agent version, MAC address, Wake-on-LAN |
+| GET    | `/v1/processes`  | top 8 by CPU                                                                   |
+| GET    | `/v1/vms`        | Lima instances                                                                 |
+| GET    | `/v1/containers` | Docker, falling back to podman                                                 |
+| GET    | `/v1/k8s`        | nodes, when started with `--kube-context`                                      |
+| GET    | `/v1/audio`      | output volume and mute                                                         |
+| GET    | `/v1/sessions`   | Claude Code projects active in the last 30 min, and live `claude` processes    |
+| GET    | `/v1/promql`     | proxies one instant query, when started with `--prometheus-url`               |
+| GET    | `/v1/claude/sessions` | every live Claude Code session and what it is doing (v1.2)               |
+| GET    | `/v1/antigravity/sessions` | the 20 newest Antigravity conversations and their state (v1.7)      |
+| GET    | `/v1/prs`        | your open pull requests and their check counts (v1.2)                         |
+| GET    | `/v1/argocd`     | ArgoCD Applications, sync and health (v1.2)                                   |
+| GET    | `/v1/phone`      | whether a phone is linked, its tools and its trust window (v1.3)              |
+| GET    | `/healthz`       | 200 while readings are fresh (<30 s), 503 otherwise (reports agent version, sample age, and pairing status) |
+| GET    | `/pair?code=N`   | the page a pairing QR code opens: one button into the phone app (v1.9)         |
+
+Act (`Authorization: Bearer <token>`):
+
+| Method | Path                 | What                                                 |
+| ------ | -------------------- | ---------------------------------------------------- |
+| POST   | `/v1/exec`           | `shell`, `applescript`, `shortcut` or `claude`        |
+| POST   | `/v1/exec/stream`    | the same, streamed line by line as SSE (v1.2)         |
+| POST   | `/v1/claude/resume`  | `claude --resume <id> -p <prompt>` (v1.2)             |
+| POST   | `/v1/antigravity/resume` | `agy -p <prompt> --conversation <id>`, streamed as SSE (v1.7) |
+| POST   | `/v1/prs/action`     | approve, merge, auto\_merge, ready (v1.2)             |
+| POST   | `/v1/argocd/sync`    | sync one Application (v1.2)                           |
+| GET    | `/v1/screen`         | a JPEG of the main display (v1.2)                     |
+| POST   | `/v1/notify/test`    | send a test push (v1.2)                               |
+| GET    | `/v1/clipboard`      | `pbpaste`                                             |
+| POST   | `/v1/clipboard`      | `pbcopy`                                              |
+| POST   | `/v1/audio`          | set output volume, 0–100                              |
+| POST   | `/v1/power`          | `sleep` or `restart`                                  |
+| POST   | `/v1/phone/link`     | the phone's outbound link, held open as SSE (v1.3)    |
+| POST   | `/v1/phone/result`   | the phone answering one call (v1.3)                   |
+
+Plus `POST /v1/pair`, which is unauthenticated because it is how a phone gets
+the credential, and `POST /mcp/phone`, which has a token and a rule of its own
+(see **Phone bridge** below). Anything else is a `405`. Responses carry
+`Cache-Control: no-store`, and errors are `{"error": "..."}`.
+
+Reading the clipboard counts as an **act**, despite the verb: it is where
+passwords live for thirty seconds at a time, and it is not something anyone
+can see from Activity Monitor.
+
+## Flags
+
+| Flag                | Default                            | What                                              |
+| ------------------- | ---------------------------------- | ------------------------------------------------- |
+| `--listen`          | `127.0.0.1:7411`                   | address to listen on                              |
+| `--tailscale`       | `true`                             | also listen on this machine's Tailscale IPv4      |
+| `--interval`        | `2s`                               | how often to refresh                              |
+| `--config-dir`      | `~/.config/vitruvian-remote-agent` | where the token and pairing live                  |
+| `--kubeconfig`      | *(empty)*                          | kubeconfig **file** for `/v1/k8s`; the lab cluster's is `~/.kube/cluster.yaml`, not the default |
+| `--kube-context`    | *(empty)*                          | kubeconfig context for `/v1/k8s`                  |
+| `--prometheus-url`  | *(empty)*                          | Prometheus base URL for `/v1/promql`; Grafana's datasource proxy works here |
+| `--prometheus-token-file` | *(empty)*                    | bearer token file for the upstream, 0600, never logged |
+| `--ntfy-url`        | *(empty)*                          | ntfy base URL for push notifications, e.g. `https://ntfy.example.com` |
+| `--ntfy-topic`      | *(empty)*                          | the topic to publish to — treat it as a secret, anyone who knows it can read it |
+| `--ntfy-token-file` | *(empty)*                          | bearer token file for ntfy, 0600, never logged    |
+| `--gh-extra-repos`  | *(empty)*                          | comma-separated `owner/repo` whose open PRs are listed whoever wrote them |
+| `--exec-dir`        | *(empty = the agent's cwd, `~`)*   | working directory for console commands and macros; point it at the repo so `bazel run //:tidy` finds its workspace |
+| `--permission-wait` | `120s`                             | how long a Claude Code permission prompt waits for the phone before the Mac dialog shows; clamped to 5s–140s |
+
+`bazel run //apps/mobile/vitruvian-remote/macagent:install` passes every flag after `--` straight through into the
+LaunchAgent plist, so the v1.2 flags are installed the same way the older ones
+are (a leading `~` in a value is expanded, because launchd runs no shell):
+
+```sh
+bazel run //apps/mobile/vitruvian-remote/macagent:install -- \
+  --kubeconfig ~/.kube/cluster.yaml --kube-context default \
+  --ntfy-url https://ntfy.example.com --ntfy-topic vitruvian-remote-xxxxx \
+  --ntfy-token-file ~/.config/vitruvian-remote-agent/ntfy-token \
+  --gh-extra-repos VitruvianSoftware/vitruvian-core \
+  --exec-dir ~/Workspace/gh/application/vitruvian/vitruvian-core
+```
+
+An empty `--kube-context` means **not configured**, not "whatever kubectl
+currently points at" — otherwise the agent would report a production cluster
+to a phone because somebody ran a kubectl command three days ago.
+
+Subcommands: `pair <code>`, `token [--rotate]`, `permission-hook` and
+`install-claude-hook [--remove] [--settings PATH]` (see **Claude permission
+prompts on the phone** below).
+
+## v1.2: what was added, and what it is honestly good for
+
+v1.1 could show you the Mac and run a command on it. v1.2 is about the three
+things you actually wait on — a coding agent, a pull request, a deploy — and
+about being told rather than having to look.
+
+### Streaming a command — `POST /v1/exec/stream`
+
+The same request body as `/v1/exec`, but the reply is Server-Sent Events and
+lines arrive as they are produced: `event: line` per line of stdout or stderr,
+`: keepalive` every 15 s while nothing prints, and `event: exit` last with the
+code and the duration. Default bound 600 s, up to 3600 if the caller asks.
+
+Two details worth knowing:
+
+- **Cancelling is hanging up.** There is no cancel message. When the client
+  disconnects, the agent kills the command's **process group** — not just the
+  child. `zsh -lc 'sleep 30'` execs into `sleep`; killing only the shell would
+  leave that `sleep` behind, and a phone that walked out of range would leak a
+  process per cancelled command.
+- **stdout and stderr interleave** in the order they were produced, because
+  two threads feed one channel. Draining one pipe first would hold every
+  error line back until the build finished, which is the moment you no longer
+  need it.
+
+### Claude Code sessions — `GET /v1/claude/sessions`, `POST /v1/claude/resume`
+
+One row per project, from the newest transcript under `~/.claude/projects/`,
+reading only its **last 64 KiB** — these files reach hundreds of megabytes and
+this runs every five seconds. `session_id` is the `.jsonl` filename stem,
+which is exactly what `claude --resume` takes.
+
+`state` is a **heuristic and the contract says so.** Claude Code writes no "I
+am blocked on a permission prompt" record, so the only evidence is the shape
+of the last few entries:
+
+| state                    | what the transcript looks like                              |
+| ------------------------ | ------------------------------------------------------------ |
+| `waiting_for_permission` | last message is an assistant tool call with no result for ≥ 90 s — a permission prompt, or a long command; the transcript cannot tell, so the push says "may be waiting" |
+| `working`                | a tool result just landed, or the tool call is under 90 s old |
+| `idle`                   | the turn ended in prose — it is your move                     |
+| `unknown`                | nothing parseable in the tail                                 |
+
+The twenty seconds is a guess, and it is the useful guess to make: a tool call
+that has produced nothing for that long is usually a permission prompt and
+occasionally a slow `grep`. Being told wrongly costs you two seconds; not
+being told costs you the afternoon.
+
+`POST /v1/claude/resume {session_id, prompt}` picks a session up where it
+stopped, through the same exec machinery (300 s bound, `/v1/exec`'s reply
+shape).
+
+### Pull requests — `GET /v1/prs`, `POST /v1/prs/action`
+
+`gh search prs --author @me --state open`, then one `gh pr view` per PR, every
+sixty seconds — twenty-one round trips to github.com per refresh, which is why
+it is on its own clock. `checks` is a **count**, not a list: a phone has room
+for "26 green, 19 skipped", not for forty-five rows. Skipped is its own bucket
+because folding it into failure would call every clean PR red.
+
+`gh` missing or logged out is `available:false` with gh's own message —
+`gh auth login` is the next step and nothing this agent writes says it better.
+`--gh-extra-repos` adds repos whose open PRs are listed whoever wrote them.
+
+Actions are the four in the contract (`approve`, `merge`, `auto_merge`,
+`ready`) and nothing else; anything else is a 400 rather than a `gh`
+invocation nobody predicted. The reply carries gh's **stdout and stderr**,
+because gh writes "Merged pull request #2226" to stderr.
+
+### ArgoCD — `GET /v1/argocd`, `POST /v1/argocd/sync`
+
+Needs the same `--kubeconfig` / `--kube-context` as `/v1/k8s`; without them it
+is `available:false, reason:"not configured (--kube-context)"`, never a guess
+at kubectl's current context. The cluster's answer is about two megabytes,
+nearly all of it the per-app resource inventory, and the agent drops it before
+anything crosses a phone network.
+
+Sync is a `kubectl patch` writing an empty sync operation — the same thing the
+ArgoCD UI's Sync button writes — because the `argocd` CLI would need a login
+this agent has no way to obtain. It records `vitruvian-remote` as the
+initiator, so the app's history says who did it.
+
+### Screen peek — `GET /v1/screen?width=800`
+
+A JPEG of the main display: `screencapture -x -t jpg` then `sips
+--resampleWidth`, cached for two seconds so a thumb resting on a refreshing
+thumbnail does not run `screencapture` ten times a second. `no-store`, and the
+temporary file is deleted before the reply is sent.
+
+**This is the endpoint most likely to refuse.** Screen Recording is granted to
+a specific *binary* by a person in System Settings, and an agent installed by
+`bazel run :install` has never been granted it — so the honest first answer on
+most machines is:
+
+```
+503 {"available":false,
+     "reason":"Screen Recording is not granted to the agent — System Settings → Privacy & Security → Screen Recording"}
+```
+
+Grant it to `~/.local/bin/vitruvian-remote-agent` once. A black rectangle
+would be worse than the error.
+
+### Notifications — the one thing that goes the other way
+
+Everything else here answers a question the phone asked. This is the agent
+telling you something while your phone is asleep, which is the only fix for
+"Claude stopped at a permission prompt and nobody noticed for an hour".
+
+ntfy rather than Apple push: a topic is a URL and the ntfy app subscribes to
+it — no developer account, no certificate, no per-app registration. The trade
+is that **anyone who learns the topic name can read it**, so pick an
+unguessable one and treat it as a secret. The token is a 0600 file and is
+never logged, never echoed in a response and never quoted in an error.
+
+Five events, each sent once per **transition** and debounced 30 s per key:
+
+| Key                            | When                                          | Title                        |
+| ------------------------------ | --------------------------------------------- | ---------------------------- |
+| `claude:<session>:permission`  | a session enters `waiting_for_permission`     | Claude Code is waiting       |
+| `claude:<session>:idle`        | a session goes `working` → `idle`             | Claude Code finished a turn  |
+| `exec:<id>`                    | a streamed command exits                      | Command finished · exit N    |
+| `pr:<repo>#<n>:green` / `:red` | a PR's checks settle, either way              | PR #n checks green / failed  |
+| `agent:start`                  | the agent starts                              | Agent online                 |
+
+On the transition, not per tick: a session still waiting four seconds later is
+not news, and a PR that has been green all day is not either. A state seen for
+the **first** time is never announced, or every restart would fire one push per
+open PR. `Click` carries a `vitruvian-remote://<screen>` deep link, so tapping
+the notification opens the phone where the news is.
+
+`POST /v1/notify/test` proves the path end to end and deliberately bypasses
+the debounce — pressing a test button twice should send twice. Without the
+flags it answers `400` naming them, rather than "unavailable". `/healthz`
+grows a `notify: {configured, topic}` block; the token is not in it.
+
+Publishing failures are logged and dropped. A sampler that stalled because
+ntfy was down would take the metrics with it, and the metrics are the point.
+
+## Phone bridge (v1.3)
+
+The other direction: instead of the phone driving the Mac, Claude Code and
+Antigravity on the Mac get a `phone` MCP server whose tools run on the phone —
+notifications, SMS, contacts, calls, location, the screen. The design, the
+tools and the approval rules are in
+[docs/phone-bridge.md](../docs/phone-bridge.md); the wire contract is in
+[API.md](API.md).
+
+The phone never accepts a connection. It opens one outbound link
+(`POST /v1/phone/link`) and holds it open, calls travel down it as SSE events,
+and answers come back as `POST /v1/phone/result`. So this works over cellular,
+behind NAT, with no new pairing and no wifi debugging.
+
+Add it to Claude Code:
+
+```sh
+claude mcp add --transport http phone http://127.0.0.1:7411/mcp/phone \
+  --header "Authorization: Bearer $(cat ~/.config/vitruvian-remote-agent/mcp-token)"
+```
+
+**Antigravity** uses the same URL and the same header — put them in its MCP
+configuration as an HTTP server named `phone`. Anything that speaks MCP
+Streamable HTTP works; there is no server-initiated stream in v1.3, so `GET`
+on that URL is a `405` and a client that insists on one is not supported yet.
+
+Two things guard it, and they are not the pairing token:
+
+- **Loopback only.** The agent also listens on its Tailscale address, and this
+  endpoint can text people. A request whose peer is not `127.0.0.1` or `::1` is
+  a `403`, checked before the token is even looked at.
+- **`~/.config/vitruvian-remote-agent/mcp-token`**, 64 hex characters at mode
+  `0600`, created on first start and never logged or returned by any endpoint.
+  It is separate from the pairing token on purpose: pairing again rotates that
+  one, and an MCP client configured months ago should not break when a phone
+  re-pairs.
+
+`GET /v1/phone` says whether a phone is linked, which tools it declared and
+when its trust window closes. With no phone linked, `tools/list` is empty and
+`tools/call` comes back as a tool error saying `phone not connected` — an MCP
+tool failure, not a transport failure, so the model sees the sentence instead
+of the client dropping the server.
+
+Every call is logged as `act mcp: <tool>`. The arguments are not: a phone
+number or a message body in the Mac's log would be exactly the leak this
+endpoint should not have.
+
+## Claude permission prompts on the phone (v1.6)
+
+When Claude Code on this Mac is about to ask "may I run this?", the question
+can go to the phone instead. Tap Approve or Deny there and Claude Code carries
+on. If nobody answers in time, the normal dialog appears on the Mac as if the
+phone had never been involved.
+
+It works through Claude Code's `PermissionRequest` hook. The hook runs
+`vitruvian-remote-agent permission-hook`, which hands the question to this
+agent on loopback and waits. The agent parks it, pushes a notification, and
+the phone answers through `GET /v1/claude/permissions` and
+`POST /v1/claude/permissions/decide`. The wire contract is in
+[API.md](API.md#v16-additions-answer-claude-code-permission-prompts-from-the-phone).
+
+**Turning it on.** The normal way is the "Answer Claude prompts here" toggle in
+the phone app: it adds the hook to `~/.claude/settings.json`, and turning it
+off takes the hook out. That file is the only on/off switch there is. To do the
+same by hand:
+
+```sh
+~/.local/bin/vitruvian-remote-agent install-claude-hook            # add
+~/.local/bin/vitruvian-remote-agent install-claude-hook --remove   # remove
+```
+
+Both are safe to run twice. They change only our one entry and leave every
+other setting and hook alone (the file is re-written, so key order may
+change). The previous file is kept as `settings.json.bak`, and a
+`settings.json` that does not parse is never overwritten. The hook command is
+the full path of the agent binary, not `~/...`.
+
+**Why it cannot make Claude Code worse:**
+
+- Only a person tapping on a paired phone can produce "allow" or "deny".
+  Every other outcome is "ask", which means the usual Mac dialog.
+- Unanswered after `--permission-wait` (120 s by default, never more than
+  140 s so Claude Code's own 150 s hook limit is never reached): the Mac
+  dialog shows.
+- Agent not running, token missing, any error at all: the hook prints nothing
+  and exits 0, and the Mac dialog shows at once.
+- It only runs while the phone toggle has it installed.
+- The endpoint the hook calls is loopback-only and needs its own token,
+  `~/.config/vitruvian-remote-agent/hook-token` (0600, created on first start,
+  never logged). The pairing token and the MCP token do not open it.
+- The Mac's log records `act claude: allow Bash in <project>`, never the
+  command itself.
+
+
+**What it covers.** Claude Code sessions started after the hook is installed, whether in a
+terminal or in the Claude desktop app. Verified both: the desktop app runs Claude Code with
+`--permission-prompt-tool stdio` and answers permission requests itself; the hook still fires
+alongside that, the prompt reaches the phone, and a phone Deny stops the command. The app's own
+prompt shows at the same time and whichever answer comes first wins.
+
+- **Sessions already running** when the hook is installed keep asking on the Mac only: Claude Code
+  reads hooks at startup.
+- **Bypass-permissions mode** never asks anyone, so there is nothing to send to the phone.
+
+## Antigravity on the phone (v1.7)
+
+Two of the things Claude Code has, for Antigravity (`agy`): a list of recent
+conversations, and a way to carry one on from the phone. The wire contract is
+in [API.md](API.md#v17-additions-antigravity-parity-with-claude-code).
+
+**Conversations.** `GET /v1/antigravity/sessions` reads agy's own list,
+`~/.gemini/antigravity-cli/conversation_summaries.db`, with
+`sqlite3 -readonly` (agy keeps the file open; read-only is safe alongside it).
+Newest 20, each marked `working`, `idle` or `killed`.
+
+**Carry one on.** `POST /v1/antigravity/resume` runs
+`agy -p <prompt> --output-format text --conversation <id>` and streams the
+output exactly like `/v1/exec/stream`. It runs in the conversation's own
+folder when that still exists, otherwise in `--exec-dir`. No id starts a new
+conversation. Hanging up on the stream stops the run.
+
+**Approving prompts: not supported.** Approving Antigravity prompts from the phone is not supported: in agy 1.2.11 a hook's 'allow' does not skip agy's own prompt, and headless runs still refuse commands that need permission. A phone-sent prompt therefore works for anything agy can do without asking; commands that need permission are refused, and the reply says so.
+
+Measured on agy 1.2.11: a `PreToolUse` hook that answers "allow" is read as
+"no objection", so agy still shows its own "Run this command?" prompt on the
+Mac; only "deny" is honoured. Until agy lets a hook grant permission, this
+agent installs nothing in agy's configuration, and the phone's permission
+queue holds Claude Code's prompts only.
+
+## What it reads, and what it honestly cannot
+
+Sampling uses tools an unprivileged process may run: `vm_stat`,
+`sysctl`, `ioreg`, `df`, `netstat`, `route`, `pmset`, `sw_vers`, `ifconfig`,
+`ps`, `limactl`, `docker`, `podman`, `kubectl`, `osascript`. Fixed arguments,
+no shell, nothing from a request in an argv. CPU usage is the exception: the
+agent reads the kernel's CPU tick counters itself (`host_statistics`, the same
+numbers `top` uses) instead of running `top`, which walked every process on the
+Mac and cost about two CPU-seconds each time.
+
+Several files start processes (`exec.rs`, `stream.rs`, `sampler.rs`,
+`speaker.rs`, `antigravity.rs`, `tailnet.rs`), all with
+`std::process::Command` and never through a shell unless the caller asked for
+`kind: "shell"`. The rule is about where the arguments come from: reading uses
+fixed argv the agent chooses itself, and any process that takes text from a
+request (exec, streamed exec, Vitruvian Speaker say, Antigravity resume) is on an act
+endpoint, behind the token.
+
+An optional tool that is absent or wedged returns `available: false` with a
+**reason** — never an empty list. "No containers running" and "the Docker
+daemon is down" look identical otherwise, and only one of them needs you.
+
+What macOS will not hand an unprivileged process is reported as absent in
+`unavailable`, with the reason, never estimated:
+
+- SoC temperature and fan speed (need an SMC reader). The one temperature
+  available is the battery pack's own sensor, in `battery.temperature_c`.
+- GPU and Neural Engine load, and package power (need `powermetrics`, which
+  needs root). [`tools/ops/macos-power-agent`](../../../../tools/ops/macos-power-agent/README.md)
+  went root for exactly this and pushes it to Prometheus — which is what
+  `--prometheus-url` and `/v1/promql` are for.
+
+Three figures are easy to misread and are documented in the JSON field names:
+
+- `cpu.ready` is `false` for about a second after start, while the agent
+  takes the two counter readings a real percentage needs. Until then `cpu.*`
+  is zero, and zero is not "idle". After that each figure covers the last
+  sampling interval (`--interval`, 2 s by default).
+- `memory.free_percent` is the **kernel's** number (`kern.memorystatus_level`),
+  the one the pressure graph and memory warnings are based on. It is not
+  `100 - used_percent`.
+- `battery.draw_watts` is the battery's discharge rate, so it reads `0` on AC.
+  That is the truth about the battery and says nothing about wall draw.
+
+`/v1/sessions`'s `project` is a **label, not a path**: Claude Code encodes a
+project directory by replacing `/` with `-`, which is lossy for any directory
+whose own name contains a hyphen.
+
+## Run it
+
+```sh
+bazel run //apps/mobile/vitruvian-remote/macagent            # foreground, Ctrl-C to stop
+curl -s http://127.0.0.1:7411/v1/metrics | jq .
+```
+
+Install as a login item for the current user (no sudo):
+
+```sh
+bazel run //apps/mobile/vitruvian-remote/macagent:install
+```
+
+That copies the built binary to `~/.local/bin`, writes a LaunchAgent to
+`~/Library/LaunchAgents`, starts it, and **proves it answers** before
+reporting success. Logs go to `~/Library/Logs/vitruvian-remote-agent.log` —
+including every act call.
+
+## Network posture
+
+Listens on `127.0.0.1:7411` and, if the machine has one, its Tailscale IPv4
+(found by looking for an address in `100.64.0.0/10`, so the `tailscale` CLI is
+not required). It never binds `0.0.0.0`.
+
+The tailnet is the boundary for reading. It is **not** the boundary for
+acting: anything that reaches the port can still only run commands with a
+token it does not have. The transport is plain HTTP *inside* the WireGuard
+tunnel Tailscale already provides, so there is no TLS to manage and the token
+is not cleartext on the wire.
+
+## macOS permissions the agent does not have by default
+
+The agent runs as a plain user process, and macOS gates some things behind
+per-app consent that no install script can grant:
+
+- **Screen Recording** — both `GET /v1/screen` and `screencapture` from the
+  *Screenshot → clip* macro need it. Until the agent is allowed under System
+  Settings → Privacy & Security → Screen Recording, `/v1/screen` answers `503`
+  with that exact sentence and the macro shows `could not create image from
+  display`. Neither pretends it worked.
+- **Automation** — an AppleScript that drives another app (`tell app
+  "Finder" …`) prompts the first time and is refused if the prompt is not
+  answered on the Mac.
+
+Grant them to `~/.local/bin/vitruvian-remote-agent`. **They do not survive a
+reinstall on their own.** macOS keys a grant to the binary's code-signing
+requirement, and for an ad-hoc signed binary that is the build's hash: after
+`:install` the pane still shows the toggle ON while `/v1/screen` keeps answering
+503 (found the hard way -- a fresh grant against yesterday's build did nothing
+for today's). The installer therefore signs the binary with a self-signed
+"Vitruvian Remote Agent" identity when one is in the login keychain, which
+makes the requirement *identifier + certificate* and stable across rebuilds.
+Create it once (no admin rights, no trust settings needed):
+
+```sh
+d=$(mktemp -d) && cd "$d" && printf '%s\n' '[req]' 'distinguished_name=dn' 'x509_extensions=ext' 'prompt=no' \
+  '[dn]' 'CN=Vitruvian Remote Agent' '[ext]' 'keyUsage=critical,digitalSignature' \
+  'extendedKeyUsage=critical,codeSigning' 'basicConstraints=critical,CA:false' > cs.cnf &&
+openssl req -x509 -newkey rsa:2048 -nodes -keyout k.pem -out c.pem -days 3650 -config cs.cnf &&
+openssl pkcs12 -export -inkey k.pem -in c.pem -out id.p12 -passout pass:x -name "Vitruvian Remote Agent" -legacy &&
+security import id.p12 -k ~/Library/Keychains/login.keychain-db -P x -T /usr/bin/codesign && cd / && rm -rf "$d"
+```
+
+`security find-identity` lists it as `CSSMERR_TP_NOT_TRUSTED`; that is fine,
+codesign does not need trust. After the first signed install, grant Screen
+Recording one more time -- the identity changed, so it is a new client to
+macOS -- and it stays granted from then on. The install summary prints which
+of the two states you are in.
+
+## Testing
+
+The parsers in `metrics/` are pure functions pinned by fixtures captured from
+a real machine, so they run on the Linux CI runner. The pairing and
+authorisation tests run there too — they touch a temp directory, not
+`~/.config`.
+
+What CI cannot check is the macOS commands themselves. Shell commands that require
+`/bin/zsh` are exercised on a Mac and not on the Linux CI runner; `bazel run` on a Mac
+plus `curl` is the rest of that check.
+
+## Subdirectories & Boundaries
+- [metrics](./metrics/README.md): Subsystem blueprint grouping child modules under apps/mobile/vitruvian-remote/macagent/me...
+- [rs](./rs/README.md): Subsystem blueprint grouping child modules under apps/mobile/vitruvian-remote/macagent/rs.
+- [scripts](./scripts/README.md): Subsystem blueprint grouping child modules under apps/mobile/vitruvian-remote/macagent/sc...
+

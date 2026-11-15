@@ -131,7 +131,7 @@ public struct GalleryGridView: View {
     public var preloadedImages: [String: NSImage]
     public var onOpenLightbox: (String) -> Void
 
-    public static let gridWidth: CGFloat = 324
+    public static let gridWidth: CGFloat = 404
     private static let spacing: CGFloat = 4
 
     public init(
@@ -157,30 +157,42 @@ public struct GalleryGridView: View {
         }
     }
 
-    private var tileSize: CGSize {
+    /// The widths the grid tries, widest first: a narrow window gets the first one that fits instead of a grid that
+    /// spills past the chat.
+    static let fittingWidths: [CGFloat] = [gridWidth, 320, 240]
+
+    private func tileSize(for gridWidth: CGFloat) -> CGSize {
         let cols = CGFloat(max(columnCount, 1))
         let totalSpacing = Self.spacing * (cols - 1)
-        let width = floor((Self.gridWidth - totalSpacing) / cols)
+        let width = floor((gridWidth - totalSpacing) / cols)
         let height = (columnCount == 2) ? round(width * 0.78) : width
         return CGSize(width: width, height: height)
     }
 
     public var body: some View {
+        ViewThatFits(in: .horizontal) {
+            ForEach(Self.fittingWidths, id: \.self) { grid(width: $0) }
+        }
+    }
+
+    private func grid(width gridWidth: CGFloat) -> some View {
+        let tile = tileSize(for: gridWidth)
         let cols = Array(
-            repeating: GridItem(.fixed(tileSize.width), spacing: Self.spacing),
+            repeating: GridItem(.fixed(tile.width), spacing: Self.spacing),
             count: columnCount
         )
+        return
         LazyVGrid(columns: cols, alignment: .leading, spacing: Self.spacing) {
             ForEach(items) { item in
                 GalleryTileView(
                     item: item,
-                    size: tileSize,
+                    size: tile,
                     preloadedImage: preloadedImages[item.id],
                     onTap: { onOpenLightbox(item.id) }
                 )
             }
         }
-        .frame(width: Self.gridWidth, alignment: .leading)
+        .frame(width: gridWidth, alignment: .leading)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(String(localized: "Media gallery with \(items.count) items"))

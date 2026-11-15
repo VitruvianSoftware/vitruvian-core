@@ -20,8 +20,8 @@ bidirectionally — see [§0 Sync shapes](#0-sync-shapes-what-replaced-bidirecti
 
 | Shape | Flag | Components | Generates |
 |---|---|---|---|
-| **One-way w/ PR-import** | `is_one_way=True` | `mcp-slack`, `vitruvian-roborock-mcp`, `devx`, `homelab`, `vitruvian-code`, `oauth-user-inspector` | `export_<comp>` (push to mirror `main`) + `import_pr_<comp>` (a labelled mirror PR → a **monorepo PR**, `CHANGE_REQUEST` mode) |
-| **Export-only** | `export_only=True` | `pulumi-library`, `pulumi_go-example-foundation`, `pulumi_ts-example-foundation`, `site-vitruviansoftware-dev`, `gh-watch`, `vitruvian-sdk`, `vitruvian-tool-github`, `vitruvian-atrium`, `vitruvian-courier`, `vitruvian-speaker`, `vitruvian-remote`, `vitruvian-deck` | `export_<comp>` only — no import path of any kind |
+| **One-way w/ PR-import** | `is_one_way=True` | `vitruvian-slack-mcp`, `vitruvian-roborock-mcp`, `vitruvian-devx`, `vitruvian-homelab`, `vitruvian-code`, `oauth-user-inspector` | `export_<comp>` (push to mirror `main`) + `import_pr_<comp>` (a labelled mirror PR → a **monorepo PR**, `CHANGE_REQUEST` mode) |
+| **Export-only** | `export_only=True` | `pulumi-library`, `pulumi_go-example-foundation`, `pulumi_ts-example-foundation`, `site-vitruviansoftware-dev`, `gh-watch`, `vitruvian-sdk`, `vitruvian-github`, `vitruvian-atrium`, `vitruvian-courier`, `vitruvian-speaker`, `vitruvian-remote`, `vitruvian-deck` | `export_<comp>` only — no import path of any kind |
 | **Bidirectional** | `is_one_way=False` | *(none)* | legacy shape, retained as a knob only |
 
 There is deliberately **no push-to-`main` `import_<comp>`** for any component. External
@@ -104,10 +104,19 @@ flowchart LR
 1. `copybara-export.yaml` fires (`on: push`, `paths: apps/mcp/vitruvian-slack-mcp/**`).
 2. It writes auth to the runner: the deploy key → `~/.ssh/id_rsa` (with a guaranteed trailing
    newline), and `GITHUB_TOKEN` → `~/.git-credentials`.
-3. It runs `docker run olivr/copybara@sha256:… copybara` with `COPYBARA_WORKFLOW=export_mcp_slack`.
+3. It runs `docker run olivr/copybara@sha256:… copybara` with `COPYBARA_WORKFLOW=export_vitruvian_slack_mcp`.
 4. Copybara **reads** vitruvian-core over **HTTPS** (`GITHUB_TOKEN`), strips the `apps/mcp/vitruvian-slack-mcp/` prefix
    (`core.move`), and **pushes** the migrated commit(s) to the standalone over **SSH** (deploy key),
    stamping each with `MONOREPO_REV_ID`.
+   Before any of that, each caller's `await-repo-config` job (`_await-repo-config.yaml`) waits
+   until no **Repo Config Apply** run is queued or in flight (and, if this push changed
+   `infrastructure/pulumi/platform/repo-config/`, until that push's apply has appeared; a manual run compares the head commit with its parent). The
+   caller's `export` job, which maps `<COMP>_SYNC_SSH_KEY`, `needs` it. The apply can replace the
+   mirror's deploy key and that secret (a mirror rename always does); an export already holding
+   the key would push with the old one and be refused. That happened on 2026-11-13 (#4661).
+   The wait sits in the caller, not in `_copybara-export.yaml`, because the caller is where the
+   key is mapped. `//tools/conformance:check` fails if a key-reading job stops waiting, if a caller
+   drops the `actions: read` the wait needs, or if the wait stops polling the apply.
 5. Nothing on the mirror side reacts. The mirror is read-only; the only way a change re-enters the
    monorepo is a labelled mirror PR (§4), and that path skip-guards any commit carrying
    `MONOREPO_REV_ID` (no bounce).
@@ -118,11 +127,11 @@ sequenceDiagram
     participant VC as vitruvian-core main
     participant EXP as copybara-export.yaml
     participant CB as Copybara image
-    participant MS as mcp-slack main
+    participant MS as vitruvian-slack-mcp main
     participant IMP as import (via dispatch)
     Dev->>VC: push under apps/mcp/vitruvian-slack-mcp/**
     VC->>EXP: on: push
-    EXP->>CB: docker run (export_mcp_slack, ITERATIVE)
+    EXP->>CB: docker run (export_vitruvian_slack_mcp, ITERATIVE)
     CB->>VC: read origin (HTTPS + GITHUB_TOKEN)
     CB->>MS: push migrated commit (SSH deploy key), stamp MONOREPO_REV_ID
     MS->>IMP: push triggers dispatch → import
@@ -136,14 +145,14 @@ sequenceDiagram
 **Trigger:** `copybara-import-pr.yaml` on its **hourly schedule** (or `workflow_dispatch`). There is
 no push trigger and no `repository_dispatch` — a push to a mirror does **not** reach the monorepo.
 
-1. A contributor opens a PR on `VitruvianSoftware/mcp-slack`.
+1. A contributor opens a PR on `VitruvianSoftware/vitruvian-slack-mcp`.
 2. A maintainer applies the **`import-to-monorepo`** label on that mirror PR. **Applying the label
    is the approval gate** — nothing is imported without it.
 3. On the next hourly cycle the workflow queries each mirror for open PRs carrying the label.
-4. For each one it runs `COPYBARA_WORKFLOW=import_pr_mcp_slack` in **`CHANGE_REQUEST`** mode:
+4. For each one it runs `COPYBARA_WORKFLOW=import_pr_vitruvian_slack_mcp` in **`CHANGE_REQUEST`** mode:
    Copybara reads the mirror PR, adds the `apps/mcp/vitruvian-slack-mcp/` prefix, and opens a **monorepo PR** on branch
-   `mcp-slack-import-pr-<N>`, stamping `MCP_SLACK_REV_ID` and embedding a
-   `Mirror-Of: VitruvianSoftware/mcp-slack#<N>` footer.
+   `vitruvian-slack-mcp-import-pr-<N>`, stamping `MCP_SLACK_REV_ID` and embedding a
+   `Mirror-Of: VitruvianSoftware/vitruvian-slack-mcp#<N>` footer.
 5. That monorepo PR goes through normal review and the merge queue like any other change.
 6. On merge, `copybara-import-pr-close.yaml` reads the `Mirror-Of:` footer and closes the
    originating mirror PR by API (a commit trailer can't close a PR cross-repo).
@@ -154,7 +163,7 @@ no push trigger and no `repository_dispatch` — a push to a mirror does **not**
 ```mermaid
 sequenceDiagram
     actor Ext as External contributor
-    participant MS as mcp-slack (mirror)
+    participant MS as vitruvian-slack-mcp (mirror)
     actor Maint as Maintainer
     participant IMP as copybara-import-pr.yaml (hourly)
     participant CB as Copybara image
@@ -162,7 +171,7 @@ sequenceDiagram
     Ext->>MS: open PR
     Maint->>MS: apply label import-to-monorepo
     IMP->>MS: poll for labelled PRs
-    IMP->>CB: docker run (import_pr_mcp_slack, CHANGE_REQUEST)
+    IMP->>CB: docker run (import_pr_vitruvian_slack_mcp, CHANGE_REQUEST)
     CB->>VC: open monorepo PR, stamp MCP_SLACK_REV_ID + Mirror-Of footer
     VC->>VC: review + merge queue
     VC->>MS: on merge, auto-close the mirror PR (API)
@@ -356,17 +365,17 @@ pulumi up --stack dev
 >   provider renames the repository in place; releases, stars and tags come with it, and GitHub
 >   redirects the old URL. A renamed repository is also `Protect`ed, so a change that planned a
 >   replace or a delete would fail the update instead of removing it.
-> - A mirror `repo-config` does not yet manage (`devx`, `homelab`, `mcp-slack`) is adopted first
->   with an `Adopt` block, at its live name. Pulumi fails an import that also renames, so the rename
->   is a second change, after the adoption has applied: it moves `StandaloneRepo` and keeps the
->   original `ImportID`.
+> - A mirror `repo-config` does not yet manage (as `devx`, `homelab` and `mcp-slack` were in #4651)
+>   is adopted first with an `Adopt` block, at its live name. Pulumi fails an import that also
+>   renames, so the rename is a second change, after the adoption has applied: it moves
+>   `StandaloneRepo` and keeps the original `ImportID`.
 > - Keep the logical `name`, the `<COMP>_*` secret names, the `*_REV_ID` label and the workflow file
 >   names. Move `repo` in `copy.bara.sky`, `component:` in the export workflow, the `notify-ci-issues`
 >   list, `sponsor-button-repos.txt`, the site data and the mirror's own links. The export workflow
 >   name follows `repo` (`export_vitruvian_courier`), so update the list in
 >   `copybara-config-smoketest.yaml` too, and give `conflict-precheck`'s `import_label` the old label.
-> - Order: the `repo-config` apply on merge renames first. An export that runs before it fails to
->   push to the new name; re-run it (`workflow_dispatch`, `--ignore-noop`) once the apply is green.
+> - Order: the `repo-config` apply on merge renames the repository and rotates its key. Exports wait
+>   for it on their own (below), so they push to the new name with the new key.
 
 ### 8e. Rotate / replace the GitHub App private key
 The App is a manual resource. Generate a new private key in the App settings. The program reads it
@@ -540,6 +549,7 @@ invariants across releases, downloads, and documentation:
 |---|---|---|
 | `Cannot find last imported revision … <LABEL> could not be found` | Destination has no rev-id baseline yet | Seed once with `--last-rev`/`--force` (§8b) |
 | `Load key "/root/.ssh/id_rsa": invalid format` → `Permission denied (publickey)` | SSH key lost its trailing newline | We run the image directly and write the key with a guaranteed `\n` — do **not** switch to `olivr/copybara-action` (it trims the newline via `core.getInput`) |
+| `Permission denied (publickey)` at the push step, right after a `repo-config` change | The export started before Repo Config Apply rotated the key, so it held the old one. each caller's `await-repo-config` job now prevents this; if it recurs, check that job ran and waited | Re-run the export (`workflow_dispatch`) now that the apply is done |
 | A genuine change silently doesn't sync; export "succeeds" as NO_OP | Skip-guard over-fired (only possible in `SQUASH`, so only a component with an import path) | Ensure `mode = "ITERATIVE"` in `copy.bara.sky` (§5) |
 | Export pushes but the standalone loses `package-lock.json` / the dispatch workflow; or import deletes a gazelle `BUILD` | Missing context-file exclude | Confirm the `glob(..., exclude=[…])` lists in `copy.bara.sky` (see below) |
 | Export refuses with a red pre-check annotation | Someone pushed directly to the mirror, bypassing the PR gate | Bring the change in via a labelled mirror PR (§4), then re-run the export (§7) |
@@ -549,7 +559,7 @@ invariants across releases, downloads, and documentation:
 **Diff the component across both repos:**
 ```bash
 gh api repos/VitruvianSoftware/vitruvian-core/contents/apps/mcp/vitruvian-slack-mcp/<file>?ref=main --jq .content | base64 -d
-gh api repos/VitruvianSoftware/mcp-slack/contents/<file>?ref=main --jq .content | base64 -d
+gh api repos/VitruvianSoftware/vitruvian-slack-mcp/contents/<file>?ref=main --jq .content | base64 -d
 ```
 
 **Context files that must NOT cross the boundary** (already configured in `copy.bara.sky`):

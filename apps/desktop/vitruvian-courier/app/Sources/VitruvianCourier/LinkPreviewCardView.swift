@@ -264,6 +264,8 @@ public struct ExternalEmbedDescriptor: Equatable, Sendable {
 /// instantiated at all. Once loaded, the `WKWebView` runs with a non-persistent `WKWebsiteDataStore` and blocks
 /// navigation away from the embed URL.
 public struct EmbedConsentCard: View {
+    /// The theme's accent, never the system one (which can be red).
+    @Environment(\.themeAccentColor) private var themeAccent
     public let messageID: String
     public let descriptor: ExternalEmbedDescriptor
     public let isLoaded: Bool
@@ -334,11 +336,11 @@ public struct EmbedConsentCard: View {
                 HStack(spacing: 8) {
                     ZStack {
                         Circle()
-                            .fill(Color.accentColor.opacity(onBubble ? 0.28 : 0.14))
+                            .fill(themeAccent.opacity(onBubble ? 0.28 : 0.14))
                             .frame(width: 30, height: 30)
                         Image(systemName: "lock.shield.fill")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(onBubble ? Color.white : Color.accentColor)
+                            .foregroundStyle(onBubble ? Color.white : themeAccent)
                     }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(String(localized: "Load embed from \(descriptor.host)"))

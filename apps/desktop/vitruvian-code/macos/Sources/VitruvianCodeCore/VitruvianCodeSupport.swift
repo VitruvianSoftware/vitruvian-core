@@ -816,7 +816,6 @@ public struct VitruvianCodeStatePaths: Equatable, Sendable {
     public let botDirectory: String
     public let envFilePath: String
     public let envExamplePath: String
-    public let botEntryPointPath: String
     public let stateDirectory: String
     public let pidFilePath: String
     public let logsDirectory: String
@@ -828,7 +827,6 @@ public struct VitruvianCodeStatePaths: Equatable, Sendable {
         botDirectory: String,
         envFilePath: String,
         envExamplePath: String,
-        botEntryPointPath: String,
         stateDirectory: String,
         pidFilePath: String,
         logsDirectory: String,
@@ -839,12 +837,35 @@ public struct VitruvianCodeStatePaths: Equatable, Sendable {
         self.botDirectory = botDirectory
         self.envFilePath = envFilePath
         self.envExamplePath = envExamplePath
-        self.botEntryPointPath = botEntryPointPath
         self.stateDirectory = stateDirectory
         self.pidFilePath = pidFilePath
         self.logsDirectory = logsDirectory
         self.logPath = logPath
         self.worktreesDirectory = worktreesDirectory
+    }
+
+    /// Directory where per-chat ACP connection logs (`chat-<session-id>.log`) live:
+    /// `<override>/logs` under `--state-dir`, or `<stateDirectory>/logs` otherwise.
+    public var chatLogsDirectory: String {
+        if stateDirectoryOverride != nil {
+            return logsDirectory
+        }
+        return (stateDirectory as NSString).appendingPathComponent("logs")
+    }
+
+    /// Per-chat log file path (`logs/chat-<session-id>.log`), with path separators sanitized.
+    public func chatLogPath(sessionID: String) -> String {
+        let safeID = Self.sanitizedSessionFilenameComponent(sessionID)
+        return (chatLogsDirectory as NSString).appendingPathComponent("chat-\(safeID).log")
+    }
+
+    private static func sanitizedSessionFilenameComponent(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "unknown" }
+        let forbidden = CharacterSet(charactersIn: "/\\:\0")
+        let replaced = trimmed.unicodeScalars.map { forbidden.contains($0) ? "_" : Character($0) }
+        let cleaned = String(replaced).replacingOccurrences(of: "..", with: "_")
+        return cleaned.isEmpty ? "unknown" : cleaned
     }
 }
 
@@ -954,7 +975,6 @@ public enum VitruvianCodeSupport {
             botDirectory: botDir,
             envFilePath: (botDir as NSString).appendingPathComponent(".env"),
             envExamplePath: (botDir as NSString).appendingPathComponent(".env.example"),
-            botEntryPointPath: (botDir as NSString).appendingPathComponent(botEntryPoint),
             stateDirectory: stateDir,
             pidFilePath: (stateDir as NSString).appendingPathComponent(".bot.pid"),
             logsDirectory: logsDir,
@@ -995,8 +1015,43 @@ public enum VitruvianCodeSupport {
         return trimmed
     }
 
-    /// The bot's entry point inside its folder.
-    public static let botEntryPoint = "src/bot.js"
+    /// The bundled Rust bot helper executable name and bundle-relative path.
+    public static let botExecutableName = "bot-engine"
+    public static let botHelperRelativePath = "Contents/Helpers/bot-engine"
+    public static let botExecutableEnvironmentKey = "VITRUVIAN_CODE_BOT_BIN"
+    public static let defaultBundledBotCandidate = "/bundled/Contents/Helpers/bot-engine"
+
+    /// Candidate locations inside the app bundle (and alongside the main
+    /// executable) where the bundled `bot-engine` helper may live.
+    public static func bundledBotCandidates(bundleURL: URL?, executableURL: URL?) -> [String] {
+        var candidates: [String] = []
+        if let bundleURL {
+            candidates.append(bundleURL.appendingPathComponent(botHelperRelativePath).standardizedFileURL.path)
+        }
+        if let executableURL {
+            let execDir = executableURL.deletingLastPathComponent()
+            candidates.append(execDir.appendingPathComponent("../Helpers/\(botExecutableName)").standardizedFileURL.path)
+            candidates.append(execDir.appendingPathComponent(botExecutableName).standardizedFileURL.path)
+        }
+        var seen = Set<String>()
+        return candidates.filter { seen.insert($0).inserted }
+    }
+
+    /// Candidate locations for the bundled `bot-engine` helper inside `bundle`.
+    public static func bundledBotCandidates(for bundle: Bundle = .main) -> [String] {
+        bundledBotCandidates(bundleURL: bundle.bundleURL, executableURL: bundle.executableURL)
+    }
+
+    /// `VITRUVIAN_CODE_BOT_BIN` override when executable, otherwise the first
+    /// executable candidate inside the app bundle.
+    public static func locateBundledBot(environment: [String: String], candidates: [String],
+                                        isExecutable: (String) -> Bool) -> String? {
+        if let explicit = environment[botExecutableEnvironmentKey]?.trimmingCharacters(in: .whitespaces),
+           !explicit.isEmpty, isExecutable(explicit) {
+            return explicit
+        }
+        return candidates.first(where: isExecutable)
+    }
 
     /// Install locations an app launched from Finder does not have on its
     /// PATH, in the order they are tried.
@@ -1027,13 +1082,6 @@ public enum VitruvianCodeSupport {
         locateAgent(named: name, environment: environment, home: home, isExecutable: isExecutable)
             ?? executablePath(named: name, pathVariable: environment["PATH"] ?? "",
                               isExecutable: isExecutable, fileExists: fileExists)
-    }
-
-    /// Node from Homebrew or the official installer. macOS ships none.
-    public static func locateNode(home: String, isExecutable: (String) -> Bool) -> String? {
-        ["/opt/homebrew/bin/node", "/usr/local/bin/node",
-         (home as NSString).appendingPathComponent(".local/bin/node")]
-            .first(where: isExecutable)
     }
 
     /// The child's environment: the app's own, the install locations put in
@@ -1616,6 +1664,26 @@ public struct VitruvianCodeModelOption: Identifiable, Equatable, Sendable {
     }
 }
 
+/// One selectable decision option on an ACP permission request.
+public struct AgentPermissionOption: Identifiable, Equatable, Sendable, Codable {
+    public enum Kind: String, Equatable, Sendable, Codable, CaseIterable {
+        case allowOnce = "allow_once"
+        case allowAlways = "allow_always"
+        case rejectOnce = "reject_once"
+        case rejectAlways = "reject_always"
+    }
+
+    public let id: String
+    public let name: String
+    public let kind: Kind
+
+    public init(id: String, name: String, kind: Kind) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+    }
+}
+
 /// An interactive tool execution approval request.
 public struct VitruvianCodeApprovalRequest: Identifiable, Equatable, Sendable {
     public let id: String
@@ -1626,6 +1694,8 @@ public struct VitruvianCodeApprovalRequest: Identifiable, Equatable, Sendable {
     /// which the answer on its standard input must carry. Nil for a
     /// request nothing is waiting on an answer to.
     public let requestID: String?
+    /// Permission choices offered by an ACP agent (`allow_once`, `allow_always`, etc.).
+    public var options: [AgentPermissionOption]
 
     public enum Status: String, Sendable, Equatable {
         case pending
@@ -1639,13 +1709,15 @@ public struct VitruvianCodeApprovalRequest: Identifiable, Equatable, Sendable {
         toolName: String,
         commandOrPath: String,
         status: Status = .pending,
-        requestID: String? = nil
+        requestID: String? = nil,
+        options: [AgentPermissionOption] = []
     ) {
         self.id = id
         self.toolName = toolName
         self.commandOrPath = commandOrPath
         self.status = status
         self.requestID = requestID
+        self.options = options
     }
 }
 
@@ -1835,11 +1907,131 @@ public struct VitruvianCodeTurnMetrics: Equatable, Sendable {
     }
 }
 
+/// One step in a live agent plan (`session/update` kind `plan`).
+public struct PlanEntry: Equatable, Sendable, Codable {
+    public enum Status: String, Equatable, Sendable, Codable {
+        case pending
+        case inProgress = "in_progress"
+        case completed
+        case other
+
+        public init(acpRawValue: String) {
+            self = Status(rawValue: acpRawValue) ?? .other
+        }
+    }
+
+    public enum Priority: String, Equatable, Sendable, Codable {
+        case high
+        case medium
+        case low
+    }
+
+    public let content: String
+    public let status: Status
+    public let priority: Priority?
+
+    public init(content: String, status: Status = .pending, priority: Priority? = nil) {
+        self.content = content
+        self.status = status
+        self.priority = priority
+    }
+}
+
+/// A structured elicitation form or URL consent prompt from an agent.
+public struct AgentQuestion: Identifiable, Equatable, Sendable, Codable {
+    public enum FieldType: String, Equatable, Sendable, Codable {
+        case text
+        case number
+        case integer
+        case boolean
+        case choice
+        case multiChoice = "multi_choice"
+    }
+
+    public struct Option: Equatable, Sendable, Codable {
+        public let value: String
+        public let label: String
+        public let description: String?
+
+        public init(value: String, label: String, description: String? = nil) {
+            self.value = value
+            self.label = label
+            self.description = description
+        }
+    }
+
+    public struct Field: Identifiable, Equatable, Sendable, Codable {
+        public let id: String
+        public let type: FieldType
+        public let label: String
+        public let description: String?
+        public let required: Bool
+        public let options: [Option]
+
+        public init(
+            id: String,
+            type: FieldType,
+            label: String,
+            description: String? = nil,
+            required: Bool = false,
+            options: [Option] = []
+        ) {
+            self.id = id
+            self.type = type
+            self.label = label
+            self.description = description
+            self.required = required
+            self.options = options
+        }
+    }
+
+    public var id: String { requestID }
+    public let requestID: String
+    public let title: String?
+    public let message: String
+    public let url: String?
+    public let fields: [Field]
+
+    public init(
+        requestID: String = UUID().uuidString,
+        title: String? = nil,
+        message: String,
+        url: String? = nil,
+        fields: [Field] = []
+    ) {
+        self.requestID = requestID
+        self.title = title
+        self.message = message
+        self.url = url
+        self.fields = fields
+    }
+}
+
+/// Why a live agent connection failed mid-session or on startup.
+public struct AgentFailure: Equatable, Sendable, Codable {
+    public enum Kind: String, Equatable, Sendable, Codable {
+        case startupFailed = "startup_failed"
+        case protocolError = "protocol_error"
+        case exited
+        case timedOut = "timed_out"
+    }
+
+    public let kind: Kind
+    public let message: String
+    public let detail: String?
+
+    public init(kind: Kind, message: String, detail: String? = nil) {
+        self.kind = kind
+        self.message = message
+        self.detail = detail
+    }
+}
+
 /// Kept for one release while callers move to `AgentEvent`.
 public typealias VitruvianCodeStreamEvent = AgentEvent
 
 /// One line of `agy --output-format stream-json`, Claude Code stream-json or
-/// `opencode run --format json`, reduced to what the Quick Prompt shows.
+/// `opencode run --format json`, or one update from a live `AgentConnection`.
 public enum AgentEvent: Equatable, Sendable {
     case started(conversationID: String?)
     case text(String)
@@ -1860,6 +2052,24 @@ public enum AgentEvent: Equatable, Sendable {
     case thinking(String)
     /// How many reasoning tokens the model has used so far this turn.
     case thinkingTokens(Int)
+    /// Replaces the live plan shown for the current session.
+    case planReplaced([PlanEntry])
+    /// Starts or finishes a typed subagent run.
+    case subagent(VitruvianCodeActiveSubagent, started: Bool)
+    /// Asks the user a structured form or URL-consent question.
+    case question(AgentQuestion)
+    /// Updates the session's live configuration options.
+    case configOptions([AgentConfigOption])
+    /// Reports context compaction progress or completion.
+    case compaction(id: String, status: String, summary: String?)
+    /// Displays an agent notice banner.
+    case notice(severity: String, title: String, detail: String?)
+    /// Updates session metadata such as title or timestamp.
+    case sessionInfo(title: String?, updatedAt: String?)
+    /// Reports a plan/rate usage limit and its reset time.
+    case usageLimit(resetsAt: Date?)
+    /// Reports a connection-level failure (startup, framing, timeout or unexpected exit).
+    case connectionFailed(AgentFailure)
 
     /// The first event of a line; nil for blank lines, non-JSON noise and
     /// events the prompt ignores. A line can hold several events (a Claude

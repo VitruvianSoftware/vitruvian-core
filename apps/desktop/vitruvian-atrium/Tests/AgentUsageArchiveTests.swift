@@ -397,7 +397,7 @@ enum AgentUsageArchiveTests {
 /// section off and quitting at once must still remove saved progress.
 enum AgentUsageArchiveSettleTests {
     static func run(_ suite: TestSuite) {
-        let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.agent-usage.settle-test")
+        let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.agent-usage.settle-test")
         var saved = 0
         var removed = 0
         func settle(keeping keeps: Bool) {

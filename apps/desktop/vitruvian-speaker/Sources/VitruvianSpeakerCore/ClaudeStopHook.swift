@@ -33,6 +33,8 @@ public enum ClaudeStopHook {
     /// `VitruvianSpeaker --announce <text>`: the whole announcement, quiet hours
     /// honoured, in a process of its own. See `run` for why.
     public static let announceArgument = "--announce"
+    /// Entrypoint value recorded for non-interactive `claude -p` / SDK runs.
+    public static let sdkCliEntrypoint = "sdk-cli"
 
     /// One transcript line, reduced to what the hook cares about.
     public struct Entry: Equatable {
@@ -59,7 +61,7 @@ public enum ClaudeStopHook {
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   obj["isSidechain"] as? Bool != true else { continue }
             if let entrypoint = obj["entrypoint"] as? String,
-               entrypoint == "sdk-cli" {
+               entrypoint == sdkCliEntrypoint {
                 continue
             }
             if let topType = obj["type"] as? String,
@@ -179,11 +181,16 @@ public enum ClaudeStopHook {
     /// True when `command` *invokes* a broadcaster, rather than merely
     /// containing its name. The tool name has to sit where a command goes:
     /// start of line, or after `;`, `&`, `|`, a backtick or `$(` — never
-    /// inside a quoted string.
+    /// inside a quoted string. It may be run by a path, plain or quoted as
+    /// one word (`'/Users/a b/…/bin/speaker-broadcast'`), as the Antigravity
+    /// and OpenCode skills do.
     static func commandBroadcasts(_ command: String) -> Bool {
         func invokes(_ tool: String) -> Bool {
-            let pattern = "(?:^|[\\n;&|`]|\\$\\()[ \\t]*(?:[\\w./-]*/)?(?:[\\w .-]*\\.app/Contents/MacOS/)?\(tool)\\b"
-            return command.range(of: pattern, options: [.regularExpression]) != nil
+            let start = "(?:^|[\\n;&|`]|\\$\\()[ \\t]*"
+            let plain = start + "(?:[\\w./~-]*/)?(?:[\\w .-]*\\.app/Contents/MacOS/)?\(tool)\\b"
+            let quoted = start + "(['\"])(?:[^'\"\\n]*/)?\(tool)\\1"
+            return command.range(of: plain, options: [.regularExpression]) != nil
+                || command.range(of: quoted, options: [.regularExpression]) != nil
         }
         if invokes("speaker-broadcast") { return true }
         // The app binary does many things; only --say speaks.

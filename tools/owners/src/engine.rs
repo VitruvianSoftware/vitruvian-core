@@ -62,7 +62,7 @@ pub const REQUIRED_SUBTREES: &[&str] = &[
     "apps/desktop/vitruvian-code",
     "apps/embedded/vitruvian-deck",
     "apps/mcp/vitruvian-slack-mcp",
-    "apps/mobile/android-remote",
+    "apps/mobile/vitruvian-remote",
     "apps/web/backstage",
     "apps/web/gods-eye-view",
     "apps/web/oauth-user-inspector",

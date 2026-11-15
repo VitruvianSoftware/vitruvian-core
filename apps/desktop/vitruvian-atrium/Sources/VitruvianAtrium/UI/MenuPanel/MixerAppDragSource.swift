@@ -10,7 +10,7 @@ import VitruvianAtriumServices
 /// Only Command-clicks belong to this overlay. All ordinary input passes to
 /// the existing sliders, fields and menus underneath it.
 package struct MixerAppDragSource: NSViewRepresentable {
-    package static let pasteboardType = NSPasteboard.PasteboardType("com.vitruviansoftware.atrium.mixer-app")
+    package static let pasteboardType = NSPasteboard.PasteboardType("com.vitruviansoftware.vitruvian.mixer-app")
     package let id: String?
     package let icon: NSImage
     package let onBegin: (String) -> Void

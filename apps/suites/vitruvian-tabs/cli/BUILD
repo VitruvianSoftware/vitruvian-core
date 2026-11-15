@@ -84,3 +84,11 @@ pipeline_unit(
     tier = "L1",
     timeout_minutes = 15,
 )
+
+filegroup(
+    name = "docs_files",
+    srcs = [
+        "README.md",
+    ] + glob(["rs/src/**"]),
+    visibility = ["//apps/suites/vitruvian-tabs:__pkg__"],
+)

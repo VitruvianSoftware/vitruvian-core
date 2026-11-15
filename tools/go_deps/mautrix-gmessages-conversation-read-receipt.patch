@@ -1,0 +1,61 @@
+Vitruvian Courier (apps/desktop/vitruvian-courier): send the other person's read receipt when a
+direct chat is synced and its latest message is mine and already read.
+
+mautrix-gmessages only sends a read receipt when a live message update changes an outgoing
+message's status to OUTGOING_DISPLAYED. A message read while the bridge was not watching (another
+Google Messages web session held the connection, or the bridge was offline) therefore never gets
+one, so Courier showed "Delivered" where Google Messages and Beeper show it was read. Conversation
+syncs carry the latest message's status; this queues the receipt from it. Groups are left alone:
+the conversation doesn't say who read it. Not fixed upstream as of v0.2610.0.
+
+--- a/pkg/connector/chatsync.go	2026-11-13 15:37:20
++++ b/pkg/connector/chatsync.go	2026-11-13 15:37:20
+@@ -363,13 +363,46 @@
+ 			gc.Main.br.QueueRemoteEvent(gc.UserLogin, backfillEvt)
+ 			if markReadEvt != nil {
+ 				gc.Main.br.QueueRemoteEvent(gc.UserLogin, markReadEvt)
++			}
++			if otherReadEvt := gc.otherReadReceiptForConv(backfillCtx, v); otherReadEvt != nil {
++				gc.Main.br.QueueRemoteEvent(gc.UserLogin, otherReadEvt)
+ 			}
+ 		}()
+-	} else if markReadEvt != nil {
+-		gc.Main.br.QueueRemoteEvent(gc.UserLogin, markReadEvt)
++	} else {
++		if markReadEvt != nil {
++			gc.Main.br.QueueRemoteEvent(gc.UserLogin, markReadEvt)
++		}
++		if otherReadEvt := gc.otherReadReceiptForConv(ctx, v); otherReadEvt != nil {
++			gc.Main.br.QueueRemoteEvent(gc.UserLogin, otherReadEvt)
++		}
+ 	}
+ }
+ 
++// otherReadReceiptForConv is the other person's read receipt for a direct chat whose latest message is mine and
++// already read (OUTGOING_DISPLAYED) when the conversation is synced. Without it, a message read while the bridge
++// was not watching (another web session was active, or the bridge was offline) never gets a receipt, because
++// receipts are only sent when a live message update changes the status to read. Nil for groups (the
++// conversation doesn't say who read it) and when the chat's room doesn't exist yet.
++func (gc *GMClient) otherReadReceiptForConv(ctx context.Context, v *gmproto.Conversation) *simplevent.Receipt {
++	latest := v.GetLatestMessage()
++	if v.GetIsGroupChat() || v.GetLatestMessageID() == "" || latest.GetFromMe() == 0 ||
++		latest.GetLatestMessageStatus().GetStatus() != gmproto.MessageStatusType_OUTGOING_DISPLAYED {
++		return nil
++	}
++	portal, err := gc.Main.br.GetExistingPortalByKey(ctx, gc.portalKeyForConv(v))
++	if err != nil || portal == nil || portal.OtherUserID == "" {
++		return nil
++	}
++	return &simplevent.Receipt{
++		EventMeta: simplevent.EventMeta{
++			Type:      bridgev2.RemoteEventReadReceipt,
++			PortalKey: portal.PortalKey,
++			Sender:    bridgev2.EventSender{Sender: portal.OtherUserID},
++		},
++		LastTarget: gc.MakeMessageID(v.LatestMessageID),
++	}
++}
++
+ var errDontSyncConversation = errors.New("conversation should not be synced")
+ 
+ func (gc *GMClient) bumpDMLastMessageTime(ctx context.Context, convID string, ts jsontime.UnixMicro) error {

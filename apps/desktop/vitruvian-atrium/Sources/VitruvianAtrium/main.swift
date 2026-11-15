@@ -2,13 +2,36 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+#if canImport(SentryLite)
+import SentryLite
+#endif
 import VitruvianAtriumCore
 import VitruvianAtriumDesign
 import VitruvianAtriumServices
 import VitruvianAtriumUI
 
+#if canImport(SentryLite)
+SentryLite.start(
+    dsn: "https://97777aaf76768be64dd8e9177611b5dd@sentry-ingest.ipv1337.dev/12",
+    release: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev",
+    tags: ["app": "vitruvian-atrium", "platform": "macos"]
+)
+#endif
+
+// Select backup mode before cleanup and diagnostic arguments can act. Invalid
+// backup commands must leave files, input mappings and recovery journals alone.
+// Top-level code runs on the main thread.
+if let command = SettingsBackupSupport.command(in: CommandLine.arguments) {
+    MainActor.assumeIsolated { SettingsBackup.runCommandAndExit(command) }
+}
+
 SuperKeyMappingGuard.runIfRequestedAndExit()
 Defaults.register()
+// The optional read-only settings file (~/.config/vitruvian/settings.plist)
+// overlays its keys after defaults register and migrations run, so a
+// migration cannot copy a declared value into a key the file leaves out.
+// Only a plain launch reads it. Top-level code runs on the main thread.
+let configuredFeatureKeys = MainActor.assumeIsolated { SettingsBackup.applyConfigFileAtLaunch() }
 // The island asks the brightness service whether this Mac has a keyboard
 // light. Top-level code runs on the main thread.
 MainActor.assumeIsolated { NotchControlItem.wireKeyboardLight() }
@@ -87,6 +110,10 @@ if NotchPresentationProbeMode.isRequested(by: CommandLine.arguments) {
 
 let app = NSApplication.shared
 // Top-level code runs on the main thread.
-let delegate = MainActor.assumeIsolated { AppDelegate() }
+let delegate = MainActor.assumeIsolated { () -> AppDelegate in
+    let appDelegate = AppDelegate()
+    appDelegate.configuredFeatureKeys = configuredFeatureKeys
+    return appDelegate
+}
 app.delegate = delegate
 app.run()

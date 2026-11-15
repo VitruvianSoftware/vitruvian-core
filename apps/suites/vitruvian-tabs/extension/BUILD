@@ -58,6 +58,7 @@ webpack_cli.webpack_cli(
         ":node_modules/@dnd-kit/sortable",
         ":node_modules/@dnd-kit/utilities",
         ":node_modules/@openfeature/web-sdk",
+        ":node_modules/@sentry/browser",
         ":node_modules/@types/chrome",
         ":node_modules/@types/react",
         ":node_modules/@types/react-dom",
@@ -106,6 +107,7 @@ ts_project(
         ":node_modules/@dnd-kit/sortable",
         ":node_modules/@dnd-kit/utilities",
         ":node_modules/@openfeature/web-sdk",
+        ":node_modules/@sentry/browser",
         ":node_modules/@testing-library/jest-dom",
         ":node_modules/@testing-library/react",
         ":node_modules/@types/chrome",
@@ -141,6 +143,7 @@ jest_test(
         ":node_modules/@dnd-kit/sortable",
         ":node_modules/@dnd-kit/utilities",
         ":node_modules/@openfeature/web-sdk",
+        ":node_modules/@sentry/browser",
         ":node_modules/@swc/core",
         ":node_modules/@swc/jest",
         ":node_modules/@testing-library/jest-dom",
@@ -305,6 +308,7 @@ webpack_cli.webpack_cli(
         ":node_modules/@dnd-kit/sortable",
         ":node_modules/@dnd-kit/utilities",
         ":node_modules/@openfeature/web-sdk",
+        ":node_modules/@sentry/browser",
         ":node_modules/@types/chrome",
         ":node_modules/@types/react",
         ":node_modules/@types/react-dom",
@@ -445,4 +449,14 @@ pipeline_unit(
     test_targets = [":unit_tests"],
     tier = "L1",
     timeout_minutes = 15,
+)
+
+filegroup(
+    name = "docs_files",
+    srcs = [
+        "src/dashboard/Dashboard.tsx",
+        "src/hooks/useTabSync.ts",
+        "src/manifest.json",
+    ] + glob(["src/services/**"]),
+    visibility = ["//apps/suites/vitruvian-tabs:__pkg__"],
 )

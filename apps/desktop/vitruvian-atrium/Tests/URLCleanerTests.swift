@@ -42,7 +42,7 @@ enum URLCleanerTests {
         var undeclared: [String] = []
 
         init() {
-            let domain = "com.vitruviansoftware.atrium.tests.url-cleaner"
+            let domain = "com.vitruviansoftware.vitruvian.tests.url-cleaner"
             let defaults = ScratchDefaults.suite(named: domain)!
             defaults.removePersistentDomain(forName: domain)
             self.defaults = defaults
@@ -50,7 +50,7 @@ enum URLCleanerTests {
         }
 
         func close() {
-            defaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.url-cleaner")
+            defaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.url-cleaner")
             board.releaseGlobally()
         }
 

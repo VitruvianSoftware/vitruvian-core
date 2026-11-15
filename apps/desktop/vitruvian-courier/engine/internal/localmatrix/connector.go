@@ -63,9 +63,14 @@ func (c *Connector) Init(br *bridgev2.Bridge) {
 	c.log = br.Log.With().Str("component", "localmatrix").Logger()
 }
 
-// Start and PreStop have nothing to do: there is no server connection to open or close.
-func (c *Connector) Start(context.Context) error { return nil }
-func (c *Connector) PreStop()                    {}
+// Start has no server connection to open. bridgev2 calls it once the bridge's database is ready and before the
+// network starts, so it catches up on the reads earlier messages arrived with (reconcileArrivedReads). PreStop has
+// nothing to do.
+func (c *Connector) Start(ctx context.Context) error {
+	c.reconcileArrivedReads(ctx)
+	return nil
+}
+func (c *Connector) PreStop() {}
 
 // Stop is the bridge's last word to the connector (Bridge.StopWithTimeout calls it once each login's Disconnect has
 // returned or been given up on after its timeout, before the network connector stops): from now on a bridge state is

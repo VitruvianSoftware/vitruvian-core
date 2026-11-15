@@ -12,12 +12,12 @@ extension.
 
 ## Technology Stack
 
-- **React 18** with functional components and hooks
-- **Zustand** for state management
-- **TypeScript** (strict mode)
+- **React 19** with functional components and hooks
+- **Zustand 5** for state management
+- **TypeScript 5** (strict mode)
 - **Manifest V3** service worker-based architecture
-- **@dnd-kit/react** for drag-and-drop functionality
-- **Webpack 5** build system
+- **@dnd-kit/core**, **@dnd-kit/sortable**, **@dnd-kit/utilities** for drag-and-drop functionality
+- **Webpack 5** build system (invoked via Bazel)
 
 ## Project Structure
 
@@ -96,12 +96,11 @@ Bridges Chrome tab events to local storage:
 
 ### Window Ownership Pattern
 
-Multi-window support uses `WindowOwnershipService`:
+Multi-window support uses `WindowOwnershipService` (`services/window-ownership.ts`), guarded by `navigator.locks`:
 
 ```typescript
-// Only one window "owns" a workspace at a time
-const isOwner = await WindowOwnershipService.acquireOwnership(workspaceId);
-// Uses navigator.locks for atomicity
+const owner = await WindowOwnershipService.isWorkspaceOwnedByOtherWindow(workspaceId, currentWindowId);
+const claim = await WindowOwnershipService.tryClaimWorkspace(workspaceId, currentWindowId);
 ```
 
 ## Common Hazards
@@ -113,20 +112,17 @@ const isOwner = await WindowOwnershipService.acquireOwnership(workspaceId);
    load - 500ms delay applied
 4. **Force-Remote Window**: After backup restore, check `vitruvian_tabs_force_remote_until` to skip sync
 
-## Testing Commands
+## Testing & Build Commands
 
 ```bash
-# Unit tests
-npm test --workspace=extension
+# Unit tests (Jest)
+bazel test //apps/suites/vitruvian-tabs/extension:unit_tests
 
-# E2E tests (Playwright)
-npm run test:e2e --workspace=extension
+# E2E tests (Playwright + hermetic API/DB)
+bazel test --config=e2e //apps/suites/vitruvian-tabs/extension:e2e
 
-# Build for development
-npm run dev --workspace=extension
-
-# Production build
-npm run build --workspace=extension
+# Production Webpack bundle
+bazel build //apps/suites/vitruvian-tabs/extension:dist
 ```
 
 ## Key Files to Reference

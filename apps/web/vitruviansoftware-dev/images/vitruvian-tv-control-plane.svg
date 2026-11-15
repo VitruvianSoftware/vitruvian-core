@@ -51,7 +51,7 @@
   <rect x="24" y="356" width="4" height="236" fill="#7fbf9a" />
   <text x="40" y="380" class="ok-text">ANDROID FOLDABLE SURFACE</text>
   <text x="40" y="400" class="box-head">Vitruvian Remote (Pixel Fold)</text>
-  <text x="40" y="422" class="box-body">apps/mobile/android-remote (Compose)</text>
+  <text x="40" y="422" class="box-body">apps/mobile/vitruvian-remote (Compose)</text>
   <rect x="40" y="436" width="288" height="140" rx="4" fill="#11171f" stroke="#26384a" />
   <text x="52" y="456" class="accent-text">• Adaptive Posture Layout</text>
   <text x="64" y="472" class="box-body">Folded phone, unfolded dual-pane,</text>

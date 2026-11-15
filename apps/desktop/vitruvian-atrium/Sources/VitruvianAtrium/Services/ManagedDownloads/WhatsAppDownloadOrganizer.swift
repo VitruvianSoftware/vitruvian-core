@@ -100,7 +100,7 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
         Self.validUndoTransactions().last != nil
     }
 
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.whatsapp-organizer",
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.whatsapp-organizer",
                                       qos: .utility)
     private var directorySource: DispatchSourceFileSystemObject?
     private var timer: Timer?

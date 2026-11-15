@@ -2,7 +2,7 @@
 
 A quick guide to the snags people hit most. If none of it helps, jump to [reporting a useful bug](#reporting-a-useful-bug) at the end.
 
-The permission and uninstall commands below all point at Vitruvian Atrium's bundle identifier, `com.vitruviansoftware.atrium`.
+The permission and uninstall commands below all point at Vitruvian Atrium's bundle identifier, `com.vitruviansoftware.vitruvian`.
 
 ## The app will not open
 
@@ -39,7 +39,7 @@ This permission is used by the mixer, the optional live equalizer and system aud
 
 ### Automation
 
-Finder cut and paste, the uninstaller and Homebrew's Terminal handoff may ask for Automation. If a Finder move or Terminal handoff does nothing after a denial, open System Settings, Privacy and Security, Automation, and allow Vitruvian Atrium for the app it needs to control.
+Finder cut and paste and the uninstaller may ask for Automation. If a Finder move does nothing after a denial, open System Settings, Privacy and Security, Automation, and allow Vitruvian Atrium for Finder.
 
 ## Clipboard history does not copy or paste
 
@@ -75,6 +75,33 @@ starting a multiplexer or a slow prompt:
 [[ -n $VITRUVIAN_RESOLVING_ENVIRONMENT ]] && return
 ```
 
+## Keeping settings in your dotfiles
+
+At each normal launch, Vitruvian Atrium reads `~/.config/vitruvian/settings.plist`.
+An absolute `XDG_CONFIG_HOME` selects the parent of `vitruvian/`. The Developer
+build uses `vitruvian-dev/`. Git, Stow or Home Manager can own the file,
+including a symlink to a read-only target. Edits made during a session take
+effect the next time you launch the app.
+
+Create a starting file by exporting your current settings. Backups include
+your text snippets, so review the contents before sharing one.
+
+```sh
+"/Applications/Vitruvian Atrium.app/Contents/MacOS/VitruvianAtrium" --export-settings ~/.config/vitruvian/settings.plist
+```
+
+Keep the backup version and the `settings` dictionary. You can trim the
+dictionary to just the settings you want to manage. Omitted preferences and
+snippets stay local, and the app only reads this file during normal use.
+An explicit export replaces its destination with a complete snapshot.
+Export to a separate path to review changes to a hand-maintained file.
+The Import button and `--import-settings FILE` still perform a full restore.
+Quit the app before importing from a script.
+
+Apps opened from Finder inherit the login environment. To choose a custom
+folder, set it with `launchctl setenv XDG_CONFIG_HOME "$HOME/my-config"` and
+reopen Vitruvian Atrium.
+
 ## Resetting permissions
 
 To wipe Vitruvian Atrium's granted permissions and let macOS ask again from scratch, pick one of these.
@@ -83,18 +110,18 @@ To wipe Vitruvian Atrium's granted permissions and let macOS ask again from scra
 - **From Terminal.** Reset all of Vitruvian Atrium's privacy permissions at once.
 
   ```sh
-  tccutil reset All com.vitruviansoftware.atrium
+  tccutil reset All com.vitruviansoftware.vitruvian
   ```
 
   Or reset a single kind, for example.
 
   ```sh
-  tccutil reset Accessibility com.vitruviansoftware.atrium
-  tccutil reset ScreenCapture com.vitruviansoftware.atrium
+  tccutil reset Accessibility com.vitruviansoftware.vitruvian
+  tccutil reset ScreenCapture com.vitruviansoftware.vitruvian
   ```
 
   A self-built Developer variant has its own grants under
-  `com.vitruviansoftware.atrium.dev`. Resetting is the way out when System Settings
+  `com.vitruviansoftware.vitruvian.dev`. Resetting is the way out when System Settings
   shows the permission as granted but the app disagrees — that happens when a
   grant was given to an earlier ad-hoc build whose signature no longer matches.
 
@@ -109,7 +136,7 @@ The bundled script takes out everything Vitruvian Atrium added, the app itself, 
 Run it from a clone of the repository, or download the single script from the repo. Would you rather do it by hand? Quit Vitruvian Atrium, drag it from Applications to the Trash, then clear its permissions.
 
 ```sh
-tccutil reset All com.vitruviansoftware.atrium
+tccutil reset All com.vitruviansoftware.vitruvian
 ```
 
 ## Reporting a useful bug

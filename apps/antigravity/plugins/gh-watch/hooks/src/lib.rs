@@ -159,4 +159,35 @@ mod tests {
         assert_eq!(saved, payload);
         let _ = fs::remove_dir_all(&sandbox);
     }
+
+    fn drift_repo_path(rel: &str) -> PathBuf {
+        let direct = PathBuf::from(rel);
+        if direct.exists() {
+            return direct;
+        }
+        if let Ok(srcdir) = std::env::var("TEST_SRCDIR") {
+            let ws = std::env::var("TEST_WORKSPACE").unwrap_or_else(|_| "_main".to_string());
+            let candidate = PathBuf::from(srcdir).join(ws).join(rel);
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+        direct
+    }
+
+    #[test]
+    fn drift_rules_cover_all_hook_triggers() {
+        let rules_doc = fs::read_to_string(drift_repo_path(
+            "apps/antigravity/plugins/gh-watch/rules/AGENTS.md",
+        ))
+        .expect("read gh-watch rules/AGENTS.md");
+        for trigger in TRIGGERS {
+            let token = std::str::from_utf8(trigger).expect("utf8 trigger");
+            assert!(
+                rules_doc.contains(token),
+                "gh-watch rules/AGENTS.md must document trigger `{token}`"
+            );
+        }
+        assert!(rules_doc.contains("--json url --jq .url"));
+    }
 }

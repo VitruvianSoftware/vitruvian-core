@@ -150,9 +150,15 @@ slack:
   # Only meaningful when userTokenEnabled is true; ignored otherwise.
   writeMode: "user"
   # Set true to expose destructive workspace/canvas tools (slack_delete_canvas,
-  # slack_set_user_group_enabled, slack_set_user_group_members) on the HTTP
-  # transport. Default: false — withheld on HTTP unless explicitly enabled.
+  # slack_set_user_group_enabled, slack_set_user_group_members,
+  # slack_delete_scheduled_message) on the HTTP transport.
+  # Default: false — withheld on HTTP unless explicitly enabled.
   httpAllowDestructive: false
+
+# Sentry error tracking
+sentry:
+  # Internal Sentry DSN (cluster-internal gateway)
+  dsn: "https://e52fdc93b32a6a779d5f87475f9ac39b@sentry.lab.ipv1337.dev/15"
 
 # Hosts this pod may reach. Anything not listed is denied by the
 # CiliumNetworkPolicy. Kept explicit rather than derived from other values so

@@ -72,7 +72,7 @@ private let courier = SessionOrigin(id: "c-1", name: "vitruvian-core: Courier")
         ("abrialcode - pricing engine", "pricing engine"),
         ("claude-speaker-source-label", "claude speaker source"),
         ("Slack - Chandini", "Chandini"),
-        ("vitruvian-core:  Android Remote", "Android Remote"),
+        ("vitruvian-core:  Vitruvian Remote", "Vitruvian Remote"),
     ])
     func shortNames(raw: String, expected: String) {
         #expect(SourceLabel.shortName(raw) == expected)

@@ -76,7 +76,7 @@ package enum RecordingSharingSupport {
     /// go to a reserved `.invalid` host (RFC 6761) that never resolves, so they
     /// fail closed and nothing leaves the Mac.
     package static let productionEndpoint = URL(string: "https://sharing.invalid")!
-    package static let developerBundleIdentifier = "com.vitruviansoftware.atrium.dev"
+    package static let developerBundleIdentifier = "com.vitruviansoftware.vitruvian.dev"
     /// Leaves transport headroom below the public 100 MB request ceiling.
     package static let maximumUploadBytes = 96_000_000
     package static let targetUploadBytes = 90_000_000

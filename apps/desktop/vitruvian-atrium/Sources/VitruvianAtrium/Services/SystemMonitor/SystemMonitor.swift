@@ -202,7 +202,7 @@ package final class SystemMonitor: ObservableObject {
 
     @Published package private(set) var snapshot = SystemSnapshot()
 
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.system-monitor", qos: .utility)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.system-monitor", qos: .utility)
     private var timer: Timer?
     private var intervalSeconds = 2
     private var panelClients = 0

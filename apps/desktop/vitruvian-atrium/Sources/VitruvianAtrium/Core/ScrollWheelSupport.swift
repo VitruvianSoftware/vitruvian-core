@@ -19,6 +19,110 @@ package enum ScrollHorizontalModifier: String, CaseIterable {
         case .command: return .maskCommand
         }
     }
+
+    package func isHeldAlone(in flags: CGEventFlags) -> Bool {
+        flags.intersection([.maskShift, .maskAlternate, .maskControl, .maskCommand]) == flag
+    }
+}
+
+package enum ScrollZoomModifier: String, CaseIterable {
+    case none, option, control, command
+
+    package init(storageValue: String?) {
+        self = storageValue.flatMap(Self.init(rawValue:)) ?? .none
+    }
+
+    package var modifier: ScrollHorizontalModifier? {
+        ScrollHorizontalModifier(rawValue: rawValue)
+    }
+}
+
+package enum ScrollWheelAxis {
+    case vertical, horizontal
+}
+
+package struct ScrollZoomAction {
+    package let axis: ScrollWheelAxis
+    package let modifier: ScrollHorizontalModifier
+    package let delta: Double
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(axis: ScrollWheelAxis, modifier: ScrollHorizontalModifier, delta: Double) {
+        self.axis = axis
+        self.modifier = modifier
+        self.delta = delta
+    }
+}
+
+package struct ScrollZoomPreferences: Equatable {
+    package let pinchZoom: ScrollHorizontalModifier?
+
+    package var isEnabled: Bool {
+        pinchZoom != nil
+    }
+
+    package init(isAvailable: Bool, boolFor: (String) -> Bool, stringFor: (String) -> String?) {
+        func modifier(_ enabled: String, _ key: String) -> ScrollHorizontalModifier? {
+            isAvailable && boolFor(enabled) ? ScrollZoomModifier(storageValue: stringFor(key)).modifier : nil
+        }
+        pinchZoom = modifier(DefaultsKey.pinchZoomEnabled, DefaultsKey.pinchZoomModifier)
+    }
+
+    package func action(for event: CGEvent) -> ScrollZoomAction? {
+        guard let modifier = pinchZoom else { return nil }
+        for axis in [ScrollWheelAxis.vertical, .horizontal] {
+            if let delta = ScrollWheelSupport.zoomDelta(event, modifier: modifier, axis: axis) {
+                return ScrollZoomAction(axis: axis, modifier: modifier, delta: delta)
+            }
+        }
+        return nil
+    }
+}
+
+package struct ScrollZoomGestureState {
+    package private(set) var preferences: ScrollZoomPreferences?
+    package private(set) var pinchModifier: ScrollHorizontalModifier?
+    package private(set) var pinchLocation: CGPoint?
+    private var acceptsEvents = false
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
+
+    package mutating func update(_ preferences: ScrollZoomPreferences) -> Bool {
+        guard self.preferences != preferences else { return false }
+        self.preferences = preferences
+        acceptsEvents = false
+        return endPinch()
+    }
+
+    package mutating func start() { acceptsEvents = preferences?.isEnabled == true }
+
+    package mutating func stop() -> Bool {
+        acceptsEvents = false
+        preferences = nil
+        return endPinch()
+    }
+
+    package func accepts(_ preferences: ScrollZoomPreferences) -> Bool {
+        acceptsEvents && self.preferences == preferences
+    }
+
+    package mutating func beginPinch(_ modifier: ScrollHorizontalModifier, at point: CGPoint) -> (endPrevious: Bool, begin: Bool) {
+        // AppKit latches a gesture to its starting view. A moved pointer may
+        // be over another view even inside the same window.
+        let changed = pinchModifier != modifier || pinchLocation != point
+        let endPrevious = changed && pinchModifier != nil
+        pinchModifier = modifier
+        pinchLocation = point
+        return (endPrevious, changed)
+    }
+
+    package mutating func endPinch() -> Bool {
+        guard pinchModifier != nil else { return false }
+        pinchModifier = nil
+        pinchLocation = nil
+        return true
+    }
 }
 
 /// Both independently installed direction features share one tap. Resolve their
@@ -27,8 +131,11 @@ package struct ScrollDirectionPreferences {
     package let invertVertical: Bool
     package let invertHorizontal: Bool
     package let horizontalModifier: ScrollHorizontalModifier?
+    package let zoom: ScrollZoomPreferences
 
-    package var isEnabled: Bool { invertVertical || invertHorizontal || horizontalModifier != nil }
+    package var isEnabled: Bool {
+        invertVertical || invertHorizontal || horizontalModifier != nil || zoom.isEnabled
+    }
 
     package init(isAvailable: (AppFeature) -> Bool,
          boolFor: (String) -> Bool,
@@ -37,6 +144,8 @@ package struct ScrollDirectionPreferences {
         invertHorizontal = isAvailable(.scrollInverter) && boolFor(DefaultsKey.scrollInverterHorizontalEnabled)
         horizontalModifier = isAvailable(.scrollHorizontal) && boolFor(DefaultsKey.scrollHorizontalEnabled)
             ? ScrollHorizontalModifier(storageValue: stringFor(DefaultsKey.scrollHorizontalModifier)) : nil
+        zoom = ScrollZoomPreferences(isAvailable: isAvailable(.scrollZoom),
+                                     boolFor: boolFor, stringFor: stringFor)
     }
 
     package init(defaults: UserDefaults = .standard) {
@@ -89,6 +198,14 @@ package struct ScrollWheelAxisDelta: Equatable {
     }
 }
 
+extension ScrollWheelAxisDelta {
+    package init(_ event: CGEvent, axis: ScrollWheelAxis) {
+        line = event.getIntegerValueField(axis == .vertical ? .scrollWheelEventDeltaAxis1 : .scrollWheelEventDeltaAxis2)
+        point = event.getIntegerValueField(axis == .vertical ? .scrollWheelEventPointDeltaAxis1 : .scrollWheelEventPointDeltaAxis2)
+        fixedPoint = event.getDoubleValueField(axis == .vertical ? .scrollWheelEventFixedPtDeltaAxis1 : .scrollWheelEventFixedPtDeltaAxis2)
+    }
+}
+
 /// Tells mouse wheels apart from touch devices, shared by the scroll
 /// inverter and smooth scrolling so both features classify events the same
 /// way: discrete events are wheels; events flagged continuous are wheels
@@ -126,8 +243,7 @@ package enum ScrollWheelSupport {
     @discardableResult
     package static func redirectVerticalScroll(_ event: CGEvent, modifier: ScrollHorizontalModifier,
                                        targetsOwnWindow: @autoclosure () -> Bool = false) -> Bool {
-        let shortcutFlags: CGEventFlags = [.maskShift, .maskAlternate, .maskControl, .maskCommand]
-        guard event.flags.intersection(shortcutFlags) == modifier.flag else { return false }
+        guard modifier.isHeldAlone(in: event.flags) else { return false }
 
         guard isVerticalOnly(event) else { return false }
         // Our capture/editor windows use these same modifiers for their own
@@ -148,6 +264,35 @@ package enum ScrollWheelSupport {
             && event.getIntegerValueField(.scrollWheelEventDeltaAxis2) == 0
             && event.getIntegerValueField(.scrollWheelEventPointDeltaAxis2) == 0
             && event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2) == 0
+    }
+
+    /// The signed distance from either wheel axis, but only while the selected
+    /// modifier is the sole shortcut modifier. This keeps ordinary app
+    /// shortcuts and native two-axis scrolling intact.
+    package static func zoomDelta(_ event: CGEvent, modifier: ScrollHorizontalModifier,
+                                  axis: ScrollWheelAxis) -> Double? {
+        guard modifier.isHeldAlone(in: event.flags) else { return nil }
+        let fields: (CGEventField, CGEventField, CGEventField) = axis == .vertical
+            ? (.scrollWheelEventDeltaAxis1, .scrollWheelEventPointDeltaAxis1, .scrollWheelEventFixedPtDeltaAxis1)
+            : (.scrollWheelEventDeltaAxis2, .scrollWheelEventPointDeltaAxis2, .scrollWheelEventFixedPtDeltaAxis2)
+        let line = event.getIntegerValueField(fields.0)
+        let point = event.getDoubleValueField(fields.1)
+        let fixed = event.getDoubleValueField(fields.2)
+        return zoomDelta(point: point, fixed: fixed, line: line)
+    }
+
+    package static func zoomDelta(point: Double, fixed: Double, line: Int64) -> Double? {
+        if point != 0 { return point }
+        if fixed != 0 { return fixed }
+        return line == 0 ? nil : Double(line)
+    }
+
+    package static func zoomDelta(_ delta: Double, axis: ScrollWheelAxis,
+                                  invertVertical: Bool, invertHorizontal: Bool) -> Double {
+        switch axis {
+        case .vertical: return invertVertical ? -delta : delta
+        case .horizontal: return invertHorizontal ? -delta : delta
+        }
     }
 
     /// Moves a vertical-only event to the horizontal axis, keeping its sign
@@ -175,10 +320,11 @@ package enum ScrollWheelSupport {
     }
 
     /// The raw wheel path uses the same redirection as smoothing, then applies
-    /// inversion to the axis the user will actually scroll.
+    /// inversion and any speed multiplier to the axes the user will actually scroll.
     package static func applyDirection(to event: CGEvent, isContinuous: Bool,
                                invertVertical: Bool, invertHorizontal: Bool,
                                horizontalModifier: ScrollHorizontalModifier?,
+                               speedMultiplier: Int = 1,
                                targetsOwnWindow: @autoclosure () -> Bool = false) {
         let redirected = event.getIntegerValueField(.eventSourceUserData) == horizontalRedirectTag
             || (horizontalModifier.map {
@@ -186,37 +332,42 @@ package enum ScrollWheelSupport {
             } ?? false)
         // Capture both axes before any set: writing a line delta makes the
         // system rederive its point and fixed-point fields.
-        let verticalLine = event.getIntegerValueField(.scrollWheelEventDeltaAxis1)
-        let verticalPoint = event.getIntegerValueField(.scrollWheelEventPointDeltaAxis1)
-        let verticalFixedPoint = event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1)
-        let horizontalLine = event.getIntegerValueField(.scrollWheelEventDeltaAxis2)
-        let horizontalPoint = event.getIntegerValueField(.scrollWheelEventPointDeltaAxis2)
-        let horizontalFixedPoint = event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2)
-        let hasVerticalMovement = verticalLine != 0 || verticalPoint != 0 || verticalFixedPoint != 0
-        let hasHorizontalMovement = horizontalLine != 0
-            || horizontalPoint != 0
-            || horizontalFixedPoint != 0
+        let vertical = ScrollWheelAxisDelta(event, axis: .vertical)
+        let horizontal = ScrollWheelAxisDelta(event, axis: .horizontal)
         let plan = ScrollWheelSupport.inversionPlan(
-            hasVerticalMovement: hasVerticalMovement,
-            hasHorizontalMovement: hasHorizontalMovement,
+            hasVerticalMovement: vertical.hasMovement,
+            hasHorizontalMovement: horizontal.hasMovement,
             shiftRedirectsVertical: !isContinuous && event.flags.contains(.maskShift),
             invertVertical: invertVertical,
             invertHorizontal: invertHorizontal
         )
-        if plan.vertical {
-            event.setIntegerValueField(.scrollWheelEventDeltaAxis1, value: -verticalLine)
-            // A zero whole-line field cannot reconstruct a high-resolution tick.
-            if isContinuous || redirected || verticalLine == 0 {
-                event.setIntegerValueField(.scrollWheelEventPointDeltaAxis1, value: -verticalPoint)
-                event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: -verticalFixedPoint)
-            }
+        let factor = Int64(speedMultiplier)
+        let verticalFactor = plan.vertical ? -factor : factor
+        let horizontalFactor = plan.horizontal ? -factor : factor
+        let changeVertical = vertical.hasMovement && verticalFactor != 1
+        let changeHorizontal = horizontal.hasMovement && horizontalFactor != 1
+        if changeVertical {
+            event.setIntegerValueField(.scrollWheelEventDeltaAxis1,
+                                       value: Int64(Int16(clamping: vertical.line * verticalFactor)))
         }
-        if plan.horizontal {
-            event.setIntegerValueField(.scrollWheelEventDeltaAxis2, value: -horizontalLine)
-            if isContinuous || redirected || horizontalLine == 0 {
-                event.setIntegerValueField(.scrollWheelEventPointDeltaAxis2, value: -horizontalPoint)
-                event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: -horizontalFixedPoint)
-            }
+        if changeHorizontal {
+            event.setIntegerValueField(.scrollWheelEventDeltaAxis2,
+                                       value: Int64(Int16(clamping: horizontal.line * horizontalFactor)))
+        }
+        // A slow discrete notch can carry one line but just one point. Multiplying
+        // that line alone would replace its precise distance with a full line's pixels.
+        let preservePrecision = speedMultiplier != 1 || isContinuous || redirected
+        if changeVertical && (preservePrecision || vertical.line == 0) {
+            event.setIntegerValueField(.scrollWheelEventPointDeltaAxis1,
+                                       value: Int64(Int32(clamping: vertical.point * verticalFactor)))
+            event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1,
+                                      value: vertical.fixedPoint * Double(verticalFactor))
+        }
+        if changeHorizontal && (preservePrecision || horizontal.line == 0) {
+            event.setIntegerValueField(.scrollWheelEventPointDeltaAxis2,
+                                       value: Int64(Int32(clamping: horizontal.point * horizontalFactor)))
+            event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2,
+                                      value: horizontal.fixedPoint * Double(horizontalFactor))
         }
     }
 
@@ -341,11 +492,14 @@ extension ScrollWheelSupport {
     package static func linearDelta(_ delta: ScrollWheelAxisDelta,
                             isContinuous: Bool,
                             linesPerNotch: Int,
+                            speedMultiplier: Int = 1,
                             carry: Double) -> (delta: ScrollWheelAxisDelta, carry: Double) {
         let ticks = isContinuous
             ? continuousTicks(fixedPointDelta: delta.fixedPoint, pointDelta: Double(delta.point))
             : discreteTicks(line: delta.line, fixedPoint: delta.fixedPoint, point: delta.point)
-        let lines = linearLines(ticks: ticks, linesPerNotch: linesPerNotch)
+        // Scale each fraction before rounding it. The next tick may arrive
+        // with a different modifier.
+        let lines = linearLines(ticks: ticks, linesPerNotch: linesPerNotch) * Double(speedMultiplier)
         let kept = SmoothScrollSupport.carry(carry, continuing: lines)
         if isContinuous {
             let points = SmoothScrollSupport.wholePixels(lines * pointsPerLine,
@@ -378,6 +532,64 @@ extension ScrollWheelSupport {
             event.setIntegerValueField(.scrollWheelEventPointDeltaAxis2, value: horizontal.point)
             event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: horizontal.fixedPoint)
         }
+    }
+}
+
+// MARK: - Modifier-held scroll speed
+
+/// Hold a key while rolling the mouse wheel to multiply how far each tick
+/// travels (issue #521). Shared by both wheel taps so the glide and the raw
+/// wheel agree; trackpads stay out through the usual wheel classification.
+extension ScrollWheelSupport {
+    /// How many times farther a modifier-held notch scrolls. The top end is
+    /// high enough for long documents; the default stays a small boost.
+    package static let speedMultiplierRange = 2...15
+    package static let defaultSpeedMultiplier = 3
+
+    package static func sanitizedSpeedMultiplier(_ value: Int) -> Int {
+        guard value != 0 else { return defaultSpeedMultiplier }
+        return min(max(value, speedMultiplierRange.lowerBound), speedMultiplierRange.upperBound)
+    }
+}
+
+/// Opt-in modifier-held scroll speed. Resolved the same way direction
+/// preferences are, so raw and smoothed wheels honour hub removal identically.
+package struct ScrollSpeedPreferences {
+    package let modifier: ScrollHorizontalModifier?
+    package let multiplier: Int
+
+    package init(isAvailable: Bool, boolFor: (String) -> Bool, stringFor: (String) -> String?,
+                 intFor: (String) -> Int) {
+        if isAvailable, boolFor(DefaultsKey.scrollSpeedEnabled) {
+            modifier = stringFor(DefaultsKey.scrollSpeedModifier)
+                .flatMap(ScrollHorizontalModifier.init(rawValue:)) ?? .option
+            multiplier = ScrollWheelSupport.sanitizedSpeedMultiplier(
+                intFor(DefaultsKey.scrollSpeedMultiplier))
+        } else {
+            modifier = nil
+            multiplier = ScrollWheelSupport.defaultSpeedMultiplier
+        }
+    }
+
+    package init(defaults: UserDefaults = .standard) {
+        self.init(isAvailable: AppFeature.scrollSpeed.isAvailable(in: defaults),
+                  boolFor: { defaults.bool(forKey: $0) },
+                  stringFor: { defaults.string(forKey: $0) },
+                  intFor: { defaults.integer(forKey: $0) })
+    }
+
+    /// The horizontal modifier is the one active for this app. It takes priority
+    /// on vertical-only ticks. Resolve the target only for a real speed shortcut.
+    package func matchingModifier(for event: CGEvent, horizontalModifier: ScrollHorizontalModifier?,
+                                  isExcepted: @autoclosure () -> Bool,
+                                  targetsOwnWindow: @autoclosure () -> Bool) -> ScrollHorizontalModifier? {
+        guard let modifier, modifier.isHeldAlone(in: event.flags) else { return nil }
+        if !ScrollWheelAxisDelta(event, axis: .horizontal).hasMovement {
+            guard horizontalModifier != modifier,
+                  ScrollWheelAxisDelta(event, axis: .vertical).hasMovement else { return nil }
+        }
+        guard !isExcepted(), !targetsOwnWindow() else { return nil }
+        return modifier
     }
 }
 

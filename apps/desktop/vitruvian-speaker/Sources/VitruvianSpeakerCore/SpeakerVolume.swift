@@ -247,13 +247,24 @@ public final class VolumeRestoreCoordinator: ObservableObject {
 
     private let minimumHold: Double
 
+    /// Waits out a restore timer. Real time in the app; tests pass one they
+    /// release themselves, so a busy machine cannot reorder timer and check.
+    public typealias Sleep = @Sendable (_ until: Date) async -> Void
+    private let sleep: Sleep
+
+    public nonisolated static let realSleep: Sleep = { until in
+        try? await Task.sleep(for: .milliseconds(Int(max(until.timeIntervalSinceNow, 0) * 1000)))
+    }
+
     public init(
         client: VolumeControlling = GoogleHomeClient.shared,
-        confirmTimeout: Double = 4, minimumHold: Double = VolumeRestoreCoordinator.minimumHold
+        confirmTimeout: Double = 4, minimumHold: Double = VolumeRestoreCoordinator.minimumHold,
+        sleep: @escaping Sleep = VolumeRestoreCoordinator.realSleep
     ) {
         self.client = client
         self.confirmTimeout = confirmTimeout
         self.minimumHold = minimumHold
+        self.sleep = sleep
     }
 
     public var isHolding: Bool { !pending.isEmpty }
@@ -291,8 +302,9 @@ public final class VolumeRestoreCoordinator: ObservableObject {
     }
 
     private func timer(_ id: String, at: Date) -> Task<Void, Never> {
-        Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(Int(max(at.timeIntervalSinceNow, 0) * 1000)))
+        let sleep = self.sleep
+        return Task { [weak self] in
+            await sleep(at)
             guard !Task.isCancelled else { return }
             await self?.fire(id)
         }

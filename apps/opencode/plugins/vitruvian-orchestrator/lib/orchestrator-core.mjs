@@ -27,7 +27,7 @@ import { PRICES } from "./prices.mjs";
  */
 
 /**
- * @typedef {"lead" | "core" | "fast"} Tier
+ * @typedef {"lead" | "build" | "deep" | "light" | "core" | "fast"} Tier
  */
 
 /**
@@ -363,7 +363,21 @@ import { PRICES } from "./prices.mjs";
  * @property {string} [name]
  */
 
-const VALID_PHASES = new Set(["plan", "design", "delegate", "review", "close"]);
+export const VALID_PHASES = new Set([
+  "plan",
+  "design",
+  "delegate",
+  "review",
+  "close",
+]);
+export const VALID_TIERS = new Set([
+  "lead",
+  "build",
+  "deep",
+  "light",
+  "core",
+  "fast",
+]);
 const VALID_POST_KINDS = new Set(["note", "question", "defect", "result"]);
 
 export const MAX_POST_TEXT = 4000;

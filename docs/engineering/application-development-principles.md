@@ -195,7 +195,7 @@ A human seed is legitimate **only** when no existing anchor reaches the new doma
 
 There is **no fourth path.** An imperative one-off — `gh secret set` / `gh variable set`, a console/SaaS click, ad-hoc `kubectl apply`, `pulumi up` from a shell — is only ever a break-glass *preview* (§2.2) or the act of *running* an already-codified change. It is **never the source of truth.** If you reached for one to move fast, the work is **not done until it is reconciled into code** — the secret declared in `repo-config` via `cfg.RequireSecret` (§2.4), the cluster object committed for ArgoCD, the apply wired into a workflow. "I had the access and it was additive" answers *who* may change it (§2.16), never *how*; the how is always code. If none of the three mechanisms obviously fits the work, that is a question to raise (§2.13), not a license to click.
 
-**(target):** the `oauth-user-inspector` deploy environment's `ZITADEL_APPS_AUTO_APPLY` variable and its `ZITADEL_MACHINE_KEY_JSON` / `TS_OAUTH_*` secrets were set with `gh` during bring-up and are not yet declared in `repo-config` — the first debt to repay under this rule.
+**(target):** the `oauth-user-inspector` deploy environment's `ZITADEL_APPS_AUTO_APPLY` variable and its `ZITADEL_MACHINE_KEY_JSON` / `TS_OAUTH_*` (since replaced by `HEADSCALE_CI_AUTHKEY`) secrets were set with `gh` during bring-up and are not yet declared in `repo-config` — the first debt to repay under this rule.
 
 ### 2.19 Every fix ships with the test or check that would catch it again
 

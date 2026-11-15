@@ -104,29 +104,36 @@ terminator)" step in the workflow sketch below.
 
 ## (a) Tailnet internal routing — RECOMMENDED, chosen
 
-The deploy job joins the tailnet ephemerally and talks to Zitadel over the
+The deploy job joins the Headscale mesh ephemerally and talks to Zitadel over the
 internal Envoy, transparently to the provider (which still uses
 `https://auth.ipv1337.dev`, so issuer/audience/SNI are unchanged).
 
-### One-time prerequisite (tailnet admin — provision once)
-1. **Tailscale OAuth client** for CI: in the Tailscale admin console (or API),
-   create an OAuth client scoped to `auth_keys`, tagged **`tag:ci`**. Store
-   `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` as secrets on the
-   `oauth-user-inspector-development` GitHub environment. (Keyless + ephemeral —
-   matches §2.6; not a static auth key.)
-2. **ACL**: allow `tag:ci` to reach the gateway, e.g.
-   `{"action":"accept","src":["tag:ci"],"dst":["10.44.86.211:80"]}`
-   (the tailnet is devx-managed — `apps/cli/vitruvian-devx/internal/tailscale`).
+### One-time prerequisite (provision once)
+
+> **Now on Headscale (2026-11-14).** The mesh is self-hosted Headscale
+> (`headscale.ipv1337.dev`), not commercial Tailscale, and the steps below are
+> what the workflows do today. The live implementation is
+> [`.github/actions/zitadel-tunnel-setup`](../../../../.github/actions/zitadel-tunnel-setup/action.yml);
+> read it rather than copying this sketch.
+
+1. **Headscale pre-auth key** for CI: reusable, ephemeral, tagged **`tag:ci`**,
+   stored as `HEADSCALE_CI_AUTHKEY` on the `oauth-user-inspector-*` GitHub
+   environments. Minting, expiry and rotation:
+   [headscale README](../../../../gitops/argocd/platform/headscale/README.md#ci-pre-auth-key-headscale_ci_authkey).
+2. **ACL**: `tag:ci` may reach only the gateway NodePort `:30265` on the wired
+   nodes, in
+   [`policy.hujson`](../../../../gitops/argocd/platform/headscale/policy.hujson)
+   (applied with `bazel run //tools/gitops:headscale-policy-set`).
 
 ### Workflow change (`zitadel-infra` job in `oauth-user-inspector-deploy.yaml`)
 ```yaml
-      - name: Join the tailnet (ephemeral)
-        uses: tailscale/github-action@<pinned-sha>   # v3
+      - name: Join the Headscale mesh (ephemeral, tag:ci)
+        uses: tailscale/github-action@<pinned-sha>   # v4
         with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret:    ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci
-          # ephemeral node; leaves the tailnet when the job ends
+          authkey: ${{ secrets.HEADSCALE_CI_AUTHKEY }}
+          args: --login-server=https://headscale.ipv1337.dev
+          version: 1.104.4
+          # the key carries tag:ci and makes the node ephemeral
 
       - name: Route auth.ipv1337.dev to the internal Envoy (TLS terminator)
         run: |
@@ -145,7 +152,7 @@ internal Envoy, transparently to the provider (which still uses
           # stale, because the port is defined in the gateway EnvoyProxy patch
           # and the workflows only hold copies of it.
           socat OPENSSL-LISTEN:443,reuseaddr,fork,cert=/tmp/ck.pem,verify=0 \
-                TCP:<a node's tailscale device>:<gateway NodePort> &
+                TCP:<a node's Headscale address>:<gateway NodePort> &
           echo "127.0.0.1 auth.ipv1337.dev" | sudo tee -a /etc/hosts
 
       # the existing apply step is UNCHANGED — the provider still uses

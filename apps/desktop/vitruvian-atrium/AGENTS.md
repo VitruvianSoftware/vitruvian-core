@@ -855,7 +855,7 @@ Before you use it:
   keyboard is then on it.
 - **Save first, compare after.** The clipboard
   (`pbpaste > "$TMPDIR/clip.before"`), the app's settings
-  (`defaults export com.vitruviansoftware.atrium "$TMPDIR/settings.before.plist"`)
+  (`defaults export com.vitruviansoftware.vitruvian "$TMPDIR/settings.before.plist"`)
   and a listing of its support folder. A check that copies, or flips a
   switch by mistake, shows up in the comparison and nowhere else.
 - It finds the app by its bundle id and needs the terminal to have

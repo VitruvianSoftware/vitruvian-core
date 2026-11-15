@@ -44,14 +44,14 @@ Approved by James on 2026-09-29. It applies to every delegation you make.
 |---|---|---|---|---|
 | beacon | lead | opus (high) | pro | anthropic/claude-opus-5-5 (high) |
 | aegis | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
-| wren | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
-| atlas | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
-| forge | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
+| wren | build | haiku (medium) → gemini-pro-orchestrator | pro | anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator |
+| atlas | build | haiku (medium) → gemini-pro-orchestrator | pro | anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator |
+| forge | build | haiku (medium) → gemini-pro-orchestrator | pro | anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator |
 | compass | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
-| ridge | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
+| ridge | build | haiku (medium) → gemini-pro-orchestrator | pro | anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator |
 | scout | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
-| quill | light | haiku (medium) → gemini-3.8-flash-high | flash | anthropic/claude-haiku-5-5 (medium) → gemini-3.8-flash-high |
-| pace | light | haiku (medium) → gemini-3.8-flash-high | flash | anthropic/claude-haiku-5-5 (medium) → gemini-3.8-flash-high |
+| quill | light | haiku (medium) → gemini-4-hydrogen-high | flash | anthropic/claude-haiku-5-5 (medium) → gemini-4-hydrogen-high |
+| pace | light | haiku (medium) → gemini-4-hydrogen-high | flash | anthropic/claude-haiku-5-5 (medium) → gemini-4-hydrogen-high |
 
 - The fallback policy does not relax the hard rule: when a model is unavailable, fall back to another model at standard effort or higher.
 - **Pass the model on each dispatch; agent files keep `model: inherit`.** Antigravity silently drops an agent whose `model` is anything but `inherit`, `flash` or `pro`, or whose `description` is longer than about 320 characters. Choose the tier's model per call instead: `model` on Claude Code's `Agent` tool, `Model` on Antigravity's `invoke_subagent`.

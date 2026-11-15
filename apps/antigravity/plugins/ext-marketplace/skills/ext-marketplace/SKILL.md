@@ -5,7 +5,7 @@ description: Browse the Antigravity Extensions Marketplace catalog, inspect inst
 
 # Extensions Marketplace (`ext-marketplace`)
 
-`ext-marketplace` provides a unified catalog and management plane for Antigravity desktop extensions, combining the 9 first-party Vitruvian plugins with official and custom plugins installed under `~/.gemini/config/plugins/` and `~/.gemini/config/config.json`.
+`ext-marketplace` provides a unified catalog and management plane for Antigravity desktop extensions, combining the first-party Vitruvian plugins with official and custom plugins installed under `~/.gemini/config/plugins/` and `~/.gemini/config/config.json`.
 
 ## Opening the Sidecar Panel
 
@@ -25,7 +25,8 @@ Surface a one-click pill in your chat response so the user can open the interact
 6. **`receipts-report`** (`apps/antigravity/plugins/receipts-report`) — Generates structured engineering receipts and audit summaries.
 7. **`live-context`** (`apps/antigravity/plugins/live-context`) — Live workspace context, active rules, and MCP tool inventory inspector.
 8. **`savvy-fleet`** (`apps/antigravity/plugins/savvy-fleet`) — Tiered `savvy-flow` orchestrator-worker workflow and subagent fleet telemetry.
-9. **`ext-marketplace`** (`apps/antigravity/plugins/ext-marketplace`) — Extensions Marketplace catalog and plugin lifecycle manager.
+9. **`vitruvian-orchestrator`** (`apps/antigravity/plugins/vitruvian-orchestrator`) — Lead `orchestrate` skill, shipped specialist roster, MCP coordination server, and live orchestration sidecar panel.
+10. **`ext-marketplace`** (`apps/antigravity/plugins/ext-marketplace`) — Extensions Marketplace catalog and plugin lifecycle manager.
 
 ## Managing Plugins
 

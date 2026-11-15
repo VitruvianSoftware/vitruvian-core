@@ -89,7 +89,7 @@ package final class RecorderPointerSampler: @unchecked Sendable {
             self?.loop(generation: generation)
         }
         thread.qualityOfService = .userInteractive
-        thread.name = "com.vitruviansoftware.atrium.recorder.pointer"
+        thread.name = "com.vitruviansoftware.vitruvian.recorder.pointer"
         self.thread = thread
         thread.start()
     }

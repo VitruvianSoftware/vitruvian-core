@@ -23,7 +23,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildEphemeralContextPayload, formatLiveGitSummary } from "./core.mjs";
+import {
+  buildEphemeralContextPayload,
+  formatLiveGitSummary,
+  parseGitHubRepoFromRemote,
+} from "./core.mjs";
 
 test("formatLiveGitSummary formats git branch, dirty count, open PRs, and merged PRs", () => {
   const text = formatLiveGitSummary(
@@ -91,4 +95,21 @@ test("buildEphemeralContextPayload emits injectSteps with ephemeralMessage", () 
     }),
     {},
   );
+});
+
+test("parseGitHubRepoFromRemote parses HTTPS/SSH remotes and rejects local paths", () => {
+  assert.equal(
+    parseGitHubRepoFromRemote("https://github.com/octo/app.git"),
+    "octo/app",
+  );
+  assert.equal(
+    parseGitHubRepoFromRemote("git@github.com:octo/app.git"),
+    "octo/app",
+  );
+  assert.equal(
+    parseGitHubRepoFromRemote("ssh://git@github.com:22/octo/app/"),
+    "octo/app",
+  );
+  assert.equal(parseGitHubRepoFromRemote("/tmp/local/repo"), null);
+  assert.equal(parseGitHubRepoFromRemote("file:///tmp/local/repo"), null);
 });

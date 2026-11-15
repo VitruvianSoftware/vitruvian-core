@@ -697,4 +697,45 @@ mod tests {
         assert!(!dir.join("c.json.tmp").exists());
         let _ = fs::remove_dir_all(&dir);
     }
+
+    fn drift_repo_path(rel: &str) -> PathBuf {
+        let direct = PathBuf::from(rel);
+        if direct.exists() {
+            return direct;
+        }
+        if let Ok(srcdir) = std::env::var("TEST_SRCDIR") {
+            let ws = std::env::var("TEST_WORKSPACE").unwrap_or_else(|_| "_main".to_string());
+            let candidate = PathBuf::from(srcdir).join(ws).join(rel);
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+        direct
+    }
+
+    #[test]
+    fn drift_skill_matches_stop_hook_defaults_and_states() {
+        let skill = fs::read_to_string(drift_repo_path(
+            "apps/antigravity/plugins/ralph-loop/skills/ralph-loop/SKILL.md",
+        ))
+        .expect("read ralph-loop SKILL.md");
+        let rules_doc = fs::read_to_string(drift_repo_path(
+            "apps/antigravity/plugins/ralph-loop/rules/AGENTS.md",
+        ))
+        .expect("read ralph-loop rules/AGENTS.md");
+
+        assert!(
+            skill.contains(&format!("(default `{DEFAULT_MAX_ITERATIONS}`)")),
+            "SKILL.md must document DEFAULT_MAX_ITERATIONS ({DEFAULT_MAX_ITERATIONS})"
+        );
+        assert!(skill.contains("(default `\"DONE\"`)"));
+        for status in ["running", "completed", "cancelled", "max_iterations"] {
+            assert!(
+                skill.contains(&format!("\"{status}\"")),
+                "SKILL.md missing status value {status}"
+            );
+        }
+        assert!(skill.contains(r#"{"decision": "continue""#));
+        assert!(rules_doc.contains("<promise>") && rules_doc.contains("maxIterations"));
+    }
 }

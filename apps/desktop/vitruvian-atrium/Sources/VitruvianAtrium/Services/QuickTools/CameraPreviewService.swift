@@ -36,7 +36,7 @@ package final class CameraPreviewService: ObservableObject {
     private let hotkey = QuickToolHotkey(id: 16)
     /// startRunning blocks for a moment, so every session mutation happens
     /// here and only state lands back on the main thread.
-    private let sessionQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.camera-preview")
+    private let sessionQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.camera-preview")
     private var panel: NSPanel?
     private var keyMonitor: Any?
     private var localClickMonitor: Any?

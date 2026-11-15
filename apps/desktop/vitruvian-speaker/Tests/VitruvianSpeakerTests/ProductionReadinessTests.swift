@@ -494,7 +494,7 @@ private final class SentinelClass {}
         try a.addBroadcastInstruction(for: .antigravity)
         try a.addBroadcastInstruction(for: .antigravity)
         let text = try String(contentsOf: home.appendingPathComponent(".gemini/AGENTS.md"), encoding: .utf8)
-        #expect(text.components(separatedBy: "vitruvian-speaker-broadcast").count == 2, "instruction present exactly once")
+        #expect(text.components(separatedBy: a.broadcastInstructionLine).count == 2, "instruction present exactly once")
         st = a.status(of: .antigravity)
         #expect(st.configuredByInstruction)
         #expect(st.isConfigured)
@@ -515,7 +515,7 @@ private final class SentinelClass {}
         try a.addBroadcastInstruction(for: .opencode)
         try a.addBroadcastInstruction(for: .opencode)
         let opencodeMd = try String(contentsOf: home.appendingPathComponent(".config/opencode/AGENTS.md"), encoding: .utf8)
-        #expect(opencodeMd.components(separatedBy: "vitruvian-speaker-broadcast").count == 2)
+        #expect(opencodeMd.components(separatedBy: a.broadcastInstructionLine).count == 2)
         #expect(a.status(of: .opencode).configuredByInstruction)
         #expect(a.status(of: .opencode).isConfigured)
     }
@@ -717,6 +717,10 @@ private final class SentinelClass {}
         #expect(ClaudeStopHook.commandBroadcasts("speaker-broadcast hi"))
         #expect(ClaudeStopHook.commandBroadcasts("cd /tmp && speaker-broadcast hi"))
         #expect(ClaudeStopHook.commandBroadcasts("/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker --say hi"))
+        // The Antigravity and OpenCode skills run their copy by its full path.
+        #expect(ClaudeStopHook.commandBroadcasts("/Users/a/.gemini/config/plugins/vitruvian-speaker/bin/speaker-broadcast \"Done.\""))
+        #expect(ClaudeStopHook.commandBroadcasts("'/Users/a b/.config/opencode/skills/vitruvian-speaker/bin/speaker-broadcast' \"Done.\""))
+        #expect(!ClaudeStopHook.commandBroadcasts("echo '/Users/a b/bin/speaker-broadcast'"))
         #expect(!ClaudeStopHook.commandBroadcasts(#"grep -n "speaker-broadcast" f.swift"#))
         #expect(!ClaudeStopHook.commandBroadcasts("VitruvianSpeaker --claude-stop-hook"))
         #expect(!ClaudeStopHook.commandBroadcasts("ls /tmp/claude_broadcast_*.lock"))

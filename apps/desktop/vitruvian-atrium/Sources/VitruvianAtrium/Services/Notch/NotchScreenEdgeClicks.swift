@@ -6,8 +6,9 @@ import VitruvianAtriumCore
 
 /// Clicks on the menu bar's first row above the closed island, which the
 /// menu bar owns even above the island's window level. They open the
-/// island. Only mouse clicks are observed, with no event tap and no
-/// Accessibility requirement, and only while the island can take them.
+/// island, or the page of the notice the press landed on. Only mouse clicks
+/// are observed, with no event tap and no Accessibility requirement, and
+/// only while the island can take them.
 package final class NotchScreenEdgeClicks {
     package typealias EventType = NSEvent.EventType
 
@@ -60,24 +61,54 @@ package final class NotchScreenEdgeClicks {
         package var pressed: () -> Void
         /// A press and release on the edge: the island opens.
         package var clicked: () -> Void
+        /// The notice the strip shows, the outgoing one included, if any.
+        package var stripNotice: () -> NotchNotice?
+        /// Whether a notice is still current, not just leaving.
+        package var hasCurrentNotice: () -> Bool
+        /// Whether the island is a capsule floating below the menu bar.
+        package var floats: () -> Bool
+        /// Whether a point is still on the capsule's strip at its widest,
+        /// for a capsule that shrank under a stationary press.
+        package var capsuleContains: (CGPoint) -> Bool
+        /// A press and release that began on a notice: that notice's action.
+        package var activate: (NotchNotice) -> Void
 
         package init(area: @escaping () -> CGRect?, floatingGap: @escaping () -> CGFloat?,
                      keepsWorkingSurface: @escaping () -> Bool, containsDestination: @escaping (CGPoint) -> Bool,
-                     pressed: @escaping () -> Void, clicked: @escaping () -> Void) {
+                     pressed: @escaping () -> Void, clicked: @escaping () -> Void,
+                     stripNotice: @escaping () -> NotchNotice? = { nil },
+                     hasCurrentNotice: @escaping () -> Bool = { false },
+                     floats: @escaping () -> Bool = { false },
+                     capsuleContains: @escaping (CGPoint) -> Bool = { _ in false },
+                     activate: @escaping (NotchNotice) -> Void = { _ in }) {
             self.area = area
             self.floatingGap = floatingGap
             self.keepsWorkingSurface = keepsWorkingSurface
             self.containsDestination = containsDestination
             self.pressed = pressed
             self.clicked = clicked
+            self.stripNotice = stripNotice
+            self.hasCurrentNotice = hasCurrentNotice
+            self.floats = floats
+            self.capsuleContains = capsuleContains
+            self.activate = activate
         }
+    }
+
+    /// A press on the edge, until it is released: the island's area then,
+    /// where it landed, and the notice it landed on, whose action it keeps.
+    package struct Press {
+        package let area: CGRect
+        package let point: CGPoint
+        package let notice: NotchNotice?
     }
 
     private let environment: Environment
     private let island: Island
     private var monitors: [Any] = []
+    package private(set) var press: Press?
     /// The island's area when a press began on the edge, until it is released.
-    package private(set) var pressArea: CGRect?
+    package var pressArea: CGRect? { press?.area }
 
     package init(environment: Environment, island: Island) {
         self.environment = environment
@@ -89,6 +120,10 @@ package final class NotchScreenEdgeClicks {
     /// Watches clicks while the island takes them, and stops otherwise.
     package func sync() {
         guard island.area() != nil else { remove(); return }
+        // A newer notice replaced the one the press landed on.
+        if let original = press?.notice, let shown = island.stripNotice(), original.clickTarget != shown.clickTarget {
+            press = nil
+        }
         guard monitors.isEmpty else { return }
         monitors = environment.addMonitors { [weak self] type, locate, isIslandWindow in
             self?.handle(type, locate: locate, isIslandWindow: isIslandWindow)
@@ -98,13 +133,13 @@ package final class NotchScreenEdgeClicks {
     package func remove() {
         monitors.forEach(environment.removeMonitor)
         monitors.removeAll()
-        pressArea = nil
+        press = nil
     }
 
     private func handle(_ type: EventType, locate: () -> CGPoint?, isIslandWindow: Bool) {
-        guard type == .leftMouseDown || pressArea != nil else { return }
+        guard type == .leftMouseDown || press != nil else { return }
         guard let point = locate() else {
-            pressArea = nil
+            press = nil
             return
         }
         handle(type, at: point, isIslandWindow: isIslandWindow)
@@ -112,32 +147,43 @@ package final class NotchScreenEdgeClicks {
 
     /// One event at a point on screen (y up).
     package func handle(_ type: EventType, at point: CGPoint, isIslandWindow: Bool) {
-        guard let area = island.area() else { pressArea = nil; return }
+        guard let area = island.area() else { press = nil; return }
         let local = CGPoint(x: point.x - area.minX, y: area.maxY - point.y)
         switch type {
         case .leftMouseDown:
-            pressArea = nil
+            press = nil
             // The menu bar a capsule leaves above itself takes its clicks too.
             guard !isIslandWindow, !island.keepsWorkingSurface(),
                   CGRect(x: 0, y: 0, width: area.width, height: 1 + (island.floatingGap() ?? 0)).contains(local),
                   island.containsDestination(point) else { return }
-            pressArea = area
+            press = Press(area: area, point: point, notice: island.stripNotice())
             island.pressed()
         case .leftMouseUp:
-            let pressedArea = pressArea
-            pressArea = nil
-            // The hover pulse can settle between press and release; the click
-            // stays on the island in either size.
-            guard let pressed = pressedArea,
-                  NotchSupport.screenEdgeArea(pressed, contains: point) || NotchSupport.screenEdgeArea(area, contains: point),
-                  island.containsDestination(point) else { return }
-            island.clicked()
+            let pressed = press
+            press = nil
+            // Keep the original action through expiry. A notice arriving under a
+            // resting press still leaves its wings to the menu bar.
+            guard let pressed, !island.keepsWorkingSurface() else { return }
+            // A new banner changes even the generic opening to its inbox.
+            guard pressed.notice != nil || island.stripNotice()?.notificationID == nil else { return }
+            if island.floats(), pressed.notice != nil, !island.hasCurrentNotice(), point == pressed.point {
+                // The capsule may have shrunk away from a stationary click.
+                // The original point was hit-tested and must still be clear of menus.
+                guard island.capsuleContains(point) else { return }
+            } else {
+                // The hover pulse can settle between press and release; the
+                // click stays on the island in either size.
+                guard NotchSupport.screenEdgeArea(area, contains: point)
+                        || (island.stripNotice() == nil && NotchSupport.screenEdgeArea(pressed.area, contains: point)),
+                      island.containsDestination(point) else { return }
+            }
+            if let original = pressed.notice { island.activate(original) } else { island.clicked() }
         case .leftMouseDragged:
             // A press at the screen's edge reports a drag at once, often without
             // moving. Only a drag that leaves the island cancels the click.
             guard !NotchSupport.screenEdgeArea(area, contains: point),
-                  !(pressArea.map { NotchSupport.screenEdgeArea($0, contains: point) } ?? false) else { return }
-            pressArea = nil
+                  !(press.map { NotchSupport.screenEdgeArea($0.area, contains: point) } ?? false) else { return }
+            press = nil
         default:
             break
         }
@@ -152,7 +198,11 @@ extension NotchScreenEdgeClicks {
         package var expanded: Bool
         package var peeking: Bool
         package var hasCaptureControls: Bool
+        /// Whether the strip shows a notice, the outgoing one included. A
+        /// notice takes these clicks too.
         package var hasNotice: Bool
+        /// Whether a notification's preview is held open, with controls of its own.
+        package var noticeExpanded: Bool
         package var dragPlaceholder: Bool
         package var heldDrag: Bool
         /// Whether the island's window is on screen and takes clicks; nil without one.
@@ -165,7 +215,7 @@ extension NotchScreenEdgeClicks {
         package init(running: Bool, suspended: Bool, expanded: Bool, peeking: Bool, hasCaptureControls: Bool,
                      hasNotice: Bool, dragPlaceholder: Bool, heldDrag: Bool, panelTakesClicks: Bool?,
                      compactActivityIsVisible: Bool, geometry: NotchGeometry,
-                     compactActivityGeometry: NotchGeometry, surfaceSize: CGSize) {
+                     compactActivityGeometry: NotchGeometry, surfaceSize: CGSize, noticeExpanded: Bool = false) {
             self.running = running
             self.suspended = suspended
             self.expanded = expanded
@@ -179,19 +229,26 @@ extension NotchScreenEdgeClicks {
             self.geometry = geometry
             self.compactActivityGeometry = compactActivityGeometry
             self.surfaceSize = surfaceSize
+            self.noticeExpanded = noticeExpanded
         }
     }
 
     /// Where a click at the top of the screen counts as a click on the
     /// closed island, in screen coordinates, or nil while it takes none.
     package static func area(for island: Resting) -> CGRect? {
-        guard island.running, !island.suspended, !island.expanded, !island.hasCaptureControls, !island.hasNotice,
+        guard island.running, !island.suspended, !island.expanded, !island.hasCaptureControls, !island.noticeExpanded,
               !island.dragPlaceholder, !island.heldDrag, island.panelTakesClicks == true else { return nil }
         let geometry = island.compactActivityIsVisible ? island.compactActivityGeometry : island.geometry
-        let area = geometry.activationArea(in: island.surfaceSize, hasHeader: island.peeking,
-                                           compactActivity: island.compactActivityIsVisible)
+        // A notice can be visible even when a menu occupies the simulated cutout.
+        guard geometry.isNotched || geometry.compactSideRoom != nil else { return nil }
+        var size = island.surfaceSize
+        if geometry.floats { size.width = min(size.width, NotchCapsuleLayout.availableWidth(geometry)) }
+        // The menu bar still gets these clicks, so beside a camera a notice
+        // leaves the items under its wings alone, as an activity's strip does.
+        let area = geometry.activationArea(in: size, hasHeader: island.peeking,
+                                           compactActivity: island.compactActivityIsVisible || island.hasNotice)
         guard !area.isEmpty else { return nil }
-        let frame = geometry.frame(for: island.surfaceSize)
+        let frame = geometry.frame(for: size)
         return CGRect(x: frame.minX + area.minX, y: frame.maxY - area.maxY, width: area.width, height: area.height)
     }
 

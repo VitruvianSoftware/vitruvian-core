@@ -24,7 +24,7 @@ package final class NotchBrowserArtwork: @unchecked Sendable {
     private static let failureCooldown: TimeInterval = 60
     private static let rememberedCovers = 8
 
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.notch-browser-artwork", qos: .utility)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-browser-artwork", qos: .utility)
     private let lock = NSLock()
     private var covers: [String: Data] = [:]
     private var coverOrder: [String] = []

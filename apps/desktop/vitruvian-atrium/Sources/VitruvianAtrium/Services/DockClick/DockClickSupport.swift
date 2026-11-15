@@ -65,8 +65,8 @@ package enum DockClickSupport {
     /// Both local and published builds may be running during development.
     /// Neither is ever a valid target for the other's global Dock click tap.
     package static func isOwnBundleIdentifier(_ bundleIdentifier: String?) -> Bool {
-        bundleIdentifier == "com.vitruviansoftware.atrium"
-            || bundleIdentifier == "com.vitruviansoftware.atrium.dev"
+        bundleIdentifier == "com.vitruviansoftware.vitruvian"
+            || bundleIdentifier == "com.vitruviansoftware.vitruvian.dev"
     }
 
     /// The Option-Command-M chord is not unique to Minimize All. Only the

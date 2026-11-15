@@ -1,4 +1,5 @@
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/doctor:defs.bzl", "doctor")
 
 # gazelle:ignore
@@ -16,7 +17,10 @@ alias(
 
 filegroup(
     name = "testdata_files",
-    srcs = glob(["testdata/*.json"]),
+    srcs = glob([
+        "testdata/*.json",
+        "testdata/acp/*.ndjson",
+    ]),
 )
 
 # The mirror's release workflow. It never runs in this repository, so
@@ -77,12 +81,11 @@ doctor(
     ],
     required = [
         "bazel",
-        "node",
         "git",
     ],
 )
 
-# The tool's version test (macos/tool/src/version_test.rs) holds release-please
+# The tool's version test (macos/atrium-extension/src/version_test.rs) holds release-please
 # to writing the tool's version where the app's goes. A filegroup for the
 # reason release_workflow is one.
 filegroup(
@@ -98,4 +101,24 @@ exports_files(
         ".github/FUNDING.yml",
     ],
     visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],
+)
+
+sh_test(
+    name = "agent_docs_test",
+    size = "small",
+    srcs = ["//tools/conformance:skill_docs_check.sh"],
+    args = [
+        "--root",
+        "apps/desktop/vitruvian-code",
+        "apps/desktop/vitruvian-code/rules/AGENTS.md",
+        "apps/desktop/vitruvian-code/README.md",
+    ],
+    data = [
+        "README.md",
+        "rules/AGENTS.md",
+        "scripts/README.md",
+        "scripts/sign-and-notarize.sh",
+        "//apps/desktop/vitruvian-code/macos:docs_files",
+        "//apps/desktop/vitruvian-code/src:docs_files",
+    ],
 )

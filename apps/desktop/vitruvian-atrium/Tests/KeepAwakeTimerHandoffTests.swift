@@ -34,7 +34,7 @@ enum KeepAwakeTimerHandoffTests {
     }
 
     static func run(expect: (Bool, String) -> Void) {
-        let domain = "com.vitruviansoftware.atrium.tests.keep-awake-handoff"
+        let domain = "com.vitruviansoftware.vitruvian.tests.keep-awake-handoff"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -47,6 +47,10 @@ enum KeepAwakeTimerHandoffTests {
                "a timer running out on battery hands nothing over to an All automation")
         expect(Dock(requireAll: false).handoff(in: defaults) == [.externalDisplay],
                "the same timer still hands over under Any, which is today's behaviour")
+        var launched = Dock(requireAll: false)
+        launched.trigger = .launch
+        expect(launched.handoff(in: defaults) == [.externalDisplay],
+               "a session started at launch hands over when its timer ends, as a manual one does")
         var plugged = Dock(requireAll: true)
         plugged.matching = [.externalDisplay, .power]
         expect(plugged.handoff(in: defaults) == [.externalDisplay, .power],

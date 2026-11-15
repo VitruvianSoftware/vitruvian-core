@@ -63,7 +63,7 @@ class OptionListTest {
 
   @Test
   fun tappingTheCurrentValueClosesEvenThoughCallersDisableIt() {
-    // android-remote disables the current speaker so it is never re-sent; it must still close.
+    // vitruvian-remote disables the current speaker so it is never re-sent; it must still close.
     assertEquals(OptionList.Tap.Dismiss, OptionList.tap(enabled = false, selected = true))
     assertEquals(OptionList.Tap.Dismiss, OptionList.tap(enabled = true, selected = true))
   }

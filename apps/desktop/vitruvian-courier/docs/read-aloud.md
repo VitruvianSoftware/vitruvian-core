@@ -13,7 +13,7 @@ low-priority chats). Vitruvian Courier could not control it. This adds two thing
   transcript: its transcript with the same prefix; a summary: the summary text. Trimmed to 1,000 characters. Messages
   with no text (a photo without caption, a sticker) don't offer Read Aloud.
 - **How:** if Vitruvian Speaker is installed — the Vitruvian extension's
-  `~/Library/Application Support/com.vitruviansoftware.atrium/Tools/dev.vitruvian.speaker/bin/tool` first, else
+  `~/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/dev.vitruvian.speaker/bin/tool` first, else
   `Vitruvian Speaker.app` (bundle id `com.vitruviansoftware.speaker`) in `/Applications` or `~/Applications`, never a copy
   elsewhere such as a development build — run it as `--say "<text>"` with an argument array (never a shell), off the main thread,
   with a 60-second timeout. Vitruvian Speaker speaks on whichever outputs the person turned on there (Home speakers, this

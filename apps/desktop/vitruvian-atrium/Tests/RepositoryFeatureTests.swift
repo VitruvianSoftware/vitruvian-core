@@ -417,6 +417,48 @@ enum RepositoryFeatureTests {
                "deleting a name the user added drops it from the switched off names too: \(siteSwitch.disabledNames)")
         expectEqual(URLCleaning.siteKey(from: " https://WWW.Weibo.com/path?x=1 ") ?? "",
                     "weibo.com", "the site field takes a pasted link and keeps the host")
+        expectEqual(URLCleaning.siteKey(from: "https://user@Shop.Example.com:8080/x") ?? "",
+                    "shop.example.com", "a pasted link's port and login do not become part of the host key")
+        let siteInputs: [(input: String, host: String, link: String)] = [
+            ("shop.example.com", "shop.example.com", "https://shop.example.com/x"),
+            ("shop.example.com:8080", "shop.example.com", "https://shop.example.com:8080/x"),
+            ("https://shop.example.com:8080/x?ref=a#part", "shop.example.com",
+             "https://shop.example.com:8080/x"),
+            ("https://user@shop.example.com/x", "shop.example.com", "https://user@shop.example.com/x"),
+            (" https://user:pass@WWW.Shop.Example.com:8080/x ", "shop.example.com",
+             "https://user:pass@WWW.Shop.Example.com:8080/x"),
+            ("https://192.0.2.1:8080/x", "192.0.2.1", "https://192.0.2.1:8080/x"),
+            ("[::ffff:192.0.2.1]", "[::ffff:192.0.2.1]", "https://[::ffff:192.0.2.1]/x"),
+            ("https://[::ffff:192.0.2.1]/x", "[::ffff:192.0.2.1]", "https://[::ffff:192.0.2.1]/x"),
+            ("https://user:pass@[2001:db8::192.0.2.1]:8080/x", "[2001:db8::192.0.2.1]",
+             "https://user:pass@[2001:db8::192.0.2.1]:8080/x"),
+        ]
+        for entry in siteInputs {
+            var site = URLCleaning.StoredRules()
+            suite.expect(site.addSite(entry.input, parameter: " Ref "),
+                         "site creation accepts \(entry.input)")
+            expectEqual(site.siteNames, "\(entry.host)|ref", "site creation stores only the host from \(entry.input)")
+            let restored = site.rules
+            let link = entry.link + "?ref=campaign&id=42#section"
+            expectEqual(URLCleaning.clean(link, rules: restored)?.url ?? "", entry.link + "?id=42#section",
+                        "the stored rule cleans its host and preserves login, port, path and fragment")
+            let otherSite = "https://unrelated.example/?ref=campaign&id=42"
+            expectEqual(URLCleaning.clean(otherSite, rules: restored)?.url ?? "", otherSite,
+                        "a saved site rule does not reach an unrelated host")
+            if let group = URLCleaning.ruleGroups(rules: restored).first(where: { $0.site == entry.host }) {
+                site.setSite(group, enabled: false)
+                let disabled = site.rules
+                expectEqual(URLCleaning.clean(link, rules: disabled)?.url ?? "", link,
+                            "a disabled stored site rule preserves the original link")
+            } else {
+                suite.expect(false, "the saved site rule has a group")
+            }
+        }
+        for invalidSite in ["not a host", ".example.com", "https://user@:8080/x", "example.com|ref"] {
+            var site = URLCleaning.StoredRules()
+            suite.expect(!site.addSite(invalidSite, parameter: "ref") && site.siteNames.isEmpty,
+                         "invalid site creation is refused and stores no rule: \(invalidSite)")
+        }
         suite.expect(URLCleaning.siteKey(from: "not a host") == nil,
                "text that is not a host is refused rather than stored")
         expectEqual(URLCleaning.parameterName(from: " Ref ") ?? "", "ref",
@@ -551,6 +593,9 @@ enum RepositoryFeatureTests {
             "org.chromium.web-custom-data", "com.apple.WebKit.custom-pasteboard-data",
             "dyn.ah62d4rv4gu8y6y4grf0gn5xbrzw1gydcr7u1e3cytf2gn",
         ]), "a browser's or a messaging app's private notes about the copy do not block the rewrite")
+        suite.expect(URLCleaning.canRewritePasteboard(types: [
+            "public.utf8-plain-text", "public.url", "com.apple.linkpresentation.metadata",
+        ]), "Safari's rich-link metadata can be rewritten with the link")
         suite.expect(!URLCleaning.canRewritePasteboard(types: [
             "public.utf8-plain-text", "public.url", "public.tiff", "public.png",
         ]), "a copied picture with its source link as text is left alone")
@@ -760,6 +805,66 @@ enum RepositoryFeatureTests {
                "sudo terminal error triggers Homebrew terminal fallback")
         suite.expect(HomebrewCommandBuilder.installerCommand == #"/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)""#,
                "Homebrew installer command matches the official install script entrypoint")
+        // The terminal handoff: a script the person's own terminal runs once in
+        // their own shell, leaving nothing behind (issue #598).
+        do {
+            let folder = FileManager.default.temporaryDirectory
+                .appendingPathComponent("vitruvian-terminal-script-\(UUID().uuidString)")
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: folder) }
+            // A stand-in login shell that writes down the arguments it was given.
+            let shell = folder.appendingPathComponent("shell")
+            let received = folder.appendingPathComponent("received")
+            try? "#!/bin/sh\nprintf '%s\\n' \"$@\" > \(HomebrewCommandBuilder.shellQuote(received.path))\n"
+                .write(to: shell, atomically: true, encoding: .utf8)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: shell.path)
+            let command = #"eval (/opt/homebrew/bin/brew shellenv fish); echo "it's $HOME" 'a\b'"#
+            let script = try? HomebrewTerminalScript.write(command: command, shellPath: shell.path, directory: folder)
+            let permissions = script
+                .flatMap { try? FileManager.default.attributesOfItem(atPath: $0.path)[.posixPermissions] as? NSNumber }
+            suite.expect(script?.pathExtension == "" && permissions?.intValue == 0o700,
+                   "the terminal script has no extension, so macOS opens it in the terminal the person chose, "
+                   + "and only they can read or run it")
+            if let script {
+                let process = Process()
+                process.executableURL = script
+                try? process.run()
+                process.waitUntilExit()
+            }
+            let arguments = (try? String(contentsOf: received, encoding: .utf8))?
+                .split(separator: "\n", omittingEmptySubsequences: false).map(String.init) ?? []
+            suite.expect(arguments == ["-l", "-i", "-c", command, ""],
+                   "the terminal script hands the command, unchanged, to the person's own shell as a login "
+                   + "and interactive shell, the way Terminal ran it before, found \(arguments)")
+            suite.expect(script.map { !FileManager.default.fileExists(atPath: $0.path) } ?? false,
+                   "the terminal script deletes itself as it runs")
+            do {
+                for shellPath in ["/bin/csh", "/bin/tcsh"] {
+                    let output = folder.appendingPathComponent(URL(fileURLWithPath: shellPath).lastPathComponent)
+                    let command = "/usr/bin/printf '%s' 'terminal handoff' > "
+                        + HomebrewCommandBuilder.shellQuote(output.path)
+                    let script = try HomebrewTerminalScript.write(command: command,
+                                                                   shellPath: shellPath, directory: folder)
+                    let process = Process()
+                    process.executableURL = script
+                    let input = Pipe()
+                    process.standardInput = input
+                    try process.run()
+                    try input.fileHandleForWriting.close()
+                    process.waitUntilExit()
+                    suite.expect(process.terminationStatus == 0
+                                 && (try? String(contentsOf: output, encoding: .utf8)) == "terminal handoff",
+                                 "the production terminal script runs commands in \(shellPath)")
+                    suite.expect(!FileManager.default.fileExists(atPath: script.path),
+                                 "the \(shellPath) terminal script removes itself")
+                }
+            } catch {
+                suite.expect(false, "could not run the csh terminal handoff: \(error)")
+            }
+            suite.expect((try? HomebrewTerminalScript.write(command: command, shellPath: shell.path,
+                                                            directory: folder.appendingPathComponent("missing"))) == nil,
+                   "a terminal script that cannot be written reports an error instead of opening nothing")
+        }
         expectEqual(HomebrewCommandBuilder.shellProfilePath(homeDirectory: "/Users/test", shellPath: "/bin/zsh"),
                     "/Users/test/.zprofile",
                     "Homebrew shell setup uses zprofile for zsh")
@@ -1291,7 +1396,7 @@ enum RepositoryFeatureTests {
         let uninstallScratch = scratchFolder("uninstall")
         defer { try? FileManager.default.removeItem(at: uninstallScratch) }
         let uninstallHome = uninstallScratch.appendingPathComponent("home").path
-        let releaseBundleID = "com.vitruviansoftware.atrium"
+        let releaseBundleID = "com.vitruviansoftware.vitruvian"
         let appRemoves = SelfUninstall.ownedPaths(home: uninstallHome, bundleID: releaseBundleID)
         let byHostPreferences = "\(uninstallHome)/Library/Preferences/ByHost/\(releaseBundleID).0123-ABCD.plist"
         let notTheApp = [

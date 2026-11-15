@@ -62,20 +62,10 @@ packages/vitruvian-sdk/go/toolkit/protocol_gen.go          linguist-generated=tr
 packages/vitruvian-sdk/kits/rust/src/generated/mod.rs      linguist-generated=true
 # release-please writes a tool's manifest at each release in its own JSON
 # layout (arrays one item a line); the formatter must leave it as written.
-# Each tool's version_test holds the committed file to that layout.
-apps/desktop/vitruvian-tool-github/vitruvian-tool.json rules-lint-ignored=true
-apps/desktop/vitruvian-speaker/tool/vitruvian-tool.json     rules-lint-ignored=true
-apps/desktop/vitruvian-code/macos/tool/vitruvian-tool.json rules-lint-ignored=true
-apps/mobile/android-remote/macmenu/tool/vitruvian-tool.json rules-lint-ignored=true
-apps/antigravity/plugins/ext-marketplace/plugin.json   rules-lint-ignored=true
-apps/antigravity/plugins/gh-watch/plugin.json          rules-lint-ignored=true
-apps/antigravity/plugins/hookify/plugin.json           rules-lint-ignored=true
-apps/antigravity/plugins/live-context/plugin.json      rules-lint-ignored=true
-apps/antigravity/plugins/ralph-loop/plugin.json        rules-lint-ignored=true
-apps/antigravity/plugins/receipts-report/plugin.json   rules-lint-ignored=true
-apps/antigravity/plugins/savvy-fleet/plugin.json       rules-lint-ignored=true
-apps/antigravity/plugins/security-guidance/plugin.json rules-lint-ignored=true
-apps/antigravity/plugins/worktree-band/plugin.json     rules-lint-ignored=true
+# Each tool's version_test and //tools/conformance:check hold the committed
+# file to that layout.
+apps/**/vitruvian-tool.json                            rules-lint-ignored=true
+apps/antigravity/plugins/*/plugin.json                 rules-lint-ignored=true
 # Written by //tools/sync-site-tools:sync and held by //tools/sync-site-tools:in_sync_test.
 .claude-plugin/marketplace.json                                 rules-lint-ignored=true
 apps/web/vitruviansoftware-dev/.claude-plugin/marketplace.json  rules-lint-ignored=true

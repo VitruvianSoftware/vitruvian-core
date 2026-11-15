@@ -70,6 +70,9 @@ package enum WindowEnumerator {
         /// desktop, which only a fullscreen one can be, then represents its app
         /// only when the app has no window here.
         package var currentSpaceOnly: Bool
+        /// Set for an all-windows session: app-only entries leave before the
+        /// cap, so they cannot use up places a real window needs.
+        package var windowsOnly: Bool
 
         // Spelled out because a memberwise initializer never leaves its module.
         package init(minimizedPlacement: WindowSwitchMinimizedPlacement = .normal,
@@ -81,7 +84,8 @@ package enum WindowEnumerator {
                      maximumCount: Int,
                      scopedToFrontmostPID: pid_t? = nil,
                      displayScope: DisplayScope? = nil,
-                     currentSpaceOnly: Bool = false) {
+                     currentSpaceOnly: Bool = false,
+                     windowsOnly: Bool = false) {
             self.minimizedPlacement = minimizedPlacement
             self.treatHiddenAppsLikeMinimized = treatHiddenAppsLikeMinimized
             self.showFullscreenWindows = showFullscreenWindows
@@ -92,6 +96,7 @@ package enum WindowEnumerator {
             self.scopedToFrontmostPID = scopedToFrontmostPID
             self.displayScope = displayScope
             self.currentSpaceOnly = currentSpaceOnly
+            self.windowsOnly = windowsOnly
         }
     }
 
@@ -220,6 +225,7 @@ package enum WindowEnumerator {
     package static func enumerateSwitcherWindows(groupByApp: Bool,
                                          preservingGroupedWindows: Bool,
                                          snapshot: Snapshot,
+                                         windowsOnly: Bool = false,
                                          displayScope: DisplayScope? = nil,
                                          scopedToFrontmostPID: pid_t? = nil,
                                          resolveSource: (([SwitcherItem]) -> SwitcherItem?)? = nil,
@@ -232,6 +238,7 @@ package enum WindowEnumerator {
             marksHiddenSpaces: true,
             includesFullscreenAcrossSpaces: true,
             snapshot: snapshot,
+            windowsOnly: windowsOnly,
             displayScope: displayScope,
             scopedToFrontmostPID: scopedToFrontmostPID,
             resolveSource: resolveSource,
@@ -253,6 +260,7 @@ package enum WindowEnumerator {
                                     marksHiddenSpaces: Bool,
                                     includesFullscreenAcrossSpaces: Bool = false,
                                     snapshot: Snapshot,
+                                    windowsOnly: Bool = false,
                                     displayScope: DisplayScope? = nil,
                                     scopedToFrontmostPID: pid_t? = nil,
                                     resolveSource: (([SwitcherItem]) -> SwitcherItem?)? = nil,
@@ -272,6 +280,7 @@ package enum WindowEnumerator {
                                && preferences.showFullscreenWindows,
                            marksHiddenSpaces: marksHiddenSpaces,
                            snapshot: snapshot,
+                           windowsOnly: windowsOnly,
                            scopedToFrontmostPID: scopedToFrontmostPID,
                            displayScope: displayScope,
                            resolveSource: resolveSource,
@@ -349,6 +358,7 @@ package enum WindowEnumerator {
                                     includesFullscreenAcrossSpaces: Bool = false,
                                     marksHiddenSpaces: Bool,
                                     snapshot: Snapshot,
+                                    windowsOnly: Bool = false,
                                     scopedToFrontmostPID: pid_t? = nil,
                                     displayScope: DisplayScope? = nil,
                                     resolveSource: (([SwitcherItem]) -> SwitcherItem?)? = nil,
@@ -724,7 +734,8 @@ package enum WindowEnumerator {
                                   maximumCount: maximumCount,
                                   scopedToFrontmostPID: scopedToFrontmostPID,
                                   displayScope: displayScope,
-                                  currentSpaceOnly: currentSpaceOnly),
+                                  currentSpaceOnly: currentSpaceOnly,
+                                  windowsOnly: windowsOnly),
                       orderByUse: { orderByUse($0, frontToBack: frontToBack) },
                       resolveSource: resolveSource,
                       isCancelled: isCancelled,
@@ -773,10 +784,14 @@ package enum WindowEnumerator {
         let scopedToFrontmostPID = shaping.scopedToFrontmostPID
         let displayScope = shaping.displayScope
         let currentSpaceOnly = shaping.currentSpaceOnly
+        let windowsOnly = shaping.windowsOnly
         let affectedByMinimizedPlacement = { (item: SwitcherItem) in
             item.isMinimizedForPlacement(treatHiddenAppsLikeMinimized: treatHiddenAppsLikeMinimized)
         }
         let filtered = windows.filter { item in
+            // Remove app-only entries before the visible cap: otherwise they
+            // reserve slots that an all-windows session can never display.
+            if windowsOnly, item.isAppEntry { return false }
             if !showFullscreenWindows, item.isFullscreen { return false }
             if minimizedPlacement == .hidden, affectedByMinimizedPlacement(item) { return false }
             return true

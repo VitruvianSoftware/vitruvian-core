@@ -515,6 +515,26 @@ public final class ConversationModel: ObservableObject {
     /// the "New" divider, from `unreadAtOpen`.
     private var dividerOnNewest = false
 
+    // Chats opened before, kept so that going back to one draws it at once.
+    /// What a chat had loaded at its newest messages, to draw it again at once when it is opened again: its events
+    /// and where its older pages go on from. The timeline is built from it as from a page, and the newest page is
+    /// read again in the background and merged in, as any change in the chat is.
+    struct RoomSnapshot {
+        var events: [String: Event]
+        var olderCursor: Cursor?
+        var olderPagesLoaded: Bool
+    }
+
+    /// How many chats `roomCache` keeps; the one opened longest ago goes first.
+    static let roomCacheLimit = 20
+    /// Chats opened before, by room id (a merged chat by its merge id).
+    private var roomCache: [String: RoomSnapshot] = [:]
+    /// `roomCache`'s keys, the one used longest ago first.
+    private var roomCacheOrder: [String] = []
+
+    /// Tests: whether `room` is kept in `roomCache`.
+    func isCached(_ room: String) -> Bool { roomCache[room] != nil }
+
     // A window around a message.
     /// The message the chat is held at, from the moment it is opened at it until the window reaches the newest
     /// message. While it is set the newest page is never read.
@@ -663,6 +683,17 @@ public final class ConversationModel: ObservableObject {
     }
 
     // MARK: - Opening
+
+    /// The composer's placeholder for a chat: "Message Ana on WhatsApp", "Message Ana" when the network is unknown,
+    /// and "Type a message…" when the chat has no name. `network` is the engine's id or a name already worded.
+    public static func composerPlaceholder(chatName: String?, network: String?) -> String {
+        let name = chatName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !name.isEmpty else { return String(localized: "Type a message…") }
+        let id = network?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let networkName = NetworkNames.displayName(of: id) ?? id
+        guard !networkName.isEmpty else { return String(localized: "Message \(name)") }
+        return String(localized: "Message \(name) on \(networkName)")
+    }
 
     /// Opens `room` directly on this conversation model (used by detached chat and space windows).
     public func openDetachedRoom(_ room: String?) {
@@ -991,6 +1022,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Forgets what is loaded, and every read in flight, for `room` opened at its newest message or at `target`.
     private func reset(_ room: String?, at target: String?, inPlace: Bool) {
+        saveSnapshot()
         generation += 1
         pageEpoch += 1
         cancelWake()
@@ -1047,7 +1079,45 @@ public final class ConversationModel: ObservableObject {
             isAtBottom = true
             selectedMessageID = nil
             scrollToMessageRequest = nil
+            // Opened before, at its newest messages: drawn at once from what it had, while the newest page is read.
+            if let room, target == nil { restoreSnapshot(of: room) }
         }
+    }
+
+    /// Keeps what the open chat has loaded at its newest messages in `roomCache`. A window around an older message
+    /// is not kept: it is not where the chat opens.
+    private func saveSnapshot() {
+        guard let room = roomID, anchorID == nil, isLoaded, !events.isEmpty else { return }
+        roomCache[room] = RoomSnapshot(events: events, olderCursor: olderCursor, olderPagesLoaded: olderPagesLoaded)
+        roomCacheOrder.removeAll { $0 == room }
+        roomCacheOrder.append(room)
+        while roomCacheOrder.count > Self.roomCacheLimit {
+            roomCache[roomCacheOrder.removeFirst()] = nil
+        }
+    }
+
+    /// Draws `room` from `roomCache`, when it is there: its events, its cursors and the timeline built from them, so
+    /// the chat shows at once. The "New" divider is placed from the unread count it opened with; the newest page,
+    /// when it lands, places it again and marks the chat read (`firstNewest` stays set).
+    private func restoreSnapshot(of room: String) {
+        guard let snapshot = roomCache[room] else { return }
+        roomCacheOrder.removeAll { $0 == room }
+        roomCacheOrder.append(room)
+        events = snapshot.events
+        seenIDs = Set(snapshot.events.keys)
+        olderCursor = snapshot.olderCursor
+        olderPagesLoaded = snapshot.olderPagesLoaded
+        hasOlder = olderCursor != nil
+        firstUnreadID = Timeline.firstUnreadID(events: Array(events.values), me: Timeline.meUserID,
+                                               unread: unreadAtOpen, now: now())
+        rebuild()
+        isLoaded = true
+    }
+
+    /// Forgets every chat kept in `roomCache`: a new engine, or one that lost changes, may have changed any of them.
+    private func clearRoomCache() {
+        roomCache = [:]
+        roomCacheOrder = []
     }
 
     private func startReading() {
@@ -1067,7 +1137,9 @@ public final class ConversationModel: ObservableObject {
     /// The engine was greeted, or said `resync`: read the newest page, and forget the older ones. A chat held at
     /// a message reads the page around it again instead (highlighting it only if it was still opening).
     private func reload(from client: EngineClient) async {
-        guard let room = roomID, client === appModel.client else { return }
+        guard client === appModel.client else { return }
+        clearRoomCache()
+        guard let room = roomID else { return }
         learnChat(chat(room), of: room)
         readFeatures()
         if typingLine != nil { readTyping() } // a new engine, or lost changes: whoever was typing may have stopped
@@ -1095,7 +1167,7 @@ public final class ConversationModel: ObservableObject {
         guard let open = roomID else { return }
         switch change {
         case let .event(room, _):
-            guard matchesOpenRoom(room) else { return }
+            guard matchesOpenRoom(room) else { return } // a kept chat is read again whenever it is opened
             if anchorID != nil { hasNewerWhileAway = true }
             requestRefetch()
             readUnreadThreads()
@@ -1213,6 +1285,7 @@ public final class ConversationModel: ObservableObject {
         let drop = dropPending
         dropPending = false
         apply(page, dropOlder: drop)
+        saveSnapshot()
         pagesApplied += 1
     }
 

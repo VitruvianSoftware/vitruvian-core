@@ -28,6 +28,8 @@ import {
   DEFAULT_QUIET_MS,
   DEFAULT_STALL_MS,
   DEFAULT_WAITING_STALL_MS,
+  VALID_PHASES,
+  VALID_TIERS,
   board,
   burnDown,
   initialFlow,
@@ -4305,5 +4307,29 @@ test("return round 2 acceptance 6: board({ channel }) also returns lead @all pos
   assert.deepEqual(
     mainPosts.map((p) => p.seq),
     [1, 2, 3],
+  );
+});
+
+test("VALID_TIERS includes roster tiers (lead, build, deep, light) plus legacy tiers (core, fast) and reduce preserves them", () => {
+  for (const tier of ["lead", "build", "deep", "light", "core", "fast"]) {
+    assert.equal(VALID_TIERS.has(tier), true);
+  }
+  for (const phase of ["plan", "design", "delegate", "review", "close"]) {
+    assert.equal(VALID_PHASES.has(phase), true);
+  }
+  const flow = reduce(null, {
+    type: "plan",
+    at: 1000,
+    title: "Tier test",
+    tasks: [
+      { title: "T1", specialist: "beacon", tier: "lead", after: [] },
+      { title: "T2", specialist: "wren", tier: "build", after: [1] },
+      { title: "T3", specialist: "aegis", tier: "deep", after: [1] },
+      { title: "T4", specialist: "scout", tier: "light", after: [2, 3] },
+    ],
+  });
+  assert.deepEqual(
+    flow.tasks.map((t) => t.tier),
+    ["lead", "build", "deep", "light"],
   );
 });

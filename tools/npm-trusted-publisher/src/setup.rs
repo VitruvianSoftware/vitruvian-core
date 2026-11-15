@@ -179,7 +179,7 @@ pub fn mirror_for(mf: &str) -> &'static str {
     ]) {
         "VitruvianSoftware/pulumi-library"
     } else if any(&["apps/mcp/vitruvian-slack-mcp/", "vitruvian-slack-mcp/"]) {
-        "VitruvianSoftware/mcp-slack"
+        "VitruvianSoftware/vitruvian-slack-mcp"
     } else if any(&[
         "packages/vitruvian-sdk/kits/typescript/",
         "vitruvian-sdk/kits/typescript/",
@@ -556,7 +556,7 @@ mod tests {
         );
         assert_eq!(
             mirror_for("vitruvian-slack-mcp/package.json"),
-            "VitruvianSoftware/mcp-slack"
+            "VitruvianSoftware/vitruvian-slack-mcp"
         );
         assert_eq!(
             mirror_for("vitruvian-sdk/kits/typescript/package.json"),

@@ -334,6 +334,17 @@ package enum SuperKeySupport {
         }
     }
 
+    /// A missing UserKeyMapping is normal on a newly connected keyboard.
+    /// Preserve foreign Caps Lock rules and any table whose sources cannot be read.
+    package static func hasNativeCapsLock(in mapping: Any?) -> Bool {
+        guard let mapping else { return true }
+        guard let entries = mapping as? [[String: Any]] else { return false }
+        return entries.allSatisfy { entry in
+            guard let source = entry["HIDKeyboardModifierMappingSrc"] as? NSNumber else { return false }
+            return source.uint64Value != SuperKeySource.capsLock.usage
+        }
+    }
+
     package static func nextInputSourceID(currentID: String?, enabledIDs: [String]) -> String? {
         guard enabledIDs.count > 1 else { return nil }
         guard let currentID, let index = enabledIDs.firstIndex(of: currentID) else {

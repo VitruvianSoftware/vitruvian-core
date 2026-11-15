@@ -1,0 +1,189 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# release-please and asset publisher for Vitruvian Remote Android app:
+# 1. Authors release PRs from conventional commits under apps/mobile/vitruvian-remote/.
+# 2. When the release PR merges, cuts the GitHub Release (tag: vitruvian-remote-vX.Y.Z).
+# 3. Compiles the multi-ABI release APK on Linux, computes SHA-256 sidecars,
+#    and attaches them to the release.
+# 4. Builds the Mac extension for the Vitruvian app (macmenu's RemoteTool and
+#    the agent it runs) on macOS as one program for Apple silicon and Intel,
+#    zips it as VitruvianRemote-X.Y.Z-tool.zip with a SHA-256 sidecar, and
+#    attaches both: the zip the Vitruvian catalog (catalog/tools.json) pins.
+# 5. Asks GitHub what the release holds, and fails naming any file missing.
+name: vitruvian-remote-release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/mobile/vitruvian-remote/**"
+      - ".github/workflows/vitruvian-remote-release.yaml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to package and upload (e.g. vitruvian-remote-v0.1.40). Empty runs release-please."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    concurrency:
+      group: vitruvian-remote-release-${{ github.ref }}
+      cancel-in-progress: false
+    outputs:
+      release_created: ${{ steps.release.outputs['apps/mobile/vitruvian-remote--release_created'] }}
+      tag_name: ${{ steps.release.outputs['apps/mobile/vitruvian-remote--tag_name'] }}
+      version: ${{ steps.release.outputs['apps/mobile/vitruvian-remote--version'] }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Mint App token for the release PR
+        id: app-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        if: ${{ inputs.tag == '' }}
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: apps/mobile/vitruvian-remote/release-please-config.json
+          manifest-file: apps/mobile/vitruvian-remote/.release-please-manifest.json
+          target-branch: main
+
+  publish-package:
+    needs: release-please
+    if: ${{ always() && !cancelled() && (needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')) }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    concurrency:
+      group: vitruvian-remote-publish-${{ inputs.tag || needs.release-please.outputs.tag_name }}
+      cancel-in-progress: false
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+
+      - name: Free up runner disk space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Publish downloadable release package
+        env:
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          VERSION: ${{ needs.release-please.outputs.version || '' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          rustc --edition=2021 -O --crate-type=lib --crate-name=vitruvian_remote_tools_lib apps/mobile/vitruvian-remote/tools/src/lib.rs -o /tmp/libvitruvian_remote_tools_lib.rlib
+          rustc --edition=2021 -O apps/mobile/vitruvian-remote/tools/src/publish_main.rs -L /tmp --extern vitruvian_remote_tools_lib=/tmp/libvitruvian_remote_tools_lib.rlib -o /tmp/vitruvian-remote-publish
+          /tmp/vitruvian-remote-publish
+
+  # The Mac extension, on the same release. A job of its own because it needs
+  # a Mac; it does not wait for the APK, and the APK does not wait for it.
+  publish-tool:
+    needs: release-please
+    if: ${{ always() && !cancelled() && (needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')) }}
+    # The same Xcode as CI and developers (.xcode-version); see ci.yaml.
+    runs-on: xcode-27
+    timeout-minutes: 45
+    concurrency:
+      group: vitruvian-remote-publish-tool-${{ inputs.tag || needs.release-please.outputs.tag_name }}
+      cancel-in-progress: false
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+
+      - name: Select the pinned Xcode
+        uses: ./.github/actions/select-xcode
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Publish the Mac extension's tool zip
+        env:
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          VERSION: ${{ needs.release-please.outputs.version || '' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bazel run //apps/mobile/vitruvian-remote/macmenu:publish-tool
+
+  # The release's last word, and not the publishing scripts': ask GitHub what
+  # the release holds. Vitruvian Speaker 1.12.0 and 1.13.0 were published with no
+  # files while their publishing step printed success. The APK, the tool zip
+  # the catalog installs from, and each one's checksum must be on the
+  # release, and the zip must match its checksum, or this fails naming them.
+  # It runs when either publishing job failed too, so the red says what is
+  # missing.
+  check-release:
+    needs: [release-please, publish-package, publish-tool]
+    if: ${{ always() && !cancelled() && (needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')) }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - name: Check the release has every file
+        env:
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="${TAG#vitruvian-remote-v}"
+          listing="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json assets \
+            --jq '.assets[] | "\(.name)\t\(.size)"')"
+          printf '%s\n' "${listing}"
+          missing=0
+          for file in \
+            "VitruvianRemote-${version}.apk" \
+            "VitruvianRemote-${version}.apk.sha256" \
+            "VitruvianRemote-${version}-tool.zip" \
+            "VitruvianRemote-${version}-tool.zip.sha256"; do
+            size="$(awk -F '\t' -v f="${file}" '$1 == f { print $2 }' <<<"${listing}")"
+            if [[ -z "${size}" || "${size}" == "0" ]]; then
+              echo "::error::${TAG} has no ${file}"
+              missing=1
+            fi
+          done
+          if [[ "${missing}" -ne 0 ]]; then
+            exit 1
+          fi
+          # The zip as the app downloads it, against the checksum beside it.
+          dir="$(mktemp -d)"
+          gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" --dir "${dir}" \
+            --pattern "VitruvianRemote-${version}-tool.zip" \
+            --pattern "VitruvianRemote-${version}-tool.zip.sha256"
+          (cd "${dir}" && sha256sum -c "VitruvianRemote-${version}-tool.zip.sha256")
+          echo "For the catalog entry: size $(stat -c %s "${dir}/VitruvianRemote-${version}-tool.zip"), sha256 $(cut -d' ' -f1 "${dir}/VitruvianRemote-${version}-tool.zip.sha256")"

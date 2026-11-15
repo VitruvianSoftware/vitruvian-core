@@ -782,19 +782,19 @@ When internal monorepo package paths are renamed, Copybara transformation workfl
 ```python
 # In tools/copybara/copy.bara.sky
 core.workflow(
-    name = "export_devx",
+    name = "export_vitruvian_devx",
     origin = git.origin(
         url = "file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core",
         ref = "main",
     ),
     destination = git.destination(
-        url = "git@github.com:VitruvianSoftware/devx.git",
+        url = "git@github.com:VitruvianSoftware/vitruvian-devx.git",
         fetch = "main",
         push = "main",
     ),
-    origin_files = glob(["devx/**"]),
+    origin_files = glob(["apps/cli/vitruvian-devx/**"]),
     transformations = [
-        core.move("devx", ""),
+        core.move("apps/cli/vitruvian-devx", ""),
     ],
 )
 ```

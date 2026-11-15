@@ -13,6 +13,7 @@ enum MixerRenderContinuityTests {
         var gain: Float = 1
         var cycles = 0
         var canRender = true
+        let appliedGain = MixerRender.AppliedGain()
         let tapChannels: Int
         let limiterBox: MixerOutputLimiter
 
@@ -61,7 +62,7 @@ enum MixerRenderContinuityTests {
             MixerRender.limitedCycle(input: input, output: output, tapChannels: tapChannels,
                                      gain: { gain }, countCycle: { cycles += 1 },
                                      limiter: limiterBox, release: BoostLimiter.release(sampleRate: 48_000),
-                                     canRender: { canRender })
+                                     canRender: { canRender }, appliedGain: appliedGain)
             return (0..<frames).flatMap { frame in
                 layout.indices.flatMap { index in
                     (0..<Int(layout[index])).map { storage[index][frame * Int(layout[index]) + $0] }
@@ -71,6 +72,7 @@ enum MixerRenderContinuityTests {
     }
 
     static func run(_ suite: TestSuite) {
+        muteDuringSilentCallbacks(suite)
         for channels in [2, 8, 16, 32] {
             let frames = 768
             var source: [Float] = []
@@ -207,5 +209,40 @@ enum MixerRenderContinuityTests {
                      && Array(UnsafeBufferPointer(start: right, count: 65))
                         == Array(repeating: 0, count: 32) + Array(repeating: 0.2, count: 33),
                      "inactive outputs leave the delay untouched and unequal buffers stop at their common writable bound")
+    }
+
+    /// A mute can arrive long before the next tap buffer. The production
+    /// callback must forget the audible gain across a gap, so resumed audio
+    /// cannot emit a residual audible segment sliding down from the old gain.
+    private static func muteDuringSilentCallbacks(_ suite: TestSuite) {
+        let frames = 512
+        let source = Array(repeating: Float(0.4), count: frames * 2)
+        let gaps: [(name: String, source: [Float]?, suspended: Bool)] = [
+            ("missing tap", nil, false),
+            ("empty tap", [], false),
+            ("suspended callback", source, true),
+        ]
+        for layout: [UInt32] in [[2], [1, 1], [1]] {
+            for gap in gaps {
+                let renderer = Renderer()
+                renderer.gain = 0.5
+                _ = renderer.render(source, frames: frames, layout: layout)
+                renderer.canRender = !gap.suspended
+                _ = renderer.render(gap.source, frames: frames, layout: layout)
+                // The mute lands during the gap, before any audible block returns.
+                renderer.gain = 0
+                let silent = renderer.render(gap.source, frames: frames, layout: layout)
+                let progressDuringGap = renderer.cycles
+                renderer.canRender = true
+                let resumed = renderer.render(source, frames: frames, layout: layout)
+                let held = renderer.render(source, frames: frames, layout: layout)
+                suite.expect(silent.allSatisfy { $0 == 0 }
+                                && resumed.allSatisfy { $0 == 0 }
+                                && held.allSatisfy { $0 == 0 },
+                             "muting during a \(gap.name) keeps resumed audio silent (layout \(layout))")
+                suite.expect(progressDuringGap == 1 && renderer.cycles == 3,
+                             "a \(gap.name) does not advance capture progress while a resumed muted tap does")
+            }
+        }
     }
 }

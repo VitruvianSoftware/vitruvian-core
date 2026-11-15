@@ -19,7 +19,6 @@ package struct AppUpdatesListView: View {
     private var includeOnlineCatalog: Bool
     @AppStorage(Preferences.appUpdatesIncludeAppStore)
     private var includeAppStore: Bool
-    @State private var showOperationDetails = false
     package var compact = false
 
     private var text: AppUpdateStrings { FeatureStrings.appUpdates(l10n.language) }
@@ -42,6 +41,11 @@ package struct AppUpdatesListView: View {
     /// An app named as not compared is not known to be current either.
     private var coveragePartial: Bool { coverageIncomplete || versionsUncompared }
 
+    private var operationLog: HomebrewOperationOutputView? {
+        guard let output = homebrew.operationOutput else { return nil }
+        return HomebrewOperationOutputView(homebrew: homebrew, output: output, compact: compact)
+    }
+
     package var body: some View {
         VStack(alignment: .leading, spacing: compact ? 8 : 12) {
             summaryRow
@@ -59,15 +63,8 @@ package struct AppUpdatesListView: View {
             if versionsUncompared {
                 uncomparableVersions
             }
-            if let status = homebrew.operationStatus {
-                HomebrewOperationStatusView(status: status,
-                                            log: homebrew.log,
-                                            terminalFallbackCommand: homebrew.terminalFallbackCommand,
-                                            compact: compact,
-                                            showDetails: $showOperationDetails,
-                                            onCancel: homebrew.cancelOperation,
-                                            onClear: homebrew.clearLog,
-                                            onOpenTerminal: homebrew.openTerminalFallback)
+            if let operationLog {
+                operationLog
                     .padding(compact ? 0 : 4)
             }
             if let error = updates.lastError, !error.isEmpty {

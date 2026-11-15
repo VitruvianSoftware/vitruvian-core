@@ -91,6 +91,12 @@ const ENQUEUE_JQ: &str = ".data.node |
 const DEQUEUE_MUTATION: &str = "
       mutation($id: ID!) { dequeuePullRequest(input: {id: $id}) { mergeQueueEntry { id } } }";
 
+const PR_ENRICH_QUERY: &str = "
+      query($id: ID!) { node(id: $id) { ... on PullRequest {
+        mergeQueueEntry { position state }
+        latestReviews(last: 20) { nodes { author { login } state } }
+      } } }";
+
 const USAGE: &str = r"agent-app — the API half of standing up a per-agent GitHub App identity.
 
 App CREATION is not scriptable: GitHub's Apps REST API has fourteen endpoints
@@ -119,16 +125,22 @@ is two clicks per agent; everything either side of them is here.
                                   # do-not-automerge on, auto-merge off, out of the queue
   bazel run //tools/agent-app -- pr-unhold [--agent <agent>] <pr>
                                   # label off only; run pr-enqueue to re-arm
+  bazel run //tools/agent-app -- pr-status [--agent <agent>] <pr> [--repo <owner/repo>] [--json]
+                                  # unambiguous PR status (includes mergeQueueEntry & ruleset approvals)
   bazel run //tools/agent-app -- run-rerun [--agent <agent>] <run-id> [--failed] [--job <id>]
   bazel run //tools/agent-app -- run-cancel [--agent <agent>] <run-id>
   bazel run //tools/agent-app -- workflow-run [--agent <agent>] <workflow.yaml> [-f k=v ...] [--ref main]
                                   # only workflows in workflow-allowlist.txt, only from main,
                                   # only the input keys its line declares (-F is refused)
   bazel run //tools/agent-app -- issue-create [--agent <agent>] --title <s> --body-file <f> [gh issue create args]
+  bazel run //tools/agent-app -- issue-edit [--agent <agent>] <issue> [gh issue edit args]
   bazel run //tools/agent-app -- issue-comment [--agent <agent>] <issue> --body-file <f> | --body <s>
   bazel run //tools/agent-app -- issue-close [--agent <agent>] <issue> [--comment <s>] [--reason <r>]
-  bazel run //tools/agent-app -- branch-delete [--agent <agent>] <branch>...
-                                  # delete branches on GitHub, only ones already on main
+  bazel run //tools/agent-app -- label-create [--agent <agent>] <name> [--description <s>] [--color <hex>] [--force]
+  bazel run //tools/agent-app -- branch-delete [--agent <agent>] [--abandoned <pr>] <branch>...
+                                  # delete branches on GitHub, only ones already on main;
+                                  # --abandoned <pr>: one branch whose PR closed unmerged,
+                                  # still at that PR's last commit
   bazel run //tools/agent-app -- secret-alert-resolve [--agent <agent>] <alert> --resolution <r> --comment <s>
   bazel run //tools/agent-app -- dependabot-alert-dismiss [--agent <agent>] <alert> --reason <r> --comment <s>
   bazel run //tools/agent-app -- read [--agent <agent>] <gh read command>
@@ -1494,7 +1506,90 @@ impl Tool {
         read_args(rest)?;
         let tok = self.mint_token(&agent, b"nothing was read")?;
         to_caller_dir()?;
+        if let Some(rw) = rewrite_pr_view_json_args(rest) {
+            let arg_refs: Vec<&[u8]> = rw.gh_args.iter().map(Vec::as_slice).collect();
+            let (st, o) = self.gh(&tok, &arg_refs, Io::Capture, Io::Inherit);
+            if st != 0 {
+                out(&o);
+                return Err(st);
+            }
+            let enrichment =
+                extract_json_str(&o, "id").and_then(|id| self.pr_enrichment(&tok, id.as_bytes()));
+            if let Some(enriched) = enrich_pr_view_json(
+                &o,
+                &rw.requested_fields,
+                rw.id_was_requested,
+                enrichment.as_ref(),
+            ) {
+                out(&enriched);
+            } else {
+                out(&o);
+            }
+            return Ok(());
+        }
         self.pass(&tok, &[], rest)
+    }
+
+    /// Fetch `mergeQueueEntry` and `latestReviews` for a PR node ID via GraphQL.
+    fn pr_enrichment(&self, tok: &[u8], id: &[u8]) -> Option<PrEnrichment> {
+        let idarg = cat(&[b"id=", id]);
+        let q = cat(&[b"query=", PR_ENRICH_QUERY.as_bytes()]);
+        let (st, o) = self.gh(
+            tok,
+            &[b"api", b"graphql", b"-f", &idarg, b"-f", &q],
+            Io::Capture,
+            Io::Null,
+        );
+        if st != 0 {
+            return None;
+        }
+        parse_pr_enrichment(&o)
+    }
+
+    /// Print unambiguous PR status including `mergeQueueEntry` and ruleset approvals.
+    fn pr_status(&self, args: &[Vec<u8>]) -> Res {
+        let usage = "pr-status [--agent <agent>] <pr> [--repo <owner/repo>] [--json]";
+        let (agent, rest) =
+            take_agent(args).ok_or_else(|| die(&cat(&[b"usage: ", usage.as_bytes()])))?;
+        need_target("pr", usage, arg(rest, 0))?;
+        let pr = rest[0].clone();
+        let opts = pr_status_args(usage, &rest[1..])?;
+        let tok = self.mint_token(&agent, b"nothing was read")?;
+        to_caller_dir()?;
+        let mut gh_args: Vec<&[u8]> = vec![b"pr", b"view", &pr];
+        if let Some(r) = &opts.repo {
+            gh_args.push(b"--repo");
+            gh_args.push(r);
+        }
+        let fields = "id,number,title,url,state,isDraft,mergeStateStatus,reviewDecision,autoMergeRequest,labels";
+        gh_args.extend_from_slice(&[b"--json", fields.as_bytes()]);
+        let (st, o) = self.gh(&tok, &gh_args, Io::Capture, Io::Inherit);
+        if st != 0 {
+            out(&o);
+            return Err(st);
+        }
+        let enrichment =
+            extract_json_str(&o, "id").and_then(|id| self.pr_enrichment(&tok, id.as_bytes()));
+        if opts.json {
+            let requested: Vec<String> = fields
+                .split(',')
+                .map(str::to_string)
+                .chain(std::iter::once("mergeQueueEntry".to_string()))
+                .collect();
+            if let Some(enriched) = enrich_pr_view_json(&o, &requested, false, enrichment.as_ref())
+            {
+                out(&enriched);
+            } else {
+                out(&o);
+            }
+            return Ok(());
+        }
+        if let Some(formatted) = format_pr_status(&o, enrichment.as_ref()) {
+            out(&formatted);
+        } else {
+            out(&o);
+        }
+        Ok(())
     }
 
     fn workflow_run(&self, args: &[Vec<u8>]) -> Res {
@@ -1561,9 +1656,11 @@ impl Tool {
     }
 
     fn branch_delete(&self, args: &[Vec<u8>]) -> Res {
-        let usage = "branch-delete [--agent <agent>] <branch>...";
+        let usage = "branch-delete [--agent <agent>] [--abandoned <pr>] <branch>...";
         let (agent, rest) =
             take_agent(args).ok_or_else(|| die(&cat(&[b"usage: ", usage.as_bytes()])))?;
+        let (abandoned, rest) =
+            take_abandoned(rest).map_err(|e| die(&cat(&[e, b"; usage: ", usage.as_bytes()])))?;
         need_target("branch", usage, arg(rest, 0))?;
         if self.landed.is_empty() {
             return Err(die(
@@ -1640,7 +1737,35 @@ impl Tool {
                 continue;
             }
             let sha: Vec<u8>;
-            if let Some(pr) = queue_pr(br) {
+            if let Some(pr) = &abandoned {
+                let (vst, o) = self.gh(
+                    &tok,
+                    &[
+                        b"pr",
+                        b"view",
+                        pr,
+                        b"--json",
+                        b"state,headRefName,headRefOid,isCrossRepository",
+                        b"--jq",
+                        b"\"\\(.state) \\(.headRefName) \\(.headRefOid) \\(.isCrossRepository)\"",
+                    ],
+                    Io::Capture,
+                    Io::Null,
+                );
+                let view = if vst == 0 { sh::subst(o) } else { Vec::new() };
+                let now = match self.remote_sha(&tok, br) {
+                    Some(x) => x,
+                    None => {
+                        keep(&mut kept, br, b"could not read its SHA on GitHub");
+                        continue;
+                    }
+                };
+                if let Some(why) = abandoned_refusal(pr, br, &view, &now) {
+                    keep(&mut kept, br, &why);
+                    continue;
+                }
+                sha = now;
+            } else if let Some(pr) = queue_pr(br) {
                 let (_, o) = self.gh(
                     &tok,
                     &[b"pr", b"view", &pr, b"--json", b"state", b"--jq", b".state"],
@@ -1809,6 +1934,29 @@ impl Tool {
         self.pass(&tok, &[b"issue", b"close"], rest)
     }
 
+    fn issue_edit(&self, args: &[Vec<u8>]) -> Res {
+        let usage = "issue-edit [--agent <agent>] <issue> [gh issue edit args]";
+        let (agent, rest) =
+            take_agent(args).ok_or_else(|| die(&cat(&[b"usage: ", usage.as_bytes()])))?;
+        need_target("issue", usage, arg(rest, 0))?;
+        issue_args_ok(usage, rest)?;
+        let tok = self.mint_token(&agent, b"the issue was NOT edited")?;
+        to_caller_dir()?;
+        self.pass(&tok, &[b"issue", b"edit"], rest)
+    }
+
+    fn label_create(&self, args: &[Vec<u8>]) -> Res {
+        let usage =
+            "label-create [--agent <agent>] <name> [--description <s>] [--color <hex>] [--force]";
+        let (agent, rest) =
+            take_agent(args).ok_or_else(|| die(&cat(&[b"usage: ", usage.as_bytes()])))?;
+        need_target("label", usage, arg(rest, 0))?;
+        issue_args_ok(usage, rest)?;
+        let tok = self.mint_token(&agent, b"the label was NOT created")?;
+        to_caller_dir()?;
+        self.pass(&tok, &[b"label", b"create"], rest)
+    }
+
     // --- security alerts (aegis) -------------------------------------------
 
     fn secret_alert_resolve(&self, args: &[Vec<u8>]) -> Res {
@@ -1925,6 +2073,7 @@ impl Tool {
             b"pr-enqueue" => self.pr_enqueue(rest),
             b"pr-hold" => self.pr_hold(rest),
             b"pr-unhold" => self.pr_unhold(rest),
+            b"pr-status" => self.pr_status(rest),
             b"run-rerun" => self.run_passthrough(
                 b"rerun",
                 "run-rerun [--agent <agent>] <run-id> [--failed] [--job <id>]",
@@ -1939,8 +2088,10 @@ impl Tool {
             ),
             b"workflow-run" => self.workflow_run(rest),
             b"issue-create" => self.issue_create(rest),
+            b"issue-edit" => self.issue_edit(rest),
             b"issue-comment" => self.issue_comment(rest),
             b"issue-close" => self.issue_close(rest),
+            b"label-create" => self.label_create(rest),
             b"branch-delete" => self.branch_delete(rest),
             b"secret-alert-resolve" => self.secret_alert_resolve(rest),
             b"dependabot-alert-dismiss" => self.dependabot_alert_dismiss(rest),
@@ -2386,6 +2537,351 @@ pub fn read_args(args: &[Vec<u8>]) -> Result<(), Refusal> {
     Ok(())
 }
 
+#[derive(Debug, PartialEq)]
+pub struct PrViewJsonRewrite {
+    pub gh_args: Vec<Vec<u8>>,
+    pub requested_fields: Vec<String>,
+    pub id_was_requested: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MergeQueueEntry {
+    pub position: u64,
+    pub state: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct PrEnrichment {
+    pub merge_queue_entry: Option<MergeQueueEntry>,
+    pub approved_by: Vec<String>,
+    pub changes_requested_by: Vec<String>,
+}
+
+pub struct PrStatusArgs {
+    pub repo: Option<Vec<u8>>,
+    pub json: bool,
+}
+
+pub fn pr_status_args(usage: &str, args: &[Vec<u8>]) -> Result<PrStatusArgs, Refusal> {
+    let mut repo = None;
+    let mut json = false;
+    let mut i = 0;
+    while i < args.len() {
+        let a = args[i].as_slice();
+        if a == b"--json" {
+            json = true;
+            i += 1;
+        } else if a == b"--repo" || a == b"-R" {
+            let val = args
+                .get(i + 1)
+                .filter(|v| !v.is_empty())
+                .ok_or_else(|| refuse(&[b"usage: ", usage.as_bytes()]))?;
+            repo = Some(val.clone());
+            i += 2;
+        } else if let Some(val) = a
+            .strip_prefix(b"--repo=")
+            .or_else(|| a.strip_prefix(b"-R="))
+        {
+            if val.is_empty() {
+                return Err(refuse(&[b"usage: ", usage.as_bytes()]));
+            }
+            repo = Some(val.to_vec());
+            i += 1;
+        } else {
+            return Err(refuse(&[b"usage: ", usage.as_bytes()]));
+        }
+    }
+    Ok(PrStatusArgs { repo, json })
+}
+
+const PR_VIEW_ENRICH_TRIGGERS: &[&str] = &[
+    "mergeQueueEntry",
+    "autoMergeRequest",
+    "mergeStateStatus",
+    "reviewDecision",
+    "state",
+    "latestReviews",
+    "reviews",
+];
+
+/// Rewrite `pr view ... --json <fields>` so `mergeQueueEntry` does not fail
+/// `gh pr view` and `id` is fetched when GraphQL enrichment is needed.
+pub fn rewrite_pr_view_json_args(args: &[Vec<u8>]) -> Option<PrViewJsonRewrite> {
+    if args.len() < 3 || args[0] != b"pr" || args[1] != b"view" {
+        return None;
+    }
+    let has_formatter = args[2..].iter().any(|a| {
+        let s = String::from_utf8_lossy(a);
+        matches!(
+            s.as_ref(),
+            "--jq" | "-q" | "--template" | "-t" | "--web" | "-w"
+        ) || s.starts_with("--jq=")
+            || s.starts_with("-q=")
+            || s.starts_with("--template=")
+            || s.starts_with("-t=")
+    });
+    if has_formatter {
+        return None;
+    }
+    let mut json_idx: Option<(usize, bool, String)> = None;
+    let mut i = 2;
+    while i < args.len() {
+        let s = String::from_utf8_lossy(&args[i]);
+        if s == "--json" {
+            let val = args.get(i + 1)?;
+            json_idx = Some((i, false, String::from_utf8_lossy(val).into_owned()));
+            break;
+        } else if let Some(val) = s.strip_prefix("--json=") {
+            json_idx = Some((i, true, val.to_string()));
+            break;
+        }
+        i += 1;
+    }
+    let (idx, inline, raw_fields) = json_idx?;
+    let requested_fields: Vec<String> = raw_fields
+        .split(',')
+        .map(str::trim)
+        .filter(|f| !f.is_empty())
+        .map(str::to_string)
+        .collect();
+    if requested_fields.is_empty()
+        || !requested_fields
+            .iter()
+            .any(|f| PR_VIEW_ENRICH_TRIGGERS.contains(&f.as_str()))
+    {
+        return None;
+    }
+    let id_was_requested = requested_fields.iter().any(|f| f == "id");
+    let mut gh_fields: Vec<String> = requested_fields
+        .iter()
+        .filter(|f| f.as_str() != "mergeQueueEntry")
+        .cloned()
+        .collect();
+    if !id_was_requested {
+        gh_fields.push("id".to_string());
+    }
+    let joined = gh_fields.join(",");
+    let mut gh_args = args.to_vec();
+    if inline {
+        gh_args[idx] = format!("--json={}", joined).into_bytes();
+    } else {
+        gh_args[idx + 1] = joined.into_bytes();
+    }
+    Some(PrViewJsonRewrite {
+        gh_args,
+        requested_fields,
+        id_was_requested,
+    })
+}
+
+pub fn extract_json_str(json: &[u8], key: &str) -> Option<String> {
+    let v: jq::J = serde_json::from_slice(json).ok()?;
+    match v.index(key).ok()? {
+        jq::J::Str(s) if !s.is_empty() => Some(s),
+        _ => None,
+    }
+}
+
+pub fn parse_pr_enrichment(graphql_json: &[u8]) -> Option<PrEnrichment> {
+    let root: jq::J = serde_json::from_slice(graphql_json).ok()?;
+    let node = root.index("data").ok()?.index("node").ok()?;
+    if matches!(node, jq::J::Null) {
+        return None;
+    }
+    let merge_queue_entry = match node.index("mergeQueueEntry").ok()? {
+        mq @ jq::J::Obj(_) => {
+            let pos = match mq.index("position").ok()? {
+                jq::J::Uint(n) => n,
+                jq::J::Int(n) if n >= 0 => n as u64,
+                _ => 0,
+            };
+            let state = match mq.index("state").ok()? {
+                jq::J::Str(s) => s,
+                _ => "UNKNOWN".to_string(),
+            };
+            Some(MergeQueueEntry {
+                position: pos,
+                state,
+            })
+        }
+        _ => None,
+    };
+    let mut approved_by = Vec::new();
+    let mut changes_requested_by = Vec::new();
+    if let Ok(nodes) = node.index("latestReviews").and_then(|r| r.index("nodes")) {
+        if let Ok(items) = nodes.iterate() {
+            for item in items {
+                let state = match item.index("state") {
+                    Ok(jq::J::Str(s)) => s,
+                    _ => continue,
+                };
+                let login = match item.index("author").and_then(|a| a.index("login")) {
+                    Ok(jq::J::Str(s)) if !s.is_empty() => s,
+                    _ => continue,
+                };
+                if state == "APPROVED" && !approved_by.contains(&login) {
+                    approved_by.push(login);
+                } else if state == "CHANGES_REQUESTED" && !changes_requested_by.contains(&login) {
+                    changes_requested_by.push(login);
+                }
+            }
+        }
+    }
+    Some(PrEnrichment {
+        merge_queue_entry,
+        approved_by,
+        changes_requested_by,
+    })
+}
+
+fn upsert_kv(kvs: &mut Vec<(String, jq::J)>, key: &str, val: jq::J) {
+    if let Some((_, slot)) = kvs.iter_mut().find(|(k, _)| k == key) {
+        *slot = val;
+    } else {
+        kvs.push((key.to_string(), val));
+    }
+}
+
+pub fn enrich_pr_view_json(
+    gh_json: &[u8],
+    requested_fields: &[String],
+    id_was_requested: bool,
+    enrichment: Option<&PrEnrichment>,
+) -> Option<Vec<u8>> {
+    let jq::J::Obj(mut kvs) = serde_json::from_slice::<jq::J>(gh_json).ok()? else {
+        return None;
+    };
+    if !id_was_requested {
+        kvs.retain(|(k, _)| k != "id");
+    }
+    if let Some(enr) = enrichment {
+        let wants_queue = requested_fields.iter().any(|f| f == "mergeQueueEntry");
+        if wants_queue || enr.merge_queue_entry.is_some() {
+            let mq_val = match &enr.merge_queue_entry {
+                Some(entry) => jq::J::Obj(vec![
+                    ("position".to_string(), jq::J::Uint(entry.position)),
+                    ("state".to_string(), jq::J::Str(entry.state.clone())),
+                ]),
+                None => jq::J::Null,
+            };
+            upsert_kv(&mut kvs, "mergeQueueEntry", mq_val);
+        }
+        let empty_review_decision = kvs
+            .iter()
+            .any(|(k, v)| k == "reviewDecision" && matches!(v, jq::J::Str(s) if s.is_empty()));
+        if empty_review_decision {
+            let approved = enr
+                .approved_by
+                .iter()
+                .map(|l| jq::J::Str(l.clone()))
+                .collect();
+            upsert_kv(&mut kvs, "approvedBy", jq::J::Arr(approved));
+            if !enr.changes_requested_by.is_empty() {
+                let cr = enr
+                    .changes_requested_by
+                    .iter()
+                    .map(|l| jq::J::Str(l.clone()))
+                    .collect();
+                upsert_kv(&mut kvs, "changesRequestedBy", jq::J::Arr(cr));
+            }
+            upsert_kv(
+                &mut kvs,
+                "reviewDecisionNote",
+                jq::J::Str(
+                    "gh pr view returns empty reviewDecision under GitHub Rulesets; see approvedBy"
+                        .to_string(),
+                ),
+            );
+        }
+    }
+    Some(format!("{}\n", jq::J::Obj(kvs).raw()).into_bytes())
+}
+
+pub fn format_pr_status(gh_json: &[u8], enrichment: Option<&PrEnrichment>) -> Option<Vec<u8>> {
+    let v: jq::J = serde_json::from_slice(gh_json).ok()?;
+    let number = match v.index("number").ok()? {
+        jq::J::Uint(n) => n.to_string(),
+        jq::J::Int(n) => n.to_string(),
+        _ => "?".to_string(),
+    };
+    let title = match v.index("title").ok()? {
+        jq::J::Str(s) => s,
+        _ => String::new(),
+    };
+    let state = match v.index("state").ok()? {
+        jq::J::Str(s) => s,
+        _ => "UNKNOWN".to_string(),
+    };
+    let is_draft = matches!(v.index("isDraft"), Ok(jq::J::Bool(true)));
+    let merge_state = match v.index("mergeStateStatus").ok()? {
+        jq::J::Str(s) => s,
+        _ => "UNKNOWN".to_string(),
+    };
+    let review_decision = match v.index("reviewDecision").ok()? {
+        jq::J::Str(s) => s,
+        _ => String::new(),
+    };
+    let url = match v.index("url").ok()? {
+        jq::J::Str(s) => s,
+        _ => String::new(),
+    };
+    let queue_line = if let Some(mq) = enrichment.and_then(|e| e.merge_queue_entry.as_ref()) {
+        format!(
+            "IN MERGE QUEUE (position {}, state {})",
+            mq.position, mq.state
+        )
+    } else if let Ok(am @ jq::J::Obj(_)) = v.index("autoMergeRequest") {
+        let method = match am.index("mergeMethod") {
+            Ok(jq::J::Str(s)) => s,
+            _ => "SQUASH".to_string(),
+        };
+        format!("auto-merge armed ({})", method)
+    } else {
+        "not queued".to_string()
+    };
+    let approval_line = match enrichment {
+        Some(enr) => {
+            let mut parts = Vec::new();
+            if !enr.approved_by.is_empty() {
+                parts.push(format!("approved by {}", enr.approved_by.join(", ")));
+            }
+            if !enr.changes_requested_by.is_empty() {
+                parts.push(format!(
+                    "changes requested by {}",
+                    enr.changes_requested_by.join(", ")
+                ));
+            }
+            if parts.is_empty() {
+                if review_decision.is_empty() {
+                    "none (gh reviewDecision is empty under rulesets)".to_string()
+                } else {
+                    review_decision.clone()
+                }
+            } else if review_decision.is_empty() {
+                format!(
+                    "{} (gh reviewDecision is empty under rulesets)",
+                    parts.join("; ")
+                )
+            } else {
+                format!("{} (reviewDecision={})", parts.join("; "), review_decision)
+            }
+        }
+        None => {
+            if review_decision.is_empty() {
+                "unknown".to_string()
+            } else {
+                review_decision.clone()
+            }
+        }
+    };
+    let draft_note = if is_draft { " (DRAFT)" } else { "" };
+    let out = format!(
+        "PR #{}: {}\nState:    {}{}\nQueue:    {}\nApproval: {}\nMerge:    mergeStateStatus={}\nURL:      {}\n",
+        number, title, state, draft_note, queue_line, approval_line, merge_state, url
+    );
+    Some(out.into_bytes())
+}
+
 fn api_read(args: &[String]) -> Result<(), Refusal> {
     let mut method: Option<String> = None;
     let mut fields: Vec<String> = Vec::new();
@@ -2708,6 +3204,70 @@ pub fn queue_pr(br: &[u8]) -> Option<Vec<u8>> {
         return None;
     }
     Some(r[..n].to_vec())
+}
+
+/// `[--abandoned <pr>] <branch>...` for branch-delete: the PR number when the
+/// flag leads, and the branches after it. With the flag there must be exactly
+/// one branch, so one closed PR can never vouch for another branch.
+pub fn take_abandoned(args: &[Vec<u8>]) -> Result<(Option<Vec<u8>>, &[Vec<u8>]), &'static [u8]> {
+    match args.first().map(Vec::as_slice) {
+        Some(b"--abandoned") => {
+            let pr = args.get(1).map(Vec::as_slice).unwrap_or(b"");
+            if pr.is_empty() || !pr.iter().all(u8::is_ascii_digit) {
+                return Err(b"--abandoned takes the number of the closed pull request");
+            }
+            if args.len() != 3 {
+                return Err(b"--abandoned deletes exactly one branch: the closed PR's own");
+            }
+            Ok((Some(pr.to_vec()), &args[2..]))
+        }
+        _ => Ok((None, args)),
+    }
+}
+
+/// Why `--abandoned <pr>` must keep `br`, or None when it may delete it.
+/// `view` is `pr view <pr>` reduced to `state headRefName headRefOid
+/// isCrossRepository`; `now` is the branch's SHA on GitHub. It may delete only
+/// a branch whose PR was closed without merging, was opened from this
+/// repository's `br`, and still points at the PR's last commit. Then nothing
+/// is lost: GitHub keeps every closed PR's commits (refs/pull/<pr>/head), so
+/// the branch can be restored from the PR page.
+pub fn abandoned_refusal(pr: &[u8], br: &[u8], view: &[u8], now: &[u8]) -> Option<Vec<u8>> {
+    let f: Vec<&[u8]> = view.split(|&c| c == b' ').collect();
+    let [state, head, oid, cross] = f.as_slice() else {
+        return Some(cat(&[b"could not read PR #", pr, b" on GitHub"]));
+    };
+    match *state {
+        b"CLOSED" => {}
+        b"MERGED" => {
+            return Some(cat(&[
+                b"PR #",
+                pr,
+                b" merged; drop --abandoned and let the landed gate decide",
+            ]));
+        }
+        _ => return Some(cat(&[b"PR #", pr, b" is ", state, b", not closed"])),
+    }
+    if *cross != b"false" || *head != br {
+        return Some(cat(&[
+            b"PR #",
+            pr,
+            b" was not opened from this repository's ",
+            br,
+        ]));
+    }
+    if *oid != now {
+        return Some(cat(&[
+            b"it has commits PR #",
+            pr,
+            b" never had (PR ends at ",
+            &oid[..oid.len().min(8)],
+            b", branch is at ",
+            &now[..now.len().min(8)],
+            b")",
+        ]));
+    }
+    None
 }
 
 /// Parse `<alert> --resolution|--reason <val> --comment <text>` for

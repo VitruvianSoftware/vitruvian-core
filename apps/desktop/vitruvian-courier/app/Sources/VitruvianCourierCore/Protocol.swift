@@ -351,8 +351,50 @@ public struct PreviewKind: OpenValues {
     public static let timerChange = Self(rawValue: "timer_change")
     /// A bridge's notice of a call. The preview is empty: `InboxRow.previewCall` says what happened, the label words it.
     public static let call = Self(rawValue: "call")
+    /// The newest activity is a reaction, newer than the newest message: the preview is the reaction and the message
+    /// it reacts to (`😂 to “Maybe in his mind he did…”`), or the reaction alone when that message has no text.
+    /// `previewMine` and `previewSenderName` say who reacted. The chat's order and unread count are the message's.
+    public static let reaction = Self(rawValue: "reaction")
     public static let none = Self(rawValue: "")
-    public static let known: [Self] = [.text, .image, .video, .audio, .file, .sticker, .poll, .timerChange, .call, .none]
+    public static let known: [Self] = [.text, .image, .video, .audio, .file, .sticker, .poll, .timerChange, .call, .reaction, .none]
+}
+
+/// InboxRow.members_preview: someone in a group, for the row's stacked picture.
+public struct RowMember: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "RowMember"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var userID: String
+    /// Their name in the chat, else their profile's, else their ID's localpart.
+    public var name: String
+    /// Their picture, a local file the engine has; nil when there is none.
+    public var avatarPath: String?
+
+    public init(userID: String, name: String, avatarPath: String? = nil) {
+        self.userID = userID
+        self.name = name
+        self.avatarPath = avatarPath.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case userID = "user_id"
+        case name
+        case avatarPath = "avatar_path"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        userID = try container.decode(String.self, forKey: .userID)
+        name = try container.decode(String.self, forKey: .name)
+        let path = try container.decodeIfPresent(String.self, forKey: .avatarPath) ?? ""
+        avatarPath = path.isEmpty ? nil : path
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(userID, forKey: .userID)
+        try container.encode(name, forKey: .name)
+        try container.encode(avatarPath ?? "", forKey: .avatarPath) // "" on the wire when there is none
+    }
 }
 
 /// One chat in the inbox.
@@ -369,6 +411,12 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
     public var preview: String
     public var previewKind: PreviewKind
     public var previewMine: Bool
+    /// Who wrote the newest message (for a `.reaction` preview, who reacted), by name; "" when it is mine, or from an
+    /// engine before protocol field `preview_sender_name`.
+    public var previewSenderName: String
+    /// For a group with no picture of its own: up to 3 of its members other than me, recent speakers and those with a
+    /// picture first, for a stacked picture. [] for a one-to-one chat, a group with a picture, or an older engine.
+    public var memberPreview: [RowMember]
     /// The newest message is a reply that stays in its thread: the chat's timeline doesn't show it, its thread pane
     /// does. False for a reply also sent to the channel.
     public var previewInThread: Bool
@@ -421,7 +469,8 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
                 typing: [String] = [], unreadMentions: Int = 0, previewMediaPath: String = "",
                 previewCall: CallNote? = nil, previewStatus: PreviewStatus = .none, loginName: String = "",
                 remoteName: String = "", localName: String = "", localAvatarPath: String = "",
-                mergeID: String = "", previewInThread: Bool = false, readAloud: ChatReadAloud? = nil) {
+                mergeID: String = "", previewInThread: Bool = false, readAloud: ChatReadAloud? = nil,
+                previewSenderName: String = "", memberPreview: [RowMember] = []) {
         self.roomID = roomID
         self.network = network
         self.name = name
@@ -431,6 +480,8 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
         self.preview = preview
         self.previewKind = previewKind
         self.previewMine = previewMine
+        self.previewSenderName = previewSenderName
+        self.memberPreview = memberPreview
         self.previewInThread = previewInThread
         self.unread = unread
         self.muted = muted
@@ -474,6 +525,8 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
         case preview
         case previewKind = "preview_kind"
         case previewMine = "preview_mine"
+        case previewSenderName = "preview_sender_name"
+        case memberPreview = "members_preview"
         case previewInThread = "preview_in_thread"
         case unread
         case muted
@@ -512,6 +565,8 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
         preview = try container.decode(String.self, forKey: .preview)
         previewKind = try container.decode(PreviewKind.self, forKey: .previewKind)
         previewMine = try container.decode(Bool.self, forKey: .previewMine)
+        previewSenderName = try container.decodeIfPresent(String.self, forKey: .previewSenderName) ?? ""
+        memberPreview = try container.decodeIfPresent([RowMember].self, forKey: .memberPreview) ?? []
         previewInThread = try container.decode(Bool.self, forKey: .previewInThread)
         unread = try container.decode(Int.self, forKey: .unread)
         muted = try container.decode(Bool.self, forKey: .muted)
@@ -575,6 +630,9 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
         try container.encode(localAvatarPath, forKey: .localAvatarPath)
         try container.encode(mergeID, forKey: .mergeID)
         try container.encodeIfPresent(readAloud, forKey: .readAloud)
+        // Optional on the wire: left out when empty, as an engine before them leaves them out.
+        if !previewSenderName.isEmpty { try container.encode(previewSenderName, forKey: .previewSenderName) }
+        if !memberPreview.isEmpty { try container.encode(memberPreview, forKey: .memberPreview) }
     }
 }
 
@@ -5677,6 +5735,7 @@ public enum ProtocolMethods {
     public static let types: [any ProtocolType.Type] = [
         Empty.self, HelloParams.self, HelloResult.self, Account.self, Login.self, AccountsResult.self, InboxRow.self,
         CallNote.self,
+        RowMember.self,
         Reminder.self, InboxListParams.self, InboxResult.self, Space.self, SpacesResult.self, SpaceLayoutParams.self,
         SpaceUpdateParams.self, LabelParams.self, LabelResult.self, LabelUpdateParams.self, LabelIDParams.self,
         SetPinnedParams.self, ArchiveParams.self, RoomsChanged.self, RoomsFlagParams.self, SetReadAloudParams.self, SetLabelParams.self,

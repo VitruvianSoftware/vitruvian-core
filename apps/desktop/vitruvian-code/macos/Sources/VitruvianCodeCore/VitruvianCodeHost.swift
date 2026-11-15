@@ -161,7 +161,7 @@ public struct VitruvianCodeHostStrings: Sendable {
                  failedTitleSuffix: String = " — Failed",
                  doneTitleSuffix: String = " — Done",
                  problemMissingToken: String = "Add your Telegram bot token in Settings before starting the bot.",
-                 problemMissingBot: String = "The bot is not installed: src/bot.js was not found in the bot folder.",
+                 problemMissingBot: String = "The bot is not installed: bot-engine was not found in the app bundle.",
                  problemMissingNode: String = "Node.js was not found. Install Node, then start the bot again.",
                  problemStartFailed: String = "The bot could not be started.",
                  problemSaveFailed: String = "The settings could not be saved.",

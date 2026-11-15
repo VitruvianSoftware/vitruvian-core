@@ -108,10 +108,12 @@ package final class NotchVolumeFeedback {
             }
     }
 
-    /// A volume key shows the level even when it did not change.
-    package func showCurrentVolume() {
-        guard let volume = output.volume() else { return }
-        showVolume(volume, muted: output.muted())
+    /// A volume key shows the level even when it did not change. False when
+    /// there is no level to show.
+    @discardableResult
+    package func showCurrentVolume() -> Bool {
+        guard let volume = output.volume() else { return false }
+        return showVolume(volume, muted: output.muted())
     }
 
     /// The island's own output controls already show the level they set.

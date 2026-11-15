@@ -60,7 +60,7 @@ enum NotchScreenRefreshContract {
         final class Workspace { var frontmostApplication: RunningApplication? }
     }
     enum OwnApp {
-        static let main = RunningApplication(bundleIdentifier: "com.vitruviansoftware.atrium.tests.notch")
+        static let main = RunningApplication(bundleIdentifier: "com.vitruviansoftware.vitruvian.tests.notch")
     }
     enum Clipboard {
         static let shared = History()

@@ -144,7 +144,7 @@ swift_binary(
 genrule(
     name = "tool-folder",
     srcs = [
-        "tool/vitruvian-tool.json",
+        "atrium-extension/vitruvian-tool.json",
         "Sources/VitruvianCodeUI/Resources/mermaid.min.js",
         ":vitruvian-code-tool",
     ],
@@ -153,7 +153,7 @@ genrule(
         "built/vitruvian-code/bin/tool",
         "built/vitruvian-code/bin/mermaid.min.js",
     ],
-    cmd = "cp $(location tool/vitruvian-tool.json) $(RULEDIR)/built/vitruvian-code/vitruvian-tool.json && cp $(location :vitruvian-code-tool) $(RULEDIR)/built/vitruvian-code/bin/tool && cp $(location Sources/VitruvianCodeUI/Resources/mermaid.min.js) $(RULEDIR)/built/vitruvian-code/bin/mermaid.min.js",
+    cmd = "cp $(location atrium-extension/vitruvian-tool.json) $(RULEDIR)/built/vitruvian-code/vitruvian-tool.json && cp $(location :vitruvian-code-tool) $(RULEDIR)/built/vitruvian-code/bin/tool && cp $(location Sources/VitruvianCodeUI/Resources/mermaid.min.js) $(RULEDIR)/built/vitruvian-code/bin/mermaid.min.js",
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
 )
@@ -165,7 +165,7 @@ genrule(
 rust_test(
     name = "tool_conformance_test",
     size = "medium",
-    srcs = ["tool/src/conformance_test.rs"],
+    srcs = ["atrium-extension/src/conformance_test.rs"],
     data = [
         "built/vitruvian-code/vitruvian-tool.json",
         ":tool-folder",
@@ -190,12 +190,12 @@ rust_test(
 rust_test(
     name = "tool_version_test",
     size = "small",
-    srcs = ["tool/src/version_test.rs"],
+    srcs = ["atrium-extension/src/version_test.rs"],
     data = [
         "Package.swift",
         "Sources/VitruvianCode/Version.swift",
         "Sources/VitruvianCodeToolCore/Version.swift",
-        "tool/vitruvian-tool.json",
+        "atrium-extension/vitruvian-tool.json",
         "//apps/desktop/vitruvian-code:release_please_config",
     ],
     edition = "2021",

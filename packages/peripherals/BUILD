@@ -131,14 +131,16 @@ swift_test(
     ],
 )
 
+# Mac runners are scarce (5 at a time on GitHub's free plan), so this unit
+# lists only what needs a Mac: Swift, app bundles, and tests whose code differs
+# on macOS. Tests that pass on Linux run in ci.yaml's build-test whenever they
+# are affected, so listing them here only spent Mac time running them twice.
 pipeline_unit(
     name = "peripherals",
     persona = "platform",
     runner = "xcode-27",
     test_targets = [
         ":PeripheralsTests",
-        ":publish_lib_test",
-        ":publish_test",
     ],
     tier = "L1",
     timeout_minutes = 30,

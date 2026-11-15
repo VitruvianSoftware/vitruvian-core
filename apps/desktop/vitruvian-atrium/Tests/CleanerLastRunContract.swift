@@ -12,7 +12,7 @@ import VitruvianAtriumUI
 /// nothing is cleaned.
 enum CleanerLastRunContract {
     static func run(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.cleaner-last-run"
+        let domain = "com.vitruviansoftware.vitruvian.tests.cleaner-last-run"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

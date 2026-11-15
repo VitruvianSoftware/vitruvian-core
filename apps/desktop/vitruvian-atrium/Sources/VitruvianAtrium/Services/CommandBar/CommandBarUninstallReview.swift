@@ -165,7 +165,7 @@ package final class CommandBarUninstallReview {
     /// plain app is trashed in place; a Homebrew-managed one needs its own
     /// confirmation first, the way a destructive row guards itself.
     private func confirm(entryID: String) {
-        guard uninstaller.phase == .results, !uninstaller.isRemoving else { return }
+        guard uninstaller.canRemoveSelected else { return }
         if let confirmation = uninstaller.homebrewRemovalConfirmation {
             pendingHomebrewRemoval = confirmation
             host.setMode(.uninstallHomebrewConfirm(entryID: entryID))

@@ -32,7 +32,7 @@ func TestEnvMap(t *testing.T) {
 	const apiURL = "https://tabula-api.dev.vitruviansoftware.dev/api/v1"
 
 	t.Run("always carries NODE_ENV and HOSTNAME", func(t *testing.T) {
-		env := EnvMap("")
+		env := EnvMap("", "")
 		for key, want := range map[string]string{
 			"NODE_ENV": "production",
 			"HOSTNAME": "0.0.0.0",
@@ -43,10 +43,17 @@ func TestEnvMap(t *testing.T) {
 		}
 	})
 
-	t.Run("carries API_URL when set", func(t *testing.T) {
-		env := EnvMap(apiURL)
+	t.Run("carries API_URL and SENTRY_DSN when set", func(t *testing.T) {
+		const sentryDSN = "https://e68b62b2a2f4064278c4e6915c1b4766@sentry-ingest.ipv1337.dev/11"
+		env := EnvMap(apiURL, sentryDSN)
 		if got := env["API_URL"]; got != apiURL {
 			t.Errorf("env[API_URL] = %q, want %q", got, apiURL)
+		}
+		if got := env["SENTRY_DSN"]; got != sentryDSN {
+			t.Errorf("env[SENTRY_DSN] = %q, want %q", got, sentryDSN)
+		}
+		if got := env["NEXT_PUBLIC_SENTRY_DSN"]; got != sentryDSN {
+			t.Errorf("env[NEXT_PUBLIC_SENTRY_DSN] = %q, want %q", got, sentryDSN)
 		}
 	})
 
@@ -54,10 +61,13 @@ func TestEnvMap(t *testing.T) {
 	// apps/suites/vitruvian-tabs/infra/app/revision.EnvMap's contract (see its own test for why:
 	// an explicitly-empty Cloud Run env var is noise in the revision diff and
 	// hides which envs have been configured).
-	t.Run("omits API_URL rather than setting it empty when unconfigured", func(t *testing.T) {
-		env := EnvMap("")
+	t.Run("omits API_URL and SENTRY_DSN rather than setting them empty when unconfigured", func(t *testing.T) {
+		env := EnvMap("", "")
 		if _, ok := env["API_URL"]; ok {
 			t.Errorf("env[API_URL] present (%q); want absent when unconfigured", env["API_URL"])
+		}
+		if _, ok := env["SENTRY_DSN"]; ok {
+			t.Errorf("env[SENTRY_DSN] present (%q); want absent when unconfigured", env["SENTRY_DSN"])
 		}
 	})
 }
@@ -92,18 +102,18 @@ func TestName(t *testing.T) {
 		svc    = "tabula-web-development"
 		digest = "1c144786"
 	)
-	base := EnvMap("https://a.example/api/v1")
+	base := EnvMap("https://a.example/api/v1", "")
 
 	t.Run("is stable for the same image and config", func(t *testing.T) {
 		a := Name(svc, digest, base)
-		b := Name(svc, digest, EnvMap("https://a.example/api/v1"))
+		b := Name(svc, digest, EnvMap("https://a.example/api/v1", ""))
 		if a != b {
 			t.Errorf("unstable across equal configs (map order must not matter): %q vs %q", a, b)
 		}
 	})
 
 	t.Run("changes when API_URL changes, same image", func(t *testing.T) {
-		changed := EnvMap("https://b.example/api/v1")
+		changed := EnvMap("https://b.example/api/v1", "")
 		if got, other := Name(svc, digest, base), Name(svc, digest, changed); got == other {
 			t.Errorf("same revision name %q for different API_URL — a promotion to a new env would silently keep serving the OLD env's API host", got)
 		}
