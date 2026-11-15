@@ -161,6 +161,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_target_named_after_its_tool_drops_the_baked_tool_name() {
+        let a = |xs: &[&str]| xs.iter().map(|x| x.as_bytes().to_vec()).collect::<Vec<_>>();
+        // `bazel run //tools/gitops:seal-alert-ntfy -- pw` runs the binary
+        // named seal-alert-ntfy with args [seal-alert-ntfy, pw].
+        let baked = a(&["seal-alert-ntfy", "pw"]);
+        assert_eq!(own_args(b"seal-alert-ntfy", &baked), &baked[1..]);
+        let bare = a(&["seal-alert-ntfy"]);
+        assert!(own_args(b"seal-alert-ntfy", &bare).is_empty());
+        // A real first argument that is not the tool's name is kept.
+        let real = a(&["--apply"]);
+        assert_eq!(own_args(b"seal-alert-pagerduty", &real), &real[..]);
+        // Every tool name a target can carry is covered, not just one.
+        for (name, _) in TOOLS {
+            let v = a(&[name, "--apply"]);
+            assert_eq!(own_args(name.as_bytes(), &v), &v[1..], "{}", name);
+        }
+    }
+
+    #[test]
     fn tool_names_are_unique_and_kebab_case() {
         let mut seen = std::collections::HashSet::new();
         for (name, script) in TOOLS {

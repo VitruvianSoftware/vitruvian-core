@@ -590,9 +590,9 @@ pub fn pagerduty_secret_json(outputs: &[u8], ns: &str, secret: &str) -> Result<S
             Some(_) => return Err(format!("{} is not a string", name)),
             None => {
                 return Err(format!(
-                "{} missing from the stack outputs: has the stack with that service been applied?",
-                name
-            ))
+                    "{} missing from the stack outputs (has the stack applied that service yet?)",
+                    name
+                ))
             }
         }
     }
