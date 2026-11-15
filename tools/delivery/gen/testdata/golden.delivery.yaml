@@ -55,6 +55,9 @@
 #   - oauth-user-inspector-identity  kind=pulumi  run=//apps/web/oauth-user-inspector/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
 #       paths:  apps/web/oauth-user-inspector/infra/identity/ \.github/workflows/_oauth-identity-apply\.yaml
 #       render: reusable from .github/workflows/oauth-user-inspector-identity-stack.yaml job "development"
+#   - pagerduty  kind=pulumi  run=//infrastructure/pulumi/platform/pagerduty:up  envs=production  promotion=push-all
+#       paths:  infrastructure/pulumi/platform/pagerduty/
+#       render: transcribed
 #   - stripe  kind=pulumi  run=//infrastructure/pulumi/platform/stripe:up  envs=sandbox,production  promotion=push-all
 #       paths:  infrastructure/pulumi/platform/stripe/
 #       render: transcribed
@@ -184,6 +187,7 @@ jobs:
       affected_gravastar_mouse_publish: ${{ steps.manifest.outputs.affected_gravastar_mouse_publish }}
       affected_oauth_user_inspector: ${{ steps.manifest.outputs.affected_oauth_user_inspector }}
       affected_oauth_user_inspector_identity: ${{ steps.manifest.outputs.affected_oauth_user_inspector_identity }}
+      affected_pagerduty: ${{ steps.manifest.outputs.affected_pagerduty }}
       affected_stripe: ${{ steps.manifest.outputs.affected_stripe }}
       affected_vitruvian_atrium: ${{ steps.manifest.outputs.affected_vitruvian_atrium }}
       affected_vitruvian_deck: ${{ steps.manifest.outputs.affected_vitruvian_deck }}
@@ -252,7 +256,7 @@ jobs:
           # The units THIS workflow delivers. The engine judges only these, so
           # one app's workflow never pays for another app's target-determinator
           # sweep. A name the engine cannot find fails the manifest open.
-          ORCHESTRATE_UNITS: charts gravastar-mouse-publish oauth-user-inspector oauth-user-inspector-identity stripe vitruvian-atrium vitruvian-deck vitruvian-tabs-api vitruvian-tabs-build-stack vitruvian-tabs-dev-latest vitruvian-tabs-identity vitruvian-tabs-web zitadel-apps
+          ORCHESTRATE_UNITS: charts gravastar-mouse-publish oauth-user-inspector oauth-user-inspector-identity pagerduty stripe vitruvian-atrium vitruvian-deck vitruvian-tabs-api vitruvian-tabs-build-stack vitruvian-tabs-dev-latest vitruvian-tabs-identity vitruvian-tabs-web zitadel-apps
         run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json
       - name: Upload the delivery manifest
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

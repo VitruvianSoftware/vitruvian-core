@@ -51,6 +51,11 @@ foundation-app-deploy.yaml environment business-unit app-image-digests
 # production run for James's approval, and the sandbox job refuses a key that
 # is not test-mode.
 delivery-stripe.yaml unit environment
+# Applies the PagerDuty stack (infrastructure/pulumi/platform/pagerduty) to its
+# production environment: unit is always pagerduty, environment is production.
+# No allow-unsoaked key. The pagerduty-production Environment restricts runs to
+# main, and with no token seeded yet the job emits a notice and applies nothing.
+delivery-pagerduty.yaml unit environment
 # Applies the relay's Zitadel project and clients (zitadel-apps-relay). action
 # is preview (default) or up; run preview first and read its plan. Added
 # 2026-11-09 on James's go-ahead ("Let wren run it"). It changes live sign-in

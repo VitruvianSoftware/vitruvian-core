@@ -36,6 +36,7 @@ const FIXTURES: &[&str] = &[
     "gravastar-mouse-publish",
     "oauth-user-inspector-identity",
     "oauth-user-inspector",
+    "pagerduty",
     "stripe",
     "vitruvian-atrium",
     "vitruvian-deck",
@@ -414,6 +415,7 @@ fn group_by_app_gives_every_app_its_own_workflow() {
                 "zitadel-apps",
             ],
         ),
+        ("pagerduty", vec!["pagerduty"]),
         ("stripe", vec!["stripe"]),
         ("vitruvian-atrium", vec!["vitruvian-atrium"]),
         ("vitruvian-deck", vec!["vitruvian-deck"]),
@@ -512,6 +514,9 @@ fn write_apps_prunes_only_generated_workflows() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+// PagerDuty's only environment is production, so there is no sandbox rung to default to.
+const PRODUCTION_ONLY_APPS: &[&str] = &["pagerduty"];
+
 #[test]
 fn dispatch_never_defaults_to_production() {
     for g in render::group_by_app(&fixtures()).unwrap() {
@@ -519,7 +524,9 @@ fn dispatch_never_defaults_to_production() {
         if envs.is_empty() {
             continue;
         }
-        assert_ne!(envs[0], "production", "app {}", g.app);
+        if !(envs.len() == 1 && PRODUCTION_ONLY_APPS.contains(&g.app.as_str())) {
+            assert_ne!(envs[0], "production", "app {}", g.app);
+        }
         if envs.iter().any(|e| e == "production") {
             assert_eq!(envs.last().unwrap(), "production", "app {}", g.app);
         }
@@ -875,4 +882,58 @@ fn stripe_rungs_accept_only_their_own_key_mode() {
     // The applied marker is only written once pulumi up exited 0.
     let marker = sandbox.find("id: applied").unwrap();
     assert!(sandbox.find("id: pulumi").unwrap() < marker);
+}
+
+#[test]
+fn pagerduty_rung_checks_token_and_rejects_unknown_env() {
+    let mut pd: Vec<Unit> = fixtures()
+        .into_iter()
+        .filter(|u| u.name == "pagerduty")
+        .collect();
+    assert_eq!(pd.len(), 1);
+    let got = must_render(&pd, 2);
+    let job = got
+        .split("\n  pagerduty-production:\n")
+        .nth(1)
+        .expect("no pagerduty-production job rendered");
+
+    for want in [
+        "    timeout-minutes: 20\n",
+        "    permissions:\n      contents: read\n",
+        "    environment: pagerduty-production\n",
+        "    env:\n      GOWORK: off\n",
+        "echo \"::notice::No PAGERDUTY_TOKEN in the pagerduty-production environment yet, so nothing was applied. See infrastructure/pulumi/platform/pagerduty/README.md.\"",
+        "          go-version-file: infrastructure/pulumi/platform/pagerduty/go.mod\n",
+        "          cache-dependency-path: infrastructure/pulumi/platform/pagerduty/go.sum\n",
+        "          working-directory: infrastructure/pulumi/platform/pagerduty\n",
+        "          stack: production\n",
+        "          pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}\n",
+    ] {
+        assert!(job.contains(want), "pagerduty-production lacks {want:?}:\n{job}");
+    }
+
+    let guard = job.find("id: key").expect("token presence check");
+    let up = job
+        .find("uses: ./.github/actions/pulumi-run-captured")
+        .expect("pulumi-run-captured step");
+    assert!(guard < up, "token check must precede pulumi up");
+    assert_eq!(
+        job.matches("if: steps.key.outputs.present == 'true'\n")
+            .count(),
+        3,
+        "Go setup, Pulumi install, and pulumi up must wait on the token check"
+    );
+    assert!(!job.contains("id-token: write"));
+    assert!(
+        !job.lines()
+            .any(|l| !l.trim_start().starts_with('#') && l.contains("--show-secrets")),
+        "nothing in pagerduty-production may print secret outputs"
+    );
+
+    pd[0].environments = vec!["sandbox".into()];
+    let err = render_err(&pd, 2);
+    assert!(
+        err.contains("render_pagerduty_steps knows only production"),
+        "unexpected error: {err}"
+    );
 }
