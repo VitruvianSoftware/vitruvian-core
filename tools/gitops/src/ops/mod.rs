@@ -95,6 +95,20 @@ fn usage() -> String {
     s
 }
 
+/// The arguments for a tool run under its own name. Each `bazel run` target
+/// bakes the tool name in as the first argument (BUILD: `args =
+/// [TOOL_OF[script]] + ...`) so that targets named differently (`get`, `logs`)
+/// still pick their tool. When the target IS named after its tool, argv0
+/// already picked it, and that baked name must not reach the tool as its
+/// first argument: tools read positionals as values, so `seal-alert-ntfy`
+/// with no password would have sealed the literal text "seal-alert-ntfy".
+fn own_args<'a>(base: &[u8], args: &'a [Vec<u8>]) -> &'a [Vec<u8>] {
+    match args.first() {
+        Some(first) if first.as_slice() == base => &args[1..],
+        _ => args,
+    }
+}
+
 /// The binary's entry point: `argv0` picks the tool when it is named after
 /// one; otherwise the first argument does.
 pub fn main(argv0: &[u8], args: &[Vec<u8>]) -> i32 {
@@ -102,7 +116,7 @@ pub fn main(argv0: &[u8], args: &[Vec<u8>]) -> i32 {
         Some(i) => &argv0[i + 1..],
         None => argv0,
     };
-    if let Some(code) = run_tool(base, args) {
+    if let Some(code) = run_tool(base, own_args(base, args)) {
         return code;
     }
     match args.first() {
@@ -130,6 +144,25 @@ pub fn main(argv0: &[u8], args: &[Vec<u8>]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_target_named_after_its_tool_drops_the_baked_tool_name() {
+        let a = |xs: &[&str]| xs.iter().map(|x| x.as_bytes().to_vec()).collect::<Vec<_>>();
+        // `bazel run //tools/gitops:seal-alert-ntfy -- pw` runs the binary
+        // named seal-alert-ntfy with args [seal-alert-ntfy, pw].
+        let baked = a(&["seal-alert-ntfy", "pw"]);
+        assert_eq!(own_args(b"seal-alert-ntfy", &baked), &baked[1..]);
+        let bare = a(&["seal-alert-ntfy"]);
+        assert!(own_args(b"seal-alert-ntfy", &bare).is_empty());
+        // A real first argument that is not the tool's name is kept.
+        let real = a(&["--apply"]);
+        assert_eq!(own_args(b"seal-alert-pagerduty", &real), &real[..]);
+        // Every tool name a target can carry is covered, not just one.
+        for (name, _) in TOOLS {
+            let v = a(&[name, "--apply"]);
+            assert_eq!(own_args(name.as_bytes(), &v), &v[1..], "{}", name);
+        }
+    }
 
     #[test]
     fn tool_names_are_unique_and_kebab_case() {
