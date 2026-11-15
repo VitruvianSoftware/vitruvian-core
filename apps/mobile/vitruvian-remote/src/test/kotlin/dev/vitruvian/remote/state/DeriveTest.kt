@@ -3764,7 +3764,7 @@ public class DeriveTest {
     )
 
     // Assert zero fabricated MockHost literals appear anywhere in offline derived outputs.
-    val mockMarkers = listOf("M4 Max", "64 GB", "2 TB", "492 W", "Deploy staging", "Tidy repo")
+    val mockMarkers = listOf("M4 Max", "64 GB", "2 TB", "492 W", "Brew upgrade", "Screenshot")
     for (line in unansweredHome + cachedSummary) {
       for (marker in mockMarkers) {
         assertFalse(
@@ -5548,6 +5548,72 @@ public class DeriveTest {
         "WrappingRow Status must suppress duplicate state words",
         wrappingRowBody.contains("Status(tone = row.tone, adjacentText = statusAdjacentText"),
     )
+  }
+
+  @Test
+  public fun `demo sample data uses neutral commands and avoids owner repo or homelab CLI specifics`() {
+    val forbidden =
+        listOf(
+            "bazel",
+            "//tools",
+            "gitops",
+            "staging",
+            "homelab status",
+            "my-homelab",
+            "vitruvian-core")
+    val demoStrings = buildList {
+      MockHost.builtInMacros.forEach {
+        add(it.id)
+        add(it.label)
+        add(it.command)
+      }
+      MockHost.runningNow.forEach {
+        add(it.title)
+        add(it.subtitle)
+      }
+      MockHost.processes.forEach { add(it.name) }
+      MockHost.vms.forEach {
+        add(it.name)
+        add(it.subtitle)
+      }
+      MockHost.initialTerminal.forEach {
+        add(it.prefix)
+        add(it.text)
+      }
+      MockHost.initialAgentTranscript.forEach {
+        add(it.prefix)
+        add(it.text)
+      }
+      addAll(MockHost.recentCommands)
+      MockHost.dashboards(MockHost.initialAgentTranscript, agentRunning = true).values.forEach { d
+        ->
+        add(d.meta)
+        add(d.streamLabel)
+        d.metrics.forEach {
+          add(it.label)
+          add(it.value)
+          add(it.sub)
+        }
+        d.lines.forEach {
+          add(it.prefix)
+          add(it.text)
+        }
+        d.rows.forEach {
+          add(it.title)
+          add(it.subtitle)
+        }
+      }
+    }
+    forbidden.forEach { token ->
+      val hit = demoStrings.firstOrNull { it.contains(token, ignoreCase = true) }
+      assertNull("Found owner-specific demo token '$token' in '$hit'", hit)
+    }
+    assertTrue(MockHost.builtInMacros.any { it.label == "Lock screen" })
+    assertTrue(MockHost.builtInMacros.any { it.label == "Mute" })
+    assertTrue(MockHost.builtInMacros.any { it.command == "brew upgrade" })
+    assertTrue("git status" in MockHost.recentCommands)
+    assertTrue("npm test" in MockHost.recentCommands)
+    assertTrue("brew upgrade" in MockHost.recentCommands)
   }
 
   private class FakeBluetoothControl(

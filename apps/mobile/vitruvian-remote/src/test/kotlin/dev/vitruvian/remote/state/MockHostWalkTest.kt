@@ -1073,4 +1073,35 @@ public class MockHostWalkTest {
     assertTrue(demoState.macDeveloperTools.showContainers)
     assertTrue(demoState.macDeveloperTools.anyVisible)
   }
+
+  @Test
+  public fun `enterDemo populates neutral clipboard macros terminal and logs`() {
+    val forbidden =
+        listOf(
+            "bazel",
+            "//tools",
+            "gitops",
+            "staging",
+            "homelab status",
+            "my-homelab",
+            "vitruvian-core",
+        )
+    val demoState =
+        RemoteState(
+            persistence = Persistence(InMemoryKeyValueStore()),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+    demoState.enterDemo()
+    val stateStrings =
+        listOf(demoState.clipboard) +
+            demoState.macros.flatMap { listOf(it.label, it.command) } +
+            demoState.terminal.map { it.text } +
+            demoState.agentTranscript.map { it.text } +
+            demoState.recentCommands +
+            demoState.logs.map { it.message }
+    forbidden.forEach { token ->
+      val hit = stateStrings.firstOrNull { it.contains(token, ignoreCase = true) }
+      assertNull("Found owner-specific demo token '$token' in '$hit'", hit)
+    }
+  }
 }

@@ -55,12 +55,8 @@ public object MockHost {
 
   public val builtInMacros: List<Macro> =
       listOf(
-          Macro(
-              "deploy",
-              "Deploy staging",
-              "bazel run //tools/gitops:sync -- staging",
-              MacroKind.Ssh),
-          Macro("tidy", "Tidy repo", "bazel run //:tidy", MacroKind.Ssh),
+          Macro("lock", "Lock screen", "pmset displaysleepnow", MacroKind.Ssh),
+          Macro("brew", "Brew upgrade", "brew upgrade", MacroKind.Ssh),
           // A shell command, not AppleScript: as AppleScript it ran
           // `osascript -e "screencapture -c"`, which is a syntax error.
           Macro("shot", "Screenshot → clip", "screencapture -c", MacroKind.Ssh),
@@ -74,7 +70,7 @@ public object MockHost {
           RunningItem(
               "claude",
               "Claude Code",
-              "2 sessions · vitruvian-core · 14.2k tokens",
+              "2 sessions · web-app · 14.2k tokens",
               StatusTone.Run,
               "running",
               TagTone.Accent,
@@ -82,7 +78,7 @@ public object MockHost {
           RunningItem(
               "homelab",
               "Homelab · K3s",
-              "3/3 servers ready · v1.32.4",
+              "3/3 nodes ready · v1.32.4",
               StatusTone.Ok,
               "ready",
               TagTone.Ok,
@@ -183,26 +179,26 @@ public object MockHost {
           Process("claude", 38, "1.9 GB"),
           Process("com.apple.Virtualization", 22, "8.4 GB"),
           Process("ollama", 14, "5.1 GB"),
-          Process("bazel (java)", 9, "3.2 GB"),
+          Process("node", 9, "1.1 GB"),
           Process("WindowServer", 4, "612 MB"),
       )
 
   public val vms: List<Vm> =
       listOf(
           Vm(
-              "k8s-node-1 · cp-1",
-              "arm64 · 4 cpu · 8 GiB · k3s server",
+              "default · ubuntu",
+              "arm64 · 4 cpu · 8 GiB · running",
               StatusTone.Ok,
               "ready",
               TagTone.Ok),
           Vm(
-              "k8s-node-2 · cp-2",
-              "arm64 · 2 cpu · 4 GiB · k3s server",
+              "alpine-vm · alpine",
+              "arm64 · 2 cpu · 4 GiB · running",
               StatusTone.Ok,
               "ready",
               TagTone.Ok),
           Vm(
-              "k8s-node-3 · cp-3",
+              "sandbox · debian",
               "amd64 · 2 cpu · 4 GiB · stopped",
               StatusTone.Warn,
               "stopped",
@@ -218,17 +214,13 @@ public object MockHost {
 
   public val initialTerminal: List<TerminalLine> =
       listOf(
-          TerminalLine("$", "bazel run //:doctor", TerminalTone.Text),
+          TerminalLine("$", "git status", TerminalTone.Text),
           TerminalLine(
-              " ", "ok  bazelisk 1.22 · node 22.21.1 · pnpm 10.20.0 · go 1.23", TerminalTone.Ok),
-          TerminalLine("$", "homelab status", TerminalTone.Text),
-          TerminalLine(" ", "3/3 servers ready · k3s v1.32.4 · etcd healthy", TerminalTone.Ok),
-          TerminalLine("$", "limactl list", TerminalTone.Text),
-          TerminalLine(
-              " ",
-              "k8s-node-1 Running · k8s-node-2 Running · k8s-node-3 Stopped",
-              TerminalTone.Dim,
-          ),
+              " ", "On branch main · nothing to commit, working tree clean", TerminalTone.Ok),
+          TerminalLine("$", "npm test", TerminalTone.Text),
+          TerminalLine(" ", "ok  42 suites · 186 tests passed (2.4s)", TerminalTone.Ok),
+          TerminalLine("$", "brew upgrade", TerminalTone.Text),
+          TerminalLine(" ", "ok  all formulae up to date", TerminalTone.Dim),
       )
 
   public val initialAgentTranscript: List<TerminalLine> =
@@ -242,23 +234,27 @@ public object MockHost {
           ),
           TerminalLine(" ", "edit  middleware/auth.go (+41 −12)", TerminalTone.Dim),
           TerminalLine(" ", "run   go test ./... — ok (1.8s)", TerminalTone.Ok),
-          TerminalLine(" ", "! tidy check pending — run bazel run //:tidy?", TerminalTone.Warn),
+          TerminalLine(" ", "! 1 uncommitted file — run git status?", TerminalTone.Warn),
       )
 
   public val recentCommands: List<String> =
       listOf(
-          "homelab status",
-          "limactl list",
+          "git status",
+          "npm test",
+          "brew upgrade",
           "docker ps",
-          "bazel run //:doctor",
           "git log --oneline -5",
       )
 
   /** Canned output for the console's fake shell. */
   public fun output(command: String): String =
       when {
-        command.startsWith("docker") -> "grafana  prometheus  loki  minio  zitadel — Up"
-        command.startsWith("git") -> "e7c2d11 feat(auth): propagate ctx\n2b9a410 chore: tidy"
+        command.startsWith("docker") -> "grafana  prometheus  loki — Up"
+        command == "git status" -> "On branch main · nothing to commit, working tree clean"
+        command.startsWith("git") ->
+            "e7c2d11 feat(auth): propagate ctx\n2b9a410 test(auth): cover token expiry"
+        command.startsWith("npm") -> "ok  42 suites · 186 tests passed (2.4s)"
+        command.startsWith("brew") -> "ok  all formulae up to date"
         else -> "ok"
       }
 
@@ -272,12 +268,12 @@ public object MockHost {
               ModuleDashboard(
                   id = "claude",
                   name = "Claude Code",
-                  meta = "vitruvian-code bridge · ~/code/vitruvian-core",
+                  meta = "local session · ~/projects/web-app",
                   status = "running",
                   statusTone = StatusTone.Run,
                   metrics =
                       listOf(
-                          ModuleMetric("Sessions", "2", "main · worktree/auth"),
+                          ModuleMetric("Sessions", "2", "main · feat/auth"),
                           ModuleMetric("Tokens today", "14.2k", "−22% vs limit"),
                           ModuleMetric("Tool calls", "48", "12 files · 4 commands"),
                       ),
@@ -290,10 +286,10 @@ public object MockHost {
                       listOf(
                           ModuleRow(
                               "auth middleware refactor",
-                              "worktree/auth · 18m",
+                              "feat/auth · 18m",
                               "live",
                               StatusTone.Run),
-                          ModuleRow("PR #1551 monitor", "main · idle 2h", "2h", StatusTone.Ok),
+                          ModuleRow("test suite cleanup", "main · idle 2h", "2h", StatusTone.Ok),
                       ),
               ),
           "antigravity" to
@@ -323,14 +319,14 @@ public object MockHost {
                       listOf(
                           ModuleRow("#412 · main", "eval · 38s", "ok", StatusTone.Ok),
                           ModuleRow("#411 · main", "eval · 41s", "ok", StatusTone.Ok),
-                          ModuleRow("#410 · pr/1551", "eval · failed 2", "err", StatusTone.Crit),
+                          ModuleRow("#410 · feat/auth", "eval · failed 2", "err", StatusTone.Crit),
                       ),
               ),
           "homelab" to
               ModuleDashboard(
                   id = "homelab",
                   name = "Homelab · K3s",
-                  meta = "my-homelab · 3 servers · Lima VZ",
+                  meta = "kubectl · k3s v1.32.4 · 3 nodes",
                   status = "ready",
                   statusTone = StatusTone.Ok,
                   metrics =
@@ -339,25 +335,23 @@ public object MockHost {
                           ModuleMetric("Workloads", "41", "+3 today"),
                           ModuleMetric("ArgoCD", "synced", "19 apps"),
                       ),
-                  streamLabel = "homelab status",
+                  streamLabel = "kubectl get nodes",
                   lines =
                       listOf(
-                          TerminalLine("$", "homelab status", TerminalTone.Text),
+                          TerminalLine("$", "kubectl get nodes", TerminalTone.Text),
                           TerminalLine(
-                              " ", "cp-1 ready · cp-2 ready · cp-3 ready", TerminalTone.Ok),
-                          TerminalLine(" ", "etcd healthy · last snapshot 02:00", TerminalTone.Dim),
+                              " ", "node-1 Ready · node-2 Ready · node-3 Ready", TerminalTone.Ok),
+                          TerminalLine(
+                              " ", "control-plane healthy · k3s v1.32.4", TerminalTone.Dim),
                       ),
                   cursor = false,
                   prompts = false,
                   listLabel = "Nodes",
                   rows =
                       listOf(
-                          ModuleRow(
-                              "mac-1 · cp-1", "server · 2 cpu · 4 GiB", "ready", StatusTone.Ok),
-                          ModuleRow(
-                              "mac-2 · cp-2", "server · 2 cpu · 4 GiB", "ready", StatusTone.Ok),
-                          ModuleRow(
-                              "mac-3 · cp-3", "server · 4 cpu · 8 GiB", "ready", StatusTone.Ok),
+                          ModuleRow("node-1", "server · 2 cpu · 4 GiB", "ready", StatusTone.Ok),
+                          ModuleRow("node-2", "server · 2 cpu · 4 GiB", "ready", StatusTone.Ok),
+                          ModuleRow("node-3", "server · 4 cpu · 8 GiB", "ready", StatusTone.Ok),
                       ),
               ),
           "lima" to
@@ -377,21 +371,17 @@ public object MockHost {
                   lines =
                       listOf(
                           TerminalLine("$", "limactl list", TerminalTone.Text),
-                          TerminalLine(
-                              " ", "k8s-node-1 Running · k8s-node-2 Running", TerminalTone.Ok),
-                          TerminalLine(" ", "k8s-node-3 Stopped", TerminalTone.Warn),
+                          TerminalLine(" ", "default Running · alpine-vm Running", TerminalTone.Ok),
+                          TerminalLine(" ", "sandbox Stopped", TerminalTone.Warn),
                       ),
                   cursor = false,
                   prompts = false,
                   listLabel = "Instances",
                   rows =
                       listOf(
-                          ModuleRow(
-                              "k8s-node-1", "arm64 · 4 cpu · 8 GiB", "running", StatusTone.Ok),
-                          ModuleRow(
-                              "k8s-node-2", "arm64 · 2 cpu · 4 GiB", "running", StatusTone.Ok),
-                          ModuleRow(
-                              "k8s-node-3", "amd64 · 2 cpu · 4 GiB", "stopped", StatusTone.Warn),
+                          ModuleRow("default", "arm64 · 4 cpu · 8 GiB", "running", StatusTone.Ok),
+                          ModuleRow("alpine-vm", "arm64 · 2 cpu · 4 GiB", "running", StatusTone.Ok),
+                          ModuleRow("sandbox", "amd64 · 2 cpu · 4 GiB", "stopped", StatusTone.Warn),
                       ),
               ),
       )

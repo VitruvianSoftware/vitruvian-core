@@ -1065,8 +1065,8 @@ public class RemoteState(
   public val logs: SnapshotStateList<LogEntry> =
       (if (demo)
               listOf(
-                  LogEntry("04:37:02", "ok", "homelab · 3/3 nodes ready, no drift"),
-                  LogEntry("04:36:51", "warn", "lima · k8s-node-3 stopped (manual)"),
+                  LogEntry("04:37:02", "ok", "brew · all formulae up to date"),
+                  LogEntry("04:36:51", "info", "git · working tree clean on main"),
                   LogEntry("04:36:44", "info", "claude code · session 2 resumed"),
                   LogEntry("04:35:10", "ok", "antigravity · build #412 green"),
                   LogEntry("04:31:00", "info", "atlas · connected over your network (4 ms)"),
@@ -7299,7 +7299,7 @@ public class RemoteState(
     connection = Connection.Connected
     metricsSource = MetricsSource.Simulated
     agentError = ""
-    clipboard = "https://github.com/VitruvianSoftware/vitruvian-core/pull/1551"
+    clipboard = "https://example.com/docs/getting-started"
     terminal.clear()
     terminal.addAll(MockHost.initialTerminal)
     agentTranscript.clear()
