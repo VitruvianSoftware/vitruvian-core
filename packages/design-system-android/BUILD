@@ -39,7 +39,10 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 package(default_visibility = ["//visibility:public"])
 
-exports_files(["src/main/kotlin/dev/vitruvian/design/VitruvianTokens.kt"])
+exports_files([
+    "BUILD",
+    "src/main/kotlin/dev/vitruvian/design/VitruvianTokens.kt",
+])
 
 filegroup(
     name = "kotlin_sources",

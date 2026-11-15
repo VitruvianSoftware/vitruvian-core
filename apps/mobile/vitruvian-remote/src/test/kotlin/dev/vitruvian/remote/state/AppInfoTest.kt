@@ -99,26 +99,213 @@ public class AppInfoTest {
     assertTrue(repoLicense.startsWith("MIT License"))
   }
 
-  @Test
-  public fun `every maven dependency in BUILD has an open source license entry`() {
-    val buildText = resolvePath("apps/mobile/vitruvian-remote/BUILD").readText()
-    val libBlock = buildText.substringAfter("name = \"lib\",").substringBefore("_MANIFEST_BASE =")
-    val mavenTargetsInBuild =
-        Regex("\"@maven//:[A-Za-z0-9_]+\"").findAll(libBlock).map { it.value.trim('"') }.toSet()
-    assertTrue("Expected @maven deps in :lib BUILD rule", mavenTargetsInBuild.isNotEmpty())
+  /**
+   * Extracts every `@maven` runtime dependency referenced by top-level rules in a Starlark `BUILD`
+   * file, excluding `*_test` rules, `kt_compiler_plugin`, and `testonly = True` targets.
+   */
+  private fun extractRuntimeMavenDeps(buildText: String): Set<String> {
+    val testonlyRegex = Regex("""\btestonly\s*=\s*True\b""")
+    val mavenRegex = Regex("""["'](@maven//:[A-Za-z0-9_]+)["']""")
+    val result = linkedSetOf<String>()
+    val n = buildText.length
+    var i = 0
 
-    val coveredTargets = AppInfo.openSourceLicenses.flatMap { it.mavenTargets }.toSet()
+    fun skipStringOrComment() {
+      when {
+        buildText[i] == '#' -> {
+          while (i < n && buildText[i] != '\n') i++
+        }
+        buildText.startsWith("\"\"\"", i) || buildText.startsWith("'''", i) -> {
+          val quote = buildText.substring(i, i + 3)
+          i += 3
+          while (i < n && !buildText.startsWith(quote, i)) {
+            if (buildText[i] == '\\' && i + 1 < n) i += 2 else i++
+          }
+          if (i < n) i += 3
+        }
+        buildText[i] == '"' || buildText[i] == '\'' -> {
+          val quote = buildText[i++]
+          while (i < n && buildText[i] != quote) {
+            if (buildText[i] == '\\' && i + 1 < n) i += 2 else i++
+          }
+          if (i < n) i++
+        }
+      }
+    }
+
+    fun stripComments(block: String): String =
+        buildString(block.length) {
+          var j = 0
+          val m = block.length
+          while (j < m) {
+            val c = block[j]
+            if (c == '#') {
+              while (j < m && block[j] != '\n') j++
+            } else if (block.startsWith("\"\"\"", j) || block.startsWith("'''", j)) {
+              val quote = block.substring(j, j + 3)
+              append(quote)
+              j += 3
+              while (j < m && !block.startsWith(quote, j)) {
+                if (block[j] == '\\' && j + 1 < m) {
+                  append(block[j])
+                  append(block[j + 1])
+                  j += 2
+                } else {
+                  append(block[j++])
+                }
+              }
+              if (j < m) {
+                append(quote)
+                j += 3
+              }
+            } else if (c == '"' || c == '\'') {
+              val quote = c
+              append(quote)
+              j++
+              while (j < m && block[j] != quote) {
+                if (block[j] == '\\' && j + 1 < m) {
+                  append(block[j])
+                  append(block[j + 1])
+                  j += 2
+                } else {
+                  append(block[j++])
+                }
+              }
+              if (j < m) {
+                append(quote)
+                j++
+              }
+            } else {
+              append(c)
+              j++
+            }
+          }
+        }
+
+    while (i < n) {
+      val ch = buildText[i]
+      if (ch == '#' || ch == '"' || ch == '\'') {
+        skipStringOrComment()
+        continue
+      }
+      if ((i == 0 || buildText[i - 1] == '\n') && (ch.isLetter() || ch == '_')) {
+        val nameStart = i
+        while (i < n && (buildText[i].isLetterOrDigit() || buildText[i] == '_')) i++
+        val ruleName = buildText.substring(nameStart, i)
+        while (i < n && (buildText[i] == ' ' || buildText[i] == '\t')) i++
+        if (i < n && buildText[i] == '(') {
+          val openParen = i
+          var depth = 1
+          i++
+          while (i < n && depth > 0) {
+            val c = buildText[i]
+            when {
+              c == '#' || c == '"' || c == '\'' -> skipStringOrComment()
+              c == '(' -> {
+                depth++
+                i++
+              }
+              c == ')' -> {
+                depth--
+                i++
+              }
+              else -> i++
+            }
+          }
+          val block = stripComments(buildText.substring(openParen, i))
+          val excludedRule =
+              ruleName.endsWith("_test") ||
+                  ruleName == "kt_compiler_plugin" ||
+                  testonlyRegex.containsMatchIn(block)
+          if (!excludedRule) {
+            mavenRegex.findAll(block).forEach { result.add(it.groupValues[1]) }
+          }
+          continue
+        }
+      }
+      i++
+    }
+    return result
+  }
+
+  @Test
+  public fun `every runtime maven dependency in app and design system BUILD has an open source license entry`() {
+    val appBuildText = resolvePath("apps/mobile/vitruvian-remote/BUILD").readText()
+    val dsBuildText = resolvePath("packages/design-system-android/BUILD").readText()
+    val runtimeMavenTargets =
+        extractRuntimeMavenDeps(appBuildText) + extractRuntimeMavenDeps(dsBuildText)
+    assertTrue("Expected runtime @maven deps across BUILD files", runtimeMavenTargets.isNotEmpty())
+    assertTrue(
+        "Design-system runtime dep androidx_annotation_annotation must be checked",
+        "@maven//:androidx_annotation_annotation" in runtimeMavenTargets,
+    )
+    assertTrue(
+        "Design-system runtime dep androidx_compose_animation_animation_core must be checked",
+        "@maven//:androidx_compose_animation_animation_core" in runtimeMavenTargets,
+    )
+    assertFalse(
+        "Test-only junit must be excluded from runtime license list",
+        "@maven//:junit_junit" in runtimeMavenTargets,
+    )
+    assertFalse(
+        "Compiler plugin must be excluded from runtime license list",
+        "@maven//:org_jetbrains_kotlin_kotlin_compose_compiler_plugin_embeddable" in
+            runtimeMavenTargets,
+    )
+
+    val coveredTargetsList = AppInfo.openSourceLicenses.flatMap { it.mavenTargets }
+    val coveredTargets = coveredTargetsList.toSet()
     assertEquals(
-        "Every @maven dep in apps/mobile/vitruvian-remote/BUILD :lib must have an AppInfo.openSourceLicenses entry",
-        mavenTargetsInBuild,
+        "Every @maven target must appear at most once in AppInfo.openSourceLicenses",
+        coveredTargets.size,
+        coveredTargetsList.size,
+    )
+    AppInfo.openSourceLicenses.forEach { entry ->
+      assertTrue("License entry name must not be blank", entry.name.isNotBlank())
+      assertTrue("License entry detail must not be blank", entry.detail.isNotBlank())
+      assertTrue("License entry license must not be blank", entry.license.isNotBlank())
+    }
+    assertEquals(
+        "Every runtime @maven dep in apps/mobile/vitruvian-remote/BUILD and " +
+            "packages/design-system-android/BUILD must have an AppInfo.openSourceLicenses entry",
+        runtimeMavenTargets,
         coveredTargets,
     )
 
     val byName = AppInfo.openSourceLicenses.associateBy { it.name }
-    assertEquals("MIT", byName.getValue("Sentry SDK").license)
+    assertEquals("Apache-2.0", byName.getValue("AndroidX Annotation").license)
     assertEquals("Apache-2.0", byName.getValue("AndroidX Compose").license)
+    assertEquals("MIT", byName.getValue("Sentry SDK").license)
     assertEquals("SIL OFL 1.1", byName.getValue("JetBrains Mono").license)
     assertEquals("SIL OFL 1.1", byName.getValue("IBM Plex Sans").license)
+  }
+
+  @Test
+  public fun `extractRuntimeMavenDeps keeps secondary runtime libs and excludes test and plugin rules`() {
+    val syntheticBuild =
+        """
+        # "@maven//:commented_out_dep"
+        kt_compiler_plugin(
+            name = "compiler",
+            deps = ["@maven//:plugin_only"],
+        )
+        kt_jvm_library(
+            name = "helper",
+            deps = ["@maven//:runtime_helper"],
+        )
+        java_import(
+            name = "test_stub",
+            testonly = True,
+            deps = ["@maven//:testonly_dep"],
+        )
+        kt_jvm_test(
+            name = "unit_test",
+            deps = ["@maven//:junit_junit"],
+        )
+        """
+            .trimIndent()
+
+    assertEquals(setOf("@maven//:runtime_helper"), extractRuntimeMavenDeps(syntheticBuild))
   }
 
   @Test

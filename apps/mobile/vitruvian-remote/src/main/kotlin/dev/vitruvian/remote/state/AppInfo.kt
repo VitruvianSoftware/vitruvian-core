@@ -63,8 +63,9 @@ public object AppInfo {
           "securely by Stripe."
 
   /**
-   * Direct `@maven` libraries from `apps/mobile/vitruvian-remote/BUILD` (`:lib`) and the bundled
-   * fonts from `packages/design-system-android/fonts`. Checked in `AppInfoTest` so adding a new
+   * All runtime `@maven` libraries across `apps/mobile/vitruvian-remote/BUILD` and
+   * `packages/design-system-android/BUILD`, plus the bundled fonts from
+   * `packages/design-system-android/fonts`. Checked in `AppInfoTest` so adding a new runtime
    * dependency without an attribution fails tests immediately.
    */
   public val openSourceLicenses: List<OpenSourceLicense> =
@@ -76,12 +77,19 @@ public object AppInfo {
               mavenTargets = setOf("@maven//:androidx_activity_activity_compose"),
           ),
           OpenSourceLicense(
+              name = "AndroidX Annotation",
+              detail = "androidx.annotation:annotation",
+              license = "Apache-2.0",
+              mavenTargets = setOf("@maven//:androidx_annotation_annotation"),
+          ),
+          OpenSourceLicense(
               name = "AndroidX Compose",
-              detail = "runtime, ui, foundation, animation",
+              detail = "runtime, ui, foundation, animation, animation-core",
               license = "Apache-2.0",
               mavenTargets =
                   setOf(
                       "@maven//:androidx_compose_animation_animation",
+                      "@maven//:androidx_compose_animation_animation_core",
                       "@maven//:androidx_compose_foundation_foundation",
                       "@maven//:androidx_compose_foundation_foundation_layout",
                       "@maven//:androidx_compose_runtime_runtime",

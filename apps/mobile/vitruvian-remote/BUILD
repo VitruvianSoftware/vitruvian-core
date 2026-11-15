@@ -271,6 +271,7 @@ kt_jvm_test(
         "BUILD",
         "LICENSE",
         "src/main/AndroidManifest.xml",
+        "//packages/design-system-android:BUILD",
     ] + glob([
         "src/main/kotlin/**/*.kt",
         "src/main/res/**",
