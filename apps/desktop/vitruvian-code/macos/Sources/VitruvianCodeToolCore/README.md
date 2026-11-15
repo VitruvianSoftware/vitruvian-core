@@ -7,6 +7,7 @@ Component package providing implementation for `apps/desktop/vitruvian-code/maco
 - `[AssistiveKeyboard.swift:AssistiveKeyboard]`
 - `[CommandAnswer.swift:CommandAnswer]`
 - `[Pages.swift:Pages]`
+- `[PanelOpen.swift:PanelOpen]`
 - `[ToolSettings.swift:ToolSettings]`
 - `[Version.swift:ToolVersion]`
 - `[VitruvianCodeTool.swift:ToolLink]`
