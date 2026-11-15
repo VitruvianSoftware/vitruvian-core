@@ -20,7 +20,10 @@
 
 package dev.vitruvian.design
 
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.dp
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -104,5 +107,136 @@ class A11yTest {
         A11y.buttonContentDescription("−", contentDescription = "Brightness down"),
     )
     assertNull(A11y.buttonContentDescription("Send"))
+  }
+
+  @Test
+  fun terminalPaletteMeetsWcagContrastInBothThemes() {
+    val dark = darkColors()
+    val bg = terminalBackgroundColor().toArgb()
+    assertEquals(dark.neutral900.toArgb(), bg)
+
+    val tones =
+        mapOf(
+            "text" to dark.text.toArgb(),
+            "textDim" to dark.textDim.toArgb(),
+            "ok" to dark.ok.toArgb(),
+            "warn" to dark.warn.toArgb(),
+            "sanguineText" to dark.sanguineText.toArgb(),
+        )
+    tones.forEach { (name, fg) ->
+      val ratio = A11y.contrastRatio(fgArgb = fg, bgArgb = bg)
+      assertTrue("Expected dark $name on neutral900 >= 4.5:1, was $ratio", ratio >= 4.5)
+    }
+  }
+
+  @Test
+  fun lightThemeWarnOkAndPrimaryButtonMeetWcagAA() {
+    val light = lightColors()
+    val primaryRatio =
+        A11y.contrastRatio(fgArgb = light.onAccent.toArgb(), bgArgb = light.accent.toArgb())
+    assertTrue("Expected light onAccent on accent >= 4.5:1, was $primaryRatio", primaryRatio >= 4.5)
+
+    val surfaces =
+        listOf(
+            "bg" to light.bg.toArgb(),
+            "surface" to light.surface.toArgb(),
+            "surface2" to light.surface2.toArgb(),
+        )
+    surfaces.forEach { (surfaceName, bg) ->
+      val okRatio = A11y.contrastRatio(fgArgb = light.ok.toArgb(), bgArgb = bg)
+      assertTrue("Expected light ok on $surfaceName >= 4.5:1, was $okRatio", okRatio >= 4.5)
+      val warnRatio = A11y.contrastRatio(fgArgb = light.warn.toArgb(), bgArgb = bg)
+      assertTrue("Expected light warn on $surfaceName >= 4.5:1, was $warnRatio", warnRatio >= 4.5)
+    }
+  }
+
+  @Test
+  fun statusLabelDoesNotRepeatStateWordAlreadyInCaption() {
+    assertEquals("Idle", A11y.statusLabel(StatusTone.Neutral, text = "Idle"))
+    assertEquals("OK", A11y.statusLabel(StatusTone.Ok, text = "OK"))
+    assertEquals(
+        "Warning: high CPU",
+        A11y.statusLabel(StatusTone.Warn, text = "Warning: high CPU"),
+    )
+    assertEquals("Running, mac-mini", A11y.statusLabel(StatusTone.Run, text = "mac-mini"))
+    assertEquals(
+        "Degraded node",
+        A11y.statusLabel(StatusTone.Warn, text = "Degraded node", label = "Degraded"),
+    )
+  }
+
+  @Test
+  fun hostChipDescriptionFormatsNameAndState() {
+    assertEquals(
+        "mac-mini, Connected. Opens settings.",
+        A11y.hostChipDescription(name = "mac-mini", state = "Connected"),
+    )
+    assertEquals(
+        "Mac, Unknown. Opens settings.",
+        A11y.hostChipDescription(name = " ", state = ""),
+    )
+    assertEquals(
+        "Trackpad. Drag to move the pointer, tap to click.",
+        A11y.TRACKPAD_DESCRIPTION,
+    )
+  }
+
+  @Test
+  fun allIconsParseCleanlyAndIncludeGearMediaAndMic() {
+    assertEquals(34, VitruvianIcons.ALL.size)
+    listOf("SETTINGS", "PLAY", "PAUSE", "PLAY_PAUSE", "PREVIOUS", "NEXT", "MIC").forEach { name ->
+      assertTrue("Missing icon $name", VitruvianIcons.ALL.containsKey(name))
+    }
+    VitruvianIcons.ALL.forEach { (name, pathData) ->
+      val nodes = PathParser().parsePathString(pathData).toNodes()
+      assertTrue("Icon $name produced no path nodes", nodes.isNotEmpty())
+    }
+  }
+
+  @Test
+  fun designSystemPrimitivesExposeAccessibilityRolesAndMinTargets() {
+    val formSrc = readDesignSource("Form.kt")
+    assertTrue("VSwitch must use Role.Switch toggleable", formSrc.contains("role = Role.Switch"))
+    assertTrue("VSwitch must use .toggleable", formSrc.contains(".toggleable("))
+    assertTrue("Segmented must use selectableGroup", formSrc.contains(".selectableGroup()"))
+    assertTrue("Segmented must use Role.Tab selectable", formSrc.contains("role = Role.Tab"))
+    assertTrue(
+        "Segmented labels must ellipsize cleanly",
+        formSrc.contains("overflow = TextOverflow.Ellipsis"),
+    )
+
+    val tagSrc = readDesignSource("Tag.kt")
+    assertTrue(
+        "Clickable Kbd keys must enforce 44 dp minWidth and minHeight",
+        tagSrc.contains("minWidth = Hit.h1, minHeight = Hit.h1"),
+    )
+
+    val navSrc = readDesignSource("Nav.kt")
+    assertTrue("HostChip must cap width at 160.dp", navSrc.contains("widthIn(max = 160.dp)"))
+    assertTrue(
+        "HostChip must use A11y.hostChipDescription",
+        navSrc.contains("A11y.hostChipDescription("),
+    )
+    val railSrc = navSrc.substringAfter("public fun Rail(")
+    val insetsIndex =
+        railSrc.indexOf(
+            ".windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical))")
+    val drawBehindIndex = railSrc.indexOf(".drawBehind {")
+    assertTrue("Rail insetsIndex and drawBehind must exist", insetsIndex in 0 until drawBehindIndex)
+  }
+
+  private fun readDesignSource(fileName: String): String {
+    val candidates =
+        listOf(
+            "packages/design-system-android/src/main/kotlin/dev/vitruvian/design/$fileName",
+            "src/main/kotlin/dev/vitruvian/design/$fileName",
+        )
+    val path =
+        candidates.map(::File).firstOrNull(File::isFile)
+            ?: File(System.getenv("TEST_SRCDIR") ?: ".").walkTopDown().firstOrNull {
+              it.isFile && it.name == fileName
+            }
+            ?: error("Unable to locate design-system source $fileName")
+    return path.readText()
   }
 }

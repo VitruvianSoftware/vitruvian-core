@@ -178,7 +178,12 @@ public fun Kbd(
   Box(
       modifier =
           modifier
-              .then(if (onClick != null) Modifier.defaultMinSize(minHeight = 32.dp) else Modifier)
+              .then(
+                  if (onClick != null) {
+                    Modifier.defaultMinSize(minWidth = Hit.h1, minHeight = Hit.h1)
+                  } else {
+                    Modifier
+                  })
               .border(1.dp, colors.divider)
               .then(
                   if (onClick != null) {

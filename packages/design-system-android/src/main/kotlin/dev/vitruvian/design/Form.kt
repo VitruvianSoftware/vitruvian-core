@@ -39,6 +39,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -59,6 +62,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
@@ -181,9 +185,14 @@ public fun VSwitch(
   val colors = Vitruvian
   Row(
       modifier =
-          modifier.defaultMinSize(minHeight = Hit.h1).clickable(enabled = enabled) {
-            onCheckedChange(!checked)
-          },
+          modifier
+              .defaultMinSize(minHeight = Hit.h1)
+              .toggleable(
+                  value = checked,
+                  enabled = enabled,
+                  role = Role.Switch,
+                  onValueChange = onCheckedChange,
+              ),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(Space.s3),
   ) {
@@ -223,9 +232,14 @@ public fun VCheckbox(
   val colors = Vitruvian
   Row(
       modifier =
-          modifier.defaultMinSize(minHeight = Hit.h1).clickable(enabled = enabled) {
-            onCheckedChange(!checked)
-          },
+          modifier
+              .defaultMinSize(minHeight = Hit.h1)
+              .toggleable(
+                  value = checked,
+                  enabled = enabled,
+                  role = Role.Checkbox,
+                  onValueChange = onCheckedChange,
+              ),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(Space.s3),
   ) {
@@ -420,9 +434,9 @@ public fun CopyButton(
     modifier: Modifier = Modifier,
     label: String = "Copy",
     copiedLabel: String = "Copied",
+    colors: VitruvianColors = Vitruvian,
 ) {
   val clipboard = LocalClipboardManager.current
-  val colors = Vitruvian
   var copied by remember { mutableStateOf(false) }
 
   LaunchedEffect(copied) {
@@ -459,7 +473,7 @@ public fun Segmented(
     modifier: Modifier = Modifier,
 ) {
   val colors = Vitruvian
-  Row(modifier = modifier.border(1.dp, colors.divider)) {
+  Row(modifier = modifier.border(1.dp, colors.divider).selectableGroup()) {
     options.forEachIndexed { index, option ->
       if (index > 0) {
         Box(modifier = Modifier.width(1.dp).height(Hit.h1).background(colors.divider))
@@ -468,7 +482,11 @@ public fun Segmented(
           modifier =
               Modifier.defaultMinSize(minHeight = Hit.h1)
                   .background(if (option.selected) colors.accentQuiet else Color.Transparent)
-                  .clickable(onClick = option.onSelect)
+                  .selectable(
+                      selected = option.selected,
+                      role = Role.Tab,
+                      onClick = option.onSelect,
+                  )
                   .drawBehind {
                     if (option.selected) {
                       drawRect(
@@ -494,6 +512,7 @@ public fun Segmented(
             style = VitruvianType.status,
             color = if (option.selected) colors.text else colors.textDim,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             softWrap = false,
         )
       }

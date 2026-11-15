@@ -93,7 +93,7 @@ public fun Status(
     if (text != null) {
       VText(
           text = text.uppercase(),
-          modifier = Modifier.clearAndSetSemantics {},
+          modifier = Modifier.weight(1f, fill = false).clearAndSetSemantics {},
           style = VitruvianType.status,
           color = color,
           maxLines = 1,
@@ -124,7 +124,13 @@ public fun Metric(
         softWrap = false,
     )
     if (delta != null) {
-      VText(text = delta, style = VitruvianType.listSub, color = Vitruvian.textDim, maxLines = 1)
+      VText(
+          text = delta,
+          style = VitruvianType.listSub,
+          color = Vitruvian.textDim,
+          maxLines = 2,
+          overflow = TextOverflow.Ellipsis,
+      )
     }
   }
 }

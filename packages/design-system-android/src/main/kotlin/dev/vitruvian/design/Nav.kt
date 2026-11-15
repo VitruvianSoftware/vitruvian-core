@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -52,6 +53,9 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -124,12 +128,18 @@ public fun HostChip(
     tone: StatusTone,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    hostName: String = text,
+    stateLabel: String = A11y.toneStateWord(tone),
 ) {
   Box(
       modifier =
           modifier
+              .widthIn(max = 160.dp)
               .defaultMinSize(minHeight = Hit.h1)
-              .clickable(role = Role.Button, onClick = onClick),
+              .clickable(role = Role.Button, onClick = onClick)
+              .semantics {
+                contentDescription = A11y.hostChipDescription(name = hostName, state = stateLabel)
+              },
       contentAlignment = Alignment.Center,
   ) {
     Box(
@@ -139,7 +149,11 @@ public fun HostChip(
                 .padding(horizontal = Space.s3, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
-      Status(tone = tone, text = text)
+      Status(
+          tone = tone,
+          text = text,
+          modifier = Modifier.clearAndSetSemantics {},
+      )
     }
   }
 }
@@ -231,7 +245,9 @@ private fun NavCell(
           text = item.label.uppercase(),
           style = VitruvianType.tabLabel,
           color = content,
+          modifier = Modifier.padding(horizontal = Space.s1),
           maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
           softWrap = false,
       )
     }
@@ -260,6 +276,7 @@ public fun Rail(
           modifier
               .width(RAIL_WIDTH)
               .fillMaxHeight()
+              .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical))
               .drawBehind {
                 drawRect(
                     color = colors.divider,
@@ -267,7 +284,6 @@ public fun Rail(
                     size = Size(1.dp.toPx(), size.height),
                 )
               }
-              .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical))
               .padding(top = Space.s3),
       horizontalAlignment = Alignment.CenterHorizontally,
   ) {
@@ -308,7 +324,9 @@ public fun Rail(
           text = hostLabel.uppercase(),
           style = VitruvianType.tabLabel,
           color = colors.textDim,
+          modifier = Modifier.padding(horizontal = Space.s1),
           maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
           softWrap = false,
       )
     }
@@ -431,6 +449,7 @@ public fun Tabs(
             style = VitruvianType.status,
             color = if (active) colors.text else colors.textDim,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             softWrap = false,
         )
         if (tab.count != null) {
