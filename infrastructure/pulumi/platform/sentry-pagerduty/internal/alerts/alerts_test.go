@@ -21,9 +21,11 @@
 package alerts
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -31,6 +33,7 @@ import (
 	"github.com/pulumi/pulumi-terraform-provider/sdks/go/sentry/sentry"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 	"gopkg.in/yaml.v3"
 )
 
@@ -372,22 +375,32 @@ type recordedInvoke struct {
 }
 
 type sentryMocks struct {
-	mu          sync.Mutex
-	invokes     []recordedInvoke
-	resources   []recordedResource
-	projectList []string
+	mu               sync.Mutex
+	invokes          []recordedInvoke
+	resources        []recordedResource
+	projectList      []string
+	orgIntegrationID *string
+	callErrors       map[string]error
 }
 
 func (m *sentryMocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
 	m.mu.Lock()
 	m.invokes = append(m.invokes, recordedInvoke{Token: args.Token, Args: args.Args})
+	callErr := m.callErrors[args.Token]
 	m.mu.Unlock()
+	if callErr != nil {
+		return nil, callErr
+	}
 
 	switch args.Token {
 	case "sentry:index/getOrganizationIntegration:getOrganizationIntegration":
+		orgID := "42"
+		if m.orgIntegrationID != nil {
+			orgID = *m.orgIntegrationID
+		}
 		return resource.PropertyMap{
-			"id":           resource.NewStringProperty("42"),
-			"internalId":   resource.NewStringProperty("42"),
+			"id":           resource.NewStringProperty(orgID),
+			"internalId":   resource.NewStringProperty(orgID),
 			"name":         args.Args["name"],
 			"organization": args.Args["organization"],
 			"providerKey":  args.Args["providerKey"],
@@ -701,5 +714,163 @@ func TestResourceNamesDeriveFromProjectSlug(t *testing.T) {
 	}
 	if alerts[0].Inputs["monitorIds"].ArrayValue()[0].StringValue() != "mon-vitruvian-code" {
 		t.Fatalf("unexpected monitorIds: %+v", alerts[0].Inputs["monitorIds"])
+	}
+}
+
+func TestReconcileFailsWhenOrgIntegrationIdEmpty(t *testing.T) {
+	s := validSettings()
+	empty := ""
+	m := &sentryMocks{
+		orgIntegrationID: &empty,
+		projectList:      []string{"backstage"},
+	}
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		provider, err := sentry.NewProvider(ctx, "sentry", &sentry.ProviderArgs{
+			BaseUrl: pulumi.String(s.BaseURL),
+			Token:   pulumi.ToSecret(pulumi.String("mock-token")).(pulumi.StringOutput),
+		})
+		if err != nil {
+			return err
+		}
+		_, err = Reconcile(ctx, provider, s)
+		return err
+	}, pulumi.WithMocks("vitruvian-sentry-pagerduty", "production", m))
+	if err == nil || !strings.Contains(err.Error(), "returned empty id") {
+		t.Fatalf("expected error containing %q, got %v", "returned empty id", err)
+	}
+	if got := len(m.byType("sentry:index/integrationPagerduty:IntegrationPagerduty")); got != 0 {
+		t.Fatalf("expected 0 IntegrationPagerduty resources, got %d", got)
+	}
+	if got := len(m.byType("sentry:index/alert:Alert")); got != 0 {
+		t.Fatalf("expected 0 Alert resources, got %d", got)
+	}
+}
+
+func TestReconcileFailsWhenOrgIntegrationLookupErrors(t *testing.T) {
+	s := validSettings()
+	m := &sentryMocks{
+		projectList: []string{"backstage"},
+		callErrors: map[string]error{
+			"sentry:index/getOrganizationIntegration:getOrganizationIntegration": errors.New("sentry api 500"),
+		},
+	}
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		provider, err := sentry.NewProvider(ctx, "sentry", &sentry.ProviderArgs{
+			BaseUrl: pulumi.String(s.BaseURL),
+			Token:   pulumi.ToSecret(pulumi.String("mock-token")).(pulumi.StringOutput),
+		})
+		if err != nil {
+			return err
+		}
+		_, err = Reconcile(ctx, provider, s)
+		return err
+	}, pulumi.WithMocks("vitruvian-sentry-pagerduty", "production", m))
+	if err == nil || !strings.Contains(err.Error(), "lookup Sentry PagerDuty org integration") {
+		t.Fatalf("expected org integration lookup error, got %v", err)
+	}
+	if got := len(m.byType("sentry:index/integrationPagerduty:IntegrationPagerduty")); got != 0 {
+		t.Fatalf("expected 0 IntegrationPagerduty resources, got %d", got)
+	}
+	if got := len(m.byType("sentry:index/alert:Alert")); got != 0 {
+		t.Fatalf("expected 0 Alert resources, got %d", got)
+	}
+}
+
+func TestReconcileFailsWhenProjectListLookupErrors(t *testing.T) {
+	s := validSettings()
+	m := &sentryMocks{
+		projectList: []string{"backstage", "vitruvian-wand"},
+		callErrors: map[string]error{
+			"sentry:index/getAllProjects:getAllProjects": errors.New("projects endpoint unavailable"),
+		},
+	}
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		provider, err := sentry.NewProvider(ctx, "sentry", &sentry.ProviderArgs{
+			BaseUrl: pulumi.String(s.BaseURL),
+			Token:   pulumi.ToSecret(pulumi.String("mock-token")).(pulumi.StringOutput),
+		})
+		if err != nil {
+			return err
+		}
+		_, err = Reconcile(ctx, provider, s)
+		return err
+	}, pulumi.WithMocks("vitruvian-sentry-pagerduty", "production", m))
+	if err == nil || !strings.Contains(err.Error(), "list Sentry projects") {
+		t.Fatalf("expected project list lookup error, got %v", err)
+	}
+	if got := len(m.byType("sentry:index/alert:Alert")); got != 0 {
+		t.Fatalf("expected 0 Alert resources, got %d", got)
+	}
+}
+
+func TestSortedTargetSlugsDedupesSkipsEmptyAndExcluded(t *testing.T) {
+	projects := []sentry.GetAllProjectsProject{
+		{Slug: "vitruvian-wand"},
+		{Slug: ""},
+		{Slug: "internal"},
+		{Slug: "backstage"},
+		{Slug: "vitruvian-wand"},
+		{Slug: "sandbox"},
+		{Slug: "atrium"},
+	}
+	got := sortedTargetSlugs(projects, []string{"internal", "sandbox"})
+	want := []string{"atrium", "backstage", "vitruvian-wand"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("sortedTargetSlugs() = %v, want %v", got, want)
+	}
+}
+
+func TestLoadReadsAndValidatesConfig(t *testing.T) {
+	runLoad := func(stackCfg map[string]string) (Settings, error) {
+		var got Settings
+		m := &sentryMocks{}
+		err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+			var loadErr error
+			got, loadErr = Load(config.New(ctx, Namespace))
+			return loadErr
+		}, pulumi.WithMocks("vitruvian-sentry-pagerduty", "production", m), func(info *pulumi.RunInfo) {
+			info.Config = stackCfg
+		})
+		return got, err
+	}
+
+	fullCfg := map[string]string{
+		Namespace + ":organization":     "sentry",
+		Namespace + ":baseUrl":          "https://sentry.lab.ipv1337.dev/api/",
+		Namespace + ":integrationName":  "Vitruvian Software",
+		Namespace + ":pagerdutyStack":   "ipv1337/vitruvian-pagerduty/production",
+		Namespace + ":serviceName":      "Sentry",
+		Namespace + ":severity":         "default",
+		Namespace + ":excludeProjects":  `["internal"]`,
+		Namespace + ":frequencyMinutes": "30",
+	}
+
+	got, err := runLoad(fullCfg)
+	if err != nil {
+		t.Fatalf("expected valid config to load, got %v", err)
+	}
+	want := validSettings()
+	if got.Organization != want.Organization ||
+		got.BaseURL != want.BaseURL ||
+		got.IntegrationName != want.IntegrationName ||
+		got.PagerDutyStack != want.PagerDutyStack ||
+		got.ServiceName != want.ServiceName ||
+		got.Severity != want.Severity ||
+		!slices.Equal(got.ExcludeProjects, want.ExcludeProjects) ||
+		got.FrequencyMinutes != want.FrequencyMinutes {
+		t.Fatalf("Load() = %+v, want %+v", got, want)
+	}
+
+	missingExcludes := make(map[string]string, len(fullCfg))
+	for k, v := range fullCfg {
+		if k != Namespace+":excludeProjects" {
+			missingExcludes[k] = v
+		}
+	}
+	if _, err := runLoad(missingExcludes); err == nil || !strings.Contains(err.Error(), "excludeProjects") {
+		t.Fatalf("expected error mentioning excludeProjects when omitted, got %v", err)
 	}
 }
