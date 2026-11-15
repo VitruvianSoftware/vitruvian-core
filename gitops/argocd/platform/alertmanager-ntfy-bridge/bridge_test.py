@@ -133,9 +133,23 @@ class BridgeTest(unittest.TestCase):
         body = json.loads(req.data)
         assert body["topic"] == "alerts"
         assert body["sequence_id"] == server.sequence_id(payload)
-        assert body["priority"] == 5
+        # A page is "high" on ntfy, one below "urgent": PagerDuty does the
+        # waking up, ntfy is the copy.
+        assert body["priority"] == 4
         assert body["title"].startswith("[app] firing: CNPGBackupStale (1)")
         assert req.get_header("Authorization").startswith("Basic ")
+
+    def test_warning_is_low_priority(self):
+        # Low (2) makes no sound: PagerDuty carries warnings as low-urgency
+        # incidents, ntfy keeps a silent copy.
+        server = _make_server(self)
+        assert (
+            server.handle_alertmanager(
+                _group("firing", [_alert("firing", "w1", "warning")])
+            )
+            == 200
+        )
+        assert json.loads(server.sent[-1].data)["priority"] == 2
 
     def test_refire_reuses_the_same_id_so_ntfy_replaces_it(self):
         server = _make_server(self)

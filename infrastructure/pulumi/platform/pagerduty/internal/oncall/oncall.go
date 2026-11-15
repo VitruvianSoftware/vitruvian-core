@@ -36,6 +36,10 @@ import (
 // Namespace is the Pulumi stack config namespace (`name:` in Pulumi.yaml).
 const Namespace = "vitruvian-pagerduty"
 
+// UrgencySeverityBased is the PagerDuty API value for "set the incident's
+// urgency from the event's severity" (dynamic notifications).
+const UrgencySeverityBased = "severity_based"
+
 var serviceKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 // PagerDuty object ids are a "P" followed by upper-case letters and digits.
@@ -196,6 +200,16 @@ func Reconcile(ctx *pulumi.Context, provider *pagerduty.Provider, s Settings) (*
 			Description:      pulumi.String(svc.Description),
 			EscalationPolicy: policy.ID(),
 			AlertCreation:    pulumi.String("create_alerts_and_incidents"),
+			// The event's own severity decides how loudly PagerDuty notifies:
+			// critical and error are high urgency (phone, escalates), warning
+			// and info are low urgency (no escalation). Alertmanager sends
+			// severity=page as critical and severity=warning as warning, so
+			// only real pages wake anyone. PagerDuty offers this on every
+			// plan, free included (support.pagerduty.com/docs/dynamic-notifications).
+			IncidentUrgencyRule: &pagerduty.ServiceIncidentUrgencyRuleArgs{
+				Type:    pulumi.String("constant"),
+				Urgency: pulumi.String(UrgencySeverityBased),
+			},
 		}, providerOpt)
 		if err != nil {
 			return nil, fmt.Errorf("create service %q: %w", svc.Key, err)

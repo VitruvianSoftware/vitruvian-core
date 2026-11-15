@@ -20,9 +20,9 @@
 
 //! The seal tools that write one SealedSecret into
 //! gitops/argocd/platform/sealed-secrets-manifests: seal_alert_ntfy.sh,
-//! seal_headplane_secret.sh, seal_zitadel_login_cookie_secret.sh and
-//! seal_arc_github_app.sh. Each value goes to kubectl on stdin, never on a
-//! command line, and is never printed.
+//! seal_headplane_secret.sh, seal_zitadel_login_cookie_secret.sh,
+//! seal_arc_github_app.sh and seal_alert_pagerduty.sh. Each value goes to
+//! kubectl or kubeseal on stdin, never on a command line, and is never printed.
 
 use std::os::unix::fs::PermissionsExt;
 
@@ -539,6 +539,158 @@ fn arc_seal(
     Ok(0)
 }
 
+// ---------------------------------------------------------------------------
+// seal_alert_pagerduty.sh
+// ---------------------------------------------------------------------------
+
+/// The PagerDuty services Alertmanager routes to, by `pagerduty_service`
+/// label. Each must be a `services` entry in
+/// infrastructure/pulumi/platform/pagerduty/Pulumi.production.yaml (which
+/// exports `<key>IntegrationKey`) and a `pagerduty-<key>` receiver reading
+/// /etc/alertmanager/pagerduty/<key> in
+/// gitops/argocd/platform/prometheus/applicationset.yaml.
+pub const PAGERDUTY_SERVICES: &[&str] = &["cluster", "data", "apps"];
+
+const PAGERDUTY_USAGE: &[u8] = b"usage: bazel run //infrastructure/pulumi/platform/pagerduty:stack -- output --json --show-secrets --stack production \\\n         | bazel run //tools/gitops:seal-alert-pagerduty [-- --apply]";
+
+/// An Events API v2 integration key: 32 lower-case letters and digits.
+fn valid_integration_key(k: &str) -> bool {
+    k.len() == 32
+        && k.bytes()
+            .all(|c| c.is_ascii_digit() || c.is_ascii_lowercase())
+}
+
+/// The Secret, as JSON for kubeseal's stdin, built from the PagerDuty stack's
+/// `pulumi stack output --json --show-secrets`. Err names what is wrong, never
+/// a key's value.
+pub fn pagerduty_secret_json(outputs: &[u8], ns: &str, secret: &str) -> Result<String, String> {
+    let text =
+        std::str::from_utf8(outputs).map_err(|_| "stack outputs are not UTF-8".to_string())?;
+    let v = crate::json::loads(text).map_err(|_| "stack outputs are not JSON".to_string())?;
+    let mut data = Vec::new();
+    for svc in PAGERDUTY_SERVICES {
+        let name = format!("{}IntegrationKey", svc);
+        match v.get(&name) {
+            Some(crate::json::Value::Str(k)) if valid_integration_key(k) => {
+                data.push(format!(
+                    "\"{}\":\"{}\"",
+                    svc,
+                    super::crypto::b64encode(k.as_bytes())
+                ));
+            }
+            Some(crate::json::Value::Str(k)) if k == "[secret]" => {
+                return Err(format!(
+                    "{} is masked: pass --show-secrets to pulumi stack output",
+                    name
+                ));
+            }
+            Some(crate::json::Value::Str(_)) => {
+                return Err(format!("{} is not a 32-character Events API v2 key", name));
+            }
+            Some(_) => return Err(format!("{} is not a string", name)),
+            None => {
+                return Err(format!(
+                "{} missing from the stack outputs: has the stack with that service been applied?",
+                name
+            ))
+            }
+        }
+    }
+    Ok(format!(
+        "{{\"apiVersion\":\"v1\",\"kind\":\"Secret\",\"type\":\"Opaque\",\"metadata\":{{\"name\":\"{}\",\"namespace\":\"{}\"}},\"data\":{{{}}}}}",
+        secret,
+        ns,
+        data.join(",")
+    ))
+}
+
+pub fn alert_pagerduty(args: &[Vec<u8>]) -> i32 {
+    code(alert_pagerduty_run(args))
+}
+
+fn alert_pagerduty_run(args: &[Vec<u8>]) -> Res<i32> {
+    default_kubeconfig(line!())?;
+    let k = kctx();
+    let (ns, secret) = ("monitoring", "alertmanager-pagerduty-keys");
+    let out = out_path(secret);
+    let mut apply = false;
+    for a in args {
+        if a == b"--apply" {
+            apply = true;
+        } else {
+            return die(
+                2,
+                &sc::cat(&[
+                    b"ERROR: unknown argument '",
+                    a,
+                    b"' (expected --apply or nothing).\n",
+                    PAGERDUTY_USAGE,
+                ]),
+            );
+        }
+    }
+    if sc::stdin_is_tty() {
+        return die(
+            2,
+            &sc::cat(&[
+                b"ERROR: pipe the PagerDuty stack outputs in on stdin.\n",
+                PAGERDUTY_USAGE,
+            ]),
+        );
+    }
+    let mut outputs = Vec::new();
+    if std::io::Read::read_to_end(&mut std::io::stdin(), &mut outputs).is_err() {
+        return die(1, b"ERROR: could not read stdin.");
+    }
+    let manifest = match pagerduty_secret_json(&outputs, ns, secret) {
+        Ok(m) => m,
+        Err(e) => {
+            return die(
+                1,
+                &sc::cat(&[b"ERROR: ", e.as_bytes(), b". Nothing was sealed."]),
+            )
+        }
+    };
+    need_tools(&["kubectl", "kubeseal"], false)?;
+    cd_workspace(line!())?;
+    let tmp = sc::cat(&[&out, b".tmp"]);
+    write_new(line!(), &tmp, LICENSE_HEADER.as_bytes())?;
+    let o = append_to(line!(), &tmp)?;
+    let st = feed(line!(), kubeseal_yaml(&k), manifest.as_bytes(), Some(o));
+    let text = std::fs::read(sc::path(&tmp)).unwrap_or_default();
+    if st != 0
+        || !PAGERDUTY_SERVICES
+            .iter()
+            .all(|svc| has_sealed_value(&text, svc))
+    {
+        let _ = std::fs::remove_file(sc::path(&tmp));
+        return die(
+            1,
+            b"ERROR: kubeseal did not seal every key. Nothing was written.",
+        );
+    }
+    mv(line!(), &tmp, &out)?;
+    say(&sc::cat(&[
+        "\u{2713} sealed \u{2192} ".as_bytes(),
+        &out,
+        format!(
+            " (SealedSecret {}/{}, keys {})",
+            ns,
+            secret,
+            PAGERDUTY_SERVICES.join(", ")
+        )
+        .as_bytes(),
+    ]));
+    apply_or_next(
+        &k,
+        &out,
+        ns,
+        secret,
+        apply,
+        "\u{2713} applied \u{2014} the sealed-secrets controller will materialize",
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -554,6 +706,67 @@ mod tests {
         let bad_char = format!("    K: Ag{}*\n", "A".repeat(300));
         assert!(!has_sealed_value(bad_char.as_bytes(), "K"));
         assert!(!has_sealed_value(b"    K: \"\"\n", "K"));
+    }
+
+    fn outputs(keys: &[(&str, &str)]) -> Vec<u8> {
+        let items: Vec<String> = keys
+            .iter()
+            .map(|(k, v)| format!("\"{}\": \"{}\"", k, v))
+            .collect();
+        format!(
+            "{{\"escalationPolicyId\": \"PS9GPWM\", {}}}",
+            items.join(", ")
+        )
+        .into_bytes()
+    }
+
+    const KEY: &str = "0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn pagerduty_secret_carries_every_service_key_base64() {
+        let o = outputs(&[
+            ("clusterIntegrationKey", KEY),
+            ("dataIntegrationKey", KEY),
+            ("appsIntegrationKey", KEY),
+            ("sentryIntegrationKey", KEY),
+        ]);
+        let j = pagerduty_secret_json(&o, "monitoring", "alertmanager-pagerduty-keys").unwrap();
+        let v = crate::json::loads(&j).unwrap();
+        assert!(matches!(v.get("kind"), Some(crate::json::Value::Str(s)) if s == "Secret"));
+        let data = v.get("data").unwrap();
+        for svc in PAGERDUTY_SERVICES {
+            match data.get(svc) {
+                Some(crate::json::Value::Str(b)) => {
+                    assert_eq!(
+                        super::super::crypto::b64decode(b.as_bytes()).unwrap(),
+                        KEY.as_bytes()
+                    )
+                }
+                other => panic!("{}: {:?}", svc, other.map(|x| x.type_name())),
+            }
+        }
+        // Sentry's key is not Alertmanager's business: it stays out.
+        assert!(data.get("sentry").is_none());
+        assert!(!j.contains(KEY), "the raw key must not appear unencoded");
+    }
+
+    #[test]
+    fn pagerduty_secret_refuses_missing_masked_or_malformed_keys() {
+        let all = |apps: &str| {
+            outputs(&[
+                ("clusterIntegrationKey", KEY),
+                ("dataIntegrationKey", KEY),
+                ("appsIntegrationKey", apps),
+            ])
+        };
+        let missing = outputs(&[("clusterIntegrationKey", KEY), ("dataIntegrationKey", KEY)]);
+        let e = pagerduty_secret_json(&missing, "n", "s").unwrap_err();
+        assert!(e.contains("appsIntegrationKey missing"), "{}", e);
+        let e = pagerduty_secret_json(&all("[secret]"), "n", "s").unwrap_err();
+        assert!(e.contains("--show-secrets"), "{}", e);
+        let e = pagerduty_secret_json(&all("short"), "n", "s").unwrap_err();
+        assert!(e.contains("32-character") && !e.contains("short"), "{}", e);
+        assert!(pagerduty_secret_json(b"not json", "n", "s").is_err());
     }
 
     #[test]

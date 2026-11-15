@@ -30,6 +30,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              pagerduty_service: cluster
             exp_annotations:
               summary: "Merge-queue runner pods cannot be placed"
               description: "1 runner pod(s) in arc-runners have been unschedulable for 10m, so merge-queue jobs are waiting for a runner that cannot start. Usually the nodes ran out of free CPU or memory requests: compare the pods' requests in gitops/argocd/platform/actions-runners/applicationset.yaml with what fedora and nuc9i9 have left. On 2026-11-13 this cost every queue entry ~6 min."

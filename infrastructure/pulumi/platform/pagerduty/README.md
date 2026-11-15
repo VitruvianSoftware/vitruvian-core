@@ -43,6 +43,9 @@ provider.
   an `events_api_v2_inbound_integration` `ServiceIntegration` named
   `<service name> (Events API v2)`. Resource names derive from each service `key`
   so display name updates do not replace resources.
+- **Urgency**: every service uses severity-based urgency, so an event's own
+  severity decides how loudly PagerDuty notifies. `critical` and `error` are
+  high urgency (phone, escalates); `warning` and `info` are low urgency.
 - **Stack outputs**: exports `<key>IntegrationKey` as a Pulumi secret (for
   downstream consumers such as the Sentry stack via `StackReference`), along
   with `<key>ServiceId` and `escalationPolicyId` in plain text.
@@ -87,3 +90,29 @@ bazel run //infrastructure/pulumi/platform/pagerduty:preview -- --stack producti
 
 Never run `:up` from a laptop. Changes to `production` are applied by CI after
 merging to `main`.
+
+## Homelab alerts (Alertmanager)
+
+The `cluster`, `data` and `apps` services take the homelab cluster's
+Prometheus alerts. Each alert rule in
+[`gitops/argocd/platform/prometheus/applicationset.yaml`](../../../../gitops/argocd/platform/prometheus/applicationset.yaml)
+has a `pagerduty_service` label naming its service, and Alertmanager has a
+`pagerduty-<service>` receiver for each. `severity: page` goes to PagerDuty as
+`critical` and `severity: warning` as `warning`. ntfy still gets a copy of
+every alert, so it keeps working if PagerDuty does not.
+
+The rule tests (`tools/ci/prometheus-rule-tests`) fail if an actionable rule
+has no label, or one with no receiver.
+
+The keys reach the cluster as the `alertmanager-pagerduty-keys` SealedSecret.
+After the stack has applied a new or changed service, reseal them from the
+stack's outputs and commit the file:
+
+```sh
+bazel run //infrastructure/pulumi/platform/pagerduty:stack -- output --json --show-secrets --stack production \
+  | bazel run //tools/gitops:seal-alert-pagerduty
+```
+
+To add a service for the cluster, add it to `services` here, to
+`PAGERDUTY_SERVICES` in `tools/gitops/src/ops/seal.rs`, and as a receiver and
+route in the Alertmanager config.
