@@ -602,6 +602,51 @@ fn pr_skip_filters_list_every_input_their_checks_read() {
             "tools/shell-compat/**",
         ],
     );
+    // The required lint checks that moved behind `changes`: each lists what
+    // it reads, and every tool built by build-ci-tool or installed by
+    // install-pinned-tool brings tools/ci/src, tools/shell-compat and the pin.
+    lists(
+        ".github/workflows/ci.yaml",
+        "            gitopsvalidate:",
+        &[
+            "gitops/**",
+            "tools/gitops/appset-render/**",
+            "go.mod",
+            "tools/ci/src/**",
+            "tools/shell-compat/**",
+            "tools/tools.lock.json",
+        ],
+    );
+    lists(
+        ".github/workflows/ci.yaml",
+        "            migrationsafety:",
+        &[
+            "apps/suites/vitruvian-tabs/api/prisma/**",
+            "tools/ci/src/**",
+            "tools/shell-compat/**",
+        ],
+    );
+    lists(
+        ".github/workflows/ci.yaml",
+        "            actionlint:",
+        &[
+            ".github/workflows/**",
+            ".github/actions/**",
+            ".github/actionlint.yaml",
+            "apps/cli/vitruvian-devx/internal/scaffold/templates/**",
+            "tools/ci/src/**",
+            "tools/tools.lock.json",
+        ],
+    );
+    lists(
+        ".github/workflows/ci.yaml",
+        "            osvscan:",
+        &[
+            "tools/osv-scan/**",
+            "tools/ci/src/**",
+            "tools/tools.lock.json",
+        ],
+    );
     // promtool is installed by install-pinned-tool, checked against tools.lock.json.
     lists(
         ".github/workflows/chart-render.yaml",

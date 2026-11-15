@@ -32,9 +32,9 @@ name: Copybara Config Smoke Test
 # exist. A path-filtered workflow does not run -- and therefore never REPORTS --
 # on a PR outside its paths, so every PR that does not touch copybara would sit
 # "pending" forever and never become mergeable. This repo has already been
-# wedged that way once; see the standing warnings in gitops-validate.yaml,
-# actionlint.yaml and migration-safety.yaml, all of which deliberately carry no
-# `paths:` filter for exactly this reason.
+# wedged that way once; see the `changes` job in ci.yaml, which is why the
+# required checks there skip at the job level instead of carrying a `paths:`
+# filter.
 #
 # The safe pattern, if this ever does need to gate the queue, is "always report,
 # conditionally work" (.github/actions/changed-paths-gate, PR #273): trigger on every
@@ -60,8 +60,8 @@ permissions:
 concurrency:
     # ref-only key (no sha/event_name) meant a push run and an unrelated
     # trigger sharing this ref could evict each other. Matches the pattern
-    # already used correctly by ci.yaml, gitops-validate.yaml,
-    # migration-safety.yaml, and others in this repo: key on event_name +
+    # already used correctly by ci.yaml, tidy-check.yaml
+    # and others in this repo: key on event_name +
     # (ref for pull_request, sha for push), and only cancel in-progress for
     # PR runs (a superseded PR preview is safe to cancel; a push run on
     # main is not).

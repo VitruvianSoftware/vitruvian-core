@@ -181,6 +181,42 @@ pub fn is_dep_manifest(line: &[u8]) -> bool {
 mod tests {
     use super::*;
 
+    /// ci.yaml skips the required `osv-scan` on a PR whose files match none of
+    /// its `osvscan` globs, because such a scan can only report. That holds
+    /// only while the filter lists every name is_dep_manifest knows: a manifest
+    /// missing there would let a PR add an advisory with the check skipped.
+    #[test]
+    fn ci_yaml_osv_filter_lists_every_manifest() {
+        let ci = std::fs::read_to_string(".github/workflows/ci.yaml").expect("ci.yaml in runfiles");
+        let lines: Vec<&str> = ci.lines().collect();
+        let start = lines
+            .iter()
+            .position(|l| l.trim_end() == "            osvscan:")
+            .expect("ci.yaml has no `osvscan` filter");
+        let globs: Vec<String> = lines[start + 1..]
+            .iter()
+            .map(|l| l.trim())
+            .filter(|l| !l.starts_with('#'))
+            .take_while(|l| l.starts_with("- "))
+            .map(|l| l[2..].trim_matches('\'').to_string())
+            .collect();
+        for m in MANIFESTS {
+            let want = format!("**/{}", String::from_utf8_lossy(m));
+            assert!(
+                globs.contains(&want),
+                "ci.yaml osvscan filter is missing {want:?}: {globs:?}"
+            );
+        }
+        assert!(
+            globs.iter().any(|g| g == "**/requirements*.txt"),
+            "ci.yaml osvscan filter is missing requirements*.txt: {globs:?}"
+        );
+        assert!(
+            globs.iter().any(|g| g == "tools/osv-scan/**"),
+            "the scanner itself: {globs:?}"
+        );
+    }
+
     #[test]
     fn manifests() {
         for yes in [

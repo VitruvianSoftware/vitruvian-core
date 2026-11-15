@@ -321,11 +321,14 @@ exports_files(
     ],
 )
 
-# The workflow that pins actionlint. //tools/ci:actionlint_test fails when its
+# The workflow that pins actionlint (its `actionlint` job) and gates osv-scan. //tools/ci:actionlint_test fails when its
 # version and tools/tools.lock.json's drift apart.
 exports_files(
-    [".github/workflows/actionlint.yaml"],
-    visibility = ["//tools/ci:__pkg__"],
+    [".github/workflows/ci.yaml"],
+    visibility = [
+        "//tools/ci:__pkg__",
+        "//tools/osv-scan:__pkg__",
+    ],
 )
 
 # Produce aspect_rules_py targets rather than rules_python
