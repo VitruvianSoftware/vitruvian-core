@@ -5731,4 +5731,31 @@ public class DeriveTest {
       }
     }
   }
+
+  @Test
+  public fun `running now hides modules the user has not shown and tools this Mac lacks`() {
+    val gallery = setOf("claude", "lima", "homelab", "speaker", "docker")
+    // (moduleId, tag) rows, the shape Home builds.
+    val rows =
+        listOf(
+            "claude" to "running",
+            "lima" to "1 running",
+            "homelab" to "3 ready",
+            "docker" to Derive.RUNNING_NO_SOURCE_TAG,
+            "speaker" to "ready",
+            "prs" to "2 open", // not a gallery module
+            "ollama" to Derive.RUNNING_NO_SOURCE_TAG, // not in the gallery, no source
+        )
+    val visible =
+        Derive.visibleRunningNow(
+                rows,
+                gallery,
+                shownIds = setOf("claude", "docker"),
+                moduleId = { it.first },
+                tag = { it.second },
+            )
+            .map { it.first }
+    // lima/homelab/speaker are hidden in the gallery; docker is shown but has no source.
+    assertEquals(listOf("claude", "prs"), visible)
+  }
 }

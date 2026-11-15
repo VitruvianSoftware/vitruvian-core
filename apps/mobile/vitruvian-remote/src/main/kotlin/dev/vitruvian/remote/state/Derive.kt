@@ -4141,6 +4141,27 @@ public object Derive {
     return if (granted) base else "$base · not granted"
   }
 
+  /** Tag a Running Now row carries when the Mac has no source for it (tool missing). */
+  public const val RUNNING_NO_SOURCE_TAG: String = "no source"
+
+  /**
+   * Which Running Now rows Home shows. A module the user hasn't chosen to show (hidden in the
+   * gallery) never appears, so Home and the gallery agree, and a row with no source on this Mac
+   * (the tool isn't installed) is not "running" and is dropped. Rows that aren't gallery modules
+   * keep only the no-source rule.
+   */
+  public fun <T> visibleRunningNow(
+      rows: List<T>,
+      galleryIds: Set<String>,
+      shownIds: Set<String>,
+      moduleId: (T) -> String,
+      tag: (T) -> String,
+  ): List<T> =
+      rows.filter {
+        val id = moduleId(it)
+        tag(it) != RUNNING_NO_SOURCE_TAG && (id !in galleryIds || id in shownIds)
+      }
+
   /** Action label on each Modules Gallery row. */
   public fun galleryActionLabel(shown: Boolean, unavailable: Boolean): String =
       when {

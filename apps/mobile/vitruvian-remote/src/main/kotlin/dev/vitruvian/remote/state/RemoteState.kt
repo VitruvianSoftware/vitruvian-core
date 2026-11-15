@@ -2250,7 +2250,13 @@ public class RemoteState(
                     else TagTone.Outline,
             )
       }
-      return rows
+      return Derive.visibleRunningNow(
+          rows,
+          galleryIds = MockHost.gallery.map { it.id }.toSet(),
+          shownIds = effectiveInstalled,
+          moduleId = { it.moduleId },
+          tag = { it.tag },
+      )
     }
 
   private val knownModuleIds: Set<String> = MockHost.gallery.map { it.id }.toSet()
