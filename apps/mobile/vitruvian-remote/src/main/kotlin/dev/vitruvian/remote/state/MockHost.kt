@@ -124,7 +124,10 @@ public object MockHost {
           GalleryEntry("tv", "Sony TV", "Power, 4K Aerials, apps, HDMI, cast URL", "adb", "adb"),
       )
 
-  public val defaultInstalled: Set<String> =
+  public val defaultInstalled: Set<String> = setOf("claude")
+
+  /** Pre-installed modules when the user explicitly enters demo mode from the first-run screen. */
+  public val demoInstalled: Set<String> =
       setOf("claude", "antigravity", "homelab", "lima", "prs", "speaker", "tv")
 
   public val processes: List<Process> =

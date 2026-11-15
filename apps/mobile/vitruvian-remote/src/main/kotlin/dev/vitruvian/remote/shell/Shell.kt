@@ -68,6 +68,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
+import dev.vitruvian.design.Banner
+import dev.vitruvian.design.BannerTone
 import dev.vitruvian.design.Duration
 import dev.vitruvian.design.Easing
 import dev.vitruvian.design.Hit
@@ -77,11 +79,11 @@ import dev.vitruvian.design.Rail
 import dev.vitruvian.design.Space
 import dev.vitruvian.design.TabBar
 import dev.vitruvian.design.TopBar
+import dev.vitruvian.design.VButton
 import dev.vitruvian.design.VIcon
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianIcons
 import dev.vitruvian.design.motion
-import dev.vitruvian.remote.state.Connection
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.Screen
 
@@ -127,11 +129,7 @@ public fun RemoteShell(
   val colors = Vitruvian
   val screen = state.effectiveScreen
   val navItems = navItems(state)
-  val showDock =
-      layout.showRail &&
-          state.dockOpen &&
-          screen != Screen.Console &&
-          state.connection != Connection.Unpaired
+  val showDock = layout.showRail && state.dockOpen && screen != Screen.Console && !state.isUnpaired
   CompositionLocalProvider(LocalShowDock provides showDock) {
     Row(modifier = modifier.fillMaxSize().background(colors.bg)) {
       if (layout.showRail) {
@@ -154,6 +152,15 @@ public fun RemoteShell(
               tone = state.hostTone,
               onClick = { state.go(Screen.Hosts) },
           )
+        }
+        if (state.isDemoMode) {
+          Banner(
+              tone = BannerTone.Info,
+              label = "Demo data",
+              body = "Simulated Mac dashboard. Pair a Mac to replace it.",
+          ) {
+            VButton("Exit demo", state::exitDemo)
+          }
         }
         ShellBody(
             state = state,

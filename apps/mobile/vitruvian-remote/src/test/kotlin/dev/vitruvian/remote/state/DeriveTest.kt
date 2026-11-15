@@ -537,8 +537,8 @@ public class DeriveTest {
 
   @Test
   public fun `a missing battery temperature is said, never printed as 0 degrees`() {
-    assertEquals("no battery reading", Derive.batteryTemperatureLabel(null))
-    assertEquals("no battery reading", Derive.batteryTemperatureLabel(Double.NaN))
+    assertEquals("no temperature reading", Derive.batteryTemperatureLabel(null))
+    assertEquals("no temperature reading", Derive.batteryTemperatureLabel(Double.NaN))
     assertEquals("battery 31°", Derive.batteryTemperatureLabel(30.6))
     // A real zero is still a reading.
     assertEquals("battery 0°", Derive.batteryTemperatureLabel(0.0))
@@ -3628,5 +3628,373 @@ public class DeriveTest {
             """if (anyChat && Derive.catalogShown(hs.catalog, "poll_interval_seconds"))"""))
     assertTrue(
         Regex("""placed\("mute_own_messages"\)\s*\{\s*if \(anyChat\)""").containsMatchIn(remoteSrc))
+  }
+
+  // --- F2: honest connection state & cold launch polling -----------------
+
+  @Test
+  public fun `cold launch starts asking and poll failure sets offline without red flash`() {
+    // Saved host before first reply -> "asking…", neither offline nor simulated demo data.
+    val initialPhase =
+        Derive.hostPhase(
+            hasHosts = true,
+            demoMode = false,
+            hasResponded = false,
+            isOffline = false,
+        )
+    assertEquals(Derive.HostPhase.Asking, initialPhase)
+    assertEquals("asking…", Derive.sourceBadgeLabel(initialPhase, needsPairing = false))
+    assertEquals(
+        "asking…",
+        Derive.hostStatusWord(
+            initialPhase,
+            Derive.Pairing.Paired,
+            needsPairing = false,
+        ),
+    )
+    assertFalse(Derive.isStaleReading(initialPhase))
+    assertFalse(Derive.mayShowDemoData(initialPhase))
+
+    // First poll fails -> PollOutcome.Offline, turning status red/offline.
+    assertEquals(
+        Derive.PollOutcome.Offline,
+        Derive.afterPoll(hasHosts = true, demoMode = false, pollSucceeded = false),
+    )
+    val offlinePhase =
+        Derive.hostPhase(
+            hasHosts = true,
+            demoMode = false,
+            hasResponded = false,
+            isOffline = true,
+        )
+    assertEquals(Derive.HostPhase.Offline, offlinePhase)
+    assertEquals("unreachable", Derive.sourceBadgeLabel(offlinePhase, needsPairing = false))
+    assertTrue(Derive.isStaleReading(offlinePhase))
+
+    // Poll succeeds -> PollOutcome.Live -> live badge.
+    assertEquals(
+        Derive.PollOutcome.Live,
+        Derive.afterPoll(hasHosts = true, demoMode = false, pollSucceeded = true),
+    )
+    val livePhase =
+        Derive.hostPhase(
+            hasHosts = true,
+            demoMode = false,
+            hasResponded = true,
+            isOffline = false,
+        )
+    assertEquals(Derive.HostPhase.Live, livePhase)
+    assertEquals("live", Derive.sourceBadgeLabel(livePhase, needsPairing = false))
+    assertEquals("not paired", Derive.sourceBadgeLabel(livePhase, needsPairing = true))
+
+    val remoteSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
+    assertTrue(remoteSrc.contains("Derive.afterPoll("))
+    assertTrue(remoteSrc.contains("Derive.PollOutcome.Offline -> Connection.Offline"))
+  }
+
+  // --- F1 & F5: no MockHost data for a saved-but-offline Mac & forgetHost -
+
+  @Test
+  public fun `saved but offline host derived Home Mac Remote state never emits MockHost values`() {
+    // 1) Never answered offline host.
+    val neverReadPhase =
+        Derive.hostPhase(hasHosts = true, demoMode = false, hasResponded = false, isOffline = true)
+    assertFalse(Derive.mayShowDemoData(neverReadPhase))
+    val unansweredHome =
+        listOf(
+            Derive.sourceBadgeLabel(neverReadPhase, needsPairing = false),
+            Derive.hostSummarySubline(
+                neverReadPhase,
+                osVersion = null,
+                agentVersion = null,
+                uptimeDays = null,
+                lastSeen = ""),
+            Derive.unansweredHostLine("macbook"),
+            Derive.runningNowEmptyMessage(neverReadPhase, hasFirstReading = false).orEmpty(),
+        )
+    assertEquals("unreachable", unansweredHome[0])
+    assertEquals("unreachable", unansweredHome[1])
+    assertEquals("macbook isn't answering", unansweredHome[2])
+
+    // 2) Previously answered host now offline keeps real cached reading with "last seen …".
+    val stalePhase =
+        Derive.hostPhase(hasHosts = true, demoMode = false, hasResponded = true, isOffline = true)
+    assertTrue(Derive.isStaleReading(stalePhase))
+    assertFalse(Derive.mayShowDemoData(stalePhase))
+    val lastSeen = Format.lastSeen("2026-11-15T00:00:00Z", 1794700920_000L)
+    val cachedSummary =
+        Derive.hostSummarySubline(
+            stalePhase,
+            osVersion = "15.3",
+            agentVersion = "0.1.40",
+            uptimeDays = 5,
+            lastSeen = lastSeen,
+        )
+    val cachedTile = Derive.readingSubline("26.4 / 64 GB used", stale = true, lastSeen = lastSeen)
+    assertTrue(cachedSummary.contains("macOS 15.3"))
+    assertTrue(cachedSummary.contains("last seen"))
+    assertTrue(cachedTile.contains("last seen"))
+
+    // Assert zero fabricated MockHost literals appear anywhere in offline derived outputs.
+    val mockMarkers = listOf("M4 Max", "64 GB", "2 TB", "492 W", "Deploy staging", "Tidy repo")
+    for (line in unansweredHome + cachedSummary) {
+      for (marker in mockMarkers) {
+        assertFalse(
+            "Saved-but-offline derived output leaked mock marker '$marker': $line",
+            line.contains(marker),
+        )
+      }
+    }
+
+    // F5: forgetHost state transition & source checks.
+    assertEquals(Derive.PollOutcome.Unpaired, Derive.afterForgetHost(0))
+    assertEquals(Derive.PollOutcome.Asking, Derive.afterForgetHost(1))
+
+    val remoteSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
+    val forgetBlock =
+        remoteSrc
+            .substringAfter("public fun forgetHost(id: String)")
+            .substringBefore("public fun updateHostAliasDraft")
+    assertTrue(forgetBlock.contains("demoMode = false"))
+    assertTrue(forgetBlock.contains("resetHostSnapshots()"))
+    assertTrue(forgetBlock.contains("metricsSource ="))
+
+    // Every runtime MockHost data read (outside gallery metadata and constructor seed) uses
+    // isDemoMode.
+    val mockDataReads =
+        Regex(
+            """MockHost\.(hosts|processes|vms|containers|runningNow|recentCommands|dashboards|builtInMacros|demoInstalled)""")
+    val matchingLines =
+        remoteSrc.lines().filter { line ->
+          mockDataReads.containsMatchIn(line) && !line.trimStart().startsWith("MockHost.")
+        }
+    assertTrue(
+        "Unexpected un-gated MockHost data access in RemoteState.kt: $matchingLines",
+        matchingLines.all { it.contains("isDemoMode") },
+    )
+    assertFalse(
+        "MockHost.runningNow must not be returned when !isLive",
+        remoteSrc.contains("if (!isLive) return MockHost.runningNow"),
+    )
+    val remoteScreenSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/RemoteScreen.kt")
+    assertTrue(
+        remoteScreenSrc.contains("if (state.isDemoMode) \"Media · Music\" else \"Media keys\""))
+    assertTrue(remoteScreenSrc.contains("if (state.isDemoMode) {"))
+  }
+
+  // --- F3: first run starts unpaired & demo mode is explicit + non-persisted
+
+  @Test
+  public fun `first run starts unpaired with demo behind See a demo banner`() {
+    val unpaired =
+        Derive.hostPhase(
+            hasHosts = false, demoMode = false, hasResponded = false, isOffline = false)
+    assertEquals(Derive.HostPhase.Unpaired, unpaired)
+    assertEquals(
+        Derive.PollOutcome.Unpaired,
+        Derive.afterPoll(hasHosts = false, demoMode = false, pollSucceeded = false),
+    )
+    val demo =
+        Derive.hostPhase(hasHosts = false, demoMode = true, hasResponded = false, isOffline = false)
+    assertEquals(Derive.HostPhase.Demo, demo)
+    assertTrue(Derive.mayShowDemoData(demo))
+    assertEquals("simulated", Derive.sourceBadgeLabel(demo, needsPairing = false))
+
+    val hostStatesSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/overlays/HostStates.kt")
+    assertTrue(hostStatesSrc.contains("\"See a demo\""))
+    assertTrue(hostStatesSrc.contains("state::enterDemo"))
+
+    val shellSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/shell/Shell.kt")
+    assertTrue(shellSrc.contains("if (state.isDemoMode)"))
+    assertTrue(shellSrc.contains("\"Demo data\""))
+    assertTrue(shellSrc.contains("\"Exit demo\""))
+
+    val persistSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/Persistence.kt")
+    assertFalse(persistSrc.contains("demoMode"))
+    assertFalse(persistSrc.contains("demo_mode"))
+  }
+
+  // --- F4: persisted settings & defaults --------------------------------
+
+  @Test
+  public fun `connection settings are normalized and persisted in Persistence`() {
+    assertEquals(Derive.DEFAULT_REFRESH_INTERVAL, Derive.normalizeRefreshInterval(null))
+    assertEquals(Derive.DEFAULT_REFRESH_INTERVAL, Derive.normalizeRefreshInterval("invalid"))
+    assertEquals("5 s", Derive.normalizeRefreshInterval("5 s"))
+    assertEquals("30 s", Derive.normalizeRefreshInterval("30 s"))
+
+    val persistSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/Persistence.kt")
+    assertTrue(persistSrc.contains("\"wakeOnLan\""))
+    assertTrue(persistSrc.contains("\"confirmDestructive\""))
+    assertTrue(persistSrc.contains("\"refreshInterval\""))
+    assertTrue(persistSrc.contains("KEY_WAKE_ON_LAN"))
+    assertTrue(persistSrc.contains("KEY_CONFIRM_DESTRUCTIVE"))
+    assertTrue(persistSrc.contains("KEY_REFRESH_INTERVAL"))
+    val remoteSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
+    assertTrue(remoteSrc.contains("persistence.wakeOnLan"))
+    assertTrue(remoteSrc.contains("persistence.confirmDestructive"))
+    assertTrue(remoteSrc.contains("persistence.refreshInterval"))
+  }
+
+  // --- F15 & F16: neutral defaults, module discovery, macro edit/delete ---
+
+  @Test
+  public fun `neutral defaults ship only discovered modules and Shell macro kind`() {
+    val requires =
+        listOf(
+            "claude" to null,
+            "homelab" to "kubectl",
+            "lima" to "limactl",
+            "speaker" to "vitruvian-speaker",
+            "tv" to null,
+        )
+    assertEquals(setOf("claude"), Derive.discoveredModuleIds(requires, emptySet()))
+    assertEquals(
+        setOf("claude", "lima", "homelab"),
+        Derive.discoveredModuleIds(requires, setOf("limactl", "kubectl")),
+    )
+
+    assertEquals("Delete", Derive.macroDeleteLabel(armed = false))
+    assertEquals("Confirm delete", Derive.macroDeleteLabel(armed = true))
+
+    val mockSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/MockHost.kt")
+    assertTrue(mockSrc.contains("defaultInstalled: Set<String> = setOf(\"claude\")"))
+
+    val modelsSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/Models.kt")
+    assertTrue(
+        "Persisted enum name Ssh stays intact with Shell label",
+        modelsSrc.contains("Ssh(\"Shell\")"))
+
+    val remoteSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
+    val restartBlock =
+        remoteSrc
+            .substringAfter("public data class DialogSpec(")
+            .substringAfter("DialogKind.Restart ->")
+            .substringBefore("is DialogKind.MergePr ->")
+    assertTrue(
+        restartBlock.contains("\"Your Mac will restart. Unsaved work in open apps may be lost.\""))
+    assertFalse(restartBlock.contains("Lima VMs"))
+    assertFalse(restartBlock.contains("homelab node"))
+
+    val editorSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/overlays/MacroEditor.kt")
+    assertTrue(editorSrc.contains("Derive.macroDeleteLabel"))
+    assertTrue(editorSrc.contains("ButtonVariant.Danger"))
+    assertFalse(editorSrc.contains("Deploy staging"))
+    assertFalse(editorSrc.contains("bazel run //tools/gitops:sync"))
+
+    val hostsSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/HostsScreen.kt")
+    assertTrue(hostsSrc.contains("state.editMacro(macro.id)"))
+  }
+
+  // --- F6, F33, F36: memory warn parity, push spec, running now empty copy
+
+  @Test
+  public fun `small copy and Home memory warn match Mac screen`() {
+    assertFalse(Derive.isMemoryWarn(74))
+    assertTrue(Derive.isMemoryWarn(75))
+    assertTrue(Derive.isMemoryWarn(100))
+    assertEquals(100, Derive.memoryUsedPercent(100L, 100L, freePercent = 0))
+    assertEquals(100, Derive.memoryUsedPercent(0L, 0L, freePercent = 0))
+
+    val remoteSrc =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
+    val warnCalls = Regex("""Derive\.isMemoryWarn\(""").findAll(remoteSrc).count()
+    assertTrue(
+        "Expected both Mac memoryPlate and Home mem widget to use Derive.isMemoryWarn",
+        warnCalls >= 2)
+
+    val unconfigured =
+        Derive.pushNotifySpec(
+            paired = true,
+            reported = false,
+            configured = false,
+            enabled = true,
+            topic = "",
+        )
+    assertFalse(unconfigured.checked)
+    assertFalse(unconfigured.switchEnabled)
+    assertFalse(unconfigured.testEnabled)
+    assertEquals("Set up ntfy on the Mac to get alerts.", unconfigured.subtitle)
+
+    val unconfiguredFalse =
+        Derive.pushNotifySpec(
+            paired = true,
+            reported = true,
+            configured = false,
+            enabled = true,
+            topic = "",
+        )
+    assertFalse(unconfiguredFalse.checked)
+    assertFalse(unconfiguredFalse.switchEnabled)
+    assertFalse(unconfiguredFalse.testEnabled)
+    assertEquals("Set up ntfy on the Mac to get alerts.", unconfiguredFalse.subtitle)
+
+    val configured =
+        Derive.pushNotifySpec(
+            paired = true,
+            reported = true,
+            configured = true,
+            enabled = true,
+            topic = "vitruvian",
+        )
+    assertTrue(configured.checked)
+    assertTrue(configured.switchEnabled)
+    assertTrue(configured.testEnabled)
+    assertEquals("push · topic vitruvian", configured.subtitle)
+
+    val muted =
+        Derive.pushNotifySpec(
+            paired = true,
+            reported = true,
+            configured = true,
+            enabled = false,
+            topic = "vitruvian",
+        )
+    assertFalse(muted.checked)
+    assertTrue(muted.switchEnabled)
+    assertTrue(muted.testEnabled)
+    assertEquals("push · topic vitruvian · muted", muted.subtitle)
+
+    assertEquals(
+        "Checking…",
+        Derive.runningNowEmptyMessage(Derive.HostPhase.Asking, hasFirstReading = false),
+    )
+    assertEquals(
+        "Checking…",
+        Derive.runningNowEmptyMessage(Derive.HostPhase.Live, hasFirstReading = false),
+    )
+    assertEquals(
+        "Nothing running",
+        Derive.runningNowEmptyMessage(Derive.HostPhase.Live, hasFirstReading = true),
+    )
+    assertNull(Derive.runningNowEmptyMessage(Derive.HostPhase.Offline, hasFirstReading = false))
+    assertNull(Derive.runningNowEmptyMessage(Derive.HostPhase.Demo, hasFirstReading = false))
   }
 }

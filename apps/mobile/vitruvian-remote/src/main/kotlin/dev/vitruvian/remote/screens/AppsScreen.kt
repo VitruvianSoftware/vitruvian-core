@@ -998,7 +998,7 @@ private fun ColumnScope.GalleryPane(state: RemoteState) {
       color = colors.textDim,
   )
   MockHost.gallery.forEach { entry ->
-    val installed = entry.id in state.installed
+    val installed = entry.id in state.effectiveInstalled
     // Live, the gallery reflects the Mac: a module whose program is not
     // there says so instead of offering an Install button for nothing.
     val why = state.moduleUnavailableReason(entry.id)

@@ -304,13 +304,25 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
   }
 
   FoldingSection(state, RemoteSection.MACROS, "Macros · scripts") {
-    state.macros.forEach { macro ->
-      ListItem(
-          title = macro.label,
-          subtitle = macro.command,
-          status = StatusTone.Ok,
-      ) {
-        VButton("Run", { state.runMacro(macro) }, enabled = !state.actsNeedPairing)
+    if (state.macros.isEmpty()) {
+      Box(modifier = Modifier.padding(horizontal = Space.s4)) {
+        VButton(
+            label = "+ New macro",
+            onClick = state::openMacroEditor,
+            modifier = Modifier.fillMaxWidth(),
+            dashed = true,
+            contentColor = Vitruvian.textDim,
+        )
+      }
+    } else {
+      state.macros.forEach { macro ->
+        ListItem(
+            title = macro.label,
+            subtitle = macro.command,
+            status = StatusTone.Ok,
+        ) {
+          VButton("Run", { state.runMacro(macro) }, enabled = !state.actsNeedPairing)
+        }
       }
     }
   }
@@ -322,7 +334,13 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
       Terminal(
-          lines = listOf(TerminalLine(" ", state.clipboard, TerminalTone.Dim)),
+          lines =
+              listOf(
+                  TerminalLine(
+                      " ",
+                      state.clipboard.ifBlank { "No clipboard fetched yet" },
+                      TerminalTone.Dim,
+                  )),
           modifier = Modifier.weight(1f),
           fontSize = 12.sp,
       )
@@ -876,58 +894,59 @@ private val WINDOW_ACTIONS: List<Pair<String, HidAction>> =
 @Composable
 private fun MediaPlate(state: RemoteState) {
   val colors = Vitruvian
-  FoldingPlate(state, RemoteSection.MEDIA, if (state.isLive) "Media keys" else "Media · Music") {
-    if (!state.isLive) {
-      Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.spacedBy(Space.s3),
-          verticalAlignment = Alignment.Bottom,
-      ) {
-        VText(
-            text = state.mediaTitle,
-            modifier = Modifier.weight(1f),
-            style = VitruvianType.barTitle,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        VText(
-            text = state.mediaSub,
-            style = VitruvianType.listSub,
-            color = colors.textDim,
-        )
+  FoldingPlate(
+      state, RemoteSection.MEDIA, if (state.isDemoMode) "Media · Music" else "Media keys") {
+        if (state.isDemoMode) {
+          Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.spacedBy(Space.s3),
+              verticalAlignment = Alignment.Bottom,
+          ) {
+            VText(
+                text = state.mediaTitle,
+                modifier = Modifier.weight(1f),
+                style = VitruvianType.barTitle,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            VText(
+                text = state.mediaSub,
+                style = VitruvianType.listSub,
+                color = colors.textDim,
+            )
+          }
+          Meter(fraction = TRACK_PERCENT / 100f)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
+          VButton(
+              label = "⏮",
+              onClick = state::previousTrack,
+              modifier = Modifier.weight(1f),
+              contentDescription = "Previous track",
+          )
+          if (!state.isDemoMode) {
+            VButton(
+                label = "Play/Pause",
+                onClick = state::togglePlay,
+                modifier = Modifier.weight(1f),
+                contentPadding = GRID_KEY_PADDING,
+            )
+          } else {
+            VButton(
+                label = if (state.playing) "Pause" else "Play",
+                onClick = state::togglePlay,
+                modifier = Modifier.weight(1f),
+                variant = ButtonVariant.Primary,
+            )
+          }
+          VButton(
+              label = "⏭",
+              onClick = state::nextTrack,
+              modifier = Modifier.weight(1f),
+              contentDescription = "Next track",
+          )
+        }
       }
-      Meter(fraction = TRACK_PERCENT / 100f)
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
-      VButton(
-          label = "⏮",
-          onClick = state::previousTrack,
-          modifier = Modifier.weight(1f),
-          contentDescription = "Previous track",
-      )
-      if (state.isLive) {
-        VButton(
-            label = "Play/Pause",
-            onClick = state::togglePlay,
-            modifier = Modifier.weight(1f),
-            contentPadding = GRID_KEY_PADDING,
-        )
-      } else {
-        VButton(
-            label = if (state.playing) "Pause" else "Play",
-            onClick = state::togglePlay,
-            modifier = Modifier.weight(1f),
-            variant = ButtonVariant.Primary,
-        )
-      }
-      VButton(
-          label = "⏭",
-          onClick = state::nextTrack,
-          modifier = Modifier.weight(1f),
-          contentDescription = "Next track",
-      )
-    }
-  }
 }
 
 /** Volume, brightness and the display mirror - the "output" plate. */

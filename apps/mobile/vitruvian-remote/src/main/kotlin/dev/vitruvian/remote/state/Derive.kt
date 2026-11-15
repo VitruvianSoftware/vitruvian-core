@@ -1838,7 +1838,7 @@ public object Derive {
    * it might.
    */
   public fun batteryTemperatureLabel(celsius: Double?): String =
-      if (celsius == null || celsius.isNaN()) "no battery reading"
+      if (celsius == null || celsius.isNaN()) "no temperature reading"
       else "battery ${celsius.roundToInt()}°"
 
   /**
@@ -3345,6 +3345,226 @@ public object Derive {
   private fun decimal(value: Double): String {
     val rounded = Math.round(value * 10) / 10.0
     return String.format(Locale.ROOT, "%.1f", rounded).removeSuffix(".0")
+  }
+
+  // --- connection, demo mode & honest state -----------------------------
+
+  public const val MEMORY_SEGMENTS: Int = 16
+
+  /** Where the memory pressure bar turns amber on both Mac and Home screens. */
+  public const val MEMORY_WARN_PERCENT: Int = 75
+
+  /** Default and supported poll cadence chips on Settings. */
+  public const val DEFAULT_REFRESH_INTERVAL: String = "1 s"
+  public val REFRESH_INTERVAL_OPTIONS: List<String> = listOf("1 s", "5 s", "30 s")
+
+  public fun isMemoryWarn(percent: Int): Boolean = percent >= MEMORY_WARN_PERCENT
+
+  public fun memoryUsedPercent(usedBytes: Long, totalBytes: Long, freePercent: Int): Int =
+      if (totalBytes > 0L) {
+        ((usedBytes.toDouble() / totalBytes.toDouble()) * 100.0).roundToInt().coerceIn(0, 100)
+      } else {
+        (100 - freePercent).coerceIn(0, 100)
+      }
+
+  public fun normalizeRefreshInterval(raw: String?): String =
+      if (raw != null && raw in REFRESH_INTERVAL_OPTIONS) raw else DEFAULT_REFRESH_INTERVAL
+
+  /** The five observable states of the selected Mac session. */
+  public enum class HostPhase {
+    /** No saved Mac and demo mode is off. */
+    Unpaired,
+    /** Explicit simulated demo entered from the unpaired screen. */
+    Demo,
+    /** A saved Mac exists, awaiting its first reply after launch or host switch. */
+    Asking,
+    /** A saved Mac answered its last poll. */
+    Live,
+    /** A saved Mac failed its last poll (with or without a cached prior reading). */
+    Offline,
+  }
+
+  /** Connection + metrics-source outcome of a host transition, in pure JVM types. */
+  public enum class PollOutcome {
+    Unpaired,
+    Demo,
+    Asking,
+    Live,
+    Offline,
+  }
+
+  /**
+   * Computes [HostPhase] from saved host presence, session demo flag, whether the current host has
+   * replied yet, and whether its latest state is offline.
+   */
+  public fun hostPhase(
+      hasHosts: Boolean,
+      demoMode: Boolean,
+      hasResponded: Boolean,
+      isOffline: Boolean,
+  ): HostPhase =
+      when {
+        !hasHosts && demoMode -> HostPhase.Demo
+        !hasHosts -> HostPhase.Unpaired
+        isOffline -> HostPhase.Offline
+        hasResponded -> HostPhase.Live
+        else -> HostPhase.Asking
+      }
+
+  /**
+   * Transitions host connectivity after a poll finishes.
+   *
+   * On poll failure for a saved Mac, returns [PollOutcome.Offline] (never staying Connected); on
+   * poll success, returns [PollOutcome.Live]. Without a saved Mac, returns [PollOutcome.Demo] or
+   * [PollOutcome.Unpaired].
+   */
+  public fun afterPoll(
+      hasHosts: Boolean,
+      demoMode: Boolean,
+      pollSucceeded: Boolean,
+  ): PollOutcome =
+      when {
+        !hasHosts && demoMode -> PollOutcome.Demo
+        !hasHosts -> PollOutcome.Unpaired
+        pollSucceeded -> PollOutcome.Live
+        else -> PollOutcome.Offline
+      }
+
+  /**
+   * State after forgetting a host. Zero remaining hosts return to [PollOutcome.Unpaired] (and
+   * callers must exit demo mode and reset metrics source). When another host remains, it starts in
+   * [PollOutcome.Asking] until it answers.
+   */
+  public fun afterForgetHost(remainingHosts: Int): PollOutcome =
+      if (remainingHosts <= 0) PollOutcome.Unpaired else PollOutcome.Asking
+
+  /** True only when showing cached real data from an unreachable saved Mac. */
+  public fun isStaleReading(phase: HostPhase): Boolean = phase == HostPhase.Offline
+
+  /** Whether simulated mock values (`MockHost.*`) may be rendered on screen. */
+  public fun mayShowDemoData(phase: HostPhase): Boolean = phase == HostPhase.Demo
+
+  /** Status word beside the Settings host row or top-bar host chip. */
+  public fun hostStatusWord(phase: HostPhase, pairing: Pairing, needsPairing: Boolean): String =
+      when (phase) {
+        HostPhase.Unpaired -> "unpaired"
+        HostPhase.Demo -> "demo"
+        HostPhase.Asking -> "asking…"
+        HostPhase.Offline -> "unreachable"
+        HostPhase.Live -> if (needsPairing) connectionWord(pairing, "connected") else "connected"
+      }
+
+  /** Home / Mac dashboard source badge label. */
+  public fun sourceBadgeLabel(phase: HostPhase, needsPairing: Boolean): String =
+      when (phase) {
+        HostPhase.Demo -> "simulated"
+        HostPhase.Asking -> "asking…"
+        HostPhase.Offline -> "unreachable"
+        HostPhase.Unpaired -> "unpaired"
+        HostPhase.Live -> if (needsPairing) "not paired" else "live"
+      }
+
+  /** Compute / top-host subline without inventing hardware specs for an unanswered Mac. */
+  public fun hostSummarySubline(
+      phase: HostPhase,
+      osVersion: String?,
+      agentVersion: String?,
+      uptimeDays: Long?,
+      lastSeen: String,
+  ): String =
+      when (phase) {
+        HostPhase.Demo -> "macOS 26.1 · Tailscale · 4 ms"
+        HostPhase.Unpaired -> "no host"
+        HostPhase.Asking -> "asking…"
+        HostPhase.Offline -> {
+          val ver =
+              if (!osVersion.isNullOrBlank() && !agentVersion.isNullOrBlank()) {
+                "macOS $osVersion · agent v$agentVersion"
+              } else {
+                ""
+              }
+          when {
+            ver.isNotEmpty() && lastSeen.isNotBlank() -> "$ver · $lastSeen"
+            ver.isNotEmpty() -> "$ver · unreachable"
+            lastSeen.isNotBlank() -> lastSeen
+            else -> "unreachable"
+          }
+        }
+        HostPhase.Live ->
+            if (!osVersion.isNullOrBlank() && !agentVersion.isNullOrBlank() && uptimeDays != null) {
+              "macOS $osVersion · agent v$agentVersion · up ${uptimeDays}d"
+            } else {
+              "connected"
+            }
+      }
+
+  /** Single-row headline when a saved Mac has never responded and is unreachable. */
+  public fun unansweredHostLine(hostName: String, lastSeen: String = ""): String {
+    val name = hostName.trim().ifEmpty { "the Mac" }
+    return if (lastSeen.isNotBlank()) "$name isn't answering · $lastSeen"
+    else "$name isn't answering"
+  }
+
+  /** Appends `"last seen <relative>"` when showing a cached reading from an offline host. */
+  public fun readingSubline(detail: String, stale: Boolean, lastSeen: String): String {
+    if (!stale || lastSeen.isBlank()) return detail
+    return if (detail.isBlank()) lastSeen else "$detail · $lastSeen"
+  }
+
+  /** Empty-list message under Home's "Running now" heading, or null when items exist. */
+  public fun runningNowEmptyMessage(phase: HostPhase, hasFirstReading: Boolean = false): String? =
+      when (phase) {
+        HostPhase.Asking -> "Checking…"
+        HostPhase.Live -> if (hasFirstReading) "Nothing running" else "Checking…"
+        else -> null
+      }
+
+  /** Discovered module IDs: `"claude"` plus any module whose required CLI tool is available. */
+  public fun discoveredModuleIds(
+      moduleRequires: List<Pair<String, String?>>,
+      availableTools: Set<String>,
+  ): Set<String> {
+    val out = linkedSetOf("claude")
+    for ((id, req) in moduleRequires) {
+      if (req != null && req in availableTools) out.add(id)
+    }
+    return out
+  }
+
+  /** Label for the two-tap danger Delete button inside `MacroEditor`. */
+  public fun macroDeleteLabel(armed: Boolean): String = if (armed) "Confirm delete" else "Delete"
+
+  /** Honest UI spec for Settings › Mac agent › Push notifications. */
+  public data class PushNotifySpec(
+      val subtitle: String,
+      val checked: Boolean,
+      val switchEnabled: Boolean,
+      val testEnabled: Boolean,
+  )
+
+  public fun pushNotifySpec(
+      paired: Boolean,
+      reported: Boolean,
+      configured: Boolean,
+      enabled: Boolean,
+      topic: String,
+  ): PushNotifySpec {
+    if (!reported || !configured) {
+      return PushNotifySpec(
+          subtitle = "Set up ntfy on the Mac to get alerts.",
+          checked = false,
+          switchEnabled = false,
+          testEnabled = false,
+      )
+    }
+    val topicName = topic.trim().ifEmpty { "unnamed" }
+    val subtitle = if (enabled) "push · topic $topicName" else "push · topic $topicName · muted"
+    return PushNotifySpec(
+        subtitle = subtitle,
+        checked = enabled,
+        switchEnabled = paired,
+        testEnabled = paired,
+    )
   }
 }
 

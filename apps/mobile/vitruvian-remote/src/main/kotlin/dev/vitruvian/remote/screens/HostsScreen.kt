@@ -162,13 +162,18 @@ public fun ColumnScope.HostsScreen(state: RemoteState) {
   ) {
     Label("Macros · bound to scripts")
     state.macros.forEach { macro ->
+      val editable = state.userMacros.any { it.id == macro.id }
       ListItem(
           title = macro.label,
           subtitle = macro.command,
           status = StatusTone.Ok,
+          onClick = if (editable) ({ state.editMacro(macro.id) }) else null,
           contentPadding = PaddingValues(vertical = Space.s3),
       ) {
         Tag(text = macro.kind.label, tone = TagTone.Outline)
+        if (editable) {
+          VText(text = "›", style = VitruvianType.listTitle, color = colors.textDim)
+        }
       }
     }
     VButton(
@@ -190,13 +195,14 @@ public fun ColumnScope.HostsScreen(state: RemoteState) {
 private fun AgentPlate(state: RemoteState) {
   val colors = Vitruvian
   val status =
-      when (state.metricsSource) {
-        MetricsSource.Simulated -> "no agent · dashboards are simulated"
+      when {
+        state.isDemoMode -> "no agent · dashboards are simulated"
+        state.hostPhase == Derive.HostPhase.Unpaired -> "no Mac saved yet"
         // The tag beside this already says live / unreachable; repeating the
         // word made "LIVE live". The text carries what the tag cannot.
-        MetricsSource.Live ->
+        state.metricsSource == MetricsSource.Live ->
             "${state.agentHost?.hostname ?: "host"} · agent v${state.agentHost?.agentVersion ?: "?"}"
-        MetricsSource.Unreachable -> state.agentError.ifBlank { "no answer yet" }
+        else -> state.agentError.ifBlank { "no answer yet" }
       }
   Plate(modifier = Modifier.fillMaxWidth()) {
     Column(
@@ -256,7 +262,7 @@ private fun AgentPlate(state: RemoteState) {
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(Space.s3),
       ) {
-        Tag(text = state.metricsSource.label, tone = state.metricsTagTone)
+        Tag(text = state.metricsTagLabel, tone = state.metricsTagTone)
         VText(
             text = status,
             modifier = Modifier.weight(1f),
@@ -268,27 +274,27 @@ private fun AgentPlate(state: RemoteState) {
       // path rather than the flags. The agent publishes to ntfy itself; if
       // this is not configured, nothing the Mac notices ever reaches a phone
       // that is not looking at the app.
+      val push = state.pushNotifySpec
       Row(
           modifier = Modifier.fillMaxWidth(),
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(Space.s3),
       ) {
         VText(
-            text = state.notifyLine,
+            text = push.subtitle,
             modifier = Modifier.weight(1f),
             style = VitruvianType.listSub,
             color = colors.textDim,
         )
-        VButton("Test push", state::testPush, enabled = state.paired)
+        VButton("Test push", state::testPush, enabled = push.testEnabled)
       }
-      // The mute switch. Disabled when the Mac has no ntfy configuration at
-      // all, because there is nothing to mute and a switch that flipped
-      // without effect would be the more confusing control.
+      // The mute switch. Disabled and off when the Mac has no ntfy configuration
+      // or has not reported push yet, so a non-functional switch never appears active.
       VSwitch(
-          checked = state.notificationsEnabled,
+          checked = push.checked,
           onCheckedChange = state::setNotifications,
           label = "Push notifications",
-          enabled = state.paired && state.agentNotify?.configured == true,
+          enabled = push.switchEnabled,
       )
     }
   }

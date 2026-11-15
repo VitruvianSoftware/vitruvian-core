@@ -86,7 +86,8 @@ public const val THERMAL_WARN_C: Int = 75
 @Stable
 public class RemoteState(
     private val persistence: Persistence,
-    initialConnection: Connection = Connection.Connected,
+    initialConnection: Connection =
+        if (persistence.hosts.isEmpty()) Connection.Unpaired else Connection.Connected,
     private val random: Random = Random.Default,
     /**
      * Sends real key presses to a Mac over Bluetooth HID.
@@ -195,14 +196,40 @@ public class RemoteState(
       return "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
     }
 
-  public var wakeOnLan: Boolean by mutableStateOf(true)
+  public var wakeOnLan: Boolean by mutableStateOf(persistence.wakeOnLan)
     private set
 
-  public var confirmDestructive: Boolean by mutableStateOf(true)
+  public var confirmDestructive: Boolean by mutableStateOf(persistence.confirmDestructive)
     private set
 
-  public var refreshInterval: String by mutableStateOf("1 s")
+  public var refreshInterval: String by mutableStateOf(persistence.refreshInterval)
     private set
+
+  /** Non-persisted session demo mode entered from UnpairedState ("See a demo"). */
+  public var demoMode: Boolean by mutableStateOf(false)
+    private set
+
+  /** True once the currently selected host has answered at least one poll. */
+  public var hostResponded: Boolean by mutableStateOf(false)
+    private set
+
+  public val isDemoMode: Boolean
+    get() = demoMode && hosts.isEmpty()
+
+  public val hostPhase: Derive.HostPhase
+    get() =
+        Derive.hostPhase(
+            hasHosts = hosts.isNotEmpty(),
+            demoMode = demoMode,
+            hasResponded = hostResponded,
+            isOffline = connection == Connection.Offline,
+        )
+
+  public val isStaleReading: Boolean
+    get() = Derive.isStaleReading(hostPhase)
+
+  public val lastSeenLabel: String
+    get() = Format.lastSeen(lastSampleAt, bridgeNowMs)
 
   // --- appearance -------------------------------------------------------
   public var darkTheme: Boolean by mutableStateOf(persistence.darkTheme)
@@ -257,6 +284,15 @@ public class RemoteState(
   public val userMacros: SnapshotStateList<Macro> = persistence.userMacros.toMutableStateList()
   public var macroEditorOpen: Boolean by mutableStateOf(false)
     private set
+
+  /** Non-null when editing an existing user macro in `MacroEditor` instead of creating one. */
+  public var editingMacroId: String? by mutableStateOf(null)
+    private set
+
+  private var macroDeleteArmedAtMs: Long? by mutableStateOf(null)
+
+  public val isMacroDeleteArmed: Boolean
+    get() = editingMacroId != null && Derive.isResetArmed(macroDeleteArmedAtMs, bridgeNowMs)
 
   public var macroName: String by mutableStateOf("")
     private set
@@ -918,7 +954,7 @@ public class RemoteState(
   // real Mac behind the console, a transcript that opens on a conversation
   // nobody had and a terminal showing commands nobody ran is the exact kind
   // of pretending the LIVE tag promises not to do.
-  private val demo: Boolean = persistence.hosts.isEmpty()
+  private val demo: Boolean = false
 
   public val terminal: SnapshotStateList<TerminalLine> =
       (if (demo) MockHost.initialTerminal else emptyList()).toMutableStateList()
@@ -941,9 +977,9 @@ public class RemoteState(
     get() =
         when {
           ranCommands.isNotEmpty() -> ranCommands.toList()
-          // Canned examples only in simulated mode: on a real Mac a chip
-          // labelled "recent" would run a command nobody here ever ran.
-          agentUrl.isBlank() -> MockHost.recentCommands
+          // Canned examples only in explicit demo mode: on a real Mac or fresh
+          // install a chip labelled "recent" must never invent commands.
+          isDemoMode -> MockHost.recentCommands
           else -> emptyList()
         }
 
@@ -962,8 +998,7 @@ public class RemoteState(
           .toMutableStateList()
 
   // --- clipboard and power ---------------------------------------------
-  public var clipboard: String by
-      mutableStateOf("https://github.com/VitruvianSoftware/vitruvian-core/pull/1551")
+  public var clipboard: String by mutableStateOf("")
     private set
 
   public var dialog: DialogKind? by mutableStateOf(null)
@@ -983,10 +1018,8 @@ public class RemoteState(
     private set
 
   // --- live series ------------------------------------------------------
-  public val cpu: SnapshotStateList<Int> =
-      List(SERIES_LENGTH) { 18 + (12 * abs(sin(it / 3.0))).roundToInt() }.toMutableStateList()
-  public val net: SnapshotStateList<Int> =
-      List(SERIES_LENGTH) { 10 + (40 * abs(sin(it / 2.2))).roundToInt() }.toMutableStateList()
+  public val cpu: SnapshotStateList<Int> = List(SERIES_LENGTH) { 0 }.toMutableStateList()
+  public val net: SnapshotStateList<Int> = List(SERIES_LENGTH) { 0 }.toMutableStateList()
   public var gpu: Int by mutableStateOf(31)
     private set
 
@@ -1004,15 +1037,15 @@ public class RemoteState(
 
   // --- derived ----------------------------------------------------------
 
-  /** Navigation is locked to Hosts until a Mac is paired. */
+  /** Navigation is locked to Hosts until a Mac is paired or Demo mode is opened. */
   public val effectiveScreen: Screen
-    get() = if (connection == Connection.Unpaired) Screen.Hosts else screen
+    get() = if (isUnpaired) Screen.Hosts else screen
 
   public val isOffline: Boolean
     get() = connection == Connection.Offline
 
   public val isUnpaired: Boolean
-    get() = connection == Connection.Unpaired
+    get() = !isDemoMode && (connection == Connection.Unpaired || hosts.isEmpty())
 
   /**
    * [connection] as the shell shows it: [Connection.NotPaired] whenever a configured Mac holds no
@@ -1035,8 +1068,8 @@ public class RemoteState(
   public val hostRows: List<Host>
     get() =
         when {
+          isDemoMode -> MockHost.hosts
           isUnpaired -> emptyList()
-          hosts.isEmpty() -> MockHost.hosts
           else -> hosts.map(::hostRow)
         }
 
@@ -1054,26 +1087,33 @@ public class RemoteState(
                 "$address · macOS ${live.osVersion} · ${Format.memoryBytes(live.memoryBytes)}"
             else address,
         // Live but unpaired is amber, not green: the numbers are real, the
-        // switches are not. The tag says which half is missing.
+        // switches are not. Asking is neutral; offline/unreachable is red.
         tone =
             when {
               !current -> StatusTone.Neutral
-              metricsSource == MetricsSource.Live && needsPairing -> StatusTone.Warn
-              metricsSource == MetricsSource.Live -> StatusTone.Ok
-              else -> StatusTone.Crit
+              hostPhase == Derive.HostPhase.Asking -> StatusTone.Neutral
+              hostPhase == Derive.HostPhase.Offline -> StatusTone.Crit
+              hostPhase == Derive.HostPhase.Live && needsPairing -> StatusTone.Warn
+              hostPhase == Derive.HostPhase.Live -> StatusTone.Ok
+              else -> StatusTone.Neutral
             },
         tag =
             when {
               !current -> "saved"
-              metricsSource == MetricsSource.Live && needsPairing -> "not paired"
-              else -> metricsSource.label
+              hostPhase == Derive.HostPhase.Asking -> "asking…"
+              hostPhase == Derive.HostPhase.Offline -> "unreachable"
+              hostPhase == Derive.HostPhase.Live && needsPairing -> "not paired"
+              hostPhase == Derive.HostPhase.Live -> "live"
+              else -> "saved"
             },
         tagTone =
             when {
               !current -> TagTone.Outline
-              metricsSource == MetricsSource.Live && needsPairing -> TagTone.Warn
-              metricsSource == MetricsSource.Live -> TagTone.Ok
-              else -> TagTone.Sanguine
+              hostPhase == Derive.HostPhase.Asking -> TagTone.Neutral
+              hostPhase == Derive.HostPhase.Offline -> TagTone.Sanguine
+              hostPhase == Derive.HostPhase.Live && needsPairing -> TagTone.Warn
+              hostPhase == Derive.HostPhase.Live -> TagTone.Ok
+              else -> TagTone.Outline
             },
     )
   }
@@ -1082,10 +1122,9 @@ public class RemoteState(
   public val hostShortName: String
     get() =
         when {
+          isDemoMode -> MockHost.hosts.first().name.substringBefore(" · ")
           isUnpaired -> "no host"
-          // No Mac saved: the app is simulating, and the mock's own name is
-          // what every other simulated figure on screen belongs to.
-          hosts.isEmpty() -> MockHost.hosts.first().name.substringBefore(" · ")
+          hosts.isEmpty() -> "no host"
           else -> {
             val host = selectedHost
             if (host != null) {
@@ -1135,11 +1174,13 @@ public class RemoteState(
           nothingRan = nothingRan,
       )
 
-  /** The chip's text: the short name, suffixed when unreachable. */
+  /** The chip's text: the short name, suffixed when unreachable or still asking. */
   public val hostChipText: String
     get() =
         when {
+          isDemoMode -> hostShortName
           isUnpaired -> "no host"
+          hostPhase == Derive.HostPhase.Asking -> "$hostShortName · asking…"
           isOffline -> "$hostShortName · offline"
           shellConnection == Connection.NotPaired -> "$hostShortName · not paired"
           else -> hostShortName
@@ -1147,37 +1188,55 @@ public class RemoteState(
 
   public val hostTone: StatusTone
     get() =
-        when (shellConnection) {
-          Connection.Connected -> StatusTone.Ok
-          Connection.Offline -> StatusTone.Crit
-          Connection.Unpaired -> StatusTone.Neutral
-          Connection.NotPaired -> StatusTone.Warn
+        when {
+          hostPhase == Derive.HostPhase.Demo -> StatusTone.Neutral
+          hostPhase == Derive.HostPhase.Asking -> StatusTone.Neutral
+          shellConnection == Connection.Connected -> StatusTone.Ok
+          shellConnection == Connection.Offline -> StatusTone.Crit
+          shellConnection == Connection.Unpaired -> StatusTone.Neutral
+          shellConnection == Connection.NotPaired -> StatusTone.Warn
+          else -> StatusTone.Neutral
         }
 
   public val connectionWord: String
     get() =
-        when (shellConnection) {
-          Connection.Connected -> "connected"
-          Connection.Offline -> "unreachable"
-          Connection.Unpaired -> "unpaired"
-          Connection.NotPaired -> Derive.connectionWord(pairing, "connected")
+        when {
+          hostPhase == Derive.HostPhase.Demo -> "demo"
+          hostPhase == Derive.HostPhase.Asking -> "asking…"
+          else ->
+              when (shellConnection) {
+                Connection.Connected -> "connected"
+                Connection.Offline -> "unreachable"
+                Connection.Unpaired -> "unpaired"
+                Connection.NotPaired -> Derive.connectionWord(pairing, "connected")
+              }
         }
 
   /** The line under the host name on Home: real when the agent has answered, the mock otherwise. */
   public val hostSubline: String
     get() {
-      val h = agentHost ?: return "macOS 26.1 · Tailscale · 4 ms"
-      val up = agentMetrics?.uptimeSeconds ?: 0L
-      val days = up / SECONDS_PER_DAY
-      return "macOS ${h.osVersion} · agent v${h.agentVersion} · up ${days}d"
+      val h = agentHost
+      val uptimeDays = agentMetrics?.uptimeSeconds?.let { it / SECONDS_PER_DAY }
+      return Derive.hostSummarySubline(
+          phase = hostPhase,
+          osVersion = h?.osVersion,
+          agentVersion = h?.agentVersion,
+          uptimeDays = uptimeDays,
+          lastSeen = lastSeenLabel,
+      )
     }
+
+  public val metricsTagLabel: String
+    get() = Derive.sourceBadgeLabel(hostPhase, needsPairing)
 
   public val metricsTagTone: TagTone
     get() =
-        when (metricsSource) {
-          MetricsSource.Live -> TagTone.Ok
-          MetricsSource.Unreachable -> TagTone.Sanguine
-          MetricsSource.Simulated -> TagTone.Outline
+        when (hostPhase) {
+          Derive.HostPhase.Live -> if (needsPairing) TagTone.Warn else TagTone.Ok
+          Derive.HostPhase.Offline -> TagTone.Sanguine
+          Derive.HostPhase.Asking -> TagTone.Neutral
+          Derive.HostPhase.Demo -> TagTone.Outline
+          Derive.HostPhase.Unpaired -> TagTone.Outline
         }
 
   /** The host part of the configured agent URL, for display. */
@@ -1204,7 +1263,8 @@ public class RemoteState(
 
   public val processes: List<Process>
     get() {
-      if (!isLive) return MockHost.processes
+      if (isDemoMode) return MockHost.processes
+      if (!isLive) return emptyList()
       return agentProcesses.orEmpty().map {
         Process(
             name = it.name,
@@ -1216,15 +1276,21 @@ public class RemoteState(
 
   public val processesNotice: Notice?
     get() =
-        if (isLive && agentProcesses == null)
-            Notice("Sampling…", "the agent is taking its first reading")
-        else null
+        when {
+          isDemoMode -> null
+          hostPhase == Derive.HostPhase.Offline ->
+              Notice("$hostShortName isn't answering", lastSeenLabel.ifBlank { "unreachable" })
+          hostPhase == Derive.HostPhase.Asking -> Notice("Checking…", "asking $hostShortName")
+          isLive && agentProcesses == null ->
+              Notice("Sampling…", "the agent is taking its first reading")
+          else -> null
+        }
 
   public val vms: List<Vm>
     get() {
+      if (isDemoMode) return MockHost.vms
       val live = agentVms
-      if (!isLive || live == null || !live.available)
-          return if (isLive) emptyList() else MockHost.vms
+      if (!isLive || live == null || !live.available) return emptyList()
       return live.items.map { vm ->
         val running = vm.status.equals("Running", ignoreCase = true)
         Vm(
@@ -1240,14 +1306,20 @@ public class RemoteState(
     }
 
   public val vmsNotice: Notice?
-    get() = liveNotice(agentVms, "limactl") { "Lima VMs unavailable" }
+    get() =
+        when {
+          isDemoMode -> null
+          hostPhase == Derive.HostPhase.Offline ->
+              Notice("$hostShortName isn't answering", lastSeenLabel.ifBlank { "unreachable" })
+          hostPhase == Derive.HostPhase.Asking -> Notice("Checking…", "asking $hostShortName")
+          else -> liveNotice(agentVms, "limactl") { "Lima VMs unavailable" }
+        }
 
   public val containers: List<Container>
     get() {
+      if (isDemoMode) return MockHost.containers
       val live = agentContainers
-      if (!isLive || live == null || !live.available) {
-        return if (isLive) emptyList() else MockHost.containers
-      }
+      if (!isLive || live == null || !live.available) return emptyList()
       // Pause sandboxes gone and a pod's containers on one row; see
       // Derive.groupContainers for why the raw `docker ps` list was unreadable.
       return Derive.groupContainers(live.items, { it.name }, { it.image }).map { group ->
@@ -1278,7 +1350,14 @@ public class RemoteState(
     }
 
   public val containersNotice: Notice?
-    get() = liveNotice(agentContainers, "docker / podman", Format::containerTitle)
+    get() =
+        when {
+          isDemoMode -> null
+          hostPhase == Derive.HostPhase.Offline ->
+              Notice("$hostShortName isn't answering", lastSeenLabel.ifBlank { "unreachable" })
+          hostPhase == Derive.HostPhase.Asking -> Notice("Checking…", "asking $hostShortName")
+          else -> liveNotice(agentContainers, "docker / podman", Format::containerTitle)
+        }
 
   /**
    * The K3s nodes, which used to share a section with the Lima VMs.
@@ -1303,15 +1382,20 @@ public class RemoteState(
 
   public val nodesNotice: Notice?
     get() =
-        if (!isLive) Notice("No cluster behind this screen", "simulated")
-        else liveNotice(agentK8s, "kubectl") { "K3s nodes unavailable" }
+        when {
+          isDemoMode -> Notice("No cluster behind this screen", "simulated")
+          hostPhase == Derive.HostPhase.Offline ->
+              Notice("$hostShortName isn't answering", lastSeenLabel.ifBlank { "unreachable" })
+          hostPhase == Derive.HostPhase.Asking -> Notice("Checking…", "asking $hostShortName")
+          else -> liveNotice(agentK8s, "kubectl") { "K3s nodes unavailable" }
+        }
 
   /** The section header, which carries the count and so must not invent one. */
   public val containersLabel: String
     get() {
+      if (isDemoMode) return "Docker · ${MockHost.containers.size} containers"
       val live = agentContainers
-      if (!isLive) return "Docker · ${MockHost.containers.size} containers"
-      if (live == null) return "Containers"
+      if (!isLive || live == null) return "Containers"
       if (!live.available) return "Containers · unavailable"
       val runtime = live.detail.ifBlank { "containers" }
       return "$runtime · ${live.items.size} running"
@@ -1336,9 +1420,33 @@ public class RemoteState(
       watts: Double?,
   ): HonestMetric =
       when {
-        !isLive -> HonestMetric(label, "$simulated%", simulatedSub, simulated)
-        watts != null -> HonestMetric(label, Format.watts(watts), "power, not load", null)
-        else -> HonestMetric(label, "n/a", powerQueryReason.ifBlank { POWER_UNAVAILABLE }, null)
+        isDemoMode -> HonestMetric(label, "$simulated%", simulatedSub, simulated)
+        hostPhase == Derive.HostPhase.Asking && agentMetrics == null ->
+            HonestMetric(label, "—", "asking…", null)
+        hostPhase == Derive.HostPhase.Offline && watts == null ->
+            HonestMetric(
+                label,
+                "—",
+                Derive.unansweredHostLine(hostShortName, lastSeenLabel),
+                null,
+                stale = true,
+            )
+        watts != null ->
+            HonestMetric(
+                label,
+                Format.watts(watts),
+                Derive.readingSubline("power, not load", isStaleReading, lastSeenLabel),
+                null,
+                stale = isStaleReading,
+            )
+        else ->
+            HonestMetric(
+                label,
+                "n/a",
+                powerQueryReason.ifBlank { POWER_UNAVAILABLE },
+                null,
+                stale = isStaleReading,
+            )
       }
 
   /**
@@ -1354,8 +1462,7 @@ public class RemoteState(
    */
   public val thermalPlate: HonestMetric
     get() {
-      val m = agentMetrics
-      if (!isLive || m == null) {
+      if (isDemoMode) {
         return HonestMetric(
             "Thermals",
             "$temperature°",
@@ -1364,12 +1471,30 @@ public class RemoteState(
             warn = temperature > THERMAL_WARN_C,
         )
       }
+      val m =
+          agentMetrics
+              ?: return HonestMetric(
+                  label = "Thermals",
+                  value = "—",
+                  sub =
+                      if (hostPhase == Derive.HostPhase.Offline)
+                          Derive.unansweredHostLine(hostShortName, lastSeenLabel)
+                      else "asking…",
+                  percent = null,
+                  stale = isStaleReading,
+              )
       return HonestMetric(
           label = "Thermals",
           value = if (m.throttled) "${m.cpuSpeedLimitPercent}%" else "ok",
-          sub = Derive.batteryTemperatureLabel(m.batteryTemperatureC),
+          sub =
+              Derive.readingSubline(
+                  Derive.batteryTemperatureLabel(m.batteryTemperatureC),
+                  isStaleReading,
+                  lastSeenLabel,
+              ),
           percent = if (m.throttled) 100 - m.cpuSpeedLimitPercent else null,
           warn = m.throttled,
+          stale = isStaleReading,
       )
     }
 
@@ -1383,10 +1508,19 @@ public class RemoteState(
    */
   public val cpuBreakdown: String
     get() {
-      if (!isLive) return "P-cores 34% · E-cores 12%"
-      val m = agentMetrics ?: return "sampling…"
+      if (isDemoMode) return "P-cores 34% · E-cores 12%"
+      val m =
+          agentMetrics
+              ?: return when (hostPhase) {
+                Derive.HostPhase.Offline -> Derive.unansweredHostLine(hostShortName, lastSeenLabel)
+                else -> "asking…"
+              }
       val cores = agentHost?.cores?.takeIf { it > 0 }?.let { "$it cores" }
-      return Format.parts("load ${"%.2f".format(m.load1)}", cores)
+      return Derive.readingSubline(
+          Format.parts("load ${"%.2f".format(m.load1)}", cores),
+          isStaleReading,
+          lastSeenLabel,
+      )
     }
 
   /**
@@ -1400,28 +1534,45 @@ public class RemoteState(
    */
   public val computeFootnote: String?
     get() =
-        if (!isLive) null
+        if (isDemoMode || agentMetrics == null) null
         else
             "Not readable without root: SoC temperature, fans, P/E split, swap, " +
                 "disk throughput."
 
   public val memoryPlate: HonestMetric
     get() {
-      val m = agentMetrics
-      if (!isLive || m == null) {
+      if (isDemoMode) {
         return HonestMetric(
             "Memory pressure", "$MEMORY_PERCENT%", "26.4 / 64 GB · swap 0 B", MEMORY_PERCENT)
       }
+      val m =
+          agentMetrics
+              ?: return HonestMetric(
+                  label = "Memory pressure",
+                  value = "—",
+                  sub =
+                      if (hostPhase == Derive.HostPhase.Offline)
+                          Derive.unansweredHostLine(hostShortName, lastSeenLabel)
+                      else "asking…",
+                  percent = null,
+                  stale = isStaleReading,
+              )
       val pressure = (100 - m.memoryFreePercent).coerceIn(0, 100)
       return HonestMetric(
           label = "Memory pressure",
           value = "$pressure%",
           sub =
-              Format.parts(
-                  Format.memoryPair(m.memoryUsedBytes, m.memoryTotalBytes),
-                  "kernel free ${m.memoryFreePercent}%",
+              Derive.readingSubline(
+                  Format.parts(
+                      Format.memoryPair(m.memoryUsedBytes, m.memoryTotalBytes),
+                      "kernel free ${m.memoryFreePercent}%",
+                  ),
+                  isStaleReading,
+                  lastSeenLabel,
               ),
           percent = pressure,
+          warn = Derive.isMemoryWarn(pressure),
+          stale = isStaleReading,
       )
     }
 
@@ -1433,34 +1584,70 @@ public class RemoteState(
    */
   public val memoryBreakdown: List<String>
     get() =
-        if (isLive) emptyList()
-        else listOf("app 18.1 GB", "wired 4.2 GB", "compressed 2.1 GB", "cached 12 GB")
+        if (isDemoMode) listOf("app 18.1 GB", "wired 4.2 GB", "compressed 2.1 GB", "cached 12 GB")
+        else emptyList()
 
   public val batteryPlate: HonestMetric
     get() {
-      val m = agentMetrics
-      if (!isLive || m == null) {
+      if (isDemoMode) {
         return HonestMetric("Battery", "$BATTERY_PERCENT%", "$powerDraw W · on AC", BATTERY_PERCENT)
       }
-      if (!m.batteryPresent) return HonestMetric("Battery", "n/a", "no battery", null)
+      val m =
+          agentMetrics
+              ?: return HonestMetric(
+                  label = "Battery",
+                  value = "—",
+                  sub =
+                      if (hostPhase == Derive.HostPhase.Offline)
+                          Derive.unansweredHostLine(hostShortName, lastSeenLabel)
+                      else "asking…",
+                  percent = null,
+                  stale = isStaleReading,
+              )
+      if (!m.batteryPresent) {
+        return HonestMetric(
+            label = "Battery",
+            value = "n/a",
+            sub = Derive.readingSubline("no battery", isStaleReading, lastSeenLabel),
+            percent = null,
+            stale = isStaleReading,
+        )
+      }
       return HonestMetric(
           label = "Battery",
           value = "${m.batteryPercent}%",
           // On AC the battery's own draw is 0 by definition; the adapter's
           // figure (API v1.5.1) is the one that says anything there.
-          sub = Derive.batteryPowerLabel(m.onAc, m.charging, m.drawWatts, m.systemWatts),
+          sub =
+              Derive.readingSubline(
+                  Derive.batteryPowerLabel(m.onAc, m.charging, m.drawWatts, m.systemWatts),
+                  isStaleReading,
+                  lastSeenLabel,
+              ),
           percent = m.batteryPercent,
           warn = !m.onAc && m.batteryPercent < BATTERY_WARN_PERCENT,
+          stale = isStaleReading,
       )
     }
 
   public val diskPlate: HonestMetric
     get() {
-      val m = agentMetrics
-      if (!isLive || m == null) {
+      if (isDemoMode) {
         return HonestMetric(
             "Disk · Macintosh HD", "1.21 / 2 TB", "R 42 MB/s · W 8 MB/s", DISK_PERCENT)
       }
+      val m =
+          agentMetrics
+              ?: return HonestMetric(
+                  label = "Disk",
+                  value = "—",
+                  sub =
+                      if (hostPhase == Derive.HostPhase.Offline)
+                          Derive.unansweredHostLine(hostShortName, lastSeenLabel)
+                      else "asking…",
+                  percent = null,
+                  stale = isStaleReading,
+              )
       val used = m.diskUsedPercent.roundToInt()
       val fill = Derive.diskFill(m.diskUsedPercent)
       return HonestMetric(
@@ -1470,14 +1657,24 @@ public class RemoteState(
           // actually has. The data volume since API v1.5.1: `/` is the sealed
           // system snapshot and read 1% on a disk that was 90% full.
           sub =
-              Format.parts(
-                  if (m.diskTotalBytes > 0) Format.bytesPair(m.diskUsedBytes, m.diskTotalBytes)
-                  else m.diskUsedBytes.takeIf { it > 0 }?.let { "${Format.formatBytes(it)} used" },
-                  m.diskAvailableBytes.takeIf { it > 0 }?.let { "${Format.formatBytes(it)} free" },
+              Derive.readingSubline(
+                  Format.parts(
+                      if (m.diskTotalBytes > 0) Format.bytesPair(m.diskUsedBytes, m.diskTotalBytes)
+                      else
+                          m.diskUsedBytes
+                              .takeIf { it > 0 }
+                              ?.let { "${Format.formatBytes(it)} used" },
+                      m.diskAvailableBytes
+                          .takeIf { it > 0 }
+                          ?.let { "${Format.formatBytes(it)} free" },
+                  ),
+                  isStaleReading,
+                  lastSeenLabel,
               ),
           percent = used,
           warn = fill == Derive.Fill.Warn,
           crit = fill == Derive.Fill.Crit,
+          stale = isStaleReading,
       )
     }
 
@@ -1500,8 +1697,17 @@ public class RemoteState(
   /** The Mac screen's header line. */
   public val computeSubline: String
     get() {
-      val h = agentHost ?: return "Apple M4 Max · 16c CPU · 40c GPU · 64 GB"
-      return Format.parts(h.model, h.chip, "${h.cores} cores", Format.memoryBytes(h.memoryBytes))
+      if (isDemoMode) return "Apple M4 Max · 16c CPU · 40c GPU · 64 GB"
+      val h =
+          agentHost
+              ?: return if (hostPhase == Derive.HostPhase.Offline)
+                  Derive.unansweredHostLine(hostShortName, lastSeenLabel)
+              else "asking…"
+      return Derive.readingSubline(
+          Format.parts(h.model, h.chip, "${h.cores} cores", Format.memoryBytes(h.memoryBytes)),
+          isStaleReading,
+          lastSeenLabel,
+      )
     }
 
   // --- media --------------------------------------------------------------
@@ -1514,21 +1720,26 @@ public class RemoteState(
    * was invented in a mock. The transport buttons underneath are real HID and stay.
    */
   public val mediaTitle: String
-    get() = if (isLive) "Now playing · n/a" else if (playing) "Ambient Works 85–92" else "Paused"
+    get() =
+        when {
+          !isDemoMode -> "Now playing · n/a"
+          playing -> "Ambient Works 85–92"
+          else -> "Paused"
+        }
 
   public val mediaSub: String
-    get() = if (isLive) "no public API without extra tools" else "2:41 / 4:03"
+    get() = if (isDemoMode) "2:41 / 4:03" else "no public API without extra tools"
 
   /** The volume the MAC reports, not the one we guessed. Null when nothing has said. */
   public val volumeValue: String
     get() {
-      if (!isLive) return "$volume%"
+      if (isDemoMode) return "$volume%"
       val a = agentAudio ?: return "n/a"
       return if (a.muted) "muted" else "${a.volumePercent}%"
     }
 
   public val volumeFraction: Float?
-    get() = if (!isLive) volume / 100f else agentAudio?.let { it.volumePercent / 100f }
+    get() = if (isDemoMode) volume / 100f else agentAudio?.let { it.volumePercent / 100f }
 
   /**
    * Brightness has no read source at all.
@@ -1538,10 +1749,10 @@ public class RemoteState(
    * away, because the local guess was drifting further from the real value with every press.
    */
   public val brightnessValue: String
-    get() = if (isLive) "n/a" else "$brightness%"
+    get() = if (isDemoMode) "$brightness%" else "n/a"
 
   public val brightnessFraction: Float?
-    get() = if (isLive) null else brightness / 100f
+    get() = if (isDemoMode) brightness / 100f else null
 
   /**
    * A list's absence, as a headline and the tool's own words.
@@ -1567,11 +1778,18 @@ public class RemoteState(
 
   /** User macros come first, so a just-saved one is where the author left it. */
   public val macros: List<Macro>
-    get() = userMacros + MockHost.builtInMacros
+    get() = if (isDemoMode) userMacros + MockHost.builtInMacros else userMacros.toList()
 
   public val widgets: List<Widget>
-    get() =
-        (agentMetrics?.let(::liveWidgets) ?: simulatedWidgets).filterNot { it.id in hiddenWidgets }
+    get() {
+      val raw =
+          when {
+            isDemoMode -> simulatedWidgets
+            agentMetrics != null -> liveWidgets(agentMetrics!!)
+            else -> emptyList()
+          }
+      return raw.filterNot { it.id in hiddenWidgets }
+    }
 
   /**
    * Widgets from a real reading.
@@ -1582,6 +1800,8 @@ public class RemoteState(
    */
   private fun liveWidgets(m: AgentMetrics): List<Widget> {
     val h = agentHost
+    val stale = isStaleReading
+    val seen = lastSeenLabel
     val pressure = (100 - m.memoryFreePercent).coerceIn(0, 100)
     val cpuValue = if (m.cpuReady) "${m.cpuBusyPercent.roundToInt()}%" else "…"
     val cpuSub =
@@ -1600,28 +1820,44 @@ public class RemoteState(
         }
     return listOf(
         Widget(
-            "cpu", "CPU", cpuValue, cpuSub, if (m.cpuReady) m.cpuBusyPercent.roundToInt() else 0),
+            id = "cpu",
+            label = "CPU",
+            value = cpuValue,
+            sub = Derive.readingSubline(cpuSub, stale, seen),
+            percent = if (m.cpuReady) m.cpuBusyPercent.roundToInt() else 0,
+            stale = stale,
+        ),
         Widget(
-            "mem",
-            "Memory pressure",
-            "$pressure%",
-            "${Format.memoryPair(m.memoryUsedBytes, m.memoryTotalBytes)} used",
-            pressure),
+            id = "mem",
+            label = "Memory pressure",
+            value = "$pressure%",
+            sub =
+                Derive.readingSubline(
+                    "${Format.memoryPair(m.memoryUsedBytes, m.memoryTotalBytes)} used",
+                    stale,
+                    seen,
+                ),
+            percent = pressure,
+            warn = Derive.isMemoryWarn(pressure),
+            stale = stale,
+        ),
         Widget(
             id = "temp",
             label = "Thermals",
             value = thermalValue,
-            sub = thermalSub,
+            sub = Derive.readingSubline(thermalSub, stale, seen),
             percent = if (m.throttled) 100 - m.cpuSpeedLimitPercent else 0,
             warn = m.throttled,
+            stale = stale,
         ),
         Widget(
-            "bat",
-            "Battery",
-            batValue,
-            batSub,
-            if (m.batteryPresent) m.batteryPercent else 0,
+            id = "bat",
+            label = "Battery",
+            value = batValue,
+            sub = Derive.readingSubline(batSub, stale, seen),
+            percent = if (m.batteryPresent) m.batteryPercent else 0,
             warn = m.batteryPresent && !m.onAc && m.batteryPercent < BATTERY_WARN_PERCENT,
+            stale = stale,
         ),
     )
   }
@@ -1642,6 +1878,31 @@ public class RemoteState(
             Widget("bat", "Battery", "$BATTERY_PERCENT%", "$powerDraw W · on AC", BATTERY_PERCENT),
         )
 
+  /** True once at least one "Running now" source has answered for the current host. */
+  private val hasRunningNowReading: Boolean
+    get() =
+        agentClaudeSessions != null ||
+            agentVms != null ||
+            agentContainers != null ||
+            agentK8s != null
+
+  /** Empty-list message under Home's "Running now" heading when [runningNow] is empty. */
+  public val runningNowEmpty: String?
+    get() =
+        if (runningNow.isEmpty()) Derive.runningNowEmptyMessage(hostPhase, hasRunningNowReading)
+        else null
+
+  /** Single offline row shown in lists when a saved Mac stops answering. */
+  private fun offlineRunningItem(): RunningItem =
+      RunningItem(
+          moduleId = "",
+          title = Derive.unansweredHostLine(hostShortName),
+          subtitle = lastSeenLabel.ifBlank { "no reply from Mac" },
+          tone = StatusTone.Crit,
+          tag = "unreachable",
+          tagTone = TagTone.Sanguine,
+      )
+
   /**
    * What is actually running, when the Mac can say.
    *
@@ -1652,7 +1913,9 @@ public class RemoteState(
    */
   public val runningNow: List<RunningItem>
     get() {
-      if (!isLive) return MockHost.runningNow
+      if (isDemoMode) return MockHost.runningNow
+      if (hostPhase == Derive.HostPhase.Offline) return listOf(offlineRunningItem())
+      if (!isLive) return emptyList()
       val rows = mutableListOf<RunningItem>()
       agentClaudeSessions?.let { sessions ->
         val real = claudeRealPending
@@ -1899,23 +2162,21 @@ public class RemoteState(
 
   private fun dashboardFor(id: String): ModuleDashboard {
     if (id == "speaker") {
-      if (isLive || (!isUnpaired && hosts.isNotEmpty())) {
+      if (isLive || !isDemoMode) {
         return vitruvianSpeakerDashboard()
       }
       return simulatedVitruvianSpeakerDashboard()
     }
-    if (!isLive) {
-      // A paired Mac that is not answering keeps what it last said, marked offline; the demo
-      // numbers are only for a phone with no Mac at all (UAT 2026-11-10).
-      if (!isUnpaired && hosts.isNotEmpty() && id != "prs" && id != "tv") {
-        return offlineDashboard(liveDashboard(id) ?: unwiredDashboard(id), noMacStreamLine())
-      }
+    if (isDemoMode) {
       return when (id) {
         "prs" -> simulatedPrsDashboard()
         "tv" -> simulatedTvDashboard()
         else ->
             MockHost.dashboards(agentTranscript.toList(), !agentPaused)[id] ?: unwiredDashboard(id)
       }
+    }
+    if (!isLive) {
+      return offlineDashboard(liveDashboard(id) ?: unwiredDashboard(id), noMacStreamLine())
     }
     return liveDashboard(id) ?: unwiredDashboard(id)
   }
@@ -6466,11 +6727,24 @@ public class RemoteState(
     return listOf(head) + list.items.map { TerminalLine(" ", row(it), TerminalTone.Dim) }
   }
 
+  public val effectiveInstalled: Set<String>
+    get() =
+        when {
+          isDemoMode -> MockHost.demoInstalled
+          persistence.hasSavedInstalled -> installed.toSet()
+          else ->
+              Derive.discoveredModuleIds(
+                  MockHost.gallery.map { it.id to it.requires },
+                  agentTools?.tools?.filterValues { it.available }?.keys.orEmpty(),
+              )
+        }
+
   /** Only installed modules that actually ship a dashboard get a chip. */
   public val moduleChips: List<GalleryEntry>
     get() {
       val visible =
-          Derive.visibleModuleIds(MockHost.gallery.map { it.id }, installed.toSet(), knownModuleIds)
+          Derive.visibleModuleIds(
+                  MockHost.gallery.map { it.id }, effectiveInstalled, knownModuleIds)
               .toSet()
       return MockHost.gallery.filter { it.id in visible }
     }
@@ -6510,6 +6784,18 @@ public class RemoteState(
 
   public val networkUp: String
     get() = "${(net.last() * UP_FACTOR).roundToInt()} Mb/s"
+
+  public val networkSubline: String
+    get() =
+        when {
+          isDemoMode -> "↓ $networkDown ↑ $networkUp"
+          agentMetrics == null ->
+              if (hostPhase == Derive.HostPhase.Offline)
+                  Derive.unansweredHostLine(hostShortName, lastSeenLabel)
+              else "asking…"
+          else ->
+              Derive.readingSubline("↓ $networkDown ↑ $networkUp", isStaleReading, lastSeenLabel)
+        }
 
   /**
    * The PromQL panel's own rows, for the Mac screen.
@@ -6587,8 +6873,8 @@ public class RemoteState(
       // tool ran.
       bridgeNowMs = System.currentTimeMillis()
       if (!live) {
-        // The simulated walk moves on the tick, not on every navigation.
-        if (!woken) advance()
+        // The simulated walk runs ONLY while demo mode is active.
+        if (isDemoMode && !woken) advance()
       } else {
         pollAgent(now)
       }
@@ -6698,8 +6984,12 @@ public class RemoteState(
    */
   public fun configureModule(id: String) {
     if (MockHost.gallery.none { it.id == id }) return
-    if (id !in installed) {
+    if (id !in effectiveInstalled) {
       if (moduleUnavailableReason(id) != null) return
+      if (!persistence.hasSavedInstalled) {
+        installed.clear()
+        installed.addAll(effectiveInstalled)
+      }
       installed.add(id)
       persistence.installed = installed.toList()
     }
@@ -6758,6 +7048,9 @@ public class RemoteState(
   public fun selectHost(id: String) {
     if (id == selectedHostId) return
     val entry = hosts.firstOrNull { it.id == id } ?: return
+    demoMode = false
+    connection = Connection.Connected
+    metricsSource = MetricsSource.Unreachable
     selectedHostId = id
     persistence.selectedHostId = id
     // A QR code belongs to the Mac it was scanned for, not whichever is next.
@@ -6787,6 +7080,10 @@ public class RemoteState(
     persistence.selectedHostId = entry.id
     agentUrlDraft = entry.url
     hostAliasDraft = entry.alias
+    demoMode = false
+    connection = Connection.Connected
+    metricsSource = MetricsSource.Unreachable
+    hostResponded = false
     resetHostSnapshots()
     regeneratePairCode()
     log("info", "host · added ${entry.alias} · ${AgentClient.normalize(entry.url)}")
@@ -6798,11 +7095,46 @@ public class RemoteState(
    * The token goes because a phone with no host holding a key that still opens it is the worst of
    * both. Removing the selected one falls back to whatever is left, or to the simulated state.
    */
+  public fun enterDemo() {
+    demoMode = true
+    hostResponded = false
+    connection = Connection.Connected
+    metricsSource = MetricsSource.Simulated
+    agentError = ""
+    clipboard = "https://github.com/VitruvianSoftware/vitruvian-core/pull/1551"
+    terminal.clear()
+    terminal.addAll(MockHost.initialTerminal)
+    agentTranscript.clear()
+    agentTranscript.addAll(MockHost.initialAgentTranscript)
+    cpu.clear()
+    cpu.addAll(List(SERIES_LENGTH) { 18 + (12 * abs(sin(it / 3.0))).roundToInt() })
+    net.clear()
+    net.addAll(List(SERIES_LENGTH) { 10 + (40 * abs(sin(it / 2.2))).roundToInt() })
+    log("info", "demo · simulated dashboard loaded")
+    screen = Screen.Home
+  }
+
+  public fun exitDemo() {
+    demoMode = false
+    hostResponded = false
+    connection = if (hosts.isEmpty()) Connection.Unpaired else Connection.Connected
+    metricsSource = MetricsSource.Simulated
+    clipboard = ""
+    terminal.clear()
+    agentTranscript.clear()
+    cpu.clear()
+    cpu.addAll(List(SERIES_LENGTH) { 0 })
+    net.clear()
+    net.addAll(List(SERIES_LENGTH) { 0 })
+    screen = Screen.Hosts
+  }
+
   public fun forgetHost(id: String) {
     val entry = hosts.firstOrNull { it.id == id } ?: return
     hosts = hosts.filterNot { it.id == id }
     persistence.hosts = hosts
-    if (id == selectedHostId) {
+    demoMode = false
+    if (hosts.isEmpty() || id == selectedHostId) {
       val next = hosts.firstOrNull()
       selectedHostId = next?.id.orEmpty()
       persistence.selectedHostId = selectedHostId
@@ -6812,8 +7144,20 @@ public class RemoteState(
       // which belonged to the Mac that was just forgotten.
       resetHostSnapshots()
       regeneratePairCode()
+      when (Derive.afterForgetHost(hosts.size)) {
+        Derive.PollOutcome.Unpaired -> {
+          connection = Connection.Unpaired
+          metricsSource = MetricsSource.Simulated
+        }
+        else -> {
+          connection = Connection.Connected
+          metricsSource = MetricsSource.Unreachable
+        }
+      }
     }
-    log("info", "host · forgot ${entry.alias.ifBlank { entry.url }}")
+    if (hosts.isNotEmpty()) {
+      log("info", "host · forgot ${entry.alias.ifBlank { entry.url }}")
+    }
   }
 
   public fun updateHostAliasDraft(value: String) {
@@ -6843,14 +7187,19 @@ public class RemoteState(
 
   public fun updateWakeOnLan(value: Boolean) {
     wakeOnLan = value
+    persistence.wakeOnLan = value
   }
 
   public fun updateConfirmDestructive(value: Boolean) {
     confirmDestructive = value
+    persistence.confirmDestructive = value
   }
 
   public fun updateRefreshInterval(value: String) {
-    refreshInterval = value
+    val normalized = Derive.normalizeRefreshInterval(value)
+    refreshInterval = normalized
+    persistence.refreshInterval = normalized
+    pollWake.trySend(Unit)
   }
 
   /**
@@ -6862,6 +7211,7 @@ public class RemoteState(
    * its next pass.
    */
   public fun pairFromQr(link: PairLink) {
+    demoMode = false
     val target = AgentClient.normalize(link.url)
     val existing = hosts.firstOrNull { AgentClient.normalize(it.url) == target }
     if (existing != null) {
@@ -6890,11 +7240,16 @@ public class RemoteState(
 
   public fun toggleModule(id: String) {
     val name = MockHost.gallery.firstOrNull { it.id == id }?.name ?: return
+    val currentlyInstalled = effectiveInstalled
     moduleUnavailableReason(id)?.let { why ->
-      if (id !in installed) {
+      if (id !in currentlyInstalled) {
         log("warn", "module · $name · $why")
         return
       }
+    }
+    if (!persistence.hasSavedInstalled) {
+      installed.clear()
+      installed.addAll(currentlyInstalled)
     }
     if (id in installed) {
       installed.remove(id)
@@ -6947,11 +7302,30 @@ public class RemoteState(
       }
 
   public fun openMacroEditor() {
+    editingMacroId = null
+    macroDeleteArmedAtMs = null
+    macroName = ""
+    macroCommand = ""
+    macroKind = MacroKind.Ssh
+    macroConfirm = false
+    macroEditorOpen = true
+  }
+
+  public fun editMacro(id: String) {
+    val macro = userMacros.firstOrNull { it.id == id } ?: return
+    editingMacroId = macro.id
+    macroDeleteArmedAtMs = null
+    macroName = macro.label
+    macroCommand = macro.command
+    macroKind = macro.kind
+    macroConfirm = macro.confirm
     macroEditorOpen = true
   }
 
   public fun closeMacroEditor() {
     macroEditorOpen = false
+    editingMacroId = null
+    macroDeleteArmedAtMs = null
   }
 
   public fun updateMacroName(value: String) {
@@ -6972,18 +7346,45 @@ public class RemoteState(
 
   public fun saveMacro() {
     if (macroSaveBlocked) return
+    val editId = editingMacroId
     val saved =
         Macro(
-            id = "u${System.currentTimeMillis()}",
+            id = editId ?: "u${System.currentTimeMillis()}",
             label = macroName.trim(),
             command = macroCommand.trim(),
             kind = macroKind,
             confirm = macroConfirm,
         )
-    userMacros.add(0, saved)
+    if (editId != null) {
+      val idx = userMacros.indexOfFirst { it.id == editId }
+      if (idx >= 0) userMacros[idx] = saved else userMacros.add(0, saved)
+      log("ok", "macro · \"${saved.label}\" updated")
+    } else {
+      userMacros.add(0, saved)
+      log("ok", "macro · \"${saved.label}\" saved")
+    }
     persistence.userMacros = userMacros.toList()
-    log("ok", "macro · \"${saved.label}\" saved")
     macroEditorOpen = false
+    editingMacroId = null
+    macroDeleteArmedAtMs = null
+    macroName = ""
+    macroCommand = ""
+    macroConfirm = false
+  }
+
+  public fun tapDeleteEditingMacro(nowMs: Long = System.currentTimeMillis()) {
+    val editId = editingMacroId ?: return
+    bridgeNowMs = nowMs
+    val result = Derive.tapReset(macroDeleteArmedAtMs, nowMs)
+    macroDeleteArmedAtMs = result.nextArmedAtMs
+    if (!result.shouldReset) return
+    val removed = userMacros.firstOrNull { it.id == editId }
+    userMacros.removeAll { it.id == editId }
+    persistence.userMacros = userMacros.toList()
+    if (removed != null) log("info", "macro · \"${removed.label}\" deleted")
+    macroEditorOpen = false
+    editingMacroId = null
+    macroDeleteArmedAtMs = null
     macroName = ""
     macroCommand = ""
     macroConfirm = false
@@ -7287,9 +7688,16 @@ public class RemoteState(
     updateSelected { it.copy(url = next, token = if (changed) "" else it.token) }
     if (next.isNotBlank()) agentUrlDraft = AgentClient.normalize(next).substringAfter("://")
     if (changed) regeneratePairCode()
+    demoMode = false
+    hostResponded = false
+    if (next.isNotBlank()) {
+      connection = Connection.Connected
+      metricsSource = MetricsSource.Unreachable
+    }
     resetHostSnapshots()
     if (next.isBlank()) {
-      log("info", "agent · none configured, dashboards simulated")
+      connection = if (hosts.isEmpty()) Connection.Unpaired else Connection.Connected
+      log("info", "agent · none configured")
     } else {
       log("info", "agent · ${AgentClient.normalize(next)}")
     }
@@ -7298,15 +7706,17 @@ public class RemoteState(
   /**
    * Everything derived from a host, dropped.
    *
-   * Called whenever the app starts pointing somewhere else. The tag goes back to unreachable rather
-   * than live, because not a single byte has come back from the new address yet.
+   * Called whenever the app starts pointing somewhere else. The tag goes back to asking rather than
+   * live, because not a single byte has come back from the new address yet.
    */
   private fun resetHostSnapshots() {
     // A refusal belongs to the Mac that made it.
     pairRejected = false
+    hostResponded = false
     agentMetrics = null
     lastSampleAt = ""
     agentHost = null
+    agentNotify = null
     agentError = ""
     agentProcesses = null
     agentVms = null
@@ -7411,13 +7821,19 @@ public class RemoteState(
       }
       result
           .onSuccess { m ->
+            val prevSource = metricsSource
+            val transition = Derive.afterPoll(hosts.isNotEmpty(), demoMode, pollSucceeded = true)
             applyAgentMetrics(m)
-            if (metricsSource != MetricsSource.Live) {
+            hostResponded = true
+            connection =
+                if (transition == Derive.PollOutcome.Unpaired) Connection.Unpaired
+                else Connection.Connected
+            if (prevSource != MetricsSource.Live) {
               log("ok", "agent · live from ${agentHost?.hostname ?: "host"}")
               // Only on the transition, and only when something was there to
               // come back FROM: a first successful poll after launch is not a
               // recovery and does not deserve a notification.
-              if (metricsSource == MetricsSource.Unreachable && sawUnreachable) {
+              if (prevSource == MetricsSource.Unreachable && sawUnreachable) {
                 post("host", "$hostShortName is back", "the agent is answering again", Screen.Home)
               }
               sawUnreachable = false
@@ -7427,6 +7843,7 @@ public class RemoteState(
           }
           .onFailure { e ->
             val message = e.message ?: e::class.simpleName ?: "error"
+            val transition = Derive.afterPoll(hosts.isNotEmpty(), demoMode, pollSucceeded = false)
             if (metricsSource == MetricsSource.Live) {
               log("warn", "agent · unreachable: $message")
               // The switch used to change only a dialog's wording. Now it does
@@ -7440,12 +7857,25 @@ public class RemoteState(
               sawUnreachable = true
               post("host", "$hostShortName is unreachable", message, Screen.Hosts)
             }
+            connection =
+                when (transition) {
+                  Derive.PollOutcome.Offline -> Connection.Offline
+                  Derive.PollOutcome.Unpaired -> Connection.Unpaired
+                  else -> Connection.Connected
+                }
             metricsSource = MetricsSource.Unreachable
             agentError = message
           }
     }
     if (metricsSource == MetricsSource.Live) {
-      pollExtras(client, due - Derive.PollSource.Metrics - Derive.PollSource.Host, nowMs)
+      val extras =
+          (due - Derive.PollSource.Metrics - Derive.PollSource.Host) +
+              if (agentTools == null && Derive.PollSource.Tools !in lastFetched) {
+                setOf(Derive.PollSource.Tools)
+              } else {
+                emptySet()
+              }
+      pollExtras(client, extras, nowMs)
       // Only once they have actually been asked for: a module opened while
       // the Mac is not answering is still "just opened" when it comes back.
       lastVisible = Derive.pollCadences(view, refreshMillis)
@@ -7836,19 +8266,22 @@ public class RemoteState(
   // --- notifications ----------------------------------------------------
 
   /** What the Mac would do with a notification, for the Hosts plate. */
+  public val pushNotifySpec: Derive.PushNotifySpec
+    get() =
+        Derive.pushNotifySpec(
+            paired = paired,
+            reported = agentNotify != null,
+            configured = agentNotify?.configured == true,
+            enabled = agentNotify?.enabled == true,
+            topic = agentNotify?.topic.orEmpty(),
+        )
+
   public val notifyLine: String
-    get() {
-      val n = agentNotify ?: return "push · the agent has not said yet"
-      if (!n.configured) return "push · not configured on the Mac"
-      val topic = "push · topic ${n.topic.ifBlank { "unnamed" }}"
-      // Muted is worth saying out loud. A configured agent that sends nothing is otherwise
-      // indistinguishable from a broken one, which is the report this switch would generate.
-      return if (n.enabled) topic else "$topic · muted"
-    }
+    get() = pushNotifySpec.subtitle
 
   /** Whether the Mac is currently allowed to push. Drives the switch on the Hosts plate. */
   public val notificationsEnabled: Boolean
-    get() = agentNotify?.enabled ?: true
+    get() = pushNotifySpec.checked
 
   /**
    * Mutes or unmutes the Mac's push notifications.
@@ -8213,6 +8646,10 @@ public class RemoteState(
       delay(WAKE_PROBE_MS)
       if (client.healthy()) {
         connection = Connection.Connected
+        hostResponded = true
+        metricsSource = MetricsSource.Live
+        agentError = ""
+        pollWake.trySend(Unit)
         log("ok", "${agentHost?.hostname ?: hostShortName} · back online")
         return
       }
@@ -8934,11 +9371,7 @@ public data class DialogSpec(
                   kicker = "Destructive · power",
                   destructive = true,
                   title = "Restart $host?",
-                  // No counts: this dialog cannot know how many sessions or VMs
-                  // are running, and the old "2 and 2" was the mock's.
-                  body =
-                      "Running Claude Code sessions and Lima VMs will be interrupted, and a " +
-                          "homelab node on this Mac is gone until the reboot completes.",
+                  body = "Your Mac will restart. Unsaved work in open apps may be lost.",
                   action = "Restart",
                   word = "restart".takeIf { confirmDestructive },
               )

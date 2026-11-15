@@ -95,6 +95,11 @@ public fun ColumnScope.UnpairedState(state: RemoteState) {
           variant = ButtonVariant.Primary,
       )
       VButton("Install guide", state::openInstallGuide)
+      VButton(
+          label = "See a demo",
+          onClick = state::enterDemo,
+          variant = ButtonVariant.Secondary,
+      )
     }
   }
 }

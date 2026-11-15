@@ -49,6 +49,9 @@ private const val KEY_BRIDGE_AUDIT = "bridgeAudit"
 private const val KEY_SPEAKER_SETTINGS_EXPANDED = "vitruvianSpeakerSettingsExpanded"
 private const val KEY_SPEAKER_MIRROR = "vitruvianSpeakerMirror"
 private const val KEY_ASKED_NOTIFICATIONS = "askedForNotifications"
+private const val KEY_WAKE_ON_LAN = "wakeOnLan"
+private const val KEY_CONFIRM_DESTRUCTIVE = "confirmDestructive"
+private const val KEY_REFRESH_INTERVAL = "refreshInterval"
 
 /** Keys the HomeSpeaker to Vitruvian Speaker rename retired, and the key each one became. */
 private val RENAMED_BOOLEAN_KEYS: Map<String, String> =
@@ -201,6 +204,12 @@ public class Persistence(context: Context) {
     get() = BridgePolicy.decodeAudit(prefs.getString(KEY_BRIDGE_AUDIT, "").orEmpty())
     set(value) = prefs.edit().putString(KEY_BRIDGE_AUDIT, BridgePolicy.encodeAudit(value)).apply()
 
+  /**
+   * Whether the user has explicitly saved an installed-modules set rather than relying on defaults.
+   */
+  public val hasSavedInstalled: Boolean
+    get() = prefs.contains(KEY_INSTALLED)
+
   public var installed: List<String>
     get() =
         Derive.filterInstalledModules(
@@ -216,6 +225,21 @@ public class Persistence(context: Context) {
   public var darkTheme: Boolean
     get() = prefs.getBoolean(KEY_THEME, true)
     set(value) = prefs.edit().putBoolean(KEY_THEME, value).apply()
+
+  public var wakeOnLan: Boolean
+    get() = prefs.getBoolean(KEY_WAKE_ON_LAN, true)
+    set(value) = prefs.edit().putBoolean(KEY_WAKE_ON_LAN, value).apply()
+
+  public var confirmDestructive: Boolean
+    get() = prefs.getBoolean(KEY_CONFIRM_DESTRUCTIVE, true)
+    set(value) = prefs.edit().putBoolean(KEY_CONFIRM_DESTRUCTIVE, value).apply()
+
+  public var refreshInterval: String
+    get() =
+        Derive.normalizeRefreshInterval(
+            prefs.getString(KEY_REFRESH_INTERVAL, Derive.DEFAULT_REFRESH_INTERVAL))
+    set(value) =
+        prefs.edit().putString(KEY_REFRESH_INTERVAL, Derive.normalizeRefreshInterval(value)).apply()
 
   public var dockOpen: Boolean
     get() = prefs.getBoolean(KEY_DOCK, true)

@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,7 +62,6 @@ import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
 import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.HonestMetric
-import dev.vitruvian.remote.state.MetricsSource
 import dev.vitruvian.remote.state.Notice
 import dev.vitruvian.remote.state.RemoteState
 
@@ -69,6 +69,7 @@ private val PLATE_MIN = 150.dp
 private val CPU_SPARK_HEIGHT = 44.dp
 private val NET_SPARK_HEIGHT = 38.dp
 private val PANEL_PREVIEW_HEIGHT = 96.dp
+private const val STALE_ALPHA = 0.55f
 
 /** Above this a process reads as hot and its CPU cell turns warn-coloured. */
 private const val PROCESS_WARN_CPU = 30
@@ -103,19 +104,21 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
     // figure under it came from a random walk.
     Status(
         tone =
-            when (state.metricsSource) {
-              MetricsSource.Live -> StatusTone.Run
-              MetricsSource.Unreachable -> StatusTone.Crit
-              MetricsSource.Simulated -> StatusTone.Neutral
+            when (state.hostPhase) {
+              Derive.HostPhase.Live -> StatusTone.Run
+              Derive.HostPhase.Offline -> StatusTone.Crit
+              else -> StatusTone.Neutral
             },
-        text = state.metricsSource.label,
+        text = state.metricsTagLabel,
     )
   }
 
   Box(modifier = Modifier.padding(horizontal = Space.s4)) {
     AutoGrid(minItemWidth = PLATE_MIN) {
       item(span = 2) {
-        Plate(modifier = Modifier.fillMaxWidth()) {
+        Plate(
+            modifier = Modifier.fillMaxWidth().alpha(if (state.isStaleReading) STALE_ALPHA else 1f),
+        ) {
           Column(
               modifier = Modifier.padding(Space.s4),
               verticalArrangement = Arrangement.spacedBy(Space.s3),
@@ -126,7 +129,9 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
             ) {
               Label(text = "CPU", modifier = Modifier.weight(1f))
               VText(
-                  text = "${state.cpu.last()}%",
+                  text =
+                      if (state.agentMetrics == null && !state.isDemoMode) "—"
+                      else "${state.cpu.last()}%",
                   style = VitruvianType.metricValue,
               )
             }
@@ -176,31 +181,33 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
       item { HonestPlate(state.batteryPlate) }
       item { HonestPlate(state.diskPlate) }
       item {
-        Plate(modifier = Modifier.fillMaxWidth()) {
-          Column(
-              modifier = Modifier.padding(Space.s4),
-              verticalArrangement = Arrangement.spacedBy(Space.s3),
-          ) {
-            // The label has the row to itself. Sharing it with the rates
-            // truncated it to "NETWOR…", and a section heading that cannot
-            // finish its own word is worse than a second line.
-            Label(text = "Network · en0")
-            // Scaled to the traffic actually seen, not to a fixed 100 Mb/s:
-            // on that scale a 1 Mb/s trickle drew as a flat line and the
-            // panel looked dead while the link was in use.
-            Spark(
-                values = state.net.toList(),
-                height = NET_SPARK_HEIGHT,
-                max = maxOf(state.net.maxOrNull() ?: 0, NET_SPARK_FLOOR),
-            )
-            VText(
-                text = "↓ ${state.networkDown} ↑ ${state.networkUp}",
-                modifier = Modifier.fillMaxWidth(),
-                style = VitruvianType.listSub.copy(textAlign = TextAlign.End),
-                color = colors.textDim,
-            )
-          }
-        }
+        Plate(
+            modifier =
+                Modifier.fillMaxWidth().alpha(if (state.isStaleReading) STALE_ALPHA else 1f)) {
+              Column(
+                  modifier = Modifier.padding(Space.s4),
+                  verticalArrangement = Arrangement.spacedBy(Space.s3),
+              ) {
+                // The label has the row to itself. Sharing it with the rates
+                // truncated it to "NETWOR…", and a section heading that cannot
+                // finish its own word is worse than a second line.
+                Label(text = "Network · en0")
+                // Scaled to the traffic actually seen, not to a fixed 100 Mb/s:
+                // on that scale a 1 Mb/s trickle drew as a flat line and the
+                // panel looked dead while the link was in use.
+                Spark(
+                    values = state.net.toList(),
+                    height = NET_SPARK_HEIGHT,
+                    max = maxOf(state.net.maxOrNull() ?: 0, NET_SPARK_FLOOR),
+                )
+                VText(
+                    text = state.networkSubline,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = VitruvianType.listSub.copy(textAlign = TextAlign.End),
+                    color = colors.textDim,
+                )
+              }
+            }
       }
     }
   }
@@ -388,7 +395,7 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
 @Composable
 private fun HonestPlate(metric: HonestMetric) {
   val colors = Vitruvian
-  Plate(modifier = Modifier.fillMaxWidth()) {
+  Plate(modifier = Modifier.fillMaxWidth().alpha(if (metric.stale) STALE_ALPHA else 1f)) {
     Column(
         modifier = Modifier.padding(Space.s4),
         verticalArrangement = Arrangement.spacedBy(Space.s3),

@@ -68,9 +68,9 @@ public enum class AppsView {
   Gallery
 }
 
-/** How a macro reaches the Mac. */
+/** How a macro reaches the Mac. Kept named `Ssh` in enum for saved preferences compatibility. */
 public enum class MacroKind(public val label: String) {
-  Ssh("SSH"),
+  Ssh("Shell"),
   AppleScript("AppleScript"),
   Shortcut("Shortcut"),
 }
@@ -102,6 +102,7 @@ public data class Widget(
     val sub: String,
     val percent: Int,
     val warn: Boolean = false,
+    val stale: Boolean = false,
 )
 
 /** A row of the Home screen's "Running now" list. */
@@ -129,6 +130,7 @@ public data class HonestMetric(
     val warn: Boolean = false,
     /** Worse than [warn]: drawn in the error colour. A disk at 95% is the first user. */
     val crit: Boolean = false,
+    val stale: Boolean = false,
 )
 
 /**

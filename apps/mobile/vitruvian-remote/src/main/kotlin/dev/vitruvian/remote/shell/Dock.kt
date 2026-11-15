@@ -135,7 +135,7 @@ private fun TrackpadDock(state: RemoteState, modifier: Modifier = Modifier) {
             contentDescription = "Volume down",
         )
         Meter(
-            fraction = state.volume / 100f,
+            fraction = state.volumeFraction ?: 0f,
             modifier = Modifier.weight(1f),
             height = 8.dp,
         )

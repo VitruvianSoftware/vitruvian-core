@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import dev.vitruvian.design.AutoGrid
@@ -46,13 +47,14 @@ import dev.vitruvian.design.Meter
 import dev.vitruvian.design.Metric
 import dev.vitruvian.design.Plate
 import dev.vitruvian.design.Space
+import dev.vitruvian.design.StatusTone
 import dev.vitruvian.design.Tag
 import dev.vitruvian.design.VButton
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
 import dev.vitruvian.remote.shell.LocalShowDock
-import dev.vitruvian.remote.state.MetricsSource
+import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.Screen
 import dev.vitruvian.remote.state.Widget
@@ -70,6 +72,7 @@ private val WIDGET_MIN = 150.dp
 private val ACTION_MIN = 160.dp
 
 private const val RECENT_ROWS = 4
+private const val STALE_WIDGET_ALPHA = 0.55f
 private val ADD_WIDGET_HEIGHT = 96.dp
 private val CLOSE_BUTTON = Hit.h1
 
@@ -97,7 +100,7 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
         Label(state.hostShortName)
         // Measuring or pretending. A dashboard that cannot say which is
         // worse than either, so this is never hidden.
-        Tag(text = state.metricsSource.label, tone = state.metricsTagTone)
+        Tag(text = state.metricsTagLabel, tone = state.metricsTagTone)
       }
       VText(
           text = state.hostSubline,
@@ -111,10 +114,8 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
     )
   }
 
-  // Before there is a Mac, the first thing on the board says how to get
-  // one. It disappears the moment an agent URL is set -- a setup card that
-  // outstays its welcome is the thing every dashboard gets wrong.
-  if (state.metricsSource == MetricsSource.Simulated) {
+  // In demo mode, keep a pointer back to pairing a real Mac.
+  if (state.isDemoMode) {
     Box(modifier = Modifier.padding(horizontal = Space.s4, vertical = Space.s2)) {
       Plate(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -137,22 +138,38 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
     }
   }
 
-  Box(modifier = Modifier.padding(horizontal = Space.s4)) {
-    AutoGrid(minItemWidth = WIDGET_MIN) {
-      state.widgets.forEach { widget -> item { WidgetPlate(state = state, widget = widget) } }
-      if (state.editMode) {
-        item {
-          Plate(
-              modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = ADD_WIDGET_HEIGHT),
-              dashed = true,
-          ) {
-            VButton(
-                label = "+ Add widget",
-                onClick = state::restoreWidgets,
-                modifier = Modifier.fillMaxWidth().align(Alignment.Center),
-                borderColor = Color.Transparent,
-                contentColor = colors.textDim,
-            )
+  if (!state.isDemoMode && state.widgets.isEmpty() && !state.editMode) {
+    if (state.hostPhase == Derive.HostPhase.Asking) {
+      ListItem(
+          title = "Checking…",
+          subtitle = "Waiting for first reading from Mac",
+          status = StatusTone.Neutral,
+      )
+    } else {
+      ListItem(
+          title = Derive.unansweredHostLine(state.hostShortName),
+          subtitle = state.agentError.ifBlank { "no reply from Mac" },
+          status = StatusTone.Crit,
+      )
+    }
+  } else {
+    Box(modifier = Modifier.padding(horizontal = Space.s4)) {
+      AutoGrid(minItemWidth = WIDGET_MIN) {
+        state.widgets.forEach { widget -> item { WidgetPlate(state = state, widget = widget) } }
+        if (state.editMode) {
+          item {
+            Plate(
+                modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = ADD_WIDGET_HEIGHT),
+                dashed = true,
+            ) {
+              VButton(
+                  label = "+ Add widget",
+                  onClick = state::restoreWidgets,
+                  modifier = Modifier.fillMaxWidth().align(Alignment.Center),
+                  borderColor = Color.Transparent,
+                  contentColor = colors.textDim,
+              )
+            }
           }
         }
       }
@@ -164,17 +181,31 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
       modifier =
           Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s5, bottom = Space.s3),
   )
+  state.runningNowEmpty?.let { emptyMsg ->
+    ListItem(
+        title = emptyMsg,
+        subtitle =
+            if (emptyMsg == "Checking…") "Waiting for first reply from Mac"
+            else "No active sessions or jobs",
+        status = StatusTone.Neutral,
+    )
+  }
   state.runningNow.forEach { item ->
+    val navigable = item.moduleId.isNotBlank()
     ListItem(
         title = item.title,
         subtitle = item.subtitle,
         status = item.tone,
+        modifier =
+            if (state.isStaleReading && navigable) Modifier.alpha(STALE_WIDGET_ALPHA) else Modifier,
         // Opens that module's dashboard on Apps; the chevron says the row
         // goes somewhere, which a status row otherwise gives no hint of.
-        onClick = { state.openModule(item.moduleId) },
+        onClick = if (navigable) ({ state.openModule(item.moduleId) }) else null,
     ) {
       Tag(text = item.tag, tone = item.tagTone)
-      VText(text = "›", style = VitruvianType.listTitle, color = colors.textDim)
+      if (navigable) {
+        VText(text = "›", style = VitruvianType.listTitle, color = colors.textDim)
+      }
     }
   }
 
@@ -240,7 +271,7 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
 @Composable
 private fun WidgetPlate(state: RemoteState, widget: Widget) {
   val colors = Vitruvian
-  Plate(modifier = Modifier.fillMaxWidth()) {
+  Plate(modifier = Modifier.fillMaxWidth().alpha(if (widget.stale) STALE_WIDGET_ALPHA else 1f)) {
     Column(
         modifier = Modifier.padding(Space.s4),
         verticalArrangement = Arrangement.spacedBy(Space.s3),
