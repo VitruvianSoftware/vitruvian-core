@@ -88,12 +88,17 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push container image
+        id: publish
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: apps/web/gods-eye-view
           file: apps/web/gods-eye-view/Dockerfile
           platforms: ${{ env.PLATFORMS }}
           push: ${{ github.event_name != 'pull_request' }}
+          build-args: |
+            GIT_REVISION=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ github.sha }}
@@ -110,3 +115,57 @@ jobs:
             type=registry,ref=${{ env.IMAGE }}:buildcache
             type=gha,scope=gods-eye-view-image
           cache-to: ${{ github.event_name == 'pull_request' && 'type=gha,mode=max,scope=gods-eye-view-image' || format('type=registry,ref={0}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,ignore-error=true', env.IMAGE) }}
+
+      - name: Load image for verification
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/web/gods-eye-view
+          file: apps/web/gods-eye-view/Dockerfile
+          platforms: linux/amd64
+          load: true
+          build-args: |
+            GIT_REVISION=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+          tags: gods-eye-view:verify
+          cache-from: |
+            type=registry,ref=${{ env.IMAGE }}:buildcache
+            type=gha,scope=gods-eye-view-image
+
+      - name: Verify the revision label on the built image
+        run: |
+          set -euo pipefail
+          got="$(docker image inspect gods-eye-view:verify \
+            --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
+          if [ "$got" != "${GITHUB_SHA}" ]; then
+            echo "::error::org.opencontainers.image.revision is '${got}', expected '${GITHUB_SHA}'"
+            exit 1
+          fi
+          echo "revision label = ${got}"
+
+      - name: Verify the pushed manifest
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          DIGEST: ${{ steps.publish.outputs.digest }}
+        run: |
+          set -euo pipefail
+          digest="${DIGEST:-}"
+          if [ -z "$digest" ]; then
+            digest="$(docker buildx imagetools inspect "${IMAGE}:${GITHUB_SHA}" \
+              --format '{{.Manifest.Digest}}')"
+          fi
+          ref="${IMAGE}@${digest}"
+          img="$(docker buildx imagetools inspect "${ref}" --format '{{json .Image}}')"
+          for want in linux/amd64 linux/arm64; do
+            got="$(echo "$img" | jq -r --arg p "$want" \
+              '.[$p].config.Labels["org.opencontainers.image.revision"] // "ABSENT"')"
+            if [ "$got" = "null" ] || [ "$got" = "ABSENT" ]; then
+              echo "::error::pushed index has no ${want} image with a revision label — the cluster has nodes of that architecture"
+              exit 1
+            fi
+            if [ "$got" != "${GITHUB_SHA}" ]; then
+              echo "::error::${want} revision label is '${got}', expected '${GITHUB_SHA}'"
+              exit 1
+            fi
+            echo "${want}: revision=${got}"
+          done
