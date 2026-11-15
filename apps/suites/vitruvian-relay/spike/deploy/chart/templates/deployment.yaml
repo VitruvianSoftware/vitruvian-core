@@ -61,7 +61,7 @@ spec:
             - name: PROJECT_ID
               value: {{ required "oidc.projectId is required (zitadel-apps-relay output projectId)" .Values.oidc.projectId | quote }}
             - name: MCP_CLIENT_IDS
-              value: {{ required "oidc.mcpClientIds is required (zitadel-apps-relay output claudeClientId)" .Values.oidc.mcpClientIds | quote }}
+              value: {{ required "oidc.mcpClientIds is required: comma-separated zitadel-apps-relay outputs claudeClientId, geminiClientId, chatgptClientId (each one configured)" .Values.oidc.mcpClientIds | quote }}
             - name: CONNECTOR_CLIENT_ID
               value: {{ required "oidc.connectorClientId is required (zitadel-apps-relay output connectorClientId)" .Values.oidc.connectorClientId | quote }}
             - name: ALLOWED_SUBJECTS

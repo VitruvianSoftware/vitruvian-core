@@ -39,7 +39,8 @@ oidc:
   issuer: https://auth.ipv1337.dev
   # All required, from the zitadel-apps-relay stack's outputs.
   projectId: ""
-  # Comma-separated: relay-claude (and relay-chatgpt once it exists).
+  # Comma-separated client ids: relay-claude, relay-gemini (and relay-chatgpt
+  # once it exists).
   mcpClientIds: ""
   connectorClientId: ""
   # Comma-separated Zitadel user ids allowed in (the only identity check

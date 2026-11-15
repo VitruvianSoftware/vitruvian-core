@@ -30,6 +30,7 @@ image:
 # From the zitadel-apps-relay stack's outputs (zitadel-apps-relay-apply run).
 oidc:
   projectId: "398912441632687930"
-  mcpClientIds: "398912442404439866" # claudeClientId (add chatgptClientId later)
+  # claudeClientId, geminiClientId (zitadel-apps-relay outputs); add chatgptClientId later
+  mcpClientIds: "398912442404439866,399781767172589504"
   connectorClientId: "398912442404505402"
   allowedSubjects: "378818267051722263" # James (the stack's only grant)
