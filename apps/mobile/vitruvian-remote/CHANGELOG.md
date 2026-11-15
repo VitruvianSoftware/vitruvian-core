@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.42](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.41...vitruvian-remote-v0.1.42) (2026-11-15)
+
+
+### Features
+
+* **vitruvian-remote:** honest offline state, real first run, About and Donate ([#4906](https://github.com/VitruvianSoftware/vitruvian-core/issues/4906)) ([d1ddc70](https://github.com/VitruvianSoftware/vitruvian-core/commit/d1ddc70e3801acd40ecbd43cbbffdc46082e22d1))
+
 ## [0.1.41](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.40...vitruvian-remote-v0.1.41) (2026-11-15)
 
 
