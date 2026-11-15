@@ -100,6 +100,27 @@ case "$FAKE_SCENARIO:$n" in
   initialize_403:2)
     printf '{"detail":"Permission denied"}\n__sentry_pagerduty_install_status__403'
     ;;
+  echo_token_stderr:1)
+    tok=$(sed -n 's/^header = "Authorization: Bearer \(.*\)"$/\1/p' "$FAKE_STATE/call_${n}_stdin")
+    if [ -z "$tok" ]; then
+      printf 'missing bearer token in stdin config\n' >&2
+      exit 2
+    fi
+    printf 'curl: auth header rejected for %s\n' "$tok" >&2
+    exit 1
+    ;;
+  verify_empty:1)
+    printf '[]\n__sentry_pagerduty_install_status__200'
+    ;;
+  verify_empty:2)
+    printf '{}\n__sentry_pagerduty_install_status__200'
+    ;;
+  verify_empty:3)
+    printf '{}\n__sentry_pagerduty_install_status__200'
+    ;;
+  verify_empty:4)
+    printf '[]\n__sentry_pagerduty_install_status__200'
+    ;;
   *)
     printf 'unexpected scenario/call %s:%s\n' "$FAKE_SCENARIO" "$n" >&2
     exit 1
@@ -146,12 +167,16 @@ fn missing_or_non_user_token_fails_without_leaking_token() {
 
     let secret = "sntrys_org_token_do_not_echo";
     let mut org_tok = Command::new(bin_path());
-    org_tok.env_clear().env("SENTRY_TOKEN", secret).args([
-        "--subdomain",
-        "vitruviansoftware",
-        "--name",
-        "Vitruvian Software",
-    ]);
+    org_tok
+        .env_clear()
+        .env("SENTRY_CURL_BIN", "/nonexistent/curl")
+        .env("SENTRY_TOKEN", secret)
+        .args([
+            "--subdomain",
+            "vitruviansoftware",
+            "--name",
+            "Vitruvian Software",
+        ]);
     let out = run_cmd(org_tok);
     assert_ne!(out.status.code(), Some(0));
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -328,5 +353,113 @@ fn fake_curl_already_installed_and_error_exit_clean_up_temp_dir() {
     assert!(stderr.contains("org:integrations"), "{stderr}");
     if !tmp_err.to_string_lossy().contains('=') {
         assert_eq!(fs::read_dir(&tmp_err).unwrap().count(), 0);
+    }
+}
+
+#[test]
+fn missing_curl_binary_fails_without_leaking_token_and_cleans_up_tmpdir() {
+    let work = tempdir("missing-curl");
+    let tmp_dir = work.join("tmp");
+    fs::create_dir_all(&tmp_dir).unwrap();
+    let missing_curl = work.join("does-not-exist-curl");
+    let token = "sntryu_secret_missing_curl_token_42";
+
+    let mut cmd = Command::new(bin_path());
+    cmd.env_clear()
+        .env("TMPDIR", &tmp_dir)
+        .env("SENTRY_CURL_BIN", &missing_curl)
+        .env("SENTRY_TOKEN", token)
+        .args([
+            "--subdomain",
+            "vitruviansoftware",
+            "--name",
+            "Vitruvian Software",
+        ]);
+    let out = run_cmd(cmd);
+    assert_ne!(out.status.code(), Some(0));
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("failed to start"), "{stderr}");
+    assert!(!stderr.contains(token), "token leaked in stderr: {stderr}");
+    assert!(!stdout.contains(token), "token leaked in stdout: {stdout}");
+    if !tmp_dir.to_string_lossy().contains('=') {
+        assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 0);
+    }
+}
+
+#[test]
+fn fake_curl_token_in_stderr_is_redacted() {
+    let work = tempdir("redact-stderr");
+    let bin_dir = work.join("bin");
+    let state_dir = work.join("state");
+    let tmp_dir = work.join("tmp");
+    fs::create_dir_all(&bin_dir).unwrap();
+    fs::create_dir_all(&state_dir).unwrap();
+    fs::create_dir_all(&tmp_dir).unwrap();
+    install_fake_curl(&bin_dir);
+
+    let token = "sntryu_secret_stderr_echo_token_99";
+    let path_env = format!("{}:/bin:/usr/bin", bin_dir.display());
+    let mut cmd = Command::new(bin_path());
+    cmd.env_clear()
+        .env("PATH", path_env)
+        .env("TMPDIR", &tmp_dir)
+        .env("SENTRY_TOKEN", token)
+        .env("FAKE_STATE", &state_dir)
+        .env("FAKE_SCENARIO", "echo_token_stderr")
+        .args([
+            "--subdomain",
+            "vitruviansoftware",
+            "--name",
+            "Vitruvian Software",
+        ]);
+    let out = run_cmd(cmd);
+    assert_ne!(out.status.code(), Some(0));
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!stderr.contains(token), "token leaked in stderr: {stderr}");
+    assert!(!stdout.contains(token), "token leaked in stdout: {stdout}");
+    assert!(stderr.contains("<redacted>"), "{stderr}");
+    if !tmp_dir.to_string_lossy().contains('=') {
+        assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 0);
+    }
+}
+
+#[test]
+fn fake_curl_step_four_empty_list_fails_with_still_missing() {
+    let work = tempdir("verify-empty");
+    let bin_dir = work.join("bin");
+    let state_dir = work.join("state");
+    let tmp_dir = work.join("tmp");
+    fs::create_dir_all(&bin_dir).unwrap();
+    fs::create_dir_all(&state_dir).unwrap();
+    fs::create_dir_all(&tmp_dir).unwrap();
+    install_fake_curl(&bin_dir);
+
+    let path_env = format!("{}:/bin:/usr/bin", bin_dir.display());
+    let mut cmd = Command::new(bin_path());
+    cmd.env_clear()
+        .env("PATH", path_env)
+        .env("TMPDIR", &tmp_dir)
+        .env("SENTRY_TOKEN", "sntryu_fake_user_token_verify")
+        .env("FAKE_STATE", &state_dir)
+        .env("FAKE_SCENARIO", "verify_empty")
+        .args([
+            "--subdomain",
+            "vitruviansoftware",
+            "--name",
+            "Vitruvian Software",
+        ]);
+    let out = run_cmd(cmd);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(out.stdout.is_empty());
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("still missing"), "{stderr}");
+    assert_eq!(fs::read_to_string(state_dir.join("count")).unwrap(), "4");
+    if !tmp_dir.to_string_lossy().contains('=') {
+        assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 0);
     }
 }

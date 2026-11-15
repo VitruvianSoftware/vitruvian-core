@@ -686,4 +686,23 @@ mod tests {
         let msg = String::from_utf8(err).unwrap();
         assert!(msg.contains("502") && msg.contains("Bad gateway"), "{msg}");
     }
+
+    #[test]
+    fn parse_integrations_rejects_non_array_and_missing_fields() {
+        let non_array = parse_integrations(br#"{"id":"1","name":"PagerDuty"}"#).unwrap_err();
+        assert!(non_array.contains("array"), "{non_array}");
+
+        let missing_id = parse_integrations(br#"[{"name":"Vitruvian Software"}]"#).unwrap_err();
+        assert!(missing_id.contains("id"), "{missing_id}");
+
+        let missing_name = parse_integrations(br#"[{"id":"1"}]"#).unwrap_err();
+        assert!(missing_name.contains("name"), "{missing_name}");
+    }
+
+    #[test]
+    fn extract_detail_handles_nested_message_non_json_and_missing_detail() {
+        assert_eq!(extract_detail(br#"{"detail":{"message":"x"}}"#), "x");
+        assert_eq!(extract_detail(b"not valid json"), "<no detail>");
+        assert_eq!(extract_detail(br#"{"error":"other"}"#), "<no detail>");
+    }
 }
