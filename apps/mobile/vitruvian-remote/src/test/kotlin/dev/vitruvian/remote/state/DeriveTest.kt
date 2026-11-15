@@ -4019,6 +4019,10 @@ public class DeriveTest {
         "MainActivity must close Sentry when disabled at runtime",
         mainActivity.contains("io.sentry.Sentry.close()"),
     )
+    assertTrue(
+        "MainActivity must clear queued crash cache when crash reporting is off",
+        mainActivity.contains("AppInfo.clearSentryCache(cacheDir)"),
+    )
   }
 
   @Test

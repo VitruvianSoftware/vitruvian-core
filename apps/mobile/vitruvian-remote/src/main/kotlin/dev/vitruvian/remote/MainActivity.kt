@@ -180,6 +180,7 @@ public class MainActivity : ComponentActivity() {
   private fun configureSentry(enabled: Boolean, appVersion: String) {
     if (!enabled) {
       io.sentry.Sentry.close()
+      AppInfo.clearSentryCache(cacheDir)
       return
     }
     val sentryDsn = System.getenv("SENTRY_DSN") ?: AppInfo.DEFAULT_SENTRY_DSN
@@ -190,6 +191,7 @@ public class MainActivity : ComponentActivity() {
           dsn = sentryDsn,
           appVersion = appVersion,
           device = device,
+          appCacheDir = cacheDir,
       )
     }
   }
@@ -199,6 +201,8 @@ public class MainActivity : ComponentActivity() {
     val appVersion = readAppVersion()
     if (persistence.sendCrashReports) {
       configureSentry(enabled = true, appVersion = appVersion)
+    } else {
+      AppInfo.clearSentryCache(cacheDir)
     }
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)

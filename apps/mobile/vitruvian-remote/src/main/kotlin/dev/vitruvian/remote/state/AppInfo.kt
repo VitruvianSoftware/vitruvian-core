@@ -23,6 +23,7 @@ package dev.vitruvian.remote.state
 import io.sentry.SentryOptions
 import io.sentry.protocol.Device
 import io.sentry.protocol.OperatingSystem
+import java.io.File
 
 /** Sub-pages inside `Screen.About`. */
 public enum class AboutPage(public val title: String) {
@@ -164,6 +165,25 @@ public object AppInfo {
           "Donate and the links here open in your browser. The app never handles payment details.",
       )
 
+  private const val SENTRY_CACHE_DIR_NAME: String = "sentry"
+  private val SENTRY_CACHE_DIRS: List<String> = listOf(SENTRY_CACHE_DIR_NAME, "io.sentry.cache")
+
+  /** Base cache directory passed to `SentryOptions.cacheDirPath`. */
+  public fun sentryCacheDir(appCacheDir: File): File = File(appCacheDir, SENTRY_CACHE_DIR_NAME)
+
+  /**
+   * Deletes Sentry's cached envelopes and outbox directory under [appCacheDir] when crash reporting
+   * is disabled so previously queued reports never leave the phone.
+   */
+  public fun clearSentryCache(appCacheDir: File) {
+    for (dirName in SENTRY_CACHE_DIRS) {
+      val target = File(appCacheDir, dirName)
+      if (target.exists()) {
+        target.deleteRecursively()
+      }
+    }
+  }
+
   /**
    * Configures Sentry in a pure helper so every privacy claim (no PII, no breadcrumbs, no
    * performance tracing, no screenshots or view hierarchy, and bounded device details) is provable
@@ -174,10 +194,14 @@ public object AppInfo {
       dsn: String = DEFAULT_SENTRY_DSN,
       appVersion: String?,
       device: CrashReportDeviceDetails = CrashReportDeviceDetails(),
+      appCacheDir: File? = null,
   ) {
     options.dsn = dsn
     options.release = sentryRelease(appVersion)
     options.environment = "production"
+    if (appCacheDir != null) {
+      options.cacheDirPath = sentryCacheDir(appCacheDir).absolutePath
+    }
     options.isSendDefaultPii = false
     options.isAttachServerName = false
     options.serverName = null

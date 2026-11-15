@@ -30,6 +30,7 @@ import io.sentry.protocol.SentryTransaction
 import io.sentry.protocol.TransactionInfo
 import io.sentry.protocol.User
 import java.io.File
+import java.nio.file.Files
 import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -296,5 +297,50 @@ public class AppInfoTest {
     assertNull(device.id)
     assertNull(device.timezone)
     assertNull(device.locale)
+  }
+
+  @Test
+  public fun `clearSentryCache removes SDK cache and outbox dirs without touching unrelated cache files`() {
+    val appCacheDir = Files.createTempDirectory("vitruvian-sentry-cache-test").toFile()
+    try {
+      val options = SentryOptions()
+      AppInfo.configureSentryOptions(
+          options = options,
+          dsn = "https://examplePublicKey@o0.ingest.sentry.io/0",
+          appVersion = "0.1.40",
+          appCacheDir = appCacheDir,
+      )
+
+      val dsnCacheDir = File(options.cacheDirPath!!)
+      val outboxDir = File(options.outboxPath!!)
+      val sentryBaseDir = AppInfo.sentryCacheDir(appCacheDir)
+      assertTrue(dsnCacheDir.absolutePath.startsWith(sentryBaseDir.absolutePath + File.separator))
+      assertEquals(File(dsnCacheDir, "outbox").absolutePath, outboxDir.absolutePath)
+
+      dsnCacheDir.mkdirs()
+      outboxDir.mkdirs()
+      val queuedEnvelope = File(outboxDir, "queued.envelope").apply { writeText("envelope") }
+      val cachedEnvelope = File(dsnCacheDir, "cached.envelope").apply { writeText("cached") }
+      val legacyDir = File(appCacheDir, "io.sentry.cache").apply { mkdirs() }
+      val legacyScope = File(legacyDir, "scope.json").apply { writeText("{}") }
+      val unrelatedDir = File(appCacheDir, "http").apply { mkdirs() }
+      val unrelatedFile = File(unrelatedDir, "keep.bin").apply { writeText("keep") }
+
+      AppInfo.clearSentryCache(appCacheDir)
+
+      assertFalse(sentryBaseDir.exists())
+      assertFalse(dsnCacheDir.exists())
+      assertFalse(outboxDir.exists())
+      assertFalse(queuedEnvelope.exists())
+      assertFalse(cachedEnvelope.exists())
+      assertFalse(legacyDir.exists())
+      assertFalse(legacyScope.exists())
+      assertTrue(unrelatedFile.exists())
+
+      AppInfo.clearSentryCache(appCacheDir)
+      assertTrue(unrelatedFile.exists())
+    } finally {
+      appCacheDir.deleteRecursively()
+    }
   }
 }
