@@ -42,15 +42,21 @@ through Alertmanager to ntfy and PagerDuty:
 
 | Alert | When | Severity |
 |---|---|---|
-| `HeadscaleCredentialExpiringSoon` | under 30 days left | warning |
+| `HeadscaleCredentialExpiringSoon` | 30 to 3 days left (stands down when the page takes over) | warning |
 | `HeadscaleCredentialExpiringImminently` | under 3 days left | page |
-| `HeadscaleKeyExporterDown` | the exporter could not read Headscale for 30 min | warning |
+| `HeadscaleKeyExporterDown` | for 30 min: a failed read, no successful read in an hour, a record it could not read, or no exporter at all | warning |
 
 Expired credentials and spent single-use keys are left out, so a dead key
-does not alert. To silence one that nothing uses any more, expire it.
+does not alert, and an alert resolves at the moment its key expires. That is
+on purpose: expiring a key by hand, the way to retire one, looks the same to
+the API and must clear the alert. To silence a key nothing uses any more,
+expire it. The `user` label is the Headscale user's name, or its id for an
+OIDC login: never an email, since `/metrics` is unauthenticated.
 
 The exporter calls Headscale with an API key of its own (Secret
-`headscale-key-exporter`). That key is watched like the rest, and if it
+`headscale-key-exporter`, sealed in
+`sealed-secrets-manifests/headscale-key-exporter.sealedsecret.yaml`; it syncs
+at wave -4, before the exporter, so a fresh deploy does not start blind). That key is watched like the rest, and if it
 expires the exporter gets a 401 and `HeadscaleKeyExporterDown` fires. Mint and
 seal a fresh one, then commit the sealed file:
 
@@ -70,7 +76,7 @@ Tests: `bazel test //gitops/argocd/platform/headscale:key_exporter_test`
 | Kind | Id | Expires | Used by |
 |---|---|---|---|
 | pre-auth key | 3 | 2036-10-23 | `headscale-subnet-router-auth`: the node agents and subnet router in this folder |
-| pre-auth key | 4 | 2036-10-23 | probably the Claude Code cloud sessions' `TS_AUTHKEY` (ephemeral, untagged; see `docs/admin/claude-code-cloud-sessions.md`) |
+| pre-auth key | 4 | 2036-10-23 | not found in the repo or the cluster. Ephemeral and untagged, the kind `docs/admin/claude-code-cloud-sessions.md` asks for as `TS_AUTHKEY`, which lives outside the repo (unverified) |
 | pre-auth key | 5 | 2027-11-14 | CI, `HEADSCALE_CI_AUTHKEY` (below) |
 | API key | 1 (`sxHrjsz`) | 2026-11-20 | nothing found; Headplane uses key 3 |
 | API key | 3 (`TWRIQB0`) | 2036-11-11 | Headplane (`headplane-oidc-secret`) |

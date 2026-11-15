@@ -832,13 +832,14 @@ spec:
                 # Every Headscale pre-auth key, API key and device login, read
                 # from Headscale's own API (gitops/argocd/platform/headscale/
                 # configmap-key-exporter.yaml). Warn a month out, page three
-                # days out. pagerduty_service names the PagerDuty service
-                # (#4885); until that routing lands, both reach ntfy.
+                # days out; the warning stands down once the page takes over,
+                # so one key is one notification at a time. pagerduty_service
+                # is the label Alertmanager's PagerDuty routes match on.
                 # Tests: tools/ci/prometheus-rule-tests/headscale.test.yml.
                 - name: headscale
                   rules:
                   - alert: HeadscaleCredentialExpiringSoon
-                    expr: headscale_credential_expiration_timestamp_seconds - time() < 30 * 24 * 3600
+                    expr: (headscale_credential_expiration_timestamp_seconds - time() < 30 * 24 * 3600) unless (headscale_credential_expiration_timestamp_seconds - time() < 3 * 24 * 3600)
                     for: 1h
                     labels:
                       severity: warning
@@ -849,7 +850,9 @@ spec:
 
                   - alert: HeadscaleCredentialExpiringImminently
                     expr: headscale_credential_expiration_timestamp_seconds - time() < 3 * 24 * 3600
-                    for: 1h
+                    # Short: the warning has already been out for 27 days, and
+                    # it stood down the moment this condition became true.
+                    for: 5m
                     labels:
                       severity: page
                       pagerduty_service: cluster
@@ -858,14 +861,18 @@ spec:
                       description: "Headscale {{ $labels.kind }} {{ $labels.name }} (id {{ $labels.id }}, user {{ $labels.user }}) expires in {{ $value | humanizeDuration }}, after a month of warnings. When it does, whatever joins or calls Headscale with it stops working (for the CI pre-auth key: every Zitadel apply workflow). Rotate it now: gitops/argocd/platform/headscale/README.md."
 
                   - alert: HeadscaleKeyExporterDown
-                    expr: headscale_key_exporter_up == 0 or absent(headscale_key_exporter_up)
+                    # up == 0: the last read failed. A last success over an
+                    # hour old: reads stopped without saying so. Unreadable
+                    # records: some credential is not being watched. absent():
+                    # the exporter is not being scraped at all.
+                    expr: headscale_key_exporter_up == 0 or time() - headscale_key_exporter_last_success_timestamp_seconds > 3600 or headscale_key_exporter_unreadable_records > 0 or absent(headscale_key_exporter_up)
                     for: 30m
                     labels:
                       severity: warning
                       pagerduty_service: cluster
                     annotations:
                       summary: "headscale-key-exporter cannot read Headscale"
-                      description: "headscale-key-exporter has not read the Headscale API for 30m (or is not being scraped), so Headscale key expiries are not being watched. Its log says why: bazel run //tools/gitops:logs -- -n headscale deploy/headscale-key-exporter. An HTTP 401 means its own API key expired or was revoked: re-mint it with bazel run //tools/gitops:seal-headscale-key-exporter."
+                      description: "headscale-key-exporter has not read the Headscale API (or some of its records) for 30m, or is not being scraped, so some Headscale key expiries are not being watched. Its log says why: bazel run //tools/gitops:logs -- -n headscale deploy/headscale-key-exporter. An HTTP 401 means its own API key expired or was revoked: re-mint it with bazel run //tools/gitops:seal-headscale-key-exporter."
 
                 # ── 10. Monitoring self ──────────────────────────────────────
                 - name: monitoring-self

@@ -207,11 +207,39 @@ class Collect(unittest.TestCase):
         self.assertNotIn(("node", "9"), self.creds)
         labels, _ = self.creds[("node", "10")]
         self.assertEqual(labels["name"], "phone")
-        self.assertEqual(labels["user"], "someone@example.com")
+        # An OIDC login has no name: its id, never its email (/metrics is open).
+        self.assertEqual(labels["user"], "2")
 
     def test_the_api_key_itself_never_appears(self):
         for labels, _ in self.creds.values():
             self.assertNotIn("secret", labels.values())
+
+    def test_no_email_in_any_label(self):
+        for labels, _ in self.creds.values():
+            for v in labels.values():
+                self.assertNotIn("@", v)
+
+    def test_an_unreadable_record_is_skipped_not_fatal(self):
+        api = dict(API)
+        api["/api/v1/apikey"] = {
+            "apiKeys": [
+                {"id": "9", "prefix": "badtime", "expiration": "not a time"},
+                {
+                    "id": "1",
+                    "prefix": "sxHrjsz",
+                    "expiration": "2026-11-20T07:44:40.902400902Z",
+                },
+            ]
+        }
+        skipped = [0]
+        got = {
+            (l["kind"], l["id"])
+            for l, _ in self.m.collect(lambda p: api[p], NOW, skipped)
+        }
+        self.assertEqual(skipped, [1])
+        self.assertIn(("apikey", "1"), got)
+        self.assertIn(("preauthkey", "5"), got)
+        self.assertNotIn(("apikey", "9"), got)
 
     def test_preauth_keys_asked_for_by_user_id(self):
         # Headscale v0.26 takes the numeric id; ?user=<name> is a 400.
@@ -224,6 +252,18 @@ class Collect(unittest.TestCase):
 class Render(unittest.TestCase):
     def setUp(self):
         self.m = _load()
+
+    def test_escape(self):
+        self.assertEqual(self.m.escape('a"b'), 'a\\"b')
+        self.assertEqual(self.m.escape("a\\b"), "a\\\\b")
+        self.assertEqual(self.m.escape("a\nb"), "a\\nb")
+        self.assertEqual(self.m.escape(5), "5")
+
+    def test_unreadable_count_is_exposed(self):
+        self.assertIn(
+            "headscale_key_exporter_unreadable_records 2\n",
+            self.m.render([], True, 0, 2),
+        )
 
     def test_exposition_format(self):
         out = self.m.render(
@@ -280,15 +320,72 @@ class Refresh(unittest.TestCase):
         )
         self.assertEqual(s.last_success, NOW)
 
-    def test_bad_json_is_down(self):
+    def _fail_with(self, exc):
         self.keyfile.write_text("k")
-        self.m.get = lambda p, k: (
-            {"users": [{"id": "1"}]}
-            if p == "/api/v1/user"
-            else {"preAuthKeys": [{"expiration": "not a time"}]}
-        )
+
+        def fake_get(path, api_key):
+            raise exc
+
+        self.m.get = fake_get
         s = self.m.State()
         s.refresh(now=NOW)
+        return s
+
+    def test_server_error_is_down(self):
+        s = self._fail_with(urllib.error.HTTPError("u", 503, "Unavailable", {}, None))
+        self.assertFalse(s.up)
+
+    def test_timeout_is_down(self):
+        s = self._fail_with(TimeoutError("timed out"))
+        self.assertFalse(s.up)
+
+    def test_network_error_is_down(self):
+        s = self._fail_with(urllib.error.URLError("connection refused"))
+        self.assertFalse(s.up)
+
+    def test_bad_json_is_down(self):
+        s = self._fail_with(ValueError("Expecting value"))
+        self.assertFalse(s.up)
+
+    def test_unreadable_record_keeps_up_and_counts_it(self):
+        self.keyfile.write_text("k")
+        api = dict(API)
+        api["/api/v1/node"] = {"nodes": [{"id": "1", "name": "x", "expiry": "garbage"}]}
+        self.m.get = lambda p, k: api[p]
+        s = self.m.State()
+        s.refresh(now=NOW)
+        self.assertTrue(s.up)
+        self.assertIn("headscale_key_exporter_unreadable_records 1\n", s.metrics())
+
+    def test_whole_read_has_a_deadline(self):
+        self.keyfile.write_text("k")
+        self.m.get = lambda p, k: API[p]
+        # The deadline is set at 0; the third request sees the clock past it.
+        ticks = iter([0, 0, 0] + [10_000] * 20)
+        s = self.m.State()
+        s.refresh(now=NOW, clock=lambda: next(ticks))
+        self.assertFalse(s.up, "a read past REFRESH_BUDGET_SECONDS must fail, not hang")
+
+    def test_unreadable_key_file_does_not_kill_the_loop(self):
+        self.keyfile.write_text("k")
+        os.chmod(self.keyfile, 0)
+        self.addCleanup(os.chmod, self.keyfile, 0o600)
+        if os.access(self.keyfile, os.R_OK):
+            self.skipTest("running as root: file permissions are not enforced")
+        s = self.m.State()
+        s.up = True
+        self.m.refresh_once(s)  # must not raise
+        self.assertFalse(s.up)
+
+    def test_refresh_once_survives_anything(self):
+        s = self.m.State()
+        s.up = True
+
+        def boom(*a, **k):
+            raise RuntimeError("bug")
+
+        s.refresh = boom
+        self.m.refresh_once(s)
         self.assertFalse(s.up)
 
 

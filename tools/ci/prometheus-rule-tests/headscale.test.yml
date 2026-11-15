@@ -68,6 +68,10 @@ tests:
       - eval_time: 24h
         alertname: HeadscaleCredentialExpiringImminently
         exp_alerts: []
+      # Under 3 days it is the page alone: the warning has stood down.
+      - eval_time: 26h
+        alertname: HeadscaleCredentialExpiringSoon
+        exp_alerts: []
       - eval_time: 26h
         alertname: HeadscaleCredentialExpiringImminently
         exp_alerts:
@@ -121,7 +125,7 @@ tests:
               service: headscale-key-exporter
             exp_annotations:
               summary: "headscale-key-exporter cannot read Headscale"
-              description: "headscale-key-exporter has not read the Headscale API for 30m (or is not being scraped), so Headscale key expiries are not being watched. Its log says why: bazel run //tools/gitops:logs -- -n headscale deploy/headscale-key-exporter. An HTTP 401 means its own API key expired or was revoked: re-mint it with bazel run //tools/gitops:seal-headscale-key-exporter."
+              description: "headscale-key-exporter has not read the Headscale API (or some of its records) for 30m, or is not being scraped, so some Headscale key expiries are not being watched. Its log says why: bazel run //tools/gitops:logs -- -n headscale deploy/headscale-key-exporter. An HTTP 401 means its own API key expired or was revoked: re-mint it with bazel run //tools/gitops:seal-headscale-key-exporter."
 
   - interval: 1m
     name: The exporter missing entirely is an alert too
@@ -138,4 +142,67 @@ tests:
               pagerduty_service: cluster
             exp_annotations:
               summary: "headscale-key-exporter cannot read Headscale"
-              description: "headscale-key-exporter has not read the Headscale API for 30m (or is not being scraped), so Headscale key expiries are not being watched. Its log says why: bazel run //tools/gitops:logs -- -n headscale deploy/headscale-key-exporter. An HTTP 401 means its own API key expired or was revoked: re-mint it with bazel run //tools/gitops:seal-headscale-key-exporter."
+              description: "headscale-key-exporter has not read the Headscale API (or some of its records) for 30m, or is not being scraped, so some Headscale key expiries are not being watched. Its log says why: bazel run //tools/gitops:logs -- -n headscale deploy/headscale-key-exporter. An HTTP 401 means its own API key expired or was revoked: re-mint it with bazel run //tools/gitops:seal-headscale-key-exporter."
+
+  - interval: 1m
+    name: Reads that silently stop are an alert even while up stays 1
+    input_series:
+      # up frozen at 1, but the last successful read never moves past t=0.
+      - series: 'headscale_key_exporter_up{service="headscale-key-exporter"}'
+        values: '1x120'
+      - series: 'headscale_key_exporter_last_success_timestamp_seconds{service="headscale-key-exporter"}'
+        values: '0x120'
+    alert_rule_test:
+      # Over an hour stale from 60m; `for: 30m` holds it pending until 90m.
+      - eval_time: 89m
+        alertname: HeadscaleKeyExporterDown
+        exp_alerts: []
+      - eval_time: 91m
+        alertname: HeadscaleKeyExporterDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              pagerduty_service: cluster
+              service: headscale-key-exporter
+            exp_annotations:
+              summary: "headscale-key-exporter cannot read Headscale"
+              description: "headscale-key-exporter has not read the Headscale API (or some of its records) for 30m, or is not being scraped, so some Headscale key expiries are not being watched. Its log says why: bazel run //tools/gitops:logs -- -n headscale deploy/headscale-key-exporter. An HTTP 401 means its own API key expired or was revoked: re-mint it with bazel run //tools/gitops:seal-headscale-key-exporter."
+
+  - interval: 1m
+    name: A record the exporter cannot read is an alert even while up is 1
+    input_series:
+      - series: 'headscale_key_exporter_up{service="headscale-key-exporter"}'
+        values: '1x60'
+      - series: 'headscale_key_exporter_last_success_timestamp_seconds{service="headscale-key-exporter"}'
+        values: '0+60x60'
+      - series: 'headscale_key_exporter_unreadable_records{service="headscale-key-exporter"}'
+        values: '1x60'
+    alert_rule_test:
+      - eval_time: 29m
+        alertname: HeadscaleKeyExporterDown
+        exp_alerts: []
+      - eval_time: 31m
+        alertname: HeadscaleKeyExporterDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              pagerduty_service: cluster
+              service: headscale-key-exporter
+            exp_annotations:
+              summary: "headscale-key-exporter cannot read Headscale"
+              description: "headscale-key-exporter has not read the Headscale API (or some of its records) for 30m, or is not being scraped, so some Headscale key expiries are not being watched. Its log says why: bazel run //tools/gitops:logs -- -n headscale deploy/headscale-key-exporter. An HTTP 401 means its own API key expired or was revoked: re-mint it with bazel run //tools/gitops:seal-headscale-key-exporter."
+
+  - interval: 1m
+    name: A healthy exporter with fresh reads never alerts
+    input_series:
+      - series: 'headscale_key_exporter_up{service="headscale-key-exporter"}'
+        values: '1x120'
+      # last_success tracks the clock (one read a minute).
+      - series: 'headscale_key_exporter_last_success_timestamp_seconds{service="headscale-key-exporter"}'
+        values: '0+60x120'
+      - series: 'headscale_key_exporter_unreadable_records{service="headscale-key-exporter"}'
+        values: '0x120'
+    alert_rule_test:
+      - eval_time: 119m
+        alertname: HeadscaleKeyExporterDown
+        exp_alerts: []

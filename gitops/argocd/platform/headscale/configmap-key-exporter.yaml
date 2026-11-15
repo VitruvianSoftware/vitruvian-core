@@ -30,8 +30,17 @@
 #     kind="node"        devices with a login expiry (OIDC logins)
 #   headscale_key_exporter_up                       1 if the last read worked
 #   headscale_key_exporter_last_success_timestamp_seconds
+#   headscale_key_exporter_unreadable_records       records skipped last read
 #
-# Already-expired credentials are left out: a dead key is not an alert.
+# `user` is the Headscale user's name, or its numeric id for a login that has
+# no name (OIDC): never an email, since /metrics is unauthenticated.
+#
+# An expired credential is left out, so its alert resolves at the moment it
+# expires. That is deliberate: expiring a key by hand (the way to retire one)
+# looks exactly the same to the API, and must clear the alert. The warning a
+# month out and the page three days out are the signal; after the date, the
+# thing that used the key failing is.
+#
 # The alert rules (group `headscale`) are in
 # gitops/argocd/platform/prometheus/applicationset.yaml; their tests in
 # tools/ci/prometheus-rule-tests/headscale.test.yml. Tests for this script:
@@ -67,7 +76,9 @@ data:
     API_KEY_FILE = os.environ.get("API_KEY_FILE", "/etc/exporter/secrets/api-key")
     LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "9100"))
     REFRESH_SECONDS = int(os.environ.get("REFRESH_SECONDS", "300"))
+    # Per request, and for a whole read of every endpoint.
     TIMEOUT_SECONDS = 15
+    REFRESH_BUDGET_SECONDS = 120
 
     METRIC = "headscale_credential_expiration_timestamp_seconds"
 
@@ -80,6 +91,7 @@ data:
         """RFC 3339 (Headscale sends nanoseconds) -> epoch seconds, or None.
 
         None for a missing value and for the zero time Go uses for "never".
+        Raises ValueError for anything else it cannot read.
         """
         if not value:
             return None
@@ -102,6 +114,8 @@ data:
 
 
     def read_api_key():
+        """The key, or "" while the Secret is not mounted yet. Other read
+        errors (permissions) propagate: they are a broken deployment."""
         try:
             with open(API_KEY_FILE, encoding="utf-8") as f:
                 return f.read().strip()
@@ -119,23 +133,36 @@ data:
 
 
     def user_label(u):
-        """A user's name; OIDC logins have none, so their email, else the id."""
-        return u.get("name") or u.get("email") or str(u.get("id", ""))
+        """A user's name, else its id. Never the email: /metrics is open."""
+        return u.get("name") or str(u.get("id", ""))
 
 
-    def collect(fetch, now):
+    def collect(fetch, now, skipped=None):
         """Every unexpired credential as (labels, expiry epoch seconds).
 
-        `fetch(path)` returns Headscale's decoded JSON for an /api/v1 path.
+        `fetch(path)` returns Headscale's decoded JSON for an /api/v1 path. A
+        record whose expiry cannot be read is logged, counted in `skipped`
+        (a one-element list) and left out; the rest are still reported.
         """
+        if skipped is None:
+            skipped = [0]
         out = []
+
+        def expiry(kind, rec, field):
+            try:
+                return parse_time(rec.get(field))
+            except (ValueError, TypeError, AttributeError):
+                skipped[0] += 1
+                log("skipping " + kind + " id " + str(rec.get("id", "?")) + ": unreadable " + field)
+                return None
+
         users = fetch("/api/v1/user").get("users") or []
         for u in users:
             uid = str(u.get("id", ""))
             uname = user_label(u)
             q = urllib.parse.urlencode({"user": uid})
             for k in fetch("/api/v1/preauthkey?" + q).get("preAuthKeys") or []:
-                exp = parse_time(k.get("expiration"))
+                exp = expiry("preauthkey", k, "expiration")
                 if exp is None or exp <= now:
                     continue
                 if k.get("used") and not k.get("reusable"):
@@ -153,7 +180,7 @@ data:
                     exp,
                 ))
         for k in fetch("/api/v1/apikey").get("apiKeys") or []:
-            exp = parse_time(k.get("expiration"))
+            exp = expiry("apikey", k, "expiration")
             if exp is None or exp <= now:
                 continue
             out.append((
@@ -161,16 +188,15 @@ data:
                 exp,
             ))
         for n in fetch("/api/v1/node").get("nodes") or []:
-            exp = parse_time(n.get("expiry"))
+            exp = expiry("node", n, "expiry")
             if exp is None or exp <= now:
                 continue
-            owner = user_label(n.get("user") or {})
             out.append((
                 {
                     "kind": "node",
                     "id": str(n.get("id", "")),
                     "name": n.get("givenName") or n.get("name") or "",
-                    "user": owner,
+                    "user": user_label(n.get("user") or {}),
                 },
                 exp,
             ))
@@ -181,7 +207,7 @@ data:
         return str(v).replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
 
 
-    def render(credentials, up, last_success):
+    def render(credentials, up, last_success, unreadable=0):
         lines = [
             "# HELP " + METRIC + " When a Headscale credential expires (unix seconds).",
             "# TYPE " + METRIC + " gauge",
@@ -196,6 +222,9 @@ data:
             "# HELP headscale_key_exporter_last_success_timestamp_seconds When the Headscale API was last read successfully.",
             "# TYPE headscale_key_exporter_last_success_timestamp_seconds gauge",
             "headscale_key_exporter_last_success_timestamp_seconds " + repr(float(last_success)),
+            "# HELP headscale_key_exporter_unreadable_records Records the last read skipped because their expiry was unreadable.",
+            "# TYPE headscale_key_exporter_unreadable_records gauge",
+            "headscale_key_exporter_unreadable_records " + str(int(unreadable)),
         ]
         return "\n".join(lines) + "\n"
 
@@ -209,36 +238,46 @@ data:
             self.credentials = []
             self.up = False
             self.last_success = 0.0
+            self.unreadable = 0
 
-        def refresh(self, now=None):
+        def fail(self, msg):
+            log(msg)
+            with self.lock:
+                self.up = False
+
+        def refresh(self, now=None, clock=time.monotonic):
             now = time.time() if now is None else now
             api_key = read_api_key()
             if not api_key:
-                log("no API key at " + API_KEY_FILE + " yet (Secret headscale-key-exporter not sealed?)")
-                with self.lock:
-                    self.up = False
+                self.fail("no API key at " + API_KEY_FILE + " yet (Secret headscale-key-exporter not sealed?)")
                 return
+            deadline = clock() + REFRESH_BUDGET_SECONDS
+
+            def fetch(path):
+                if clock() > deadline:
+                    raise TimeoutError("read took over " + str(REFRESH_BUDGET_SECONDS) + "s")
+                return get(path, api_key)
+
+            skipped = [0]
             try:
-                creds = collect(lambda p: get(p, api_key), now)
+                creds = collect(fetch, now, skipped)
             except urllib.error.HTTPError as e:
+                e.close()
                 hint = " (API key expired or revoked?)" if e.code == 401 else ""
-                log("Headscale API returned HTTP " + str(e.code) + hint)
-                with self.lock:
-                    self.up = False
+                self.fail("Headscale API returned HTTP " + str(e.code) + hint)
                 return
-            except Exception as e:  # network, bad JSON, bad timestamp
-                log("reading the Headscale API failed: " + repr(e))
-                with self.lock:
-                    self.up = False
+            except Exception as e:  # network, timeout, bad JSON
+                self.fail("reading the Headscale API failed: " + repr(e))
                 return
             with self.lock:
                 self.credentials = creds
                 self.up = True
                 self.last_success = now
+                self.unreadable = skipped[0]
 
         def metrics(self):
             with self.lock:
-                return render(self.credentials, self.up, self.last_success)
+                return render(self.credentials, self.up, self.last_success, self.unreadable)
 
 
     STATE = State()
@@ -264,9 +303,19 @@ data:
             pass  # scrapes every 30s would drown the useful lines
 
 
+    def refresh_once(state):
+        """One loop iteration. Nothing may escape it: if the loop died,
+        /metrics would keep serving the last values with up=1. (The alert
+        also checks the age of last_success, for anything this misses.)"""
+        try:
+            state.refresh()
+        except Exception as e:
+            state.fail("refresh failed unexpectedly: " + repr(e))
+
+
     def refresh_loop():
         while True:
-            STATE.refresh()
+            refresh_once(STATE)
             time.sleep(REFRESH_SECONDS)
 
 

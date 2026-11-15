@@ -789,9 +789,31 @@ mod tests {
 // a command line or on disk.
 // ---------------------------------------------------------------------------
 
-/// What `headscale apikeys create` prints: one token, no whitespace.
+/// What `headscale apikeys create` prints: `<7-char prefix>.<secret>`, both
+/// URL-safe (letters, digits, `_`, `-`). v0.26.1's secret is 32 characters.
 pub fn is_api_key(v: &[u8]) -> bool {
-    v.len() >= 20 && v.iter().all(|c| c.is_ascii_graphic())
+    let url_safe = |s: &[u8]| {
+        s.iter()
+            .all(|c| c.is_ascii_alphanumeric() || *c == b'_' || *c == b'-')
+    };
+    match api_key_prefix(v) {
+        Some(prefix) => {
+            let secret = &v[prefix.len() + 1..];
+            url_safe(prefix) && secret.len() >= 16 && url_safe(secret)
+        }
+        None => false,
+    }
+}
+
+/// The 7-character prefix Headscale lists a key by (`headscale apikeys
+/// list`), safe to print: it identifies the key without being it.
+pub fn api_key_prefix(v: &[u8]) -> Option<&[u8]> {
+    let dot = v.iter().position(|c| *c == b'.')?;
+    if dot == 7 && v[dot + 1..].iter().all(|c| *c != b'.') {
+        Some(&v[..dot])
+    } else {
+        None
+    }
 }
 
 /// A Headscale duration such as 365d, 8760h or 90d: digits then one unit.
@@ -873,20 +895,40 @@ fn headscale_key_exporter_run(args: &[Vec<u8>]) -> Res<i32> {
     if !is_api_key(&api_key) {
         return die(
             1,
-            b"ERROR: headscale apikeys create did not print a key; nothing sealed.",
+            b"ERROR: headscale apikeys create did not print a key in the expected <prefix>.<secret> form; nothing sealed. If it minted one anyway, find the newest with bazel run //tools/gitops:headscale-apikey-list and expire it with :headscale-apikey-expire -- --prefix <prefix>.",
         );
     }
-    cd_workspace(88)?;
-    write_new(95, &out, LICENSE_HEADER.as_bytes())?;
+    let prefix = api_key_prefix(&api_key).unwrap_or_default().to_vec();
+    // From here a live key exists. Any failure must say which one, so it can
+    // be expired rather than left valid and unrecorded.
+    let orphaned = |st: i32| -> Res<i32> {
+        die(
+            st,
+            &sc::cat(&[
+                b"ERROR: sealing failed after minting API key ",
+                &prefix,
+                b"; it is live but recorded nowhere. Expire it: bazel run //tools/gitops:headscale-apikey-expire -- --prefix ",
+                &prefix,
+            ]),
+        )
+    };
+    if let Err(st) = cd_workspace(88) {
+        return orphaned(st);
+    }
+    if let Err(st) = write_new(95, &out, LICENSE_HEADER.as_bytes()) {
+        return orphaned(st);
+    }
     let st = seal_value(116, &k, ns, secret, key, &api_key, &out);
     if st != 0 {
-        return Err(st);
+        return orphaned(st);
     }
     say(&sealed_msg(&out, ns, secret, key));
     say(&sc::cat(&[
-        b"minted a Headscale API key expiring in ",
+        b"minted Headscale API key ",
+        &prefix,
+        b", expiring in ",
         &expiration,
-        b". Once the exporter reports up=1 on the new key, expire the one it replaces: bazel run //tools/gitops:headscale-apikey-list, then :headscale-apikey-expire -- --prefix <old prefix>",
+        b". Once the exporter reports up=1 on it, expire the key it replaces (bazel run //tools/gitops:headscale-apikey-list, then :headscale-apikey-expire -- --prefix <old prefix>) and update the key table in gitops/argocd/platform/headscale/README.md.",
     ]));
     apply_or_next(
         &k,
@@ -904,11 +946,28 @@ mod headscale_key_exporter_tests {
 
     #[test]
     fn api_key_shape() {
-        assert!(is_api_key(b"TWRIQB0.abcdefghijklmnopqrstuvwxyz0123"));
+        assert!(is_api_key(b"TWRIQB0.abcdefghijklmnopqrstuvwxyz012345"));
+        assert!(is_api_key(b"4mP_vv5.ab-cd_efghijklmnopqrstuvwxyz0123"));
         assert!(!is_api_key(b""));
         assert!(!is_api_key(b"short"));
+        // A 20+ character token that is not a key: no prefix dot.
+        assert!(!is_api_key(b"abcdefghijklmnopqrstuvwxyz"));
         assert!(!is_api_key(b"has a space in it, so not a key"));
         assert!(!is_api_key(b"2026-11-15T00:00:00Z WRN An updated version"));
+        // Wrong prefix length, two dots, a short or non-URL-safe secret.
+        assert!(!is_api_key(b"TWRIQB.abcdefghijklmnopqrstuvwxyz012345"));
+        assert!(!is_api_key(b"TWRIQB0.abcdefghij.klmnopqrstuvwxyz012"));
+        assert!(!is_api_key(b"TWRIQB0.abc"));
+        assert!(!is_api_key(b"TWRIQB0.abcdefghijklmnop/qrstuvwxyz"));
+    }
+
+    #[test]
+    fn prefix_is_the_part_headscale_lists() {
+        assert_eq!(
+            api_key_prefix(b"TWRIQB0.abcdefghijklmnopqrstuvwxyz012345"),
+            Some(&b"TWRIQB0"[..])
+        );
+        assert_eq!(api_key_prefix(b"nodothere"), None);
     }
 
     #[test]
