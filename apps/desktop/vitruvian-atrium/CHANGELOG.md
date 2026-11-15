@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.99.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.98.1...vitruvian-atrium-v3.99.0) (2026-11-15)
+
+
+### Features
+
+* **donations:** track click source via client_reference_id ([#4886](https://github.com/VitruvianSoftware/vitruvian-core/issues/4886)) ([ced29d1](https://github.com/VitruvianSoftware/vitruvian-core/commit/ced29d1bfd38e89178a659551aedb03a0825bb86))
+
+
+### Bug Fixes
+
+* **vitruvian-atrium:** close a tool's island page when the pointer leaves ([#4864](https://github.com/VitruvianSoftware/vitruvian-core/issues/4864)) ([0fb266d](https://github.com/VitruvianSoftware/vitruvian-core/commit/0fb266d18b1cafd4c2affe1acfebac745b15bcdb))
+
 ## [3.98.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.98.0...vitruvian-atrium-v3.98.1) (2026-11-14)
 
 
