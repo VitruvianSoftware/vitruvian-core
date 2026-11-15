@@ -152,6 +152,10 @@ pub fn extend_path() {
 }
 
 pub fn find_executable_in_path(name: &str) -> Option<String> {
+    find_executable_in_dirs(name, &augmented_path())
+}
+
+fn find_executable_in_dirs(name: &str, path_var: &str) -> Option<String> {
     if name.is_empty() {
         return None;
     }
@@ -162,7 +166,6 @@ pub fn find_executable_in_path(name: &str) -> Option<String> {
         }
         return None;
     }
-    let path_var = augmented_path();
     for dir in path_var.split(':') {
         if dir.is_empty() {
             continue;
@@ -373,6 +376,13 @@ pub fn tool_reason(name: &str, stderr: &str, err: &str) -> String {
 }
 
 pub fn tool_presence(names: &[&str]) -> Tools {
+    tool_presence_with(names, find_executable_in_path)
+}
+
+pub(crate) fn tool_presence_with(
+    names: &[&str],
+    mut lookup: impl FnMut(&str) -> Option<String>,
+) -> Tools {
     let mut tools = BTreeMap::new();
     for &n in names {
         if n == "speaker" {
@@ -386,7 +396,7 @@ pub fn tool_presence(names: &[&str]) -> Tools {
             );
             continue;
         }
-        match find_executable_in_path(n) {
+        match lookup(n) {
             Some(p) => {
                 let mut avail = true;
                 if n == "xcodebuild" {
@@ -1839,5 +1849,112 @@ mod tests {
     #[test]
     fn read_cpu_ticks_is_none_off_macos() {
         assert_eq!(read_cpu_ticks(), None);
+    }
+
+    #[test]
+    fn gh_is_a_known_tool_reported_when_present_and_omitted_when_absent() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use vitruvian_remote_macagent_metrics::json::JsonValue;
+
+        use crate::http_util::HttpRequest;
+        use crate::pair::Store;
+        use crate::server::Server;
+
+        static TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+        assert!(KNOWN_TOOLS.contains(&"gh"));
+
+        let suffix = format!(
+            "macagent-gh-tool-{}-{}",
+            std::process::id(),
+            TEST_COUNTER.fetch_add(1, Ordering::SeqCst)
+        );
+        let bin_dir = std::env::temp_dir().join(format!("{suffix}-bin"));
+        let store_dir = std::env::temp_dir().join(format!("{suffix}-store"));
+        let _ = fs::remove_dir_all(&bin_dir);
+        let _ = fs::remove_dir_all(&store_dir);
+        fs::create_dir_all(&bin_dir).unwrap();
+        fs::create_dir_all(&store_dir).unwrap();
+
+        let bin_dir_str = bin_dir.to_string_lossy().into_owned();
+        let sampler = Sampler::new(Duration::from_secs(60), "", "", Vec::new(), None);
+        let store = Arc::new(Store::new(store_dir.clone()));
+        store.ensure_token().unwrap();
+        let srv = Server::new(Arc::clone(&sampler), store, "", "");
+
+        let available_names = |tools: &Tools| -> Vec<String> {
+            tools
+                .tools
+                .iter()
+                .filter(|(_, tool)| tool.available)
+                .map(|(name, _)| name.clone())
+                .collect()
+        };
+
+        let fetch_tools_json = || -> JsonValue {
+            let resp = srv.handle(&HttpRequest::new_test("GET", "/v1/tools", ""));
+            assert_eq!(resp.status, 200);
+            JsonValue::parse(&resp.body_string()).unwrap()
+        };
+
+        let reported_available_in_json = |body: &JsonValue| -> Vec<String> {
+            body.get("tools")
+                .and_then(|v| v.as_object())
+                .unwrap()
+                .iter()
+                .filter(|(_, v)| v.get_bool("available"))
+                .map(|(k, _)| k.clone())
+                .collect()
+        };
+
+        // Absent on the injected PATH: gh is marked unavailable and omitted from available tools.
+        let absent = tool_presence_with(KNOWN_TOOLS, |n| find_executable_in_dirs(n, &bin_dir_str));
+        assert_eq!(
+            absent.tools.get("gh"),
+            Some(&Tool {
+                available: false,
+                path: String::new(),
+            })
+        );
+        assert!(!available_names(&absent).iter().any(|n| n == "gh"));
+
+        sampler.state.write().unwrap().tools = absent;
+        let absent_json = fetch_tools_json();
+        let absent_gh = absent_json.get("tools").unwrap().get("gh").unwrap();
+        assert!(!absent_gh.get_bool("available"));
+        assert_eq!(absent_gh.get_str("path"), "");
+        assert!(!reported_available_in_json(&absent_json)
+            .iter()
+            .any(|n| n == "gh"));
+
+        // Present on the injected PATH: gh is reported as available with its path.
+        let gh_bin = bin_dir.join("gh");
+        fs::write(&gh_bin, b"#!/bin/sh\nexit 0\n").unwrap();
+        let mut perms = fs::metadata(&gh_bin).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&gh_bin, perms).unwrap();
+        let gh_bin_str = gh_bin.to_string_lossy().into_owned();
+
+        let present = tool_presence_with(KNOWN_TOOLS, |n| find_executable_in_dirs(n, &bin_dir_str));
+        assert_eq!(
+            present.tools.get("gh"),
+            Some(&Tool {
+                available: true,
+                path: gh_bin_str.clone(),
+            })
+        );
+        assert!(available_names(&present).iter().any(|n| n == "gh"));
+
+        sampler.state.write().unwrap().tools = present;
+        let present_json = fetch_tools_json();
+        let present_gh = present_json.get("tools").unwrap().get("gh").unwrap();
+        assert!(present_gh.get_bool("available"));
+        assert_eq!(present_gh.get_str("path"), gh_bin_str);
+        assert!(reported_available_in_json(&present_json)
+            .iter()
+            .any(|n| n == "gh"));
+
+        let _ = fs::remove_dir_all(&bin_dir);
+        let _ = fs::remove_dir_all(&store_dir);
     }
 }
