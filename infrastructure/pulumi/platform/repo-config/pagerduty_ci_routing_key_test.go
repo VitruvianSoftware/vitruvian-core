@@ -93,12 +93,15 @@ func TestPagerdutyCIRoutingKeyBecomesRepoSecret(t *testing.T) {
 	if got := s["repository"].StringValue(); got != "vitruvian-core" {
 		t.Errorf("repository = %q", got)
 	}
-	v := s["plaintextValue"]
+	if v, ok := s["plaintextValue"]; ok && !v.IsNull() {
+		t.Errorf("plaintextValue is deprecated; the key belongs in value: %v", v)
+	}
+	v := s["value"]
 	if !v.IsSecret() {
-		t.Fatalf("plaintextValue is not marked secret: %v", v)
+		t.Fatalf("value is not marked secret: %v", v)
 	}
 	if got := v.SecretValue().Element.StringValue(); got != "pd-key-abc" {
-		t.Errorf("plaintextValue = %q, want the stack output", got)
+		t.Errorf("value = %q, want the stack output", got)
 	}
 }
 
