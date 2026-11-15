@@ -686,20 +686,21 @@ public class MockHostWalkTest {
 
   @Test
   public fun `wakeOnLan confirmDestructive and refreshInterval round-trip across RemoteState restart`() {
+    assertFalse(Persistence(InMemoryKeyValueStore()).wakeOnLan)
     val store = InMemoryKeyValueStore()
     val first =
         RemoteState(
             persistence = Persistence(store),
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
         )
-    assertTrue(first.wakeOnLan)
+    assertFalse(first.wakeOnLan)
     assertTrue(first.confirmDestructive)
     assertEquals(Derive.DEFAULT_REFRESH_INTERVAL, first.refreshInterval)
 
-    first.updateWakeOnLan(false)
+    first.updateWakeOnLan(true)
     first.updateConfirmDestructive(false)
     first.updateRefreshInterval("30 s")
-    assertFalse(first.wakeOnLan)
+    assertTrue(first.wakeOnLan)
     assertFalse(first.confirmDestructive)
     assertEquals("30 s", first.refreshInterval)
 
@@ -708,11 +709,11 @@ public class MockHostWalkTest {
             persistence = Persistence(store),
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
         )
-    assertFalse(restarted.wakeOnLan)
+    assertTrue(restarted.wakeOnLan)
     assertFalse(restarted.confirmDestructive)
     assertEquals("30 s", restarted.refreshInterval)
 
-    restarted.updateWakeOnLan(true)
+    restarted.updateWakeOnLan(false)
     restarted.updateConfirmDestructive(true)
     restarted.updateRefreshInterval("5 s")
     val third =
@@ -720,7 +721,7 @@ public class MockHostWalkTest {
             persistence = Persistence(store),
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
         )
-    assertTrue(third.wakeOnLan)
+    assertFalse(third.wakeOnLan)
     assertTrue(third.confirmDestructive)
     assertEquals("5 s", third.refreshInterval)
 

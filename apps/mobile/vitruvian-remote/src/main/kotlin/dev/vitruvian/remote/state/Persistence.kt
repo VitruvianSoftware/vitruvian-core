@@ -276,7 +276,7 @@ public class Persistence public constructor(private val prefs: PrefsStore) {
     set(value) = prefs.edit().putString(KEY_THEME_MODE, value.name).apply()
 
   public var wakeOnLan: Boolean
-    get() = prefs.getBoolean(KEY_WAKE_ON_LAN, true)
+    get() = prefs.getBoolean(KEY_WAKE_ON_LAN, false)
     set(value) = prefs.edit().putBoolean(KEY_WAKE_ON_LAN, value).apply()
 
   public var confirmDestructive: Boolean
