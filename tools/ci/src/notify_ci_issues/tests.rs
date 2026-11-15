@@ -27,6 +27,9 @@
 //! auth, headers, the full JSON body), the exact gh API queries, pagination,
 //! the CUTOFF_MINUTES and QUEUE_BYPASS_ALLOW defaults, and a missing REPO.
 //!
+//! Each notification also goes to PagerDuty when PAGERDUTY_ROUTING_KEY is
+//! set; the fake curl records those calls apart from the ntfy ones.
+//!
 //! jq comes from $JQ_BIN when the rust_test passes it (Bazel's hermetic jq),
 //! otherwise from PATH.
 
@@ -78,8 +81,21 @@ exit 99
 
 /// Records each POST: its arguments one per line (then a `--` separator) in
 /// curl.argv, and its -d body in curl.bodies, one call per CALL in curl.log.
+///
+/// A POST to PagerDuty's Events API goes to pd.log / pd.argv / pd.bodies
+/// instead (its body arrives on stdin), and exits $FAKE_PD_CURL_RC, so the
+/// ntfy assertions above never see it.
 const FAKE_CURL: &str = r#"#!/usr/bin/env bash
 W="$GH_STUB_DIR"
+case " $* " in
+  *" https://events.pagerduty.com/v2/enqueue "*)
+    echo "CALL" >> "$W/pd.log"
+    printf '%s\n' "$@" >> "$W/pd.argv"
+    printf -- '--\n' >> "$W/pd.argv"
+    cat >> "$W/pd.bodies"
+    printf '\n' >> "$W/pd.bodies"
+    exit "${FAKE_PD_CURL_RC:-0}" ;;
+esac
 echo "CALL" >> "$W/curl.log"
 body="" prev=""
 for arg in "$@"; do
@@ -148,7 +164,15 @@ impl Poll {
 
     /// The shell suite's run(): a fixed env, then per-case overrides.
     fn run(&self, overrides: &[(&str, &str)]) -> Output {
-        for f in ["gh.log", "curl.log", "curl.bodies", "curl.argv"] {
+        for f in [
+            "gh.log",
+            "curl.log",
+            "curl.bodies",
+            "curl.argv",
+            "pd.log",
+            "pd.bodies",
+            "pd.argv",
+        ] {
             let _ = std::fs::remove_file(self.dir.join(f));
         }
         let mut path = format!("{}", self.dir.join("bin").display());
@@ -177,6 +201,8 @@ impl Poll {
             "FAKE_QUEUE_UNREADABLE",
             "FAKE_QUEUE_COUNT",
             "FAKE_CURL_RC",
+            "FAKE_PD_CURL_RC",
+            "PAGERDUTY_ROUTING_KEY",
         ] {
             r = r.env_remove(k);
         }
@@ -200,6 +226,22 @@ impl Poll {
 
     fn curl_argv(&self) -> String {
         read(self.dir.join("curl.argv"))
+    }
+
+    fn pd_posts(&self) -> usize {
+        read(self.dir.join("pd.log")).lines().count()
+    }
+
+    fn pd_bodies(&self) -> Vec<String> {
+        read(self.dir.join("pd.bodies"))
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(str::to_owned)
+            .collect()
+    }
+
+    fn pd_argv(&self) -> String {
+        read(self.dir.join("pd.argv"))
     }
 }
 
@@ -748,4 +790,215 @@ fn missing_repo_fails_before_any_query() {
         assert_has(&o.stderr, "REPO must be set", "says what is missing");
         assert_eq!(p.gh_log(), "", "no gh calls");
     }
+}
+
+// --- PagerDuty, alongside ntfy ----------------------------------------------
+
+const KEY: (&str, &str) = ("PAGERDUTY_ROUTING_KEY", "routing-key-123");
+
+#[test]
+fn main_failure_pages_critical_and_still_pushes_ntfy() {
+    let p = Poll::new();
+    let o = p.run(&[
+        KEY,
+        (
+            "FAKE_FAILURE_JSON",
+            &runs(&[("ci", "https://x/runs/20", &recent())]),
+        ),
+    ]);
+    assert_eq!(o.code, 0, "{o:?}");
+    assert_eq!(p.posts(), 1, "ntfy copy sent");
+    assert_eq!(p.pd_posts(), 1, "one PagerDuty event");
+    assert_eq!(
+        p.pd_bodies(),
+        vec![concat!(
+            r#"{"routing_key":"routing-key-123","event_action":"trigger","#,
+            r#""dedup_key":"notify-ci-issues/main-failed/https://x/runs/20","#,
+            r#""payload":{"summary":"[ci] main broken: ci","source":"github-actions/notify-ci-issues","#,
+            r#""severity":"critical","group":"ci","#,
+            r#""custom_details":{"message":"Failed on main after landing. https://x/runs/20","url":"https://x/runs/20"}},"#,
+            r#""links":[{"href":"https://x/runs/20","text":"Open in GitHub"}],"#,
+            r#""client":"notify-ci-issues","client_url":"https://x/runs/20"}"#
+        )
+        .to_string()]
+    );
+    assert_eq!(o.stderr, "", "no warnings when both succeed");
+}
+
+/// The key travels on stdin, never in argv where `ps` would show it; -q keeps
+/// a ~/.curlrc out; -f makes a rejected event a non-zero exit.
+#[test]
+fn pagerduty_request_shape_keeps_the_key_off_the_command_line() {
+    let p = Poll::new();
+    p.run(&[
+        KEY,
+        (
+            "FAKE_FAILURE_JSON",
+            &runs(&[("ci", "https://x/runs/20", &recent())]),
+        ),
+    ]);
+    assert_eq!(
+        p.pd_argv(),
+        "-q\n-fsS\n--max-time\n15\n-H\nContent-Type: application/json\n-H\n\
+         User-Agent: vitruvian-ci-notify/1.0\n-X\nPOST\n\
+         https://events.pagerduty.com/v2/enqueue\n--data-binary\n@-\n--\n"
+    );
+    assert_lacks(&p.pd_argv(), "routing-key-123", "key not in argv");
+}
+
+#[test]
+fn lower_priorities_are_warning_severity() {
+    let p = Poll::new();
+    let json = runs(&[("delivery-vitruvian-tabs", "https://x/runs/1", &recent())]);
+    p.run(&[KEY, ("FAKE_WAITING_JSON", &json)]);
+    let b = p.pd_bodies();
+    assert_eq!(b.len(), 1, "{b:?}");
+    assert_has(&b[0], r#""severity":"warning""#, "priority 4 is warning");
+    assert_has(
+        &b[0],
+        r#""dedup_key":"notify-ci-issues/waiting/https://x/runs/1""#,
+        "keyed by the run",
+    );
+
+    let p = Poll::new();
+    p.run(&[
+        KEY,
+        ("MIRRORS", "Org/mirror"),
+        (
+            "FAKE_MIRROR_FAILURE_JSON",
+            &runs(&[("release", "https://m/runs/3", &recent())]),
+        ),
+    ]);
+    let b = p.pd_bodies();
+    assert_eq!(b.len(), 1, "{b:?}");
+    assert_has(
+        &b[0],
+        r#""severity":"warning""#,
+        "mirror failure is priority 4",
+    );
+    assert_has(
+        &b[0],
+        r#""dedup_key":"notify-ci-issues/mirror-failed/https://m/runs/3""#,
+        "mirror keyed by run",
+    );
+}
+
+/// Every poll inside the look-back window sees the same failure again; each
+/// must land on the same incident.
+#[test]
+fn repeat_polls_reuse_the_dedup_key() {
+    let p = Poll::new();
+    let json = runs(&[("ci", "https://x/runs/20", &recent())]);
+    p.run(&[KEY, ("FAKE_FAILURE_JSON", &json)]);
+    let first = p.pd_bodies();
+    p.run(&[KEY, ("FAKE_FAILURE_JSON", &json)]);
+    assert_eq!(first, p.pd_bodies(), "identical event, identical dedup_key");
+}
+
+/// The group's newest run changes as runs queue up behind one approval; the
+/// incident must not, so the key is the branch.
+#[test]
+fn action_required_is_keyed_by_branch_not_by_run() {
+    let page = |url: &str| {
+        format!(
+            r#"{{"workflow_runs":[{{"head_branch":"feat/x","html_url":"{url}","updated_at":"{}"}}]}}"#,
+            recent()
+        )
+    };
+    let p = Poll::new();
+    p.run(&[
+        KEY,
+        ("FAKE_ACTION_REQUIRED_JSON", &page("https://x/runs/7")),
+    ]);
+    let a = p.pd_bodies();
+    p.run(&[
+        KEY,
+        ("FAKE_ACTION_REQUIRED_JSON", &page("https://x/runs/8")),
+    ]);
+    let b = p.pd_bodies();
+    let key = r#""dedup_key":"notify-ci-issues/action-required/owner/repo@feat/x""#;
+    assert_has(&a[0], key, "first poll");
+    assert_has(&b[0], key, "second poll, newer run");
+}
+
+#[test]
+fn queue_bypass_is_keyed_by_commit() {
+    let p = Poll::new();
+    let commits = r#"[{"sha":"abc123def456","author":{"login":"someone"},"html_url":"https://x/commit/abc","commit":{"message":"subject\nbody","author":{"name":"S"}}}]"#;
+    p.run(&[KEY, ("FAKE_COMMITS_JSON", commits)]);
+    let b = p.pd_bodies();
+    assert_eq!(b.len(), 1, "{b:?}");
+    assert_has(
+        &b[0],
+        r#""dedup_key":"notify-ci-issues/queue-bypass/abc123def456""#,
+        "keyed by sha",
+    );
+}
+
+/// A PagerDuty failure is a warning, never a lost ntfy push or a red job.
+#[test]
+fn failed_pagerduty_event_warns_keeps_ntfy_and_exits_zero() {
+    let p = Poll::new();
+    let o = p.run(&[
+        KEY,
+        ("FAKE_PD_CURL_RC", "22"),
+        (
+            "FAKE_FAILURE_JSON",
+            &runs(&[
+                ("ci", "https://x/runs/20", &recent()),
+                ("lint", "https://x/runs/21", &recent()),
+            ]),
+        ),
+    ]);
+    assert_eq!(o.code, 0, "{o:?}");
+    assert_eq!(p.posts(), 2, "both ntfy pushes still sent");
+    assert_eq!(p.pd_posts(), 2, "the second event is still tried");
+    assert_has(
+        &o.stderr,
+        "WARN: PagerDuty event failed for: [ci] main broken: ci",
+        "warned",
+    );
+}
+
+/// ntfy failing must not stop the PagerDuty event either.
+#[test]
+fn failed_ntfy_push_still_pages() {
+    let p = Poll::new();
+    let o = p.run(&[
+        KEY,
+        ("FAKE_CURL_RC", "22"),
+        (
+            "FAKE_FAILURE_JSON",
+            &runs(&[("ci", "https://x/runs/20", &recent())]),
+        ),
+    ]);
+    assert_eq!(o.code, 0, "{o:?}");
+    assert_eq!(p.pd_posts(), 1, "paged despite the ntfy failure");
+}
+
+/// Before the secret exists the tool keeps working on ntfy alone, and says so.
+#[test]
+fn missing_routing_key_is_ntfy_only_with_a_warning() {
+    let p = Poll::new();
+    let o = p.run(&[(
+        "FAKE_FAILURE_JSON",
+        &runs(&[("ci", "https://x/runs/20", &recent())]),
+    )]);
+    assert_eq!(o.code, 0, "{o:?}");
+    assert_eq!(p.posts(), 1, "ntfy sent");
+    assert_eq!(p.pd_posts(), 0, "no PagerDuty call without a key");
+    assert_has(
+        &o.stderr,
+        "WARN: PAGERDUTY_ROUTING_KEY is not set, ntfy only for: [ci] main broken: ci",
+        "says PagerDuty was skipped",
+    );
+}
+
+#[test]
+fn nothing_recent_sends_no_pagerduty_event() {
+    let p = Poll::new();
+    let o = p.run(&[KEY]);
+    assert_eq!(o.code, 0, "{o:?}");
+    assert_eq!(p.pd_posts(), 0);
+    assert_eq!(o.stderr, "");
 }

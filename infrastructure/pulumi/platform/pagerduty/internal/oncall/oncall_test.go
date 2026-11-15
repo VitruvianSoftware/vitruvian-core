@@ -280,8 +280,9 @@ func TestCommittedProductionConfig(t *testing.T) {
 		keys = append(keys, svc.Key)
 	}
 	// Alertmanager routes to cluster, data and apps by the pagerduty_service
-	// rule label; dropping one here silently strands those alerts.
-	if got, want := strings.Join(keys, ","), "sentry,cluster,data,apps"; got != want {
+	// rule label, and notify-ci-issues sends to ci through repo-config's
+	// PAGERDUTY_CI_ROUTING_KEY; dropping one here silently strands those alerts.
+	if got, want := strings.Join(keys, ","), "sentry,cluster,data,apps,ci"; got != want {
 		t.Fatalf("production services = %q, want %q", got, want)
 	}
 }

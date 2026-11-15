@@ -19,7 +19,11 @@
 // SOFTWARE.
 
 //! notify-ci-issues — poll for stuck approvals and main-branch failures,
-//! push an ntfy notification for each. Always exits 0.
+//! push an ntfy notification for each and open a PagerDuty incident for it.
+//! Always exits 0.
+//!
+//! ntfy goes first and PagerDuty second, and neither can stop the other: a
+//! PagerDuty outage or a missing routing key still leaves the ntfy copy.
 
 use shell_compat::{capture, cat, env_or, env_or_empty, err, out, subst};
 use std::process::Command;
@@ -106,7 +110,7 @@ fn gh_api_quiet(url: &[u8]) -> shell_compat::Ran {
     }
 }
 
-fn notify(title: &[u8], message: &[u8], priority: &[u8], tags: &[u8], url: &[u8]) {
+fn notify_ntfy(title: &[u8], message: &[u8], priority: &[u8], tags: &[u8], url: &[u8]) {
     let ntfy_password = env_or_empty("NTFY_PASSWORD");
     let r = capture(
         0,
@@ -159,6 +163,130 @@ fn notify(title: &[u8], message: &[u8], priority: &[u8], tags: &[u8], url: &[u8]
     }
 }
 
+/// One notification: the ntfy push, then the PagerDuty event. `dedup` names
+/// the thing being reported (a run, a branch, a commit) so every poll that
+/// sees it again lands on the same PagerDuty incident instead of a new one.
+fn notify(title: &[u8], message: &[u8], priority: &[u8], tags: &[u8], url: &[u8], dedup: &[u8]) {
+    notify_ntfy(title, message, priority, tags, url);
+    notify_pagerduty(title, message, priority, url, dedup);
+}
+
+const PAGERDUTY_EVENTS_URL: &str = "https://events.pagerduty.com/v2/enqueue";
+
+/// ntfy's top priority (5, "main is broken") pages; everything lower is a
+/// low-urgency PagerDuty incident. The services use severity-based urgency.
+pub fn pd_severity(priority: &[u8]) -> &'static str {
+    if priority == b"5" {
+        "critical"
+    } else {
+        "warning"
+    }
+}
+
+/// A stable dedup key: the same `kind` and `id` always give the same key, and
+/// it fits PagerDuty's 255-character limit.
+pub fn pd_dedup_key(kind: &str, id: &[u8]) -> String {
+    let mut key = format!("notify-ci-issues/{kind}/{}", String::from_utf8_lossy(id));
+    if key.len() > 255 {
+        let mut cut = 255;
+        while !key.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        key.truncate(cut);
+    }
+    key
+}
+
+/// `s` as a JSON string literal, quotes included.
+fn json_str(s: &str) -> String {
+    let mut o = String::with_capacity(s.len() + 2);
+    o.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => o.push_str("\\\""),
+            '\\' => o.push_str("\\\\"),
+            '\n' => o.push_str("\\n"),
+            '\r' => o.push_str("\\r"),
+            '\t' => o.push_str("\\t"),
+            c if (c as u32) < 0x20 => o.push_str(&format!("\\u{:04x}", c as u32)),
+            c => o.push(c),
+        }
+    }
+    o.push('"');
+    o
+}
+
+/// The Events API v2 trigger body. The summary is capped at PagerDuty's
+/// 1024 characters; the full message rides in custom_details.
+pub fn pd_body(
+    routing_key: &[u8],
+    title: &[u8],
+    message: &[u8],
+    priority: &[u8],
+    url: &[u8],
+    dedup: &str,
+) -> String {
+    let lossy = |b: &[u8]| String::from_utf8_lossy(b).into_owned();
+    let summary: String = lossy(title).chars().take(1024).collect();
+    let url = lossy(url);
+    format!(
+        concat!(
+            r#"{{"routing_key":{},"event_action":"trigger","dedup_key":{},"#,
+            r#""payload":{{"summary":{},"source":"github-actions/notify-ci-issues","severity":"{}","#,
+            r#""group":"ci","custom_details":{{"message":{},"url":{}}}}},"#,
+            r#""links":[{{"href":{},"text":"Open in GitHub"}}],"client":"notify-ci-issues","client_url":{}}}"#
+        ),
+        json_str(&lossy(routing_key)),
+        json_str(dedup),
+        json_str(&summary),
+        pd_severity(priority),
+        json_str(&lossy(message)),
+        json_str(&url),
+        json_str(&url),
+        json_str(&url),
+    )
+}
+
+fn notify_pagerduty(title: &[u8], message: &[u8], priority: &[u8], url: &[u8], dedup: &[u8]) {
+    let key = env_or_empty("PAGERDUTY_ROUTING_KEY");
+    if key.is_empty() {
+        err(&cat(&[
+            b"WARN: PAGERDUTY_ROUTING_KEY is not set, ntfy only for: ",
+            title,
+            b"\n",
+        ]));
+        return;
+    }
+    let dedup = std::str::from_utf8(dedup).unwrap_or("unreadable");
+    let body = pd_body(&key, title, message, priority, url, dedup);
+    // The body goes in on stdin so the routing key never shows up in the
+    // process list. -q first: ignore any ~/.curlrc. --max-time keeps a hung
+    // PagerDuty from eating the job's five minutes.
+    let rc = shell_compat::status_with_input(
+        0,
+        Command::new("curl")
+            .arg("-q")
+            .arg("-fsS")
+            .arg("--max-time")
+            .arg("15")
+            .arg("-H")
+            .arg("Content-Type: application/json")
+            .arg("-H")
+            .arg("User-Agent: vitruvian-ci-notify/1.0")
+            .arg("-X")
+            .arg("POST")
+            .arg(PAGERDUTY_EVENTS_URL)
+            .arg("--data-binary")
+            .arg("@-")
+            .stdout(std::process::Stdio::null()),
+        body.as_bytes(),
+        true,
+    );
+    if rc != 0 {
+        err(&cat(&[b"WARN: PagerDuty event failed for: ", title, b"\n"]));
+    }
+}
+
 fn check_waiting(repo: &[u8], cutoff: &[u8]) {
     out(&cat(&[
         b"Checking for runs waiting on approval, updated since ",
@@ -189,6 +317,7 @@ fn check_waiting(repo: &[u8], cutoff: &[u8]) {
             b"4",
             b"[\"hourglass_flowing_sand\",\"ci\"]",
             url,
+            pd_dedup_key("waiting", url).as_bytes(),
         );
     }
 }
@@ -243,6 +372,9 @@ fn check_action_required(repo: &[u8], cutoff: &[u8]) {
             b"4",
             b"[\"hourglass_flowing_sand\",\"ci\"]",
             url,
+            // The branch, not a run url: the group's first run changes as
+            // new runs pile up behind the same approval.
+            pd_dedup_key("action-required", &cat(&[repo, b"@", branch])).as_bytes(),
         );
     }
 }
@@ -313,6 +445,7 @@ fn check_failures(repo: &[u8], mirrors: &[u8], cutoff: &[u8]) {
                     b"5",
                     b"[\"red_circle\",\"ci\"]",
                     url,
+                    pd_dedup_key("main-failed", url).as_bytes(),
                 );
             } else {
                 let short_name = match r.iter().position(|&c| c == b'/') {
@@ -330,6 +463,7 @@ fn check_failures(repo: &[u8], mirrors: &[u8], cutoff: &[u8]) {
                     b"4",
                     b"[\"red_circle\",\"ci\",\"mirror\"]",
                     url,
+                    pd_dedup_key("mirror-failed", url).as_bytes(),
                 );
             }
         }
@@ -459,6 +593,7 @@ fn check_queue_bypass(repo: &[u8], cutoff: &[u8], allow_list: &[u8]) {
             b"4",
             b"[\"warning\",\"ci\"]",
             url,
+            pd_dedup_key("queue-bypass", sha).as_bytes(),
         );
     }
 }
@@ -504,6 +639,70 @@ mod tests {
         assert_eq!(&s[10..11], "T");
         assert_eq!(&s[13..14], ":");
         assert_eq!(&s[16..17], ":");
+    }
+
+    #[test]
+    fn severity_pages_only_on_priority_five() {
+        assert_eq!(pd_severity(b"5"), "critical");
+        for p in [&b"4"[..], b"3", b"1", b"", b"50"] {
+            assert_eq!(pd_severity(p), "warning", "{:?}", p);
+        }
+    }
+
+    #[test]
+    fn dedup_key_is_stable_and_distinct_per_kind() {
+        let a = pd_dedup_key("main-failed", b"https://x/runs/1");
+        assert_eq!(a, "notify-ci-issues/main-failed/https://x/runs/1");
+        assert_eq!(a, pd_dedup_key("main-failed", b"https://x/runs/1"));
+        assert_ne!(a, pd_dedup_key("main-failed", b"https://x/runs/2"));
+        assert_ne!(a, pd_dedup_key("mirror-failed", b"https://x/runs/1"));
+    }
+
+    #[test]
+    fn dedup_key_fits_pagerduty_limit_on_a_char_boundary() {
+        let long = "é".repeat(300);
+        let k = pd_dedup_key("waiting", long.as_bytes());
+        assert!(k.len() <= 255, "{}", k.len());
+        assert!(k.starts_with("notify-ci-issues/waiting/é"));
+    }
+
+    #[test]
+    fn body_is_an_events_v2_trigger() {
+        let b = pd_body(
+            b"KEY",
+            b"[ci] main broken: ci",
+            b"Failed. https://x/r/1",
+            b"5",
+            b"https://x/r/1",
+            "d/1",
+        );
+        assert_eq!(
+            b,
+            concat!(
+                r#"{"routing_key":"KEY","event_action":"trigger","dedup_key":"d/1","#,
+                r#""payload":{"summary":"[ci] main broken: ci","source":"github-actions/notify-ci-issues","severity":"critical","#,
+                r#""group":"ci","custom_details":{"message":"Failed. https://x/r/1","url":"https://x/r/1"}},"#,
+                r#""links":[{"href":"https://x/r/1","text":"Open in GitHub"}],"client":"notify-ci-issues","client_url":"https://x/r/1"}"#
+            )
+        );
+    }
+
+    #[test]
+    fn body_escapes_json_and_caps_the_summary() {
+        let title = format!("a\"b\\c\nd\u{1}{}", "x".repeat(2000));
+        let b = pd_body(b"K", title.as_bytes(), b"m", b"4", b"u", "d");
+        assert!(b.contains(r#""summary":"a\"b\\c\nd\u0001x"#), "{b}");
+        assert!(b.contains(r#""severity":"warning""#));
+        let summary_len = b
+            .split(r#""summary":""#)
+            .nth(1)
+            .unwrap()
+            .split(r#"","source""#)
+            .next()
+            .unwrap()
+            .len();
+        // 1024 characters, of which the four escaped ones take extra bytes.
+        assert_eq!(summary_len, 1024 + 1 + 1 + 1 + 5);
     }
 
     #[test]

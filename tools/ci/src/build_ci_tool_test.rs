@@ -414,14 +414,15 @@ fn a_failed_build_fails_the_step_and_sets_no_output() {
 }
 
 #[test]
-fn a_notifier_that_cannot_build_still_reaches_ntfy() {
+fn a_notifier_that_cannot_build_still_reaches_ntfy_and_pagerduty() {
     // notify-ci-issues is what reports CI failures, so its own failed build
-    // must be reported some other way: a step that posts to ntfy directly.
+    // must be reported some other way: a step that posts to ntfy and
+    // PagerDuty directly.
     let wf = read(".github/workflows/notify-ci-issues.yaml");
     let lines: Vec<&str> = wf.lines().collect();
     let name = lines
         .iter()
-        .position(|l| l.trim() == "- name: Tell ntfy the notifier could not be built")
+        .position(|l| l.trim() == "- name: Tell ntfy and PagerDuty the notifier could not be built")
         .expect("notify-ci-issues.yaml has the build-failure fallback step");
     let step: Vec<&str> = lines[name..]
         .iter()
@@ -461,36 +462,79 @@ fn a_notifier_that_cannot_build_still_reaches_ntfy() {
         .map(|l| format!("{}\n", l.get(pad..).unwrap_or("")))
         .collect();
 
-    let dir = tmp();
-    let log = dir.join("curl.argv");
-    fs::write(
-        dir.join("curl"),
-        format!(
-            "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\" >> '{}'; done\n",
-            log.display()
-        ),
-    )
-    .unwrap();
-    fs::set_permissions(dir.join("curl"), fs::Permissions::from_mode(0o755)).unwrap();
-    let url = "https://github.com/o/r/actions/runs/42";
-    let o = Command::new("bash")
-        .arg("-e")
-        .arg("-c")
-        .arg(&script)
-        .env(
-            "PATH",
+    // A fake curl that records its arguments, and its stdin when the body
+    // comes in on it (`--data-binary @-`, the PagerDuty call).
+    let fallback = |pd_key: Option<&str>| {
+        let dir = tmp();
+        let log = dir.join("curl.argv");
+        let stdin_log = dir.join("curl.stdin");
+        fs::write(
+            dir.join("curl"),
             format!(
-                "{}:{}",
-                dir.display(),
-                std::env::var("PATH").unwrap_or_default()
+                "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\" >> '{}'; \
+                 [ \"$a\" = @- ] && cat >> '{}'; done; exit 0\n",
+                log.display(),
+                stdin_log.display()
             ),
         )
-        .env("RUN_URL", url)
-        .env("NTFY_PASSWORD", "pw")
-        .output()
         .unwrap();
-    assert!(o.status.success(), "fallback failed: {}", text(&o.stderr));
-    let argv = read(&log);
+        fs::set_permissions(dir.join("curl"), fs::Permissions::from_mode(0o755)).unwrap();
+        let mut cmd = Command::new("bash");
+        cmd.arg("-e")
+            .arg("-c")
+            .arg(&script)
+            .env(
+                "PATH",
+                format!(
+                    "{}:{}",
+                    dir.display(),
+                    std::env::var("PATH").unwrap_or_default()
+                ),
+            )
+            .env("RUN_URL", "https://github.com/o/r/actions/runs/42")
+            .env("NTFY_PASSWORD", "pw")
+            .env_remove("PAGERDUTY_ROUTING_KEY");
+        if let Some(k) = pd_key {
+            cmd.env("PAGERDUTY_ROUTING_KEY", k);
+        }
+        let o = cmd.output().unwrap();
+        assert!(o.status.success(), "fallback failed: {}", text(&o.stderr));
+        let stdin = if stdin_log.exists() {
+            read(&stdin_log)
+        } else {
+            String::new()
+        };
+        (read(&log), stdin)
+    };
+    let url = "https://github.com/o/r/actions/runs/42";
+
+    // Without a routing key: ntfy only, no PagerDuty call.
+    let (argv, stdin) = fallback(None);
+    assert!(
+        !argv.contains("events.pagerduty.com"),
+        "no PagerDuty call without a key:\n{argv}"
+    );
+    assert_eq!(stdin, "", "nothing sent on stdin without a key");
+
+    // With one: a critical event, its key on stdin and never in argv.
+    let (pd_argv, pd_body) = fallback(Some("rk-123"));
+    assert!(
+        pd_argv
+            .lines()
+            .any(|l| l == "https://events.pagerduty.com/v2/enqueue"),
+        "PagerDuty is called:\n{pd_argv}"
+    );
+    assert!(
+        !pd_argv.contains("rk-123"),
+        "the key is not in argv:\n{pd_argv}"
+    );
+    assert_eq!(
+        pd_body,
+        format!(
+            "{{\"routing_key\":\"rk-123\",\"event_action\":\"trigger\",\"dedup_key\":\"notify-ci-issues/cannot-build\",\"payload\":{{\"summary\":\"[ci] notify-ci-issues cannot build\",\"source\":\"github-actions/notify-ci-issues\",\"severity\":\"critical\",\"group\":\"ci\",\"custom_details\":{{\"url\":\"{url}\"}}}},\"links\":[{{\"href\":\"{url}\",\"text\":\"Open in GitHub\"}}]}}"
+        )
+    );
+
     for want in [
         "-fsS",
         "github-actions:pw",

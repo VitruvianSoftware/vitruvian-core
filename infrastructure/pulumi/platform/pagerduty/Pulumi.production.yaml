@@ -52,3 +52,10 @@ config:
     - key: apps
       name: Homelab apps and GitOps
       description: Argo CD sync health and the apps it deploys (Vitruvian Slack MCP) on the dev-local k3s cluster
+    # GitHub Actions failures on main, stuck approvals, merge-queue bypasses
+    # and broken mirrors, from .github/workflows/notify-ci-issues.yaml. Its key
+    # reaches the workflow as the PAGERDUTY_CI_ROUTING_KEY repository secret,
+    # which repo-config copies from this stack's ciIntegrationKey output.
+    - key: ci
+      name: CI / delivery
+      description: GitHub Actions failures on main, stuck approvals, merge-queue bypasses and exported-mirror failures, from notify-ci-issues
