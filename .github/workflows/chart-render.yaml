@@ -62,6 +62,8 @@ on:
       - 'tools/shell-compat/**'
       - '.github/actions/build-ci-tool/**'
       - '.github/actions/install-pinned-tool/**'
+      # install-pinned-tool checks promtool against its pin here.
+      - 'tools/tools.lock.json'
       - '.github/workflows/chart-render.yaml'
   push:
     branches: [main]
