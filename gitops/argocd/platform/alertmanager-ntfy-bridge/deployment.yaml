@@ -44,8 +44,9 @@ spec:
       annotations:
         # server.py is read once at start, and a ConfigMap edit alone does
         # not restart the pod. Bump this with every server.py change so the
-        # rollout picks the new code up. 2 = self-clearing alerts.
-        vitruvian.dev/bridge-code-version: "2"
+        # rollout picks the new code up. 2 = self-clearing alerts,
+        # 3 = /heartbeat for the healthchecks.io dead-man's switch.
+        vitruvian.dev/bridge-code-version: "3"
     spec:
       # Pin to a wired node, same convention as zitadel-db
       # (gitops/argocd/platform/zitadel-db/applicationset.yaml): WiFi nodes on
@@ -110,6 +111,9 @@ spec:
             - name: ntfy-secret
               mountPath: /etc/bridge/secrets
               readOnly: true
+            - name: heartbeat
+              mountPath: /etc/bridge/heartbeat
+              readOnly: true
             - name: tmp
               mountPath: /tmp
       volumes:
@@ -122,5 +126,12 @@ spec:
         - name: ntfy-secret
           secret:
             secretName: alertmanager-ntfy-endpoint
+        # healthchecks.io ping URL (key ping-url). Optional, so the bridge
+        # runs before it is sealed; kubelet adds the file once the Secret
+        # exists, and the bridge reads it per request (no restart needed).
+        - name: heartbeat
+          secret:
+            secretName: alertmanager-heartbeat
+            optional: true
         - name: tmp
           emptyDir: {}

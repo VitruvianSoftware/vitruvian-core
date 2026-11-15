@@ -33,6 +33,7 @@ mindmap
       //tools/gcp-secrets:*
       //tools/sync-env-secrets:*
       //tools/saas-cli:*
+      //tools/sentry:pagerduty-install
     Ship & Preview
       //tools/ci:gen
       //tools/deploy:cloud-run
@@ -146,6 +147,7 @@ Additional tooling:
 | `//tools/gitops:ntfy-rotate-ci-password` | Rotate the ntfy password CI uses: sets it on the server and as `NTFY_GITHUB_ACTIONS_PASSWORD`, checks it works, never prints it |
 | `//tools/gitops:rotate-github-otel-webhook-secret` | Generate/rotate the GitHub → CI-collector webhook secret: sealed into git and stored as `OTEL_GITHUB_WEBHOOK_SECRET` (Actions + Dependabot); never printed |
 | `//tools/gitops:seal-alert-ntfy` | Encrypt and seal the alert delivery endpoint for Alertmanager |
+| `//tools/gitops:seal-alert-heartbeat` | Seal the healthchecks.io ping URL that the Watchdog dead-man's switch pings (prompts for it; `--apply` to apply now) |
 | `//tools/gitops:seal-argocd-backstage-token` | Mint and seal read-only ArgoCD token for Backstage UI |
 | `//tools/gitops:seal-headplane-secret` | Generate and seal 32-character cookie secret for Headplane |
 | `//tools/gitops:seal-zitadel-login-cookie-secret` | Generate and seal the Zitadel Login UI session-cookie signing secret (re-running signs everyone out) |
@@ -171,6 +173,7 @@ break-glass — the cluster's source of truth is git, reconciled by ArgoCD.
 | `//tools/pulumi:rotate-access-token` | Rotate the Pulumi Cloud token CI uses (`PULUMI_ACCESS_TOKEN`); never printed. `--cleanup` deletes old ones once CI is green |
 | `//tools/github-app-key` | Create a GitHub App (`--create`), or store/rotate its private key as a repo secret; checks it is the right App first |
 | `//tools/saas-cli:{neon,upstash,whoami}` | Pre-authenticated vendor CLIs for troubleshooting. **Read-mostly** — provisioning belongs to the Pulumi data stacks, not these CLIs |
+| `//tools/sentry:pagerduty-install` | One-shot, idempotent bootstrap for self-hosted Sentry's PagerDuty integration via the `integration_pipeline` API (requires `SENTRY_TOKEN` user token `sntryu_...`) |
 
 The three-tier secrets model itself (Secret Manager / sealed-secrets / env-injected
 stack config) is in [CONTRIBUTING §7](../../CONTRIBUTING.md#7-secrets-handling).
