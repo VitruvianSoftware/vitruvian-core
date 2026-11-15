@@ -4427,6 +4427,56 @@ public class DeriveTest {
             isHalfOpen = true,
             isRemoteScreen = false,
         ))
+
+    // Half-open Remote keeps the HID TrackpadDock visible even when Mac HTTP pairing is Unpaired.
+    assertTrue(
+        Derive.showsShellDock(
+            showRail = true,
+            dockOpen = true,
+            screen = Screen.Remote,
+            isUnpaired = true,
+            isHalfOpen = true,
+        ))
+    assertFalse(
+        Derive.showsShellDock(
+            showRail = true,
+            dockOpen = true,
+            screen = Screen.Remote,
+            isUnpaired = true,
+            isHalfOpen = false,
+        ))
+    assertFalse(
+        Derive.showsShellDock(
+            showRail = true,
+            dockOpen = true,
+            screen = Screen.Home,
+            isUnpaired = true,
+            isHalfOpen = true,
+        ))
+    assertFalse(
+        Derive.showsShellDock(
+            showRail = false,
+            dockOpen = true,
+            screen = Screen.Remote,
+            isUnpaired = false,
+            isHalfOpen = true,
+        ))
+    assertFalse(
+        Derive.showsShellDock(
+            showRail = true,
+            dockOpen = false,
+            screen = Screen.Remote,
+            isUnpaired = false,
+            isHalfOpen = true,
+        ))
+    assertFalse(
+        Derive.showsShellDock(
+            showRail = true,
+            dockOpen = true,
+            screen = Screen.Console,
+            isUnpaired = false,
+            isHalfOpen = true,
+        ))
   }
 
   @Test
@@ -4524,6 +4574,7 @@ public class DeriveTest {
 
     val remoteShellBody = extractKotlinBlock(shell, "public fun RemoteShell(")
     assertTrue(remoteShellBody.contains("Derive.showsTopBarSettings(layout.showRail)"))
+    assertTrue(remoteShellBody.contains("Derive.showsShellDock("))
 
     val consoleDockBody = extractKotlinBlock(dock, "private fun ConsoleDock(")
     assertFalse(consoleDockBody.contains("\"Lock\""))

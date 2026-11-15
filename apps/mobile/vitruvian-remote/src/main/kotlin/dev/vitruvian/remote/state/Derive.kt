@@ -3568,6 +3568,24 @@ public object Derive {
   public fun showsMainTrackpad(dockShowsTrackpad: Boolean): Boolean = !dockShowsTrackpad
 
   /**
+   * Whether the side/bottom dock pane is shown in [RemoteShell]: on [Screen.Remote] in half-open
+   * foldable postures (`Book` / `Tabletop`), the HID trackpad dock stays visible even when
+   * [isUnpaired] is true because pointer/keyboard controls run over Bluetooth HID rather than the
+   * Mac HTTP agent.
+   */
+  public fun showsShellDock(
+      showRail: Boolean,
+      dockOpen: Boolean,
+      screen: Screen,
+      isUnpaired: Boolean,
+      isHalfOpen: Boolean,
+  ): Boolean {
+    if (!showRail || !dockOpen || screen == Screen.Console) return false
+    if (isHalfOpen && screen == Screen.Remote) return true
+    return !isUnpaired
+  }
+
+  /**
    * Returns the highest column count in `1..maxColumns` where every uppercase button label in
    * [labels] wraps on whole words within [maxLines] without mid-word breaks at [fontScale]. Falls
    * back to `1` column when labels cannot fit cleanly side by side.

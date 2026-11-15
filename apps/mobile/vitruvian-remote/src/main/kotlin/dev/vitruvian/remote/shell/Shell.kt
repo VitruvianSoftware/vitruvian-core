@@ -133,15 +133,19 @@ public fun RemoteShell(
   val colors = Vitruvian
   val screen = state.effectiveScreen
   val navItems = navItems(state)
+  val isHalfOpen = layout.isBook || layout.isTabletop
   val showDock =
-      layout.showRail &&
-          state.dockOpen &&
-          screen != Screen.Console &&
-          state.connection != Connection.Unpaired
+      Derive.showsShellDock(
+          showRail = layout.showRail,
+          dockOpen = state.dockOpen,
+          screen = screen,
+          isUnpaired = state.connection == Connection.Unpaired,
+          isHalfOpen = isHalfOpen,
+      )
   val dockShowsTrackpad =
       Derive.showsDockTrackpad(
           showDock = showDock,
-          isHalfOpen = layout.isBook || layout.isTabletop,
+          isHalfOpen = isHalfOpen,
           isRemoteScreen = screen == Screen.Remote,
       )
   CompositionLocalProvider(
