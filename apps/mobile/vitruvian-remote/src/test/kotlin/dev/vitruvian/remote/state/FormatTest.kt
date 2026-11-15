@@ -275,4 +275,13 @@ public class FormatTest {
         "Controls are disabled; dashboards show the last sample.",
         Format.offlineBannerBody(null, now))
   }
+
+  @Test
+  public fun `lastSeen formats relative age and returns blank when missing`() {
+    val sampleIso = Instant.ofEpochMilli(now).minusSeconds(2 * 60).toString()
+    assertEquals("last seen 2 min ago", Format.lastSeen(sampleIso, now))
+    assertEquals("", Format.lastSeen("", now))
+    assertEquals("", Format.lastSeen(null, now))
+    assertEquals("", Format.lastSeen("not-a-timestamp", now))
+  }
 }

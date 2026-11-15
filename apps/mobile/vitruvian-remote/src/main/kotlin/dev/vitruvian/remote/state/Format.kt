@@ -144,6 +144,15 @@ public object Format {
   }
 
   /**
+   * Formats `"last seen <relative>"` from [lastSampleIso] and [now], or an empty string when no
+   * valid sample timestamp has been recorded yet.
+   */
+  public fun lastSeen(lastSampleIso: String?, now: Long): String {
+    val rel = relativeTime(lastSampleIso.orEmpty(), now)
+    return if (rel.isNotBlank()) "last seen $rel" else ""
+  }
+
+  /**
    * Body copy for the offline host banner.
    *
    * Uses the real time since the last sample ([lastSampleIso]); when no sample timestamp has been
