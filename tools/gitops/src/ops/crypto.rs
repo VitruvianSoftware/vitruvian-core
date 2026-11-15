@@ -162,9 +162,48 @@ pub fn b64decode(s: &[u8]) -> Result<Vec<u8>, Vec<u8>> {
     Ok(out)
 }
 
+/// `base64 -w0`: standard alphabet, padded, no line breaks (what a Secret's
+/// `data` values must be).
+pub fn b64encode(b: &[u8]) -> String {
+    const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut s = String::with_capacity(b.len().div_ceil(3) * 4);
+    for chunk in b.chunks(3) {
+        let n = (chunk[0] as u32) << 16
+            | (*chunk.get(1).unwrap_or(&0) as u32) << 8
+            | *chunk.get(2).unwrap_or(&0) as u32;
+        for i in 0..4 {
+            if i <= chunk.len() {
+                s.push(A[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                s.push('=');
+            }
+        }
+    }
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn b64encode_known_answers_and_round_trip() {
+        // RFC 4648 section 10 test vectors.
+        for (plain, enc) in [
+            ("", ""),
+            ("f", "Zg=="),
+            ("fo", "Zm8="),
+            ("foo", "Zm9v"),
+            ("foob", "Zm9vYg=="),
+            ("fooba", "Zm9vYmE="),
+            ("foobar", "Zm9vYmFy"),
+        ] {
+            assert_eq!(b64encode(plain.as_bytes()), enc);
+            assert_eq!(b64decode(enc.as_bytes()).unwrap(), plain.as_bytes());
+        }
+        let all: Vec<u8> = (0..=255).collect();
+        assert_eq!(b64decode(b64encode(&all).as_bytes()).unwrap(), all);
+    }
 
     #[test]
     fn sha256_known_answers() {

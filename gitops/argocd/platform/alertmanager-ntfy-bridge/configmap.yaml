@@ -65,7 +65,12 @@ data:
     # Alertmanager's route only ever sends severity=~"page|warning" here (the
     # "null" receiver drops none|noise upstream) — the .get() default below is
     # just a defensive fallback, not a real third tier.
-    PRIORITY_BY_SEVERITY = {"page": 5, "warning": 3}
+    #
+    # PagerDuty is the primary pager and ntfy carries a copy of every alert,
+    # so ntfy is one step quieter than it was: a page is "high" (4), not
+    # "urgent" (5, which can break through Do Not Disturb), and a warning is
+    # "low" (2, no sound). If PagerDuty is down, a page still makes a sound.
+    PRIORITY_BY_SEVERITY = {"page": 4, "warning": 2}
     DEFAULT_PRIORITY = 3
     TAG_BY_STATUS = {"firing": "rotating_light", "resolved": "white_check_mark"}
 

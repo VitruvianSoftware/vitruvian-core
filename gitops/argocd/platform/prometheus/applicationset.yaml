@@ -265,6 +265,7 @@ spec:
                     for: 10m
                     labels:
                       severity: page
+                      pagerduty_service: cluster
                     annotations:
                       summary: "Node {{ $labels.node }} is NotReady"
                       description: "{{ $labels.node }} NotReady for >10m (kube-state-metrics)."
@@ -274,6 +275,7 @@ spec:
                     for: 5m
                     labels:
                       severity: page
+                      pagerduty_service: cluster
                     annotations:
                       summary: "Wired Node {{ $labels.instance }} kubelet unreachable"
                       description: "kubelet on wired node {{ $labels.instance }} unscrapeable for >5m."
@@ -283,6 +285,7 @@ spec:
                     for: 5m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "MemoryPressure on {{ $labels.node }}"
                       description: "{{ $labels.node }} MemoryPressure >5m; pods may be evicted."
@@ -292,6 +295,7 @@ spec:
                     for: 5m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "DiskPressure on {{ $labels.node }}"
                       description: "{{ $labels.node }} DiskPressure >5m; image GC / evictions imminent."
@@ -308,6 +312,7 @@ spec:
                     for: 30m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }} <12% free"
                       description: "{{ $value | printf \"%.1f\" }}% free on {{ $labels.mountpoint }} ({{ $labels.instance }}) for >30m."
@@ -324,6 +329,7 @@ spec:
                     for: 10m
                     labels:
                       severity: page
+                      pagerduty_service: cluster
                     annotations:
                       summary: "Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }} <5% free"
                       description: "CRITICAL: {{ $value | printf \"%.1f\" }}% left on {{ $labels.mountpoint }} ({{ $labels.instance }})."
@@ -340,6 +346,7 @@ spec:
                     for: 30m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "Inodes <10% free on {{ $labels.mountpoint }} ({{ $labels.instance }})"
                       description: "{{ $value | printf \"%.1f\" }}% inodes left on {{ $labels.mountpoint }} ({{ $labels.instance }}) for >30m."
@@ -352,6 +359,7 @@ spec:
                     for: 20m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "Memory >92% on {{ $labels.instance }}"
                       description: "{{ $labels.instance }} memory at {{ $value | printf \"%.1f\" }}% for >20m (OOM / eviction risk)."
@@ -365,6 +373,7 @@ spec:
                     for: 3m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "etcd voter node {{ $labels.instance }} unreachable"
                       description: "etcd server {{ $labels.instance }} kubelet down >3m. 1 voter lost; quorum holds (2/3). Check host connectivity."
@@ -374,6 +383,7 @@ spec:
                     for: 1m
                     labels:
                       severity: page
+                      pagerduty_service: cluster
                     annotations:
                       summary: "etcd quorum LOST — {{ $value }} of 3 voters down"
                       description: "2+ of 3 etcd voters (fedora/nuc9i5/nuc9i9) unreachable. API server read-only / unavailable."
@@ -383,6 +393,7 @@ spec:
                     for: 1m
                     labels:
                       severity: page
+                      pagerduty_service: cluster
                     annotations:
                       summary: "etcd reports no leader"
                       description: "etcd_server_has_leader==0 (inert until an etcd scrape job exists; harmless if absent)."
@@ -399,6 +410,7 @@ spec:
                     for: 10m
                     labels:
                       severity: page
+                      pagerduty_service: cluster
                     annotations:
                       summary: "{{ $value }} containers stuck waiting on node {{ $labels.node }}"
                       description: >-
@@ -415,6 +427,7 @@ spec:
                     for: 15m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} stuck Pending/Unknown >15m"
                       description: "{{ $labels.namespace }}/{{ $labels.pod }} has not reached Running for >15m."
@@ -432,6 +445,7 @@ spec:
                     for: 10m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "CrashLoop: {{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }})"
                       description: "{{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} restarted >3x in 15m."
@@ -456,6 +470,7 @@ spec:
                     for: 5m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "Repeated OOM kills: {{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }})"
                       description: "{{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} restarted {{ $value | printf \"%.0f\" }}x in 6h, last exit OOMKilled, and the current run is under 30m old. Check its memory limit and what it was serving at the time. Clears on its own once the container has run cleanly for 30m."
@@ -466,6 +481,7 @@ spec:
                     for: 10m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "Merge-queue runner pods cannot be placed"
                       description: "{{ $value | printf \"%.0f\" }} runner pod(s) in arc-runners have been unschedulable for 10m, so merge-queue jobs are waiting for a runner that cannot start. Usually the nodes ran out of free CPU or memory requests: compare the pods' requests in gitops/argocd/platform/actions-runners/applicationset.yaml with what fedora and nuc9i9 have left. On 2026-11-13 this cost every queue entry ~6 min."
@@ -489,6 +505,7 @@ spec:
                     for: 20m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} under desired replicas"
                       description: "Available != desired for >20m ({{ $labels.namespace }}/{{ $labels.deployment }})."
@@ -498,6 +515,7 @@ spec:
                     for: 20m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "StatefulSet {{ $labels.namespace }}/{{ $labels.statefulset }} under desired replicas"
                       description: "Ready != desired for >20m ({{ $labels.namespace }}/{{ $labels.statefulset }})."
@@ -507,6 +525,7 @@ spec:
                     for: 15m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "DaemonSet {{ $labels.namespace }}/{{ $labels.daemonset }} mis-scheduled"
                       description: "{{ $value }} pods of {{ $labels.namespace }}/{{ $labels.daemonset }} running where they shouldn't for >15m."
@@ -518,6 +537,7 @@ spec:
                     for: 15m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "DaemonSet {{ $labels.namespace }}/{{ $labels.daemonset }} not fully scheduled"
                       description: "{{ $value }} pods of {{ $labels.namespace }}/{{ $labels.daemonset }} not scheduled for >15m."
@@ -534,6 +554,7 @@ spec:
                       ) > 36 * 3600
                     labels:
                       severity: page
+                      pagerduty_service: data
                     annotations:
                       summary: "Backup CronJob {{ $labels.namespace }}/{{ $labels.cronjob }} stale (>36h)"
                       description: >-
@@ -549,6 +570,7 @@ spec:
                     for: 6h
                     labels:
                       severity: warning
+                      pagerduty_service: data
                     annotations:
                       summary: "Backup CronJob {{ $labels.namespace }}/{{ $labels.cronjob }} has never succeeded"
                       description: "No successful run on record for {{ $labels.namespace }}/{{ $labels.cronjob }}."
@@ -558,6 +580,7 @@ spec:
                     for: 15m
                     labels:
                       severity: warning
+                      pagerduty_service: data
                     annotations:
                       summary: "Job {{ $labels.namespace }}/{{ $labels.job_name }} failed"
                       description: "{{ $labels.namespace }}/{{ $labels.job_name }} has {{ $value }} failed pod(s)."
@@ -597,6 +620,7 @@ spec:
                     for: 10m
                     labels:
                       severity: page
+                      pagerduty_service: data
                     annotations:
                       summary: "CNPG cluster {{ $labels.namespace }}/{{ $labels.created_by_name }} is missing a ready copy"
                       description: >-
@@ -621,6 +645,7 @@ spec:
                     for: 15m
                     labels:
                       severity: warning
+                      pagerduty_service: data
                     annotations:
                       summary: "No metrics from CNPG cluster {{ $labels.namespace }}/{{ $labels.created_by_name }}"
                       description: >-
@@ -633,6 +658,7 @@ spec:
                     for: 10m
                     labels:
                       severity: warning
+                      pagerduty_service: data
                     annotations:
                       summary: "CNPG metrics collector down ({{ $labels.namespace }}/{{ $labels.pod }})"
                       description: "cnpg_collector_up==0 on {{ $labels.namespace }}/{{ $labels.pod }} for >10m; that instance's metrics are unavailable."
@@ -653,6 +679,7 @@ spec:
                     for: 30m
                     labels:
                       severity: warning
+                      pagerduty_service: data
                     annotations:
                       summary: "WAL archiving failing for {{ $labels.namespace }}/{{ $labels.cnpg_io_cluster }}"
                       description: >-
@@ -675,6 +702,7 @@ spec:
                     for: 15m
                     labels:
                       severity: warning
+                      pagerduty_service: data
                     annotations:
                       summary: "Latest backup of {{ $labels.namespace }}/{{ $labels.cnpg_io_cluster }} failed"
                       description: >-
@@ -694,6 +722,7 @@ spec:
                     for: 30m
                     labels:
                       severity: warning
+                      pagerduty_service: data
                     annotations:
                       summary: "No backup of {{ $labels.namespace }}/{{ $labels.cnpg_io_cluster }} in 36h"
                       description: >-
@@ -714,6 +743,7 @@ spec:
                     for: 1h
                     labels:
                       severity: warning
+                      pagerduty_service: data
                     annotations:
                       summary: "No backup metrics from {{ $labels.namespace }}/{{ $labels.cnpg_io_cluster }}"
                       description: >-
@@ -734,6 +764,7 @@ spec:
                     for: 20m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} <12% free"
                       description: "{{ $value | printf \"%.1f\" }}% space left on {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} for >20m."
@@ -748,6 +779,7 @@ spec:
                     for: 5m
                     labels:
                       severity: page
+                      pagerduty_service: cluster
                     annotations:
                       summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} <5% free"
                       description: "CRITICAL: {{ $value | printf \"%.1f\" }}% left on {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }}."
@@ -757,6 +789,7 @@ spec:
                     for: 5m
                     labels:
                       severity: page
+                      pagerduty_service: cluster
                     annotations:
                       summary: "PersistentVolume {{ $labels.persistentvolume }} Failed"
                       description: "PV {{ $labels.persistentvolume }} in phase=Failed (reclaim/detach error)."
@@ -766,6 +799,7 @@ spec:
                     for: 15m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} Pending"
                       description: "PVC unbound (no provisioner / node affinity unmet) for >15m."
@@ -778,6 +812,7 @@ spec:
                     for: 1h
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "Certificate {{ $labels.namespace }}/{{ $labels.name }} expires <7d"
                       description: "{{ $labels.name }} ({{ $labels.namespace }}) expires in {{ $value | humanizeDuration }}."
@@ -787,6 +822,7 @@ spec:
                     for: 1h
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "Certificate {{ $labels.namespace }}/{{ $labels.name }} not Ready"
                       description: "{{ $labels.name }} ({{ $labels.namespace }}) not-Ready for >1h."
@@ -799,6 +835,7 @@ spec:
                     for: 10m
                     labels:
                       severity: page
+                      pagerduty_service: cluster
                     annotations:
                       summary: "Prometheus config reload failed"
                       description: "prometheus_config_last_reload_successful==0 for >10m — running config stale; new rules/alerts NOT loaded."
@@ -808,6 +845,7 @@ spec:
                     for: 15m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "Prometheus TSDB compactions failing"
                       description: "{{ $value }} failed TSDB compaction(s) in 3h — disk/corruption risk on the 25Gi PVC."
@@ -817,15 +855,32 @@ spec:
                     for: 5m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "Prometheus dropping alert notifications to Alertmanager"
                       description: "{{ $value }} notifications dropped in 15m — Alertmanager may be down/unreachable."
+
+                  # Alertmanager could not deliver to a receiver (pagerduty or
+                  # the ntfy webhook). Needs the alertmanager podAnnotations
+                  # below, which add Alertmanager to the kubernetes-pods scrape.
+                  # Every actionable alert goes to both ntfy and PagerDuty, so
+                  # when one integration fails this still arrives on the other.
+                  - alert: AlertmanagerNotificationsFailing
+                    expr: sum by (integration) (increase(alertmanager_notifications_failed_total[15m])) > 0
+                    for: 10m
+                    labels:
+                      severity: warning
+                      pagerduty_service: cluster
+                    annotations:
+                      summary: "Alertmanager cannot deliver to {{ $labels.integration }}"
+                      description: "{{ $value }} failed {{ $labels.integration }} notification(s) in 15m. For pagerduty, check the alertmanager-pagerduty-keys Secret (bazel run //tools/gitops:seal-alert-pagerduty) and the Alertmanager logs; for webhook, check alertmanager-ntfy-bridge."
 
                   - alert: PrometheusTargetDown
                     expr: up{job!~"node-exporter|.*metallb.*", instance!~"james-macbook-pro|james-mbp32|james-mbp16"} == 0
                     for: 15m
                     labels:
                       severity: warning
+                      pagerduty_service: cluster
                     annotations:
                       summary: "Scrape target down: {{ $labels.job }} / {{ $labels.instance }}"
                       description: "{{ $labels.job }} target {{ $labels.instance }} unscrapeable for >15m."
@@ -944,6 +999,7 @@ spec:
                     for: 10m
                     labels:
                       severity: warning
+                      pagerduty_service: apps
                       # The Backstage page for this app lists an alert only when its
                       # namespace label matches. The sum() above drops every label,
                       # so the namespace is named here.
@@ -1019,6 +1075,7 @@ spec:
                     for: 10m
                     labels:
                       severity: warning
+                      pagerduty_service: apps
                       # The Backstage page for this app lists an alert only when its
                       # namespace label matches. The sum() above drops every label,
                       # so the namespace is named here.
@@ -1089,6 +1146,7 @@ spec:
                     for: 30m
                     labels:
                       severity: warning
+                      pagerduty_service: apps
                       # The Backstage page for this app lists an alert only when its
                       # namespace label matches. The sum() above drops every label,
                       # so the namespace is named here.
@@ -1123,6 +1181,7 @@ spec:
                     for: 10m
                     labels:
                       severity: warning
+                      pagerduty_service: apps
                     annotations:
                       summary: "ArgoCD cannot render {{ $labels.name }} -- merges are NOT deploying"
                       description: "ArgoCD has been unable to compare {{ $labels.name }} (project {{ $labels.project }}, ns {{ $labels.dest_namespace }}) against git for >10m, so it is frozen at its last good render and every change merged since then is undeployed. The app will still report Healthy, so do not trust health here. Get the cause with: kubectl get application {{ $labels.name }} -n argocd -o yaml | grep -A5 conditions -- a ComparisonError names the offending file. The values-schema form of this is caught pre-merge by //tools/ci:gitops_values_render."
@@ -1137,6 +1196,7 @@ spec:
                     for: 30m
                     labels:
                       severity: warning
+                      pagerduty_service: apps
                     annotations:
                       summary: "ArgoCD app {{ $labels.name }} OutOfSync >30m"
                       description: "{{ $labels.name }} (project {{ $labels.project }}) has differed from git for >30m. With selfHeal on, that means sync is failing rather than merely pending -- check .status.operationState.message for the apply error."
@@ -1148,6 +1208,7 @@ spec:
                     for: 15m
                     labels:
                       severity: warning
+                      pagerduty_service: apps
                     annotations:
                       summary: "ArgoCD app {{ $labels.name }} Degraded >15m"
                       description: "{{ $labels.name }} (ns {{ $labels.dest_namespace }}) has reported Degraded for >15m -- its workload is failing its health check, not merely mid-rollout."
@@ -1306,6 +1367,12 @@ spec:
               # raw string early and breaks ApplicationSet goTemplate parsing.
               replicaCount: 2
               podAntiAffinity: hard
+              # Scraped by the kubernetes-pods job, so delivery failures
+              # (alertmanager_notifications_failed_total) are visible and
+              # AlertmanagerNotificationsFailing can fire.
+              podAnnotations:
+                prometheus.io/scrape: "true"
+                prometheus.io/port: "9093"
               persistence:
                 enabled: true
                 size: 2Gi
@@ -1333,6 +1400,30 @@ spec:
               # ntfy-password) must exist BEFORE alertmanager-ntfy-bridge can
               # authenticate to ntfy. Create it in one step:
               #   bazel run //tools/gitops:seal-alert-ntfy -- '<the ntfy webhook password>'
+              #
+              # PagerDuty is the primary pager; ntfy keeps a copy of every
+              # actionable alert. Each alert rule carries a pagerduty_service
+              # label (cluster, data or apps) naming the PagerDuty service it
+              # opens an incident on, so an incident says where it came from.
+              # The services and their Events API v2 keys are managed in
+              # infrastructure/pulumi/platform/pagerduty; the keys arrive as the
+              # alertmanager-pagerduty-keys SealedSecret (one file per service),
+              # sealed straight from that stack's outputs:
+              #   bazel run //tools/gitops:seal-alert-pagerduty
+              # The mount is optional so Alertmanager still starts (and ntfy
+              # still delivers) if that Secret is ever missing; PagerDuty sends
+              # then fail and show up as alertmanager_notifications_failed_total
+              # (PrometheusNotificationsDropped does not cover this hop).
+              #
+              # PagerDuty severity: page -> critical (high urgency, phone,
+              # escalates), warning -> warning (low urgency, no escalation).
+              # The services use severity-based urgency, so warnings never ring.
+              extraSecretMounts:
+                - name: pagerduty-keys
+                  mountPath: /etc/alertmanager/pagerduty
+                  secretName: alertmanager-pagerduty-keys
+                  readOnly: true
+                  optional: true
               config:
                 global:
                   resolve_timeout: 5m
@@ -1345,13 +1436,43 @@ spec:
                   routes:
                     - matchers: ['severity=~"none|noise"']
                       receiver: "null"
+                    # ntfy: a copy of everything actionable, kept as the backup
+                    # channel. continue: true lets the same alert carry on to
+                    # the PagerDuty routes below.
                     - matchers: ['severity=~"page|warning"']
                       receiver: ntfy
+                      continue: true
+                    - matchers: ['severity=~"page|warning"', 'pagerduty_service="data"']
+                      receiver: pagerduty-data
+                    - matchers: ['severity=~"page|warning"', 'pagerduty_service="apps"']
+                      receiver: pagerduty-apps
+                    # cluster, plus any actionable alert whose rule has no (or an
+                    # unknown) pagerduty_service label: it still pages somewhere.
+                    - matchers: ['severity=~"page|warning"']
+                      receiver: pagerduty-cluster
                 receivers:
                   - name: "null"
                   - name: ntfy
                     webhook_configs:
                       - url: http://alertmanager-ntfy-bridge.monitoring.svc.cluster.local:8080/webhook
+                        send_resolved: true
+                  - name: pagerduty-cluster
+                    pagerduty_configs:
+                      - routing_key_file: /etc/alertmanager/pagerduty/cluster
+                        severity: '{{ if eq .CommonLabels.severity "warning" }}warning{{ else }}critical{{ end }}'
+                        client: Alertmanager (dev-local)
+                        send_resolved: true
+                  - name: pagerduty-data
+                    pagerduty_configs:
+                      - routing_key_file: /etc/alertmanager/pagerduty/data
+                        severity: '{{ if eq .CommonLabels.severity "warning" }}warning{{ else }}critical{{ end }}'
+                        client: Alertmanager (dev-local)
+                        send_resolved: true
+                  - name: pagerduty-apps
+                    pagerduty_configs:
+                      - routing_key_file: /etc/alertmanager/pagerduty/apps
+                        severity: '{{ if eq .CommonLabels.severity "warning" }}warning{{ else }}critical{{ end }}'
+                        client: Alertmanager (dev-local)
                         send_resolved: true
             # ── node-exporter: run as root so the RAPL collector can read ────
             # CPU package energy. node-exporter exports node_rapl_*_joules_total

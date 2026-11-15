@@ -40,6 +40,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              pagerduty_service: cluster
               namespace: monitoring
               pod: thanos-query-0
               container: query
@@ -52,6 +53,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              pagerduty_service: cluster
               namespace: monitoring
               pod: thanos-query-0
               container: query
@@ -88,6 +90,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+              pagerduty_service: cluster
               namespace: monitoring
               pod: thanos-query-0
               container: query
