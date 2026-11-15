@@ -246,21 +246,19 @@ private fun NavCell(
     if (!item.iconOnly) {
       val isRail = rule == NavRule.Left
       val fontScale = LocalConfiguration.current.fontScale
+      // Both the rail and the bottom bar cap the label's scaled size: a five-tab bar at 200 %
+      // text otherwise truncates every label ("MODUL…"). The icon still names each tab.
       val labelStyle =
-          if (isRail) {
-            VitruvianType.tabLabel.copy(
-                fontSize =
-                    A11y.railLabelFontSizeSp(
-                            baseSp = VitruvianType.tabLabel.fontSize.value,
-                            fontScale = fontScale,
-                            maxScaledDp = FontSize.label.value,
-                        )
-                        .sp,
-                textAlign = TextAlign.Center,
-            )
-          } else {
-            VitruvianType.tabLabel
-          }
+          VitruvianType.tabLabel.copy(
+              fontSize =
+                  A11y.railLabelFontSizeSp(
+                          baseSp = VitruvianType.tabLabel.fontSize.value,
+                          fontScale = fontScale,
+                          maxScaledDp = FontSize.label.value,
+                      )
+                      .sp,
+              textAlign = TextAlign.Center,
+          )
       VText(
           text = item.label.uppercase(),
           style = labelStyle,
