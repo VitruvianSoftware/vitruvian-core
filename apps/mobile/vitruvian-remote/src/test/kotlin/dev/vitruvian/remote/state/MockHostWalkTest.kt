@@ -670,6 +670,55 @@ public class MockHostWalkTest {
   }
 
   @Test
+  public fun `wakeOnLan confirmDestructive and refreshInterval round-trip across RemoteState restart`() {
+    val store = InMemoryKeyValueStore()
+    val first =
+        RemoteState(
+            persistence = Persistence(store),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+    assertTrue(first.wakeOnLan)
+    assertTrue(first.confirmDestructive)
+    assertEquals(Derive.DEFAULT_REFRESH_INTERVAL, first.refreshInterval)
+
+    first.updateWakeOnLan(false)
+    first.updateConfirmDestructive(false)
+    first.updateRefreshInterval("30 s")
+    assertFalse(first.wakeOnLan)
+    assertFalse(first.confirmDestructive)
+    assertEquals("30 s", first.refreshInterval)
+
+    val restarted =
+        RemoteState(
+            persistence = Persistence(store),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+    assertFalse(restarted.wakeOnLan)
+    assertFalse(restarted.confirmDestructive)
+    assertEquals("30 s", restarted.refreshInterval)
+
+    restarted.updateWakeOnLan(true)
+    restarted.updateConfirmDestructive(true)
+    restarted.updateRefreshInterval("5 s")
+    val third =
+        RemoteState(
+            persistence = Persistence(store),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+    assertTrue(third.wakeOnLan)
+    assertTrue(third.confirmDestructive)
+    assertEquals("5 s", third.refreshInterval)
+
+    third.updateRefreshInterval("invalid")
+    val fourth =
+        RemoteState(
+            persistence = Persistence(store),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+    assertEquals(Derive.DEFAULT_REFRESH_INTERVAL, fourth.refreshInterval)
+  }
+
+  @Test
   public fun `openExternalUrl populates fallback URL dialog when no browser handles intent`() {
     val written = mutableListOf<String>()
     val clipboard =

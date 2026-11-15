@@ -3829,27 +3829,11 @@ public class DeriveTest {
   // --- F4: persisted settings & defaults --------------------------------
 
   @Test
-  public fun `connection settings are normalized and persisted in Persistence`() {
+  public fun `normalizeRefreshInterval clamps null and unknown values to default`() {
     assertEquals(Derive.DEFAULT_REFRESH_INTERVAL, Derive.normalizeRefreshInterval(null))
     assertEquals(Derive.DEFAULT_REFRESH_INTERVAL, Derive.normalizeRefreshInterval("invalid"))
     assertEquals("5 s", Derive.normalizeRefreshInterval("5 s"))
     assertEquals("30 s", Derive.normalizeRefreshInterval("30 s"))
-
-    val persistSrc =
-        readRunfile(
-            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/Persistence.kt")
-    assertTrue(persistSrc.contains("\"wakeOnLan\""))
-    assertTrue(persistSrc.contains("\"confirmDestructive\""))
-    assertTrue(persistSrc.contains("\"refreshInterval\""))
-    assertTrue(persistSrc.contains("KEY_WAKE_ON_LAN"))
-    assertTrue(persistSrc.contains("KEY_CONFIRM_DESTRUCTIVE"))
-    assertTrue(persistSrc.contains("KEY_REFRESH_INTERVAL"))
-    val remoteSrc =
-        readRunfile(
-            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
-    assertTrue(remoteSrc.contains("persistence.wakeOnLan"))
-    assertTrue(remoteSrc.contains("persistence.confirmDestructive"))
-    assertTrue(remoteSrc.contains("persistence.refreshInterval"))
   }
 
   // --- F15 & F16: neutral defaults, module discovery, macro edit/delete ---
