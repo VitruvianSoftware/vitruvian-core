@@ -39,7 +39,7 @@ ARG NODE_VERSION=22
 # with (MODULE.bazel, rust.toolchain(versions = [...])), so the image runs the
 # code the tests ran. //apps/web/oauth-user-inspector:dockerfile_test fails if
 # the two drift.
-ARG RUST_VERSION=1.75.0
+ARG RUST_VERSION=1.98.1
 
 # --- Server build stage: compile the Rust backend (-> dist-server/oauth-user-inspector-server)
 # and the container entrypoint (scripts/src/bin/start.rs + scripts/src/lib.rs ->
