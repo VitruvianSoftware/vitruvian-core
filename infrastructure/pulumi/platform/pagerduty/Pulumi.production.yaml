@@ -29,6 +29,11 @@ config:
     name: Vitruvian on-call
     delayMinutes: 30
     loops: 2
+    # The account's built-in "Default" policy. The free plan allows only one
+    # escalation policy, so the stack adopts this one rather than creating a
+    # second. A live preview (2026-11-14) showed it already pages the
+    # responder above; adoption renames it and sets the loops.
+    adoptId: PS9GPWM
   vitruvian-pagerduty:services:
     - key: sentry
       name: Sentry

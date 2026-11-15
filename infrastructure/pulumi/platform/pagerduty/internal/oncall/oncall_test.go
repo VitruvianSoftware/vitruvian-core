@@ -79,6 +79,10 @@ func TestValidateRejectsBadConfig(t *testing.T) {
 			mutate: func(s *Settings) { s.ResponderEmail = "   " },
 			want:   "responderEmail",
 		},
+		"adoptId that is not a PagerDuty id": {
+			mutate: func(s *Settings) { s.Escalation.AdoptID = "default" },
+			want:   "escalation.adoptId",
+		},
 		"empty escalation name": {
 			mutate: func(s *Settings) { s.Escalation.Name = "  " },
 			want:   "escalation.name",
@@ -244,6 +248,11 @@ func TestCommittedProductionConfig(t *testing.T) {
 	s := loadCommittedProductionConfig(t)
 	if s.ResponderEmail != "james@vitruviansoftware.dev" {
 		t.Fatalf("unexpected responderEmail: %q", s.ResponderEmail)
+	}
+	// Free plan: one escalation policy, so production must adopt the
+	// account's built-in one instead of creating a second.
+	if s.Escalation.AdoptID == "" {
+		t.Fatal("production must set escalation.adoptId: the free plan allows only one escalation policy")
 	}
 	if len(s.Services) != 1 || s.Services[0].Key != "sentry" {
 		t.Fatalf("expected initial sentry service, got %+v", s.Services)

@@ -37,11 +37,21 @@ const Namespace = "vitruvian-pagerduty"
 
 var serviceKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
+// PagerDuty object ids are a "P" followed by upper-case letters and digits.
+var pagerDutyIDPattern = regexp.MustCompile(`^P[A-Z0-9]+$`)
+
 // Escalation configures the single free-tier escalation policy.
 type Escalation struct {
 	Name         string `json:"name" yaml:"name"`
 	DelayMinutes int    `json:"delayMinutes" yaml:"delayMinutes"`
 	Loops        int    `json:"loops" yaml:"loops"`
+	// AdoptID is the id of an escalation policy that already exists in the
+	// account. When set, the stack takes it over (Pulumi import) instead of
+	// creating a new one. PagerDuty's free plan allows a single escalation
+	// policy and every account starts with one called "Default", so creating
+	// a second would fail. After the first apply the policy is in state and
+	// the import is a no-op; the other fields then update it in place.
+	AdoptID string `json:"adoptId" yaml:"adoptId"`
 }
 
 // Service describes one PagerDuty service and its Events API v2 integration.
@@ -103,6 +113,9 @@ func (s Settings) Validate() error {
 	if s.Escalation.Loops < 0 {
 		add("escalation.loops must be >= 0, got %d", s.Escalation.Loops)
 	}
+	if s.Escalation.AdoptID != "" && !pagerDutyIDPattern.MatchString(s.Escalation.AdoptID) {
+		add("escalation.adoptId %q must be a PagerDuty id (^P[A-Z0-9]+$)", s.Escalation.AdoptID)
+	}
 	if len(s.Services) == 0 {
 		add("services must contain at least one entry")
 	}
@@ -144,6 +157,10 @@ func Reconcile(ctx *pulumi.Context, provider *pagerduty.Provider, s Settings) (*
 
 	// Do not set Teams or EscalationRuleAssignmentStrategy: PagerDuty free-tier
 	// accounts lack Teams and reject those fields with 403 Forbidden.
+	policyOpts := []pulumi.ResourceOption{providerOpt}
+	if s.Escalation.AdoptID != "" {
+		policyOpts = append(policyOpts, pulumi.Import(pulumi.ID(s.Escalation.AdoptID)))
+	}
 	policy, err := pagerduty.NewEscalationPolicy(ctx, "oncall", &pagerduty.EscalationPolicyArgs{
 		Name:     pulumi.String(s.Escalation.Name),
 		NumLoops: pulumi.Int(s.Escalation.Loops),
@@ -158,7 +175,7 @@ func Reconcile(ctx *pulumi.Context, provider *pagerduty.Provider, s Settings) (*
 				},
 			},
 		},
-	}, providerOpt)
+	}, policyOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("create escalation policy: %w", err)
 	}
