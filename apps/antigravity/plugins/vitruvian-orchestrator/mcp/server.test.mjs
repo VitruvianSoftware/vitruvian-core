@@ -2421,3 +2421,46 @@ test("progress accepts roster tiers (lead, build, deep, light) plus legacy (core
     rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test("board refuses an unknown channel with the list of real ones, and still reads main and archived channels", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "orch-mcp-board-chan-"));
+  try {
+    const rootCid = "lead-board-chan-1";
+    const leadMeta = {
+      "antigravity.google/root_conversation_id": rootCid,
+      "antigravity.google/conversation_id": rootCid,
+    };
+    const call = (id, name, args) =>
+      handleJsonRpcMessage(
+        {
+          jsonrpc: "2.0",
+          id,
+          method: "tools/call",
+          params: { name, arguments: args, _meta: leadMeta },
+        },
+        { flowsDir: tempDir, now: () => 1000 + id * 10 },
+      );
+    call(1, "progress", {
+      title: "Board channel flow",
+      phase: "delegate",
+      tasks: [{ title: "Impl", specialist: "wren", tier: "core" }],
+    });
+    call(2, "channel", { action: "create", name: "infra" });
+    call(3, "channel", { action: "create", name: "old" });
+    call(4, "channel", { action: "archive", name: "old" });
+
+    const unknown = call(5, "board", { channel: "nope" });
+    assert.equal(unknown.error?.code, -32602);
+    assert.equal(
+      unknown.error.message,
+      'channel "nope" does not exist; existing channels: main, infra, old (archived)',
+    );
+    for (const [i, channel] of ["main", "infra", "old"].entries()) {
+      const ok = call(6 + i, "board", { channel });
+      assert.equal(ok.error, undefined, channel);
+      assert.ok(Array.isArray(JSON.parse(ok.result.content[0].text)));
+    }
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});

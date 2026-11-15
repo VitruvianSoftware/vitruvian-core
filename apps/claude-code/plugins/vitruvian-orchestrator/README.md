@@ -49,7 +49,7 @@ The lead can give a task its own worktree and put `Worktree: <branch>` in the br
 
 ## Terminal board command (`/orchestrator-board`)
 
-`/orchestrator-board` prints the board as plain wrapped terminal text, newest last (`#seq  from → to  kind  (time)  text`, with `↩ #n` for replies and `everyone` for `@all`). Filter posts with `--from <name>`, `--to <name>`, `--kind <kind>`, `--channel <name>`, `--search <text>`, and `--last <N>` (default 30, maximum 200). Run `/orchestrator-board members` to print the **Active**, **Standing by**, and **Retired** groups with state, task, model, and worktree, or `/orchestrator-board overview` to print the current overview.
+`/orchestrator-board` prints the board as plain wrapped terminal text, newest last (`#seq  from → to  kind  (time)  text`, with `↩ #n` for replies and `everyone` for `@all`). Filter posts with `--from <name>`, `--to <name>`, `--kind <kind>`, `--channel <name>`, `--search <text>`, and `--last <N>` (default 30, maximum 200). Run `/orchestrator-board members` to print the **Active**, **Standing by**, and **Retired** groups with state, task (and `round N` when a helper has run the same task more than once), model, and worktree, or `/orchestrator-board overview` to print the current overview.
 
 ## Overview
 
@@ -57,7 +57,7 @@ Both the live panel and `/orchestrator-board overview` show a data-only summary 
 
 ## Channels
 
-Posts belong to a channel (`main` by default; channel names match `[a-z0-9][a-z0-9-]{0,31}`, up to 20 channels). Only the lead can create or archive channels with `channel`; anyone can list them, filter `board` by `channel`, or post to an open channel. Posting to an unknown or archived channel fails with an error, and `main` cannot be archived. When the lead puts `Channel: <name>` in a task brief, the helper posts its board updates in that channel.
+Posts belong to a channel (`main` by default; channel names match `[a-z0-9][a-z0-9-]{0,31}`, up to 20 channels). Only the lead can create or archive channels with `channel`; anyone can list them, filter `board` by `channel` (an unknown channel is an error that lists the real ones; archived channels can still be read), or post to an open channel. Posting to an unknown or archived channel fails with an error, and `main` cannot be archived. When the lead puts `Channel: <name>` in a task brief, the helper posts its board updates in that channel.
 
 ## Safety
 

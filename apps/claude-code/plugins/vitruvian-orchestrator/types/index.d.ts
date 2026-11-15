@@ -70,6 +70,8 @@ export type MemberRow = {
   worktree?: string;
   lastPostSeq?: number;
   lastActivityAt: number;
+  /** 1 for a helper's first run on a task, 2 for its next run on the same task, and so on. */
+  round?: number;
 };
 
 export type MentionGraphNode = {

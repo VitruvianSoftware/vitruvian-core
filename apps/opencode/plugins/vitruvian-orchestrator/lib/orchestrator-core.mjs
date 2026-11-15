@@ -91,6 +91,7 @@ import { PRICES } from "./prices.mjs";
  * @property {string} [worktree]
  * @property {number} [lastPostSeq]
  * @property {number} lastActivityAt
+ * @property {number} round 1 for a helper's first run on a task, 2 for its next run on the same task, and so on; always 1 for ad-hoc runs.
  */
 
 /**
@@ -2141,9 +2142,19 @@ export function members(flow) {
   }
 
   const posts = Array.isArray(flow.posts) ? flow.posts : [];
+  /** @type {Map<string, number>} */
+  const roundsSeen = new Map();
   for (const run of flow.runs) {
     if (run.role === "lead") continue;
     const row = buildMemberRow(flow, run, posts);
+    if (typeof run.taskN === "number") {
+      const key = `${row.agent.toLowerCase()}\u0000${run.taskN}`;
+      const round = (roundsSeen.get(key) ?? 0) + 1;
+      roundsSeen.set(key, round);
+      row.round = round;
+    } else {
+      row.round = 1;
+    }
     if (row.state === "working") {
       active.push(row);
     } else if (row.state === "waiting" || row.state === "paused") {
@@ -2154,6 +2165,27 @@ export function members(flow) {
   }
 
   return { active, standingBy, retired };
+}
+
+/**
+ * Checks a board read's `channel` filter. Returns `null` when the filter is empty, `main`,
+ * or a channel that was created (archived channels can still be read), otherwise an error
+ * naming the existing channels. The bad name is cleaned before it is echoed back.
+ *
+ * @param {Flow | null | undefined} flow
+ * @param {unknown} rawChannel
+ * @returns {string | null}
+ */
+export function checkBoardChannel(flow, rawChannel) {
+  if (typeof rawChannel !== "string") return null;
+  const name = rawChannel.trim().toLowerCase();
+  if (name.length === 0) return null;
+  const known = channels(flow);
+  if (known.some((c) => c.name === name)) return null;
+  const list = known
+    .map((c) => (c.archived ? `${c.name} (archived)` : c.name))
+    .join(", ");
+  return `channel "${sanitizeShortText(rawChannel.trim()).slice(0, 64)}" does not exist; existing channels: ${list}`;
 }
 
 /**

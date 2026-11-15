@@ -942,6 +942,10 @@ function renderMemberGroup(container, list, taskByN, postBySeq, now) {
           ? `#${member.taskN} · ${task.title}`
           : `#${member.taskN}`
         : null;
+    const roundSuffix =
+      typeof member.round === "number" && member.round > 1
+        ? ` · round ${member.round}`
+        : "";
     const baseModel = member.model || "inherit";
     const effectiveDelegate = member.delegate || member.taskModel || null;
     const modelText =
@@ -977,7 +981,9 @@ function renderMemberGroup(container, list, taskByN, postBySeq, now) {
               mascot,
             ),
             el("span", { class: "row-title" }, member.agent || "worker"),
-            taskLabel ? el("span", { class: "muted small" }, taskLabel) : null,
+            taskLabel
+              ? el("span", { class: "muted small" }, taskLabel + roundSuffix)
+              : null,
           ),
           el(
             "div",
