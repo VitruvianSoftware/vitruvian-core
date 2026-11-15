@@ -103,20 +103,34 @@ kt_android_library(
 #
 # Multi-ABI APK packaged for release and distribution by
 # vitruvian-remote-release.yaml and scripts/publish.sh.
+_MANIFEST_BASE = {
+    "applicationId": "dev.vitruvian.remote",
+    # API 26 is the floor because the launcher icon is adaptive; the
+    # glass surfaces need 31 and fall back to an opaque surface below it,
+    # exactly as ANDROID.md prescribes.
+    "minSdkVersion": "26",
+    "targetSdkVersion": "35",
+    "versionName": "0.1.40",  # x-release-please-version
+}
+
+_VERSION_PARTS = [int(p) for p in _MANIFEST_BASE["versionName"].split(".")]
+
+_VERSION_CODE = (
+    _VERSION_PARTS[0] * 10000 + _VERSION_PARTS[1] * 100 + _VERSION_PARTS[2] if len(_VERSION_PARTS) == 3 else fail("versionName must be major.minor.patch, got %s" % _MANIFEST_BASE["versionName"])
+)
+
+_VERSION_CODE_VALIDATED = (
+    _VERSION_CODE if _VERSION_CODE > 1 else fail("versionCode must be > 1, got %s" % _VERSION_CODE)
+)
+
 android_binary(
     name = "app",
     custom_package = "dev.vitruvian.remote",
     manifest = "src/main/AndroidManifest.xml",
-    manifest_values = {
-        "applicationId": "dev.vitruvian.remote",
-        # API 26 is the floor because the launcher icon is adaptive; the
-        # glass surfaces need 31 and fall back to an opaque surface below it,
-        # exactly as ANDROID.md prescribes.
-        "minSdkVersion": "26",
-        "targetSdkVersion": "35",
-        "versionCode": "1",
-        "versionName": "0.1.40",  # x-release-please-version
-    },
+    manifest_values = dict(
+        _MANIFEST_BASE,
+        versionCode = str(_VERSION_CODE_VALIDATED),
+    ),
     # No explicit visibility: the package default above already scopes this to
     # the app's own subpackages, and `bazel build //<this app>:app` needs no
     # visibility at all. Making it public would punch a hole in the inter-app
@@ -212,8 +226,15 @@ kt_jvm_test(
     srcs = ["src/test/kotlin/dev/vitruvian/remote/state/DeriveTest.kt"],
     data = [
         "src/main/kotlin/dev/vitruvian/remote/MainActivity.kt",
+        "src/main/kotlin/dev/vitruvian/remote/overlays/HostStates.kt",
+        "src/main/kotlin/dev/vitruvian/remote/overlays/MacroEditor.kt",
+        "src/main/kotlin/dev/vitruvian/remote/shell/Dock.kt",
+        "src/main/kotlin/dev/vitruvian/remote/shell/Shell.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/AgentClient.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/Derive.kt",
+        "src/main/kotlin/dev/vitruvian/remote/state/MockHost.kt",
+        "src/main/kotlin/dev/vitruvian/remote/state/Models.kt",
+        "src/main/kotlin/dev/vitruvian/remote/state/Persistence.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/Wire.kt",
         "//apps/desktop/vitruvian-speaker:Sources/VitruvianSpeakerToolCore/Pages.swift",

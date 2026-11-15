@@ -56,6 +56,11 @@ pub fn parse_semver(text: &str) -> Option<(u32, u32, u32)> {
     ))
 }
 
+pub fn version_code_from_semver(text: &str) -> Option<u32> {
+    let (major, minor, patch) = parse_semver(text)?;
+    Some(major * 10000 + minor * 100 + patch)
+}
+
 pub fn swift_version_line(text: &str) -> Option<String> {
     let marker = "// x-release-please-version";
     for line in text.lines() {
@@ -229,6 +234,31 @@ pub fn check_all_versions(
         ));
     }
 
+    if build_text.contains("\"versionCode\": \"1\"") {
+        problems.push(
+            "vitruvian-remote/BUILD hardcodes \"versionCode\": \"1\"; derive it from major*10000+minor*100+patch"
+                .to_string(),
+        );
+    }
+    if build_text.contains("android_binary(") {
+        let derives_code = build_text.contains("10000")
+            && (build_text.contains("* 100") || build_text.contains("*100"))
+            && (build_text.contains("versionCode =") || build_text.contains("versionCode="));
+        if !derives_code {
+            problems.push(
+                "vitruvian-remote/BUILD does not derive versionCode from versionName (major*10000+minor*100+patch)"
+                    .to_string(),
+            );
+        }
+    }
+    if let Some(code) = version_code_from_semver(manifest_version) {
+        if code <= 1 {
+            problems.push(format!(
+                "derived versionCode {code} from '{manifest_version}' must be > 1"
+            ));
+        }
+    }
+
     for key in ["CFBundleShortVersionString", "CFBundleVersion"] {
         let got = extract_plist_key(plist_text, key);
         if got.as_deref() != Some(manifest_version) {
@@ -349,4 +379,26 @@ fn detects_mismatch_across_files() {
     assert!(problems
         .iter()
         .any(|p| p.contains("release-please-config.json")));
+}
+
+#[test]
+fn derives_version_code_from_semver() {
+    assert_eq!(version_code_from_semver("0.1.40"), Some(140));
+    assert_eq!(version_code_from_semver("1.2.3"), Some(10203));
+    assert_eq!(version_code_from_semver("0.0.1"), Some(1));
+}
+
+#[test]
+fn rejects_hardcoded_version_code_one() {
+    let manifest = "{\n  \"version\": \"0.1.40\"\n}\n";
+    let swift = "public static let current = \"0.1.40\" // x-release-please-version\n";
+    let server_rs = "pub const VERSION: &str = \"0.1.40\"; // x-release-please-version\n";
+    let build = "android_binary(\n    manifest_values = {\n        \"versionCode\": \"1\",\n        \"versionName\": \"0.1.40\",  # x-release-please-version\n    },\n)\n";
+    let plist = "<plist><dict><key>CFBundleShortVersionString</key><string>0.1.40</string><key>CFBundleVersion</key><string>0.1.40</string></dict></plist>";
+    let rp = "{\"packages\": {\"apps/mobile/vitruvian-remote\": {\"extra-files\": [\"BUILD\", \"macmenu/Sources/RemoteMenuCore/Version.swift\", \"macagent/rs/src/server.rs\", \"macmenu/atrium-extension/vitruvian-tool.json\", \"macmenu/Resources/Info.plist\"]}}}";
+
+    let problems = check_all_versions(manifest, swift, server_rs, build, plist, rp);
+    assert!(problems
+        .iter()
+        .any(|p| p.contains("\"versionCode\": \"1\"")));
 }
