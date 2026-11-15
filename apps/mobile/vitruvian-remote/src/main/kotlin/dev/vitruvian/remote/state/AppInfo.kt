@@ -20,6 +20,7 @@
 
 package dev.vitruvian.remote.state
 
+import io.sentry.Sentry
 import io.sentry.SentryOptions
 import io.sentry.protocol.Device
 import io.sentry.protocol.OperatingSystem
@@ -224,6 +225,18 @@ public object AppInfo {
   }
 
   /**
+   * Closes Sentry and deletes `<appCacheDir>/sentry` right after so previously queued or newly
+   * closed crash envelopes do not remain on disk.
+   */
+  public fun disableCrashReporting(
+      appCacheDir: File,
+      closeSentry: () -> Unit = { Sentry.close() },
+  ) {
+    closeSentry()
+    clearSentryCache(appCacheDir)
+  }
+
+  /**
    * Configures Sentry directly on the plain Java SDK `SentryOptions` so every privacy setting (no
    * PII, no breadcrumbs, no server hostname, no other thread stacks, no tracing/profiling, and
    * bounded device details) is provable in JVM unit tests.
@@ -242,7 +255,11 @@ public object AppInfo {
       options.cacheDirPath = sentryCacheDir(appCacheDir).absolutePath
     }
     options.isSendDefaultPii = false
-    options.maxBreadcrumbs = 0
+    // Sentry 7.14.0 builds CircularFifoQueue(maxBreadcrumbs) inside Scope.<init> and throws if <=
+    // 0;
+    // beforeBreadcrumb drops every breadcrumb before insertion and beforeSend clears
+    // event.breadcrumbs.
+    options.maxBreadcrumbs = 1
     options.isAttachServerName = false
     options.serverName = null
     options.isAttachThreads = false

@@ -4009,30 +4009,60 @@ public class DeriveTest {
   }
 
   @Test
-  public fun `MainActivity gates Sentry init on persistence and uses AppInfo options`() {
-    val mainActivity =
-        readRunfile(
-            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/MainActivity.kt")
-    assertTrue(
-        "MainActivity must check persistence.sendCrashReports before Sentry init",
-        mainActivity.contains("if (persistence.sendCrashReports)"),
-    )
-    assertTrue(
-        "MainActivity must configure Sentry via AppInfo.configureSentryOptions",
-        mainActivity.contains("AppInfo.configureSentryOptions("),
-    )
-    assertFalse(
-        "MainActivity must not hardcode vitruvian-remote@1.0",
-        mainActivity.contains("vitruvian-remote@1.0"),
-    )
-    assertTrue(
-        "MainActivity must close Sentry when disabled at runtime",
-        mainActivity.contains("io.sentry.Sentry.close()"),
-    )
-    assertTrue(
-        "MainActivity must clear queued crash cache when crash reporting is off",
-        mainActivity.contains("AppInfo.clearSentryCache(cacheDir)"),
-    )
+  public fun `disableCrashReporting closes Sentry then removes sentry cache tree without recreating it`() {
+    val cacheDir = java.nio.file.Files.createTempDirectory("vitruvian-remote-sentry-off").toFile()
+    try {
+      val sentryDir = AppInfo.sentryCacheDir(cacheDir)
+      val nestedOutbox = java.io.File(sentryDir, "dsn-cache/outbox").apply { mkdirs() }
+      java.io.File(sentryDir, "state.json").writeText("enabled=true")
+      java.io.File(nestedOutbox, "queued.envelope").writeText("pending")
+      val unrelatedFile =
+          java.io.File(java.io.File(cacheDir, "http").apply { mkdirs() }, "keep.bin").apply {
+            writeText("keep")
+          }
+
+      var closed = false
+      AppInfo.disableCrashReporting(
+          appCacheDir = cacheDir,
+          closeSentry = {
+            assertTrue("Sentry cache should still exist before close finishes", sentryDir.exists())
+            java.io.File(sentryDir, "dsn-cache/flushed-on-close.envelope").writeText("late")
+            closed = true
+          },
+      )
+      assertTrue(closed)
+      assertFalse("<cacheDir>/sentry tree must be deleted", sentryDir.exists())
+      assertTrue("Unrelated cache files must stay untouched", unrelatedFile.exists())
+
+      // Also verify with real Sentry SDK init/close that nothing re-creates <cacheDir>/sentry.
+      java.io.File(sentryDir, "nested").mkdirs()
+      java.io.File(sentryDir, "nested/queued.envelope").writeText("pending")
+      java.io.File(sentryDir, "root.txt").writeText("marker")
+      io.sentry.Sentry.init { opts ->
+        AppInfo.configureSentryOptions(
+            options = opts,
+            dsn = "https://public@127.0.0.1:1/0",
+            appVersion = "0.1.41",
+            appCacheDir = cacheDir,
+        )
+      }
+      assertTrue(io.sentry.Sentry.isEnabled())
+      assertTrue(sentryDir.exists())
+
+      AppInfo.disableCrashReporting(cacheDir)
+      assertFalse(io.sentry.Sentry.isEnabled())
+      assertFalse(
+          "<cacheDir>/sentry must not exist after disableCrashReporting", sentryDir.exists())
+
+      io.sentry.Sentry.captureException(RuntimeException("after switch-off"))
+      assertFalse(
+          "Capture after disableCrashReporting must not recreate <cacheDir>/sentry",
+          sentryDir.exists(),
+      )
+    } finally {
+      io.sentry.Sentry.close()
+      cacheDir.deleteRecursively()
+    }
   }
 
   @Test

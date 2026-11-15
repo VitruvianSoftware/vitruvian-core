@@ -24,6 +24,7 @@ import io.sentry.Attachment
 import io.sentry.Breadcrumb
 import io.sentry.Hint
 import io.sentry.MainEventProcessor
+import io.sentry.Scope
 import io.sentry.SentryEnvelope
 import io.sentry.SentryEvent
 import io.sentry.SentryOptions
@@ -487,8 +488,10 @@ public class AppInfoTest {
     assertEquals("vitruvian-remote@0.1.40", options.release)
     assertEquals("production", options.environment)
     assertFalse(options.isSendDefaultPii)
-    assertEquals(0, options.maxBreadcrumbs)
+    assertEquals(1, options.maxBreadcrumbs)
     assertNull(options.beforeBreadcrumb!!.execute(Breadcrumb.info("tap"), Hint()))
+    val scope = Scope(options).apply { addBreadcrumb(Breadcrumb.info("tap")) }
+    assertTrue(scope.breadcrumbs.isEmpty())
     assertFalse(options.isAttachServerName)
     assertNull(options.serverName)
     assertFalse(options.isAttachThreads)

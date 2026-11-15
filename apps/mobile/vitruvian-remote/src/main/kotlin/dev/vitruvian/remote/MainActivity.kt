@@ -204,8 +204,7 @@ public class MainActivity : ComponentActivity() {
 
   private fun configureSentry(enabled: Boolean, appVersion: String) {
     if (!enabled) {
-      io.sentry.Sentry.close()
-      AppInfo.clearSentryCache(cacheDir)
+      AppInfo.disableCrashReporting(cacheDir)
       return
     }
     val sentryDsn = System.getenv("SENTRY_DSN") ?: AppInfo.DEFAULT_SENTRY_DSN
