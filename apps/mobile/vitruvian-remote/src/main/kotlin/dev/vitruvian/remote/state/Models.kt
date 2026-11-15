@@ -24,7 +24,7 @@ import dev.vitruvian.design.StatusTone
 import dev.vitruvian.design.TagTone
 import dev.vitruvian.design.TerminalLine
 
-/** The six primary destinations plus the About sub-screen reached from Settings. */
+/** The six primary destinations plus Settings sub-screens (`PhoneBridge`, `About`). */
 public enum class Screen(public val title: String) {
   Home("Home"),
   Remote("Remote"),
@@ -32,6 +32,7 @@ public enum class Screen(public val title: String) {
   Apps("Modules"),
   Console("Console"),
   Hosts("Settings"),
+  PhoneBridge("Phone Bridge"),
   About("About"),
 }
 
@@ -519,6 +520,9 @@ public sealed interface DialogKind {
    * from any web page, and pairing gives that Mac this phone's bridge.
    */
   public data class PairFromQr(val link: PairLink) : DialogKind
+
+  /** Forget a paired Mac and drop its token after explicit confirmation. */
+  public data class ForgetHost(val id: String, val name: String) : DialogKind
 }
 
 /**

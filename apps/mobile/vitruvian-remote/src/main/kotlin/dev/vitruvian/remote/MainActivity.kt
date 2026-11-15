@@ -56,6 +56,7 @@ import dev.vitruvian.remote.state.BridgePermissionState
 import dev.vitruvian.remote.state.BridgePolicy
 import dev.vitruvian.remote.state.BridgeStatus
 import dev.vitruvian.remote.state.DeepLink
+import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.DialogKind
 import dev.vitruvian.remote.state.Notifier
 import dev.vitruvian.remote.state.Persistence
@@ -226,7 +227,9 @@ public class MainActivity : ComponentActivity() {
       PhoneBridgeService.start(this)
     }
     setContent { RemoteApp(state) }
-    handleIntent(intent)
+    if (Derive.shouldHandleLaunchIntent(savedInstanceState == null)) {
+      handleIntent(intent)
+    }
   }
 
   /** Copies the hub's view of the bridge into the state the screens read. */
@@ -350,9 +353,10 @@ public class MainActivity : ComponentActivity() {
       ACTION_LOCK_MAC -> state.runTileAction(HidAction.LockScreen)
       else -> Unit
     }
-    // Consumed: without this, every configuration change re-delivers the same
-    // extra and the Mac's display sleeps again on each rotation.
+    // Consumed: without this, every configuration change or back navigation re-delivers the same
+    // deep link / extra (re-opening pairing dialogs or sleeping the Mac's display again).
     intent.removeExtra(EXTRA_ACTION)
+    intent.data = null
   }
 
   override fun onResume() {

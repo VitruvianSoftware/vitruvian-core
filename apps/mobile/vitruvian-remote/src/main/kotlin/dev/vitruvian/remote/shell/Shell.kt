@@ -138,6 +138,7 @@ public fun RemoteShell(
           state.dockOpen &&
           screen != Screen.Console &&
           screen != Screen.About &&
+          screen != Screen.PhoneBridge &&
           !state.isUnpaired
   CompositionLocalProvider(LocalShowDock provides showDock) {
     Row(modifier = modifier.fillMaxSize().background(colors.bg)) {
@@ -153,10 +154,11 @@ public fun RemoteShell(
       }
       Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
         val isAbout = screen == Screen.About
+        val showBack = state.canGoBack
         TopBar(
             title = if (isAbout) state.aboutPage.title else screen.title,
-            showMark = !layout.showRail && !isAbout,
-            onBack = if (isAbout) state::backFromAbout else null,
+            showMark = !layout.showRail && !showBack,
+            onBack = if (showBack) ({ state.navigateBack() }) else null,
         ) {
           // Hosts is not a tab. The chip beside this already went there, but
           // nothing about a status chip says "settings"; a gear does.

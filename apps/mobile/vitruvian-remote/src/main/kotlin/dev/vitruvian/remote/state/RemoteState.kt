@@ -152,6 +152,8 @@ public class RemoteState(
   public var sendCrashReports: Boolean by mutableStateOf(persistence.sendCrashReports)
     private set
 
+  private var navBackStack: List<String> by mutableStateOf(emptyList())
+
   public var fallbackUrl: String? by mutableStateOf(null)
     private set
 
@@ -643,6 +645,8 @@ public class RemoteState(
   /** The last PromQL reply, for the Grafana-panel module. */
   public var promqlResult: AgentPromql? by mutableStateOf(null)
     private set
+
+  private var prometheusConfigured: Boolean? by mutableStateOf(null)
 
   public var agentVms: AgentList<AgentVm>? by mutableStateOf(null)
     private set
@@ -1310,7 +1314,7 @@ public class RemoteState(
               Notice("$hostShortName isn't answering", lastSeenLabel.ifBlank { "unreachable" })
           hostPhase == Derive.HostPhase.Asking -> Notice("Checking…", "asking $hostShortName")
           isLive && agentProcesses == null ->
-              Notice("Sampling…", "the agent is taking its first reading")
+              Notice("Sampling…", "the Mac helper is taking its first reading")
           else -> null
         }
 
@@ -1340,7 +1344,7 @@ public class RemoteState(
           hostPhase == Derive.HostPhase.Offline ->
               Notice("$hostShortName isn't answering", lastSeenLabel.ifBlank { "unreachable" })
           hostPhase == Derive.HostPhase.Asking -> Notice("Checking…", "asking $hostShortName")
-          else -> liveNotice(agentVms, "limactl") { "Lima VMs unavailable" }
+          else -> liveNotice(agentVms, "limactl")
         }
 
   public val containers: List<Container>
@@ -1384,7 +1388,7 @@ public class RemoteState(
           hostPhase == Derive.HostPhase.Offline ->
               Notice("$hostShortName isn't answering", lastSeenLabel.ifBlank { "unreachable" })
           hostPhase == Derive.HostPhase.Asking -> Notice("Checking…", "asking $hostShortName")
-          else -> liveNotice(agentContainers, "docker / podman", Format::containerTitle)
+          else -> liveNotice(agentContainers, "docker / podman")
         }
 
   /**
@@ -1415,8 +1419,18 @@ public class RemoteState(
           hostPhase == Derive.HostPhase.Offline ->
               Notice("$hostShortName isn't answering", lastSeenLabel.ifBlank { "unreachable" })
           hostPhase == Derive.HostPhase.Asking -> Notice("Checking…", "asking $hostShortName")
-          else -> liveNotice(agentK8s, "kubectl") { "K3s nodes unavailable" }
+          else -> liveNotice(agentK8s, "kubectl")
         }
+
+  public val macDeveloperTools: Derive.MacDeveloperToolsSpec
+    get() =
+        Derive.macDeveloperTools(
+            isDemoMode = isDemoMode,
+            availableTools = agentTools?.tools?.filterValues { it.available }?.keys.orEmpty(),
+            vmsAvailable = agentVms?.available,
+            k8sAvailable = agentK8s?.available,
+            prometheusReported = prometheusConfigured == true,
+        )
 
   /** The section header, which carries the count and so must not invent one. */
   public val containersLabel: String
@@ -1718,8 +1732,8 @@ public class RemoteState(
   public val promqlSource: String
     get() =
         when {
-          agentUrl.isBlank() -> "source · none · configure the agent on Settings"
-          else -> "source · ${agentHostLabel()} · via the Mac agent"
+          agentUrl.isBlank() -> "source · none · configure the Mac helper in Settings"
+          else -> "source · ${agentHostLabel()} · via the Mac helper"
         }
 
   /** The Mac screen's header line. */
@@ -1792,14 +1806,13 @@ public class RemoteState(
   private fun <T> liveNotice(
       list: AgentList<T>?,
       tool: String,
-      headline: (String) -> String,
   ): Notice? =
       when {
         !isLive -> null
-        list == null -> Notice("Asking $tool…", "")
+        list == null -> Notice("Checking…", "")
         !list.available -> {
-          val reason = list.reason.ifBlank { "$tool said nothing about why" }
-          Notice(headline(reason), Format.clip(reason))
+          val (headline, detail) = Derive.macToolNoticeLines(tool, list.reason)
+          Notice(headline, detail)
         }
         else -> null
       }
@@ -6935,6 +6948,7 @@ public class RemoteState(
                   Screen.Apps -> Derive.PollPage.Apps
                   Screen.Console -> Derive.PollPage.Console
                   Screen.Hosts -> Derive.PollPage.Hosts
+                  Screen.PhoneBridge -> Derive.PollPage.Hosts
                   Screen.About -> Derive.PollPage.Hosts
                 },
             module = currentModuleId,
@@ -6997,33 +7011,57 @@ public class RemoteState(
 
   // --- actions ----------------------------------------------------------
 
-  public fun go(target: Screen) {
-    aboutPage = AboutPage.Main
+  private fun currentNavState(): Derive.NavState =
+      Derive.NavState(
+          current = screen.name,
+          backStack = navBackStack,
+          aboutSubPage = aboutPage.takeIf { it != AboutPage.Main }?.name,
+      )
+
+  private fun applyNavState(next: Derive.NavState) {
+    val targetScreen = Screen.entries.firstOrNull { it.name == next.current } ?: Screen.Home
+    val targetAbout =
+        next.aboutSubPage?.let { name -> AboutPage.entries.firstOrNull { it.name == name } }
+            ?: AboutPage.Main
+    navBackStack = next.backStack
+    aboutPage = targetAbout
     versionCopied = false
-    screen = target
+    screen = targetScreen
+  }
+
+  public val canGoBack: Boolean
+    get() = Derive.canGoBack(currentNavState(), isUnpaired)
+
+  public fun navigateBack(): Boolean {
+    val next = Derive.popNav(currentNavState(), isUnpaired) ?: return false
+    applyNavState(next)
+    return true
+  }
+
+  public fun go(target: Screen) {
+    applyNavState(Derive.navigateToScreen(currentNavState(), target.name, isUnpaired))
   }
 
   public fun openAbout() {
-    aboutPage = AboutPage.Main
-    versionCopied = false
-    screen = Screen.About
+    applyNavState(Derive.navigateToAboutSubPage(currentNavState(), null, isUnpaired))
   }
 
   public fun openAboutPage(page: AboutPage) {
-    versionCopied = false
-    aboutPage = page
-    screen = Screen.About
+    applyNavState(
+        Derive.navigateToAboutSubPage(
+            currentNavState(),
+            page.takeIf { it != AboutPage.Main }?.name,
+            isUnpaired,
+        ),
+    )
+  }
+
+  public fun openPhoneBridge() {
+    applyNavState(Derive.navigateToScreen(currentNavState(), Screen.PhoneBridge.name, isUnpaired))
   }
 
   public fun backFromAbout() {
-    versionCopied = false
-    val parent = AppInfo.parentOfAboutPage(aboutPage)
-    if (parent != null) {
-      aboutPage = parent
-    } else {
-      aboutPage = AboutPage.Main
-      screen = Screen.Hosts
-    }
+    navigateBack()
   }
 
   public fun copyVersionInfo() {
@@ -7064,7 +7102,7 @@ public class RemoteState(
   public fun openModule(id: String) {
     module = id
     appsView = AppsView.Dashboards
-    screen = Screen.Apps
+    go(Screen.Apps)
   }
 
   /**
@@ -7115,9 +7153,18 @@ public class RemoteState(
     editMode = !editMode
   }
 
+  public val hiddenWidgetOptions: List<Derive.HomeWidgetOption>
+    get() = Derive.hiddenWidgetOptions(hiddenWidgets.toSet())
+
   public fun hideWidget(id: String) {
     if (id !in hiddenWidgets) {
       hiddenWidgets.add(id)
+      persistence.hiddenWidgets = hiddenWidgets.toList()
+    }
+  }
+
+  public fun showWidget(id: String) {
+    if (hiddenWidgets.remove(id)) {
       persistence.hiddenWidgets = hiddenWidgets.toList()
     }
   }
@@ -7200,7 +7247,7 @@ public class RemoteState(
     net.clear()
     net.addAll(List(SERIES_LENGTH) { 10 + (40 * abs(sin(it / 2.2))).roundToInt() })
     log("info", "demo · simulated dashboard loaded")
-    screen = Screen.Home
+    go(Screen.Home)
   }
 
   public fun exitDemo() {
@@ -7215,6 +7262,9 @@ public class RemoteState(
     cpu.addAll(List(SERIES_LENGTH) { 0 })
     net.clear()
     net.addAll(List(SERIES_LENGTH) { 0 })
+    navBackStack = emptyList()
+    aboutPage = AboutPage.Main
+    versionCopied = false
     screen = Screen.Hosts
   }
 
@@ -7316,7 +7366,7 @@ public class RemoteState(
     if (name.isNotBlank()) hostAliasDraft = name
     pairCode = formatPairCode(link.code.toInt())
     pairMillisLeft = PAIR_TTL_MS
-    screen = Screen.Hosts
+    go(Screen.Hosts)
     log("info", "pairing · from QR · ${name.ifBlank { target }}")
   }
 
@@ -7809,6 +7859,7 @@ public class RemoteState(
     agentTools = null
     agentAntigravity = null
     promqlResult = null
+    prometheusConfigured = null
     agentContainers = null
     agentK8s = null
     agentSessions = null
@@ -7872,6 +7923,12 @@ public class RemoteState(
   public fun forgetAgent() {
     val current = selectedHost ?: return
     forgetHost(current.id)
+  }
+
+  public fun requestForgetAgent() {
+    val current = selectedHost ?: return
+    val displayName = current.alias.ifBlank { current.url.ifBlank { "this Mac" } }
+    dialog = DialogKind.ForgetHost(id = current.id, name = displayName)
   }
 
   /** Whether the selected Mac has dropped out since it was last live, so "back" means something. */
@@ -8102,6 +8159,8 @@ public class RemoteState(
       aneWatts = null
       return
     }
+    prometheusConfigured =
+        gpuResult.available || !gpuResult.reason.contains("not configured", ignoreCase = true)
     if (!gpuResult.available) {
       powerQueryReason = gpuResult.reason.ifBlank { POWER_UNAVAILABLE }
       gpuWatts = null
@@ -8679,6 +8738,7 @@ public class RemoteState(
       }
       is DialogKind.EnableClaudePrompts -> sendClaudePermissionsEnabled(true)
       is DialogKind.PairFromQr -> pairFromQr(open.link)
+      is DialogKind.ForgetHost -> forgetHost(open.id)
       is DialogKind.SyncApp -> {
         val target = open
         val what = "argocd · ${target.namespace}/${target.name} · sync"
@@ -8726,6 +8786,8 @@ public class RemoteState(
     scope.launch {
       runCatching { client.promql(query) }
           .onSuccess { result ->
+            prometheusConfigured =
+                result.available || !result.reason.contains("not configured", ignoreCase = true)
             promqlResult = result
             promqlStatus =
                 if (!result.available) {
@@ -9054,11 +9116,12 @@ public class RemoteState(
   public val claudeApprovalsNotice: String?
     get() =
         when {
-          agentUrl.isBlank() -> "Connect a Mac agent to answer Claude prompts here."
+          agentUrl.isBlank() -> "Connect a Mac helper to answer Claude prompts here."
           !paired -> "Pair this phone to answer Claude prompts here."
           !isLive -> "The Mac is not answering. Prompts show on the Mac as usual."
-          claudeApprovalsSupported == false -> "Update the Mac agent to answer Claude prompts here."
-          claudeApprovalsSupported == null -> "Asking the Mac agent…"
+          claudeApprovalsSupported == false ->
+              "Update the Mac helper to answer Claude prompts here."
+          claudeApprovalsSupported == null -> "Asking the Mac helper…"
           else -> null
         }
 
@@ -9204,7 +9267,7 @@ public class RemoteState(
    * that lands on "expires in 0:00" would be one more dead end.
    */
   public fun openPairing() {
-    screen = Screen.Hosts
+    go(Screen.Hosts)
     if (pairMillisLeft <= 0) regeneratePairCode()
     pairFocusRequest++
   }
@@ -9559,6 +9622,15 @@ public data class DialogSpec(
                           "${kind.link.url.substringAfter("://")}. Only pair if you just " +
                           "scanned the QR code on your own Mac's screen.",
                   action = "Pair",
+                  word = null,
+              )
+          is DialogKind.ForgetHost ->
+              DialogSpec(
+                  kicker = "Destructive · Mac",
+                  destructive = true,
+                  title = "Forget ${kind.name}?",
+                  body = "You'll need to pair again from the Mac.",
+                  action = "Forget",
                   word = null,
               )
         }

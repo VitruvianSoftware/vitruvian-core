@@ -42,6 +42,7 @@ import dev.vitruvian.remote.screens.FallbackUrlDialog
 import dev.vitruvian.remote.screens.HomeScreen
 import dev.vitruvian.remote.screens.HostsScreen
 import dev.vitruvian.remote.screens.MacScreen
+import dev.vitruvian.remote.screens.PhoneBridgeScreen
 import dev.vitruvian.remote.screens.RemoteScreen
 import dev.vitruvian.remote.shell.RemoteShell
 import dev.vitruvian.remote.shell.rememberDeviceLayout
@@ -56,7 +57,7 @@ import dev.vitruvian.remote.state.Screen
  */
 @Composable
 public fun RemoteApp(state: RemoteState) {
-  BackHandler(enabled = state.effectiveScreen == Screen.About) { state.backFromAbout() }
+  BackHandler(enabled = state.canGoBack) { state.navigateBack() }
   LaunchedEffect(state) { state.runMetrics() }
   // Its own loop: Claude prompts need a two-second cadence whatever the
   // Hosts screen's refresh setting says.
@@ -68,7 +69,7 @@ public fun RemoteApp(state: RemoteState) {
       OfflineBanner(state)
       PairingBanner(state)
       BridgeBanner(state)
-      if (state.isUnpaired && screen != Screen.About) {
+      if (state.isUnpaired && screen != Screen.About && screen != Screen.PhoneBridge) {
         UnpairedState(state)
       }
       ScreenContent(state = state, screen = screen)
@@ -95,6 +96,7 @@ private fun ColumnScope.ScreenContent(state: RemoteState, screen: Screen) {
     Screen.Apps -> AppsScreen(state)
     Screen.Console -> ConsoleScreen(state)
     Screen.Hosts -> HostsScreen(state)
+    Screen.PhoneBridge -> PhoneBridgeScreen(state)
     Screen.About -> AboutScreen(state)
   }
 }

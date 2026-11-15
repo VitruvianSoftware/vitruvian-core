@@ -183,5 +183,5 @@ public object AppInfo {
       if (page == AboutPage.Main) null else AboutPage.Main
 
   public fun shouldAllowWhileUnpaired(screenName: String): Boolean =
-      screenName == "Hosts" || screenName == "About"
+      screenName == "Hosts" || screenName == "About" || screenName == "PhoneBridge"
 }

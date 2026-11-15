@@ -86,8 +86,8 @@ public fun ColumnScope.UnpairedState(state: RemoteState) {
         label = "No Mac paired",
         title = "This remote has nothing to point at yet.",
         body =
-            "Install the agent on your Mac, then enter the pairing code shown here. " +
-                "Dashboards and modules appear once the first host connects.",
+            "Install the Mac helper on your Mac, then enter the pairing code shown here. " +
+                "Dashboards and modules appear once your first Mac connects.",
     ) {
       VButton(
           label = "Pair a Mac",

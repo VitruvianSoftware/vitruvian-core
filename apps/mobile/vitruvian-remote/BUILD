@@ -285,6 +285,7 @@ kt_jvm_library(
     name = "derive",
     srcs = ["src/main/kotlin/dev/vitruvian/remote/state/Derive.kt"],
     deps = [
+        ":app_info",
         ":format",
         ":wire",
     ],

@@ -3566,6 +3566,296 @@ public object Derive {
         testEnabled = paired,
     )
   }
+
+  // --- navigation stack, deep links, Phone Bridge, Gallery, Mac, Home ---
+
+  private val TAB_SCREEN_NAMES: Set<String> = setOf("Home", "Remote", "Mac", "Apps", "Console")
+
+  /** True when [screenName] is one of the primary bottom-tab destinations. */
+  public fun isTabScreen(screenName: String): Boolean = screenName in TAB_SCREEN_NAMES
+
+  /** Pure navigation snapshot: current destination, prior screen stack, and active About page. */
+  public data class NavState(
+      val current: String = "Home",
+      val backStack: List<String> = emptyList(),
+      val aboutSubPage: String? = null,
+  )
+
+  private fun normalizeUnpairedCurrent(current: String): String =
+      if (AppInfo.shouldAllowWhileUnpaired(current)) current else "Hosts"
+
+  /**
+   * Navigates to [target], maintaining back history for secondary screens (Settings, Phone Bridge,
+   * About).
+   */
+  public fun navigateToScreen(state: NavState, target: String, isUnpaired: Boolean): NavState {
+    if (isTabScreen(target)) {
+      return if (isUnpaired) {
+        NavState(current = "Hosts", backStack = emptyList(), aboutSubPage = null)
+      } else {
+        NavState(current = target, backStack = emptyList(), aboutSubPage = null)
+      }
+    }
+    if (isUnpaired && target == "Hosts") {
+      return NavState(current = "Hosts", backStack = emptyList(), aboutSubPage = null)
+    }
+    val effectiveCurrent =
+        if (isUnpaired) normalizeUnpairedCurrent(state.current) else state.current
+    if (effectiveCurrent == target) {
+      return state.copy(current = target, aboutSubPage = null)
+    }
+    val cycleIndex = state.backStack.indexOf(target)
+    if (cycleIndex >= 0) {
+      return NavState(
+          current = target,
+          backStack = state.backStack.take(cycleIndex),
+          aboutSubPage = null,
+      )
+    }
+    return NavState(
+        current = target,
+        backStack = state.backStack + effectiveCurrent,
+        aboutSubPage = null,
+    )
+  }
+
+  /**
+   * Navigates to [subPage] inside `Screen.About`, preserving prior Settings history when entered
+   * directly.
+   */
+  public fun navigateToAboutSubPage(
+      state: NavState,
+      subPage: String?,
+      isUnpaired: Boolean,
+  ): NavState {
+    val base = if (state.current == "About") state else navigateToScreen(state, "About", isUnpaired)
+    return base.copy(aboutSubPage = subPage)
+  }
+
+  /**
+   * Pops one step from secondary navigation (About sub-page → About → Settings → previous tab), or
+   * null to exit.
+   */
+  public fun popNav(state: NavState, isUnpaired: Boolean): NavState? {
+    val effectiveCurrent =
+        if (isUnpaired) normalizeUnpairedCurrent(state.current) else state.current
+    if (effectiveCurrent == "About" && state.aboutSubPage != null) {
+      return state.copy(current = "About", aboutSubPage = null)
+    }
+    if (isUnpaired) {
+      return if (effectiveCurrent == "About" || effectiveCurrent == "PhoneBridge") {
+        NavState(current = "Hosts", backStack = emptyList(), aboutSubPage = null)
+      } else {
+        null
+      }
+    }
+    if (isTabScreen(effectiveCurrent)) return null
+    if (state.backStack.isNotEmpty()) {
+      return NavState(
+          current = state.backStack.last(),
+          backStack = state.backStack.dropLast(1),
+          aboutSubPage = null,
+      )
+    }
+    return when (effectiveCurrent) {
+      "About",
+      "PhoneBridge" -> NavState(current = "Hosts", backStack = emptyList(), aboutSubPage = null)
+      else -> NavState(current = "Home", backStack = emptyList(), aboutSubPage = null)
+    }
+  }
+
+  /** True when Back/chevron returns to an in-app screen rather than exiting the activity. */
+  public fun canGoBack(state: NavState, isUnpaired: Boolean): Boolean =
+      popNav(state, isUnpaired) != null
+
+  /**
+   * Handles the initial Activity launch intent once (`savedInstanceState == null`), skipping
+   * recreation replays.
+   */
+  public fun shouldHandleLaunchIntent(isInitialCreate: Boolean): Boolean = isInitialCreate
+
+  /** Plain-English summary line for Settings › Phone Bridge. */
+  public fun phoneBridgeSummarySubtitle(
+      enabled: Boolean,
+      linked: Boolean,
+      linkStatus: String,
+      problemText: String?,
+      grantedCount: Int,
+      totalCount: Int,
+  ): String {
+    if (!enabled) return "Off · texts, contacts, call history and location"
+    if (linked) return "On · linked · $grantedCount of $totalCount permissions granted"
+    val detail = (problemText ?: linkStatus).trim().ifEmpty { "connecting…" }
+    return "On · $detail"
+  }
+
+  /**
+   * Plain-English permission capability line for Phone Bridge rows without exposing raw tool IDs.
+   */
+  public fun bridgePermissionSubtitle(id: String, granted: Boolean): String {
+    val base =
+        when (id) {
+          "read_sms" -> "Read text messages"
+          "send_sms" -> "Send text messages (asks first)"
+          "read_contacts" -> "Look up contacts"
+          "read_call_log" -> "Read call history"
+          "call_phone" -> "Place phone calls (asks first)"
+          "location" -> "Read current location"
+          "notification_access" -> "Read, reply to and dismiss notifications"
+          "accessibility" -> "Read and control the screen"
+          else -> "Phone access"
+        }
+    return if (granted) base else "$base · not granted"
+  }
+
+  /** Action label on each Modules Gallery row. */
+  public fun galleryActionLabel(shown: Boolean, unavailable: Boolean): String =
+      when {
+        shown -> "Hide"
+        unavailable -> "Not on this Mac"
+        else -> "Show"
+      }
+
+  /** Which Mac screen developer-tool sections have backing tools on this Mac. */
+  public data class MacDeveloperToolsSpec(
+      val showLimaVms: Boolean,
+      val showK3sNodes: Boolean,
+      val showCustomPanel: Boolean,
+  ) {
+    public val anyVisible: Boolean
+      get() = showLimaVms || showK3sNodes || showCustomPanel
+  }
+
+  /** Reveals each developer-tool section only when the Mac reports that tool (or in demo mode). */
+  public fun macDeveloperTools(
+      isDemoMode: Boolean,
+      availableTools: Set<String>,
+      vmsAvailable: Boolean?,
+      k8sAvailable: Boolean?,
+      prometheusReported: Boolean,
+  ): MacDeveloperToolsSpec =
+      if (isDemoMode) {
+        MacDeveloperToolsSpec(
+            showLimaVms = true,
+            showK3sNodes = false,
+            showCustomPanel = true,
+        )
+      } else {
+        MacDeveloperToolsSpec(
+            showLimaVms = "limactl" in availableTools || vmsAvailable == true,
+            showK3sNodes = "kubectl" in availableTools || k8sAvailable == true,
+            showCustomPanel = prometheusReported,
+        )
+      }
+
+  private val EXCEPTION_PREFIX_REGEX =
+      Regex(
+          """^(?:(?:java|javax|kotlinx?|android|okhttp3)\.[A-Za-z0-9_.]+Exception|[A-Za-z0-9_]+Exception):\s*""",
+          RegexOption.IGNORE_CASE,
+      )
+
+  /** Strips noisy exception/agent prefixes and clips to one readable line. */
+  public fun stripRawErrorPrefix(raw: String): String {
+    var cleaned = stripVitruvianSpeakerErrorPrefixes(raw.trim())
+    while (true) {
+      val next = EXCEPTION_PREFIX_REGEX.replaceFirst(cleaned, "").trim()
+      if (next == cleaned) break
+      cleaned = next
+    }
+    return Format.clip(stripVitruvianSpeakerErrorPrefixes(cleaned))
+  }
+
+  /** Plain headline first, stripped raw tool detail second for Mac tool notices. */
+  public fun macToolNoticeLines(tool: String, rawReason: String): Pair<String, String> {
+    val stripped = stripRawErrorPrefix(rawReason)
+    val lower = stripped.lowercase(Locale.ROOT)
+    val missingTool =
+        lower.contains("not installed") ||
+            lower.contains("not found") ||
+            lower.contains("no such file") ||
+            lower.contains("executable file not found")
+    val headline =
+        when (tool) {
+          "limactl" ->
+              if (missingTool) "Lima isn't installed on this Mac."
+              else "Couldn't read Lima virtual machines."
+          "kubectl" ->
+              when {
+                missingTool -> "kubectl isn't installed on this Mac."
+                lower.contains("connection") && lower.contains("refused") ||
+                    lower.contains("unable to connect") ||
+                    lower.contains("i/o timeout") ->
+                    "Couldn't reach the Kubernetes cluster from this Mac."
+                else -> "Couldn't read Kubernetes nodes."
+              }
+          "docker",
+          "docker / podman" -> Format.containerTitle(rawReason)
+          else -> "Tool unavailable on this Mac."
+        }
+    return headline to stripped
+  }
+
+  /** Plain-first status headline and optional raw detail for the Mac screen's PromQL panel. */
+  public fun promqlStatusLines(rawStatus: String): Pair<String, String?> {
+    val trimmed = rawStatus.trim()
+    val lower = trimmed.lowercase(Locale.ROOT)
+    if (trimmed.isEmpty() || lower == "run a query to fill this panel" || lower == "no query run") {
+      return "Run a PromQL query to inspect live series." to null
+    }
+    if (lower == "querying…" || lower == "querying...") {
+      return "Querying…" to null
+    }
+    if (lower == "no agent configured") {
+      return "Add a Mac in Settings before running a query." to null
+    }
+    if (lower.startsWith("vector · ") ||
+        lower.startsWith("matrix · ") ||
+        lower.startsWith("scalar · ") ||
+        lower.startsWith("string · ") ||
+        lower.startsWith("result · ")) {
+      return trimmed to null
+    }
+    val stripped = stripRawErrorPrefix(trimmed)
+    val sLower = stripped.lowercase(Locale.ROOT)
+    val headline =
+        when {
+          AUTH_CODE_REGEX.containsMatchIn(trimmed) ||
+              sLower.contains("not paired") ||
+              sLower.contains("unauthorized") ||
+              sLower.contains("forbidden") -> "Couldn't run query: this phone isn't paired."
+          sLower.contains("not configured") -> "Prometheus isn't set up on this Mac."
+          sLower.contains("failed to connect") ||
+              sLower.contains("connection refused") ||
+              sLower.contains("timed out") ||
+              sLower.contains("timeout") ||
+              sLower.contains("unreachable") ||
+              sLower.contains("connectexception") ||
+              sLower.contains("socketexception") ||
+              sLower.contains("unknownhost") ||
+              sLower.contains("no route") -> "Couldn't reach the Mac helper to run this query."
+          else -> "Couldn't run PromQL query."
+        }
+    return headline to stripped.takeIf { it.isNotEmpty() }
+  }
+
+  /** One widget option for Home edit mode's "+ Add widget" picker. */
+  public data class HomeWidgetOption(val id: String, val label: String)
+
+  private val HOME_WIDGET_CATALOG: List<HomeWidgetOption> =
+      listOf(
+          HomeWidgetOption("cpu", "CPU"),
+          HomeWidgetOption("mem", "Memory pressure"),
+          HomeWidgetOption("temp", "Thermals"),
+          HomeWidgetOption("bat", "Battery"),
+      )
+
+  /** Hidden Home widgets in canonical display order for the "+ Add widget" sheet. */
+  public fun hiddenWidgetOptions(hiddenIds: Set<String>): List<HomeWidgetOption> =
+      HOME_WIDGET_CATALOG.filter { it.id in hiddenIds }
+
+  /** Shows "+ Add widget" only while editing Home and at least one widget is hidden. */
+  public fun shouldShowAddWidget(editMode: Boolean, hiddenIds: Set<String>): Boolean =
+      editMode && hiddenIds.isNotEmpty()
 }
 
 /**
