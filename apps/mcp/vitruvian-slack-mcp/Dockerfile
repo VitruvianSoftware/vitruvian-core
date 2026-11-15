@@ -41,7 +41,7 @@
 # Slack and the issuer, and the binary. No shell, no package manager, no Node.
 
 # --- Build stage --------------------------------------------------------------
-FROM rust:1.85-slim-bookworm AS build
+FROM rust:1.98.1-slim-bookworm AS build
 WORKDIR /src
 COPY rs/Cargo.toml rs/Cargo.lock ./
 COPY rs/src ./src

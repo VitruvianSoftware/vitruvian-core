@@ -870,11 +870,11 @@ fn remote_bazelrc(endpoint: &str, bes_results: &str) -> String {
     l("# Default Linux execution platform/container for RBE actions. The image must ship");
     l("# a modern glibc (>=2.28) for current Node/Python toolchains AND a modern git");
     l("# (>=2.28) for tests/tools that use `git init -b`, `git switch`, etc. Ubuntu");
-    l("# 22.04 (rbe-ubuntu22-04) provides git 2.34 / glibc 2.35. Adjust to match your");
-    l("# toolchains. NOTE: macOS targets cannot run on Linux RBE — keep them local.");
+    l("# 24.04 (rbe-ubuntu24-04) provides glibc 2.39 matching ubuntu-24.04 CI runners.");
+    l("# Adjust to match your toolchains. NOTE: macOS targets cannot run on Linux RBE — keep them local.");
     l("# See docs/guides/remote-build.md.");
     l("common:remote --remote_default_exec_properties=OSFamily=linux");
-    l("common:remote --remote_default_exec_properties=container-image=docker://gcr.io/flame-public/rbe-ubuntu22-04:latest");
+    l("common:remote --remote_default_exec_properties=container-image=docker://gcr.io/flame-public/rbe-ubuntu24-04:latest");
     l("");
     l("# Cache-only profile (--config=remotecache): share the BuildBuddy remote cache +");
     l("# BES but WITHOUT remote execution — outputs stay local, actions run locally.");

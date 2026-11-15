@@ -263,6 +263,10 @@ fn committed_allowlist_pins_the_foundation_entries() {
         allowlist_entry(&list, b"delivery-stripe.yaml"),
         Some(v(&["unit", "environment"]))
     );
+    assert_eq!(
+        allowlist_entry(&list, b"delivery-pagerduty.yaml"),
+        Some(v(&["unit", "environment"]))
+    );
 }
 
 #[test]

@@ -486,6 +486,12 @@ func program(ctx *pulumi.Context) error {
 		return err
 	}
 
+	// The PagerDuty stack's delivery job and its token: main-only, no required
+	// reviewer (pagerduty_environments.go).
+	if err := pagerdutyEnvironment(ctx, repo); err != nil {
+		return err
+	}
+
 	if err := foundationEnvironments(ctx, cfg, repo); err != nil {
 		return err
 	}

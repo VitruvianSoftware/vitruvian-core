@@ -538,6 +538,83 @@ fn license_pr_set_skips_only_files_neither_tool_reads() {
     );
 }
 
+/// The globs listed under `header` (a line ending in `:`), up to the next line
+/// indented no deeper than it. Comments are skipped.
+fn globs_under(workflow: &str, header: &str) -> Vec<String> {
+    let text = std::fs::read_to_string(workflow).unwrap_or_else(|e| panic!("{workflow}: {e}"));
+    let lines: Vec<&str> = text.lines().collect();
+    let i = lines
+        .iter()
+        .position(|l| l.trim_end() == header)
+        .unwrap_or_else(|| panic!("{workflow}: no line {header:?}"));
+    let indent = header.len() - header.trim_start().len();
+    let mut out = Vec::new();
+    for l in &lines[i + 1..] {
+        let t = l.trim_start();
+        if t.is_empty() || t.starts_with('#') {
+            continue;
+        }
+        if l.len() - t.len() <= indent {
+            break;
+        }
+        if let Some(g) = t.strip_prefix("- ") {
+            out.push(g.trim().trim_matches('\'').to_string());
+        }
+    }
+    out
+}
+
+#[track_caller]
+fn lists(workflow: &str, header: &str, want: &[&str]) {
+    let got = globs_under(workflow, header);
+    for w in want {
+        assert!(
+            got.iter().any(|g| g == w),
+            "{workflow} {header}: missing {w:?}, a file this check reads, so a PR changing only it would skip the check. Got {got:?}"
+        );
+    }
+}
+
+/// Each PR-only skip filter must list what its check reads beyond the obvious
+/// sources. Each entry here is one a review found missing (#4854): the check
+/// reads it, so a PR changing only it must still run the check.
+#[test]
+fn pr_skip_filters_list_every_input_their_checks_read() {
+    // lint-naming's unit test runs under every rc file .bazelrc imports.
+    lists(
+        ".github/workflows/ci.yaml",
+        "            lintnaming:",
+        &[
+            "tools/lint-naming/**",
+            ".bazelrc",
+            "tools/*.bazelrc",
+            "MODULE.bazel",
+        ],
+    );
+    // //tools/ci:go_test_lanes links //tools/shell-compat:shell_compat.
+    lists(
+        ".github/workflows/ci.yaml",
+        "            golanes:",
+        &[
+            "**/*_test.go",
+            "**/BUILD",
+            "tools/ci/src/go_test_lanes/**",
+            "tools/shell-compat/**",
+        ],
+    );
+    // promtool is installed by install-pinned-tool, checked against tools.lock.json.
+    lists(
+        ".github/workflows/chart-render.yaml",
+        "    paths:",
+        &[
+            "gitops/**",
+            "**/deploy/chart/**",
+            "tools/ci/**",
+            "tools/tools.lock.json",
+        ],
+    );
+}
+
 /// No BEFORE_REV and no BASE_REF at all: it must run the heavy work.
 #[test]
 fn with_no_diff_base_it_runs() {

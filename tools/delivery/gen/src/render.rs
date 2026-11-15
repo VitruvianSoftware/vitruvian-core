@@ -384,6 +384,18 @@ fn transcribed_job(name: &str) -> Option<TranscribedSpec> {
                 render_stripe_steps,
             )
         }),
+        // A NATIVE transcription: the PagerDuty stack never had a hand-written
+        // workflow, so this is its job's only origin (no legacy_workflow).
+        // Checkout only: the stack reaches PagerDuty with an API token, not GCP.
+        "pagerduty" => Some(spec(
+            20,
+            &["contents: read"],
+            // GITHUB_TOKEN is set on the Pulumi step only (see
+            // render_pagerduty_steps), not job-wide.
+            &["GOWORK: off"],
+            "",
+            render_pagerduty_steps,
+        )),
         _ => None,
     }
 }
@@ -749,6 +761,79 @@ fn render_stripe_steps(b: &mut String, u: &Unit, env: &str, opts: &Opts) -> R {
     );
     b.push_str("            echo '```'\n");
     b.push_str("          } >> \"$GITHUB_STEP_SUMMARY\"\n");
+    Ok(())
+}
+
+fn render_pagerduty_steps(b: &mut String, u: &Unit, env: &str, opts: &Opts) -> R {
+    let dir = "infrastructure/pulumi/platform/pagerduty";
+    if env != "production" {
+        fail!(
+            "unit {} declares environment {}, but render_pagerduty_steps knows only production — an unknown rung would target an undeclared stack",
+            q(&u.name),
+            q(env)
+        );
+    }
+    let ghenv = u.github_environment.replace("{env}", env);
+    b.push_str("    steps:\n");
+    w!(b, "      - uses: {}\n", opts.pin("actions/checkout")?);
+    b.push_str("        with:\n");
+    b.push_str("          persist-credentials: false\n");
+    b.push('\n');
+    b.push_str("      # Check whether PAGERDUTY_TOKEN is seeded before Pulumi starts; never\n");
+    b.push_str("      # print the token. An environment with no token yet is not a failure:\n");
+    b.push_str("      # the rung says so and stops, so merging before the token is added\n");
+    b.push_str("      # leaves main green.\n");
+    b.push_str("      - name: Check PAGERDUTY_TOKEN is present\n");
+    b.push_str("        id: key\n");
+    b.push_str("        env:\n");
+    b.push_str("          PAGERDUTY_TOKEN: ${{ secrets.PAGERDUTY_TOKEN }}\n");
+    b.push_str("        run: |\n");
+    b.push_str("          set -euo pipefail\n");
+    b.push_str("          if [ -z \"${PAGERDUTY_TOKEN:-}\" ]; then\n");
+    w!(
+        b,
+        "            echo \"::notice::No PAGERDUTY_TOKEN in the {} environment yet, so nothing was applied. See {}/README.md.\"\n",
+        ghenv,
+        dir
+    );
+    b.push_str("            echo \"present=false\" >> \"$GITHUB_OUTPUT\"\n");
+    b.push_str("            exit 0\n");
+    b.push_str("          fi\n");
+    b.push_str("          echo \"present=true\" >> \"$GITHUB_OUTPUT\"\n");
+    b.push('\n');
+    b.push_str("      - name: Set up Go\n");
+    b.push_str("        if: steps.key.outputs.present == 'true'\n");
+    w!(b, "        uses: {}\n", opts.pin("actions/setup-go")?);
+    b.push_str("        with:\n");
+    w!(b, "          go-version-file: {}/go.mod\n", dir);
+    w!(b, "          cache-dependency-path: {}/go.sum\n", dir);
+    b.push('\n');
+    b.push_str("      - name: Install Pulumi\n");
+    b.push_str("        if: steps.key.outputs.present == 'true'\n");
+    w!(b, "        uses: {}\n", opts.pin("pulumi/actions")?);
+    b.push('\n');
+    w!(b, "      - name: Pulumi up (pagerduty / {})\n", env);
+    b.push_str("        id: pulumi\n");
+    b.push_str("        if: steps.key.outputs.present == 'true'\n");
+    w!(b, "        uses: {}\n", PULUMI_RUN_CAPTURED_ACTION);
+    b.push_str("        env:\n");
+    b.push_str("          PAGERDUTY_TOKEN: ${{ secrets.PAGERDUTY_TOKEN }}\n");
+    // Pulumi fetches the provider plugin from GitHub releases; an
+    // unauthenticated download hits the rate limit. Scoped to this step.
+    b.push_str("          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n");
+    b.push_str("        with:\n");
+    b.push_str("          command: up\n");
+    w!(b, "          stack: {}\n", env);
+    w!(b, "          working-directory: {}\n", dir);
+    b.push_str("          pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}\n");
+    b.push('\n');
+    b.push_str("      - name: Pulumi digest → step summary\n");
+    b.push_str("        if: always() && steps.key.outputs.present == 'true'\n");
+    w!(b, "        uses: {}\n", PULUMI_SUMMARY_ACTION);
+    b.push_str("        with:\n");
+    w!(b, "          label: pagerduty {}\n", env);
+    b.push_str("          out-file: ${{ runner.temp }}/pulumi-out.txt\n");
+    b.push_str("          exit-code: ${{ steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code }}\n");
     Ok(())
 }
 

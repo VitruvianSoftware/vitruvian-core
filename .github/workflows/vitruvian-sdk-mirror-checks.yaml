@@ -53,7 +53,7 @@ permissions:
 
 jobs:
   cargo:
-    name: cargo (Rust 1.75.0)
+    name: cargo (Rust 1.98.1)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -66,10 +66,10 @@ jobs:
 
       # The version Bazel builds the same checks with (MODULE.bazel,
       # rust.toolchain), and the one the mirror's workflows install.
-      - name: Rust 1.75.0
+      - name: Rust 1.98.1
         run: |
-          rustup toolchain install 1.75.0 --profile minimal
-          rustup default 1.75.0
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
           cargo --version
 
       - name: The protocol, the conformance validator, the samples and the templates

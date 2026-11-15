@@ -195,6 +195,21 @@ To set them: `set -- stripe-sandbox STRIPE_API_KEY` and
 `set -- stripe-production STRIPE_API_KEY` (each also backs the store up to
 Bitwarden), then `apply -- stripe-sandbox` and `apply -- stripe-production`.
 
+## `pagerduty-production`
+
+Secret of the GitHub Environment that
+[`delivery-pagerduty.yaml`](../../.github/workflows/delivery-pagerduty.yaml)'s
+`pagerduty-production` job binds. The environment is declared in
+[`repo-config`](../../infrastructure/pulumi/platform/repo-config/pagerduty_environments.go):
+only `main` may deploy to it, with no required reviewer.
+
+| Environment | Secret | What it is |
+|---|---|---|
+| `pagerduty-production` | `PAGERDUTY_TOKEN` | PagerDuty REST API user token used by `vitruvian-pagerduty` to reconcile escalation policies, services, and integrations. |
+
+To set it: `set -- pagerduty-production PAGERDUTY_TOKEN` (also backs the store
+up to Bitwarden), then `apply -- pagerduty-production`.
+
 ## Subdirectories & Boundaries
 - [src](./src/README.md): Component package providing implementation for tools/sync-env-secrets/src.
 

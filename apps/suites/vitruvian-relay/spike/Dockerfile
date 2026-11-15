@@ -27,7 +27,7 @@
 # (../../../mcp/vitruvian-slack-mcp/rs). The layout under /src mirrors apps/ so that path
 # resolves unchanged.
 
-FROM rust:1.85-slim-bookworm AS build
+FROM rust:1.98.1-slim-bookworm AS build
 WORKDIR /src/suites/vitruvian-relay/spike
 COPY --from=slackmcp Cargo.toml Cargo.lock /src/mcp/vitruvian-slack-mcp/rs/
 COPY --from=slackmcp src /src/mcp/vitruvian-slack-mcp/rs/src
