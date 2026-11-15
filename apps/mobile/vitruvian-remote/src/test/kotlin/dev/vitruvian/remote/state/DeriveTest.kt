@@ -4014,16 +4014,14 @@ public class DeriveTest {
     assertNull(Derive.restoredScreen("  "))
     assertNull(Derive.restoredScreen("NotAScreen"))
 
-    assertTrue(Derive.shouldHandleLaunchIntentOnCreate(hasSavedInstanceState = false))
-    assertFalse(Derive.shouldHandleLaunchIntentOnCreate(hasSavedInstanceState = true))
-
     val nav = ScreenNavigationTracker()
     nav.restoreScreen("Console")
     assertEquals(Screen.Console, nav.screen)
     assertNull(nav.restoreScreen("invalid"))
     assertEquals(Screen.Console, nav.screen)
 
-    // Manifest handles uiMode live so system dark/light switches don't restart MainActivity.
+    // Manifest handles uiMode live so system dark/light switches don't restart MainActivity,
+    // and declares singleTop so links arriving while running go through onNewIntent.
     val manifest = readRunfile("apps/mobile/vitruvian-remote/src/main/AndroidManifest.xml")
     val mainActivityStart = manifest.indexOf("android:name=\".MainActivity\"")
     assertTrue("MainActivity declaration not found", mainActivityStart >= 0)
@@ -4034,6 +4032,202 @@ public class DeriveTest {
     assertNotNull("android:configChanges missing on MainActivity", configMatch)
     val flags = configMatch!!.groupValues[1].split('|').toSet()
     assertTrue("Expected uiMode in MainActivity configChanges: $flags", "uiMode" in flags)
+    assertTrue(
+        "Expected singleTop launchMode on MainActivity",
+        activityTag.contains("""android:launchMode="singleTop""""),
+    )
+  }
+
+  @Test
+  fun intentDecisionCoversLaunchRecreationProcessDeathAndNewIntent() {
+    val remoteUri = "vitruvian-remote://remote"
+    val moduleUri = "vitruvian-remote://apps/claude"
+    val pairUri =
+        "vitruvian-remote://pair?code=482917&name=atlas&url=http%3A%2F%2F100.64.0.12%3A7411"
+
+    // 1. Fresh launch with a link (screen, module, pairing QR, or Quick Settings tile).
+    val remoteKey = Derive.intentKey(dataUri = remoteUri, actionExtra = null)
+    assertNotNull(remoteKey)
+    assertEquals(
+        Derive.IntentDecision.Handle,
+        Derive.intentDecision(
+            intentKey = remoteKey,
+            savedHandledKey = null,
+            hasActionableData = Derive.hasActionableIntentData(remoteUri, null),
+        ),
+    )
+
+    val moduleKey = Derive.intentKey(dataUri = moduleUri, actionExtra = null, createdAt = 10L)
+    assertEquals(
+        Derive.IntentDecision.Handle,
+        Derive.intentDecision(
+            intentKey = moduleKey,
+            savedHandledKey = null,
+            hasActionableData = Derive.hasActionableIntentData(moduleUri, null),
+        ),
+    )
+
+    val pairKey = Derive.intentKey(dataUri = pairUri, actionExtra = null)
+    assertEquals(
+        Derive.IntentDecision.Handle,
+        Derive.intentDecision(
+            intentKey = pairKey,
+            savedHandledKey = null,
+            hasActionableData = Derive.hasActionableIntentData(pairUri, null),
+        ),
+    )
+
+    val tileKey1 =
+        Derive.intentKey(
+            dataUri = null,
+            actionExtra = Derive.ACTION_DISPLAY_SLEEP,
+            createdAt = 100L,
+        )
+    assertEquals(
+        Derive.IntentDecision.Handle,
+        Derive.intentDecision(
+            intentKey = tileKey1,
+            savedHandledKey = null,
+            hasActionableData = Derive.hasActionableIntentData(null, Derive.ACTION_DISPLAY_SLEEP),
+        ),
+    )
+
+    // 2. Rotation or theme recreation with the same link already handled: restore, do not replay.
+    assertEquals(
+        Derive.IntentDecision.Restore,
+        Derive.intentDecision(
+            intentKey = pairKey,
+            savedHandledKey = pairKey,
+            hasActionableData = Derive.hasActionableIntentData(pairUri, null),
+        ),
+    )
+    assertEquals(
+        Derive.IntentDecision.Restore,
+        Derive.intentDecision(
+            intentKey = tileKey1,
+            savedHandledKey = tileKey1,
+            hasActionableData = Derive.hasActionableIntentData(null, Derive.ACTION_DISPLAY_SLEEP),
+        ),
+    )
+
+    // 3. Recreation after process death with the same original link re-delivered by Android.
+    val nav = ScreenNavigationTracker()
+    // Initial launch handled `pairUri`, then user navigated to Console before process death.
+    var savedHandledKey: String? = pairKey
+    nav.go(Screen.Console)
+    val savedScreen = nav.screen.name
+    // Process dies and restarts with savedInstanceState + original task intent.
+    val decisionAfterDeath =
+        Derive.intentDecision(
+            intentKey = pairKey,
+            savedHandledKey = savedHandledKey,
+            hasActionableData = Derive.hasActionableIntentData(pairUri, null),
+        )
+    assertEquals(Derive.IntentDecision.Restore, decisionAfterDeath)
+    nav.restoreScreen(savedScreen)
+    assertEquals(Screen.Console, nav.screen)
+
+    // 4. Recreation with a new link (or a second tile tap with a new creation-time extra).
+    val consoleUri = "vitruvian-remote://console"
+    val consoleKey = Derive.intentKey(dataUri = consoleUri, actionExtra = null, createdAt = 250L)
+    assertEquals(
+        Derive.IntentDecision.Handle,
+        Derive.intentDecision(
+            intentKey = consoleKey,
+            savedHandledKey = savedHandledKey,
+            hasActionableData = Derive.hasActionableIntentData(consoleUri, null),
+        ),
+    )
+    assertEquals(
+        Derive.IntentDecision.Handle,
+        Derive.intentDecision(
+            intentKey = consoleKey,
+            savedHandledKey = null,
+            hasActionableData = Derive.hasActionableIntentData(consoleUri, null),
+        ),
+    )
+    val tileKey2 =
+        Derive.intentKey(
+            dataUri = null,
+            actionExtra = Derive.ACTION_DISPLAY_SLEEP,
+            createdAt = 200L,
+        )
+    assertEquals(
+        Derive.IntentDecision.Handle,
+        Derive.intentDecision(
+            intentKey = tileKey2,
+            savedHandledKey = tileKey1,
+            hasActionableData = Derive.hasActionableIntentData(null, Derive.ACTION_DISPLAY_SLEEP),
+        ),
+    )
+
+    // 5. Plain launch with no data (or unrecognized URI/action) restores instead of handling.
+    val emptyKey = Derive.intentKey(dataUri = null, actionExtra = null, createdAt = null)
+    assertNull(emptyKey)
+    assertFalse(Derive.hasActionableIntentData(dataUri = null, actionExtra = null))
+    assertEquals(
+        Derive.IntentDecision.Restore,
+        Derive.intentDecision(
+            intentKey = emptyKey,
+            savedHandledKey = null,
+            hasActionableData = Derive.hasActionableIntentData(null, null),
+        ),
+    )
+    val unknownUri = "https://example.com/not-ours"
+    assertFalse(Derive.hasActionableIntentData(dataUri = unknownUri, actionExtra = "unknown"))
+    assertEquals(
+        Derive.IntentDecision.Restore,
+        Derive.intentDecision(
+            intentKey = Derive.intentKey(dataUri = unknownUri, actionExtra = "unknown"),
+            savedHandledKey = null,
+            hasActionableData = Derive.hasActionableIntentData(unknownUri, "unknown"),
+        ),
+    )
+
+    // 6. onNewIntent with a link while running handles the new link and prevents replay on later
+    // recreation.
+    savedHandledKey = remoteKey
+    val macUri = "vitruvian-remote://mac"
+    val macKey = Derive.intentKey(dataUri = macUri, actionExtra = null, createdAt = 300L)
+    assertEquals(
+        Derive.IntentDecision.Handle,
+        Derive.intentDecision(
+            intentKey = macKey,
+            savedHandledKey = savedHandledKey,
+            hasActionableData = Derive.hasActionableIntentData(macUri, null),
+        ),
+    )
+    savedHandledKey = macKey
+    assertEquals(
+        Derive.IntentDecision.Restore,
+        Derive.intentDecision(
+            intentKey = macKey,
+            savedHandledKey = savedHandledKey,
+            hasActionableData = Derive.hasActionableIntentData(macUri, null),
+        ),
+    )
+
+    // Lifecycle wiring assertions on MainActivity.kt.
+    val main =
+        stripKotlinComments(
+            readRunfile(
+                "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/MainActivity.kt"))
+    val onCreateBody = extractKotlinBlock(main, "override fun onCreate(")
+    val onSaveBody = extractKotlinBlock(main, "override fun onSaveInstanceState(")
+    val onNewIntentBody = extractKotlinBlock(main, "override fun onNewIntent(")
+    val routeIntentBody = extractKotlinBlock(main, "private fun routeIntent(")
+    val handleIntentBody = extractKotlinBlock(main, "private fun handleIntent(")
+
+    assertTrue(onCreateBody.contains("KEY_HANDLED_INTENT"))
+    assertTrue(onCreateBody.contains("routeIntent("))
+    assertTrue(onSaveBody.contains("KEY_HANDLED_INTENT"))
+    assertTrue(onNewIntentBody.contains("setIntent(intent)"))
+    assertTrue(onNewIntentBody.contains("routeIntent("))
+    assertTrue(routeIntentBody.contains("Derive.intentKey("))
+    assertTrue(routeIntentBody.contains("Derive.hasActionableIntentData("))
+    assertTrue(routeIntentBody.contains("Derive.intentDecision("))
+    assertTrue(routeIntentBody.contains("EXTRA_CREATED_AT"))
+    assertFalse(handleIntentBody.contains("removeExtra("))
   }
 
   @Test

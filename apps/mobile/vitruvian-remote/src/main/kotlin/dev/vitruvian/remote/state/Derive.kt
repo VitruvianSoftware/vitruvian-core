@@ -3616,12 +3616,73 @@ public object Derive {
     return Screen.entries.firstOrNull { it.name.equals(key, ignoreCase = true) }
   }
 
+  public const val ACTION_DISPLAY_SLEEP: String = "display_sleep"
+  public const val ACTION_LOCK_MAC: String = "lock_mac"
+
   /**
-   * Whether `MainActivity.onCreate` should route its initial launch `Intent` instead of restoring
-   * the user's saved screen after configuration recreation or process death.
+   * Outcome of evaluating an incoming `MainActivity` intent against the last handled intent key.
    */
-  public fun shouldHandleLaunchIntentOnCreate(hasSavedInstanceState: Boolean): Boolean =
-      !hasSavedInstanceState
+  public enum class IntentDecision {
+    Handle,
+    Restore,
+  }
+
+  /**
+   * Deterministic key for an incoming `MainActivity` intent from its data URI, Quick Settings tile
+   * `EXTRA_ACTION`, and optional creation-time extra, or `null` when neither URI nor action is
+   * present.
+   */
+  public fun intentKey(
+      dataUri: String?,
+      actionExtra: String?,
+      createdAt: Long? = null,
+  ): String? {
+    val uri = dataUri?.trim().orEmpty()
+    val action = actionExtra?.trim().orEmpty()
+    if (uri.isEmpty() && action.isEmpty()) return null
+    return buildString {
+      append("uri=").append(uri)
+      append("|action=").append(action)
+      if (createdAt != null) {
+        append("|created=").append(createdAt)
+      }
+    }
+  }
+
+  /**
+   * Whether an incoming `MainActivity` intent carries an actionable `vitruvian-remote://` link
+   * (screen, module, or pairing QR) or Quick Settings tile action.
+   */
+  public fun hasActionableIntentData(
+      dataUri: String?,
+      actionExtra: String?,
+  ): Boolean {
+    val hasLink = DeepLink.screen(dataUri) != null || DeepLink.pairing(dataUri) != null
+    val hasTileAction = actionExtra == ACTION_DISPLAY_SLEEP || actionExtra == ACTION_LOCK_MAC
+    return hasLink || hasTileAction
+  }
+
+  /**
+   * Decides whether `MainActivity` should handle an incoming intent or keep/restore saved screen
+   * state:
+   * - [IntentDecision.Handle] when [hasActionableData] is true and [intentKey] is non-empty and
+   *   differs from [savedHandledKey];
+   * - [IntentDecision.Restore] otherwise.
+   */
+  public fun intentDecision(
+      intentKey: String?,
+      savedHandledKey: String?,
+      hasActionableData: Boolean,
+  ): IntentDecision {
+    if (!hasActionableData || intentKey.isNullOrEmpty()) {
+      return IntentDecision.Restore
+    }
+    return if (intentKey == savedHandledKey) {
+      IntentDecision.Restore
+    } else {
+      IntentDecision.Handle
+    }
+  }
 
   /**
    * Whether the top bar should render its Settings gear (hidden whenever the nav rail is visible).

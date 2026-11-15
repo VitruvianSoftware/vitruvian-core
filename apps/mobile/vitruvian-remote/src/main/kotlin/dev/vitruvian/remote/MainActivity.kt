@@ -36,6 +36,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -81,6 +82,7 @@ public class MainActivity : ComponentActivity() {
   private lateinit var persistence: Persistence
   private lateinit var hid: BluetoothHidTransport
   private lateinit var state: RemoteState
+  private var handledIntentKey: String? = null
 
   /**
    * Backed by [Persistence] so first-visit Remote prompt vs permanent denial stay distinguishable.
@@ -224,11 +226,12 @@ public class MainActivity : ComponentActivity() {
       PhoneBridgeService.start(this)
     }
     setContent { RemoteApp(state) }
-    if (Derive.shouldHandleLaunchIntentOnCreate(savedInstanceState != null)) {
-      handleIntent(intent)
-    } else {
-      state.restoreScreen(savedInstanceState?.getString(KEY_SAVED_SCREEN))
-    }
+    handledIntentKey = savedInstanceState?.getString(KEY_HANDLED_INTENT)
+    routeIntent(
+        intent = intent,
+        savedScreen = savedInstanceState?.getString(KEY_SAVED_SCREEN),
+        isNewIntent = false,
+    )
   }
 
   override fun onSaveInstanceState(outState: Bundle) {
@@ -236,6 +239,7 @@ public class MainActivity : ComponentActivity() {
     if (::state.isInitialized) {
       outState.putString(KEY_SAVED_SCREEN, state.screen.name)
     }
+    handledIntentKey?.let { outState.putString(KEY_HANDLED_INTENT, it) }
   }
 
   /** Copies the hub's view of the bridge into the state the screens read. */
@@ -333,7 +337,44 @@ public class MainActivity : ComponentActivity() {
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
     setIntent(intent)
-    handleIntent(intent)
+    routeIntent(intent = intent, savedScreen = null, isNewIntent = true)
+  }
+
+  private fun routeIntent(intent: Intent?, savedScreen: String?, isNewIntent: Boolean) {
+    val dataUri = intent?.data?.toString()
+    val actionExtra = intent?.getStringExtra(EXTRA_ACTION)
+    val createdAt =
+        if (intent != null && intent.hasExtra(EXTRA_CREATED_AT)) {
+          intent.getLongExtra(EXTRA_CREATED_AT, 0L)
+        } else {
+          null
+        }
+    val key =
+        Derive.intentKey(
+            dataUri = dataUri,
+            actionExtra = actionExtra,
+            createdAt = createdAt,
+        )
+    val actionable =
+        Derive.hasActionableIntentData(
+            dataUri = dataUri,
+            actionExtra = actionExtra,
+        )
+    when (Derive.intentDecision(
+        intentKey = key,
+        savedHandledKey = handledIntentKey,
+        hasActionableData = actionable,
+    )) {
+      Derive.IntentDecision.Handle -> {
+        handledIntentKey = key
+        handleIntent(intent)
+      }
+      Derive.IntentDecision.Restore -> {
+        if (!isNewIntent) {
+          state.restoreScreen(savedScreen)
+        }
+      }
+    }
   }
 
   /**
@@ -359,9 +400,6 @@ public class MainActivity : ComponentActivity() {
       ACTION_LOCK_MAC -> state.runTileAction(HidAction.LockScreen)
       else -> Unit
     }
-    // Consumed: without this, every configuration change re-delivers the same
-    // extra and the Mac's display sleeps again on each rotation.
-    intent.removeExtra(EXTRA_ACTION)
   }
 
   override fun onResume() {
@@ -520,9 +558,11 @@ public class MainActivity : ComponentActivity() {
   public companion object {
     /** The extra a Quick Settings tile sets, and the two values it can carry. */
     public const val EXTRA_ACTION: String = "action"
-    public const val ACTION_DISPLAY_SLEEP: String = "display_sleep"
-    public const val ACTION_LOCK_MAC: String = "lock_mac"
+    public const val EXTRA_CREATED_AT: String = "created_at"
+    public const val ACTION_DISPLAY_SLEEP: String = Derive.ACTION_DISPLAY_SLEEP
+    public const val ACTION_LOCK_MAC: String = Derive.ACTION_LOCK_MAC
     internal const val KEY_SAVED_SCREEN: String = "saved_screen"
+    internal const val KEY_HANDLED_INTENT: String = "handled_intent_key"
 
     /**
      * `Manifest.permission.POST_NOTIFICATIONS` by name.
@@ -609,6 +649,7 @@ private class ShadeNotifier(
     val intent =
         Intent(Intent.ACTION_VIEW, Uri.parse(deepLink), context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(MainActivity.EXTRA_CREATED_AT, SystemClock.elapsedRealtimeNanos())
     val pending =
         PendingIntent.getActivity(
             context,
@@ -644,6 +685,7 @@ private class ShadeNotifier(
                 MainActivity::class.java,
             )
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(MainActivity.EXTRA_CREATED_AT, SystemClock.elapsedRealtimeNanos())
     val openPending =
         PendingIntent.getActivity(
             context,
