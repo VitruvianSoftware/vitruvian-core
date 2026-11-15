@@ -37,7 +37,7 @@
 name = "vitruvian-roborock-mcp"
 version = "0.2.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.98"
 license = "MIT"
 description = "Local daemon, CLI (rrctl) and MCP server for Roborock vacuums"
 repository = "https://github.com/VitruvianSoftware/vitruvian-roborock-mcp"

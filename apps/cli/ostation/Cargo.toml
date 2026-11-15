@@ -14,7 +14,7 @@
 name = "ostation"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.98"
 license = "MIT"
 description = "Local LAN client for the Olight Ostation 2 Pro (Tuya protocol 3.5, 18-byte header)"
 publish = false
