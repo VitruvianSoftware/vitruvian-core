@@ -316,9 +316,9 @@ pub fn check_icon_names_match_web_icons_tsx(root: &Path) -> Result<(), String> {
     let web_icon_names = extract_web_icon_names(&web_text);
     let android_icon_names = extract_android_icon_names(&android_text);
 
-    if web_icon_names.len() != 28 {
+    if web_icon_names.len() != 34 {
         return Err(format!(
-            "expected 28 web icon names, found {} ({:?})",
+            "expected 34 web icon names, found {} ({:?})",
             web_icon_names.len(),
             web_icon_names
         ));
@@ -536,7 +536,7 @@ public val NotAFunction: Int = 1
 
         let errs = run_all_checks(&dir).unwrap_err();
         assert_eq!(errs.len(), 3);
-        assert!(errs[0].contains("expected 28 web icon names, found 1"));
+        assert!(errs[0].contains("expected 34 web icon names, found 1"));
         assert!(errs[1].contains("expected 8 web illustration kinds, found 1"));
         assert!(errs[2].contains("Expected public fun Accordion in packages/design-system-android"));
 

@@ -1,0 +1,208 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Unit tests for the `headscale` alert group in
+# gitops/argocd/platform/prometheus/applicationset.yaml, fed by
+# headscale-key-exporter (gitops/argocd/platform/headscale/).
+#
+# These exist because the CI pre-auth key (HEADSCALE_CI_AUTHKEY) and Headplane's
+# API key expire on a date, and nothing used to say so before the day they
+# stopped working. The tests pin the two thresholds (warn under 30 days, page
+# under 3), that a credential far from expiry stays quiet, and that the
+# exporter going blind is itself an alert rather than silence.
+#
+# Samples are 1m apart: sparser ones go stale between points (5m lookback),
+# which resets `for:` and the alert never fires. An empty Prometheus label is
+# no label, so the API key's user="" is simply absent here.
+#
+# promtool starts the clock at 0, so time() at eval_time T is T in seconds and
+# a series value of N days means "expires N days after the test starts".
+rule_files:
+  - rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ------------------------------------------------------------ 30-day warn --
+  - interval: 1m
+    name: A key crossing 30 days left warns after an hour, not before
+    input_series:
+      # Expires half an hour before day 31: under 30 days left from 23h30m on.
+      - series: 'headscale_credential_expiration_timestamp_seconds{kind="preauthkey",id="5",name="tag:ci",user="james",reusable="true",ephemeral="true"}'
+        values: '2676600x1600'
+    alert_rule_test:
+      - eval_time: 23h
+        alertname: HeadscaleCredentialExpiringSoon
+        exp_alerts: []
+      # Condition true from 23h31m; `for: 1h` holds it pending until 24h31m.
+      - eval_time: 24h
+        alertname: HeadscaleCredentialExpiringSoon
+        exp_alerts: []
+      - eval_time: 25h
+        alertname: HeadscaleCredentialExpiringSoon
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              pagerduty_service: cluster
+              kind: preauthkey
+              id: "5"
+              name: "tag:ci"
+              user: james
+              reusable: "true"
+              ephemeral: "true"
+            exp_annotations:
+              summary: "Headscale preauthkey tag:ci (id 5) expires in 29d 22h 30m 0s"
+              description: "Headscale preauthkey tag:ci (id 5, user james) expires in 29d 22h 30m 0s. Rotate it before then: what uses each key and how to rotate it is in gitops/argocd/platform/headscale/README.md. A key nothing uses any more can be expired instead (bazel run //tools/gitops:headscale-apikey-expire or :headscale -- preauthkeys expire), which also clears this alert."
+      # A month out is a warning, not a page.
+      - eval_time: 25h
+        alertname: HeadscaleCredentialExpiringImminently
+        exp_alerts: []
+
+  # ------------------------------------------------------------- 3-day page --
+  - interval: 1m
+    name: Three days left pages
+    input_series:
+      # Expires at day 4: under 3 days left from hour 24 on.
+      - series: 'headscale_credential_expiration_timestamp_seconds{kind="apikey",id="3",name="TWRIQB0"}'
+        values: '345600x1600'
+    alert_rule_test:
+      - eval_time: 24h
+        alertname: HeadscaleCredentialExpiringImminently
+        exp_alerts: []
+      # Under 3 days it is the page alone: the warning has stood down.
+      - eval_time: 26h
+        alertname: HeadscaleCredentialExpiringSoon
+        exp_alerts: []
+      - eval_time: 26h
+        alertname: HeadscaleCredentialExpiringImminently
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              pagerduty_service: cluster
+              kind: apikey
+              id: "3"
+              name: TWRIQB0
+            exp_annotations:
+              summary: "Headscale apikey TWRIQB0 (id 3) expires in 2d 22h 0m 0s"
+              description: "Headscale apikey TWRIQB0 (id 3, user ) expires in 2d 22h 0m 0s, after a month of warnings. When it does, whatever joins or calls Headscale with it stops working (for the CI pre-auth key: every Zitadel apply workflow). Rotate it now: gitops/argocd/platform/headscale/README.md."
+
+  # ---------------------------------------------------------- far from it --
+  - interval: 1m
+    name: A credential a year out never alerts
+    input_series:
+      - series: 'headscale_credential_expiration_timestamp_seconds{kind="preauthkey",id="5",name="tag:ci",user="james",reusable="true",ephemeral="true"}'
+        values: '31536000x2900'
+      - series: 'headscale_key_exporter_up'
+        values: '1x2900'
+    alert_rule_test:
+      - eval_time: 47h
+        alertname: HeadscaleCredentialExpiringSoon
+        exp_alerts: []
+      - eval_time: 47h
+        alertname: HeadscaleCredentialExpiringImminently
+        exp_alerts: []
+      - eval_time: 47h
+        alertname: HeadscaleKeyExporterDown
+        exp_alerts: []
+
+  # ------------------------------------------------------- exporter blind --
+  - interval: 1m
+    name: The exporter failing to read Headscale is an alert after 30m
+    input_series:
+      - series: 'headscale_key_exporter_up{job="kubernetes-service-endpoints",namespace="headscale",service="headscale-key-exporter"}'
+        values: '0x60'
+    alert_rule_test:
+      - eval_time: 29m
+        alertname: HeadscaleKeyExporterDown
+        exp_alerts: []
+      - eval_time: 31m
+        alertname: HeadscaleKeyExporterDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              pagerduty_service: cluster
+              job: kubernetes-service-endpoints
+              namespace: headscale
+              service: headscale-key-exporter
+            exp_annotations:
+              summary: "headscale-key-exporter is not watching every Headscale key"
+              description: "headscale-key-exporter has not read the Headscale API (or some of its records) for 30m, or is not being scraped, so some Headscale key expiries are not being watched. Its log says why: bazel run //tools/gitops:logs -- -n headscale deploy/headscale-key-exporter. An HTTP 401 means its own API key expired or was revoked: re-mint it with bazel run //tools/gitops:seal-headscale-key-exporter."
+
+  - interval: 1m
+    name: The exporter missing entirely is an alert too
+    input_series:
+      # Some other series, so the test has input; the exporter's is absent.
+      - series: 'up{job="kubernetes-service-endpoints"}'
+        values: '1x60'
+    alert_rule_test:
+      - eval_time: 31m
+        alertname: HeadscaleKeyExporterDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              pagerduty_service: cluster
+            exp_annotations:
+              summary: "headscale-key-exporter is not watching every Headscale key"
+              description: "headscale-key-exporter has not read the Headscale API (or some of its records) for 30m, or is not being scraped, so some Headscale key expiries are not being watched. Its log says why: bazel run //tools/gitops:logs -- -n headscale deploy/headscale-key-exporter. An HTTP 401 means its own API key expired or was revoked: re-mint it with bazel run //tools/gitops:seal-headscale-key-exporter."
+
+  - interval: 1m
+    name: Reads that silently stop are an alert even while up stays 1
+    input_series:
+      # up frozen at 1, but the last successful read never moves past t=0.
+      - series: 'headscale_key_exporter_up{service="headscale-key-exporter"}'
+        values: '1x120'
+      - series: 'headscale_key_exporter_last_success_timestamp_seconds{service="headscale-key-exporter"}'
+        values: '0x120'
+    alert_rule_test:
+      # Over an hour stale from 60m; `for: 30m` holds it pending until 90m.
+      - eval_time: 89m
+        alertname: HeadscaleKeyExporterDown
+        exp_alerts: []
+      - eval_time: 91m
+        alertname: HeadscaleKeyExporterDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              pagerduty_service: cluster
+              service: headscale-key-exporter
+            exp_annotations:
+              summary: "headscale-key-exporter is not watching every Headscale key"
+              description: "headscale-key-exporter has not read the Headscale API (or some of its records) for 30m, or is not being scraped, so some Headscale key expiries are not being watched. Its log says why: bazel run //tools/gitops:logs -- -n headscale deploy/headscale-key-exporter. An HTTP 401 means its own API key expired or was revoked: re-mint it with bazel run //tools/gitops:seal-headscale-key-exporter."
+
+  - interval: 1m
+    name: A record the exporter cannot read is an alert even while up is 1
+    input_series:
+      - series: 'headscale_key_exporter_up{service="headscale-key-exporter"}'
+        values: '1x60'
+      - series: 'headscale_key_exporter_last_success_timestamp_seconds{service="headscale-key-exporter"}'
+        values: '0+60x60'
+      - series: 'headscale_key_exporter_unreadable_records{service="headscale-key-exporter"}'
+        values: '1x60'
+    alert_rule_test:
+      - eval_time: 29m
+        alertname: HeadscaleKeyExporterDown
+        exp_alerts: []
+      - eval_time: 31m
+        alertname: HeadscaleKeyExporterDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              pagerduty_service: cluster
+              service: headscale-key-exporter
+            exp_annotations:
+              summary: "headscale-key-exporter is not watching every Headscale key"
+              description: "headscale-key-exporter has not read the Headscale API (or some of its records) for 30m, or is not being scraped, so some Headscale key expiries are not being watched. Its log says why: bazel run //tools/gitops:logs -- -n headscale deploy/headscale-key-exporter. An HTTP 401 means its own API key expired or was revoked: re-mint it with bazel run //tools/gitops:seal-headscale-key-exporter."
+
+  - interval: 1m
+    name: A healthy exporter with fresh reads never alerts
+    input_series:
+      - series: 'headscale_key_exporter_up{service="headscale-key-exporter"}'
+        values: '1x120'
+      # last_success tracks the clock (one read a minute).
+      - series: 'headscale_key_exporter_last_success_timestamp_seconds{service="headscale-key-exporter"}'
+        values: '0+60x120'
+      - series: 'headscale_key_exporter_unreadable_records{service="headscale-key-exporter"}'
+        values: '0x120'
+    alert_rule_test:
+      - eval_time: 119m
+        alertname: HeadscaleKeyExporterDown
+        exp_alerts: []

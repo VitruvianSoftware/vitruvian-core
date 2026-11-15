@@ -29,6 +29,7 @@ import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -347,7 +348,8 @@ public class PhoneBridgeService : Service() {
                     this,
                     MainActivity::class.java,
                 )
-                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(MainActivity.EXTRA_CREATED_AT, SystemClock.elapsedRealtimeNanos()),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
     return NotificationCompat.Builder(this, BridgeHub.CHANNEL_LINK)

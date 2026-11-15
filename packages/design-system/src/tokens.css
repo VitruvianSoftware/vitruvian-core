@@ -255,12 +255,13 @@
   --color-text-dim: #5c666d;
   --color-divider: color-mix(in srgb, #1a2024 18%, transparent);
   --color-line: color-mix(in srgb, #1a2024 8%, transparent);
+  --color-accent: #3b5776;
   --color-accent-text: #3b5776;
   --color-accent-quiet: color-mix(in srgb, #5980a6 16%, transparent);
   --color-on-accent: #f5f3ee;
   --color-sanguine-text: #7e3a29;
-  --color-ok: #3f7a5b;
-  --color-warn: #94702a;
+  --color-ok: #2d6648;
+  --color-warn: #7a5a1e;
   --shadow-sm: 0 1px 2px color-mix(in srgb, #1a2024 12%, transparent);
   --shadow-md: 0 4px 14px color-mix(in srgb, #1a2024 14%, transparent);
   --shadow-lg: 0 18px 44px color-mix(in srgb, #1a2024 20%, transparent);

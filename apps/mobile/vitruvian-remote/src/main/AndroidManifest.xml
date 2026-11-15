@@ -116,14 +116,14 @@
         android:theme="@style/Theme.VitruvianRemote">
 
         <!--
-          resizeableActivity plus the size/orientation config changes are what
-          make the fold, unfold and tabletop transitions a re-layout rather
-          than an activity restart - without them the shell would lose its
-          state every time the device opens.
+          resizeableActivity plus the size/orientation/uiMode config changes are what
+          make fold, unfold, tabletop, and theme transitions a re-layout or recompose
+          rather than an activity restart - without them the shell would drop back
+          to Home on system dark/light flips or configuration transitions.
         -->
         <activity
             android:name=".MainActivity"
-            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|density|keyboardHidden"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|density|keyboardHidden|uiMode"
             android:exported="true"
             android:launchMode="singleTop"
             android:resizeableActivity="true"

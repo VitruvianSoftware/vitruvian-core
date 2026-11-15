@@ -19,7 +19,7 @@ Component package providing implementation for `apps/mobile/vitruvian-remote/src
 - `[Format.kt:Format]`
 - `[Markdown.kt:Markdown]`
 - `[MockHost.kt:MockHost]`
-- `[Models.kt:Screen]`
+- `[Derive.kt:Screen]`
 - `[Models.kt:Connection]`
 - `[Models.kt:MetricsSource]`
 - `[Models.kt:AppsView]`

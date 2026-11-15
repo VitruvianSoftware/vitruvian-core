@@ -247,7 +247,12 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
     Unavailable(vmsNotice)
   } else {
     state.vms.forEach { vm ->
-      ListItem(title = vm.name, subtitle = vm.subtitle, status = vm.tone) {
+      ListItem(
+          title = vm.name,
+          subtitle = vm.subtitle,
+          status = vm.tone,
+          statusAdjacentText = vm.tag,
+      ) {
         Tag(text = vm.tag, tone = vm.tagTone)
       }
     }
@@ -268,6 +273,7 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
           title = container.name,
           subtitle = container.subtitle,
           status = StatusTone.Ok,
+          statusAdjacentText = container.trailing,
       ) {
         VText(text = container.trailing, style = VitruvianType.listSub, color = colors.textDim)
       }
@@ -305,7 +311,12 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
     Unavailable(nodesNotice)
   } else {
     state.nodes.forEach { node ->
-      ListItem(title = node.name, subtitle = node.subtitle, status = node.tone) {
+      ListItem(
+          title = node.name,
+          subtitle = node.subtitle,
+          status = node.tone,
+          statusAdjacentText = node.tag,
+      ) {
         Tag(text = node.tag, tone = node.tagTone)
       }
     }

@@ -115,7 +115,7 @@ android_binary(
         "minSdkVersion": "26",
         "targetSdkVersion": "35",
         "versionCode": "1",
-        "versionName": "0.1.40",  # x-release-please-version
+        "versionName": "0.1.41",  # x-release-please-version
     },
     # No explicit visibility: the package default above already scopes this to
     # the app's own subpackages, and `bazel build //<this app>:app` needs no
@@ -211,20 +211,28 @@ kt_jvm_test(
     name = "derive_test",
     srcs = ["src/test/kotlin/dev/vitruvian/remote/state/DeriveTest.kt"],
     data = [
+        "src/main/AndroidManifest.xml",
         "src/main/kotlin/dev/vitruvian/remote/MainActivity.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/AgentClient.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/Derive.kt",
+        "src/main/kotlin/dev/vitruvian/remote/state/Models.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/Wire.kt",
         "//apps/desktop/vitruvian-speaker:Sources/VitruvianSpeakerToolCore/Pages.swift",
         "//apps/desktop/vitruvian-speaker:testdata/controls.json",
         "//apps/mobile/vitruvian-remote/macagent:golden_speaker_v1",
-    ] + glob(["src/main/kotlin/dev/vitruvian/remote/screens/*.kt"]),
+    ] + glob([
+        "src/main/kotlin/dev/vitruvian/remote/screens/*.kt",
+        "src/main/kotlin/dev/vitruvian/remote/shell/*.kt",
+    ]),
     test_class = "dev.vitruvian.remote.state.DeriveTest",
     deps = [
         ":derive",
         ":format",
+        ":hid_codes",
+        ":lib",
         ":wire",
+        "//packages/design-system-android:lib",
         "@maven//:junit_junit",
     ],
 )

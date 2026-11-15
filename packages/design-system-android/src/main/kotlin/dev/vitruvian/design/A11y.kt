@@ -56,22 +56,119 @@ public object A11y {
    * explicit [label] overrides the default state word derived from [tone]; when [text] is present,
    * the state word and caption are combined into a single spoken description.
    */
+  /** Default accessible trackpad announcement describing pointer and click gestures. */
+  public const val TRACKPAD_DESCRIPTION: String =
+      "Trackpad. Drag to move the pointer, tap to click."
+
+  /** Default spoken word for [tone], or [label] when an explicit state label is provided. */
+  public fun toneStateWord(tone: StatusTone, label: String? = null): String =
+      label?.takeIf { it.isNotBlank() }
+          ?: when (tone) {
+            StatusTone.Ok -> "OK"
+            StatusTone.Warn -> "Warning"
+            StatusTone.Crit -> "Error"
+            StatusTone.Neutral -> "Idle"
+            StatusTone.Run -> "Running"
+          }
+
+  /**
+   * Formats an accessible status label without repeating [toneStateWord] when the visible [text]
+   * caption already communicates that state word.
+   */
   public fun statusLabel(
       tone: StatusTone,
       text: String? = null,
       label: String? = null,
   ): String {
-    val stateWord =
-        label?.takeIf { it.isNotBlank() }
-            ?: when (tone) {
-              StatusTone.Ok -> "OK"
-              StatusTone.Warn -> "Warning"
-              StatusTone.Crit -> "Error"
-              StatusTone.Neutral -> "Idle"
-              StatusTone.Run -> "Running"
-            }
-    val caption = text?.trim()?.takeIf { it.isNotEmpty() }
-    return if (caption != null) "$stateWord, $caption" else stateWord
+    val stateWord = toneStateWord(tone = tone, label = label)
+    val caption = text?.trim()?.takeIf { it.isNotEmpty() } ?: return stateWord
+    val containsStateWord =
+        Regex("(?i)\\b${Regex.escape(stateWord.trim())}\\b").containsMatchIn(caption)
+    return if (containsStateWord) caption else "$stateWord, $caption"
+  }
+
+  /**
+   * Spoken announcement for [Status], or `null` when the dot is bare (`[text]` is blank) and
+   * [adjacentText] in the same row already speaks the tone's state word (so a row with `"RUNNING"`
+   * or `"OK"` beside a dot does not repeat the state word twice).
+   */
+  public fun statusAnnouncement(
+      tone: StatusTone,
+      text: String? = null,
+      label: String? = null,
+      adjacentText: String? = null,
+  ): String? {
+    if (text.isNullOrBlank() && !adjacentText.isNullOrBlank()) {
+      val stateWord = toneStateWord(tone = tone, label = label).trim()
+      if (Regex("(?i)\\b${Regex.escape(stateWord)}\\b").containsMatchIn(adjacentText)) {
+        return null
+      }
+    }
+    return statusLabel(tone = tone, text = text, label = label)
+  }
+
+  /**
+   * Builds a single accessible description for a toggleable [ListItem] switch row so inner children
+   * can clear their semantics and keep `replacedChildren` empty for Compose `Role.Switch` metadata.
+   */
+  public fun switchRowDescription(
+      title: String,
+      subtitle: String,
+      statusTone: StatusTone? = null,
+      statusAdjacentText: String? = null,
+      trailingText: String? = null,
+  ): String =
+      listOfNotNull(
+              statusTone?.let { statusAnnouncement(tone = it, adjacentText = statusAdjacentText) },
+              title.trim().takeIf { it.isNotEmpty() },
+              subtitle.trim().takeIf { it.isNotEmpty() },
+              trailingText?.trim()?.takeIf { it.isNotEmpty() },
+          )
+          .joinToString(", ")
+
+  /** Accessible label for [HostChip]: `"<name>, <state>. Opens settings."` */
+  public fun hostChipDescription(name: String, state: String): String {
+    val cleanName = name.trim().ifEmpty { "Mac" }
+    val cleanState = state.trim().ifEmpty { "Unknown" }
+    return "$cleanName, $cleanState. Opens settings."
+  }
+
+  /** Alpha-composites an ARGB foreground color over an opaque ARGB background color. */
+  public fun compositeOver(fgArgb: Int, bgArgb: Int): Int {
+    val alpha = ((fgArgb ushr 24) and 0xFF) / 255.0
+    if (alpha >= 1.0) return fgArgb
+    val fgR = (fgArgb ushr 16) and 0xFF
+    val fgG = (fgArgb ushr 8) and 0xFF
+    val fgB = fgArgb and 0xFF
+    val bgR = (bgArgb ushr 16) and 0xFF
+    val bgG = (bgArgb ushr 8) and 0xFF
+    val bgB = bgArgb and 0xFF
+    val r = (fgR * alpha + bgR * (1.0 - alpha) + 0.5).toInt().coerceIn(0, 255)
+    val g = (fgG * alpha + bgG * (1.0 - alpha) + 0.5).toInt().coerceIn(0, 255)
+    val b = (fgB * alpha + bgB * (1.0 - alpha) + 0.5).toInt().coerceIn(0, 255)
+    return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+  }
+
+  /** WCAG 2.1 relative luminance for an ARGB color in sRGB space. */
+  public fun relativeLuminance(argb: Int): Double {
+    fun linearize(channel: Int): Double {
+      val srgb = (channel and 0xFF) / 255.0
+      return if (srgb <= 0.04045) srgb / 12.92 else Math.pow((srgb + 0.055) / 1.055, 2.4)
+    }
+    val r = linearize(argb ushr 16)
+    val g = linearize(argb ushr 8)
+    val b = linearize(argb)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+  }
+
+  /** WCAG 2.1 contrast ratio between [fgArgb] (composited over [bgArgb]) and [bgArgb]. */
+  public fun contrastRatio(fgArgb: Int, bgArgb: Int): Double {
+    val fg = compositeOver(fgArgb = fgArgb, bgArgb = bgArgb)
+    val l1 = relativeLuminance(fg)
+    val l2 = relativeLuminance(bgArgb)
+    val lighter = maxOf(l1, l2)
+    val darker = minOf(l1, l2)
+    return (lighter + 0.05) / (darker + 0.05)
   }
 
   /**
@@ -124,4 +221,17 @@ public object A11y {
             "⏭" -> "Next track"
             else -> null
           }
+
+  /**
+   * Scales rail navigation label font size down at large accessibility font scales so the rendered
+   * size caps at [maxScaledDp] (e.g., [FontSize.label]) instead of truncating.
+   */
+  public fun railLabelFontSizeSp(
+      baseSp: Float = 9f,
+      fontScale: Float,
+      maxScaledDp: Float = 10f,
+  ): Float {
+    val scale = fontScale.coerceAtLeast(1f)
+    return if (baseSp * scale <= maxScaledDp) baseSp else maxScaledDp / scale
+  }
 }

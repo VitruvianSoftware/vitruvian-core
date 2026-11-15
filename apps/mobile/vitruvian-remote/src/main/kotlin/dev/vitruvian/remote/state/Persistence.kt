@@ -30,6 +30,7 @@ private const val KEY_SEEDED_PRS = "seeded.prs"
 private const val KEY_HIDDEN = "hiddenWidgets"
 private const val KEY_MACROS = "userMacros"
 private const val KEY_THEME = "darkTheme"
+private const val KEY_THEME_MODE = "themeMode"
 private const val KEY_DOCK = "dockOpen"
 private const val KEY_REMOTE_OPEN = "remoteOpenSections"
 private const val KEY_HOST = "selectedHost"
@@ -49,13 +50,7 @@ private const val KEY_BRIDGE_AUDIT = "bridgeAudit"
 private const val KEY_SPEAKER_SETTINGS_EXPANDED = "vitruvianSpeakerSettingsExpanded"
 private const val KEY_SPEAKER_MIRROR = "vitruvianSpeakerMirror"
 private const val KEY_ASKED_NOTIFICATIONS = "askedForNotifications"
-
-/** Keys the HomeSpeaker to Vitruvian Speaker rename retired, and the key each one became. */
-private val RENAMED_BOOLEAN_KEYS: Map<String, String> =
-    mapOf(
-        "homeSpeakerSettingsExpanded" to KEY_SPEAKER_SETTINGS_EXPANDED,
-        "homeSpeakerMirror" to KEY_SPEAKER_MIRROR,
-    )
+private const val KEY_ASKED_BLUETOOTH = "askedForBluetooth"
 
 /** How many console commands are remembered. Beyond this the oldest fall off. */
 private const val RECENT_COMMAND_LIMIT = 20
@@ -67,21 +62,69 @@ private const val FIELD = "\u001F"
 private const val RECORD = "\u001E"
 
 /**
+ * Pure key-value storage port so [Persistence] tests run on the JVM without Android framework
+ * classes.
+ */
+public interface PrefsStore {
+  public fun contains(key: String): Boolean
+
+  public fun getString(key: String, defValue: String?): String?
+
+  public fun getStringSet(key: String, defValues: Set<String>?): Set<String>?
+
+  public fun getInt(key: String, defValue: Int): Int
+
+  public fun getLong(key: String, defValue: Long): Long
+
+  public fun getBoolean(key: String, defValue: Boolean): Boolean
+
+  public fun edit(): Editor
+
+  /** Batch mutation handle matching `SharedPreferences.Editor`. */
+  public interface Editor {
+    public fun putString(key: String, value: String?): Editor
+
+    public fun putStringSet(key: String, values: Set<String>?): Editor
+
+    public fun putInt(key: String, value: Int): Editor
+
+    public fun putLong(key: String, value: Long): Editor
+
+    public fun putBoolean(key: String, value: Boolean): Editor
+
+    public fun remove(key: String): Editor
+
+    public fun apply()
+  }
+}
+
+/**
  * The handful of things that survive a restart: installed modules, user macros, hidden widgets, the
  * selected host, the theme, the dock and how the trackpad feels.
  *
- * Deliberately `SharedPreferences` and not DataStore - this is five scalars and two small lists,
- * read once at startup and written on user action, so the flow machinery would be all cost and no
- * benefit.
+ * Deliberately backed by `SharedPreferences` and not DataStore - this is five scalars and two small
+ * lists, read once at startup and written on user action, so the flow machinery would be all cost
+ * and no benefit.
  */
-public class Persistence(context: Context) {
-  private val prefs: SharedPreferences =
-      context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+public class Persistence public constructor(private val prefs: PrefsStore) {
 
   init {
     migrateSingleHost()
     migrateRenamedModules()
+    migrateThemeMode()
     seedPullRequestsModule()
+  }
+
+  /** Migrates the legacy boolean `darkTheme` preference once into `ThemeMode` (`Dark`/`Light`). */
+  private fun migrateThemeMode() {
+    if (!prefs.contains(KEY_THEME_MODE) && prefs.contains(KEY_THEME)) {
+      val migrated =
+          Derive.migrateThemeMode(
+              storedMode = null,
+              legacyDarkTheme = prefs.getBoolean(KEY_THEME, true),
+          )
+      prefs.edit().putString(KEY_THEME_MODE, migrated.name).remove(KEY_THEME).apply()
+    }
   }
 
   /**
@@ -213,9 +256,14 @@ public class Persistence(context: Context) {
     get() = prefs.getStringSet(KEY_HIDDEN, emptySet())?.toList() ?: emptyList()
     set(value) = prefs.edit().putStringSet(KEY_HIDDEN, value.toSet()).apply()
 
-  public var darkTheme: Boolean
-    get() = prefs.getBoolean(KEY_THEME, true)
-    set(value) = prefs.edit().putBoolean(KEY_THEME, value).apply()
+  public var themeMode: ThemeMode
+    get() =
+        Derive.migrateThemeMode(
+            storedMode = prefs.getString(KEY_THEME_MODE, null),
+            legacyDarkTheme =
+                if (prefs.contains(KEY_THEME)) prefs.getBoolean(KEY_THEME, true) else null,
+        )
+    set(value) = prefs.edit().putString(KEY_THEME_MODE, value.name).apply()
 
   public var dockOpen: Boolean
     get() = prefs.getBoolean(KEY_DOCK, true)
@@ -327,7 +375,74 @@ public class Persistence(context: Context) {
     get() = prefs.getBoolean(KEY_ASKED_NOTIFICATIONS, false)
     set(value) = prefs.edit().putBoolean(KEY_ASKED_NOTIFICATIONS, value).apply()
 
+  /**
+   * Whether this install has ever prompted for `BLUETOOTH_CONNECT`, separating "not asked yet" from
+   * "permanently denied" when Android reports `shouldShowRequestPermissionRationale == false`.
+   */
+  public var askedForBluetooth: Boolean
+    get() = prefs.getBoolean(KEY_ASKED_BLUETOOTH, false)
+    set(value) = prefs.edit().putBoolean(KEY_ASKED_BLUETOOTH, value).apply()
+
   private companion object {
     const val FIELD_COUNT = 5
+
+    /** Keys the HomeSpeaker to Vitruvian Speaker rename retired, and the key each one became. */
+    val RENAMED_BOOLEAN_KEYS: Map<String, String> =
+        mapOf(
+            "homeSpeakerSettingsExpanded" to KEY_SPEAKER_SETTINGS_EXPANDED,
+            "homeSpeakerMirror" to KEY_SPEAKER_MIRROR,
+        )
+  }
+}
+
+/** Creates a [Persistence] backed by the app's Android [SharedPreferences]. */
+public fun Persistence(context: Context): Persistence =
+    Persistence(
+        AndroidPrefsStore(
+            context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)),
+    )
+
+private class AndroidPrefsStore(private val prefs: SharedPreferences) : PrefsStore {
+  override fun contains(key: String): Boolean = prefs.contains(key)
+
+  override fun getString(key: String, defValue: String?): String? = prefs.getString(key, defValue)
+
+  override fun getStringSet(key: String, defValues: Set<String>?): Set<String>? =
+      prefs.getStringSet(key, defValues)
+
+  override fun getInt(key: String, defValue: Int): Int = prefs.getInt(key, defValue)
+
+  override fun getLong(key: String, defValue: Long): Long = prefs.getLong(key, defValue)
+
+  override fun getBoolean(key: String, defValue: Boolean): Boolean = prefs.getBoolean(key, defValue)
+
+  override fun edit(): PrefsStore.Editor = AndroidEditor(prefs.edit())
+
+  private class AndroidEditor(private val editor: SharedPreferences.Editor) : PrefsStore.Editor {
+    override fun putString(key: String, value: String?): PrefsStore.Editor = apply {
+      editor.putString(key, value)
+    }
+
+    override fun putStringSet(key: String, values: Set<String>?): PrefsStore.Editor = apply {
+      editor.putStringSet(key, values)
+    }
+
+    override fun putInt(key: String, value: Int): PrefsStore.Editor = apply {
+      editor.putInt(key, value)
+    }
+
+    override fun putLong(key: String, value: Long): PrefsStore.Editor = apply {
+      editor.putLong(key, value)
+    }
+
+    override fun putBoolean(key: String, value: Boolean): PrefsStore.Editor = apply {
+      editor.putBoolean(key, value)
+    }
+
+    override fun remove(key: String): PrefsStore.Editor = apply { editor.remove(key) }
+
+    override fun apply() {
+      editor.apply()
+    }
   }
 }

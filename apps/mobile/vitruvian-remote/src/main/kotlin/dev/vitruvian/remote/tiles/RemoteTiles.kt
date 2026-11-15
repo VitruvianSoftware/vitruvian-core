@@ -23,6 +23,7 @@ package dev.vitruvian.remote.tiles
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
+import android.os.SystemClock
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import dev.vitruvian.remote.MainActivity
@@ -54,6 +55,7 @@ public abstract class RemoteActionTile : TileService() {
         Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .putExtra(MainActivity.EXTRA_ACTION, action)
+            .putExtra(MainActivity.EXTRA_CREATED_AT, SystemClock.elapsedRealtimeNanos())
     // From API 34 the Intent overload throws; before it, the PendingIntent
     // overload does not exist. Both collapse the shade and unlock first if the
     // device is locked, which is what a tile that drives a Mac needs.
