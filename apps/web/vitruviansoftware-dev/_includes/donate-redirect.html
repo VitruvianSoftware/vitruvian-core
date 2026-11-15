@@ -1,0 +1,63 @@
+{%- comment -%}
+  Shared redirect + attribution script for /donate/ and /donate/<key>/.
+  Forwards click source (?src=, ?source=, ?utm_source=, or sanitized
+  document.referrer) to Stripe via ?client_reference_id=<source> so both
+  unpaid and completed Checkout Sessions record where the click originated.
+{%- endcomment -%}
+<script>
+  (function () {
+    var key = {{ include.key | jsonify }};
+    var baseLink = {{ include.link | jsonify }};
+
+    function sanitize(raw) {
+      return String(raw || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 200);
+    }
+
+    function resolveSource() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        var explicit = params.get("src") || params.get("source") || params.get("utm_source");
+        if (explicit) {
+          var clean = sanitize(explicit);
+          if (clean) return clean;
+        }
+        if (document.referrer) {
+          var ref = new URL(document.referrer);
+          if (ref.hostname === window.location.hostname || ref.hostname === "vitruviansoftware.dev") {
+            var path = ref.pathname.replace(/^\/+|\/+$/g, "") || "home";
+            return sanitize("site-" + path);
+          }
+          var extPath = ref.pathname.replace(/^\/+|\/+$/g, "");
+          return sanitize("ref-" + ref.hostname + (extPath ? "-" + extPath : ""));
+        }
+      } catch (e) {}
+      return sanitize("direct-" + key);
+    }
+
+    var source = resolveSource();
+    var target = baseLink;
+    try {
+      var u = new URL(baseLink);
+      if (source) u.searchParams.set("client_reference_id", source);
+      target = u.toString();
+    } catch (e) {}
+
+    var btn = document.getElementById("donate-checkout-btn");
+    if (btn) btn.href = target;
+
+    window.addEventListener("load", function () {
+      try {
+        if (window.umami && typeof window.umami.track === "function") {
+          window.umami.track("donate-redirect", { app: key, source: source });
+        }
+      } catch (e) {}
+      setTimeout(function () {
+        window.location.replace(target);
+      }, 250);
+    });
+  })();
+</script>
