@@ -368,11 +368,30 @@ public class AppInfoTest {
 
     assertTrue(
         AppInfo.privacyCrashReportsStatement.contains(
-            "the error and where in the app it happened, the app version, the Android version, " +
-                "and device details such as model, screen size and memory. Never your texts, " +
-                "contacts, files, what you type, or your Macs' addresses.",
+            "the Sentry Java SDK sends a report to Vitruvian Software's own crash server " +
+                "(sentry-ingest.ipv1337.dev)",
         ),
     )
+    assertTrue(
+        AppInfo.privacyCrashReportsStatement.contains(
+            "the error and its stack trace (never other threads' stacks), the crash time, " +
+                "the app version, the Android version, the phone model, screen size in pixels " +
+                "and total memory, plus random report and trace IDs and the SDK version.",
+        ),
+    )
+    assertTrue(
+        AppInfo.privacyCrashReportsStatement.contains(
+            "Breadcrumbs, other threads, hostnames, default PII, user IP, and performance " +
+                "tracing are off, and it never sends your texts, contacts, files, what you " +
+                "type, or your Macs' addresses.",
+        ),
+    )
+    for (forbidden in listOf("such as", "screenshot", "view hierarchy", "Sentry Android")) {
+      assertFalse(
+          "privacyCrashReportsStatement must not claim '$forbidden'",
+          AppInfo.privacyCrashReportsStatement.contains(forbidden, ignoreCase = true),
+      )
+    }
 
     assertEquals(
         listOf(

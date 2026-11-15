@@ -21,9 +21,9 @@ This phone talks to the Macs you add, and to Vitruvian Software's crash server i
 ## What leaves the phone
 
 1. **Crash reports (on by default).**
-   If the app crashes, the Sentry SDK sends a crash report to Vitruvian Software's own Sentry server (`sentry-ingest.ipv1337.dev`). The report includes the error and where in the app it happened, the app version, the Android version, and device details such as model, screen size and memory. Never your texts, contacts, files, what you type, or your Macs' addresses. Breadcrumbs, screenshots and the view hierarchy are off. The Sentry Android SDK may also attach standard technical details of its own; see the Sentry Android documentation for that list.
+   If the app crashes, the Sentry Java SDK sends a crash report to Vitruvian Software's own crash server (`sentry-ingest.ipv1337.dev`), so we can fix it. The report sends the error and its stack trace (never other threads' stacks), the crash time, the app version, the Android version, the phone model, screen size in pixels and total memory, plus random report and trace IDs and the SDK version. Breadcrumbs, other threads, hostnames, default PII, user IP, and performance tracing are off, and reports never include your texts, contacts, files, what you type, or your Macs' addresses.
 
-   You can turn crash reports off at any time under **Settings → About → Privacy** using the **Send crash reports** switch. Switching it off closes Sentry right away. Turning crash reports off also deletes any reports still waiting to be sent. While it is off, Sentry is not started when the app opens.
+   You can turn crash reports off at any time under **Settings → About → Privacy** using the **Send crash reports** switch. Turning it off closes Sentry right away, deletes any unsent reports cached on your phone, and keeps Sentry from starting when the app opens.
 
 2. **The Macs you add.**
    Mac telemetry, command, and Phone Bridge requests go only to the Macs you add. For each Mac you add, the phone stores its address and pairing token and connects over your local network or Tailscale.

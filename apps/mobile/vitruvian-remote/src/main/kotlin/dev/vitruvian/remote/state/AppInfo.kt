@@ -154,11 +154,15 @@ public object AppInfo {
 
   /** Statements rendered on the Privacy page, each verified against the app's actual code. */
   public const val privacyCrashReportsStatement: String =
-      "Crash reports: if the app crashes, a report is sent to Vitruvian Software's own crash " +
-          "server, so we can fix it: the error and where in the app it happened, the app " +
-          "version, the Android version, and device details such as model, screen size and " +
-          "memory. Never your texts, contacts, files, what you type, or your Macs' addresses. " +
-          "You can turn this off below."
+      "Crash reports (on by default): if the app crashes, the Sentry Java SDK sends a report " +
+          "to Vitruvian Software's own crash server (sentry-ingest.ipv1337.dev), so we can fix " +
+          "it. It sends the error and its stack trace (never other threads' stacks), the crash " +
+          "time, the app version, the Android version, the phone model, screen size in pixels " +
+          "and total memory, plus random report and trace IDs and the SDK version. Breadcrumbs, " +
+          "other threads, hostnames, default PII, user IP, and performance tracing are off, and " +
+          "it never sends your texts, contacts, files, what you type, or your Macs' addresses. " +
+          "Turning this off below closes Sentry right away, deletes any unsent reports on this " +
+          "phone, and keeps Sentry off when the app opens."
 
   /** Canonical Phone Bridge capabilities shared across Settings, Phone Bridge, and Privacy. */
   public val phoneBridgeCapabilities: List<String> =
@@ -197,7 +201,7 @@ public object AppInfo {
           "Phone Bridge is off until you turn it on. When it's on, AI agents on your own Mac " +
               "can use only the permissions you grant ($phoneBridgeCapabilitiesCommaList). " +
               "The most recent requests are listed on the Phone Bridge page.",
-          "Alerts come from your Mac through the ntfy server you set up, if any.",
+          "Alerts come from your Mac through the ntfy server you set up, if any; this app does not contact ntfy.",
           "Dictation uses your phone's speech service, which may send audio to its provider.",
           "Donate and the links here open in your browser. The app never handles payment details.",
       )
