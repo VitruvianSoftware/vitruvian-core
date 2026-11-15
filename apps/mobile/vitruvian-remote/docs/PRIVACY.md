@@ -5,7 +5,7 @@
 
 # Privacy
 
-Vitruvian Remote connects your phone directly to the Macs you add. It has no user account, no cloud dashboard, and no ad libraries. Crash reports are enabled by default and can be turned off in the app.
+This phone talks to the Macs you add, and to Vitruvian Software's crash server if crash reports are on. It has no user account, no cloud dashboard, and no ad libraries. Crash reports are on by default and can be turned off in the app.
 
 ## The short version
 
@@ -21,9 +21,9 @@ Vitruvian Remote connects your phone directly to the Macs you add. It has no use
 ## What leaves the phone
 
 1. **Crash reports (on by default).**
-   If the app crashes, the Sentry SDK sends a crash report to Vitruvian Software's own Sentry server (`sentry-ingest.ipv1337.dev`). The report includes the error, the app version, the phone model, and the Android version. The crash SDK is set not to send personal data, and not to send the server's name, though a crash report can still contain the error message and where in the app the crash happened. The Sentry Android SDK may also attach standard technical details of its own; see the Sentry Android documentation for that list.
+   If the app crashes, the Sentry SDK sends a crash report to Vitruvian Software's own Sentry server (`sentry-ingest.ipv1337.dev`). The report includes the error and where in the app it happened, the app version, the Android version, and device details such as model, screen size and memory. Never your texts, contacts, files, what you type, or your Macs' addresses. Breadcrumbs, screenshots and the view hierarchy are off. The Sentry Android SDK may also attach standard technical details of its own; see the Sentry Android documentation for that list.
 
-   You can turn crash reports off at any time under **Settings → About → Privacy** using the **Send crash reports** switch. Switching it off closes Sentry right away, and while it is off, Sentry is not started when the app opens.
+   You can turn crash reports off at any time under **Settings → About → Privacy** using the **Send crash reports** switch. Switching it off closes Sentry right away. Turning crash reports off also deletes any reports still waiting to be sent. While it is off, Sentry is not started when the app opens.
 
 2. **The Macs you add.**
    Mac telemetry, command, and Phone Bridge requests go only to the Macs you add. For each Mac you add, the phone stores its address and pairing token and connects over your local network or Tailscale.
@@ -35,7 +35,7 @@ Vitruvian Remote connects your phone directly to the Macs you add. It has no use
    Trackpad gestures and key presses are sent to your paired Mac over Bluetooth HID, presenting the phone as a keyboard and mouse. Nothing else in the app uses Bluetooth for data.
 
 5. **Phone Bridge (off until you turn it on).**
-   Phone Bridge starts turned off. When you switch **Run Phone Bridge** on in **Settings → Phone Bridge**, the phone holds an outbound connection to your paired Mac helper so AI agents on your Mac can call tools on the phone within the permissions you grant:
+   Phone Bridge starts turned off. When you switch **Run Phone Bridge** on in **Settings → Phone Bridge**, the phone holds an outbound connection to your paired Mac helper so AI agents on your Mac can read texts, contacts, call history, and location, and use notifications and screen control, within the permissions you grant:
    - Reading tools (`phone.status`, `notifications.list`, `sms.list`, `contacts.search`, `calls.log`, `location.current`, `screen.screenshot`, `screen.tree`) run without an interactive prompt and are recorded in the call log.
    - Action tools (`apps.open`, `notifications.dismiss`, `screen.tap`, `screen.long_press`, `screen.swipe`, `screen.type`, `screen.key`) are refused unless you open the one-hour trust window (**Trust agents for 1 hour**).
    - Outbound tools (`sms.send`, `calls.dial`, `notifications.reply`) ask you to approve each request on the phone (waiting up to 60 seconds), unless the one-hour trust window is open.
