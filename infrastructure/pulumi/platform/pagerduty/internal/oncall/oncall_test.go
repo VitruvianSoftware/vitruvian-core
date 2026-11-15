@@ -288,10 +288,11 @@ func TestPlaintextTokenGuardRejectsSecrets(t *testing.T) {
 }
 
 type recordedResource struct {
-	Type   string
-	Name   string
-	ID     string
-	Inputs resource.PropertyMap
+	Type     string
+	Name     string
+	ID       string
+	ImportID string
+	Inputs   resource.PropertyMap
 }
 
 type recordedInvoke struct {
@@ -341,10 +342,11 @@ func (m *pagerdutyMocks) NewResource(args pulumi.MockResourceArgs) (string, reso
 
 	m.mu.Lock()
 	m.resources = append(m.resources, recordedResource{
-		Type:   args.TypeToken,
-		Name:   args.Name,
-		ID:     id,
-		Inputs: args.Inputs,
+		Type:     args.TypeToken,
+		Name:     args.Name,
+		ID:       id,
+		ImportID: args.ID,
+		Inputs:   args.Inputs,
 	})
 	m.mu.Unlock()
 
@@ -528,5 +530,45 @@ func TestResourceNamesDeriveFromServiceKey(t *testing.T) {
 	}
 	if got := integrations[0].Inputs["name"].StringValue(); got != "Renamed Sentry Display (Events API v2)" {
 		t.Fatalf("expected updated integration name, got %q", got)
+	}
+}
+
+func TestEscalationPolicyImportsOnlyWhenAdoptIDSet(t *testing.T) {
+	cases := []struct {
+		name    string
+		adoptID string
+	}{
+		{name: "adoptId set", adoptID: "PS9GPWM"},
+		{name: "adoptId empty", adoptID: ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := validSettings()
+			s.Escalation.AdoptID = tc.adoptID
+			m := &pagerdutyMocks{}
+
+			err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+				provider, err := pagerduty.NewProvider(ctx, "pagerduty", &pagerduty.ProviderArgs{
+					Token: pulumi.ToSecret(pulumi.String("mock-token")).(pulumi.StringOutput),
+				})
+				if err != nil {
+					return err
+				}
+				_, err = Reconcile(ctx, provider, s)
+				return err
+			}, pulumi.WithMocks("vitruvian-pagerduty", "production", m))
+			if err != nil {
+				t.Fatalf("mocked run failed: %v", err)
+			}
+
+			policies := m.byType("pagerduty:index/escalationPolicy:EscalationPolicy")
+			if len(policies) != 1 {
+				t.Fatalf("expected 1 escalation policy, got %d", len(policies))
+			}
+			if policies[0].ImportID != tc.adoptID {
+				t.Fatalf("expected ImportID %q, got %q", tc.adoptID, policies[0].ImportID)
+			}
+		})
 	}
 }

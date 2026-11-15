@@ -514,6 +514,9 @@ fn write_apps_prunes_only_generated_workflows() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+// PagerDuty's only environment is production, so there is no sandbox rung to default to.
+const PRODUCTION_ONLY_APPS: &[&str] = &["pagerduty"];
+
 #[test]
 fn dispatch_never_defaults_to_production() {
     for g in render::group_by_app(&fixtures()).unwrap() {
@@ -521,7 +524,7 @@ fn dispatch_never_defaults_to_production() {
         if envs.is_empty() {
             continue;
         }
-        if envs.len() > 1 {
+        if !(envs.len() == 1 && PRODUCTION_ONLY_APPS.contains(&g.app.as_str())) {
             assert_ne!(envs[0], "production", "app {}", g.app);
         }
         if envs.iter().any(|e| e == "production") {
