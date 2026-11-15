@@ -226,15 +226,18 @@ public object AppInfo {
   }
 
   /**
-   * Closes Sentry and deletes `<appCacheDir>/sentry` right after so previously queued or newly
-   * closed crash envelopes do not remain on disk.
+   * Sets `options.shutdownTimeoutMillis = 0` so queued events are not flushed, closes Sentry, and
+   * deletes `<appCacheDir>/sentry` right after.
    */
   public fun disableCrashReporting(
       appCacheDir: File,
+      options: SentryOptions = Sentry.getCurrentHub().options,
       closeSentry: () -> Unit = { Sentry.close() },
+      deleteCache: (File) -> Unit = ::clearSentryCache,
   ) {
+    options.shutdownTimeoutMillis = 0L
     closeSentry()
-    clearSentryCache(appCacheDir)
+    deleteCache(appCacheDir)
   }
 
   /**

@@ -4066,6 +4066,68 @@ public class DeriveTest {
   }
 
   @Test
+  public fun `disableCrashReporting sets shutdownTimeoutMillis to zero before closing and clearing cache`() {
+    val cacheDir =
+        java.nio.file.Files.createTempDirectory("vitruvian-remote-sentry-timeout").toFile()
+    try {
+      val sentryDir = AppInfo.sentryCacheDir(cacheDir)
+      java.io.File(sentryDir, "outbox").apply { mkdirs() }
+      val queued = java.io.File(sentryDir, "outbox/queued.envelope").apply { writeText("queued") }
+      val steps = mutableListOf<String>()
+      val recordingOptions =
+          object : io.sentry.SentryOptions() {
+            override fun setShutdownTimeoutMillis(shutdownTimeoutMillis: Long) {
+              super.setShutdownTimeoutMillis(shutdownTimeoutMillis)
+              steps += "setTimeout:$shutdownTimeoutMillis"
+            }
+          }
+      assertTrue(recordingOptions.shutdownTimeoutMillis > 0L)
+
+      AppInfo.disableCrashReporting(
+          appCacheDir = cacheDir,
+          options = recordingOptions,
+          closeSentry = {
+            assertEquals(0L, recordingOptions.shutdownTimeoutMillis)
+            assertTrue(sentryDir.exists())
+            steps += "close"
+          },
+          deleteCache = { dir ->
+            steps += "deleteCache"
+            AppInfo.clearSentryCache(dir)
+          },
+      )
+
+      assertEquals(listOf("setTimeout:0", "close", "deleteCache"), steps)
+      assertEquals(0L, recordingOptions.shutdownTimeoutMillis)
+      assertFalse(queued.exists())
+      assertFalse(sentryDir.exists())
+
+      // Also verify default options wiring against a real initialized hub.
+      java.io.File(sentryDir, "outbox").apply { mkdirs() }
+      java.io.File(sentryDir, "outbox/queued.envelope").writeText("queued")
+      io.sentry.Sentry.init { opts ->
+        AppInfo.configureSentryOptions(
+            options = opts,
+            dsn = "https://public@127.0.0.1:1/0",
+            appVersion = "0.1.41",
+            appCacheDir = cacheDir,
+        )
+      }
+      val liveOptions = io.sentry.Sentry.getCurrentHub().options
+      assertEquals(2000L, liveOptions.shutdownTimeoutMillis)
+
+      AppInfo.disableCrashReporting(cacheDir)
+
+      assertEquals(0L, liveOptions.shutdownTimeoutMillis)
+      assertFalse(io.sentry.Sentry.isEnabled())
+      assertFalse(sentryDir.exists())
+    } finally {
+      io.sentry.Sentry.close()
+      cacheDir.deleteRecursively()
+    }
+  }
+
+  @Test
   fun themeModeMigrationAndDarkResolution() {
     // New installs default to System; existing darkTheme booleans migrate once to Dark/Light.
     assertEquals(

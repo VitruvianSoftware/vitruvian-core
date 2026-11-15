@@ -25,6 +25,7 @@ import io.sentry.Breadcrumb
 import io.sentry.Hint
 import io.sentry.MainEventProcessor
 import io.sentry.Scope
+import io.sentry.Sentry
 import io.sentry.SentryEnvelope
 import io.sentry.SentryEvent
 import io.sentry.SentryOptions
@@ -755,5 +756,64 @@ public class AppInfoTest {
         "java.net.ConnectException: timeout",
         benignSanitized.exceptions!!.single().value,
     )
+  }
+
+  @Test
+  public fun `disableCrashReporting sets shutdownTimeoutMillis to zero before close and cache clear`() {
+    val cacheDir = Files.createTempDirectory("vitruvian-sentry-disable-order").toFile()
+    try {
+      val sentryDir = AppInfo.sentryCacheDir(cacheDir)
+      File(sentryDir, "outbox").apply { mkdirs() }
+      File(sentryDir, "outbox/queued.envelope").writeText("queued")
+      val steps = mutableListOf<String>()
+      val recordingOptions =
+          object : SentryOptions() {
+            override fun setShutdownTimeoutMillis(shutdownTimeoutMillis: Long) {
+              super.setShutdownTimeoutMillis(shutdownTimeoutMillis)
+              steps += "setTimeout:$shutdownTimeoutMillis"
+            }
+          }
+      assertEquals(2000L, recordingOptions.shutdownTimeoutMillis)
+
+      AppInfo.disableCrashReporting(
+          appCacheDir = cacheDir,
+          options = recordingOptions,
+          closeSentry = {
+            assertEquals(0L, recordingOptions.shutdownTimeoutMillis)
+            assertTrue(sentryDir.exists())
+            steps += "close"
+          },
+          deleteCache = { dir ->
+            steps += "deleteCache"
+            AppInfo.clearSentryCache(dir)
+          },
+      )
+
+      assertEquals(listOf("setTimeout:0", "close", "deleteCache"), steps)
+      assertEquals(0L, recordingOptions.shutdownTimeoutMillis)
+      assertFalse(sentryDir.exists())
+
+      File(sentryDir, "outbox").apply { mkdirs() }
+      File(sentryDir, "outbox/queued.envelope").writeText("queued")
+      Sentry.init { opts ->
+        AppInfo.configureSentryOptions(
+            options = opts,
+            dsn = "https://public@127.0.0.1:1/0",
+            appVersion = "0.1.41",
+            appCacheDir = cacheDir,
+        )
+      }
+      val liveOptions = Sentry.getCurrentHub().options
+      assertEquals(2000L, liveOptions.shutdownTimeoutMillis)
+
+      AppInfo.disableCrashReporting(cacheDir)
+
+      assertEquals(0L, liveOptions.shutdownTimeoutMillis)
+      assertFalse(Sentry.isEnabled())
+      assertFalse(sentryDir.exists())
+    } finally {
+      Sentry.close()
+      cacheDir.deleteRecursively()
+    }
   }
 }
