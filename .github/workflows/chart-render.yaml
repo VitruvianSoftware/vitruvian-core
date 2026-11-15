@@ -44,7 +44,7 @@
 # in infrastructure/pulumi/platform/repo-config/main.go), remove the
 # `pull_request.paths` filter below or move the job behind a job-level `if:`
 # (the `changes` pattern in ci.yaml). A required check whose workflow does not
-# start never reports, and the PR waits on it forever (see gitops-validate.yaml's
+# start never reports, and the PR waits on it forever (see the `changes` job in ci.yaml;
 # `on:` block for the incident).
 name: chart-render
 
@@ -75,7 +75,7 @@ permissions:
 # Per-commit keying on non-PR events. A ref-keyed group puts every push-to-main
 # run in one lane, where GitHub evicts a still-PENDING run when a newer one
 # queues behind the running one — so a burst of merges silently drops the middle
-# commits' verdicts. Same pattern, and the same reason, as gitops-validate.yaml.
+# commits' verdicts. Same pattern, and the same reason, as ci.yaml.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}

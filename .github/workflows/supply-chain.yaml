@@ -28,7 +28,8 @@
 #
 # One REQUIRED merge-queue check (repo-config/main.go):
 #   secret-scan — gitleaks over the commits the change ADDS.
-#   osv-scan    — google/osv-scanner over the lockfiles.
+# plus osv-scan-nightly, the scheduled full-tree advisory scan. The per-change
+# `osv-scan` required check is in ci.yaml.
 #
 # NO workflow-level `paths:` filter, deliberately: a required check behind a
 # path filter never reports on PRs outside those paths and wedges them
@@ -87,14 +88,15 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Blocks a PR whose lockfiles contain a dependency with a known advisory --
-  # the pre-merge counterpart to Dependabot, which only opens a fix PR once the
-  # vulnerable version is already on main.
+  # The NIGHTLY full-tree scan, which blocks on every known advisory in a
+  # dependency on main. The per-change scan (required check `osv-scan`) lives
+  # in ci.yaml, behind its `changes` job, so a PR that touches no dependency
+  # manifest takes no runner for it.
   #
-  # This replaced GitHub's `dependency-review`. That action reads GitHub's
-  # DEPENDENCY GRAPH, an Advanced Security feature: free on public repositories,
-  # BILLED PER ACTIVE COMMITTER on private ones. Verified against the API, the
-  # code security configuration enabling the graph cannot omit
+  # Why osv-scanner and not GitHub's `dependency-review`: that action reads
+  # GitHub's DEPENDENCY GRAPH, an Advanced Security feature: free on public
+  # repositories, BILLED PER ACTIVE COMMITTER on private ones. Verified against
+  # the API, the code security configuration enabling the graph cannot omit
   # advanced_security (accepted values are only
   # enabled|disabled|code_security|secret_protection), so as a REQUIRED check it
   # could not survive this repo turning private without either an invoice or a
@@ -104,9 +106,10 @@ jobs:
   # free at any visibility, runnable locally (`bazel run //tools/osv-scan`,
   # which dependency-review could never be), and it also covers Cargo and PyPI.
   #
-  # The JOB is unconditional so it always reports on every event including
-  # merge_group -- the run-then-noop-green shape every required check here uses.
-  osv-scan:
+  # Its own name, not `osv-scan`: a second check run called `osv-scan` (even a
+  # skipped one) would sit beside ci.yaml's required one on the same commit.
+  osv-scan-nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
@@ -196,7 +199,7 @@ jobs:
   #
   # Separate job so osv-scan itself keeps read-only permissions on every event.
   nightly-osv-alert:
-    needs: osv-scan
+    needs: osv-scan-nightly
     if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-26.04
     timeout-minutes: 5

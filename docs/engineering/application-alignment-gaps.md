@@ -191,7 +191,7 @@ There are **zero `nonproduction`/`production` stacks**. So even the reference ap
 
 **Current state.** Two "standards" that don't exist where it counts:
 
-- ✅ **`actionlint`** was missing, but has now been added (`.github/workflows/actionlint.yaml`) and wired as a required merge-queue check in `repo_config`.
+- ✅ **`actionlint`** was missing, but has now been added (`.github/workflows/actionlint.yaml`, since moved into `ci.yaml` as the `actionlint` job) and wired as a required merge-queue check in `repo_config`.
 - **ESLint** is configured (`eslint.config.mjs`) but **never enforced** — only prettier formatting runs (via `bazel run //:tidy`). TS lint rules can drift or break with no gate.
 
 **Target.** `actionlint` is a required CI job; ESLint runs in the lint gate (a Bazel eslint target or a CI step) so configured rules actually fail PRs. Optionally add a workflow-pinning/`zizmor`-style security check (third-party actions are already mostly SHA-pinned).
