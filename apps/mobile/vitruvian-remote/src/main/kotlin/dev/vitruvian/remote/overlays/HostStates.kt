@@ -73,10 +73,8 @@ public fun ColumnScope.OfflineBanner(state: RemoteState) {
 }
 
 /**
- * The unpaired empty state.
- *
- * Navigation is locked to Hosts while this shows, so both buttons lead somewhere that can actually
- * resolve it.
+ * The unpaired empty state rendered in-page on Mac-backed tabs (`Home`, `Mac`, `Modules`,
+ * `Console`), pointing users to Settings → Your Macs, the install guide, or Demo mode.
  */
 @Composable
 public fun ColumnScope.UnpairedState(state: RemoteState) {

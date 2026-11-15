@@ -4958,12 +4958,39 @@ public class DeriveTest {
     assertTrue(backToHome.backStack.isEmpty())
     assertFalse(Derive.canGoBack(backToHome, isUnpaired = false))
 
-    // Unpaired mode keeps Hosts as exit root, but PhoneBridge and About still step back to Hosts.
+    // Unpaired mode uses the same navigation rules: secondary screens push prior screens and step
+    // back.
     val unpairedHosts = Derive.NavState(current = "Hosts")
-    assertFalse(Derive.canGoBack(unpairedHosts, isUnpaired = true))
+    assertTrue(Derive.canGoBack(unpairedHosts, isUnpaired = true))
+    assertEquals("Home", Derive.popNav(unpairedHosts, isUnpaired = true)?.current)
     val unpairedBridge = Derive.navigateToScreen(unpairedHosts, "PhoneBridge", isUnpaired = true)
     assertTrue(Derive.canGoBack(unpairedBridge, isUnpaired = true))
     assertEquals("Hosts", Derive.popNav(unpairedBridge, isUnpaired = true)?.current)
+  }
+
+  @Test
+  public fun `unpaired tabs open their own screen and show UnpairedState only on Mac-backed tabs`() {
+    val start = Derive.NavState(current = "Home")
+    for (tab in listOf("Home", "Remote", "Mac", "Apps", "Console")) {
+      val next = Derive.navigateToScreen(start, tab, isUnpaired = true)
+      assertEquals(tab, next.current)
+      assertTrue(next.backStack.isEmpty())
+    }
+
+    val fromMacToSettings =
+        Derive.navigateToScreen(Derive.NavState(current = "Mac"), "Hosts", isUnpaired = true)
+    assertEquals("Hosts", fromMacToSettings.current)
+    assertEquals(listOf("Mac"), fromMacToSettings.backStack)
+    assertEquals("Mac", Derive.popNav(fromMacToSettings, isUnpaired = true)?.current)
+
+    for (screen in listOf(Screen.Home, Screen.Mac, Screen.Apps, Screen.Console)) {
+      assertTrue(Derive.showsUnpairedEmptyState(screen, isUnpaired = true))
+      assertFalse(Derive.showsUnpairedEmptyState(screen, isUnpaired = false))
+    }
+    for (screen in listOf(Screen.Remote, Screen.Hosts, Screen.PhoneBridge, Screen.About)) {
+      assertFalse(Derive.showsUnpairedEmptyState(screen, isUnpaired = true))
+      assertFalse(Derive.showsUnpairedEmptyState(screen, isUnpaired = false))
+    }
   }
 
   @Test

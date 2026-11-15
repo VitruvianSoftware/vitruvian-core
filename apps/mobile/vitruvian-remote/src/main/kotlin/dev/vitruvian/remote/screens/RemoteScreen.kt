@@ -158,12 +158,16 @@ internal fun View.hapticTick() {
   performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
 }
 
+private fun RemoteState.remoteTargetLabel(): String =
+    hostShortName.takeIf { !isUnpaired && it.isNotBlank() && it != "no host" } ?: "the Mac"
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 public fun ColumnScope.RemoteScreen(state: RemoteState) {
   val colors = Vitruvian
   val view = LocalView.current
   val showMainTrackpad = Derive.showsMainTrackpad(LocalDockShowsTrackpad.current)
+  val hostLabel = state.remoteTargetLabel()
 
   // Refresh Bluetooth readiness when entering Remote; permission is only requested when the user
   // taps the banner's button.
@@ -282,7 +286,7 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
                   value = state.typed,
                   onValueChange = state::updateTyped,
                   modifier = Modifier.weight(1f),
-                  placeholder = "Type on ${state.hostShortName}…",
+                  placeholder = "Type on $hostLabel…",
               )
               VButton("Send", state::sendTyped, variant = ButtonVariant.Primary)
             }
@@ -327,7 +331,7 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
           value = state.prompt,
           onValueChange = state::updatePrompt,
           modifier = Modifier.weight(1f),
-          placeholder = "Ask Claude Code on ${state.hostShortName}…",
+          placeholder = "Ask Claude Code on $hostLabel…",
       )
       DictateButton(state) { spoken ->
         state.updatePrompt(
@@ -593,11 +597,12 @@ private fun PeekPlate(state: RemoteState, onMeasured: (Int) -> Unit) {
             },
         verticalArrangement = Arrangement.spacedBy(Space.s3),
     ) {
+      val hostLabel = state.remoteTargetLabel()
       val region = state.peekRegion
       Label(
-          if (region.isFull) "Screen · ${state.hostShortName.ifBlank { "the Mac" }}"
+          if (region.isFull) "Screen · $hostLabel"
           else
-              "Screen · ${state.hostShortName.ifBlank { "the Mac" }} · " +
+              "Screen · $hostLabel · " +
                   String.format(Locale.ROOT, "%.1f", region.zoom) +
                   "× · double-tap to reset")
       when {

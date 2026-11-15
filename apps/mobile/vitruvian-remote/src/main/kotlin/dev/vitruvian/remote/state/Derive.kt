@@ -4011,6 +4011,25 @@ public object Derive {
   /** True when [screenName] is one of the primary bottom-tab destinations. */
   public fun isTabScreen(screenName: String): Boolean = screenName in TAB_SCREEN_NAMES
 
+  /**
+   * Whether [screen] shows the in-page unpaired empty state when no Mac is paired.
+   *
+   * Remote runs over Bluetooth HID without needing a Mac, and Settings / Phone Bridge / About
+   * remain directly usable while unpaired.
+   */
+  public fun showsUnpairedEmptyState(screen: Screen, isUnpaired: Boolean): Boolean =
+      isUnpaired &&
+          when (screen) {
+            Screen.Home,
+            Screen.Mac,
+            Screen.Apps,
+            Screen.Console -> true
+            Screen.Remote,
+            Screen.Hosts,
+            Screen.PhoneBridge,
+            Screen.About -> false
+          }
+
   /** Pure navigation snapshot: current destination, prior screen stack, and active About page. */
   public data class NavState(
       val current: String = "Home",
@@ -4018,27 +4037,19 @@ public object Derive {
       val aboutSubPage: String? = null,
   )
 
-  private fun normalizeUnpairedCurrent(current: String): String =
-      if (AppInfo.shouldAllowWhileUnpaired(current)) current else "Hosts"
-
   /**
    * Navigates to [target], maintaining back history for secondary screens (Settings, Phone Bridge,
-   * About).
+   * About). Unpaired tabs open their own screen directly rather than redirecting to Settings.
    */
-  public fun navigateToScreen(state: NavState, target: String, isUnpaired: Boolean): NavState {
+  public fun navigateToScreen(
+      state: NavState,
+      target: String,
+      isUnpaired: Boolean = false,
+  ): NavState {
     if (isTabScreen(target)) {
-      return if (isUnpaired) {
-        NavState(current = "Hosts", backStack = emptyList(), aboutSubPage = null)
-      } else {
-        NavState(current = target, backStack = emptyList(), aboutSubPage = null)
-      }
+      return NavState(current = target, backStack = emptyList(), aboutSubPage = null)
     }
-    if (isUnpaired && target == "Hosts") {
-      return NavState(current = "Hosts", backStack = emptyList(), aboutSubPage = null)
-    }
-    val effectiveCurrent =
-        if (isUnpaired) normalizeUnpairedCurrent(state.current) else state.current
-    if (effectiveCurrent == target) {
+    if (state.current == target) {
       return state.copy(current = target, aboutSubPage = null)
     }
     val cycleIndex = state.backStack.indexOf(target)
@@ -4051,7 +4062,7 @@ public object Derive {
     }
     return NavState(
         current = target,
-        backStack = state.backStack + effectiveCurrent,
+        backStack = state.backStack + state.current,
         aboutSubPage = null,
     )
   }
@@ -4063,7 +4074,7 @@ public object Derive {
   public fun navigateToAboutSubPage(
       state: NavState,
       subPage: String?,
-      isUnpaired: Boolean,
+      isUnpaired: Boolean = false,
   ): NavState {
     val base = if (state.current == "About") state else navigateToScreen(state, "About", isUnpaired)
     return base.copy(aboutSubPage = subPage)
@@ -4073,20 +4084,11 @@ public object Derive {
    * Pops one step from secondary navigation (About sub-page → About → Settings → previous tab), or
    * null to exit.
    */
-  public fun popNav(state: NavState, isUnpaired: Boolean): NavState? {
-    val effectiveCurrent =
-        if (isUnpaired) normalizeUnpairedCurrent(state.current) else state.current
-    if (effectiveCurrent == "About" && state.aboutSubPage != null) {
+  public fun popNav(state: NavState, isUnpaired: Boolean = false): NavState? {
+    if (state.current == "About" && state.aboutSubPage != null) {
       return state.copy(current = "About", aboutSubPage = null)
     }
-    if (isUnpaired) {
-      return if (effectiveCurrent == "About" || effectiveCurrent == "PhoneBridge") {
-        NavState(current = "Hosts", backStack = emptyList(), aboutSubPage = null)
-      } else {
-        null
-      }
-    }
-    if (isTabScreen(effectiveCurrent)) return null
+    if (isTabScreen(state.current)) return null
     if (state.backStack.isNotEmpty()) {
       return NavState(
           current = state.backStack.last(),
@@ -4094,7 +4096,7 @@ public object Derive {
           aboutSubPage = null,
       )
     }
-    return when (effectiveCurrent) {
+    return when (state.current) {
       "About",
       "PhoneBridge" -> NavState(current = "Hosts", backStack = emptyList(), aboutSubPage = null)
       else -> NavState(current = "Home", backStack = emptyList(), aboutSubPage = null)
@@ -4102,7 +4104,7 @@ public object Derive {
   }
 
   /** True when Back/chevron returns to an in-app screen rather than exiting the activity. */
-  public fun canGoBack(state: NavState, isUnpaired: Boolean): Boolean =
+  public fun canGoBack(state: NavState, isUnpaired: Boolean = false): Boolean =
       popNav(state, isUnpaired) != null
 
   /** Plain-English summary line for Settings › Phone Bridge. */

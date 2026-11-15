@@ -1114,13 +1114,9 @@ public class RemoteState(
 
   // --- derived ----------------------------------------------------------
 
-  /**
-   * Navigation is locked to Hosts (and About/Privacy/License reached from Settings) until a Mac is
-   * paired or Demo mode is opened.
-   */
+  /** Active screen without silently redirecting unpaired tabs to Settings. */
   public val effectiveScreen: Screen
-    get() =
-        if (isUnpaired && !AppInfo.shouldAllowWhileUnpaired(screen.name)) Screen.Hosts else screen
+    get() = screen
 
   public val isOffline: Boolean
     get() = connection == Connection.Offline

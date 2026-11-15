@@ -721,7 +721,4 @@ public object AppInfo {
 
   public fun parentOfAboutPage(page: AboutPage): AboutPage? =
       if (page == AboutPage.Main) null else AboutPage.Main
-
-  public fun shouldAllowWhileUnpaired(screenName: String): Boolean =
-      screenName == "Hosts" || screenName == "About" || screenName == "PhoneBridge"
 }

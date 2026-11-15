@@ -72,10 +72,11 @@ public fun RemoteApp(state: RemoteState) {
       OfflineBanner(state)
       PairingBanner(state)
       BridgeBanner(state)
-      if (state.isUnpaired && screen != Screen.About && screen != Screen.PhoneBridge) {
+      if (Derive.showsUnpairedEmptyState(screen, state.isUnpaired)) {
         UnpairedState(state)
+      } else {
+        ScreenContent(state = state, screen = screen)
       }
-      ScreenContent(state = state, screen = screen)
     }
     ConfirmDialog(state)
     MacroEditor(state)
@@ -86,14 +87,14 @@ public fun RemoteApp(state: RemoteState) {
 /**
  * The screen switch.
  *
- * Home is suppressed while unpaired because the empty state has already taken the pane; every other
- * screen still draws, since Hosts is where the user is being sent and the rest are simply
- * unreachable.
+ * Mac-backed tabs (`Home`, `Mac`, `Modules`, `Console`) show [UnpairedState] in-page while
+ * unpaired; `Remote` remains live over Bluetooth HID, and `Settings`, `Phone Bridge`, and `About`
+ * render directly.
  */
 @Composable
 private fun ColumnScope.ScreenContent(state: RemoteState, screen: Screen) {
   when (screen) {
-    Screen.Home -> if (!state.isUnpaired) HomeScreen(state)
+    Screen.Home -> HomeScreen(state)
     Screen.Remote -> RemoteScreen(state)
     Screen.Mac -> MacScreen(state)
     Screen.Apps -> AppsScreen(state)

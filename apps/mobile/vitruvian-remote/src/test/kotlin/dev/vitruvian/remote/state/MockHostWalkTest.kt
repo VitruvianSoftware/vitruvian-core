@@ -614,7 +614,7 @@ public class MockHostWalkTest {
   }
 
   @Test
-  public fun `about navigation works when unpaired and returns step by step to Settings`() {
+  public fun `unpaired tabs open their own screen and Settings About navigation returns step by step`() {
     val state =
         RemoteState(
             persistence = Persistence(InMemoryKeyValueStore()),
@@ -622,7 +622,18 @@ public class MockHostWalkTest {
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
         )
     assertTrue(state.isUnpaired)
+    assertEquals(Screen.Home, state.effectiveScreen)
+
+    for (tab in listOf(Screen.Remote, Screen.Mac, Screen.Apps, Screen.Console, Screen.Home)) {
+      state.go(tab)
+      assertEquals(tab, state.effectiveScreen)
+      assertFalse(state.canGoBack)
+    }
+
+    state.go(Screen.Mac)
+    state.go(Screen.Hosts)
     assertEquals(Screen.Hosts, state.effectiveScreen)
+    assertTrue(state.canGoBack)
 
     state.openAbout()
     assertEquals(Screen.About, state.effectiveScreen)
@@ -639,6 +650,10 @@ public class MockHostWalkTest {
     state.backFromAbout()
     assertEquals(Screen.Hosts, state.effectiveScreen)
     assertEquals(AboutPage.Main, state.aboutPage)
+
+    assertTrue(state.navigateBack())
+    assertEquals(Screen.Mac, state.effectiveScreen)
+    assertFalse(state.canGoBack)
   }
 
   @Test

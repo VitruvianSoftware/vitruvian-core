@@ -352,12 +352,6 @@ public class AppInfoTest {
     assertEquals(AboutPage.Main, AppInfo.parentOfAboutPage(AboutPage.Privacy))
     assertEquals(AboutPage.Main, AppInfo.parentOfAboutPage(AboutPage.License))
     assertEquals(AboutPage.Main, AppInfo.parentOfAboutPage(AboutPage.OpenSourceLicenses))
-
-    assertTrue(AppInfo.shouldAllowWhileUnpaired("Hosts"))
-    assertTrue(AppInfo.shouldAllowWhileUnpaired("About"))
-    assertTrue(AppInfo.shouldAllowWhileUnpaired("PhoneBridge"))
-    assertFalse(AppInfo.shouldAllowWhileUnpaired("Home"))
-    assertFalse(AppInfo.shouldAllowWhileUnpaired("Apps"))
   }
 
   @Test
