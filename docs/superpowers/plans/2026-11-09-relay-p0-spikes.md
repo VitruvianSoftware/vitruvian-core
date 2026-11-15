@@ -225,12 +225,13 @@ subject.
 - [x] Research sign-in support for Zitadel, Claude and ChatGPT
 - [x] `infrastructure/pulumi/platform/zitadel-apps-relay`: project, connector
       (device flow) and Claude clients, role check limited to James, apply workflow
-- [ ] James dispatches `zitadel-apps-relay-apply.yaml` (`preview`, then `up`) and
-      notes the client ids. Agents can't dispatch it (README explains why)
+- [x] Apply `zitadel-apps-relay-apply.yaml` (`preview`, then `up`) and note the
+      client ids. wren may start it (`tools/agent-app/workflow-allowlist.txt`,
+      allowed 2026-11-09); CI reaches Zitadel over Headscale since #4857
 - [x] **B:** run the device flow from a terminal against `relay-connector`, James
       approves in the browser, and the access token decodes as a JWT with the
       expected `azp` and `sub`
-- [ ] Spike server on the homelab (one small service, chart, image build, GitOps
+- [x] Spike server on the homelab (one small service, chart, image build, GitOps
       app): `/mcp` behind OAuth with one echo tool, protected-resource metadata,
       and `/connect` as a WebSocket with ping/pong
 - [x] **A (Claude, web; phone app still to try):** James adds `https://<spike-host>/mcp` in Claude with the
@@ -239,6 +240,11 @@ subject.
 - [ ] **A (ChatGPT):** James starts adding the connector in ChatGPT and copies its
       callback into `chatgptRedirectUris`, then re-apply, then finish. Only if his
       plan allows custom MCP servers
+- [ ] **A (Gemini):** `relay-gemini` client (#4776, confidential,
+      `client_secret_post`; client id `399781767172589504`, applied 2026-11-15) with
+      Gemini's callback; the spike accepts it in `mcpClientIds`. James pastes the
+      client id and secret into Gemini (Settings → Connectors → + Custom, URL
+      `https://relay-spike.ipv1337.dev/mcp`), signs in, and the echo tool runs
 - [x] **C:** a WebSocket client on this Mac holds `/connect` open for 24 hours,
       logging drops, reconnect times and ping round trips
 - [x] **D:** add a Bazel route for running an npm package (`//tools/pnpm:lock`,
