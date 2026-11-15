@@ -1652,9 +1652,9 @@ func dependabotSecrets(ctx *pulumi.Context, cfg *config.Config, repo *github.Rep
 			continue
 		}
 		if _, err := github.NewDependabotSecret(ctx, s.resource, &github.DependabotSecretArgs{
-			Repository:     repo.Name,
-			SecretName:     pulumi.String(s.env),
-			PlaintextValue: key,
+			Repository: repo.Name,
+			SecretName: pulumi.String(s.env),
+			Value:      key,
 		}); err != nil {
 			return err
 		}

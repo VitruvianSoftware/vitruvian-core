@@ -607,9 +607,9 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 		// 3. Store the PRIVATE half as an Actions secret in the MONOREPO, where
 		//    the export workflow reads it (<PROJECT>_SYNC_SSH_KEY).
 		_, err = github.NewActionsSecret(ctx, fmt.Sprintf("%s-sync-ssh-key-secret", project.Name), &github.ActionsSecretArgs{
-			Repository:     pulumi.String(monorepoRepoName),
-			SecretName:     pulumi.String(fmt.Sprintf("%s_SYNC_SSH_KEY", prefix)),
-			PlaintextValue: privateKey.PrivateKeyOpenssh,
+			Repository: pulumi.String(monorepoRepoName),
+			SecretName: pulumi.String(fmt.Sprintf("%s_SYNC_SSH_KEY", prefix)),
+			Value:      privateKey.PrivateKeyOpenssh,
 		})
 		if err != nil {
 			return err
@@ -695,18 +695,18 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 				dispatchOpts = append(dispatchOpts, pulumi.DependsOn([]pulumi.Resource{adoptedRepoRes}))
 			}
 			_, err = github.NewActionsSecret(ctx, fmt.Sprintf("%s-dispatch-app-id-secret", project.Name), &github.ActionsSecretArgs{
-				Repository:     pulumi.String(project.StandaloneRepo),
-				SecretName:     pulumi.String(fmt.Sprintf("%s_DISPATCH_APP_ID", prefix)),
-				PlaintextValue: appID,
+				Repository: pulumi.String(project.StandaloneRepo),
+				SecretName: pulumi.String(fmt.Sprintf("%s_DISPATCH_APP_ID", prefix)),
+				Value:      appID,
 			}, dispatchOpts...)
 			if err != nil {
 				return err
 			}
 
 			_, err = github.NewActionsSecret(ctx, fmt.Sprintf("%s-dispatch-app-private-key-secret", project.Name), &github.ActionsSecretArgs{
-				Repository:     pulumi.String(project.StandaloneRepo),
-				SecretName:     pulumi.String(fmt.Sprintf("%s_DISPATCH_APP_PRIVATE_KEY", prefix)),
-				PlaintextValue: appKey,
+				Repository: pulumi.String(project.StandaloneRepo),
+				SecretName: pulumi.String(fmt.Sprintf("%s_DISPATCH_APP_PRIVATE_KEY", prefix)),
+				Value:      appKey,
 			}, dispatchOpts...)
 			if err != nil {
 				return err
@@ -726,33 +726,33 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 	// the App id/key are placed as a Dependabot secret; the Actions-secret twins
 	// cover any non-Dependabot-context step. Both reuse the single sync App.
 	_, err := github.NewDependabotSecret(ctx, "monorepo-sync-app-id-dependabot", &github.DependabotSecretArgs{
-		Repository:     pulumi.String(monorepoRepoName),
-		SecretName:     pulumi.String("SYNC_APP_ID"),
-		PlaintextValue: appID,
+		Repository: pulumi.String(monorepoRepoName),
+		SecretName: pulumi.String("SYNC_APP_ID"),
+		Value:      appID,
 	})
 	if err != nil {
 		return err
 	}
 	_, err = github.NewDependabotSecret(ctx, "monorepo-sync-app-key-dependabot", &github.DependabotSecretArgs{
-		Repository:     pulumi.String(monorepoRepoName),
-		SecretName:     pulumi.String("SYNC_APP_PRIVATE_KEY"),
-		PlaintextValue: appKey,
+		Repository: pulumi.String(monorepoRepoName),
+		SecretName: pulumi.String("SYNC_APP_PRIVATE_KEY"),
+		Value:      appKey,
 	})
 	if err != nil {
 		return err
 	}
 	_, err = github.NewActionsSecret(ctx, "monorepo-sync-app-id-actions", &github.ActionsSecretArgs{
-		Repository:     pulumi.String(monorepoRepoName),
-		SecretName:     pulumi.String("SYNC_APP_ID"),
-		PlaintextValue: appID,
+		Repository: pulumi.String(monorepoRepoName),
+		SecretName: pulumi.String("SYNC_APP_ID"),
+		Value:      appID,
 	})
 	if err != nil {
 		return err
 	}
 	_, err = github.NewActionsSecret(ctx, "monorepo-sync-app-key-actions", &github.ActionsSecretArgs{
-		Repository:     pulumi.String(monorepoRepoName),
-		SecretName:     pulumi.String("SYNC_APP_PRIVATE_KEY"),
-		PlaintextValue: appKey,
+		Repository: pulumi.String(monorepoRepoName),
+		SecretName: pulumi.String("SYNC_APP_PRIVATE_KEY"),
+		Value:      appKey,
 	})
 	if err != nil {
 		return err
@@ -783,9 +783,9 @@ func tapKey(ctx *pulumi.Context, project syncedProject, repo *github.Repository)
 		return err
 	}
 	secretArgs := &github.ActionsSecretArgs{
-		Repository:     pulumi.String(project.StandaloneRepo),
-		SecretName:     pulumi.String("HOMEBREW_TAP_DEPLOY_KEY"),
-		PlaintextValue: key.PrivateKeyOpenssh,
+		Repository: pulumi.String(project.StandaloneRepo),
+		SecretName: pulumi.String("HOMEBREW_TAP_DEPLOY_KEY"),
+		Value:      key.PrivateKeyOpenssh,
 	}
 	var opts []pulumi.ResourceOption
 	if repo != nil {
