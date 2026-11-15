@@ -170,7 +170,7 @@ mod tests {
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-'));
             assert!(script.ends_with(".sh"));
         }
-        assert_eq!(TOOLS.len(), 15);
+        assert_eq!(TOOLS.len(), 16);
         assert!(run_tool(b"no-such-tool", &[]).is_none());
     }
 
