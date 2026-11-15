@@ -390,7 +390,9 @@ fn transcribed_job(name: &str) -> Option<TranscribedSpec> {
         "pagerduty" => Some(spec(
             20,
             &["contents: read"],
-            &["GOWORK: off"],
+            // GITHUB_TOKEN: Pulumi fetches the provider plugin from GitHub
+            // releases; unauthenticated downloads hit the rate limit.
+            &["GOWORK: off", "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}"],
             "",
             render_pagerduty_steps,
         )),

@@ -24,6 +24,7 @@ package oncall
 
 import (
 	"fmt"
+	"net/mail"
 	"regexp"
 	"strings"
 
@@ -103,6 +104,8 @@ func (s Settings) Validate() error {
 
 	if strings.TrimSpace(s.ResponderEmail) == "" {
 		add("responderEmail must be non-empty")
+	} else if a, err := mail.ParseAddress(s.ResponderEmail); err != nil || a.Address != s.ResponderEmail {
+		add("responderEmail %q must be a bare email address", s.ResponderEmail)
 	}
 	if strings.TrimSpace(s.Escalation.Name) == "" {
 		add("escalation.name must be non-empty")

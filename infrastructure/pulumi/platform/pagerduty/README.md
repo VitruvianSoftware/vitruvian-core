@@ -31,9 +31,13 @@ provider.
 - **Responder lookup**: looks up the account owner (`responderEmail` in
   `Pulumi.production.yaml`) with `pagerduty.LookupUser`; the user is never
   created by Pulumi.
-- **Escalation policy**: creates one `EscalationPolicy` with a single rule
-  targeting the looked-up user, configured with `escalation.delayMinutes` and
-  `escalation.loops` (without paid-tier team fields).
+- **Escalation policy**: one `EscalationPolicy` with a single rule targeting
+  the looked-up user, configured with `escalation.delayMinutes` and
+  `escalation.loops` (without paid-tier team fields). The free plan allows only
+  one escalation policy and every account starts with one called "Default", so
+  production does not create a policy: `escalation.adoptId` names the existing
+  one (`PS9GPWM`) and the first apply imports it, then renames and updates it
+  in place. Leave `adoptId` empty only on an account with no policy yet.
 - **Services and integrations**: for each entry in `services`, creates a
   `Service` bound to the escalation policy (`create_alerts_and_incidents`) and
   an `events_api_v2_inbound_integration` `ServiceIntegration` named
@@ -55,7 +59,8 @@ the environment if set, falling back to the Pulumi stack secret
 present.
 
 - **Bitwarden**: item `vitruviansoftware.pagerduty.com`, hidden field
-  `PULUMI_API_KEY`.
+  `PULUMI_API_KEY` (the field name says what the key is for: it is the
+  PagerDuty REST API key this Pulumi stack uses).
 - **CI**: supplied as the `PAGERDUTY_TOKEN` secret in the `pagerduty-production`
   GitHub Environment (declared in
   [repo-config](../repo-config/pagerduty_environments.go), bound by

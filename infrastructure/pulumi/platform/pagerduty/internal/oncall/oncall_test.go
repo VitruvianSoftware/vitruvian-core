@@ -79,6 +79,14 @@ func TestValidateRejectsBadConfig(t *testing.T) {
 			mutate: func(s *Settings) { s.ResponderEmail = "   " },
 			want:   "responderEmail",
 		},
+		"responderEmail that is not an email": {
+			mutate: func(s *Settings) { s.ResponderEmail = "not-an-email" },
+			want:   "responderEmail",
+		},
+		"responderEmail with a display name": {
+			mutate: func(s *Settings) { s.ResponderEmail = "James <james@vitruviansoftware.dev>" },
+			want:   "responderEmail",
+		},
 		"adoptId that is not a PagerDuty id": {
 			mutate: func(s *Settings) { s.Escalation.AdoptID = "default" },
 			want:   "escalation.adoptId",
