@@ -21,6 +21,7 @@
 package dev.vitruvian.remote
 
 import android.Manifest
+import android.app.ActivityManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -152,22 +153,44 @@ public class MainActivity : ComponentActivity() {
     return AppInfo.normalizeVersion(rawVersion)
   }
 
+  private fun readCrashReportDeviceDetails(): AppInfo.CrashReportDeviceDetails {
+    val metrics = runCatching { resources?.displayMetrics }.getOrNull()
+    val memorySizeBytes =
+        runCatching {
+              val manager = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+              if (manager != null) {
+                ActivityManager.MemoryInfo()
+                    .also { manager.getMemoryInfo(it) }
+                    .totalMem
+                    .takeIf { it > 0L }
+              } else {
+                null
+              }
+            }
+            .getOrNull()
+    return AppInfo.CrashReportDeviceDetails(
+        androidRelease = Build.VERSION.RELEASE.orEmpty(),
+        model = Build.MODEL.orEmpty(),
+        screenWidthPx = metrics?.widthPixels?.takeIf { it > 0 },
+        screenHeightPx = metrics?.heightPixels?.takeIf { it > 0 },
+        memorySizeBytes = memorySizeBytes,
+    )
+  }
+
   private fun configureSentry(enabled: Boolean, appVersion: String) {
     if (!enabled) {
       io.sentry.Sentry.close()
       return
     }
-    val sentryDsn =
-        System.getenv("SENTRY_DSN")
-            ?: "https://ae2f3e2be71221701a6608b02c1bc344@sentry-ingest.ipv1337.dev/4"
+    val sentryDsn = System.getenv("SENTRY_DSN") ?: AppInfo.DEFAULT_SENTRY_DSN
+    val device = readCrashReportDeviceDetails()
     io.sentry.Sentry.init { options ->
-      options.dsn = sentryDsn
-      options.release = AppInfo.sentryRelease(appVersion)
-      options.environment = "production"
-      options.isSendDefaultPii = false
-      options.isAttachServerName = false
-      Build.MODEL?.takeIf { it.isNotBlank() }?.let { options.setTag("device.model", it) }
-      Build.VERSION.RELEASE?.takeIf { it.isNotBlank() }?.let { options.setTag("os.version", it) }
+      AppInfo.configureSentryOptions(
+          options = options,
+          dsn = sentryDsn,
+          appVersion = appVersion,
+          device = device,
+      )
     }
   }
 

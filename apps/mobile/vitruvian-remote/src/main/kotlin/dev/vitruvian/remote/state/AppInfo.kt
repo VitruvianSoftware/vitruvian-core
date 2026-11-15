@@ -20,6 +20,10 @@
 
 package dev.vitruvian.remote.state
 
+import io.sentry.SentryOptions
+import io.sentry.protocol.Device
+import io.sentry.protocol.OperatingSystem
+
 /** Sub-pages inside `Screen.About`. */
 public enum class AboutPage(public val title: String) {
   Main("About"),
@@ -126,18 +130,32 @@ public object AppInfo {
           ),
       )
 
+  public const val DEFAULT_SENTRY_DSN: String =
+      "https://ae2f3e2be71221701a6608b02c1bc344@sentry-ingest.ipv1337.dev/4"
+
+  /** Device details included in crash reports; excludes PII, IP, texts, contacts, and hosts. */
+  public data class CrashReportDeviceDetails(
+      val androidRelease: String = "",
+      val model: String = "",
+      val screenWidthPx: Int? = null,
+      val screenHeightPx: Int? = null,
+      val memorySizeBytes: Long? = null,
+  )
+
   /** Statements rendered on the Privacy page, each verified against the app's actual code. */
   public const val privacyCrashReportsStatement: String =
-      "Crash reports: if the app crashes, a report (the error, the app version and your phone " +
-          "model) is sent to Vitruvian Software's own crash server, so we can fix it. It never " +
-          "includes your texts, contacts, files or what you type. You can turn this off below."
+      "Crash reports: if the app crashes, a report is sent to Vitruvian Software's own crash " +
+          "server, so we can fix it: the error and where in the app it happened, the app " +
+          "version, the Android version, and device details such as model, screen size and " +
+          "memory. Never your texts, contacts, files, what you type, or your Macs' addresses. " +
+          "You can turn this off below."
 
   public val privacyLeadingStatements: List<String> = listOf("No account and no ads.")
 
   public val privacyTrailingStatements: List<String> =
       listOf(
-          "This phone talks only to the Macs you add, over your own network or Tailscale. " +
-              "Trackpad and keys go straight to your Mac over Bluetooth.",
+          "This phone talks to the Macs you add, and to Vitruvian Software's crash server if " +
+              "crash reports are on. Trackpad and keys go straight to your Mac over Bluetooth.",
           "Phone Bridge is off until you turn it on. When it's on, AI agents on your own Mac " +
               "can use only the permissions you grant (texts, contacts, call history, location, " +
               "notifications, screen control), and every request is listed in Settings.",
@@ -145,6 +163,98 @@ public object AppInfo {
           "Dictation uses your phone's speech service, which may send audio to its provider.",
           "Donate and the links here open in your browser. The app never handles payment details.",
       )
+
+  /**
+   * Configures Sentry in a pure helper so every privacy claim (no PII, no breadcrumbs, no
+   * performance tracing, no screenshots or view hierarchy, and bounded device details) is provable
+   * in JVM unit tests.
+   */
+  public fun configureSentryOptions(
+      options: SentryOptions,
+      dsn: String = DEFAULT_SENTRY_DSN,
+      appVersion: String?,
+      device: CrashReportDeviceDetails = CrashReportDeviceDetails(),
+  ) {
+    options.dsn = dsn
+    options.release = sentryRelease(appVersion)
+    options.environment = "production"
+    options.isSendDefaultPii = false
+    options.isAttachServerName = false
+    options.serverName = null
+    options.isSendModules = false
+    options.isEnableAutoSessionTracking = false
+    options.isSendClientReports = false
+
+    // No breadcrumbs (so no taps, URLs, or Mac addresses).
+    options.maxBreadcrumbs = 0
+    options.beforeBreadcrumb = SentryOptions.BeforeBreadcrumbCallback { _, _ -> null }
+    options.isEnableUserInteractionBreadcrumbs = false
+    options.isEnableScreenTracking = false
+    options.gestureTargetLocators = emptyList()
+
+    // No user-interaction or performance tracing / profiling.
+    options.isEnableUserInteractionTracing = false
+    options.enableTracing = false
+    options.tracesSampleRate = null
+    options.tracesSampler = null
+    options.profilesSampleRate = null
+    options.profilesSampler = null
+    options.isEnableAppStartProfiling = false
+    options.isEnableTimeToFullDisplayTracing = false
+    options.setTracePropagationTargets(emptyList())
+    options.beforeSendTransaction = SentryOptions.BeforeSendTransactionCallback { _, _ -> null }
+
+    // No screenshots or view hierarchy (on core SentryOptions + subclass setters if present).
+    options.viewHierarchyExporters = emptyList()
+    setBooleanOptionIfPresent(options, "setAttachScreenshot", false)
+    setBooleanOptionIfPresent(options, "setAttachViewHierarchy", false)
+
+    val cleanModel = device.model.trim().takeIf { it.isNotEmpty() }
+    val cleanOs = device.androidRelease.trim().takeIf { it.isNotEmpty() }
+    cleanModel?.let { options.setTag("device.model", it) }
+    cleanOs?.let { options.setTag("os.version", it) }
+
+    options.beforeSend =
+        SentryOptions.BeforeSendCallback { event, hint ->
+          hint.screenshot = null
+          hint.viewHierarchy = null
+          hint.threadDump = null
+          hint.replayRecording = null
+          hint.clearAttachments()
+          event.breadcrumbs = null
+          // MainEventProcessor.mergeUser sets user.ipAddress = "{{auto}}" even when sendDefaultPii
+          // is false; dropping user prevents IP inference and strips any user context.
+          event.user = null
+          event.request = null
+          event.serverName = null
+          if (cleanOs != null) {
+            event.contexts.setOperatingSystem(
+                OperatingSystem().apply {
+                  name = "Android"
+                  version = cleanOs
+                })
+          }
+          if (cleanModel != null ||
+              device.screenWidthPx != null ||
+              device.screenHeightPx != null ||
+              device.memorySizeBytes != null) {
+            event.contexts.setDevice(
+                Device().apply {
+                  model = cleanModel
+                  screenWidthPixels = device.screenWidthPx
+                  screenHeightPixels = device.screenHeightPx
+                  memorySize = device.memorySizeBytes
+                })
+          }
+          event
+        }
+  }
+
+  private fun setBooleanOptionIfPresent(target: Any, setterName: String, value: Boolean) {
+    runCatching {
+      target.javaClass.getMethod(setterName, Boolean::class.javaPrimitiveType).invoke(target, value)
+    }
+  }
 
   public fun normalizeVersion(version: String?): String =
       version?.trim()?.takeIf { it.isNotEmpty() } ?: "dev"

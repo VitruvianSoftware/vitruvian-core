@@ -3999,7 +3999,7 @@ public class DeriveTest {
   }
 
   @Test
-  public fun `MainActivity gates Sentry init on persistence and uses real release version`() {
+  public fun `MainActivity gates Sentry init on persistence and uses AppInfo options`() {
     val mainActivity =
         readRunfile(
             "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/MainActivity.kt")
@@ -4008,16 +4008,12 @@ public class DeriveTest {
         mainActivity.contains("if (persistence.sendCrashReports)"),
     )
     assertTrue(
-        "MainActivity must compute options.release from AppInfo.sentryRelease",
-        mainActivity.contains("options.release = AppInfo.sentryRelease(appVersion)"),
+        "MainActivity must configure Sentry via AppInfo.configureSentryOptions",
+        mainActivity.contains("AppInfo.configureSentryOptions("),
     )
     assertFalse(
         "MainActivity must not hardcode vitruvian-remote@1.0",
         mainActivity.contains("vitruvian-remote@1.0"),
-    )
-    assertTrue(
-        "MainActivity must keep sendDefaultPii false",
-        mainActivity.contains("options.isSendDefaultPii = false"),
     )
     assertTrue(
         "MainActivity must close Sentry when disabled at runtime",

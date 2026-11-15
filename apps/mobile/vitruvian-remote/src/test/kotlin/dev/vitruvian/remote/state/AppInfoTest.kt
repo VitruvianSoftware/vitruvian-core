@@ -20,10 +20,20 @@
 
 package dev.vitruvian.remote.state
 
+import io.sentry.Attachment
+import io.sentry.Breadcrumb
+import io.sentry.Hint
+import io.sentry.MainEventProcessor
+import io.sentry.SentryEvent
+import io.sentry.SentryOptions
+import io.sentry.protocol.SentryTransaction
+import io.sentry.protocol.TransactionInfo
+import io.sentry.protocol.User
 import java.io.File
 import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -153,5 +163,138 @@ public class AppInfoTest {
     assertTrue(AppInfo.shouldAllowWhileUnpaired("PhoneBridge"))
     assertFalse(AppInfo.shouldAllowWhileUnpaired("Home"))
     assertFalse(AppInfo.shouldAllowWhileUnpaired("Apps"))
+  }
+
+  @Test
+  public fun `privacy copy states exact crash server and report contents`() {
+    val talkStatement = AppInfo.privacyTrailingStatements.first()
+    assertTrue(
+        talkStatement.startsWith(
+            "This phone talks to the Macs you add, and to Vitruvian Software's crash server if crash reports are on.",
+        ),
+    )
+    assertFalse(talkStatement.contains("talks only to the Macs you add"))
+
+    assertTrue(
+        AppInfo.privacyCrashReportsStatement.contains(
+            "the error and where in the app it happened, the app version, the Android version, " +
+                "and device details such as model, screen size and memory. Never your texts, " +
+                "contacts, files, what you type, or your Macs' addresses.",
+        ),
+    )
+  }
+
+  @Test
+  public fun `configureSentryOptions disables PII breadcrumbs tracing screenshots and view hierarchy`() {
+    class AndroidLikeOptions : SentryOptions() {
+      var attachScreenshot: Boolean = true
+      var attachViewHierarchy: Boolean = true
+    }
+
+    val options = AndroidLikeOptions()
+    AppInfo.configureSentryOptions(
+        options = options,
+        dsn = "https://examplePublicKey@o0.ingest.sentry.io/0",
+        appVersion = "0.1.40",
+        device =
+            AppInfo.CrashReportDeviceDetails(
+                androidRelease = "15",
+                model = "Pixel Fold",
+                screenWidthPx = 2208,
+                screenHeightPx = 1840,
+                memorySizeBytes = 12_884_901_888L,
+            ),
+    )
+
+    assertEquals("vitruvian-remote@0.1.40", options.release)
+    assertEquals("production", options.environment)
+    assertFalse(options.isSendDefaultPii)
+    assertFalse(options.isAttachServerName)
+    assertNull(options.serverName)
+    assertFalse(options.isSendModules)
+    assertFalse(options.isEnableAutoSessionTracking)
+    assertFalse(options.isSendClientReports)
+
+    assertEquals(0, options.maxBreadcrumbs)
+    assertNull(options.beforeBreadcrumb!!.execute(Breadcrumb.info("tap"), Hint()))
+    assertFalse(options.isEnableUserInteractionBreadcrumbs)
+    assertFalse(options.isEnableScreenTracking)
+    assertTrue(options.gestureTargetLocators.isEmpty())
+
+    assertFalse(options.isEnableUserInteractionTracing)
+    assertEquals(false, options.enableTracing)
+    assertFalse(options.isTracingEnabled)
+    assertNull(options.tracesSampleRate)
+    assertNull(options.tracesSampler)
+    assertNull(options.profilesSampleRate)
+    assertNull(options.profilesSampler)
+    assertFalse(options.isProfilingEnabled)
+    assertFalse(options.isEnableAppStartProfiling)
+    assertFalse(options.isEnableTimeToFullDisplayTracing)
+    assertTrue(options.tracePropagationTargets.isEmpty())
+    val tx =
+        SentryTransaction("tx", 0.0, 1.0, emptyList(), emptyMap(), emptyMap(), TransactionInfo("m"))
+    assertNull(options.beforeSendTransaction!!.execute(tx, Hint()))
+
+    assertTrue(options.viewHierarchyExporters.isEmpty())
+    assertFalse(options.attachScreenshot)
+    assertFalse(options.attachViewHierarchy)
+  }
+
+  @Test
+  public fun `configureSentryOptions beforeSend strips user IP breadcrumbs and attachments and keeps bounded device details`() {
+    val options = SentryOptions()
+    AppInfo.configureSentryOptions(
+        options = options,
+        dsn = "https://examplePublicKey@o0.ingest.sentry.io/0",
+        appVersion = "0.1.40",
+        device =
+            AppInfo.CrashReportDeviceDetails(
+                androidRelease = "15",
+                model = "Pixel Fold",
+                screenWidthPx = 2208,
+                screenHeightPx = 1840,
+                memorySizeBytes = 12_884_901_888L,
+            ),
+    )
+
+    val rawEvent =
+        SentryEvent(RuntimeException("boom")).apply {
+          addBreadcrumb(Breadcrumb.info("tap"))
+          user = User().apply { email = "user@example.com" }
+        }
+    val hint =
+        Hint().apply {
+          screenshot = Attachment.fromScreenshot(byteArrayOf(1, 2, 3))
+          viewHierarchy = Attachment(byteArrayOf(4, 5), "view-hierarchy.json")
+          addAttachment(Attachment(byteArrayOf(6, 7), "extra.txt"))
+        }
+
+    // MainEventProcessor runs before beforeSend in SentryClient and sets user.ipAddress="{{auto}}".
+    val processed = MainEventProcessor(options).process(rawEvent, hint)
+    val sanitized = options.beforeSend!!.execute(processed, hint)!!
+
+    assertEquals("vitruvian-remote@0.1.40", sanitized.release)
+    assertNotNull(sanitized.exceptions)
+    assertTrue(sanitized.exceptions!!.isNotEmpty())
+    assertNull(sanitized.user)
+    assertNull(sanitized.breadcrumbs)
+    assertNull(sanitized.request)
+    assertNull(sanitized.serverName)
+    assertNull(hint.screenshot)
+    assertNull(hint.viewHierarchy)
+    assertTrue(hint.attachments.isEmpty())
+
+    assertEquals("Android", sanitized.contexts.operatingSystem?.name)
+    assertEquals("15", sanitized.contexts.operatingSystem?.version)
+    val device = sanitized.contexts.device!!
+    assertEquals("Pixel Fold", device.model)
+    assertEquals(2208, device.screenWidthPixels)
+    assertEquals(1840, device.screenHeightPixels)
+    assertEquals(12_884_901_888L, device.memorySize)
+    assertNull(device.name)
+    assertNull(device.id)
+    assertNull(device.timezone)
+    assertNull(device.locale)
   }
 }

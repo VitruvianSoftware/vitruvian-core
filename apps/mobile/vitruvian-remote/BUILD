@@ -260,6 +260,7 @@ kt_jvm_test(
 kt_jvm_library(
     name = "app_info",
     srcs = ["src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt"],
+    deps = ["@maven//:io_sentry_sentry"],
 )
 
 kt_jvm_test(
@@ -277,6 +278,7 @@ kt_jvm_test(
     test_class = "dev.vitruvian.remote.state.AppInfoTest",
     deps = [
         ":app_info",
+        "@maven//:io_sentry_sentry",
         "@maven//:junit_junit",
     ],
 )
