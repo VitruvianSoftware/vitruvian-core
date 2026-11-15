@@ -103,6 +103,8 @@ import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianIcons
 import dev.vitruvian.design.VitruvianType
 import dev.vitruvian.design.bottomHairline
+import dev.vitruvian.design.darkColors
+import dev.vitruvian.design.terminalBackgroundColor
 import dev.vitruvian.remote.overlays.DictateButton
 import dev.vitruvian.remote.state.AppsView
 import dev.vitruvian.remote.state.Derive
@@ -1107,15 +1109,16 @@ private fun WrappingRow(
  */
 @Composable
 private fun MarkdownStream(lines: List<TerminalLine>, modifier: Modifier, cursor: Boolean) {
-  val colors = Vitruvian
+  val borderColor = Vitruvian.divider
+  val colors = remember { darkColors() }
   val style = VitruvianType.terminal.copy(fontSize = STREAM_FONT)
   val code = SpanStyle(color = colors.accentText)
   Column(
       modifier =
           modifier
               .fillMaxWidth()
-              .background(colors.neutral900)
-              .border(1.dp, colors.divider)
+              .background(terminalBackgroundColor())
+              .border(1.dp, borderColor)
               .padding(horizontal = Space.s4, vertical = Space.s3),
       verticalArrangement = Arrangement.spacedBy(Space.s1),
   ) {

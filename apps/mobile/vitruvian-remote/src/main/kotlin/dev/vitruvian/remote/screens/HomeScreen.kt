@@ -48,8 +48,10 @@ import dev.vitruvian.design.Plate
 import dev.vitruvian.design.Space
 import dev.vitruvian.design.Tag
 import dev.vitruvian.design.VButton
+import dev.vitruvian.design.VIcon
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
+import dev.vitruvian.design.VitruvianIcons
 import dev.vitruvian.design.VitruvianType
 import dev.vitruvian.remote.shell.LocalShowDock
 import dev.vitruvian.remote.state.MetricsSource
@@ -174,7 +176,7 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
         onClick = { state.openModule(item.moduleId) },
     ) {
       Tag(text = item.tag, tone = item.tagTone)
-      VText(text = "›", style = VitruvianType.listTitle, color = colors.textDim)
+      VIcon(path = VitruvianIcons.CHEVRON_RIGHT, iconSize = 16.dp, color = colors.textDim)
     }
   }
 
@@ -201,6 +203,7 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
                     PaddingValues(
                         horizontal = Space.s3,
                     ),
+                maxLines = 2,
             )
           }
         }
