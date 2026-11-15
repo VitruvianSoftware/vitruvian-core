@@ -368,25 +368,30 @@ public class AppInfoTest {
 
     assertTrue(
         AppInfo.privacyCrashReportsStatement.contains(
-            "the Sentry Java SDK sends a report to Vitruvian Software's own crash server " +
+            "it sends a report to Vitruvian Software's own crash server " +
                 "(sentry-ingest.ipv1337.dev)",
         ),
     )
     assertTrue(
         AppInfo.privacyCrashReportsStatement.contains(
-            "the error and its stack trace (never other threads' stacks), the crash time, " +
-                "the app version, the Android version, the phone model, screen size in pixels " +
-                "and total memory, plus random report and trace IDs and the SDK version.",
+            "the error and where in the app it happened, the time, the app and Android " +
+                "versions, your phone model, screen size and total memory, and a random " +
+                "report ID.",
         ),
     )
     assertTrue(
         AppInfo.privacyCrashReportsStatement.contains(
-            "Breadcrumbs, other threads, hostnames, default PII, user IP, and performance " +
-                "tracing are off, and it never sends your texts, contacts, files, what you " +
-                "type, or your Macs' addresses.",
+            "It never contains your texts, contacts, files, what you type, your Macs' " +
+                "addresses, or a record of what you did in the app.",
         ),
     )
-    for (forbidden in listOf("such as", "screenshot", "view hierarchy", "Sentry Android")) {
+    // Honest about the one thing the app can't control: the server sees the sender's address.
+    assertTrue(
+        AppInfo.privacyCrashReportsStatement.contains("the server can see the address"),
+    )
+    // Plain words only: no tool names or jargon a user would have to decode.
+    for (forbidden in
+        listOf("such as", "screenshot", "view hierarchy", "SDK", "PII", "breadcrumb", "user IP")) {
       assertFalse(
           "privacyCrashReportsStatement must not claim '$forbidden'",
           AppInfo.privacyCrashReportsStatement.contains(forbidden, ignoreCase = true),

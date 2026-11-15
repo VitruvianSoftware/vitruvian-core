@@ -154,15 +154,15 @@ public object AppInfo {
 
   /** Statements rendered on the Privacy page, each verified against the app's actual code. */
   public const val privacyCrashReportsStatement: String =
-      "Crash reports (on by default): if the app crashes, the Sentry Java SDK sends a report " +
-          "to Vitruvian Software's own crash server (sentry-ingest.ipv1337.dev), so we can fix " +
-          "it. It sends the error and its stack trace (never other threads' stacks), the crash " +
-          "time, the app version, the Android version, the phone model, screen size in pixels " +
-          "and total memory, plus random report and trace IDs and the SDK version. Breadcrumbs, " +
-          "other threads, hostnames, default PII, user IP, and performance tracing are off, and " +
-          "it never sends your texts, contacts, files, what you type, or your Macs' addresses. " +
-          "Turning this off below closes Sentry right away, deletes any unsent reports on this " +
-          "phone, and keeps Sentry off when the app opens."
+      "Crash reports (on by default): if the app crashes, it sends a report to Vitruvian " +
+          "Software's own crash server (sentry-ingest.ipv1337.dev) so we can fix the problem. " +
+          "A report contains the error and where in the app it happened, the time, the app " +
+          "and Android versions, your phone model, screen size and total memory, and a random " +
+          "report ID. It never contains your texts, contacts, files, what you type, your Macs' " +
+          "addresses, or a record of what you did in the app. The app doesn't add your IP " +
+          "address, though like any connection the server can see the address a report " +
+          "comes from. Turning this off stops reports right away and deletes any that " +
+          "haven't been sent yet."
 
   /** Canonical Phone Bridge capabilities shared across Settings, Phone Bridge, and Privacy. */
   public val phoneBridgeCapabilities: List<String> =
