@@ -19,7 +19,7 @@
 // SOFTWARE.
 
 //! //tools/ci:require_pinned_actions_test -- the commit-SHA pin check, run as
-//! a subprocess in throwaway repo trees, and built the way actionlint.yaml
+//! a subprocess in throwaway repo trees, and built the way ci.yaml's actionlint job
 //! builds it: the rustc line in that workflow, run as written with the
 //! toolchain's rustc. Every case held for the retired
 //! require-pinned-actions.sh (the outputs were compared byte for byte).
@@ -177,7 +177,7 @@ fn rustc() -> PathBuf {
     std::fs::canonicalize(&r).unwrap_or_else(|e| panic!("RUSTC={r}: {e}"))
 }
 
-/// The `rustc` lines of actionlint.yaml's pin-check step, exactly as written.
+/// The `rustc` lines of ci.yaml's actionlint pin-check step, exactly as written.
 fn workflow_rustc_lines() -> Vec<String> {
     let wf = std::fs::read_to_string(std::env::var("WORKFLOW").unwrap()).unwrap();
     wf.lines()
@@ -196,7 +196,7 @@ fn the_workflows_rustc_line_builds_a_working_check() {
             "rustc --edition 2021 -O tools/ci/src/require_pinned_actions/main.rs -o \"$RUNNER_TEMP/require-pinned-actions\""
                 .to_string()
         ],
-        "actionlint.yaml's build line changed: keep this test running what CI runs"
+        "ci.yaml's actionlint build line changed: keep this test running what CI runs"
     );
     let rustc = rustc();
     let runner_temp = TempDir::new();

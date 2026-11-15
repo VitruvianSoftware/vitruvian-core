@@ -40,6 +40,9 @@ const EXPECT: &[(&str, &str)] = &[
     // //tools/gomod:check lives outside tools/ci/src, so it does not fit
     // .github/actions/build-ci-tool (which //tools/ci:build_ci_tool_test
     // covers); its three lines stay inline in ci.yaml.
+    // The actionlint job's pin check (moved here from actionlint.yaml; its own
+    // test, //tools/ci:require_pinned_actions_test, pins the exact line).
+    (".github/workflows/ci.yaml", "require-pinned-actions"),
     (".github/workflows/ci.yaml", "tidy"),
 ];
 
@@ -161,7 +164,7 @@ fn every_workflow_rustc_line_builds_its_tool() {
 /// rustc fails the step by name; none of them installs one with apt (#4183).
 const GUARDS: &[&str] = &[
     ".github/actions/build-ci-tool/action.yml",
-    ".github/workflows/actionlint.yaml",
+    ".github/workflows/ci.yaml",
     ".github/workflows/queue-runner-watch.yaml",
 ];
 

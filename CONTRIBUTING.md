@@ -301,11 +301,11 @@ The authoritative list lives in `infrastructure/pulumi/platform/repo_config/main
 | **validate-butane** | `ci.yaml` | devx's Fedora CoreOS template renders to valid Ignition, step-gated on the template |
 | **tidy-check** | `tidy-check.yaml` | `bazel run //:tidy` produced no diff |
 | **conformance-check** | `conformance-check.yaml` | `//tools/conformance:check` — version pins, JS catalog, merge-queue check names, app visibility firewall, app metadata ↔ CODEOWNERS, CODEOWNERS ↔ what the per-directory `OWNERS` files compile to, the nightly-sweep pairing, and the zitadel import guard |
-| **gitops-validate** | `gitops-validate.yaml` | `gitops/**` renders + passes kubeconform *before* ArgoCD reconciles it live |
-| **actionlint** | `actionlint.yaml` | the whole hand-tuned workflow tree is linted (workflow syntax, expressions, shellcheck on `run:` blocks) |
+| **gitops-validate** | `ci.yaml` | `gitops/**` renders + passes kubeconform *before* ArgoCD reconciles it live |
+| **actionlint** | `ci.yaml` | the whole hand-tuned workflow tree is linted (workflow syntax, expressions, shellcheck on `run:` blocks) |
 | *(dependabot PRs)* **reconcile** | `dependabot-bazel-reconcile.yaml` | Bazel lockfile/dep reconciliation |
 
-> Required checks stay green-fast on unrelated PRs by design: the **job always runs and reports** (never a workflow-level `paths:` filter — that once wedged the whole repo, and conformance now forbids it for required checks); only the *work inside* is skipped when the diff can't affect it.
+> Required checks stay green-fast on unrelated PRs by design, and never with a workflow-level `paths:` filter (that once wedged the whole repo, and conformance now forbids it for required checks). In `ci.yaml`, the `changes` job decides on a PR which checks the diff can affect, and the others skip at the job level, which GitHub reports as passing; `license-check`, `lint-naming`, `gitops-validate`, `migration-safety`, `actionlint` and `osv-scan` work this way. The other required checks always run and skip only the *work inside*. The merge queue runs all of them in full.
 
 > **Version policy.** The repo runs **one canonical version per tool** (`.bazelversion`, `go.work`, `.nvmrc`, root `packageManager`) and stays on the latest it has adopted. Every `go.mod`, Dockerfile `FROM node:`, and app `packageManager` must match canonical. To hold one back **temporarily**, add a justified row to [`tools/conformance/version-pins.tsv`](tools/conformance/version-pins.tsv) (`file`, `tool`, `pinned_value`, `review_by`, `owner`, `reason`) and delete it once the constraint clears — `conformance-check` fails on undeclared drift, on a pin whose file has caught up to canonical, and on a pin past its `review_by`.
 

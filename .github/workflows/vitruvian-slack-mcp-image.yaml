@@ -61,7 +61,7 @@ on:
   # NOT in the merge-queue required set. A required check whose workflow carries
   # a workflow-level pull_request `paths:` filter simply never reports on a PR
   # outside those paths, which blocks that PR from ever becoming mergeable — it
-  # wedged this repo once already (see gitops-validate.yaml's `on:` block).
+  # wedged this repo once already (see the `changes` job in ci.yaml).
   # DO NOT add `vitruvian-slack-mcp-image` to repo-config's mergeQueueRequiredChecks
   # without deleting these filters and gating the work in a step instead.
   pull_request:
@@ -76,7 +76,7 @@ permissions:
 # Per-commit keying on non-PR events: a ref-keyed group puts every push-to-main
 # run in one lane, where GitHub evicts still-pending runs when a newer one
 # queues behind the running one — so a burst of merges silently drops the
-# middle commits' images. Same pattern and same reason as gitops-validate.yaml.
+# middle commits' images. Same pattern and same reason as ci.yaml.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}

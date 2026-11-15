@@ -43,6 +43,8 @@ rust_test(
     name = "osv_scan_lib_test",
     size = "small",
     crate = ":osv_scan_lib",
+    # ci.yaml's `osvscan` filter must list every name in MANIFESTS.
+    data = ["//:.github/workflows/ci.yaml"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
