@@ -69,6 +69,7 @@ import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.Format
 import dev.vitruvian.remote.state.MetricsSource
 import dev.vitruvian.remote.state.RemoteState
+import dev.vitruvian.remote.state.ThemeMode
 import java.time.Instant
 
 private val PAIR_CODE_SIZE = 38.sp
@@ -123,6 +124,7 @@ public fun ColumnScope.HostsScreen(state: RemoteState) {
         status = host.tone,
         onClick = { state.selectHost(host.id) },
         selectedRule = if (state.selectedHost?.id == host.id) colors.accent else Color.Transparent,
+        statusAdjacentText = host.tag,
     ) {
       Tag(text = host.tag, tone = host.tagTone)
     }
@@ -600,6 +602,7 @@ private fun PhoneBridgePlate(state: RemoteState) {
                 ),
             status = if (entry.outcome == "ok") StatusTone.Ok else StatusTone.Warn,
             contentPadding = PaddingValues(vertical = Space.s3),
+            statusAdjacentText = entry.outcome,
         ) {
           Tag(
               text = entry.outcome,
@@ -641,6 +644,7 @@ private fun ConnectionPlate(state: RemoteState) {
                 else -> StatusTone.Neutral
               },
           contentPadding = PaddingValues(vertical = Space.s3),
+          statusAdjacentText = notif.statusLabel,
       ) {
         when (notif.action) {
           Derive.NotificationPermissionAction.None ->
@@ -652,10 +656,15 @@ private fun ConnectionPlate(state: RemoteState) {
         }
       }
       Label("Appearance")
-      VSwitch(
-          checked = !state.darkTheme,
-          onCheckedChange = { state.toggleTheme() },
-          label = "Parchment (light) theme",
+      Segmented(
+          options =
+              ThemeMode.entries.map { mode ->
+                SegmentOption(
+                    label = mode.label,
+                    selected = state.themeMode == mode,
+                    onSelect = { state.updateThemeMode(mode) },
+                )
+              },
       )
       Label("Refresh interval")
       Segmented(

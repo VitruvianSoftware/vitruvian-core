@@ -65,12 +65,17 @@ public fun AutoGrid(
     minItemWidth: Dp,
     modifier: Modifier = Modifier,
     gap: Dp = Space.s3,
+    maxColumns: Int = Int.MAX_VALUE,
     content: AutoGridScope.() -> Unit,
 ) {
   val scope = AutoGridScope().apply(content)
   if (scope.items.isEmpty()) return
   BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-    val columns = ((maxWidth + gap) / (minItemWidth + gap)).toInt().coerceAtLeast(1)
+    val columns =
+        ((maxWidth + gap) / (minItemWidth + gap))
+            .toInt()
+            .coerceAtLeast(1)
+            .coerceAtMost(maxColumns.coerceAtLeast(1))
     val rows = packRows(scope.items, columns)
     Column(verticalArrangement = Arrangement.spacedBy(gap)) {
       rows.forEach { row ->

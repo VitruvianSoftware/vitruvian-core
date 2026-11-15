@@ -26,8 +26,11 @@ import android.content.Intent
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
+import dev.vitruvian.design.Space
 import dev.vitruvian.design.VButton
+import dev.vitruvian.design.VitruvianIcons
 import dev.vitruvian.remote.state.RemoteState
 
 /** The label on every dictation button, so the three of them cannot drift apart. */
@@ -83,5 +86,11 @@ public fun rememberDictation(state: RemoteState, onText: (String) -> Unit): () -
 @Composable
 public fun DictateButton(state: RemoteState, onText: (String) -> Unit) {
   val dictate = rememberDictation(state, onText)
-  VButton(label = DICTATE_LABEL, onClick = dictate)
+  VButton(
+      label = "",
+      icon = VitruvianIcons.MIC,
+      onClick = dictate,
+      contentPadding = PaddingValues(horizontal = Space.s3),
+      contentDescription = DICTATE_LABEL,
+  )
 }

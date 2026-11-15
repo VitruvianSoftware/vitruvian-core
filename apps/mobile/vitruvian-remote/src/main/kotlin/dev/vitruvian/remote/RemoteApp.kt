@@ -21,6 +21,7 @@
 package dev.vitruvian.remote
 
 import android.app.Activity
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,6 +43,7 @@ import dev.vitruvian.remote.screens.MacScreen
 import dev.vitruvian.remote.screens.RemoteScreen
 import dev.vitruvian.remote.shell.RemoteShell
 import dev.vitruvian.remote.shell.rememberDeviceLayout
+import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.Screen
 
@@ -57,8 +59,9 @@ public fun RemoteApp(state: RemoteState) {
   // Its own loop: Claude prompts need a two-second cadence whatever the
   // Hosts screen's refresh setting says.
   LaunchedEffect(state) { state.runClaudePermissions() }
-  VitruvianTheme(dark = state.darkTheme) {
-    SystemBarsFollowTheme(dark = state.darkTheme)
+  val dark = Derive.isDarkTheme(state.themeMode, isSystemInDarkTheme())
+  VitruvianTheme(dark = dark) {
+    SystemBarsFollowTheme(dark = dark)
     val layout = rememberDeviceLayout()
     RemoteShell(state = state, layout = layout) { screen ->
       OfflineBanner(state)

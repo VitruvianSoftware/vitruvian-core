@@ -22,6 +22,7 @@ package dev.vitruvian.remote.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -35,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import dev.vitruvian.design.AutoGrid
 import dev.vitruvian.design.ButtonVariant
@@ -48,10 +50,13 @@ import dev.vitruvian.design.Plate
 import dev.vitruvian.design.Space
 import dev.vitruvian.design.Tag
 import dev.vitruvian.design.VButton
+import dev.vitruvian.design.VIcon
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
+import dev.vitruvian.design.VitruvianIcons
 import dev.vitruvian.design.VitruvianType
 import dev.vitruvian.remote.shell.LocalShowDock
+import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.MetricsSource
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.Screen
@@ -169,12 +174,13 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
         title = item.title,
         subtitle = item.subtitle,
         status = item.tone,
+        statusAdjacentText = item.tag,
         // Opens that module's dashboard on Apps; the chevron says the row
         // goes somewhere, which a status row otherwise gives no hint of.
         onClick = { state.openModule(item.moduleId) },
     ) {
       Tag(text = item.tag, tone = item.tagTone)
-      VText(text = "›", style = VitruvianType.listTitle, color = colors.textDim)
+      VIcon(path = VitruvianIcons.CHEVRON_RIGHT, iconSize = 16.dp, color = colors.textDim)
     }
   }
 
@@ -188,8 +194,20 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
         modifier =
             Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s5, bottom = Space.s3),
     )
-    Box(modifier = Modifier.padding(horizontal = Space.s4)) {
-      AutoGrid(minItemWidth = ACTION_MIN) {
+    val fontScale = LocalConfiguration.current.fontScale
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(horizontal = Space.s4)) {
+      val baselineCols = ((maxWidth + Space.s3) / (ACTION_MIN + Space.s3)).toInt().coerceAtLeast(1)
+      val cols =
+          Derive.adaptiveButtonColumns(
+              availableWidthDp = maxWidth.value,
+              fontScale = fontScale,
+              labels = state.macros.map { it.label } + "+ Macro",
+              maxColumns = baselineCols,
+              gapDp = Space.s3.value,
+              horizontalPaddingDp = Space.s3.value,
+              maxLines = 2,
+          )
+      AutoGrid(minItemWidth = ACTION_MIN, maxColumns = cols) {
         state.macros.forEach { macro ->
           item {
             VButton(
@@ -197,10 +215,8 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
                 onClick = { state.runMacro(macro) },
                 enabled = !state.actsNeedPairing,
                 modifier = Modifier.fillMaxWidth(),
-                contentPadding =
-                    PaddingValues(
-                        horizontal = Space.s3,
-                    ),
+                contentPadding = PaddingValues(horizontal = Space.s3),
+                maxLines = 2,
             )
           }
         }
@@ -211,6 +227,8 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
               modifier = Modifier.fillMaxWidth(),
               dashed = true,
               contentColor = colors.textDim,
+              contentPadding = PaddingValues(horizontal = Space.s3),
+              maxLines = 2,
           )
         }
       }

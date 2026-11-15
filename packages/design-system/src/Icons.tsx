@@ -36,14 +36,10 @@ export const VitruvianIcons = {
   GRID_2X2: ["M3 3h18v18H3z", "M3 12h18", "M12 3v18"],
   /** Terminal / Shell — `>_` prompt. */
   TERMINAL: ["M4 17l6-6-6-6", "M12 19h8"],
-  /** Settings / Sliders — three horizontal tracks with ticks. */
+  /** Settings — 8-tooth gear around a central spindle. */
   SETTINGS: [
-    "M4 6h16",
-    "M9 3v6",
-    "M4 12h16",
-    "M15 9v6",
-    "M4 18h16",
-    "M11 15v6",
+    "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+    "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z",
   ],
   /** Panel-right / Drawer — frame with right column rule. */
   PANEL_RIGHT: ["M3 3h18v18H3z", "M15 3v18"],
@@ -133,6 +129,23 @@ export const VitruvianIcons = {
     "M10.29 3.86L1.82 18h20.36L13.71 3.86a2 2 0 0 0-3.42 0z",
     "M12 9v4",
     "M12 16.5h.01",
+  ],
+  /** Play — right-pointing triangle. */
+  PLAY: ["M7 4l13 8-13 8V4z"],
+  /** Pause — two vertical bars. */
+  PAUSE: ["M6 4h4v16H6V4z", "M14 4h4v16h-4V4z"],
+  /** Play-pause — combined transport play/pause glyph. */
+  PLAY_PAUSE: ["M4 5l9 7-9 7V5z", "M15 5v14", "M19 5v14"],
+  /** Previous track — bar and left triangle. */
+  PREVIOUS: ["M6 5v14", "M18 5l-9 7 9 7V5z"],
+  /** Next track — right triangle and bar. */
+  NEXT: ["M18 5v14", "M6 5l9 7-9 7V5z"],
+  /** Microphone — capsule and stand. */
+  MIC: [
+    "M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z",
+    "M19 10v2a7 7 0 0 1-14 0v-2",
+    "M12 19v3",
+    "M8 22h8",
   ],
 } as const;
 

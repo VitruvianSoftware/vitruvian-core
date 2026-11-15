@@ -53,7 +53,7 @@ public object VitruvianIcons {
   public const val GRID_2X2: String = "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"
   public const val TERMINAL: String = "M4 17l6-6-6-6M12 19h8"
   public const val SETTINGS: String =
-      "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 2v3M12 19v3M2 12h3M19 12h3"
+      "M12 15a3 3 0 1 0 0 -6 3 3 0 0 0 0 6z M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1 -2.83 2.83l-.06-.06a1.65 1.65 0 0 0 -1.82 -.33 1.65 1.65 0 0 0 -1 1.51V21a2 2 0 1 1 -4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0 -1.82 .33l-.06.06a2 2 0 1 1 -2.83 -2.83l.06-.06a1.65 1.65 0 0 0 .33 -1.82 1.65 1.65 0 0 0 -1.51 -1H3a2 2 0 1 1 0 -4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0 -.33 -1.82l-.06-.06a2 2 0 1 1 2.83 -2.83l.06.06a1.65 1.65 0 0 0 1.82 .33H9a1.65 1.65 0 0 0 1 -1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82 -.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0 -.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0 -1.51 1z"
   public const val PANEL_RIGHT: String = "M3 4h18v16H3zM15 4v16"
   public const val SEARCH: String = "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4.35-4.35"
   public const val COPY: String = "M9 9h11v11H9zM5 15H4V4h11v1"
@@ -82,8 +82,15 @@ public object VitruvianIcons {
   public const val REFRESH: String =
       "M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"
   public const val ALERT_TRIANGLE: String = "M12 3L2 20h20L12 3zM12 9v5M12 17h.01"
+  public const val PLAY: String = "M7 4l13 8-13 8V4z"
+  public const val PAUSE: String = "M6 4h4v16H6V4zm8 0h4v16h-4V4z"
+  public const val PLAY_PAUSE: String = "M4 5l9 7-9 7V5zm11 0v14m4-14v14"
+  public const val PREVIOUS: String = "M6 5v14M18 5l-9 7 9 7V5z"
+  public const val NEXT: String = "M18 5v14M6 5l9 7-9 7V5z"
+  public const val MIC: String =
+      "M12 2a3 3 0 0 0 -3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0 -3 -3zm7 8v2a7 7 0 0 1 -14 0v-2M12 19v3M8 22h8"
 
-  /** All 28 canonical icon paths in the Vitruvian icon set. */
+  /** All 34 canonical icon paths in the Vitruvian icon set. */
   public val ALL: Map<String, String> =
       mapOf(
           "HOME" to HOME,
@@ -114,6 +121,12 @@ public object VitruvianIcons {
           "LOCK" to LOCK,
           "REFRESH" to REFRESH,
           "ALERT_TRIANGLE" to ALERT_TRIANGLE,
+          "PLAY" to PLAY,
+          "PAUSE" to PAUSE,
+          "PLAY_PAUSE" to PLAY_PAUSE,
+          "PREVIOUS" to PREVIOUS,
+          "NEXT" to NEXT,
+          "MIC" to MIC,
       )
 }
 
