@@ -77,7 +77,6 @@ API key 1 (`sxHrjsz`, due 2026-11-20) was expired by hand on 2026-11-15: nothing
 Its `HeadscaleCredentialExpiringSoon` warning fired and then cleared once it was expired,
 which is how this monitor was first proven end to end.
 
-
 | Kind | Id | Expires | Used by |
 |---|---|---|---|
 | pre-auth key | 3 | 2036-10-23 | `headscale-subnet-router-auth`: the node agents and subnet router in this folder |
