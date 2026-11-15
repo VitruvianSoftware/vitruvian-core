@@ -477,3 +477,4 @@
 ### Features
 
 * **home-speaker:** initial release of HomeSpeaker macOS menu bar app ([#2358](https://github.com/VitruvianSoftware/vitruvian-core/pull/2358))
+
