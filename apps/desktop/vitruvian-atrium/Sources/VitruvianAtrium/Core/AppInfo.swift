@@ -33,7 +33,7 @@ package enum AppInfo {
     /// monorepo). The app opens a stable address on our own site, which forwards
     /// to the current Payment Link, so a replaced link never strands a shipped
     /// build. Settings > Support's Donate button opens it.
-    package static let donateURL = URL(string: "https://vitruviansoftware.dev/donate/vitruvian/")!
+    package static let donateURL = URL(string: "https://vitruviansoftware.dev/donate/vitruvian/?src=app-vitruvian-atrium")!
     package static let coffeeURL = donateURL
     package static let discordURL = repositoryURL
     package static let socialURL = repositoryURL
