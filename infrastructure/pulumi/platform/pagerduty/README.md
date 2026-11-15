@@ -61,6 +61,15 @@ present.
 - **Bitwarden**: item `vitruviansoftware.pagerduty.com`, hidden field
   `PULUMI_API_KEY` (the field name says what the key is for: it is the
   PagerDuty REST API key this Pulumi stack uses).
+  It was created on the account's API Access Keys page
+  (`/api_keys`), so it is an account-level key, not tied to one person's
+  login. It can change anything in the account. To rotate it: create a new
+  key on that page, update the Bitwarden field and the environment secret
+  (below), then delete the old key.
+- **Seeding order**: store `PAGERDUTY_TOKEN` only after repo-config has
+  created the `pagerduty-production` environment and you have checked it is
+  limited to `main`. Saving a secret into an environment that does not exist
+  yet makes GitHub create it unprotected.
 - **CI**: supplied as the `PAGERDUTY_TOKEN` secret in the `pagerduty-production`
   GitHub Environment (declared in
   [repo-config](../repo-config/pagerduty_environments.go), bound by

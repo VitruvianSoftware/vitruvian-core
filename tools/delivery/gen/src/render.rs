@@ -390,9 +390,9 @@ fn transcribed_job(name: &str) -> Option<TranscribedSpec> {
         "pagerduty" => Some(spec(
             20,
             &["contents: read"],
-            // GITHUB_TOKEN: Pulumi fetches the provider plugin from GitHub
-            // releases; unauthenticated downloads hit the rate limit.
-            &["GOWORK: off", "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}"],
+            // GITHUB_TOKEN is set on the Pulumi step only (see
+            // render_pagerduty_steps), not job-wide.
+            &["GOWORK: off"],
             "",
             render_pagerduty_steps,
         )),
@@ -818,6 +818,9 @@ fn render_pagerduty_steps(b: &mut String, u: &Unit, env: &str, opts: &Opts) -> R
     w!(b, "        uses: {}\n", PULUMI_RUN_CAPTURED_ACTION);
     b.push_str("        env:\n");
     b.push_str("          PAGERDUTY_TOKEN: ${{ secrets.PAGERDUTY_TOKEN }}\n");
+    // Pulumi fetches the provider plugin from GitHub releases; an
+    // unauthenticated download hits the rate limit. Scoped to this step.
+    b.push_str("          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n");
     b.push_str("        with:\n");
     b.push_str("          command: up\n");
     w!(b, "          stack: {}\n", env);

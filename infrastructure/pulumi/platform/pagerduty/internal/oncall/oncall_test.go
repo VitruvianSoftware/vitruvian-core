@@ -208,6 +208,19 @@ func checkStackConfigBytes(raw []byte) (Settings, error) {
 			return Settings{}, fmt.Errorf("pagerduty:token must be encrypted Pulumi ciphertext, never plaintext")
 		}
 	}
+	// Allowlist: any key not named here is rejected, so a token pasted under
+	// a new or misspelt key fails the build whatever its format.
+	allowed := map[string]bool{
+		Namespace + ":responderEmail": true,
+		Namespace + ":escalation":     true,
+		Namespace + ":services":       true,
+		"pagerduty:token":             true, // only as ciphertext, checked above
+	}
+	for k := range doc.Config {
+		if !allowed[k] {
+			return Settings{}, fmt.Errorf("unexpected config key %q: only responderEmail, escalation, services and an encrypted pagerduty:token are allowed", k)
+		}
+	}
 	if _, ok := doc.Config[Namespace+":token"]; ok {
 		return Settings{}, fmt.Errorf("%s:token must not appear; use PAGERDUTY_TOKEN or encrypted pagerduty:token", Namespace)
 	}
@@ -576,6 +589,23 @@ func TestEscalationPolicyImportsOnlyWhenAdoptIDSet(t *testing.T) {
 			}
 			if policies[0].ImportID != tc.adoptID {
 				t.Fatalf("expected ImportID %q, got %q", tc.adoptID, policies[0].ImportID)
+			}
+		})
+	}
+}
+
+func TestStackConfigRejectsUnknownKeys(t *testing.T) {
+	for name, extra := range map[string]string{
+		"token under a new key":         "  vitruvian-pagerduty:apiKey: y_NbAkKc66ryYTWUXYEu\n",
+		"provider key other than token": "  pagerduty:serviceRegion: us\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			raw := []byte("config:\n" + extra +
+				"  vitruvian-pagerduty:responderEmail: a@b.dev\n" +
+				"  vitruvian-pagerduty:escalation: {name: x, delayMinutes: 30, loops: 0}\n" +
+				"  vitruvian-pagerduty:services: [{key: sentry, name: Sentry}]\n")
+			if _, err := checkStackConfigBytes(raw); err == nil || !strings.Contains(err.Error(), "unexpected config key") {
+				t.Fatalf("want unexpected-config-key error, got %v", err)
 			}
 		})
 	}

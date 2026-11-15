@@ -855,7 +855,6 @@ jobs:
     environment: pagerduty-production
     env:
       GOWORK: off
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -895,6 +894,7 @@ jobs:
         uses: ./.github/actions/pulumi-run-captured
         env:
           PAGERDUTY_TOKEN: ${{ secrets.PAGERDUTY_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           command: up
           stack: production
