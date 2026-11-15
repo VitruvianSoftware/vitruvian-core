@@ -45,6 +45,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -61,6 +62,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -74,6 +76,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.vitruvian.design.A11y
 import dev.vitruvian.design.AutoGrid
 import dev.vitruvian.design.BlinkingCursor
 import dev.vitruvian.design.ButtonVariant
@@ -740,6 +743,10 @@ private fun ModuleListRow(row: ModuleRow) {
         placement == Derive.RowControl.InlineDropdown -> ""
         else -> row.trailing
       }
+  val combinedAdjacent =
+      listOfNotNull(row.tag, trailingText.takeIf { it.isNotBlank() }).joinToString(" ").ifBlank {
+        null
+      }
   val trailing: @Composable RowScope.() -> Unit = {
     if (row.tag != null) {
       Tag(text = row.tag, tone = row.tagTone)
@@ -780,9 +787,10 @@ private fun ModuleListRow(row: ModuleRow) {
       else -> {}
     }
     if (toggle != null) {
+      // Semantics are owned by the enclosing ListItem/WrappingRow via Role.Switch toggleable.
       VSwitch(
           checked = toggle.checked,
-          onCheckedChange = toggle.onToggle,
+          onCheckedChange = null,
           enabled = toggle.enabled,
       )
     }
@@ -791,7 +799,7 @@ private fun ModuleListRow(row: ModuleRow) {
   // single action.
   val onRowClick: (() -> Unit)? =
       when {
-        toggle != null && toggle.enabled -> ({ toggle.onToggle(!toggle.checked) })
+        toggle != null -> null
         placement == Derive.RowControl.InlinePrompt ->
             row.textPrompt?.takeIf { it.enabled }?.let { { promptOpen = true } }
         placement == Derive.RowControl.InlineAction && row.actions.size == 1 ->
@@ -799,7 +807,16 @@ private fun ModuleListRow(row: ModuleRow) {
         else -> row.onSelect
       }
   if (row.titleLines > 1) {
-    WrappingRow(row, onRowClick, trailing)
+    WrappingRow(
+        row = row,
+        onClick = onRowClick,
+        statusAdjacentText = combinedAdjacent,
+        checked = toggle?.checked,
+        onCheckedChange = toggle?.onToggle,
+        enabled = toggle?.enabled ?: true,
+        switchTrailingDescription = combinedAdjacent,
+        trailing = trailing,
+    )
   } else {
     ListItem(
         title = row.title,
@@ -811,6 +828,11 @@ private fun ModuleListRow(row: ModuleRow) {
         // one selection idiom in the app, not two.
         selectedRule = if (row.selected) colors.accent else Color.Transparent,
         contentPadding = PaddingValues(vertical = Space.s3),
+        statusAdjacentText = combinedAdjacent,
+        checked = toggle?.checked,
+        onCheckedChange = toggle?.onToggle,
+        enabled = toggle?.enabled ?: true,
+        switchTrailingDescription = combinedAdjacent,
         trailing = trailing,
     )
   }
@@ -1053,18 +1075,46 @@ private fun ColumnScope.GalleryPane(state: RemoteState) {
 private fun WrappingRow(
     row: ModuleRow,
     onClick: (() -> Unit)?,
+    statusAdjacentText: String? = null,
+    checked: Boolean? = null,
+    onCheckedChange: ((Boolean) -> Unit)? = null,
+    enabled: Boolean = true,
+    switchTrailingDescription: String? = null,
     trailing: @Composable RowScope.() -> Unit,
 ) {
   val colors = Vitruvian
+  val isSwitchRow = checked != null && onCheckedChange != null
+  val interactiveModifier =
+      when {
+        isSwitchRow ->
+            Modifier.toggleable(
+                    value = checked!!,
+                    enabled = enabled,
+                    role = Role.Switch,
+                    onValueChange = onCheckedChange!!,
+                )
+                .semantics {
+                  val desc =
+                      A11y.switchRowDescription(
+                          title = row.title,
+                          subtitle = row.subtitle,
+                          statusTone = row.tone,
+                          statusAdjacentText = statusAdjacentText,
+                          trailingText = switchTrailingDescription,
+                      )
+                  if (desc.isNotEmpty()) contentDescription = desc
+                }
+        onClick != null -> Modifier.clickable(onClick = onClick)
+        else -> Modifier
+      }
+  val childModifier = if (isSwitchRow) Modifier.clearAndSetSemantics {} else Modifier
   Row(
       modifier =
           Modifier.controlTag(row.controlId)
               .fillMaxWidth()
               .defaultMinSize(minHeight = Hit.h2)
               .bottomHairline(colors.line)
-              .then(
-                  onClick?.let { Modifier.clickable(onClick = it) } ?: Modifier,
-              )
+              .then(interactiveModifier)
               .padding(vertical = Space.s3),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(Space.s4),
@@ -1078,8 +1128,8 @@ private fun WrappingRow(
                   .background(colors.accent),
       )
     }
-    Status(tone = row.tone)
-    Column(modifier = Modifier.weight(1f)) {
+    Status(tone = row.tone, adjacentText = statusAdjacentText, modifier = childModifier)
+    Column(modifier = Modifier.weight(1f).then(childModifier)) {
       VText(
           text = row.title,
           style = VitruvianType.listTitle,
@@ -1094,7 +1144,17 @@ private fun WrappingRow(
           overflow = TextOverflow.Ellipsis,
       )
     }
-    trailing()
+    if (isSwitchRow) {
+      Row(
+          modifier = Modifier.clearAndSetSemantics {},
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(Space.s4),
+      ) {
+        trailing()
+      }
+    } else {
+      trailing()
+    }
   }
 }
 

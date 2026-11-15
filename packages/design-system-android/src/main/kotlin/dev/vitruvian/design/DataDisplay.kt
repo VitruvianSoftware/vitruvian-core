@@ -72,7 +72,9 @@ private fun statusColor(tone: StatusTone): Color =
  * `.status` - a 7 dp square, optionally followed by a mono uppercase caption.
  *
  * Passing a null [text] gives the bare square that leads every list row; [label] overrides the
- * spoken description derived from [tone] ("OK", "Warning", "Error", "Idle", "Running").
+ * spoken description derived from [tone] ("OK", "Warning", "Error", "Idle", "Running"). Passing
+ * [adjacentText] suppresses redundant announcements when a sibling tag/label in the same row
+ * already says the same state word.
  */
 @Composable
 public fun Status(
@@ -81,11 +83,19 @@ public fun Status(
     text: String? = null,
     color: Color = Vitruvian.textDim,
     label: String? = null,
+    adjacentText: String? = null,
 ) {
   val square = statusColor(tone)
-  val spokenState = A11y.statusLabel(tone = tone, text = text, label = label)
+  val spokenState =
+      A11y.statusAnnouncement(tone = tone, text = text, label = label, adjacentText = adjacentText)
+  val semanticModifier =
+      if (spokenState == null) {
+        modifier.clearAndSetSemantics {}
+      } else {
+        modifier.semantics { contentDescription = spokenState }
+      }
   Row(
-      modifier = modifier.semantics(mergeDescendants = true) { contentDescription = spokenState },
+      modifier = semanticModifier,
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(Space.s3),
   ) {

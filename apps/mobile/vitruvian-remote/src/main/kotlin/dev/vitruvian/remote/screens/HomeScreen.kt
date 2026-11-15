@@ -171,6 +171,7 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
         title = item.title,
         subtitle = item.subtitle,
         status = item.tone,
+        statusAdjacentText = item.tag,
         // Opens that module's dashboard on Apps; the chevron says the row
         // goes somewhere, which a status row otherwise gives no hint of.
         onClick = { state.openModule(item.moduleId) },

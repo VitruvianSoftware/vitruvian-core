@@ -161,6 +161,42 @@ class A11yTest {
   }
 
   @Test
+  fun statusAnnouncementSuppressesBareDotDuplicateOfAdjacentTag() {
+    assertNull(A11y.statusAnnouncement(StatusTone.Run, adjacentText = "running"))
+    assertNull(A11y.statusAnnouncement(StatusTone.Ok, adjacentText = "ok"))
+    assertNull(A11y.statusAnnouncement(StatusTone.Warn, adjacentText = "Warning: high"))
+    assertEquals("OK", A11y.statusAnnouncement(StatusTone.Ok, adjacentText = "ready"))
+    assertEquals("Warning", A11y.statusAnnouncement(StatusTone.Warn, adjacentText = "1 down"))
+    assertEquals(
+        "Running, mac-mini",
+        A11y.statusAnnouncement(StatusTone.Run, text = "mac-mini", adjacentText = "running"))
+  }
+
+  @Test
+  fun switchRowDescriptionJoinsNonBlankSegmentsWithoutDuplicateDotWord() {
+    assertEquals(
+        "Claude Code, Enable hook, ok",
+        A11y.switchRowDescription(
+            title = "Claude Code",
+            subtitle = "Enable hook",
+            statusTone = StatusTone.Ok,
+            statusAdjacentText = "ok",
+            trailingText = "ok",
+        ),
+    )
+    assertEquals(
+        "OK, Wake-on-LAN, Send magic packet",
+        A11y.switchRowDescription(
+            title = "Wake-on-LAN",
+            subtitle = "Send magic packet",
+            statusTone = StatusTone.Ok,
+            statusAdjacentText = null,
+            trailingText = null,
+        ),
+    )
+  }
+
+  @Test
   fun hostChipDescriptionFormatsNameAndState() {
     assertEquals(
         "mac-mini, Connected. Opens settings.",
@@ -195,7 +231,42 @@ class A11yTest {
     assertTrue(
         "VSwitch must use Role.Switch toggleable", vSwitchBody.contains("role = Role.Switch"))
     assertTrue("VSwitch must use .toggleable", vSwitchBody.contains(".toggleable("))
+    assertTrue(
+        "Visual-only VSwitch must clear its own semantics when onCheckedChange == null",
+        vSwitchBody.contains("clearAndSetSemantics {}"),
+    )
+    assertTrue(
+        "Standalone VSwitch must expose label via contentDescription and clear child VText",
+        vSwitchBody.contains("contentDescription = label"),
+    )
     assertFalse("VSwitch check must not match VCheckbox", vSwitchBody.contains("Role.Checkbox"))
+
+    val listItemSrc = stripKotlinComments(readDesignSource("ListItem.kt"))
+    val listItemBody = extractKotlinBlock(listItemSrc, "public fun ListItem(")
+    assertTrue(
+        "ListItem must host Role.Switch toggleable when acting as a switch row",
+        listItemBody.contains("role = Role.Switch") && listItemBody.contains(".toggleable("),
+    )
+    assertTrue(
+        "ListItem must pass statusAdjacentText to Status",
+        listItemBody.contains("Status(tone = status, adjacentText = statusAdjacentText"),
+    )
+    assertTrue(
+        "ListItem switch row must use A11y.switchRowDescription and clear inner semantics",
+        listItemBody.contains("A11y.switchRowDescription(") &&
+            listItemBody.contains("clearAndSetSemantics {}"),
+    )
+
+    val dataDisplaySrc = stripKotlinComments(readDesignSource("DataDisplay.kt"))
+    val statusBody = extractKotlinBlock(dataDisplaySrc, "public fun Status(")
+    assertTrue(
+        "Status must consult A11y.statusAnnouncement",
+        statusBody.contains("A11y.statusAnnouncement("),
+    )
+    assertTrue(
+        "Status must clear semantics when announcement is suppressed",
+        statusBody.contains("clearAndSetSemantics {}"),
+    )
 
     val segmentedBody = extractKotlinBlock(formSrc, "public fun Segmented(")
     assertTrue("Segmented must use selectableGroup", segmentedBody.contains(".selectableGroup()"))

@@ -32,10 +32,15 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
@@ -44,6 +49,11 @@ import androidx.compose.ui.unit.dp
  *
  * @param selectedRule the 2 dp accent rule on the left edge that marks the selected host;
  *   [Color.Transparent] elsewhere.
+ * @param statusAdjacentText optional sibling text already in the row (e.g., a trailing tag) so the
+ *   leading status dot suppresses duplicate state announcements.
+ * @param checked when non-null alongside [onCheckedChange], turns the entire row into the
+ *   [Role.Switch] toggleable node so TalkBack focuses one control instead of nested row/switch
+ *   nodes.
  */
 @Composable
 public fun ListItem(
@@ -55,15 +65,45 @@ public fun ListItem(
     selectedRule: Color = Color.Transparent,
     titleColor: Color = LocalContentColor.current,
     contentPadding: PaddingValues = PaddingValues(horizontal = Space.s4, vertical = Space.s3),
+    statusAdjacentText: String? = null,
+    checked: Boolean? = null,
+    onCheckedChange: ((Boolean) -> Unit)? = null,
+    enabled: Boolean = true,
+    switchTrailingDescription: String? = null,
     trailing: @Composable (RowScope.() -> Unit)? = null,
 ) {
+  val isSwitchRow = checked != null && onCheckedChange != null
+  val interactiveModifier =
+      when {
+        isSwitchRow ->
+            Modifier.toggleable(
+                    value = checked!!,
+                    enabled = enabled,
+                    role = Role.Switch,
+                    onValueChange = onCheckedChange!!,
+                )
+                .semantics {
+                  val desc =
+                      A11y.switchRowDescription(
+                          title = title,
+                          subtitle = subtitle,
+                          statusTone = status,
+                          statusAdjacentText = statusAdjacentText,
+                          trailingText = switchTrailingDescription,
+                      )
+                  if (desc.isNotEmpty()) contentDescription = desc
+                }
+        onClick != null -> Modifier.clickable(onClick = onClick)
+        else -> Modifier
+      }
+  val childModifier = if (isSwitchRow) Modifier.clearAndSetSemantics {} else Modifier
   Row(
       modifier =
           modifier
               .fillMaxWidth()
               .defaultMinSize(minHeight = Hit.h2)
               .bottomHairline(Vitruvian.line)
-              .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+              .then(interactiveModifier)
               .padding(contentPadding),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(Space.s4),
@@ -78,9 +118,9 @@ public fun ListItem(
       ) {}
     }
     if (status != null) {
-      Status(tone = status)
+      Status(tone = status, adjacentText = statusAdjacentText, modifier = childModifier)
     }
-    Column(modifier = Modifier.weight(1f)) {
+    Column(modifier = Modifier.weight(1f).then(childModifier)) {
       VText(
           text = title,
           style = VitruvianType.listTitle,
@@ -96,6 +136,18 @@ public fun ListItem(
           overflow = TextOverflow.Ellipsis,
       )
     }
-    trailing?.invoke(this)
+    if (trailing != null) {
+      if (isSwitchRow) {
+        Row(
+            modifier = Modifier.clearAndSetSemantics {},
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.s4),
+        ) {
+          trailing()
+        }
+      } else {
+        trailing()
+      }
+    }
   }
 }

@@ -87,6 +87,45 @@ public object A11y {
     return if (containsStateWord) caption else "$stateWord, $caption"
   }
 
+  /**
+   * Spoken announcement for [Status], or `null` when the dot is bare (`[text]` is blank) and
+   * [adjacentText] in the same row already speaks the tone's state word (so a row with `"RUNNING"`
+   * or `"OK"` beside a dot does not repeat the state word twice).
+   */
+  public fun statusAnnouncement(
+      tone: StatusTone,
+      text: String? = null,
+      label: String? = null,
+      adjacentText: String? = null,
+  ): String? {
+    if (text.isNullOrBlank() && !adjacentText.isNullOrBlank()) {
+      val stateWord = toneStateWord(tone = tone, label = label).trim()
+      if (Regex("(?i)\\b${Regex.escape(stateWord)}\\b").containsMatchIn(adjacentText)) {
+        return null
+      }
+    }
+    return statusLabel(tone = tone, text = text, label = label)
+  }
+
+  /**
+   * Builds a single accessible description for a toggleable [ListItem] switch row so inner children
+   * can clear their semantics and keep `replacedChildren` empty for Compose `Role.Switch` metadata.
+   */
+  public fun switchRowDescription(
+      title: String,
+      subtitle: String,
+      statusTone: StatusTone? = null,
+      statusAdjacentText: String? = null,
+      trailingText: String? = null,
+  ): String =
+      listOfNotNull(
+              statusTone?.let { statusAnnouncement(tone = it, adjacentText = statusAdjacentText) },
+              title.trim().takeIf { it.isNotEmpty() },
+              subtitle.trim().takeIf { it.isNotEmpty() },
+              trailingText?.trim()?.takeIf { it.isNotEmpty() },
+          )
+          .joinToString(", ")
+
   /** Accessible label for [HostChip]: `"<name>, <state>. Opens settings."` */
   public fun hostChipDescription(name: String, state: String): String {
     val cleanName = name.trim().ifEmpty { "Mac" }

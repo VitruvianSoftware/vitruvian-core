@@ -124,6 +124,7 @@ public fun ColumnScope.HostsScreen(state: RemoteState) {
         status = host.tone,
         onClick = { state.selectHost(host.id) },
         selectedRule = if (state.selectedHost?.id == host.id) colors.accent else Color.Transparent,
+        statusAdjacentText = host.tag,
     ) {
       Tag(text = host.tag, tone = host.tagTone)
     }
@@ -601,6 +602,7 @@ private fun PhoneBridgePlate(state: RemoteState) {
                 ),
             status = if (entry.outcome == "ok") StatusTone.Ok else StatusTone.Warn,
             contentPadding = PaddingValues(vertical = Space.s3),
+            statusAdjacentText = entry.outcome,
         ) {
           Tag(
               text = entry.outcome,
@@ -642,6 +644,7 @@ private fun ConnectionPlate(state: RemoteState) {
                 else -> StatusTone.Neutral
               },
           contentPadding = PaddingValues(vertical = Space.s3),
+          statusAdjacentText = notif.statusLabel,
       ) {
         when (notif.action) {
           Derive.NotificationPermissionAction.None ->

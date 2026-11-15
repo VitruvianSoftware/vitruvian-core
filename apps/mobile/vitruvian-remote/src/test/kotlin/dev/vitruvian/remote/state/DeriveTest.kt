@@ -4493,6 +4493,36 @@ public class DeriveTest {
     val homeScreenBody = extractKotlinBlock(home, "public fun ColumnScope.HomeScreen(")
     assertTrue(homeScreenBody.contains("VitruvianIcons.CHEVRON_RIGHT"))
     assertFalse(homeScreenBody.contains("›"))
+    assertTrue(
+        "Home Running now rows must suppress status dots duplicating tag state words",
+        homeScreenBody.contains("statusAdjacentText = item.tag"),
+    )
+
+    val apps =
+        stripKotlinComments(
+            readRunfile(
+                "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/AppsScreen.kt"))
+    val moduleListRowBody = extractKotlinBlock(apps, "private fun ModuleListRow(")
+    assertTrue(
+        "ModuleListRow must pass onCheckedChange = null to child VSwitch so row owns Role.Switch",
+        moduleListRowBody.contains("onCheckedChange = null"),
+    )
+    assertTrue(
+        "ModuleListRow must forward toggle state to ListItem/WrappingRow",
+        moduleListRowBody.contains("onCheckedChange = toggle?.onToggle"),
+    )
+    val wrappingRowBody = extractKotlinBlock(apps, "private fun WrappingRow(")
+    assertTrue(
+        "WrappingRow must attach Role.Switch toggleable and switchRowDescription to the outer row",
+        wrappingRowBody.contains("role = Role.Switch") &&
+            wrappingRowBody.contains(".toggleable(") &&
+            wrappingRowBody.contains("A11y.switchRowDescription(") &&
+            wrappingRowBody.contains("clearAndSetSemantics {}"),
+    )
+    assertTrue(
+        "WrappingRow Status must suppress duplicate state words",
+        wrappingRowBody.contains("Status(tone = row.tone, adjacentText = statusAdjacentText"),
+    )
   }
 
   private class FakeBluetoothControl(
