@@ -20,6 +20,7 @@
 
 package dev.vitruvian.remote.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,10 +33,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import dev.vitruvian.design.AutoGrid
 import dev.vitruvian.design.ButtonVariant
@@ -45,13 +51,17 @@ import dev.vitruvian.design.ListItem
 import dev.vitruvian.design.LogStream
 import dev.vitruvian.design.Meter
 import dev.vitruvian.design.Metric
+import dev.vitruvian.design.OptionSheet
 import dev.vitruvian.design.Plate
+import dev.vitruvian.design.SheetOption
 import dev.vitruvian.design.Space
 import dev.vitruvian.design.StatusTone
 import dev.vitruvian.design.Tag
 import dev.vitruvian.design.VButton
+import dev.vitruvian.design.VIcon
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
+import dev.vitruvian.design.VitruvianIcons
 import dev.vitruvian.design.VitruvianType
 import dev.vitruvian.remote.shell.LocalShowDock
 import dev.vitruvian.remote.state.Derive
@@ -124,7 +134,7 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
         ) {
           Label("Connect your Mac")
           VText(
-              text = "Run the agent on the Mac, then enter its Tailscale address.",
+              text = "Run the Mac helper on your Mac, then enter your Mac's address.",
               style = VitruvianType.body.copy(fontSize = VitruvianType.mono.fontSize),
               color = colors.textDim,
           )
@@ -138,6 +148,9 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
     }
   }
 
+  var showAddWidgetSheet by remember { mutableStateOf(false) }
+  val hiddenOptions = state.hiddenWidgetOptions
+
   if (!state.isDemoMode && state.widgets.isEmpty() && !state.editMode) {
     if (state.hostPhase == Derive.HostPhase.Asking) {
       ListItem(
@@ -146,9 +159,11 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
           status = StatusTone.Neutral,
       )
     } else {
+      val detail =
+          state.agentError.takeIf { it.isNotBlank() }?.let { Derive.stripRawErrorPrefix(it) }
       ListItem(
           title = Derive.unansweredHostLine(state.hostShortName),
-          subtitle = state.agentError.ifBlank { "no reply from Mac" },
+          subtitle = detail ?: "No reply from your Mac.",
           status = StatusTone.Crit,
       )
     }
@@ -156,7 +171,7 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
     Box(modifier = Modifier.padding(horizontal = Space.s4)) {
       AutoGrid(minItemWidth = WIDGET_MIN) {
         state.widgets.forEach { widget -> item { WidgetPlate(state = state, widget = widget) } }
-        if (state.editMode) {
+        if (Derive.shouldShowAddWidget(state.editMode, state.hiddenWidgets.toSet())) {
           item {
             Plate(
                 modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = ADD_WIDGET_HEIGHT),
@@ -164,7 +179,7 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
             ) {
               VButton(
                   label = "+ Add widget",
-                  onClick = state::restoreWidgets,
+                  onClick = { showAddWidgetSheet = true },
                   modifier = Modifier.fillMaxWidth().align(Alignment.Center),
                   borderColor = Color.Transparent,
                   contentColor = colors.textDim,
@@ -174,6 +189,18 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
         }
       }
     }
+  }
+
+  if (showAddWidgetSheet && hiddenOptions.isNotEmpty()) {
+    OptionSheet(
+        title = "Add widget",
+        options = hiddenOptions.map { option -> SheetOption(label = option.label) },
+        onSelect = { index ->
+          hiddenOptions.getOrNull(index)?.let { state.showWidget(it.id) }
+          showAddWidgetSheet = false
+        },
+        onDismissRequest = { showAddWidgetSheet = false },
+    )
   }
 
   Label(
@@ -292,13 +319,23 @@ private fun WidgetPlate(state: RemoteState, widget: Widget) {
       else Box(modifier = Modifier.height(METER_SLOT))
     }
     if (state.editMode) {
-      VButton(
-          label = "×",
-          onClick = { state.hideWidget(widget.id) },
-          modifier = Modifier.align(Alignment.TopEnd).size(CLOSE_BUTTON),
-          contentPadding = PaddingValues(0.dp),
-          contentDescription = "Remove widget",
-      )
+      Box(
+          modifier =
+              Modifier.align(Alignment.TopEnd)
+                  .size(CLOSE_BUTTON)
+                  .clickable(
+                      role = Role.Button,
+                      onClickLabel = "Remove widget",
+                      onClick = { state.hideWidget(widget.id) },
+                  ),
+          contentAlignment = Alignment.Center,
+      ) {
+        VIcon(
+            path = VitruvianIcons.CLOSE,
+            color = colors.textDim,
+            contentDescription = "Remove widget",
+        )
+      }
     }
   }
 }

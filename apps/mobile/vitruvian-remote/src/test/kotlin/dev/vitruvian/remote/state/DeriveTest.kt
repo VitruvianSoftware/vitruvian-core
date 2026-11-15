@@ -4026,31 +4026,32 @@ public class DeriveTest {
   }
 
   @Test
-  public fun `Shell and HostsScreen wire About outside tabs and rail with back handling`() {
+  public fun `Shell and HostsScreen wire About and PhoneBridge outside tabs and rail with back handling`() {
     val shell =
         readRunfile(
             "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/shell/Shell.kt")
     val navItemsBlock =
         shell.substringAfter("private fun navItems(").substringBefore("private fun SettingsButton(")
     assertTrue("navItems must use RAIL_SCREENS", navItemsBlock.contains("RAIL_SCREENS.map"))
+    val railScreensBlock =
+        shell.substringAfter("private val RAIL_SCREENS").substringBefore("private val ICONS")
+    assertFalse("RAIL_SCREENS must exclude Screen.About", railScreensBlock.contains("Screen.About"))
     assertFalse(
-        "RAIL_SCREENS must exclude Screen.About",
-        shell
-            .substringAfter("private val RAIL_SCREENS")
-            .substringBefore("private val ICONS")
-            .contains("Screen.About"),
+        "RAIL_SCREENS must exclude Screen.PhoneBridge",
+        railScreensBlock.contains("Screen.PhoneBridge"),
     )
     assertTrue(
-        "TopBar must pass onBack for Screen.About",
-        shell.contains("onBack = if (isAbout) state::backFromAbout else null"),
+        "TopBar must pass onBack from state.canGoBack",
+        shell.contains("val showBack = state.canGoBack") &&
+            shell.contains("onBack = if (showBack) ({ state.navigateBack() }) else null"),
     )
 
     val remoteApp =
         readRunfile(
             "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/RemoteApp.kt")
     assertTrue(
-        "RemoteApp must handle system Back on Screen.About",
-        remoteApp.contains("BackHandler(enabled = state.effectiveScreen == Screen.About)"),
+        "RemoteApp must handle system Back via state.canGoBack",
+        remoteApp.contains("BackHandler(enabled = state.canGoBack) { state.navigateBack() }"),
     )
 
     val hosts =
@@ -4060,5 +4061,288 @@ public class DeriveTest {
     assertTrue(hosts.contains("\"About Vitruvian Remote\""))
     assertTrue(hosts.contains("\"Donate\""))
     assertTrue(hosts.contains("AppInfo.donateURL"))
+  }
+
+  @Test
+  public fun `F19 secondary navigation stack supports Settings, PhoneBridge, About and back`() {
+    val start = Derive.NavState(current = "Home")
+    assertFalse(Derive.canGoBack(start, isUnpaired = false))
+    assertNull(Derive.popNav(start, isUnpaired = false))
+
+    val onSettings = Derive.navigateToScreen(start, "Hosts", isUnpaired = false)
+    assertEquals("Hosts", onSettings.current)
+    assertEquals(listOf("Home"), onSettings.backStack)
+    assertTrue(Derive.canGoBack(onSettings, isUnpaired = false))
+
+    val onBridge = Derive.navigateToScreen(onSettings, "PhoneBridge", isUnpaired = false)
+    assertEquals("PhoneBridge", onBridge.current)
+    assertEquals(listOf("Home", "Hosts"), onBridge.backStack)
+
+    val backToSettings = Derive.popNav(onBridge, isUnpaired = false)!!
+    assertEquals("Hosts", backToSettings.current)
+    assertEquals(listOf("Home"), backToSettings.backStack)
+
+    val onAbout = Derive.navigateToAboutSubPage(backToSettings, "Privacy", isUnpaired = false)
+    assertEquals("About", onAbout.current)
+    assertEquals("Privacy", onAbout.aboutSubPage)
+    assertEquals(listOf("Home", "Hosts"), onAbout.backStack)
+
+    val backToAboutMain = Derive.popNav(onAbout, isUnpaired = false)!!
+    assertEquals("About", backToAboutMain.current)
+    assertNull(backToAboutMain.aboutSubPage)
+
+    val backToSettingsFromAbout = Derive.popNav(backToAboutMain, isUnpaired = false)!!
+    assertEquals("Hosts", backToSettingsFromAbout.current)
+
+    val backToHome = Derive.popNav(backToSettingsFromAbout, isUnpaired = false)!!
+    assertEquals("Home", backToHome.current)
+    assertTrue(backToHome.backStack.isEmpty())
+    assertFalse(Derive.canGoBack(backToHome, isUnpaired = false))
+
+    // Unpaired mode keeps Hosts as exit root, but PhoneBridge and About still step back to Hosts.
+    val unpairedHosts = Derive.NavState(current = "Hosts")
+    assertFalse(Derive.canGoBack(unpairedHosts, isUnpaired = true))
+    val unpairedBridge = Derive.navigateToScreen(unpairedHosts, "PhoneBridge", isUnpaired = true)
+    assertTrue(Derive.canGoBack(unpairedBridge, isUnpaired = true))
+    assertEquals("Hosts", Derive.popNav(unpairedBridge, isUnpaired = true)?.current)
+  }
+
+  @Test
+  public fun `F13 launch deep link handles initial launch only and clears consumed data`() {
+    assertTrue(Derive.shouldHandleLaunchIntent(isInitialCreate = true))
+    assertFalse(Derive.shouldHandleLaunchIntent(isInitialCreate = false))
+
+    val mainActivity =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/MainActivity.kt")
+    assertTrue(
+        "MainActivity.onCreate must gate launch intent on savedInstanceState == null",
+        mainActivity.contains("Derive.shouldHandleLaunchIntent(savedInstanceState == null)"),
+    )
+    assertTrue(
+        "MainActivity.handleIntent must clear consumed intent.data",
+        mainActivity.contains("intent.data = null"),
+    )
+  }
+
+  @Test
+  public fun `F35 phone bridge summary and permission subtitles use plain English without raw tool IDs`() {
+    assertEquals(
+        "Off · texts, contacts, call history and location",
+        Derive.phoneBridgeSummarySubtitle(
+            enabled = false,
+            linked = false,
+            linkStatus = "off",
+            problemText = null,
+            grantedCount = 0,
+            totalCount = 8,
+        ),
+    )
+    assertEquals(
+        "On · linked · 5 of 8 permissions granted",
+        Derive.phoneBridgeSummarySubtitle(
+            enabled = true,
+            linked = true,
+            linkStatus = "linked",
+            problemText = null,
+            grantedCount = 5,
+            totalCount = 8,
+        ),
+    )
+    assertEquals(
+        "On · Phone Bridge is turned off",
+        Derive.phoneBridgeSummarySubtitle(
+            enabled = true,
+            linked = false,
+            linkStatus = "not linked",
+            problemText = "Phone Bridge is turned off",
+            grantedCount = 2,
+            totalCount = 8,
+        ),
+    )
+
+    val ids =
+        listOf(
+            "read_sms",
+            "send_sms",
+            "read_contacts",
+            "read_call_log",
+            "call_phone",
+            "location",
+            "notification_access",
+            "accessibility",
+        )
+    for (id in ids) {
+      val grantedLine = Derive.bridgePermissionSubtitle(id, granted = true)
+      val deniedLine = Derive.bridgePermissionSubtitle(id, granted = false)
+      assertFalse("$id subtitle leaked raw tool dot: $grantedLine", grantedLine.contains('.'))
+      assertTrue(deniedLine.endsWith("· not granted"))
+    }
+  }
+
+  @Test
+  public fun `F20 gallery labels use Show, Hide and Not on this Mac without source tags`() {
+    assertEquals("Hide", Derive.galleryActionLabel(shown = true, unavailable = false))
+    assertEquals("Hide", Derive.galleryActionLabel(shown = true, unavailable = true))
+    assertEquals("Not on this Mac", Derive.galleryActionLabel(shown = false, unavailable = true))
+    assertEquals("Show", Derive.galleryActionLabel(shown = false, unavailable = false))
+
+    val appsScreen =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/AppsScreen.kt")
+    val galleryPane =
+        appsScreen.substringAfter("fun ColumnScope.GalleryPane(").substringBefore("\n@Composable")
+    assertFalse(
+        "GalleryPane must not show raw command-name tags",
+        galleryPane.contains("Tag(text = entry.source"))
+    assertTrue(
+        "GalleryPane must use Derive.galleryActionLabel",
+        galleryPane.contains("Derive.galleryActionLabel("))
+  }
+
+  @Test
+  public fun `F21 Mac developer tools stay hidden until reported and errors lead with plain text`() {
+    assertFalse(
+        Derive.macDeveloperTools(
+                isDemoMode = false,
+                availableTools = setOf("docker"),
+                vmsAvailable = false,
+                k8sAvailable = false,
+                prometheusReported = false,
+            )
+            .anyVisible,
+    )
+    val toolsSpec =
+        Derive.macDeveloperTools(
+            isDemoMode = false,
+            availableTools = setOf("limactl", "kubectl"),
+            vmsAvailable = null,
+            k8sAvailable = null,
+            prometheusReported = true,
+        )
+    assertTrue(toolsSpec.anyVisible)
+    assertTrue(toolsSpec.showLimaVms)
+    assertTrue(toolsSpec.showK3sNodes)
+    assertTrue(toolsSpec.showCustomPanel)
+
+    val demoSpec =
+        Derive.macDeveloperTools(
+            isDemoMode = true,
+            availableTools = emptySet(),
+            vmsAvailable = null,
+            k8sAvailable = null,
+            prometheusReported = false,
+        )
+    assertTrue(demoSpec.showLimaVms)
+    assertFalse(demoSpec.showK3sNodes)
+    assertTrue(demoSpec.showCustomPanel)
+
+    val (vmHeadline, vmDetail) =
+        Derive.macToolNoticeLines("limactl", "exec: \"limactl\": executable file not found in PATH")
+    assertEquals("Lima isn't installed on this Mac.", vmHeadline)
+    assertTrue(vmDetail.contains("executable file not found"))
+
+    val (promHeadline, promDetail) =
+        Derive.promqlStatusLines("java.net.ConnectException: Failed to connect to /100.64.0.2:7411")
+    assertEquals("Couldn't reach the Mac helper to run this query.", promHeadline)
+    assertEquals("Failed to connect to /100.64.0.2:7411", promDetail)
+
+    val macScreen =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/MacScreen.kt")
+    assertTrue(macScreen.contains("state.macDeveloperTools"))
+    assertTrue(macScreen.contains("Label(text = \"Developer tools\""))
+    assertTrue(macScreen.contains("var devToolsOpen by rememberSaveable { mutableStateOf(false) }"))
+    assertTrue(macScreen.contains("Derive.promqlStatusLines(state.promqlStatus)"))
+  }
+
+  @Test
+  public fun `F22 Home edit layout offers hidden widgets sheet and uses CLOSE icon`() {
+    val allHidden = setOf("cpu", "mem", "temp", "bat")
+    assertEquals(
+        listOf("cpu", "mem", "temp", "bat"),
+        Derive.hiddenWidgetOptions(allHidden).map { it.id },
+    )
+    assertFalse(Derive.shouldShowAddWidget(editMode = true, hiddenIds = emptySet()))
+    assertFalse(Derive.shouldShowAddWidget(editMode = false, hiddenIds = setOf("cpu")))
+    assertTrue(Derive.shouldShowAddWidget(editMode = true, hiddenIds = setOf("cpu")))
+
+    val homeScreen =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/HomeScreen.kt")
+    assertTrue(homeScreen.contains("OptionSheet("))
+    assertTrue(homeScreen.contains("VitruvianIcons.CLOSE"))
+    assertFalse(homeScreen.contains("label = \"×\""))
+  }
+
+  @Test
+  public fun `F12, F14, F17, F34 Settings order, pairing copy, Forget danger confirmation and plain copy`() {
+    val hosts =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/HostsScreen.kt")
+    assertTrue(
+        hosts.contains(
+            "On your Mac, click Vitruvian Remote in the menu bar and choose Pair with QR Code,"))
+    assertTrue(hosts.contains("then scan it. Or enter this code there:"))
+    assertTrue(hosts.contains("onClick = state::requestForgetAgent"))
+    assertTrue(hosts.contains("variant = ButtonVariant.Danger"))
+
+    val sectionOrder =
+        listOf(
+            "Label(text = \"Your Macs ·",
+            "PhoneBridgeSection(state)",
+            "NotificationsSection(state)",
+            "AppearanceSection(state)",
+            "SafetySection(state)",
+            "Label(\"Macros\")",
+            "AboutSection(state)",
+        )
+    val positions = sectionOrder.map { hosts.indexOf(it) }
+    assertTrue(
+        "All ordered Settings sections must be present: $positions",
+        positions.all { it >= 0 },
+    )
+    assertEquals(
+        "Settings sections must follow Your Macs -> Phone Bridge -> Notifications -> Appearance -> Safety -> Macros -> About",
+        positions.sorted(),
+        positions,
+    )
+
+    val phoneBridge =
+        readRunfile(
+            "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/PhoneBridgeScreen.kt")
+    assertTrue(
+        phoneBridge.contains(
+            "Off by default. When on, AI agents on your own Mac can read texts, contacts,"))
+    assertTrue(
+        phoneBridge.contains(
+            "call history and location from this phone, and ask before sending or calling."))
+
+    val userFacingFiles =
+        listOf(
+            hosts,
+            phoneBridge,
+            readRunfile(
+                "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/AppsScreen.kt"),
+            readRunfile(
+                "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/MacScreen.kt"),
+            readRunfile(
+                "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/HomeScreen.kt"),
+            readRunfile(
+                "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/overlays/HostStates.kt"),
+        )
+    val bannedTerms =
+        listOf(
+            "Mac agent",
+            "Tailscale address",
+            "Parchment (light) theme",
+            "Macros · bound to scripts",
+            "MCP server",
+        )
+    for (fileText in userFacingFiles) {
+      for (term in bannedTerms) {
+        assertFalse("Banned jargon '$term' found in UI screen", fileText.contains(term))
+      }
+    }
   }
 }

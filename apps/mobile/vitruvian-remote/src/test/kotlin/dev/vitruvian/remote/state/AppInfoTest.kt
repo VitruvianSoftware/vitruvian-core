@@ -150,6 +150,8 @@ public class AppInfoTest {
 
     assertTrue(AppInfo.shouldAllowWhileUnpaired("Hosts"))
     assertTrue(AppInfo.shouldAllowWhileUnpaired("About"))
+    assertTrue(AppInfo.shouldAllowWhileUnpaired("PhoneBridge"))
     assertFalse(AppInfo.shouldAllowWhileUnpaired("Home"))
+    assertFalse(AppInfo.shouldAllowWhileUnpaired("Apps"))
   }
 }

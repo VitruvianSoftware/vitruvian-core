@@ -20,6 +20,7 @@
 
 package dev.vitruvian.remote.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -34,14 +36,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.vitruvian.design.AutoGrid
+import dev.vitruvian.design.Hit
 import dev.vitruvian.design.Label
 import dev.vitruvian.design.ListItem
 import dev.vitruvian.design.Meter
@@ -248,25 +255,13 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
     )
   }
 
-  Label(text = "Lima VMs", modifier = Modifier.sectionPadding())
-  val vmsNotice = state.vmsNotice
-  if (vmsNotice != null) {
-    Unavailable(vmsNotice)
-  } else {
-    state.vms.forEach { vm ->
-      ListItem(title = vm.name, subtitle = vm.subtitle, status = vm.tone) {
-        Tag(text = vm.tag, tone = vm.tagTone)
-      }
-    }
-  }
-
   Label(text = state.containersLabel, modifier = Modifier.sectionPadding())
   val containersNotice = state.containersNotice
   if (containersNotice != null) {
     Unavailable(containersNotice)
   } else {
     // Capped: even grouped, a busy cluster is a screenful of rows under the
-    // three sections that come after it. The toggle says how many there are.
+    // sections that come after it. The toggle says how many there are.
     val all = state.containers
     var showAll by remember { mutableStateOf(false) }
     val shown = if (showAll) all else all.take(Derive.CONTAINER_ROWS)
@@ -306,80 +301,148 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
     }
   }
 
-  Label(text = "K3s nodes", modifier = Modifier.sectionPadding())
-  val nodesNotice = state.nodesNotice
-  if (nodesNotice != null) {
-    Unavailable(nodesNotice)
-  } else {
-    state.nodes.forEach { node ->
-      ListItem(title = node.name, subtitle = node.subtitle, status = node.tone) {
-        Tag(text = node.tag, tone = node.tagTone)
-      }
-    }
-  }
-
-  Column(
-      modifier = Modifier.sectionPadding().fillMaxWidth(),
-      verticalArrangement = Arrangement.spacedBy(Space.s3),
-  ) {
-    Label("Custom panel · PromQL")
-    Plate(modifier = Modifier.fillMaxWidth()) {
-      Column(
-          modifier = Modifier.padding(Space.s4),
-          verticalArrangement = Arrangement.spacedBy(Space.s3),
-      ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
-          VInput(
-              value = state.promql,
-              onValueChange = state::updatePromql,
-              modifier = Modifier.weight(1f),
-              textStyle = VitruvianType.mono,
-          )
-          VButton("Query", state::runPromql)
-        }
-        val rows = state.promqlPanelRows
-        if (rows.isEmpty()) {
-          Plate(
-              modifier = Modifier.fillMaxWidth().height(PANEL_PREVIEW_HEIGHT),
-              dashed = true,
-              gridField = true,
-          ) {
-            Label(
-                text = state.promqlStatus,
-                modifier =
-                    Modifier.align(Alignment.Center)
-                        .padding(horizontal = Space.s3, vertical = Space.s1),
-            )
-          }
-        } else {
-          // The reply, in place of the placeholder. Still no chart -- there
-          // is nothing here that could draw one -- but a series name and its
-          // newest value is what the query actually came back with.
-          Column(verticalArrangement = Arrangement.spacedBy(Space.s2)) {
-            Label(state.promqlStatus)
-            rows.forEach { row ->
-              Row(
-                  modifier = Modifier.fillMaxWidth(),
-                  horizontalArrangement = Arrangement.spacedBy(Space.s3),
-              ) {
-                VText(
-                    text = row.name,
-                    modifier = Modifier.weight(1f),
-                    style = VitruvianType.listSub,
-                    color = colors.textDim,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+  val devTools = state.macDeveloperTools
+  if (devTools.anyVisible) {
+    var devToolsOpen by rememberSaveable { mutableStateOf(false) }
+    Row(
+        modifier =
+            Modifier.sectionPadding()
+                .fillMaxWidth()
+                .defaultMinSize(minHeight = Hit.h1)
+                .clickable(
+                    role = Role.Button,
+                    onClickLabel = if (devToolsOpen) "Collapse" else "Expand",
+                    onClick = { devToolsOpen = !devToolsOpen },
                 )
-                VText(text = row.value, style = VitruvianType.mono)
-              }
+                .semantics { stateDescription = if (devToolsOpen) "Expanded" else "Collapsed" },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Space.s3),
+    ) {
+      Label(text = "Developer tools", modifier = Modifier.weight(1f))
+      VText(
+          text = if (devToolsOpen) "▾" else "▸",
+          style = VitruvianType.listTitle,
+          color = colors.textDim,
+      )
+    }
+
+    if (devToolsOpen) {
+      if (devTools.showLimaVms) {
+        Label(text = "Lima VMs", modifier = Modifier.sectionPadding())
+        val vmsNotice = state.vmsNotice
+        if (vmsNotice != null) {
+          Unavailable(vmsNotice)
+        } else {
+          state.vms.forEach { vm ->
+            ListItem(title = vm.name, subtitle = vm.subtitle, status = vm.tone) {
+              Tag(text = vm.tag, tone = vm.tagTone)
             }
           }
         }
-        VText(
-            text = state.promqlSource,
-            style = VitruvianType.label,
-            color = colors.textDim,
-        )
+      }
+
+      if (devTools.showK3sNodes) {
+        Label(text = "K3s nodes", modifier = Modifier.sectionPadding())
+        val nodesNotice = state.nodesNotice
+        if (nodesNotice != null) {
+          Unavailable(nodesNotice)
+        } else {
+          state.nodes.forEach { node ->
+            ListItem(title = node.name, subtitle = node.subtitle, status = node.tone) {
+              Tag(text = node.tag, tone = node.tagTone)
+            }
+          }
+        }
+      }
+
+      if (devTools.showCustomPanel) {
+        Column(
+            modifier = Modifier.sectionPadding().fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(Space.s3),
+        ) {
+          Label("Custom panel · PromQL")
+          Plate(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(Space.s4),
+                verticalArrangement = Arrangement.spacedBy(Space.s3),
+            ) {
+              Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
+                VInput(
+                    value = state.promql,
+                    onValueChange = state::updatePromql,
+                    modifier = Modifier.weight(1f),
+                    textStyle = VitruvianType.mono,
+                )
+                VButton("Query", state::runPromql)
+              }
+              val rows = state.promqlPanelRows
+              val (promHeadline, promDetail) = Derive.promqlStatusLines(state.promqlStatus)
+              if (rows.isEmpty()) {
+                Plate(
+                    modifier = Modifier.fillMaxWidth().height(PANEL_PREVIEW_HEIGHT),
+                    dashed = true,
+                    gridField = true,
+                ) {
+                  Column(
+                      modifier =
+                          Modifier.align(Alignment.Center)
+                              .padding(horizontal = Space.s3, vertical = Space.s1),
+                      horizontalAlignment = Alignment.CenterHorizontally,
+                      verticalArrangement = Arrangement.spacedBy(Space.s1),
+                  ) {
+                    Label(text = promHeadline)
+                    promDetail?.let { detail ->
+                      VText(
+                          text = detail,
+                          style = VitruvianType.listSub,
+                          color = colors.textDim,
+                          maxLines = 2,
+                          overflow = TextOverflow.Ellipsis,
+                      )
+                    }
+                  }
+                }
+              } else {
+                // The reply, in place of the placeholder. Still no chart -- there
+                // is nothing here that could draw one -- but a series name and its
+                // newest value is what the query actually came back with.
+                Column(verticalArrangement = Arrangement.spacedBy(Space.s2)) {
+                  Label(promHeadline)
+                  promDetail?.let { detail ->
+                    VText(
+                        text = detail,
+                        style = VitruvianType.listSub,
+                        color = colors.textDim,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                  }
+                  rows.forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(Space.s3),
+                    ) {
+                      VText(
+                          text = row.name,
+                          modifier = Modifier.weight(1f),
+                          style = VitruvianType.listSub,
+                          color = colors.textDim,
+                          maxLines = 1,
+                          overflow = TextOverflow.Ellipsis,
+                      )
+                      VText(text = row.value, style = VitruvianType.mono)
+                    }
+                  }
+                }
+              }
+              VText(
+                  text = state.promqlSource,
+                  style = VitruvianType.label,
+                  color = colors.textDim,
+              )
+            }
+          }
+        }
       }
     }
   }

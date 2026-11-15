@@ -735,4 +735,90 @@ public class MockHostWalkTest {
     state.clearVersionCopied()
     assertFalse(state.versionCopied)
   }
+
+  @Test
+  public fun `requestForgetAgent opens non-typed danger confirmation and deletes host on confirm`() {
+    val state =
+        RemoteState(
+            persistence = Persistence(InMemoryKeyValueStore()),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+    state.addHost("100.64.0.9")
+    state.updateHostAliasDraft("atlas")
+    state.saveHostAlias()
+    assertEquals(1, state.hosts.size)
+
+    state.requestForgetAgent()
+    val kind = state.dialog as? DialogKind.ForgetHost
+    assertNotNull(kind)
+    val spec = state.dialogSpec!!
+    assertEquals("Forget atlas?", spec.title)
+    assertEquals("You'll need to pair again from the Mac.", spec.body)
+    assertEquals("Forget", spec.action)
+    assertTrue(spec.destructive)
+    assertNull(spec.word)
+
+    state.confirmDialog()
+    assertTrue(state.hosts.isEmpty())
+    assertNull(state.dialog)
+  }
+
+  @Test
+  public fun `secondary navigation stack returns PhoneBridge, About sub-pages and Settings to Home`() {
+    val state =
+        RemoteState(
+            persistence = Persistence(InMemoryKeyValueStore()),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+    state.enterDemo()
+    assertEquals(Screen.Home, state.effectiveScreen)
+    assertFalse(state.canGoBack)
+
+    state.go(Screen.Hosts)
+    assertEquals(Screen.Hosts, state.effectiveScreen)
+    assertTrue(state.canGoBack)
+
+    state.openPhoneBridge()
+    assertEquals(Screen.PhoneBridge, state.effectiveScreen)
+    assertTrue(state.navigateBack())
+    assertEquals(Screen.Hosts, state.effectiveScreen)
+
+    state.openAboutPage(AboutPage.Privacy)
+    assertEquals(Screen.About, state.effectiveScreen)
+    assertEquals(AboutPage.Privacy, state.aboutPage)
+
+    assertTrue(state.navigateBack())
+    assertEquals(Screen.About, state.effectiveScreen)
+    assertEquals(AboutPage.Main, state.aboutPage)
+
+    assertTrue(state.navigateBack())
+    assertEquals(Screen.Hosts, state.effectiveScreen)
+
+    assertTrue(state.navigateBack())
+    assertEquals(Screen.Home, state.effectiveScreen)
+    assertFalse(state.canGoBack)
+    assertFalse(state.navigateBack())
+  }
+
+  @Test
+  public fun `hideWidget populates hiddenWidgetOptions and showWidget restores one widget`() {
+    val state =
+        RemoteState(
+            persistence = Persistence(InMemoryKeyValueStore()),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+    state.enterDemo()
+    assertTrue(state.hiddenWidgetOptions.isEmpty())
+
+    state.hideWidget("cpu")
+    state.hideWidget("bat")
+    assertEquals(listOf("cpu", "bat"), state.hiddenWidgetOptions.map { it.id })
+    assertFalse(state.widgets.any { it.id == "cpu" })
+    assertFalse(state.widgets.any { it.id == "bat" })
+
+    state.showWidget("cpu")
+    assertTrue(state.widgets.any { it.id == "cpu" })
+    assertFalse(state.widgets.any { it.id == "bat" })
+    assertEquals(listOf("bat"), state.hiddenWidgetOptions.map { it.id })
+  }
 }
