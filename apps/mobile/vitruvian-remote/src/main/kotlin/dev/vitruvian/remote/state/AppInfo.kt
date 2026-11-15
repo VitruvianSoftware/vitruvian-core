@@ -23,6 +23,7 @@ package dev.vitruvian.remote.state
 import io.sentry.SentryOptions
 import io.sentry.protocol.Device
 import io.sentry.protocol.OperatingSystem
+import io.sentry.protocol.SentryRuntime
 import java.io.File
 
 /** Sub-pages inside `Screen.About`. */
@@ -202,28 +203,26 @@ public object AppInfo {
       )
 
   private const val SENTRY_CACHE_DIR_NAME: String = "sentry"
-  private val SENTRY_CACHE_DIRS: List<String> = listOf(SENTRY_CACHE_DIR_NAME, "io.sentry.cache")
 
   /** Base cache directory passed to `SentryOptions.cacheDirPath`. */
   public fun sentryCacheDir(appCacheDir: File): File = File(appCacheDir, SENTRY_CACHE_DIR_NAME)
 
   /**
-   * Deletes Sentry's cached envelopes and outbox directory under [appCacheDir] when crash reporting
-   * is disabled so previously queued reports never leave the phone.
+   * Deletes Sentry's on-disk cache directory (`<appCacheDir>/sentry`, containing the DSN-hashed
+   * envelope cache, `outbox`, `.options-cache`, `.scope-cache`, and marker files) when crash
+   * reporting is disabled so previously queued reports never leave the phone.
    */
   public fun clearSentryCache(appCacheDir: File) {
-    for (dirName in SENTRY_CACHE_DIRS) {
-      val target = File(appCacheDir, dirName)
-      if (target.exists()) {
-        target.deleteRecursively()
-      }
+    val target = sentryCacheDir(appCacheDir)
+    if (target.exists()) {
+      target.deleteRecursively()
     }
   }
 
   /**
-   * Configures Sentry in a pure helper so every privacy claim (no PII, no breadcrumbs, no
-   * performance tracing, no screenshots or view hierarchy, and bounded device details) is provable
-   * in JVM unit tests.
+   * Configures Sentry directly on the plain Java SDK `SentryOptions` so every privacy setting (no
+   * PII, no breadcrumbs, no server hostname, no other thread stacks, no tracing/profiling, and
+   * bounded device details) is provable in JVM unit tests.
    */
   public fun configureSentryOptions(
       options: SentryOptions,
@@ -239,35 +238,25 @@ public object AppInfo {
       options.cacheDirPath = sentryCacheDir(appCacheDir).absolutePath
     }
     options.isSendDefaultPii = false
+    options.maxBreadcrumbs = 0
     options.isAttachServerName = false
     options.serverName = null
+    options.isAttachThreads = false
     options.isSendModules = false
     options.isEnableAutoSessionTracking = false
     options.isSendClientReports = false
 
     // No breadcrumbs (so no taps, URLs, or Mac addresses).
-    options.maxBreadcrumbs = 0
     options.beforeBreadcrumb = SentryOptions.BeforeBreadcrumbCallback { _, _ -> null }
-    options.isEnableUserInteractionBreadcrumbs = false
-    options.isEnableScreenTracking = false
-    options.gestureTargetLocators = emptyList()
 
-    // No user-interaction or performance tracing / profiling.
-    options.isEnableUserInteractionTracing = false
+    // Leave performance tracing unset/disabled (tracesSampleRate stays null).
     options.enableTracing = false
     options.tracesSampleRate = null
     options.tracesSampler = null
     options.profilesSampleRate = null
     options.profilesSampler = null
-    options.isEnableAppStartProfiling = false
-    options.isEnableTimeToFullDisplayTracing = false
     options.setTracePropagationTargets(emptyList())
     options.beforeSendTransaction = SentryOptions.BeforeSendTransactionCallback { _, _ -> null }
-
-    // No screenshots or view hierarchy (on core SentryOptions + subclass setters if present).
-    options.viewHierarchyExporters = emptyList()
-    setBooleanOptionIfPresent(options, "setAttachScreenshot", false)
-    setBooleanOptionIfPresent(options, "setAttachViewHierarchy", false)
 
     val cleanModel = device.model.trim().takeIf { it.isNotEmpty() }
     val cleanOs = device.androidRelease.trim().takeIf { it.isNotEmpty() }
@@ -276,10 +265,6 @@ public object AppInfo {
 
     options.beforeSend =
         SentryOptions.BeforeSendCallback { event, hint ->
-          hint.screenshot = null
-          hint.viewHierarchy = null
-          hint.threadDump = null
-          hint.replayRecording = null
           hint.clearAttachments()
           event.breadcrumbs = null
           // MainEventProcessor.mergeUser sets user.ipAddress = "{{auto}}" even when sendDefaultPii
@@ -287,6 +272,10 @@ public object AppInfo {
           event.user = null
           event.request = null
           event.serverName = null
+          if (event.threads != null) {
+            event.threads = null
+          }
+          event.contexts.remove(SentryRuntime.TYPE)
           if (cleanOs != null) {
             event.contexts.setOperatingSystem(
                 OperatingSystem().apply {
@@ -308,12 +297,6 @@ public object AppInfo {
           }
           event
         }
-  }
-
-  private fun setBooleanOptionIfPresent(target: Any, setterName: String, value: Boolean) {
-    runCatching {
-      target.javaClass.getMethod(setterName, Boolean::class.javaPrimitiveType).invoke(target, value)
-    }
   }
 
   public fun normalizeVersion(version: String?): String =

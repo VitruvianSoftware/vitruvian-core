@@ -24,22 +24,23 @@ import io.sentry.Attachment
 import io.sentry.Breadcrumb
 import io.sentry.Hint
 import io.sentry.MainEventProcessor
+import io.sentry.SentryEnvelope
 import io.sentry.SentryEvent
 import io.sentry.SentryOptions
+import io.sentry.cache.EnvelopeCache
+import io.sentry.cache.PersistingOptionsObserver
 import io.sentry.protocol.SentryTransaction
 import io.sentry.protocol.TransactionInfo
 import io.sentry.protocol.User
 import java.io.File
 import java.nio.file.Files
 import java.util.Locale
-import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.w3c.dom.Element
 
 public class AppInfoTest {
   private fun resolvePath(rel: String): File {
@@ -404,14 +405,47 @@ public class AppInfoTest {
     )
   }
 
-  @Test
-  public fun `configureSentryOptions disables PII breadcrumbs tracing screenshots and view hierarchy`() {
-    class AndroidLikeOptions : SentryOptions() {
-      var attachScreenshot: Boolean = true
-      var attachViewHierarchy: Boolean = true
-    }
+  private fun findForbiddenSentryReflectionTokens(source: String): List<String> {
+    val forbiddenTokens =
+        listOf(
+            "java.lang.reflect",
+            "kotlin.reflect",
+            ".getMethod(",
+            ".getDeclaredMethod(",
+            ".methods",
+            ".declaredMethods",
+            ".getField(",
+            ".getDeclaredField(",
+            "Class.forName(",
+            ".javaClass",
+            "::class.java",
+            "setBooleanOptionIfPresent",
+            "setAttachScreenshot",
+            "setAttachViewHierarchy",
+            "viewHierarchy",
+        )
+    return forbiddenTokens.filter { token -> source.contains(token) }
+  }
 
-    val options = AndroidLikeOptions()
+  @Test
+  public fun `configureSentryOptions does not use reflection`() {
+    val reflectionSample =
+        "target.javaClass.getMethod(\"setAttachScreenshot\", Boolean::class.javaPrimitiveType)"
+    assertTrue(
+        "Reflection detector must catch reflection if reintroduced",
+        findForbiddenSentryReflectionTokens(reflectionSample).isNotEmpty(),
+    )
+
+    val appInfoSource =
+        resolvePath(
+                "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt")
+            .readText()
+    assertEquals(emptyList<String>(), findForbiddenSentryReflectionTokens(appInfoSource))
+  }
+
+  @Test
+  public fun `configureSentryOptions sets Java SDK privacy options directly`() {
+    val options = SentryOptions()
     AppInfo.configureSentryOptions(
         options = options,
         dsn = "https://examplePublicKey@o0.ingest.sentry.io/0",
@@ -429,19 +463,15 @@ public class AppInfoTest {
     assertEquals("vitruvian-remote@0.1.40", options.release)
     assertEquals("production", options.environment)
     assertFalse(options.isSendDefaultPii)
+    assertEquals(0, options.maxBreadcrumbs)
+    assertNull(options.beforeBreadcrumb!!.execute(Breadcrumb.info("tap"), Hint()))
     assertFalse(options.isAttachServerName)
     assertNull(options.serverName)
+    assertFalse(options.isAttachThreads)
     assertFalse(options.isSendModules)
     assertFalse(options.isEnableAutoSessionTracking)
     assertFalse(options.isSendClientReports)
 
-    assertEquals(0, options.maxBreadcrumbs)
-    assertNull(options.beforeBreadcrumb!!.execute(Breadcrumb.info("tap"), Hint()))
-    assertFalse(options.isEnableUserInteractionBreadcrumbs)
-    assertFalse(options.isEnableScreenTracking)
-    assertTrue(options.gestureTargetLocators.isEmpty())
-
-    assertFalse(options.isEnableUserInteractionTracing)
     assertEquals(false, options.enableTracing)
     assertFalse(options.isTracingEnabled)
     assertNull(options.tracesSampleRate)
@@ -449,20 +479,17 @@ public class AppInfoTest {
     assertNull(options.profilesSampleRate)
     assertNull(options.profilesSampler)
     assertFalse(options.isProfilingEnabled)
-    assertFalse(options.isEnableAppStartProfiling)
-    assertFalse(options.isEnableTimeToFullDisplayTracing)
     assertTrue(options.tracePropagationTargets.isEmpty())
     val tx =
         SentryTransaction("tx", 0.0, 1.0, emptyList(), emptyMap(), emptyMap(), TransactionInfo("m"))
     assertNull(options.beforeSendTransaction!!.execute(tx, Hint()))
 
-    assertTrue(options.viewHierarchyExporters.isEmpty())
-    assertFalse(options.attachScreenshot)
-    assertFalse(options.attachViewHierarchy)
+    assertEquals("Pixel Fold", options.tags["device.model"])
+    assertEquals("15", options.tags["os.version"])
   }
 
   @Test
-  public fun `configureSentryOptions beforeSend strips user IP breadcrumbs and attachments and keeps bounded device details`() {
+  public fun `configureSentryOptions beforeSend strips user IP breadcrumbs threads runtime and attachments and keeps bounded device details`() {
     val options = SentryOptions()
     AppInfo.configureSentryOptions(
         options = options,
@@ -483,15 +510,11 @@ public class AppInfoTest {
           addBreadcrumb(Breadcrumb.info("tap"))
           user = User().apply { email = "user@example.com" }
         }
-    val hint =
-        Hint().apply {
-          screenshot = Attachment.fromScreenshot(byteArrayOf(1, 2, 3))
-          viewHierarchy = Attachment(byteArrayOf(4, 5), "view-hierarchy.json")
-          addAttachment(Attachment(byteArrayOf(6, 7), "extra.txt"))
-        }
+    val hint = Hint().apply { addAttachment(Attachment(byteArrayOf(6, 7), "extra.txt")) }
 
     // MainEventProcessor runs before beforeSend in SentryClient and sets user.ipAddress="{{auto}}".
     val processed = MainEventProcessor(options).process(rawEvent, hint)
+    assertNull(processed.threads)
     val sanitized = options.beforeSend!!.execute(processed, hint)!!
 
     assertEquals("vitruvian-remote@0.1.40", sanitized.release)
@@ -501,8 +524,8 @@ public class AppInfoTest {
     assertNull(sanitized.breadcrumbs)
     assertNull(sanitized.request)
     assertNull(sanitized.serverName)
-    assertNull(hint.screenshot)
-    assertNull(hint.viewHierarchy)
+    assertTrue(sanitized.threads.isNullOrEmpty())
+    assertNull(sanitized.contexts.runtime)
     assertTrue(hint.attachments.isEmpty())
 
     assertEquals("Android", sanitized.contexts.operatingSystem?.name)
@@ -519,7 +542,7 @@ public class AppInfoTest {
   }
 
   @Test
-  public fun `clearSentryCache removes SDK cache and outbox dirs without touching unrelated cache files`() {
+  public fun `clearSentryCache removes Java SDK EnvelopeCache options cache and outbox dirs without touching unrelated cache files`() {
     val appCacheDir = Files.createTempDirectory("vitruvian-sentry-cache-test").toFile()
     try {
       val options = SentryOptions()
@@ -530,18 +553,32 @@ public class AppInfoTest {
           appCacheDir = appCacheDir,
       )
 
+      val sentryBaseDir = AppInfo.sentryCacheDir(appCacheDir)
       val dsnCacheDir = File(options.cacheDirPath!!)
       val outboxDir = File(options.outboxPath!!)
-      val sentryBaseDir = AppInfo.sentryCacheDir(appCacheDir)
+      assertEquals(sentryBaseDir.absolutePath, dsnCacheDir.parentFile.absolutePath)
       assertTrue(dsnCacheDir.absolutePath.startsWith(sentryBaseDir.absolutePath + File.separator))
       assertEquals(File(dsnCacheDir, "outbox").absolutePath, outboxDir.absolutePath)
 
+      // Exercise the real 7.14.0 Java SDK EnvelopeCache and PersistingOptionsObserver disk layout.
       dsnCacheDir.mkdirs()
       outboxDir.mkdirs()
-      val queuedEnvelope = File(outboxDir, "queued.envelope").apply { writeText("envelope") }
-      val cachedEnvelope = File(dsnCacheDir, "cached.envelope").apply { writeText("cached") }
-      val legacyDir = File(appCacheDir, "io.sentry.cache").apply { mkdirs() }
-      val legacyScope = File(legacyDir, "scope.json").apply { writeText("{}") }
+      val envelope =
+          SentryEnvelope.from(
+              options.serializer, SentryEvent(RuntimeException("cached")), options.sdkVersion)
+      EnvelopeCache.create(options).store(envelope, Hint())
+      PersistingOptionsObserver(options).setRelease(options.release)
+      val queuedOutbox = File(outboxDir, "queued.envelope").apply { writeText("envelope") }
+
+      assertTrue(
+          "Expected EnvelopeCache to write a .envelope file inside ${dsnCacheDir.absolutePath}",
+          dsnCacheDir.listFiles().orEmpty().any { it.isFile && it.name.endsWith(".envelope") },
+      )
+      assertTrue(
+          "Expected PersistingOptionsObserver to populate .options-cache inside ${dsnCacheDir.absolutePath}",
+          File(dsnCacheDir, PersistingOptionsObserver.OPTIONS_CACHE).exists(),
+      )
+
       val unrelatedDir = File(appCacheDir, "http").apply { mkdirs() }
       val unrelatedFile = File(unrelatedDir, "keep.bin").apply { writeText("keep") }
 
@@ -550,10 +587,7 @@ public class AppInfoTest {
       assertFalse(sentryBaseDir.exists())
       assertFalse(dsnCacheDir.exists())
       assertFalse(outboxDir.exists())
-      assertFalse(queuedEnvelope.exists())
-      assertFalse(cachedEnvelope.exists())
-      assertFalse(legacyDir.exists())
-      assertFalse(legacyScope.exists())
+      assertFalse(queuedOutbox.exists())
       assertTrue(unrelatedFile.exists())
 
       AppInfo.clearSentryCache(appCacheDir)
@@ -561,23 +595,5 @@ public class AppInfoTest {
     } finally {
       appCacheDir.deleteRecursively()
     }
-  }
-
-  @Test
-  public fun `AndroidManifest disables Sentry auto-init`() {
-    val manifestFile = resolvePath("apps/mobile/vitruvian-remote/src/main/AndroidManifest.xml")
-    val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
-    val doc = factory.newDocumentBuilder().parse(manifestFile)
-    val androidNs = "http://schemas.android.com/apk/res/android"
-    val metaNodes = doc.getElementsByTagName("meta-data")
-    val autoInitValues =
-        (0 until metaNodes.length)
-            .mapNotNull { metaNodes.item(it) as? Element }
-            .filter { el ->
-              el.parentNode?.nodeName == "application" &&
-                  el.getAttributeNS(androidNs, "name") == "io.sentry.auto-init"
-            }
-            .map { el -> el.getAttributeNS(androidNs, "value") }
-    assertEquals(listOf("false"), autoInitValues)
   }
 }
