@@ -111,21 +111,16 @@ class A11yTest {
 
   @Test
   fun terminalPaletteMeetsWcagContrastInBothThemes() {
-    val dark = darkColors()
     val bg = terminalBackgroundColor().toArgb()
-    assertEquals(dark.neutral900.toArgb(), bg)
+    assertEquals(darkColors().neutral900.toArgb(), bg)
 
-    val tones =
-        mapOf(
-            "text" to dark.text.toArgb(),
-            "textDim" to dark.textDim.toArgb(),
-            "ok" to dark.ok.toArgb(),
-            "warn" to dark.warn.toArgb(),
-            "sanguineText" to dark.sanguineText.toArgb(),
-        )
-    tones.forEach { (name, fg) ->
+    for (tone in TerminalTone.entries) {
+      val fg = tone.terminalColor().toArgb()
       val ratio = A11y.contrastRatio(fgArgb = fg, bgArgb = bg)
-      assertTrue("Expected dark $name on neutral900 >= 4.5:1, was $ratio", ratio >= 4.5)
+      assertTrue(
+          "Expected $tone.terminalColor() on terminalBackgroundColor() >= 4.5:1, was $ratio",
+          ratio >= 4.5,
+      )
     }
   }
 
@@ -195,34 +190,161 @@ class A11yTest {
 
   @Test
   fun designSystemPrimitivesExposeAccessibilityRolesAndMinTargets() {
-    val formSrc = readDesignSource("Form.kt")
-    assertTrue("VSwitch must use Role.Switch toggleable", formSrc.contains("role = Role.Switch"))
-    assertTrue("VSwitch must use .toggleable", formSrc.contains(".toggleable("))
-    assertTrue("Segmented must use selectableGroup", formSrc.contains(".selectableGroup()"))
-    assertTrue("Segmented must use Role.Tab selectable", formSrc.contains("role = Role.Tab"))
+    val formSrc = stripKotlinComments(readDesignSource("Form.kt"))
+    val vSwitchBody = extractKotlinBlock(formSrc, "public fun VSwitch(")
+    assertTrue(
+        "VSwitch must use Role.Switch toggleable", vSwitchBody.contains("role = Role.Switch"))
+    assertTrue("VSwitch must use .toggleable", vSwitchBody.contains(".toggleable("))
+    assertFalse("VSwitch check must not match VCheckbox", vSwitchBody.contains("Role.Checkbox"))
+
+    val segmentedBody = extractKotlinBlock(formSrc, "public fun Segmented(")
+    assertTrue("Segmented must use selectableGroup", segmentedBody.contains(".selectableGroup()"))
+    assertTrue("Segmented must use .selectable(", segmentedBody.contains(".selectable("))
+    assertTrue("Segmented must use Role.Tab selectable", segmentedBody.contains("role = Role.Tab"))
     assertTrue(
         "Segmented labels must ellipsize cleanly",
-        formSrc.contains("overflow = TextOverflow.Ellipsis"),
+        segmentedBody.contains("overflow = TextOverflow.Ellipsis"),
     )
 
-    val tagSrc = readDesignSource("Tag.kt")
+    val tagSrc = stripKotlinComments(readDesignSource("Tag.kt"))
+    val kbdBody = extractKotlinBlock(tagSrc, "public fun Kbd(")
+    assertTrue(
+        "Clickable Kbd keys must gate min size on onClick != null",
+        kbdBody.contains("if (onClick != null)"),
+    )
     assertTrue(
         "Clickable Kbd keys must enforce 44 dp minWidth and minHeight",
-        tagSrc.contains("minWidth = Hit.h1, minHeight = Hit.h1"),
+        kbdBody.contains("minWidth = Hit.h1, minHeight = Hit.h1"),
     )
 
-    val navSrc = readDesignSource("Nav.kt")
-    assertTrue("HostChip must cap width at 160.dp", navSrc.contains("widthIn(max = 160.dp)"))
+    val navSrc = stripKotlinComments(readDesignSource("Nav.kt"))
+    val hostChipBody = extractKotlinBlock(navSrc, "public fun HostChip(")
+    assertTrue("HostChip must cap width at 160.dp", hostChipBody.contains("widthIn(max = 160.dp)"))
     assertTrue(
         "HostChip must use A11y.hostChipDescription",
-        navSrc.contains("A11y.hostChipDescription("),
+        hostChipBody.contains("A11y.hostChipDescription("),
     )
-    val railSrc = navSrc.substringAfter("public fun Rail(")
+
+    val railBody = extractKotlinBlock(navSrc, "public fun Rail(")
     val insetsIndex =
-        railSrc.indexOf(
+        railBody.indexOf(
             ".windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical))")
-    val drawBehindIndex = railSrc.indexOf(".drawBehind {")
+    val drawBehindIndex = railBody.indexOf(".drawBehind {")
     assertTrue("Rail insetsIndex and drawBehind must exist", insetsIndex in 0 until drawBehindIndex)
+  }
+
+  private fun stripKotlinComments(source: String): String {
+    val out = StringBuilder(source.length)
+    var i = 0
+    while (i < source.length) {
+      when {
+        source.startsWith("//", i) -> {
+          while (i < source.length && source[i] != '\n') i++
+        }
+        source.startsWith("/*", i) -> {
+          val end = source.indexOf("*/", i + 2)
+          i = if (end == -1) source.length else end + 2
+          out.append(' ')
+        }
+        source.startsWith("\"\"\"", i) -> {
+          out.append("\"\"\"")
+          i += 3
+          val end = source.indexOf("\"\"\"", i)
+          if (end == -1) {
+            out.append(source.substring(i))
+            i = source.length
+          } else {
+            out.append(source, i, end + 3)
+            i = end + 3
+          }
+        }
+        source[i] == '"' || source[i] == '\'' -> {
+          val quote = source[i]
+          out.append(quote)
+          i++
+          while (i < source.length) {
+            val c = source[i]
+            out.append(c)
+            i++
+            if (c == '\\' && i < source.length) {
+              out.append(source[i])
+              i++
+            } else if (c == quote) {
+              break
+            }
+          }
+        }
+        else -> {
+          out.append(source[i])
+          i++
+        }
+      }
+    }
+    return out.toString()
+  }
+
+  private fun extractKotlinBlock(commentFreeSource: String, anchor: String): String {
+    val start = commentFreeSource.indexOf(anchor)
+    assertTrue("Anchor `$anchor` not found", start >= 0)
+    var i = start + anchor.length
+    if (anchor.endsWith("(")) {
+      var parenDepth = 1
+      while (i < commentFreeSource.length && parenDepth > 0) {
+        i =
+            skipLiteralOrAdvance(commentFreeSource, i) { c ->
+              when (c) {
+                '(' -> parenDepth++
+                ')' -> parenDepth--
+              }
+            }
+      }
+      assertEquals("Unbalanced parameter list for `$anchor`", 0, parenDepth)
+    }
+    while (i < commentFreeSource.length && commentFreeSource[i] != '{') {
+      i = skipLiteralOrAdvance(commentFreeSource, i) {}
+    }
+    assertTrue("Opening `{` not found for `$anchor`", i < commentFreeSource.length)
+    val bodyStart = i + 1
+    i = bodyStart
+    var braceDepth = 1
+    while (i < commentFreeSource.length && braceDepth > 0) {
+      i =
+          skipLiteralOrAdvance(commentFreeSource, i) { c ->
+            when (c) {
+              '{' -> braceDepth++
+              '}' -> braceDepth--
+            }
+          }
+    }
+    assertEquals("Unbalanced body braces for `$anchor`", 0, braceDepth)
+    return commentFreeSource.substring(bodyStart, i - 1)
+  }
+
+  private inline fun skipLiteralOrAdvance(
+      source: String,
+      index: Int,
+      onCodeChar: (Char) -> Unit,
+  ): Int {
+    if (source.startsWith("\"\"\"", index)) {
+      val end = source.indexOf("\"\"\"", index + 3)
+      return if (end == -1) source.length else end + 3
+    }
+    val ch = source[index]
+    if (ch == '"' || ch == '\'') {
+      var i = index + 1
+      while (i < source.length) {
+        if (source[i] == '\\') {
+          i += 2
+        } else if (source[i] == ch) {
+          return i + 1
+        } else {
+          i++
+        }
+      }
+      return source.length
+    }
+    onCodeChar(ch)
+    return index + 1
   }
 
   private fun readDesignSource(fileName: String): String {
