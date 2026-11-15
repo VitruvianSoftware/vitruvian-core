@@ -6832,7 +6832,7 @@ public class RemoteState(
           persistence.hasSavedInstalled -> installed.toSet()
           else ->
               Derive.discoveredModuleIds(
-                  MockHost.gallery.map { it.id to it.requires },
+                  MockHost.discoveryRules(),
                   agentTools?.tools?.filterValues { it.available }?.keys.orEmpty(),
               )
         }

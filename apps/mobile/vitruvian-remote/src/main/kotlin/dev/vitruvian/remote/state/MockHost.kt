@@ -101,28 +101,76 @@ public object MockHost {
   public val gallery: List<GalleryEntry> =
       listOf(
           GalleryEntry(
-              "claude", "Claude Code", "Sessions, transcript, prompt relay", "claude", "claude"),
+              "claude",
+              "Claude Code",
+              "Sessions, transcript, prompt relay",
+              "claude",
+              "claude",
+              autoShow = true),
           // What agy can actually report. It is an interactive coding agent
           // with no build, eval or queue query; the old subtitle promised
           // three things that do not exist.
-          GalleryEntry("antigravity", "Antigravity", "Version, models, agents", "agy", "agy"),
+          GalleryEntry(
+              "antigravity",
+              "Antigravity",
+              "Version, models, agents",
+              "agy",
+              "agy",
+              autoShow = true),
           // The Mac's own `gh`, not a GitHub token on the phone: the agent
           // already has one authenticated CLI and shipping a second set of
           // credentials to a handset to do the same job would be worse.
-          GalleryEntry("prs", "Pull requests", "Open PRs, checks, merge", "gh", "gh"),
           GalleryEntry(
-              "homelab", "Homelab · K3s", "Nodes, workloads, ArgoCD sync", "kubectl", "kubectl"),
+              "prs", "Pull requests", "Open PRs, checks, merge", "gh", "gh", autoShow = true),
           GalleryEntry(
-              "lima", "Lima VMs", "Instances, start / stop, resources", "limactl", "limactl"),
-          GalleryEntry("docker", "Docker", "Containers, images, logs", "docker", "docker"),
-          GalleryEntry("grafana", "Grafana panel", "The Mac screen's PromQL, as a table", "promql"),
-          GalleryEntry("ollama", "Ollama", "Models on disk and in memory", "ollama", "ollama"),
+              "homelab",
+              "Homelab · K3s",
+              "Nodes, workloads, ArgoCD sync",
+              "kubectl",
+              "kubectl",
+              autoShow = false),
+          GalleryEntry(
+              "lima",
+              "Lima VMs",
+              "Instances, start / stop, resources",
+              "limactl",
+              "limactl",
+              autoShow = false),
+          GalleryEntry(
+              "docker", "Docker", "Containers, images, logs", "docker", "docker", autoShow = false),
+          GalleryEntry(
+              "grafana",
+              "Grafana panel",
+              "The Mac screen's PromQL, as a table",
+              "promql",
+              autoShow = false),
+          GalleryEntry(
+              "ollama",
+              "Ollama",
+              "Models on disk and in memory",
+              "ollama",
+              "ollama",
+              autoShow = true),
           // Read and driven through the agent, which shares the app's config
           // file: on / off, which speaker, how much of a reply, say this.
           GalleryEntry(
-              "speaker", "Vitruvian Speaker", "On / off, speaker, announce", "config", "speaker"),
-          GalleryEntry("tv", "Sony TV", "Power, 4K Aerials, apps, HDMI, cast URL", "adb", "adb"),
+              "speaker",
+              "Vitruvian Speaker",
+              "On / off, speaker, announce",
+              "config",
+              "speaker",
+              autoShow = true),
+          GalleryEntry(
+              "tv",
+              "Sony TV",
+              "Power, 4K Aerials, apps, HDMI, cast URL",
+              "adb",
+              "adb",
+              autoShow = false),
       )
+
+  public fun discoveryRules(): List<Derive.ModuleDiscoveryRule> =
+      gallery.map { Derive.ModuleDiscoveryRule(it.id, it.requires, it.autoShow) }
 
   public val defaultInstalled: Set<String> = setOf("claude")
 

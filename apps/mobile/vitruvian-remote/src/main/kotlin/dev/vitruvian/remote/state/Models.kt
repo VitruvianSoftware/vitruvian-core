@@ -327,6 +327,13 @@ public data class GalleryEntry(
      * suffices.
      */
     val requires: String? = null,
+    /**
+     * Whether this module is auto-shown when its required CLI tool is present on the Mac before the
+     * user has saved module choices. Only modules whose required tool is specific to that module
+     * auto-show; general-purpose CLIs (`adb`, `kubectl`, `limactl`, `docker`) stay hidden until the
+     * user taps Show in the gallery.
+     */
+    val autoShow: Boolean = false,
 )
 
 /** A row of the Mac screen's process table. */

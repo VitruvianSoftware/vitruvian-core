@@ -3866,18 +3866,18 @@ public class DeriveTest {
 
   @Test
   public fun `neutral defaults ship only discovered modules and Shell macro kind`() {
-    val requires =
+    val rules =
         listOf(
-            "claude" to null,
-            "homelab" to "kubectl",
-            "lima" to "limactl",
-            "speaker" to "vitruvian-speaker",
-            "tv" to null,
+            Derive.ModuleDiscoveryRule("claude", "claude", autoShow = true),
+            Derive.ModuleDiscoveryRule("homelab", "kubectl", autoShow = false),
+            Derive.ModuleDiscoveryRule("lima", "limactl", autoShow = false),
+            Derive.ModuleDiscoveryRule("speaker", "speaker", autoShow = true),
+            Derive.ModuleDiscoveryRule("tv", "adb", autoShow = false),
         )
-    assertEquals(setOf("claude"), Derive.discoveredModuleIds(requires, emptySet()))
+    assertEquals(setOf("claude"), Derive.discoveredModuleIds(rules, emptySet()))
     assertEquals(
-        setOf("claude", "lima", "homelab"),
-        Derive.discoveredModuleIds(requires, setOf("limactl", "kubectl")),
+        setOf("claude", "speaker"),
+        Derive.discoveredModuleIds(rules, setOf("limactl", "kubectl", "adb", "speaker")),
     )
 
     assertEquals("Delete", Derive.macroDeleteLabel(armed = false))
@@ -3920,6 +3920,22 @@ public class DeriveTest {
         readRunfile(
             "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/screens/HostsScreen.kt")
     assertTrue(hostsSrc.contains("state.editMacro(macro.id)"))
+  }
+
+  @Test
+  public fun `discoveredModuleIds auto-shows only module-specific tools and never tv homelab or lima`() {
+    val rules = MockHost.discoveryRules()
+    assertEquals(
+        setOf("claude"),
+        Derive.discoveredModuleIds(rules, setOf("adb", "kubectl", "limactl", "docker")),
+    )
+    assertEquals(
+        setOf("claude", "antigravity", "prs", "ollama", "speaker"),
+        Derive.discoveredModuleIds(
+            rules,
+            setOf("adb", "kubectl", "limactl", "agy", "gh", "ollama", "speaker"),
+        ),
+    )
   }
 
   // --- F6, F33, F36: memory warn parity, push spec, running now empty copy

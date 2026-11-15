@@ -78,6 +78,7 @@ pub const KNOWN_TOOLS: &[&str] = &[
     "agy",
     "claude",
     "docker",
+    "gh",
     "speaker",
     "kubectl",
     "limactl",

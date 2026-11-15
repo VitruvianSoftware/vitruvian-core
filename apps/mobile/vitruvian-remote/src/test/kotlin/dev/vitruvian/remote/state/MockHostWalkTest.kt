@@ -908,4 +908,64 @@ public class MockHostWalkTest {
     assertFalse(sleepWolOff.body.contains("Tailscale", ignoreCase = true))
     assertTrue(sleepWolOff.body.contains("Wake on LAN is off"))
   }
+
+  @Test
+  public fun `fresh install does not auto-show tv homelab or lima while saved user choices stay intact`() {
+    val fresh = newSavedMacState()
+    fresh.applyEndpointReadings(
+        tools =
+            AgentTools(
+                mapOf(
+                    "adb" to AgentTool(true, "/opt/homebrew/bin/adb"),
+                    "kubectl" to AgentTool(true, "/opt/homebrew/bin/kubectl"),
+                    "limactl" to AgentTool(true, "/opt/homebrew/bin/limactl"),
+                    "docker" to AgentTool(true, "/opt/homebrew/bin/docker"),
+                    "gh" to AgentTool(true, "/opt/homebrew/bin/gh"),
+                ),
+            ),
+    )
+    assertFalse("tv" in fresh.effectiveInstalled)
+    assertFalse("homelab" in fresh.effectiveInstalled)
+    assertFalse("lima" in fresh.effectiveInstalled)
+    assertFalse("docker" in fresh.effectiveInstalled)
+    assertTrue("claude" in fresh.effectiveInstalled)
+    assertTrue("prs" in fresh.effectiveInstalled)
+
+    fresh.toggleModule("lima")
+    assertTrue("lima" in fresh.effectiveInstalled)
+
+    val prefs = InMemoryKeyValueStore()
+    val savedHost =
+        AgentHostEntry(
+            id = "host-1",
+            alias = "studio-mbp",
+            url = "http://100.64.9.50:7411",
+            token = "tok-real-1",
+            mac = "10:20:30:40:50:60",
+        )
+    prefs
+        .edit()
+        .putString("hosts", HostCodec.encode(listOf(savedHost)))
+        .putString("selectedHostId", savedHost.id)
+        .apply()
+    val savedPersistence = Persistence(prefs)
+    savedPersistence.installed = listOf("claude", "homelab", "tv")
+    val existingUser =
+        RemoteState(
+            persistence = savedPersistence,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+    existingUser.applyEndpointReadings(
+        tools =
+            AgentTools(
+                mapOf(
+                    "adb" to AgentTool(true, "/opt/homebrew/bin/adb"),
+                    "kubectl" to AgentTool(true, "/opt/homebrew/bin/kubectl"),
+                    "limactl" to AgentTool(true, "/opt/homebrew/bin/limactl"),
+                    "gh" to AgentTool(true, "/opt/homebrew/bin/gh"),
+                ),
+            ),
+    )
+    assertEquals(setOf("claude", "homelab", "tv"), existingUser.effectiveInstalled)
+  }
 }

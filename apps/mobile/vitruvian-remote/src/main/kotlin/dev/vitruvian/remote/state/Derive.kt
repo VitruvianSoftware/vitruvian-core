@@ -3945,14 +3945,25 @@ public object Derive {
         else -> null
       }
 
-  /** Discovered module IDs: `"claude"` plus any module whose required CLI tool is available. */
+  /** Gallery discovery metadata needed to decide whether a module auto-shows on discovery. */
+  public data class ModuleDiscoveryRule(
+      val id: String,
+      val requires: String?,
+      val autoShow: Boolean = false,
+  )
+
+  /**
+   * Discovered module IDs: `"claude"` plus any module opted into [ModuleDiscoveryRule.autoShow]
+   * whose required module-specific CLI tool is available.
+   */
   public fun discoveredModuleIds(
-      moduleRequires: List<Pair<String, String?>>,
+      modules: List<ModuleDiscoveryRule>,
       availableTools: Set<String>,
   ): Set<String> {
     val out = linkedSetOf("claude")
-    for ((id, req) in moduleRequires) {
-      if (req != null && req in availableTools) out.add(id)
+    for (module in modules) {
+      val req = module.requires ?: continue
+      if (module.autoShow && req in availableTools) out.add(module.id)
     }
     return out
   }
