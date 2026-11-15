@@ -950,6 +950,8 @@ jobs:
               - 'MODULE.bazel'
               - 'MODULE.bazel.lock'
               - '.bazelrc'
+              # The rc files .bazelrc imports (preset, java17, remote).
+              - 'tools/*.bazelrc'
               - '.bazelversion'
               - '.github/actions/setup-bazel/**'
               - '.github/workflows/ci.yaml'
@@ -966,6 +968,8 @@ jobs:
               - 'tools/ci/src/go_test_lanes/**'
               - 'tools/ci/src/go_test_with_retry/**'
               - 'tools/ci/src/transient_lib/**'
+              # go_test_lanes links //tools/shell-compat:shell_compat.
+              - 'tools/shell-compat/**'
               - '.github/workflows/ci.yaml'
 
       - name: Decide which jobs run
