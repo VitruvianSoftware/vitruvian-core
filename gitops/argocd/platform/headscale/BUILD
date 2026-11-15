@@ -20,6 +20,7 @@
 
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 load("//tools/gitops:defs.bzl", "gitops_manifest")
+load("//tools/pytest:defs.bzl", "py_test")
 
 # gazelle:ignore
 
@@ -31,15 +32,18 @@ gitops_manifest(
         "certificate.yaml",
         "configmap-edge.yaml",
         "configmap-headplane.yaml",
+        "configmap-key-exporter.yaml",
         "daemonset-node-agent.yaml",
         "deployment-edge-tunnel.yaml",
         "deployment-headplane.yaml",
+        "deployment-key-exporter.yaml",
         "deployment-subnet-router.yaml",
         "dnsendpoint.yaml",
         "httproute-headplane.yaml",
         "httproute.yaml",
         "pvc-headplane.yaml",
         "service-headplane.yaml",
+        "service-key-exporter.yaml",
     ],
 )
 
@@ -78,4 +82,12 @@ rust_test(
     crate = ":headscale_values_lib",
     data = DATA_FILES,
     edition = "2021",
+)
+
+# exporter.py, run straight out of configmap-key-exporter.yaml.
+py_test(
+    name = "key_exporter_test",
+    size = "small",
+    srcs = ["key_exporter_test.py"],
+    data = ["configmap-key-exporter.yaml"],
 )

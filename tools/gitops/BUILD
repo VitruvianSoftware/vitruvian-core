@@ -175,6 +175,7 @@ TOOLS = {
     "seal-alert-pagerduty": ("seal_alert_pagerduty.sh", []),
     "seal-argocd-backstage-token": ("seal_argocd_backstage_token.sh", []),
     "seal-headplane-secret": ("seal_headplane_secret.sh", []),
+    "seal-headscale-key-exporter": ("seal_headscale_key_exporter.sh", []),
     "seal-zitadel-login-cookie-secret": ("seal_zitadel_login_cookie_secret.sh", []),
     "sealed-secrets-backup": (
         "sealed_secrets_keys.sh",
@@ -310,6 +311,7 @@ TOOL_OF = {
     "seal_arc_github_app.sh": "seal-arc-github-app",
     "seal_argocd_backstage_token.sh": "seal-argocd-backstage-token",
     "seal_headplane_secret.sh": "seal-headplane-secret",
+    "seal_headscale_key_exporter.sh": "seal-headscale-key-exporter",
     "seal_zitadel_login_cookie_secret.sh": "seal-zitadel-login-cookie-secret",
     "sealed_secrets_keys.sh": "sealed-secrets-keys",
 }

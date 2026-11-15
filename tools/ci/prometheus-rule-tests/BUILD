@@ -30,6 +30,7 @@ exports_files([
     "vitruvian-slack-mcp.test.yml",
     "oom.test.yml",
     "cnpg.test.yml",
+    "headscale.test.yml",
 ])
 
 rust_library(
