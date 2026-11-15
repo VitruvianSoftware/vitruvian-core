@@ -367,11 +367,10 @@ class Refresh(unittest.TestCase):
         self.assertFalse(s.up, "a read past REFRESH_BUDGET_SECONDS must fail, not hang")
 
     def test_unreadable_key_file_does_not_kill_the_loop(self):
-        self.keyfile.write_text("k")
-        os.chmod(self.keyfile, 0)
-        self.addCleanup(os.chmod, self.keyfile, 0o600)
-        if os.access(self.keyfile, os.R_OK):
-            self.skipTest("running as root: file permissions are not enforced")
+        # A directory where the key should be: open() fails with an error
+        # that is not "not there yet", and even root cannot read past it (a
+        # chmod 0 file would be skipped on CI, which runs as root).
+        self.keyfile.mkdir()
         s = self.m.State()
         s.up = True
         self.m.refresh_once(s)  # must not raise
