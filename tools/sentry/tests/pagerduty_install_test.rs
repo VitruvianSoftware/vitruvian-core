@@ -64,6 +64,7 @@ fi
 n=$((n + 1))
 printf '%s' "$n" > "$FAKE_STATE/count"
 printf '%s' "$*" > "$FAKE_STATE/call_${n}_argv"
+printf '%s' "${SENTRY_TOKEN:-}" > "$FAKE_STATE/call_${n}_envtoken"
 cat > "$FAKE_STATE/call_${n}_stdin"
 
 jar=$(sed -n 's/^cookie-jar = "\(.*\)"$/\1/p' "$FAKE_STATE/call_${n}_stdin")
@@ -205,8 +206,14 @@ fn fake_curl_full_install_verifies_argv_0600_cookie_jar_session_and_cleanup() {
 
     for call in 1..=4 {
         let argv = fs::read_to_string(state_dir.join(format!("call_{call}_argv"))).unwrap();
-        assert_eq!(argv, "-sS -K -", "call {call} exposed unexpected argv");
+        assert_eq!(argv, "-q -sS -K -", "call {call} exposed unexpected argv");
         assert!(!argv.contains(token));
+        let env_token =
+            fs::read_to_string(state_dir.join(format!("call_{call}_envtoken"))).unwrap();
+        assert!(
+            env_token.is_empty(),
+            "call {call}: SENTRY_TOKEN leaked into curl's environment"
+        );
 
         let jarmode = fs::read_to_string(state_dir.join(format!("call_{call}_jarmode"))).unwrap();
         assert!(

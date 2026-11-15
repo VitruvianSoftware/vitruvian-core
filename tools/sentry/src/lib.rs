@@ -71,9 +71,8 @@ fn valid_url(url: &str) -> bool {
     if url.chars().any(|c| c.is_control() || c.is_whitespace()) {
         return false;
     }
-    let rest = url
-        .strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"));
+    // https only: the request carries the Bearer token.
+    let rest = url.strip_prefix("https://");
     let Some(after_scheme) = rest else {
         return false;
     };
@@ -143,7 +142,9 @@ pub fn parse_args(argv: &[String]) -> Result<Args, String> {
         return Err("--name cannot be empty".into());
     }
     if !valid_url(&url) {
-        return Err(format!("--url '{url}' must be an http:// or https:// URL"));
+        return Err(format!(
+            "--url '{url}' must be an https:// URL (the token must not travel in cleartext)"
+        ));
     }
     if !valid_org(&org) {
         return Err(format!(
@@ -499,6 +500,16 @@ mod tests {
         assert!(!a.help);
 
         assert!(parse_args(&["--subdomain".into(), "acme".into()]).is_err());
+        // The token must never travel in cleartext.
+        let plain = parse_args(&[
+            "--subdomain".into(),
+            "acme".into(),
+            "--name".into(),
+            "Acme".into(),
+            "--url".into(),
+            "http://sentry.example".into(),
+        ]);
+        assert!(plain.unwrap_err().contains("https://"));
         assert!(parse_args(&["--name".into(), "Acme".into()]).is_err());
         assert!(parse_args(&[
             "--subdomain".into(),

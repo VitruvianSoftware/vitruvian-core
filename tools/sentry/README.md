@@ -23,3 +23,11 @@ Set `SENTRY_TOKEN` in the environment to a **user** auth token (prefix `sntryu_`
 ## Tests
 
 `bazel test //tools/sentry/...` runs unit tests and subprocess tests against a fake `curl` script with no network access.
+
+## Safety
+
+- `https://` URLs only, so the token never travels in cleartext.
+- curl runs with `-q` (ignores `~/.curlrc`) and without `SENTRY_TOKEN` in its
+  environment; the token reaches it only through the config on stdin.
+- `SENTRY_CURL_BIN` overrides the curl binary (the tests use it for a fake).
+  Whatever it names receives the token, so only point it at a curl you trust.

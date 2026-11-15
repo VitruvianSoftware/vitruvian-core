@@ -212,7 +212,12 @@ impl HttpClient for CurlClient {
         config.push_str("write-out = \"\\n__sentry_pagerduty_install_status__%{http_code}\"\n");
 
         let mut child = Command::new(&self.curl_bin)
-            .args(["-sS", "-K", "-"])
+            // -q first: ignore ~/.curlrc, so no personal config can turn off
+            // TLS checks or add a proxy for a request that carries the token.
+            .args(["-q", "-sS", "-K", "-"])
+            // The token reaches curl only through the stdin config; keep it
+            // out of the child's environment (readable via ps eww).
+            .env_remove("SENTRY_TOKEN")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
