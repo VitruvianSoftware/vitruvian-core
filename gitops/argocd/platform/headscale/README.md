@@ -29,6 +29,55 @@ allow-all did), and `tag:ci` reaches only TCP to the Envoy gateway NodePort
 [`zitadel-tunnel-setup`](../../../../.github/actions/zitadel-tunnel-setup/action.yml);
 `headscale_values_test` fails if they drift.
 
+## Expiry monitoring
+
+Every Headscale credential has an expiry date, and nothing breaks loudly
+until the day it passes. `headscale-key-exporter` (in this folder:
+`configmap-key-exporter.yaml`, `deployment-key-exporter.yaml`,
+`service-key-exporter.yaml`) reads Headscale's own API every 5 minutes and
+gives Prometheus one expiry time per pre-auth key, API key and device login.
+Alerts (group `headscale` in
+[`prometheus/applicationset.yaml`](../prometheus/applicationset.yaml)) go
+through Alertmanager to ntfy and PagerDuty:
+
+| Alert | When | Severity |
+|---|---|---|
+| `HeadscaleCredentialExpiringSoon` | under 30 days left | warning |
+| `HeadscaleCredentialExpiringImminently` | under 3 days left | page |
+| `HeadscaleKeyExporterDown` | the exporter could not read Headscale for 30 min | warning |
+
+Expired credentials and spent single-use keys are left out, so a dead key
+does not alert. To silence one that nothing uses any more, expire it.
+
+The exporter calls Headscale with an API key of its own (Secret
+`headscale-key-exporter`). That key is watched like the rest, and if it
+expires the exporter gets a 401 and `HeadscaleKeyExporterDown` fires. Mint and
+seal a fresh one, then commit the sealed file:
+
+```sh
+bazel run //tools/gitops:seal-headscale-key-exporter            # 365d; --expiration 90d to change
+```
+
+The pod re-reads the key on every refresh, so no restart is needed. Expire the
+old key once the exporter is reporting again.
+
+Tests: `bazel test //gitops/argocd/platform/headscale:key_exporter_test`
+(the exporter, run straight out of the ConfigMap) and the promtool suite
+`tools/ci/prometheus-rule-tests/headscale.test.yml`.
+
+### What each credential is for (2026-11-15)
+
+| Kind | Id | Expires | Used by |
+|---|---|---|---|
+| pre-auth key | 3 | 2036-10-23 | `headscale-subnet-router-auth`: the node agents and subnet router in this folder |
+| pre-auth key | 4 | 2036-10-23 | probably the Claude Code cloud sessions' `TS_AUTHKEY` (ephemeral, untagged; see `docs/admin/claude-code-cloud-sessions.md`) |
+| pre-auth key | 5 | 2027-11-14 | CI, `HEADSCALE_CI_AUTHKEY` (below) |
+| API key | 1 (`sxHrjsz`) | 2026-11-20 | nothing found; Headplane uses key 3 |
+| API key | 3 (`TWRIQB0`) | 2036-11-11 | Headplane (`headplane-oidc-secret`) |
+| API key | 6 (`8XhmgM0`) | 2027-11-15 | `headscale-key-exporter` |
+
+Update this table when a key is minted, rotated or retired.
+
 ## CI pre-auth key (`HEADSCALE_CI_AUTHKEY`)
 
 The Zitadel apply workflows (`zitadel-apps-relay-apply`,

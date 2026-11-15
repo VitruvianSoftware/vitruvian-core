@@ -48,6 +48,10 @@ pub const TOOLS: &[(&str, &str)] = &[
     ),
     ("seal-headplane-secret", "seal_headplane_secret.sh"),
     (
+        "seal-headscale-key-exporter",
+        "seal_headscale_key_exporter.sh",
+    ),
+    (
         "seal-zitadel-login-cookie-secret",
         "seal_zitadel_login_cookie_secret.sh",
     ),
@@ -73,6 +77,7 @@ pub fn run_tool(name: &[u8], args: &[Vec<u8>]) -> Option<i32> {
         b"seal-alert-heartbeat" => seal::alert_heartbeat(args),
         b"seal-argocd-backstage-token" => backstage::main(args),
         b"seal-headplane-secret" => seal::headplane(args),
+        b"seal-headscale-key-exporter" => seal::headscale_key_exporter(args),
         b"seal-zitadel-login-cookie-secret" => seal::zitadel(args),
         b"sealed-secrets-keys" => bw_backup::sealed_secrets_keys(args),
         b"argocd-secret" => bw_backup::argocd_secret(args),
@@ -97,12 +102,23 @@ fn usage() -> String {
 
 /// The binary's entry point: `argv0` picks the tool when it is named after
 /// one; otherwise the first argument does.
+/// `args` without a leading copy of the tool's own name `base`.
+fn own_args<'a>(base: &[u8], args: &'a [Vec<u8>]) -> &'a [Vec<u8>] {
+    match args.first() {
+        Some(first) if first.as_slice() == base => &args[1..],
+        _ => args,
+    }
+}
+
 pub fn main(argv0: &[u8], args: &[Vec<u8>]) -> i32 {
     let base = match argv0.iter().rposition(|&c| c == b'/') {
         Some(i) => &argv0[i + 1..],
         None => argv0,
     };
-    if let Some(code) = run_tool(base, args) {
+    // A target named after its tool (seal-alert-heartbeat, ...) is also
+    // given that name as its first argument by BUILD (`[TOOL_OF[script]] +
+    // args`); drop it, or the tool would read its own name as an argument.
+    if let Some(code) = run_tool(base, own_args(base, args)) {
         return code;
     }
     match args.first() {
@@ -143,5 +159,14 @@ mod tests {
         }
         assert_eq!(TOOLS.len(), 15);
         assert!(run_tool(b"no-such-tool", &[]).is_none());
+    }
+
+    #[test]
+    fn a_target_named_after_its_tool_does_not_see_its_own_name() {
+        let args = vec![b"seal-alert-heartbeat".to_vec(), b"--apply".to_vec()];
+        assert_eq!(own_args(b"seal-alert-heartbeat", &args), &args[1..]);
+        // Anything else is passed through untouched.
+        assert_eq!(own_args(b"seal-alert-ntfy", &args), &args[..]);
+        assert_eq!(own_args(b"seal-alert-heartbeat", &[]), &[] as &[Vec<u8>]);
     }
 }
