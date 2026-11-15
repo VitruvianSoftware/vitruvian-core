@@ -73,12 +73,16 @@ Tests: `bazel test //gitops/argocd/platform/headscale:key_exporter_test`
 
 ### What each credential is for (2026-11-15)
 
+API key 1 (`sxHrjsz`, due 2026-11-20) was expired by hand on 2026-11-15: nothing used it.
+Its `HeadscaleCredentialExpiringSoon` warning fired and then cleared once it was expired,
+which is how this monitor was first proven end to end.
+
+
 | Kind | Id | Expires | Used by |
 |---|---|---|---|
 | pre-auth key | 3 | 2036-10-23 | `headscale-subnet-router-auth`: the node agents and subnet router in this folder |
 | pre-auth key | 4 | 2036-10-23 | not found in the repo or the cluster. Ephemeral and untagged, the kind `docs/admin/claude-code-cloud-sessions.md` asks for as `TS_AUTHKEY`, which lives outside the repo (unverified) |
 | pre-auth key | 5 | 2027-11-14 | CI, `HEADSCALE_CI_AUTHKEY` (below) |
-| API key | 1 (`sxHrjsz`) | 2026-11-20 | nothing found; Headplane uses key 3 |
 | API key | 3 (`TWRIQB0`) | 2036-11-11 | Headplane (`headplane-oidc-secret`) |
 | API key | 6 (`8XhmgM0`) | 2027-11-15 | `headscale-key-exporter` |
 
