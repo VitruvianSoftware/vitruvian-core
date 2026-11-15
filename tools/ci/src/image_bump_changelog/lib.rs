@@ -1117,7 +1117,7 @@ fn render_local(
     commits: Option<&[CommitInfo]>,
     shared_commit_count: usize,
 ) -> String {
-    match (old_rev, new_rev) {
+    let body = match (old_rev, new_rev) {
         (Some(old_r), Some(new_r)) if old_r == new_r => {
             format!(
                 "Built from [`{}`](https://github.com/{repo}/commit/{new_r}) \
@@ -1187,7 +1187,8 @@ fn render_local(
         (None, None) => "Source revision unknown (neither previous nor new image records \
                          `org.opencontainers.image.revision`).\n"
             .to_string(),
-    }
+    };
+    format!("### Changes in this image\n\n{body}")
 }
 
 fn render_upstream(
@@ -1197,7 +1198,7 @@ fn render_upstream(
     commits: Option<&[CommitInfo]>,
     total_upstream_commits: usize,
 ) -> String {
-    match (old_rev, new_rev) {
+    let body = match (old_rev, new_rev) {
         (Some(old_r), Some(new_r)) if old_r == new_r => {
             format!(
                 "Built from [`{}`](https://github.com/{repo}/commit/{new_r}) \
@@ -1251,7 +1252,8 @@ fn render_upstream(
         (None, None) => "Upstream revision isn't recorded on this image \
                          (`org.opencontainers.image.revision` label absent).\n"
             .to_string(),
-    }
+    };
+    format!("### Upstream changes\n\n{body}")
 }
 
 // ---------------------------------------------------------------------------
@@ -1852,6 +1854,7 @@ mod tests {
                 shared_commit_count: 1,
             },
         );
+        assert!(md.starts_with("### Changes in this image\n\n"));
         assert!(md.contains("Built from [`10b86d1..e0b9742`](https://github.com/VitruvianSoftware/vitruvian-core/compare/10b86d19bdaab4b63838035f9c9aa3aaccd00293...e0b974296378b9e30757c5e5045a86498408b071)."));
         assert!(md.contains("(#4874)"));
         assert!(md.contains("1 other commit in this range changed shared build inputs."));
@@ -1866,6 +1869,7 @@ mod tests {
                 shared_commit_count: 0,
             },
         );
+        assert!(missing_old.starts_with("### Changes in this image\n\n"));
         assert!(missing_old.contains("previous revision unknown"));
         assert!(missing_old.contains("e0b9742"));
 
@@ -1878,6 +1882,7 @@ mod tests {
                 total_upstream_commits: 0,
             },
         );
+        assert!(upstream_unlabeled.starts_with("### Upstream changes\n\n"));
         assert!(upstream_unlabeled.contains("Upstream revision isn't recorded"));
     }
 

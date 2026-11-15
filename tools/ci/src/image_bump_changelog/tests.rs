@@ -173,6 +173,11 @@ fn local_range_lists_app_commits_and_counts_shared_inputs() {
     let new7 = &new_sha[..7];
     assert_has(
         &o.stdout,
+        "### Changes in this image\n\nBuilt from",
+        "section heading",
+    );
+    assert_has(
+        &o.stdout,
         &format!("Built from [`{old7}..{new7}`](https://github.com/VitruvianSoftware/vitruvian-core/compare/{old_sha}...{new_sha})."),
         "compare header",
     );
@@ -538,6 +543,11 @@ fn tag_fallback_resolves_commit_from_matching_40_hex_tag() {
     assert_eq!(o.code, 0, "stderr={}\nstdout={}", o.stderr, o.stdout);
     let old7 = &old_sha[..7];
     let new7 = &new_sha[..7];
+    assert_has(
+        &o.stdout,
+        "### Changes in this image\n\nBuilt from",
+        "section heading",
+    );
     assert_has(
         &o.stdout,
         &format!("Built from [`{old7}..{new7}`](https://github.com/VitruvianSoftware/vitruvian-core/compare/{old_sha}...{new_sha})."),

@@ -122,7 +122,14 @@ jobs:
           The image is built from this repository, so this digest is the most recent \`main\` build of \`apps/web/backstage/\`. Review the resolved digest in \`gitops/argocd/platform/backstage/values.yaml\`, then merge through the normal queue -- ArgoCD rolls the new image out on merge, which is what removes the old manual \`kubectl rollout restart\` step."
 
           section="${CHANGELOG:-changelog unavailable: empty changelog output}"
-          body="$(printf '%s\n\n### What'\''s in this bump\n\n%s\n' "$body" "$section")"
+          case "$section" in
+            "### Changes in this image"*)
+              body="$(printf '%s\n\n%s\n' "$body" "$section")"
+              ;;
+            *)
+              body="$(printf '%s\n\n### Changes in this image\n\n%s\n' "$body" "$section")"
+              ;;
+          esac
 
           # GitHub's API fails now and then with a server-side error that has
           # nothing to do with the request (2026-10-12: a GraphQL "Something
