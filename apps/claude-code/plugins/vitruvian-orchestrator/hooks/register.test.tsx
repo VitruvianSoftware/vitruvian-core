@@ -3427,3 +3427,73 @@ test("progress accepts roster and legacy tiers and rejects unknown tier or phase
   expect(String(badPhase.result ?? "")).toContain("invalid phase");
   expect(f?.phase).toBe("plan");
 });
+
+test("board tool refuses an unknown channel, and /orchestrator-board members labels a helper's second round on a task", async ($, on) => {
+  mock.clock(on, { now: 40_000_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("agent.list", () => ({ value: [] }));
+  let spawnN = 0;
+  on("agent.spawn", async (_, e) => {
+    spawnN += 1;
+    return {
+      agentId: `wren-round-${spawnN}`,
+      model: e.model ?? "claude-haiku-5-5",
+    };
+  });
+  on("turn.complete", (_, e) => ({
+    text: e.answer,
+    ...(e.usage ? { usage: e.usage } : {}),
+  }));
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Rounds and channels",
+    phase: "delegate",
+    tasks: [{ title: "Build it", specialist: "wren", tier: "core", after: [] }],
+  } as never);
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__channel",
+    action: "create",
+    name: "infra",
+  } as never);
+
+  const unknown = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__board",
+    channel: "nope",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(unknown.isError).toBe(true);
+  expect(unknown.result).toBe(
+    'channel "nope" does not exist; existing channels: main, infra',
+  );
+  const known = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__board",
+    channel: "infra",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(known.isError).toBeUndefined();
+  expect(JSON.parse(String(known.result ?? ""))).toEqual([]);
+
+  await $.agent.spawn({
+    subagentType: "wren",
+    description: "Build it",
+    prompt: "Build",
+  });
+  await $.agent.spawn({
+    subagentType: "wren",
+    description: "Build it",
+    prompt: "Fix",
+  });
+
+  const out = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: "members",
+        columns: 120,
+      } as never)) as { text?: string }
+    ).text ?? "",
+  );
+  const wrenLines = out.split("\n").filter((l) => l.includes("wren"));
+  expect(wrenLines.length).toBe(2);
+  expect(wrenLines.filter((l) => l.includes("round 2")).length).toBe(1);
+  expect(out).not.toContain("round 1");
+});

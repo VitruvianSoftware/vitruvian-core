@@ -1,0 +1,6 @@
+# Stack configs here are committed on purpose (non-secret values; the Sentry
+# token is either SENTRY_TOKEN or Pulumi ciphertext). The negation for this
+# directory lives in infrastructure/pulumi/.gitignore.
+
+# Compiled Pulumi program binary left behind by a manual `go build .`.
+/sentry-pagerduty

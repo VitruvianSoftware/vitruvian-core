@@ -3299,3 +3299,66 @@ describe("security hardening (items 1, 2, 3, 5, 6)", () => {
     ]);
   });
 });
+
+describe("board channel check", () => {
+  it("board tool refuses an unknown channel with the list of real ones and reads known channels", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "opencode-orch-board-ch-"),
+    );
+    const prevDir = process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+    process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = tmpDir;
+    try {
+      const tools = new Map();
+      await serverPlugin.setup({
+        session: {
+          get: async ({ sessionID }) =>
+            sessionID === "ses_root"
+              ? {
+                  id: "ses_root",
+                  title: "Root",
+                  agent: "beacon",
+                  model: "anthropic/claude-opus-5-5",
+                }
+              : null,
+          prompt: async () => {},
+        },
+        tool: {
+          transform: async (fn) => {
+            fn({ add: (def) => tools.set(def.name, def) });
+          },
+        },
+      });
+      const lead = { sessionID: "ses_root" };
+      await tools.get("progress").execute(
+        {
+          title: "OC board channels",
+          phase: "delegate",
+          tasks: [
+            { title: "Build", specialist: "wren", tier: "core", after: [] },
+          ],
+        },
+        lead,
+      );
+      await tools
+        .get("channel")
+        .execute({ action: "create", name: "infra" }, lead);
+
+      await assert.rejects(
+        tools.get("board").execute({ channel: "nope" }, lead),
+        {
+          message:
+            'channel "nope" does not exist; existing channels: main, infra',
+        },
+      );
+      for (const channel of ["main", "infra"]) {
+        const res = await tools.get("board").execute({ channel }, lead);
+        assert.ok(Array.isArray(JSON.parse(res.content)), channel);
+      }
+    } finally {
+      if (prevDir === undefined)
+        delete process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+      else process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = prevDir;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});

@@ -6,6 +6,7 @@ Component package providing implementation for `apps/desktop/vitruvian-code/maco
 ## Interface
 - `[CommandAnswerTests.swift:CommandAnswerTests]`
 - `[PagesTests.swift:PagesTests]`
+- `[PanelOpenTests.swift:PanelOpenTests]`
 - `[ToolSettingsTests.swift:ToolSettingsTests]`
 - `[VitruvianCodeToolTests.swift:VitruvianCodeToolTests]`
 - `[WordsTests.swift:WordsTests]`

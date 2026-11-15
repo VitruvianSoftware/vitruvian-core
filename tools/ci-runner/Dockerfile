@@ -38,7 +38,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     ACTIONS_RUNNER_PRINT_LOG_TO_STDOUT=1
 
 # What the queue jobs use from the hosted image. build-essential and python3
-# for Bazel's toolchains and the repo's scripts; shellcheck (actionlint.yaml
+# for Bazel's toolchains and the repo's scripts; shellcheck (ci.yaml's actionlint job
 # relies on it being preinstalled), node and npm (migration-safety runs npx)
 # and gh; the rest for checkout, setup-* actions and the archives they unpack.
 RUN apt-get update \

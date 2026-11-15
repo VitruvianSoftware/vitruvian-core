@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.36.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.35.1...vitruvian-code-v1.36.0) (2026-11-15)
+
+
+### Features
+
+* **vitruvian-code:** add the Swift ACP client, not yet used by chats ([#4712](https://github.com/VitruvianSoftware/vitruvian-core/issues/4712)) ([f1866c1](https://github.com/VitruvianSoftware/vitruvian-core/commit/f1866c19589450b2e4515a3d0c3936c30fad637d))
+
+
+### Bug Fixes
+
+* **vitruvian-code:** answer a panel's open while the main thread is busy ([#4892](https://github.com/VitruvianSoftware/vitruvian-core/issues/4892)) ([0d22e0d](https://github.com/VitruvianSoftware/vitruvian-core/commit/0d22e0d7229706f01bfa7d7b015fcaf283d17f16)), closes [#4813](https://github.com/VitruvianSoftware/vitruvian-core/issues/4813)
+* **vitruvian-code:** bundle the Rust bot in the app and start it instead of the removed bot.js ([#4772](https://github.com/VitruvianSoftware/vitruvian-core/issues/4772)) ([7211c9f](https://github.com/VitruvianSoftware/vitruvian-core/commit/7211c9f1d2cd0d3c0a75c15e54cdcac6049ae43c))
+
 ## [1.35.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.35.0...vitruvian-code-v1.35.1) (2026-11-12)
 
 

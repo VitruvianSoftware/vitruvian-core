@@ -44,6 +44,8 @@ def _make_server(testcase):
         "NTFY_PASSWORD_FILE": str(pw),
         "NTFY_BASE_URL": "https://ntfy.example",
         "NTFY_TOPIC": "alerts",
+        # Not created unless a test writes it: "not configured yet" by default.
+        "HEARTBEAT_URL_FILE": str(pathlib.Path(tmp.name) / "ping-url"),
     }
     saved = {k: os.environ.get(k) for k in env}
     os.environ.update(env)
@@ -190,6 +192,32 @@ class BridgeTest(unittest.TestCase):
         server.next_status = 500
         with self.assertRaises(urllib.error.HTTPError):
             server.handle_alertmanager(_group("resolved", [_alert("resolved", "p1")]))
+
+    def test_heartbeat_pings_the_sealed_url(self):
+        server = _make_server(self)
+        pathlib.Path(server.HEARTBEAT_URL_FILE).write_text(
+            "https://hc-ping.example/uuid-123\n"
+        )
+        assert server.ping_heartbeat() == 200
+        (req,) = server.sent
+        assert req.get_method() == "GET"
+        assert req.full_url == "https://hc-ping.example/uuid-123"
+        # The ping must not carry the ntfy login.
+        assert req.get_header("Authorization") is None
+
+    def test_heartbeat_without_a_url_is_a_quiet_no_op(self):
+        server = _make_server(self)
+        assert server.ping_heartbeat() == 200
+        assert server.sent == []
+
+    def test_heartbeat_failure_raises_so_alertmanager_retries(self):
+        server = _make_server(self)
+        pathlib.Path(server.HEARTBEAT_URL_FILE).write_text(
+            "https://hc-ping.example/uuid-123"
+        )
+        server.next_status = 503
+        with self.assertRaises(urllib.error.HTTPError):
+            server.ping_heartbeat()
 
 
 if __name__ == "__main__":

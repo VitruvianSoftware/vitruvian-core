@@ -56,6 +56,7 @@ import {
   board as boardView,
   burnDown,
   channels as channelsView,
+  checkBoardChannel,
   delegateCost,
   formatWake,
   initialFlow,
@@ -2088,6 +2089,9 @@ const formatMemberCliLines = (row: MemberRow, width: number): string[] => {
     safeAgent,
     stateLabel,
     `task ${taskLabel}`,
+    ...(typeof row.round === "number" && row.round > 1
+      ? [`round ${row.round}`]
+      : []),
     modelLabel,
     ...(row.worktree ? [`⎇ ${sanitizeDisplayText(row.worktree)}`] : []),
   ];
@@ -3195,6 +3199,10 @@ export const register: Register = (on) => {
     const current = await read($, flow);
     if (!current) {
       return { result: "[]" };
+    }
+    const channelError = checkBoardChannel(current, input.channel);
+    if (channelError) {
+      return { result: channelError, isError: true };
     }
     const agentId = e.agentId;
     const callerRun = agentId

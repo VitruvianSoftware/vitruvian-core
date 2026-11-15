@@ -50,6 +50,7 @@ infrastructure/pulumi/platform/zitadel-apps-mcp-slack/Pulumi.yaml	pulumi_zitadel
 infrastructure/pulumi/platform/zitadel-apps-relay/Pulumi.yaml	pulumi_zitadel_apps_relay
 infrastructure/pulumi/platform/zitadel-apps/Pulumi.yaml	zitadel-apps
 infrastructure/pulumi/platform/sentry/Pulumi.yaml	sentry
+infrastructure/pulumi/platform/sentry-pagerduty/Pulumi.yaml	vitruvian-sentry-pagerduty
 apps/web/oauth-user-inspector/infra/app/Pulumi.yaml	pulumi_oauth_user_inspector
 apps/web/oauth-user-inspector/infra/identity/Pulumi.yaml	pulumi_oauth_user_inspector_deploy_identity
 apps/suites/vitruvian-tabs/infra/app/Pulumi.yaml	tabula-app

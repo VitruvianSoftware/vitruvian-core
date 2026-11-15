@@ -26,10 +26,10 @@
 //! a `.tmpl`, and every repo devx creates starts from these pins.
 //!
 //! Run from the repository root. Both the required `actionlint` check
-//! (.github/workflows/actionlint.yaml) and `bazel run //tools/ci:actionlint`
+//! (the `actionlint` job in .github/workflows/ci.yaml) and `bazel run //tools/ci:actionlint`
 //! run this, so the two cannot disagree. Exit 0 clean, 1 an unpinned action.
 //!
-//! Standard library only, one file, ON PURPOSE: actionlint.yaml has no Bazel
+//! Standard library only, one file, ON PURPOSE: that job has no Bazel
 //! and builds this with
 //!   rustc --edition 2021 -O tools/ci/src/require_pinned_actions/main.rs
 //! (//tools/ci:require_pinned_actions_test runs that exact line). Adding a

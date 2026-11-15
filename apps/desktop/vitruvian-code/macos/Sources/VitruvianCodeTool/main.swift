@@ -36,6 +36,9 @@ import VitruvianToolProtocol
 final class Kit: @unchecked Sendable {
     let tool = Tool(version: ToolVersion.current)
     var panels: [String: Panel] = [:]
+    /// Each panel's last page, for an open the main thread is too busy to
+    /// answer in time. Safe from any thread.
+    let opener = PanelOpen()
 }
 
 /// The app, from the main thread: each call is handed to the kit's thread.
@@ -55,6 +58,7 @@ final class WakerLink: ToolLink {
     }
 
     func render(panel: String, _ tree: UITree) {
+        kit.opener.remember(tree, for: panel)
         kit.tool.waker.later { [kit] _ in _ = kit.panels[panel]?.render(tree) }
     }
 
@@ -135,16 +139,39 @@ let codeTool = VitruvianCodeTool(parts: .init(
     playDone: { NSSound(named: "Tink")?.play() }))
 
 let tool = kit.tool
+/// Opens `id` without holding the app's answer for a busy main thread (a
+/// chat window being built, say): see PanelOpen. A page made too late is
+/// sent once the kit's thread is free, if the panel is still open.
+func opened(_ id: String, _ make: @escaping @Sendable @MainActor () -> UITree) -> UITree {
+    kit.opener.open(id, make: make, render: { tree in
+        kit.tool.waker.later { [kit] _ in _ = kit.panels[id]?.render(tree) }
+    })
+}
+
+/// What a panel's event answered; a new page is kept for the next open.
+func answered(_ id: String, _ answer: PanelAnswer) -> PanelAnswer {
+    if case .page(let tree) = answer { kit.opener.remember(tree, for: id) }
+    return answer
+}
+
 kit.panels[VitruvianCodeTool.islandPanel] = tool.panel(VitruvianCodeTool.islandPanel, onOpen: { _, _ in
-    onMain { codeTool.islandPage() }
+    opened(VitruvianCodeTool.islandPanel) { codeTool.islandPage() }
 }, onEvent: { _, _, event in
-    onMain { codeTool.islandEvent(event) }
+    answered(VitruvianCodeTool.islandPanel, onMain { codeTool.islandEvent(event) })
 })
 kit.panels[VitruvianCodeTool.settingsPanel] = tool.panel(VitruvianCodeTool.settingsPanel, onOpen: { _, _ in
-    onMain { codeTool.settingsPage() }
+    opened(VitruvianCodeTool.settingsPanel) { codeTool.settingsPage() }
 }, onEvent: { _, _, event in
-    onMain { codeTool.settingsEvent(event) }
+    answered(VitruvianCodeTool.settingsPanel, onMain { codeTool.settingsEvent(event) })
 })
+
+/// Keeps each panel's page as it would open now, for PanelOpen to fall back on.
+@MainActor
+func rememberPages() {
+    for id in [VitruvianCodeTool.islandPanel, VitruvianCodeTool.settingsPanel] {
+        if let page = codeTool.pagePreview(id) { kit.opener.remember(page, for: id) }
+    }
+}
 // A panel the app closed: the tool stops drawing it.
 for id in [VitruvianCodeTool.islandPanel, VitruvianCodeTool.settingsPanel] {
     kit.panels[id]?.onClose = { _ in onMain { codeTool.panelClosed(id) } }
@@ -165,6 +192,7 @@ tool.onStart = { app in
         // The dock button only for an app that keeps the chat a slot.
         window.onDockToNotch = features.contains(.slot) ? { link.dockToSlot() } : nil
         codeTool.start(language: language, handed: values)
+        rememberPages()
     }
 }
 // The app's slot for the chat showed, moved or went.
@@ -176,6 +204,7 @@ tool.onLanguageChanged = { app in
         languageTag = language
         codeTool.languageChanged(language)
         window.languageChanged()
+        rememberPages()
     }
 }
 
