@@ -93,10 +93,18 @@ func pagerdutyCIRoutingKey(ctx *pulumi.Context, repo *github.Repository) error {
 			"Re-run repo-config after the PagerDuty stack applies.", nil)
 		return nil
 	}
-	_, err = github.NewActionsSecret(ctx, "pagerduty-ci-routing-key", &github.ActionsSecretArgs{
-		Repository:     repo.Name,
-		SecretName:     pulumi.String(pagerdutyCIRoutingSecret),
-		PlaintextValue: pulumi.ToSecret(pulumi.String(key)).(pulumi.StringOutput),
-	})
+	_, err = github.NewActionsSecret(
+		ctx, "pagerduty-ci-routing-key", &github.ActionsSecretArgs{
+			Repository: repo.Name,
+			SecretName: pulumi.String(pagerdutyCIRoutingSecret),
+			// `value`, not the deprecated `plaintextValue`. The SDK marks it
+			// secret itself; ToSecret keeps that explicit.
+			Value: pulumi.ToSecret(pulumi.String(key)).(pulumi.StringOutput),
+		},
+		// Old and new share one GitHub secret name, so a replacement must
+		// delete first: Pulumi's default (create, then delete the old) would
+		// end by deleting the secret it had just written.
+		pulumi.DeleteBeforeReplace(true),
+	)
 	return err
 }
