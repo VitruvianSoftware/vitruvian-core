@@ -36,35 +36,64 @@
 use ci_testkit::{bin, git, write, write_exe, Run, TempDir};
 use std::path::{Path, PathBuf};
 
-/// The one `ignore-regex: '...'` value in a workflow file; panics unless there
-/// is exactly one, so a second narrowed lane has to be added here too.
-fn ignore_regex(workflow: &str) -> String {
+/// The single-quoted value of the first `key:` line at or after the first
+/// line containing `anchor` in a workflow file.
+fn quoted_after(workflow: &str, anchor: &str, key: &str) -> String {
     let text = std::fs::read_to_string(workflow).unwrap_or_else(|e| panic!("{workflow}: {e}"));
-    let found: Vec<&str> = text
-        .lines()
-        .filter(|l| l.trim_start().starts_with("ignore-regex:"))
-        .collect();
-    assert_eq!(
-        found.len(),
-        1,
-        "expected exactly 1 ignore-regex in {workflow}, found {}. If another lane now narrows its ignore set too, extend this test to cover it.",
-        found.len()
-    );
-    let l = found[0];
+    let lines: Vec<&str> = text.lines().collect();
+    let start = lines
+        .iter()
+        .position(|l| l.contains(anchor))
+        .unwrap_or_else(|| panic!("{workflow}: no line contains {anchor:?}"));
+    let want = format!("{key}:");
+    let l = lines[start..]
+        .iter()
+        .find(|l| l.trim_start().starts_with(&want))
+        .unwrap_or_else(|| panic!("{workflow}: no {want} after {anchor:?}"));
     let (a, b) = (l.find('\'').unwrap(), l.rfind('\'').unwrap());
-    assert!(
-        b > a,
-        "{workflow}: the ignore-regex is not single-quoted: {l}"
-    );
+    assert!(b > a, "{workflow}: {key} is not single-quoted: {l}");
     l[a + 1..b].to_string()
 }
 
+/// How many `ignore-regex:` lines a workflow has. Pinned below, so a lane
+/// that starts narrowing its ignore set has to be added to these tests.
+fn ignore_regex_lines(workflow: &str) -> Vec<String> {
+    std::fs::read_to_string(workflow)
+        .unwrap_or_else(|e| panic!("{workflow}: {e}"))
+        .lines()
+        .filter(|l| l.trim_start().starts_with("ignore-regex:"))
+        .map(|l| l.trim().to_string())
+        .collect()
+}
+
+/// license-check's own gate (merge queue and main).
 fn license_regex() -> String {
-    ignore_regex(".github/workflows/ci.yaml")
+    quoted_after(
+        ".github/workflows/ci.yaml",
+        "  license-check:",
+        "ignore-regex",
+    )
+}
+
+/// The PR-only license decision in ci.yaml's `changes` job.
+fn license_pr_regex() -> String {
+    quoted_after(".github/workflows/ci.yaml", "id: license", "ignore-regex")
 }
 
 fn tidy_regex() -> String {
-    ignore_regex(".github/workflows/tidy-check.yaml")
+    quoted_after(
+        ".github/workflows/tidy-check.yaml",
+        "    env:",
+        "TIDY_IGNORE",
+    )
+}
+
+fn tidy_pr_regex() -> String {
+    quoted_after(
+        ".github/workflows/tidy-check.yaml",
+        "    env:",
+        "TIDY_IGNORE_PR",
+    )
 }
 
 const CONFORMANCE: &str = r"^docs/|\.md$";
@@ -237,72 +266,352 @@ fn conformance_check_still_passes_that_set() {
 
 #[test]
 fn tidy_check_set_skips_only_what_tidy_cannot_change() {
-    let re = tidy_regex();
-    case("docs markdown skips", false, &re, &["docs/guide.md"]);
-    case("root markdown skips", false, &re, &["README.md"]);
+    // Every case holds for the merge-queue set and for the wider PR set.
+    for re in [tidy_regex(), tidy_pr_regex()] {
+        case("docs markdown skips", false, &re, &["docs/guide.md"]);
+        case("root markdown skips", false, &re, &["README.md"]);
+        case(
+            "gitops yaml skips",
+            false,
+            &re,
+            &["gitops/argocd/platform/buzz/values.yaml"],
+        );
+        case(
+            "docs html skips",
+            false,
+            &re,
+            &["docs/github-relay/register.html"],
+        );
+        case("OWNERS skips", false, &re, &["OWNERS"]);
+        // The case that reached main unformatted (#2886): JSON under docs/.
+        case(
+            "docs JSON RUNS",
+            true,
+            &re,
+            &["docs/github-relay/app-manifest.json"],
+        );
+        case(
+            "docs JSON beside markdown RUNS",
+            true,
+            &re,
+            &[
+                "docs/github-relay/README.md",
+                "docs/github-relay/app-manifest.json",
+            ],
+        );
+        case(
+            "gitops JSON RUNS",
+            true,
+            &re,
+            &["gitops/argocd/platform/grafana/dashboards/x.json"],
+        );
+        case(
+            "docs shell script RUNS",
+            true,
+            &re,
+            &["docs/runbooks/fix.sh"],
+        );
+        case("gitops Starlark RUNS", true, &re, &["gitops/defs.bzl"]);
+        case("gitops BUILD file RUNS", true, &re, &["gitops/BUILD"]);
+        case("docs Python RUNS", true, &re, &["docs/tools/gen.py"]);
+        case(
+            ".agents TypeScript RUNS",
+            true,
+            &re,
+            &[".agents/skills/x/run.ts"],
+        );
+        // YAML is only inert INSIDE those folders: a workflow or lockfile is not.
+        case(
+            "workflow yaml RUNS",
+            true,
+            &re,
+            &[".github/workflows/presubmit.yaml"],
+        );
+        case("pnpm lockfile RUNS", true, &re, &["pnpm-lock.yaml"]);
+        case(
+            "source change runs",
+            true,
+            &re,
+            &["vitruvian-tabs/api/src/index.ts"],
+        );
+    }
+}
+
+#[test]
+fn ci_yaml_has_exactly_the_two_license_sets() {
+    let lines = ignore_regex_lines(".github/workflows/ci.yaml");
+    assert_eq!(
+        lines.len(),
+        2,
+        "ci.yaml should narrow only license-check's gate and its PR decision in `changes`; found {lines:?}. Extend these tests for a new one."
+    );
+}
+
+#[test]
+fn tidy_check_gate_reads_the_two_pinned_sets() {
+    let lines = ignore_regex_lines(".github/workflows/tidy-check.yaml");
+    assert_eq!(
+        lines,
+        vec!["ignore-regex: ${{ github.event_name == 'pull_request' && env.TIDY_IGNORE_PR || env.TIDY_IGNORE }}".to_string()],
+        "tidy-check's gate must pick TIDY_IGNORE_PR on a PR and TIDY_IGNORE otherwise"
+    );
+}
+
+/// The PR set only ADDS to the queue set: everything the queue skips, a PR
+/// skips too, so the two can only differ on the files listed in its comment.
+#[test]
+fn tidy_pr_set_extends_the_queue_set() {
+    let (q, pr) = (tidy_regex(), tidy_pr_regex());
+    assert!(
+        pr.starts_with(&format!("{q}|")),
+        "TIDY_IGNORE_PR must be TIDY_IGNORE plus alternatives:\n  {q}\n  {pr}"
+    );
+}
+
+#[test]
+fn tidy_pr_set_skips_bot_and_swift_prs_only() {
+    let re = tidy_pr_regex();
+    // Release PRs, as release-please writes them.
     case(
-        "gitops yaml skips",
+        "release PR skips",
         false,
-        &re,
-        &["gitops/argocd/platform/buzz/values.yaml"],
-    );
-    case(
-        "docs html skips",
-        false,
-        &re,
-        &["docs/github-relay/register.html"],
-    );
-    case("OWNERS skips", false, &re, &["OWNERS"]);
-    // The case that reached main unformatted (#2886): JSON under docs/.
-    case(
-        "docs JSON RUNS",
-        true,
-        &re,
-        &["docs/github-relay/app-manifest.json"],
-    );
-    case(
-        "docs JSON beside markdown RUNS",
-        true,
         &re,
         &[
-            "docs/github-relay/README.md",
-            "docs/github-relay/app-manifest.json",
+            "apps/antigravity/plugins/hookify/.release-please-manifest.json",
+            "apps/antigravity/plugins/hookify/CHANGELOG.md",
+            "apps/antigravity/plugins/hookify/.claude-plugin/plugin.json",
         ],
     );
     case(
-        "gitops JSON RUNS",
-        true,
+        "app release with plist and Swift version skips",
+        false,
         &re,
-        &["gitops/argocd/platform/grafana/dashboards/x.json"],
+        &[
+            "apps/desktop/vitruvian-speaker/.release-please-manifest.json",
+            "apps/desktop/vitruvian-speaker/CHANGELOG.md",
+            "apps/desktop/vitruvian-speaker/Resources/Info.plist",
+            "apps/desktop/vitruvian-speaker/Sources/VitruvianSpeakerCore/Version.swift",
+            "apps/extensions/atrium/vitruvian-tv/vitruvian-tool.json",
+        ],
     );
     case(
-        "docs shell script RUNS",
-        true,
+        "site catalog publish skips",
+        false,
         &re,
-        &["docs/runbooks/fix.sh"],
+        &[
+            "apps/web/vitruviansoftware-dev/tools/catalog/tools.json",
+            "apps/web/vitruviansoftware-dev/tools/catalog/tools.json.sig",
+        ],
     );
-    case("gitops Starlark RUNS", true, &re, &["gitops/defs.bzl"]);
-    case("gitops BUILD file RUNS", true, &re, &["gitops/BUILD"]);
-    case("docs Python RUNS", true, &re, &["docs/tools/gen.py"]);
     case(
-        ".agents TypeScript RUNS",
-        true,
+        "site data yaml skips",
+        false,
         &re,
-        &[".agents/skills/x/run.ts"],
+        &["apps/web/vitruviansoftware-dev/_data/downloads.yml"],
     );
-    // YAML is only inert INSIDE those folders: a workflow or lockfile is not.
     case(
-        "workflow yaml RUNS",
-        true,
+        "Swift-only change skips",
+        false,
         &re,
-        &[".github/workflows/presubmit.yaml"],
+        &["apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/main.swift"],
     );
-    case("pnpm lockfile RUNS", true, &re, &["pnpm-lock.yaml"]);
+    // What tidy DOES read keeps running.
     case(
-        "source change runs",
+        "package.json RUNS (js gazelle reads it)",
         true,
         &re,
-        &["vitruvian-tabs/api/src/index.ts"],
+        &["apps/antigravity/plugins/hookify/package.json"],
+    );
+    case(
+        "tsconfig RUNS",
+        true,
+        &re,
+        &["apps/suites/vitruvian-tabs/web/tsconfig.json"],
+    );
+    case(
+        "top-level catalog JSON RUNS (prettier formats it)",
+        true,
+        &re,
+        &["catalog/tools.json"],
+    );
+    case(
+        "other JSON under apps RUNS",
+        true,
+        &re,
+        &["apps/suites/vitruvian-tabs/web/src/data.json"],
+    );
+    case(
+        "app CSS RUNS",
+        true,
+        &re,
+        &["apps/suites/vitruvian-tabs/web/src/app.css"],
+    );
+    case(
+        "Cargo.toml RUNS",
+        true,
+        &re,
+        &["apps/mcp/vitruvian-slack-mcp/rs/Cargo.toml"],
+    );
+    case(
+        "BUILD beside a release RUNS",
+        true,
+        &re,
+        &[
+            "apps/mobile/vitruvian-remote/.release-please-manifest.json",
+            "apps/mobile/vitruvian-remote/BUILD",
+        ],
+    );
+    case(
+        "Rust version file RUNS",
+        true,
+        &re,
+        &["apps/mcp/vitruvian-slack-mcp/rs/src/server.rs"],
+    );
+}
+
+#[test]
+fn license_pr_set_skips_only_files_neither_tool_reads() {
+    let re = license_pr_regex();
+    case(
+        "release PR skips",
+        false,
+        &re,
+        &[
+            "apps/antigravity/plugins/hookify/.release-please-manifest.json",
+            "apps/antigravity/plugins/hookify/CHANGELOG.md",
+            "apps/antigravity/plugins/hookify/.claude-plugin/plugin.json",
+            "apps/antigravity/plugins/hookify/package.json",
+        ],
+    );
+    case(
+        "site catalog publish skips",
+        false,
+        &re,
+        &[
+            "apps/web/vitruviansoftware-dev/tools/catalog/tools.json",
+            "apps/web/vitruviansoftware-dev/tools/catalog/tools.json.sig",
+        ],
+    );
+    case(
+        "plist skips",
+        false,
+        &re,
+        &["apps/desktop/vitruvian-speaker/Resources/Info.plist"],
+    );
+    case("docs skips", false, &re, &["docs/guide.md"]);
+    // addlicense headers YAML, and :verify reads Swift and LICENSE files.
+    case(
+        "site data yaml RUNS (addlicense heads YAML)",
+        true,
+        &re,
+        &["apps/web/vitruviansoftware-dev/_data/downloads.yml"],
+    );
+    case(
+        "gitops-only RUNS (no license backstop)",
+        true,
+        &re,
+        &["gitops/argocd/app.yaml"],
+    );
+    case(
+        "Swift RUNS (:verify reads it)",
+        true,
+        &re,
+        &["apps/desktop/vitruvian-speaker/Sources/VitruvianSpeakerCore/Version.swift"],
+    );
+    case(
+        "LICENSE RUNS",
+        true,
+        &re,
+        &["apps/cli/vitruvian-devx/LICENSE"],
+    );
+    case(
+        "license tool RUNS",
+        true,
+        &re,
+        &["tools/license/src/lib.rs"],
+    );
+    case(
+        "JSON beside source RUNS",
+        true,
+        &re,
+        &["catalog/tools.json", "vitruvian-tabs/api/src/index.ts"],
+    );
+}
+
+/// The globs listed under `header` (a line ending in `:`), up to the next line
+/// indented no deeper than it. Comments are skipped.
+fn globs_under(workflow: &str, header: &str) -> Vec<String> {
+    let text = std::fs::read_to_string(workflow).unwrap_or_else(|e| panic!("{workflow}: {e}"));
+    let lines: Vec<&str> = text.lines().collect();
+    let i = lines
+        .iter()
+        .position(|l| l.trim_end() == header)
+        .unwrap_or_else(|| panic!("{workflow}: no line {header:?}"));
+    let indent = header.len() - header.trim_start().len();
+    let mut out = Vec::new();
+    for l in &lines[i + 1..] {
+        let t = l.trim_start();
+        if t.is_empty() || t.starts_with('#') {
+            continue;
+        }
+        if l.len() - t.len() <= indent {
+            break;
+        }
+        if let Some(g) = t.strip_prefix("- ") {
+            out.push(g.trim().trim_matches('\'').to_string());
+        }
+    }
+    out
+}
+
+#[track_caller]
+fn lists(workflow: &str, header: &str, want: &[&str]) {
+    let got = globs_under(workflow, header);
+    for w in want {
+        assert!(
+            got.iter().any(|g| g == w),
+            "{workflow} {header}: missing {w:?}, a file this check reads, so a PR changing only it would skip the check. Got {got:?}"
+        );
+    }
+}
+
+/// Each PR-only skip filter must list what its check reads beyond the obvious
+/// sources. Each entry here is one a review found missing (#4854): the check
+/// reads it, so a PR changing only it must still run the check.
+#[test]
+fn pr_skip_filters_list_every_input_their_checks_read() {
+    // lint-naming's unit test runs under every rc file .bazelrc imports.
+    lists(
+        ".github/workflows/ci.yaml",
+        "            lintnaming:",
+        &[
+            "tools/lint-naming/**",
+            ".bazelrc",
+            "tools/*.bazelrc",
+            "MODULE.bazel",
+        ],
+    );
+    // //tools/ci:go_test_lanes links //tools/shell-compat:shell_compat.
+    lists(
+        ".github/workflows/ci.yaml",
+        "            golanes:",
+        &[
+            "**/*_test.go",
+            "**/BUILD",
+            "tools/ci/src/go_test_lanes/**",
+            "tools/shell-compat/**",
+        ],
+    );
+    // promtool is installed by install-pinned-tool, checked against tools.lock.json.
+    lists(
+        ".github/workflows/chart-render.yaml",
+        "    paths:",
+        &[
+            "gitops/**",
+            "**/deploy/chart/**",
+            "tools/ci/**",
+            "tools/tools.lock.json",
+        ],
     );
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "@vitruvian-tabs/web",
-  "version": "0.1.32",
+  "version": "0.1.33",
   "private": true,
   "description": "Vitruvian Tabs web dashboard for workspace management, analytics, and data export",
   "license": "MIT",

@@ -31,3 +31,10 @@ rust_test(
     data = ["gateway/envoyproxy.yaml"],
     edition = "2021",
 )
+
+# The pinned HTTP nodePort, read by //gitops/argocd/platform/headscale's test so
+# the Headscale ACL and the CI Zitadel tunnel cannot drift from it.
+exports_files(
+    ["gateway/envoyproxy.yaml"],
+    visibility = ["//gitops/argocd/platform/headscale:__pkg__"],
+)

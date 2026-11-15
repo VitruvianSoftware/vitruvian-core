@@ -29,21 +29,42 @@
 # argument for the job: not that people read carelessly, but that reading is not
 # the same instrument as running.
 #
-# NOT YET A REQUIRED CHECK, and the omission is deliberate rather than pending.
-# Promoting it means adding `chart-render` to mergeQueueRequiredChecks in
-# infrastructure/pulumi/platform/repo-config/main.go, and that should follow
-# evidence it is stable rather than precede it. This file is written so the
-# promotion is a one-line change there and needs NO edit here: there is no
-# workflow-level `paths:` filter on `pull_request`, so the check reports on
-# every PR — which is the property a required check must have and the one whose
-# absence wedged this repo once (see gitops-validate.yaml's `on:` block for the
-# incident). Rendering three local charts is ~2s; running it unconditionally is
-# cheaper than the bookkeeping of deciding when to.
+# NOT A REQUIRED CHECK (none of the three jobs here is), so on pull_request this
+# workflow runs only when a file it reads changes: the gitops tree, a chart, the
+# tools it builds, or this file. The merge queue and main still run it on every
+# change.
+#
+# The filter is there because "unconditionally is cheaper" did not hold: over
+# 48 merged PRs (2026-11-13..14) each of the three jobs took a hosted runner
+# for 0.4-0.6 min on every PR, almost all of them with no gitops or chart
+# change, and every one of those waited in the same concurrent-job queue as
+# the PR's real checks.
+#
+# BEFORE PROMOTING any of these to a required check (mergeQueueRequiredChecks
+# in infrastructure/pulumi/platform/repo-config/main.go), remove the
+# `pull_request.paths` filter below or move the job behind a job-level `if:`
+# (the `changes` pattern in ci.yaml). A required check whose workflow does not
+# start never reports, and the PR waits on it forever (see gitops-validate.yaml's
+# `on:` block for the incident).
 name: chart-render
 
 on:
   workflow_dispatch: {}
   pull_request:
+    paths:
+      # What the three jobs read: gitops manifests and values, the local
+      # charts (*/deploy/chart, found by chart_render), their tools' sources
+      # and fixtures (tools/ci/src/*, tools/ci/chart-render,
+      # tools/ci/prometheus-rule-tests), and the actions that build them.
+      - 'gitops/**'
+      - '**/deploy/chart/**'
+      - 'tools/ci/**'
+      - 'tools/shell-compat/**'
+      - '.github/actions/build-ci-tool/**'
+      - '.github/actions/install-pinned-tool/**'
+      # install-pinned-tool checks promtool against its pin here.
+      - 'tools/tools.lock.json'
+      - '.github/workflows/chart-render.yaml'
   push:
     branches: [main]
   merge_group:
