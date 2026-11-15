@@ -41,6 +41,7 @@ pub mod seal;
 pub const TOOLS: &[(&str, &str)] = &[
     ("gitops-cmd", "gitops-cmd.sh"),
     ("seal-alert-ntfy", "seal_alert_ntfy.sh"),
+    ("seal-alert-heartbeat", "seal_alert_heartbeat.sh"),
     (
         "seal-argocd-backstage-token",
         "seal_argocd_backstage_token.sh",
@@ -68,6 +69,7 @@ pub fn run_tool(name: &[u8], args: &[Vec<u8>]) -> Option<i32> {
     Some(match name {
         b"gitops-cmd" => gitops_cmd::main(args),
         b"seal-alert-ntfy" => seal::alert_ntfy(args),
+        b"seal-alert-heartbeat" => seal::alert_heartbeat(args),
         b"seal-argocd-backstage-token" => backstage::main(args),
         b"seal-headplane-secret" => seal::headplane(args),
         b"seal-zitadel-login-cookie-secret" => seal::zitadel(args),
@@ -137,7 +139,7 @@ mod tests {
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-'));
             assert!(script.ends_with(".sh"));
         }
-        assert_eq!(TOOLS.len(), 13);
+        assert_eq!(TOOLS.len(), 14);
         assert!(run_tool(b"no-such-tool", &[]).is_none());
     }
 }

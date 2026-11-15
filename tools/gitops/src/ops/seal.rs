@@ -129,6 +129,73 @@ fn alert_ntfy_run(args: &[Vec<u8>]) -> Res<i32> {
 }
 
 // ---------------------------------------------------------------------------
+// seal-alert-heartbeat: the healthchecks.io ping URL for the Watchdog
+// dead-man's switch (alertmanager-ntfy-bridge /heartbeat)
+// ---------------------------------------------------------------------------
+
+/// An https URL, nothing else: the bridge GETs it every ~5 minutes.
+pub fn is_heartbeat_url(v: &[u8]) -> bool {
+    v.starts_with(b"https://")
+        && v.len() > b"https://".len()
+        && !v.iter().any(|c| c.is_ascii_whitespace())
+}
+
+pub fn alert_heartbeat(args: &[Vec<u8>]) -> i32 {
+    code(alert_heartbeat_run(args))
+}
+
+fn alert_heartbeat_run(args: &[Vec<u8>]) -> Res<i32> {
+    default_kubeconfig(54)?;
+    let k = kctx();
+    let (ns, secret, key) = ("monitoring", "alertmanager-heartbeat", "ping-url");
+    let out = out_path(secret);
+    let mut apply = false;
+    let mut url = Vec::new();
+    for a in args {
+        if a == b"--apply" {
+            apply = true;
+        } else if a.starts_with(b"-") {
+            return die(
+                2,
+                &sc::cat(&[
+                    b"ERROR: unknown flag '",
+                    a,
+                    b"' (expected the ping URL and/or --apply)",
+                ]),
+            );
+        } else {
+            url = a.clone();
+        }
+    }
+    if url.is_empty() {
+        // Prompted, so the URL stays out of shell history.
+        url = read_prompt("healthchecks.io ping URL (https://hc-ping.com/...): ")?;
+    }
+    if !is_heartbeat_url(&url) {
+        return die(
+            2,
+            b"ERROR: expected an https:// ping URL with no spaces (copy it from the check's page on healthchecks.io).",
+        );
+    }
+    need_tools(&["kubectl", "kubeseal"], false)?;
+    cd_workspace(88)?;
+    write_new(95, &out, LICENSE_HEADER.as_bytes())?;
+    let st = seal_value(116, &k, ns, secret, key, &url, &out);
+    if st != 0 {
+        return Err(st);
+    }
+    say(&sealed_msg(&out, ns, secret, key));
+    apply_or_next(
+        &k,
+        &out,
+        ns,
+        secret,
+        apply,
+        "\u{2713} applied \u{2014} the sealed-secrets controller will materialize",
+    )
+}
+
+// ---------------------------------------------------------------------------
 // seal_headplane_secret.sh
 // ---------------------------------------------------------------------------
 
@@ -487,5 +554,17 @@ mod tests {
         let bad_char = format!("    K: Ag{}*\n", "A".repeat(300));
         assert!(!has_sealed_value(bad_char.as_bytes(), "K"));
         assert!(!has_sealed_value(b"    K: \"\"\n", "K"));
+    }
+
+    #[test]
+    fn heartbeat_url_shape() {
+        assert!(is_heartbeat_url(
+            b"https://hc-ping.com/0f9d3e1a-1111-2222-3333-444455556666"
+        ));
+        assert!(!is_heartbeat_url(b"http://hc-ping.com/abc"));
+        assert!(!is_heartbeat_url(b"https://"));
+        assert!(!is_heartbeat_url(b"https://hc-ping.com/abc def"));
+        assert!(!is_heartbeat_url(b"https://hc-ping.com/abc\n"));
+        assert!(!is_heartbeat_url(b""));
     }
 }

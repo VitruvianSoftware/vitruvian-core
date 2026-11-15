@@ -70,6 +70,48 @@ data:
     TAG_BY_STATUS = {"firing": "rotating_light", "resolved": "white_check_mark"}
 
 
+    # Dead-man's switch. Alertmanager sends the always-firing Watchdog alert
+    # to /heartbeat every few minutes, and the bridge passes each one on as a
+    # ping to an outside service (healthchecks.io). When the homelab, the
+    # tunnel, Prometheus, Alertmanager or this bridge stops, the pings stop,
+    # and the outside service raises the alarm that nothing in here can.
+    # The ping URL is a secret (anyone holding it can fake "all fine"), so it
+    # comes from the optional Secret alertmanager-heartbeat, sealed with
+    # `bazel run //tools/gitops:seal-alert-heartbeat`. Read on every request,
+    # so sealing it later needs no restart.
+    HEARTBEAT_URL_FILE = os.environ.get(
+        "HEARTBEAT_URL_FILE", "/etc/bridge/heartbeat/ping-url"
+    )
+
+
+    def read_heartbeat_url():
+        try:
+            with open(HEARTBEAT_URL_FILE, "r", encoding="utf-8") as f:
+                return f.read().strip()
+        except FileNotFoundError:
+            return ""
+
+
+    def ping_heartbeat():
+        """Ping the outside check. Returns the HTTP status to give Alertmanager.
+
+        Not configured yet -> 200, so Alertmanager doesn't retry forever and
+        the log says what is missing. Any ping failure raises, so the handler
+        answers 502 and Alertmanager retries on its own schedule.
+        """
+        url = read_heartbeat_url()
+        if not url:
+            sys.stderr.write(
+                "heartbeat: no ping URL at %s; skipping (seal it with "
+                "bazel run //tools/gitops:seal-alert-heartbeat)\n" % HEARTBEAT_URL_FILE
+            )
+            return 200
+        req = urllib.request.Request(url, method="GET")
+        req.add_header("User-Agent", "alertmanager-ntfy-bridge/1.1")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status
+
+
     def read_password():
         with open(NTFY_PASSWORD_FILE, "r", encoding="utf-8") as f:
             return f.read().strip()
@@ -249,6 +291,19 @@ data:
                 self.end_headers()
 
         def do_POST(self):
+            if self.path == "/heartbeat":
+                length = int(self.headers.get("Content-Length", 0))
+                self.rfile.read(length)
+                try:
+                    status = ping_heartbeat()
+                except Exception as exc:
+                    sys.stderr.write(f"ERROR pinging heartbeat: {exc}\n")
+                    self.send_response(502)
+                    self.end_headers()
+                    return
+                self.send_response(200 if 200 <= status < 300 else 502)
+                self.end_headers()
+                return
             if self.path != "/webhook":
                 self.send_response(404)
                 self.end_headers()
