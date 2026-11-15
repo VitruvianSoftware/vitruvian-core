@@ -30,10 +30,12 @@ import io.sentry.SentryEvent
 import io.sentry.SentryOptions
 import io.sentry.cache.EnvelopeCache
 import io.sentry.cache.PersistingOptionsObserver
+import io.sentry.protocol.Message
 import io.sentry.protocol.SentryTransaction
 import io.sentry.protocol.TransactionInfo
 import io.sentry.protocol.User
 import java.io.File
+import java.io.StringWriter
 import java.nio.file.Files
 import java.util.Locale
 import org.junit.Assert.assertEquals
@@ -622,5 +624,136 @@ public class AppInfoTest {
     } finally {
       appCacheDir.deleteRecursively()
     }
+  }
+
+  @Test
+  public fun `scrubCrashMessage replaces IPs URLs host-port pairs and hostnames without touching Java class names`() {
+    assertEquals(
+        "Failed to connect to <address>",
+        AppInfo.scrubCrashMessage("Failed to connect to /10.0.2.2:7499"),
+    )
+    assertEquals(
+        "<address>",
+        AppInfo.scrubCrashMessage("http://192.168.1.20:7411/v1/state"),
+    )
+    assertEquals(
+        "Unable to resolve host \"<address>\"",
+        AppInfo.scrubCrashMessage("Unable to resolve host \"james-mbp.tail1234.ts.net\""),
+    )
+    assertEquals(
+        "java.net.ConnectException: timeout",
+        AppInfo.scrubCrashMessage("java.net.ConnectException: timeout"),
+    )
+
+    // IPv6 literals (bracketed, bare, zoned, and URL-wrapped), slash host/IP, host:port, and
+    // LAN/mesh hosts.
+    assertEquals(
+        "Failed to connect to <address>",
+        AppInfo.scrubCrashMessage("Failed to connect to [fd7a:115c:a1e0::1]:7411"),
+    )
+    assertEquals(
+        "Socket unreachable on <address>",
+        AppInfo.scrubCrashMessage("Socket unreachable on fe80::1%wlan0"),
+    )
+    assertEquals(
+        "Peer <address> closed connection",
+        AppInfo.scrubCrashMessage("Peer 2001:0db8:85a3:0000:0000:8a2e:0370:7334 closed connection"),
+    )
+    assertEquals(
+        "java.net.ConnectException: Failed to connect to <address>",
+        AppInfo.scrubCrashMessage(
+            "java.net.ConnectException: Failed to connect to james-mbp.tail1234.ts.net/100.64.0.12:7411",
+        ),
+    )
+    assertEquals(
+        "Lookup failed for <address>, <address>, <address>, and <address>",
+        AppInfo.scrubCrashMessage(
+            "Lookup failed for studio.local, mini.lan, nas.home.arpa, and James-MBP.local",
+        ),
+    )
+    assertEquals(
+        "Dial <address> or <address> failed",
+        AppInfo.scrubCrashMessage("Dial mac-studio:7411 or localhost:7499 failed"),
+    )
+
+    // Benign Java/Kotlin exceptions, file:line stack details, versions, and timestamps stay
+    // untouched.
+    assertEquals(
+        "java.io.IOException: unexpected EOF at Wire.kt:1009 (04:50:19, v0.1.41)",
+        AppInfo.scrubCrashMessage(
+            "java.io.IOException: unexpected EOF at Wire.kt:1009 (04:50:19, v0.1.41)",
+        ),
+    )
+    assertEquals(
+        "dev.vitruvian.remote.state.AgentAuthException: not paired (HTTP 401)",
+        AppInfo.scrubCrashMessage(
+            "dev.vitruvian.remote.state.AgentAuthException: not paired (HTTP 401)",
+        ),
+    )
+  }
+
+  @Test
+  public fun `configureSentryOptions beforeSend scrubs addresses from exceptions and event message`() {
+    val options = SentryOptions()
+    AppInfo.configureSentryOptions(
+        options = options,
+        dsn = "https://examplePublicKey@o0.ingest.sentry.io/0",
+        appVersion = "0.1.41",
+    )
+
+    val cause = IllegalStateException("Unable to resolve host \"james-mbp.tail1234.ts.net\"")
+    val root =
+        RuntimeException(
+            "Failed to connect to /10.0.2.2:7499 while fetching http://192.168.1.20:7411/v1/state",
+            cause,
+        )
+    val rawEvent =
+        SentryEvent(root).apply {
+          message =
+              Message().apply {
+                message = "Request to %s failed via %s"
+                formatted =
+                    "Request to http://192.168.1.20:7411/v1/state failed via studio.local:7411"
+                params = listOf("10.0.2.2:7499", "james-mbp.tail1234.ts.net")
+              }
+        }
+    val hint = Hint()
+    val processed = MainEventProcessor(options).process(rawEvent, hint)
+    val sanitized = options.beforeSend!!.execute(processed, hint)!!
+
+    val values = sanitized.exceptions!!.map { it.value.orEmpty() }
+    assertTrue(values.any { it.contains("Unable to resolve host \"<address>\"") })
+    assertTrue(
+        values.any { it == "Failed to connect to <address> while fetching <address>" },
+    )
+    assertEquals(
+        "Request to <address> failed via <address>",
+        sanitized.message!!.formatted,
+    )
+    assertEquals("Request to %s failed via %s", sanitized.message!!.message)
+    assertEquals(listOf("<address>", "<address>"), sanitized.message!!.params)
+
+    val json = StringWriter().also { options.serializer.serialize(sanitized, it) }.toString()
+    for (leaked in
+        listOf(
+            "10.0.2.2",
+            "7499",
+            "192.168.1.20",
+            "7411",
+            "james-mbp",
+            "tail1234.ts.net",
+            "studio.local",
+        )) {
+      assertFalse("Serialized event must not contain '$leaked': $json", json.contains(leaked))
+    }
+
+    // Benign Java class/error message remains verbatim through beforeSend.
+    val benignRaw = SentryEvent(RuntimeException("java.net.ConnectException: timeout"))
+    val benignProcessed = MainEventProcessor(options).process(benignRaw, Hint())
+    val benignSanitized = options.beforeSend!!.execute(benignProcessed, Hint())!!
+    assertEquals(
+        "java.net.ConnectException: timeout",
+        benignSanitized.exceptions!!.single().value,
+    )
   }
 }
