@@ -32,12 +32,14 @@ import io.sentry.protocol.User
 import java.io.File
 import java.nio.file.Files
 import java.util.Locale
+import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.w3c.dom.Element
 
 public class AppInfoTest {
   private fun resolvePath(rel: String): File {
@@ -342,5 +344,23 @@ public class AppInfoTest {
     } finally {
       appCacheDir.deleteRecursively()
     }
+  }
+
+  @Test
+  public fun `AndroidManifest disables Sentry auto-init`() {
+    val manifestFile = resolvePath("apps/mobile/vitruvian-remote/src/main/AndroidManifest.xml")
+    val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+    val doc = factory.newDocumentBuilder().parse(manifestFile)
+    val androidNs = "http://schemas.android.com/apk/res/android"
+    val metaNodes = doc.getElementsByTagName("meta-data")
+    val autoInitValues =
+        (0 until metaNodes.length)
+            .mapNotNull { metaNodes.item(it) as? Element }
+            .filter { el ->
+              el.parentNode?.nodeName == "application" &&
+                  el.getAttributeNS(androidNs, "name") == "io.sentry.auto-init"
+            }
+            .map { el -> el.getAttributeNS(androidNs, "value") }
+    assertEquals(listOf("false"), autoInitValues)
   }
 }

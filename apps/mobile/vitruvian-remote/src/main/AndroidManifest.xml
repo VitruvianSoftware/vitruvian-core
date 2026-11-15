@@ -116,6 +116,14 @@
         android:theme="@style/Theme.VitruvianRemote">
 
         <!--
+          Keep Sentry's ContentProvider from auto-initialising before
+          MainActivity checks the persisted Send crash reports setting.
+        -->
+        <meta-data
+            android:name="io.sentry.auto-init"
+            android:value="false" />
+
+        <!--
           resizeableActivity plus the size/orientation config changes are what
           make the fold, unfold and tabletop transitions a re-layout rather
           than an activity restart - without them the shell would lose its
