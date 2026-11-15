@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.41](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.40...vitruvian-remote-v0.1.41) (2026-11-15)
+
+
+### Bug Fixes
+
+* **vitruvian-remote:** readable light theme, accessibility, foldable dock and in-context Bluetooth ([#4900](https://github.com/VitruvianSoftware/vitruvian-core/issues/4900)) ([ca3cfab](https://github.com/VitruvianSoftware/vitruvian-core/commit/ca3cfab851839f85f14b7ad5ba7e89a94a4ad799))
+
 ## [0.1.40](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.39...vitruvian-remote-v0.1.40) (2026-11-14)
 
 
