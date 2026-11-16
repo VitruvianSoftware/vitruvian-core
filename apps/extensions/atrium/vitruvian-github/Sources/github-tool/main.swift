@@ -50,6 +50,7 @@ final class KitHost: ToolHost {
             try app?.status(status.state, text: status.text, icon: status.icon, activity: status.activity)
         } catch {
             app?.log("the app did not take the status: \(error)")
+            GitHubToolTelemetry.capture(error: error, tags: ["component": "kit_host", "action": "status"])
         }
     }
 
@@ -68,11 +69,13 @@ final class KitHost: ToolHost {
             return try app?.setClipboardText(text) ?? false
         } catch {
             app?.log("the app did not take the clipboard text: \(error)")
+            GitHubToolTelemetry.capture(error: error, tags: ["component": "kit_host", "action": "copy_text"])
             return false
         }
     }
 }
 
+GitHubToolTelemetry.start()
 let tool = Tool(version: ToolVersion.current)
 let host = KitHost()
 let dataFolder = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)

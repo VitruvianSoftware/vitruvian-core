@@ -41,6 +41,37 @@ use vitruvian_tool_kit::{
 };
 
 const VERSION: &str = "0.1.0";
+const DEFAULT_SENTRY_DSN: &str =
+    "https://828935861c1450efdb3b653f342d6bcf@sentry-ingest.ipv1337.dev/20";
+
+fn resolve_sentry_dsn(env_dsn: Option<&str>) -> Option<String> {
+    match env_dsn {
+        Some(raw) if raw.trim().is_empty() => None,
+        Some(raw) => Some(raw.trim().to_string()),
+        None => Some(DEFAULT_SENTRY_DSN.to_string()),
+    }
+}
+
+fn init_sentry(dsn: Option<&str>) -> Option<sentry::ClientInitGuard> {
+    let raw = dsn?;
+    if raw.parse::<sentry::types::Dsn>().is_err() {
+        return None;
+    }
+    let guard = sentry::init((
+        raw,
+        sentry::ClientOptions {
+            release: Some(VERSION.into()),
+            shutdown_timeout: Duration::from_millis(250),
+            attach_stacktrace: true,
+            ..Default::default()
+        },
+    ));
+    sentry::configure_scope(|scope| {
+        scope.set_tag("app", "vitruvian-tv");
+        scope.set_tag("platform", "macos");
+    });
+    Some(guard)
+}
 
 /// Each app the panel can launch: key, label, package, and the activity to
 /// start (None launches the package's leanback launcher through `monkey`).
@@ -554,6 +585,7 @@ impl SonyTVState {
         match sent {
             Err(ToolError::App(refusal)) => {
                 app.log(&format!("status refused: {refusal}"));
+                sentry::capture_message(&format!("status refused: {refusal}"), sentry::Level::Warning);
                 Ok(false)
             }
             other => other,
@@ -944,6 +976,9 @@ fn register(tool: &mut Tool, tv: Tv) {
 }
 
 fn main() {
+    let _sentry_guard = init_sentry(
+        resolve_sentry_dsn(std::env::var("SENTRY_DSN").ok().as_deref()).as_deref(),
+    );
     let mut tool = Tool::new(VERSION);
     register(
         &mut tool,
@@ -1414,5 +1449,39 @@ mod tests {
         assert!(answer.get("error").is_none(), "{answer}");
         assert_eq!(tv.borrow().foreground, "SmartTube 4K");
         assert_eq!(tv.borrow().mem_available_mb, 640);
+    }
+
+    #[test]
+    fn sentry_dsn_resolution_uses_fallback_and_respects_empty_override() {
+        assert_eq!(
+            resolve_sentry_dsn(None).as_deref(),
+            Some(DEFAULT_SENTRY_DSN)
+        );
+        assert_eq!(resolve_sentry_dsn(Some("")), None);
+        assert_eq!(resolve_sentry_dsn(Some("   ")), None);
+        assert_eq!(
+            resolve_sentry_dsn(Some("https://key@example.com/1")).as_deref(),
+            Some("https://key@example.com/1")
+        );
+    }
+
+    #[test]
+    fn sentry_init_ignores_malformed_dsn() {
+        assert!(init_sentry(Some("not-a-valid-dsn")).is_none());
+        assert!(init_sentry(None).is_none());
+    }
+
+    #[test]
+    fn sentry_fail_open_when_unreachable() {
+        let start = Instant::now();
+        let guard = init_sentry(Some("http://public@127.0.0.1:1/20"));
+        assert!(guard.is_some());
+        sentry::capture_message("fail-open unreachable check", sentry::Level::Warning);
+        drop(guard);
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "Sentry capture and drop must not block when unreachable (took {:?})",
+            start.elapsed()
+        );
     }
 }

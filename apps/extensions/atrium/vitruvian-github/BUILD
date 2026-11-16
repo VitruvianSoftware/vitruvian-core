@@ -34,6 +34,7 @@ swift_library(
     tags = ["manual"],
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
+        "//packages/swift/SentryLite",
         "//packages/vitruvian-sdk:VitruvianToolKit",
         "//packages/vitruvian-sdk:VitruvianToolProtocol",
     ],
@@ -51,6 +52,7 @@ swift_test(
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":GitHubToolCore",
+        "//packages/swift/SentryLite",
         "//packages/vitruvian-sdk:VitruvianToolKit",
         "//packages/vitruvian-sdk:VitruvianToolProtocol",
     ],
@@ -66,6 +68,7 @@ swift_binary(
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":GitHubToolCore",
+        "//packages/swift/SentryLite",
         "//packages/vitruvian-sdk:VitruvianToolKit",
         "//packages/vitruvian-sdk:VitruvianToolProtocol",
     ],
