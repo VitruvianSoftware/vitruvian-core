@@ -13,7 +13,11 @@ enum StartNewChatConfirmAction: Equatable, Sendable {
     case lookup(StartNewChatLookupAction)
 }
 
-/// Pure presentation and filtering logic for `StartNewChatView`.
+/// Pure presentation logic for `StartNewChatView`: what the list shows, which rows the arrow keys visit, and what
+/// **Start Chat** does.
+///
+/// Contacts always come from `draft.candidates` (the `people.contacts` result the search also queries): with an
+/// empty query that is every contact, once typed it is the engine's matches.
 enum StartNewChatPresentation {
     static let maxRecentChats = 8
     static let initialContactsLimit = 50
@@ -30,7 +34,8 @@ enum StartNewChatPresentation {
             || (!candidate.accountID.isEmpty && filter == candidate.accountID)
     }
 
-    /// Builds up to `limit` (or all when `limit == nil`) most recent 1:1 chats across networks from `rows`.
+    /// The most recent one-to-one chats (never groups, hidden chats or merged chats), newest first, as contacts
+    /// that open the existing room. `limit == nil` returns all of them.
     static func recentDirectChats(
         from rows: [InboxRow],
         accounts: [Account],
@@ -59,18 +64,15 @@ enum StartNewChatPresentation {
             guard seenRooms.insert(row.roomID).inserted else { continue }
             let matched = contactsByRoomID[row.roomID]
             let rowName = !row.localName.isEmpty ? row.localName : row.name
-            let resolvedName = !rowName.isEmpty ? rowName : (matched?.name ?? "")
             let rowAvatar = !row.localAvatarPath.isEmpty ? row.localAvatarPath : row.avatarPath
-            let resolvedAvatar = !rowAvatar.isEmpty ? rowAvatar : (matched?.avatarPath ?? "")
-            let resolvedAccountID = matched?.accountID.isEmpty == false
-                ? matched!.accountID
-                : resolveAccountID(for: row, in: accounts)
             let candidate = ContactCandidate(
                 userID: matched?.userID ?? row.roomID,
-                name: resolvedName,
-                avatarPath: resolvedAvatar,
+                name: !rowName.isEmpty ? rowName : (matched?.name ?? ""),
+                avatarPath: !rowAvatar.isEmpty ? rowAvatar : (matched?.avatarPath ?? ""),
                 network: row.network,
-                accountID: resolvedAccountID,
+                accountID: matched?.accountID.isEmpty == false
+                    ? matched!.accountID
+                    : resolveAccountID(for: row, in: accounts),
                 identifiers: matched?.identifiers ?? [],
                 roomID: row.roomID
             )
@@ -118,104 +120,29 @@ enum StartNewChatPresentation {
             }
     }
 
-    static func emptyQueryContactsPool(draft: StartNewChatDraft, cachedContacts: [ContactCandidate]) -> [ContactCandidate] {
-        var out: [ContactCandidate] = []
-        var seen = Set<String>()
-        for candidate in draft.candidates where seen.insert(candidate.id).inserted {
-            out.append(candidate)
-        }
-        for candidate in cachedContacts where seen.insert(candidate.id).inserted {
-            out.append(candidate)
-        }
-        return out
+    /// "No matching contacts found" shows only after the user has typed and there is nothing to pick: no contact
+    /// result and no phone / email / `@handle` lookup to offer.
+    static func shouldShowNoMatchingContacts(draft: StartNewChatDraft) -> Bool {
+        hasTypedQuery(draft.query) && draft.filteredCandidates.isEmpty && draft.lookupActions.isEmpty
     }
 
-    /// Strict search match across candidates, cached contacts, and recent chats without falling back to all contacts.
-    static func matchingCandidates(
-        draft: StartNewChatDraft,
-        recentRows: [InboxRow],
-        cachedContacts: [ContactCandidate] = []
-    ) -> [ContactCandidate] {
-        let trimmed = draft.query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return sortedContacts(
-                emptyQueryContactsPool(draft: draft, cachedContacts: cachedContacts),
-                filter: draft.selectedAccountFilter
-            )
-        }
-
-        var combined: [ContactCandidate] = []
-        var seenIDs = Set<String>()
-        var seenRooms = Set<String>()
-
-        func appendIfUnique(_ candidate: ContactCandidate) {
-            guard matchesAccountFilter(candidate, filter: draft.selectedAccountFilter) else { return }
-            guard seenIDs.insert(candidate.id).inserted else { return }
-            if let roomID = candidate.roomID, !roomID.isEmpty {
-                guard seenRooms.insert(roomID).inserted else { return }
-            }
-            combined.append(candidate)
-        }
-
-        for candidate in draft.candidates {
-            appendIfUnique(candidate)
-        }
-        for candidate in cachedContacts {
-            appendIfUnique(candidate)
-        }
-        let recents = recentDirectChats(
-            from: recentRows,
-            accounts: draft.accounts,
-            contacts: draft.candidates + cachedContacts,
-            filter: draft.selectedAccountFilter,
-            limit: nil
-        )
-        for recent in recents {
-            appendIfUnique(recent)
-        }
-
-        return combined.filter { candidate in
-            candidate.name.localizedCaseInsensitiveContains(trimmed)
-                || candidate.userID.localizedCaseInsensitiveContains(trimmed)
-                || candidate.identifiers.contains { raw in
-                    raw.localizedCaseInsensitiveContains(trimmed)
-                        || ContactsBridge.displayIdentifier(raw).localizedCaseInsensitiveContains(trimmed)
-                }
-        }
-    }
-
-    /// Show "No matching contacts found" only after the user has typed and both contacts and lookup actions are empty.
-    static func shouldShowNoMatchingContacts(
-        draft: StartNewChatDraft,
-        recentRows: [InboxRow],
-        cachedContacts: [ContactCandidate] = []
-    ) -> Bool {
-        hasTypedQuery(draft.query)
-            && matchingCandidates(draft: draft, recentRows: recentRows, cachedContacts: cachedContacts).isEmpty
-            && draft.lookupActions.isEmpty
-    }
-
+    /// Row IDs in on-screen order: `lookup:` / `search:` once typed, else `recent:` then `contact:`.
     static func navigableRowIDs(
         draft: StartNewChatDraft,
         recentRows: [InboxRow],
-        cachedContacts: [ContactCandidate] = [],
         contactsLimit: Int = initialContactsLimit
     ) -> [String] {
         if hasTypedQuery(draft.query) {
-            let lookupIDs = draft.lookupActions.map { "lookup:\($0.id)" }
-            let searchIDs = matchingCandidates(draft: draft, recentRows: recentRows, cachedContacts: cachedContacts)
-                .map { "search:\($0.id)" }
-            return lookupIDs + searchIDs
+            return draft.lookupActions.map { "lookup:\($0.id)" } + draft.filteredCandidates.map { "search:\($0.id)" }
         }
-        let pool = emptyQueryContactsPool(draft: draft, cachedContacts: cachedContacts)
         let recents = recentDirectChats(
             from: recentRows,
             accounts: draft.accounts,
-            contacts: pool,
+            contacts: draft.candidates,
             filter: draft.selectedAccountFilter,
             limit: maxRecentChats
         )
-        let contacts = Array(sortedContacts(pool, filter: draft.selectedAccountFilter).prefix(max(0, contactsLimit)))
+        let contacts = sortedContacts(draft.candidates, filter: draft.selectedAccountFilter).prefix(max(0, contactsLimit))
         return recents.map { "recent:\($0.id)" } + contacts.map { "contact:\($0.id)" }
     }
 
@@ -223,40 +150,36 @@ enum StartNewChatPresentation {
         forRowID rowID: String,
         draft: StartNewChatDraft,
         recentRows: [InboxRow],
-        cachedContacts: [ContactCandidate] = [],
         contactsLimit: Int = initialContactsLimit
     ) -> ContactCandidate? {
         if rowID.hasPrefix("recent:") {
             let id = String(rowID.dropFirst("recent:".count))
-            let pool = emptyQueryContactsPool(draft: draft, cachedContacts: cachedContacts)
             return recentDirectChats(
                 from: recentRows,
                 accounts: draft.accounts,
-                contacts: pool,
+                contacts: draft.candidates,
                 filter: draft.selectedAccountFilter,
                 limit: maxRecentChats
             ).first { $0.id == id }
         }
         if rowID.hasPrefix("contact:") {
             let id = String(rowID.dropFirst("contact:".count))
-            let pool = emptyQueryContactsPool(draft: draft, cachedContacts: cachedContacts)
-            return sortedContacts(pool, filter: draft.selectedAccountFilter)
+            return sortedContacts(draft.candidates, filter: draft.selectedAccountFilter)
                 .prefix(max(0, contactsLimit))
                 .first { $0.id == id }
         }
         if rowID.hasPrefix("search:") {
             let id = String(rowID.dropFirst("search:".count))
-            return matchingCandidates(draft: draft, recentRows: recentRows, cachedContacts: cachedContacts)
-                .first { $0.id == id }
+            return draft.filteredCandidates.first { $0.id == id }
         }
         return nil
     }
 
-    /// Resolves the action performed by the primary "Start Chat" button (`⌘↩`), if enabled.
+    /// What the primary **Start Chat** button (`⌘↩`) does, or `nil` when it is disabled: the selected row, else the
+    /// first lookup when the query is a valid phone number, email or `@handle`.
     static func confirmAction(
         draft: StartNewChatDraft,
         recentRows: [InboxRow],
-        cachedContacts: [ContactCandidate] = [],
         contactsLimit: Int = initialContactsLimit,
         selectedRowID: String?
     ) -> StartNewChatConfirmAction? {
@@ -274,7 +197,6 @@ enum StartNewChatPresentation {
                 forRowID: selectedRowID,
                 draft: draft,
                 recentRows: recentRows,
-                cachedContacts: cachedContacts,
                 contactsLimit: contactsLimit
             ) {
                 return .openDirectChat(candidate)
@@ -300,7 +222,6 @@ public struct StartNewChatView: View {
     private let externalDraft: StartNewChatDraft
     private let recentRows: [InboxRow]
     @State private var draft: StartNewChatDraft
-    @State private var cachedAllContacts: [ContactCandidate]
     @State private var contactsLimit: Int = StartNewChatPresentation.initialContactsLimit
     @State private var selectedRowID: String?
     @State private var hoveredRowID: String?
@@ -328,8 +249,6 @@ public struct StartNewChatView: View {
         self.externalDraft = draft
         self.recentRows = recentRows
         _draft = State(initialValue: draft)
-        let initialContacts = !StartNewChatPresentation.hasTypedQuery(draft.query) ? draft.candidates : []
-        _cachedAllContacts = State(initialValue: initialContacts)
         self.onQueryChanged = onQueryChanged
         self.onOpenDirectChat = onOpenDirectChat
         self.onLookup = onLookup
@@ -383,25 +302,19 @@ public struct StartNewChatView: View {
         .frame(minHeight: 460)
         .background(Color(nsColor: .windowBackgroundColor))
         .onChange(of: externalDraft) { _, updated in
-            if draft != updated {
-                let oldFilter = draft.selectedAccountFilter
-                draft = updated
-                if oldFilter != updated.selectedAccountFilter {
-                    contactsLimit = StartNewChatPresentation.initialContactsLimit
-                }
-                if !StartNewChatPresentation.hasTypedQuery(updated.query) {
-                    if updated.selectedAccountFilter == nil {
-                        cachedAllContacts = updated.candidates
-                    } else {
-                        var merged = cachedAllContacts.filter {
-                            !StartNewChatPresentation.matchesAccountFilter($0, filter: updated.selectedAccountFilter)
-                        }
-                        merged.append(contentsOf: updated.candidates)
-                        cachedAllContacts = merged
-                    }
-                }
-                pruneSelectionIfNeeded()
+            // The model owns the contact results, accounts and submit state, and publishes them after the engine
+            // answers. Group name, blast text and mode live only in this sheet until it is submitted, so they stay.
+            var merged = updated
+            merged.mode = draft.mode
+            merged.groupName = draft.groupName
+            merged.blastText = draft.blastText
+            merged.isConfirmingBlast = draft.isConfirmingBlast
+            guard merged != draft else { return }
+            if draft.selectedAccountFilter != updated.selectedAccountFilter {
+                contactsLimit = StartNewChatPresentation.initialContactsLimit
             }
+            draft = merged
+            pruneSelectionIfNeeded()
         }
         .onKeyPress(.upArrow) {
             moveSelection(-1)
@@ -862,15 +775,14 @@ public struct StartNewChatView: View {
 
     @ViewBuilder
     private var emptyQueryContent: some View {
-        let pool = StartNewChatPresentation.emptyQueryContactsPool(draft: draft, cachedContacts: cachedAllContacts)
         let recents = StartNewChatPresentation.recentDirectChats(
             from: recentRows,
             accounts: draft.accounts,
-            contacts: pool,
+            contacts: draft.candidates,
             filter: draft.selectedAccountFilter,
             limit: StartNewChatPresentation.maxRecentChats
         )
-        let allContacts = StartNewChatPresentation.sortedContacts(pool, filter: draft.selectedAccountFilter)
+        let allContacts = StartNewChatPresentation.sortedContacts(draft.candidates, filter: draft.selectedAccountFilter)
         let visibleContacts = Array(allContacts.prefix(contactsLimit))
         let hasMoreContacts = allContacts.count > contactsLimit
 
@@ -916,11 +828,7 @@ public struct StartNewChatView: View {
     @ViewBuilder
     private var typedResultsContent: some View {
         let lookupActions = draft.lookupActions
-        let candidates = StartNewChatPresentation.matchingCandidates(
-            draft: draft,
-            recentRows: recentRows,
-            cachedContacts: cachedAllContacts
-        )
+        let candidates = draft.filteredCandidates
 
         if !lookupActions.isEmpty {
             ForEach(lookupActions) { action in
@@ -1113,7 +1021,6 @@ public struct StartNewChatView: View {
         StartNewChatPresentation.confirmAction(
             draft: draft,
             recentRows: recentRows,
-            cachedContacts: cachedAllContacts,
             contactsLimit: contactsLimit,
             selectedRowID: selectedRowID
         )
@@ -1174,7 +1081,6 @@ public struct StartNewChatView: View {
         StartNewChatPresentation.navigableRowIDs(
             draft: draft,
             recentRows: recentRows,
-            cachedContacts: cachedAllContacts,
             contactsLimit: contactsLimit
         )
     }
@@ -1225,8 +1131,7 @@ public struct StartNewChatView: View {
                    forRowID: rowID,
                    draft: draft,
                    recentRows: recentRows,
-                   cachedContacts: cachedAllContacts,
-                   contactsLimit: contactsLimit
+                          contactsLimit: contactsLimit
                ),
                !candidate.userID.hasPrefix("!") {
                 draft.toggleRecipient(candidate)

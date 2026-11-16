@@ -994,7 +994,7 @@ public final class HotkeyDispatcher: ObservableObject {
     @Published public private(set) var archiveAllReadInvocationCount: Int = 0
     @Published public private(set) var fallbackUndoInvocationCount: Int = 0
 
-    private var overlayDismissCancellables: Set<AnyCancellable> = []
+    private var overlayDismissals: Set<AnyCancellable> = []
 
     /// Shortcut IDs bound in `InboxCommands`.
     public static let inboxMenuShortcutIDs: [String] = [
@@ -1147,51 +1147,31 @@ public final class HotkeyDispatcher: ObservableObject {
         conversation.thread.composer.hotkeyDispatcher = self
         conversation.thread.composer.hotkeys = hotkeys
 
+        // The image viewer covers the whole window, so opening New Chat, Search or Settings (from a shortcut, the
+        // menu, a button or the dock) closes it first rather than opening behind it.
         inbox.$startNewChatDraft
             .dropFirst()
             .sink { [weak self] draft in
-                if draft != nil {
-                    self?.closeLightboxIfPresented()
-                }
+                if draft != nil { self?.closeImageViewer() }
             }
-            .store(in: &overlayDismissCancellables)
-
+            .store(in: &overlayDismissals)
         search.$phase
             .dropFirst()
             .sink { [weak self] phase in
-                if phase != .closed {
-                    self?.closeLightboxIfPresented()
-                }
+                if phase != .closed { self?.closeImageViewer() }
             }
-            .store(in: &overlayDismissCancellables)
-
+            .store(in: &overlayDismissals)
         menuCoordinator.$activeSettingsSection
             .dropFirst()
-            .sink { [weak self] _ in
-                self?.closeLightboxIfPresented()
-            }
-            .store(in: &overlayDismissCancellables)
-
+            .sink { [weak self] _ in self?.closeImageViewer() }
+            .store(in: &overlayDismissals)
         menuCoordinator.settingsNavigation.$selectedPane
             .dropFirst()
-            .sink { [weak self] _ in
-                self?.closeLightboxIfPresented()
-            }
-            .store(in: &overlayDismissCancellables)
-
-        if let commandBar {
-            commandBar.$isPresented
-                .dropFirst()
-                .sink { [weak self] presented in
-                    if presented {
-                        self?.closeLightboxIfPresented()
-                    }
-                }
-                .store(in: &overlayDismissCancellables)
-        }
+            .sink { [weak self] _ in self?.closeImageViewer() }
+            .store(in: &overlayDismissals)
     }
 
-    private func closeLightboxIfPresented() {
+    private func closeImageViewer() {
         if conversation.carousel.isPresented {
             conversation.closeLightbox()
         }
@@ -1410,7 +1390,6 @@ public final class HotkeyDispatcher: ObservableObject {
             return true
 
         case "Focus App and Command Bar":
-            closeLightboxIfPresented()
             menuCoordinator.focusApp()
             let visible = bringMainWindowForward()
             if let commandBar {
@@ -1421,7 +1400,6 @@ public final class HotkeyDispatcher: ObservableObject {
             return true
 
         case HotkeyID.commandBar:
-            closeLightboxIfPresented()
             _ = bringMainWindowForward()
             if let commandBar {
                 commandBar.toggle()
@@ -1447,13 +1425,11 @@ public final class HotkeyDispatcher: ObservableObject {
             return true
 
         case "Search":
-            closeLightboxIfPresented()
             let visible = bringMainWindowForward()
             search.toggle(visible: visible)
             return true
 
         case "Search: Room":
-            closeLightboxIfPresented()
             _ = bringMainWindowForward()
             search.show(in: inbox.selectedRoomID)
             return true
@@ -1464,7 +1440,6 @@ public final class HotkeyDispatcher: ObservableObject {
             return true
 
         case "Settings":
-            closeLightboxIfPresented()
             menuCoordinator.openSettings(.inbox)
             return true
 
@@ -1477,7 +1452,6 @@ public final class HotkeyDispatcher: ObservableObject {
             return true
 
         case "Report a Problem":
-            closeLightboxIfPresented()
             menuCoordinator.openSettings(.reportProblem)
             return true
 
@@ -1585,13 +1559,11 @@ public final class HotkeyDispatcher: ObservableObject {
             return true
 
         case "Chat: Start New":
-            closeLightboxIfPresented()
             _ = bringMainWindowForward()
             menuCoordinator.newChat()
             return true
 
         case "Chat: Create New Group":
-            closeLightboxIfPresented()
             _ = bringMainWindowForward()
             inbox.openStartNewChat(multiSelect: true)
             return true

@@ -15,13 +15,6 @@ public func isLocalMediaStorePath(_ path: String) -> Bool {
     return trimmed.hasPrefix("/")
 }
 
-/// Returns true when `path` is a non-empty remote URL (`http://`, `https://`, `mxc://`) or non-local path.
-public func isRemoteMediaURL(_ path: String) -> Bool {
-    let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return false }
-    return !isLocalMediaStorePath(trimmed)
-}
-
 /// One image or video item shown in `AttachmentCarouselOverlay`.
 ///
 /// Only non-view-once images and videos belong in the viewer (matching Chat Info's **Shared Media** and excluding
@@ -277,17 +270,17 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
         return result
     }
 
-    /// Builds the deduplicated, chronological list of viewer items combining the open timeline, Chat Info's
-    /// `sharedMedia` events, and paged `search.query` media hits.
+    /// Decides which items the viewer shows: the deduplicated, chronological union of the open timeline, Chat Info's
+    /// `sharedMedia` events and the `search.query` media hits.
     ///
-    /// Strictly includes only non-view-once images and videos (never link previews, stickers, files, or deleted items).
+    /// Only images and videos that are not view-once, deleted or removed belong (never link previews, stickers,
+    /// files or voice notes), and one whose file is not downloaded yet stays in, with an empty `mediaPath`.
     public static func viewerItems(
         timelineItems: [TimelineItem] = [],
         sharedMedia: [Event] = [],
-        mediaHits: [MediaHit] = [],
-        excludedViewOnceIDs: Set<String> = []
+        mediaHits: [MediaHit] = []
     ) -> [CarouselItem] {
-        var excluded = excludedViewOnceIDs
+        var excluded = Set<String>()
         for item in timelineItems {
             guard case let .message(msg) = item else { continue }
             if msg.viewOnce || msg.kind == .deleted || msg.showsMediaRemovedPlaceholder {
@@ -358,11 +351,16 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
 }
 
 /// State and transform controls for the full-window attachment lightbox (`AttachmentCarousel.tsx`).
+///
+/// Opening it shows the chat's whole list of images and videos (what Chat Info calls Shared Media), not only what
+/// the timeline has loaded: the rest is paged in from the engine as you move toward the oldest end.
 @MainActor
 public final class AttachmentCarouselModel: ObservableObject {
     public static let minZoomScale: Double = 0.5
     public static let maxZoomScale: Double = 5.0
     public static let zoomStep: Double = 0.25
+    /// Older items are requested once the selection is this close to the oldest loaded item.
+    private static let pagingMargin = 3
 
     @Published public private(set) var items: [CarouselItem] = []
     @Published public var currentIndex: Int = 0
@@ -371,28 +369,23 @@ public final class AttachmentCarouselModel: ObservableObject {
     @Published public var isFlippedHorizontally: Bool = false
     @Published public var isFlippedVertically: Bool = false
     @Published public var isPlayingVideo: Bool = false
-    @Published public var hasOlderItems: Bool = false
-    @Published public var isLoadingOlderItems: Bool = false
+    @Published public private(set) var hasOlderItems: Bool = false
+    @Published public private(set) var isLoadingOlderItems: Bool = false
 
     /// Called whenever the selected item changes or the carousel closes (`nil`).
     public var onSelectedEventChanged: ((String?) -> Void)?
-    /// Called when navigating near the older edge while `hasOlderItems` is true.
-    public var onLoadOlderItems: (() -> Void)?
 
-    private weak var boundAppModel: AppModel?
-    private weak var boundConversation: ConversationModel?
-    private var roomSubscription: AnyCancellable?
-    private var lightboxIDSubscription: AnyCancellable?
-    private var mediaLoadEpoch: Int = 0
-    private var mediaLoadTask: Task<Void, Never>?
-    private var mediaNextCursor: String?
-    private var mediaRoomID: String?
-    private var usesThreadTimeline: Bool = false
-    private var sharedMediaEvents: [Event] = []
-    private var loadedMediaHits: [MediaHit] = []
+    private weak var appModel: AppModel?
+    private weak var conversation: ConversationModel?
+    /// Goes up on every open and close, so a page that arrives for an earlier open is dropped.
+    private var epoch = 0
+    private var pager: MediaViewerModel?
+    private var pagingTask: Task<Void, Never>?
+    private var sessionRoomID: String?
+    private var seedHits: [MediaHit] = []
+    private var pagedHits: [MediaHit] = []
     private var requestedEventID: String?
-    private var didManuallyNavigateSinceOpen: Bool = false
-    private var isApplyingSelectionUpdate: Bool = false
+    private var userHasNavigated = false
 
     public var isPresented: Bool {
         !items.isEmpty && items.indices.contains(currentIndex)
@@ -405,372 +398,105 @@ public final class AttachmentCarouselModel: ObservableObject {
 
     public init() {}
 
-    /// Connects the carousel to `appModel` and `conversation` so opening an attachment populates the chat's
-    /// full image/video media list (matching Chat Info's Shared Media) and pages in older items on demand.
+    /// Connects the carousel to the engine (to page in the chat's older media) and to the conversation (to keep its
+    /// selected-message ID in step and to know what is view-once).
     public func bind(appModel: AppModel, conversation: ConversationModel) {
-        boundAppModel = appModel
-        if boundConversation !== conversation {
-            boundConversation = conversation
-            roomSubscription = conversation.$roomID
-                .dropFirst()
-                .removeDuplicates()
-                .sink { [weak self, weak conversation] _ in
-                    if self?.isPresented == true {
-                        conversation?.closeLightbox()
-                    }
-                }
-            lightboxIDSubscription = conversation.$activeLightboxMessageID
-                .dropFirst()
-                .removeDuplicates()
-                .sink { [weak self, weak conversation] newID in
-                    guard let self, let conversation,
-                          let newID,
-                          !self.isPresented,
-                          !self.isApplyingSelectionUpdate
-                    else { return }
-                    Task { @MainActor [weak self, weak conversation] in
-                        guard let self, let conversation,
-                              conversation.activeLightboxMessageID == newID,
-                              !self.isPresented
-                        else { return }
-                        self.openForRoom(selectedEventID: newID, roomID: conversation.roomID)
-                    }
-                }
-        }
-        if isPresented && mediaRoomID == nil {
-            startRoomMediaSync(roomID: conversation.roomID ?? currentItem?.roomID, seedHits: [])
-        }
+        self.appModel = appModel
+        self.conversation = conversation
+        onSelectedEventChanged = { [weak conversation] id in conversation?.activeLightboxMessageID = id }
     }
 
-    /// Opens the carousel with `items`, selecting `selectedEventID`.
+    /// Opens the carousel with `items`, selecting `selectedEventID`, then widens it to the chat's full list of
+    /// images and videos.
     ///
-    /// View-once items, non-image/video kinds, and explicit remote URLs are excluded.
-    /// If `selectedEventID` refers to a view-once item in `items`, the carousel refuses to open.
+    /// View-once items, anything that is not an image or video, and explicit remote URLs are excluded. If
+    /// `selectedEventID` refers to a view-once item, the carousel refuses to open.
     public func open(items candidateItems: [CarouselItem], selectedEventID: String) {
-        if candidateItems.first(where: { $0.eventID == selectedEventID })?.viewOnce == true {
-            close()
-            return
-        }
-        if let conv = boundConversation {
-            if conv.isViewOnceEvent(selectedEventID) {
-                close()
-                return
-            }
-            if let msg = conv.message(selectedEventID, from: .chat) ?? conv.message(selectedEventID, from: .thread) {
-                if msg.viewOnce || msg.kind == .deleted || msg.showsMediaRemovedPlaceholder {
-                    close()
-                    return
-                }
-                if msg.galleryItems.isEmpty && msg.kind != .image && msg.kind != .video {
-                    close()
-                    return
-                }
-            }
-        }
-        let eligible = candidateItems.filter {
-            !$0.viewOnce
-                && ($0.kind == .image || $0.kind == .video)
-                && ($0.mediaPath.isEmpty || isLocalMediaStorePath($0.mediaPath))
-        }
-        guard !eligible.isEmpty else {
-            close()
-            return
-        }
+        present(candidates: candidateItems, selectedEventID: selectedEventID, roomID: nil, seedHits: [])
+    }
 
-        mediaLoadEpoch += 1
-        mediaLoadTask?.cancel()
-        mediaLoadTask = nil
-        mediaNextCursor = nil
-        mediaRoomID = nil
-        sharedMediaEvents = []
-        loadedMediaHits = []
-        hasOlderItems = false
-        isLoadingOlderItems = false
+    /// Opens the carousel on `selectedEventID` in `roomID` from outside the timeline (the Media Viewer window),
+    /// seeded with the `seedHits` it already loaded.
+    public func openForRoom(selectedEventID: String, roomID: String?, seedHits: [MediaHit] = []) {
+        present(
+            candidates: seedHits.compactMap(CarouselItem.init(hit:)),
+            selectedEventID: selectedEventID,
+            roomID: roomID,
+            seedHits: seedHits
+        )
+    }
+
+    private static func isViewable(_ item: CarouselItem) -> Bool {
+        !item.viewOnce
+            && (item.kind == .image || item.kind == .video)
+            && (item.mediaPath.isEmpty || isLocalMediaStorePath(item.mediaPath))
+    }
+
+    private func present(candidates: [CarouselItem], selectedEventID: String, roomID: String?, seedHits: [MediaHit]) {
+        if candidates.first(where: { $0.eventID == selectedEventID })?.viewOnce == true
+            || seedHits.first(where: { $0.eventID == selectedEventID })?.viewOnce == true
+            || conversation?.isViewOnceEvent(selectedEventID) == true {
+            close()
+            return
+        }
+        let eligible = candidates.filter(Self.isViewable)
+
+        endSession()
+        sessionRoomID = roomID ?? conversation?.roomID ?? eligible.first?.roomID
+        self.seedHits = seedHits.filter { !$0.viewOnce && conversation?.isViewOnceEvent($0.eventID) != true }
         requestedEventID = selectedEventID
-        didManuallyNavigateSinceOpen = false
 
-        var startingItems = eligible
-        var effectiveRoom = boundConversation?.roomID
-            ?? eligible.first(where: { $0.eventID == selectedEventID })?.roomID
-            ?? eligible.first?.roomID
-
-        if let conv = boundConversation {
-            if let convRoom = conv.roomID {
-                effectiveRoom = convRoom
-                usesThreadTimeline = !CarouselItem.items(from: conv.items).contains { $0.eventID == selectedEventID }
-                    && CarouselItem.items(from: conv.thread.items).contains { $0.eventID == selectedEventID }
-            } else {
-                usesThreadTimeline = false
-            }
-            if let effectiveRoom,
-               let info = conv.chatInfo,
-               info.roomID == effectiveRoom || scopedRoomIDs(for: effectiveRoom).contains(info.roomID) {
-                sharedMediaEvents = info.sharedMedia
-            }
-            if let effectiveRoom {
-                let synced = CarouselItem.viewerItems(
-                    timelineItems: activeTimelineItems(in: conv, for: effectiveRoom),
-                    sharedMedia: sharedMediaEvents,
-                    mediaHits: [],
-                    excludedViewOnceIDs: excludedViewOnceIDs(in: conv)
-                )
-                if !synced.isEmpty && synced.contains(where: { $0.eventID == selectedEventID }) {
-                    startingItems = synced
-                }
-            }
-        }
-
+        let known = mergedItems()
+        let start = known.contains { $0.eventID == selectedEventID } ? known : eligible
         resetTransform()
         isPlayingVideo = false
-        items = startingItems
-        if let idx = startingItems.firstIndex(where: { $0.eventID == selectedEventID }) {
-            currentIndex = idx
-        } else {
-            currentIndex = 0
+        items = start
+        currentIndex = start.firstIndex { $0.eventID == selectedEventID } ?? 0
+        if isPresented {
+            onSelectedEventChanged?(currentItem?.eventID)
         }
-        notifySelectedEventChanged(currentItem?.eventID)
-
-        if boundAppModel != nil, let effectiveRoom, !effectiveRoom.isEmpty {
-            startRoomMediaSync(roomID: effectiveRoom, seedHits: [])
-        } else if currentIndex <= 3 {
-            requestOlderItemsIfNeeded()
-        }
-    }
-
-    /// Opens the viewer for `selectedEventID` in `roomID` (for Media Viewer or shared media tiles), seeding from
-    /// any already-loaded hits and fetching the room's full image/video media history.
-    public func openForRoom(selectedEventID: String, roomID targetRoomID: String?, seedHits: [MediaHit] = []) {
-        if let appModel = boundAppModel,
-           !AppLockGate.shared.canPerform(.other, lifecycle: appModel.lifecycle) {
-            return
-        }
-        if boundConversation?.isViewOnceEvent(selectedEventID) == true
-            || seedHits.first(where: { $0.eventID == selectedEventID })?.viewOnce == true {
-            if let conv = boundConversation, onSelectedEventChanged == nil {
-                onSelectedEventChanged = { [weak conv] id in conv?.activeLightboxMessageID = id }
-            }
-            close()
-            return
-        }
-        if let conv = boundConversation,
-           let msg = conv.message(selectedEventID, from: .chat) ?? conv.message(selectedEventID, from: .thread) {
-            if msg.viewOnce || msg.kind == .deleted || msg.showsMediaRemovedPlaceholder
-                || (msg.galleryItems.isEmpty && msg.kind != .image && msg.kind != .video) {
-                if onSelectedEventChanged == nil {
-                    onSelectedEventChanged = { [weak conv] id in conv?.activeLightboxMessageID = id }
-                }
-                close()
-                return
-            }
-        }
-
-        if let conv = boundConversation, onSelectedEventChanged == nil {
-            onSelectedEventChanged = { [weak conv] id in
-                conv?.activeLightboxMessageID = id
-            }
-        }
-
-        mediaLoadEpoch += 1
-        mediaLoadTask?.cancel()
-        mediaLoadTask = nil
-        mediaNextCursor = nil
-        hasOlderItems = false
-        isLoadingOlderItems = false
-        requestedEventID = selectedEventID
-        didManuallyNavigateSinceOpen = false
-
-        let effectiveRoom = targetRoomID ?? boundConversation?.roomID ?? seedHits.first?.roomID
-        mediaRoomID = effectiveRoom
-
-        if let conv = boundConversation, let effectiveRoom, conv.roomID == effectiveRoom {
-            usesThreadTimeline = !CarouselItem.items(from: conv.items).contains { $0.eventID == selectedEventID }
-                && CarouselItem.items(from: conv.thread.items).contains { $0.eventID == selectedEventID }
-        } else {
-            usesThreadTimeline = false
-        }
-
-        if let conv = boundConversation,
-           let effectiveRoom,
-           let info = conv.chatInfo,
-           info.roomID == effectiveRoom || scopedRoomIDs(for: effectiveRoom).contains(info.roomID) {
-            sharedMediaEvents = info.sharedMedia
-        } else {
-            sharedMediaEvents = []
-        }
-
-        loadedMediaHits = seedHits.filter { hit in
-            !hit.viewOnce && !(boundConversation?.isViewOnceEvent(hit.eventID) ?? false)
-        }
-
-        let timelineSource: [TimelineItem]
-        if let conv = boundConversation, let effectiveRoom {
-            timelineSource = activeTimelineItems(in: conv, for: effectiveRoom)
-        } else {
-            timelineSource = []
-        }
-        let excludedIDs = boundConversation.map(excludedViewOnceIDs(in:)) ?? []
-        let initialItems = CarouselItem.viewerItems(
-            timelineItems: timelineSource,
-            sharedMedia: sharedMediaEvents,
-            mediaHits: loadedMediaHits,
-            excludedViewOnceIDs: excludedIDs
-        )
-
-        resetTransform()
-        isPlayingVideo = false
-        if !initialItems.isEmpty {
-            items = initialItems
-            if let idx = initialItems.firstIndex(where: { $0.eventID == selectedEventID }) {
-                currentIndex = idx
-            } else {
-                currentIndex = max(0, initialItems.count - 1)
-            }
-            notifySelectedEventChanged(currentItem?.eventID)
-        } else {
-            items = []
-            currentIndex = 0
-        }
-
-        startRoomMediaSync(roomID: effectiveRoom, seedHits: loadedMediaHits)
-    }
-
-    /// Replaces `items` with the merged chronological list while preserving the active item and transform state.
-    public func mergeItems(_ candidateItems: [CarouselItem], hasOlder: Bool) {
-        let activeID = (!didManuallyNavigateSinceOpen ? requestedEventID : nil) ?? currentItem?.eventID
-        let eligible = candidateItems.filter {
-            !$0.viewOnce
-                && ($0.kind == .image || $0.kind == .video)
-                && ($0.mediaPath.isEmpty || isLocalMediaStorePath($0.mediaPath))
-        }
-        guard !eligible.isEmpty else {
-            hasOlderItems = false
-            return
-        }
-        items = eligible
-        hasOlderItems = hasOlder
-        if let activeID, let idx = eligible.firstIndex(where: { $0.eventID == activeID }) {
-            currentIndex = idx
-        } else if !eligible.indices.contains(currentIndex) {
-            currentIndex = max(0, eligible.count - 1)
-        }
-        notifySelectedEventChanged(currentItem?.eventID)
-        if currentIndex <= 3 {
-            requestOlderItemsIfNeeded()
-        }
-    }
-
-    /// Requests the next older page of media if available and not already in flight.
-    public func requestOlderItemsIfNeeded() {
-        guard hasOlderItems, !isLoadingOlderItems else { return }
-        onLoadOlderItems?()
-    }
-
-    /// Pages in older images and videos for the open viewer via `search.query(cursor:)`.
-    public func loadOlderMedia() async {
-        guard isPresented,
-              !isLoadingOlderItems,
-              let cursor = mediaNextCursor,
-              !cursor.isEmpty,
-              let effectiveRoom = mediaRoomID,
-              let appModel = boundAppModel,
-              AppLockGate.shared.canPerform(.other, lifecycle: appModel.lifecycle),
-              let client = appModel.client
-        else {
-            return
-        }
-        let scopedRooms = scopedRoomIDs(for: effectiveRoom)
-        guard !scopedRooms.isEmpty else { return }
-
-        let epoch = mediaLoadEpoch
-        isLoadingOlderItems = true
-        defer {
-            if epoch == mediaLoadEpoch {
-                isLoadingOlderItems = false
-            }
-        }
-
-        let response: LightboxMediaSearchResponse? = try? await client.call(
-            "search.query",
-            SearchParams(
-                text: "",
-                sections: [.media],
-                filters: SearchFilters(roomIDs: scopedRooms, kinds: ["image", "video"]),
-                cursor: cursor,
-                limit: 50
-            )
-        )
-        guard epoch == mediaLoadEpoch,
-              AppLockGate.shared.canPerform(.other, lifecycle: appModel.lifecycle),
-              client === appModel.client,
-              isPresented,
-              let page = response?.media
-        else {
-            return
-        }
-
-        var seen = Set(loadedMediaHits.map(\.eventID))
-        for hit in page.hits where !hit.viewOnce && !(boundConversation?.isViewOnceEvent(hit.eventID) ?? false) {
-            if seen.insert(hit.eventID).inserted {
-                loadedMediaHits.append(hit)
-            }
-        }
-        mediaNextCursor = page.nextCursor
-        let hasOlder = (page.nextCursor?.isEmpty == false)
-        let timelineSource = boundConversation.map { activeTimelineItems(in: $0, for: effectiveRoom) } ?? []
-        let excludedIDs = boundConversation.map(excludedViewOnceIDs(in:)) ?? []
-        let merged = CarouselItem.viewerItems(
-            timelineItems: timelineSource,
-            sharedMedia: sharedMediaEvents,
-            mediaHits: loadedMediaHits,
-            excludedViewOnceIDs: excludedIDs
-        )
-        mergeItems(merged, hasOlder: hasOlder)
+        startPaging()
     }
 
     /// Closes the lightbox and resets all transforms.
     public func close() {
-        mediaLoadEpoch += 1
-        mediaLoadTask?.cancel()
-        mediaLoadTask = nil
-        mediaNextCursor = nil
-        mediaRoomID = nil
-        usesThreadTimeline = false
-        sharedMediaEvents = []
-        loadedMediaHits = []
-        requestedEventID = nil
-        didManuallyNavigateSinceOpen = false
+        endSession()
         items = []
         currentIndex = 0
         isPlayingVideo = false
+        resetTransform()
+        onSelectedEventChanged?(nil)
+    }
+
+    /// Forgets everything about the open that is ending, and drops any page still on its way for it.
+    private func endSession() {
+        epoch += 1
+        pagingTask?.cancel()
+        pagingTask = nil
+        pager = nil
+        sessionRoomID = nil
+        seedHits = []
+        pagedHits = []
+        requestedEventID = nil
+        userHasNavigated = false
         hasOlderItems = false
         isLoadingOlderItems = false
-        onLoadOlderItems = nil
-        resetTransform()
-        notifySelectedEventChanged(nil)
     }
 
     /// Selects a specific index in `items` and resets image transforms.
     public func select(index: Int) {
         guard items.indices.contains(index) else { return }
-        if index <= 3 {
+        if index <= Self.pagingMargin {
             requestOlderItemsIfNeeded()
         }
         guard index != currentIndex else { return }
-        didManuallyNavigateSinceOpen = true
-        currentIndex = index
-        resetTransform()
-        isPlayingVideo = false
-        notifySelectedEventChanged(currentItem?.eventID)
+        move(to: index)
     }
 
     /// Moves to the next attachment in `items` if available.
     public func next() {
         guard currentIndex + 1 < items.count else { return }
-        didManuallyNavigateSinceOpen = true
-        currentIndex += 1
-        resetTransform()
-        isPlayingVideo = false
-        notifySelectedEventChanged(currentItem?.eventID)
+        move(to: currentIndex + 1)
     }
 
     /// Moves to the previous attachment in `items` if available.
@@ -779,14 +505,18 @@ public final class AttachmentCarouselModel: ObservableObject {
             requestOlderItemsIfNeeded()
             return
         }
-        didManuallyNavigateSinceOpen = true
-        currentIndex -= 1
-        resetTransform()
-        isPlayingVideo = false
-        notifySelectedEventChanged(currentItem?.eventID)
-        if currentIndex <= 3 {
+        move(to: currentIndex - 1)
+        if currentIndex <= Self.pagingMargin {
             requestOlderItemsIfNeeded()
         }
+    }
+
+    private func move(to index: Int) {
+        userHasNavigated = true
+        currentIndex = index
+        resetTransform()
+        isPlayingVideo = false
+        onSelectedEventChanged?(currentItem?.eventID)
     }
 
     /// Steps zoom scale up by `0.25` up to `5.0`.
@@ -828,146 +558,80 @@ public final class AttachmentCarouselModel: ObservableObject {
         isPlayingVideo.toggle()
     }
 
-    // MARK: - Room Media Sync Helpers
+    // MARK: - The chat's full media list
 
-    private struct LightboxMediaSearchResponse: Decodable {
-        struct Page: Decodable {
-            let hits: [MediaHit]
-            let nextCursor: String?
-
-            enum CodingKeys: String, CodingKey {
-                case hits
-                case nextCursor = "next_cursor"
-            }
-        }
-
-        let media: Page?
+    /// Asks for the next page of older media, unless there is none or one is already on its way.
+    public func requestOlderItemsIfNeeded() {
+        guard hasOlderItems, !isLoadingOlderItems else { return }
+        Task { await loadOlderMedia() }
     }
 
-    private func notifySelectedEventChanged(_ eventID: String?) {
-        isApplyingSelectionUpdate = true
-        defer { isApplyingSelectionUpdate = false }
-        onSelectedEventChanged?(eventID)
+    /// Pages in the next older images and videos for the open viewer.
+    public func loadOlderMedia() async {
+        guard isPresented, !isLoadingOlderItems, let pager, pager.hasMore else { return }
+        let epoch = epoch
+        isLoadingOlderItems = true
+        defer {
+            if epoch == self.epoch {
+                isLoadingOlderItems = false
+            }
+        }
+        await pager.loadNextPage()
+        absorbPage(from: pager, epoch: epoch)
     }
 
-    private func scopedRoomIDs(for targetRoom: String) -> [String] {
-        guard let appModel = boundAppModel else {
-            return targetRoom.hasPrefix("merge:") ? [] : [targetRoom]
+    private func startPaging() {
+        guard let appModel, let room = sessionRoomID, !room.isEmpty, !scopedRoomIDs(for: room).isEmpty else { return }
+        let pager = MediaViewerModel(appModel: appModel, roomID: room, conversation: conversation)
+        self.pager = pager
+        let epoch = epoch
+        pagingTask = Task { [weak self] in
+            await pager.refresh()
+            self?.absorbPage(from: pager, epoch: epoch)
         }
-        return appModel.scopeRoomIDs(for: targetRoom).filter { !$0.hasPrefix("merge:") }
     }
 
-    private func activeTimelineItems(in conversation: ConversationModel, for targetRoom: String) -> [TimelineItem] {
-        guard targetRoom == conversation.roomID else { return [] }
-        return usesThreadTimeline ? conversation.thread.items : conversation.items
+    /// Folds what `pager` has loaded so far into the list, keeping the same item selected.
+    private func absorbPage(from pager: MediaViewerModel, epoch: Int) {
+        guard epoch == self.epoch, !Task.isCancelled else { return }
+        pagedHits = pager.items
+        hasOlderItems = pager.hasMore
+        let merged = mergedItems()
+        guard !merged.isEmpty else { return }
+        if !isPresented {
+            // Opened from outside the timeline with nothing to show yet: open once the item is there.
+            guard let requestedEventID, merged.contains(where: { $0.eventID == requestedEventID }) else { return }
+        }
+        let activeID = (userHasNavigated ? nil : requestedEventID) ?? currentItem?.eventID
+        let previousID = currentItem?.eventID
+        items = merged
+        currentIndex = activeID.flatMap { id in merged.firstIndex { $0.eventID == id } }
+            ?? min(currentIndex, merged.count - 1)
+        if currentItem?.eventID != previousID {
+            onSelectedEventChanged?(currentItem?.eventID)
+        }
+        if currentIndex <= Self.pagingMargin {
+            requestOlderItemsIfNeeded()
+        }
     }
 
-    private func excludedViewOnceIDs(in conversation: ConversationModel) -> Set<String> {
-        var excluded = Set<String>()
-        for item in conversation.items + conversation.thread.items {
-            guard case let .message(msg) = item else { continue }
-            if msg.viewOnce || msg.kind == .deleted || msg.showsMediaRemovedPlaceholder {
-                excluded.insert(msg.id)
-                for galleryItem in msg.galleryItems {
-                    excluded.insert(galleryItem.id)
-                }
+    /// Timeline, Chat Info's Shared Media and every page loaded so far, as one deduplicated list.
+    private func mergedItems() -> [CarouselItem] {
+        var timeline: [TimelineItem] = []
+        var sharedMedia: [Event] = []
+        if let conversation, let room = sessionRoomID {
+            if room == conversation.roomID {
+                timeline = conversation.items + conversation.thread.items
+            }
+            if let info = conversation.chatInfo, scopedRoomIDs(for: room).contains(info.roomID) {
+                sharedMedia = info.sharedMedia
             }
         }
-        return excluded
+        return CarouselItem.viewerItems(timelineItems: timeline, sharedMedia: sharedMedia, mediaHits: seedHits + pagedHits)
     }
 
-    private func startRoomMediaSync(roomID targetRoomID: String?, seedHits: [MediaHit]) {
-        mediaRoomID = targetRoomID
-        if !seedHits.isEmpty {
-            var seen = Set(loadedMediaHits.map(\.eventID))
-            for hit in seedHits where !hit.viewOnce && !(boundConversation?.isViewOnceEvent(hit.eventID) ?? false) {
-                if seen.insert(hit.eventID).inserted {
-                    loadedMediaHits.append(hit)
-                }
-            }
-        }
-        onLoadOlderItems = { [weak self] in
-            Task { await self?.loadOlderMedia() }
-        }
-
-        guard let appModel = boundAppModel,
-              let client = appModel.client,
-              let effectiveRoom = targetRoomID,
-              !effectiveRoom.isEmpty
-        else {
-            return
-        }
-        let scopedRooms = scopedRoomIDs(for: effectiveRoom)
-        guard !scopedRooms.isEmpty else { return }
-
-        let epoch = mediaLoadEpoch
-        let shouldFetchRoomInfo = sharedMediaEvents.isEmpty && scopedRooms.count == 1
-        let singleRoom = scopedRooms[0]
-
-        mediaLoadTask = Task { [weak self] in
-            async let roomInfoCall: RoomInfoResult? = shouldFetchRoomInfo
-                ? (try? client.call("room.info", RoomInfoParams(roomID: singleRoom)))
-                : nil
-            async let mediaSearchCall: LightboxMediaSearchResponse? = try? client.call(
-                "search.query",
-                SearchParams(
-                    text: "",
-                    sections: [.media],
-                    filters: SearchFilters(roomIDs: scopedRooms, kinds: ["image", "video"]),
-                    cursor: nil,
-                    limit: 50
-                )
-            )
-            let fetchedInfo = await roomInfoCall
-            let mediaResponse = await mediaSearchCall
-            guard let self,
-                  !Task.isCancelled,
-                  epoch == self.mediaLoadEpoch,
-                  AppLockGate.shared.canPerform(.other, lifecycle: appModel.lifecycle),
-                  client === appModel.client
-            else {
-                return
-            }
-
-            if let fetchedInfo {
-                self.sharedMediaEvents = fetchedInfo.sharedMedia
-            }
-            if let page = mediaResponse?.media {
-                var seen = Set(self.loadedMediaHits.map(\.eventID))
-                for hit in page.hits where !hit.viewOnce && !(self.boundConversation?.isViewOnceEvent(hit.eventID) ?? false) {
-                    if seen.insert(hit.eventID).inserted {
-                        self.loadedMediaHits.append(hit)
-                    }
-                }
-                self.mediaNextCursor = page.nextCursor
-            }
-            let hasOlder = (self.mediaNextCursor?.isEmpty == false)
-            let timelineSource = self.boundConversation.map { self.activeTimelineItems(in: $0, for: effectiveRoom) } ?? []
-            let excludedIDs = self.boundConversation.map(self.excludedViewOnceIDs(in:)) ?? []
-            let merged = CarouselItem.viewerItems(
-                timelineItems: timelineSource,
-                sharedMedia: self.sharedMediaEvents,
-                mediaHits: self.loadedMediaHits,
-                excludedViewOnceIDs: excludedIDs
-            )
-            if self.isPresented {
-                self.mergeItems(merged, hasOlder: hasOlder)
-            } else if !merged.isEmpty {
-                self.items = merged
-                self.hasOlderItems = hasOlder
-                if let targetID = self.requestedEventID,
-                   let idx = merged.firstIndex(where: { $0.eventID == targetID }) {
-                    self.currentIndex = idx
-                } else {
-                    self.currentIndex = max(0, merged.count - 1)
-                }
-                self.notifySelectedEventChanged(self.currentItem?.eventID)
-                if self.currentIndex <= 3 {
-                    self.requestOlderItemsIfNeeded()
-                }
-            } else {
-                self.notifySelectedEventChanged(nil)
-            }
-        }
+    private func scopedRoomIDs(for room: String) -> [String] {
+        guard let appModel else { return room.hasPrefix("merge:") ? [] : [room] }
+        return appModel.scopeRoomIDs(for: room).filter { !$0.hasPrefix("merge:") }
     }
 }

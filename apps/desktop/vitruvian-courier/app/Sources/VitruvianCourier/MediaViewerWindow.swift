@@ -629,7 +629,6 @@ public struct MediaViewerWindow: View {
             model: viewerModel,
             chatTitle: resolvedChatTitle,
             onOpenLightbox: { hit in
-                conversation.carousel.bind(appModel: appModel, conversation: conversation)
                 conversation.carousel.openForRoom(
                     selectedEventID: hit.eventID,
                     roomID: viewerModel.roomID ?? hit.roomID,

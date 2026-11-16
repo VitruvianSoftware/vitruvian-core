@@ -884,13 +884,18 @@ final class ViewSnapshotTests: XCTestCase {
 
         var draft = StartNewChatDraft(accounts: accounts, candidates: contacts)
         XCTAssertFalse(StartNewChatPresentation.hasTypedQuery(draft.query))
-        XCTAssertFalse(StartNewChatPresentation.shouldShowNoMatchingContacts(draft: draft, recentRows: rows))
+        XCTAssertFalse(StartNewChatPresentation.shouldShowNoMatchingContacts(draft: draft))
 
         let sorted = StartNewChatPresentation.sortedContacts(contacts, filter: nil)
         XCTAssertEqual(sorted.first?.name, "adam")
         XCTAssertEqual(sorted.last?.name, "Zara")
         XCTAssertEqual(sorted.prefix(StartNewChatPresentation.initialContactsLimit).count, 50)
         XCTAssertGreaterThan(sorted.count, 50)
+
+        let navigable = StartNewChatPresentation.navigableRowIDs(draft: draft, recentRows: rows)
+        XCTAssertEqual(navigable.filter { $0.hasPrefix("recent:") }.count, 8)
+        XCTAssertEqual(navigable.filter { $0.hasPrefix("contact:") }.count, 50, "Contacts stop at 50 until Show more")
+        XCTAssertTrue(navigable.first?.hasPrefix("recent:") == true, "Recent rows come before Contacts")
 
         XCTAssertNil(
             StartNewChatPresentation.confirmAction(draft: draft, recentRows: rows, selectedRowID: nil)
@@ -914,14 +919,16 @@ final class ViewSnapshotTests: XCTestCase {
             .openDirectChat(firstContact)
         )
 
+        // Typed, and the engine's answer is empty: now (and only now) "No matching contacts found" shows.
         draft.query = "no-such-person-xyz"
-        XCTAssertTrue(StartNewChatPresentation.shouldShowNoMatchingContacts(draft: draft, recentRows: rows))
+        draft.candidates = []
+        XCTAssertTrue(StartNewChatPresentation.shouldShowNoMatchingContacts(draft: draft))
         XCTAssertNil(
             StartNewChatPresentation.confirmAction(draft: draft, recentRows: rows, selectedRowID: nil)
         )
 
         draft.query = "grace@example.com"
-        XCTAssertFalse(StartNewChatPresentation.shouldShowNoMatchingContacts(draft: draft, recentRows: rows))
+        XCTAssertFalse(StartNewChatPresentation.shouldShowNoMatchingContacts(draft: draft))
         if case let .lookup(action)? = StartNewChatPresentation.confirmAction(
             draft: draft,
             recentRows: rows,

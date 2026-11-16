@@ -621,6 +621,7 @@ public final class ConversationModel: ObservableObject {
         thread = ThreadModel(appModel: appModel, now: now, calendar: calendar, sleep: sleep)
         audioPlayer = AudioPlayerModel(appModel: appModel, preferences: preferences)
         audioPlayer.conversation = self
+        carousel.bind(appModel: appModel, conversation: self)
         subscriptions.append(audioPlayer.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         })

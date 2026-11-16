@@ -84,9 +84,10 @@ struct MainWindow: View {
 
     private var overlaidContent: some View {
         content
+            // The image viewer covers the whole window, toolbar included, and nothing behind it takes input.
             .disabled(conversation.carousel.isPresented)
-            .frame(minWidth: 480, maxWidth: .infinity, minHeight: 320, maxHeight: .infinity)
             .toolbar(conversation.carousel.isPresented ? .hidden : .automatic, for: .windowToolbar)
+            .frame(minWidth: 480, maxWidth: .infinity, minHeight: 320, maxHeight: .infinity)
             .overlay {
                 if search.phase != .closed {
                     SearchOverlay(
@@ -155,14 +156,11 @@ struct MainWindow: View {
                             conversation.closeLightbox()
                         }
                     )
-                    .ignoresSafeArea(.all)
+                    .ignoresSafeArea()
                 }
             }
             // A chat's right-click menu opens search in that chat.
-            .environment(\.searchInChat, { roomID in
-                if conversation.carousel.isPresented { conversation.closeLightbox() }
-                search.show(in: roomID)
-            })
+            .environment(\.searchInChat, { search.show(in: $0) })
             .environment(\.openDetachedWindow, { target in detachedWindows?.open(target) })
             .environment(\.appearancePreferences, appearance)
             .environment(\.themeAccentHex, appearance.effectiveTheme(for: nil).accentColorHex)
@@ -176,31 +174,8 @@ struct MainWindow: View {
     var body: some View {
         LockableWindowContent(lifecycle: lifecycle) {
             overlaidContent
-                .onAppear {
-                    conversation.carousel.bind(appModel: model, conversation: conversation)
-                }
-                .onChange(of: conversation.carousel.isPresented) { _, presented in
-                    if presented {
-                        conversation.carousel.bind(appModel: model, conversation: conversation)
-                    }
-                }
                 .onChange(of: controlActiveState, initial: true) { _, state in
                     ui.isMainWindowKey = state == .key
-                }
-                .onChange(of: inbox.startNewChatDraft != nil) { _, isPresented in
-                    if isPresented, conversation.carousel.isPresented {
-                        conversation.closeLightbox()
-                    }
-                }
-                .onChange(of: search.phase != .closed) { _, isOpen in
-                    if isOpen, conversation.carousel.isPresented {
-                        conversation.closeLightbox()
-                    }
-                }
-                .onChange(of: commandBar.isPresented) { _, isPresented in
-                    if isPresented, conversation.carousel.isPresented {
-                        conversation.closeLightbox()
-                    }
                 }
                 // A closed window takes its panel with it: the next ⌘K opens a fresh one, in view.
                 .onDisappear {
@@ -358,10 +333,7 @@ struct MainWindow: View {
                         preferences: preferences,
                         composerPreferences: composerPreferences,
                         ui: ui,
-                        openSearch: {
-                            if conversation.carousel.isPresented { conversation.closeLightbox() }
-                            search.show()
-                        }
+                        openSearch: { search.show() }
                     )
                 }
                 .navigationSplitViewColumnWidth(min: preferences.showSpaceBar ? 260 + SpaceBar.width : 260,

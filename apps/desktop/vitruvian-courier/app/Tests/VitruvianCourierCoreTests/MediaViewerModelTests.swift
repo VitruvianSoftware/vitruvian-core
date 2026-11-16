@@ -941,7 +941,7 @@ final class MediaViewerModelTests: XCTestCase {
         XCTAssertEqual(viewerItems.first?.mediaPath, "", "Uncached older media without local path must stay in viewerItems")
         XCTAssertFalse(viewerItems.contains { $0.eventID.hasPrefix("$excl-") || $0.eventID.hasPrefix("$hit-") })
 
-        // ConversationModel.openLightbox + loadOlderLightboxMedia pages older search hits from engine.
+        // ConversationModel.openLightbox widens to the chat's media and pages older hits from the engine.
         let roomInfo = RoomInfoResult(
             roomID: roomID,
             name: "Weekend Trail Crew",
@@ -951,8 +951,6 @@ final class MediaViewerModelTests: XCTestCase {
             sharedMedia: Array(sharedEvents.suffix(3)),
             features: .noFeatures
         )
-        let infoData = try JSONEncoder().encode(roomInfo)
-        let infoJSON = try XCTUnwrap(try JSONSerialization.jsonObject(with: infoData) as? [String: Any])
         let cursorsLock = NSLock()
         var observedCursors: [String] = []
 
@@ -962,8 +960,6 @@ final class MediaViewerModelTests: XCTestCase {
                 return TestEngineServer.helloOK
             case "accounts.list":
                 return .result(["accounts": []])
-            case "room.info":
-                return .result(infoJSON)
             case "search.query":
                 let cursor = params?["cursor"] as? String
                 cursorsLock.withLock { observedCursors.append(cursor ?? "nil") }
@@ -995,11 +991,13 @@ final class MediaViewerModelTests: XCTestCase {
         }
 
         let conversation = ConversationModel(appModel: appModel, unreadCount: { _ in 0 }, chat: { _ in nil })
-        conversation.carousel.bind(appModel: appModel, conversation: conversation)
         conversation.setSnapshotStateForTesting(roomID: roomID, items: timelineItems)
+        conversation.setChatInfoForTesting(roomInfo)
         conversation.openLightbox("$e13")
 
-        XCTAssertEqual(conversation.carousel.items.map(\.eventID), ["$e10", "$e11", "$e12", "$e13"])
+        // At once: the loaded timeline plus Chat Info's Shared Media. Then the engine's first page of media.
+        XCTAssertEqual(conversation.carousel.items.map(\.eventID), ["$e3", "$e4", "$e5", "$e10", "$e11", "$e12", "$e13"])
+        XCTAssertEqual(conversation.carousel.currentItem?.eventID, "$e13")
         await waitUntil { conversation.carousel.items.count == 11 && conversation.carousel.hasOlderItems }
 
         await conversation.carousel.loadOlderMedia()
