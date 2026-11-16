@@ -34,8 +34,12 @@ pub const IN_CALL_PING_SECS: u64 = 2;
 /// This many unanswered pings means the link is dead.
 pub const MAX_MISSED_PINGS: u32 = 3;
 /// The longest a tool call may take (the `deadline_ms` the relay sends). The
-/// connector never waits longer for one, whatever a frame says.
-pub const CALL_BUDGET_SECS: u64 = 180;
+/// connector never waits longer for one, whatever a frame says. Under the
+/// ~100 s a Cloudflare tunnel holds a request whose answer has not started
+/// (the relay answers `tools/call` as one JSON body), so a slow call fails
+/// with the relay's own message, not a 524; the 60 s "ask first" dialog
+/// fits inside (ruling R16; streamed answers with keep-alives would lift it).
+pub const CALL_BUDGET_SECS: u64 = 90;
 
 #[derive(Debug)]
 pub enum FrameError {
@@ -209,7 +213,7 @@ mod tests {
                 call_id: "c1".into(),
                 tool: "read_file".into(),
                 arguments: json!({"path": "/tmp/x"}),
-                deadline_ms: 180_000,
+                deadline_ms: 90_000,
             }),
             ToConnector::Cancel {
                 call_id: "c1".into(),
@@ -293,7 +297,10 @@ mod tests {
         assert_eq!(PROTOCOL, 1);
         assert_eq!(MAX_FRAME_BYTES, 4 * 1024 * 1024);
         assert_eq!((PING_SECS, IN_CALL_PING_SECS, MAX_MISSED_PINGS), (20, 2, 3));
-        assert_eq!(CALL_BUDGET_SECS, 180);
+        // Ruling R16: under the ~100 s Cloudflare gives an origin that sends
+        // nothing (the answer is one JSON body, sent at the end), with the
+        // connector's 60 s dialog inside it.
+        assert_eq!(CALL_BUDGET_SECS, 90);
     }
 
     #[test]

@@ -1242,7 +1242,9 @@ fn production_limits_are_pinned() {
     let t = Timing::default();
     assert_eq!(t.in_call_every, Duration::from_secs(2));
     assert_eq!(t.prune_every, Duration::from_secs(60));
-    assert_eq!(t.max_call, Duration::from_secs(180));
+    assert_eq!(t.max_call, Duration::from_secs(90));
+    // The dialog fits inside the call budget, with time left to run it.
+    assert!(t.max_prompt + Duration::from_secs(20) <= t.max_call);
     assert_eq!(t.max_in_flight, 16);
     assert_eq!(t.max_dialogs, 1);
     assert_eq!(t.results_cap_bytes, 16 * 1024 * 1024);

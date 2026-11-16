@@ -1172,10 +1172,10 @@ async fn call_reaches_the_device_and_answers() {
         (call.tool.as_str(), &call.arguments),
         ("read_file", &json!({"path": "/tmp/x"}))
     );
-    // What is left of the 180 s budget when the frame is written, less the
-    // 6 s allowed for it to arrive: a little under 174 s, never over.
+    // What is left of the call budget when the frame is written, less the
+    // 6 s allowed for it to arrive: a little under 84 s, never over.
     assert!(
-        (169_000..=174_000).contains(&call.deadline_ms),
+        (79_000..=84_000).contains(&call.deadline_ms),
         "{}",
         call.deadline_ms
     );
@@ -1482,7 +1482,7 @@ fn production_timing_matches_the_spec() {
         t.max_missed_pings,
         vitruvian_relay_protocol::MAX_MISSED_PINGS
     );
-    assert_eq!(t.call_budget, Duration::from_secs(180));
+    assert_eq!(t.call_budget, Duration::from_secs(90));
     assert_eq!(t.max_clock_skew_secs, 60);
     assert_eq!(t.send_timeout, Duration::from_secs(30));
     assert_eq!(t.transit_margin, Duration::from_secs(6));
