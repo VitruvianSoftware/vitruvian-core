@@ -48,6 +48,51 @@ final class BubbleBeeperLookSnapshotTests: XCTestCase {
         XCTAssertEqual(sizes.count, 2)
     }
 
+    /// A long sender name in a narrow window truncates inside its bubble; it doesn't push the bubble wider.
+    func testLongSenderNameInANarrowBubbleTruncates() throws {
+        let long = "Alexandrina Wolfeschlegelsteinhausenbergerdorff-Montgomery the Third"
+        let events = [
+            Fixture.text("$n1", "On my way.", mine: false, ts: 5, sender: "@alex:courier.local", name: long),
+            Fixture.text("$n2", "See you there", mine: true, ts: 4),
+            Fixture.text("$n3", "A reply that is long enough to wrap onto a second line in this narrow window.",
+                         mine: false, ts: 2, sender: "@alex:courier.local", name: long),
+        ]
+        let sizes = try Snapshot.render("bubble-long-sender-name-narrow", width: 260) { timeline(events, direct: false) }
+        XCTAssertEqual(sizes.count, 2)
+        for size in sizes { XCTAssertEqual(size.width, 260) }
+        // The row, measured: the bubble stays inside the window (14 pt padding each side).
+        let host = NSHostingView(rootView: timeline(events, direct: false).frame(width: 260).fixedSize(horizontal: false, vertical: true))
+        XCTAssertLessThanOrEqual(host.fittingSize.width, 260, "the name doesn't widen the row past the window")
+    }
+
+    /// A link with an embed card (YouTube) is drawn as that one card, carrying the preview's title, not also as a
+    /// link card for the same address; other links in the message keep theirs.
+    func testAnEmbeddedLinkGetsOneCardNotTwo() throws {
+        let youtube = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        let article = "https://example.org/article"
+        var event = Fixture.text("$yt", "\(youtube) and \(article)", mine: true, ts: 3)
+        event.linkPreviews = [
+            LinkPreviewItem(matchedURL: youtube, url: youtube, title: "Never Gonna Give You Up", siteName: "YouTube"),
+            LinkPreviewItem(matchedURL: article, url: article, title: "An article", siteName: "example.org"),
+        ]
+        let items = Fixture.items([event], isDirect: false)
+        var message: TimelineMessage?
+        for case let .message(m) in items { message = m }
+        let shown = try XCTUnwrap(message)
+        XCTAssertNotNil(ExternalEmbedDescriptor.first(in: shown))
+        XCTAssertEqual(ExternalEmbedDescriptor.cardPreviews(in: shown).map(\.title), ["An article"],
+                       "the YouTube preview is not drawn as a second card")
+        XCTAssertEqual(ExternalEmbedDescriptor.embedTitle(in: shown), "Never Gonna Give You Up")
+
+        var plain = Fixture.text("$pl", article, mine: false, ts: 2)
+        plain.linkPreviews = [LinkPreviewItem(matchedURL: article, url: article, title: "An article")]
+        for case let .message(m) in Fixture.items([plain], isDirect: false) {
+            XCTAssertEqual(ExternalEmbedDescriptor.cardPreviews(in: m).count, 1, "no embed: every preview is a card")
+            XCTAssertNil(ExternalEmbedDescriptor.embedTitle(in: m))
+        }
+        _ = try Snapshot.render("bubble-embed-single-card", width: 420) { timeline([event], direct: false) }
+    }
+
     func testDirectLookNoTimestamps() throws {
         let sizes = try Snapshot.render("bubble-beeper-direct-notimes", width: 620) {
             timeline(events, direct: true, showTimes: false)

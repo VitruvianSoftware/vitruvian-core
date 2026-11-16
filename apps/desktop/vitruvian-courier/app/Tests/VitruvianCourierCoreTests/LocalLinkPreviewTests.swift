@@ -94,6 +94,14 @@ final class LocalLinkPreviewTests: XCTestCase {
         XCTAssertNil(LocalLinkPreviewPolicy.urlToFetch(for: message(body: "no link here"), loadExternalContent: true))
     }
 
+    func testOnlyHTTPSLinksAreFetched() {
+        XCTAssertNil(LocalLinkPreviewPolicy.urlToFetch(for: message(body: "http://example.org/plain"),
+                                                       loadExternalContent: true))
+        XCTAssertEqual(LocalLinkPreviewPolicy.urlToFetch(for: message(body: "http://a.example.org/ https://b.example.org/"),
+                                                         loadExternalContent: true),
+                       URL(string: "https://b.example.org/"))
+    }
+
     func testAddressesOnThisMacOrTheLocalNetworkAreNeverFetched() {
         for address in [
             "http://localhost:8080/admin", "http://printer/status", "http://nas.local/", "http://router.lan/",
@@ -174,6 +182,22 @@ final class LocalLinkPreviewTests: XCTestCase {
         let preview = await store.preview(for: url)
         XCTAssertNil(preview)
         XCTAssertNil(store.cached(url))
+    }
+
+    func testTheStoreIsBoundedByTheBytesOfItsPicturesToo() async throws {
+        let urls = try (1 ... 5).map { try XCTUnwrap(URL(string: "https://example.org/\($0)")) }
+        let fetcher = CountingFetcher {
+            LocalLinkPreview(url: $0, title: "T", imageData: Data(count: 400_000))
+        }
+        let store = LocalLinkPreviewStore(fetcher: fetcher, capacity: 100, maxBytes: 1_000_000)
+        for url in urls {
+            _ = await store.preview(for: url)
+            XCTAssertLessThanOrEqual(store.keptBytes, 1_000_000)
+        }
+        XCTAssertNil(store.cached(urls[0]), "the oldest went to make room")
+        XCTAssertNotNil(store.cached(urls[4]))
+        XCTAssertNotNil(store.cached(urls[3]))
+        XCTAssertGreaterThan(store.keptBytes, 0)
     }
 
     func testTheStoreForgetsTheOldestWhenFull() async throws {

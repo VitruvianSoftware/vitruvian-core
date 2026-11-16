@@ -3,14 +3,13 @@
 
 import AppKit
 import ImageIO
-import LinkPresentation
 import VitruvianCourierCore
 import SwiftUI
 import WebKit
 
 /// Inline link preview card (`LinkPreviewItem`) rendered from bridge-supplied metadata and local media store files,
-/// or, for a link its network sent no preview for, from what this Mac fetched itself (`LocalLinkPreviewStore`, only
-/// with "Load external embeds automatically" on), whose picture arrives as `imageData`.
+/// or, for a link its network sent no preview for, from what this Mac fetched itself (`LocalLinkPreviewStore` and
+/// `GuardedLinkFetcher`, only with "Load external embeds automatically" on), whose picture arrives as `imageData`.
 ///
 /// The card itself never fetches anything. Clicking it opens the `http(s)` URL in the default browser.
 public struct LinkPreviewCardView: View {
@@ -297,6 +296,23 @@ public struct ExternalEmbedDescriptor: Equatable, Sendable {
         return nil
     }
 
+    /// Whether a network-supplied preview is for an embeddable link: the embed card stands for it.
+    public static func isEmbedPreview(_ preview: LinkPreviewItem) -> Bool {
+        match(urlString: preview.url ?? "") != nil || match(urlString: preview.matchedURL) != nil
+    }
+
+    /// The previews a message draws as link cards. A link with an embed card (YouTube and the like) gets that one
+    /// card, not a second for the same link: its preview is left out here and its title goes on the embed card.
+    public static func cardPreviews(in message: TimelineMessage) -> [LinkPreviewItem] {
+        guard first(in: message) != nil else { return message.linkPreviews }
+        return message.linkPreviews.filter { !isEmbedPreview($0) }
+    }
+
+    /// The title the network's preview gives the embedded link, for the embed card to carry.
+    public static func embedTitle(in message: TimelineMessage) -> String? {
+        message.linkPreviews.first(where: isEmbedPreview)?.title
+    }
+
     private static func isSafeEmbedToken(_ token: String) -> Bool {
         guard !token.isEmpty, token.count <= 64 else { return false }
         return token.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
@@ -526,52 +542,9 @@ public struct SandboxedEmbedWebView: NSViewRepresentable {
     }
 }
 
-/// Fetches a link's title, site name and picture on this Mac with macOS's own `LPMetadataProvider`.
-///
-/// This tells the linked site this Mac's address, which is why `LocalLinkPreviewPolicy` allows it only with
-/// "Load external embeds automatically" on, and only for links a network sent no preview for.
-struct LinkPresentationFetcher: LinkMetadataFetching {
-    static let timeout: TimeInterval = 8
-
-    func fetch(_ url: URL) async -> LocalLinkPreview? {
-        await fetchOnMain(url)
-    }
-
-    @MainActor
-    private func fetchOnMain(_ url: URL) async -> LocalLinkPreview? {
-        let provider = LPMetadataProvider()
-        provider.timeout = Self.timeout
-        guard let metadata = try? await provider.startFetchingMetadata(for: url) else { return nil }
-        let host = (metadata.url ?? url).host?.lowercased() ?? ""
-        let site = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
-        return LocalLinkPreview(
-            url: url,
-            title: metadata.title,
-            siteName: site.isEmpty ? nil : site,
-            imageData: await Self.imageData(from: metadata.imageProvider)
-        )
-    }
-
-    private static func imageData(from provider: NSItemProvider?) async -> Data? {
-        guard let provider, provider.canLoadObject(ofClass: NSImage.self) else { return nil }
-        return await withCheckedContinuation { continuation in
-            _ = provider.loadObject(ofClass: NSImage.self) { object, _ in
-                guard let image = object as? NSImage,
-                      let tiff = image.tiffRepresentation,
-                      let bitmap = NSBitmapImageRep(data: tiff)
-                else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-                continuation.resume(returning: bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.8]))
-            }
-        }
-    }
-}
-
 extension LocalLinkPreviewStore {
     /// The conversation's store: every row asks this one, so a link is fetched once however many rows show it.
-    static let shared = LocalLinkPreviewStore(fetcher: LinkPresentationFetcher())
+    static let shared = LocalLinkPreviewStore(fetcher: GuardedLinkFetcher())
 }
 
 extension LocalLinkPreview {

@@ -618,10 +618,6 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     public internal(set) var reactions: [ReactionChip]
     /// The first message of a run from one sender: it shows the name and the picture, and the others do not.
     public internal(set) var startsGroup: Bool
-    /// The last message of a run from one sender (the run `startsGroup` opens): the next item is another sender's
-    /// message, a later one past the grouping gap, a day or "New" divider, a membership run, or there is none.
-    /// A one-to-one chat shows the other person's picture here, once per run, instead of beside every message.
-    public internal(set) var endsGroup: Bool
     /// Whether this event's local media was removed via storage cleanup (`com.courier.media_removed == true`).
     public let mediaRemoved: Bool
     /// Whether this message is in a direct (1:1) chat, hiding the sender name label above incoming bubbles.
@@ -681,7 +677,6 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
         reply: ReplyPreview?,
         reactions: [ReactionChip],
         startsGroup: Bool,
-        endsGroup: Bool = true,
         mediaRemoved: Bool = false,
         isDirect: Bool = false
     ) {
@@ -730,17 +725,14 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
         self.reply = reply
         self.reactions = reactions
         self.startsGroup = startsGroup
-        self.endsGroup = endsGroup
         self.mediaRemoved = mediaRemoved
         self.isDirect = isDirect
     }
 
-    /// Whether the row draws the other person's picture. A group chat shows it on the first message of a run, beside
-    /// the name; a one-to-one chat shows it once per run, on the last message, rather than beside every one.
-    public var showsSenderAvatar: Bool {
-        guard !mine else { return false }
-        return isDirect ? endsGroup : startsGroup
-    }
+    /// Whether the row draws the other person's picture: on the first message of a run from one sender, in a group
+    /// and in a one-to-one chat alike (a run is `startsGroup`'s: same sender, under five minutes apart, no day or
+    /// "New" divider between). My own messages never draw one.
+    public var showsSenderAvatar: Bool { !mine && startsGroup }
 
     /// Stickers render in a borderless container without the coloured text bubble background tint.
     public var suppressesBubbleBackground: Bool {
@@ -983,22 +975,7 @@ public enum Timeline {
         }
         flushGallery()
         flushMembers()
-        markGroupEnds(in: &items)
         return items
-    }
-
-    /// A message ends its run when what follows is not a message of the same run: the next item is a divider or a
-    /// membership run, or a message that `startsGroup` (another sender, a gap past `groupingGapMillis`, a new day).
-    static func markGroupEnds(in items: inout [TimelineItem]) {
-        for index in items.indices {
-            guard case var .message(message) = items[index] else { continue }
-            if index + 1 < items.count, case let .message(next) = items[index + 1] {
-                message.endsGroup = next.startsGroup
-            } else {
-                message.endsGroup = true
-            }
-            items[index] = .message(message)
-        }
     }
 
     private static func isGalleryCandidate(_ message: TimelineMessage) -> Bool {
@@ -1323,7 +1300,7 @@ public enum Timeline {
                 expiresAt: base.expiresAt > 0 ? base.expiresAt : nil,
                 timerChange: base.type == "m.room.message" && !isDeleted ? TimerChange.of(base.content) : nil,
                 call: base.type == "m.room.message" && !isDeleted ? CallNote.of(base.content) : nil,
-                reply: nil, reactions: chips, startsGroup: false, endsGroup: true, mediaRemoved: mediaRemoved, isDirect: isDirect))
+                reply: nil, reactions: chips, startsGroup: false, mediaRemoved: mediaRemoved, isDirect: isDirect))
         }
 
         // Replies are resolved last, so a quote shows the text the quoted message has now.

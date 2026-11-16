@@ -683,7 +683,7 @@ struct MessageRowView: View {
 
     @ViewBuilder
     private var avatarColumn: some View {
-        // A group chat: on the run's first message, beside the name. One-to-one: once, on its last.
+        // On the first message of a run, in a group (beside the name) and in a one-to-one chat alike.
         if message.showsSenderAvatar {
             let avatar = message.senderAvatar(redacted: isRedacted)
             AvatarView(path: avatar.path, initials: avatar.initials,
@@ -860,7 +860,7 @@ struct MessageRowView: View {
                     content.takesOwnClick()
                 }
                 if message.kind != .deleted && message.kind != .undecryptable {
-                    ForEach(Array(message.linkPreviews.enumerated()), id: \.offset) { _, preview in
+                    ForEach(Array(ExternalEmbedDescriptor.cardPreviews(in: message).enumerated()), id: \.offset) { _, preview in
                         LinkPreviewCardView(preview: preview, onBubble: message.mine && !message.suppressesBubbleBackground)
                             .takesOwnClick()
                     }
@@ -874,9 +874,7 @@ struct MessageRowView: View {
                             messageID: message.id,
                             descriptor: embed,
                             isLoaded: actions.loadExternalEmbedsAutomatically || ui.loadedEmbeds.contains(message.id),
-                            title: message.linkPreviews.first {
-                                ExternalEmbedDescriptor.match(urlString: $0.url ?? $0.matchedURL) != nil
-                            }?.title,
+                            title: ExternalEmbedDescriptor.embedTitle(in: message),
                             onBubble: message.mine && !message.suppressesBubbleBackground,
                             onLoadEmbed: { ui.loadedEmbeds.insert(message.id) }
                         )
