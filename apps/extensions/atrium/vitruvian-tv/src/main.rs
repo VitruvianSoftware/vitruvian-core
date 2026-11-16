@@ -585,7 +585,10 @@ impl SonyTVState {
         match sent {
             Err(ToolError::App(refusal)) => {
                 app.log(&format!("status refused: {refusal}"));
-                sentry::capture_message(&format!("status refused: {refusal}"), sentry::Level::Warning);
+                sentry::capture_message(
+                    &format!("status refused: {refusal}"),
+                    sentry::Level::Warning,
+                );
                 Ok(false)
             }
             other => other,
@@ -976,9 +979,8 @@ fn register(tool: &mut Tool, tv: Tv) {
 }
 
 fn main() {
-    let _sentry_guard = init_sentry(
-        resolve_sentry_dsn(std::env::var("SENTRY_DSN").ok().as_deref()).as_deref(),
-    );
+    let _sentry_guard =
+        init_sentry(resolve_sentry_dsn(std::env::var("SENTRY_DSN").ok().as_deref()).as_deref());
     let mut tool = Tool::new(VERSION);
     register(
         &mut tool,
