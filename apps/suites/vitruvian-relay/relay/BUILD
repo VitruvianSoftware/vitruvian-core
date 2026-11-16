@@ -27,6 +27,10 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 # for AI apps, device registration, and the /connect WebSocket.
 package(default_visibility = ["//apps/suites/vitruvian-relay:__subpackages__"])
 
+# The chart defaults (hostname, issuer) that the connector's
+# defaults_match_relay_stack test compares with its compiled-in ones.
+exports_files(["deploy/chart/values.yaml"])
+
 _CRATES = [
     "//apps/suites/vitruvian-relay/protocol:vitruvian_relay_protocol",
     "//packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth",

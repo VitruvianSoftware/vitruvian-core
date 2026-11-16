@@ -161,4 +161,60 @@ mod tests {
     fn the_shared_tls_config_is_reused() {
         assert!(Arc::ptr_eq(&client_config(), &client_config()));
     }
+
+    /// The value of `key:` under the top-level `section:` of a values file
+    /// (a flat two-level read; enough for these files).
+    fn values_entry(text: &str, section: &str, key: &str) -> String {
+        let mut in_section = false;
+        for line in text.lines() {
+            if line.starts_with(&format!("{section}:")) {
+                in_section = true;
+            } else if in_section && !line.starts_with(' ') && !line.trim().is_empty() {
+                in_section = false;
+            } else if in_section {
+                if let Some(rest) = line.trim().strip_prefix(&format!("{key}:")) {
+                    let v = rest.split('#').next().unwrap().trim();
+                    return v.trim_matches('"').to_string();
+                }
+            }
+        }
+        panic!("{section}.{key} not found");
+    }
+
+    fn top_entry(text: &str, key: &str) -> String {
+        let line = text
+            .lines()
+            .find_map(|l| l.strip_prefix(&format!("{key}:")))
+            .unwrap_or_else(|| panic!("{key} not found"));
+        line.trim().trim_matches('"').to_string()
+    }
+
+    fn runfile_text(rel: &str) -> String {
+        let base = std::env::var("TEST_SRCDIR").expect("run under bazel test");
+        std::fs::read_to_string(PathBuf::from(base).join("_main").join(rel)).unwrap()
+    }
+
+    /// The compiled-in defaults are the deployed relay's values: if the Argo CD
+    /// values file or the chart defaults change (or these constants do), the
+    /// connector would sign in to, or call, the wrong place.
+    #[test]
+    fn defaults_match_relay_stack() {
+        let live = runfile_text("gitops/argocd/platform/relay/values.yaml");
+        let chart = runfile_text("apps/suites/vitruvian-relay/relay/deploy/chart/values.yaml");
+        assert_eq!(
+            values_entry(&live, "oidc", "connectorClientId"),
+            DEFAULT_CLIENT_ID
+        );
+        assert_eq!(values_entry(&live, "oidc", "projectId"), DEFAULT_PROJECT_ID);
+        let mcp = values_entry(&live, "oidc", "mcpClientIds");
+        assert!(
+            mcp.split(',').any(|c| c == DEFAULT_CLAUDE_CLIENT_ID),
+            "mcpClientIds {mcp} lacks the claude client"
+        );
+        assert_eq!(values_entry(&chart, "oidc", "issuer"), DEFAULT_ISSUER);
+        assert_eq!(
+            format!("https://{}", top_entry(&chart, "hostname")),
+            DEFAULT_RELAY_URL
+        );
+    }
 }
