@@ -884,17 +884,28 @@ pub fn agent_log(msg: &str) {
     eprintln!("{}", msg);
 }
 
+/// Held by the one `LogCapture` that owns `TEST_LOG_SINK`. The sink is
+/// process-wide and tests run in parallel, so without this a second capture
+/// took the sink from the first, and each test read the other's log lines
+/// (the flaky `test_permission_ask_decide_round_trip`). Captures now take
+/// turns; tests that capture nothing are unaffected.
+static CAPTURE_TURN: Mutex<()> = Mutex::new(());
+
 pub struct LogCapture {
     buf: Arc<Mutex<String>>,
+    _turn: std::sync::MutexGuard<'static, ()>,
 }
 
 impl LogCapture {
     pub fn start() -> Self {
+        // A test that panicked while holding the turn poisons the lock;
+        // the next capture still takes it.
+        let turn = CAPTURE_TURN.lock().unwrap_or_else(|e| e.into_inner());
         let buf = Arc::new(Mutex::new(String::new()));
         if let Ok(mut guard) = TEST_LOG_SINK.lock() {
             *guard = Some(Arc::clone(&buf));
         }
-        Self { buf }
+        Self { buf, _turn: turn }
     }
 
     pub fn new() -> Self {
@@ -907,6 +918,18 @@ impl LogCapture {
 
     pub fn text(&self) -> String {
         self.contents()
+    }
+}
+
+impl Drop for LogCapture {
+    fn drop(&mut self) {
+        // Detach the sink before the turn passes on, so the next capture
+        // starts from an empty buffer of its own.
+        if let Ok(mut guard) = TEST_LOG_SINK.lock() {
+            if guard.as_ref().is_some_and(|b| Arc::ptr_eq(b, &self.buf)) {
+                *guard = None;
+            }
+        }
     }
 }
 

@@ -487,7 +487,7 @@ public final class RemoteToolController: @unchecked Sendable {
                     supervisor.stopSupervisedProcess()
                     lastSnapshot = StatusSnapshot(state: .down)
                 }
-                notice = on ? "Agent will start automatically." : "Auto-start turned off."
+                notice = on ? "The Mac helper will start automatically." : "Auto-start turned off."
             }
 
         case RemotePages.Block.tailscaleEnabled:
@@ -514,7 +514,7 @@ public final class RemoteToolController: @unchecked Sendable {
         case RemotePages.Block.islandRestartAgent, RemotePages.Block.restartAgent:
             let res = supervisor.restartAgent(settings: settingsStore.load())
             lastSnapshot = pollSnapshot()
-            notice = res.succeeded ? "Agent restarted." : (res.output.isEmpty ? "Could not restart agent." : res.output)
+            notice = res.succeeded ? "Mac helper restarted." : (res.output.isEmpty ? "Could not restart the Mac helper." : res.output)
 
         case RemotePages.Block.openLog:
             openAgentLog(app: app)
@@ -715,9 +715,9 @@ public final class RemoteToolController: @unchecked Sendable {
             lastSnapshot = pollSnapshot()
             syncClosedIslandStatus(to: app)
             if res.succeeded {
-                try? app.showMessage("Vitruvian Remote agent restarted", icon: "arrow.clockwise")
+                try? app.showMessage("Vitruvian Remote Mac helper restarted", icon: "arrow.clockwise")
             } else {
-                throw CommandRefused(res.output.isEmpty ? "Could not restart agent" : res.output)
+                throw CommandRefused(res.output.isEmpty ? "Could not restart the Mac helper" : res.output)
             }
         case Command.toggleNotifications:
             let settings = settingsStore.load()

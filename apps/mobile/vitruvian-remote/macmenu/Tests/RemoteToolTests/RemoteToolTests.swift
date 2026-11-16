@@ -118,7 +118,7 @@ final class RemoteToolTests: XCTestCase {
 
         // Open settings and exercise all 4 tabs + persistence.
         let generalTree = controller.settingsPage()
-        XCTAssertTrue(treeContains(generalTree, "Agent & Network"))
+        XCTAssertTrue(treeContains(generalTree, "Mac Helper & Network"))
 
         _ = controller.handleSettingsEvent(
             PanelEvent(block: RemotePages.Block.intervalSeconds, kind: .submit, value: .string("5"))

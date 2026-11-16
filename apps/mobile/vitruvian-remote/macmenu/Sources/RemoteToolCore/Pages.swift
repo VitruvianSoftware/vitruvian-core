@@ -298,7 +298,7 @@ public enum RemotePages {
             }
             return StatusMark(
                 state: .ok,
-                text: "Phone paired · Agent running",
+                text: "Phone paired · Mac helper running",
                 icon: "iphone"
             )
         }
@@ -346,7 +346,7 @@ public enum RemotePages {
         blocks.append(
             button(
                 Block.islandRestartAgent,
-                .plain(state.snapshot.state.isHealthy ? "Restart Agent" : "Start Agent")
+                .plain(state.snapshot.state.isHealthy ? "Restart Mac Helper" : "Start Mac Helper")
             )
         )
 
@@ -431,7 +431,7 @@ public enum RemotePages {
         var blocks: [UIBlock] = [
             heading(.plain("Choose One Vitruvian Remote")),
             text(
-                .plain("Both the standalone Vitruvian Remote setup and the Vitruvian extension are installed on this Mac. Only one should run the agent on port 7411."),
+                .plain("Both the standalone Vitruvian Remote setup and the Vitruvian extension are installed on this Mac. Only one should run the Mac helper on port 7411."),
                 style: .caption
             ),
             row(
@@ -540,7 +540,7 @@ public enum RemotePages {
 
         let paired = state.snapshot.health?.paired ?? state.isPairedOnDisk
         let phoneTitle = state.snapshot.phoneLine(now: now)
-            ?? (paired ? "Phone paired (agent offline)" : "No phone paired")
+            ?? (paired ? "Phone paired (Mac helper offline)" : "No phone paired")
         let phoneSubtitle: String?
         if let tools = state.snapshot.phone?.tools, state.snapshot.phone?.connected == true {
             phoneSubtitle = tools.isEmpty
@@ -725,7 +725,7 @@ public enum RemotePages {
                 row(
                     "activeDoorRow",
                     .plain("Using the Vitruvian extension"),
-                    subtitle: .plain("The standalone setup is quiet so only one agent runs on port 7411."),
+                    subtitle: .plain("The standalone setup is quiet so only one Mac helper runs on port 7411."),
                     icon: "puzzlepiece.extension"
                 )
             )
@@ -744,12 +744,12 @@ public enum RemotePages {
             blocks.append(divider())
         }
 
-        blocks.append(heading(.plain("Agent & Network")))
+        blocks.append(heading(.plain("Mac Helper & Network")))
         blocks += liveStatusBlocks(state, now: now)
         blocks.append(
             toggle(
                 Block.autoStartAgent,
-                .plain("Keep the agent running while Vitruvian is open"),
+                .plain("Keep the Mac helper running while Vitruvian is open"),
                 isOn: state.settings.autoStartAgent
             )
         )
@@ -771,14 +771,14 @@ public enum RemotePages {
         blocks.append(
             button(
                 Block.restartAgent,
-                .plain(state.snapshot.state.isHealthy ? "Restart Agent" : "Start Agent"),
+                .plain(state.snapshot.state.isHealthy ? "Restart Mac Helper" : "Start Mac Helper"),
                 style: .prominent
             )
         )
         blocks.append(
             button(
                 Block.openLog,
-                .plain("Open Agent Log")
+                .plain("Open Mac Helper Log")
             )
         )
         return blocks
@@ -987,7 +987,7 @@ public enum RemotePages {
         blocks.append(
             row(
                 Block.logFilePath,
-                .plain("Agent log file"),
+                .plain("Mac helper log file"),
                 trailing: .plain(state.profile.logURL.path)
             )
         )
