@@ -191,3 +191,16 @@ src/render/noCesiumOutsideRender.test.mjs	modified	The Bazel test sandbox has no
 src/testSupport/viewerAccess.mjs	modified	The Bazel test sandbox has no .git, so `git ls-files` fails and the counted files could not be listed; scopedFiles walks the same directories instead.
 src/render/viewerAccess.test.mjs	modified	The record-only-shrinks check compares with origin/main's history, which the Bazel test sandbox (no .git) does not have; it skips there.
 src/data/dataCredits.test.mjs	modified	The credit key one assertion compares is a public feed identifier gitleaks reads as an API key; the line carries a gitleaks:allow.
+docs/media/site/cameras.webp	deleted	Upstream force-adds it past its own `site/` ignore rule, which the commit target cannot do; a marketing image that nothing here builds from.
+docs/media/site/cockpit.webp	deleted	Upstream force-adds it past its own `site/` ignore rule, which the commit target cannot do; a marketing image that nothing here builds from.
+docs/media/site/director.webp	deleted	Upstream force-adds it past its own `site/` ignore rule, which the commit target cannot do; a marketing image that nothing here builds from.
+docs/media/site/flights.webp	deleted	Upstream force-adds it past its own `site/` ignore rule, which the commit target cannot do; a marketing image that nothing here builds from.
+docs/media/site/hero.webp	deleted	Upstream force-adds it past its own `site/` ignore rule, which the commit target cannot do; a marketing image that nothing here builds from.
+docs/media/site/imagery.webp	deleted	Upstream force-adds it past its own `site/` ignore rule, which the commit target cannot do; a marketing image that nothing here builds from.
+docs/media/site/mcp.webp	deleted	Upstream force-adds it past its own `site/` ignore rule, which the commit target cannot do; a marketing image that nothing here builds from.
+docs/media/site/radio.webp	deleted	Upstream force-adds it past its own `site/` ignore rule, which the commit target cannot do; a marketing image that nothing here builds from.
+docs/media/site/satellites.webp	deleted	Upstream force-adds it past its own `site/` ignore rule, which the commit target cannot do; a marketing image that nothing here builds from.
+docs/media/site/sdr.webp	deleted	Upstream force-adds it past its own `site/` ignore rule, which the commit target cannot do; a marketing image that nothing here builds from.
+docs/media/site/transit.webp	deleted	Upstream force-adds it past its own `site/` ignore rule, which the commit target cannot do; a marketing image that nothing here builds from.
+docs/media/site/voice.webp	deleted	Upstream force-adds it past its own `site/` ignore rule, which the commit target cannot do; a marketing image that nothing here builds from.
+docs/media/site/weather.webp	deleted	Upstream force-adds it past its own `site/` ignore rule, which the commit target cannot do; a marketing image that nothing here builds from.
