@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.23](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.22...vitruvian-courier-v0.3.23) (2026-11-16)
+
+
+### Features
+
+* **vitruvian-courier:** keep the chat header when switching views, readable inbox names, first-name group titles ([#4940](https://github.com/VitruvianSoftware/vitruvian-core/issues/4940)) ([b9b13ba](https://github.com/VitruvianSoftware/vitruvian-core/commit/b9b13ba9f9bad4a443faab599cde8c63e4f2e97a))
+* **vitruvian-courier:** polish the chat info panel: media grid, quick actions, calmer colours ([#4937](https://github.com/VitruvianSoftware/vitruvian-core/issues/4937)) ([43f6d2f](https://github.com/VitruvianSoftware/vitruvian-core/commit/43f6d2ff8aa7a5e69b8607886d47e4d11d3ec1b6))
+* **vitruvian-courier:** put attach, GIF and voice beside the message box, show who reacted, tidy Settings ▸ Accounts ([#4939](https://github.com/VitruvianSoftware/vitruvian-core/issues/4939)) ([26a9e5d](https://github.com/VitruvianSoftware/vitruvian-core/commit/26a9e5d92b04d7db5582be85c65d46eb04482e70))
+* **vitruvian-courier:** show contacts when New Chat opens, a cleaner image viewer, matching media counts ([#4941](https://github.com/VitruvianSoftware/vitruvian-core/issues/4941)) ([00ca84e](https://github.com/VitruvianSoftware/vitruvian-core/commit/00ca84e0a44e2774bdd59672a2b85dacc07fa99b))
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** don't list Google Chat apps like GitHub as group members ([#4942](https://github.com/VitruvianSoftware/vitruvian-core/issues/4942)) ([80d1599](https://github.com/VitruvianSoftware/vitruvian-core/commit/80d1599d1ee48036e293ea195ff72d52b5e51308))
+* **vitruvian-courier:** leave Google Chat apps out of unnamed spaces too ([#4949](https://github.com/VitruvianSoftware/vitruvian-core/issues/4949)) ([6c49682](https://github.com/VitruvianSoftware/vitruvian-core/commit/6c49682da71ff6b26d139ff76908becb3d2e2fe7))
+
 ## [0.3.22](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.21...vitruvian-courier-v0.3.22) (2026-11-16)
 
 
