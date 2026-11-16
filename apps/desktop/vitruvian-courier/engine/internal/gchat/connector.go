@@ -42,7 +42,10 @@ type PortalMetadata struct {
 	MemberUserIDs    []string `json:"member_user_ids,omitempty"`
 	AppUserIDs       []string `json:"app_user_ids,omitempty"`
 	AppRosterChecked bool     `json:"app_roster_checked,omitempty"`
-	NameFromGoogle   bool     `json:"name_from_google,omitempty"`
+	// AppRosterAttemptedAt is when (Unix seconds) the last get_group read for the app roster failed; the chat is not
+	// retried for appRosterRetryAfter, so one that keeps failing is not asked again on every connect.
+	AppRosterAttemptedAt int64 `json:"app_roster_attempted_at,omitempty"`
+	NameFromGoogle       bool  `json:"name_from_google,omitempty"`
 }
 
 // GhostMetadata stores per-ghost Google Chat metadata.

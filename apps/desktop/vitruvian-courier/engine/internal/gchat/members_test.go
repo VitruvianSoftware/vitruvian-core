@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"maunium.net/go/mautrix/bridgev2"
@@ -454,6 +455,11 @@ func TestRepairRetriedWhenGetGroupFails(t *testing.T) {
 
 	meta := portal.Metadata.(*PortalMetadata)
 	require.False(t, meta.AppRosterChecked)
+	require.NotZero(t, meta.AppRosterAttemptedAt, "the failed read is remembered")
+	require.False(t, client.needsAppRosterCheck(portal, client.ownUserID()), "a failed read backs off rather than retrying on every connect")
+
+	// After the back-off it is tried again.
+	meta.AppRosterAttemptedAt = time.Now().Add(-appRosterRetryAfter - time.Minute).Unix()
 	require.True(t, client.needsAppRosterCheck(portal, client.ownUserID()))
 }
 
@@ -686,4 +692,296 @@ func TestSyncWorldRemembersAGoogleGivenRoomName(t *testing.T) {
 
 	require.NoError(t, client.syncWorld(ctx))
 	require.True(t, portal.Metadata.(*PortalMetadata).NameFromGoogle)
+}
+
+// spaceWorldAPI answers paginated_world with one joined space that lists no members (as Google does for a space)
+// and serves everything else, get_group included, from groupAPI.
+func spaceWorldAPI(spaceID, roomName string, groupAPI http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/u/0/api/paginated_world" {
+			groupAPI(w, r)
+			return
+		}
+		item := &pb.WorldItemLite{
+			GroupId:       pb.SpaceGroupID(spaceID),
+			GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(10)},
+			SortTimestamp: pb.Int64(1710000002000000),
+			ReadState:     &pb.GroupReadState{MembershipState: pb.MembershipState_MEMBER_JOINED.Enum()},
+		}
+		if roomName != "" {
+			item.RoomName = pb.String(roomName)
+		}
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		_, _ = w.Write(pb.MustMarshal(&pb.PaginatedWorldResponse{
+			UserRevision: &pb.ReadRevision{Timestamp: pb.Int64(700)},
+			WorldItems:   []*pb.WorldItemLite{item},
+		}))
+	}
+}
+
+// spacePortalWithName is a space portal as an older build left it: no member list, no app roster, and (the
+// interesting part) whatever name it had composed or been given.
+func spacePortalWithName(t *testing.T, ctx context.Context, bridge *bridgev2.Bridge, ul *bridgev2.UserLogin, spaceID, name string) *bridgev2.Portal {
+	t.Helper()
+	portal, err := bridge.GetPortalByKey(ctx, networkid.PortalKey{ID: MakeSpacePortalID(spaceID), Receiver: ul.ID})
+	require.NoError(t, err)
+	portal.RoomType = database.RoomTypeDefault
+	portal.Name = name
+	portal.NameSet = true
+	portal.Metadata = &PortalMetadata{Revision: 5, GroupRevision: 5, ThreadsEnabled: true}
+	require.NoError(t, portal.Save(ctx))
+	return portal
+}
+
+func TestSyncWorldLeavesAppsOutOfAnUnnamedSpaceAndRepairsItsName(t *testing.T) {
+	ctx := context.Background()
+	groupAPI := membersAPI(
+		"",
+		joinedMembership(pb.UserMemberID(ownGaia)),
+		joinedMembership(pb.UserMemberID(annGaia)),
+		joinedMembership(pb.UserMemberID(bobGaia)),
+		joinedMembership(appMemberID(githubGaia)),
+	)
+	h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_unnamed", "", groupAPI))
+	portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_unnamed", "Ann, Bob, GitHub")
+
+	require.NoError(t, client.syncWorld(ctx))
+
+	meta := portal.Metadata.(*PortalMetadata)
+	require.Empty(t, meta.MemberUserIDs, "a space's member list is not stored, only which members are apps")
+	require.Equal(t, []string{githubGaia}, meta.AppUserIDs)
+	require.True(t, meta.AppRosterChecked, "the space's roster is read once, and the answer kept")
+	require.False(t, meta.NameFromGoogle)
+	require.Equal(t, "Ann, Bob", portal.Name, "the composed name that listed the app is recomposed from the people")
+	require.False(t, client.needsAppRosterCheck(portal, client.ownUserID()), "read once, not again")
+
+	// The same read, seen as the chat info it hands the room: people only, and the app leaves silently.
+	portal.Metadata = &PortalMetadata{Revision: 5, GroupRevision: 5, ThreadsEnabled: true}
+	info, err := client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []networkid.UserID{"", MakeUserID(annGaia), MakeUserID(bobGaia)}, memberUserIDs(info.Members.MemberMap))
+	require.True(t, info.Members.IsFull)
+	require.True(t, info.Members.ExcludeChangesFromTimeline, "the app's removal must not post a 'left' line")
+}
+
+func TestSyncWorldNeverRenamesANamedSpace(t *testing.T) {
+	ctx := context.Background()
+	people := []*pb.Membership{
+		joinedMembership(pb.UserMemberID(ownGaia)),
+		joinedMembership(pb.UserMemberID(annGaia)),
+		joinedMembership(pb.UserMemberID(bobGaia)),
+		joinedMembership(appMemberID(githubGaia)),
+	}
+	t.Run("name from Google Chat's world list", func(t *testing.T) {
+		// The name happens to list the app, but Google gave it: it stays.
+		h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_named_world", "Ann, Bob, GitHub", membersAPI("Ann, Bob, GitHub", people...)))
+		portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_named_world", "Ann, Bob, GitHub")
+		require.NoError(t, client.syncWorld(ctx))
+		meta := portal.Metadata.(*PortalMetadata)
+		require.Equal(t, "Ann, Bob, GitHub", portal.Name)
+		require.True(t, meta.NameFromGoogle)
+		require.Equal(t, []string{githubGaia}, meta.AppUserIDs, "the app is still left out of the members")
+		require.True(t, meta.AppRosterChecked)
+	})
+	t.Run("name from get_group", func(t *testing.T) {
+		h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_named_group", "", membersAPI("Release Room", people...)))
+		portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_named_group", "Ann, Bob, GitHub")
+		require.NoError(t, client.syncWorld(ctx))
+		meta := portal.Metadata.(*PortalMetadata)
+		require.Equal(t, "Release Room", portal.Name)
+		require.True(t, meta.NameFromGoogle)
+		require.True(t, meta.AppRosterChecked)
+	})
+}
+
+func TestSyncWorldLeavesAnUnnamedSpaceWithADifferentStoredNameAlone(t *testing.T) {
+	ctx := context.Background()
+	groupAPI := membersAPI(
+		"",
+		joinedMembership(pb.UserMemberID(ownGaia)),
+		joinedMembership(pb.UserMemberID(annGaia)),
+		joinedMembership(pb.UserMemberID(bobGaia)),
+		joinedMembership(appMemberID(githubGaia)),
+	)
+	h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_typed", "", groupAPI))
+	// Google gives the space no name, but this one is not the list of everyone's names: someone typed it.
+	portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_typed", "Release crew")
+
+	require.NoError(t, client.syncWorld(ctx))
+
+	meta := portal.Metadata.(*PortalMetadata)
+	require.Equal(t, "Release crew", portal.Name)
+	require.Equal(t, []string{githubGaia}, meta.AppUserIDs, "the app is still told apart")
+	require.True(t, meta.AppRosterChecked)
+}
+
+func TestSyncWorldRetriesASpaceRepairWhenGetGroupFails(t *testing.T) {
+	ctx := context.Background()
+	fallback := membersAPI(
+		"",
+		joinedMembership(pb.UserMemberID(ownGaia)),
+		joinedMembership(pb.UserMemberID(annGaia)),
+		joinedMembership(pb.UserMemberID(bobGaia)),
+		joinedMembership(appMemberID(githubGaia)),
+	)
+	var failGetGroup atomic.Bool
+	failGetGroup.Store(true)
+	h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_retry", "", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/u/0/api/get_group" && failGetGroup.Load() {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		fallback(w, r)
+	}))
+	portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_retry", "Ann, Bob, GitHub")
+
+	require.NoError(t, client.syncWorld(ctx))
+	meta := portal.Metadata.(*PortalMetadata)
+	require.False(t, meta.AppRosterChecked, "a failed read is not an answer")
+	require.NotZero(t, meta.AppRosterAttemptedAt)
+	require.Equal(t, "Ann, Bob, GitHub", portal.Name, "nothing is changed on a guess")
+
+	// Within the back-off the next sync does not ask again.
+	failGetGroup.Store(false)
+	require.False(t, client.needsAppRosterCheck(portal, client.ownUserID()))
+	require.NoError(t, client.syncWorld(ctx))
+	require.False(t, portal.Metadata.(*PortalMetadata).AppRosterChecked, "backed off: not read again yet")
+
+	// Once the back-off has passed it is retried and repaired.
+	meta.AppRosterAttemptedAt = time.Now().Add(-appRosterRetryAfter - time.Minute).Unix()
+	require.NoError(t, client.syncWorld(ctx))
+	meta = portal.Metadata.(*PortalMetadata)
+	require.True(t, meta.AppRosterChecked)
+	require.Equal(t, []string{githubGaia}, meta.AppUserIDs)
+	require.Equal(t, "Ann, Bob", portal.Name)
+}
+
+func TestSyncWorldKeepsAGoogleGivenSpaceNameWhenGetGroupOmitsIt(t *testing.T) {
+	ctx := context.Background()
+	groupAPI := membersAPI(
+		"",
+		joinedMembership(pb.UserMemberID(ownGaia)),
+		joinedMembership(pb.UserMemberID(annGaia)),
+		joinedMembership(pb.UserMemberID(bobGaia)),
+		joinedMembership(appMemberID(githubGaia)),
+	)
+	h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_world_named", "Ann, Bob, GitHub", groupAPI))
+	portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_world_named", "Ann, Bob, GitHub")
+
+	require.NoError(t, client.syncWorld(ctx))
+
+	meta := portal.Metadata.(*PortalMetadata)
+	require.Equal(t, "Ann, Bob, GitHub", portal.Name)
+	require.True(t, meta.NameFromGoogle)
+	require.Equal(t, []string{githubGaia}, meta.AppUserIDs)
+	require.True(t, meta.AppRosterChecked)
+}
+
+func TestSpaceMemberListIsNotStoredEvenWhenLarge(t *testing.T) {
+	ctx := context.Background()
+	memberships := []*pb.Membership{joinedMembership(appMemberID(githubGaia))}
+	for i := 0; i < 500; i++ {
+		memberships = append(memberships, joinedMembership(pb.UserMemberID(fmt.Sprintf("2%020d", i))))
+	}
+	h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_large", "Big Room", membersAPI("Big Room", memberships...)))
+	portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_large", "Big Room")
+
+	require.NoError(t, client.syncWorld(ctx))
+
+	meta := portal.Metadata.(*PortalMetadata)
+	require.True(t, meta.AppRosterChecked)
+	require.Equal(t, []string{githubGaia}, meta.AppUserIDs)
+	require.Empty(t, meta.MemberUserIDs, "a large space must not persist its member list")
+	encoded, err := json.Marshal(meta)
+	require.NoError(t, err)
+	require.Less(t, len(encoded), 400)
+}
+
+func TestSpaceWithNoJoinedMembersIsStillMarkedChecked(t *testing.T) {
+	ctx := context.Background()
+	// get_group answers (with a group, so the body is not empty) but lists nobody.
+	groupAPI := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		_, _ = w.Write(pb.MustMarshal(&pb.GetGroupResponse{Group: &pb.Group{GroupId: pb.SpaceGroupID("space_empty")}}))
+	}
+	h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_empty", "", groupAPI))
+	portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_empty", "Release crew")
+
+	require.NoError(t, client.syncWorld(ctx))
+
+	meta := portal.Metadata.(*PortalMetadata)
+	require.True(t, meta.AppRosterChecked, "nothing to learn, so it is not read again")
+	require.Zero(t, meta.AppRosterAttemptedAt)
+	require.False(t, client.needsAppRosterCheck(portal, client.ownUserID()))
+	require.Equal(t, "Release crew", portal.Name)
+}
+
+func TestAnEmptyGetGroupReplyDoesNotMarkASpaceChecked(t *testing.T) {
+	ctx := context.Background()
+	fallback := membersAPI("")
+	h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_empty_body", "", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/u/0/api/get_group" {
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			w.WriteHeader(http.StatusOK) // a 200 with no body: it says nothing about who is in the chat
+			return
+		}
+		fallback(w, r)
+	}))
+	portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_empty_body", "Ann, Bob, GitHub")
+
+	require.NoError(t, client.syncWorld(ctx))
+
+	meta := portal.Metadata.(*PortalMetadata)
+	require.False(t, meta.AppRosterChecked, "an empty reply is not an answer, or the app would never be removed")
+	require.True(t, client.needsAppRosterCheck(portal, client.ownUserID()))
+	require.Equal(t, "Ann, Bob, GitHub", portal.Name)
+}
+
+func TestAStaleGoogleGivenSpaceNameIsDroppedOnlyWhenBothSourcesAreSilent(t *testing.T) {
+	ctx := context.Background()
+	people := []*pb.Membership{
+		joinedMembership(pb.UserMemberID(ownGaia)),
+		joinedMembership(pb.UserMemberID(annGaia)),
+		joinedMembership(pb.UserMemberID(bobGaia)),
+		joinedMembership(appMemberID(githubGaia)),
+	}
+	remembered := func(t *testing.T, portal *bridgev2.Portal) {
+		t.Helper()
+		portal.Metadata = &PortalMetadata{Revision: 5, GroupRevision: 5, NameFromGoogle: true}
+		require.NoError(t, portal.Save(ctx))
+	}
+
+	t.Run("neither the world list nor get_group names it", func(t *testing.T) {
+		h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_stale", "", membersAPI("", people...)))
+		portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_stale", "Ann, Bob, GitHub")
+		remembered(t, portal)
+		require.NoError(t, client.syncWorld(ctx))
+		meta := portal.Metadata.(*PortalMetadata)
+		require.False(t, meta.NameFromGoogle, "Google stopped naming it")
+		require.Equal(t, "Ann, Bob", portal.Name)
+	})
+	t.Run("the world list still names it", func(t *testing.T) {
+		h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_world_names", "Ann, Bob, GitHub", membersAPI("", people...)))
+		portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_world_names", "Ann, Bob, GitHub")
+		remembered(t, portal)
+		require.NoError(t, client.syncWorld(ctx))
+		require.True(t, portal.Metadata.(*PortalMetadata).NameFromGoogle)
+		require.Equal(t, "Ann, Bob, GitHub", portal.Name)
+	})
+	t.Run("get_group answers with nothing", func(t *testing.T) {
+		fallback := membersAPI("", people...)
+		h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_silent", "", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/u/0/api/get_group" {
+				w.Header().Set("Content-Type", "application/x-protobuf")
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			fallback(w, r)
+		}))
+		portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_silent", "Ann, Bob, GitHub")
+		remembered(t, portal)
+		require.NoError(t, client.syncWorld(ctx))
+		require.True(t, portal.Metadata.(*PortalMetadata).NameFromGoogle, "an empty reply is not evidence the name is gone")
+		require.Equal(t, "Ann, Bob, GitHub", portal.Name)
+	})
 }

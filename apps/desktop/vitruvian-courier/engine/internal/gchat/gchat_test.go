@@ -3603,6 +3603,10 @@ func TestSetChatNameAndSetChatTopicPreservesSpaceGuidelines(t *testing.T) {
 	require.Equal(t, []pb.UpdateGroupRequest_UpdateMask{pb.UpdateGroupRequest_NAME}, renameReq.GetUpdateMasks())
 
 	// 2. End-to-end change Space topic through bridgev2 QueueMatrixEvent -> calls get_group first, preserves guidelines, then calls update_group
+	// (the world sync above already read each space once to tell apps from people, so count from here)
+	mu.Lock()
+	getGroupBeforeTopic := len(getGroupReqs)
+	mu.Unlock()
 	topicRes := spacePortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
 		ID:        "$topic_space_1",
 		RoomID:    spacePortal.MXID,
@@ -3617,9 +3621,9 @@ func TestSetChatNameAndSetChatTopicPreservesSpaceGuidelines(t *testing.T) {
 	require.True(t, topicRes.Success, "QueueMatrixEvent(StateTopic) must succeed: %v", topicRes.Error)
 
 	mu.Lock()
-	require.Len(t, getGroupReqs, 1, "changing topic must fetch existing group via get_group first")
+	require.Len(t, getGroupReqs, getGroupBeforeTopic+1, "changing topic must fetch existing group via get_group first")
 	require.Len(t, updateGroupReqs, 2)
-	getGrpReqBytes := getGroupReqs[0]
+	getGrpReqBytes := getGroupReqs[getGroupBeforeTopic]
 	topicUpdReqBytes := updateGroupReqs[1]
 	mu.Unlock()
 
