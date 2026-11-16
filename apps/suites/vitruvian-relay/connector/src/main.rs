@@ -18,18 +18,22 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! `vrelay` commands. `run` and `install` come in later tasks.
+//! `vrelay` commands. `install` comes in a later task.
 
 use vitruvian_relay_connector::auth::{fresh_token, login, register_device};
 use vitruvian_relay_connector::bridge::{Bridge, BridgeCommand};
 use vitruvian_relay_connector::config::Config;
 use vitruvian_relay_connector::keys::{load_or_create, public_key_b64};
+use vitruvian_relay_connector::link::{system_rng, Dialog, FileTokens, Link, Timing};
 use vitruvian_relay_connector::state::{
     clear_sign_in, ensure_dir, now_unix, save_device, save_tokens,
 };
 use vitruvian_relay_connector::{rules, status, Result};
 
-const USAGE: &str = "usage: vrelay <login|status|logout|tools [--raw]>";
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+const USAGE: &str = "usage: vrelay <login|run|status|logout|tools [--raw]>";
 
 fn cmd_login(cfg: &Config) -> Result<()> {
     ensure_dir(&cfg.dir)?;
@@ -114,6 +118,71 @@ fn cmd_tools(cfg: &Config, raw: bool) -> Result<()> {
     Ok(())
 }
 
+/// The link to the relay, until SIGTERM or Ctrl-C. Starts without a token
+/// (it waits for `vrelay login`), but not with a rules file it cannot read.
+fn cmd_run(cfg: &Config) -> Result<()> {
+    ensure_dir(&cfg.dir)?;
+    let rules = rules::load(&cfg.dir)
+        .map_err(|e| format!("not starting: the rules file does not load: {e}"))?;
+    let key = Arc::new(load_or_create(&cfg.dir)?);
+    let cmd = BridgeCommand::locate()?;
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("start the runtime: {e}"))?;
+    let bridge = Arc::new(Bridge::start(&cmd)?);
+    let log: vitruvian_relay_connector::bridge::Log = Arc::new(|s: &str| eprintln!("vrelay: {s}"));
+    let link = Link {
+        dir: cfg.dir.clone(),
+        log_dir: cfg.log_dir.clone(),
+        relay_url: cfg.relay_url.clone(),
+        tools: bridge.clone(),
+        asker: Arc::new(Dialog),
+        tokens: Arc::new(FileTokens(cfg.clone())),
+        rules,
+        key,
+        timing: Timing::default(),
+        clock: Arc::new(now_unix),
+        rng: Arc::new(Mutex::new(system_rng)),
+        log: log.clone(),
+        tls: None,
+    };
+    let ran: Result<()> = rt.block_on(async {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut hup = signal(SignalKind::hangup()).map_err(|e| format!("watch SIGHUP: {e}"))?;
+        let mut term =
+            signal(SignalKind::terminate()).map_err(|e| format!("watch SIGTERM: {e}"))?;
+        let (reload_tx, reload_rx) = tokio::sync::mpsc::channel(4);
+        tokio::spawn(async move {
+            while hup.recv().await.is_some() {
+                let _ = reload_tx.try_send(());
+            }
+        });
+        let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = term.recv() => {}
+                _ = tokio::signal::ctrl_c() => {}
+            }
+            let _ = stop_tx.send(true);
+        });
+        link.run(reload_rx, stop_rx).await;
+        Ok(())
+    });
+    // Open dialogs were told to close; give their threads a moment, and drop
+    // the call tasks (they hold the bridge).
+    rt.shutdown_timeout(Duration::from_secs(2));
+    match Arc::try_unwrap(bridge) {
+        Ok(b) => b.stop(),
+        // Dropping the last handle kills desktop-commander at once.
+        Err(b) => {
+            log("stopping desktop-commander without waiting");
+            drop(b);
+        }
+    }
+    ran
+}
+
 fn main() {
     let cfg = Config::from_env();
     let result = match std::env::args().nth(1).as_deref() {
@@ -123,6 +192,7 @@ fn main() {
             Ok(())
         }
         Some("logout") => cmd_logout(&cfg),
+        Some("run") => cmd_run(&cfg),
         Some("tools") => match std::env::args().nth(2).as_deref() {
             None => cmd_tools(&cfg, false),
             Some("--raw") => cmd_tools(&cfg, true),

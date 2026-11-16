@@ -24,6 +24,7 @@ use std::io::Read;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
@@ -36,6 +37,18 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 pub enum Answer {
     Allow,
     Deny,
+}
+
+/// How a dialog ended, for the caller that needs more than Allow/Deny (the
+/// link logs which it was).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Waited {
+    Allow,
+    Deny,
+    /// The dialog gave up, or never answered within its time.
+    TimedOut,
+    /// Closed by the caller through the `dismiss` flag.
+    Dismissed,
 }
 
 /// How long past the dialog's own time limit we wait for osascript to exit
@@ -101,14 +114,35 @@ impl PromptHandle {
     /// grace, however the dialog process behaves. Only a clean exit whose
     /// output is exactly `button returned:Allow, gave up:false` is `Allow`;
     /// timeout, failure or anything else is `Deny`.
-    pub fn wait(mut self) -> Answer {
+    pub fn wait(self) -> Answer {
+        match self.wait_until(None) {
+            Waited::Allow => Answer::Allow,
+            Waited::Deny | Waited::TimedOut | Waited::Dismissed => Answer::Deny,
+        }
+    }
+
+    /// Like [`wait`](Self::wait), but tells a timeout from a Deny, and closes
+    /// the dialog (`Dismissed`, never an answer) within about 20 ms of
+    /// `dismiss` being set from another thread.
+    pub fn wait_or_dismiss(self, dismiss: &AtomicBool) -> Waited {
+        self.wait_until(Some(dismiss))
+    }
+
+    fn wait_until(mut self, dismiss: Option<&AtomicBool>) -> Waited {
         let Some(mut child) = self.child.take() else {
-            return Answer::Deny;
+            return Waited::Deny;
         };
         // Watch for the leader's exit without reaping it, so its process
         // group id cannot be reused before the group is killed.
         let mut ok = false;
+        let mut timed_out = false;
+        let mut dismissed = false;
         loop {
+            // Checked first: a dismiss that races a click is never an answer.
+            if dismiss.is_some_and(|d| d.load(Ordering::SeqCst)) {
+                dismissed = true;
+                break;
+            }
             match leader_state(&child) {
                 LeaderState::Exited => {
                     ok = true;
@@ -117,14 +151,24 @@ impl PromptHandle {
                 LeaderState::Running if Instant::now() < self.deadline => {
                     std::thread::sleep(Duration::from_millis(20))
                 }
-                _ => break,
+                LeaderState::Running => {
+                    timed_out = true;
+                    break;
+                }
+                LeaderState::Error => break,
             }
         }
         // Whatever the outcome, nothing the dialog started stays alive.
         kill_group(&child);
         let success = child.wait().map(|s| s.success()).unwrap_or(false) && ok;
+        if dismissed {
+            return Waited::Dismissed;
+        }
+        if timed_out {
+            return Waited::TimedOut;
+        }
         if !success {
-            return Answer::Deny;
+            return Waited::Deny;
         }
         let out = self
             .output
@@ -132,9 +176,11 @@ impl PromptHandle {
             .and_then(|rx| rx.recv_timeout(OUTPUT_WAIT).ok())
             .unwrap_or_default();
         if is_allow(&out) {
-            Answer::Allow
+            Waited::Allow
+        } else if out.contains("gave up:true") {
+            Waited::TimedOut
         } else {
-            Answer::Deny
+            Waited::Deny
         }
     }
 
@@ -569,6 +615,58 @@ mod tests {
         for i in [1, 3, 5] {
             assert!(!a[i].contains("rm") && !a[i].contains("line2"), "{}", a[i]);
         }
+    }
+
+    #[test]
+    fn wait_or_dismiss_closes_the_dialog_when_flagged() {
+        let (script, dir) = script_in(
+            "p-flag",
+            "sleep 30 &\necho $! > \"$(dirname \"$0\")/pid\"\nsleep 30",
+        );
+        let h = ask_t(&script, "x", Duration::from_secs(60));
+        let pid = read_pid(&dir);
+        let flag = std::sync::Arc::new(AtomicBool::new(false));
+        let f = flag.clone();
+        let setter = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(100));
+            f.store(true, Ordering::SeqCst);
+        });
+        let t = Instant::now();
+        assert_eq!(h.wait_or_dismiss(&flag), Waited::Dismissed);
+        assert!(t.elapsed() < Duration::from_secs(1), "{:?}", t.elapsed());
+        assert!(pid_gone(pid), "child {pid} outlived the dismiss");
+        setter.join().unwrap();
+    }
+
+    #[test]
+    fn wait_or_dismiss_tells_a_timeout_from_a_deny() {
+        let no = AtomicBool::new(false);
+        let w = |name: &str, out: &str| {
+            let (s, _) = fake(name, out, 0);
+            ask_t(&s, "x", Duration::from_secs(7)).wait_or_dismiss(&no)
+        };
+        assert_eq!(
+            w("w-allow", "button returned:Allow, gave up:false"),
+            Waited::Allow
+        );
+        assert_eq!(
+            w("w-deny", "button returned:Deny, gave up:false"),
+            Waited::Deny
+        );
+        assert_eq!(
+            w("w-gaveup", "button returned:, gave up:true"),
+            Waited::TimedOut
+        );
+        assert_eq!(
+            w("w-gaveup2", "button returned:Allow, gave up:true"),
+            Waited::TimedOut
+        );
+        // A dialog that never answers hits the hard deadline: timed out.
+        let (script, _) = script_in("w-backstop", "sleep 30");
+        assert_eq!(
+            ask_t(&script, "x", Duration::from_secs(1)).wait_or_dismiss(&no),
+            Waited::TimedOut
+        );
     }
 
     #[test]

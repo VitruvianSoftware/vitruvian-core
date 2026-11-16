@@ -49,6 +49,8 @@ pub struct Config {
     pub claude_client_id: String,
     /// The state directory (`VRELAY_HOME`, else `~/Library/Application Support/vrelay`).
     pub dir: PathBuf,
+    /// Where `calls.log` goes (`VRELAY_LOG_DIR`, else `~/Library/Logs/vrelay`).
+    pub log_dir: PathBuf,
     /// Wait before the one retry of a failed token refresh.
     pub retry_delay: Duration,
 }
@@ -65,10 +67,14 @@ impl Config {
                 .filter(|v| !v.is_empty())
                 .unwrap_or_else(|| d.to_string())
         };
+        let home = || PathBuf::from(get("HOME").unwrap_or_else(|| ".".into()));
         let dir = match get("VRELAY_HOME").filter(|v| !v.trim().is_empty()) {
             Some(d) => PathBuf::from(d),
-            None => PathBuf::from(get("HOME").unwrap_or_else(|| ".".into()))
-                .join("Library/Application Support/vrelay"),
+            None => home().join("Library/Application Support/vrelay"),
+        };
+        let log_dir = match get("VRELAY_LOG_DIR").filter(|v| !v.trim().is_empty()) {
+            Some(d) => PathBuf::from(d),
+            None => home().join("Library/Logs/vrelay"),
         };
         Config {
             issuer: val("VRELAY_ISSUER", DEFAULT_ISSUER)
@@ -81,6 +87,7 @@ impl Config {
             project_id: val("VRELAY_PROJECT_ID", DEFAULT_PROJECT_ID),
             claude_client_id: val("VRELAY_CLAUDE_CLIENT_ID", DEFAULT_CLAUDE_CLIENT_ID),
             dir,
+            log_dir,
             retry_delay: Duration::from_secs(1),
         }
     }
@@ -154,9 +161,15 @@ mod tests {
             c.scope(),
             "openid offline_access urn:zitadel:iam:org:project:id:398912441632687930:aud"
         );
+        assert_eq!(c.log_dir, PathBuf::from("/home/x/Library/Logs/vrelay"));
         assert_eq!(c.retry_delay, Duration::from_secs(1));
-        let c = Config::from_lookup(|k| (k == "VRELAY_HOME").then(|| "/t".into()));
+        let c = Config::from_lookup(|k| match k {
+            "VRELAY_HOME" => Some("/t".into()),
+            "VRELAY_LOG_DIR" => Some("/l".into()),
+            _ => None,
+        });
         assert_eq!(c.dir, PathBuf::from("/t"));
+        assert_eq!(c.log_dir, PathBuf::from("/l"));
     }
 
     #[test]

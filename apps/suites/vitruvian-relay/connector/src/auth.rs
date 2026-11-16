@@ -390,6 +390,7 @@ mod tests {
             client_id: "client".into(),
             project_id: "proj".into(),
             claude_client_id: "claude".into(),
+            log_dir: dir.join("logs"),
             dir,
             retry_delay: Duration::from_millis(10),
         }

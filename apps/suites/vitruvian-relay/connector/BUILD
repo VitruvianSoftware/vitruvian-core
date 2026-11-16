@@ -25,14 +25,15 @@ load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # vrelay, the connector that runs on the Mac: sign-in, the device key, token
-# refresh, the rules, the bridge to desktop-commander, and (in later tasks)
-# the WebSocket link. `bazel run
+# refresh, the rules, the bridge to desktop-commander, and the WebSocket link
+# (`vrelay run`). `bazel run
 # //apps/suites/vitruvian-relay/connector:vrelay -- <command>`.
 package(default_visibility = ["//apps/suites/vitruvian-relay:__subpackages__"])
 
 _CRATES = [
     "//apps/suites/vitruvian-relay/protocol:vitruvian_relay_protocol",
     "@vitruvian_relay_crates//:base64",
+    "@vitruvian_relay_crates//:futures-util",
     "@vitruvian_relay_crates//:libc",
     "@vitruvian_relay_crates//:ring",
     "@vitruvian_relay_crates//:rustls",
@@ -40,6 +41,7 @@ _CRATES = [
     "@vitruvian_relay_crates//:serde",
     "@vitruvian_relay_crates//:serde_json",
     "@vitruvian_relay_crates//:tokio",
+    "@vitruvian_relay_crates//:tokio-tungstenite",
     "@vitruvian_relay_crates//:toml",
     "@vitruvian_relay_crates//:ureq",
 ]
@@ -52,6 +54,8 @@ rust_library(
         "src/config.rs",
         "src/keys.rs",
         "src/lib.rs",
+        "src/link.rs",
+        "src/link_tests.rs",
         "src/prompt.rs",
         "src/rules.rs",
         "src/state.rs",

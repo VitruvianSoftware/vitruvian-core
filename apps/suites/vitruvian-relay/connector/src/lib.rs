@@ -18,14 +18,15 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! `vrelay`, the connector that runs on the Mac. This part does sign-in, the
-//! device key, token refresh and `status`. The WebSocket bridge (`run`) and
-//! `install` come later.
+//! `vrelay`, the connector that runs on the Mac: sign-in, the device key,
+//! token refresh, `status`, the rules, the bridge to desktop-commander and
+//! the WebSocket link to the relay (`run`). `install` comes later.
 
 pub mod auth;
 pub mod bridge;
 pub mod config;
 pub mod keys;
+pub mod link;
 pub mod prompt;
 pub mod rules;
 pub mod state;
