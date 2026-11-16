@@ -36,6 +36,73 @@ pub fn output_within(
     timeout: Duration,
     limit: u64,
 ) -> std::io::Result<Option<Output>> {
+    output_within_using(cmd, timeout, limit, leader_state)
+}
+
+/// What a check on the leader found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Leader {
+    Running,
+    /// Exited, its zombie still held: the group id is still ours.
+    Exited,
+    /// Reaped by someone else (`ECHILD`): its id may already be reused.
+    Gone,
+}
+
+/// Checks the leader with `waitid(WNOWAIT)`, which reports an exit but
+/// leaves the zombie, so the group id stays ours. Interrupted by a signal
+/// (another child's `SIGCHLD`, common when many run at once), it asks again.
+/// `ECHILD` means someone else reaped it: [`Leader::Gone`]. Any other error
+/// counts as still running, so the time limit decides, and the leader is
+/// still unreaped when the group is killed.
+pub(crate) fn leader_state(pid: i32) -> Leader {
+    loop {
+        // SAFETY: `info` is plain zeroed memory that waitid fills in.
+        let (ret, si_pid) = unsafe {
+            let mut info: libc::siginfo_t = std::mem::zeroed();
+            let ret = libc::waitid(
+                libc::P_PID,
+                pid as libc::id_t,
+                &mut info,
+                libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+            );
+            #[cfg(target_os = "macos")]
+            let si_pid = info.si_pid;
+            #[cfg(not(target_os = "macos"))]
+            let si_pid = info.si_pid();
+            (ret, si_pid)
+        };
+        if ret == 0 {
+            return if si_pid != 0 {
+                Leader::Exited
+            } else {
+                Leader::Running
+            };
+        }
+        match std::io::Error::last_os_error().raw_os_error() {
+            Some(libc::EINTR) => continue,
+            Some(libc::ECHILD) => return Leader::Gone,
+            _ => return Leader::Running,
+        }
+    }
+}
+
+/// The one rule, shared with the bridge's own wait (`bridge::wait_loop`):
+/// only an exit seen with the zombie still held, or a leader not yet
+/// reaped, makes the group id ours to signal. After an error the leader may
+/// be gone and its id reused.
+pub(crate) fn may_kill_group_after(waited: &std::io::Result<()>) -> bool {
+    waited.is_ok()
+}
+
+/// [`output_within`] with the leader check given (tests stand in for a
+/// leader someone else reaped).
+pub(crate) fn output_within_using(
+    cmd: &mut Command,
+    timeout: Duration,
+    limit: u64,
+    check: fn(i32) -> Leader,
+) -> std::io::Result<Option<Output>> {
     let mut child = cmd
         .process_group(0)
         .stdin(Stdio::null())
@@ -65,25 +132,35 @@ pub fn output_within(
             .map(|r| Box::new(r) as Box<dyn Read + Send>),
     );
     let deadline = Instant::now() + timeout;
-    let exited = loop {
-        if leader_exited(pid) {
-            break true;
+    // Ok(true): exited, held. Ok(false): timed out, still unreaped.
+    // Err: gone, reaped elsewhere.
+    let waited: std::io::Result<bool> = loop {
+        match check(pid) {
+            Leader::Exited => break Ok(true),
+            Leader::Gone => {
+                break Err(std::io::Error::other(format!(
+                    "pid {pid} was reaped by someone else; not signalling its group"
+                )))
+            }
+            Leader::Running if Instant::now() >= deadline => break Ok(false),
+            Leader::Running => std::thread::sleep(Duration::from_millis(10)),
         }
-        if Instant::now() >= deadline {
-            break false;
-        }
-        std::thread::sleep(Duration::from_millis(10));
     };
-    // The leader is not reaped yet (an exited one is a zombie), so its
-    // process group id cannot have been reused: kill whatever is left in it,
-    // which also closes any pipe a child kept open.
-    if pid > 1 {
-        // SAFETY: a plain syscall on a group we created.
+    let held = match &waited {
+        Ok(_) => Ok(()),
+        Err(_) => Err(std::io::Error::from_raw_os_error(libc::ECHILD)),
+    };
+    if may_kill_group_after(&held) && pid > 1 {
+        // Whatever is left in its group dies with it, which also closes any
+        // pipe a child kept open. SAFETY: a plain syscall on our own group.
         unsafe {
             libc::kill(-pid, libc::SIGKILL);
         }
     }
-    let status = child.wait()?;
+    let status = child.wait();
+    // When gone, the drain threads are left: a child may still hold the pipe.
+    let exited = waited?;
+    let status = status?;
     let stdout = out.join().unwrap_or_default();
     let stderr = err.join().unwrap_or_default();
     Ok(exited.then_some(Output {
@@ -91,39 +168,6 @@ pub fn output_within(
         stdout,
         stderr,
     }))
-}
-
-/// Has `pid` exited? `waitid(WNOWAIT)` reports it but leaves the zombie,
-/// so the group stays ours to kill. Interrupted by a signal (another
-/// child's `SIGCHLD`, common when many run at once), it asks again;
-/// `ECHILD` (someone else reaped it) counts as exited; any other error as
-/// still running, so the time limit, not a hasty kill, decides.
-fn leader_exited(pid: i32) -> bool {
-    loop {
-        // SAFETY: `info` is plain zeroed memory that waitid fills in.
-        let (ret, si_pid) = unsafe {
-            let mut info: libc::siginfo_t = std::mem::zeroed();
-            let ret = libc::waitid(
-                libc::P_PID,
-                pid as libc::id_t,
-                &mut info,
-                libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
-            );
-            #[cfg(target_os = "macos")]
-            let si_pid = info.si_pid;
-            #[cfg(not(target_os = "macos"))]
-            let si_pid = info.si_pid();
-            (ret, si_pid)
-        };
-        if ret == 0 {
-            return si_pid != 0;
-        }
-        match std::io::Error::last_os_error().raw_os_error() {
-            Some(libc::EINTR) => continue,
-            Some(libc::ECHILD) => return true,
-            _ => return false,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -224,5 +268,39 @@ mod tests {
             10
         )
         .is_err());
+    }
+    #[test]
+    fn a_leader_reaped_elsewhere_is_gone() {
+        // pid 1 is not our child: waitid fails with ECHILD.
+        assert_eq!(leader_state(1), Leader::Gone);
+        let gone = Err(std::io::Error::from_raw_os_error(libc::ECHILD));
+        assert!(!may_kill_group_after(&gone));
+        assert!(may_kill_group_after(&Ok(())));
+    }
+
+    #[test]
+    fn a_gone_leader_never_gets_its_group_signalled() {
+        let dir = test_dir("proc-gone");
+        // Its child stays in the group; a group kill would end it.
+        let s = script(
+            &dir,
+            "sleep 30 &\necho $! > \"$(dirname \"$0\")/child\"\nsleep 1",
+        );
+        let t = Instant::now();
+        let r = output_within_using(&mut Command::new(&s), Duration::from_secs(20), 1024, |_| {
+            Leader::Gone
+        });
+        assert!(r.is_err(), "{r:?}");
+        assert!(t.elapsed() < Duration::from_secs(10), "{:?}", t.elapsed());
+        let child: i32 = std::fs::read_to_string(dir.join("child"))
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        // SAFETY: signal 0 only checks the pid exists.
+        let alive = unsafe { libc::kill(child, 0) } == 0;
+        // SAFETY: our own test child.
+        unsafe { libc::kill(child, libc::SIGKILL) };
+        assert!(alive, "the group was signalled");
     }
 }

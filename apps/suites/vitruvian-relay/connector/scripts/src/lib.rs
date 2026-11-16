@@ -282,7 +282,7 @@ fn exec_path(node: &Path) -> Option<PathBuf> {
 
 /// Why `node` would not last, if it would not: it is (or, behind a launcher,
 /// runs) a binary in a Bazel output tree (`bazel-out`), in a Bazel output
-/// base (a folder holding `execroot/` and `external/`), or inside the repo
+/// base ([`is_output_base`]), or inside the repo
 /// checkout `workspace`. Those go with a `bazel clean`, a removed worktree
 /// or a garbage-collected output base, and the agent would then fail every
 /// start. This is the repo's own bazel_env `node`, which direnv puts first
@@ -318,11 +318,7 @@ pub fn unstable_node(node: &Path, workspace: Option<&Path>) -> Option<String> {
                 w.display()
             ));
         }
-        if let Some(base) = p
-            .ancestors()
-            .skip(1)
-            .find(|a| a.join("execroot").is_dir() && a.join("external").is_dir())
-        {
+        if let Some(base) = p.ancestors().skip(1).find(|a| is_output_base(a)) {
             return Some(format!(
                 "{} is {} in Bazel's output base {}",
                 node.display(),
@@ -332,6 +328,16 @@ pub fn unstable_node(node: &Path, workspace: Option<&Path>) -> Option<String> {
         }
     }
     None
+}
+
+/// A Bazel output base: `execroot/`, `external/`, and the
+/// `DO_NOT_BUILD_HERE` file Bazel writes in every one. All three, so a
+/// person's own folder that happens to hold the two names is not mistaken
+/// for one.
+fn is_output_base(dir: &Path) -> bool {
+    dir.join("execroot").is_dir()
+        && dir.join("external").is_dir()
+        && dir.join("DO_NOT_BUILD_HERE").is_file()
 }
 
 fn via(node: &Path, p: &Path) -> String {
@@ -480,7 +486,17 @@ pub fn install(i: &Install, out: &mut dyn Write) -> Result<()> {
         return Err(format!("{e}\n{NOT_REPLACED}"));
     }
     finish(i, &p, &prep).map_err(|e| format!("{e}\n{STOPPED}"))?;
-    let rg = layout::find_rg(&p.node_modules, &prep.platform)?;
+    // It passed in staging, and a rename keeps pnpm's relative links, so
+    // this should not fail; if it does, the agent is already running.
+    let rg = layout::find_rg(&p.node_modules, &prep.platform).map_err(|e| {
+        format!(
+            "{e}\nvrelay is installed and running, but desktop-commander's search will not \
+             work until this is fixed. To check: `{} tools` lists the tools, and a search \
+             from Claude shows the error; run the install again to fix it (it checks search \
+             before it stops the agent).",
+            p.bin.display()
+        )
+    })?;
 
     say(
         out,

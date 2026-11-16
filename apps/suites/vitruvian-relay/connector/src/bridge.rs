@@ -52,6 +52,7 @@ use serde_json::{json, Value};
 use tokio::sync::{oneshot, watch};
 use vitruvian_relay_protocol::{encode, CallResult, FrameError, ToRelay, ToolDef, MAX_FRAME_BYTES};
 
+use crate::proc::may_kill_group_after;
 use crate::Result;
 
 /// The oldest Node `desktop-commander` 0.3.1 runs on (its `engines`).
@@ -1001,12 +1002,6 @@ fn wait_exited_no_reap(pid: i32) -> std::io::Result<()> {
             return Err(e);
         }
     }
-}
-
-/// Only an exit seen with the zombie still held makes the group id ours to
-/// signal. After an error the leader may be gone and its id reused.
-fn may_kill_group_after(waited: &std::io::Result<()>) -> bool {
-    waited.is_ok()
 }
 
 fn wait_loop(

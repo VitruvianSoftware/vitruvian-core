@@ -107,12 +107,14 @@ case "$1" in
     [ -d {logs} ] || {{ echo "no log folder" >&2; exit 5; }}
     [ -e {t}/disabled ] && {{ echo "Service is disabled" >&2; exit 119; }}
     [ -e {t}/fail-bootstrap ] && {{ echo "Input/output error" >&2; exit 5; }}
+    [ -e {t}/break-rg ] && find {share} -path '*/bin/rg' -exec rm {{}} +
     touch {loaded} ;;
   *) exit 0 ;;
 esac"#,
             loaded = loaded.display(),
             logs = logs_dir.display(),
-            t = t.display()
+            t = t.display(),
+            share = home.join(SHARE_REL).join("node_modules").display()
         ),
     );
     script(
@@ -571,6 +573,7 @@ fn a_node_in_a_bazel_tree_is_passed_over_for_a_stable_one() {
     let ob = t.join("output_base");
     std::fs::create_dir_all(ob.join("execroot")).unwrap();
     std::fs::create_dir_all(ob.join("external/nodejs/bin")).unwrap();
+    std::fs::write(ob.join("DO_NOT_BUILD_HERE"), "").unwrap();
     let shim = fake_node(
         &t.join("shim/bin"),
         Some(&ob.join("external/nodejs/bin/node")),
@@ -697,4 +700,40 @@ fn signing_retries_the_timestamp_server_three_times() {
         "{}",
         w.calls()
     );
+}
+
+#[test]
+fn a_folder_with_execroot_and_external_but_no_marker_is_not_an_output_base() {
+    let t = outside_dir("node-lookalike");
+    let _rm = Rm(t.clone());
+    // Someone's own folder that happens to hold both names.
+    std::fs::create_dir_all(t.join("tools/execroot")).unwrap();
+    std::fs::create_dir_all(t.join("tools/external")).unwrap();
+    let node = fake_node(&t.join("tools/node/bin"), None);
+    assert_eq!(unstable_node(&node, None), None);
+    assert_eq!(resolve_node(Some(&node), None, None).unwrap(), node);
+    // With Bazel's marker it is one, and --node is refused too.
+    std::fs::write(t.join("tools/DO_NOT_BUILD_HERE"), "").unwrap();
+    let why = unstable_node(&node, None).unwrap();
+    assert!(why.contains("output base"), "{why}");
+    let err = resolve_node(Some(&node), None, None).unwrap_err();
+    assert!(
+        err.contains("output base") && err.contains("--node"),
+        "{err}"
+    );
+}
+
+#[test]
+fn search_lost_after_loading_says_vrelay_is_running_without_search() {
+    let w = ok_world("rg-after-load");
+    std::fs::write(w.t.join("break-rg"), "").unwrap();
+    let err = w.run().0.unwrap_err();
+    assert!(err.contains("installed and running"), "{err}");
+    assert!(err.contains("search will not work"), "{err}");
+    assert!(err.contains("run the install again"), "{err}");
+    assert!(
+        !err.contains("keeps running") && !err.contains("is stopped"),
+        "{err}"
+    );
+    assert!(w.t.join("loaded").exists());
 }
