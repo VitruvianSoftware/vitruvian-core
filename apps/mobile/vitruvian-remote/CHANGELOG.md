@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.46](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.45...vitruvian-remote-v0.1.46) (2026-11-16)
+
+
+### Bug Fixes
+
+* **sentry:** move the Android apps to Sentry 8 with one shared privacy setup ([#4943](https://github.com/VitruvianSoftware/vitruvian-core/issues/4943)) ([f153432](https://github.com/VitruvianSoftware/vitruvian-core/commit/f1534323d3583750e71fc7506541e8d20ea8790f))
+
 ## [0.1.45](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.44...vitruvian-remote-v0.1.45) (2026-11-16)
 
 
