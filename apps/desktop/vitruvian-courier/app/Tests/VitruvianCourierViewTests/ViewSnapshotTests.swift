@@ -37,6 +37,19 @@ final class ViewSnapshotTests: XCTestCase {
             environment: [:], launcher: FoundationProcessLauncher()))
     }
 
+    private func collectAccessibilityIdentifiers(in root: NSView) -> Set<String> {
+        func walk(_ element: AnyObject) -> [AnyObject] {
+            [element] + (element.accessibilityChildren?() ?? []).flatMap { walk($0 as AnyObject) }
+        }
+        var ids: Set<String> = []
+        for node in walk(root) {
+            if let id = node.accessibilityIdentifier?(), !id.isEmpty {
+                ids.insert(id)
+            }
+        }
+        return ids
+    }
+
     private func timeline(_ items: [TimelineItem], ui: MessageUI? = nil, actions: VitruvianCourier.MessageActions? = nil,
                           sent: String? = nil) -> some View {
         let ui = ui ?? MessageUI()
@@ -2374,6 +2387,13 @@ final class ViewSnapshotTests: XCTestCase {
     // MARK: - Milestone 4.5c Task 9: Composer + menu and toolbar sticker/GIF/emoji entry points
 
     func testComposerToolbarAndPlusMenuStickerGIFAndEmojiEntryPoints() throws {
+        let attribute = "AXEnhancedUserInterface"
+        let getter = NSSelectorFromString("accessibilityAttributeValue:")
+        let setter = NSSelectorFromString("accessibilitySetValue:forAttribute:")
+        let previousAX = NSApp.perform(getter, with: attribute)?.takeUnretainedValue() as? NSNumber ?? false
+        NSApp.perform(setter, with: true, with: attribute)
+        defer { NSApp.perform(setter, with: previousAX, with: attribute) }
+
         let preferences = ComposerPreferences(defaults: defaults())
         let model = composer(text: "Weekend trail crew!")
         model.preferences = preferences
@@ -2384,7 +2404,10 @@ final class ViewSnapshotTests: XCTestCase {
         XCTAssertTrue(ComposerView.plusMenuMediaTitles.contains("Add Emoji…"))
         XCTAssertEqual(model.addGIFMenuTitle, "Add GIF…")
         XCTAssertEqual(model.addStickerMenuTitle, "Add Sticker…")
-        check(try Snapshot.render("composer-toolbar-media", width: 620) {
+        var mediaToolbarIDs: Set<String> = []
+        check(try Snapshot.render("composer-toolbar-media", width: 620, prepare: { host in
+            mediaToolbarIDs = self.collectAccessibilityIdentifiers(in: host)
+        }) {
             ComposerView(
                 composer: model,
                 preferences: preferences,
@@ -2392,6 +2415,9 @@ final class ViewSnapshotTests: XCTestCase {
                 menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
             )
         })
+        XCTAssertTrue(mediaToolbarIDs.contains("composer.leading.attach"))
+        XCTAssertTrue(mediaToolbarIDs.contains("composer.leading.gif"))
+        XCTAssertTrue(mediaToolbarIDs.contains("composer.leading.voiceNote"))
 
         let noGIFModel = composer(text: "No GIF button on networks without GIF support")
         noGIFModel.preferences = preferences
@@ -2404,7 +2430,10 @@ final class ViewSnapshotTests: XCTestCase {
             fileFeatures: FileKindFeatures(supported: true, mimeTypes: ["*/*"])
         )
         XCTAssertFalse(noGIFModel.canSendGIF)
-        check(try Snapshot.render("composer-toolbar-no-gif", width: 620) {
+        var noGIFToolbarIDs: Set<String> = []
+        check(try Snapshot.render("composer-toolbar-no-gif", width: 620, prepare: { host in
+            noGIFToolbarIDs = self.collectAccessibilityIdentifiers(in: host)
+        }) {
             ComposerView(
                 composer: noGIFModel,
                 preferences: preferences,
@@ -2412,6 +2441,12 @@ final class ViewSnapshotTests: XCTestCase {
                 menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
             )
         })
+        XCTAssertTrue(noGIFToolbarIDs.contains("composer.leading.attach"))
+        XCTAssertTrue(noGIFToolbarIDs.contains("composer.leading.voiceNote"))
+        XCTAssertFalse(
+            noGIFToolbarIDs.contains("composer.leading.gif"),
+            "GIF button must be absent from rendered toolbar when network cannot send GIFs"
+        )
     }
 
     func testReactionPillAvatarsAndOverflowSnapshot() throws {
@@ -2469,6 +2504,16 @@ final class ViewSnapshotTests: XCTestCase {
         let items: [TimelineItem] = (builtFirst.map { [.message($0)] } ?? []) + [.message(unknownReactorMsg)]
         try assertLightAndDarkSnapshot("reaction-pills-avatars", width: 620) {
             timeline(items, ui: ui, actions: actions)
+        }
+
+        let redactedAppearance = AppearancePreferences(defaults: defaults())
+        redactedAppearance.redactNamesAndPictures = true
+        var redactedActions = VitruvianCourier.MessageActions(now: { Fixture.now })
+        redactedActions.appearance = redactedAppearance
+        try assertLightAndDarkSnapshot("reaction-pills-redacted-card", width: 620) {
+            timeline(items, ui: ui, actions: redactedActions)
+                .environment(\.appearancePreferences, redactedAppearance)
+                .environment(\.reactionCardOverride, ReactionCardOverride(messageID: "$rx0", reactionKey: "👍"))
         }
     }
 

@@ -53,6 +53,11 @@ final class SettingsSearchModelTests: XCTestCase {
         model.openPane(.accounts, accountKey: "whatsapp:wa-1")
         XCTAssertEqual(model.selectedPane, .accounts)
         XCTAssertEqual(model.selectedAccountKey, "whatsapp:wa-1")
+
+        let subAccounts = SettingsNavigationModel.allSettings.first { $0.id == "accounts.subAccounts" }
+        XCTAssertEqual(subAccounts?.section, "Spaces & Communities")
+        model.searchQuery = "sub-accounts"
+        XCTAssertTrue(model.suggestions.contains { $0.id == "accounts.subAccounts" && $0.pane == .accounts })
     }
 
     func testEveryVisibleSettingInCatalogIsFindableAndEveryPaneIsCovered() {

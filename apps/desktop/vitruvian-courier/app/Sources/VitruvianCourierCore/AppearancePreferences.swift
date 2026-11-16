@@ -915,7 +915,7 @@ public final class AppearancePreferences: ObservableObject {
         return disposition
     }
 
-    public static func redactedText(_ original: String, kind: RedactedTextKind = .name) -> String {
+    nonisolated public static func redactedText(_ original: String, kind: RedactedTextKind = .name) -> String {
         let trimmed = original.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             switch kind {

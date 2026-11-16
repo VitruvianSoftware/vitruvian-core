@@ -32,16 +32,12 @@ public enum SendLaterCondition: String, CaseIterable, Sendable {
 /// Primary action button shown beside the send button in the composer (`setting:appearance Primary composer button`).
 public enum PrimaryComposerButton: String, CaseIterable, Codable, Sendable {
     case emojiPicker
-    case gifPicker
-    case addAttachment
     case sendLater
     case none
 
     public var label: String {
         switch self {
         case .emojiPicker: String(localized: "Emoji picker")
-        case .gifPicker: String(localized: "GIF picker")
-        case .addAttachment: String(localized: "Add attachment")
         case .sendLater: String(localized: "Send later")
         case .none: String(localized: "None")
         }
@@ -50,17 +46,13 @@ public enum PrimaryComposerButton: String, CaseIterable, Codable, Sendable {
 
 /// Secondary action button shown in the composer (`setting:appearance Secondary composer button`).
 public enum SecondaryComposerButton: String, CaseIterable, Codable, Sendable {
-    case recordAudio
-    case gifPicker
-    case addAttachment
+    case emojiPicker
     case sendLater
     case none
 
     public var label: String {
         switch self {
-        case .recordAudio: String(localized: "Record voice note")
-        case .gifPicker: String(localized: "GIF picker")
-        case .addAttachment: String(localized: "Add attachment")
+        case .emojiPicker: String(localized: "Emoji picker")
         case .sendLater: String(localized: "Send later")
         case .none: String(localized: "None")
         }
@@ -373,7 +365,7 @@ public final class ComposerPreferences: ObservableObject {
             set(primaryComposerButton.rawValue, "primaryComposerButton")
         }
     }
-    /// "Secondary composer button" (`setting:appearance Secondary composer button`, default `.recordAudio`).
+    /// "Secondary composer button" (`setting:appearance Secondary composer button`, default `.none`).
     @Published public var secondaryComposerButton: SecondaryComposerButton {
         didSet {
             guard canMutate({ secondaryComposerButton = oldValue }) else { return }
@@ -420,6 +412,8 @@ public final class ComposerPreferences: ObservableObject {
         return true
     }
 
+    private static let legacyToolbarButtonRawValues: Set<String> = ["gifPicker", "addAttachment", "recordAudio"]
+
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         func bool(_ name: String, _ fallback: Bool) -> Bool {
@@ -427,6 +421,20 @@ public final class ComposerPreferences: ObservableObject {
         }
         func value<T: RawRepresentable>(_ name: String, _ fallback: T) -> T where T.RawValue == String {
             defaults.string(forKey: Self.key(name)).flatMap(T.init(rawValue:)) ?? fallback
+        }
+        func toolbarButton<T: RawRepresentable>(
+            _ name: String,
+            fallback: T,
+            noneValue: T
+        ) -> T where T.RawValue == String {
+            guard let raw = defaults.string(forKey: Self.key(name)) else {
+                return fallback
+            }
+            if Self.legacyToolbarButtonRawValues.contains(raw) {
+                defaults.set(noneValue.rawValue, forKey: Self.key(name))
+                return noneValue
+            }
+            return T(rawValue: raw) ?? fallback
         }
         // A window the engine wouldn't take reads as off, never as another window.
         let millis = defaults.object(forKey: Self.key("undoSendMillis")) as? Int ?? 0
@@ -454,8 +462,16 @@ public final class ComposerPreferences: ObservableObject {
         alwaysAskWhereToSaveFiles = defaults.object(forKey: Self.alwaysAskWhereToSaveFilesKey) as? Bool ?? false
         disableOutgoingLinkPreviews = defaults.object(forKey: Self.disableOutgoingLinkPreviewsKey) as? Bool ?? true
         loadExternalEmbedsAutomatically = defaults.object(forKey: Self.loadExternalEmbedsAutomaticallyKey) as? Bool ?? false
-        primaryComposerButton = value("primaryComposerButton", Self.defaultPrimaryComposerButton)
-        secondaryComposerButton = value("secondaryComposerButton", Self.defaultSecondaryComposerButton)
+        primaryComposerButton = toolbarButton(
+            "primaryComposerButton",
+            fallback: Self.defaultPrimaryComposerButton,
+            noneValue: .none
+        )
+        secondaryComposerButton = toolbarButton(
+            "secondaryComposerButton",
+            fallback: Self.defaultSecondaryComposerButton,
+            noneValue: .none
+        )
         timeFormat = value("timeFormat", TimeFormatPreference.system)
         showMessageTimestamps = bool("showMessageTimestamps", true)
         enableSpellcheck = bool("enableSpellcheck", true)
@@ -463,12 +479,7 @@ public final class ComposerPreferences: ObservableObject {
     }
 
     public static let defaultPrimaryComposerButton: PrimaryComposerButton = .emojiPicker
-    public static let defaultSecondaryComposerButton: SecondaryComposerButton = .recordAudio
-
-    /// Whether the GIF picker moves into the "+" menu because it is not chosen as a visible toolbar button.
-    public var showsGIFInPlusMenu: Bool {
-        primaryComposerButton != .gifPicker && secondaryComposerButton != .gifPicker
-    }
+    public static let defaultSecondaryComposerButton: SecondaryComposerButton = .none
 
     /// Whether Send Later moves into the "+" menu because it is not chosen as a visible toolbar button.
     public var showsSendLaterInPlusMenu: Bool {

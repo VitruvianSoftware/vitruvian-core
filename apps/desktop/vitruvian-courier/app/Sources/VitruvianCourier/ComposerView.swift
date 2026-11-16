@@ -463,6 +463,7 @@ struct ComposerView: View {
                         symbolName: "paperclip",
                         tooltip: String(localized: "Add Attachment (⌘O)"),
                         accessibilityTitle: String(localized: "Add Attachment"),
+                        accessibilityID: "composer.leading.attach",
                         isDisabled: composer.roomID == nil || locked
                     ) {
                         AttachmentPicker.run(into: composer)
@@ -473,6 +474,7 @@ struct ComposerView: View {
                         symbolName: "photo.on.rectangle",
                         tooltip: String(localized: "Send GIF (⌘⇧G)"),
                         accessibilityTitle: String(localized: "Send GIF"),
+                        accessibilityID: "composer.leading.gif",
                         isDisabled: !composer.canSendGIF || locked
                     ) {
                         if let dispatcher = composer.hotkeyDispatcher {
@@ -490,6 +492,7 @@ struct ComposerView: View {
                         symbolName: "mic",
                         tooltip: String(localized: "Record Voice Note (⌘⇧A)"),
                         accessibilityTitle: String(localized: "Record voice note"),
+                        accessibilityID: "composer.leading.voiceNote",
                         isDisabled: composer.roomID == nil || locked
                     ) {
                         composer.preferences = preferences
@@ -656,20 +659,22 @@ struct ComposerView: View {
         switch preferences.primaryComposerButton {
         case .emojiPicker:
             emojiToolbarButton
-        case .gifPicker, .addAttachment, .none:
-            EmptyView()
         case .sendLater:
             sendLaterToolbarButton
+        case .none:
+            EmptyView()
         }
     }
 
     @ViewBuilder
     private var secondaryActionButton: some View {
         switch preferences.secondaryComposerButton {
-        case .recordAudio, .gifPicker, .addAttachment, .none:
-            EmptyView()
+        case .emojiPicker:
+            emojiToolbarButton
         case .sendLater:
             sendLaterToolbarButton
+        case .none:
+            EmptyView()
         }
     }
 
@@ -787,6 +792,7 @@ private struct ComposerLeadingButton: View {
     let symbolName: String
     let tooltip: String
     let accessibilityTitle: String
+    let accessibilityID: String
     var isDisabled: Bool = false
     let action: () -> Void
     @State private var isHovering = false
@@ -810,6 +816,7 @@ private struct ComposerLeadingButton: View {
         .onHover { isHovering = $0 }
         .help(tooltip)
         .accessibilityLabel(accessibilityTitle)
+        .accessibilityIdentifier(accessibilityID)
     }
 }
 

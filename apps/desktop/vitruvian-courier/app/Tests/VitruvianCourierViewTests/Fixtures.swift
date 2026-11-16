@@ -18,10 +18,12 @@ enum Fixture {
     static func event(_ id: String, type: String = "m.room.message", mine: Bool, ts minutesAgo: Int,
                       content: [String: JSONValue], status: EventStatus = .sent, reason: String = "",
                       bookmarked: Bool = false, poll: PollTally? = nil, thread: ThreadSummary? = nil,
-                      expiresAt: Int64 = 0, sender: String? = nil, name: String = "Ann Example",
+                      expiresAt: Int64 = 0, sender: String? = nil, name: String? = nil,
+                      avatarPath: String = "",
                       delivered: Bool = false, readBy: [Reader] = []) -> Event {
         Event(eventID: id, roomID: room, sender: sender ?? (mine ? Timeline.meUserID : ann),
-              senderName: mine ? "" : name, mine: mine, type: type, content: .object(content),
+              senderName: name ?? (mine ? "" : "Ann Example"), senderAvatarPath: avatarPath,
+              mine: mine, type: type, content: .object(content),
               ts: millis(minutesAgo), seq: Int64(10000 - minutesAgo), status: status, statusReason: reason,
               bookmarked: bookmarked, poll: poll, thread: thread, expiresAt: expiresAt, delivered: delivered,
               readBy: readBy)
@@ -30,7 +32,8 @@ enum Fixture {
     static func text(_ id: String, _ body: String, mine: Bool, ts minutesAgo: Int, html: String? = nil,
                      status: EventStatus = .sent, reason: String = "", bookmarked: Bool = false,
                      thread: ThreadSummary? = nil, expiresAt: Int64 = 0, sender: String? = nil,
-                     name: String = "Ann Example", delivered: Bool = false, readBy: [Reader] = []) -> Event {
+                     name: String? = nil, avatarPath: String = "",
+                     delivered: Bool = false, readBy: [Reader] = []) -> Event {
         var content: [String: JSONValue] = ["msgtype": .string("m.text"), "body": .string(body)]
         if let html {
             content["format"] = .string("org.matrix.custom.html")
@@ -38,7 +41,7 @@ enum Fixture {
         }
         return event(id, mine: mine, ts: minutesAgo, content: content, status: status, reason: reason,
                      bookmarked: bookmarked, thread: thread, expiresAt: expiresAt, sender: sender, name: name,
-                     delivered: delivered, readBy: readBy)
+                     avatarPath: avatarPath, delivered: delivered, readBy: readBy)
     }
 
     /// An edit of `target`, as the engine stores it.

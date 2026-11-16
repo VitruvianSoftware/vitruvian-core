@@ -99,24 +99,24 @@ final class ComposerPreferencesTests: XCTestCase {
     func testPrimarySecondaryComposerButtonsAndTimeFormatPersistence() {
         let preferences = ComposerPreferences(defaults: store.defaults)
         XCTAssertEqual(preferences.primaryComposerButton, .emojiPicker)
-        XCTAssertEqual(preferences.secondaryComposerButton, .recordAudio)
+        XCTAssertEqual(preferences.secondaryComposerButton, .none)
         XCTAssertEqual(preferences.timeFormat, .system)
         XCTAssertTrue(preferences.showMessageTimestamps)
         XCTAssertTrue(preferences.enableSpellcheck)
 
         preferences.primaryComposerButton = .sendLater
-        preferences.secondaryComposerButton = .gifPicker
+        preferences.secondaryComposerButton = .emojiPicker
         preferences.timeFormat = .twentyFourHour
         preferences.showMessageTimestamps = false
         preferences.enableSpellcheck = false
 
         XCTAssertEqual(store.defaults.string(forKey: "courier.composer.primaryComposerButton"), "sendLater")
-        XCTAssertEqual(store.defaults.string(forKey: "courier.composer.secondaryComposerButton"), "gifPicker")
+        XCTAssertEqual(store.defaults.string(forKey: "courier.composer.secondaryComposerButton"), "emojiPicker")
         XCTAssertEqual(store.defaults.string(forKey: "courier.composer.timeFormat"), "twentyFourHour")
 
         let reloaded = ComposerPreferences(defaults: store.defaults)
         XCTAssertEqual(reloaded.primaryComposerButton, .sendLater)
-        XCTAssertEqual(reloaded.secondaryComposerButton, .gifPicker)
+        XCTAssertEqual(reloaded.secondaryComposerButton, .emojiPicker)
         XCTAssertEqual(reloaded.timeFormat, .twentyFourHour)
         XCTAssertFalse(reloaded.showMessageTimestamps)
         XCTAssertFalse(reloaded.enableSpellcheck)
@@ -125,29 +125,45 @@ final class ComposerPreferencesTests: XCTestCase {
     func testDefaultVisibleControlsAndPlusMenuFallbacks() {
         let preferences = ComposerPreferences(defaults: store.defaults)
         XCTAssertEqual(preferences.primaryComposerButton, .emojiPicker)
-        XCTAssertEqual(preferences.secondaryComposerButton, .recordAudio)
-        XCTAssertEqual(preferences.visibleControlIDs(), ["plus", "emojiPicker", "recordAudio", "send"])
-        XCTAssertTrue(preferences.showsGIFInPlusMenu)
+        XCTAssertEqual(preferences.secondaryComposerButton, .none)
+        XCTAssertEqual(preferences.visibleControlIDs(), ["plus", "emojiPicker", "send"])
         XCTAssertTrue(preferences.showsSendLaterInPlusMenu)
 
-        preferences.primaryComposerButton = .gifPicker
-        XCTAssertFalse(preferences.showsGIFInPlusMenu)
+        preferences.primaryComposerButton = .none
         XCTAssertTrue(preferences.showsSendLaterInPlusMenu)
 
         preferences.secondaryComposerButton = .sendLater
         XCTAssertFalse(preferences.showsSendLaterInPlusMenu)
-        XCTAssertEqual(preferences.visibleControlIDs(), ["plus", "gifPicker", "sendLater", "send"])
-        XCTAssertEqual(preferences.visibleControlIDs(isEditing: true), ["plus", "gifPicker", "send"])
+        XCTAssertEqual(preferences.visibleControlIDs(), ["plus", "sendLater", "send"])
+        XCTAssertEqual(preferences.visibleControlIDs(isEditing: true), ["plus", "send"])
     }
 
     func testSavedButtonPreferencesAreNeverOverwrittenOnInit() {
-        store.defaults.set("gifPicker", forKey: "courier.composer.primaryComposerButton")
+        store.defaults.set("emojiPicker", forKey: "courier.composer.primaryComposerButton")
         store.defaults.set("sendLater", forKey: "courier.composer.secondaryComposerButton")
 
         let preferences = ComposerPreferences(defaults: store.defaults)
-        XCTAssertEqual(preferences.primaryComposerButton, .gifPicker)
+        XCTAssertEqual(preferences.primaryComposerButton, .emojiPicker)
         XCTAssertEqual(preferences.secondaryComposerButton, .sendLater)
-        XCTAssertEqual(store.defaults.string(forKey: "courier.composer.primaryComposerButton"), "gifPicker")
+        XCTAssertEqual(store.defaults.string(forKey: "courier.composer.primaryComposerButton"), "emojiPicker")
         XCTAssertEqual(store.defaults.string(forKey: "courier.composer.secondaryComposerButton"), "sendLater")
+    }
+
+    func testLegacyComposerButtonsMigrateToNoneOnLoad() {
+        XCTAssertEqual(PrimaryComposerButton.allCases, [.emojiPicker, .sendLater, .none])
+        XCTAssertEqual(SecondaryComposerButton.allCases, [.emojiPicker, .sendLater, .none])
+
+        for legacyRawValue in ["gifPicker", "addAttachment", "recordAudio"] {
+            let testStore = TestDefaults()
+            defer { testStore.remove() }
+            testStore.defaults.set(legacyRawValue, forKey: "courier.composer.primaryComposerButton")
+            testStore.defaults.set(legacyRawValue, forKey: "courier.composer.secondaryComposerButton")
+
+            let preferences = ComposerPreferences(defaults: testStore.defaults)
+            XCTAssertEqual(preferences.primaryComposerButton, .none, "\(legacyRawValue) must migrate primary to .none")
+            XCTAssertEqual(preferences.secondaryComposerButton, .none, "\(legacyRawValue) must migrate secondary to .none")
+            XCTAssertEqual(testStore.defaults.string(forKey: "courier.composer.primaryComposerButton"), "none")
+            XCTAssertEqual(testStore.defaults.string(forKey: "courier.composer.secondaryComposerButton"), "none")
+        }
     }
 }

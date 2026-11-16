@@ -371,6 +371,7 @@ struct MessageRowView: View {
     @ObservedObject var ui: MessageUI
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.appearancePreferences) private var appearanceEnv
+    @Environment(\.redactNamesAndPictures) private var redactEnv
     @Environment(\.themeAccentColor) private var envThemeAccent
     @Environment(\.reactionCardOverride) private var cardOverride
     @State private var barSize: CGSize = .zero
@@ -490,7 +491,7 @@ struct MessageRowView: View {
                     if let card, let chip = anchors.openChip {
                         let spot = ReactionCardPlacement.origin(chip: proxy[chip], row: proxy.size, card: cardSize,
                                                                 avoiding: bar)
-                        ReactionCard(chip: card)
+                        ReactionCard(chip: card, isRedacted: isRedacted)
                             .fixedSize()
                             .onGeometryChange(for: CGSize.self) { $0.size } action: { cardSize = $0 }
                             .offset(x: spot.x, y: spot.y)
@@ -666,6 +667,10 @@ struct MessageRowView: View {
         actions.appearance ?? appearanceEnv
     }
 
+    private var isRedacted: Bool {
+        (resolvedAppearance?.redactNamesAndPictures ?? false) || redactEnv
+    }
+
     private var themeAccent: Color {
         if let hex = resolvedAppearance?.effectiveTheme(for: message.roomID).accentColorHex,
            let color = Color(hex: hex) {
@@ -676,7 +681,6 @@ struct MessageRowView: View {
 
     @ViewBuilder
     private var avatarColumn: some View {
-        let isRedacted = resolvedAppearance?.redactNamesAndPictures ?? false
         if message.startsGroup {
             AvatarView(path: message.senderAvatarPath, initials: InboxRow.initials(of: message.senderName),
                        seed: message.senderName, size: Self.avatarSize)
@@ -695,7 +699,7 @@ struct MessageRowView: View {
 
     /// The sender's name as shown (pseudonymised when names are redacted).
     private var displaySenderName: String {
-        (resolvedAppearance?.redactNamesAndPictures ?? false)
+        isRedacted
             ? AppearancePreferences.redactedText(message.senderName, kind: .name)
             : message.senderName
     }
@@ -1037,8 +1041,7 @@ struct MessageRowView: View {
     }
 
     private var reactions: some View {
-        let isRedacted = resolvedAppearance?.redactNamesAndPictures ?? false
-        return HStack(spacing: 4) {
+        HStack(spacing: 4) {
             ForEach(message.reactions) { chip in
                 Button {
                     // Mine again takes it back; anyone else's adds mine.
@@ -1050,7 +1053,7 @@ struct MessageRowView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Text(chip.key)
-                        switch chip.pillDisplay() {
+                        switch chip.pillDisplay(redacted: isRedacted) {
                         case let .avatars(items, overflowText):
                             ReactionAvatarStack(items: items, isRedacted: isRedacted)
                             if let overflowText {
@@ -1069,14 +1072,14 @@ struct MessageRowView: View {
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .help(chip.tooltipText())
+                .help(chip.tooltipText(redacted: isRedacted))
                 .onHover { chipHovered(chip.key, $0) }
                 .clickTargetProbe("chip/\(message.id)/\(chip.key)")
                 .takesOwnClick()
                 .anchorPreference(key: RowAnchorsKey.self, value: .bounds) {
                     RowAnchors(openChip: openCardKey == chip.key ? $0 : nil)
                 }
-                .accessibilityLabel(chip.summary())
+                .accessibilityLabel(chip.summary(redacted: isRedacted))
             }
             if canAct { addReactionChip }
         }
@@ -1400,7 +1403,8 @@ private struct ReactorAvatarCircle: View {
     @State private var image: NSImage?
 
     private var effectiveImage: NSImage? {
-        image ?? AvatarCache.shared.cachedImage(atPath: item.avatarPath)
+        guard !isRedacted, !item.avatarPath.isEmpty else { return nil }
+        return image ?? AvatarCache.shared.cachedImage(atPath: item.avatarPath)
     }
 
     var body: some View {
@@ -1411,16 +1415,28 @@ private struct ReactorAvatarCircle: View {
                     .scaledToFill()
             } else {
                 Circle().fill(AvatarView.color(for: item.seed))
-                Text(verbatim: item.initials)
-                    .font(.system(size: 6.5, weight: .bold))
-                    .foregroundStyle(.white)
+                if !isRedacted {
+                    if !item.initials.isEmpty {
+                        Text(verbatim: item.initials)
+                            .font(.system(size: 6.5, weight: .bold))
+                            .foregroundStyle(.white)
+                    } else {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                }
             }
         }
         .frame(width: 14, height: 14)
-        .blur(radius: isRedacted ? 3 : 0)
+        .blur(radius: isRedacted ? 6 : 0)
         .clipShape(Circle())
         .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 1))
-        .task(id: item.avatarPath) {
+        .task(id: "\(isRedacted)|\(item.avatarPath)") {
+            guard !isRedacted, !item.avatarPath.isEmpty else {
+                image = nil
+                return
+            }
             if let cached = AvatarCache.shared.cachedImage(atPath: item.avatarPath) {
                 image = cached
             } else {
@@ -1433,12 +1449,13 @@ private struct ReactorAvatarCircle: View {
 /// Who reacted with one emoji: the emoji large, and the names under it (`ReactionChip.summary`).
 private struct ReactionCard: View {
     let chip: ReactionChip
+    var isRedacted: Bool = false
 
     var body: some View {
         CappedWidth(maxWidth: 220) {
             VStack(spacing: 4) {
                 Text(chip.key).font(.system(size: 28))
-                Text(chip.summary())
+                Text(chip.summary(redacted: isRedacted))
                     .font(.caption)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)

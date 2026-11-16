@@ -149,10 +149,13 @@ struct AccountsSettingsPane: View {
                                         Text(entry.displayName)
                                             .font(.body.weight(isSelected ? .semibold : .medium))
                                             .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
                                         Text(entry.remoteName)
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                             .lineLimit(1)
+                                            .truncationMode(.tail)
                                     }
                                     Spacer()
                                 }

@@ -725,6 +725,8 @@ public final class ConversationModel: ObservableObject {
     public func setChatInfoForTesting(_ info: RoomInfoResult?) {
         chatInfo = info
         isShowingChatInfo = info != nil
+        handOnChat()
+        if !events.isEmpty { rebuild() }
     }
 
     private func open(_ room: String?) {
@@ -883,6 +885,32 @@ public final class ConversationModel: ObservableObject {
         }
     }
 
+    private func selfReactionIdentity() -> (name: String, avatarPath: String) {
+        let currentRoom = activeReplyRoomID ?? roomID
+        let matchingInfo = currentRoom.flatMap { id in chatInfo?.roomID == id ? chatInfo : nil } ?? chatInfo
+        let meMember = matchingInfo?.members.first(where: { $0.userID == Timeline.meUserID })
+        let memberName = meMember.flatMap { ReactionChip.cleanedSelfRealName($0.name, userID: $0.userID) }
+        let memberAvatar = meMember?.avatarPath ?? ""
+
+        var fallbackName = ""
+        let activeNet = activeReplyNetwork ?? network
+        if memberName == nil, !activeNet.isEmpty, activeNet != "slack",
+           let account = appModel.accounts.first(where: { $0.network == activeNet }) {
+            let roomLogin = currentRoom.flatMap { chat($0)?.loginName } ?? ""
+            let candidate = account.logins.first(where: {
+                !$0.remoteName.isEmpty && ($0.accountID == roomLogin || $0.remoteName == roomLogin)
+            })?.remoteName
+                ?? account.logins.first(where: { !$0.remoteName.isEmpty })?.remoteName
+                ?? account.remoteName
+            if let cleaned = ReactionChip.cleanedSelfRealName(candidate, userID: Timeline.meUserID),
+               !cleaned.contains("@"),
+               cleaned.contains(where: \.isLetter) {
+                fallbackName = cleaned
+            }
+        }
+        return (memberName ?? fallbackName, memberAvatar)
+    }
+
     /// The chat's features, network and other person, to each composer open on this chat.
     private func handOnChat() {
         guard let room = roomID else { return }
@@ -892,7 +920,10 @@ public final class ConversationModel: ObservableObject {
             target.network = activeReplyNetwork ?? network
             target.otherPerson = otherPerson
         }
+        let selfIdentity = selfReactionIdentity()
         thread.isDirect = isDirectChat ?? false
+        thread.myName = selfIdentity.name
+        thread.myAvatarPath = selfIdentity.avatarPath
         if thread.roomID == room || thread.roomID == targetRoom {
             thread.hideDeleted = hidesDeleted
         }
@@ -1372,9 +1403,12 @@ public final class ConversationModel: ObservableObject {
     private static func position(_ event: Event) -> Position { Position(ts: event.ts, seq: event.seq) }
 
     private func rebuild() {
+        let selfIdentity = selfReactionIdentity()
         let nextItems = Timeline.build(events: Array(events.values), me: Timeline.meUserID, firstUnreadID: firstUnreadID,
                                        now: now(), hideDeleted: hidesDeleted, isDirect: isDirectChat ?? false,
                                        showChatUpdates: showChatUpdatesPreference,
+                                       myName: selfIdentity.name,
+                                       myAvatarPath: selfIdentity.avatarPath,
                                        calendar: calendar)
         if nextItems != items {
             items = nextItems
@@ -2160,6 +2194,8 @@ public final class ConversationModel: ObservableObject {
         guard !isLocked, room == roomID else { return }
         if let info {
             chatInfo = info
+            handOnChat()
+            if !events.isEmpty { rebuild() }
         }
         chatInfoBookmarks = bookmarks
     }
@@ -2773,6 +2809,8 @@ public final class ConversationModel: ObservableObject {
         if chatInfo == nil, !targetRoom.isEmpty, let fetched = await fetchChatInfo(for: targetRoom, force: false).info {
             if targetRoom == roomID || targetRoom == activeReplyRoomID {
                 chatInfo = fetched
+                handOnChat()
+                if !events.isEmpty { rebuild() }
             }
         }
         let resolvedMember = chatInfo?.members.first(where: { $0.userID == message.sender })

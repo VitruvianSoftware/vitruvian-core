@@ -188,11 +188,13 @@ struct MessagesSettingsPane: View {
                     Text(button.label).tag(button)
                 }
             }
+            .accessibilityIdentifier("settings.composing.primaryComposerButton")
             Picker(String(localized: "Secondary composer button"), selection: $preferences.secondaryComposerButton) {
                 ForEach(SecondaryComposerButton.allCases, id: \.self) { button in
                     Text(button.label).tag(button)
                 }
             }
+            .accessibilityIdentifier("settings.composing.secondaryComposerButton")
             Toggle(String(localized: "Enable emoji autocomplete"), isOn: $preferences.enableEmojiAutocomplete)
                 .accessibilityIdentifier("settings.composing.enableEmojiAutocomplete")
             Toggle(

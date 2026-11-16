@@ -216,4 +216,137 @@ final class ReactionSummaryTests: XCTestCase {
             ]
         )
     }
+
+    func testOwnReactionAvatarUsesPictureOrRealInitialsAndNeverYFromYou() {
+        let withPicture = chip("👍", [
+            Reactor(userID: Timeline.meUserID, name: "Eddie Stecker", isMe: true, avatarPath: "/tmp/me.png"),
+        ])
+        if case let .avatars(items, overflow) = withPicture.pillDisplay() {
+            XCTAssertNil(overflow)
+            XCTAssertEqual(items.first?.avatarPath, "/tmp/me.png")
+            XCTAssertEqual(items.first?.initials, "ES")
+        } else {
+            XCTFail("Expected avatars display")
+        }
+        XCTAssertEqual(withPicture.tooltipText(), "You")
+
+        let withRealName = chip("👍", [
+            Reactor(userID: Timeline.meUserID, name: "Eddie Stecker", isMe: true),
+        ])
+        if case let .avatars(items, _) = withRealName.pillDisplay() {
+            XCTAssertEqual(items.first?.initials, "ES")
+        } else {
+            XCTFail("Expected avatars display")
+        }
+        XCTAssertEqual(withRealName.tooltipText(), "You")
+
+        let withSuffixYou = chip("👍", [
+            Reactor(userID: Timeline.meUserID, name: "Eddie Stecker (you)", isMe: true),
+        ])
+        if case let .avatars(items, _) = withSuffixYou.pillDisplay() {
+            XCTAssertEqual(items.first?.initials, "ES")
+        } else {
+            XCTFail("Expected avatars display")
+        }
+
+        for placeholder in ["", "You", "you", "me", "Me", Timeline.meUserID] {
+            let unknownMe = chip("👍", [
+                Reactor(userID: Timeline.meUserID, name: placeholder, isMe: true),
+            ])
+            if case let .avatars(items, _) = unknownMe.pillDisplay() {
+                XCTAssertEqual(items.first?.initials, "", "Placeholder '\(placeholder)' must not produce initials")
+                XCTAssertNotEqual(items.first?.initials, "Y")
+            } else {
+                XCTFail("Expected avatars display")
+            }
+            XCTAssertEqual(unknownMe.tooltipText(), "You")
+        }
+
+        // Timeline.build fills own reaction's real name and avatar path from myName / myAvatarPath
+        // when the reaction event itself carries only "me" and no avatar path.
+        let base = Event(
+            eventID: "$m-self",
+            roomID: "!r:example.test",
+            sender: "@kent:example.test",
+            senderName: "Kent Hua",
+            mine: false,
+            type: "m.room.message",
+            content: .object(["msgtype": .string("m.text"), "body": .string("hello")]),
+            ts: 1000,
+            seq: 1,
+            status: .sent
+        )
+        let myReaction = Event(
+            eventID: "$r-self",
+            roomID: "!r:example.test",
+            sender: Timeline.meUserID,
+            senderName: "me",
+            senderAvatarPath: "",
+            mine: true,
+            type: "m.reaction",
+            content: .object([
+                "m.relates_to": .object([
+                    "rel_type": .string("m.annotation"),
+                    "event_id": .string("$m-self"),
+                    "key": .string("👍"),
+                ]),
+            ]),
+            ts: 2000,
+            seq: 2,
+            status: .sent
+        )
+        let built = Timeline.build(
+            events: [base, myReaction],
+            me: Timeline.meUserID,
+            myName: "Eddie Stecker",
+            myAvatarPath: "/tmp/eddie.png"
+        )
+        let builtMsg = built.compactMap { item -> TimelineMessage? in
+            if case let .message(msg) = item { return msg }
+            return nil
+        }.first
+        let builtChip = builtMsg?.reactions.first
+        if case let .avatars(items, _) = builtChip?.pillDisplay() {
+            XCTAssertEqual(items.first?.avatarPath, "/tmp/eddie.png")
+            XCTAssertEqual(items.first?.initials, "ES")
+        } else {
+            XCTFail("Expected avatars display")
+        }
+        XCTAssertEqual(builtChip?.tooltipText(), "You")
+    }
+
+    func testRedactedReactionSummaryTooltipAndPillAvatarsHideNamesAndPictures() {
+        let mixed = chip("👍", [
+            Reactor(userID: Timeline.meUserID, name: "Eddie Stecker", isMe: true, avatarPath: "/tmp/eddie.png"),
+            Reactor(userID: "@kent:example.test", name: "Kent Hua", isMe: false, avatarPath: "/tmp/kent.png"),
+        ])
+
+        let redactedTooltip = mixed.tooltipText(redacted: true)
+        XCTAssertTrue(redactedTooltip.hasPrefix("You, Person #"))
+        XCTAssertFalse(redactedTooltip.contains("Kent Hua"))
+        XCTAssertFalse(redactedTooltip.contains("Eddie Stecker"))
+        XCTAssertEqual(
+            redactedTooltip,
+            "You, \(AppearancePreferences.redactedText("Kent Hua", kind: .name))"
+        )
+
+        let redactedSummary = mixed.summary(locale: english, redacted: true)
+        XCTAssertTrue(redactedSummary.contains("You"))
+        XCTAssertTrue(redactedSummary.contains(AppearancePreferences.redactedText("Kent Hua", kind: .name)))
+        XCTAssertFalse(redactedSummary.contains("Kent Hua"))
+        XCTAssertFalse(redactedSummary.contains("Eddie Stecker"))
+
+        if case let .avatars(items, overflow) = mixed.pillDisplay(redacted: true) {
+            XCTAssertNil(overflow)
+            XCTAssertEqual(items.count, 2)
+            XCTAssertEqual(items[0].avatarPath, "")
+            XCTAssertEqual(items[0].initials, "")
+            XCTAssertEqual(items[0].seed, AppearancePreferences.redactedText("Eddie Stecker", kind: .name))
+            XCTAssertEqual(items[1].avatarPath, "")
+            XCTAssertEqual(items[1].initials, "")
+            XCTAssertEqual(items[1].seed, AppearancePreferences.redactedText("Kent Hua", kind: .name))
+        } else {
+            XCTFail("Expected avatars display")
+        }
+    }
 }
