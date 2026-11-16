@@ -449,3 +449,31 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
 14. **Retries that run twice.** Under this design, an AI app's retry after a
     dropped connection would arrive as a new call with a new id (§4); no spike
     tested how the apps retry. Decide whether the relay should detect it.
+15. **A call frame stalled in the network (accepted for P1, ruling R14).** The
+    relay sends each call with what is left of its own wait, less an allowance
+    for the frame to arrive, and drops the link if writing the frame takes
+    longer than that allowance. A frame fully written but then held up in the
+    network for longer than the allowance can still reach the computer with a
+    deadline that ends after the relay has given up. The relay's `cancel` and
+    the connector's handling of a dropped link are the backstop; the risk is a
+    rare late run on a badly stalled link. The fix is a receipt handshake (the
+    computer acknowledges the call before it may start), a protocol change for
+    P2.
+16. **The call budget is 90 s (ruling R16).** Cloudflare gives up on an origin
+    that sends nothing for about 100 s (HTTP 524), and the relay answers
+    `tools/call` as one JSON body sent at the end. So `CALL_BUDGET_SECS` is 90:
+    the 60 s "ask first" dialog fits inside it, and a command needing more than
+    about 25 s after a full-length dialog times out with the relay's own
+    message. Task 11 checks a 120 s call through the tunnel; answering
+    `tools/call` as an event stream with keep-alive comments would lift the
+    limit later.
+17. **The connector's own files are off limits, with one gap (accepted for P1,
+    ruling R17).** Reads run without asking, and the connector's sign-in,
+    device key and logs are ordinary files. The connector refuses any call
+    whose path argument resolves (through `~`, a relative path, `..` or a
+    symlink) under its state folder, `~/Library/Logs/vrelay`,
+    `~/.local/share/vrelay` or `~/.claude-server-commander`, and a search
+    rooted at or above one of them asks first. What remains: a broad search
+    the person approves can still read them, and so can a terminal command
+    they approve. The solid fixes are the Keychain for the secrets and
+    folder limits for every file tool, both P2.

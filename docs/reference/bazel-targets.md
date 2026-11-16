@@ -60,7 +60,7 @@ mindmap
 | `//tools/pipeline-status -- <pr#\|sha>` | Evaluates the health of post-merge push workflows on `main`, asserting that CI, delivery, and image builds completed green |
 | `//:tidy` | **The single hygiene entrypoint**: gazelle → python manifest → all formatters. Required check (`tidy-check`); run before every PR |
 | `//:gazelle` | Regenerate `BUILD` files after adding/moving code |
-| `//tools/pnpm:lock` | Re-lock `pnpm-lock.yaml` after editing a `package.json` (`-- --check` reports drift, changes nothing) |
+| `//tools/pnpm:lock` | Re-lock `pnpm-lock.yaml` after editing a `package.json` (`-- --check` reports drift, changes nothing). `-- --dir <path>` re-locks a separate pnpm workspace inside the repo instead, such as `apps/suites/vitruvian-relay/connector/dc` (with `--check` too) |
 | `//tools:bazel_env` | Exposes every Bazel-managed tool (go, node, pnpm, python, prettier, …) on your `$PATH` via direnv |
 | `//tools/ci-preflight` | The repo-side counterpart to `//:doctor`: every `secrets.*`/`vars.*` the workflows reference, and whether it is actually configured. Flags secrets that PR-triggered workflows read but the **Dependabot** store lacks — those silently resolve to `""` on dependency PRs. `-- --list` for the required set without touching the network |
 | `//tools/gomod:tidy` | `go mod tidy` across the `replace`-coupled Go modules (library ↔ go-foundation examples), which Dependabot cannot keep in step on its own. The fix side of `//tools/gomod:check` |
@@ -208,6 +208,10 @@ stack config) is in [CONTRIBUTING §7](../../CONTRIBUTING.md#7-secrets-handling)
 `bazel build --config=macos-app //apps/desktop/vitruvian-atrium:VitruvianAtrium` (tests:
 `bazel test --config=macos-app //apps/desktop/vitruvian-atrium:unit_tests //apps/desktop/vitruvian-atrium:selftest`;
 after changing its `build.sh` source lists: `bazel run //apps/desktop/vitruvian-atrium:sync_sources`).
+Vitruvian Relay's Mac agent: `bazel run //apps/suites/vitruvian-relay/connector/scripts:install`
+(signs `vrelay` and installs it as a LaunchAgent; `-- --unsigned`, `-- --node <path>`) and
+`:uninstall` (keeps the sign-in, key, rules and logs); `//apps/suites/vitruvian-relay/connector:vrelay`
+runs it from the tree. See [the connector's README](../../apps/suites/vitruvian-relay/connector/README.md).
 
 ## CI helper scripts (context, not targets)
 
