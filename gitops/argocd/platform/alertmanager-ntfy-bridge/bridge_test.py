@@ -219,6 +219,27 @@ class BridgeTest(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError):
             server.ping_heartbeat()
 
+    def test_publish_and_delete_are_logged_with_their_result(self):
+        server = _make_server(self)
+        err = io.StringIO()
+        real = server.sys.stderr
+        server.sys.stderr = err
+        self.addCleanup(setattr, server.sys, "stderr", real)
+        fire = _group("firing", [_alert("firing", "p1")])
+        server.handle_alertmanager(fire)
+        server.handle_alertmanager(_group("resolved", [_alert("resolved", "p1")]))
+        server.next_status = 404
+        server.handle_alertmanager(_group("resolved", [_alert("resolved", "p1")]))
+        sid = server.sequence_id(fire)
+        lines = err.getvalue().splitlines()
+        assert lines[0].startswith(f"ntfy: published {sid} (") and lines[0].endswith(
+            "-> 200"
+        )
+        assert lines[1] == f"ntfy: deleted {sid} (CNPGBackupStale) -> 200"
+        assert (
+            lines[2] == f"ntfy: delete found nothing for {sid} (CNPGBackupStale) -> 404"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
