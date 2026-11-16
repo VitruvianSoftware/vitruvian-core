@@ -24,7 +24,9 @@
 # serves MCP over stdin/stdout. DIR is the test's own folder: the fake writes
 # its pid to DIR/fake.pid and a started child's pid to DIR/sleep.pid. If
 # DIR/stubborn exists it ignores SIGTERM and the end of its input. If
-# DIR/slow_init exists it waits 3 s before answering `initialize`.
+# DIR/slow_init exists it waits 3 s before answering `initialize`; if
+# DIR/hang_init exists it never answers it. Every start appends a line to
+# DIR/spawns.
 #
 # Tools (by name in tools/call):
 #   echo         answers "ok" at once
@@ -37,6 +39,7 @@
 #   huge         answers with one 64 MiB line, its id last (as the MCP SDK
 #                orders a result: result, jsonrpc, id)
 #   huge_noid    writes one 64 MiB line with no id, then nothing
+#   huge_late    waits 2 s, then answers like huge
 
 if [ "${1:-}" = "--version" ]; then
 	echo "v22.12.0"
@@ -45,6 +48,7 @@ fi
 
 dir="$1"
 echo $$ >"$dir/fake.pid"
+echo $$ >>"$dir/spawns"
 if [ -e "$dir/stubborn" ]; then
 	trap '' TERM
 fi
@@ -63,6 +67,11 @@ while IFS= read -r line; do
 	case "$method" in
 	initialize)
 		if [ -e "$dir/slow_init" ]; then sleep 3; fi
+		if [ -e "$dir/hang_init" ]; then
+			sleep 300 &
+			echo $! >"$dir/init_sleep.pid"
+			wait
+		fi
 		reply "$id" '{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"fake","version":"0"}}'
 		printf '{"jsonrpc":"2.0","method":"notifications/message","params":{"level":"info","data":"fake started"}}\n'
 		;;
@@ -92,6 +101,12 @@ while IFS= read -r line; do
 			reply "$id" "$(text "$body")"
 			;;
 		huge)
+			printf '{"result":{"content":[{"type":"text","text":"'
+			head -c 67108864 /dev/zero | tr '\0' 'q'
+			printf '"}]},"jsonrpc":"2.0","id":%s}\n' "$id"
+			;;
+		huge_late)
+			sleep 2
 			printf '{"result":{"content":[{"type":"text","text":"'
 			head -c 67108864 /dev/zero | tr '\0' 'q'
 			printf '"}]},"jsonrpc":"2.0","id":%s}\n' "$id"

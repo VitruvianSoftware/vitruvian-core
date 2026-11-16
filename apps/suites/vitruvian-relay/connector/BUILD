@@ -20,7 +20,6 @@
 
 # gazelle:ignore
 
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
@@ -98,19 +97,12 @@ rust_test(
     ],
 )
 
-# The pinned desktop-commander fetches and links from dc/'s own lock: a
-# broken re-lock fails here, in the vrelay unit, not later at `bazel run`.
-build_test(
-    name = "desktop_commander_builds",
-    targets = ["//apps/suites/vitruvian-relay/connector/dc:desktop_commander"],
-)
-
+# The lock's pin and checksum are checked offline in the Rust tests. Building
+# the package from its lock (a ~600-package fetch) is dc/'s own unit, so it
+# runs only when dc/ changes.
 test_suite(
     name = "unit_tests",
-    tests = [
-        ":desktop_commander_builds",
-        ":vitruvian_relay_connector_test",
-    ],
+    tests = [":vitruvian_relay_connector_test"],
 )
 
 pipeline_unit(

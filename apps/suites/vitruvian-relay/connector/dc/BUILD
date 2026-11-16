@@ -20,7 +20,9 @@
 
 # gazelle:ignore
 
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@vrelay_npm//:defs.bzl", "npm_link_all_packages")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # The pinned desktop-commander that `vrelay` runs over stdio, from this
 # folder's own lock (@vrelay_npm). The connector takes the package as a runfile
@@ -38,4 +40,21 @@ alias(
     name = "desktop_commander",
     actual = ":node_modules/@wonderwhy-er/desktop-commander",
     visibility = ["//apps/suites/vitruvian-relay/connector:__pkg__"],
+)
+
+# The pinned package fetches and links from this folder's lock. Its own unit,
+# so the npm fetch runs only for changes here (the planner picks units by the
+# tests a change reaches), not for every connector change.
+build_test(
+    name = "desktop_commander_builds",
+    targets = [":desktop_commander"],
+)
+
+pipeline_unit(
+    name = "vrelay-dc",
+    persona = "backend",
+    runner = "ubuntu-26.04",
+    test_targets = [":desktop_commander_builds"],
+    tier = "L1",
+    timeout_minutes = 15,
 )

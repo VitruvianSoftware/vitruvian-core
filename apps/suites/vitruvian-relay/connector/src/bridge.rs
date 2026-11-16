@@ -43,13 +43,13 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 use vitruvian_relay_protocol::{encode, CallResult, FrameError, ToRelay, ToolDef, MAX_FRAME_BYTES};
 
 use crate::Result;
@@ -892,16 +892,17 @@ fn read_loop(
                 if is_notification_head(&head) {
                     continue;
                 }
-                let tx = {
-                    let mut p = pending.lock().unwrap();
-                    let id = too_long_id(&head, &tail)
-                        .filter(|id| p.waiting.contains_key(id))
-                        // No id to be found: the oldest call is the likeliest.
-                        .or_else(|| p.waiting.keys().min().copied());
-                    id.and_then(|id| p.waiting.remove(&id))
-                };
-                if let Some(tx) = tx {
-                    let _ = tx.send(Err(Fail::TooBig(len)));
+                // Only the call it names is failed. No id, or a call already
+                // given up on: no call is failed (a guess could report a call
+                // that ran as failed, and a retry would run it twice); the
+                // right call then ends at its own deadline.
+                let tx = too_long_id(&head, &tail)
+                    .and_then(|id| pending.lock().unwrap().waiting.remove(&id));
+                match tx {
+                    Some(tx) => {
+                        let _ = tx.send(Err(Fail::TooBig(len)));
+                    }
+                    None => log("no waiting call matches that line; no call was failed"),
                 }
                 continue;
             }
@@ -1097,60 +1098,97 @@ fn cursor_params(cursor: &Option<String>) -> Value {
     }
 }
 
-type Slot = Arc<tokio::sync::Mutex<Option<Arc<Proc>>>>;
+/// The outcome of a restart, shared by every call waiting on it.
+type Started = Option<std::result::Result<Arc<Proc>, String>>;
+
+/// Who is running, and any restart under way. A plain mutex, never held
+/// across an await, so `stop` and drop never wait on a restart.
+struct State {
+    proc: Option<Arc<Proc>>,
+    /// A restart under way; later calls join it instead of starting another.
+    starting: Option<watch::Receiver<Started>>,
+    /// The server that restart spawned, so `stop` can kill it at once.
+    starting_proc: Option<Arc<Proc>>,
+    stopped: bool,
+}
+
+type Slot = Arc<Mutex<State>>;
 
 /// `desktop-commander` over stdio. Restarts on the next call after it dies.
 pub struct Bridge {
     cmd: BridgeCommand,
     log: Log,
-    proc: Slot,
-    /// Set by `stop`/drop; a start still under way then stops what it made.
-    stopped: Arc<AtomicBool>,
+    slot: Slot,
     /// The last tool list seen, for when a fresh one cannot be had.
     tools: Mutex<Vec<ToolDef>>,
     next_id: Arc<AtomicU64>,
+    /// How long a restart waits for `initialize` (tests shorten it).
+    pub(crate) init_timeout: Duration,
 }
 
-/// Starts a fresh server unless one is running. Holds the slot while it
-/// works, so one start serves every waiting call.
-async fn start_in(
+/// Kills a server now: no grace. The waiter thread then reaps it and fails
+/// whatever was waiting on it.
+fn kill_now(p: &Proc) {
+    p.writer.lock().unwrap().take();
+    p.signal_group(libc::SIGKILL);
+}
+
+/// One restart: spawn, `initialize`, then publish the result to every
+/// waiting call. It runs to its own time limit even if its callers leave,
+/// so a later call finds it running, but nothing queues behind it.
+async fn restart(
     slot: Slot,
+    tx: watch::Sender<Started>,
     cmd: BridgeCommand,
     log: Log,
     next_id: Arc<AtomicU64>,
-    stopped: Arc<AtomicBool>,
-) -> Result<Arc<Proc>> {
-    let mut g = slot.lock_owned().await;
-    if let Some(p) = g.as_ref() {
-        if !p.is_dead() {
-            return Ok(p.clone());
-        }
-    }
-    if stopped.load(Ordering::SeqCst) {
-        return Err("the bridge is stopped".into());
-    }
+    init_timeout: Duration,
+) {
     log("starting desktop-commander again");
-    let p = Arc::new(Proc::spawn(&cmd, &log, next_id)?);
-    let init = p
-        .request_async(
-            "initialize",
-            initialize_params(),
-            Instant::now() + INIT_TIMEOUT,
-        )
-        .await;
-    if let Err(e) = init {
-        let dead = p.clone();
-        tokio::task::spawn_blocking(move || dead.stop());
-        return Err(format!("desktop-commander did not start: {e}"));
+    let result: std::result::Result<Arc<Proc>, String> = async {
+        let p = Arc::new(Proc::spawn(&cmd, &log, next_id)?);
+        {
+            let mut st = slot.lock().unwrap();
+            if st.stopped {
+                drop(st);
+                kill_now(&p);
+                return Err("the bridge is stopped".to_string());
+            }
+            st.starting_proc = Some(p.clone());
+        }
+        let init = p
+            .request_async(
+                "initialize",
+                initialize_params(),
+                Instant::now() + init_timeout,
+            )
+            .await;
+        if let Err(e) = init {
+            let dead = p.clone();
+            tokio::task::spawn_blocking(move || dead.stop());
+            return Err(format!("desktop-commander did not start: {e}"));
+        }
+        p.notify("notifications/initialized", json!({}));
+        Ok(p)
     }
-    p.notify("notifications/initialized", json!({}));
-    if stopped.load(Ordering::SeqCst) {
-        let dead = p.clone();
-        tokio::task::spawn_blocking(move || dead.stop());
-        return Err("the bridge is stopped".into());
-    }
-    *g = Some(p.clone());
-    Ok(p)
+    .await;
+    let result = {
+        let mut st = slot.lock().unwrap();
+        st.starting = None;
+        st.starting_proc = None;
+        match result {
+            Ok(p) if st.stopped => {
+                kill_now(&p);
+                Err("the bridge is stopped".to_string())
+            }
+            Ok(p) => {
+                st.proc = Some(p.clone());
+                Ok(p)
+            }
+            Err(e) => Err(e),
+        }
+    };
+    let _ = tx.send(Some(result));
 }
 
 impl Bridge {
@@ -1190,34 +1228,62 @@ impl Bridge {
         Ok(Bridge {
             cmd: cmd.clone(),
             log,
-            proc: Arc::new(tokio::sync::Mutex::new(Some(proc))),
-            stopped: Arc::new(AtomicBool::new(false)),
+            slot: Arc::new(Mutex::new(State {
+                proc: Some(proc),
+                starting: None,
+                starting_proc: None,
+                stopped: false,
+            })),
             tools: Mutex::new(tools),
             next_id,
+            init_timeout: INIT_TIMEOUT,
         })
     }
 
     /// The running server, starting a fresh one if the last one died. Waits
-    /// no later than `deadline`; a start under way carries on without this
-    /// caller (it has its own 30 s limit), so a later call finds it running.
+    /// no later than `deadline`. At most one restart runs: later calls join
+    /// it. A call whose deadline has already passed starts nothing.
     async fn running(&self, deadline: Instant) -> Result<Arc<Proc>> {
-        if let Ok(g) = self.proc.try_lock() {
-            if let Some(p) = g.as_ref() {
+        let mut rx = {
+            let mut st = self.slot.lock().unwrap();
+            if let Some(p) = st.proc.as_ref() {
                 if !p.is_dead() {
                     return Ok(p.clone());
                 }
             }
-        }
-        let start = tokio::spawn(start_in(
-            self.proc.clone(),
-            self.cmd.clone(),
-            self.log.clone(),
-            self.next_id.clone(),
-            self.stopped.clone(),
-        ));
-        match tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), start).await {
-            Ok(Ok(r)) => r,
-            Ok(Err(e)) => Err(format!("desktop-commander did not start: {e}")),
+            if st.stopped {
+                return Err("the bridge is stopped".into());
+            }
+            match st.starting.as_ref() {
+                Some(rx) => rx.clone(),
+                None => {
+                    if Instant::now() >= deadline {
+                        return Err(
+                            "desktop-commander is not running and this call's time is up".into(),
+                        );
+                    }
+                    let (tx, rx) = watch::channel(None);
+                    st.starting = Some(rx.clone());
+                    tokio::spawn(restart(
+                        self.slot.clone(),
+                        tx,
+                        self.cmd.clone(),
+                        self.log.clone(),
+                        self.next_id.clone(),
+                        self.init_timeout,
+                    ));
+                    rx
+                }
+            }
+        };
+        let waited = tokio::time::timeout_at(
+            tokio::time::Instant::from_std(deadline),
+            rx.wait_for(Option::is_some),
+        )
+        .await;
+        match waited {
+            Ok(Ok(v)) => v.clone().unwrap_or_else(|| Err("no restart result".into())),
+            Ok(Err(_)) => Err("desktop-commander's restart was abandoned".into()),
             Err(_) => Err(
                 "desktop-commander was starting again and was not ready in time for this call"
                     .into(),
@@ -1286,22 +1352,28 @@ impl Bridge {
         }
     }
 
-    /// Takes the server out of the slot. A start holding the slot sees
-    /// `stopped` and cleans up after itself.
-    fn take_proc(&self) -> Option<Arc<Proc>> {
-        self.stopped.store(true, Ordering::SeqCst);
-        for _ in 0..100 {
-            if let Ok(mut g) = self.proc.try_lock() {
-                return g.take();
-            }
-            std::thread::sleep(Duration::from_millis(10));
+    /// Marks the bridge stopped and kills any restart under way at once,
+    /// without waiting for it. Never blocks.
+    pub(crate) fn abandon_starts(&self) {
+        let starting = {
+            let mut st = self.slot.lock().unwrap();
+            st.stopped = true;
+            st.starting_proc.take()
+        };
+        if let Some(p) = starting {
+            kill_now(&p);
         }
-        None
+    }
+
+    fn take_proc(&self) -> Option<Arc<Proc>> {
+        self.abandon_starts();
+        self.slot.lock().unwrap().proc.take()
     }
 
     /// Stops `desktop-commander` and everything it started: close stdin,
-    /// wait 2 s, SIGTERM the group, wait 2 s, SIGKILL it. Blocks for up to
-    /// about 6 s; from async code, call it on a blocking thread.
+    /// wait 2 s, SIGTERM the group, wait 2 s, SIGKILL it. A restart under way
+    /// is killed at once. Blocks for up to about 6 s; from async code, call
+    /// it on a blocking thread.
     pub fn stop(self) {
         if let Some(p) = self.take_proc() {
             p.stop();
@@ -1311,11 +1383,10 @@ impl Bridge {
 
 impl Drop for Bridge {
     /// Dropped without `stop` (a panic, an early return): kill the group at
-    /// once rather than leave commands running.
+    /// once rather than leave commands running. Never waits.
     fn drop(&mut self) {
         if let Some(p) = self.take_proc() {
-            p.writer.lock().unwrap().take();
-            p.signal_group(libc::SIGKILL);
+            kill_now(&p);
         }
     }
 }
@@ -1827,16 +1898,169 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_line_over_the_cap_without_an_id_fails_the_oldest_call() {
+    async fn a_line_over_the_cap_without_an_id_fails_no_call() {
         let (cmd, _dir) = fake("b-huge-noid");
         let b = Bridge::start(&cmd).unwrap();
+        // Nobody can tell whose it is, so no call is failed by it: the call
+        // ends at its own deadline, as an honest timeout.
         let t = Instant::now();
-        let out = b.call("huge_noid", json!({}), soon()).await;
-        assert!(out.is_error && out.truncated, "{out:?}");
-        assert!(t.elapsed() < Duration::from_secs(15), "{:?}", t.elapsed());
+        let out = b
+            .call(
+                "huge_noid",
+                json!({}),
+                Instant::now() + Duration::from_secs(4),
+            )
+            .await;
+        assert!(out.is_error && !out.truncated, "{out:?}");
+        assert!(text_of(&out).contains("in time"), "{}", text_of(&out));
+        assert!(t.elapsed() >= Duration::from_secs(4), "{:?}", t.elapsed());
         let out = b.call("echo", json!({}), soon()).await;
         assert_eq!(text_of(&out), "ok");
         b.stop();
+    }
+
+    #[tokio::test]
+    async fn a_huge_reply_for_a_forgotten_call_leaves_other_calls_alone() {
+        let (cmd, _dir) = fake("b-huge-late");
+        let b = Bridge::start(&cmd).unwrap();
+        // A gives up before its huge reply comes; B is still waiting when it
+        // does, and must get its own real answer.
+        let a = b.call(
+            "huge_late",
+            json!({}),
+            Instant::now() + Duration::from_millis(500),
+        );
+        let c = async {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            b.call("echo", json!({}), soon()).await
+        };
+        let (a, c) = tokio::join!(a, c);
+        assert!(a.is_error && text_of(&a).contains("in time"), "{a:?}");
+        assert!(!c.is_error && !c.truncated, "{c:?}");
+        assert_eq!(text_of(&c), "ok");
+        b.stop();
+    }
+
+    fn spawns(dir: &Path) -> usize {
+        std::fs::read_to_string(dir.join("spawns"))
+            .map(|s| s.lines().count())
+            .unwrap_or(0)
+    }
+
+    #[tokio::test]
+    async fn one_restart_serves_every_caller_and_stale_ones_start_nothing() {
+        let (cmd, dir) = fake("b-onestart");
+        let mut b = Bridge::start(&cmd).unwrap();
+        b.init_timeout = Duration::from_millis(400);
+        assert_eq!(spawns(&dir), 1);
+        let out = b.call("exit", json!({}), soon()).await;
+        assert!(out.is_error);
+        std::fs::write(dir.join("hang_init"), "").unwrap();
+        // Twenty calls arrive while the restart hangs; all give up.
+        let calls: Vec<_> = (0..20)
+            .map(|_| {
+                b.call(
+                    "echo",
+                    json!({}),
+                    Instant::now() + Duration::from_millis(300),
+                )
+            })
+            .collect();
+        for out in futures_join_all(calls).await {
+            assert!(out.is_error, "{out:?}");
+        }
+        // Long after every deadline, only the one restart ever ran.
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        assert_eq!(
+            spawns(&dir),
+            2,
+            "restarts were queued for callers that left"
+        );
+        // A call whose deadline has already passed starts nothing at all.
+        let out = b.call("echo", json!({}), Instant::now()).await;
+        assert!(out.is_error);
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert_eq!(spawns(&dir), 2);
+        b.stop();
+    }
+
+    async fn futures_join_all<F: std::future::Future>(fs: Vec<F>) -> Vec<F::Output> {
+        let mut set = Vec::new();
+        for f in fs {
+            set.push(Box::pin(f));
+        }
+        let mut out = Vec::new();
+        // Poll them together so they overlap.
+        let mut pending: Vec<_> = set.into_iter().map(Some).collect();
+        let mut results: Vec<Option<F::Output>> = (0..pending.len()).map(|_| None).collect();
+        std::future::poll_fn(|cx| {
+            let mut all = true;
+            for (i, slot) in pending.iter_mut().enumerate() {
+                if let Some(f) = slot.as_mut() {
+                    match f.as_mut().poll(cx) {
+                        std::task::Poll::Ready(v) => {
+                            results[i] = Some(v);
+                            *slot = None;
+                        }
+                        std::task::Poll::Pending => all = false,
+                    }
+                }
+            }
+            if all {
+                std::task::Poll::Ready(())
+            } else {
+                std::task::Poll::Pending
+            }
+        })
+        .await;
+        for r in results {
+            out.push(r.unwrap());
+        }
+        out
+    }
+
+    #[tokio::test]
+    async fn stop_during_a_restart_returns_at_once_and_kills_it() {
+        let (cmd, dir) = fake("b-stopstart");
+        let b = Arc::new(Bridge::start(&cmd).unwrap());
+        let out = b.call("exit", json!({}), soon()).await;
+        assert!(out.is_error);
+        std::fs::write(dir.join("hang_init"), "").unwrap();
+        let b2 = b.clone();
+        let call = tokio::spawn(async move { b2.call("echo", json!({}), soon()).await });
+        // The restart is under way, hanging in initialize.
+        // (Yield while waiting: the restart runs on this test's runtime.)
+        let mut init_sleep = None;
+        for _ in 0..200 {
+            if let Ok(t) = std::fs::read_to_string(dir.join("init_sleep.pid")) {
+                init_sleep = t.trim().parse::<i32>().ok();
+                if init_sleep.is_some() {
+                    break;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let init_sleep = init_sleep.expect("the restart reached initialize");
+        let restarting = read_pid(&dir, "fake.pid");
+        let t = Instant::now();
+        b.abandon_starts();
+        assert!(
+            t.elapsed() < Duration::from_millis(100),
+            "{:?}",
+            t.elapsed()
+        );
+        // What the restart started is killed, and its caller hears at once.
+        let out = tokio::time::timeout(Duration::from_secs(3), call)
+            .await
+            .expect("the waiting call returned")
+            .unwrap();
+        assert!(out.is_error, "{out:?}");
+        assert!(pid_gone(restarting), "restarting server outlived stop");
+        assert!(pid_gone(init_sleep), "its child outlived stop");
+        // Nothing starts after a stop.
+        let out = b.call("echo", json!({}), soon()).await;
+        assert!(out.is_error);
+        assert_eq!(spawns(&dir), 2);
     }
 
     #[tokio::test]
