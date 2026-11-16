@@ -56,8 +56,9 @@ Each spike ends in a written yes or no with evidence. This file is the record.
 - Gemini read the tool list correctly: asked for free disk space, it said the
   spike only offers echo and whoami, and called nothing.
 - Creating the client needed CI to reach Zitadel over Headscale (#4857), because
-  the homelab had moved off commercial Tailscale. The sign-in itself goes from
-  Gemini to Zitadel's and the spike's public addresses, not through that tunnel.
+  the homelab had moved off commercial Tailscale. The sign-in itself should go from
+  Gemini to Zitadel's and the spike's public addresses, not through that tunnel
+  (inferred from how they are exposed, not traced).
 - Not yet tried: the Gemini phone app.
 
 ### B: yes
@@ -81,7 +82,7 @@ Each spike ends in a written yes or no with evidence. This file is the record.
 
 ### C: no for one connection, yes with reconnects
 
-`relay-spike-client hold --hours 24` (now `bazel run //apps/suites/vitruvian-relay/spike:vitruvian-relay-spike-client -- hold`) ran
+`relay-spike-client hold --hours 24` (renamed in #4631; now `bazel run //apps/suites/vitruvian-relay/spike:vitruvian-relay-spike-client -- hold`) ran
 from 2026-11-11 18:15 to 2026-11-12 18:15 PST from James's MacBook, over home
 Wi-Fi, to `wss://relay-spike.ipv1337.dev/connect`. It sent a probe every 30 s
 and reconnected with backoff.
@@ -275,10 +276,10 @@ absent), so the verifier pins `client_id`.
 - [x] **A (Claude, web):** James adds `https://<spike-host>/mcp` in Claude with
       the `relay-claude` client id, signs in, and the echo tool runs from
       claude.ai. The Claude phone app is not tried yet (spec §11 question 12)
-- **A (ChatGPT): not done, moved to spec §11 questions 3 and 8.** The planned
-      step was this: James starts adding the connector in ChatGPT and copies its
-      callback into `chatgptRedirectUris`, then we re-apply and he finishes, if
-      his plan allows custom MCP servers.
+- [ ] **A (ChatGPT): not done, moved to spec §11 questions 3 and 8.** The
+      planned step was this: James starts adding the connector in ChatGPT and
+      copies its callback into `chatgptRedirectUris`, then we re-apply and he
+      finishes, if his plan allows custom MCP servers.
 - [x] **A (Gemini):** `relay-gemini` client (#4776, has a client secret,
       `client_secret_post`; client id `399781767172589504`, applied 2026-11-15)
       with Gemini's callback; the spike accepts it in `mcpClientIds` (#4913).

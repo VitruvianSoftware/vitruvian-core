@@ -181,9 +181,9 @@ slowest one in twenty. So:
 - A call in flight when its device's connection drops must get a clear error at
   once ("Your computer disconnected; try again"), not a hang until the deadline.
   This is a requirement for P1; no spike tested it.
-- **A retry can run a command twice.** The repeated-id rule only covers the
-  relay resending the same call. If the AI app retries, the relay sees a new
-  call with a new id, and the computer may already have run the first one.
+- **A retry could run a command twice.** The repeated-id rule only covers the
+  relay resending the same call. If the AI app retries, the relay would see a
+  new call with a new id, and the computer may already have run the first one.
   Whether to detect that (for example, by asking the connector what finished
   before the drop) is open (§11). Nothing in P0 tested it.
 - The connector must refresh its token on reconnect and retry a failed refresh.
@@ -223,8 +223,9 @@ carries only protocol messages. What the connector must do:
 - **Turn telemetry off** with `DESKTOP_COMMANDER_DISABLE_TELEMETRY=1` (per its
   source code), not through the shared config file.
 - **It fetches feature flags from its maker every 30 minutes, even with telemetry
-  off** (read in its source code, not observed in the run). The connector points that fetch elsewhere (`DC_FLAG_URL`) so a customer's
-  computer doesn't contact a third party because of us.
+  off** (read in its source code, not observed in the run). The connector
+  points that fetch elsewhere (`DC_FLAG_URL`) so a customer's computer doesn't
+  contact a third party because of us.
 - **Its settings file is shared** with any Desktop Commander the user already runs
   (`~/.claude-server-commander`; read in its source code). The connector must not depend on, or silently
   change, that file.
@@ -390,7 +391,7 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
 | Phase | Scope | Done when |
 |---|---|---|
 | **P0 spikes** | (a) ChatGPT web, Claude web and Gemini web each add an OAuth-protected MCP on our domain with Zitadel sign-in (ChatGPT researched, not tried). Settles the registration question. (b) Zitadel device flow from a CLI. (c) A WebSocket through the Cloudflare Tunnel stays up for 24 hours with reconnects. (d) A connector drives unmodified `desktop-commander` over stdio | **Done 2026-11-15.** (a) yes for Claude and Gemini, live; ChatGPT yes on paper, not tried. (b) yes. (c) yes with reconnects, no for one unbroken connection. (d) yes; the spike also showed a started command outlives a killed `desktop-commander`, so the connector needs process-group shutdown (not yet tested). Evidence in [the P0 plan](../plans/2026-11-09-relay-p0-spikes.md). Open checks moved to §11: ChatGPT (questions 3 and 8), the phone apps (question 12) |
-| **P1 single-user alpha** | Relay and connector on the homelab, one user, one device, bridging only `desktop-commander`, local rules file, no billing. Builds in the P0 findings: automatic reconnect, clean failure of in-flight calls, process-group shutdown, telemetry and flag fetch off, an answer to `server/discover` (Claude's request for the server to describe itself), and one sign-in session shared by the device approval page and the AI apps' sign-in (spike B had to sign in twice) | James runs a command on his Mac from Claude on his phone, and the "ask first" prompt appears on the Mac |
+| **P1 single-user alpha** | Relay and connector on the homelab, one user, one device, bridging only `desktop-commander`, local rules file, no billing. Builds in the P0 findings: automatic reconnect, clean failure of in-flight calls, process-group shutdown, telemetry and flag fetch off, an answer to `server/discover` (Claude's request for the server to describe itself), and one sign-in session shared by the device approval page and the AI apps' sign-in (spike B had to sign in twice; the likely cause, not confirmed, is the two login screens) | James runs a command on his Mac from Claude on his phone, and the "ask first" prompt appears on the Mac |
 | **P2 multi-user** | Sign-up, several devices, dashboard, local settings screen, both activity logs, the isolation test in CI | A second invited user connects, and the isolation test fails against a deliberately broken check |
 | **P3 launch readiness** | Stripe product line and entitlements, §9 checklist, move to GCP, Zitadel hosting, signed installers for macOS then Linux and Windows, and **Cua Driver** (`cua.ai`) alongside Desktop Commander | A stranger can sign up, pay in Stripe test mode, connect without help, and drive both terminal/file tools (Desktop Commander) and native desktop app UIs in the background (Cua Driver) |
 
@@ -437,5 +438,6 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
     outages of 3 to 6 minutes, starting 17:36 and 17:59 PST on 2026-11-12, while the laptop
     node running the pod went `NotReady`. Kubernetes moved the pod to `nuc9i9`
     at 18:04 PST that day. Keeping the pod off laptop nodes should make this rare.
-14. **Retries that run twice.** An AI app's retry after a dropped connection
-    arrives as a new call (§4). Decide whether the relay should detect it.
+14. **Retries that run twice.** Under this design, an AI app's retry after a
+    dropped connection would arrive as a new call with a new id (§4); no spike
+    tested how the apps retry. Decide whether the relay should detect it.
