@@ -1016,6 +1016,7 @@ dependencies = [
  "tokio-tungstenite",
  "ureq",
  "vitruvian-mcp-auth",
+ "vitruvian-relay-connector",
  "vitruvian-relay-protocol",
 ]
 

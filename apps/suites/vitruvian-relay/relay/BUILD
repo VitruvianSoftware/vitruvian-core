@@ -82,9 +82,36 @@ rust_test(
     crate = ":vitruvian_relay",
 )
 
+# The real relay against the real connector (tests/e2e.rs): the relay's App
+# on a loopback port, the connector's Link dialling it, an AI app over MCP.
+rust_test(
+    name = "vitruvian_relay_e2e_test",
+    size = "medium",
+    srcs = ["tests/e2e.rs"],
+    edition = "2021",
+    deps = [
+        ":vitruvian_relay",
+        "//apps/suites/vitruvian-relay/connector:vitruvian_relay_connector",
+        "//apps/suites/vitruvian-relay/protocol:vitruvian_relay_protocol",
+        "//packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth",
+        "@vitruvian_relay_crates//:base64",
+        "@vitruvian_relay_crates//:bytes",
+        "@vitruvian_relay_crates//:http",
+        "@vitruvian_relay_crates//:http-body-util",
+        "@vitruvian_relay_crates//:hyper",
+        "@vitruvian_relay_crates//:hyper-util",
+        "@vitruvian_relay_crates//:ring",
+        "@vitruvian_relay_crates//:serde_json",
+        "@vitruvian_relay_crates//:tokio",
+    ],
+)
+
 test_suite(
     name = "unit_tests",
-    tests = [":vitruvian_relay_test"],
+    tests = [
+        ":vitruvian_relay_e2e_test",
+        ":vitruvian_relay_test",
+    ],
 )
 
 pipeline_unit(

@@ -63,3 +63,7 @@ tokio = { version = "1", features = ["macros", "net", "rt", "rt-multi-thread", "
 # handshake only (server accept key, and the tests' client); no bundled TLS.
 tokio-tungstenite = { version = "0.24", default-features = false, features = ["handshake"] }
 ureq = { version = "2.12", default-features = false, features = ["tls"] }
+
+# The end-to-end test (tests/e2e.rs) runs the real connector against the relay.
+[dev-dependencies]
+vitruvian-relay-connector = { path = "../connector" }
