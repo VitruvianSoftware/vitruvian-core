@@ -81,6 +81,7 @@ pub const DENIED: &str = "Denied on the computer.";
 pub const ALREADY_STARTED: &str =
     "This call already started before vrelay restarted; not run again.";
 pub const NOT_RECORDED: &str = "vrelay could not record this call; not run.";
+pub const NOT_LOGGED: &str = "vrelay could not write this call to its log; not run.";
 pub const BLIND: &str = "vrelay could not read its record of started calls, so it runs no \
                          calls for 10 minutes after starting; not run.";
 pub const BUSY: &str = "Too many calls are running on the computer; not run.";
@@ -403,6 +404,11 @@ pub struct Link<T, A, K> {
 
 enum LogMsg {
     Line(String),
+    /// Written and synced to disk before the answer is sent.
+    Synced(
+        String,
+        std::sync::mpsc::Sender<std::result::Result<(), String>>,
+    ),
     Flush(std::sync::mpsc::Sender<()>),
 }
 
@@ -429,9 +435,20 @@ impl CallLog {
                         while hold.as_ref().is_some_and(|h| h.load(Ordering::SeqCst)) {
                             std::thread::sleep(Duration::from_millis(5));
                         }
-                        if let Err(e) = append_log_line(&dir, max_bytes, &line) {
+                        if let Err(e) = append_log_line(&dir, max_bytes, &line, false) {
                             log(&format!("could not write the calls log: {e}"));
                         }
+                    }
+                    LogMsg::Synced(line, done) => {
+                        #[cfg(test)]
+                        while hold.as_ref().is_some_and(|h| h.load(Ordering::SeqCst)) {
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        let r = append_log_line(&dir, max_bytes, &line, true);
+                        if let Err(e) = &r {
+                            log(&format!("could not write the calls log: {e}"));
+                        }
+                        let _ = done.send(r);
                     }
                     LogMsg::Flush(done) => {
                         let _ = done.send(());
@@ -444,6 +461,17 @@ impl CallLog {
 
     fn line(&self, v: Value) {
         let _ = self.tx.send(LogMsg::Line(v.to_string()));
+    }
+
+    /// Writes `v` (after every line sent before it) and syncs the file.
+    /// Blocking; waits at most `limit`.
+    fn line_synced(&self, v: Value, limit: Duration) -> std::result::Result<(), String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.tx
+            .send(LogMsg::Synced(v.to_string(), tx))
+            .map_err(|_| "the calls log writer has stopped".to_string())?;
+        rx.recv_timeout(limit)
+            .map_err(|_| format!("the calls log was not written within {limit:?}"))?
     }
 
     /// Waits (at most `limit`) until every line sent so far is written.
@@ -483,7 +511,12 @@ fn open_private_append(path: &Path) -> std::result::Result<std::fs::File, String
 
 /// One line to `calls.log`, rotating it to `calls.log.1` (replacing an older
 /// one) first if the line would take it past `max_bytes`.
-fn append_log_line(dir: &Path, max_bytes: u64, line: &str) -> std::result::Result<(), String> {
+fn append_log_line(
+    dir: &Path,
+    max_bytes: u64,
+    line: &str,
+    sync: bool,
+) -> std::result::Result<(), String> {
     ensure_dir(dir)?;
     let path = dir.join(CALLS_LOG);
     let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
@@ -493,6 +526,7 @@ fn append_log_line(dir: &Path, max_bytes: u64, line: &str) -> std::result::Resul
     }
     let mut f = open_private_append(&path)?;
     f.write_all(format!("{line}\n").as_bytes())
+        .and_then(|_| if sync { f.sync_data() } else { Ok(()) })
         .map_err(|e| format!("write {}: {e}", path.display()))
 }
 
@@ -527,6 +561,8 @@ enum Phase {
 
 struct Entry {
     at: Instant,
+    /// The call's deadline (clamped to the call budget).
+    deadline: Instant,
     /// The connection it came on.
     conn: u64,
     phase: Phase,
@@ -609,9 +645,18 @@ impl Calls {
             .count()
     }
 
-    fn in_flight_on(&self, conn: u64) -> bool {
+    /// Whether the relay is still waiting on a call from this connection,
+    /// and so pinging every 2 s: not once it was cancelled (it keeps running
+    /// here, but the relay forgot it), stopped at its dialog, answered, or
+    /// past its deadline.
+    fn relay_waiting_on(&self, conn: u64, now: Instant) -> bool {
         self.live.values().any(|e| {
-            e.conn == conn && matches!(e.phase, Phase::Prompting { .. } | Phase::Running { .. })
+            e.conn == conn
+                && now < e.deadline
+                && matches!(
+                    e.phase,
+                    Phase::Prompting { stop: None, .. } | Phase::Running { cancelled: false }
+                )
         })
     }
 
@@ -647,7 +692,9 @@ fn read_seen(path: &Path) -> SeenFile {
         Err(e) => return SeenFile::Unreadable(e.to_string()),
     };
     let mut out = Vec::new();
-    for (i, l) in text.lines().enumerate() {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let last = lines.len() - 1;
+    for (i, l) in lines.iter().enumerate() {
         if l.trim().is_empty() {
             continue;
         }
@@ -656,10 +703,37 @@ fn read_seen(path: &Path) -> SeenFile {
             .and_then(|v| Some((v.get("id")?.as_str()?.to_string(), v.get("t")?.as_u64()?)));
         match rec {
             Some(r) => out.push(r),
+            // Each id is one `write` of the record plus its newline, synced
+            // before the call runs. A last line with no newline is an append
+            // that never finished: that call never ran, so the line can go.
+            None if i == last => {}
             None => return SeenFile::Unreadable(format!("line {} is not an id record", i + 1)),
         }
     }
     SeenFile::Read(out)
+}
+
+/// The name of a moved-aside record: `seen_calls.jsonl.corrupt-<unix time>`.
+const CORRUPT: &str = ".corrupt-";
+
+/// The end of a refusal window opened by an unreadable record, if one is
+/// still open: the newest `seen_calls.jsonl.corrupt-<ts>` with `ts` less
+/// than a window ago (a `ts` in the future counts as now).
+fn open_window(dir: &Path, now_unix: u64, window: Duration) -> Option<u64> {
+    let prefix = format!("{SEEN_CALLS}{CORRUPT}");
+    std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            e.file_name()
+                .to_str()?
+                .strip_prefix(&prefix)?
+                .parse::<u64>()
+                .ok()
+        })
+        .map(|ts| ts.min(now_unix) + window.as_secs())
+        .filter(|until| now_unix < *until)
+        .max()
 }
 
 fn error_result(call_id: &str, text: &str) -> CallResult {
@@ -731,10 +805,14 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         let _turn = self.seen_lock.lock().unwrap();
         let body = {
             let mut calls = self.calls.lock().unwrap();
-            if calls.blind_until.is_some() {
-                // The unreadable file was not moved aside, or may hold ids:
-                // never overwrite it.
-                return Ok(());
+            match calls.blind_until {
+                // Inside the window the unreadable file may not have been
+                // moved aside, and may hold ids: never overwrite it. Every id
+                // it held is older than the window, so after it the file
+                // can be rewritten as usual.
+                Some(until) if (self.clock)() < until => return Ok(()),
+                Some(_) => calls.blind_until = None,
+                None => {}
             }
             calls.appended = 0;
             calls.seen_body()
@@ -774,10 +852,11 @@ impl<T: Tools, A: Asker> Shared<T, A> {
     fn refuse_unrecorded(&self, call_id: &str, tool: &str, args: &Value, why: &str, out: &Out) {
         (self.log)(&format!("call {call_id}: not recorded, so not run: {why}"));
         let r = error_result(call_id, NOT_RECORDED);
-        self.calls
-            .lock()
-            .unwrap()
-            .finish(call_id, r.clone(), self.timing.results_cap_bytes);
+        {
+            let mut calls = self.calls.lock().unwrap();
+            calls.seen.retain(|(id, _)| id != call_id);
+            calls.finish(call_id, r.clone(), self.timing.results_cap_bytes);
+        }
         self.log_call(
             call_id,
             tool,
@@ -863,6 +942,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                 call_id.clone(),
                 Entry {
                     at: received,
+                    deadline,
                     conn,
                     phase: Phase::Running { cancelled: false },
                 },
@@ -886,7 +966,12 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                 return refuse(&call_id, DIALOG_OPEN, "another dialog is open");
             }
         }
-        calls.seen.push((call_id.clone(), now_unix));
+        // Only a call that will run goes into the record (a refused one
+        // never ran, so a later repeat must not be told it "already
+        // started").
+        if !matches!(decision, Decision::Refuse(_)) {
+            calls.seen.push((call_id.clone(), now_unix));
+        }
         let dismiss = Arc::new(AtomicBool::new(false));
         let phase = match &decision {
             Decision::AskFirst => Phase::Prompting {
@@ -899,6 +984,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
             call_id.clone(),
             Entry {
                 at: received,
+                deadline,
                 conn,
                 phase,
             },
@@ -1052,6 +1138,30 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         }
     }
 
+    /// Whether the call may still start: not cancelled, not past its
+    /// deadline (the relay has given up on it). If not, it is finished here
+    /// (nothing is sent: the relay no longer waits) and logged. Checked
+    /// under the lock a cancel takes.
+    fn may_start(&self, call_id: &str, tool: &str, args: &Value, deadline: Instant) -> bool {
+        let mut calls = self.calls.lock().unwrap();
+        let stop = match calls.live.get(call_id).map(|e| &e.phase) {
+            Some(Phase::Running { cancelled: true }) => {
+                ("cancelled before running", CANCELLED_EARLY)
+            }
+            Some(Phase::Running { cancelled: false }) if Instant::now() < deadline => return true,
+            Some(Phase::Running { cancelled: false }) => ("timed out", TIMED_OUT),
+            _ => return false,
+        };
+        calls.finish(
+            call_id,
+            error_result(call_id, stop.1),
+            self.timing.results_cap_bytes,
+        );
+        drop(calls);
+        self.log_call(call_id, tool, args, stop.0, json!({}));
+        false
+    }
+
     async fn run_tool(
         self: Arc<Self>,
         call_id: String,
@@ -1062,35 +1172,35 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         out: Out,
     ) {
         let cap = self.timing.results_cap_bytes;
-        // A cancel that came before it started stops it.
-        {
-            let mut calls = self.calls.lock().unwrap();
-            match calls.live.get(&call_id).map(|e| &e.phase) {
-                Some(Phase::Running { cancelled: false }) => {}
-                Some(Phase::Running { cancelled: true }) => {
-                    calls.finish(&call_id, error_result(&call_id, CANCELLED_EARLY), cap);
-                    drop(calls);
-                    self.log_call(
-                        &call_id,
-                        &tool,
-                        &args,
-                        "cancelled before running",
-                        json!({}),
-                    );
-                    return;
-                }
-                _ => return,
-            }
+        if !self.may_start(&call_id, &tool, &args, deadline) {
+            return;
         }
-        // Logged before it starts, so a command cut off by a crash or a stop
-        // still has a line.
-        self.log_call(
-            &call_id,
-            &tool,
-            &args,
-            "running",
-            json!({"approval": approval}),
-        );
+        // On disk before it starts, so a command cut off by a crash, a
+        // SIGKILL or a power cut still has a line.
+        let line = json!({
+            "t": (self.clock)(),
+            "call_id": call_id,
+            "tool": tool,
+            "decision": "running",
+            "arguments": args,
+            "approval": approval,
+        });
+        let log = self.calls_log.clone();
+        let written =
+            tokio::task::spawn_blocking(move || log.line_synced(line, Duration::from_secs(10)))
+                .await
+                .unwrap_or_else(|e| Err(format!("the log task failed: {e}")));
+        if let Err(e) = written {
+            (self.log)(&format!("call {call_id}: not logged, so not run: {e}"));
+            let r = error_result(&call_id, NOT_LOGGED);
+            self.calls.lock().unwrap().finish(&call_id, r.clone(), cap);
+            let _ = out.send(ToRelay::Result(r));
+            return;
+        }
+        // A cancel or the deadline may have come while the line was synced.
+        if !self.may_start(&call_id, &tool, &args, deadline) {
+            return;
+        }
         let started = Instant::now();
         let output = self.tools.call(&tool, args, deadline).await;
         let r = CallResult {
@@ -1317,8 +1427,11 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
             SeenFile::Unreadable(why) => {
                 // Keeping the lines that parse could let an id in a damaged
                 // line run twice; refusing every call for one window cannot.
-                let aside = self.dir.join(format!("{SEEN_CALLS}.corrupt-{now_unix}"));
+                let aside = self.dir.join(format!("{SEEN_CALLS}{CORRUPT}{now_unix}"));
                 let moved = std::fs::rename(&path, &aside);
+                // The moved file is the durable mark of the window (below):
+                // make the rename survive a power cut.
+                sync_dir(&aside);
                 (self.log)(&format!(
                     "{SEEN_CALLS} is unreadable ({why}); moved to {} ({}); refusing calls for {} s",
                     aside.display(),
@@ -1329,6 +1442,18 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
                     window.as_secs()
                 ));
                 calls.blind_until = Some(now_unix + window.as_secs());
+            }
+        }
+        // A window opened by an earlier vrelay still holds: the moved-aside
+        // file's name says when it began.
+        if let Some(until) = open_window(&self.dir, now_unix, window) {
+            if calls.blind_until.is_none_or(|u| u < until) {
+                (self.log)(&format!(
+                    "a record of started calls was unreadable at an earlier start; \
+                     refusing calls for {} s more",
+                    until - now_unix
+                ));
+                calls.blind_until = Some(until);
             }
         }
         let calls_log = CallLog::start(
@@ -1647,7 +1772,7 @@ async fn session<T: Tools, A: Asker>(
             // outlives a link the relay has already given up on.
             _ = in_call.tick() => {
                 if last_heard.elapsed() >= silent_limit
-                    && shared.calls.lock().unwrap().in_flight_on(conn)
+                    && shared.calls.lock().unwrap().relay_waiting_on(conn, Instant::now())
                 {
                     break format!("nothing from the relay for {silent_limit:?} during a call");
                 }

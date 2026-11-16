@@ -210,6 +210,10 @@ struct FakeTools {
     defs: Mutex<Vec<ToolDef>>,
     calls: Mutex<Vec<(String, Value)>>,
     deadlines: Mutex<Vec<Instant>>,
+    /// If set, each call checks that this calls.log already holds its
+    /// `running` line, and notes the answer.
+    log_path: Mutex<Option<PathBuf>>,
+    logged_first: Mutex<Vec<bool>>,
 }
 
 impl FakeTools {
@@ -236,6 +240,14 @@ impl Tools for FakeTools {
         deadline: Instant,
     ) -> impl Future<Output = BridgeOutput> + Send {
         self.deadlines.lock().unwrap().push(deadline);
+        if let Some(p) = self.log_path.lock().unwrap().as_ref() {
+            let text = std::fs::read_to_string(p).unwrap_or_default();
+            let on_disk = text.lines().any(|l| {
+                serde_json::from_str::<Value>(l)
+                    .is_ok_and(|v| v["decision"] == "running" && v["arguments"] == args)
+            });
+            self.logged_first.lock().unwrap().push(on_disk);
+        }
         self.calls
             .lock()
             .unwrap()
@@ -1319,7 +1331,7 @@ async fn extreme_frame_values_never_panic() {
     let tools = p.tools.clone();
     let _run = start(&dir, &relay.url(), p);
     let (mut c, _) = relay.welcome().await;
-    for (id, deadline_ms) in [("max", u64::MAX), ("zero", 0), ("big", u64::MAX / 2)] {
+    for (id, deadline_ms) in [("max", u64::MAX), ("big", u64::MAX / 2)] {
         let before = Instant::now();
         c.send(ToConnector::Call(Call {
             call_id: id.into(),
@@ -1334,6 +1346,13 @@ async fn extreme_frame_values_never_panic() {
             "{id}: deadline past the budget"
         );
     }
+    // A zero deadline: already over, so it never runs (and nothing panics).
+    c.send(ToConnector::Call(Call {
+        call_id: "zero".into(),
+        tool: "read_file".into(),
+        arguments: json!({"path": "/a"}),
+        deadline_ms: 0,
+    }));
     for n in [0, u64::MAX] {
         c.send(ToConnector::Ping { n });
         match c.recv_any().await {
@@ -1731,4 +1750,244 @@ async fn the_calls_log_rotates_and_every_file_is_0600() {
         assert_eq!(m.permissions().mode() & 0o777, 0o600, "{n}");
         assert!(m.len() <= 600, "{n} is {} bytes", m.len());
     }
+}
+
+// ------------------------------------------------------- fix round 2 tests
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cancelling_a_running_call_does_not_trip_the_silence_check() {
+    // The relay stops its 2 s pings once it has no call pending: here a
+    // cancelled call keeps running and another has been answered.
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-silence-cancel");
+    let mut p = parts();
+    p.timing.in_call_every = Duration::from_millis(100);
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("slow", "read_file", json!({"path": "/a", "sleep_ms": 1500}));
+    until("the slow call to start", || tools.count() == 1).await;
+    c.send(ToConnector::Cancel {
+        call_id: "slow".into(),
+    });
+    c.call("fast", "read_file", json!({"path": "/b"}));
+    assert_eq!(c.result().await.call_id, "fast");
+    // Silent for 8 intervals: the link stays up.
+    c.quiet_for(Duration::from_millis(800)).await;
+    assert!(relay.conns.try_recv().is_err(), "the link was dropped");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restart_inside_the_refusal_window_still_refuses() {
+    let dir = registered("l-blind-restart");
+    let line = json!({"id": "c1", "t": now_unix()});
+    std::fs::write(dir.join("seen_calls.jsonl"), format!("not json\n{line}\n")).unwrap();
+    let clock = Arc::new(TestClock::default());
+    let run_once = |clock: &Arc<TestClock>| {
+        let mut p = parts();
+        p.clock = clock.clock();
+        p
+    };
+    let mut relay = FakeRelay::start().await;
+    let first = start(&dir, &relay.url(), run_once(&clock));
+    let (mut c, _) = relay.welcome().await;
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    assert_eq!(text(&c.result().await), BLIND);
+    // vrelay restarts a minute later: still inside the window.
+    drop(first);
+    drop(c);
+    clock.advance(60);
+    let mut relay = FakeRelay::start().await;
+    let second = start(&dir, &relay.url(), run_once(&clock));
+    let (mut c, _) = relay.welcome().await;
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    assert_eq!(text(&c.result().await), BLIND);
+    // Restarted again after the window: calls run.
+    drop(second);
+    drop(c);
+    clock.advance(541);
+    let mut relay = FakeRelay::start().await;
+    let p = run_once(&clock);
+    let tools = p.tools.clone();
+    let _third = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    assert!(!c.result().await.is_error);
+    assert_eq!(tools.count(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_running_line_is_on_disk_before_the_tool_starts() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-durable-line");
+    let mut p = parts();
+    let hold = Arc::new(AtomicBool::new(true));
+    p.hooks.hold_log = Some(hold.clone());
+    *p.tools.log_path.lock().unwrap() = Some(dir.join("logs").join("calls.log"));
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    // While the log cannot be written, the tool does not start.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(tools.count(), 0);
+    hold.store(false, Ordering::SeqCst);
+    assert!(!c.result().await.is_error);
+    assert_eq!(*tools.logged_first.lock().unwrap(), [true]);
+
+    // A log that cannot be written at all: the call is refused, not run.
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-nolog");
+    std::fs::write(dir.join("logs"), b"not a folder").unwrap();
+    let p = parts();
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    assert_eq!(text(&c.result().await), NOT_LOGGED);
+    assert_eq!(tools.count(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_call_past_its_deadline_never_reaches_the_tools() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-late");
+    let mut p = parts();
+    let g = gate();
+    p.hooks.before_run = Some(g.clone());
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    let call = |id: &str, tool: &str, deadline_ms| {
+        ToConnector::Call(Call {
+            call_id: id.into(),
+            tool: tool.into(),
+            arguments: json!({"path": "/a", "command": "ls"}),
+            deadline_ms,
+        })
+    };
+    // No prompt: its deadline passes while its id is being recorded.
+    c.send(call("late", "read_file", 200));
+    tokio::time::timeout(WAIT, g.reached.notified())
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    g.go.notify_one();
+    until_logged(&dir, "timed out").await;
+    // Allowed, but already past its deadline.
+    c.send(call("allowed", "start_process", 0));
+    let end = Instant::now() + WAIT;
+    while log_lines(&dir)
+        .iter()
+        .filter(|l| l["decision"] == "timed out")
+        .count()
+        < 2
+    {
+        assert!(Instant::now() < end, "no second `timed out`");
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    c.quiet_for(Duration::from_millis(200)).await;
+    assert_eq!(tools.count(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_record_is_tidied_again_once_the_refusal_window_ends() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-blind-compact");
+    std::fs::write(dir.join("seen_calls.jsonl"), "garbage\n{}\n").unwrap();
+    let clock = Arc::new(TestClock::default());
+    let mut p = parts();
+    p.clock = clock.clock();
+    p.timing.prune_every = Duration::from_millis(50);
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    clock.advance(601);
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    assert!(!c.result().await.is_error);
+    let seen = dir.join("seen_calls.jsonl");
+    assert!(std::fs::read_to_string(&seen).unwrap().contains("c1"));
+    clock.advance(601);
+    until("c1 to leave the record", || {
+        !std::fs::read_to_string(&seen)
+            .unwrap_or_default()
+            .contains("c1")
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_torn_last_line_is_dropped_but_any_other_bad_line_refuses() {
+    let line = json!({"id": "c1", "t": now_unix()});
+    // A power cut mid-append: the last line has no newline.
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-torn");
+    std::fs::write(
+        dir.join("seen_calls.jsonl"),
+        format!("{line}\n{{\"id\":\"c2\",\"t"),
+    )
+    .unwrap();
+    let p = parts();
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("new", "read_file", json!({"path": "/a"}));
+    assert!(!c.result().await.is_error);
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    assert_eq!(text(&c.result().await), ALREADY_STARTED);
+    assert_eq!(tools.count(), 1);
+    assert!(open_window(&dir, now_unix(), Duration::from_secs(600)).is_none());
+
+    // A bad line anywhere else, even with a good last line: refused.
+    for body in [
+        format!("{{\"id\":\"c2\",\"t\n{line}\n"),
+        format!("{line}\nnot json\n{line}"),
+    ] {
+        let mut relay = FakeRelay::start().await;
+        let dir = registered("l-torn-mid");
+        std::fs::write(dir.join("seen_calls.jsonl"), body).unwrap();
+        let _run = start(&dir, &relay.url(), parts());
+        let (mut c, _) = relay.welcome().await;
+        c.call("new", "read_file", json!({"path": "/a"}));
+        assert_eq!(text(&c.result().await), BLIND);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refused_id_is_not_recorded_as_started() {
+    let dir = registered("l-refused-norecord");
+    // An id about to expire, so the prune timer rewrites the record below.
+    let old = json!({"id": "old", "t": now_unix() - 590});
+    std::fs::write(dir.join("seen_calls.jsonl"), format!("{old}\n")).unwrap();
+    let clock = Arc::new(TestClock::default());
+    let mut p = parts();
+    p.clock = clock.clock();
+    p.timing.prune_every = Duration::from_millis(50);
+    let mut relay = FakeRelay::start().await;
+    let first = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("r1", "set_config_value", json!({"key": "x"}));
+    let refused = text(&c.result().await);
+    assert!(refused.contains("not available remotely"), "{refused}");
+    c.call("ok", "read_file", json!({"path": "/a"}));
+    c.result().await;
+    // "old" expires; the record is rewritten from memory.
+    clock.advance(20);
+    let seen = dir.join("seen_calls.jsonl");
+    until("the rewrite", || {
+        !std::fs::read_to_string(&seen)
+            .unwrap_or_default()
+            .contains("old")
+    })
+    .await;
+    let kept = std::fs::read_to_string(&seen).unwrap();
+    assert!(kept.contains("\"ok\"") && !kept.contains("r1"), "{kept}");
+    drop(first);
+    drop(c);
+    let mut p = parts();
+    p.clock = clock.clock();
+    let mut relay = FakeRelay::start().await;
+    let _second = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("r1", "set_config_value", json!({"key": "x"}));
+    assert_eq!(text(&c.result().await), refused);
 }
