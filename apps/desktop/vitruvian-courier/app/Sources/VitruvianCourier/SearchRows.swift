@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AppKit
 import VitruvianCourierCore
 import SwiftUI
 
@@ -10,6 +11,8 @@ struct SearchRowView: View {
     let item: SearchItem
     let isSelected: Bool
     let networkName: (String) -> String
+    /// The title of the chat a found message is in, as that chat's inbox row shows it.
+    var chatTitle: (MessageHit) -> String = { $0.roomName }
     /// A row of the Bookmarks section: the message, with a bookmark beside it.
     var isBookmark = false
     @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
@@ -50,7 +53,8 @@ struct SearchRowView: View {
         case let .person(person):
             PersonResultRow(person: person, networkName: networkName(person.network))
         case let .message(hit):
-            MessageResultRow(hit: hit, isBookmark: isBookmark, timeFormat: composerPreferences.timeFormat)
+            MessageResultRow(hit: hit, chatTitle: chatTitle(hit), networkName: networkName(hit.network),
+                             isBookmark: isBookmark, timeFormat: composerPreferences.timeFormat)
         case let .recentSearch(text):
             HStack(spacing: 10) {
                 Image(systemName: "clock")
@@ -131,9 +135,42 @@ private struct PersonResultRow: View {
     }
 }
 
-/// A message found: who sent it, in which chat, when, and the words around the match with the matches in bold.
+/// What a message row says, as styled text: where the message is, and the words around the match.
+enum SearchRowText {
+    /// The soft tint behind a matched word: the system's find-highlight yellow, light enough for the text over it to
+    /// keep its contrast in light and in dark mode.
+    static var matchTint: Color { Color(nsColor: .findHighlightColor).opacity(0.4) }
+
+    /// "<Sender> in <chat> · <Network>": the sender strong and in the primary colour, the rest secondary.
+    static func location(sender: String, line: String) -> AttributedString {
+        var text = AttributedString(line)
+        text.foregroundColor = .secondary
+        if line.hasPrefix(sender), !sender.isEmpty, let bounds = text.range(of: sender) {
+            text[bounds].foregroundColor = .primary
+            text[bounds].inlinePresentationIntent = .stronglyEmphasized
+        }
+        return text
+    }
+
+    /// The snippet with each matched word in bold on a soft tint. The ranges are the engine's, from the matching the
+    /// search itself uses (case and accents ignored, a prefix of the last word), so a row highlights what made it a
+    /// result and nothing else.
+    static func snippet(of hit: MessageHit) -> AttributedString {
+        var text = hit.highlightedSnippet
+        for range in hit.matchRanges {
+            guard let bounds = Range<AttributedString.Index>(range, in: text) else { continue }
+            text[bounds].backgroundColor = matchTint
+        }
+        return text
+    }
+}
+
+/// A message found: who sent it, in which chat and network, when, and the words around the match with the matches in
+/// bold on a soft tint.
 private struct MessageResultRow: View {
     let hit: MessageHit
+    let chatTitle: String
+    let networkName: String
     var isBookmark = false
     var timeFormat: TimeFormatPreference = .system
     @Environment(\.redactNamesAndPictures) private var isRedacted
@@ -147,14 +184,10 @@ private struct MessageResultRow: View {
                         .foregroundStyle(.orange)
                         .accessibilityLabel(String(localized: "Bookmarked"))
                 }
-                Text(isRedacted && !hit.mine ? AppearancePreferences.redactedText(hit.senderLine, kind: .name)
-                    : hit.senderLine)
-                    .font(.callout.weight(.semibold))
-                    .lineLimit(1)
-                Text(SearchRedaction.chatTitle(hit.roomName, redacted: isRedacted))
+                Text(SearchRowText.location(sender: sender, line: locationLine))
                     .font(.callout)
-                    .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .truncationMode(.tail)
                 if let tag = hit.place.tag { PlaceTag(text: tag) }
                 Spacer(minLength: 6)
                 Text(SearchDate.text(forMillis: hit.ts, timeFormat: timeFormat))
@@ -163,18 +196,29 @@ private struct MessageResultRow: View {
                     .fixedSize()
             }
             // The ranges are the engine's UTF-16 offsets, made bold in VitruvianCourierCore (Ruling 3).
-            Text(hit.highlightedSnippet)
+            Text(SearchRowText.snippet(of: hit))
                 .font(.callout)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.leading, 4)
     }
+
+    private var sender: String {
+        isRedacted && !hit.mine ? AppearancePreferences.redactedText(hit.senderLine, kind: .name) : hit.senderLine
+    }
+
+    private var locationLine: String {
+        SearchResultLocation.subtitle(
+            sender: sender, chatTitle: SearchRedaction.chatTitle(chatTitle, redacted: isRedacted),
+            networkName: networkName, isDirect: hit.isDirect)
+    }
 }
 
 /// A photo or video found, in the Media grid: its thumbnail, with its date on hover.
 struct MediaCell: View {
     let hit: MessageHit
+    var chatTitle: String? = nil
     let isSelected: Bool
     @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
     @State private var image: CGImage?
@@ -192,7 +236,7 @@ struct MediaCell: View {
             locale: locale,
             timeFormat: composerPreferences.timeFormat
         )
-        return "\(hit.senderLine) · \(hit.roomName) · \(dateText)"
+        return "\(hit.senderLine) · \(chatTitle ?? hit.roomName) · \(dateText)"
     }
 
     var body: some View {

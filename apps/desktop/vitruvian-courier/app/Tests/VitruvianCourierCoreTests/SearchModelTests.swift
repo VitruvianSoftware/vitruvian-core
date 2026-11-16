@@ -663,6 +663,87 @@ final class SearchModelTests: XCTestCase {
                        "⌘F inside a merged chat must pass the merge's member room IDs to search.query")
         XCTAssertEqual(h.search.scope?.id, "merge:alice", "scope must remain on the merged chat")
     }
+
+    // MARK: - Search in the open chat, and where a result is
+
+    func testSearchInChatLineSitsAboveTheRowsAndIsReachedWithUp() async throws {
+        let h = try await start(rooms: [room("!a", ts: 1)])
+        h.app.selectedRoomID = "!a"
+        h.script.results["picnic"] = searchResult(messages: [messageHit("$t1", room: "!a")])
+        try await h.showHome()
+        XCTAssertEqual(h.search.inChatOfferRoomID, "!a", "a chat is open and every chat is searched")
+
+        try await h.type("picnic")
+        try await waitUntil { h.search.phase == .results }
+        XCTAssertEqual(h.search.selection, "message:$t1", "the rows come first: Return still opens the first result")
+        h.search.moveSelection(-1)
+        XCTAssertEqual(h.search.selection, SearchModel.inChatItemID, "↑ from the first row reaches the line")
+        h.search.moveSelection(1)
+        XCTAssertEqual(h.search.selection, "message:$t1")
+        h.search.moveSelection(-5)
+        XCTAssertEqual(h.search.selection, SearchModel.inChatItemID, "and it is the top of the list")
+    }
+
+    func testNoSearchInChatLineWithoutAnOpenChatOrInsideAChat() async throws {
+        let h = try await start(rooms: [room("!a", ts: 1)])
+        try await h.showHome()
+        XCTAssertNil(h.search.inChatOfferRoomID, "no chat is open")
+
+        h.app.selectedRoomID = "!a"
+        XCTAssertEqual(h.search.inChatOfferRoomID, "!a")
+        h.search.show(in: "!a")
+        try await waitUntil { h.search.scope?.roomID == "!a" }
+        XCTAssertNil(h.search.inChatOfferRoomID, "already searching in it")
+
+        h.search.close()
+        XCTAssertNil(h.search.inChatOfferRoomID, "the panel is closed")
+    }
+
+    func testReturnOnTheSearchInChatLineSearchesThatChatWithWhatIsTyped() async throws {
+        let h = try await start(rooms: [room("!a", ts: 1, name: "Eddie & Kent")])
+        h.app.selectedRoomID = "!a"
+        h.script.results["picnic"] = searchResult(messages: [messageHit("$t1", room: "!a")])
+        try await h.showHome()
+        try await h.type("picnic")
+        try await waitUntil { h.search.phase == .results }
+        h.search.moveSelection(-1)
+
+        h.search.activate()
+        try await waitUntil { h.search.scope?.roomID == "!a" }
+        try await waitUntil { (h.searches.last?["filters"] as? [String: Any])?["room_ids"] as? [String] == ["!a"] }
+        XCTAssertEqual(h.search.text, "picnic", "what was typed is kept")
+        XCTAssertNotEqual(h.search.phase, .closed, "the panel stays, now searching the chat")
+        XCTAssertEqual(h.opened, [], "nothing is opened")
+        XCTAssertEqual(h.recents.searches, [], "nothing was opened, so nothing is remembered")
+    }
+
+    func testClickingTheSearchInChatLineDoesTheSame() async throws {
+        let h = try await start(rooms: [room("!a", ts: 1)])
+        h.app.selectedRoomID = "!a"
+        try await h.showHome()
+        h.search.text = "pic"
+        XCTAssertTrue(h.search.searchInOpenChat())
+        try await waitUntil { h.search.scope?.roomID == "!a" }
+        XCTAssertEqual(h.search.text, "pic")
+        XCTAssertFalse(h.search.searchInOpenChat(), "no line to click inside the chat")
+    }
+
+    func testResultsReadTheRowsOfTheChatsTheyAreIn() async throws {
+        let h = try await start(rooms: [room("!old", ts: 1, name: "Dinner crew")])
+        h.script.results["picnic"] = searchResult(messages: [
+            messageHit("$t1", room: "!old"), messageHit("$t2", room: "!old"),
+        ])
+        try await h.showHome()
+        try await h.type("picnic")
+        try await waitUntil { h.search.phase == .results }
+        try await waitUntil { h.search.hitRows["!old"] != nil }
+        XCTAssertEqual(h.search.hitRows["!old"]?.name, "Dinner crew", "the chat's row, as the inbox has it")
+        XCTAssertEqual(dicts(h.server.receivedParams("inbox.list")), dicts([["room_ids": ["!old"]]]),
+                       "one read for both results in the same chat")
+
+        h.search.close()
+        XCTAssertEqual(h.search.hitRows, [:], "forgotten with the panel's results")
+    }
 }
 
 // MARK: - Harness

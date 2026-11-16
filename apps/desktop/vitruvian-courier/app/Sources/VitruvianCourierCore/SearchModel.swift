@@ -182,6 +182,9 @@ public final class SearchModel: ObservableObject {
     @Published public private(set) var hint: String = ""
     /// false while older messages are still being added to search: results may be missing some.
     @Published public private(set) var complete = true
+    /// The rows of the chats the messages found are in, by room ID, read from the engine for the ones the inbox's
+    /// list may not hold. A result's chat title comes from its row (`InboxModel.chatTitle(for:fetchedRow:)`).
+    @Published public private(set) var hitRows: [String: InboxRow] = [:]
 
     public static let debounce: Duration = .milliseconds(150)
     /// "Searching…" only after this.
@@ -190,6 +193,9 @@ public final class SearchModel: ObservableObject {
     public static let chatsShown = 5
     /// What "Show more" asks for in chats and in groups.
     public static let moreChats = 100
+    /// The selection id of the "Press ⌘F to search in <chat>" line above the rows. Never the first selection: the
+    /// rows are; ↑ from the first row reaches it.
+    public static let inChatItemID = "in-chat-offer"
 
     private let appModel: AppModel
     private let recents: RecentSearches
@@ -301,6 +307,7 @@ public final class SearchModel: ObservableObject {
         hint = ""
         engineRan = false
         complete = true
+        hitRows = [:]
         firstPage = nil
         cursors = [:]
         pendingOpen = nil
@@ -383,12 +390,31 @@ public final class SearchModel: ObservableObject {
         selection = id
     }
 
-    /// ↑ ↓ ⌃P ⌃N: the row `delta` rows away, across sections, stopping at either end.
+    /// The open chat, when the panel can offer to search in it: it searches every chat, and a chat is open. That
+    /// chat's "Press ⌘F to search in …" line sits above the rows.
+    public var inChatOfferRoomID: String? {
+        guard phase != .closed, scopeRoomID == nil, !isLocked,
+              let roomID = appModel.selectedRoomID, !roomID.isEmpty else { return nil }
+        return roomID
+    }
+
+    /// Return on the "Press ⌘F to search in …" line, or a click on it: searches the open chat, keeping what is
+    /// typed and filtered, as ⌘F does. False when there is no such line.
+    @discardableResult
+    public func searchInOpenChat() -> Bool {
+        guard let roomID = inChatOfferRoomID else { return false }
+        show(in: roomID)
+        return true
+    }
+
+    /// ↑ ↓ ⌃P ⌃N: the row `delta` rows away, across sections, stopping at either end. The "search in this chat"
+    /// line is the row above the first.
     public func moveSelection(_ delta: Int) {
-        let ids = allItems.map(\.id)
+        let rows = allItems.map(\.id)
+        let ids = (inChatOfferRoomID == nil ? [] : [Self.inChatItemID]) + rows
         guard !ids.isEmpty else { return }
         guard let selection, let index = ids.firstIndex(of: selection) else {
-            self.selection = ids.first
+            self.selection = rows.first ?? ids.first
             return
         }
         self.selection = ids[max(0, min(ids.count - 1, index + delta))]
@@ -410,6 +436,8 @@ public final class SearchModel: ObservableObject {
     public func activate() {
         guard !isLocked else { return }
         guard phase != .closed else { return }
+        // The line above the rows has no results to wait for.
+        if selection == Self.inChatItemID, searchInOpenChat() { return }
         if shownGeneration != generation {
             if requestedGeneration == generation, phase == .failed { return } // this query failed: Try Again
             pendingOpen = generation
@@ -487,6 +515,7 @@ public final class SearchModel: ObservableObject {
             sections[index].items += added
             sections[index].canShowMore = page?.nextCursor != nil
             cursors[kind] = page?.nextCursor
+            readHitRows(of: added, generation: generation)
         case .recent, .lastArchived, .recentSearches:
             break
         }
@@ -650,6 +679,27 @@ public final class SearchModel: ObservableObject {
         selection = built.first?.items.first?.id
         phase = .results
         shown(generation)
+        readHitRows(of: built.flatMap(\.items), generation: generation)
+    }
+
+    /// Reads the rows of the chats the messages shown are in (the ones not read yet), so a result names its chat as
+    /// the inbox row does. A failure leaves the engine's name.
+    private func readHitRows(of items: [SearchItem], generation: Int) {
+        guard let client = appModel.client else { return }
+        var seen = Set<String>()
+        let missing = items.compactMap { item -> String? in
+            guard case let .message(hit) = item, hitRows[hit.roomID] == nil, seen.insert(hit.roomID).inserted
+            else { return nil }
+            return hit.roomID
+        }
+        guard !missing.isEmpty else { return }
+        Task { [weak self] in
+            for ids in stride(from: 0, to: missing.count, by: 100).map({ Array(missing[$0 ..< min($0 + 100, missing.count)]) }) {
+                let result: InboxResult? = try? await client.call("inbox.list", InboxListParams(roomIDs: ids))
+                guard let self, let result, self.generation == generation, self.phase != .closed else { return }
+                for row in result.rooms { self.hitRows[row.roomID] = row }
+            }
+        }
     }
 
     /// The rows on screen are now `generation`'s. If Return was pressed for it, its first row opens (a recent
