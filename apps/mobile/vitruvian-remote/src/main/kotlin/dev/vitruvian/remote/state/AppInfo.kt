@@ -162,9 +162,8 @@ public object AppInfo {
           "and Android versions, your phone model, screen size and total memory, and a random " +
           "report ID. It never contains your texts, contacts, files, what you type, your Macs' " +
           "addresses, or a record of what you did in the app. The app doesn't add your IP " +
-          "address, though like any connection the server can see the address a report " +
-          "comes from. Turning this off stops reports right away and deletes any that " +
-          "haven't been sent yet."
+          "address, and the crash server is set not to store it. Turning this off stops " +
+          "reports right away and deletes any that haven't been sent yet."
 
   /** Canonical Phone Bridge capabilities shared across Settings, Phone Bridge, and Privacy. */
   public val phoneBridgeCapabilities: List<String> =

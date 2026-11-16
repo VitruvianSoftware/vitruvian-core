@@ -383,9 +383,12 @@ public class AppInfoTest {
                 "addresses, or a record of what you did in the app.",
         ),
     )
-    // Honest about the one thing the app can't control: the server sees the sender's address.
+    // The server drops IP addresses (Sentry org setting scrubIPAddresses, managed as code in
+    // infrastructure/pulumi/platform/sentry); the copy says so instead of "the server can see it".
     assertTrue(
-        AppInfo.privacyCrashReportsStatement.contains("the server can see the address"),
+        AppInfo.privacyCrashReportsStatement.contains(
+            "The app doesn't add your IP address, and the crash server is set not to store it.",
+        ),
     )
     // Plain words only: no tool names or jargon a user would have to decode.
     for (forbidden in
