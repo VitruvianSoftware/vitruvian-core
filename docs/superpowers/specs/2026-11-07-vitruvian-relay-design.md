@@ -124,7 +124,8 @@ routers and office firewalls. Everything travels over port 443.
    deadline.
 4. The connector checks its **local** rules (§7). If the rules say "ask first", it
    shows a prompt on the computer. It then passes the call to the right local MCP
-   server, streams any progress back, and returns the result.
+   server, streams any progress back if that server sends it (§4), and returns
+   the result.
 5. The relay returns the result to the AI. It records the tool name, size, duration
    and outcome for the user's activity view and for metering. It does **not** store
    the arguments or the output.
@@ -321,7 +322,7 @@ connected computer, within what each computer allows. The design starts from tha
 
 | Stage | Where | Why |
 |---|---|---|
-| Alpha (James, then a few invitees) | Homelab k3s behind the Cloudflare Tunnel, Postgres on CNPG, the same pattern as the hosted Slack MCP. The relay pod must be kept off laptop nodes (spike C: both outages came with a laptop node going away). Not done yet: the spike's chart has no node rule, and its pod was on the laptop node `james-mbp16` on 2026-11-15 | No new cost. Fine for dogfooding |
+| Alpha (James, then a few invitees) | Homelab k3s behind the Cloudflare Tunnel, Postgres on CNPG, the same pattern as the hosted Slack MCP. The relay pod must be kept off laptop nodes (spike C: both outages came with a laptop node going away). Not done yet: the spike's chart has no node rule, and its pod was on the laptop node `james-mbp16` when checked on 2026-11-15 at 15:38 PST (`//tools/gitops:get`) | No new cost. Fine for dogfooding |
 | Paid launch | GCP through the OSS application stage: Cloud Run plus Cloud SQL Postgres | Homelab availability (Wi-Fi nodes, a single database instance) is not good enough for people paying us |
 
 **Domains (decided 2026-11-09).** The spikes and the alpha run under `ipv1337.dev`
@@ -388,7 +389,7 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
 
 | Phase | Scope | Done when |
 |---|---|---|
-| **P0 spikes** | (a) ChatGPT web, Claude web and Gemini web each add an OAuth-protected MCP on our domain with Zitadel sign-in (ChatGPT researched, not tried). Settles the registration question. (b) Zitadel device flow from a CLI. (c) A WebSocket through the Cloudflare Tunnel stays up for 24 hours with reconnects. (d) A connector drives unmodified `desktop-commander` over stdio | **Done 2026-11-15.** (a) yes for Claude and Gemini, live; ChatGPT yes on paper, not tried. (b) yes. (c) yes with reconnects, no for one unbroken connection. (d) yes; the spike also showed a started command outlives a killed `desktop-commander`, so the connector needs process-group shutdown (not yet tested). Evidence in [the P0 plan](../plans/2026-11-09-relay-p0-spikes.md) |
+| **P0 spikes** | (a) ChatGPT web, Claude web and Gemini web each add an OAuth-protected MCP on our domain with Zitadel sign-in (ChatGPT researched, not tried). Settles the registration question. (b) Zitadel device flow from a CLI. (c) A WebSocket through the Cloudflare Tunnel stays up for 24 hours with reconnects. (d) A connector drives unmodified `desktop-commander` over stdio | **Done 2026-11-15.** (a) yes for Claude and Gemini, live; ChatGPT yes on paper, not tried. (b) yes. (c) yes with reconnects, no for one unbroken connection. (d) yes; the spike also showed a started command outlives a killed `desktop-commander`, so the connector needs process-group shutdown (not yet tested). Evidence in [the P0 plan](../plans/2026-11-09-relay-p0-spikes.md). Open checks moved to §11: ChatGPT (questions 3 and 8), the phone apps (question 12) |
 | **P1 single-user alpha** | Relay and connector on the homelab, one user, one device, bridging only `desktop-commander`, local rules file, no billing. Builds in the P0 findings: automatic reconnect, clean failure of in-flight calls, process-group shutdown, telemetry and flag fetch off, an answer to `server/discover` (Claude's request for the server to describe itself), and one sign-in session shared by the device approval page and the AI apps' sign-in (spike B had to sign in twice) | James runs a command on his Mac from Claude on his phone, and the "ask first" prompt appears on the Mac |
 | **P2 multi-user** | Sign-up, several devices, dashboard, local settings screen, both activity logs, the isolation test in CI | A second invited user connects, and the isolation test fails against a deliberately broken check |
 | **P3 launch readiness** | Stripe product line and entitlements, §9 checklist, move to GCP, Zitadel hosting, signed installers for macOS then Linux and Windows, and **Cua Driver** (`cua.ai`) alongside Desktop Commander | A stranger can sign up, pay in Stripe test mode, connect without help, and drive both terminal/file tools (Desktop Commander) and native desktop app UIs in the background (Cua Driver) |
@@ -433,8 +434,8 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
     (§8), so this spec overrides that: until there is a message bus (question 9),
     the alpha runs one copy on an always-on node and relies on Kubernetes
     restarting it elsewhere if that node fails. Spike C gives a rough cost: two
-    outages of 3 to 6 minutes, starting 17:36 and 17:59 PST, while the laptop
+    outages of 3 to 6 minutes, starting 17:36 and 17:59 PST on 2026-11-12, while the laptop
     node running the pod went `NotReady`. Kubernetes moved the pod to `nuc9i9`
-    at 18:04 PST. Keeping the pod off laptop nodes should make this rare.
+    at 18:04 PST that day. Keeping the pod off laptop nodes should make this rare.
 14. **Retries that run twice.** An AI app's retry after a dropped connection
     arrives as a new call (§4). Decide whether the relay should detect it.

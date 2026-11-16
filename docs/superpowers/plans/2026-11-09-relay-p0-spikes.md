@@ -75,9 +75,9 @@ Each spike ends in a written yes or no with evidence. This file is the record.
   connector asked for nothing of Claude's. This repeats the earlier finding:
   audience is not proof of which app a token is for. Pin the client id.
 - The access token lives 12 hours.
-- One snag: the device-approval page uses Zitadel's older login screen, which
-  doesn't share the session of the newer one Claude's sign-in used, so James
-  signed in twice. Worth fixing before real users see it.
+- One snag: James had to sign in twice. The likely reason, not confirmed, is
+  that the device-approval page uses Zitadel's older login screen, which
+  doesn't share the session of the newer one Claude's sign-in used. Worth fixing before real users see it.
 
 ### C: no for one connection, yes with reconnects
 
@@ -176,7 +176,7 @@ read-only request:
   settings.
 - For MCP clients it has to be **open**, meaning no authentication to register.
   On our shared instance that means anyone could create clients. Whether to do
-  that is now spec §11 question 7.
+  that is now spec §11 question 8.
 - The docs don't say which version first shipped it, so whether our running
   Zitadel has it is unknown. Enabling it would show.
 
@@ -191,7 +191,8 @@ These came from reading code at `d05721a`, not from running it:
 - **Telemetry is on by default.** The connector has to ask at setup and set it.
 - It logs every tool call, with arguments, to `claude_tool_call.log` in that
   folder.
-- It needs Node 22.12 or newer. The latest published version is 0.3.1
+- It needs Node 22.12 or newer. The latest published version, when checked for
+  the spike (2026-11-12), was 0.3.1
   (`sha512-cx7KTscLF951adHmDLVCDIVTqJ/Bg1LtdRILZoo5wa/UMeyOfMAuOJOEBulNMKBKb5Xd3nHDQnB9aXroN9Fw5A==`).
 
 ### D: yes (live run, 2026-11-12)
@@ -235,7 +236,7 @@ Bazel's launcher.
   and caches it in `feature-flags.json`. The only way to change this is to
   redirect it with `DC_FLAG_URL`. The connector should point that at a local
   file or an address that refuses the connection.
-- **Its install script reports the install** (`postinstall` runs
+- **Its install script reports the install** (read in its `package.json`: `postinstall` runs
   `track-installation.js`, which uses HTTPS). rules_js ran no install scripts:
   the build had only extract and symlink actions.
 - **Files it wrote** under `~/.claude-server-commander/`: `config.json`,
