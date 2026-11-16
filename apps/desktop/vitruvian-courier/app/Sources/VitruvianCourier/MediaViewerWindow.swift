@@ -41,7 +41,7 @@ public struct MediaWithSender: View {
         VStack(alignment: .leading, spacing: 6) {
             ZStack(alignment: .topLeading) {
                 Button(action: onOpen) {
-                    Color.primary.opacity(0.07)
+                    Color(white: 0.16)
                         .frame(maxWidth: .infinity)
                         .frame(height: 128)
                         .overlay {
@@ -51,9 +51,9 @@ public struct MediaWithSender: View {
                                         .resizable()
                                         .scaledToFill()
                                 } else {
-                                    Image(systemName: hit.kind == .video ? "film" : "photo")
+                                    Image(systemName: "photo")
                                         .font(.title2)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(.white.opacity(0.65))
                                 }
 
                                 if hit.kind == .video {
@@ -629,13 +629,12 @@ public struct MediaViewerWindow: View {
             model: viewerModel,
             chatTitle: resolvedChatTitle,
             onOpenLightbox: { hit in
-                let carouselItems = viewerModel.items.compactMap(CarouselItem.init(hit:))
-                if !carouselItems.isEmpty {
-                    conversation.carousel.open(items: carouselItems, selectedEventID: hit.eventID)
-                    conversation.activeLightboxMessageID = hit.eventID
-                } else {
-                    conversation.openLightbox(hit.eventID)
-                }
+                conversation.carousel.bind(appModel: appModel, conversation: conversation)
+                conversation.carousel.openForRoom(
+                    selectedEventID: hit.eventID,
+                    roomID: viewerModel.roomID ?? hit.roomID,
+                    seedHits: viewerModel.items
+                )
             },
             onGoToMessage: { hit in
                 appModel.open(.message(roomID: hit.roomID, eventID: hit.eventID))

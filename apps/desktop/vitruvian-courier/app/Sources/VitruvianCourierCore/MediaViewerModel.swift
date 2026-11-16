@@ -374,7 +374,7 @@ public final class MediaViewerModel: ObservableObject {
         let sections: [SearchSectionName]
         switch tab {
         case .media:
-            kinds = ["image", "video", "sticker"]
+            kinds = ["image", "video"]
             sections = [.media]
         case .links:
             kinds = ["link"]

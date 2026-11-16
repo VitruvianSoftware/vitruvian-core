@@ -994,6 +994,8 @@ public final class HotkeyDispatcher: ObservableObject {
     @Published public private(set) var archiveAllReadInvocationCount: Int = 0
     @Published public private(set) var fallbackUndoInvocationCount: Int = 0
 
+    private var overlayDismissCancellables: Set<AnyCancellable> = []
+
     /// Shortcut IDs bound in `InboxCommands`.
     public static let inboxMenuShortcutIDs: [String] = [
         "Focus App",
@@ -1144,6 +1146,55 @@ public final class HotkeyDispatcher: ObservableObject {
         conversation.composer.hotkeys = hotkeys
         conversation.thread.composer.hotkeyDispatcher = self
         conversation.thread.composer.hotkeys = hotkeys
+
+        inbox.$startNewChatDraft
+            .dropFirst()
+            .sink { [weak self] draft in
+                if draft != nil {
+                    self?.closeLightboxIfPresented()
+                }
+            }
+            .store(in: &overlayDismissCancellables)
+
+        search.$phase
+            .dropFirst()
+            .sink { [weak self] phase in
+                if phase != .closed {
+                    self?.closeLightboxIfPresented()
+                }
+            }
+            .store(in: &overlayDismissCancellables)
+
+        menuCoordinator.$activeSettingsSection
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.closeLightboxIfPresented()
+            }
+            .store(in: &overlayDismissCancellables)
+
+        menuCoordinator.settingsNavigation.$selectedPane
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.closeLightboxIfPresented()
+            }
+            .store(in: &overlayDismissCancellables)
+
+        if let commandBar {
+            commandBar.$isPresented
+                .dropFirst()
+                .sink { [weak self] presented in
+                    if presented {
+                        self?.closeLightboxIfPresented()
+                    }
+                }
+                .store(in: &overlayDismissCancellables)
+        }
+    }
+
+    private func closeLightboxIfPresented() {
+        if conversation.carousel.isPresented {
+            conversation.closeLightbox()
+        }
     }
 
     /// Active composer that keyboard shortcuts target (thread pane when focused, otherwise main chat).
@@ -1359,6 +1410,7 @@ public final class HotkeyDispatcher: ObservableObject {
             return true
 
         case "Focus App and Command Bar":
+            closeLightboxIfPresented()
             menuCoordinator.focusApp()
             let visible = bringMainWindowForward()
             if let commandBar {
@@ -1369,6 +1421,7 @@ public final class HotkeyDispatcher: ObservableObject {
             return true
 
         case HotkeyID.commandBar:
+            closeLightboxIfPresented()
             _ = bringMainWindowForward()
             if let commandBar {
                 commandBar.toggle()
@@ -1394,11 +1447,13 @@ public final class HotkeyDispatcher: ObservableObject {
             return true
 
         case "Search":
+            closeLightboxIfPresented()
             let visible = bringMainWindowForward()
             search.toggle(visible: visible)
             return true
 
         case "Search: Room":
+            closeLightboxIfPresented()
             _ = bringMainWindowForward()
             search.show(in: inbox.selectedRoomID)
             return true
@@ -1409,6 +1464,7 @@ public final class HotkeyDispatcher: ObservableObject {
             return true
 
         case "Settings":
+            closeLightboxIfPresented()
             menuCoordinator.openSettings(.inbox)
             return true
 
@@ -1421,6 +1477,7 @@ public final class HotkeyDispatcher: ObservableObject {
             return true
 
         case "Report a Problem":
+            closeLightboxIfPresented()
             menuCoordinator.openSettings(.reportProblem)
             return true
 
@@ -1528,11 +1585,13 @@ public final class HotkeyDispatcher: ObservableObject {
             return true
 
         case "Chat: Start New":
+            closeLightboxIfPresented()
             _ = bringMainWindowForward()
             menuCoordinator.newChat()
             return true
 
         case "Chat: Create New Group":
+            closeLightboxIfPresented()
             _ = bringMainWindowForward()
             inbox.openStartNewChat(multiSelect: true)
             return true

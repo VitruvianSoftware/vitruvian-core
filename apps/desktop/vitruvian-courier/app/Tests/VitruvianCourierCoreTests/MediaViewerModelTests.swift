@@ -11,6 +11,7 @@ final class MediaViewerModelTests: XCTestCase {
     private var tempDir: URL!
     private var servers: [TestEngineServer] = []
     private var apps: [AppModel] = []
+    private var suites: [String] = []
 
     override func setUpWithError() throws {
         tempDir = FileManager.default.temporaryDirectory
@@ -23,9 +24,17 @@ final class MediaViewerModelTests: XCTestCase {
         apps.removeAll()
         for server in servers { server.stop() }
         servers.removeAll()
+        for name in suites { UserDefaults.standard.removePersistentDomain(forName: name) }
+        suites.removeAll()
         if let tempDir {
             try? FileManager.default.removeItem(at: tempDir)
         }
+    }
+
+    private func makeDefaults() -> UserDefaults {
+        let name = "courier.mediaviewer.\(UUID().uuidString)"
+        suites.append(name)
+        return ScratchDefaults.suite(named: name)!
     }
 
     private func makeLocalMediaFile(named name: String, bytes: Data = Data([0x89, 0x50, 0x4E, 0x47])) throws -> String {
@@ -750,5 +759,329 @@ final class MediaViewerModelTests: XCTestCase {
         XCTAssertTrue(server.rejectedMergeIDs.isEmpty, "Must never send merge:alice to engine")
         XCTAssertEqual(lock.withLock { observedRoomIDs }, [["!alice-wa:courier.local", "!alice-sig:courier.local"]])
         XCTAssertEqual(viewer.items.map(\.eventID), ["$wa-1", "$sig-1"])
+    }
+
+    func testViewerItemsMatchesChatInfoSharedMediaExcludesLinkPreviewsAndPagesOlder() async throws {
+        let localPath = try makeLocalMediaFile(named: "viewer-photo.jpg")
+        let roomID = "!hike:courier.local"
+
+        func makeMediaEvent(
+            _ id: String,
+            ts: Int64,
+            msgtype: String = "m.image",
+            body: String = "photo.jpg",
+            mediaPath: String,
+            url: String? = nil,
+            viewOnce: Bool? = nil,
+            mediaRemoved: Bool = false
+        ) -> Event {
+            var dict: [String: JSONValue] = [
+                "msgtype": .string(msgtype),
+                "body": .string(body),
+            ]
+            if let url {
+                dict["url"] = .string(url)
+            }
+            if mediaRemoved {
+                dict["com.courier.media_removed"] = .bool(true)
+            }
+            return Event(
+                eventID: id,
+                roomID: roomID,
+                sender: "@alice:courier.local",
+                senderName: "Alice Example",
+                mine: false,
+                type: "m.room.message",
+                content: .object(dict),
+                ts: ts,
+                seq: ts,
+                status: .sent,
+                mediaPath: mediaPath,
+                thumbnailPath: mediaPath,
+                viewOnce: viewOnce,
+                played: false
+            )
+        }
+
+        func makeHitDict(_ id: String, ts: Int64, kind: String = "image", mediaPath: String, snippet: String = "item") -> [String: Any] {
+            [
+                "event_id": id,
+                "room_id": roomID,
+                "room_name": "Weekend Trail Crew",
+                "network": "whatsapp",
+                "is_direct": false,
+                "place": "inbox",
+                "sender": "@alice:courier.local",
+                "sender_name": "Alice Example",
+                "mine": false,
+                "ts": ts,
+                "seq": ts,
+                "kind": kind,
+                "snippet": snippet,
+                "ranges": [Any](),
+                "media_path": mediaPath,
+                "partial": false,
+            ]
+        }
+
+        // 13 chronological image/video items across older history ($e1..$e9) and current timeline page ($e10..$e13).
+        // $e1 has no local file yet (mediaPath == "", remote url present) -> must stay in viewerItems as uncached placeholder.
+        let uncachedSharedEvent = makeMediaEvent(
+            "$e1",
+            ts: 1_000,
+            msgtype: "m.image",
+            body: "uncached.jpg",
+            mediaPath: "",
+            url: "mxc://courier.local/e1"
+        )
+        let sharedEvents: [Event] = [uncachedSharedEvent]
+            + (2 ... 5).map { i in
+                makeMediaEvent(
+                    "$e\(i)",
+                    ts: Int64(i * 1_000),
+                    msgtype: i == 3 ? "m.video" : "m.image",
+                    body: "shared-\(i)",
+                    mediaPath: localPath
+                )
+            }
+        let excludedSharedEvents: [Event] = [
+            makeMediaEvent("$excl-link", ts: 1_500, msgtype: "m.text", body: "https://example.com", mediaPath: "", url: "https://example.com"),
+            makeMediaEvent("$excl-sticker", ts: 2_500, msgtype: "m.sticker", body: "sticker.webp", mediaPath: localPath),
+            makeMediaEvent("$excl-file", ts: 3_500, msgtype: "m.file", body: "notes.pdf", mediaPath: localPath),
+            makeMediaEvent("$excl-audio", ts: 4_500, msgtype: "m.audio", body: "voice.ogg", mediaPath: localPath),
+            makeMediaEvent("$excl-vo", ts: 5_500, msgtype: "m.image", body: "secret.jpg", mediaPath: localPath, viewOnce: true),
+            makeMediaEvent("$excl-removed", ts: 5_800, msgtype: "m.image", body: "removed.jpg", mediaPath: localPath, mediaRemoved: true),
+        ]
+
+        let page1Hits: [MediaHit] = (6 ... 9).map { i in
+            MediaHit(
+                eventID: "$e\(i)",
+                roomID: roomID,
+                roomName: "Weekend Trail Crew",
+                network: "whatsapp",
+                isDirect: false,
+                place: .inbox,
+                sender: "@alice:courier.local",
+                senderName: "Alice Example",
+                mine: false,
+                ts: Int64(i * 1_000),
+                seq: Int64(i),
+                kind: i == 8 ? .video : .image,
+                snippet: "hit-\(i)",
+                ranges: [],
+                mediaPath: localPath,
+                partial: false,
+                viewOnce: false
+            )
+        }
+        let excludedHits: [MediaHit] = [
+            MediaHit(
+                eventID: "$hit-sticker",
+                roomID: roomID,
+                roomName: "Weekend Trail Crew",
+                network: "whatsapp",
+                isDirect: false,
+                place: .inbox,
+                sender: "@alice:courier.local",
+                senderName: "Alice Example",
+                mine: false,
+                ts: 6_500,
+                seq: 65,
+                kind: .sticker,
+                snippet: "sticker",
+                ranges: [],
+                mediaPath: localPath,
+                partial: false,
+                viewOnce: false
+            ),
+            MediaHit(
+                eventID: "$hit-link",
+                roomID: roomID,
+                roomName: "Weekend Trail Crew",
+                network: "whatsapp",
+                isDirect: false,
+                place: .inbox,
+                sender: "@alice:courier.local",
+                senderName: "Alice Example",
+                mine: false,
+                ts: 6_600,
+                seq: 66,
+                kind: .text,
+                snippet: "https://example.com/route",
+                ranges: [],
+                mediaPath: "",
+                partial: false,
+                viewOnce: false
+            ),
+        ]
+
+        let timelineEvents: [Event] = (10 ... 13).map { i in
+            makeMediaEvent(
+                "$e\(i)",
+                ts: Int64(i * 1_000),
+                msgtype: i == 11 ? "m.video" : "m.image",
+                body: "timeline-\(i)",
+                mediaPath: localPath
+            )
+        } + [
+            makeMediaEvent("$excl-vo", ts: 14_000, msgtype: "m.image", body: "secret.jpg", mediaPath: localPath, viewOnce: true),
+        ]
+        let timelineItems = Timeline.build(
+            events: timelineEvents,
+            me: "@me:courier.local",
+            now: Date(timeIntervalSince1970: 20_000)
+        )
+
+        let viewerItems = CarouselItem.viewerItems(
+            timelineItems: timelineItems,
+            sharedMedia: sharedEvents + excludedSharedEvents,
+            mediaHits: page1Hits + excludedHits
+        )
+        XCTAssertEqual(viewerItems.map(\.eventID), (1 ... 13).map { "$e\($0)" })
+        XCTAssertEqual(viewerItems.first?.mediaPath, "", "Uncached older media without local path must stay in viewerItems")
+        XCTAssertFalse(viewerItems.contains { $0.eventID.hasPrefix("$excl-") || $0.eventID.hasPrefix("$hit-") })
+
+        // ConversationModel.openLightbox + loadOlderLightboxMedia pages older search hits from engine.
+        let roomInfo = RoomInfoResult(
+            roomID: roomID,
+            name: "Weekend Trail Crew",
+            remoteName: "Weekend Trail Crew",
+            network: "whatsapp",
+            isDirect: false,
+            sharedMedia: Array(sharedEvents.suffix(3)),
+            features: .noFeatures
+        )
+        let infoData = try JSONEncoder().encode(roomInfo)
+        let infoJSON = try XCTUnwrap(try JSONSerialization.jsonObject(with: infoData) as? [String: Any])
+        let cursorsLock = NSLock()
+        var observedCursors: [String] = []
+
+        let (_, appModel) = try await startApp { method, params in
+            switch method {
+            case "hello":
+                return TestEngineServer.helloOK
+            case "accounts.list":
+                return .result(["accounts": []])
+            case "room.info":
+                return .result(infoJSON)
+            case "search.query":
+                let cursor = params?["cursor"] as? String
+                cursorsLock.withLock { observedCursors.append(cursor ?? "nil") }
+                let hits: [[String: Any]]
+                let nextCursor: Any
+                if cursor == nil {
+                    hits = (6 ... 9).map { makeHitDict("$e\($0)", ts: Int64($0 * 1_000), mediaPath: localPath) }
+                    nextCursor = "page-2"
+                } else {
+                    hits = [
+                        makeHitDict("$e1", ts: 1_000, mediaPath: ""),
+                        makeHitDict("$e2", ts: 2_000, mediaPath: localPath),
+                    ]
+                    nextCursor = NSNull()
+                }
+                return .result([
+                    "chats": NSNull(),
+                    "in_groups": NSNull(),
+                    "bookmarks": NSNull(),
+                    "media": ["hits": hits, "next_cursor": nextCursor] as [String: Any],
+                    "messages": NSNull(),
+                    "last_archived": NSNull(),
+                    "complete": true,
+                    "hint": "",
+                ])
+            default:
+                return .result([String: Any]())
+            }
+        }
+
+        let conversation = ConversationModel(appModel: appModel, unreadCount: { _ in 0 }, chat: { _ in nil })
+        conversation.carousel.bind(appModel: appModel, conversation: conversation)
+        conversation.setSnapshotStateForTesting(roomID: roomID, items: timelineItems)
+        conversation.openLightbox("$e13")
+
+        XCTAssertEqual(conversation.carousel.items.map(\.eventID), ["$e10", "$e11", "$e12", "$e13"])
+        await waitUntil { conversation.carousel.items.count == 11 && conversation.carousel.hasOlderItems }
+
+        await conversation.carousel.loadOlderMedia()
+        XCTAssertEqual(conversation.carousel.items.map(\.eventID), (1 ... 13).map { "$e\($0)" })
+        XCTAssertFalse(conversation.carousel.hasOlderItems)
+        XCTAssertEqual(cursorsLock.withLock { observedCursors }, ["nil", "page-2"])
+    }
+
+    func testOpeningNewChatSearchOrSettingsClosesOpenViewerFirst() async throws {
+        final class NoopPasteboard: TextPasteboard {
+            func setString(_ text: String) {}
+        }
+
+        let defaults = makeDefaults()
+        let (_, appModel) = try await startApp { method, _ in
+            switch method {
+            case "hello": return TestEngineServer.helloOK
+            case "accounts.list": return .result(["accounts": []])
+            default: return .result([String: Any]())
+            }
+        }
+        let inbox = InboxModel(appModel: appModel, preferences: InboxPreferences(defaults: defaults))
+        let spaces = SpacesModel(appModel: appModel, inbox: inbox)
+        let conversation = ConversationModel(appModel: appModel, unreadCount: { _ in 0 }, chat: { _ in nil })
+        let messageActions = MessageActionsModel(
+            conversation: conversation,
+            appModel: appModel,
+            preferences: ComposerPreferences(defaults: defaults),
+            pasteboard: NoopPasteboard()
+        )
+        let search = SearchModel(appModel: appModel, recents: RecentSearches(defaults: defaults), open: { _ in })
+        let lifecycle = SystemLifecycleModel(defaults: defaults)
+        let coordinator = AppMenuCoordinator(inbox: inbox, lifecycle: lifecycle)
+        let registry = HotkeyRegistry(defaults: defaults, isAppLocked: { lifecycle.isLocked })
+        let dispatcher = HotkeyDispatcher(
+            inbox: inbox,
+            spaces: spaces,
+            conversation: conversation,
+            messageActions: messageActions,
+            search: search,
+            lifecycle: lifecycle,
+            menuCoordinator: coordinator,
+            hotkeys: registry
+        )
+
+        let imgPath = try makeLocalMediaFile(named: "open.png")
+        let viewerItem = CarouselItem(
+            eventID: "$open-1",
+            roomID: "!r1:courier.local",
+            kind: .image,
+            mediaPath: imgPath,
+            thumbnailPath: imgPath,
+            fileName: "open.png",
+            mimeType: "image/jpeg",
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            ts: 1_760_000_001_000,
+            caption: ""
+        )
+
+        defer { _ = dispatcher }
+
+        func openViewer() {
+            conversation.carousel.open(items: [viewerItem], selectedEventID: "$open-1")
+            conversation.activeLightboxMessageID = "$open-1"
+            XCTAssertTrue(conversation.carousel.isPresented)
+        }
+
+        openViewer()
+        inbox.openStartNewChat()
+        XCTAssertFalse(conversation.carousel.isPresented, "Opening New Chat must close open viewer first")
+        XCTAssertNil(conversation.activeLightboxMessageID)
+
+        openViewer()
+        search.show()
+        XCTAssertFalse(conversation.carousel.isPresented, "Opening Search must close open viewer first")
+        XCTAssertNil(conversation.activeLightboxMessageID)
+
+        openViewer()
+        coordinator.openSettings(.general)
+        XCTAssertFalse(conversation.carousel.isPresented, "Opening Settings must close open viewer first")
+        XCTAssertNil(conversation.activeLightboxMessageID)
     }
 }

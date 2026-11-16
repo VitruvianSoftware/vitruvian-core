@@ -1,7 +1,9 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AVFoundation
 import AppKit
+import ImageIO
 import VitruvianCourierCore
 import SwiftUI
 
@@ -71,11 +73,17 @@ public struct AttachmentCarouselOverlay: View {
 
     public var body: some View {
         ZStack {
-            Color.black.opacity(0.88)
-                .ignoresSafeArea()
+            Color.black.opacity(0.94)
+                .ignoresSafeArea(.all)
+                .contentShape(Rectangle())
                 .onTapGesture {
                     onClose()
                 }
+
+            LightboxWindowBackdropHelper()
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
 
             if let item = model.currentItem {
                 VStack(spacing: 0) {
@@ -109,10 +117,19 @@ public struct AttachmentCarouselOverlay: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(keyboardHandlingButtons)
-        .onChange(of: model.currentIndex) { _, _ in
+        .onAppear {
+            if model.currentIndex <= 3 {
+                model.requestOlderItemsIfNeeded()
+            }
+        }
+        .onChange(of: model.currentIndex) { _, newIndex in
             panOffset = .zero
             dragStartOffset = .zero
+            if newIndex <= 3 {
+                model.requestOlderItemsIfNeeded()
+            }
         }
         .onChange(of: model.zoomScale) { _, newScale in
             if abs(newScale - 1.0) < 0.001 {
@@ -332,9 +349,13 @@ public struct AttachmentCarouselOverlay: View {
 
     @ViewBuilder
     private func imageStage(for item: CarouselItem) -> some View {
-        if !item.viewOnce,
-           isLocalMediaStorePath(item.mediaPath),
-           let nsImage = NSImage(contentsOfFile: item.mediaPath) {
+        let displayImage: NSImage? = if !item.viewOnce {
+            loadCarouselDisplayImage(atPath: item.mediaPath)
+                ?? (item.mediaPath.isEmpty ? loadCarouselDisplayImage(atPath: item.thumbnailPath) : nil)
+        } else {
+            nil
+        }
+        if let nsImage = displayImage {
             Image(nsImage: nsImage)
                 .resizable()
                 .scaledToFit()
@@ -409,13 +430,18 @@ public struct AttachmentCarouselOverlay: View {
     }
 
     private func missingMediaPlaceholder(for item: CarouselItem) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 26, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.75))
-            Text(String(localized: "Unable to load attachment"))
-                .font(.callout.weight(.medium))
-                .foregroundStyle(.white)
+        let isPendingLocalLoad = !item.viewOnce && item.mediaPath.isEmpty
+        return VStack(spacing: 8) {
+            Image(systemName: isPendingLocalLoad ? "photo" : "exclamationmark.triangle")
+                .font(.system(size: isPendingLocalLoad ? 32 : 26, weight: isPendingLocalLoad ? .regular : .semibold))
+                .foregroundStyle(.white.opacity(isPendingLocalLoad ? 0.65 : 0.75))
+            Text(
+                isPendingLocalLoad
+                    ? String(localized: "Not downloaded yet")
+                    : String(localized: "Unable to load attachment")
+            )
+            .font(.callout.weight(.medium))
+            .foregroundStyle(.white)
             if !item.fileName.isEmpty {
                 Text(verbatim: item.fileName)
                     .font(.caption)
@@ -424,7 +450,10 @@ public struct AttachmentCarouselOverlay: View {
             }
         }
         .frame(width: 280, height: 180)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.1)))
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(isPendingLocalLoad ? Color(white: 0.16) : Color.white.opacity(0.1))
+        )
     }
 
     // MARK: - Bottom Bar (Transform Controls + Filmstrip)
@@ -490,6 +519,11 @@ public struct AttachmentCarouselOverlay: View {
                                 isSelected: index == model.currentIndex
                             ) {
                                 model.select(index: index)
+                            }
+                            .onAppear {
+                                if index <= 3 {
+                                    model.requestOlderItemsIfNeeded()
+                                }
                             }
                         }
                     }
@@ -574,27 +608,64 @@ private struct CarouselFilmstripTile: View {
     let isSelected: Bool
     let action: () -> Void
 
+    @State private var asyncCGImage: CGImage?
+
+    private var taskKey: String {
+        "\(item.id)|\(item.thumbnailPath)|\(item.mediaPath)|\(item.viewOnce)"
+    }
+
+    private var syncImage: NSImage? {
+        guard !item.viewOnce, asyncCGImage == nil else { return nil }
+        for path in [item.thumbnailPath, item.mediaPath] where isLocalMediaStorePath(path) {
+            if let image = validSyncThumbnailNSImage(atPath: path) {
+                return image
+            }
+        }
+        return nil
+    }
+
+    private var hasLoadedThumbnail: Bool {
+        asyncCGImage != nil || syncImage != nil
+    }
+
     var body: some View {
         Button(action: action) {
             ZStack {
-                Color.white.opacity(0.1)
-                if !item.viewOnce,
-                   isLocalMediaStorePath(item.thumbnailPath),
-                   let nsImage = NSImage(contentsOfFile: item.thumbnailPath) {
+                Color(white: 0.16)
+                if !item.viewOnce, let cgImage = asyncCGImage {
+                    Image(decorative: cgImage, scale: 1.0)
+                        .resizable()
+                        .scaledToFill()
+                } else if let nsImage = syncImage {
                     Image(nsImage: nsImage)
                         .resizable()
                         .scaledToFill()
                 } else {
-                    Image(systemName: item.kind == .video ? "film" : "photo")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.75))
+                    Image(systemName: "photo")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(.white.opacity(0.65))
                 }
                 if item.kind == .video {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(4)
-                        .background(Circle().fill(Color.black.opacity(0.6)))
+                    if hasLoadedThumbnail {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(4)
+                            .background(Circle().fill(Color.black.opacity(0.6)))
+                    } else {
+                        VStack {
+                            Spacer(minLength: 0)
+                            HStack {
+                                Spacer(minLength: 0)
+                                Image(systemName: "play.fill")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(3)
+                                    .background(Circle().fill(Color.black.opacity(0.75)))
+                            }
+                        }
+                        .padding(3)
+                    }
                 }
             }
             .frame(width: 48, height: 48)
@@ -605,5 +676,164 @@ private struct CarouselFilmstripTile: View {
             )
         }
         .buttonStyle(.plain)
+        .task(id: taskKey) {
+            asyncCGImage = nil
+            guard !item.viewOnce else { return }
+            let candidatePaths = [item.thumbnailPath, item.mediaPath]
+                .filter(isLocalMediaStorePath)
+            var uniquePaths: [String] = []
+            for path in candidatePaths where !uniquePaths.contains(path) {
+                uniquePaths.append(path)
+            }
+            for path in uniquePaths {
+                if Task.isCancelled { return }
+                if let thumb = await ThumbnailLoader.shared.thumbnail(atPath: path) {
+                    if !Task.isCancelled {
+                        asyncCGImage = thumb.image
+                    }
+                    return
+                }
+            }
+            if item.kind == .video,
+               isLocalMediaStorePath(item.mediaPath),
+               !Task.isCancelled,
+               let frame = await loadVideoFirstFrame(atPath: item.mediaPath),
+               !Task.isCancelled {
+                asyncCGImage = frame
+            }
+        }
+    }
+}
+
+private func validSyncThumbnailNSImage(atPath path: String) -> NSImage? {
+    guard isLocalMediaStorePath(path),
+          let image = NSImage(contentsOfFile: path),
+          !image.representations.isEmpty,
+          image.size.width > 0,
+          image.size.height > 0
+    else {
+        return nil
+    }
+    return image
+}
+
+private func loadCarouselDisplayImage(atPath path: String) -> NSImage? {
+    guard isLocalMediaStorePath(path) else { return nil }
+    if let image = NSImage(contentsOfFile: path),
+       !image.representations.isEmpty,
+       image.size.width > 0,
+       image.size.height > 0 {
+        return image
+    }
+    let url = URL(fileURLWithPath: path)
+    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+          let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil)
+    else {
+        return nil
+    }
+    let size = NSSize(width: cgImage.width, height: cgImage.height)
+    guard size.width > 0, size.height > 0 else { return nil }
+    return NSImage(cgImage: cgImage, size: size)
+}
+
+private func loadVideoFirstFrame(atPath path: String) async -> CGImage? {
+    let url = URL(fileURLWithPath: path)
+    let asset = AVURLAsset(url: url)
+    let generator = AVAssetImageGenerator(asset: asset)
+    generator.appliesPreferredTrackTransform = true
+    generator.maximumSize = CGSize(width: 144, height: 144)
+    return try? await generator.image(at: .zero).image
+}
+
+/// Ensures titled macOS host windows extend the lightbox's 94% black backdrop cleanly under the toolbar band,
+/// while leaving borderless snapshot/test windows untouched.
+private struct LightboxWindowBackdropHelper: NSViewRepresentable {
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> BackdropObserverNSView {
+        let view = BackdropObserverNSView()
+        view.coordinator = context.coordinator
+        return view
+    }
+
+    func updateNSView(_ nsView: BackdropObserverNSView, context: Context) {
+        context.coordinator.applyIfNeeded(to: nsView.window)
+    }
+
+    static func dismantleNSView(_ nsView: BackdropObserverNSView, coordinator: Coordinator) {
+        coordinator.restore()
+    }
+
+    @MainActor
+    final class Coordinator {
+        private weak var attachedWindow: NSWindow?
+        private var previousTitlebarAppearsTransparent: Bool?
+        private var previousTitleVisibility: NSWindow.TitleVisibility?
+        private var previousTitlebarSeparatorStyle: NSTitlebarSeparatorStyle?
+        private var hadFullSizeContentView: Bool?
+
+        func applyIfNeeded(to window: NSWindow?) {
+            guard let window else {
+                restore()
+                return
+            }
+            guard window.styleMask.contains(.titled) else { return }
+            if attachedWindow !== window {
+                restore()
+                attachedWindow = window
+                previousTitlebarAppearsTransparent = window.titlebarAppearsTransparent
+                previousTitleVisibility = window.titleVisibility
+                previousTitlebarSeparatorStyle = window.titlebarSeparatorStyle
+                hadFullSizeContentView = window.styleMask.contains(.fullSizeContentView)
+            }
+            if !window.titlebarAppearsTransparent {
+                window.titlebarAppearsTransparent = true
+            }
+            if window.titleVisibility != .hidden {
+                window.titleVisibility = .hidden
+            }
+            if window.titlebarSeparatorStyle != .none {
+                window.titlebarSeparatorStyle = .none
+            }
+            if !window.styleMask.contains(.fullSizeContentView) {
+                window.styleMask.insert(.fullSizeContentView)
+            }
+        }
+
+        func restore() {
+            guard let window = attachedWindow else { return }
+            if let prevTransparent = previousTitlebarAppearsTransparent {
+                window.titlebarAppearsTransparent = prevTransparent
+            }
+            if let prevVisibility = previousTitleVisibility {
+                window.titleVisibility = prevVisibility
+            }
+            if let prevSeparator = previousTitlebarSeparatorStyle {
+                window.titlebarSeparatorStyle = prevSeparator
+            }
+            if let hadFull = hadFullSizeContentView {
+                if hadFull {
+                    window.styleMask.insert(.fullSizeContentView)
+                } else {
+                    window.styleMask.remove(.fullSizeContentView)
+                }
+            }
+            attachedWindow = nil
+            previousTitlebarAppearsTransparent = nil
+            previousTitleVisibility = nil
+            previousTitlebarSeparatorStyle = nil
+            hadFullSizeContentView = nil
+        }
+    }
+
+    final class BackdropObserverNSView: NSView {
+        weak var coordinator: Coordinator?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            coordinator?.applyIfNeeded(to: window)
+        }
     }
 }
