@@ -284,6 +284,7 @@ boundary_check_data = [
     [
         "build/**",
         "config/**",
+        "dev/**",
         "docs/**",
         "pinokio/**",
         "public/**",
