@@ -933,7 +933,7 @@ package enum WindowEnumerator {
                              ownPID: pid_t(ownPid),
                              withheldPIDs: withheldPIDs,
                              appRules: appRules)
-        return shaped(windows,
+        var list = shaped(windows,
                       by: Shaping(minimizedPlacement: minimizedPlacement,
                                   treatHiddenAppsLikeMinimized: treatHiddenAppsLikeMinimized,
                                   showFullscreenWindows: showFullscreenWindows,
@@ -950,6 +950,10 @@ package enum WindowEnumerator {
                       isCancelled: isCancelled,
                       marksHiddenSpaces: marksHiddenSpaces,
                       isOnHiddenSpace: { isOnHiddenSpace($0) })
+        // The snapshot belongs to the activation baseline of a session, which
+        // only a session with a source window captures.
+        list.activationSnapshot = sourcePID == nil ? nil : windowServerSnapshot
+        return list
     }
 
     /// Whether the current-desktop scope leaves a window out: one on another
@@ -1086,8 +1090,7 @@ package enum WindowEnumerator {
                 return window.withHiddenSpaceState(isOnHiddenSpace(windowID))
             }
         }
-        return WindowList(items: result, sourceItems: sourceCandidates,
-                          activationSnapshot: sourcePID == nil ? nil : windowServerSnapshot)
+        return WindowList(items: result, sourceItems: sourceCandidates)
     }
 
     /// WindowServer can keep stale, titled surfaces around after some apps close
