@@ -1981,6 +1981,42 @@ final class ViewSnapshotTests: XCTestCase {
             .padding(14)
         })
 
+        // 4b. The placeholder is a compact card, not the old tall "blocked" box: its title can come from a preview the
+        // network sent, and the privacy note lives in the tooltip, not the body.
+        check(try Snapshot.render("embed-consent-card-titled", width: 360) {
+            EmbedConsentCard(
+                messageID: "$embed-2",
+                descriptor: descriptor,
+                isLoaded: false,
+                title: "Never Gonna Give You Up (Official Video)",
+                onLoadEmbed: {}
+            )
+            .padding(14)
+        })
+        let compact = NSHostingView(
+            rootView: EmbedConsentCard(messageID: "$embed-1", descriptor: descriptor, isLoaded: false, onLoadEmbed: {})
+                .frame(width: 320)
+        )
+        XCTAssertLessThanOrEqual(compact.fittingSize.height, 64, "the placeholder is one compact row")
+        XCTAssertEqual(descriptor.siteName, "YouTube")
+        XCTAssertEqual(descriptor.fallbackTitle, "Watch on YouTube")
+
+        // 4c. A link preview this Mac fetched itself: the same card, its picture from data.
+        let fetchedImage = try Data(contentsOf: URL(fileURLWithPath: localThumbPath))
+        XCTAssertNotNil(LinkPreviewCardView.decode(fetchedImage), "fetched picture data decodes")
+        XCTAssertNil(LinkPreviewCardView.decode(Data("not a picture".utf8)))
+        check(try Snapshot.render("link-preview-fetched-locally", width: 360) {
+            LinkPreviewCardView(
+                preview: LocalLinkPreview(
+                    url: URL(string: "https://antigravity.google/docs/dynamic-workflows/")!,
+                    title: "Dynamic workflows",
+                    siteName: "antigravity.google"
+                ).asLinkPreviewItem,
+                imageData: fetchedImage
+            )
+            .padding(14)
+        })
+
         // 5. Verify no WKWebView is created at all while isLoaded == false, and verify non-persistent store config.
         let consentHosting = NSHostingView(
             rootView: EmbedConsentCard(

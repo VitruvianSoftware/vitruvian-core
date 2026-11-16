@@ -392,6 +392,8 @@ struct MessageRowView: View {
     @State private var lastRowClick: (at: Date, wasSelected: Bool)?
     /// Detected date clicked inside the message bubble, presenting `AddCalendarEventPopover`.
     @State private var activeDetectedDate: DetectedMessageDate?
+    /// What this Mac fetched for the message's link when its network sent no preview (`LocalLinkPreviewPolicy`).
+    @State private var localPreview: LocalLinkPreview?
 
     private static let avatarSize: CGFloat = 28
 
@@ -681,7 +683,8 @@ struct MessageRowView: View {
 
     @ViewBuilder
     private var avatarColumn: some View {
-        if message.startsGroup {
+        // A group chat: on the run's first message, beside the name. One-to-one: once, on its last.
+        if message.showsSenderAvatar {
             let avatar = message.senderAvatar(redacted: isRedacted)
             AvatarView(path: avatar.path, initials: avatar.initials,
                        seed: avatar.seed, size: Self.avatarSize)
@@ -722,7 +725,8 @@ struct MessageRowView: View {
 
     private var senderNameLabel: some View {
         Text(displaySenderName)
-            .font(.caption.weight(.semibold))
+            // One step up from the 10 pt caption (on macOS caption, caption2 and footnote are all 10 pt).
+            .font(.subheadline.weight(.semibold))
             .foregroundStyle(senderNameColor)
             .lineLimit(1)
             .onHover { hovering in
@@ -762,11 +766,40 @@ struct MessageRowView: View {
 
     private var hasMeta: Bool { timeText != nil || message.isEdited }
 
+    /// What decides whether, and for which link, this Mac fetches a preview: the task reruns when any of it changes.
+    private struct LocalPreviewKey: Equatable {
+        let messageID: String
+        let text: String
+        let hasNetworkPreview: Bool
+        let loadsExternalContent: Bool
+    }
+
+    /// Asks `LocalLinkPreviewPolicy` for a link to fetch a preview for (none unless the person allows external
+    /// content, and none when the network sent a preview), then shows what the store has or fetches. Runs only for
+    /// a row being drawn, so a chat nobody opened is never fetched for.
+    private func loadLocalPreview() async {
+        localPreview = nil
+        guard let url = LocalLinkPreviewPolicy.urlToFetch(
+            for: message,
+            loadExternalContent: actions.loadExternalEmbedsAutomatically,
+            isEmbeddable: { ExternalEmbedDescriptor.match(urlString: $0.absoluteString) != nil }
+        ) else { return }
+        let store = LocalLinkPreviewStore.shared
+        if let cached = store.cached(url) {
+            localPreview = cached
+            return
+        }
+        let fetched = await store.preview(for: url)
+        guard !Task.isCancelled else { return }
+        localPreview = fetched
+    }
+
     /// Text that is the last thing in its bubble carries the time on the end of its last line (the way Beeper does);
     /// everything else (pictures, files, cards under the text) gets it on a line of its own at the trailing edge.
     private var metaIsInline: Bool {
         guard hasMeta, message.kind == .text || message.kind == .notice, contentIsText,
-              message.linkPreviews.isEmpty, ExternalEmbedDescriptor.first(in: message) == nil else { return false }
+              message.linkPreviews.isEmpty, localPreview == nil,
+              ExternalEmbedDescriptor.first(in: message) == nil else { return false }
         return true
     }
 
@@ -831,11 +864,19 @@ struct MessageRowView: View {
                         LinkPreviewCardView(preview: preview, onBubble: message.mine && !message.suppressesBubbleBackground)
                             .takesOwnClick()
                     }
+                    if let local = localPreview {
+                        LinkPreviewCardView(preview: local.asLinkPreviewItem, imageData: local.imageData,
+                                            onBubble: message.mine && !message.suppressesBubbleBackground)
+                            .takesOwnClick()
+                    }
                     if let embed = ExternalEmbedDescriptor.first(in: message) {
                         EmbedConsentCard(
                             messageID: message.id,
                             descriptor: embed,
                             isLoaded: actions.loadExternalEmbedsAutomatically || ui.loadedEmbeds.contains(message.id),
+                            title: message.linkPreviews.first {
+                                ExternalEmbedDescriptor.match(urlString: $0.url ?? $0.matchedURL) != nil
+                            }?.title,
                             onBubble: message.mine && !message.suppressesBubbleBackground,
                             onLoadEmbed: { ui.loadedEmbeds.insert(message.id) }
                         )
@@ -860,6 +901,12 @@ struct MessageRowView: View {
         .padding(.vertical, message.suppressesBubbleBackground ? 2 : (message.kind == .image || message.kind == .sticker || message.kind == .video ? 4 : 7))
         .background(RoundedRectangle(cornerRadius: 14).fill(fill))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(isFailed ? Color.red : .clear, lineWidth: 1))
+        .task(id: LocalPreviewKey(
+            messageID: message.id,
+            text: message.rich.text,
+            hasNetworkPreview: !message.linkPreviews.isEmpty,
+            loadsExternalContent: actions.loadExternalEmbedsAutomatically
+        )) { await loadLocalPreview() }
         // Held for undo send: dimmed until it goes.
         .opacity(message.statusLine == .queued ? 0.55 : 1)
         .help(message.statusLine == .queued && actions.undoHeld != nil ? String(localized: "Click to unsend") : "")

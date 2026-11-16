@@ -316,6 +316,62 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(messages(build(events)).map(\.id), ["$a", "$b"])
     }
 
+    /// The run rule is the one `startsGroup` uses: same sender, under five minutes apart, no day or "New" divider
+    /// between. `endsGroup` marks the other end of each run.
+    func testEndsGroupMarksTheLastMessageOfEachRun() {
+        let events = [
+            message("$1", ts: at(14, 10, 0)),
+            message("$2", ts: at(14, 10, 1)),
+            message("$3", ts: at(14, 10, 2)), // run 1: $1 $2 $3
+            message("$4", ts: at(14, 10, 9)), // 7 minutes after $3: a run of its own
+            message("$5", ts: at(14, 10, 10), mine: true), // me: another sender
+            message("$6", ts: at(14, 10, 11)),
+            message("$7", ts: at(14, 10, 12)), // run: $6 $7, then the New divider
+            message("$8", ts: at(14, 10, 13)),
+            message("$9", ts: at(15, 0, 5)), // the next day
+        ]
+        let items = build(events, firstUnread: "$8")
+        let ends = Dictionary(uniqueKeysWithValues: messages(items).map { ($0.id, $0.endsGroup) })
+        XCTAssertEqual(ends, [
+            "$1": false, "$2": false, "$3": true, "$4": true, "$5": true,
+            "$6": false, "$7": true, "$8": true, "$9": true,
+        ])
+        // The same runs from the other end: a message starts a run exactly when the one before it ended one.
+        let shown = messages(items)
+        for (previous, next) in zip(shown, shown.dropFirst()) {
+            XCTAssertEqual(previous.endsGroup, next.startsGroup, "\(previous.id) / \(next.id)")
+        }
+    }
+
+    func testAMembershipRunEndsTheRunBeforeIt() {
+        let join = Event(eventID: "$m", roomID: "!room", sender: "@bob:example.test", senderName: "Bob", mine: false,
+                         type: "m.room.member", content: json(#"{"membership":"join"}"#), ts: at(14, 10, 1), seq: 0,
+                         status: .sent)
+        let events = [message("$1", ts: at(14, 10, 0)), join, message("$2", ts: at(14, 10, 2))]
+        let shown = messages(build(events))
+        XCTAssertEqual(shown.map(\.endsGroup), [true, true])
+    }
+
+    /// One-to-one chats show the other person's picture once per run, on its last message; group chats keep it on
+    /// the first, beside the name. My own messages never draw one.
+    func testOneToOneChatsShowThePictureOncePerRunOnTheLastMessage() {
+        let events = [
+            message("$1", ts: at(14, 10, 0)),
+            message("$2", ts: at(14, 10, 1)),
+            message("$3", ts: at(14, 10, 2)),
+            message("$4", ts: at(14, 10, 3), mine: true),
+            message("$5", ts: at(14, 10, 4)), // a run of one, after my reply: it gets its own
+            message("$6", ts: at(14, 10, 20)), // past the grouping gap: a new run
+        ]
+        let direct = messages(build(events, isDirect: true))
+        XCTAssertEqual(direct.map(\.showsSenderAvatar), [false, false, true, false, true, true])
+        XCTAssertEqual(direct.filter(\.showsSenderAvatar).map(\.id), ["$3", "$5", "$6"])
+
+        let group = messages(build(events, isDirect: false))
+        XCTAssertEqual(group.map(\.showsSenderAvatar), [true, false, false, false, true, true],
+                       "a group chat's picture stays on the first message of the run")
+    }
+
     func testNewDividerAtReadMarker() {
         let events = [
             message("$1", ts: at(14, 10, 0)),

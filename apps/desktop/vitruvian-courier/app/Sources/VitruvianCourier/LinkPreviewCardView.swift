@@ -2,15 +2,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
+import ImageIO
+import LinkPresentation
 import VitruvianCourierCore
 import SwiftUI
 import WebKit
 
-/// Inline link preview card (`LinkPreviewItem`) rendered solely from bridge-supplied metadata and local media store files.
+/// Inline link preview card (`LinkPreviewItem`) rendered from bridge-supplied metadata and local media store files,
+/// or, for a link its network sent no preview for, from what this Mac fetched itself (`LocalLinkPreviewStore`, only
+/// with "Load external embeds automatically" on), whose picture arrives as `imageData`.
 ///
-/// Never fetches the target URL or any remote image. Clicking the card opens the `http(s)` URL in the default browser.
+/// The card itself never fetches anything. Clicking it opens the `http(s)` URL in the default browser.
 public struct LinkPreviewCardView: View {
     public let preview: LinkPreviewItem
+    /// A picture this Mac fetched itself (a local preview); a bridge's picture comes by `preview.imagePath`.
+    public var imageData: Data?
     public var onBubble: Bool
     public var onOpenURL: (URL) -> Void
 
@@ -23,6 +29,7 @@ public struct LinkPreviewCardView: View {
 
     public init(
         preview: LinkPreviewItem,
+        imageData: Data? = nil,
         onBubble: Bool = false,
         onOpenURL: @escaping (URL) -> Void = { url in
             guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return }
@@ -30,8 +37,25 @@ public struct LinkPreviewCardView: View {
         }
     ) {
         self.preview = preview
+        self.imageData = imageData
         self.onBubble = onBubble
         self.onOpenURL = onOpenURL
+    }
+
+    private struct ImageSource: Equatable {
+        let path: String?
+        let dataCount: Int?
+    }
+
+    /// A fetched picture made small enough to draw (ImageIO decodes straight to the size).
+    static func decode(_ data: Data, maxPixelSize: Int = 640) -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 
     private var targetURL: URL? {
@@ -145,11 +169,14 @@ public struct LinkPreviewCardView: View {
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
-        .task(id: preview.imagePath) {
+        .task(id: ImageSource(path: preview.imagePath, dataCount: imageData?.count)) {
             loadedCGImage = nil
-            guard let path = localThumbnailPath else { return }
-            if let thumbnail = await ThumbnailLoader.shared.thumbnail(atPath: path) {
-                loadedCGImage = thumbnail.image
+            if let path = localThumbnailPath {
+                if let thumbnail = await ThumbnailLoader.shared.thumbnail(atPath: path) {
+                    loadedCGImage = thumbnail.image
+                }
+            } else if let imageData {
+                loadedCGImage = Self.decode(imageData)
             }
         }
         .help(targetURL?.absoluteString ?? String(localized: "Open Link"))
@@ -168,6 +195,24 @@ public struct ExternalEmbedDescriptor: Equatable, Sendable {
         self.host = host
         self.originalURL = originalURL
         self.embedURL = embedURL
+    }
+
+    /// The site as people say it ("YouTube"), for the card's second line.
+    public var siteName: String {
+        switch host {
+        case "youtube.com": "YouTube"
+        case "vimeo.com": "Vimeo"
+        case "open.spotify.com": "Spotify"
+        case "loom.com": "Loom"
+        default: host
+        }
+    }
+
+    /// What the card says when nothing better is known about the link: what it is, on which site.
+    public var fallbackTitle: String {
+        host == "open.spotify.com"
+            ? String(localized: "Listen on \(siteName)")
+            : String(localized: "Watch on \(siteName)")
     }
 
     /// Returns a descriptor when `urlString` matches an embeddable YouTube, Vimeo, Spotify, or Loom link.
@@ -260,23 +305,26 @@ public struct ExternalEmbedDescriptor: Equatable, Sendable {
 
 /// Privacy-gated external embed placeholder and sandboxed loader (`MessageIFrame.tsx`).
 ///
-/// Until the person clicks **Load Embed** (when `loadExternalEmbedsAutomatically == false`), no `WKWebView` is
-/// instantiated at all. Once loaded, the `WKWebView` runs with a non-persistent `WKWebsiteDataStore` and blocks
-/// navigation away from the embed URL.
+/// Until the person clicks the card (when `loadExternalEmbedsAutomatically == false`), no `WKWebView` is
+/// instantiated at all. The card is a compact preview (a play glyph, a title, the site); its tooltip says the embed
+/// is held back to protect the person's IP address, and clicking it loads the embed. Once loaded, the `WKWebView`
+/// runs with a non-persistent `WKWebsiteDataStore` and blocks navigation away from the embed URL.
 public struct EmbedConsentCard: View {
     /// The theme's accent, never the system one (which can be red).
     @Environment(\.themeAccentColor) private var themeAccent
     public let messageID: String
     public let descriptor: ExternalEmbedDescriptor
     public let isLoaded: Bool
+    /// The link's title when the message already carries one (a preview its network sent); else the card names the site.
+    public var title: String?
     public var onBubble: Bool
     public let onLoadEmbed: () -> Void
     public var onOpenURL: (URL) -> Void
 
     public static let userVisibleStrings: [String] = [
-        String(localized: "Load embed from youtube.com"),
-        String(localized: "External embed from youtube.com is blocked to protect your IP address"),
-        String(localized: "Load Embed"),
+        String(localized: "Watch on YouTube"),
+        String(localized: "Listen on Spotify"),
+        String(localized: "External embed from youtube.com is blocked to protect your IP address. Click to load it."),
         String(localized: "Open in Browser"),
     ]
 
@@ -284,6 +332,7 @@ public struct EmbedConsentCard: View {
         messageID: String,
         descriptor: ExternalEmbedDescriptor,
         isLoaded: Bool,
+        title: String? = nil,
         onBubble: Bool = false,
         onLoadEmbed: @escaping () -> Void,
         onOpenURL: @escaping (URL) -> Void = { url in
@@ -293,9 +342,19 @@ public struct EmbedConsentCard: View {
         self.messageID = messageID
         self.descriptor = descriptor
         self.isLoaded = isLoaded
+        self.title = title
         self.onBubble = onBubble
         self.onLoadEmbed = onLoadEmbed
         self.onOpenURL = onOpenURL
+    }
+
+    private var displayTitle: String {
+        if let title = title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
+        return descriptor.fallbackTitle
+    }
+
+    private var tooltip: String {
+        String(localized: "External embed from \(descriptor.host) is blocked to protect your IP address. Click to load it.")
     }
 
     public var body: some View {
@@ -332,57 +391,50 @@ public struct EmbedConsentCard: View {
                     .strokeBorder(onBubble ? Color.white.opacity(0.22) : Color.primary.opacity(0.12), lineWidth: 1)
             )
         } else {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
+            Button(action: onLoadEmbed) {
+                HStack(spacing: 10) {
                     ZStack {
-                        Circle()
-                            .fill(themeAccent.opacity(onBubble ? 0.28 : 0.14))
-                            .frame(width: 30, height: 30)
-                        Image(systemName: "lock.shield.fill")
-                            .font(.system(size: 14, weight: .semibold))
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(themeAccent.opacity(onBubble ? 0.30 : 0.16))
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(onBubble ? Color.white : themeAccent)
                     }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "Load embed from \(descriptor.host)"))
+                    .frame(width: 48, height: 36)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(displayTitle)
                             .font(.callout.weight(.semibold))
                             .foregroundStyle(onBubble ? Color.white : Color.primary)
-                        Text(String(localized: "External embed from \(descriptor.host) is blocked to protect your IP address"))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        // The site's name under a real title; under the stand-in title (which names it), the address.
+                        Text(displayTitle == descriptor.fallbackTitle ? descriptor.host : descriptor.siteName)
                             .font(.caption)
-                            .foregroundStyle(onBubble ? Color.white.opacity(0.82) : Color.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .foregroundStyle(onBubble ? Color.white.opacity(0.78) : Color.secondary)
+                            .lineLimit(1)
                     }
+                    Spacer(minLength: 0)
                 }
-
-                HStack(spacing: 8) {
-                    Button(action: onLoadEmbed) {
-                        Label(String(localized: "Load Embed"), systemImage: "play.rectangle")
-                            .font(.caption.weight(.semibold))
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-
-                    Button {
-                        onOpenURL(descriptor.originalURL)
-                    } label: {
-                        Label(String(localized: "Open in Browser"), systemImage: "safari")
-                            .font(.caption.weight(.medium))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
+                .padding(8)
+                .frame(maxWidth: 320, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(onBubble ? Color.black.opacity(0.18) : Color.primary.opacity(0.05))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(onBubble ? Color.white.opacity(0.22) : Color.primary.opacity(0.12), lineWidth: 1)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 10))
             }
-            .padding(10)
-            .frame(maxWidth: 320, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(onBubble ? Color.black.opacity(0.18) : Color.primary.opacity(0.05))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(onBubble ? Color.white.opacity(0.22) : Color.primary.opacity(0.12), lineWidth: 1)
-            )
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(String(localized: "Load embed from \(descriptor.host)"))
+            .buttonStyle(.plain)
+            .help(tooltip)
+            .contextMenu {
+                Button(String(localized: "Open in Browser")) { onOpenURL(descriptor.originalURL) }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(descriptor.siteName): \(displayTitle)")
+            .accessibilityHint(tooltip)
         }
     }
 
@@ -471,5 +523,60 @@ public struct SandboxedEmbedWebView: NSViewRepresentable {
                 decisionHandler(.cancel)
             }
         }
+    }
+}
+
+/// Fetches a link's title, site name and picture on this Mac with macOS's own `LPMetadataProvider`.
+///
+/// This tells the linked site this Mac's address, which is why `LocalLinkPreviewPolicy` allows it only with
+/// "Load external embeds automatically" on, and only for links a network sent no preview for.
+struct LinkPresentationFetcher: LinkMetadataFetching {
+    static let timeout: TimeInterval = 8
+
+    func fetch(_ url: URL) async -> LocalLinkPreview? {
+        await fetchOnMain(url)
+    }
+
+    @MainActor
+    private func fetchOnMain(_ url: URL) async -> LocalLinkPreview? {
+        let provider = LPMetadataProvider()
+        provider.timeout = Self.timeout
+        guard let metadata = try? await provider.startFetchingMetadata(for: url) else { return nil }
+        let host = (metadata.url ?? url).host?.lowercased() ?? ""
+        let site = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+        return LocalLinkPreview(
+            url: url,
+            title: metadata.title,
+            siteName: site.isEmpty ? nil : site,
+            imageData: await Self.imageData(from: metadata.imageProvider)
+        )
+    }
+
+    private static func imageData(from provider: NSItemProvider?) async -> Data? {
+        guard let provider, provider.canLoadObject(ofClass: NSImage.self) else { return nil }
+        return await withCheckedContinuation { continuation in
+            _ = provider.loadObject(ofClass: NSImage.self) { object, _ in
+                guard let image = object as? NSImage,
+                      let tiff = image.tiffRepresentation,
+                      let bitmap = NSBitmapImageRep(data: tiff)
+                else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.8]))
+            }
+        }
+    }
+}
+
+extension LocalLinkPreviewStore {
+    /// The conversation's store: every row asks this one, so a link is fetched once however many rows show it.
+    static let shared = LocalLinkPreviewStore(fetcher: LinkPresentationFetcher())
+}
+
+extension LocalLinkPreview {
+    /// The card's model for a link this Mac fetched itself.
+    var asLinkPreviewItem: LinkPreviewItem {
+        LinkPreviewItem(matchedURL: url.absoluteString, url: url.absoluteString, title: title, siteName: siteName)
     }
 }
