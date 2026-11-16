@@ -39,4 +39,4 @@ spec:
       name: {{ include "vitruvian-relay.name" . }}
   timeout:
     http:
-      connectionIdleTimeout: {{ required "upstreamIdleTimeout is required: keep it below the relay's 75 s idle close" .Values.upstreamIdleTimeout | quote }}
+      connectionIdleTimeout: {{ include "vitruvian-relay.upstreamIdleTimeout" . | quote }}

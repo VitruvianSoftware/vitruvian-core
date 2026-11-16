@@ -117,12 +117,17 @@ jobs:
             --build-context mcpauth=packages/rust/vitruvian-mcp-auth \
             apps/suites/vitruvian-relay
 
-      # ASSERTION 1 — the pod runs as UID 10001 (deployment.yaml securityContext),
-      # a UID that exists in no image layer, under a read-only root filesystem.
-      # Run the binary as that exact UID, with the same read-only rootfs, and
-      # require `--version` to exit 0: it proves the entrypoint is executable
-      # by that UID and that its shared libraries load from the distroless base
-      # on this architecture.
+      # ASSERTION 1 — the pod runs as UID/GID 10001 (deployment.yaml
+      # securityContext), a UID that exists in no image layer, with a read-only
+      # root filesystem, every capability dropped, no privilege escalation, and
+      # exactly one writable mount: the /data volume. No writable /tmp: the
+      # relay writes only under /data (devices.json and its .tmp sibling), so
+      # the pod gets no emptyDir and this check gets no --tmpfs /tmp either.
+      # If the relay ever needs /tmp, this run fails first; then add an emptyDir
+      # at /tmp to the chart and a matching --tmpfs here.
+      # Require `--version` to exit 0: it proves the entrypoint is executable by
+      # that UID and that its shared libraries load from the distroless base on
+      # this architecture.
       #
       # It deliberately does NOT start the server: that needs real Zitadel ids,
       # a writable /data and a reachable IdP, and a start attempt failing on
@@ -132,7 +137,10 @@ jobs:
           set -euo pipefail
           docker run --rm \
             --user 10001:10001 \
-            --read-only --tmpfs /tmp \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --tmpfs /data:uid=10001,gid=10001 \
             --entrypoint /app/vitruvian-relay \
             vitruvian-relay:verify \
             --version

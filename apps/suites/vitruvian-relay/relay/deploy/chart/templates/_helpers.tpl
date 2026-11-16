@@ -38,7 +38,30 @@ Every value below fails the render when missing rather than defaulting: an
 unset client id or subject list must never mean "let everyone in".
 */}}
 {{- define "vitruvian-relay.imageRef" -}}
-{{- $raw := required "image.digest is required: pin the image by digest, never a tag" .Values.image.digest -}}
+{{- $raw := required "image.digest is required: pin the image by digest, never a tag" .Values.image.digest | toString -}}
 {{- $d := regexReplaceAll "^.*@" $raw "" -}}
+{{- if not (regexMatch "^sha256:[0-9a-f]{64}$" $d) -}}
+{{- fail (printf "image.digest must be \"sha256:<64 hex>\" (optionally \"<tag>@sha256:...\"), never a tag; got %q" $raw) -}}
+{{- end -}}
 {{ .Values.image.repository }}@{{ $d }}
+{{- end -}}
+
+{{/*
+The upstream idle timeout, checked against the relay's own idle close (75 s,
+header_read_timeout in src/http.rs): Envoy must drop an idle connection first,
+or it reuses one the relay just closed (a 503). Accepts minutes and seconds,
+e.g. "60s", "1m", "1m10s"; anything else, zero, or 75 s and up fails the render.
+*/}}
+{{- define "vitruvian-relay.upstreamIdleTimeout" -}}
+{{- $t := required "upstreamIdleTimeout is required: keep it below the relay's 75 s idle close" .Values.upstreamIdleTimeout | toString -}}
+{{- if not (regexMatch "^([0-9]+m)?([0-9]+s)?$" $t) -}}
+{{- fail (printf "upstreamIdleTimeout must be minutes and/or seconds, like \"60s\" or \"1m10s\"; got %q" $t) -}}
+{{- end -}}
+{{- $m := regexFind "[0-9]+m" $t | trimSuffix "m" | default "0" | atoi -}}
+{{- $s := regexFind "[0-9]+s" $t | trimSuffix "s" | default "0" | atoi -}}
+{{- $total := add (mul $m 60) $s -}}
+{{- if or (le $total 0) (ge $total 75) -}}
+{{- fail (printf "upstreamIdleTimeout must be above 0 and below the relay's 75 s idle close (header_read_timeout); got %q (%d s)" $t $total) -}}
+{{- end -}}
+{{ $t }}
 {{- end -}}
