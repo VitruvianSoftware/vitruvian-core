@@ -44,16 +44,17 @@ use base64::Engine as _;
 use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
 use http::{header, HeaderValue, Method, Request, Response, StatusCode};
-use http_body_util::{BodyExt, Full, Limited};
+use http_body_util::{BodyExt, Full, LengthLimitError, Limited};
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::{TokioIo, TokioTimer};
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::handshake::derive_accept_key;
-use tokio_tungstenite::tungstenite::protocol::{Message, Role, WebSocketConfig};
+use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
+use tokio_tungstenite::tungstenite::protocol::{CloseFrame, Message, Role, WebSocketConfig};
 use tokio_tungstenite::WebSocketStream;
 use vitruvian_mcp_auth::{
     extract_bearer, protected_resource_metadata, www_authenticate, AuthError, Caller, Verifier,
@@ -74,10 +75,13 @@ pub type Body = Full<Bytes>;
 /// device, so the body stays under the frame cap with room for the frame's
 /// own fields.
 pub const MAX_MCP_BODY_BYTES: usize = MAX_FRAME_BYTES - 16 * 1024;
-const MAX_DEVICES_BODY_BYTES: usize = 4 * 1024;
+pub(crate) const MAX_DEVICES_BODY_BYTES: usize = 4 * 1024;
 /// Sessions kept in memory; past this, the least recently used one ends (its
 /// client gets a 404 and starts a new one).
 const MAX_SESSIONS: usize = 1024;
+/// Sessions one person may hold; past this, their own least recently used
+/// one ends, so nobody can push out someone else's.
+pub(crate) const MAX_SESSIONS_PER_SUBJECT: usize = 64;
 const SESSION_HEADER: &str = "mcp-session-id";
 /// Frames queued for one connection before a caller waits for room.
 const CONNECTION_QUEUE: usize = 64;
@@ -101,6 +105,10 @@ pub struct Timing {
     /// call frame near the 4 MiB cap on a slow uplink is not mistaken for a
     /// dead link; a silent drop is still caught by the pings, which are small.
     pub send_timeout: Duration,
+    /// A request's headers must arrive within this.
+    pub header_read_timeout: Duration,
+    /// A request's body must arrive within this (408 otherwise).
+    pub body_timeout: Duration,
     /// Seconds since the epoch.
     pub clock: fn() -> u64,
 }
@@ -123,6 +131,8 @@ impl Default for Timing {
             call_budget: Duration::from_secs(180),
             max_clock_skew_secs: 60,
             send_timeout: Duration::from_secs(30),
+            header_read_timeout: Duration::from_secs(10),
+            body_timeout: Duration::from_secs(30),
             clock: unix_now,
         }
     }
@@ -149,6 +159,10 @@ pub struct App {
     registering: tokio::sync::Mutex<()>,
     timing: Timing,
     log: LogSink,
+    /// Tests: pause a connection between checking its hello and registering
+    /// it (reached, release).
+    #[cfg(test)]
+    pub(crate) after_hello: Mutex<Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>>,
 }
 
 impl App {
@@ -172,6 +186,8 @@ impl App {
             registering: tokio::sync::Mutex::new(()),
             timing,
             log,
+            #[cfg(test)]
+            after_hello: Mutex::new(None),
         })
     }
 
@@ -182,13 +198,27 @@ impl App {
     fn new_session(&self, device_id: &str, caller: &Caller) -> String {
         let id = random_id();
         let mut sessions = self.sessions.lock().unwrap();
-        if sessions.len() >= MAX_SESSIONS {
-            if let Some(oldest) = sessions
+        let oldest = |sessions: &HashMap<String, Session>, only: Option<&str>| {
+            sessions
                 .iter()
+                .filter(|(_, s)| only.is_none_or(|sub| s.subject == sub))
                 .min_by_key(|(_, s)| s.last_used)
                 .map(|(k, _)| k.clone())
-            {
-                sessions.remove(&oldest);
+        };
+        // A person's own oldest session makes room for their new one...
+        let theirs = sessions
+            .values()
+            .filter(|s| s.subject == caller.subject)
+            .count();
+        if theirs >= MAX_SESSIONS_PER_SUBJECT {
+            if let Some(k) = oldest(&sessions, Some(&caller.subject)) {
+                sessions.remove(&k);
+            }
+        }
+        // ...and the overall cap is a backstop, only reachable with many people.
+        if sessions.len() >= MAX_SESSIONS {
+            if let Some(k) = oldest(&sessions, None) {
+                sessions.remove(&k);
             }
         }
         sessions.insert(
@@ -262,6 +292,27 @@ fn accepts_json(accept: Option<&str>) -> bool {
             .split(',')
             .map(|p| p.split(';').next().unwrap_or("").trim())
             .any(|t| t == "application/json" || t == "application/*" || t == "*/*"),
+    }
+}
+
+/// Reads a request body: 413 only when it is over `limit`, 408 when it does
+/// not arrive in time, 400 for anything else wrong with it.
+async fn read_body(
+    body: Incoming,
+    limit: usize,
+    timeout: Duration,
+) -> Result<Bytes, Box<Response<Body>>> {
+    let refuse = |status, msg| Err(Box::new(text(status, msg)));
+    match tokio::time::timeout(timeout, Limited::new(body, limit).collect()).await {
+        Err(_) => refuse(
+            StatusCode::REQUEST_TIMEOUT,
+            "the request body took too long",
+        ),
+        Ok(Ok(b)) => Ok(b.to_bytes()),
+        Ok(Err(e)) if e.downcast_ref::<LengthLimitError>().is_some() => {
+            refuse(StatusCode::PAYLOAD_TOO_LARGE, "body too large")
+        }
+        Ok(Err(_)) => refuse(StatusCode::BAD_REQUEST, "could not read the request body"),
     }
 }
 
@@ -401,12 +452,10 @@ async fn mcp_post(app: Arc<App>, req: Request<Incoming>, device_id: String) -> R
         .get(SESSION_HEADER)
         .and_then(|v| v.to_str().ok())
         .map(String::from);
-    let bytes = match Limited::new(req.into_body(), MAX_MCP_BODY_BYTES)
-        .collect()
-        .await
+    let bytes = match read_body(req.into_body(), MAX_MCP_BODY_BYTES, app.timing.body_timeout).await
     {
-        Ok(b) => b.to_bytes(),
-        Err(_) => return text(StatusCode::PAYLOAD_TOO_LARGE, "body too large"),
+        Ok(b) => b,
+        Err(resp) => return *resp,
     };
     let msg: Value = match serde_json::from_slice(&bytes) {
         Ok(v) => v,
@@ -465,12 +514,15 @@ async fn register_device(app: Arc<App>, req: Request<Incoming>) -> Response<Body
         Ok((caller, _token)) => caller,
         Err(r) => return refusal(&app, "devices", &metadata_url, r),
     };
-    let bytes = match Limited::new(req.into_body(), MAX_DEVICES_BODY_BYTES)
-        .collect()
-        .await
+    let bytes = match read_body(
+        req.into_body(),
+        MAX_DEVICES_BODY_BYTES,
+        app.timing.body_timeout,
+    )
+    .await
     {
-        Ok(b) => b.to_bytes(),
-        Err(_) => return text(StatusCode::PAYLOAD_TOO_LARGE, "body too large"),
+        Ok(b) => b,
+        Err(resp) => return *resp,
     };
     let key = serde_json::from_slice::<Value>(&bytes)
         .ok()
@@ -545,6 +597,15 @@ async fn upgrade(app: Arc<App>, mut req: Request<Incoming>) -> Response<Body> {
     let (true, Some(accept)) = (is_ws, accept) else {
         return text(StatusCode::BAD_REQUEST, "WebSocket upgrade required");
     };
+    // RFC 6455's only version.
+    if header_str(&req, header::SEC_WEBSOCKET_VERSION).map(str::trim) != Some("13") {
+        let mut r = text(StatusCode::BAD_REQUEST, "Sec-WebSocket-Version must be 13");
+        r.headers_mut().insert(
+            header::SEC_WEBSOCKET_VERSION,
+            HeaderValue::from_static("13"),
+        );
+        return r;
+    }
     let metadata_url = app.settings.relay_metadata_url();
     let (caller, token) = match authenticate(
         &app.connector_verifier,
@@ -558,6 +619,7 @@ async fn upgrade(app: Arc<App>, mut req: Request<Incoming>) -> Response<Body> {
     // The hello signature binds this token, so a signature cannot be replayed
     // with another one. Only the hash is kept.
     let token_hash = hex(ring::digest::digest(&ring::digest::SHA256, token.as_bytes()).as_ref());
+    let exp = token_exp(&token);
     drop(token);
 
     let on_upgrade = hyper::upgrade::on(&mut req);
@@ -575,7 +637,7 @@ async fn upgrade(app: Arc<App>, mut req: Request<Incoming>) -> Response<Body> {
             Some(ws_config()),
         )
         .await;
-        run_connection(app, ws, caller, token_hash).await;
+        run_connection(app, ws, caller, token_hash, exp).await;
     });
 
     Response::builder()
@@ -612,7 +674,12 @@ where
 impl App {
     /// Checks a `hello` against the device record and the token it came with.
     /// The reason goes back to the connector in `reject`.
-    fn check_hello(&self, hello: &Hello, caller: &Caller, token_hash: &str) -> Result<(), String> {
+    fn check_hello(
+        &self,
+        hello: &Hello,
+        caller: &Caller,
+        token_hash: &str,
+    ) -> Result<[u8; 32], String> {
         if hello.protocol != PROTOCOL {
             return Err(format!(
                 "unsupported protocol {}; this relay speaks {PROTOCOL}",
@@ -637,7 +704,9 @@ impl App {
         let message = hello_message(&hello.device_id, hello.ts, token_hash);
         ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, rec.public_key_ed25519)
             .verify(message.as_bytes(), &sig)
-            .map_err(|_| "bad signature".to_string())
+            .map_err(|_| "bad signature".to_string())?;
+        // The key that verified it: the session re-checks it after registering.
+        Ok(rec.public_key_ed25519)
     }
 }
 
@@ -665,11 +734,100 @@ fn ping_due(ticks_since_ping: u32, in_flight: bool, idle_every: u32) -> bool {
     ticks_since_ping >= if in_flight { 1 } else { idle_every }
 }
 
+/// What the ping timer says to do on a tick.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Beat {
+    Nothing,
+    Ping(u64),
+    Dead(u32),
+}
+
+/// Whether the connector is still there, counted in ticks of the in-call
+/// ping interval. Each ping must be answered before the next tick (one
+/// in-call interval, 2 s in production); a ping still unanswered then is
+/// missed. After `max_missed` in a row the link is dead, at the moment the
+/// last one's reply window ends: about 6 s once a call is in flight (a call
+/// is pinged the moment it goes out), and about a minute when idle.
+pub(crate) struct Liveness {
+    idle_every: u32,
+    max_missed: u32,
+    since_ping: u32,
+    awaiting: bool,
+    missed: u32,
+    n: u64,
+}
+
+impl Liveness {
+    pub(crate) fn new(idle_every: u32, max_missed: u32) -> Self {
+        Liveness {
+            idle_every,
+            max_missed: max_missed.max(1),
+            since_ping: 0,
+            awaiting: false,
+            missed: 0,
+            n: 0,
+        }
+    }
+
+    pub(crate) fn tick(&mut self, in_flight: bool) -> Beat {
+        if self.awaiting {
+            self.awaiting = false;
+            self.missed += 1;
+            if self.missed >= self.max_missed {
+                return Beat::Dead(self.missed);
+            }
+        }
+        self.since_ping += 1;
+        if ping_due(self.since_ping, in_flight, self.idle_every) {
+            return self.ping();
+        }
+        Beat::Nothing
+    }
+
+    /// A call just went to the device: ping now (unless a ping is already
+    /// out), so the drop count starts with the call. The caller restarts the
+    /// tick timer so this ping gets a full reply window.
+    pub(crate) fn call_started(&mut self) -> Beat {
+        if self.awaiting {
+            Beat::Nothing
+        } else {
+            self.ping()
+        }
+    }
+
+    pub(crate) fn heard(&mut self) {
+        self.missed = 0;
+        self.awaiting = false;
+    }
+
+    fn ping(&mut self) -> Beat {
+        self.since_ping = 0;
+        self.awaiting = true;
+        self.n += 1;
+        Beat::Ping(self.n)
+    }
+}
+
+/// The `exp` claim of a token the checker has already verified (so its
+/// payload can be trusted). `None` if it has none.
+pub(crate) fn token_exp(token: &str) -> Option<u64> {
+    let payload = token.split('.').nth(1)?;
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload.trim_end_matches('='))
+        .ok()?;
+    let exp = serde_json::from_slice::<Value>(&bytes)
+        .ok()?
+        .get("exp")?
+        .as_f64()?;
+    (exp.is_finite() && exp >= 0.0).then_some(exp as u64)
+}
+
 async fn run_connection<S>(
     app: Arc<App>,
     mut ws: WebSocketStream<S>,
     caller: Caller,
     token_hash: String,
+    token_exp: Option<u64>,
 ) where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
@@ -687,9 +845,18 @@ async fn run_connection<S>(
             _ => Err("the first frame must be hello".to_string()),
         },
     }
-    .and_then(|h| app.check_hello(&h, &caller, &token_hash).map(|()| h));
-    let hello = match hello {
-        Ok(h) => h,
+    .and_then(|h| {
+        app.check_hello(&h, &caller, &token_hash)
+            .map(|key| (h, key))
+    })
+    .and_then(|hk| match token_exp {
+        Some(exp) if exp <= (t.clock)() => {
+            Err("the token has expired; sign in again and reconnect".to_string())
+        }
+        _ => Ok(hk),
+    });
+    let (hello, verified_key) = match hello {
+        Ok(hk) => hk,
         Err(reason) => {
             app.log("connect_rejected", json!({"reason": reason}));
             if let Ok(f) = encode(&reject(reason)) {
@@ -699,6 +866,14 @@ async fn run_connection<S>(
             return;
         }
     };
+    #[cfg(test)]
+    {
+        let hook = app.after_hello.lock().unwrap().clone();
+        if let Some((reached, release)) = hook {
+            reached.notify_one();
+            release.notified().await;
+        }
+    }
 
     let device_id = hello.device_id.clone();
     let send_timeout = t.send_timeout;
@@ -717,6 +892,29 @@ async fn run_connection<S>(
     }
     let (tx, mut rx) = mpsc::channel(CONNECTION_QUEUE);
     let conn: ConnectionId = app.registry.connect(&device_id, hello.tools, tx);
+    // The device may have been registered again (new key) between the hello
+    // check and `connect`: its kick then found nothing to end. Registration
+    // stores the new key before it kicks, so reading the record after
+    // `connect` closes that gap: either this read sees the new key, or the
+    // kick comes after `connect` and ends this connection.
+    match app.store.get(&device_id) {
+        Some(r) if r.owner_sub == caller.subject && r.public_key_ed25519 == verified_key => {}
+        _ => {
+            app.registry.disconnect(&device_id, conn);
+            app.log(
+                "connect_rejected",
+                json!({"device_id": device_id, "reason": "device registered again"}),
+            );
+            let _ = send_frame(
+                &mut sink,
+                &reject("this device was registered again; reconnect with its new key".into()),
+                send_timeout,
+            )
+            .await;
+            let _ = tokio::time::timeout(send_timeout, sink.close()).await;
+            return;
+        }
+    }
     let started = Instant::now();
     app.log(
         "connect",
@@ -728,31 +926,51 @@ async fn run_connection<S>(
     let mut ticker = tokio::time::interval(tick);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     ticker.tick().await; // the first tick is immediate
-    let (mut since_ping, mut missed, mut n) = (0u32, 0u32, 0u64);
+    let mut live = Liveness::new(idle_every, t.max_missed_pings);
+    // The socket must not outlive its token: the connector reconnects with a
+    // fresh one.
+    let expires = async {
+        match token_exp {
+            Some(exp) => {
+                tokio::time::sleep(Duration::from_secs(exp.saturating_sub((t.clock)()))).await
+            }
+            None => std::future::pending().await,
+        }
+    };
+    tokio::pin!(expires);
+    let mut expired = false;
 
     let reason: String = loop {
         tokio::select! {
-            _ = ticker.tick() => {
-                since_ping += 1;
-                if ping_due(since_ping, app.registry.in_flight(&device_id), idle_every) {
-                    since_ping = 0;
-                    if missed >= t.max_missed_pings {
-                        break format!("{missed} pings unanswered");
-                    }
-                    missed += 1;
-                    n += 1;
+            _ = ticker.tick() => match live.tick(app.registry.in_flight(&device_id)) {
+                Beat::Nothing => {}
+                Beat::Dead(missed) => break format!("{missed} pings unanswered"),
+                Beat::Ping(n) => {
                     if let Err(e) = send_frame(&mut sink, &ToConnector::Ping { n }, send_timeout).await {
                         break e;
                     }
                 }
+            },
+            _ = &mut expires => {
+                expired = true;
+                break "token expired".into();
             }
             frame = rx.recv() => match frame {
                 // The registry dropped this connection: a newer one replaced
                 // it, or the device was registered again.
                 None => break "replaced".into(),
                 Some(f) => {
+                    let is_call = matches!(f, ToConnector::Call(_));
                     if let Err(e) = send_frame(&mut sink, &f, send_timeout).await {
                         break e;
+                    }
+                    if is_call {
+                        if let Beat::Ping(n) = live.call_started() {
+                            ticker.reset();
+                            if let Err(e) = send_frame(&mut sink, &ToConnector::Ping { n }, send_timeout).await {
+                                break e;
+                            }
+                        }
                     }
                 }
             },
@@ -767,18 +985,27 @@ async fn run_connection<S>(
                             break e;
                         }
                     }
-                    Ok(ToRelay::Pong { .. }) => missed = 0,
+                    Ok(ToRelay::Pong { .. }) => live.heard(),
                     Ok(ToRelay::Hello(_)) => {}
                     // Size only: a bad frame may still hold call output.
                     Err(_) => app.log("bad_frame", json!({"device_id": device_id, "bytes": text.len()})),
                 },
-                Some(Ok(Message::Pong(_))) => missed = 0,
+                Some(Ok(Message::Pong(_))) => live.heard(),
                 Some(Ok(Message::Close(_))) => break "connector closed".into(),
                 Some(Ok(_)) => {}
             },
         }
     };
     app.registry.disconnect(&device_id, conn);
+    if expired {
+        // A reason the connector can log; it then reconnects with a
+        // refreshed token.
+        let frame = CloseFrame {
+            code: CloseCode::Policy,
+            reason: "token expired; reconnect with a fresh token".into(),
+        };
+        let _ = tokio::time::timeout(send_timeout, sink.send(Message::Close(Some(frame)))).await;
+    }
     let _ = tokio::time::timeout(send_timeout, sink.close()).await;
     app.log(
         "disconnect",
@@ -800,12 +1027,15 @@ pub async fn serve(listener: TcpListener, app: Arc<App>) {
             }
         };
         let app = app.clone();
+        let header_timeout = app.timing.header_read_timeout;
         tokio::spawn(async move {
             let svc = service_fn(move |req| {
                 let app = app.clone();
                 async move { Ok::<_, Infallible>(handle(app, req).await) }
             });
             let _ = http1::Builder::new()
+                .timer(TokioTimer::new())
+                .header_read_timeout(header_timeout)
                 .serve_connection(TokioIo::new(stream), svc)
                 .with_upgrades()
                 .await;

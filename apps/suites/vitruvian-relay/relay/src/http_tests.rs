@@ -119,11 +119,15 @@ fn jwks(pair: &RsaKeyPair) -> Value {
 }
 
 fn mint(pair: &RsaKeyPair, client_id: &str, sub: &str) -> String {
+    mint_exp(pair, client_id, sub, now_secs() + 600)
+}
+
+fn mint_exp(pair: &RsaKeyPair, client_id: &str, sub: &str, exp: u64) -> String {
     let now = now_secs();
     let header = b64url(json!({"alg": "RS256", "kid": "k1"}).to_string().as_bytes());
     let claims = json!({
         "iss": ISSUER, "aud": [PROJECT_ID], "sub": sub, "client_id": client_id,
-        "iat": now, "exp": now + 600,
+        "iat": now, "exp": exp,
     });
     let input = format!("{header}.{}", b64url(claims.to_string().as_bytes()));
     let mut sig = vec![0u8; pair.public().modulus_len()];
@@ -174,6 +178,7 @@ fn temp_dir(name: &str) -> PathBuf {
 }
 
 struct Harness {
+    app: Arc<App>,
     addr: std::net::SocketAddr,
     rsa: RsaKeyPair,
     logs: Arc<Mutex<Vec<String>>>,
@@ -243,8 +248,9 @@ async fn harness_with(timing: Timing) -> Harness {
     );
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    tokio::spawn(serve(listener, app));
+    tokio::spawn(serve(listener, app.clone()));
     Harness {
+        app,
         addr,
         rsa,
         logs,
@@ -299,6 +305,29 @@ impl Harness {
             headers,
             body: String::from_utf8_lossy(&body).into_owned(),
         }
+    }
+
+    /// Writes raw bytes and returns what comes back up to the end of the
+    /// response head (or EOF). For requests hyper's client won't send.
+    async fn raw(&self, bytes: &[u8]) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut stream = tokio::net::TcpStream::connect(self.addr).await.unwrap();
+        stream.write_all(bytes).await.unwrap();
+        let mut got = Vec::new();
+        within(async {
+            let mut buf = [0u8; 1024];
+            loop {
+                match stream.read(&mut buf).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => got.extend_from_slice(&buf[..n]),
+                }
+                if got.windows(4).any(|w| w == b"\r\n\r\n") {
+                    break;
+                }
+            }
+        })
+        .await;
+        String::from_utf8_lossy(&got).into_owned()
     }
 
     async fn get(&self, path: &str) -> Reply {
@@ -1405,6 +1434,267 @@ fn production_timing_matches_the_spec() {
     assert_eq!(t.call_budget, Duration::from_secs(180));
     assert_eq!(t.max_clock_skew_secs, 60);
     assert_eq!(t.send_timeout, Duration::from_secs(30));
+    assert_eq!(t.header_read_timeout, Duration::from_secs(10));
+    assert_eq!(t.body_timeout, Duration::from_secs(30));
     let now = (t.clock)();
     assert!(now.abs_diff(now_secs()) <= 5, "the clock is the wall clock");
+}
+
+// ------------------------------------------------------- fix round 1 tests
+
+#[tokio::test]
+async fn reregister_during_hello_gap_ends_old_key_connection() {
+    let h = harness().await;
+    let (device, old_key) = h.new_device(ALICE).await;
+    // Pause the connection after its hello is checked, before it registers.
+    let (reached, release) = (
+        Arc::new(tokio::sync::Notify::new()),
+        Arc::new(tokio::sync::Notify::new()),
+    );
+    *h.app.after_hello.lock().unwrap() = Some((reached.clone(), release.clone()));
+    let token = h.connector_token(ALICE);
+    let mut ws = h.ws(&token).await.unwrap();
+    ws.send(Message::Text(hello(
+        &device,
+        &old_key,
+        &token,
+        now_secs(),
+        vec![tool("a")],
+    )))
+    .await
+    .unwrap();
+    within(reached.notified()).await;
+    // The key changes in the gap; there is nothing to kick yet.
+    *h.app.after_hello.lock().unwrap() = None;
+    assert_eq!(h.register(ALICE, &ed25519()).await.status, StatusCode::OK);
+    release.notify_one();
+    // The old-key connection must end, whatever it saw first.
+    loop {
+        match next_frame(&mut ws).await {
+            None => break,
+            Some(ToConnector::Welcome { .. }) | Some(ToConnector::Reject { .. }) => {}
+            Some(other) => panic!("unexpected {other:?}"),
+        }
+    }
+    within(async {
+        while h.app.registry.tools(&device).is_some() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+}
+
+#[test]
+fn in_call_drop_trips_three_intervals_after_the_call_starts() {
+    // Production: 2 s ticks, idle ping every 10th tick.
+    let mut l = Liveness::new(10, 3);
+    // The call goes out: a ping at once, so the count starts with the call.
+    assert_eq!(l.call_started(), Beat::Ping(1));
+    assert_eq!(l.tick(true), Beat::Ping(2)); // 2 s: ping 1 unanswered
+    assert_eq!(l.tick(true), Beat::Ping(3)); // 4 s
+    assert_eq!(l.tick(true), Beat::Dead(3)); // 6 s: ping 3's window has passed
+}
+
+#[test]
+fn idle_drop_trips_after_three_unanswered_pings() {
+    let mut l = Liveness::new(10, 3);
+    let mut beats = Vec::new();
+    for tick in 1..=30 {
+        match l.tick(false) {
+            Beat::Nothing => {}
+            b => beats.push((tick, b)),
+        }
+        if matches!(beats.last(), Some((_, Beat::Dead(_)))) {
+            break;
+        }
+    }
+    // Pings at 20 s, 40 s, 60 s; dead when the third's reply window ends
+    // (62 s), not one whole idle interval later.
+    assert_eq!(
+        beats,
+        vec![
+            (10, Beat::Ping(1)),
+            (20, Beat::Ping(2)),
+            (30, Beat::Ping(3))
+        ]
+    );
+    assert_eq!(l.tick(false), Beat::Dead(3), "62 s");
+}
+
+#[test]
+fn an_answered_ping_keeps_the_link_alive() {
+    let mut l = Liveness::new(10, 3);
+    for _ in 0..100 {
+        if let Beat::Ping(_) = l.tick(true) {
+            l.heard();
+        }
+        assert_ne!(l.tick(true), Beat::Dead(3));
+        l.heard();
+    }
+    // A call starting while a ping is already out does not send another.
+    let mut l = Liveness::new(10, 3);
+    assert_eq!(l.call_started(), Beat::Ping(1));
+    assert_eq!(l.call_started(), Beat::Nothing);
+}
+
+#[tokio::test]
+async fn slow_headers_are_cut_off() {
+    let h = harness_with(Timing {
+        header_read_timeout: Duration::from_millis(200),
+        ..Timing::default()
+    })
+    .await;
+    // Headers never finish; the server must not wait forever.
+    let got = h.raw(b"POST /devices HTTP/1.1\r\nHost: relay\r\n").await;
+    assert!(got.is_empty() || got.starts_with("HTTP/1.1 408"), "{got:?}");
+}
+
+#[tokio::test]
+async fn slow_body_gets_408() {
+    let h = harness_with(Timing {
+        body_timeout: Duration::from_millis(200),
+        ..Timing::default()
+    })
+    .await;
+    let req = format!(
+        "POST /devices HTTP/1.1\r\nHost: relay\r\nAuthorization: Bearer {}\r\nContent-Length: 100\r\n\r\n{{\"public",
+        h.connector_token(ALICE)
+    );
+    let got = h.raw(req.as_bytes()).await;
+    assert!(got.starts_with("HTTP/1.1 408"), "{got:?}");
+}
+
+#[tokio::test]
+async fn body_errors_other_than_size_get_400() {
+    let h = harness().await;
+    let auth = format!("Authorization: Bearer {}\r\n", h.connector_token(ALICE));
+    let broken = format!(
+        "POST /devices HTTP/1.1\r\nHost: relay\r\n{auth}Transfer-Encoding: chunked\r\n\r\nzz\r\n"
+    );
+    let got = h.raw(broken.as_bytes()).await;
+    assert!(got.starts_with("HTTP/1.1 400"), "{got:?}");
+    // Too big is still 413.
+    let big = "x".repeat(MAX_DEVICES_BODY_BYTES + 1);
+    let r = h
+        .send(
+            "POST",
+            "/devices",
+            &[(
+                "authorization",
+                format!("Bearer {}", h.connector_token(ALICE)),
+            )],
+            &big,
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+#[tokio::test]
+async fn one_person_cannot_evict_anothers_sessions() {
+    let h = harness().await;
+    let (alices, _) = h.new_device(ALICE).await;
+    let (bobs, _) = h.new_device(BOB).await;
+    let bob_session = h.session(&bobs, BOB).await;
+    let first = h.session(&alices, ALICE).await;
+    let mut last = first.clone();
+    for _ in 0..MAX_SESSIONS_PER_SUBJECT {
+        last = h.session(&alices, ALICE).await;
+    }
+    let list = json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"});
+    assert_eq!(
+        h.rpc(&bobs, BOB, Some(&bob_session), list.clone())
+            .await
+            .status,
+        StatusCode::OK
+    );
+    // Alice's own oldest session made room for her newest.
+    assert_eq!(
+        h.rpc(&alices, ALICE, Some(&first), list.clone())
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        h.rpc(&alices, ALICE, Some(&last), list).await.status,
+        StatusCode::OK
+    );
+}
+
+#[test]
+fn token_exp_reads_the_claim() {
+    let t = mint_exp(&rsa_key(), CONNECTOR_CLIENT, ALICE, 1_900_000_000);
+    assert_eq!(token_exp(&t), Some(1_900_000_000));
+    assert_eq!(token_exp("not.a.jwt"), None);
+    assert_eq!(token_exp("garbage"), None);
+}
+
+async fn close_reason<S>(ws: &mut tokio_tungstenite::WebSocketStream<S>) -> Option<String>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    loop {
+        match within(ws.next()).await {
+            Some(Ok(Message::Close(f))) => return f.map(|f| f.reason.into_owned()),
+            Some(Ok(_)) => {}
+            Some(Err(_)) | None => return None,
+        }
+    }
+}
+
+#[tokio::test]
+async fn connection_closes_when_the_token_expires() {
+    let h = harness().await;
+    let (device, key) = h.new_device(ALICE).await;
+    let token = mint_exp(&h.rsa, CONNECTOR_CLIENT, ALICE, now_secs() + 2);
+    let mut ws = h.ws(&token).await.unwrap();
+    ws.send(Message::Text(hello(
+        &device,
+        &key,
+        &token,
+        now_secs(),
+        vec![],
+    )))
+    .await
+    .unwrap();
+    assert!(matches!(
+        next_frame(&mut ws).await,
+        Some(ToConnector::Welcome { .. })
+    ));
+    let reason = close_reason(&mut ws)
+        .await
+        .expect("a close frame with a reason");
+    assert!(reason.contains("expired"), "{reason}");
+    assert!(h.app.registry.tools(&device).is_none());
+
+    // Already past its exp (the checker allows some clock skew): refused.
+    let token = mint_exp(&h.rsa, CONNECTOR_CLIENT, ALICE, now_secs() - 5);
+    let mut ws = h.ws(&token).await.unwrap();
+    ws.send(Message::Text(hello(
+        &device,
+        &key,
+        &token,
+        now_secs(),
+        vec![],
+    )))
+    .await
+    .unwrap();
+    match next_frame(&mut ws).await {
+        Some(ToConnector::Reject { reason }) => assert!(reason.contains("expired"), "{reason}"),
+        other => panic!("expected reject, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn connect_requires_websocket_version_13() {
+    let h = harness().await;
+    let auth = format!("Authorization: Bearer {}\r\n", h.connector_token(ALICE));
+    for version in ["Sec-WebSocket-Version: 8\r\n", ""] {
+        let req = format!(
+            "GET /connect HTTP/1.1\r\nHost: relay\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\
+             Sec-WebSocket-Key: {nonce}\r\n{version}{auth}\r\n",
+            nonce = b64(b"a 16-byte nonce!")
+        );
+        let got = h.raw(req.as_bytes()).await;
+        assert!(got.starts_with("HTTP/1.1 400"), "{version:?}: {got:?}");
+    }
 }

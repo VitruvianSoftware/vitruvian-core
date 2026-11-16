@@ -49,6 +49,32 @@ fn csv(raw: &str) -> Vec<String> {
         .collect()
 }
 
+/// PUBLIC_URL is an origin: https on any host, or http only on this machine
+/// (`localhost` or `127.0.0.1`, for local runs). No user, path or query.
+fn check_public_url(url: &str) -> Result<(), String> {
+    let refuse = || {
+        Err(format!(
+            "PUBLIC_URL={url:?} must be an https origin (or http://localhost or http://127.0.0.1 for local runs), with no path or query"
+        ))
+    };
+    let Ok(uri) = url.parse::<http::Uri>() else {
+        return refuse();
+    };
+    let (Some(scheme), Some(authority)) = (uri.scheme_str(), uri.authority()) else {
+        return refuse();
+    };
+    let host = authority.host();
+    let bare = !authority.as_str().contains('@')
+        && !host.is_empty()
+        && matches!(uri.path(), "" | "/")
+        && uri.query().is_none();
+    match (bare, scheme, host) {
+        (true, "https", _) => Ok(()),
+        (true, "http", "localhost" | "127.0.0.1") => Ok(()),
+        _ => refuse(),
+    }
+}
+
 impl Settings {
     /// Reads settings from a key lookup (the environment in production).
     /// Every id list is required: a missing client id or subject list would
@@ -67,11 +93,7 @@ impl Settings {
                 .map_err(|_| format!("PORT={v:?} is not a port number"))?,
         };
         let public_url = req("PUBLIC_URL")?.trim_end_matches('/').to_string();
-        if !public_url.starts_with("https://") && !public_url.starts_with("http://localhost") {
-            return Err(format!(
-                "PUBLIC_URL={public_url:?} must be https (or http://localhost for local runs)"
-            ));
-        }
+        check_public_url(&public_url)?;
         let mcp_client_ids = csv(&req("MCP_CLIENT_IDS")?);
         let allowed_subjects = csv(&req("ALLOWED_SUBJECTS")?);
         if mcp_client_ids.is_empty() || allowed_subjects.is_empty() {
@@ -200,6 +222,20 @@ mod tests {
             ),
             ("PORT", "eighty", "non-numeric port"),
             (
+                "PUBLIC_URL",
+                "http://localhost.example.com",
+                "a host that only starts with localhost",
+            ),
+            (
+                "PUBLIC_URL",
+                "http://localhost@evil.example",
+                "userinfo naming localhost",
+            ),
+            ("PUBLIC_URL", "https://", "no host"),
+            ("PUBLIC_URL", "ftp://relay.example.dev", "another scheme"),
+            ("PUBLIC_URL", "https://relay.example.dev/path", "a path"),
+            ("PUBLIC_URL", "https://relay.example.dev?q=1", "a query"),
+            (
                 "CONNECTOR_CLIENT_ID",
                 "claude-id",
                 "connector id shared with an AI app",
@@ -208,6 +244,21 @@ mod tests {
             let mut env = base();
             env.insert(k, v);
             assert!(load(&env).is_err(), "{why} must be refused");
+        }
+    }
+
+    #[test]
+    fn public_url_accepts_https_or_local_http() {
+        for ok in [
+            "https://relay.example.dev",
+            "https://relay.example.dev:8443/",
+            "http://localhost",
+            "http://localhost:3000",
+            "http://127.0.0.1:8080",
+        ] {
+            let mut env = base();
+            env.insert("PUBLIC_URL", ok);
+            assert!(load(&env).is_ok(), "{ok} must be accepted");
         }
     }
 
