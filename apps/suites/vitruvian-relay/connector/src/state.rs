@@ -50,8 +50,11 @@ pub fn status_path(dir: &Path) -> PathBuf {
     dir.join("status.json")
 }
 
-/// Makes sure a private folder exists: the state directory, the log
-/// folder, desktop-commander's `~/.claude-server-commander`.
+/// Makes sure the state folder (or another of vrelay's own) exists and is
+/// private. It follows a symlink: `VRELAY_HOME` may name a linked folder,
+/// whose target is then made private. For a folder nobody chose by name
+/// (the installer's log folder, desktop-commander's), use
+/// [`ensure_private_dir`], which refuses a link.
 ///
 /// A new folder (and any missing parents) is created with mode 0700 from
 /// the start, never made and then chmod'ed. Several at once (or another
@@ -65,7 +68,24 @@ pub fn status_path(dir: &Path) -> PathBuf {
 /// is an error naming it, never chmod'ed. If the folder is not ours the
 /// chmod fails and that is reported rather than carried on from.
 pub fn ensure_dir(dir: &Path) -> Result<()> {
+    private_dir(dir, true)
+}
+
+/// [`ensure_dir`], but a symlink where the folder should be is an error,
+/// never followed: making its target 0700 could change a folder elsewhere.
+/// For `~/.claude-server-commander` and the installer's log folder.
+pub fn ensure_private_dir(dir: &Path) -> Result<()> {
+    private_dir(dir, false)
+}
+
+fn private_dir(dir: &Path, follow: bool) -> Result<()> {
     use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+    if !follow && std::fs::symlink_metadata(dir).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err(format!(
+            "{} is a symbolic link, not a folder; it is not followed",
+            dir.display()
+        ));
+    }
     let made = std::fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
@@ -411,6 +431,29 @@ mod tests {
             .unwrap();
         assert!(!cap_log(g.as_raw_fd(), &other, 100).unwrap());
         assert_eq!(std::fs::metadata(&other).unwrap().len(), 200);
+    }
+
+    /// Re-review N5: the log folder and desktop-commander's folder must not
+    /// be symlinks (a link would have its target made 0700); the state
+    /// folder may be one (`VRELAY_HOME` naming a linked folder), followed
+    /// on purpose.
+    #[test]
+    fn a_symlinked_folder_is_refused_except_the_state_folder() {
+        let root = test_dir("dirs-link");
+        let target = root.join("target");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let link = root.join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let e = ensure_private_dir(&link).unwrap_err();
+        assert!(e.contains("symbolic link"), "{e}");
+        assert_eq!(mode(&target), 0o755, "the link's target was changed");
+        ensure_dir(&link).unwrap();
+        assert_eq!(mode(&target), 0o700);
+        // A real folder is fine either way.
+        let real = root.join("real");
+        ensure_private_dir(&real).unwrap();
+        assert_eq!(mode(&real), 0o700);
     }
 
     /// Final-wave deferred item 5a: `VRELAY_HOME` naming a file is a clear

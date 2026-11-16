@@ -69,11 +69,14 @@ fn cmd_logout(cfg: &Config) -> Result<()> {
 /// Tells the running agent to re-read the rules, and waits for it to say
 /// it has. `what` is what the person just did, for the message.
 fn reload_agent(cfg: &Config, what: &str) -> Result<()> {
+    // Read first: the answer is the reload this signal causes, not one
+    // before it.
+    let before = status::reloads(&cfg.dir, now_unix());
     if !status::nudge_agent(&cfg.dir, now_unix()) {
         println!("{what} vrelay run is not running; the rules apply when it starts.");
         return Ok(());
     }
-    match status::wait_for_reload(&cfg.dir, Duration::from_secs(5)) {
+    match status::wait_for_reload(&cfg.dir, before, Duration::from_secs(5)) {
         Ok(true) => {
             println!("{what} The running vrelay is using the rules now.");
             Ok(())

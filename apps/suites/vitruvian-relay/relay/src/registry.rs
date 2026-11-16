@@ -538,6 +538,9 @@ mod tests {
     use serde_json::json;
     use std::time::Instant;
 
+    /// A call given the whole budget.
+    const BUDGET_MS: u64 = vitruvian_relay_protocol::CALL_BUDGET_SECS * 1000;
+
     // Real time, not tokio's paused clock: `test-util` would unify into the
     // production build through the crate hub. Deadlines here are either short
     // or never reached; a hang shows up as the outer `within` timing out.
@@ -594,7 +597,7 @@ mod tests {
         let reg = Registry::new();
         let (tx, mut rx) = mpsc::channel(8);
         let conn = reg.connect("d1", vec![], tx);
-        let h = spawn_call(&reg, "c1", 180_000);
+        let h = spawn_call(&reg, "c1", BUDGET_MS);
         assert_eq!(expect_call(&mut rx).await.call_id, "c1");
         reg.complete(conn, result("c1", "hi"));
         assert_eq!(within(h).await.unwrap(), Ok(result("c1", "hi")));
@@ -605,8 +608,8 @@ mod tests {
         let reg = Registry::new();
         let (tx, mut rx) = mpsc::channel(8);
         let conn = reg.connect("d1", vec![], tx);
-        let h1 = spawn_call(&reg, "c1", 180_000);
-        let h2 = spawn_call(&reg, "c2", 180_000);
+        let h1 = spawn_call(&reg, "c1", BUDGET_MS);
+        let h2 = spawn_call(&reg, "c2", BUDGET_MS);
         expect_call(&mut rx).await;
         expect_call(&mut rx).await;
         reg.complete(conn, result("c2", "second"));
@@ -621,12 +624,12 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(8);
         let conn = reg.connect("d1", vec![], tx);
         // A long deadline: only the disconnect can end this call quickly.
-        let h = spawn_call(&reg, "c1", 180_000);
+        let h = spawn_call(&reg, "c1", BUDGET_MS);
         expect_call(&mut rx).await;
         let started = Instant::now();
         reg.disconnect("d1", conn);
         assert_eq!(within(h).await.unwrap(), Err(CallError::Disconnected));
-        // 1 s, not 100 ms: shared CI runners stall; still far below the 180 s deadline.
+        // 1 s, not 100 ms: shared CI runners stall; still far below the call budget.
         assert!(started.elapsed() < Duration::from_secs(1));
     }
 
@@ -635,10 +638,10 @@ mod tests {
         let reg = Registry::new();
         let started = Instant::now();
         assert_eq!(
-            within(reg.call("nobody", call("c1", 180_000))).await,
+            within(reg.call("nobody", call("c1", BUDGET_MS))).await,
             Err(CallError::Offline)
         );
-        // 1 s, not 100 ms: shared CI runners stall; still far below the 180 s deadline.
+        // 1 s, not 100 ms: shared CI runners stall; still far below the call budget.
         assert!(started.elapsed() < Duration::from_secs(1));
     }
 
@@ -666,7 +669,7 @@ mod tests {
         let reg = Registry::new();
         let (tx1, mut rx1) = mpsc::channel(8);
         let old = reg.connect("d1", vec![tool("old")], tx1);
-        let h = spawn_call(&reg, "c1", 180_000);
+        let h = spawn_call(&reg, "c1", BUDGET_MS);
         expect_call(&mut rx1).await;
 
         let (tx2, mut rx2) = mpsc::channel(8);
@@ -681,7 +684,7 @@ mod tests {
         assert!(reg.tools("d1").is_some());
 
         // New calls go to the new connection.
-        let h = spawn_call(&reg, "c2", 180_000);
+        let h = spawn_call(&reg, "c2", BUDGET_MS);
         expect_call(&mut rx2).await;
         // A result for c2 reported by the old connection is ignored...
         reg.complete(old, result("c2", "from the old connection"));
@@ -739,7 +742,7 @@ mod tests {
         let reg = Registry::new();
         let (tx, mut rx) = mpsc::channel(8);
         reg.connect("d1", vec![], tx);
-        let h = spawn_call(&reg, "c1", 180_000);
+        let h = spawn_call(&reg, "c1", BUDGET_MS);
         expect_call(&mut rx).await;
         reg.kick("d1");
         assert_eq!(within(h).await.unwrap(), Err(CallError::Disconnected));
@@ -774,13 +777,13 @@ mod tests {
     async fn disconnect_wakes_a_call_blocked_on_a_full_channel() {
         let reg = Registry::new();
         let (conn, _rx) = full_connection(&reg).await;
-        let h = spawn_call(&reg, "c1", 180_000);
+        let h = spawn_call(&reg, "c1", BUDGET_MS);
         tokio::time::sleep(Duration::from_millis(20)).await;
         assert!(reg.in_flight("d1"));
         let started = Instant::now();
         reg.disconnect("d1", conn);
         assert_eq!(within(h).await.unwrap(), Err(CallError::Disconnected));
-        // 1 s, not 100 ms: shared CI runners stall; still far below the 180 s deadline.
+        // 1 s, not 100 ms: shared CI runners stall; still far below the call budget.
         assert!(started.elapsed() < Duration::from_secs(1));
     }
 
@@ -798,10 +801,10 @@ mod tests {
         let reg = Registry::new();
         let (tx, mut rx) = mpsc::channel(8);
         let conn = reg.connect("d1", vec![], tx);
-        let first = spawn_call(&reg, "c1", 180_000);
+        let first = spawn_call(&reg, "c1", BUDGET_MS);
         expect_call(&mut rx).await;
         assert_eq!(
-            within(reg.call("d1", call("c1", 180_000))).await,
+            within(reg.call("d1", call("c1", BUDGET_MS))).await,
             Err(CallError::Duplicate)
         );
         // The first call is still pending and no extra frame went out.
@@ -820,7 +823,7 @@ mod tests {
         assert!(!reg.in_flight("d1"));
 
         // complete
-        let h = spawn_call(&reg, "c1", 180_000);
+        let h = spawn_call(&reg, "c1", BUDGET_MS);
         expect_call(&mut rx).await;
         assert!(reg.in_flight("d1"));
         reg.complete(conn, result("c1", "x"));
@@ -836,7 +839,7 @@ mod tests {
         within(rx.recv()).await; // the cancel
 
         // disconnect
-        let h = spawn_call(&reg, "c3", 180_000);
+        let h = spawn_call(&reg, "c3", BUDGET_MS);
         expect_call(&mut rx).await;
         assert!(reg.in_flight("d1"));
         reg.disconnect("d1", conn);
@@ -910,7 +913,7 @@ mod tests {
             let conn = reg.connect("d1", vec![], tx.clone());
             let closer = reg.closer("d1", conn).unwrap();
             // The call fills the queue, and nothing ever drains it.
-            let h = spawn_call(&reg, "c1", if caller_leaves { 180_000 } else { 100 });
+            let h = spawn_call(&reg, "c1", if caller_leaves { BUDGET_MS } else { 100 });
             tokio::time::sleep(Duration::from_millis(30)).await;
             if caller_leaves {
                 h.abort();
@@ -958,7 +961,7 @@ mod tests {
         within(rx.recv()).await; // its cancel
 
         // The caller went away.
-        let h = spawn_call(&reg, "c2", 180_000);
+        let h = spawn_call(&reg, "c2", BUDGET_MS);
         let mut c = expect_call(&mut rx).await;
         h.abort();
         let _ = h.await;
@@ -967,14 +970,14 @@ mod tests {
 
         // Its connection was dropped (kicked, replaced or closed); the id is
         // never sent on the old connection, nor taken for the new one's.
-        let h = spawn_call(&reg, "c3", 180_000);
+        let h = spawn_call(&reg, "c3", BUDGET_MS);
         let mut c = expect_call(&mut rx).await;
         reg.kick("d1");
         assert_eq!(within(h).await.unwrap(), Err(CallError::Disconnected));
         assert!(!reg.release(conn, &mut c, Duration::ZERO));
         let (tx2, mut rx2) = mpsc::channel(8);
         let new = reg.connect("d1", vec![], tx2);
-        let h = spawn_call(&reg, "c3", 180_000);
+        let h = spawn_call(&reg, "c3", BUDGET_MS);
         let mut c_new = expect_call(&mut rx2).await;
         assert!(!reg.release(conn, &mut c, Duration::ZERO));
         assert!(reg.release(new, &mut c_new, Duration::ZERO));
@@ -1005,7 +1008,7 @@ mod tests {
         let reg = Registry::new();
         let (tx, mut rx) = mpsc::channel(8);
         let conn = reg.connect("d1", vec![], tx);
-        let h = spawn_call(&reg, "c1", 180_000);
+        let h = spawn_call(&reg, "c1", BUDGET_MS);
         expect_call(&mut rx).await;
         assert!(reg.in_flight("d1"));
         h.abort();
@@ -1017,7 +1020,7 @@ mod tests {
         );
         assert!(!reg.in_flight("d1"));
         // The id is free again.
-        let h = spawn_call(&reg, "c1", 180_000);
+        let h = spawn_call(&reg, "c1", BUDGET_MS);
         expect_call(&mut rx).await;
         reg.complete(conn, result("c1", "again"));
         assert_eq!(within(h).await.unwrap(), Ok(result("c1", "again")));

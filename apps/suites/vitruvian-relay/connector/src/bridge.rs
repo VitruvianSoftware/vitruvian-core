@@ -274,7 +274,7 @@ pub fn dc_home(env_home: Option<OsString>) -> Result<PathBuf> {
 /// Makes `HOME/.claude-server-commander` mode 0700, creating it if missing.
 /// `desktop-commander`'s call log there records every call's full arguments.
 pub fn secure_dc_config_dir(home: &Path) -> Result<()> {
-    crate::state::ensure_dir(&home.join(DC_CONFIG_DIR))
+    crate::state::ensure_private_dir(&home.join(DC_CONFIG_DIR))
 }
 
 /// What a call returned. Task 8 wraps it, with the call id, into a

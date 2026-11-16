@@ -122,6 +122,42 @@ pub(crate) fn may_kill_group_after(waited: &std::io::Result<()>) -> bool {
     waited.is_ok()
 }
 
+/// When process `pid` started, in microseconds since the epoch (macOS) or
+/// clock ticks since boot (Linux): with the pid, it names one process, so
+/// a pid handed on to another program after its owner died is told apart.
+/// `None` if there is no such process.
+pub fn process_start(pid: i32) -> Option<u64> {
+    if pid <= 0 {
+        return None;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let size = std::mem::size_of::<libc::proc_bsdinfo>() as libc::c_int;
+        // SAFETY: proc_pidinfo fills at most `size` bytes of `info`, plain
+        // zeroed memory of that size.
+        let (got, info) = unsafe {
+            let mut info: libc::proc_bsdinfo = std::mem::zeroed();
+            let got = libc::proc_pidinfo(
+                pid,
+                libc::PROC_PIDTBSDINFO,
+                0,
+                &mut info as *mut _ as *mut libc::c_void,
+                size,
+            );
+            (got, info)
+        };
+        (got == size).then(|| info.pbi_start_tvsec * 1_000_000 + info.pbi_start_tvusec)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        // Field 22 of /proc/<pid>/stat; the name (field 2) may hold
+        // spaces, so count from after its closing parenthesis.
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        let rest = &stat[stat.rfind(')')? + 1..];
+        rest.split_whitespace().nth(19)?.parse().ok()
+    }
+}
+
 /// [`output_within`] with the leader check given (tests stand in for a
 /// leader someone else reaped).
 pub(crate) fn output_within_using(

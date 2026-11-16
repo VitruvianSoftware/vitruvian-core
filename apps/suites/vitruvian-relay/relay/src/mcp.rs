@@ -333,7 +333,14 @@ mod tests {
     fn mcp() -> (Mcp, Registry) {
         let reg = Registry::new();
         let log: LogSink = Arc::new(|_| {});
-        (Mcp::new(reg.clone(), Duration::from_secs(180), log), reg)
+        (
+            Mcp::new(
+                reg.clone(),
+                Duration::from_secs(vitruvian_relay_protocol::CALL_BUDGET_SECS),
+                log,
+            ),
+            reg,
+        )
     }
 
     async fn ask(m: &Mcp, body: Value) -> Value {

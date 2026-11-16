@@ -69,12 +69,17 @@ fn fresh_status(dir: &Path, now: u64) -> Option<Value> {
     (now.saturating_sub(u) <= STATUS_STALE_SECS).then_some(v)
 }
 
-/// The running `vrelay run`'s process id, from a fresh `status.json`.
+/// The running `vrelay run`'s process id, from a fresh `status.json`, and
+/// only while that pid is still the process that wrote it: its start time
+/// (`pid_start`) must match. A crashed agent's pid taken by another program
+/// is never signalled.
 pub fn agent_pid(dir: &Path, now: u64) -> Option<i32> {
-    let pid = fresh_status(dir, now)?.get("pid")?.as_u64()?;
-    i32::try_from(pid)
+    let v = fresh_status(dir, now)?;
+    let pid = i32::try_from(v.get("pid")?.as_u64()?)
         .ok()
-        .filter(|p| *p > 1 && *p as u32 != std::process::id())
+        .filter(|p| *p > 1 && *p as u32 != std::process::id())?;
+    let written = v.get("pid_start")?.as_u64()?;
+    (crate::proc::process_start(pid) == Some(written)).then_some(pid)
 }
 
 /// Sends `vrelay run` a `SIGHUP`: it re-reads the rules and checks that
@@ -88,31 +93,46 @@ pub fn nudge_agent(dir: &Path, now: u64) -> bool {
 }
 
 /// What the running agent says about its rules: the loaded file's SHA-256,
-/// and why the last reload failed, if it did.
-pub fn loaded_rules(dir: &Path, now: u64) -> Option<(String, Option<String>)> {
+/// how many reloads it has handled, and why the last one failed, if it did.
+pub fn loaded_rules(dir: &Path, now: u64) -> Option<(String, u64, Option<String>)> {
     let v = fresh_status(dir, now)?;
     let r = v.get("rules")?;
     Some((
         r.get("sha256")?.as_str()?.to_string(),
+        r.get("reloads").and_then(Value::as_u64).unwrap_or(0),
         r.get("reload_error")
             .and_then(Value::as_str)
             .map(str::to_string),
     ))
 }
 
-/// After a `SIGHUP`: waits (up to `limit`) until the agent says it has
-/// loaded `rules.toml` as it is now. `Err` with the reason if it says it
-/// could not; `Ok(false)` if it never said either.
-pub fn wait_for_reload(dir: &Path, limit: std::time::Duration) -> Result<bool, String> {
+/// How many reloads the running agent has handled; read it before the
+/// `SIGHUP`, and pass it to [`wait_for_reload`].
+pub fn reloads(dir: &Path, now: u64) -> Option<u64> {
+    loaded_rules(dir, now).map(|(_, n, _)| n)
+}
+
+/// After a `SIGHUP`: waits (up to `limit`) until the agent has handled a
+/// reload after `before` (its count when the signal was sent), then says
+/// what that reload did: `Ok(true)` once it has loaded `rules.toml` as it
+/// is now, `Err` with its reason if it could not. `Ok(false)` if the agent
+/// never answered. An error left by an earlier reload is not this one's.
+pub fn wait_for_reload(
+    dir: &Path,
+    before: Option<u64>,
+    limit: std::time::Duration,
+) -> Result<bool, String> {
     let want = crate::rules::file_sha256(dir);
     let end = std::time::Instant::now() + limit;
     while std::time::Instant::now() < end {
-        if let Some((sha, err)) = loaded_rules(dir, crate::state::now_unix()) {
-            if Some(&sha) == want.as_ref() {
-                return Ok(true);
-            }
-            if let Some(e) = err {
-                return Err(e);
+        if let Some((sha, n, err)) = loaded_rules(dir, crate::state::now_unix()) {
+            if before.is_none_or(|b| n > b) {
+                if let Some(e) = err {
+                    return Err(e);
+                }
+                if Some(&sha) == want.as_ref() {
+                    return Ok(true);
+                }
             }
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
@@ -358,5 +378,103 @@ mod tests {
         let out = render(&dir, 1000);
         assert!(out.contains("Rules:    "), "{out}");
         assert!(out.contains("get_recent_tool_calls"), "{out}");
+    }
+}
+
+#[cfg(test)]
+mod reload_tests {
+    use super::*;
+    use crate::state::{now_unix, test_dir, write_private};
+
+    fn status(dir: &Path, reloads: u64, sha: &str, err: Option<&str>) {
+        let mut rules = serde_json::json!({"paused": false, "sha256": sha, "reloads": reloads});
+        if let Some(e) = err {
+            rules["reload_error"] = serde_json::json!(e);
+        }
+        let body = serde_json::json!({
+            "state": "connected", "updated_unix": now_unix(), "pid": 99999,
+            "rules": rules,
+        });
+        write_private(&status_path(dir), body.to_string().as_bytes()).unwrap();
+    }
+
+    /// Re-review N1: right after the SIGHUP the file still holds the last
+    /// reload's error. The wait goes by the agent's reload count, so a
+    /// fixed file is confirmed, not refused with the old error.
+    #[test]
+    fn an_old_reload_error_is_not_this_reloads_answer() {
+        let dir = test_dir("status-reload-seq");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(crate::rules::rules_path(&dir), "hidden=[]\nno_prompt=[]\n").unwrap();
+        let fixed = crate::rules::file_sha256(&dir).unwrap();
+        status(&dir, 1, "old-digest", Some("rules.toml: the old typo"));
+        let before = reloads(&dir, now_unix());
+        assert_eq!(before, Some(1));
+        let d = dir.clone();
+        let agent = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            status(&d, 2, &fixed, None);
+        });
+        let got = wait_for_reload(&dir, before, std::time::Duration::from_secs(10));
+        agent.join().unwrap();
+        assert_eq!(got, Ok(true));
+        // A reload that fails says so, with its own error.
+        status(&dir, 3, "x", Some("rules.toml: new error"));
+        assert_eq!(
+            wait_for_reload(&dir, Some(2), std::time::Duration::from_secs(1)),
+            Err("rules.toml: new error".into())
+        );
+        // Nothing handled yet: no answer, not the old one.
+        assert_eq!(
+            wait_for_reload(&dir, Some(3), std::time::Duration::from_millis(200)),
+            Ok(false)
+        );
+    }
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::*;
+    use crate::state::{now_unix, test_dir, write_private};
+
+    fn status(dir: &Path, pid: u32, start: Option<u64>) {
+        let mut body =
+            serde_json::json!({"state": "connected", "updated_unix": now_unix(), "pid": pid});
+        if let Some(s) = start {
+            body["pid_start"] = serde_json::json!(s);
+        }
+        write_private(&status_path(dir), body.to_string().as_bytes()).unwrap();
+    }
+
+    /// Re-review N2: the pid in status.json is signalled only while it is
+    /// still the process that wrote it (same start time), so a pid handed
+    /// to another program after a crash is never sent SIGHUP.
+    #[test]
+    fn only_the_process_that_wrote_the_status_is_signalled() {
+        let dir = test_dir("status-identity");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut child = std::process::Command::new("/bin/sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let start = crate::proc::process_start(pid as i32).expect("a start time");
+        assert_eq!(
+            crate::proc::process_start(pid as i32),
+            Some(start),
+            "stable"
+        );
+        status(&dir, pid, Some(start));
+        assert_eq!(agent_pid(&dir, now_unix()), Some(pid as i32));
+        // Another process now has that pid (a different start), or the
+        // file does not say: never.
+        status(&dir, pid, Some(start + 1));
+        assert_eq!(agent_pid(&dir, now_unix()), None);
+        status(&dir, pid, None);
+        assert_eq!(agent_pid(&dir, now_unix()), None);
+        let _ = child.kill();
+        let _ = child.wait();
+        status(&dir, pid, Some(start));
+        assert_eq!(agent_pid(&dir, now_unix()), None, "the process is gone");
     }
 }

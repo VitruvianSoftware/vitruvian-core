@@ -764,7 +764,7 @@ fn bootout(tools: &Tools, uid: u32, wait: Duration) -> Result<()> {
 
 /// The log folder, mode 0700 (tightened if it already exists).
 fn make_log_dir(dir: &Path) -> Result<()> {
-    vitruvian_relay_connector::state::ensure_dir(dir)
+    vitruvian_relay_connector::state::ensure_private_dir(dir)
 }
 
 /// Removes a file, link or folder; nothing there is fine.

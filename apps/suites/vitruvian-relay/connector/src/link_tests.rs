@@ -469,7 +469,7 @@ fn fast() -> Timing {
         // dialog is open.
         in_call_every: Duration::from_secs(60),
         prune_every: Duration::from_secs(60),
-        max_call: Duration::from_secs(180),
+        max_call: Duration::from_secs(CALL_BUDGET_SECS),
         max_in_flight: 16,
         max_dialogs: 1,
         results_cap_bytes: 16 * 1024 * 1024,
@@ -2411,6 +2411,10 @@ async fn status_tells_which_rules_are_in_use() {
     .await;
     let v = status_json(&dir);
     assert_eq!(v["pid"], std::process::id());
+    assert_eq!(
+        v["pid_start"],
+        json!(crate::proc::process_start(std::process::id() as i32).unwrap())
+    );
     assert_eq!(v["rules"]["paused"], false);
     assert_eq!(
         v["rules"]["sha256"].as_str(),
@@ -2421,11 +2425,12 @@ async fn status_tells_which_rules_are_in_use() {
     crate::rules::set_paused(&dir, true).unwrap();
     let out = crate::status::render(&dir, now_unix());
     assert!(out.contains("has changed since vrelay loaded it"), "{out}");
+    let before = crate::status::reloads(&dir, now_unix());
     run.reload.send(()).await.unwrap();
     assert_eq!(
         tokio::task::spawn_blocking({
             let dir = dir.clone();
-            move || crate::status::wait_for_reload(&dir, WAIT)
+            move || crate::status::wait_for_reload(&dir, before, WAIT)
         })
         .await
         .unwrap(),
@@ -2440,10 +2445,11 @@ async fn status_tells_which_rules_are_in_use() {
     }
     // A file that does not load: the agent says so and keeps its rules.
     std::fs::write(crate::rules::rules_path(&dir), "paused = [").unwrap();
+    let before = crate::status::reloads(&dir, now_unix());
     run.reload.send(()).await.unwrap();
     let got = tokio::task::spawn_blocking({
         let dir = dir.clone();
-        move || crate::status::wait_for_reload(&dir, WAIT)
+        move || crate::status::wait_for_reload(&dir, before, WAIT)
     })
     .await
     .unwrap();
@@ -2451,6 +2457,20 @@ async fn status_tells_which_rules_are_in_use() {
     let out = crate::status::render(&dir, now_unix());
     assert!(out.contains("the last reload failed"), "{out}");
     assert!(out.contains("Rules:    paused"), "{out}");
+    // Re-review N1: fix the file and reload: confirmed, not refused with
+    // the last reload's error.
+    crate::rules::set_paused(&dir, false).unwrap_err();
+    std::fs::write(crate::rules::rules_path(&dir), crate::rules::DEFAULT_RULES).unwrap();
+    let before = crate::status::reloads(&dir, now_unix());
+    run.reload.send(()).await.unwrap();
+    let got = tokio::task::spawn_blocking({
+        let dir = dir.clone();
+        move || crate::status::wait_for_reload(&dir, before, WAIT)
+    })
+    .await
+    .unwrap();
+    assert_eq!(got, Ok(true));
+    assert!(!crate::status::render(&dir, now_unix()).contains("reload failed"));
 }
 
 /// Final review M3: a link the relay refuses shows why in `vrelay status`

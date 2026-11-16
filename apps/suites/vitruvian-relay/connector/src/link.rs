@@ -825,6 +825,8 @@ struct Shared<T, A> {
     /// What `status.json` says about the rules in use: paused, the loaded
     /// file's SHA-256, and why the last reload failed (if it did).
     rules_state: Arc<Mutex<Value>>,
+    /// Reloads handled so far.
+    reloads: AtomicU64,
     /// Nudged by a reload (`SIGHUP`, as `vrelay reload`, `pause`, `resume`
     /// and `logout` send): rewrite the status at once and check that the
     /// sign-in is still there.
@@ -833,8 +835,10 @@ struct Shared<T, A> {
     hooks: Hooks,
 }
 
-fn rules_state(r: &Rules, error: Option<&str>) -> Value {
-    let mut v = json!({"paused": r.paused, "sha256": r.source_sha256});
+/// `reloads` counts the reloads handled, so `vrelay reload` can tell the
+/// answer to its own signal from an earlier one's.
+fn rules_state(r: &Rules, reloads: u64, error: Option<&str>) -> Value {
+    let mut v = json!({"paused": r.paused, "sha256": r.source_sha256, "reloads": reloads});
     if let (Some(e), Some(o)) = (error, v.as_object_mut()) {
         o.insert("reload_error".into(), json!(e));
     }
@@ -1370,14 +1374,15 @@ impl<T: Tools, A: Asker> Shared<T, A> {
     async fn reload(&self) {
         let tools = self.tools.list().await;
         let current = self.rules.lock().unwrap().clone();
+        let n = self.reloads.fetch_add(1, Ordering::SeqCst) + 1;
         match rules::reload(&self.dir, &current, &tools) {
             Err(e) => {
                 (self.log)(&format!("rules not reloaded, keeping the ones in use: {e}"));
-                *self.rules_state.lock().unwrap() = rules_state(&current, Some(&e));
+                *self.rules_state.lock().unwrap() = rules_state(&current, n, Some(&e));
             }
             Ok(r) => {
                 let visible = r.rules.visible(&tools);
-                *self.rules_state.lock().unwrap() = rules_state(&r.rules, None);
+                *self.rules_state.lock().unwrap() = rules_state(&r.rules, n, None);
                 *self.rules.lock().unwrap() = r.rules;
                 self.rules_gen.fetch_add(1, Ordering::SeqCst);
                 (self.log)("rules reloaded");
@@ -1434,8 +1439,10 @@ impl Status {
             "updated_unix": (self.clock)(),
             "last_pong_unix": self.last_pong,
             "next_retry_unix": self.next_retry,
-            // So `vrelay reload` (and pause, resume, logout) can signal it.
+            // So `vrelay reload` (and pause, resume, logout) can signal it,
+            // and check first that the pid is still this process.
             "pid": std::process::id(),
+            "pid_start": own_start(),
             "rules": self.rules.lock().unwrap().clone(),
         });
         if let Some(o) = body.as_object_mut() {
@@ -1448,6 +1455,12 @@ impl Status {
         }
         let _ = self.tx.send(Some(body.to_string()));
     }
+}
+
+/// This process's start time (`proc::process_start`), looked up once.
+fn own_start() -> Option<u64> {
+    static START: std::sync::OnceLock<Option<u64>> = std::sync::OnceLock::new();
+    *START.get_or_init(|| crate::proc::process_start(std::process::id() as i32))
 }
 
 async fn status_writer(dir: PathBuf, log: Log, mut rx: watch::Receiver<Option<String>>) {
@@ -1711,7 +1724,8 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
             seen_lock: Mutex::new(()),
             current: Mutex::new(None),
             rules_gen: AtomicU64::new(0),
-            rules_state: Arc::new(Mutex::new(rules_state(&self.rules, None))),
+            rules_state: Arc::new(Mutex::new(rules_state(&self.rules, 0, None))),
+            reloads: AtomicU64::new(0),
             check_now: Arc::new(tokio::sync::Notify::new()),
             #[cfg(test)]
             hooks: self.hooks.clone(),

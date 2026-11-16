@@ -835,7 +835,8 @@ async fn a_slow_large_result_during_a_dialog_keeps_the_link() {
         c.asker.opened.load(Ordering::SeqCst) == 1
     })
     .await;
-    // One upload: the old code dropped the link here about half the time;
+    // One upload: with these timings the old code dropped the link here
+    // only about 1 run in 4 (much of the send fits in the kernel's buffers);
     // link_tests.rs has the deterministic check.
     let (text, is_error) = mcp.call("read_file", json!({"path": "/big"})).await;
     assert!(

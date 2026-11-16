@@ -37,6 +37,11 @@ Settings come from the environment (`src/config.rs`): `PUBLIC_URL`,
 `ALLOWED_SUBJECTS`, `DATA_DIR` (the device records; must be a persistent
 volume), `PORT`. It stops on SIGTERM.
 
+It closes an HTTP connection idle for 75 s (the first request's headers must
+arrive within 10 s). A proxy in front must drop its idle upstream
+connections sooner, or it will now and then reuse one the relay just closed
+(a 503): set the gateway's upstream idle timeout to 60 s.
+
 ```
 bazel test //apps/suites/vitruvian-relay/relay:unit_tests
 bazel run //apps/suites/vitruvian-relay/relay:vitruvian-relay -- --version
