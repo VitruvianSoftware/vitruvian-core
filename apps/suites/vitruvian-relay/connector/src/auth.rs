@@ -1,0 +1,595 @@
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+//! Sign-in against Zitadel (OAuth device flow, RFC 8628), token refresh, and
+//! registering the device with the relay. Blocking I/O on purpose: it is one
+//! person's terminal tool, and Task 8 calls these from a worker thread.
+//! The device-flow parsing is the spike's (`spike/src/client.rs`).
+
+use std::time::{Duration, Instant};
+
+use serde_json::{json, Value};
+
+use crate::config::{agent, Config, REFRESH_MARGIN_SECS};
+use crate::state::{now_unix, save_tokens, DeviceInfo, Tokens};
+use crate::Result;
+
+pub const DEVICE_CODE_GRANT: &str = "urn:ietf:params:oauth:grant-type:device_code";
+pub const SIGN_IN_AGAIN: &str = "sign in again: run `vrelay login`";
+
+/// The answer to a device authorization request.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeviceStart {
+    pub device_code: String,
+    pub user_code: String,
+    pub verification_uri: String,
+    pub verification_uri_complete: Option<String>,
+    pub interval_secs: u64,
+    pub expires_in_secs: u64,
+}
+
+fn str_field(body: &Value, key: &str) -> Option<String> {
+    body.get(key)
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+pub fn parse_device_start(body: &Value) -> Result<DeviceStart> {
+    let need = |k: &str| {
+        str_field(body, k).ok_or_else(|| format!("device authorization answer has no {k}"))
+    };
+    Ok(DeviceStart {
+        device_code: need("device_code")?,
+        user_code: need("user_code")?,
+        verification_uri: need("verification_uri")?,
+        verification_uri_complete: str_field(body, "verification_uri_complete"),
+        // RFC 8628 §3.2: the default polling interval is 5 seconds.
+        interval_secs: body
+            .get("interval")
+            .and_then(Value::as_u64)
+            .unwrap_or(5)
+            .max(1),
+        expires_in_secs: body
+            .get("expires_in")
+            .and_then(Value::as_u64)
+            .unwrap_or(600),
+    })
+}
+
+/// What one token request came back with.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Poll {
+    Done(Tokens),
+    /// The person has not approved yet; ask again after the interval.
+    Pending,
+    /// Ask less often: add 5 seconds to the interval (RFC 8628 §3.5).
+    SlowDown,
+    Failed(String),
+}
+
+/// Reads a token endpoint answer, for the device grant and for refreshes.
+/// Error text never includes the body, which could hold a token.
+pub fn parse_token_response(status: u16, body: &Value, now_unix: u64) -> Poll {
+    if status == 200 {
+        return match str_field(body, "access_token") {
+            Some(access_token) => Poll::Done(Tokens {
+                access_token,
+                refresh_token: str_field(body, "refresh_token"),
+                expires_at_unix: now_unix
+                    + body
+                        .get("expires_in")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(3600),
+            }),
+            None => Poll::Failed("token answer has no access_token".into()),
+        };
+    }
+    match str_field(body, "error").as_deref() {
+        Some("authorization_pending") => Poll::Pending,
+        Some("slow_down") => Poll::SlowDown,
+        Some(err) => Poll::Failed(match str_field(body, "error_description") {
+            Some(desc) => format!("{err}: {desc}"),
+            None => err.to_string(),
+        }),
+        None => Poll::Failed(format!("HTTP {status}")),
+    }
+}
+
+pub fn needs_refresh(t: &Tokens, now_unix: u64) -> bool {
+    now_unix + REFRESH_MARGIN_SECS >= t.expires_at_unix
+}
+
+fn encode_form(params: &[(&str, &str)]) -> String {
+    fn enc(s: &str) -> String {
+        let mut out = String::new();
+        for b in s.bytes() {
+            match b {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                    out.push(b as char)
+                }
+                _ => out.push_str(&format!("%{b:02X}")),
+            }
+        }
+        out
+    }
+    params
+        .iter()
+        .map(|(k, v)| format!("{}={}", enc(k), enc(v)))
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
+fn read_json(r: ureq::Response) -> Value {
+    r.into_string()
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or(Value::Null)
+}
+
+fn post_form(agent: &ureq::Agent, url: &str, params: &[(&str, &str)]) -> Result<(u16, Value)> {
+    match agent
+        .post(url)
+        .set("Content-Type", "application/x-www-form-urlencoded")
+        .send_string(&encode_form(params))
+    {
+        Ok(r) => Ok((r.status(), read_json(r))),
+        Err(ureq::Error::Status(code, r)) => Ok((code, read_json(r))),
+        Err(e) => Err(format!("POST {url}: {e}")),
+    }
+}
+
+struct Endpoints {
+    device: String,
+    token: String,
+}
+
+fn discover(agent: &ureq::Agent, issuer: &str) -> Result<Endpoints> {
+    let url = format!("{issuer}/.well-known/openid-configuration");
+    let doc = agent
+        .get(&url)
+        .call()
+        .map(read_json)
+        .map_err(|e| format!("GET {url}: {e}"))?;
+    let field = |k: &str| str_field(&doc, k).ok_or_else(|| format!("{url} has no {k}"));
+    Ok(Endpoints {
+        device: field("device_authorization_endpoint")?,
+        token: field("token_endpoint")?,
+    })
+}
+
+/// Device-flow sign-in: prints a code, waits while the person approves it in a
+/// browser, returns the tokens. The caller saves them.
+pub fn login(cfg: &Config) -> Result<Tokens> {
+    let agent = agent();
+    let ep = discover(&agent, &cfg.issuer)?;
+    let scope = cfg.scope();
+    let (status, body) = post_form(
+        &agent,
+        &ep.device,
+        &[("client_id", &cfg.client_id), ("scope", &scope)],
+    )?;
+    if status != 200 {
+        return Err(format!("device authorization refused (HTTP {status})"));
+    }
+    let start = parse_device_start(&body)?;
+    eprintln!();
+    eprintln!(
+        "  Open:  {}",
+        start
+            .verification_uri_complete
+            .as_deref()
+            .unwrap_or(&start.verification_uri)
+    );
+    eprintln!("  Code:  {}", start.user_code);
+    eprintln!("  (expires in {} minutes)", start.expires_in_secs / 60);
+    eprintln!();
+
+    let began = Instant::now();
+    let mut interval = start.interval_secs;
+    loop {
+        if began.elapsed().as_secs() >= start.expires_in_secs {
+            return Err("the code expired before it was approved".into());
+        }
+        std::thread::sleep(Duration::from_secs(interval));
+        let (status, body) = post_form(
+            &agent,
+            &ep.token,
+            &[
+                ("grant_type", DEVICE_CODE_GRANT),
+                ("device_code", &start.device_code),
+                ("client_id", &cfg.client_id),
+            ],
+        )?;
+        match parse_token_response(status, &body, now_unix()) {
+            Poll::Pending => {}
+            Poll::SlowDown => interval += 5,
+            Poll::Failed(why) => return Err(format!("sign-in failed: {why}")),
+            Poll::Done(tokens) => return Ok(tokens),
+        }
+    }
+}
+
+fn refresh_once(cfg: &Config, agent: &ureq::Agent, old: &Tokens) -> Result<Tokens> {
+    let rt = old
+        .refresh_token
+        .as_deref()
+        .ok_or("no refresh token saved")?;
+    let ep = discover(agent, &cfg.issuer)?;
+    let scope = cfg.scope();
+    let (status, body) = post_form(
+        agent,
+        &ep.token,
+        &[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", rt),
+            ("client_id", &cfg.client_id),
+            ("scope", &scope),
+        ],
+    )?;
+    match parse_token_response(status, &body, now_unix()) {
+        Poll::Done(mut t) => {
+            // Zitadel may rotate the refresh token; keep the old one if it doesn't.
+            t.refresh_token = t.refresh_token.or_else(|| Some(rt.to_string()));
+            Ok(t)
+        }
+        Poll::Failed(why) => Err(why),
+        Poll::Pending | Poll::SlowDown => Err("unexpected answer to a refresh".into()),
+    }
+}
+
+/// An access token good for at least five more minutes. Refreshes (and saves
+/// the result) when the current one is nearly expired. A failed refresh is
+/// tried once more after `cfg.retry_delay` (P0: one failed on a connection
+/// reset and worked a second later); a second failure says to sign in again.
+pub fn fresh_token(cfg: &Config, tokens: &mut Tokens) -> Result<String> {
+    if !needs_refresh(tokens, now_unix()) {
+        return Ok(tokens.access_token.clone());
+    }
+    let agent = agent();
+    let fresh = match refresh_once(cfg, &agent, tokens) {
+        Ok(t) => t,
+        Err(_) => {
+            std::thread::sleep(cfg.retry_delay);
+            refresh_once(cfg, &agent, tokens).map_err(|e| format!("{SIGN_IN_AGAIN} ({e})"))?
+        }
+    };
+    *tokens = fresh;
+    save_tokens(&cfg.dir, tokens)?;
+    Ok(tokens.access_token.clone())
+}
+
+/// `POST /devices`: tells the relay this device's public key and learns the
+/// device id and the MCP URL. Registering again keeps the id and replaces the key.
+pub fn register_device(
+    cfg: &Config,
+    access_token: &str,
+    public_key_b64: &str,
+) -> Result<DeviceInfo> {
+    let url = format!("{}/devices", cfg.relay_url);
+    let resp = agent()
+        .post(&url)
+        .set("Authorization", &format!("Bearer {access_token}"))
+        .set("Content-Type", "application/json")
+        .send_string(&json!({"public_key": public_key_b64}).to_string());
+    let body = match resp {
+        Ok(r) => read_json(r),
+        Err(ureq::Error::Status(code, _)) => {
+            return Err(format!("the relay refused the device (HTTP {code})"))
+        }
+        Err(e) => return Err(format!("POST {url}: {e}")),
+    };
+    Ok(DeviceInfo {
+        device_id: str_field(&body, "device_id").ok_or("the relay's answer has no device_id")?,
+        mcp_url: str_field(&body, "mcp_url").ok_or("the relay's answer has no mcp_url")?,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::{load_tokens, test_dir, token_path};
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::{Arc, Mutex};
+
+    type Handler = dyn FnMut(&str, &str, &str) -> (u16, String) + Send;
+
+    /// A tiny HTTP server: calls `handler(method, path, body)` per request.
+    /// Returns its base URL.
+    fn fake_server(handler: Box<Handler>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let handler = Arc::new(Mutex::new(handler));
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut s) = stream else { continue };
+                let handler = handler.clone();
+                std::thread::spawn(move || {
+                    let mut buf = Vec::new();
+                    let mut chunk = [0u8; 4096];
+                    let (head_end, len) = loop {
+                        let n = s.read(&mut chunk).unwrap_or(0);
+                        if n == 0 {
+                            return;
+                        }
+                        buf.extend_from_slice(&chunk[..n]);
+                        if let Some(p) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                            let head = String::from_utf8_lossy(&buf[..p]).to_lowercase();
+                            let len = head
+                                .lines()
+                                .find_map(|l| l.strip_prefix("content-length:"))
+                                .and_then(|v| v.trim().parse::<usize>().ok())
+                                .unwrap_or(0);
+                            break (p + 4, len);
+                        }
+                    };
+                    while buf.len() < head_end + len {
+                        let n = s.read(&mut chunk).unwrap_or(0);
+                        if n == 0 {
+                            break;
+                        }
+                        buf.extend_from_slice(&chunk[..n]);
+                    }
+                    let head = String::from_utf8_lossy(&buf[..head_end]).to_string();
+                    let mut first = head.lines().next().unwrap_or("").split(' ');
+                    let (method, path) = (first.next().unwrap_or(""), first.next().unwrap_or(""));
+                    let body = String::from_utf8_lossy(&buf[head_end..]).to_string();
+                    let (status, out) = (handler.lock().unwrap())(method, path, &body);
+                    let _ = write!(
+                        s,
+                        "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{out}",
+                        out.len()
+                    );
+                });
+            }
+        });
+        base
+    }
+
+    fn cfg_for(base: &str, dir: std::path::PathBuf) -> Config {
+        Config {
+            issuer: base.to_string(),
+            relay_url: base.to_string(),
+            client_id: "client".into(),
+            project_id: "proj".into(),
+            claude_client_id: "claude".into(),
+            dir,
+            retry_delay: Duration::from_millis(10),
+        }
+    }
+
+    fn discovery(base: &str) -> String {
+        json!({
+            "device_authorization_endpoint": format!("{base}/device"),
+            "token_endpoint": format!("{base}/token"),
+        })
+        .to_string()
+    }
+
+    /// Serves discovery and a scripted sequence of token answers; counts token calls.
+    fn token_server(answers: Vec<(u16, String)>) -> (String, Arc<Mutex<Vec<String>>>) {
+        let calls = Arc::new(Mutex::new(Vec::<String>::new()));
+        let seen = calls.clone();
+        let answers = Mutex::new(answers.into_iter());
+        let base = Arc::new(Mutex::new(String::new()));
+        let base2 = base.clone();
+        let url = fake_server(Box::new(move |_m, path, body| {
+            if path == "/.well-known/openid-configuration" {
+                return (200, discovery(&base2.lock().unwrap()));
+            }
+            assert_eq!(path, "/token");
+            seen.lock().unwrap().push(body.to_string());
+            answers
+                .lock()
+                .unwrap()
+                .next()
+                .expect("more token calls than scripted")
+        }));
+        *base.lock().unwrap() = url.clone();
+        (url, calls)
+    }
+
+    fn near_expiry() -> Tokens {
+        Tokens {
+            access_token: "old-access".into(),
+            refresh_token: Some("old-refresh".into()),
+            expires_at_unix: now_unix() + 10,
+        }
+    }
+
+    fn ok_answer() -> (u16, String) {
+        (
+            200,
+            json!({"access_token": "new-access", "expires_in": 3600}).to_string(),
+        )
+    }
+
+    #[test]
+    fn fresh_token_does_not_call_the_network_when_valid() {
+        let (base, calls) = token_server(vec![]);
+        let dir = test_dir("fresh-valid");
+        let mut t = Tokens {
+            access_token: "still-good".into(),
+            refresh_token: Some("r".into()),
+            expires_at_unix: now_unix() + 3600,
+        };
+        assert_eq!(
+            fresh_token(&cfg_for(&base, dir), &mut t).unwrap(),
+            "still-good"
+        );
+        assert!(calls.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn fresh_token_refreshes_near_expiry() {
+        let (base, calls) = token_server(vec![ok_answer()]);
+        let dir = test_dir("fresh-near");
+        let mut t = near_expiry();
+        let got = fresh_token(&cfg_for(&base, dir.clone()), &mut t).unwrap();
+        assert_eq!(got, "new-access");
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert!(
+            calls[0].contains("grant_type=refresh_token"),
+            "{}",
+            calls[0]
+        );
+        assert!(
+            calls[0].contains("refresh_token=old-refresh"),
+            "{}",
+            calls[0]
+        );
+        // The old refresh token is kept when the answer has none, and the result is saved 0600.
+        assert_eq!(t.refresh_token.as_deref(), Some("old-refresh"));
+        assert_eq!(
+            load_tokens(&dir).unwrap().unwrap().access_token,
+            "new-access"
+        );
+        let mode = std::fs::metadata(token_path(&dir))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o600);
+    }
+
+    #[test]
+    fn fresh_token_retries_once_then_asks_to_sign_in() {
+        // Fails once, then works: the retry rescues it.
+        let (base, calls) = token_server(vec![(500, "{}".into()), ok_answer()]);
+        let mut t = near_expiry();
+        let dir = test_dir("fresh-retry-ok");
+        assert_eq!(
+            fresh_token(&cfg_for(&base, dir), &mut t).unwrap(),
+            "new-access"
+        );
+        assert_eq!(calls.lock().unwrap().len(), 2);
+
+        // Fails twice: exactly two attempts, then "sign in again".
+        let (base, calls) = token_server(vec![
+            (400, json!({"error": "invalid_grant"}).to_string()),
+            (500, "{}".into()),
+        ]);
+        let mut t = near_expiry();
+        let dir = test_dir("fresh-retry-fail");
+        let err = fresh_token(&cfg_for(&base, dir), &mut t).unwrap_err();
+        assert!(err.starts_with("sign in again"), "{err}");
+        assert_eq!(calls.lock().unwrap().len(), 2);
+        assert_eq!(t.access_token, "old-access");
+    }
+
+    #[test]
+    fn login_follows_the_device_flow() {
+        let n = Arc::new(Mutex::new(0u32));
+        let base_cell = Arc::new(Mutex::new(String::new()));
+        let b = base_cell.clone();
+        let base = fake_server(Box::new(move |_m, path, body| match path {
+            "/.well-known/openid-configuration" => (200, discovery(&b.lock().unwrap())),
+            "/device" => {
+                assert!(body.contains("client_id=client"), "{body}");
+                assert!(
+                    body.contains("urn%3Azitadel%3Aiam%3Aorg%3Aproject%3Aid%3Aproj%3Aaud"),
+                    "{body}"
+                );
+                (
+                    200,
+                    json!({"device_code": "dc", "user_code": "UC", "verification_uri": "https://v",
+                           "interval": 1, "expires_in": 600})
+                    .to_string(),
+                )
+            }
+            "/token" => {
+                assert!(body.contains("device_code=dc"), "{body}");
+                let mut n = n.lock().unwrap();
+                *n += 1;
+                if *n == 1 {
+                    (400, json!({"error": "authorization_pending"}).to_string())
+                } else {
+                    (
+                        200,
+                        json!({"access_token": "A", "refresh_token": "R", "expires_in": 100})
+                            .to_string(),
+                    )
+                }
+            }
+            other => panic!("unexpected {other}"),
+        }));
+        *base_cell.lock().unwrap() = base.clone();
+        let t = login(&cfg_for(&base, test_dir("login"))).unwrap();
+        assert_eq!(t.access_token, "A");
+        assert_eq!(t.refresh_token.as_deref(), Some("R"));
+    }
+
+    #[test]
+    fn register_device_sends_bearer_and_key() {
+        let base = fake_server(Box::new(|m, path, body| {
+            assert_eq!((m, path), ("POST", "/devices"));
+            assert_eq!(body, r#"{"public_key":"PK"}"#);
+            (
+                200,
+                json!({"device_id": "d1", "mcp_url": "https://r/mcp/d/d1"}).to_string(),
+            )
+        }));
+        let d = register_device(&cfg_for(&base, test_dir("reg")), "tok", "PK").unwrap();
+        assert_eq!(d.device_id, "d1");
+        assert_eq!(d.mcp_url, "https://r/mcp/d/d1");
+    }
+
+    #[test]
+    fn register_device_reports_a_refusal_without_the_body() {
+        let base = fake_server(Box::new(|_, _, _| (401, "secret-ish body".into())));
+        let err = register_device(&cfg_for(&base, test_dir("reg401")), "tok", "PK").unwrap_err();
+        assert!(err.contains("401") && !err.contains("secret-ish"), "{err}");
+    }
+
+    #[test]
+    fn token_answers_parse_like_the_spike() {
+        assert_eq!(
+            parse_token_response(400, &json!({"error": "slow_down"}), 0),
+            Poll::SlowDown
+        );
+        match parse_token_response(200, &json!({"access_token": "a", "expires_in": 5}), 10) {
+            Poll::Done(t) => assert_eq!(t.expires_at_unix, 15),
+            other => panic!("{other:?}"),
+        }
+        assert!(matches!(
+            parse_token_response(200, &json!({"nope": 1}), 0),
+            Poll::Failed(_)
+        ));
+        assert!(needs_refresh(
+            &Tokens {
+                access_token: "a".into(),
+                refresh_token: None,
+                expires_at_unix: 1000
+            },
+            700
+        ));
+        assert!(!needs_refresh(
+            &Tokens {
+                access_token: "a".into(),
+                refresh_token: None,
+                expires_at_unix: 1000
+            },
+            699
+        ));
+    }
+}

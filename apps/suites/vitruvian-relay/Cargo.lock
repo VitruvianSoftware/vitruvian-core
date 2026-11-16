@@ -940,6 +940,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "vitruvian-relay-connector"
+version = "0.0.0"
+dependencies = [
+ "base64",
+ "ring",
+ "rustls",
+ "rustls-native-certs",
+ "serde_json",
+ "ureq",
+ "vitruvian-relay-protocol",
+]
+
+[[package]]
 name = "vitruvian-relay-protocol"
 version = "0.0.0"
 dependencies = [
