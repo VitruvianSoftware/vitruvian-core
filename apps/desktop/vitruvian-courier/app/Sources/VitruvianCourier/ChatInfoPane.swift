@@ -460,12 +460,16 @@ public struct ChatInfoPane: View {
         ) {
             LazyVStack(alignment: .leading, spacing: 6) {
                 if info.features.canInvite {
+                    // A routine action: plain label text, not the accent (see RoutineLinkButtonStyle).
                     Button(action: onAddParticipants) {
-                        Label(String(localized: "Add Participants…"), systemImage: "person.badge.plus")
-                            .font(.callout.weight(.medium))
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.badge.plus")
+                                .foregroundStyle(.secondary)
+                            Text(String(localized: "Add Participants…"))
+                        }
+                        .font(.callout.weight(.medium))
                     }
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(Color.accentColor)
+                    .buttonStyle(.routineLink)
                     .padding(.bottom, 2)
                 }
 
@@ -868,6 +872,8 @@ public struct ChatInfoPane: View {
 
     // MARK: - Destructive Actions Section
 
+    // Destructive actions: system red (never the accent, which can be any colour) and a leading symbol, so they
+    // differ from accent-coloured controls by shape as well as colour.
     private var destructiveActionsSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Divider()
@@ -880,7 +886,7 @@ public struct ChatInfoPane: View {
                             .font(.callout)
                         Spacer(minLength: 0)
                     }
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color.red)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -895,7 +901,7 @@ public struct ChatInfoPane: View {
                             .font(.callout)
                         Spacer(minLength: 0)
                     }
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color.red)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -903,13 +909,13 @@ public struct ChatInfoPane: View {
 
             Button(role: .destructive, action: onReportSpam) {
                 HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.shield")
+                    Image(systemName: "exclamationmark.bubble")
                         .frame(width: 16)
                     Text(String(localized: "Report as Spam…"))
                         .font(.callout)
                     Spacer(minLength: 0)
                 }
-                .foregroundStyle(.red)
+                .foregroundStyle(Color.red)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -973,10 +979,16 @@ private struct ChatInfoSection<Content: View>: View {
                 .buttonStyle(.plain)
 
                 if let onSeeAll {
-                    Button(String(localized: "See All"), action: onSeeAll)
-                        .buttonStyle(.borderless)
+                    Button(action: onSeeAll) {
+                        HStack(spacing: 3) {
+                            Text(String(localized: "See All"))
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.routineLink)
                 }
             }
 
