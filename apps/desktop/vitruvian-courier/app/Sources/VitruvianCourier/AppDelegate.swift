@@ -191,6 +191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }, chat: { id in
             inbox.row(of: id)
         }, preferences: composerPreferences)
+        conversation.bindInbox(inbox)
         self.conversation = conversation
         let aiProviderStore = AIProviderStore(
             preferences: aiPreferences,
@@ -292,6 +293,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.menuCoordinator.openSettings(pane: .ai)
         }
         conversation.onOpenAISettings = openAISettings
+        conversation.onToggleMute = { [weak inbox] roomID in
+            guard !roomID.isEmpty else { return }
+            Task { await inbox?.toggleMute(ids: [roomID]) }
+        }
+        conversation.onTogglePin = { [weak inbox] roomID in
+            guard !roomID.isEmpty else { return }
+            Task { await inbox?.togglePin(ids: [roomID]) }
+        }
+        conversation.onToggleArchive = { [weak inbox] roomID in
+            guard let inbox, !roomID.isEmpty else { return }
+            let rows = inbox.row(of: roomID).map { [$0] } ?? inbox.targetRows([roomID])
+            Task { await inbox.archive(ChatInfoPresentation.shouldArchive(rows), ids: [roomID]) }
+        }
+        conversation.onRemindLater = { [weak self] roomID in
+            guard let self, !roomID.isEmpty else { return false }
+            if !self.inbox.isSelecting,
+               self.inboxUI.isMainWindowKey,
+               roomID == self.inbox.selectedRoomID,
+               self.menuCoordinator.isSidebarVisible,
+               self.hotkeyDispatcher.perform("Remind Later") {
+                return true
+            }
+            guard !self.lifecycle.isLocked, self.inbox.isEntitled(.reminders) else { return true }
+            if !self.inboxUI.isMainWindowKey {
+                self.windowOpener.show()
+            }
+            let request = ReminderRequest(ids: [roomID])
+            self.inbox.customReminder = request
+            self.inboxUI.customReminder = request
+            return true
+        }
+        conversation.onSearchInChat = { [weak self] roomID in
+            guard let self, !self.lifecycle.isLocked, !roomID.isEmpty else { return }
+            self.windowOpener.show()
+            self.search.show(in: roomID)
+        }
+        detachedWindows.onRemindLater = conversation.onRemindLater
+        detachedWindows.onSearchInChat = conversation.onSearchInChat
         for composer in [conversation.composer, conversation.thread.composer] {
             composer.onOpenAISettings = openAISettings
         }
@@ -359,8 +398,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             lifecycle: lifecycle,
             appearance: appearance,
             onSearchInChat: { [weak self] roomID in
-                self?.windowOpener.show()
-                self?.search.show(in: roomID)
+                self?.conversation.onSearchInChat(roomID)
             }
         )
         hideTypingQuestion = HideTypingQuestion(conversation: conversation, present: Self.askToHideTyping)

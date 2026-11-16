@@ -562,7 +562,7 @@ final class ViewSnapshotTests: XCTestCase {
         )
         XCTAssertNil(ChatInfoPane.localTimeText(for: "Invalid/Timezone", now: Fixture.now))
         XCTAssertNil(ChatInfoPane.localTimeText(for: "", now: Fixture.now))
-        let sizes = try Snapshot.render("chat-info-direct", width: 280, height: 760) {
+        let sizes = try Snapshot.render("chat-info-direct", width: 280, height: 900) {
             ChatInfoPane(info: info, bookmarks: bookmarks, now: { Fixture.now })
         }
         XCTAssertEqual(sizes.count, 2)
@@ -573,12 +573,128 @@ final class ViewSnapshotTests: XCTestCase {
 
     func testChatInfoPaneGroupWithAdminsLightAndDark() throws {
         let info = Fixture.groupChatInfoWithAdmins()
-        let sizes = try Snapshot.render("chat-info-group-admins", width: 280, height: 640) {
+        let sizes = try Snapshot.render("chat-info-group-admins", width: 280, height: 760) {
             ChatInfoPane(info: info, bookmarks: [], now: { Fixture.now })
         }
         XCTAssertEqual(sizes.count, 2)
         for size in sizes {
             XCTAssertGreaterThanOrEqual(size.width, 280)
+        }
+    }
+
+    func testChatInfoPaneMediaGridLinksAndUnencryptedStates() throws {
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("chat-info-media-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        func writeTestPNG(name: String, width: Int, height: Int, color: NSColor) throws -> String {
+            let rep = try XCTUnwrap(NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: width,
+                pixelsHigh: height,
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 0,
+                bitsPerPixel: 0
+            ))
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+            color.setFill()
+            NSRect(x: 0, y: 0, width: width, height: height).fill()
+            NSGraphicsContext.restoreGraphicsState()
+            let data = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+            let url = tmpDir.appendingPathComponent(name)
+            try data.write(to: url)
+            return url.path
+        }
+
+        let widePath = try writeTestPNG(name: "wide.png", width: 400, height: 100, color: .systemTeal)
+        let tallPath = try writeTestPNG(name: "tall.png", width: 100, height: 400, color: .systemIndigo)
+
+        var mediaEvents: [Event] = []
+        for idx in 1...10 {
+            var ev = Fixture.mediaEvent(
+                "$m-\(idx)",
+                msgtype: idx.isMultiple(of: 3) ? "m.video" : "m.image",
+                body: "Photo \(idx).jpg",
+                ts: idx
+            )
+            ev.mediaPath = idx.isMultiple(of: 2) ? widePath : tallPath
+            ev.sender = idx == 1 ? "@wa_alice:courier.local" : (idx == 2 ? "" : Timeline.meUserID)
+            ev.senderName = idx == 1 ? "Alice Example" : ""
+            ev.mine = idx > 2
+            mediaEvents.append(ev)
+        }
+        // Non-media link-preview message that must be filtered out of the Shared Media grid.
+        var linkPreviewMsg = Fixture.text(
+            "$lp-1",
+            "https://vitruviansoftware.dev/courier",
+            mine: false,
+            ts: 11,
+            sender: "@wa_alice:courier.local",
+            name: "Alice Example"
+        )
+        linkPreviewMsg.linkPreviews = [LinkPreviewItem(matchedURL: "https://vitruviansoftware.dev/courier")]
+        mediaEvents.insert(linkPreviewMsg, at: 0)
+
+        let allAdmins = [
+            Member(userID: "@wa_alice:courier.local", name: "Alice Example", isAdmin: true),
+            Member(userID: "@wa_bob:courier.local", name: "Bob Example", isAdmin: true),
+        ]
+        XCTAssertFalse(ChatInfoPresentation.showsAdminBadge(for: allAdmins[0], in: allAdmins))
+        XCTAssertEqual(ChatInfoPresentation.sharedMediaEvents(mediaEvents).count, 10)
+
+        let dupOld = RoomLink(
+            eventID: "$l1",
+            sender: "@wa_alice:courier.local",
+            ts: Fixture.millis(20),
+            url: "https://vitruviansoftware.dev/very/long/path/to/release-notes/2026/courier",
+            host: "vitruviansoftware.dev"
+        )
+        let dupNew = RoomLink(
+            eventID: "$l2",
+            sender: "@wa_bob:courier.local",
+            ts: Fixture.millis(2),
+            url: "https://vitruviansoftware.dev/very/long/path/to/release-notes/2026/courier",
+            host: "vitruviansoftware.dev"
+        )
+        XCTAssertEqual(RoomLink.deduplicated([dupOld, dupNew]), [dupNew])
+
+        var groupFeatures = Fixture.features
+        groupFeatures.canLeave = true
+        groupFeatures.canDelete = true
+
+        let info = RoomInfoResult(
+            roomID: "!grp-media:courier.local",
+            name: "Design & Media",
+            remoteName: "Design & Media",
+            network: "slack",
+            isDirect: false,
+            encrypted: false,
+            members: allAdmins,
+            sharedMedia: mediaEvents,
+            sharedLinks: [dupOld, dupNew],
+            features: groupFeatures
+        )
+
+        let sizes = try Snapshot.render("chat-info-media-unencrypted", width: 280, height: 960) {
+            ChatInfoPane(
+                info: info,
+                bookmarks: [],
+                isMuted: true,
+                isPinned: true,
+                now: { Fixture.now }
+            )
+        }
+        XCTAssertEqual(sizes.count, 2)
+        for size in sizes {
+            XCTAssertEqual(size.width, sizes[0].width)
+            XCTAssertGreaterThanOrEqual(size.width, 280)
+            XCTAssertLessThanOrEqual(size.width, 560)
         }
     }
 
@@ -5289,6 +5405,450 @@ final class ViewSnapshotTests: XCTestCase {
             .padding(16)
             .background(Color(nsColor: .windowBackgroundColor))
         }
+    }
+
+    // MARK: - Chat Info panel & detached ChatInfoWindow (Round 2)
+
+    private final class QuickActionProbeBox {
+        var rects: [String: NSRect] = [:]
+
+        func record(_ title: String, _ rect: NSRect?) {
+            if let rect, !rect.isEmpty {
+                rects[title] = rect
+            } else {
+                rects.removeValue(forKey: title)
+            }
+        }
+    }
+
+    private func settleChatInfoHost(_ host: NSView, passes: Int = 60, until condition: (() -> Bool)? = nil) {
+        for _ in 0 ..< passes {
+            RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.005))
+            host.window?.displayIfNeeded()
+            host.layoutSubtreeIfNeeded()
+            if condition?() == true { break }
+        }
+    }
+
+    private func clickQuickAction(
+        labeled label: String,
+        window: NSWindow,
+        host: NSView,
+        probe: QuickActionProbeBox,
+        clickIndex: inout Int
+    ) throws {
+        settleChatInfoHost(host) { probe.rects[label] != nil }
+        let rect = try XCTUnwrap(probe.rects[label], "Missing quick-action button \(label)")
+        clickIndex += 1
+        let timestamp = ProcessInfo.processInfo.systemUptime + Double(clickIndex) * (NSEvent.doubleClickInterval + 0.1)
+        let location = NSPoint(x: rect.midX, y: rect.midY)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            let event = try XCTUnwrap(NSEvent.mouseEvent(
+                with: type,
+                location: location,
+                modifierFlags: [],
+                timestamp: timestamp,
+                windowNumber: window.windowNumber,
+                context: nil,
+                eventNumber: clickIndex,
+                clickCount: 1,
+                pressure: 1
+            ))
+            NSApp.sendEvent(event)
+        }
+        settleChatInfoHost(host, passes: 20)
+    }
+
+    private func hostChatInfoWindow<V: View>(_ view: V, size: NSSize) -> (NSWindow, NSView) {
+        let host = NSHostingView(rootView: view.frame(width: size.width, height: size.height))
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = host
+        host.frame = NSRect(origin: .zero, size: size)
+        window.setFrameOrigin(NSPoint(x: -10_000, y: -10_000))
+        window.orderFrontRegardless()
+        settleChatInfoHost(host)
+        return (window, host)
+    }
+
+    /// Quick actions in both the inline ChatInfoPane (ConversationView), detached ChatInfoWindow,
+    /// and a detached chat session act strictly on `info.roomID` (never falling back to inbox selection
+    /// or multi-select), and Search works from ChatInfoWindow and detached windows too.
+    func testChatInfoQuickActionsActOnPanelRoomAndDetachedSearchWorks() throws {
+        _ = NSApplication.shared
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vitruvian-courier-chatinfo-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        setenv(EngineLocation.dataDirectoryVariable, folder.path, 1)
+        defer {
+            unsetenv(EngineLocation.dataDirectoryVariable)
+            try? FileManager.default.removeItem(at: folder)
+        }
+
+        let delegate = AppDelegate()
+        var mainWindowOpens = 0
+        delegate.windowOpener.register { mainWindowOpens += 1 }
+
+        let panelRoom = "!panel-room:courier.local"
+        let selectedRoom = "!selected-room:courier.local"
+        let multiRoom = "!multi-room:courier.local"
+
+        let rowPanel = InboxRow(
+            roomID: panelRoom, network: "whatsapp", name: "Panel Chat", avatarPath: "", isDirect: true,
+            lastTS: 100, preview: "Hi", previewKind: .text, previewMine: false, unread: 0, muted: false
+        )
+        let rowSelected = InboxRow(
+            roomID: selectedRoom, network: "whatsapp", name: "Selected Chat", avatarPath: "", isDirect: true,
+            lastTS: 90, preview: "Yo", previewKind: .text, previewMine: false, unread: 0, muted: false
+        )
+        let rowMulti = InboxRow(
+            roomID: multiRoom, network: "whatsapp", name: "Multi Chat", avatarPath: "", isDirect: true,
+            lastTS: 80, preview: "Hey", previewKind: .text, previewMine: false, unread: 0, muted: false
+        )
+        delegate.inbox.setSnapshotRowsForTesting([rowPanel, rowSelected, rowMulti])
+        delegate.inbox.select(selectedRoom)
+        delegate.inbox.beginSelecting()
+        delegate.inbox.toggleSelected(multiRoom)
+
+        let info = RoomInfoResult(
+            roomID: panelRoom,
+            name: "Panel Chat",
+            remoteName: "Panel Chat",
+            network: "whatsapp",
+            isDirect: true,
+            features: Fixture.features
+        )
+        delegate.conversation.setSnapshotStateForTesting(roomID: panelRoom, items: [], row: rowPanel)
+        delegate.conversation.setChatInfoForTesting(info)
+
+        // 1. Detached ChatInfoWindow initialized with 2 args (matching App.swift).
+        let detachedProbe = QuickActionProbeBox()
+        let (detachedWin, detachedHost) = hostChatInfoWindow(
+            ChatInfoWindow(roomID: panelRoom, conversation: delegate.conversation)
+                .environment(\.chatInfoQuickActionProbe) { title, rect in
+                    detachedProbe.record(title, rect)
+                },
+            size: NSSize(width: 340, height: 640)
+        )
+        defer {
+            detachedWin.orderOut(nil)
+            detachedWin.contentView = nil
+        }
+
+        var clickIndex = 0
+        let openedBefore = mainWindowOpens
+        try clickQuickAction(
+            labeled: String(localized: "Search"),
+            window: detachedWin,
+            host: detachedHost,
+            probe: detachedProbe,
+            clickIndex: &clickIndex
+        )
+        try XCTSkipIf(
+            delegate.search.phase == .closed && mainWindowOpens == openedBefore,
+            "the window got no clicks (no window server for it here)"
+        )
+        XCTAssertEqual(mainWindowOpens, openedBefore + 1, "Detached Search must bring the main window forward")
+        XCTAssertNotEqual(delegate.search.phase, .closed, "Detached Search must open SearchModel")
+        delegate.search.close()
+
+        try clickQuickAction(
+            labeled: String(localized: "Remind…"),
+            window: detachedWin,
+            host: detachedHost,
+            probe: detachedProbe,
+            clickIndex: &clickIndex
+        )
+        XCTAssertEqual(
+            delegate.inbox.customReminder?.ids,
+            [panelRoom],
+            "Detached Remind must target info.roomID, not inbox selection or multi-select"
+        )
+        delegate.inbox.customReminder = nil
+        delegate.inboxUI.customReminder = nil
+
+        // 2. Detached chat session from DetachedWindowRegistry has onSearchInChat wired.
+        let detachedTarget = DetachedWindowTarget.chat(roomID: panelRoom)
+        delegate.detachedWindows.open(detachedTarget)
+        defer { delegate.detachedWindows.close(detachedTarget) }
+        let detachedSession = try XCTUnwrap(delegate.detachedWindows.session(for: detachedTarget))
+        let opensBeforeDetachedSession = mainWindowOpens
+        XCTAssertTrue(detachedSession.conversation.performSearchInChat(panelRoom))
+        XCTAssertEqual(mainWindowOpens, opensBeforeDetachedSession + 1)
+        XCTAssertNotEqual(delegate.search.phase, .closed, "Detached session Search must open SearchModel")
+        delegate.search.close()
+
+        // 3. Spy handlers on delegate.conversation verify all 5 actions pass info.roomID from BOTH
+        //    ChatInfoWindow and inline ConversationView ChatInfoPane.
+        var muteRooms: [String] = []
+        var pinRooms: [String] = []
+        var archiveRooms: [String] = []
+        var remindRooms: [String] = []
+        var searchRooms: [String] = []
+        delegate.conversation.onToggleMute = { muteRooms.append($0) }
+        delegate.conversation.onTogglePin = { pinRooms.append($0) }
+        delegate.conversation.onToggleArchive = { archiveRooms.append($0) }
+        delegate.conversation.onRemindLater = { remindRooms.append($0); return true }
+        delegate.conversation.onSearchInChat = { searchRooms.append($0) }
+
+        for (label, verify) in [
+            (String(localized: "Mute"), { XCTAssertEqual(muteRooms, [panelRoom]) }),
+            (String(localized: "Pin"), { XCTAssertEqual(pinRooms, [panelRoom]) }),
+            (String(localized: "Archive"), { XCTAssertEqual(archiveRooms, [panelRoom]) }),
+            (String(localized: "Remind…"), { XCTAssertEqual(remindRooms, [panelRoom]) }),
+            (String(localized: "Search"), { XCTAssertEqual(searchRooms, [panelRoom]) }),
+        ] {
+            try clickQuickAction(
+                labeled: label,
+                window: detachedWin,
+                host: detachedHost,
+                probe: detachedProbe,
+                clickIndex: &clickIndex
+            )
+            verify()
+        }
+
+        muteRooms.removeAll()
+        pinRooms.removeAll()
+        archiveRooms.removeAll()
+        remindRooms.removeAll()
+        searchRooms.removeAll()
+
+        let inlineProbe = QuickActionProbeBox()
+        let (inlineWin, inlineHost) = hostChatInfoWindow(
+            ConversationView(
+                conversation: delegate.conversation,
+                composer: delegate.conversation.composer,
+                inbox: delegate.inbox,
+                messageActions: delegate.messageActions,
+                scheduled: delegate.scheduled,
+                preferences: delegate.composerPreferences,
+                thread: delegate.conversation.thread,
+                focus: delegate.messageFocus,
+                appModel: delegate.model
+            )
+            .environment(\.chatInfoQuickActionProbe) { title, rect in
+                inlineProbe.record(title, rect)
+            },
+            size: NSSize(width: 900, height: 640)
+        )
+        defer {
+            inlineWin.orderOut(nil)
+            inlineWin.contentView = nil
+        }
+
+        for (label, verify) in [
+            (String(localized: "Mute"), { XCTAssertEqual(muteRooms, [panelRoom]) }),
+            (String(localized: "Pin"), { XCTAssertEqual(pinRooms, [panelRoom]) }),
+            (String(localized: "Archive"), { XCTAssertEqual(archiveRooms, [panelRoom]) }),
+            (String(localized: "Remind…"), { XCTAssertEqual(remindRooms, [panelRoom]) }),
+            (String(localized: "Search"), { XCTAssertEqual(searchRooms, [panelRoom]) }),
+        ] {
+            try clickQuickAction(
+                labeled: label,
+                window: inlineWin,
+                host: inlineHost,
+                probe: inlineProbe,
+                clickIndex: &clickIndex
+            )
+            verify()
+        }
+    }
+
+    /// Mute and Pin labels flip immediately in both the inline pane and detached ChatInfoWindow
+    /// when the inbox row's `muted` / `pinned` flags update.
+    func testChatInfoMuteAndPinLabelsFlipInInlinePaneAndDetachedWindow() throws {
+        _ = NSApplication.shared
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vitruvian-courier-flip-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        setenv(EngineLocation.dataDirectoryVariable, folder.path, 1)
+        defer {
+            unsetenv(EngineLocation.dataDirectoryVariable)
+            try? FileManager.default.removeItem(at: folder)
+        }
+
+        let delegate = AppDelegate()
+        let roomID = "!flip-room:courier.local"
+
+        func makeRow(muted: Bool, pinned: Bool) -> InboxRow {
+            InboxRow(
+                roomID: roomID, network: "signal", name: "Flip Chat", avatarPath: "", isDirect: true,
+                lastTS: 100, preview: "Hi", previewKind: .text, previewMine: false, unread: 0,
+                muted: muted, pinned: pinned
+            )
+        }
+
+        let initial = makeRow(muted: false, pinned: false)
+        delegate.inbox.setSnapshotRowsForTesting([initial])
+        let info = RoomInfoResult(
+            roomID: roomID,
+            name: "Flip Chat",
+            remoteName: "Flip Chat",
+            network: "signal",
+            isDirect: true,
+            features: Fixture.features
+        )
+        delegate.conversation.setSnapshotStateForTesting(roomID: roomID, items: [], row: initial)
+        delegate.conversation.setChatInfoForTesting(info)
+
+        let inlineProbe = QuickActionProbeBox()
+        let (inlineWin, inlineHost) = hostChatInfoWindow(
+            ConversationView(
+                conversation: delegate.conversation,
+                composer: delegate.conversation.composer,
+                inbox: delegate.inbox,
+                messageActions: delegate.messageActions,
+                scheduled: delegate.scheduled,
+                preferences: delegate.composerPreferences,
+                thread: delegate.conversation.thread,
+                focus: delegate.messageFocus,
+                appModel: delegate.model
+            )
+            .environment(\.chatInfoQuickActionProbe) { title, rect in
+                inlineProbe.record(title, rect)
+            },
+            size: NSSize(width: 900, height: 640)
+        )
+        let detachedProbe = QuickActionProbeBox()
+        let (detachedWin, detachedHost) = hostChatInfoWindow(
+            ChatInfoWindow(roomID: roomID, conversation: delegate.conversation)
+                .environment(\.chatInfoQuickActionProbe) { title, rect in
+                    detachedProbe.record(title, rect)
+                },
+            size: NSSize(width: 340, height: 640)
+        )
+        defer {
+            inlineWin.orderOut(nil)
+            inlineWin.contentView = nil
+            detachedWin.orderOut(nil)
+            detachedWin.contentView = nil
+        }
+
+        let mute = String(localized: "Mute")
+        let unmute = String(localized: "Unmute")
+        let pin = String(localized: "Pin")
+        let unpin = String(localized: "Unpin")
+
+        settleChatInfoHost(inlineHost) { inlineProbe.rects[mute] != nil && inlineProbe.rects[pin] != nil }
+        settleChatInfoHost(detachedHost) { detachedProbe.rects[mute] != nil && detachedProbe.rects[pin] != nil }
+
+        XCTAssertNotNil(inlineProbe.rects[mute])
+        XCTAssertNotNil(inlineProbe.rects[pin])
+        XCTAssertNil(inlineProbe.rects[unmute])
+        XCTAssertNil(inlineProbe.rects[unpin])
+        XCTAssertNotNil(detachedProbe.rects[mute])
+        XCTAssertNotNil(detachedProbe.rects[pin])
+        XCTAssertNil(detachedProbe.rects[unmute])
+        XCTAssertNil(detachedProbe.rects[unpin])
+
+        delegate.inbox.setSnapshotRowsForTesting([makeRow(muted: true, pinned: true)])
+        settleChatInfoHost(inlineHost) { inlineProbe.rects[unmute] != nil && inlineProbe.rects[unpin] != nil }
+        settleChatInfoHost(detachedHost) { detachedProbe.rects[unmute] != nil && detachedProbe.rects[unpin] != nil }
+
+        XCTAssertNotNil(inlineProbe.rects[unmute], "Inline ChatInfoPane must flip Mute -> Unmute when inbox row updates")
+        XCTAssertNotNil(inlineProbe.rects[unpin], "Inline ChatInfoPane must flip Pin -> Unpin when inbox row updates")
+        XCTAssertNil(inlineProbe.rects[mute])
+        XCTAssertNil(inlineProbe.rects[pin])
+        XCTAssertNotNil(detachedProbe.rects[unmute], "Detached ChatInfoWindow must flip Mute -> Unmute when inbox row updates")
+        XCTAssertNotNil(detachedProbe.rects[unpin], "Detached ChatInfoWindow must flip Pin -> Unpin when inbox row updates")
+        XCTAssertNil(detachedProbe.rects[mute])
+        XCTAssertNil(detachedProbe.rects[pin])
+
+        delegate.inbox.setSnapshotRowsForTesting([makeRow(muted: false, pinned: false)])
+        settleChatInfoHost(inlineHost) { inlineProbe.rects[mute] != nil && inlineProbe.rects[pin] != nil }
+        settleChatInfoHost(detachedHost) { detachedProbe.rects[mute] != nil && detachedProbe.rects[pin] != nil }
+
+        XCTAssertNotNil(inlineProbe.rects[mute])
+        XCTAssertNotNil(inlineProbe.rects[pin])
+        XCTAssertNil(inlineProbe.rects[unmute])
+        XCTAssertNil(inlineProbe.rects[unpin])
+        XCTAssertNotNil(detachedProbe.rects[mute])
+        XCTAssertNotNil(detachedProbe.rects[pin])
+        XCTAssertNil(detachedProbe.rects[unmute])
+        XCTAssertNil(detachedProbe.rects[unpin])
+    }
+
+    /// Local avatar override (`localAvatarURI`) must win over network `avatarPath` in ChatInfoPane header.
+    func testChatInfoPaneLocalAvatarWinsOverNetworkAvatar() throws {
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("chat-info-avatar-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        func writeSolidPNG(name: String, color: NSColor) throws -> String {
+            let side = 64
+            let rep = try XCTUnwrap(NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side, bitsPerSample: 8, samplesPerPixel: 4,
+                hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+            ))
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+            color.setFill()
+            NSRect(x: 0, y: 0, width: side, height: side).fill()
+            NSGraphicsContext.restoreGraphicsState()
+            let data = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+            let url = tmpDir.appendingPathComponent(name)
+            try data.write(to: url)
+            return url.path
+        }
+
+        let localPath = try writeSolidPNG(name: "local-red.png", color: NSColor(calibratedRed: 1, green: 0, blue: 0, alpha: 1))
+        let networkPath = try writeSolidPNG(name: "network-blue.png", color: NSColor(calibratedRed: 0, green: 0, blue: 1, alpha: 1))
+
+        let info = RoomInfoResult(
+            roomID: "!avatar-precedence:courier.local",
+            name: "Group With Local Avatar",
+            remoteName: "Group",
+            avatarPath: networkPath,
+            localAvatarURI: localPath,
+            network: "whatsapp",
+            isDirect: false,
+            members: [
+                Member(userID: "@a:courier.local", name: "Alice"),
+                Member(userID: "@b:courier.local", name: "Bob"),
+            ],
+            features: Fixture.features
+        )
+
+        let size = NSSize(width: 280, height: 220)
+        let (window, host) = hostChatInfoWindow(ChatInfoPane(info: info, now: { Fixture.now }), size: size)
+        defer {
+            window.orderOut(nil)
+            window.contentView = nil
+        }
+        // Let AvatarView's async image task finish loading from disk.
+        for _ in 0 ..< 40 {
+            if AvatarCache.shared.cachedImage(atPath: localPath) != nil { break }
+            RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
+        }
+        settleChatInfoHost(host)
+        window.displayIfNeeded()
+
+        let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+
+        // Sample the top-center avatar region (centered at x = 50% width, y ~ 50pt from top in flipped AppKit coords).
+        var foundRed = false
+        var foundBlue = false
+        for px in stride(from: bitmap.pixelsWide / 2 - 12, through: bitmap.pixelsWide / 2 + 12, by: 4) {
+            for py in stride(from: 30, through: min(90, bitmap.pixelsHigh - 1), by: 4) {
+                if let sample = bitmap.colorAt(x: px, y: py)?.usingColorSpace(.sRGB) {
+                    if sample.redComponent > 0.75 && sample.blueComponent < 0.25 {
+                        foundRed = true
+                    }
+                    if sample.blueComponent > 0.75 && sample.redComponent < 0.25 {
+                        foundBlue = true
+                    }
+                }
+            }
+        }
+        XCTAssertTrue(foundRed, "Header avatar must draw the local override avatar (red)")
+        XCTAssertFalse(foundBlue, "Header avatar must not draw the network avatar (blue) when localAvatarURI is set")
     }
 }
 

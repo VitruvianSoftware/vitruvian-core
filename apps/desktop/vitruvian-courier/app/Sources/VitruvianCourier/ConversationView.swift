@@ -68,6 +68,8 @@ struct ConversationView: View {
                     info: info,
                     bookmarks: conversation.chatInfoBookmarks,
                     isRefreshing: conversation.isRefreshingChatInfo,
+                    isMuted: inbox.row(of: info.roomID)?.muted ?? false,
+                    isPinned: inbox.row(of: info.roomID)?.pinned ?? false,
                     showsCloseButton: true,
                     focusSearchTrigger: conversation.focusChatInfoSearchRequest,
                     now: { conversation.currentTime },
@@ -138,7 +140,34 @@ struct ConversationView: View {
                     onOpenAISettings: {
                         conversation.onOpenAISettings()
                     },
+                    onToggleMute: {
+                        if !conversation.performToggleMute(info.roomID) {
+                            Task { await inbox.toggleMute(ids: [info.roomID]) }
+                        }
+                    },
+                    onTogglePin: {
+                        if !conversation.performTogglePin(info.roomID) {
+                            Task { await inbox.togglePin(ids: [info.roomID]) }
+                        }
+                    },
+                    onArchive: {
+                        if !conversation.performToggleArchive(info.roomID) {
+                            let rows = inbox.row(of: info.roomID).map { [$0] } ?? inbox.targetRows([info.roomID])
+                            Task { await inbox.archive(ChatInfoPresentation.shouldArchive(rows), ids: [info.roomID]) }
+                        }
+                    },
+                    onRemind: {
+                        if !conversation.performRemindLater(info.roomID),
+                           !inbox.isLocked,
+                           inbox.isEntitled(.reminders) {
+                            inbox.customReminder = ReminderRequest(ids: [info.roomID])
+                        }
+                    },
+                    onSearchInChat: {
+                        conversation.onSearchInChat(info.roomID)
+                    },
                     onClose: conversation.toggleChatInfo,
+                    inbox: inbox,
                     headerInToolbar: drawsLiquidGlass
                 )
                 .frame(minWidth: 280, idealWidth: 320, maxWidth: 420)

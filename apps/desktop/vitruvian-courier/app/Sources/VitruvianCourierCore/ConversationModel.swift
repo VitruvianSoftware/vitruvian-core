@@ -399,6 +399,76 @@ public final class ConversationModel: ObservableObject {
     @Published public var isChatSummaryExpanded = false
     /// Opens Settings ▸ AI.
     public var onOpenAISettings: @MainActor () -> Void = {}
+    private var toggleMuteHandler: (@MainActor (String) -> Void)?
+    private var togglePinHandler: (@MainActor (String) -> Void)?
+    private var toggleArchiveHandler: (@MainActor (String) -> Void)?
+    private var remindLaterHandler: (@MainActor (String) -> Bool)?
+    private var searchInChatHandler: (@MainActor (String) -> Void)?
+
+    /// Toggles mute on the given room, wired by `AppDelegate` or `DetachedWindowSession`.
+    public var onToggleMute: @MainActor (String) -> Void {
+        get { toggleMuteHandler ?? { _ in } }
+        set { toggleMuteHandler = newValue }
+    }
+    /// Toggles pin on the given room, wired by `AppDelegate` or `DetachedWindowSession`.
+    public var onTogglePin: @MainActor (String) -> Void {
+        get { togglePinHandler ?? { _ in } }
+        set { togglePinHandler = newValue }
+    }
+    /// Archives/unarchives the given room, wired by `AppDelegate` or `DetachedWindowSession`.
+    public var onToggleArchive: @MainActor (String) -> Void {
+        get { toggleArchiveHandler ?? { _ in } }
+        set { toggleArchiveHandler = newValue }
+    }
+    /// Opens the Remind Me UI for the given room; returns true if handled.
+    public var onRemindLater: @MainActor (String) -> Bool {
+        get { remindLaterHandler ?? { _ in false } }
+        set { remindLaterHandler = newValue }
+    }
+    /// Opens Search in Chat (`⌘F`) for the given room, wired by `AppDelegate` or `DetachedWindowSession`.
+    public var onSearchInChat: @MainActor (String) -> Void {
+        get { searchInChatHandler ?? { _ in } }
+        set { searchInChatHandler = newValue }
+    }
+
+    /// Invokes `onToggleMute(roomID)` when wired and `roomID` is non-empty; returns whether a host handler ran.
+    @MainActor @discardableResult
+    public func performToggleMute(_ roomID: String) -> Bool {
+        guard !roomID.isEmpty, let toggleMuteHandler else { return false }
+        toggleMuteHandler(roomID)
+        return true
+    }
+
+    /// Invokes `onTogglePin(roomID)` when wired and `roomID` is non-empty; returns whether a host handler ran.
+    @MainActor @discardableResult
+    public func performTogglePin(_ roomID: String) -> Bool {
+        guard !roomID.isEmpty, let togglePinHandler else { return false }
+        togglePinHandler(roomID)
+        return true
+    }
+
+    /// Invokes `onToggleArchive(roomID)` when wired and `roomID` is non-empty; returns whether a host handler ran.
+    @MainActor @discardableResult
+    public func performToggleArchive(_ roomID: String) -> Bool {
+        guard !roomID.isEmpty, let toggleArchiveHandler else { return false }
+        toggleArchiveHandler(roomID)
+        return true
+    }
+
+    /// Invokes `onRemindLater(roomID)` when wired and `roomID` is non-empty; returns whether it was handled.
+    @MainActor @discardableResult
+    public func performRemindLater(_ roomID: String) -> Bool {
+        guard !roomID.isEmpty, let remindLaterHandler else { return false }
+        return remindLaterHandler(roomID)
+    }
+
+    /// Invokes `onSearchInChat(roomID)` when wired and `roomID` is non-empty; returns whether a host handler ran.
+    @MainActor @discardableResult
+    public func performSearchInChat(_ roomID: String) -> Bool {
+        guard !roomID.isEmpty, let searchInChatHandler else { return false }
+        searchInChatHandler(roomID)
+        return true
+    }
     private var summarizeTask: Task<Void, Never>?
     private var summarizeToken = 0
     /// Active view-once message being viewed in `ViewOnceSheet`.
@@ -444,6 +514,27 @@ public final class ConversationModel: ObservableObject {
     private let appModel: AppModel
     private let unreadCount: @MainActor (String) -> Int
     private let chat: @MainActor (String) -> InboxRow?
+
+    /// Returns the inbox row for `roomID` if known, for views such as `ChatInfoWindow`.
+    public func chatRow(for roomID: String) -> InboxRow? {
+        chat(roomID)
+    }
+
+    /// Bound inbox model whose row updates (`muted`, `pinned`, `archived`) drive Chat Info quick-action state.
+    public private(set) weak var inbox: InboxModel?
+    private var inboxSubscription: AnyCancellable?
+
+    /// Attaches `inbox` so views observing `ConversationModel` (such as `ConversationView` and `ChatInfoWindow`)
+    /// update immediately when inbox row flags (`muted`, `pinned`, `archived`) change.
+    @MainActor
+    public func bindInbox(_ inbox: InboxModel) {
+        self.inbox = inbox
+        inboxSubscription = inbox.$rows
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+    }
     private var hideDeletedPreference = false
     private var showChatUpdatesPreference = true
     private var preferenceSubscription: AnyCancellable?
