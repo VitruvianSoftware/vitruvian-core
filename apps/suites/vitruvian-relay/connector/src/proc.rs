@@ -311,7 +311,10 @@ mod tests {
         assert_eq!(CALLS.load(Ordering::SeqCst), 3);
         assert_eq!(leader_state_with(99, |_| Ok(0)), Leader::Running);
         assert_eq!(leader_state_with(99, |_| Err(libc::ECHILD)), Leader::Gone);
-        assert_eq!(leader_state_with(99, |_| Err(libc::EINVAL)), Leader::Running);
+        assert_eq!(
+            leader_state_with(99, |_| Err(libc::EINVAL)),
+            Leader::Running
+        );
     }
 
     #[test]

@@ -33,8 +33,7 @@ use vitruvian_relay_connector::{rules, state, status, Result};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-const USAGE: &str =
-    "usage: vrelay <login|run|status|logout|pause|resume|reload|tools [--raw]>";
+const USAGE: &str = "usage: vrelay <login|run|status|logout|pause|resume|reload|tools [--raw]>";
 
 fn cmd_login(cfg: &Config) -> Result<()> {
     ensure_dir(&cfg.dir)?;

@@ -56,7 +56,7 @@ use vitruvian_relay::LogSink;
 use vitruvian_relay_connector::bridge::BridgeOutput;
 use vitruvian_relay_connector::keys::{load_or_create, public_key_b64};
 use vitruvian_relay_connector::link::{
-    Asker, Link, StillWanted, TokenError, TokenSource, Tools, Timing as LinkTiming,
+    Asker, Link, StillWanted, Timing as LinkTiming, TokenError, TokenSource, Tools,
 };
 use vitruvian_relay_connector::prompt::Waited;
 use vitruvian_relay_connector::state::{save_device, DeviceInfo};
@@ -282,7 +282,12 @@ impl Relay {
     async fn register(&self, public_key_b64: &str) -> String {
         let token = mint(&self.rsa, CONNECTOR_CLIENT, now_secs() + 600);
         let r = self
-            .post("/devices", &token, None, json!({"public_key": public_key_b64}))
+            .post(
+                "/devices",
+                &token,
+                None,
+                json!({"public_key": public_key_b64}),
+            )
             .await;
         assert_eq!(r.status, 200, "{}", r.body);
         r.json()["device_id"].as_str().unwrap().to_string()
@@ -416,7 +421,10 @@ impl Mcp {
 fn result_text(v: &Value) -> (String, bool) {
     let r = &v["result"];
     (
-        r["content"][0]["text"].as_str().unwrap_or_default().to_string(),
+        r["content"][0]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
         r["isError"].as_bool().unwrap_or(false),
     )
 }
@@ -709,8 +717,15 @@ async fn hello_welcome_call_result() {
     assert_eq!(c.tools.ran("start_process"), 1);
     // A hidden tool is refused on the Mac, whatever the relay forwards.
     let (text, is_error) = mcp.call("set_config_value", json!({})).await;
-    assert!(is_error && text.contains("Refused on the computer"), "{text}");
-    assert!(relay.logs().contains("\"event\":\"connect\""), "{}", relay.logs());
+    assert!(
+        is_error && text.contains("Refused on the computer"),
+        "{text}"
+    );
+    assert!(
+        relay.logs().contains("\"event\":\"connect\""),
+        "{}",
+        relay.logs()
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -729,7 +744,10 @@ async fn a_cancel_at_the_dialog_closes_it_and_nothing_runs() {
         .await
     };
     let (answer, ()) = tokio::join!(call, async {
-        until("the dialog to open", || c.asker.opened.load(Ordering::SeqCst) == 1).await;
+        until("the dialog to open", || {
+            c.asker.opened.load(Ordering::SeqCst) == 1
+        })
+        .await;
         mcp.notify("notifications/cancelled", json!({"requestId": 41}))
             .await;
     });
@@ -808,10 +826,12 @@ async fn a_slow_large_result_during_a_dialog_keeps_the_link() {
     let mcp = Arc::new(relay.mcp(&c.device_id).await);
     until_online(&mcp).await;
     let m = mcp.clone();
-    let waiting = tokio::spawn(async move {
-        m.call("start_process", json!({"command": "make"})).await
-    });
-    until("the dialog to open", || c.asker.opened.load(Ordering::SeqCst) == 1).await;
+    let waiting =
+        tokio::spawn(async move { m.call("start_process", json!({"command": "make"})).await });
+    until("the dialog to open", || {
+        c.asker.opened.load(Ordering::SeqCst) == 1
+    })
+    .await;
     // Three uploads, so a race the old code lost about half the time is
     // all but certain to show.
     for _ in 0..3 {
@@ -819,10 +839,13 @@ async fn a_slow_large_result_during_a_dialog_keeps_the_link() {
         assert!(!is_error, "{}", &text[..text.len().min(200)]);
         assert_eq!(text.len(), 3 * 1024 * 1024);
     }
-    assert_eq!(c.asker.dismissed.load(Ordering::SeqCst), 0, "the dialog was closed");
+    assert_eq!(
+        c.asker.dismissed.load(Ordering::SeqCst),
+        0,
+        "the dialog was closed"
+    );
     assert!(!c.logged("link down"), "the link dropped");
     *c.asker.answer.lock().unwrap() = Some(Waited::Allow);
     let (text, is_error) = waiting.await.unwrap();
     assert_eq!((text.as_str(), is_error), ("ran make", false));
 }
-

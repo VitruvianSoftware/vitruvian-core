@@ -287,7 +287,12 @@ fn install_creates_log_dir() {
     );
     assert!(out.contains("Installed"), "{out}");
     // Final review I5: how to pause, and that an edit needs a reload.
-    for needle in ["vrelay pause", "vrelay resume", "vrelay reload", "rules.toml"] {
+    for needle in [
+        "vrelay pause",
+        "vrelay resume",
+        "vrelay reload",
+        "rules.toml",
+    ] {
         assert!(out.contains(needle), "{needle}: {out}");
     }
 }

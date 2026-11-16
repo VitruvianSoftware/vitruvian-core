@@ -253,8 +253,7 @@ async fn slow_downlink(to: SocketAddr, relay_bytes_per_sec: usize) -> String {
             });
             tokio::spawn(async move {
                 let chunk = 4 * 1024;
-                let pause =
-                    Duration::from_secs_f64(chunk as f64 / relay_bytes_per_sec as f64);
+                let pause = Duration::from_secs_f64(chunk as f64 / relay_bytes_per_sec as f64);
                 let mut buf = vec![0u8; chunk];
                 loop {
                     match up_r.read(&mut buf).await {
@@ -2213,7 +2212,11 @@ async fn a_slow_send_during_a_dialog_keeps_the_link() {
         }
         pings.pause(false);
     }
-    assert_eq!(asker.dismissed.load(Ordering::SeqCst), 0, "the dialog closed");
+    assert_eq!(
+        asker.dismissed.load(Ordering::SeqCst),
+        0,
+        "the dialog closed"
+    );
     assert!(relay.conns.try_recv().is_err(), "the link was dropped");
     asker.set(Waited::Allow);
     assert_eq!(c.result().await.call_id, "ask");
@@ -2246,7 +2249,11 @@ async fn a_large_call_still_arriving_keeps_the_link() {
     assert_eq!(r.call_id, "big");
     assert!(!r.is_error, "{}", text(&r));
     assert_eq!(tools.count(), 1);
-    assert_eq!(asker.dismissed.load(Ordering::SeqCst), 0, "the dialog closed");
+    assert_eq!(
+        asker.dismissed.load(Ordering::SeqCst),
+        0,
+        "the dialog closed"
+    );
     assert!(relay.conns.try_recv().is_err(), "the link was dropped");
     asker.set(Waited::Deny);
     assert_eq!(c.result().await.call_id, "ask");
@@ -2393,7 +2400,10 @@ async fn status_tells_which_rules_are_in_use() {
     p.timing.status_every = Duration::from_secs(60);
     let run = start(&dir, &relay.url(), p);
     let (mut c, _) = relay.welcome().await;
-    until("the first status", || status_json(&dir)["state"] == "connected").await;
+    until("the first status", || {
+        status_json(&dir)["state"] == "connected"
+    })
+    .await;
     let v = status_json(&dir);
     assert_eq!(v["pid"], std::process::id());
     assert_eq!(v["rules"]["paused"], false);
@@ -2458,7 +2468,10 @@ async fn a_refused_link_says_why_until_one_is_welcomed() {
     })
     .await;
     let (_c, _) = relay.welcome().await;
-    until("connected", || link_state(&dir, now_unix()) == LinkState::Connected).await;
+    until("connected", || {
+        link_state(&dir, now_unix()) == LinkState::Connected
+    })
+    .await;
     let out = crate::status::render(&dir, now_unix());
     assert!(!out.contains("Refused"), "{out}");
     assert!(status_json(&dir).get("refused").is_none());
@@ -2483,7 +2496,10 @@ async fn old_moved_aside_records_are_deleted_at_start() {
     let (mut c, _) = relay.welcome().await;
     c.call("c1", "read_file", json!({"path": "/a"}));
     assert_eq!(text(&c.result().await), BLIND);
-    assert!(!old.exists() && !older.exists(), "expired records were kept");
+    assert!(
+        !old.exists() && !older.exists(),
+        "expired records were kept"
+    );
     assert!(open.exists(), "the open window's record was deleted");
     assert!(unrelated.exists(), "a file it did not write was deleted");
 }

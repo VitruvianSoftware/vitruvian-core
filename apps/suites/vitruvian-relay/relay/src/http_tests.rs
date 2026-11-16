@@ -1670,7 +1670,10 @@ fn the_first_head_ends_at_the_blank_line_even_split_across_reads() {
         let mut got = Vec::new();
         let mut buf = [0u8; 64];
         while !got.ends_with(b"body") {
-            let n = head.read(&mut buf).await.expect("no time-out after the head");
+            let n = head
+                .read(&mut buf)
+                .await
+                .expect("no time-out after the head");
             got.extend_from_slice(&buf[..n]);
         }
         let _client = writer.await.unwrap();

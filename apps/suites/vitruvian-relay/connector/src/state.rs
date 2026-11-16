@@ -405,7 +405,10 @@ mod tests {
         let other = dir.join("other.log");
         std::fs::write(&other, [b'x'; 200]).unwrap();
         assert!(!cap_log(f.as_raw_fd(), &other, 100).unwrap());
-        let g = std::fs::OpenOptions::new().write(true).open(&other).unwrap();
+        let g = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&other)
+            .unwrap();
         assert!(!cap_log(g.as_raw_fd(), &other, 100).unwrap());
         assert_eq!(std::fs::metadata(&other).unwrap().len(), 200);
     }

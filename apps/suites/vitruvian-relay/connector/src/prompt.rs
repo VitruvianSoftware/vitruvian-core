@@ -619,7 +619,10 @@ mod tests {
         // What was sent, in full, when a key argument is missing: one
         // isolate around it.
         let m = super::summarize("mystery", &json!({"k": "\u{05D0}"}));
-        assert!(m.starts_with("mystery: \u{2066}") && m.ends_with('\u{2069}'), "{m:?}");
+        assert!(
+            m.starts_with("mystery: \u{2066}") && m.ends_with('\u{2069}'),
+            "{m:?}"
+        );
     }
 
     /// A dialog told to give up after 1 s that we stop waiting for after
@@ -1120,7 +1123,10 @@ mod tests {
         let (s, _) = fake("p-eintr", "button returned:Allow, gave up:false", 0);
         let h = ask_limited(&s, "x", 30, Duration::from_secs(30), check);
         assert_eq!(h.wait(), Answer::Allow);
-        assert!(N.load(Ordering::SeqCst) >= 2, "the check was never interrupted");
+        assert!(
+            N.load(Ordering::SeqCst) >= 2,
+            "the check was never interrupted"
+        );
     }
 
     #[test]

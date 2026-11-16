@@ -860,12 +860,18 @@ no_prompt = ["read_file", "read_multiple_files", "list_directory",
         let dir = test_dir("rules-pause");
         set_paused(&dir, true).unwrap();
         let text = std::fs::read_to_string(rules_path(&dir)).unwrap();
-        assert_eq!(text, DEFAULT_RULES.replace("paused = false", "paused = true"));
+        assert_eq!(
+            text,
+            DEFAULT_RULES.replace("paused = false", "paused = true")
+        );
         let r = load(&dir).unwrap();
         assert!(r.paused);
         assert_eq!(Some(r.source_sha256.clone()), file_sha256(&dir));
         set_paused(&dir, false).unwrap();
-        assert_eq!(std::fs::read_to_string(rules_path(&dir)).unwrap(), DEFAULT_RULES);
+        assert_eq!(
+            std::fs::read_to_string(rules_path(&dir)).unwrap(),
+            DEFAULT_RULES
+        );
         assert_ne!(Some(r.source_sha256), file_sha256(&dir));
         // An edited file keeps its edits; one without the line gets it.
         std::fs::write(
@@ -882,7 +888,10 @@ no_prompt = ["read_file", "read_multiple_files", "list_directory",
         // A file that does not load is not touched.
         std::fs::write(rules_path(&dir), "paused = [").unwrap();
         assert!(set_paused(&dir, false).is_err());
-        assert_eq!(std::fs::read_to_string(rules_path(&dir)).unwrap(), "paused = [");
+        assert_eq!(
+            std::fs::read_to_string(rules_path(&dir)).unwrap(),
+            "paused = ["
+        );
     }
 
     #[test]
@@ -981,9 +990,7 @@ no_prompt = ["read_file", "read_multiple_files", "list_directory",
         let cfg = Config::from_lookup(|k| (k == "HOME").then(|| home.display().to_string()));
         let mut r = defaults();
         r.guard = Guard::for_config(&cfg, &home.join("work"));
-        let refused = |r: &Rules, tool: &str, args: Value| {
-            matches!(r.decide(tool, &args), Decision::Refuse(why) if why.contains("vrelay's own"))
-        };
+        let refused = |r: &Rules, tool: &str, args: Value| matches!(r.decide(tool, &args), Decision::Refuse(why) if why.contains("vrelay's own"));
         let token = state.join("token.json").display().to_string();
         // Directly, and through `~`, `..`, a relative path and odd case.
         for p in [
@@ -1002,24 +1009,48 @@ no_prompt = ["read_file", "read_multiple_files", "list_directory",
         // Through a symlink that looks harmless.
         let link = home.join("work/notes");
         std::os::unix::fs::symlink(&state, &link).unwrap();
-        assert!(refused(&r, "read_file", json!({"path": "~/work/notes/token.json"})));
-        assert!(refused(&r, "get_file_info", json!({"path": link.display().to_string()})));
+        assert!(refused(
+            &r,
+            "read_file",
+            json!({"path": "~/work/notes/token.json"})
+        ));
+        assert!(refused(
+            &r,
+            "get_file_info",
+            json!({"path": link.display().to_string()})
+        ));
         // Every path argument, every tool: lists, writes, moves.
         assert!(refused(
             &r,
             "read_multiple_files",
             json!({"paths": ["/tmp/a", token.clone()]})
         ));
-        assert!(refused(&r, "write_file", json!({"path": token.clone(), "content": "x"})));
-        assert!(refused(&r, "edit_block", json!({"file_path": token.clone()})));
+        assert!(refused(
+            &r,
+            "write_file",
+            json!({"path": token.clone(), "content": "x"})
+        ));
+        assert!(refused(
+            &r,
+            "edit_block",
+            json!({"file_path": token.clone()})
+        ));
         assert!(refused(
             &r,
             "move_file",
             json!({"source": "/tmp/a", "destination": "~/.claude-server-commander/x"})
         ));
-        assert!(refused(&r, "list_directory", json!({"path": "~/.local/share/vrelay"})));
+        assert!(refused(
+            &r,
+            "list_directory",
+            json!({"path": "~/.local/share/vrelay"})
+        ));
         // A search rooted inside is refused; at or above, it asks first.
-        assert!(refused(&r, "start_search", json!({"path": "~/Library/Logs/vrelay", "pattern": "x"})));
+        assert!(refused(
+            &r,
+            "start_search",
+            json!({"path": "~/Library/Logs/vrelay", "pattern": "x"})
+        ));
         for above in ["~", "~/Library", "/", "~/work/.."] {
             assert_eq!(
                 r.decide("start_search", &json!({"path": above, "pattern": "token"})),
@@ -1028,13 +1059,19 @@ no_prompt = ["read_file", "read_multiple_files", "list_directory",
             );
         }
         // Elsewhere nothing changes.
-        assert_eq!(r.decide("read_file", &json!({"path": "~/work/a.txt"})), Decision::Run);
+        assert_eq!(
+            r.decide("read_file", &json!({"path": "~/work/a.txt"})),
+            Decision::Run
+        );
         assert_eq!(
             r.decide("start_search", &json!({"path": "~/work", "pattern": "x"})),
             Decision::Run
         );
         assert_eq!(
-            r.decide("read_file", &json!({"path": "~/Library/Application Support/vrelay-other/x"})),
+            r.decide(
+                "read_file",
+                &json!({"path": "~/Library/Application Support/vrelay-other/x"})
+            ),
             Decision::Run
         );
         // A reload keeps the guard (it is not in the file).

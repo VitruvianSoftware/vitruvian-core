@@ -184,7 +184,9 @@ fn rules_lines(dir: &Path, now: u64) -> Vec<String> {
                 }
             }
             if let Some(e) = r.get("reload_error").and_then(Value::as_str) {
-                out.push(format!("the last reload failed, so the earlier rules stay in use: {e}"));
+                out.push(format!(
+                    "the last reload failed, so the earlier rules stay in use: {e}"
+                ));
             }
         }
         None => {
