@@ -77,7 +77,8 @@ use crate::keys::sign_hello;
 use crate::prompt::{summarize, Waited};
 use crate::rules::{self, Decision, Rules};
 use crate::state::{
-    ensure_dir, load_device, load_tokens, status_path, sync_dir, token_path, write_private, Tokens,
+    device_path, ensure_dir, load_device, load_tokens, status_path, sync_dir, token_path,
+    write_private, Tokens,
 };
 
 pub const DENIED: &str = "Denied on the computer.";
@@ -308,6 +309,12 @@ pub enum TokenError {
 pub trait TokenSource: Send + Sync + 'static {
     /// `Ok(None)`: nobody has signed in yet.
     fn token(&self) -> std::result::Result<Option<String>, TokenError>;
+    /// Whether a sign-in is still there. Checked while connected, so that
+    /// `vrelay logout` takes the link down instead of leaving it up until
+    /// the relay closes it at the token's expiry. Cheap; never a refresh.
+    fn signed_in(&self) -> bool {
+        true
+    }
 }
 
 type Refresh =
@@ -369,6 +376,11 @@ impl TokenSource for FileTokens {
             Err(e @ RefreshError::Rejected(_)) => park(e.to_string()),
             Err(e @ RefreshError::Unavailable(_)) => Err(TokenError::Unavailable(e.to_string())),
         }
+    }
+
+    /// `token.json` is there (`vrelay logout` removes it).
+    fn signed_in(&self) -> bool {
+        token_path(&self.cfg.dir).exists()
     }
 }
 
@@ -784,8 +796,23 @@ struct Shared<T, A> {
     /// Bumped by every reload that loaded, so a connection whose `hello`
     /// was built before one (and welcomed after) can catch up.
     rules_gen: AtomicU64,
+    /// What `status.json` says about the rules in use: paused, the loaded
+    /// file's SHA-256, and why the last reload failed (if it did).
+    rules_state: Arc<Mutex<Value>>,
+    /// Nudged by a reload (`SIGHUP`, as `vrelay reload`, `pause`, `resume`
+    /// and `logout` send): rewrite the status at once and check that the
+    /// sign-in is still there.
+    check_now: Arc<tokio::sync::Notify>,
     #[cfg(test)]
     hooks: Hooks,
+}
+
+fn rules_state(r: &Rules, error: Option<&str>) -> Value {
+    let mut v = json!({"paused": r.paused, "sha256": r.source_sha256});
+    if let (Some(e), Some(o)) = (error, v.as_object_mut()) {
+        o.insert("reload_error".into(), json!(e));
+    }
+    v
 }
 
 impl<T: Tools, A: Asker> Shared<T, A> {
@@ -1318,9 +1345,13 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         let tools = self.tools.list().await;
         let current = self.rules.lock().unwrap().clone();
         match rules::reload(&self.dir, &current, &tools) {
-            Err(e) => (self.log)(&format!("rules not reloaded, keeping the ones in use: {e}")),
+            Err(e) => {
+                (self.log)(&format!("rules not reloaded, keeping the ones in use: {e}"));
+                *self.rules_state.lock().unwrap() = rules_state(&current, Some(&e));
+            }
             Ok(r) => {
                 let visible = r.rules.visible(&tools);
+                *self.rules_state.lock().unwrap() = rules_state(&r.rules, None);
                 *self.rules.lock().unwrap() = r.rules;
                 self.rules_gen.fetch_add(1, Ordering::SeqCst);
                 (self.log)("rules reloaded");
@@ -1346,6 +1377,14 @@ struct Status {
     last_pong: Option<u64>,
     next_retry: Option<u64>,
     reason: Option<String>,
+    /// Why the relay last refused the link (`reject`), until a link is
+    /// welcomed again: `vrelay status` shows it, as it does a refused
+    /// sign-in, instead of "connecting" for ever.
+    refused: Option<String>,
+    /// The rules in use (shared with the reloader).
+    rules: Arc<Mutex<Value>>,
+    /// The reloader's nudge (`Shared::check_now`).
+    check_now: Arc<tokio::sync::Notify>,
 }
 
 impl Status {
@@ -1369,9 +1408,17 @@ impl Status {
             "updated_unix": (self.clock)(),
             "last_pong_unix": self.last_pong,
             "next_retry_unix": self.next_retry,
+            // So `vrelay reload` (and pause, resume, logout) can signal it.
+            "pid": std::process::id(),
+            "rules": self.rules.lock().unwrap().clone(),
         });
-        if let (Some(r), Some(o)) = (&self.reason, body.as_object_mut()) {
-            o.insert("reason".into(), json!(r));
+        if let Some(o) = body.as_object_mut() {
+            if let Some(r) = &self.reason {
+                o.insert("reason".into(), json!(r));
+            }
+            if let Some(r) = &self.refused {
+                o.insert("refused".into(), json!(r));
+            }
         }
         let _ = self.tx.send(Some(body.to_string()));
     }
@@ -1631,6 +1678,8 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
             seen_lock: Mutex::new(()),
             current: Mutex::new(None),
             rules_gen: AtomicU64::new(0),
+            rules_state: Arc::new(Mutex::new(rules_state(&self.rules, None))),
+            check_now: Arc::new(tokio::sync::Notify::new()),
             #[cfg(test)]
             hooks: self.hooks.clone(),
         });
@@ -1642,6 +1691,7 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
         let reloader = tokio::spawn(async move {
             while reload.recv().await.is_some() {
                 r.reload().await;
+                r.check_now.notify_one();
             }
         });
         let p = shared.clone();
@@ -1662,6 +1712,9 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
             last_pong: None,
             next_retry: None,
             reason: None,
+            refused: None,
+            rules: shared.rules_state.clone(),
+            check_now: shared.check_now.clone(),
         };
         let mut attempt: u32 = 0;
         let mut conn: u64 = 0;
@@ -1738,12 +1791,16 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
                     else {
                         break;
                     };
+                    let tokens = self.tokens.clone();
+                    let dir = self.dir.clone();
+                    let signed_in = move || tokens.signed_in() && device_path(&dir).exists();
                     let (up, shut) = session(
                         &shared,
                         (ws, read),
                         conn,
                         hello,
                         gen,
+                        &signed_in,
                         &mut status,
                         &mut shutdown,
                     )
@@ -1788,6 +1845,8 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
             tokio::select! {
                 v = &mut fut => return Some(v),
                 _ = tick.tick() => status.write(),
+                // A reload: say so now, not at the next tick.
+                _ = status.check_now.notified() => status.write(),
                 _ = stopped(shutdown) => return None,
             }
         }
@@ -1902,6 +1961,7 @@ async fn session<T: Tools, A: Asker>(
     conn: u64,
     hello: Hello,
     rules_gen: u64,
+    signed_in: &(dyn Fn() -> bool + Send + Sync),
     status: &mut Status,
     shutdown: &mut watch::Receiver<bool>,
 ) -> (Option<Duration>, bool) {
@@ -1971,7 +2031,20 @@ async fn session<T: Tools, A: Asker>(
                     break format!("nothing from the relay for {silent_limit:?} during a call");
                 }
             }
-            _ = refresh.tick() => status.write(),
+            // `vrelay logout` removed the sign-in: the link goes down now,
+            // not when the relay closes it at the token's expiry.
+            _ = refresh.tick() => {
+                if !signed_in() {
+                    break "signed out on this Mac (vrelay logout)".into();
+                }
+                status.write();
+            }
+            _ = shared.check_now.notified() => {
+                if !signed_in() {
+                    break "signed out on this Mac (vrelay logout)".into();
+                }
+                status.write();
+            }
             Some(f) = out_rx.recv() => {
                 let at = Instant::now();
                 if let Err(e) = send(&mut sink, &f, t.send_timeout).await {
@@ -2006,6 +2079,7 @@ async fn session<T: Tools, A: Asker>(
                         if welcomed.is_none() {
                             welcomed = Some(Instant::now());
                             status.last_pong = Some(clock());
+                            status.refused = None;
                             status.set("connected", None);
                             *shared.current.lock().unwrap() = Some((conn, out.clone()));
                             log("connected to the relay");
@@ -2026,6 +2100,8 @@ async fn session<T: Tools, A: Asker>(
                         }
                     }
                     Ok(ToConnector::Reject { reason }) => {
+                        // Cut: it is shown to the person, and came from afar.
+                        status.refused = Some(reason.chars().take(300).collect());
                         break format!("the relay refused the link: {reason}");
                     }
                     Ok(ToConnector::Ping { n }) => {

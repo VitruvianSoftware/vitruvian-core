@@ -33,7 +33,11 @@ use vitruvian_relay_protocol::ToolDef;
 use crate::state::write_private;
 use crate::Result;
 
-pub const DEFAULT_RULES: &str = r#"paused = false
+pub const DEFAULT_RULES: &str = r#"# What the relay may do on this Mac. vrelay reads this file when it starts.
+# After an edit, run `vrelay reload`: until then the rules it loaded stay in
+# use (`vrelay status` says when this file has changed since). `vrelay pause`
+# and `vrelay resume` set `paused` and reload in one step.
+paused = false
 hidden = ["set_config_value", "get_config",    # never exposed remotely
           "get_recent_tool_calls",               # earlier calls' arguments
           "give_feedback_to_desktop_commander",  # opens a browser form
@@ -59,6 +63,21 @@ pub const ASK_FIRST_ARGS: &[(&str, &str)] = &[("read_file", "isUrl")];
 /// of these was never edited, so `load` replaces it with the current
 /// defaults; any edit, however small, makes the file the person's own.
 const PREVIOUS_DEFAULTS: &[&str] = &[
+    // Before the header that says how to reload (final fix wave).
+    r#"paused = false
+hidden = ["set_config_value", "get_config",    # never exposed remotely
+          "get_recent_tool_calls",               # earlier calls' arguments
+          "give_feedback_to_desktop_commander",  # opens a browser form
+          "track_ui_event"]                      # desktop-commander's own UI
+config_allow = []    # settings tools to expose anyway; any other tool whose
+                     # name contains "config" is hidden
+# While paused, no tools are visible and every call is refused.
+# Run without asking: reads only. Every other tool, including any tool a
+# future desktop-commander adds, asks first.
+no_prompt = ["read_file", "read_multiple_files", "list_directory",
+             "get_file_info", "start_search", "get_more_search_results",
+             "stop_search", "list_searches"]
+"#,
     // Before R13 hid the history, feedback and UI tools (Task 6, Task 7's
     // first commit).
     r#"paused = false
@@ -90,6 +109,82 @@ pub struct Rules {
     #[serde(default)]
     pub config_allow: Vec<String>,
     pub no_prompt: Vec<String>,
+    /// SHA-256 of the file's text as [`load`] read it (empty if these
+    /// rules came from elsewhere), so `vrelay status` can tell when the
+    /// file has changed since.
+    #[serde(skip)]
+    pub source_sha256: String,
+}
+
+/// The file's text with its `paused = …` line (if any) set to `paused`.
+fn with_paused(text: &str, paused: bool) -> Option<String> {
+    let mut found = false;
+    let out: Vec<String> = text
+        .split_inclusive('\n')
+        .map(|line| {
+            let body = line.trim_end_matches(['\n', '\r']);
+            let key = body.split('=').next().unwrap_or("").trim();
+            if !found && key == "paused" && body.contains('=') {
+                found = true;
+                let end = &line[body.len()..];
+                format!("paused = {paused}{end}")
+            } else {
+                line.to_string()
+            }
+        })
+        .collect();
+    found.then(|| out.concat())
+}
+
+/// A file that is one of [`PREVIOUS_DEFAULTS`], or one with only its
+/// `paused` line changed (as `vrelay pause` leaves it): the current
+/// defaults, with its `paused` kept. `None` for a file the person edited.
+fn upgraded(text: &str) -> Option<String> {
+    if PREVIOUS_DEFAULTS.contains(&text) {
+        return Some(DEFAULT_RULES.to_string());
+    }
+    // Paused, but otherwise an older default.
+    let unpaused = with_paused(text, false)?;
+    PREVIOUS_DEFAULTS
+        .contains(&unpaused.as_str())
+        .then(|| with_paused(DEFAULT_RULES, true))
+        .flatten()
+}
+
+/// Sets `paused` in `rules.toml` (writing the defaults first if there is no
+/// file), changing that one line and nothing else, so an untouched default
+/// file still reads as untouched. The file must load afterwards.
+pub fn set_paused(dir: &Path, paused: bool) -> Result<()> {
+    let path = rules_path(dir);
+    if !path.exists() {
+        write_private(&path, DEFAULT_RULES.as_bytes())?;
+    }
+    let text =
+        std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let new = match with_paused(&text, paused) {
+        Some(t) => t,
+        // No `paused` line: add one at the top.
+        None => format!("paused = {paused}\n{text}"),
+    };
+    toml::from_str::<Rules>(&new).map_err(|e| format!("{}: {e}", path.display()))?;
+    if new != text {
+        write_private(&path, new.as_bytes())?;
+    }
+    Ok(())
+}
+
+/// The rules file as it is now, without writing anything (`load` may write
+/// the defaults); `None` if there is none or it does not load.
+pub fn load_quietly(dir: &Path) -> Option<Rules> {
+    let text = std::fs::read_to_string(rules_path(dir)).ok()?;
+    toml::from_str(&text).ok()
+}
+
+/// SHA-256 of `rules.toml` as it is now, if it can be read.
+pub fn file_sha256(dir: &Path) -> Option<String> {
+    std::fs::read_to_string(rules_path(dir))
+        .ok()
+        .map(|t| crate::keys::sha256_hex(&t))
 }
 
 pub fn rules_path(dir: &Path) -> PathBuf {
@@ -109,11 +204,13 @@ pub fn load(dir: &Path) -> Result<Rules> {
     }
     let mut text =
         std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    if PREVIOUS_DEFAULTS.contains(&text.as_str()) {
-        write_private(&path, DEFAULT_RULES.as_bytes())?;
-        text = DEFAULT_RULES.to_string();
+    if let Some(new) = upgraded(&text) {
+        write_private(&path, new.as_bytes())?;
+        text = new;
     }
-    toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
+    let mut rules: Rules = toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    rules.source_sha256 = crate::keys::sha256_hex(&text);
+    Ok(rules)
 }
 
 /// The result of re-reading the rules file (on `SIGHUP`).
@@ -198,7 +295,7 @@ pub fn file_warnings(dir: &Path) -> Vec<String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
         Err(e) => return vec![format!("cannot read {}: {e}", path.display())],
     };
-    if PREVIOUS_DEFAULTS.contains(&text.as_str()) {
+    if upgraded(&text).is_some() {
         return Vec::new();
     }
     let rules: Rules = match toml::from_str(&text) {
@@ -564,19 +661,80 @@ no_prompt = ["read_file", "read_multiple_files", "list_directory",
             DEFAULT_RULES
         );
         // A file the person edited, even by one character, is theirs.
-        let edited = R6_DEFAULTS.replace("paused = false", "paused = true");
+        let edited = R6_DEFAULTS.replace("\"stop_search\"", "\"stop_search\" ");
         std::fs::write(rules_path(&dir), &edited).unwrap();
         let r = load(&dir).unwrap();
-        assert!(r.paused);
         assert!(!r.is_hidden("get_recent_tool_calls"));
         assert_eq!(std::fs::read_to_string(rules_path(&dir)).unwrap(), edited);
+    }
+
+    /// `vrelay pause` changes only the `paused` line: such a file is still
+    /// an untouched default, upgraded with its pause kept.
+    #[test]
+    fn a_paused_old_default_is_upgraded_and_stays_paused() {
+        let dir = test_dir("rules-migrate-paused");
+        std::fs::create_dir_all(&dir).unwrap();
+        let paused = R6_DEFAULTS.replace("paused = false", "paused = true");
+        std::fs::write(rules_path(&dir), &paused).unwrap();
+        assert!(file_warnings(&dir).is_empty());
+        let r = load(&dir).unwrap();
+        assert!(r.paused);
+        assert!(r.is_hidden("get_recent_tool_calls"));
+        assert_eq!(
+            std::fs::read_to_string(rules_path(&dir)).unwrap(),
+            DEFAULT_RULES.replace("paused = false", "paused = true")
+        );
+    }
+
+    /// Final review I5: pause and resume change one line, so the file
+    /// stays the untouched default, and what is loaded can be told apart
+    /// from what is on disk.
+    #[test]
+    fn pause_and_resume_change_only_the_paused_line() {
+        let dir = test_dir("rules-pause");
+        set_paused(&dir, true).unwrap();
+        let text = std::fs::read_to_string(rules_path(&dir)).unwrap();
+        assert_eq!(text, DEFAULT_RULES.replace("paused = false", "paused = true"));
+        let r = load(&dir).unwrap();
+        assert!(r.paused);
+        assert_eq!(Some(r.source_sha256.clone()), file_sha256(&dir));
+        set_paused(&dir, false).unwrap();
+        assert_eq!(std::fs::read_to_string(rules_path(&dir)).unwrap(), DEFAULT_RULES);
+        assert_ne!(Some(r.source_sha256), file_sha256(&dir));
+        // An edited file keeps its edits; one without the line gets it.
+        std::fs::write(
+            rules_path(&dir),
+            "hidden = [\"x\"]  # mine\nno_prompt = []\n",
+        )
+        .unwrap();
+        set_paused(&dir, true).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(rules_path(&dir)).unwrap(),
+            "paused = true\nhidden = [\"x\"]  # mine\nno_prompt = []\n"
+        );
+        assert!(load(&dir).unwrap().paused);
+        // A file that does not load is not touched.
+        std::fs::write(rules_path(&dir), "paused = [").unwrap();
+        assert!(set_paused(&dir, false).is_err());
+        assert_eq!(std::fs::read_to_string(rules_path(&dir)).unwrap(), "paused = [");
+    }
+
+    #[test]
+    fn the_defaults_say_how_to_reload() {
+        assert!(DEFAULT_RULES.contains("vrelay reload"), "{DEFAULT_RULES}");
+        assert!(DEFAULT_RULES.contains("vrelay pause"), "{DEFAULT_RULES}");
+        // Every earlier default upgrades to these.
+        for old in PREVIOUS_DEFAULTS {
+            assert_eq!(upgraded(old).as_deref(), Some(DEFAULT_RULES));
+        }
+        assert_eq!(upgraded(DEFAULT_RULES), None);
     }
 
     #[test]
     fn an_edited_file_missing_new_hidden_defaults_is_warned_about_not_edited() {
         let dir = test_dir("rules-warn-edited");
         std::fs::create_dir_all(&dir).unwrap();
-        let edited = R6_DEFAULTS.replace("paused = false", "paused = true");
+        let edited = R6_DEFAULTS.replace("no_prompt = [", "no_prompt = [\"start_process\", ");
         std::fs::write(rules_path(&dir), &edited).unwrap();
         let w = file_warnings(&dir);
         assert_eq!(w.len(), 1, "{w:?}");

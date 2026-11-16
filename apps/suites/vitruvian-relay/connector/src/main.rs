@@ -33,7 +33,8 @@ use vitruvian_relay_connector::{rules, status, Result};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-const USAGE: &str = "usage: vrelay <login|run|status|logout|tools [--raw]>";
+const USAGE: &str =
+    "usage: vrelay <login|run|status|logout|pause|resume|reload|tools [--raw]>";
 
 fn cmd_login(cfg: &Config) -> Result<()> {
     ensure_dir(&cfg.dir)?;
@@ -58,7 +59,47 @@ fn cmd_logout(cfg: &Config) -> Result<()> {
     } else {
         println!("Already signed out.");
     }
+    // The running agent checks the sign-in every 20 s anyway; this makes
+    // it look now.
+    if status::nudge_agent(&cfg.dir, now_unix()) {
+        println!("The running vrelay is dropping its link to the relay.");
+    }
     Ok(())
+}
+
+/// Tells the running agent to re-read the rules, and waits for it to say
+/// it has. `what` is what the person just did, for the message.
+fn reload_agent(cfg: &Config, what: &str) -> Result<()> {
+    if !status::nudge_agent(&cfg.dir, now_unix()) {
+        println!("{what} vrelay run is not running; the rules apply when it starts.");
+        return Ok(());
+    }
+    match status::wait_for_reload(&cfg.dir, Duration::from_secs(5)) {
+        Ok(true) => {
+            println!("{what} The running vrelay is using the rules now.");
+            Ok(())
+        }
+        Ok(false) => Err(format!(
+            "{what} The running vrelay did not confirm it reloaded the rules; \
+             check `vrelay status`."
+        )),
+        Err(e) => Err(format!(
+            "the running vrelay could not load the rules, so it keeps the ones it had: {e}"
+        )),
+    }
+}
+
+/// `vrelay pause` / `vrelay resume`: sets `paused` in rules.toml, then
+/// reloads. While paused no tools are visible and every call is refused.
+fn cmd_pause(cfg: &Config, paused: bool) -> Result<()> {
+    ensure_dir(&cfg.dir)?;
+    rules::set_paused(&cfg.dir, paused)?;
+    let what = if paused {
+        "Paused: the relay sees no tools and every call is refused."
+    } else {
+        "Resumed: the relay sees the tools the rules allow."
+    };
+    reload_agent(cfg, what)
 }
 
 /// Starts desktop-commander, lists its tools with what the rules decide for
@@ -192,6 +233,9 @@ fn main() {
             Ok(())
         }
         Some("logout") => cmd_logout(&cfg),
+        Some("pause") => cmd_pause(&cfg, true),
+        Some("resume") => cmd_pause(&cfg, false),
+        Some("reload") => reload_agent(&cfg, "Reloaded rules.toml."),
         Some("run") => cmd_run(&cfg),
         Some("tools") => match std::env::args().nth(2).as_deref() {
             None => cmd_tools(&cfg, false),

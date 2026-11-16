@@ -520,6 +520,17 @@ pub fn install(i: &Install, out: &mut dyn Write) -> Result<()> {
         ),
     );
     let state = Config::from_lookup(|k| (k == "HOME").then(|| i.home.to_string_lossy().into()));
+    say(
+        out,
+        &format!(
+            "To stop remote calls at once: `{bin} pause` (no tools visible, every call \
+             refused); `{bin} resume` undoes it. After editing {rules}, run `{bin} reload`: \
+             the running agent keeps the rules it loaded until then. `{bin} status` shows \
+             which are in use.",
+            bin = p.bin.display(),
+            rules = rules::rules_path(&state.dir).display(),
+        ),
+    );
     for w in rules::file_warnings(&state.dir) {
         say(out, &format!("warning: {w}"));
     }

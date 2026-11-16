@@ -440,6 +440,11 @@ impl TokenSource for FakeTokens {
             self.n.fetch_add(1, Ordering::SeqCst) + 1
         )))
     }
+
+    /// `none` stands for `vrelay logout` (no token.json).
+    fn signed_in(&self) -> bool {
+        !self.none.load(Ordering::SeqCst)
+    }
 }
 
 // ------------------------------------------------------------------ helpers
@@ -2291,4 +2296,168 @@ async fn a_cancel_during_a_restart_stops_the_call() {
         until_logged(&dir, "cancelled before running").await;
         assert_eq!(tools.count(), 0, "it ran after the link dropped");
     }
+}
+
+fn status_json(dir: &Path) -> Value {
+    std::fs::read(dir.join("status.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or(Value::Null)
+}
+
+/// Final review I4: `vrelay logout` takes a connected link down within a
+/// status tick, not when the relay closes it at the token's expiry, and
+/// at once when it nudges the agent.
+#[tokio::test(flavor = "multi_thread")]
+async fn logout_drops_a_connected_link() {
+    for nudge in [false, true] {
+        let mut relay = FakeRelay::start().await;
+        let dir = registered(if nudge { "l-logout-nudge" } else { "l-logout" });
+        let mut p = parts();
+        if nudge {
+            // No tick would get there in time: only the nudge can.
+            p.timing.status_every = Duration::from_secs(60);
+        }
+        let tokens = p.tokens.clone();
+        let run = start(&dir, &relay.url(), p);
+        let (mut c, _) = relay.welcome().await;
+        until("connected", || {
+            link_state(&dir, now_unix()) == LinkState::Connected || nudge
+        })
+        .await;
+        tokens.none.store(true, Ordering::SeqCst);
+        if nudge {
+            run.reload.send(()).await.unwrap();
+        }
+        // The connector closes the socket.
+        let closed = tokio::time::timeout(WAIT, async {
+            loop {
+                if c.from.recv().await.is_none() {
+                    return;
+                }
+            }
+        })
+        .await;
+        assert!(closed.is_ok(), "the link stayed up after logout");
+        if !nudge {
+            until("waiting for sign-in", || {
+                link_state(&dir, now_unix()) == LinkState::WaitingForSignIn
+            })
+            .await;
+        }
+        assert!(relay.conns.try_recv().is_err(), "it reconnected signed out");
+    }
+    // The device record going is a sign-out too.
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-logout-device");
+    let _run = start(&dir, &relay.url(), parts());
+    let (mut c, _) = relay.welcome().await;
+    std::fs::remove_file(crate::state::device_path(&dir)).unwrap();
+    let closed = tokio::time::timeout(WAIT, async { while c.from.recv().await.is_some() {} }).await;
+    assert!(closed.is_ok(), "the link stayed up without device.json");
+}
+
+#[test]
+fn file_tokens_are_signed_in_while_token_json_is_there() {
+    let dir = test_dir("l-signed-in");
+    let cfg = Config::from_lookup(|k| (k == "VRELAY_HOME").then(|| dir.display().to_string()));
+    let t = FileTokens::new(cfg);
+    assert!(!t.signed_in());
+    save_tokens(
+        &dir,
+        &Tokens {
+            access_token: "a".into(),
+            refresh_token: None,
+            expires_at_unix: 1,
+        },
+    )
+    .unwrap();
+    assert!(t.signed_in());
+    crate::state::clear_sign_in(&dir).unwrap();
+    assert!(!t.signed_in());
+}
+
+/// Final review I5: what `vrelay status`, `reload`, `pause` and `resume`
+/// rely on. `status.json` names the agent's pid and the rules in use (paused,
+/// and the loaded file's digest); a reload updates it at once, and a reload
+/// that does not load says why.
+#[tokio::test(flavor = "multi_thread")]
+async fn status_tells_which_rules_are_in_use() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-status-rules");
+    let mut p = parts();
+    p.rules = crate::rules::load(&dir).unwrap();
+    // No tick in time: the reload must write the status itself.
+    p.timing.status_every = Duration::from_secs(60);
+    let run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    until("the first status", || status_json(&dir)["state"] == "connected").await;
+    let v = status_json(&dir);
+    assert_eq!(v["pid"], std::process::id());
+    assert_eq!(v["rules"]["paused"], false);
+    assert_eq!(
+        v["rules"]["sha256"].as_str(),
+        crate::rules::file_sha256(&dir).as_deref()
+    );
+    // `vrelay pause` edits the file; until the reload the old rules stand,
+    // and `vrelay status` says the file changed.
+    crate::rules::set_paused(&dir, true).unwrap();
+    let out = crate::status::render(&dir, now_unix());
+    assert!(out.contains("has changed since vrelay loaded it"), "{out}");
+    run.reload.send(()).await.unwrap();
+    assert_eq!(
+        tokio::task::spawn_blocking({
+            let dir = dir.clone();
+            move || crate::status::wait_for_reload(&dir, WAIT)
+        })
+        .await
+        .unwrap(),
+        Ok(true)
+    );
+    let out = crate::status::render(&dir, now_unix());
+    assert!(out.contains("Rules:    paused"), "{out}");
+    assert!(!out.contains("has changed"), "{out}");
+    match c.recv().await {
+        ToRelay::ToolsChanged { tools } => assert!(tools.is_empty()),
+        other => panic!("{other:?}"),
+    }
+    // A file that does not load: the agent says so and keeps its rules.
+    std::fs::write(crate::rules::rules_path(&dir), "paused = [").unwrap();
+    run.reload.send(()).await.unwrap();
+    let got = tokio::task::spawn_blocking({
+        let dir = dir.clone();
+        move || crate::status::wait_for_reload(&dir, WAIT)
+    })
+    .await
+    .unwrap();
+    assert!(got.is_err(), "{got:?}");
+    let out = crate::status::render(&dir, now_unix());
+    assert!(out.contains("the last reload failed"), "{out}");
+    assert!(out.contains("Rules:    paused"), "{out}");
+}
+
+/// Final review M3: a link the relay refuses shows why in `vrelay status`
+/// (as a refused sign-in does), not "connecting" for ever; a welcome clears
+/// it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refused_link_says_why_until_one_is_welcomed() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-refused");
+    let mut p = parts();
+    p.timing.backoff_unit = Duration::from_millis(1000);
+    let _run = start(&dir, &relay.url(), p);
+    let mut c = relay.next_conn().await;
+    let _hello = c.recv_any().await;
+    c.send(ToConnector::Reject {
+        reason: "unknown device; register it again".into(),
+    });
+    until("the refusal in the status", || {
+        crate::status::render(&dir, now_unix()).contains("Refused:  unknown device")
+    })
+    .await;
+    let (_c, _) = relay.welcome().await;
+    until("connected", || link_state(&dir, now_unix()) == LinkState::Connected).await;
+    let out = crate::status::render(&dir, now_unix());
+    assert!(!out.contains("Refused"), "{out}");
+    assert!(status_json(&dir).get("refused").is_none());
 }

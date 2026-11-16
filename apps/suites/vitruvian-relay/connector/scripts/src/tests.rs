@@ -286,6 +286,10 @@ fn install_creates_log_dir() {
         w.calls()
     );
     assert!(out.contains("Installed"), "{out}");
+    // Final review I5: how to pause, and that an edit needs a reload.
+    for needle in ["vrelay pause", "vrelay resume", "vrelay reload", "rules.toml"] {
+        assert!(out.contains(needle), "{needle}: {out}");
+    }
 }
 
 #[test]
@@ -455,11 +459,15 @@ fn install_warns_about_rules_missing_new_hidden_defaults() {
         std::fs::read_to_string(state.join("rules.toml")).unwrap(),
         rules
     );
-    // No rules file: nothing said, nothing written.
+    // No rules file: no warning, nothing written.
     let w = ok_world("rules-none");
     let (r, out) = w.run();
     r.unwrap();
-    assert!(!out.contains("rules.toml"), "{out}");
+    assert!(
+        !out.lines()
+            .any(|l| l.starts_with("warning:") && l.contains("rules.toml")),
+        "{out}"
+    );
     assert!(!w
         .home
         .join("Library/Application Support/vrelay/rules.toml")
