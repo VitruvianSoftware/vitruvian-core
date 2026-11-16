@@ -524,6 +524,8 @@ struct FakeDevice {
     frames: mpsc::UnboundedReceiver<ToConnector>,
     out: mpsc::UnboundedSender<ToRelay>,
     answer_pings: Arc<AtomicBool>,
+    /// Pings received from the relay.
+    pings: Arc<AtomicU32>,
     closed: Arc<tokio::sync::Notify>,
     is_closed: Arc<AtomicBool>,
 }
@@ -536,6 +538,8 @@ impl FakeDevice {
         let (frames_tx, frames) = mpsc::unbounded_channel();
         let (out, mut out_rx) = mpsc::unbounded_channel::<ToRelay>();
         let answer_pings = Arc::new(AtomicBool::new(true));
+        let pings = Arc::new(AtomicU32::new(0));
+        let pings2 = pings.clone();
         let closed = Arc::new(tokio::sync::Notify::new());
         let is_closed = Arc::new(AtomicBool::new(false));
         let (answer, closed2, is_closed2) =
@@ -551,6 +555,7 @@ impl FakeDevice {
                     m = stream.next() => match m {
                         Some(Ok(Message::Text(t))) => match decode_to_connector(&t).unwrap() {
                             ToConnector::Ping { n } => {
+                                pings2.fetch_add(1, Ordering::SeqCst);
                                 if answer.load(Ordering::SeqCst) {
                                     let _ = sink.send(Message::Text(encode(&ToRelay::Pong { n }).unwrap())).await;
                                 }
@@ -570,6 +575,7 @@ impl FakeDevice {
             frames,
             out,
             answer_pings,
+            pings,
             closed,
             is_closed,
         }
@@ -1166,10 +1172,10 @@ async fn call_reaches_the_device_and_answers() {
         (call.tool.as_str(), &call.arguments),
         ("read_file", &json!({"path": "/tmp/x"}))
     );
-    // What is left of the 180 s budget when the frame is queued: a little
-    // under it, never over.
+    // What is left of the 180 s budget when the frame is written, less the
+    // 6 s allowed for it to arrive: a little under 174 s, never over.
     assert!(
-        (175_000..=180_000).contains(&call.deadline_ms),
+        (169_000..=174_000).contains(&call.deadline_ms),
         "{}",
         call.deadline_ms
     );
@@ -1479,6 +1485,7 @@ fn production_timing_matches_the_spec() {
     assert_eq!(t.call_budget, Duration::from_secs(180));
     assert_eq!(t.max_clock_skew_secs, 60);
     assert_eq!(t.send_timeout, Duration::from_secs(30));
+    assert_eq!(t.transit_margin, Duration::from_secs(6));
     assert_eq!(t.header_read_timeout, Duration::from_secs(10));
     assert_eq!(t.body_timeout, Duration::from_secs(30));
     assert_eq!(t.max_connection_lifetime, Duration::from_secs(12 * 60 * 60));
@@ -1964,4 +1971,285 @@ async fn connection_closes_at_the_lifetime_cap() {
         .expect("a close frame with a reason");
     assert!(reason.contains("lifetime"), "{reason}");
     assert!(h.app.registry.tools(&device).is_none());
+}
+
+// ------------------------------------------- calls that waited to be sent
+
+/// Makes the next session that takes a frame off its queue stop there, the
+/// frame not yet sent, as a peer that has stopped reading does. Wait for
+/// `reached`, then call `let_go` to let the session carry on (later frames
+/// are not held).
+struct HeldSends {
+    reached: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+}
+
+fn hold_sends(h: &Harness) -> HeldSends {
+    let held = HeldSends {
+        reached: Arc::new(tokio::sync::Notify::new()),
+        release: Arc::new(tokio::sync::Notify::new()),
+    };
+    *h.app.hold_sends.lock().unwrap() = Some((held.reached.clone(), held.release.clone()));
+    held
+}
+
+impl HeldSends {
+    fn let_go(&self, h: &Harness) {
+        *h.app.hold_sends.lock().unwrap() = None;
+        self.release.notify_one();
+    }
+}
+
+fn error_text(r: &Reply) -> String {
+    assert_eq!(r.json()["result"]["isError"], true, "{}", r.body);
+    r.json()["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+#[test]
+fn the_margin_for_a_call_grows_with_its_size() {
+    let transit = Duration::from_secs(6);
+    assert_eq!(call_margin(transit, 0), transit);
+    assert_eq!(
+        call_margin(transit, 640),
+        transit + Duration::from_millis(10)
+    );
+    // The largest frame at the slowest link the connector also allows for.
+    assert_eq!(
+        call_margin(transit, MAX_FRAME_BYTES),
+        transit + Duration::from_millis(65_536)
+    );
+}
+
+#[tokio::test]
+async fn a_call_given_up_on_while_it_waited_to_be_sent_never_reaches_the_device() {
+    let h = Arc::new(
+        harness_with(Timing {
+            call_budget: Duration::from_millis(800),
+            transit_margin: Duration::from_millis(50),
+            ..Timing::default()
+        })
+        .await,
+    );
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h.connect(ALICE, &device, &key, vec![tool("t")]).await;
+    let s = h.session(&device, ALICE).await;
+
+    // The session has the call in hand but cannot send it yet.
+    let held = hold_sends(&h);
+    let pending = spawn_rpc(&h, &device, ALICE, &s, call_body(json!(1), "t", json!({})));
+    within(held.reached.notified()).await;
+    // The relay gives up on it: the AI app is told so.
+    let r = within(pending).await.unwrap();
+    assert_eq!(error_text(&r), "The command took too long.");
+    assert!(!h.app.registry.in_flight(&device));
+
+    // The send goes through at last. The cancel was queued behind the call,
+    // so if the cancel is the first thing the device gets, the call was
+    // never sent.
+    held.let_go(&h);
+    match fake.next().await {
+        ToConnector::Cancel { .. } => {}
+        other => panic!("the device got {other:?}"),
+    }
+    // No call was started on the link, so the relay did not begin its
+    // in-call pings, and the device has no call to expect them for.
+    assert_eq!(fake.pings.load(Ordering::SeqCst), 0);
+    assert!(fake.frames.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn a_call_that_waited_to_be_sent_carries_only_the_time_left_less_the_margin() {
+    let h = Arc::new(
+        harness_with(Timing {
+            call_budget: Duration::from_secs(10),
+            transit_margin: Duration::from_secs(2),
+            ..Timing::default()
+        })
+        .await,
+    );
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h.connect(ALICE, &device, &key, vec![tool("t")]).await;
+    let s = h.session(&device, ALICE).await;
+    let held = hold_sends(&h);
+    let pending = spawn_rpc(&h, &device, ALICE, &s, call_body(json!(1), "t", json!({})));
+    within(held.reached.notified()).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    held.let_go(&h);
+    let call = fake.next_call().await;
+    // 10 s, less the 0.5 s it waited, less the 2 s margin. The lower bound
+    // only allows for a slow machine.
+    assert!(
+        (2_500..=7_500).contains(&call.deadline_ms),
+        "{}",
+        call.deadline_ms
+    );
+    fake.reply(&call.call_id, "ok");
+    let r = within(pending).await.unwrap();
+    assert_eq!(r.json()["result"]["isError"], false);
+}
+
+#[tokio::test]
+async fn a_call_with_no_more_than_the_margin_left_is_failed_instead_of_sent() {
+    let h = Arc::new(
+        harness_with(Timing {
+            call_budget: Duration::from_secs(10),
+            transit_margin: Duration::from_secs(60),
+            ..Timing::default()
+        })
+        .await,
+    );
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h.connect(ALICE, &device, &key, vec![tool("t")]).await;
+    let s = h.session(&device, ALICE).await;
+    let started = Instant::now();
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            call_body(json!(1), "t", json!({})),
+        )
+        .await;
+    assert_eq!(error_text(&r), "The command took too long.");
+    // At once, not after the 10 s budget; and nothing was sent, not even a
+    // cancel (there is nothing at the device to stop).
+    assert!(started.elapsed() < Duration::from_secs(5));
+    assert!(!h.app.registry.in_flight(&device));
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(fake.frames.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn a_reregistered_device_never_gets_the_calls_still_queued_for_its_old_connection() {
+    let h = Arc::new(harness().await);
+    let (device, old_key) = h.new_device(ALICE).await;
+    let mut fake = h.connect(ALICE, &device, &old_key, vec![tool("t")]).await;
+    let s = h.session(&device, ALICE).await;
+
+    let held = hold_sends(&h);
+    let pending = spawn_rpc(&h, &device, ALICE, &s, call_body(json!(1), "t", json!({})));
+    within(held.reached.notified()).await;
+    // The device is registered again: the relay fails the call.
+    assert_eq!(h.register(ALICE, &ed25519()).await.status, StatusCode::OK);
+    let r = within(pending).await.unwrap();
+    assert_eq!(error_text(&r), "Your computer disconnected; try again.");
+
+    // The old connection gets to send again. It must close without handing
+    // over the call the relay has already failed.
+    held.let_go(&h);
+    fake.wait_closed().await;
+    if let Ok(f) = fake.frames.try_recv() {
+        panic!("the old connection got {f:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_connection_closed_for_a_lost_cancel_sends_nothing_that_was_queued() {
+    let h = Arc::new(harness().await);
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h.connect(ALICE, &device, &key, vec![tool("t")]).await;
+    // Cancels wait 100 ms for room here, not 2 s.
+    let reg = h.app.registry.cancel_waiting(Duration::from_millis(100));
+    let spawn_call = |n: usize| {
+        let (reg, device) = (reg.clone(), device.clone());
+        tokio::spawn(async move {
+            let call = Call {
+                call_id: format!("c{n}"),
+                tool: "t".into(),
+                arguments: json!({}),
+                deadline_ms: 500,
+            };
+            reg.call(&device, call).await
+        })
+    };
+
+    // One call in the session's hand, unsent, and the queue full behind it:
+    // when the relay gives up on them, no cancel can be queued.
+    let held = hold_sends(&h);
+    let mut calls = vec![spawn_call(0)];
+    within(held.reached.notified()).await;
+    calls.extend((1..=CONNECTION_QUEUE).map(spawn_call));
+    for c in calls {
+        assert!(within(c).await.unwrap().is_err());
+    }
+    // So the relay closes the connection.
+    within(async {
+        while h.app.registry.tools(&device).is_some() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+
+    // The stalled send comes back: the session ends at once and the device
+    // gets none of what was queued.
+    held.let_go(&h);
+    fake.wait_closed().await;
+    if let Ok(f) = fake.frames.try_recv() {
+        panic!("the device got {f:?}");
+    }
+    within(async {
+        while !h.logs().contains("closed: a cancel could not be queued") {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_call_frame_that_cannot_be_written_within_its_margin_drops_the_link() {
+    let h = harness_with(Timing {
+        transit_margin: Duration::from_millis(200),
+        ..Timing::default()
+    })
+    .await;
+    let (device, key) = h.new_device(ALICE).await;
+    // A session on a pipe that holds 1 KiB: once the device stops reading,
+    // a larger frame cannot be written.
+    let (client_io, server_io) = tokio::io::duplex(1024);
+    let token = h.connector_token(ALICE);
+    let (app, hash) = (h.app.clone(), token_hash(&token));
+    tokio::spawn(async move {
+        let ws = WebSocketStream::from_raw_socket(server_io, Role::Server, Some(ws_config())).await;
+        let caller = Caller {
+            subject: ALICE.into(),
+            client_id: CONNECTOR_CLIENT.into(),
+        };
+        run_connection(app, ws, caller, hash, None, Arc::default()).await;
+    });
+    let mut ws = WebSocketStream::from_raw_socket(client_io, Role::Client, None).await;
+    ws.send(Message::Text(hello(
+        &device,
+        &key,
+        &token,
+        now_secs(),
+        vec![tool("t")],
+    )))
+    .await
+    .unwrap();
+    assert!(matches!(
+        next_frame(&mut ws).await,
+        Some(ToConnector::Welcome { .. })
+    ));
+
+    // The device reads nothing more. A 16 KiB call may take the 200 ms
+    // margin plus 16 KiB at 64 bytes/ms (about 0.25 s) to arrive; after
+    // that the device's deadline would end later than the relay's, so the
+    // link goes, long before the 30 s any other frame is allowed.
+    let s = h.session(&device, ALICE).await;
+    let started = Instant::now();
+    let args = json!({"data": "x".repeat(16 * 1024)});
+    let r = within(h.rpc(&device, ALICE, Some(&s), call_body(json!(1), "t", args))).await;
+    assert_eq!(error_text(&r), "Your computer disconnected; try again.");
+    assert!(started.elapsed() >= Duration::from_millis(400));
+    // (The session logs its reason once its socket is closed.)
+    drop(ws);
+    within(async {
+        while !h.logs().contains("send stalled") {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
 }

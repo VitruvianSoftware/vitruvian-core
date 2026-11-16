@@ -103,6 +103,12 @@ pub struct Timing {
     pub call_budget: Duration,
     /// How far a `hello` timestamp may be from the relay's clock.
     pub max_clock_skew_secs: u64,
+    /// How long a call frame is allowed to take to reach the device after
+    /// the relay starts writing it, before its size is counted (see
+    /// `call_margin`). It is the longest silence the relay accepts on a link
+    /// with a call in flight (3 missed 2 s pings): a link slower than that
+    /// is dropped anyway.
+    pub transit_margin: Duration,
     /// Longest one frame may take to go out. Longer than the ping window, so a
     /// call frame near the 4 MiB cap on a slow uplink is not mistaken for a
     /// dead link; a silent drop is still caught by the pings, which are small.
@@ -134,6 +140,7 @@ impl Default for Timing {
             max_missed_pings: MAX_MISSED_PINGS,
             call_budget: Duration::from_secs(CALL_BUDGET_SECS),
             max_clock_skew_secs: 60,
+            transit_margin: Duration::from_secs(IN_CALL_PING_SECS) * MAX_MISSED_PINGS,
             send_timeout: Duration::from_secs(30),
             header_read_timeout: Duration::from_secs(10),
             body_timeout: Duration::from_secs(30),
@@ -168,6 +175,10 @@ pub struct App {
     /// it (reached, release).
     #[cfg(test)]
     pub(crate) after_hello: Mutex<Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>>,
+    /// Tests: pause a session with a frame taken off its queue and not yet
+    /// sent, as a peer that has stopped reading does (reached, release).
+    #[cfg(test)]
+    pub(crate) hold_sends: Mutex<Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>>,
 }
 
 impl App {
@@ -193,6 +204,8 @@ impl App {
             log,
             #[cfg(test)]
             after_hello: Mutex::new(None),
+            #[cfg(test)]
+            hold_sends: Mutex::new(None),
         })
     }
 
@@ -740,6 +753,19 @@ where
     }
 }
 
+/// The slowest link a call frame is sized for: the same floor as the
+/// connector's `send_budget`.
+const CALL_SEND_BYTES_PER_MS: usize = 64;
+
+/// How long a call frame of `bytes` may take from the moment the relay
+/// starts writing it until the device has it: `transit` plus the time to
+/// push that many bytes down a slow link. The relay takes this off the
+/// deadline it sends, and gives up on the link if the write alone takes
+/// that long.
+pub(crate) fn call_margin(transit: Duration, bytes: usize) -> Duration {
+    transit + Duration::from_millis((bytes / CALL_SEND_BYTES_PER_MS) as u64)
+}
+
 /// Whether a ping is due, counting ticks of the in-call interval: every tick
 /// while a call is in flight, every `idle_every` ticks otherwise.
 fn ping_due(ticks_since_ping: u32, in_flight: bool, idle_every: u32) -> bool {
@@ -995,9 +1021,12 @@ async fn run_connection<S>(
             .get(&device_id)
             .is_some_and(|r| r.owner_sub == caller.subject && r.public_key_ed25519 == verified_key)
     };
-    let Some(conn) = app
-        .registry
-        .connect_if(&device_id, hello.tools, tx, key_still_current)
+    // The closer is set when a cancel could not be queued: end at once,
+    // sending nothing more, so the device treats it as a drop (and never runs
+    // the call).
+    let Some((conn, closer)) =
+        app.registry
+            .connect_if(&device_id, hello.tools, tx, key_still_current)
     else {
         app.log(
             "connect_rejected",
@@ -1013,9 +1042,6 @@ async fn run_connection<S>(
         return;
     };
     let conn: ConnectionId = conn;
-    // Set when a cancel could not be queued: end at once, sending nothing
-    // more, so the device treats it as a drop (and never runs the call).
-    let closer = app.registry.closer(&device_id, conn).unwrap_or_default();
     // Belt and braces: `connect_if` already made the check and the
     // registration one step; re-reading after it costs nothing.
     match app.store.get(&device_id) {
@@ -1083,22 +1109,54 @@ async fn run_connection<S>(
                 ended = Some(ending);
                 break ending.reason().into();
             }
-            frame = rx.recv() => match frame {
-                // The registry dropped this connection: a newer one replaced
-                // it, or the device was registered again.
-                None => break "replaced".into(),
-                // Closed while this frame waited: it is never sent.
-                Some(_) if closer.is_closed() => break "closed: a cancel could not be queued".into(),
-                Some(f) => {
-                    let is_call = matches!(f, ToConnector::Call(_));
-                    if let Err(e) = send_frame(&mut sink, &f, send_timeout).await {
-                        break e;
+            frame = rx.recv() => {
+                #[cfg(test)]
+                {
+                    let hook = app.hold_sends.lock().unwrap().clone();
+                    if let Some((reached, release)) = hook {
+                        reached.notify_one();
+                        release.notified().await;
                     }
-                    if is_call {
-                        if let Beat::Ping(n) = live.call_started() {
-                            ticker.reset();
-                            if let Err(e) = send_frame(&mut sink, &ToConnector::Ping { n }, send_timeout).await {
-                                break e;
+                }
+                match frame {
+                    // The registry dropped this connection: a newer one
+                    // replaced it, or the device was registered again.
+                    None => break "replaced".into(),
+                    // Closed while this frame waited: it is never sent.
+                    Some(_) if closer.is_closed() => break "closed: a cancel could not be queued".into(),
+                    Some(mut f) => {
+                        let mut timeout = send_timeout;
+                        let is_call = matches!(f, ToConnector::Call(_));
+                        // (A call is encoded twice, once here for its size.)
+                        let bytes = match encode(&f) {
+                            Ok(text) if is_call => text.len(),
+                            Ok(_) => 0,
+                            Err(e) => break e.to_string(),
+                        };
+                        if let ToConnector::Call(call) = &mut f {
+                            // This frame may have waited in the queue behind
+                            // slow sends. The decision to send it is made
+                            // here, at the socket, not when it was queued.
+                            let margin = call_margin(t.transit_margin, bytes);
+                            if !app.registry.release(conn, call, margin) {
+                                // The relay gave up on it (or is about to):
+                                // the device must never see it.
+                                continue;
+                            }
+                            // A write that outlasts the margin would make the
+                            // device's deadline end after the relay's: drop
+                            // the link instead (a cut frame is never run).
+                            timeout = timeout.min(margin);
+                        }
+                        if let Err(e) = send_frame(&mut sink, &f, timeout).await {
+                            break e;
+                        }
+                        if is_call {
+                            if let Beat::Ping(n) = live.call_started() {
+                                ticker.reset();
+                                if let Err(e) = send_frame(&mut sink, &ToConnector::Ping { n }, send_timeout).await {
+                                    break e;
+                                }
                             }
                         }
                     }

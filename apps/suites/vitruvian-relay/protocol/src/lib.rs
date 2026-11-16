@@ -91,7 +91,9 @@ pub struct Call {
     pub tool: String,
     pub arguments: Value,
     /// A duration from when the frame is sent, not a clock time (the two
-    /// machines' clocks may differ).
+    /// machines' clocks may differ). The relay sets it as it writes the
+    /// frame: what is left of its own wait, less an allowance for the frame
+    /// to arrive, so the device stops waiting before the relay does.
     pub deadline_ms: u64,
 }
 

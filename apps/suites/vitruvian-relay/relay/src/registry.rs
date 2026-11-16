@@ -105,6 +105,8 @@ struct Pending {
     /// Tells this entry apart from a later call that reused the same id after
     /// this one was forgotten, so a stale guard or deadline never removes it.
     token: u64,
+    /// When the relay stops waiting for this call.
+    deadline: Instant,
     done: oneshot::Sender<Result<CallResult, CallError>>,
 }
 
@@ -213,6 +215,51 @@ impl Registry {
         }
     }
 
+    /// This registry (the same state), but its `Cancel`s wait `d` for room.
+    #[cfg(test)]
+    pub(crate) fn cancel_waiting(&self, d: Duration) -> Self {
+        Registry {
+            state: self.state.clone(),
+            cancel_wait: d,
+        }
+    }
+
+    /// The session calls this just before it writes a call to the socket,
+    /// which can be long after the call was queued. `false` means do not
+    /// send it.
+    ///
+    /// - A call the relay has given up on (timed out, cancelled, failed with
+    ///   its connection) is no longer pending: it is not sent.
+    /// - Otherwise `deadline_ms` becomes the time left right now, less
+    ///   `margin` (the time allowed for the frame to reach the device). The
+    ///   device counts from when it gets the frame, so its deadline ends no
+    ///   later than the relay's as long as the frame arrives within `margin`.
+    /// - A call with no more than `margin` left could not arrive in time: it
+    ///   is failed now (`Deadline`) and not sent.
+    ///
+    /// The match is by call id and connection. Ids are 128 random bits
+    /// (`mcp.rs`), so a queued frame is never mistaken for a later call.
+    pub fn release(&self, conn: ConnectionId, call: &mut Call, margin: Duration) -> bool {
+        let mut st = self.state.lock().unwrap();
+        let Some(p) = st.pending.get(&call.call_id).filter(|p| p.conn_id == conn) else {
+            return false;
+        };
+        let left = p
+            .deadline
+            .saturating_duration_since(Instant::now())
+            .saturating_sub(margin);
+        // Whole milliseconds, rounded down: never more than is left.
+        let ms = left.as_millis() as u64;
+        if ms == 0 {
+            if let Some(p) = st.pending.remove(&call.call_id) {
+                let _ = p.done.send(Err(CallError::Deadline));
+            }
+            return false;
+        }
+        call.deadline_ms = ms;
+        true
+    }
+
     /// The handle the session for connection `id` watches: once it says
     /// closed, the session ends at once, sending nothing more.
     pub fn closer(&self, device_id: &str, id: ConnectionId) -> Option<Arc<Closer>> {
@@ -303,14 +350,16 @@ impl Registry {
     /// then calls `kick`, which takes the same lock; so a connection checked
     /// with the old key can never register after that kick, nor evict a
     /// connection made with the new key. `None` if the check fails (nothing
-    /// is changed).
+    /// is changed). Also returns the connection's [`Closer`], in the same
+    /// step, so the session never has to look it up after a replacement
+    /// could have removed it.
     pub fn connect_if(
         &self,
         device_id: &str,
         tools: Vec<ToolDef>,
         tx: mpsc::Sender<ToConnector>,
         still_valid: impl FnOnce() -> bool,
-    ) -> Option<ConnectionId> {
+    ) -> Option<(ConnectionId, Arc<Closer>)> {
         let mut st = self.state.lock().unwrap();
         if !still_valid() {
             return None;
@@ -318,16 +367,17 @@ impl Registry {
         st.drop_connection(device_id, None);
         st.next_conn += 1;
         let id = ConnectionId(st.next_conn);
+        let closer = Arc::<Closer>::default();
         st.devices.insert(
             device_id.to_string(),
             Connection {
                 id,
                 tx,
                 tools,
-                closer: Arc::default(),
+                closer: closer.clone(),
             },
         );
-        Some(id)
+        Some((id, closer))
     }
 
     /// Ends the connection `id`, if it is still the device's current one (a
@@ -392,6 +442,7 @@ impl Registry {
                 Pending {
                     conn_id,
                     token,
+                    deadline: started + deadline,
                     done,
                 },
             );
@@ -414,9 +465,9 @@ impl Registry {
             tokio::select! {
                 permit = tx.reserve() => match permit {
                     Ok(permit) => {
-                        // The device counts the deadline from when it gets
-                        // the call: send what is left of it, not the time
-                        // already spent waiting for room.
+                        // What is left after waiting for room. The frame
+                        // can still wait in the queue: the session sets the
+                        // final value when it sends it (`release`).
                         let left = deadline.saturating_sub(started.elapsed());
                         call.deadline_ms = left.as_millis() as u64;
                         permit.send(ToConnector::Call(call));
@@ -853,6 +904,80 @@ mod tests {
                 Err(CallError::Offline)
             );
         }
+    }
+
+    #[tokio::test]
+    async fn release_stamps_a_pending_call_with_the_time_left_less_the_margin() {
+        let reg = Registry::new();
+        let (tx, mut rx) = mpsc::channel(8);
+        let conn = reg.connect("d1", vec![], tx);
+        let h = spawn_call(&reg, "c1", 10_000);
+        let mut c = expect_call(&mut rx).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(reg.release(conn, &mut c, Duration::from_secs(2)));
+        // 10 s, less the 0.3 s waited, less the 2 s margin.
+        assert!(
+            (3_000..=7_700).contains(&c.deadline_ms),
+            "{}",
+            c.deadline_ms
+        );
+        reg.complete(conn, result("c1", "ok"));
+        assert_eq!(within(h).await.unwrap(), Ok(result("c1", "ok")));
+    }
+
+    #[tokio::test]
+    async fn release_refuses_a_call_the_relay_gave_up_on() {
+        // Timed out.
+        let reg = Registry::new();
+        let (tx, mut rx) = mpsc::channel(8);
+        let conn = reg.connect("d1", vec![], tx);
+        let h = spawn_call(&reg, "c1", 50);
+        let mut c = expect_call(&mut rx).await;
+        assert_eq!(within(h).await.unwrap(), Err(CallError::Deadline));
+        assert!(!reg.release(conn, &mut c, Duration::ZERO));
+        within(rx.recv()).await; // its cancel
+
+        // The caller went away.
+        let h = spawn_call(&reg, "c2", 180_000);
+        let mut c = expect_call(&mut rx).await;
+        h.abort();
+        let _ = h.await;
+        assert!(!reg.release(conn, &mut c, Duration::ZERO));
+        within(rx.recv()).await; // its cancel
+
+        // Its connection was dropped (kicked, replaced or closed); the id is
+        // never sent on the old connection, nor taken for the new one's.
+        let h = spawn_call(&reg, "c3", 180_000);
+        let mut c = expect_call(&mut rx).await;
+        reg.kick("d1");
+        assert_eq!(within(h).await.unwrap(), Err(CallError::Disconnected));
+        assert!(!reg.release(conn, &mut c, Duration::ZERO));
+        let (tx2, mut rx2) = mpsc::channel(8);
+        let new = reg.connect("d1", vec![], tx2);
+        let h = spawn_call(&reg, "c3", 180_000);
+        let mut c_new = expect_call(&mut rx2).await;
+        assert!(!reg.release(conn, &mut c, Duration::ZERO));
+        assert!(reg.release(new, &mut c_new, Duration::ZERO));
+        reg.complete(new, result("c3", "ok"));
+        assert_eq!(within(h).await.unwrap(), Ok(result("c3", "ok")));
+    }
+
+    #[tokio::test]
+    async fn release_fails_a_call_that_has_no_more_than_the_margin_left() {
+        let reg = Registry::new();
+        let (tx, mut rx) = mpsc::channel(8);
+        let conn = reg.connect("d1", vec![], tx);
+        let h = spawn_call(&reg, "c1", 10_000);
+        let mut c = expect_call(&mut rx).await;
+        let started = Instant::now();
+        assert!(!reg.release(conn, &mut c, Duration::from_secs(10)));
+        // The caller is told now, and nothing is sent to stop a call the
+        // device never got.
+        assert_eq!(within(h).await.unwrap(), Err(CallError::Deadline));
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(!reg.in_flight("d1"));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(rx.try_recv().is_err(), "no cancel");
     }
 
     #[tokio::test]
