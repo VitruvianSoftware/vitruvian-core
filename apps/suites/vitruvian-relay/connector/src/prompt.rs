@@ -366,6 +366,7 @@ use Need::{Optional, Required};
 /// The tools [`summary_keys`] knows, checked against the pinned
 /// desktop-commander 0.3.1 schemas (`testdata/dc-0.3.1-tools.json`).
 pub const SUMMARY_TOOLS: &[&str] = &[
+    "read_file",
     "start_process",
     "interact_with_process",
     "read_process_output",
@@ -383,6 +384,8 @@ pub const SUMMARY_TOOLS: &[&str] = &[
 /// exact, case-sensitive name).
 pub fn summary_keys(tool: &str) -> &'static [(&'static str, Need)] {
     match tool {
+        // Asks first only when `isUrl` is set (rules::ASK_FIRST_ARGS).
+        "read_file" => &[("path", Required), ("isUrl", Optional)],
         // `shell` picks the program that runs `command`.
         "start_process" => &[("command", Required), ("shell", Optional)],
         "interact_with_process" => &[("pid", Required), ("input", Required)],
@@ -1027,29 +1030,11 @@ mod tests {
             ),
             ("force_terminate", "pid", true, ""),
             ("kill_process", "pid", true, ""),
-            (
-                "get_recent_tool_calls",
-                "maxResults",
-                false,
-                "shown as JSON (no key)",
-            ),
-            (
-                "get_recent_tool_calls",
-                "since",
-                false,
-                "shown as JSON (no key)",
-            ),
-            (
-                "get_recent_tool_calls",
-                "toolName",
-                false,
-                "shown as JSON (no key)",
-            ),
         ];
         let schemas = pinned_schemas();
         let mut seen = std::collections::HashSet::new();
         for (tool, schema) in &schemas {
-            if rules.decide(tool) != Decision::AskFirst {
+            if rules.decide(tool, &json!({})) != Decision::AskFirst {
                 continue;
             }
             let props = schema["properties"]
@@ -1080,6 +1065,38 @@ mod tests {
             assert!(
                 seen.contains(&(*t, *a)),
                 "{t}.{a} is reviewed but not in the schema"
+            );
+        }
+    }
+
+    #[test]
+    fn a_url_read_shows_path_and_is_url() {
+        let m = summarize(
+            "read_file",
+            &json!({"path": "http://127.0.0.1:8080/admin", "isUrl": true, "length": 5}),
+        );
+        assert_eq!(
+            m,
+            "read_file: path=\"http://127.0.0.1:8080/admin\", isUrl=\"true\""
+        );
+        // The rules ask for any isUrl but false. A text value is shown as
+        // sent; a value that is not plain text shows everything that was sent.
+        let m = summarize("read_file", &json!({"path": "http://x", "isUrl": "yes"}));
+        assert_eq!(m, "read_file: path=\"http://x\", isUrl=\"yes\"");
+        let m = summarize("read_file", &json!({"path": "http://x", "isUrl": {"a": 1}}));
+        assert!(m.contains("(odd isUrl)") && m.contains("http://x"), "{m}");
+        let m = summarize("read_file", &json!({"path": "http://x", "isUrl": null}));
+        assert!(m.contains("(odd isUrl)"), "{m}");
+        // The arguments the rules look at are in the pinned schema, and shown.
+        let schemas = pinned_schemas();
+        for (tool, arg) in crate::rules::ASK_FIRST_ARGS {
+            assert!(
+                schemas[*tool]["properties"].get(*arg).is_some(),
+                "{tool}.{arg} is not in the 0.3.1 schema"
+            );
+            assert!(
+                summary_keys(tool).iter().any(|(k, _)| k == arg),
+                "{tool}.{arg}"
             );
         }
     }

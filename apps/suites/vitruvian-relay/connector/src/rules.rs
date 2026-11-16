@@ -27,13 +27,17 @@
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
+use serde_json::Value;
 use vitruvian_relay_protocol::ToolDef;
 
 use crate::state::write_private;
 use crate::Result;
 
 pub const DEFAULT_RULES: &str = r#"paused = false
-hidden = ["set_config_value", "get_config"]   # never exposed remotely
+hidden = ["set_config_value", "get_config",    # never exposed remotely
+          "get_recent_tool_calls",               # earlier calls' arguments
+          "give_feedback_to_desktop_commander",  # opens a browser form
+          "track_ui_event"]                      # desktop-commander's own UI
 config_allow = []    # settings tools to expose anyway; any other tool whose
                      # name contains "config" is hidden
 # While paused, no tools are visible and every call is refused.
@@ -43,6 +47,13 @@ no_prompt = ["read_file", "read_multiple_files", "list_directory",
              "get_file_info", "start_search", "get_more_search_results",
              "stop_search", "list_searches"]
 "#;
+
+/// Arguments that turn a tool listed in `no_prompt` into something that must
+/// ask first, whatever the rules file says: present with any value but
+/// `false`. `read_file` with `isUrl` fetches the URL from this Mac, which can
+/// reach localhost and the homelab. (desktop-commander 0.3.1's other
+/// `no_prompt` tools have no such argument; see the Task 7 report.)
+pub const ASK_FIRST_ARGS: &[(&str, &str)] = &[("read_file", "isUrl")];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
@@ -126,14 +137,21 @@ impl Rules {
     }
 
     /// What to do with a call. `Run` only for a visible tool named in
-    /// `no_prompt`; everything else, including a tool nobody has heard of,
-    /// asks first.
-    pub fn decide(&self, tool: &str) -> Decision {
+    /// `no_prompt` whose arguments do not trip [`ASK_FIRST_ARGS`];
+    /// everything else, including a tool nobody has heard of, asks first.
+    /// Apart from that one check, decisions go by the tool's name.
+    pub fn decide(&self, tool: &str, args: &Value) -> Decision {
         if self.paused {
             return Decision::Refuse("paused on this Mac");
         }
         if self.is_hidden(tool) {
             return Decision::Refuse("this tool is not available remotely");
+        }
+        let risky_arg = ASK_FIRST_ARGS
+            .iter()
+            .any(|(t, a)| *t == tool && args.get(*a).is_some_and(|v| *v != Value::Bool(false)));
+        if risky_arg {
+            return Decision::AskFirst;
         }
         if self.no_prompt.iter().any(|t| t == tool) {
             Decision::Run
@@ -195,7 +213,7 @@ mod tests {
             "stop_search",
             "list_searches",
         ] {
-            assert_eq!(r.decide(t), Decision::Run, "{t}");
+            assert_eq!(r.decide(t, &json!({})), Decision::Run, "{t}");
         }
         for t in [
             "start_process",
@@ -208,18 +226,18 @@ mod tests {
             "interact_with_process",
             "write_pdf",
         ] {
-            assert_eq!(r.decide(t), Decision::AskFirst, "{t}");
+            assert_eq!(r.decide(t, &json!({})), Decision::AskFirst, "{t}");
         }
     }
 
     #[test]
     fn unknown_tool_asks_first() {
         let r = defaults();
-        assert_eq!(r.decide("brand_new_tool"), Decision::AskFirst);
-        assert_eq!(r.decide(""), Decision::AskFirst);
+        assert_eq!(r.decide("brand_new_tool", &json!({})), Decision::AskFirst);
+        assert_eq!(r.decide("", &json!({})), Decision::AskFirst);
         // Close to a read tool but not it: still asks.
-        assert_eq!(r.decide("read_file2"), Decision::AskFirst);
-        assert_eq!(r.decide("Read_File"), Decision::AskFirst);
+        assert_eq!(r.decide("read_file2", &json!({})), Decision::AskFirst);
+        assert_eq!(r.decide("Read_File", &json!({})), Decision::AskFirst);
     }
 
     #[test]
@@ -232,12 +250,21 @@ mod tests {
         ];
         let names: Vec<_> = r.visible(&tools).into_iter().map(|t| t.name).collect();
         assert_eq!(names, vec!["read_file"]);
-        assert!(matches!(r.decide("set_config_value"), Decision::Refuse(_)));
-        assert!(matches!(r.decide("get_config"), Decision::Refuse(_)));
+        assert!(matches!(
+            r.decide("set_config_value", &json!({})),
+            Decision::Refuse(_)
+        ));
+        assert!(matches!(
+            r.decide("get_config", &json!({})),
+            Decision::Refuse(_)
+        ));
         // Hidden wins even if the same tool is also listed as no_prompt.
         let mut r2 = r.clone();
         r2.no_prompt.push("get_config".into());
-        assert!(matches!(r2.decide("get_config"), Decision::Refuse(_)));
+        assert!(matches!(
+            r2.decide("get_config", &json!({})),
+            Decision::Refuse(_)
+        ));
     }
 
     #[test]
@@ -245,7 +272,10 @@ mod tests {
         let mut r = defaults();
         r.paused = true;
         for t in ["read_file", "start_process", "brand_new_tool", "get_config"] {
-            assert!(matches!(r.decide(t), Decision::Refuse(_)), "{t}");
+            assert!(
+                matches!(r.decide(t, &json!({})), Decision::Refuse(_)),
+                "{t}"
+            );
         }
     }
 
@@ -259,16 +289,22 @@ mod tests {
             "CONFIG_reset",
         ] {
             assert!(r.is_hidden(t), "{t}");
-            assert!(matches!(r.decide(t), Decision::Refuse(_)), "{t}");
+            assert!(
+                matches!(r.decide(t, &json!({})), Decision::Refuse(_)),
+                "{t}"
+            );
             // Even listed as no_prompt, a config tool stays hidden.
             r.no_prompt.push(t.into());
-            assert!(matches!(r.decide(t), Decision::Refuse(_)), "{t}");
+            assert!(
+                matches!(r.decide(t, &json!({})), Decision::Refuse(_)),
+                "{t}"
+            );
         }
         // config_allow opens one tool; it then asks first (not in no_prompt).
         r.config_allow.push("update_config".into());
         r.no_prompt.retain(|t| t != "update_config");
         assert!(!r.is_hidden("update_config"));
-        assert_eq!(r.decide("update_config"), Decision::AskFirst);
+        assert_eq!(r.decide("update_config", &json!({})), Decision::AskFirst);
         assert!(r.is_hidden("get_server_config"));
         // config_allow does not override the explicit hidden list.
         r.config_allow.push("get_config".into());
@@ -303,7 +339,7 @@ mod tests {
         std::fs::write(rules_path(&dir), edited).unwrap();
         let r = reload(&dir, &cur, &tools).unwrap();
         assert!(!r.visible_changed);
-        assert_eq!(r.rules.decide("start_process"), Decision::Run);
+        assert_eq!(r.rules.decide("start_process", &json!({})), Decision::Run);
         // A broken file is an error, and the caller keeps its current rules.
         std::fs::write(rules_path(&dir), "paused = [").unwrap();
         assert!(reload(&dir, &cur, &tools).is_err());
@@ -334,7 +370,10 @@ mod tests {
             "START_PROCESS\t",
         ] {
             assert!(r.is_hidden(t), "{t:?}");
-            assert!(matches!(r.decide(t), Decision::Refuse(_)), "{t:?}");
+            assert!(
+                matches!(r.decide(t, &json!({})), Decision::Refuse(_)),
+                "{t:?}"
+            );
         }
         assert!(r.visible(&[tool("Start_Process")]).is_empty());
         // A hidden entry written with odd case or spaces still matches.
@@ -342,6 +381,85 @@ mod tests {
         r.hidden = vec!["  Edit_Block ".into()];
         assert!(r.is_hidden("edit_block"));
         // The no_prompt list stays exact: a near-miss still asks.
-        assert_eq!(r.decide(" read_file"), Decision::AskFirst);
+        assert_eq!(r.decide(" read_file", &json!({})), Decision::AskFirst);
+    }
+
+    #[test]
+    fn a_url_read_asks_first() {
+        let r = defaults();
+        // A plain file read runs; the same tool fetching a URL from this Mac
+        // (it can reach localhost and the homelab) asks first.
+        assert_eq!(
+            r.decide("read_file", &json!({"path": "/tmp/a"})),
+            Decision::Run
+        );
+        assert_eq!(
+            r.decide("read_file", &json!({"path": "/tmp/a", "isUrl": false})),
+            Decision::Run
+        );
+        for odd in [json!(true), json!("true"), json!(1), json!(null), json!({})] {
+            assert_eq!(
+                r.decide(
+                    "read_file",
+                    &json!({"path": "http://localhost:8080/", "isUrl": odd})
+                ),
+                Decision::AskFirst,
+                "isUrl={odd}"
+            );
+        }
+        // Even if the person listed read_file in no_prompt (it is by default),
+        // and whatever the case of the key's value, the URL rule holds.
+        let mut r2 = r.clone();
+        r2.no_prompt.push("read_file".into());
+        assert_eq!(
+            r2.decide("read_file", &json!({"path": "http://x", "isUrl": true})),
+            Decision::AskFirst
+        );
+        // Hidden and paused still win.
+        let mut r3 = r.clone();
+        r3.paused = true;
+        assert!(matches!(
+            r3.decide("read_file", &json!({"isUrl": true})),
+            Decision::Refuse(_)
+        ));
+        // Arguments that are not an object change nothing for other tools.
+        assert_eq!(r.decide("list_directory", &json!(null)), Decision::Run);
+        assert_eq!(
+            r.decide("list_directory", &json!({"isUrl": true})),
+            Decision::Run
+        );
+    }
+
+    #[test]
+    fn history_feedback_and_ui_tools_are_hidden_by_default() {
+        let r = defaults();
+        for t in [
+            "get_recent_tool_calls",
+            "give_feedback_to_desktop_commander",
+            "track_ui_event",
+        ] {
+            assert!(r.is_hidden(t), "{t}");
+            assert!(
+                matches!(r.decide(t, &json!({})), Decision::Refuse(_)),
+                "{t}"
+            );
+        }
+        assert_eq!(
+            r.hidden,
+            [
+                "set_config_value",
+                "get_config",
+                "get_recent_tool_calls",
+                "give_feedback_to_desktop_commander",
+                "track_ui_event"
+            ]
+        );
+        // Unhiding is an edit of rules.toml: then it asks first.
+        let mut r2 = r.clone();
+        r2.hidden.retain(|h| h != "get_recent_tool_calls");
+        assert_eq!(
+            r2.decide("get_recent_tool_calls", &json!({})),
+            Decision::AskFirst
+        );
     }
 }

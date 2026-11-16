@@ -87,13 +87,23 @@ fn cmd_tools(cfg: &Config, raw: bool) -> Result<()> {
                 let what = if rules.paused || rules.is_hidden(&t.name) {
                     "hidden"
                 } else {
-                    match rules.decide(&t.name) {
+                    match rules.decide(&t.name, &serde_json::json!({})) {
                         rules::Decision::Run => "run",
                         rules::Decision::AskFirst => "ask first",
                         rules::Decision::Refuse(_) => "hidden",
                     }
                 };
-                s.push_str(&format!("{:width$}  {what}\n", t.name));
+                let args: Vec<_> = rules::ASK_FIRST_ARGS
+                    .iter()
+                    .filter(|(tool, _)| *tool == t.name && what == "run")
+                    .map(|(_, a)| *a)
+                    .collect();
+                let extra = if args.is_empty() {
+                    String::new()
+                } else {
+                    format!(" (asks first with {})", args.join(", "))
+                };
+                s.push_str(&format!("{:width$}  {what}{extra}\n", t.name));
             }
             s.push_str(&format!("{} tools from desktop-commander.", tools.len()));
             Ok(s)
