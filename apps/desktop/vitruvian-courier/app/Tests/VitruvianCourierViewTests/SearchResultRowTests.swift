@@ -43,6 +43,29 @@ final class SearchResultRowTests: XCTestCase {
         XCTAssertEqual(marked(text), ["Jose\u{301}"])
     }
 
+    func testHighlightOffsetWithEmojiMultiScalarEmojiAndCombiningMarkBeforeMatch() {
+        let singleEmoji = MessageHit(
+            eventID: "$emoji-single", roomID: "!g", roomName: "Eddie Stecker, Kent Hua", network: "gchat",
+            isDirect: false, sender: "@kent", senderName: "Kent Hua", mine: false, ts: Fixture.millis(3), seq: 1,
+            snippet: "😀 hello world", ranges: [TextRange(start: 3, length: 5)])
+        let singleText = SearchRowText.snippet(of: singleEmoji)
+        XCTAssertEqual(marked(singleText), ["hello"])
+        let singleUntinted = singleText.runs.filter { $0.backgroundColor == nil }
+            .map { String(singleText[$0.range].characters) }
+        XCTAssertEqual(singleUntinted, ["😀 ", " world"])
+
+        // "👨‍👩‍👧‍👦" is 11 UTF-16 units (7 scalars, 1 Character) and "e\u{301}" is 2 UTF-16 units (1 Character).
+        let multiScalar = MessageHit(
+            eventID: "$emoji-zwj", roomID: "!g", roomName: "Eddie Stecker, Kent Hua", network: "gchat",
+            isDirect: false, sender: "@kent", senderName: "Kent Hua", mine: false, ts: Fixture.millis(3), seq: 1,
+            snippet: "👨‍👩‍👧‍👦 cafe\u{301} hello world", ranges: [TextRange(start: 18, length: 5)])
+        let multiText = SearchRowText.snippet(of: multiScalar)
+        XCTAssertEqual(marked(multiText), ["hello"])
+        let multiUntinted = multiText.runs.filter { $0.backgroundColor == nil }
+            .map { String(multiText[$0.range].characters) }
+        XCTAssertEqual(multiUntinted, ["👨‍👩‍👧‍👦 cafe\u{301} ", " world"])
+    }
+
     func testTextWithNoMatchHasNoTintAndAStaleRangeIsLeftOut() {
         XCTAssertEqual(marked(SearchRowText.snippet(of: hit("a picnic", ranges: []))), [])
         XCTAssertEqual(marked(SearchRowText.snippet(of: hit("a picnic", ranges: [(2, 6), (40, 3)]))), ["picnic"])

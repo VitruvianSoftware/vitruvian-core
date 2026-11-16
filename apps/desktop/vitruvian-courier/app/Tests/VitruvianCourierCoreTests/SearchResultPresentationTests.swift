@@ -106,6 +106,29 @@ final class SearchResultPresentationTests: XCTestCase {
                        "Eddie & Kent", "a row read for the result titles it the same way")
     }
 
+    func testGroupSubtitleWhenMissingFromInboxUsesFetchedRowAndFallsBackToEngineName() {
+        let inbox = inbox()
+        let found = hit(room: "!old", roomName: "Eddie Stecker, Kent Hua")
+        XCTAssertNil(inbox.row(of: "!old"))
+
+        let fetched = groupRow("!old", name: "Eddie Stecker, Kent Hua")
+        XCTAssertEqual(
+            SearchResultLocation.subtitle(
+                sender: found.senderLine,
+                chatTitle: inbox.chatTitle(for: found, fetchedRow: fetched),
+                networkName: "Google Chat",
+                isDirect: found.isDirect),
+            "Kent Hua in Eddie & Kent · Google Chat")
+
+        XCTAssertEqual(
+            SearchResultLocation.subtitle(
+                sender: found.senderLine,
+                chatTitle: inbox.chatTitle(for: found, fetchedRow: nil),
+                networkName: "Google Chat",
+                isDirect: found.isDirect),
+            "Kent Hua in Eddie Stecker, Kent Hua · Google Chat")
+    }
+
     // MARK: - "Press ⌘F to search in …"
 
     func testOfferSaysTheShortcutAndTheChat() {
