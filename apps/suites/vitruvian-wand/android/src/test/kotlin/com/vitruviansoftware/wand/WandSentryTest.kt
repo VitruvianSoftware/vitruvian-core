@@ -20,17 +20,14 @@
 
 package com.vitruviansoftware.wand
 
+import dev.vitruvian.crashprivacy.DeviceField
 import io.sentry.Attachment
 import io.sentry.Breadcrumb
 import io.sentry.Hint
+import io.sentry.MainEventProcessor
 import io.sentry.OptionsContainer
 import io.sentry.Sentry
 import io.sentry.SentryEvent
-import io.sentry.SentryLogEvent
-import io.sentry.SentryLogLevel
-import io.sentry.SentryMetricsEvent
-import io.sentry.SentryOpenTelemetryMode
-import io.sentry.SentryReplayEvent
 import io.sentry.android.core.SentryAndroidOptions
 import io.sentry.protocol.App
 import io.sentry.protocol.DebugMeta
@@ -38,13 +35,11 @@ import io.sentry.protocol.Device
 import io.sentry.protocol.FeatureFlag
 import io.sentry.protocol.FeatureFlags
 import io.sentry.protocol.OperatingSystem
-import io.sentry.protocol.SentryId
 import io.sentry.protocol.SentryRuntime
-import io.sentry.protocol.SentryTransaction
-import io.sentry.protocol.TransactionInfo
 import io.sentry.protocol.User
 import io.sentry.util.Platform
 import java.io.File
+import java.util.EnumSet
 import java.util.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -82,102 +77,34 @@ class WandSentryTest {
   }
 
   @Test
-  fun wandSentryConfiguresNoExtraDataDefaultsAndScrubsEvents() {
-    val options = SentryAndroidOptions().apply { distinctId = "pre-existing-id" }
+  fun wandSentryStripsDeviceAndOsContextsAndMatchesOriginMainReleaseEnvDsn() {
+    assertEquals(EnumSet.of(DeviceField.APP_VERSION), WandSentry.KEPT_DEVICE_FIELDS)
+
+    val defaultOptions = SentryAndroidOptions()
+    WandSentry.configureOptions(options = defaultOptions)
+    assertEquals(WandSentry.DEFAULT_DSN, defaultOptions.dsn)
+    assertEquals("vitruvian-wand@0.1.0", defaultOptions.release)
+    assertEquals("production", defaultOptions.environment)
+
+    val options =
+        SentryAndroidOptions().apply {
+          distinctId = "pre-existing-id"
+          setTag("device.model", "Chromecast HD")
+          setTag("os.version", "15")
+        }
     WandSentry.configureOptions(
         options = options,
         dsn = "https://public@127.0.0.1:1/0",
         release = "vitruvian-wand@0.1.0",
-        osVersion = "15",
-        deviceModel = "Chromecast HD",
     )
 
+    assertEquals("https://public@127.0.0.1:1/0", options.dsn)
     assertEquals("vitruvian-wand@0.1.0", options.release)
     assertEquals("production", options.environment)
     assertFalse(options.isSendDefaultPii)
     assertNull(options.distinctId)
     assertEquals(0, options.maxBreadcrumbs)
-    assertEquals(0, options.maxFeatureFlags)
-    assertNull(options.beforeBreadcrumb!!.execute(Breadcrumb.info("tap"), Hint()))
-    assertFalse(options.isAttachServerName)
-    assertNull(options.serverName)
-    assertFalse(options.isAttachThreads)
-    assertFalse(options.isSendModules)
-    assertFalse(options.isEnableAutoSessionTracking)
-    assertFalse(options.isSendClientReports)
-
-    assertFalse(options.isEnableActivityLifecycleBreadcrumbs)
-    assertFalse(options.isEnableAppLifecycleBreadcrumbs)
-    assertFalse(options.isEnableSystemEventBreadcrumbs)
-    assertFalse(options.isEnableSystemEventBreadcrumbsExtras)
-    assertFalse(options.isEnableAppComponentBreadcrumbs)
-    assertFalse(options.isEnableNetworkEventBreadcrumbs)
-    assertFalse(options.isEnableUserInteractionBreadcrumbs)
-
-    assertFalse(options.isAnrEnabled)
-    assertFalse(options.isAnrReportInDebug)
-    assertFalse(options.isReportHistoricalAnrs)
-    assertFalse(options.isAttachAnrThreadDump)
-    assertNull(options.anrProfilingSampleRate)
-    assertFalse(options.isEnableNdkAppHangTracking)
-    assertFalse(options.isTombstoneEnabled)
-    assertFalse(options.isReportHistoricalTombstones)
-    assertFalse(options.isAttachRawTombstone)
-    assertFalse(options.isMemoryLimiterEnabled)
-    assertFalse(options.isReportHistoricalMemoryLimiterExits)
-    assertFalse(options.isEnableNdk)
-    assertFalse(options.isEnableScopeSync)
-
-    assertFalse(options.isAttachScreenshot)
-    assertFalse(options.isAttachViewHierarchy)
-    assertFalse(options.isEnableFramesTracking)
-    assertFalse(options.isCollectAdditionalContext)
-    assertFalse(options.isCollectExternalStorageContext)
-    assertFalse(options.isEnableRootCheck)
-    assertFalse(options.feedbackOptions.isUseShakeGesture)
-    assertFalse(options.feedbackOptions.isEnableAttachScreenshot)
-
-    assertFalse(options.isTracingEnabled)
-    assertNull(options.tracesSampleRate)
-    assertNull(options.tracesSampler)
-    assertFalse(options.isEnableAutoActivityLifecycleTracing)
-    assertFalse(options.isEnableActivityLifecycleTracingAutoFinish)
-    assertFalse(options.isEnableUserInteractionTracing)
-    assertFalse(options.isEnableTimeToFullDisplayTracing)
-    assertFalse(options.isEnablePerformanceV2)
-    assertFalse(options.isEnableStandaloneAppStartTracing)
-    assertFalse(options.isEnableAutoTraceIdGeneration)
-    assertFalse(options.isEnableScreenTracking)
-    assertTrue(options.tracePropagationTargets.isEmpty())
-    assertTrue(options.webViewTracing.allowedHosts.isEmpty())
-    val tx = SentryTransaction("tx", 0.0, 1.0, emptyList(), emptyMap(), TransactionInfo("m"))
-    assertNull(options.beforeSendTransaction!!.execute(tx, Hint()))
-
-    assertNull(options.profilesSampleRate)
-    assertNull(options.profilesSampler)
-    assertNull(options.profileSessionSampleRate)
-    assertFalse(options.isStartProfilerOnAppStart)
-    assertFalse(options.isEnableAppStartProfiling)
-    assertFalse(options.isContinuousProfilingEnabled)
-
-    assertNull(options.sessionReplay.sessionSampleRate)
-    assertNull(options.sessionReplay.onErrorSampleRate)
-    assertFalse(options.sessionReplay.isTrackConfiguration)
-    assertNull(options.beforeSendReplay!!.execute(SentryReplayEvent(), Hint()))
-    assertFalse(options.logs.isEnabled)
-    assertNull(
-        options.logs.beforeSend!!.execute(
-            SentryLogEvent(SentryId(), 0.0, "msg", SentryLogLevel.INFO)))
-    assertFalse(options.metrics.isEnabled)
-    assertNull(
-        options.metrics.beforeSend!!.execute(
-            SentryMetricsEvent(SentryId(), 0.0, "metric", "counter", 1.0), Hint()))
-
-    assertFalse(options.isEnableBackpressureHandling)
-    assertEquals(SentryOpenTelemetryMode.OFF, options.openTelemetryMode)
-    assertFalse(options.isCaptureOpenTelemetryEvents)
-    assertFalse(options.isEnableScopePersistence)
-    assertFalse(options.isEnableSpotlight)
+    assertTrue(options.tags.isEmpty())
 
     val event =
         SentryEvent(RuntimeException("boom")).apply {
@@ -188,40 +115,52 @@ class WandSentryTest {
                 email = "user@example.com"
               }
           dist = "1"
+          setTag("device.model", "Chromecast HD")
+          setTag("os.version", "15")
           setTag("isSideLoaded", "true")
           setExtra("secret", "x")
           debugMeta = DebugMeta()
-          contexts.setApp(App().apply { permissions = mapOf("BLUETOOTH_SCAN" to "granted") })
+          contexts.setApp(
+              App().apply {
+                appVersion = "0.1.0"
+                permissions = mapOf("BLUETOOTH_SCAN" to "granted")
+              })
           contexts.setDevice(
               Device().apply {
+                model = "Chromecast HD"
+                screenWidthPixels = 1920
+                screenHeightPixels = 1080
+                memorySize = 2_147_483_648L
                 manufacturer = "Google"
                 timezone = TimeZone.getTimeZone("UTC")
               })
           contexts.setOperatingSystem(
               OperatingSystem().apply {
                 name = "Android"
+                version = "15"
                 kernelVersion = "6.1"
               })
           contexts.setRuntime(SentryRuntime().apply { name = "ART" })
           contexts.setFeatureFlags(FeatureFlags(listOf(FeatureFlag("flag", true))))
         }
     val hint = Hint().apply { addAttachment(Attachment(byteArrayOf(1), "a.txt")) }
-    val sanitized = options.beforeSend!!.execute(event, hint)!!
+    val processed = MainEventProcessor(options).process(event, hint)
+    val sanitized = options.beforeSend!!.execute(processed, hint)!!
+
+    assertEquals("vitruvian-wand@0.1.0", sanitized.release)
+    assertEquals("production", sanitized.environment)
     assertNull(sanitized.user)
     assertNull(sanitized.breadcrumbs)
     assertNull(sanitized.dist)
     assertTrue(sanitized.extras.isNullOrEmpty())
     assertNull(sanitized.debugMeta)
-    assertEquals(mapOf("device.model" to "Chromecast HD", "os.version" to "15"), sanitized.tags)
+    assertNull(sanitized.tags)
+    assertTrue(sanitized.contexts.isEmpty())
+    assertNull(sanitized.contexts.device)
+    assertNull(sanitized.contexts.operatingSystem)
     assertNull(sanitized.contexts.app)
     assertNull(sanitized.contexts.runtime)
     assertNull(sanitized.contexts.featureFlags)
-    assertEquals("Chromecast HD", sanitized.contexts.device?.model)
-    assertNull(sanitized.contexts.device?.manufacturer)
-    assertNull(sanitized.contexts.device?.timezone)
-    assertEquals("Android", sanitized.contexts.operatingSystem?.name)
-    assertEquals("15", sanitized.contexts.operatingSystem?.version)
-    assertNull(sanitized.contexts.operatingSystem?.kernelVersion)
     assertTrue(hint.attachments.isEmpty())
   }
 

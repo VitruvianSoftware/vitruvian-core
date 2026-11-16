@@ -87,6 +87,7 @@ kt_jvm_test(
     deps = [
         ":android_sdk_stub_jar",
         ":lib",
+        "//packages/android-crash-privacy",
         "@maven//:io_sentry_sentry",
         "@maven//:io_sentry_sentry_android_core",
         "@maven//:junit_junit",
@@ -105,6 +106,7 @@ kt_android_library(
     resource_files = glob(["src/main/res/**"]),
     deps = [
         ":core",
+        "//packages/android-crash-privacy",
         "//packages/design-system-android:lib",
         "@maven//:androidx_activity_activity_compose",
         "@maven//:androidx_compose_animation_animation",

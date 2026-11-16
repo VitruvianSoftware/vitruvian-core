@@ -32,6 +32,7 @@ kt_android_library(
     custom_package = "com.vitruviansoftware.watch.common",
     manifest = "src/main/AndroidManifest.xml",
     deps = [
+        "//packages/android-crash-privacy",
         "@maven//:io_sentry_sentry",
         "@maven//:io_sentry_sentry_android_core",
     ],
@@ -58,6 +59,7 @@ kt_jvm_test(
     deps = [
         ":android_sdk_stub_jar",
         ":common",
+        "//packages/android-crash-privacy",
         "@maven//:io_sentry_sentry",
         "@maven//:io_sentry_sentry_android_core",
         "@maven//:junit_junit",
