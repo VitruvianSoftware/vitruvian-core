@@ -20,6 +20,9 @@ struct SettingsSwitchRow<Label: View>: View {
     let fillsWidth: Bool
     /// Whether the label is drawn. When it is not (the surrounding row draws its own text), `title` still names the switch.
     let showsLabel: Bool
+    /// The switch's accessibility identifier, for UI tests. It goes on the switch itself, the element VoiceOver and
+    /// tests reach; an identifier put on the row from outside would land on the row instead.
+    let identifier: String?
     private let label: Label
 
     @Namespace private var pairing
@@ -33,6 +36,7 @@ struct SettingsSwitchRow<Label: View>: View {
         footnote: String? = nil,
         fillsWidth: Bool = true,
         showsLabel: Bool = true,
+        identifier: String? = nil,
         @ViewBuilder label: () -> Label
     ) {
         _isOn = isOn
@@ -40,6 +44,7 @@ struct SettingsSwitchRow<Label: View>: View {
         self.footnote = footnote
         self.fillsWidth = fillsWidth
         self.showsLabel = showsLabel
+        self.identifier = identifier
         self.label = label()
     }
 
@@ -102,6 +107,7 @@ struct SettingsSwitchRow<Label: View>: View {
         .accessibilityAddTraits(.isToggle)
         .accessibilityAction(.default) { toggle() }
         .accessibilityLabeledPair(role: .content, id: 0, in: pairing)
+        .accessibilityIdentifier(identifier ?? "")
         .contentShape(Capsule())
         .focusable(isEnabled)
         .onKeyPress(.space) {
@@ -119,9 +125,13 @@ extension SettingsSwitchRow where Label == Text {
         isOn: Binding<Bool>,
         footnote: String? = nil,
         fillsWidth: Bool = true,
-        showsLabel: Bool = true
+        showsLabel: Bool = true,
+        identifier: String? = nil
     ) {
-        self.init(isOn: isOn, title: title, footnote: footnote, fillsWidth: fillsWidth, showsLabel: showsLabel) {
+        self.init(
+            isOn: isOn, title: title, footnote: footnote, fillsWidth: fillsWidth, showsLabel: showsLabel,
+            identifier: identifier
+        ) {
             Text(title)
         }
     }

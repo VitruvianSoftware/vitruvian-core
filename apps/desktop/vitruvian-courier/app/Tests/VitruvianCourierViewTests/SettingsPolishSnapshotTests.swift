@@ -116,6 +116,15 @@ final class SettingsPolishSnapshotTests: XCTestCase {
         let titleWidth = (card.title as NSString).size(withAttributes: [.font: font]).width
         // The card is 244 wide, less 12 either side, 10 either side inside, the 34 picture, 10 and 6 of gaps, the chevron.
         XCTAssertLessThan(titleWidth, 244 - 24 - 20 - 34 - 10 - 6 - 10, "the card's title no longer fits")
-        XCTAssertEqual(pressed, 0)
+        XCTAssertEqual(pressed, 0, "drawing the card doesn't press it")
+    }
+
+    /// Pressing the card runs its action (the sidebar opens Accounts with it), once per press.
+    func testAccountCardRunsItsActionWhenPressed() {
+        var pressed = 0
+        let view = SettingsAccountCardView(card: SettingsAccountCard.make(accounts: [])) { pressed += 1 }
+        view.action()
+        view.action()
+        XCTAssertEqual(pressed, 2)
     }
 }

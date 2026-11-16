@@ -201,18 +201,21 @@ struct MessagesSettingsPane: View {
                 }
             }
             .accessibilityIdentifier("settings.composing.secondaryComposerButton")
-            SettingsSwitchRow(String(localized: "Enable emoji autocomplete"), isOn: $preferences.enableEmojiAutocomplete)
-                .accessibilityIdentifier("settings.composing.enableEmojiAutocomplete")
+            SettingsSwitchRow(
+                String(localized: "Enable emoji autocomplete"),
+                isOn: $preferences.enableEmojiAutocomplete,
+                identifier: "settings.composing.enableEmojiAutocomplete"
+            )
             SettingsSwitchRow(
                 String(localized: "Disable automatic replacement of emoticons with emojis"),
-                isOn: $preferences.disableEmoticonReplacement
+                isOn: $preferences.disableEmoticonReplacement,
+                identifier: "settings.composing.disableEmoticonReplacement"
             )
-            .accessibilityIdentifier("settings.composing.disableEmoticonReplacement")
             SettingsSwitchRow(
                 String(localized: "Automatically send GIFs after selection"),
-                isOn: $preferences.autoSendGIFs
+                isOn: $preferences.autoSendGIFs,
+                identifier: "settings.composing.autoSendGIFs"
             )
-            .accessibilityIdentifier("settings.composing.autoSendGIFs")
         }
     }
 
