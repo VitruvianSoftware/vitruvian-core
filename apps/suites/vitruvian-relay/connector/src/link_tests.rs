@@ -2615,10 +2615,12 @@ async fn a_pause_stops_a_cleared_call_but_not_a_running_one() {
     let tools = p.tools.clone();
     let run = start(&dir, &relay.url(), p);
     let (mut c, _) = relay.welcome().await;
+    // Long enough to still be running when a loaded machine gets round to
+    // the reload.
     c.call(
         "running",
         "read_file",
-        json!({"path": "/a", "sleep_ms": 800}),
+        json!({"path": "/a", "sleep_ms": 4000}),
     );
     until("it to start", || tools.count() == 1).await;
     pause_now(&dir);
