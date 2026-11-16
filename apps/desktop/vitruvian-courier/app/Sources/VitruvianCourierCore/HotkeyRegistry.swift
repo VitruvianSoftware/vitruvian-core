@@ -994,6 +994,8 @@ public final class HotkeyDispatcher: ObservableObject {
     @Published public private(set) var archiveAllReadInvocationCount: Int = 0
     @Published public private(set) var fallbackUndoInvocationCount: Int = 0
 
+    private var overlayDismissals: Set<AnyCancellable> = []
+
     /// Shortcut IDs bound in `InboxCommands`.
     public static let inboxMenuShortcutIDs: [String] = [
         "Focus App",
@@ -1144,6 +1146,35 @@ public final class HotkeyDispatcher: ObservableObject {
         conversation.composer.hotkeys = hotkeys
         conversation.thread.composer.hotkeyDispatcher = self
         conversation.thread.composer.hotkeys = hotkeys
+
+        // The image viewer covers the whole window, so opening New Chat, Search or Settings (from a shortcut, the
+        // menu, a button or the dock) closes it first rather than opening behind it.
+        inbox.$startNewChatDraft
+            .dropFirst()
+            .sink { [weak self] draft in
+                if draft != nil { self?.closeImageViewer() }
+            }
+            .store(in: &overlayDismissals)
+        search.$phase
+            .dropFirst()
+            .sink { [weak self] phase in
+                if phase != .closed { self?.closeImageViewer() }
+            }
+            .store(in: &overlayDismissals)
+        menuCoordinator.$activeSettingsSection
+            .dropFirst()
+            .sink { [weak self] _ in self?.closeImageViewer() }
+            .store(in: &overlayDismissals)
+        menuCoordinator.settingsNavigation.$selectedPane
+            .dropFirst()
+            .sink { [weak self] _ in self?.closeImageViewer() }
+            .store(in: &overlayDismissals)
+    }
+
+    private func closeImageViewer() {
+        if conversation.carousel.isPresented {
+            conversation.closeLightbox()
+        }
     }
 
     /// Active composer that keyboard shortcuts target (thread pane when focused, otherwise main chat).

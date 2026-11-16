@@ -84,6 +84,9 @@ struct MainWindow: View {
 
     private var overlaidContent: some View {
         content
+            // The image viewer covers the whole window, toolbar included, and nothing behind it takes input.
+            .disabled(conversation.carousel.isPresented)
+            .toolbar(conversation.carousel.isPresented ? .hidden : .automatic, for: .windowToolbar)
             .frame(minWidth: 480, maxWidth: .infinity, minHeight: 320, maxHeight: .infinity)
             .overlay {
                 if search.phase != .closed {
@@ -153,6 +156,7 @@ struct MainWindow: View {
                             conversation.closeLightbox()
                         }
                     )
+                    .ignoresSafeArea()
                 }
             }
             // A chat's right-click menu opens search in that chat.
@@ -200,6 +204,7 @@ struct MainWindow: View {
                     if let draft = inbox.startNewChatDraft {
                         StartNewChatView(
                             draft: draft,
+                            recentRows: inbox.rows,
                             onQueryChanged: { updated in
                                 inbox.updateStartNewChatDraft(updated)
                             },
@@ -208,6 +213,9 @@ struct MainWindow: View {
                             },
                             onLookup: { action in
                                 Task { await inbox.performStartNewChatLookup(action) }
+                            },
+                            onRetrySearch: {
+                                Task { await inbox.retryStartNewChatSearch() }
                             },
                             onCreateGroup: { updated in
                                 inbox.startNewChatDraft = updated

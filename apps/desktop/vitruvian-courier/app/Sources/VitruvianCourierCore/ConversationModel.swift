@@ -712,6 +712,7 @@ public final class ConversationModel: ObservableObject {
         thread = ThreadModel(appModel: appModel, now: now, calendar: calendar, sleep: sleep)
         audioPlayer = AudioPlayerModel(appModel: appModel, preferences: preferences)
         audioPlayer.conversation = self
+        carousel.bind(appModel: appModel, conversation: self)
         subscriptions.append(audioPlayer.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         })
@@ -3069,11 +3070,13 @@ public final class ConversationModel: ObservableObject {
                 timelineCarouselItems = threadCarouselItems
             }
         }
-        if !timelineCarouselItems.isEmpty {
+        // Only an item the viewer actually shows becomes the active one.
+        if timelineCarouselItems.contains(where: { $0.eventID == messageID }) {
             carousel.open(items: timelineCarouselItems, selectedEventID: messageID)
-            activeLightboxMessageID = carousel.currentItem?.eventID ?? messageID
+            activeLightboxMessageID = carousel.currentItem?.eventID
         } else {
-            activeLightboxMessageID = messageID
+            carousel.close()
+            activeLightboxMessageID = nil
         }
     }
 

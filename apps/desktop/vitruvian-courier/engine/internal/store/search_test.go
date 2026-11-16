@@ -707,6 +707,48 @@ func TestLastArchivedSkipsHiddenAndTheOpenChat(t *testing.T) {
 	require.False(t, ok)
 }
 
+// Chat Info's Shared Media and the image viewer count one set: images, videos and stickers, minus view-once and
+// removed media, and never link previews, files or audio. The Swift side pins the same kinds in
+// MediaViewerModelTests (CarouselItem.viewableKinds).
+func TestSharedMediaIsOneDefinitionForChatInfoAndTheViewer(t *testing.T) {
+	require.Equal(t, []string{"image", "video", "sticker"}, SharedMediaKinds)
+
+	s, ctx := open(t), context.Background()
+	roomID := "!one-definition:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: roomID, Network: "whatsapp", Name: "One Definition", CreatedAt: time.Unix(1, 0)}))
+	t0 := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+	at := func(i int) time.Time { return t0.Add(time.Duration(i) * time.Minute) }
+
+	mkMsg(t, s, roomID, "$img", me, "m.room.message", `{"msgtype":"m.image","body":"a.png","url":"mxc://courier.test/img"}`, at(1))
+	mkMsg(t, s, roomID, "$vid", me, "m.room.message", `{"msgtype":"m.video","body":"b.mp4","url":"mxc://courier.test/vid"}`, at(2))
+	mkMsg(t, s, roomID, "$stk", me, "m.sticker", `{"body":"c.webp","url":"mxc://courier.test/stk"}`, at(3))
+	// A sticker stored as a message with msgtype m.sticker counts, as it does for storage accounting.
+	mkMsg(t, s, roomID, "$stk-msg", me, "m.room.message", `{"msgtype":"m.sticker","body":"d.webp","url":"mxc://courier.test/stkmsg"}`, at(4))
+	// Removed media is stamped com.courier.media_removed; the other half of the event (a remote URL) can remain.
+	mkMsg(t, s, roomID, "$img-removed", me, "m.room.message", `{"msgtype":"m.image","body":"e.png","url":"https://example.com/e.png","com.courier.media_removed":true}`, at(5))
+	mkMsg(t, s, roomID, "$stk-removed", me, "m.sticker", `{"body":"f.webp","url":"https://example.com/f.webp","com.courier.media_removed":true}`, at(6))
+	mkMsg(t, s, roomID, "$file", me, "m.room.message", `{"msgtype":"m.file","body":"g.pdf","url":"mxc://courier.test/file"}`, at(7))
+	mkMsg(t, s, roomID, "$audio", me, "m.room.message", `{"msgtype":"m.audio","body":"h.ogg","url":"mxc://courier.test/audio"}`, at(8))
+	mkMsg(t, s, roomID, "$link", me, "m.room.message", `{"msgtype":"m.text","body":"see https://example.com","url":"https://example.com"}`, at(9))
+
+	evs, err := s.RoomSharedMedia(ctx, roomID, 20)
+	require.NoError(t, err)
+	var ids []string
+	for _, e := range evs {
+		ids = append(ids, e.EventID)
+	}
+	require.Equal(t, []string{"$stk-msg", "$stk", "$vid", "$img"}, ids)
+
+	// What the viewer pages in for the same chat leaves removed media out too.
+	imageHits := searchAll(t, s, MessageQuery{RoomIDs: []string{roomID}, Kinds: []string{"image"}, Limit: 10})
+	require.Equal(t, []string{"$img"}, hitIDs(imageHits), "a removed image is not an image hit")
+
+	// And a sticker sent as a message is a sticker to search.
+	_, kind, ok := MessageText("m.room.message", json.RawMessage(`{"msgtype":"m.sticker","body":"d.webp"}`))
+	require.True(t, ok)
+	require.Equal(t, "sticker", kind)
+}
+
 func TestRoomSharedMediaFilesAndLinks(t *testing.T) {
 	s, ctx := open(t), context.Background()
 	roomID := "!shared:courier.local"
@@ -717,12 +759,15 @@ func TestRoomSharedMediaFilesAndLinks(t *testing.T) {
 	mkMsg(t, s, roomID, "$vid1", me, "m.room.message", `{"msgtype":"m.video","body":"clip.mp4","url":"mxc://courier.test/vid1"}`, t0.Add(2*time.Minute))
 	mkMsg(t, s, roomID, "$file1", me, "m.room.message", `{"msgtype":"m.file","body":"doc.pdf","url":"mxc://courier.test/file1"}`, t0.Add(3*time.Minute))
 	mkMsg(t, s, roomID, "$lnk1", me, "m.room.message", `{"msgtype":"m.text","body":"See https://example.com/spec, and (https://docs.example.org/guide)."}`, t0.Add(4*time.Minute))
+	mkMsg(t, s, roomID, "$stk1", me, "m.sticker", `{"body":"wave.webp","url":"mxc://courier.test/stk1"}`, t0.Add(5*time.Minute))
 
+	// Images, videos and stickers; never the file or the link preview.
 	mediaEvs, err := s.RoomSharedMedia(ctx, roomID, 10)
 	require.NoError(t, err)
-	require.Len(t, mediaEvs, 2)
-	require.Equal(t, "$vid1", mediaEvs[0].EventID)
-	require.Equal(t, "$img1", mediaEvs[1].EventID)
+	require.Len(t, mediaEvs, 3)
+	require.Equal(t, "$stk1", mediaEvs[0].EventID)
+	require.Equal(t, "$vid1", mediaEvs[1].EventID)
+	require.Equal(t, "$img1", mediaEvs[2].EventID)
 
 	fileEvs, err := s.RoomSharedFiles(ctx, roomID, 10)
 	require.NoError(t, err)

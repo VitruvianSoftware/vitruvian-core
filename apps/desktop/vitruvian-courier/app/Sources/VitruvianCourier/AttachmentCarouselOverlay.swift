@@ -71,7 +71,8 @@ public struct AttachmentCarouselOverlay: View {
 
     public var body: some View {
         ZStack {
-            Color.black.opacity(0.88)
+            // Dark enough that nothing behind it reads, and under the toolbar as well.
+            Color.black.opacity(0.94)
                 .ignoresSafeArea()
                 .onTapGesture {
                     onClose()
@@ -145,14 +146,12 @@ public struct AttachmentCarouselOverlay: View {
                         .foregroundStyle(.white)
                         .lineLimit(1)
 
-                    if model.items.count > 1 {
-                        Text(verbatim: "\(model.currentIndex + 1) / \(model.items.count)")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.white.opacity(0.75))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 1)
-                            .background(Capsule().fill(Color.white.opacity(0.16)))
-                    }
+                    Text(verbatim: model.positionLabel)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Color.white.opacity(0.16)))
                 }
                 HStack(spacing: 6) {
                     if !item.fileName.isEmpty {
@@ -291,11 +290,11 @@ public struct AttachmentCarouselOverlay: View {
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 36, height: 36)
-                    .background(Circle().fill(Color.white.opacity(model.currentIndex > 0 ? 0.2 : 0.06)))
+                    .background(Circle().fill(Color.white.opacity(model.canGoPrevious ? 0.2 : 0.06)))
             }
             .buttonStyle(.plain)
-            .disabled(model.currentIndex <= 0)
-            .opacity(model.currentIndex > 0 ? 1.0 : 0.35)
+            .disabled(!model.canGoPrevious)
+            .opacity(model.canGoPrevious ? 1.0 : 0.35)
             .padding(.leading, 12)
             .help(String(localized: "Previous"))
             .accessibilityLabel(String(localized: "Previous"))
@@ -318,12 +317,12 @@ public struct AttachmentCarouselOverlay: View {
                     .foregroundStyle(.white)
                     .frame(width: 36, height: 36)
                     .background(
-                        Circle().fill(Color.white.opacity(model.currentIndex + 1 < model.items.count ? 0.2 : 0.06))
+                        Circle().fill(Color.white.opacity(model.canGoNext ? 0.2 : 0.06))
                     )
             }
             .buttonStyle(.plain)
-            .disabled(model.currentIndex + 1 >= model.items.count)
-            .opacity(model.currentIndex + 1 < model.items.count ? 1.0 : 0.35)
+            .disabled(!model.canGoNext)
+            .opacity(model.canGoNext ? 1.0 : 0.35)
             .padding(.trailing, 12)
             .help(String(localized: "Next"))
             .accessibilityLabel(String(localized: "Next"))
@@ -409,13 +408,19 @@ public struct AttachmentCarouselOverlay: View {
     }
 
     private func missingMediaPlaceholder(for item: CarouselItem) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle")
+        // An item with no local file yet is just not downloaded; only a file that will not open is an error.
+        let notDownloaded = !item.viewOnce && item.mediaPath.isEmpty
+        return VStack(spacing: 8) {
+            Image(systemName: notDownloaded ? "photo" : "exclamationmark.triangle")
                 .font(.system(size: 26, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.75))
-            Text(String(localized: "Unable to load attachment"))
-                .font(.callout.weight(.medium))
-                .foregroundStyle(.white)
+            Text(
+                notDownloaded
+                    ? String(localized: "Not downloaded yet")
+                    : String(localized: "Unable to load attachment")
+            )
+            .font(.callout.weight(.medium))
+            .foregroundStyle(.white)
             if !item.fileName.isEmpty {
                 Text(verbatim: item.fileName)
                     .font(.caption)
@@ -481,9 +486,16 @@ public struct AttachmentCarouselOverlay: View {
                 )
             }
 
-            if model.items.count > 1 {
+            if model.items.count > 1 || model.isLoadingOlderItems {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
+                        // The oldest end is the left: a spinner there until the next older page arrives.
+                        if model.isLoadingOlderItems {
+                            ProgressView()
+                                .controlSize(.small)
+                                .frame(width: 48, height: 48)
+                                .accessibilityLabel(String(localized: "Loading older media"))
+                        }
                         ForEach(Array(model.items.enumerated()), id: \.element.id) { index, thumbItem in
                             CarouselFilmstripTile(
                                 item: thumbItem,
@@ -577,7 +589,8 @@ private struct CarouselFilmstripTile: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                Color.white.opacity(0.1)
+                // Neutral tile with a photo symbol until (or unless) the thumbnail loads; never blank.
+                Color(white: 0.16)
                 if !item.viewOnce,
                    isLocalMediaStorePath(item.thumbnailPath),
                    let nsImage = NSImage(contentsOfFile: item.thumbnailPath) {
@@ -585,9 +598,9 @@ private struct CarouselFilmstripTile: View {
                         .resizable()
                         .scaledToFill()
                 } else {
-                    Image(systemName: item.kind == .video ? "film" : "photo")
+                    Image(systemName: "photo")
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.75))
+                        .foregroundStyle(.white.opacity(0.65))
                 }
                 if item.kind == .video {
                     Image(systemName: "play.fill")
