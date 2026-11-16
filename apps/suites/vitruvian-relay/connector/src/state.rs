@@ -89,6 +89,7 @@ pub fn ensure_dir(dir: &Path) -> Result<()> {
 /// mode can never carry over), and is synced before the rename. Two processes
 /// saving the same file (`vrelay run` refreshing while `vrelay login` saves)
 /// each write their own temp file; the last rename wins and neither is torn.
+/// The folder is synced after the rename.
 pub fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -133,8 +134,21 @@ pub fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
         });
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
+    } else {
+        // The rename is only durable once the folder is synced too.
+        sync_dir(path);
     }
     result
+}
+
+/// Syncs the folder holding `path`, so a create or rename in it survives a
+/// power cut. Best effort: some file systems refuse to sync a folder.
+pub fn sync_dir(path: &Path) {
+    if let Some(dir) = path.parent() {
+        if let Ok(d) = std::fs::File::open(dir) {
+            let _ = d.sync_all();
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -61,7 +61,8 @@ use vitruvian_mcp_auth::{
     extract_bearer, protected_resource_metadata, www_authenticate, AuthError, Caller, Verifier,
 };
 use vitruvian_relay_protocol::{
-    decode_to_relay, encode, hello_message, Hello, ToConnector, ToRelay, MAX_FRAME_BYTES, PROTOCOL,
+    decode_to_relay, encode, hello_message, Hello, ToConnector, ToRelay, CALL_BUDGET_SECS,
+    MAX_FRAME_BYTES, PROTOCOL,
 };
 
 use crate::config::Settings;
@@ -131,7 +132,7 @@ impl Default for Timing {
             idle_ping: Duration::from_secs(PING_SECS),
             in_call_ping: Duration::from_secs(IN_CALL_PING_SECS),
             max_missed_pings: MAX_MISSED_PINGS,
-            call_budget: Duration::from_secs(180),
+            call_budget: Duration::from_secs(CALL_BUDGET_SECS),
             max_clock_skew_secs: 60,
             send_timeout: Duration::from_secs(30),
             header_read_timeout: Duration::from_secs(10),

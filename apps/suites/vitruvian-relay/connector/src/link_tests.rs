@@ -29,7 +29,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
 use std::net::SocketAddr;
 use std::os::unix::fs::PermissionsExt;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicU64, AtomicUsize};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
@@ -38,7 +38,10 @@ use vitruvian_relay_protocol::{
     decode_to_relay, encode, hello_message, Call, ToConnector, ToRelay,
 };
 
-const WAIT: Duration = Duration::from_secs(5);
+/// The most any step may take before a test gives up. Only a failing test
+/// waits this long; it is generous so 8 copies of the suite at once (a
+/// loaded CI runner) do not fail on a slow step.
+const WAIT: Duration = Duration::from_secs(15);
 
 // ------------------------------------------------------------ the fake relay
 
@@ -206,6 +209,7 @@ fn tool(name: &str) -> ToolDef {
 struct FakeTools {
     defs: Mutex<Vec<ToolDef>>,
     calls: Mutex<Vec<(String, Value)>>,
+    deadlines: Mutex<Vec<Instant>>,
 }
 
 impl FakeTools {
@@ -229,8 +233,9 @@ impl Tools for FakeTools {
         &self,
         tool: &str,
         args: Value,
-        _deadline: Instant,
+        deadline: Instant,
     ) -> impl Future<Output = BridgeOutput> + Send {
+        self.deadlines.lock().unwrap().push(deadline);
         self.calls
             .lock()
             .unwrap()
@@ -291,15 +296,24 @@ impl Asker for FakeAsker {
     }
 }
 
-/// Hands out `tok-1`, `tok-2`, ... (or nothing, while `none` is set).
+/// Hands out `tok-1`, `tok-2`, ... (or nothing, while `none` is set; or
+/// "sign in again", while `refused` is set). `asked` counts every call.
 #[derive(Default)]
 struct FakeTokens {
     n: AtomicUsize,
+    asked: AtomicUsize,
     none: AtomicBool,
+    refused: AtomicBool,
 }
 
 impl TokenSource for FakeTokens {
-    fn token(&self) -> Result<Option<String>> {
+    fn token(&self) -> std::result::Result<Option<String>, TokenError> {
+        self.asked.fetch_add(1, Ordering::SeqCst);
+        if self.refused.load(Ordering::SeqCst) {
+            return Err(TokenError::SignInAgain(
+                "sign in again: invalid_grant".into(),
+            ));
+        }
         if self.none.load(Ordering::SeqCst) {
             return Ok(None);
         }
@@ -325,6 +339,36 @@ fn fast() -> Timing {
         send_timeout: WAIT,
         welcome_timeout: WAIT,
         max_prompt: Duration::from_secs(60),
+        // Off unless a test turns it on: most fakes send nothing while a
+        // dialog is open.
+        in_call_every: Duration::from_secs(60),
+        prune_every: Duration::from_secs(60),
+        max_call: Duration::from_secs(180),
+        max_in_flight: 16,
+        max_dialogs: 1,
+        results_cap_bytes: 16 * 1024 * 1024,
+        log_max_bytes: 10 * 1024 * 1024,
+    }
+}
+
+/// The real clock, plus however far a test moves it on.
+#[derive(Default)]
+struct TestClock(AtomicU64);
+
+impl TestClock {
+    fn clock(self: &Arc<Self>) -> Clock {
+        let me = self.clone();
+        Arc::new(move || now_unix() + me.0.load(Ordering::SeqCst))
+    }
+    fn advance(&self, secs: u64) {
+        self.0.fetch_add(secs, Ordering::SeqCst);
+    }
+}
+
+fn gate() -> Gate {
+    Gate {
+        reached: Arc::new(tokio::sync::Notify::new()),
+        go: Arc::new(tokio::sync::Notify::new()),
     }
 }
 
@@ -348,6 +392,8 @@ struct Parts<A: Asker, K: TokenSource> {
     rng: Rng,
     timing: Timing,
     rules: Rules,
+    clock: Clock,
+    hooks: Hooks,
 }
 
 fn parts() -> Parts<FakeAsker, FakeTokens> {
@@ -358,6 +404,8 @@ fn parts() -> Parts<FakeAsker, FakeTokens> {
         rng: Arc::new(Mutex::new(|cap: u64| cap)),
         timing: fast(),
         rules: toml::from_str(crate::rules::DEFAULT_RULES).unwrap(),
+        clock: Arc::new(now_unix),
+        hooks: Hooks::default(),
     }
 }
 
@@ -384,10 +432,11 @@ fn start<A: Asker, K: TokenSource>(dir: &Path, url: &str, p: Parts<A, K>) -> Run
         rules: p.rules,
         key: Arc::new(load_or_create(dir).unwrap()),
         timing: p.timing,
-        clock: Arc::new(now_unix),
+        clock: p.clock,
         rng: p.rng,
         log: Arc::new(|s: &str| eprintln!("link: {s}")),
         tls: None,
+        hooks: p.hooks,
     };
     let (reload, reload_rx) = mpsc::channel(4);
     let (shutdown, shutdown_rx) = watch::channel(false);
@@ -466,6 +515,22 @@ fn relay_url_becomes_the_connect_url() {
         "ws://127.0.0.1:9/connect"
     );
     assert!(connect_url("ftp://x").is_err());
+    // Plain http sends the token in clear text: this machine only.
+    for ok in [
+        "http://localhost:8080",
+        "http://[::1]:9",
+        "http://127.0.0.1",
+    ] {
+        assert!(connect_url(ok).is_ok(), "{ok}");
+    }
+    for bad in [
+        "http://relay.ipv1337.dev",
+        "http://127.0.0.1.evil.example",
+        "http://localhost.evil.example:80",
+        "http://10.0.0.1:9",
+    ] {
+        assert!(connect_url(bad).is_err(), "{bad}");
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -812,16 +877,16 @@ async fn reconnects_with_jittered_backoff() {
     }));
     p.timing.reset_after = Duration::from_millis(100);
     let _run = start(&dir, &relay.url(), p);
-    // Up long enough: the count starts again.
-    let (c, _) = relay.welcome().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    drop(c);
-    // Then two quick drops in a row: the cap doubles each time.
+    // Two quick drops in a row: the cap doubles.
     for _ in 0..2 {
         drop(relay.next_conn().await);
     }
+    // Then a link that stays up long enough: the count starts again.
+    let (c, _) = relay.welcome().await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    drop(c);
     let _c = relay.next_conn().await;
-    assert_eq!(*caps.lock().unwrap(), [1, 2, 4]);
+    assert_eq!(*caps.lock().unwrap(), [1, 2, 1]);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -836,10 +901,12 @@ async fn waits_for_token_instead_of_exiting() {
     let real = Parts {
         tools: p.tools,
         asker: p.asker,
-        tokens: Arc::new(FileTokens(cfg)),
+        tokens: Arc::new(FileTokens::new(cfg)),
         rng: p.rng,
         timing: p.timing,
         rules: p.rules,
+        clock: p.clock,
+        hooks: p.hooks,
     };
     let run = start(&dir, &relay.url(), real);
     until("waiting for sign-in", || {
@@ -991,11 +1058,15 @@ async fn call_log_is_0600_and_has_arguments() {
     let args = json!({"path": "/Users/x/secret.txt", "offset": 3});
     c.call("c1", "read_file", args.clone());
     c.result().await;
-    let line = until_logged(&dir, "ran").await;
-    assert_eq!(line["call_id"], "c1");
-    assert_eq!(line["tool"], "read_file");
-    assert_eq!(line["arguments"], args);
-    assert!(line["t"].as_u64().is_some());
+    let start = until_logged(&dir, "running").await;
+    assert_eq!(start["call_id"], "c1");
+    assert_eq!(start["tool"], "read_file");
+    assert_eq!(start["arguments"], args);
+    assert_eq!(start["approval"], "no_prompt");
+    assert!(start["t"].as_u64().is_some());
+    let end = until_logged(&dir, "ran").await;
+    assert_eq!(end["call_id"], "c1");
+    assert_eq!(end["is_error"], false);
     let path = dir.join("logs").join("calls.log");
     assert_eq!(
         std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
@@ -1038,4 +1109,626 @@ async fn sighup_reload_sends_tools_changed_and_keeps_rules_on_error() {
     c.call("c2", "read_file", json!({"path": "/a"}));
     assert!(text(&c.result().await).contains("paused"));
     assert_eq!(tools.count(), 0);
+}
+
+// ------------------------------------------------------- fix round 1 tests
+
+#[test]
+fn production_limits_are_pinned() {
+    let t = Timing::default();
+    assert_eq!(t.in_call_every, Duration::from_secs(2));
+    assert_eq!(t.prune_every, Duration::from_secs(60));
+    assert_eq!(t.max_call, Duration::from_secs(180));
+    assert_eq!(t.max_in_flight, 16);
+    assert_eq!(t.max_dialogs, 1);
+    assert_eq!(t.results_cap_bytes, 16 * 1024 * 1024);
+    assert_eq!(t.log_max_bytes, 10 * 1024 * 1024);
+}
+
+#[test]
+fn send_budget_grows_with_the_frame() {
+    let base = Duration::from_secs(10);
+    assert_eq!(send_budget(base, 100), base + Duration::from_millis(1));
+    // A full 4 MiB frame gets about a minute more: 64 KB/s is enough.
+    assert_eq!(
+        send_budget(base, MAX_FRAME_BYTES),
+        base + Duration::from_millis(65_536)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_call_whose_id_cannot_be_recorded_never_runs() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-norecord");
+    let p = parts();
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    // The record cannot be appended to (a folder in its place; this fails
+    // even as root, where a read-only file would not).
+    let seen = dir.join("seen_calls.jsonl");
+    let _ = std::fs::remove_file(&seen);
+    std::fs::create_dir(&seen).unwrap();
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    let r = c.result().await;
+    assert!(r.is_error);
+    assert_eq!(text(&r), NOT_RECORDED);
+    c.call("c2", "start_process", json!({"command": "ls"}));
+    assert_eq!(text(&c.result().await), NOT_RECORDED);
+    assert_eq!(tools.count(), 0);
+    let line = until_logged(&dir, "refused").await;
+    assert_eq!(line["reason"], "could not record the call");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unreadable_record_is_moved_aside_and_calls_refused_for_the_window() {
+    for (name, damage) in [("garbled", 0), ("unreadable", 1)] {
+        let mut relay = FakeRelay::start().await;
+        let dir = registered(&format!("l-blind-{name}"));
+        let seen = dir.join("seen_calls.jsonl");
+        if damage == 0 {
+            let line = json!({"id": "c1", "t": now_unix()});
+            std::fs::write(&seen, format!("{line}\n{{\"id\": \"c2\", \"t\n")).unwrap();
+        } else {
+            std::fs::create_dir(&seen).unwrap();
+        }
+        let clock = Arc::new(TestClock::default());
+        let mut p = parts();
+        p.clock = clock.clock();
+        let tools = p.tools.clone();
+        let _run = start(&dir, &relay.url(), p);
+        let (mut c, _) = relay.welcome().await;
+        // Moved aside, not overwritten.
+        let aside: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with("seen_calls.jsonl.corrupt-"))
+            .collect();
+        assert_eq!(aside.len(), 1, "{name}: {aside:?}");
+        // Every id is refused, even one that was never seen.
+        for id in ["c2", "new"] {
+            c.call(id, "read_file", json!({"path": "/a"}));
+            let r = c.result().await;
+            assert_eq!(text(&r), BLIND, "{name} {id}");
+        }
+        assert_eq!(tools.count(), 0);
+        // Once the window from start is over, calls run again.
+        clock.advance(601);
+        c.call("later", "read_file", json!({"path": "/a"}));
+        assert!(!c.result().await.is_error, "{name}");
+        assert_eq!(tools.count(), 1);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_record_is_appended_not_rewritten() {
+    use std::os::unix::fs::MetadataExt;
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-append");
+    let _run = start(&dir, &relay.url(), parts());
+    let (mut c, _) = relay.welcome().await;
+    let seen = dir.join("seen_calls.jsonl");
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    c.result().await;
+    let ino = std::fs::metadata(&seen).unwrap().ino();
+    for id in ["c2", "c3"] {
+        c.call(id, "read_file", json!({"path": "/a"}));
+        c.result().await;
+    }
+    assert_eq!(std::fs::metadata(&seen).unwrap().ino(), ino);
+    assert_eq!(std::fs::read_to_string(&seen).unwrap().lines().count(), 3);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn expired_ids_leave_the_record_without_new_calls() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-prune");
+    let clock = Arc::new(TestClock::default());
+    let mut p = parts();
+    p.clock = clock.clock();
+    p.timing.prune_every = Duration::from_millis(50);
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    c.result().await;
+    let seen = dir.join("seen_calls.jsonl");
+    assert!(std::fs::read_to_string(&seen).unwrap().contains("c1"));
+    clock.advance(601);
+    until("the record to drop c1", || {
+        !std::fs::read_to_string(&seen)
+            .unwrap_or_default()
+            .contains("c1")
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_dialog_closes_when_its_call_deadline_passes() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-deadline");
+    let mut p = parts();
+    p.asker = FakeAsker::answering(None);
+    let tools = p.tools.clone();
+    let asker = p.asker.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.send(ToConnector::Call(Call {
+        call_id: "c1".into(),
+        tool: "start_process".into(),
+        arguments: json!({"command": "ls"}),
+        deadline_ms: 300,
+    }));
+    until("the dialog", || asker.opened.load(Ordering::SeqCst) == 1).await;
+    let opened = Instant::now();
+    until("the dismiss", || {
+        asker.dismissed.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    assert!(
+        opened.elapsed() < Duration::from_secs(2),
+        "{:?}",
+        opened.elapsed()
+    );
+    // A late Allow changes nothing.
+    asker.set(Waited::Allow);
+    until_logged(&dir, "timed out").await;
+    c.quiet_for(Duration::from_millis(200)).await;
+    assert_eq!(tools.count(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_silent_relay_during_a_call_drops_the_link() {
+    // Production: 3 silent 2 s intervals while a call is in flight. Here
+    // 100 ms intervals; idle silence (no call) is fine.
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-silent");
+    let mut p = parts();
+    p.asker = FakeAsker::answering(None);
+    p.timing.in_call_every = Duration::from_millis(100);
+    let tools = p.tools.clone();
+    let asker = p.asker.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.quiet_for(Duration::from_millis(500)).await;
+    assert!(relay.conns.try_recv().is_err(), "dropped while idle");
+    c.call("c1", "start_process", json!({"command": "ls"}));
+    until("the dialog", || asker.opened.load(Ordering::SeqCst) == 1).await;
+    let opened = Instant::now();
+    // The fake relay goes quiet, socket still open.
+    until("the dismiss", || {
+        asker.dismissed.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    assert!(
+        opened.elapsed() < Duration::from_secs(2),
+        "{:?}",
+        opened.elapsed()
+    );
+    asker.set(Waited::Allow);
+    until_logged(&dir, "link dropped at prompt").await;
+    let _next = relay.next_conn().await;
+    assert_eq!(tools.count(), 0);
+    drop(c);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn extreme_frame_values_never_panic() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-extreme");
+    let p = parts();
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    for (id, deadline_ms) in [("max", u64::MAX), ("zero", 0), ("big", u64::MAX / 2)] {
+        let before = Instant::now();
+        c.send(ToConnector::Call(Call {
+            call_id: id.into(),
+            tool: "read_file".into(),
+            arguments: json!({"path": "/a"}),
+            deadline_ms,
+        }));
+        assert_eq!(c.result().await.call_id, id);
+        let d = *tools.deadlines.lock().unwrap().last().unwrap();
+        assert!(
+            d <= before + Duration::from_secs(181),
+            "{id}: deadline past the budget"
+        );
+    }
+    for n in [0, u64::MAX] {
+        c.send(ToConnector::Ping { n });
+        match c.recv_any().await {
+            ToRelay::Pong { n: got } => assert_eq!(got, n),
+            other => panic!("{other:?}"),
+        }
+        c.send(ToConnector::Pong { n });
+    }
+    c.send(ToConnector::Cancel {
+        call_id: "never-sent".into(),
+    });
+    c.send(ToConnector::Welcome {
+        device_id: "again".into(),
+    });
+    // Still the same link, still working.
+    c.call("after", "read_file", json!({"path": "/a"}));
+    assert!(!c.result().await.is_error);
+    assert!(relay.conns.try_recv().is_err(), "the link was dropped");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn calls_in_flight_and_dialogs_are_capped() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-caps");
+    let mut p = parts();
+    p.asker = FakeAsker::answering(None);
+    p.timing.max_in_flight = 3;
+    let tools = p.tools.clone();
+    let asker = p.asker.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("ask1", "start_process", json!({"command": "ls"}));
+    until("the dialog", || asker.opened.load(Ordering::SeqCst) == 1).await;
+    // A second dialog is refused at once, not stacked.
+    c.call("ask2", "start_process", json!({"command": "ls"}));
+    let r = c.result().await;
+    assert_eq!(
+        (r.call_id.as_str(), text(&r).as_str()),
+        ("ask2", DIALOG_OPEN)
+    );
+    // In flight: the dialog plus two slow reads; the next is refused.
+    c.call("r1", "read_file", json!({"path": "/a", "sleep_ms": 500}));
+    c.call("r2", "read_file", json!({"path": "/b", "sleep_ms": 500}));
+    c.call("r3", "read_file", json!({"path": "/c"}));
+    let r = c.result().await;
+    assert_eq!((r.call_id.as_str(), text(&r).as_str()), ("r3", BUSY));
+    assert_eq!(asker.opened.load(Ordering::SeqCst), 1);
+    // A refused id was never recorded, so it can be sent again once there
+    // is room.
+    for _ in 0..2 {
+        assert!(!c.result().await.is_error);
+    }
+    c.call("r3", "read_file", json!({"path": "/c"}));
+    assert!(!c.result().await.is_error);
+    assert_eq!(tools.count(), 3);
+    asker.set(Waited::Deny);
+    assert_eq!(text(&c.result().await), DENIED);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn kept_results_are_capped_but_an_evicted_id_still_never_reruns() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-evict");
+    let mut p = parts();
+    p.timing.results_cap_bytes = 150; // about two small results
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    for id in ["c1", "c2", "c3"] {
+        c.call(id, "read_file", json!({"path": "/a"}));
+        assert!(!c.result().await.is_error);
+    }
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    let r = c.result().await;
+    assert_eq!((r.call_id.as_str(), text(&r).as_str()), ("c1", EVICTED));
+    // The newest is still kept whole.
+    c.call("c3", "read_file", json!({"path": "/a"}));
+    assert!(text(&c.result().await).contains("ran with"));
+    assert_eq!(tools.count(), 3);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_log_has_a_line_as_soon_as_a_call_starts() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-startline");
+    let mut p = parts();
+    p.asker = FakeAsker::answering(Some(Waited::Allow));
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    let args = json!({"command": "sleep 600; rm x", "sleep_ms": 1000});
+    c.call("c1", "start_process", args.clone());
+    // While it is still running.
+    let line = until_logged(&dir, "running").await;
+    assert_eq!(line["arguments"], args);
+    assert_eq!(line["approval"], "allowed");
+    assert!(log_lines(&dir).iter().all(|l| l["decision"] != "ran"));
+    c.result().await;
+    let end = until_logged(&dir, "ran").await;
+    assert!(end.get("arguments").is_none(), "{end}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn tools_changed_after_welcome_only_when_the_visible_tools_differ() {
+    for (change, expect) in [("no_prompt", false), ("paused", true)] {
+        let mut relay = FakeRelay::start().await;
+        let dir = registered(&format!("l-catchup-{change}"));
+        crate::rules::load(&dir).unwrap();
+        let run = start(&dir, &relay.url(), parts());
+        let mut c = relay.next_conn().await;
+        let hello = match c.recv_any().await {
+            ToRelay::Hello(h) => h,
+            other => panic!("{other:?}"),
+        };
+        // Reloaded between the hello and the welcome.
+        let path = crate::rules::rules_path(&dir);
+        let rules = std::fs::read_to_string(&path).unwrap();
+        let edited = match change {
+            "paused" => rules.replace("paused = false", "paused = true"),
+            _ => rules.replace(
+                "\"list_searches\"]",
+                "\"list_searches\", \"start_process\"]",
+            ),
+        };
+        assert_ne!(edited, rules);
+        std::fs::write(&path, edited).unwrap();
+        run.reload.send(()).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        c.send(ToConnector::Welcome {
+            device_id: hello.device_id.clone(),
+        });
+        if expect {
+            match c.recv().await {
+                ToRelay::ToolsChanged { tools } => assert!(tools.is_empty()),
+                other => panic!("{other:?}"),
+            }
+        } else {
+            c.quiet_for(Duration::from_millis(300)).await;
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cancel_before_a_run_starts_stops_it() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-cancel-early");
+    let mut p = parts();
+    let g = gate();
+    p.hooks.before_run = Some(g.clone());
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    tokio::time::timeout(WAIT, g.reached.notified())
+        .await
+        .unwrap();
+    c.send(ToConnector::Cancel {
+        call_id: "c1".into(),
+    });
+    // The link loop handles the cancel; a ping round trip shows it has.
+    c.send(ToConnector::Ping { n: 7 });
+    while !matches!(c.recv_any().await, ToRelay::Pong { n: 7 }) {}
+    g.go.notify_one();
+    until_logged(&dir, "cancelled before running").await;
+    c.quiet_for(Duration::from_millis(200)).await;
+    assert_eq!(tools.count(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_call_stopped_before_its_dialog_opens_never_shows_one() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-noflash");
+    let mut p = parts();
+    let g = gate();
+    p.hooks.before_ask = Some(g.clone());
+    let asker = p.asker.clone();
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("c1", "start_process", json!({"command": "ls"}));
+    tokio::time::timeout(WAIT, g.reached.notified())
+        .await
+        .unwrap();
+    c.send(ToConnector::Cancel {
+        call_id: "c1".into(),
+    });
+    c.send(ToConnector::Ping { n: 7 });
+    while !matches!(c.recv_any().await, ToRelay::Pong { n: 7 }) {}
+    g.go.notify_one();
+    until_logged(&dir, "cancelled at prompt").await;
+    assert_eq!(asker.opened.load(Ordering::SeqCst), 0);
+    assert_eq!(tools.count(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_slow_log_disk_does_not_hold_up_the_link() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-slowlog");
+    let mut p = parts();
+    let hold = Arc::new(AtomicBool::new(true));
+    p.hooks.hold_log = Some(hold.clone());
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    // A refused call writes its log line straight away; the disk is stuck.
+    c.call("c1", "set_config_value", json!({"key": "x"}));
+    assert!(c.result().await.is_error);
+    c.send(ToConnector::Ping { n: 9 });
+    match c.recv_any().await {
+        ToRelay::Pong { n } => assert_eq!(n, 9),
+        other => panic!("{other:?}"),
+    }
+    assert!(log_lines(&dir).is_empty());
+    hold.store(false, Ordering::SeqCst);
+    until_logged(&dir, "refused").await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_slow_token_fetch_keeps_status_fresh_and_stops_promptly() {
+    // Each status write reads the clock once, so counting clock reads during
+    // a fetch counts the writes, whatever the machine's load.
+    let reads = Arc::new(AtomicUsize::new(0));
+    struct Slow {
+        reads: Arc<AtomicUsize>,
+        during: Mutex<Vec<usize>>,
+        n: AtomicUsize,
+        /// Ends the long fetch, so the test's runtime is not kept waiting.
+        release: AtomicBool,
+    }
+    impl TokenSource for Slow {
+        fn token(&self) -> std::result::Result<Option<String>, TokenError> {
+            let first = self.n.fetch_add(1, Ordering::SeqCst) == 0;
+            let at = self.reads.load(Ordering::SeqCst);
+            let end = Instant::now() + Duration::from_secs(if first { 1 } else { 60 });
+            while Instant::now() < end && !(self.release.load(Ordering::SeqCst) && !first) {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            if first {
+                self.during
+                    .lock()
+                    .unwrap()
+                    .push(self.reads.load(Ordering::SeqCst) - at);
+            }
+            Ok(None)
+        }
+    }
+    let dir = registered("l-slowtoken");
+    let p = parts();
+    let r = reads.clone();
+    let slow = Arc::new(Slow {
+        reads: reads.clone(),
+        during: Mutex::new(Vec::new()),
+        n: AtomicUsize::new(0),
+        release: AtomicBool::new(false),
+    });
+    let parts = Parts {
+        tools: p.tools,
+        asker: p.asker,
+        tokens: slow.clone(),
+        rng: p.rng,
+        timing: p.timing,
+        rules: p.rules,
+        clock: Arc::new(move || {
+            r.fetch_add(1, Ordering::SeqCst);
+            now_unix()
+        }),
+        hooks: p.hooks,
+    };
+    let run = start(&dir, "http://127.0.0.1:1", parts);
+    // The first fetch (1 s, status rewritten every 50 ms) is done, and the
+    // second (60 s, cut short at the end) has begun.
+    until("the second fetch", || slow.n.load(Ordering::SeqCst) == 2).await;
+    let during = slow.during.lock().unwrap()[0];
+    assert!(during >= 5, "{during} status writes during a 1 s fetch");
+    // Told to stop mid-fetch, it stops without waiting for the fetch.
+    let _ = run._shutdown.send(true);
+    let t = Instant::now();
+    let task = &run.task;
+    until("the link to stop", || task.is_finished()).await;
+    assert!(t.elapsed() < Duration::from_secs(15), "{:?}", t.elapsed());
+    slow.release.store(true, Ordering::SeqCst);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_revoked_sign_in_waits_for_a_new_one_without_hammering() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-revoked");
+    let mut p = parts();
+    let tokens = p.tokens.clone();
+    tokens.refused.store(true, Ordering::SeqCst);
+    p.timing.token_poll = Duration::from_millis(100);
+    let _run = start(&dir, &relay.url(), p);
+    until("waiting for sign-in", || {
+        link_state(&dir, now_unix()) == LinkState::WaitingForSignIn
+    })
+    .await;
+    assert!(crate::status::waiting_reason(&dir, now_unix())
+        .unwrap()
+        .contains("invalid_grant"));
+    // At the poll interval (100 ms), not the 1 ms backoff of a failure.
+    let before = tokens.asked.load(Ordering::SeqCst);
+    let t = Instant::now();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let asked = tokens.asked.load(Ordering::SeqCst) - before;
+    let most = t.elapsed().as_millis() as usize / 100 + 2;
+    assert!(asked <= most, "asked {asked} times in {:?}", t.elapsed());
+    assert!(relay.conns.try_recv().is_err());
+    // Signed in again.
+    tokens.refused.store(false, Ordering::SeqCst);
+    let _ = relay.welcome().await;
+}
+
+#[test]
+fn file_tokens_stop_asking_once_the_issuer_says_no() {
+    let dir = test_dir("l-filetokens");
+    save_tokens(
+        &dir,
+        &Tokens {
+            access_token: "a".into(),
+            refresh_token: Some("r1".into()),
+            expires_at_unix: 1,
+        },
+    )
+    .unwrap();
+    let cfg = Config::from_lookup(|k| (k == "VRELAY_HOME").then(|| dir.display().to_string()));
+    let tries = Arc::new(AtomicUsize::new(0));
+    let outage = Arc::new(AtomicBool::new(false));
+    let (n, o) = (tries.clone(), outage.clone());
+    let ft = FileTokens::with_refresh(
+        cfg,
+        Box::new(move |_, t| {
+            n.fetch_add(1, Ordering::SeqCst);
+            if o.load(Ordering::SeqCst) {
+                Err(RefreshError::Unavailable("down".into()))
+            } else if t.refresh_token.as_deref() == Some("r1") {
+                Err(RefreshError::Rejected("invalid_grant".into()))
+            } else {
+                Ok("fresh".into())
+            }
+        }),
+    );
+    for _ in 0..3 {
+        assert!(matches!(ft.token(), Err(TokenError::SignInAgain(_))));
+    }
+    assert_eq!(tries.load(Ordering::SeqCst), 1, "asked the issuer again");
+    // `vrelay login` writes a new token.json: asked again, and it works.
+    save_tokens(
+        &dir,
+        &Tokens {
+            access_token: "a".into(),
+            refresh_token: Some("r2".into()),
+            expires_at_unix: 1,
+        },
+    )
+    .unwrap();
+    assert_eq!(ft.token(), Ok(Some("fresh".into())));
+    // An outage is never parked: each try goes to the issuer.
+    outage.store(true, Ordering::SeqCst);
+    for _ in 0..2 {
+        assert!(matches!(ft.token(), Err(TokenError::Unavailable(_))));
+    }
+    assert_eq!(tries.load(Ordering::SeqCst), 4);
+    // No token.json: not signed in.
+    std::fs::remove_file(dir.join("token.json")).unwrap();
+    assert_eq!(ft.token(), Ok(None));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_calls_log_rotates_and_every_file_is_0600() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-rotate");
+    let mut p = parts();
+    p.timing.log_max_bytes = 600;
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    for i in 0..12 {
+        c.call(&format!("c{i}"), "read_file", json!({"path": "/a"}));
+        c.result().await;
+    }
+    // The last line written is c11's end; after it the writer is idle.
+    let logs = dir.join("logs");
+    until("the last line", || {
+        log_lines(&dir)
+            .last()
+            .is_some_and(|l| l["call_id"] == "c11" && l["decision"] == "ran")
+    })
+    .await;
+    assert!(logs.join("calls.log.1").exists());
+    let mut names: Vec<_> = std::fs::read_dir(&logs)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["calls.log", "calls.log.1"]);
+    for n in &names {
+        let m = std::fs::metadata(logs.join(n)).unwrap();
+        assert_eq!(m.permissions().mode() & 0o777, 0o600, "{n}");
+        assert!(m.len() <= 600, "{n} is {} bytes", m.len());
+    }
 }

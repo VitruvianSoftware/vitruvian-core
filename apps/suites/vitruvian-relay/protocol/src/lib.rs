@@ -33,6 +33,9 @@ pub const PING_SECS: u64 = 20;
 pub const IN_CALL_PING_SECS: u64 = 2;
 /// This many unanswered pings means the link is dead.
 pub const MAX_MISSED_PINGS: u32 = 3;
+/// The longest a tool call may take (the `deadline_ms` the relay sends). The
+/// connector never waits longer for one, whatever a frame says.
+pub const CALL_BUDGET_SECS: u64 = 180;
 
 #[derive(Debug)]
 pub enum FrameError {
@@ -288,6 +291,7 @@ mod tests {
         assert_eq!(PROTOCOL, 1);
         assert_eq!(MAX_FRAME_BYTES, 4 * 1024 * 1024);
         assert_eq!((PING_SECS, IN_CALL_PING_SECS, MAX_MISSED_PINGS), (20, 2, 3));
+        assert_eq!(CALL_BUDGET_SECS, 180);
     }
 
     #[test]

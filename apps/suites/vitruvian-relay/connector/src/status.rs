@@ -21,7 +21,9 @@
 //! What `vrelay status` says. The link state comes from `status.json`, which
 //! `vrelay run` rewrites every few seconds:
 //! `{"state": "connected" | "connecting" | "waiting_for_sign_in",
-//!   "updated_unix": N, "last_pong_unix": N, "next_retry_unix": N}`.
+//!   "updated_unix": N, "last_pong_unix": N, "next_retry_unix": N,
+//!   "reason": "..."}` (`reason` only while waiting for a sign-in that
+//! failed, such as a revoked refresh token).
 
 use std::path::Path;
 
@@ -80,6 +82,15 @@ pub fn link_state(dir: &Path, now: u64) -> Link {
     }
 }
 
+/// Why `vrelay run` is waiting for a sign-in, when it says.
+pub fn waiting_reason(dir: &Path, now: u64) -> Option<String> {
+    if link_state(dir, now) != Link::WaitingForSignIn {
+        return None;
+    }
+    let v: Value = serde_json::from_slice(&std::fs::read(status_path(dir)).ok()?).ok()?;
+    v.get("reason").and_then(Value::as_str).map(str::to_string)
+}
+
 pub fn render(dir: &Path, now: u64) -> String {
     let signed_in = matches!(load_tokens(dir), Ok(Some(_)));
     let mut out = String::new();
@@ -96,6 +107,9 @@ pub fn render(dir: &Path, now: u64) -> String {
         None => out.push_str("Device:   not registered\n"),
     }
     out.push_str(&format!("Link:     {}\n", link_state(dir, now).describe()));
+    if let Some(why) = waiting_reason(dir, now) {
+        out.push_str(&format!("Why:      {why}\n"));
+    }
     out
 }
 
@@ -152,6 +166,29 @@ mod tests {
             "{out}"
         );
         assert!(out.contains("Link:     stopped"), "{out}");
+    }
+
+    #[test]
+    fn status_shows_why_it_waits_for_sign_in() {
+        let dir = test_dir("status-why");
+        write_status(
+            &dir,
+            r#"{"state":"waiting_for_sign_in","updated_unix":995,"reason":"sign in again: run `vrelay login` (invalid_grant)"}"#,
+        );
+        let out = render(&dir, 1000);
+        assert!(out.contains("Link:     waiting for sign-in"), "{out}");
+        assert!(out.contains("Why:      sign in again"), "{out}");
+        // Only while waiting, and only when the file says why.
+        write_status(
+            &dir,
+            r#"{"state":"waiting_for_sign_in","updated_unix":995}"#,
+        );
+        assert!(!render(&dir, 1000).contains("Why:"));
+        write_status(
+            &dir,
+            r#"{"state":"connecting","updated_unix":995,"reason":"x"}"#,
+        );
+        assert!(!render(&dir, 1000).contains("Why:"));
     }
 
     #[test]

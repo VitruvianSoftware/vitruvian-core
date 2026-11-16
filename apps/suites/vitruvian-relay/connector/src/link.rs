@@ -21,24 +21,33 @@
 //! `vrelay run`: the WebSocket link from this Mac to the relay.
 //!
 //! One loop owns the socket. It reads frames, answers pings, pings the relay
-//! every 20 s and writes `status.json`; it never waits on a call. Each call
-//! runs in its own task (the "ask first" dialog on a blocking thread), so
-//! pongs keep flowing while a dialog is open.
+//! every 20 s and asks for `status.json` to be rewritten; it never waits on
+//! a call or on the disk. Each call runs in its own task (the "ask first"
+//! dialog on a blocking thread), `status.json` and `calls.log` have writers
+//! of their own, so pongs keep flowing while a dialog is open.
 //!
 //! What must never happen, and what stops it:
 //! - **A call runs twice.** Ids are remembered for 10 minutes in memory, and
-//!   in `seen_calls.jsonl` across a restart of vrelay.
-//! - **A call runs after a cancel or a dropped link.** A call waiting at its
-//!   dialog has its state changed under the same lock that the dialog's
-//!   answer is checked under, so a late "Allow" finds it stopped.
+//!   in `seen_calls.jsonl` across a restart of vrelay. The id must be on
+//!   disk (appended and synced) before the call can run; if that fails, the
+//!   call is refused. A record that cannot be read at start is moved aside
+//!   and every call is refused until its 10 minutes are over.
+//! - **A call runs after a cancel, a dropped link or its deadline.** A call
+//!   waiting at its dialog has its state changed under the same lock that
+//!   the dialog's answer is checked under, so a late "Allow" finds it
+//!   stopped. While a call is in flight the relay pings every 2 s; three
+//!   silent intervals count as a drop, as they do on the relay's side.
 //! - **A tool outside `no_prompt` runs without Allow.** `Rules::decide`
 //!   picks; only `Run` skips the dialog.
+//! - **A flood of calls.** At most 16 calls in flight and one dialog on
+//!   screen; past that a call is refused at once. Results kept for repeats
+//!   are capped by size; an evicted one is still never run again.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -55,23 +64,32 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{Connector, MaybeTlsStream, WebSocketStream};
 use vitruvian_relay_protocol::{
     decode_to_connector, encode, Call, CallResult, Hello, ToConnector, ToRelay, ToolDef,
-    MAX_FRAME_BYTES, MAX_MISSED_PINGS, PING_SECS, PROTOCOL,
+    CALL_BUDGET_SECS, IN_CALL_PING_SECS, MAX_FRAME_BYTES, MAX_MISSED_PINGS, PING_SECS, PROTOCOL,
 };
 
-use crate::auth::fresh_token;
+use crate::auth::{fresh_token_checked, RefreshError};
 use crate::bridge::{Bridge, BridgeOutput, Log, CALL_ID_RESERVE};
 use crate::config::{client_config, Config};
 use crate::keys::sign_hello;
 use crate::prompt::{summarize, Waited};
 use crate::rules::{self, Decision, Rules};
-use crate::state::{ensure_dir, load_device, load_tokens, status_path, write_private};
-use crate::Result;
+use crate::state::{
+    ensure_dir, load_device, load_tokens, status_path, sync_dir, token_path, write_private, Tokens,
+};
 
 pub const DENIED: &str = "Denied on the computer.";
 pub const ALREADY_STARTED: &str =
     "This call already started before vrelay restarted; not run again.";
+pub const NOT_RECORDED: &str = "vrelay could not record this call; not run.";
+pub const BLIND: &str = "vrelay could not read its record of started calls, so it runs no \
+                         calls for 10 minutes after starting; not run.";
+pub const BUSY: &str = "Too many calls are running on the computer; not run.";
+pub const DIALOG_OPEN: &str = "Another call is waiting for an answer on the computer; not run.";
+pub const EVICTED: &str =
+    "This call already ran; its result is no longer kept, and it is not run again.";
 const TIMED_OUT: &str = "No answer on the computer in time; not run.";
 const CANCELLED: &str = "Cancelled before it was allowed; not run.";
+const CANCELLED_EARLY: &str = "Cancelled before it started; not run.";
 const DROPPED: &str =
     "The link to the relay dropped while this call waited for an answer; not run.";
 const STOPPING: &str = "vrelay stopped while this call waited for an answer; not run.";
@@ -84,31 +102,53 @@ pub const CALLS_LOG: &str = "calls.log";
 pub const SEEN_CALLS: &str = "seen_calls.jsonl";
 /// The longest wait between reconnect attempts, in backoff units (seconds).
 pub const MAX_BACKOFF: u64 = 60;
+/// Rewrite `seen_calls.jsonl` without its expired ids after this many appends.
+const COMPACT_EVERY: usize = 256;
+/// Sending a frame may take `send_timeout` plus this long per byte (a floor
+/// of 64 KB/s), so a 4 MiB result on a slow uplink is not cut off at 10 s.
+const SEND_BYTES_PER_MS: usize = 64;
 
-/// How often things happen. Production uses [`Timing::default`]; tests
-/// shrink it so the same code runs in milliseconds.
+/// How often things happen, and the limits. Production uses
+/// [`Timing::default`]; tests shrink it so the same code runs in
+/// milliseconds.
 #[derive(Debug, Clone)]
 pub struct Timing {
     /// Ping the relay this often.
     pub ping_every: Duration,
-    /// This many of our pings unanswered in a row ends the link.
+    /// This many of our pings unanswered in a row ends the link; also this
+    /// many silent `in_call_every` intervals while a call is in flight.
     pub max_missed: u32,
+    /// The relay's ping interval while a call is in flight.
+    pub in_call_every: Duration,
     /// Rewrite `status.json` at least this often.
     pub status_every: Duration,
-    /// With no token yet, look for one this often.
+    /// With no usable sign-in, look at `token.json` again this often.
     pub token_poll: Duration,
     /// Connected this long, the backoff starts again from 1 s.
     pub reset_after: Duration,
     /// Remember call ids this long.
     pub dedupe_window: Duration,
+    /// Drop expired ids and results this often, calls or not.
+    pub prune_every: Duration,
     /// One second of backoff.
     pub backoff_unit: Duration,
     pub connect_timeout: Duration,
+    /// For a small frame; big ones get more (see `send_budget`).
     pub send_timeout: Duration,
     /// The relay's `welcome` must arrive within this of our `hello`.
     pub welcome_timeout: Duration,
     /// The longest an "ask first" dialog stays open.
     pub max_prompt: Duration,
+    /// The longest a call may take, whatever its `deadline_ms` says.
+    pub max_call: Duration,
+    /// Calls waiting at a dialog or running, across connections.
+    pub max_in_flight: usize,
+    /// Dialogs on screen at once.
+    pub max_dialogs: usize,
+    /// Total size of the results kept for repeated ids.
+    pub results_cap_bytes: usize,
+    /// `calls.log` is rotated to `calls.log.1` past this size.
+    pub log_max_bytes: u64,
 }
 
 impl Default for Timing {
@@ -116,15 +156,27 @@ impl Default for Timing {
         Timing {
             ping_every: Duration::from_secs(PING_SECS),
             max_missed: MAX_MISSED_PINGS,
+            in_call_every: Duration::from_secs(IN_CALL_PING_SECS),
             status_every: Duration::from_secs(20),
             token_poll: Duration::from_secs(10),
             reset_after: Duration::from_secs(60),
             dedupe_window: Duration::from_secs(600),
+            prune_every: Duration::from_secs(60),
             backoff_unit: Duration::from_secs(1),
             connect_timeout: Duration::from_secs(30),
             send_timeout: Duration::from_secs(10),
             welcome_timeout: Duration::from_secs(20),
             max_prompt: crate::prompt::DEFAULT_TIMEOUT,
+            max_call: Duration::from_secs(CALL_BUDGET_SECS),
+            // desktop-commander serves calls over one stdio pipe, and an AI
+            // app runs a handful at once; 16 is room to spare while keeping
+            // well clear of tokio's 512 blocking threads.
+            max_in_flight: 16,
+            // One person answers one dialog at a time; stacked dialogs invite
+            // an Allow meant for another.
+            max_dialogs: 1,
+            results_cap_bytes: 16 * 1024 * 1024,
+            log_max_bytes: 10 * 1024 * 1024,
         }
     }
 }
@@ -157,16 +209,31 @@ pub fn system_rng(cap: u64) -> u64 {
     }
 }
 
-/// `https://relay` → `wss://relay/connect` (`http` → `ws` for local tests).
-pub fn connect_url(relay: &str) -> Result<String> {
+/// How long sending a frame of `bytes` may take.
+pub fn send_budget(base: Duration, bytes: usize) -> Duration {
+    base + Duration::from_millis((bytes / SEND_BYTES_PER_MS) as u64)
+}
+
+/// `https://relay` → `wss://relay/connect`. Plain `http` (→ `ws`, the token in
+/// clear text) only for this machine itself, which is what the tests use.
+pub fn connect_url(relay: &str) -> std::result::Result<String, String> {
     let relay = relay.trim_end_matches('/');
     if let Some(rest) = relay.strip_prefix("https://") {
-        Ok(format!("wss://{rest}/connect"))
-    } else if let Some(rest) = relay.strip_prefix("http://") {
-        Ok(format!("ws://{rest}/connect"))
-    } else {
-        Err(format!("the relay URL {relay} must start with https://"))
+        return Ok(format!("wss://{rest}/connect"));
     }
+    if let Some(rest) = relay.strip_prefix("http://") {
+        let authority = rest.split('/').next().unwrap_or("");
+        let host = match authority.strip_prefix('[') {
+            Some(v6) => v6.split(']').next().unwrap_or(""),
+            None => authority.split(':').next().unwrap_or(""),
+        };
+        if matches!(host, "127.0.0.1" | "localhost" | "::1") {
+            return Ok(format!("ws://{rest}/connect"));
+        }
+    }
+    Err(format!(
+        "the relay URL {relay} must start with https:// (http:// only for this machine)"
+    ))
 }
 
 /// The tool side: `desktop-commander` through the bridge (fakes in tests).
@@ -211,22 +278,102 @@ impl Asker for Dialog {
     }
 }
 
+/// Why there is no token.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TokenError {
+    /// Only `vrelay login` helps (a revoked or missing refresh token, a
+    /// broken `token.json`). The link waits for `token.json` to change.
+    SignInAgain(String),
+    /// The issuer is out of reach; try again with the backoff.
+    Unavailable(String),
+}
+
 /// Where the access token comes from. Blocking (a refresh is an HTTPS call).
 pub trait TokenSource: Send + Sync + 'static {
     /// `Ok(None)`: nobody has signed in yet.
-    fn token(&self) -> Result<Option<String>>;
+    fn token(&self) -> std::result::Result<Option<String>, TokenError>;
 }
 
-/// `token.json`, refreshed (and saved) when it is close to expiry.
-pub struct FileTokens(pub Config);
+type Refresh =
+    dyn Fn(&Config, &mut Tokens) -> std::result::Result<String, RefreshError> + Send + Sync;
 
-impl TokenSource for FileTokens {
-    fn token(&self) -> Result<Option<String>> {
-        match load_tokens(&self.0.dir)? {
-            None => Ok(None),
-            Some(mut t) => fresh_token(&self.0, &mut t).map(Some),
+/// `token.json`, refreshed (and saved) when it is close to expiry. Once the
+/// issuer has said no, the same `token.json` is never sent to it again: the
+/// answer stays "sign in again" until the file changes.
+pub struct FileTokens {
+    cfg: Config,
+    refresh: Box<Refresh>,
+    /// The `token.json` bytes that were refused, and why.
+    parked: Mutex<Option<(Vec<u8>, String)>>,
+}
+
+impl FileTokens {
+    pub fn new(cfg: Config) -> FileTokens {
+        FileTokens::with_refresh(cfg, Box::new(fresh_token_checked))
+    }
+
+    pub fn with_refresh(cfg: Config, refresh: Box<Refresh>) -> FileTokens {
+        FileTokens {
+            cfg,
+            refresh,
+            parked: Mutex::new(None),
         }
     }
+}
+
+impl TokenSource for FileTokens {
+    fn token(&self) -> std::result::Result<Option<String>, TokenError> {
+        let bytes = match std::fs::read(token_path(&self.cfg.dir)) {
+            Ok(b) => b,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                *self.parked.lock().unwrap() = None;
+                return Ok(None);
+            }
+            Err(e) => return Err(TokenError::Unavailable(format!("read token.json: {e}"))),
+        };
+        if let Some((b, why)) = self.parked.lock().unwrap().as_ref() {
+            if *b == bytes {
+                return Err(TokenError::SignInAgain(why.clone()));
+            }
+        }
+        let park = |why: String| {
+            *self.parked.lock().unwrap() = Some((bytes.clone(), why.clone()));
+            Err(TokenError::SignInAgain(why))
+        };
+        let mut t = match load_tokens(&self.cfg.dir) {
+            Ok(Some(t)) => t,
+            Ok(None) => return Ok(None),
+            Err(e) => return park(format!("{} ({e})", crate::auth::SIGN_IN_AGAIN)),
+        };
+        match (self.refresh)(&self.cfg, &mut t) {
+            Ok(token) => {
+                *self.parked.lock().unwrap() = None;
+                Ok(Some(token))
+            }
+            Err(e @ RefreshError::Rejected(_)) => park(e.to_string()),
+            Err(e @ RefreshError::Unavailable(_)) => Err(TokenError::Unavailable(e.to_string())),
+        }
+    }
+}
+
+/// Test-only pauses at points a race could otherwise only hit by luck.
+#[cfg(test)]
+#[derive(Default, Clone)]
+pub(crate) struct Hooks {
+    /// After a call's id is on disk, before it runs (no dialog).
+    pub before_run: Option<Gate>,
+    /// After a call's id is on disk, before its dialog opens.
+    pub before_ask: Option<Gate>,
+    /// While set, the calls-log writer waits before each line.
+    pub hold_log: Option<Arc<AtomicBool>>,
+}
+
+/// `reached` is notified when the task gets there; it then waits for `go`.
+#[cfg(test)]
+#[derive(Clone)]
+pub(crate) struct Gate {
+    pub reached: Arc<tokio::sync::Notify>,
+    pub go: Arc<tokio::sync::Notify>,
 }
 
 /// Everything `vrelay run` needs.
@@ -248,6 +395,105 @@ pub struct Link<T, A, K> {
     pub log: Log,
     /// For `wss://`. `None`: config.rs's shared client config.
     pub tls: Option<Arc<rustls::ClientConfig>>,
+    #[cfg(test)]
+    pub(crate) hooks: Hooks,
+}
+
+// --------------------------------------------------------------- calls log
+
+enum LogMsg {
+    Line(String),
+    Flush(std::sync::mpsc::Sender<()>),
+}
+
+/// `calls.log`, written in order by a thread of its own so a slow disk
+/// never holds up the link loop.
+#[derive(Clone)]
+struct CallLog {
+    tx: std::sync::mpsc::Sender<LogMsg>,
+}
+
+impl CallLog {
+    fn start(
+        dir: PathBuf,
+        max_bytes: u64,
+        log: Log,
+        #[cfg(test)] hold: Option<Arc<AtomicBool>>,
+    ) -> CallLog {
+        let (tx, rx) = std::sync::mpsc::channel::<LogMsg>();
+        std::thread::spawn(move || {
+            for msg in rx {
+                match msg {
+                    LogMsg::Line(line) => {
+                        #[cfg(test)]
+                        while hold.as_ref().is_some_and(|h| h.load(Ordering::SeqCst)) {
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        if let Err(e) = append_log_line(&dir, max_bytes, &line) {
+                            log(&format!("could not write the calls log: {e}"));
+                        }
+                    }
+                    LogMsg::Flush(done) => {
+                        let _ = done.send(());
+                    }
+                }
+            }
+        });
+        CallLog { tx }
+    }
+
+    fn line(&self, v: Value) {
+        let _ = self.tx.send(LogMsg::Line(v.to_string()));
+    }
+
+    /// Waits (at most `limit`) until every line sent so far is written.
+    fn flush(&self, limit: Duration) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        if self.tx.send(LogMsg::Flush(tx)).is_ok() {
+            let _ = rx.recv_timeout(limit);
+        }
+    }
+}
+
+/// Opens `path` for appending; a new file is created at mode 0600 (never
+/// wider first, and its folder synced), an old one is tightened to 0600.
+fn open_private_append(path: &Path) -> std::result::Result<std::fs::File, String> {
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let existed = path.exists();
+    let f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .open(path)
+        .map_err(|e| format!("open {}: {e}", path.display()))?;
+    let mode = f
+        .metadata()
+        .map_err(|e| format!("{}: {e}", path.display()))?
+        .permissions()
+        .mode();
+    if mode & 0o077 != 0 {
+        f.set_permissions(std::fs::Permissions::from_mode(0o600))
+            .map_err(|e| format!("make {} private: {e}", path.display()))?;
+    }
+    if !existed {
+        sync_dir(path);
+    }
+    Ok(f)
+}
+
+/// One line to `calls.log`, rotating it to `calls.log.1` (replacing an older
+/// one) first if the line would take it past `max_bytes`.
+fn append_log_line(dir: &Path, max_bytes: u64, line: &str) -> std::result::Result<(), String> {
+    ensure_dir(dir)?;
+    let path = dir.join(CALLS_LOG);
+    let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+    if size > 0 && size + line.len() as u64 + 1 > max_bytes {
+        let old = dir.join(format!("{CALLS_LOG}.1"));
+        std::fs::rename(&path, &old).map_err(|e| format!("rotate {}: {e}", path.display()))?;
+    }
+    let mut f = open_private_append(&path)?;
+    f.write_all(format!("{line}\n").as_bytes())
+        .map_err(|e| format!("write {}: {e}", path.display()))
 }
 
 // ------------------------------------------------------------------- calls
@@ -258,19 +504,25 @@ enum Stop {
     Cancelled,
     LinkDropped,
     Shutdown,
+    /// Its deadline passed: the relay has given up on it.
+    Expired,
 }
 
 enum Phase {
-    /// The dialog is open.
+    /// The dialog is (about to be) open.
     Prompting {
         dismiss: Arc<AtomicBool>,
         stop: Option<Stop>,
     },
-    /// In `desktop-commander`. A cancel only drops the result (P1 does not
-    /// stop the command).
+    /// In `desktop-commander` (or about to be). A cancel before it starts
+    /// stops it; after, it only drops the result (P1 does not stop the
+    /// command).
     Running { cancelled: bool },
     /// The result, kept to answer a repeat of the id.
     Done(CallResult),
+    /// Done, but its result was dropped to save memory. A repeat gets
+    /// [`EVICTED`].
+    Evicted,
 }
 
 struct Entry {
@@ -285,19 +537,89 @@ struct Calls {
     live: HashMap<String, Entry>,
     /// From `seen_calls.jsonl` at start: started by an earlier vrelay.
     before_restart: HashMap<String, u64>,
-    /// What `seen_calls.jsonl` holds: (id, unix time started).
+    /// What `seen_calls.jsonl` should hold: (id, unix time started).
     seen: Vec<(String, u64)>,
+    /// Appends since `seen_calls.jsonl` was last rewritten.
+    appended: usize,
+    /// The record could not be read at start: refuse every call until then.
+    blind_until: Option<u64>,
+    /// Ids of `Done` entries, oldest first, and the bytes their results hold.
+    done_order: VecDeque<String>,
+    stored_bytes: usize,
+}
+
+fn result_bytes(r: &CallResult) -> usize {
+    serde_json::to_string(&r.content)
+        .map(|s| s.len())
+        .unwrap_or(0)
+        + r.call_id.len()
 }
 
 impl Calls {
-    fn prune(&mut self, now: Instant, now_unix: u64, window: Duration) {
+    /// Forgets results and ids older than the window. True if `seen` shrank.
+    fn prune(&mut self, now: Instant, now_unix: u64, window: Duration) -> bool {
+        let mut freed = 0;
         self.live.retain(|_, e| {
-            !matches!(e.phase, Phase::Done(_)) || now.duration_since(e.at) <= window
+            let keep = !matches!(e.phase, Phase::Done(_) | Phase::Evicted)
+                || now.saturating_duration_since(e.at) <= window;
+            if !keep {
+                if let Phase::Done(r) = &e.phase {
+                    freed += result_bytes(r);
+                }
+            }
+            keep
         });
+        self.stored_bytes = self.stored_bytes.saturating_sub(freed);
+        let live = &self.live;
+        self.done_order.retain(|id| live.contains_key(id));
         let w = window.as_secs();
+        let before = self.seen.len();
         self.seen.retain(|(_, t)| now_unix.saturating_sub(*t) <= w);
         self.before_restart
             .retain(|_, t| now_unix.saturating_sub(*t) <= w);
+        self.seen.len() != before
+    }
+
+    /// Stores `r` as the call's result, then drops the oldest results'
+    /// payloads while the total is over `cap` (their ids stay).
+    fn finish(&mut self, id: &str, r: CallResult, cap: usize) {
+        let Some(e) = self.live.get_mut(id) else {
+            return;
+        };
+        self.stored_bytes += result_bytes(&r);
+        e.phase = Phase::Done(r);
+        self.done_order.push_back(id.to_string());
+        while self.stored_bytes > cap {
+            let Some(old) = self.done_order.pop_front() else {
+                break;
+            };
+            if let Some(e) = self.live.get_mut(&old) {
+                if let Phase::Done(r) = &e.phase {
+                    self.stored_bytes = self.stored_bytes.saturating_sub(result_bytes(r));
+                    e.phase = Phase::Evicted;
+                }
+            }
+        }
+    }
+
+    fn in_flight(&self) -> usize {
+        self.live
+            .values()
+            .filter(|e| matches!(e.phase, Phase::Prompting { .. } | Phase::Running { .. }))
+            .count()
+    }
+
+    fn in_flight_on(&self, conn: u64) -> bool {
+        self.live.values().any(|e| {
+            e.conn == conn && matches!(e.phase, Phase::Prompting { .. } | Phase::Running { .. })
+        })
+    }
+
+    fn dialogs(&self) -> usize {
+        self.live
+            .values()
+            .filter(|e| matches!(e.phase, Phase::Prompting { stop: None, .. }))
+            .count()
     }
 
     fn seen_body(&self) -> String {
@@ -308,13 +630,36 @@ impl Calls {
     }
 }
 
-fn read_seen(path: &Path, now_unix: u64, window: Duration) -> Vec<(String, u64)> {
-    let text = std::fs::read_to_string(path).unwrap_or_default();
-    text.lines()
-        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-        .filter_map(|v| Some((v.get("id")?.as_str()?.to_string(), v.get("t")?.as_u64()?)))
-        .filter(|(_, t)| now_unix.saturating_sub(*t) <= window.as_secs())
-        .collect()
+/// What `seen_calls.jsonl` says at start.
+enum SeenFile {
+    Read(Vec<(String, u64)>),
+    /// Missing, or empty.
+    None,
+    /// It could not be read, or a line is not an id record. Any id could
+    /// be in what was lost.
+    Unreadable(String),
+}
+
+fn read_seen(path: &Path) -> SeenFile {
+    let text = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return SeenFile::None,
+        Err(e) => return SeenFile::Unreadable(e.to_string()),
+    };
+    let mut out = Vec::new();
+    for (i, l) in text.lines().enumerate() {
+        if l.trim().is_empty() {
+            continue;
+        }
+        let rec = serde_json::from_str::<Value>(l)
+            .ok()
+            .and_then(|v| Some((v.get("id")?.as_str()?.to_string(), v.get("t")?.as_u64()?)));
+        match rec {
+            Some(r) => out.push(r),
+            None => return SeenFile::Unreadable(format!("line {} is not an id record", i + 1)),
+        }
+    }
+    SeenFile::Read(out)
 }
 
 fn error_result(call_id: &str, text: &str) -> CallResult {
@@ -335,59 +680,129 @@ struct Shared<T, A> {
     rules: Mutex<Rules>,
     calls: Mutex<Calls>,
     dir: PathBuf,
-    log_dir: PathBuf,
     timing: Timing,
     clock: Clock,
     log: Log,
-    /// Serialises writes to `calls.log`.
-    log_lock: Mutex<()>,
+    calls_log: CallLog,
     /// Serialises writes to `seen_calls.jsonl`.
     seen_lock: Mutex<()>,
     /// The connection that is up, for `tools_changed` after a reload.
     current: Mutex<Option<(u64, Out)>>,
     /// Bumped by every reload that loaded, so a connection whose `hello`
     /// was built before one (and welcomed after) can catch up.
-    rules_gen: std::sync::atomic::AtomicU64,
+    rules_gen: AtomicU64,
+    #[cfg(test)]
+    hooks: Hooks,
 }
 
 impl<T: Tools, A: Asker> Shared<T, A> {
-    fn log_call(&self, call_id: &str, tool: &str, args: &Value, decision: &str, extra: Value) {
+    fn log_line(
+        &self,
+        call_id: &str,
+        tool: &str,
+        args: Option<&Value>,
+        decision: &str,
+        extra: Value,
+    ) {
         let mut line = json!({
             "t": (self.clock)(),
             "call_id": call_id,
             "tool": tool,
-            "arguments": args,
             "decision": decision,
         });
-        if let (Some(l), Value::Object(e)) = (line.as_object_mut(), extra) {
-            l.extend(e);
-        }
-        let _guard = self.log_lock.lock().unwrap();
-        if let Err(e) = append_private(&self.log_dir, CALLS_LOG, &line.to_string()) {
-            (self.log)(&format!("could not write the calls log: {e}"));
-        }
-    }
-
-    fn save_seen(&self, calls: &Calls) {
-        let path = self.dir.join(SEEN_CALLS);
-        if let Err(e) = write_private(&path, calls.seen_body().as_bytes()) {
-            (self.log)(&format!("could not record started calls: {e}"));
-        }
-    }
-
-    /// Writes `seen_calls.jsonl` off the link loop (it syncs to disk).
-    /// Writers take turns, and each writes the list as it is then, so the
-    /// last one to finish holds every id.
-    async fn persist_seen(self: &Arc<Self>) {
-        let me = self.clone();
-        let _ = tokio::task::spawn_blocking(move || {
-            let _turn = me.seen_lock.lock().unwrap();
-            let body = me.calls.lock().unwrap().seen_body();
-            if let Err(e) = write_private(&me.dir.join(SEEN_CALLS), body.as_bytes()) {
-                (me.log)(&format!("could not record started calls: {e}"));
+        if let Some(l) = line.as_object_mut() {
+            if let Some(a) = args {
+                l.insert("arguments".into(), a.clone());
             }
+            if let Value::Object(e) = extra {
+                l.extend(e);
+            }
+        }
+        self.calls_log.line(line);
+    }
+
+    /// A call's one line: what it was and what happened.
+    fn log_call(&self, call_id: &str, tool: &str, args: &Value, decision: &str, extra: Value) {
+        self.log_line(call_id, tool, Some(args), decision, extra);
+    }
+
+    /// Rewrites `seen_calls.jsonl` with what is in memory. Blocking.
+    fn compact_seen(&self) -> std::result::Result<(), String> {
+        let _turn = self.seen_lock.lock().unwrap();
+        let body = {
+            let mut calls = self.calls.lock().unwrap();
+            if calls.blind_until.is_some() {
+                // The unreadable file was not moved aside, or may hold ids:
+                // never overwrite it.
+                return Ok(());
+            }
+            calls.appended = 0;
+            calls.seen_body()
+        };
+        write_private(&self.dir.join(SEEN_CALLS), body.as_bytes())
+    }
+
+    /// Appends one id to `seen_calls.jsonl` and syncs it (and, every so
+    /// often, rewrites the file without expired ids). Off the link loop.
+    /// An error (or a panic) means the id is not safely on disk.
+    async fn record(self: &Arc<Self>, id: String, t: u64) -> std::result::Result<(), String> {
+        let me = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let compact = {
+                let _turn = me.seen_lock.lock().unwrap();
+                let path = me.dir.join(SEEN_CALLS);
+                let mut f = open_private_append(&path)?;
+                f.write_all(format!("{}\n", json!({"id": id, "t": t})).as_bytes())
+                    .and_then(|_| f.sync_data())
+                    .map_err(|e| format!("write {}: {e}", path.display()))?;
+                let mut calls = me.calls.lock().unwrap();
+                calls.appended += 1;
+                calls.appended >= COMPACT_EVERY
+            };
+            if compact {
+                if let Err(e) = me.compact_seen() {
+                    (me.log)(&format!("could not tidy the record of started calls: {e}"));
+                }
+            }
+            Ok(())
         })
-        .await;
+        .await
+        .map_err(|e| format!("the record task failed: {e}"))?
+    }
+
+    /// The id could not be recorded: the call is refused, never run.
+    fn refuse_unrecorded(&self, call_id: &str, tool: &str, args: &Value, why: &str, out: &Out) {
+        (self.log)(&format!("call {call_id}: not recorded, so not run: {why}"));
+        let r = error_result(call_id, NOT_RECORDED);
+        self.calls
+            .lock()
+            .unwrap()
+            .finish(call_id, r.clone(), self.timing.results_cap_bytes);
+        self.log_call(
+            call_id,
+            tool,
+            args,
+            "refused",
+            json!({"reason": "could not record the call"}),
+        );
+        let _ = out.send(ToRelay::Result(r));
+    }
+
+    /// Drops expired ids and results, and keeps `seen_calls.jsonl` tidy.
+    async fn prune_now(self: &Arc<Self>) {
+        let shrank = {
+            let mut calls = self.calls.lock().unwrap();
+            calls.prune(Instant::now(), (self.clock)(), self.timing.dedupe_window)
+        };
+        if shrank {
+            let me = self.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                if let Err(e) = me.compact_seen() {
+                    (me.log)(&format!("could not tidy the record of started calls: {e}"));
+                }
+            })
+            .await;
+        }
     }
 
     /// A `call` frame. Decides at once; the dialog and the tool run in tasks.
@@ -399,7 +814,13 @@ impl<T: Tools, A: Asker> Shared<T, A> {
             deadline_ms,
         } = call;
         let received = Instant::now();
-        let deadline = received + Duration::from_millis(deadline_ms);
+        // Never more than the call budget, and never an overflow.
+        let budget = Duration::from_millis(deadline_ms).min(self.timing.max_call);
+        let deadline = received.checked_add(budget).unwrap_or(received);
+        let refuse = |id: &str, text: &str, reason: &str| {
+            self.log_call(id, &tool, &arguments, "refused", json!({"reason": reason}));
+            let _ = out.send(ToRelay::Result(error_result(id, text)));
+        };
         if call_id.len() > CALL_ID_RESERVE {
             let shown: String = call_id.chars().take(64).collect();
             self.log_call(
@@ -413,57 +834,66 @@ impl<T: Tools, A: Asker> Shared<T, A> {
             return;
         }
         let now_unix = (self.clock)();
+        let cap = self.timing.results_cap_bytes;
         let mut calls = self.calls.lock().unwrap();
         calls.prune(received, now_unix, self.timing.dedupe_window);
         if let Some(e) = calls.live.get(&call_id) {
             // A repeat: the stored result again, or nothing while it runs.
-            if let Phase::Done(r) = &e.phase {
-                let _ = out.send(ToRelay::Result(r.clone()));
+            match &e.phase {
+                Phase::Done(r) => {
+                    let _ = out.send(ToRelay::Result(r.clone()));
+                }
+                Phase::Evicted => {
+                    let _ = out.send(ToRelay::Result(error_result(&call_id, EVICTED)));
+                }
+                _ => {}
             }
             return;
         }
+        if calls.blind_until.is_some_and(|u| now_unix < u) {
+            drop(calls);
+            return refuse(
+                &call_id,
+                BLIND,
+                "the record of started calls was unreadable",
+            );
+        }
         if calls.before_restart.contains_key(&call_id) {
-            let r = error_result(&call_id, ALREADY_STARTED);
             calls.live.insert(
                 call_id.clone(),
                 Entry {
                     at: received,
                     conn,
-                    phase: Phase::Done(r.clone()),
+                    phase: Phase::Running { cancelled: false },
                 },
             );
+            calls.finish(&call_id, error_result(&call_id, ALREADY_STARTED), cap);
             drop(calls);
-            self.log_call(
+            return refuse(
                 &call_id,
-                &tool,
-                &arguments,
-                "refused",
-                json!({"reason": "already started before vrelay restarted"}),
+                ALREADY_STARTED,
+                "already started before vrelay restarted",
             );
-            let _ = out.send(ToRelay::Result(r));
-            return;
         }
-        // Recorded, and on disk before anything can run (below).
-        calls.seen.push((call_id.clone(), now_unix));
         let decision = self.rules.lock().unwrap().decide(&tool, &arguments);
+        if !matches!(decision, Decision::Refuse(_)) {
+            if calls.in_flight() >= self.timing.max_in_flight {
+                drop(calls);
+                return refuse(&call_id, BUSY, "too many calls in flight");
+            }
+            if decision == Decision::AskFirst && calls.dialogs() >= self.timing.max_dialogs {
+                drop(calls);
+                return refuse(&call_id, DIALOG_OPEN, "another dialog is open");
+            }
+        }
+        calls.seen.push((call_id.clone(), now_unix));
+        let dismiss = Arc::new(AtomicBool::new(false));
         let phase = match &decision {
-            Decision::Refuse(why) => Phase::Done(error_result(
-                &call_id,
-                &format!("Refused on the computer: {why}."),
-            )),
-            Decision::Run => Phase::Running { cancelled: false },
             Decision::AskFirst => Phase::Prompting {
-                dismiss: Arc::new(AtomicBool::new(false)),
+                dismiss: dismiss.clone(),
                 stop: None,
             },
-        };
-        let dismiss = match &phase {
-            Phase::Prompting { dismiss, .. } => Some(dismiss.clone()),
-            _ => None,
-        };
-        let refused = match &phase {
-            Phase::Done(r) => Some(r.clone()),
-            _ => None,
+            _ => Phase::Running { cancelled: false },
         };
         calls.live.insert(
             call_id.clone(),
@@ -473,39 +903,64 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                 phase,
             },
         );
+        if let Decision::Refuse(why) = decision {
+            let r = error_result(&call_id, &format!("Refused on the computer: {why}."));
+            calls.finish(&call_id, r.clone(), cap);
+            drop(calls);
+            self.log_call(
+                &call_id,
+                &tool,
+                &arguments,
+                "refused",
+                json!({"reason": why}),
+            );
+            let _ = out.send(ToRelay::Result(r));
+            return;
+        }
         drop(calls);
-        match decision {
-            Decision::Refuse(why) => {
-                self.log_call(
-                    &call_id,
-                    &tool,
-                    &arguments,
-                    "refused",
-                    json!({"reason": why}),
-                );
-                if let Some(r) = refused {
-                    let _ = out.send(ToRelay::Result(r));
-                }
-                let me = self.clone();
-                tokio::spawn(async move { me.persist_seen().await });
+        let me = self.clone();
+        let out = out.clone();
+        tokio::spawn(async move {
+            // On disk before anything can run.
+            if let Err(e) = me.record(call_id.clone(), now_unix).await {
+                me.refuse_unrecorded(&call_id, &tool, &arguments, &e, &out);
+                return;
             }
-            Decision::Run => {
-                let me = self.clone();
-                let out = out.clone();
-                tokio::spawn(async move {
-                    me.persist_seen().await;
-                    me.run_tool(call_id, tool, arguments, deadline, out).await;
-                });
-            }
-            Decision::AskFirst => {
-                let me = self.clone();
-                let out = out.clone();
-                let dismiss = dismiss.expect("set for AskFirst");
-                tokio::spawn(async move {
-                    me.persist_seen().await;
+            match decision {
+                Decision::AskFirst => {
+                    #[cfg(test)]
+                    if let Some(g) = me.hooks.before_ask.clone() {
+                        g.reached.notify_one();
+                        g.go.notified().await;
+                    }
                     me.ask_then_run(call_id, tool, arguments, deadline, dismiss, out)
-                        .await;
-                });
+                        .await
+                }
+                _ => {
+                    #[cfg(test)]
+                    if let Some(g) = me.hooks.before_run.clone() {
+                        g.reached.notify_one();
+                        g.go.notified().await;
+                    }
+                    me.run_tool(call_id, tool, arguments, deadline, "no_prompt", out)
+                        .await
+                }
+            }
+        });
+    }
+
+    /// Marks a call waiting at its dialog as stopped (if it still is) and
+    /// closes the dialog.
+    fn stop_one(&self, call_id: &str, why: Stop) {
+        let mut calls = self.calls.lock().unwrap();
+        if let Some(Entry {
+            phase: Phase::Prompting { dismiss, stop },
+            ..
+        }) = calls.live.get_mut(call_id)
+        {
+            if stop.is_none() {
+                *stop = Some(why);
+                dismiss.store(true, Ordering::SeqCst);
             }
         }
     }
@@ -519,19 +974,38 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         dismiss: Arc<AtomicBool>,
         out: Out,
     ) {
-        let summary = summarize(&tool, &args);
-        let timeout = self
-            .timing
-            .max_prompt
-            .min(deadline.saturating_duration_since(Instant::now()));
-        let asker = self.asker.clone();
-        let t = tool.clone();
-        let waited =
-            tokio::task::spawn_blocking(move || asker.ask(&t, &summary, timeout, &dismiss))
-                .await
-                .unwrap_or(Waited::Deny);
+        // Stopped before its dialog opened (a cancel, a drop): never show it.
+        let stopped_early = {
+            let calls = self.calls.lock().unwrap();
+            match calls.live.get(&call_id).map(|e| &e.phase) {
+                Some(Phase::Prompting { stop, .. }) => stop.is_some(),
+                _ => return,
+            }
+        };
+        let waited = if stopped_early {
+            Waited::Dismissed
+        } else {
+            let summary = summarize(&tool, &args);
+            let timeout = self
+                .timing
+                .max_prompt
+                .min(deadline.saturating_duration_since(Instant::now()));
+            let asker = self.asker.clone();
+            let t = tool.clone();
+            let mut dialog =
+                tokio::task::spawn_blocking(move || asker.ask(&t, &summary, timeout, &dismiss));
+            // The dialog never outlives the call's deadline: by then the
+            // relay has given up on it.
+            tokio::select! {
+                w = &mut dialog => w.unwrap_or(Waited::Deny),
+                _ = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)) => {
+                    self.stop_one(&call_id, Stop::Expired);
+                    dialog.await.unwrap_or(Waited::Deny)
+                }
+            }
+        };
         // The answer is checked, and the call moved on, under the lock that a
-        // cancel or a link drop takes: a late Allow finds it stopped.
+        // cancel, a drop or the deadline takes: a late Allow finds it stopped.
         let refusal = {
             let mut calls = self.calls.lock().unwrap();
             let Some(entry) = calls.live.get_mut(&call_id) else {
@@ -545,24 +1019,32 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                 (Some(Stop::Cancelled), _) => Some(("cancelled at prompt", CANCELLED, false)),
                 (Some(Stop::LinkDropped), _) => Some(("link dropped at prompt", DROPPED, false)),
                 (Some(Stop::Shutdown), _) => Some(("link dropped at prompt", STOPPING, false)),
+                (Some(Stop::Expired), _) => Some(("timed out", TIMED_OUT, false)),
                 (None, Waited::Allow) if Instant::now() < deadline => None,
                 (None, Waited::Allow) | (None, Waited::TimedOut) => {
                     Some(("timed out", TIMED_OUT, true))
                 }
                 (None, Waited::Deny) | (None, Waited::Dismissed) => Some(("denied", DENIED, true)),
             };
-            entry.phase = match refusal {
-                None => Phase::Running { cancelled: false },
-                Some((_, text, _)) => Phase::Done(error_result(&call_id, text)),
-            };
+            match refusal {
+                None => entry.phase = Phase::Running { cancelled: false },
+                Some((_, text, _)) => calls.finish(
+                    &call_id,
+                    error_result(&call_id, text),
+                    self.timing.results_cap_bytes,
+                ),
+            }
             refusal
         };
         match refusal {
-            None => self.run_tool(call_id, tool, args, deadline, out).await,
+            None => {
+                self.run_tool(call_id, tool, args, deadline, "allowed", out)
+                    .await
+            }
             Some((decision, text, send)) => {
                 self.log_call(&call_id, &tool, &args, decision, json!({}));
-                // After a cancel or a drop the relay has already failed the
-                // call: nothing to send.
+                // After a cancel, a drop or the deadline the relay has
+                // already failed the call: nothing to send.
                 if send {
                     let _ = out.send(ToRelay::Result(error_result(&call_id, text)));
                 }
@@ -576,10 +1058,41 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         tool: String,
         args: Value,
         deadline: Instant,
+        approval: &'static str,
         out: Out,
     ) {
+        let cap = self.timing.results_cap_bytes;
+        // A cancel that came before it started stops it.
+        {
+            let mut calls = self.calls.lock().unwrap();
+            match calls.live.get(&call_id).map(|e| &e.phase) {
+                Some(Phase::Running { cancelled: false }) => {}
+                Some(Phase::Running { cancelled: true }) => {
+                    calls.finish(&call_id, error_result(&call_id, CANCELLED_EARLY), cap);
+                    drop(calls);
+                    self.log_call(
+                        &call_id,
+                        &tool,
+                        &args,
+                        "cancelled before running",
+                        json!({}),
+                    );
+                    return;
+                }
+                _ => return,
+            }
+        }
+        // Logged before it starts, so a command cut off by a crash or a stop
+        // still has a line.
+        self.log_call(
+            &call_id,
+            &tool,
+            &args,
+            "running",
+            json!({"approval": approval}),
+        );
         let started = Instant::now();
-        let output = self.tools.call(&tool, args.clone(), deadline).await;
+        let output = self.tools.call(&tool, args, deadline).await;
         let r = CallResult {
             call_id: call_id.clone(),
             content: output.content,
@@ -588,19 +1101,17 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         };
         let cancelled = {
             let mut calls = self.calls.lock().unwrap();
-            match calls.live.get_mut(&call_id) {
-                Some(e) => {
-                    let c = matches!(e.phase, Phase::Running { cancelled: true });
-                    e.phase = Phase::Done(r.clone());
-                    c
-                }
-                None => false,
-            }
+            let c = matches!(
+                calls.live.get(&call_id).map(|e| &e.phase),
+                Some(Phase::Running { cancelled: true })
+            );
+            calls.finish(&call_id, r.clone(), cap);
+            c
         };
-        self.log_call(
+        self.log_line(
             &call_id,
             &tool,
-            &args,
+            None,
             "ran",
             json!({
                 "is_error": r.is_error,
@@ -629,8 +1140,8 @@ impl<T: Tools, A: Asker> Shared<T, A> {
             Phase::Running { cancelled } => {
                 *cancelled = true;
                 (self.log)(&format!(
-                    "call {call_id} was cancelled while running: its result will be dropped \
-                     (the command itself is not stopped)"
+                    "call {call_id} was cancelled: it will not start, or if it already has, \
+                     its result is dropped (the command itself is not stopped)"
                 ));
             }
             _ => {}
@@ -676,31 +1187,6 @@ impl<T: Tools, A: Asker> Shared<T, A> {
     }
 }
 
-/// Appends one line to a user-only file, created at mode 0600 (never wider
-/// first), in a 0700 directory.
-fn append_private(dir: &Path, name: &str, line: &str) -> Result<()> {
-    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-    ensure_dir(dir)?;
-    let path = dir.join(name);
-    let mut f = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .mode(0o600)
-        .open(&path)
-        .map_err(|e| format!("open {}: {e}", path.display()))?;
-    let mode = f
-        .metadata()
-        .map_err(|e| format!("{}: {e}", path.display()))?
-        .permissions()
-        .mode();
-    if mode & 0o077 != 0 {
-        f.set_permissions(std::fs::Permissions::from_mode(0o600))
-            .map_err(|e| format!("make {} private: {e}", path.display()))?;
-    }
-    f.write_all(format!("{line}\n").as_bytes())
-        .map_err(|e| format!("write {}: {e}", path.display()))
-}
-
 // ------------------------------------------------------------------ status
 
 /// `status.json`, in the format `vrelay status` reads (status.rs). Written
@@ -712,22 +1198,34 @@ struct Status {
     state: &'static str,
     last_pong: Option<u64>,
     next_retry: Option<u64>,
+    reason: Option<String>,
 }
 
 impl Status {
     fn set(&mut self, state: &'static str, next_retry: Option<u64>) {
         self.state = state;
         self.next_retry = next_retry;
+        self.reason = None;
+        self.write();
+    }
+
+    fn waiting(&mut self, reason: Option<String>) {
+        self.state = "waiting_for_sign_in";
+        self.next_retry = None;
+        self.reason = reason;
         self.write();
     }
 
     fn write(&self) {
-        let body = json!({
+        let mut body = json!({
             "state": self.state,
             "updated_unix": (self.clock)(),
             "last_pong_unix": self.last_pong,
             "next_retry_unix": self.next_retry,
         });
+        if let (Some(r), Some(o)) = (&self.reason, body.as_object_mut()) {
+            o.insert("reason".into(), json!(r));
+        }
         let _ = self.tx.send(Some(body.to_string()));
     }
 }
@@ -775,7 +1273,8 @@ async fn send(
             .map_err(|e| e.to_string())?,
         (Err(e), _) => return Err(e.to_string()),
     };
-    match tokio::time::timeout(timeout, sink.send(Message::Text(text))).await {
+    let budget = send_budget(timeout, text.len());
+    match tokio::time::timeout(budget, sink.send(Message::Text(text))).await {
         Ok(Ok(())) => Ok(()),
         Ok(Err(e)) => Err(format!("send failed: {e}")),
         Err(_) => Err("send timed out".into()),
@@ -802,37 +1301,76 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
     /// Runs until `shutdown` turns true. Never gives up on the relay.
     pub async fn run(self, mut reload: mpsc::Receiver<()>, mut shutdown: watch::Receiver<bool>) {
         let now_unix = (self.clock)();
-        let seen = read_seen(
-            &self.dir.join(SEEN_CALLS),
-            now_unix,
-            self.timing.dedupe_window,
+        let window = self.timing.dedupe_window;
+        let path = self.dir.join(SEEN_CALLS);
+        let mut calls = Calls::default();
+        match read_seen(&path) {
+            SeenFile::None => {}
+            SeenFile::Read(seen) => {
+                let seen: Vec<_> = seen
+                    .into_iter()
+                    .filter(|(_, t)| now_unix.saturating_sub(*t) <= window.as_secs())
+                    .collect();
+                calls.before_restart = seen.iter().cloned().collect();
+                calls.seen = seen;
+            }
+            SeenFile::Unreadable(why) => {
+                // Keeping the lines that parse could let an id in a damaged
+                // line run twice; refusing every call for one window cannot.
+                let aside = self.dir.join(format!("{SEEN_CALLS}.corrupt-{now_unix}"));
+                let moved = std::fs::rename(&path, &aside);
+                (self.log)(&format!(
+                    "{SEEN_CALLS} is unreadable ({why}); moved to {} ({}); refusing calls for {} s",
+                    aside.display(),
+                    match &moved {
+                        Ok(()) => "done".to_string(),
+                        Err(e) => format!("failed: {e}"),
+                    },
+                    window.as_secs()
+                ));
+                calls.blind_until = Some(now_unix + window.as_secs());
+            }
+        }
+        let calls_log = CallLog::start(
+            self.log_dir.clone(),
+            self.timing.log_max_bytes,
+            self.log.clone(),
+            #[cfg(test)]
+            self.hooks.hold_log.clone(),
         );
-        let calls = Calls {
-            live: HashMap::new(),
-            before_restart: seen.iter().cloned().collect(),
-            seen,
-        };
         let shared = Arc::new(Shared {
             tools: self.tools.clone(),
             asker: self.asker.clone(),
             rules: Mutex::new(self.rules.clone()),
             calls: Mutex::new(calls),
             dir: self.dir.clone(),
-            log_dir: self.log_dir.clone(),
             timing: self.timing.clone(),
             clock: self.clock.clone(),
             log: self.log.clone(),
-            log_lock: Mutex::new(()),
+            calls_log: calls_log.clone(),
             seen_lock: Mutex::new(()),
             current: Mutex::new(None),
-            rules_gen: std::sync::atomic::AtomicU64::new(0),
+            rules_gen: AtomicU64::new(0),
+            #[cfg(test)]
+            hooks: self.hooks.clone(),
         });
-        // Expired ids leave the file now.
-        shared.save_seen(&shared.calls.lock().unwrap());
+        // Expired ids leave the file now (not if it was unreadable).
+        if let Err(e) = shared.compact_seen() {
+            (self.log)(&format!("could not tidy the record of started calls: {e}"));
+        }
         let r = shared.clone();
         let reloader = tokio::spawn(async move {
             while reload.recv().await.is_some() {
                 r.reload().await;
+            }
+        });
+        let p = shared.clone();
+        let every = self.timing.prune_every;
+        let pruner = tokio::spawn(async move {
+            let mut tick = tokio::time::interval_at(tokio::time::Instant::now() + every, every);
+            loop {
+                tick.tick().await;
+                p.prune_now().await;
             }
         });
         let (status_tx, status_rx) = watch::channel(None);
@@ -843,21 +1381,25 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
             state: "connecting",
             last_pong: None,
             next_retry: None,
+            reason: None,
         };
         let mut attempt: u32 = 0;
         let mut conn: u64 = 0;
+        let mut last_refusal: Option<String> = None;
         loop {
             if *shutdown.borrow() {
                 break;
             }
             let tokens = self.tokens.clone();
-            let token = tokio::task::spawn_blocking(move || tokens.token())
-                .await
-                .unwrap_or_else(|e| Err(format!("the token check failed: {e}")));
+            let fetch = tokio::task::spawn_blocking(move || tokens.token());
+            let Some(token) = self.guarded(fetch, &status, &mut shutdown).await else {
+                break;
+            };
+            let token = token.unwrap_or_else(|e| Err(TokenError::Unavailable(e.to_string())));
             let (token, device) = match (token, load_device(&self.dir)) {
                 (Ok(Some(t)), Some(d)) => (t, d),
                 (Ok(_), _) => {
-                    status.set("waiting_for_sign_in", None);
+                    status.waiting(None);
                     if self
                         .pause(self.timing.token_poll, &status, &mut shutdown)
                         .await
@@ -866,7 +1408,23 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
                     }
                     continue;
                 }
-                (Err(e), _) => {
+                // The sign-in is over: wait for `vrelay login` like with no
+                // token at all, instead of asking the issuer again and again.
+                (Err(TokenError::SignInAgain(why)), _) => {
+                    if last_refusal.as_deref() != Some(why.as_str()) {
+                        (self.log)(&format!("waiting for a new sign-in: {why}"));
+                        last_refusal = Some(why.clone());
+                    }
+                    status.waiting(Some(why));
+                    if self
+                        .pause(self.timing.token_poll, &status, &mut shutdown)
+                        .await
+                    {
+                        break;
+                    }
+                    continue;
+                }
+                (Err(TokenError::Unavailable(e)), _) => {
                     (self.log)(&format!("no usable token: {e}"));
                     if self.backoff(&mut attempt, &mut status, &mut shutdown).await {
                         break;
@@ -877,14 +1435,29 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
             status.last_pong = None;
             status.set("connecting", None);
             conn += 1;
-            let up = match self.connect(&token).await {
+            let Some(dialed) = self
+                .guarded(self.connect(&token), &status, &mut shutdown)
+                .await
+            else {
+                break;
+            };
+            let up = match dialed {
                 Err(e) => {
                     (self.log)(&format!("could not reach the relay: {e}"));
                     None
                 }
                 Ok(ws) => {
                     let gen = shared.rules_gen.load(Ordering::SeqCst);
-                    let hello = self.hello(&shared, &device.device_id, &token).await;
+                    let Some(hello) = self
+                        .guarded(
+                            self.hello(&shared, &device.device_id, &token),
+                            &status,
+                            &mut shutdown,
+                        )
+                        .await
+                    else {
+                        break;
+                    };
                     let (up, shut) =
                         session(&shared, ws, conn, hello, gen, &mut status, &mut shutdown).await;
                     if shut {
@@ -902,11 +1475,34 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
         }
         shared.stop_prompts(None, Stop::Shutdown);
         reloader.abort();
+        pruner.abort();
         // So `vrelay status` says stopped at once, not after a minute: after
         // the last pending write.
         drop(status);
         let _ = writer.await;
         let _ = std::fs::remove_file(status_path(&self.dir));
+        let l = calls_log.clone();
+        let _ = tokio::task::spawn_blocking(move || l.flush(Duration::from_secs(2))).await;
+    }
+
+    /// Runs `fut`, keeping the status file fresh meanwhile. `None` if told
+    /// to stop first (`fut` is dropped; a blocking task finishes on its own).
+    async fn guarded<F: Future>(
+        &self,
+        fut: F,
+        status: &Status,
+        shutdown: &mut watch::Receiver<bool>,
+    ) -> Option<F::Output> {
+        tokio::pin!(fut);
+        let every = self.timing.status_every;
+        let mut tick = tokio::time::interval_at(tokio::time::Instant::now() + every, every);
+        loop {
+            tokio::select! {
+                v = &mut fut => return Some(v),
+                _ = tick.tick() => status.write(),
+                _ = stopped(shutdown) => return None,
+            }
+        }
     }
 
     /// Waits `d`, keeping the status file fresh. True if told to stop.
@@ -916,18 +1512,9 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
         status: &Status,
         shutdown: &mut watch::Receiver<bool>,
     ) -> bool {
-        let end = tokio::time::Instant::now() + d;
-        loop {
-            let now = tokio::time::Instant::now();
-            if now >= end {
-                return false;
-            }
-            let step = (end - now).min(self.timing.status_every);
-            tokio::select! {
-                _ = tokio::time::sleep(step) => status.write(),
-                _ = stopped(shutdown) => return true,
-            }
-        }
+        self.guarded(tokio::time::sleep(d), status, shutdown)
+            .await
+            .is_none()
     }
 
     async fn backoff(
@@ -1014,6 +1601,7 @@ async fn session<T: Tools, A: Asker>(
     let t = shared.timing.clone();
     let log = shared.log.clone();
     let clock = shared.clock.clone();
+    let hello_tools = hello.tools.clone();
     let (mut sink, mut stream) = ws.split();
     if let Err(e) = send(&mut sink, &ToRelay::Hello(hello), t.send_timeout).await {
         log(&format!("link down: {e}"));
@@ -1028,6 +1616,10 @@ async fn session<T: Tools, A: Asker>(
     pings.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut refresh = tokio::time::interval_at(start + t.status_every, t.status_every);
     refresh.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut in_call = tokio::time::interval_at(start + t.in_call_every, t.in_call_every);
+    in_call.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let silent_limit = t.in_call_every * t.max_missed.max(1);
+    let mut last_heard = Instant::now();
     let mut beat = Beat::default();
     let mut shut = false;
     let why: String = loop {
@@ -1044,10 +1636,20 @@ async fn session<T: Tools, A: Asker>(
                         break format!("{} pings unanswered", beat.missed);
                     }
                 }
-                beat.n += 1;
+                beat.n = beat.n.wrapping_add(1);
                 beat.awaiting = true;
                 if let Err(e) = send(&mut sink, &ToRelay::Ping { n: beat.n }, t.send_timeout).await {
                     break e;
+                }
+            }
+            // While a call is in flight the relay pings every 2 s and drops
+            // the call after 3 missed: go down as quickly, so no dialog
+            // outlives a link the relay has already given up on.
+            _ = in_call.tick() => {
+                if last_heard.elapsed() >= silent_limit
+                    && shared.calls.lock().unwrap().in_flight_on(conn)
+                {
+                    break format!("nothing from the relay for {silent_limit:?} during a call");
                 }
             }
             _ = refresh.tick() => status.write(),
@@ -1069,10 +1671,12 @@ async fn session<T: Tools, A: Asker>(
                     }
                     Some(Ok(_)) => {
                         beat.heard();
+                        last_heard = Instant::now();
                         continue;
                     }
                 };
                 beat.heard();
+                last_heard = Instant::now();
                 match decode_to_connector(&text) {
                     // Size only: a bad frame may hold arguments.
                     Err(_) => log(&format!("ignored a bad frame ({} bytes)", text.len())),
@@ -1084,14 +1688,17 @@ async fn session<T: Tools, A: Asker>(
                             *shared.current.lock().unwrap() = Some((conn, out.clone()));
                             log("connected to the relay");
                             // Rules reloaded after the hello was built: send
-                            // the tools they show now.
+                            // the tools they show now, if those differ.
                             if shared.rules_gen.load(Ordering::SeqCst) != rules_gen {
                                 let s = shared.clone();
                                 let out = out.clone();
+                                let sent = hello_tools.clone();
                                 tokio::spawn(async move {
                                     let all = s.tools.list().await;
                                     let tools = s.rules.lock().unwrap().visible(&all);
-                                    let _ = out.send(ToRelay::ToolsChanged { tools });
+                                    if tools != sent {
+                                        let _ = out.send(ToRelay::ToolsChanged { tools });
+                                    }
                                 });
                             }
                         }

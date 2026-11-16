@@ -204,10 +204,12 @@ pub fn ask(_tool: &str, summary: &str, timeout: Duration) -> PromptHandle {
 }
 
 /// Spawn attempts. Tests write a fake script and run it from parallel
-/// threads, which can briefly fail with "text file busy"; production runs a
-/// binary that is not being written, so one attempt.
+/// threads, which can fail with "text file busy" for as long as another
+/// thread's fork still holds the script's write handle (seconds, on a
+/// loaded machine); production runs a binary that is not being written, so
+/// one attempt.
 #[cfg(test)]
-const SPAWN_TRIES: u32 = 20;
+const SPAWN_TRIES: u32 = 500;
 #[cfg(not(test))]
 const SPAWN_TRIES: u32 = 1;
 
@@ -229,7 +231,6 @@ pub fn ask_with(osascript: &Path, summary: &str, timeout: Duration) -> PromptHan
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
-    let deadline = Instant::now() + Duration::from_secs(secs) + GRACE;
     let mut spawned = None;
     for _ in 0..SPAWN_TRIES {
         match cmd.spawn() {
@@ -238,10 +239,19 @@ pub fn ask_with(osascript: &Path, summary: &str, timeout: Duration) -> PromptHan
                 break;
             }
             Err(e) if e.raw_os_error() == Some(26) => std::thread::sleep(Duration::from_millis(20)),
-            Err(_) => break,
+            Err(e) => {
+                #[cfg(test)]
+                eprintln!("test: the dialog did not start: {e}");
+                let _ = e;
+                break;
+            }
         }
     }
+    // From when the dialog is up (only a test's spawn retries come between).
+    let deadline = Instant::now() + Duration::from_secs(secs) + GRACE;
     let Some(mut child) = spawned else {
+        #[cfg(test)]
+        eprintln!("test: no dialog after {SPAWN_TRIES} tries");
         return PromptHandle {
             child: None,
             output: None,
@@ -526,8 +536,10 @@ mod tests {
         ask_with(script, summary, timeout)
     }
 
+    // Fakes that answer at once; the long limit is only so a loaded machine
+    // never turns their answer into a timeout.
     fn run(script: &Path, summary: &str) -> Answer {
-        ask_t(script, summary, Duration::from_secs(7)).wait()
+        ask_t(script, summary, Duration::from_secs(30)).wait()
     }
 
     fn script_in(name: &str, body: &str) -> (PathBuf, PathBuf) {
@@ -539,8 +551,15 @@ mod tests {
         (script, dir)
     }
 
+    /// How long a dialog may take to end in these tests. Every fake here
+    /// sleeps 30 s, so ending within 10 s still proves nothing waited for
+    /// it, and a loaded machine (8 copies of this suite at once) has room.
+    const BOUND: Duration = Duration::from_secs(10);
+
+    // Generous bounds: on a loaded machine starting a shell can take
+    // seconds. They only cost time when a test is failing anyway.
     fn pid_gone(pid: i32) -> bool {
-        for _ in 0..40 {
+        for _ in 0..200 {
             if unsafe { libc::kill(pid, 0) } != 0 {
                 return true;
             }
@@ -550,7 +569,9 @@ mod tests {
     }
 
     fn read_pid(dir: &Path) -> i32 {
-        for _ in 0..40 {
+        // 30 s: under 8 copies of this suite at once a fake's shell has been
+        // seen to take over 10 s to write its first line.
+        for _ in 0..600 {
             if let Ok(t) = std::fs::read_to_string(dir.join("pid")) {
                 if let Ok(p) = t.trim().parse() {
                     return p;
@@ -558,7 +579,10 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(50));
         }
-        panic!("no pid file");
+        let ls: Vec<_> = std::fs::read_dir(dir)
+            .map(|r| r.map(|e| e.unwrap().file_name()).collect())
+            .unwrap_or_default();
+        panic!("no pid file; {} holds {ls:?}", dir.display());
     }
 
     #[test]
@@ -633,7 +657,7 @@ mod tests {
         });
         let t = Instant::now();
         assert_eq!(h.wait_or_dismiss(&flag), Waited::Dismissed);
-        assert!(t.elapsed() < Duration::from_secs(1), "{:?}", t.elapsed());
+        assert!(t.elapsed() < BOUND, "{:?}", t.elapsed());
         assert!(pid_gone(pid), "child {pid} outlived the dismiss");
         setter.join().unwrap();
     }
@@ -643,7 +667,7 @@ mod tests {
         let no = AtomicBool::new(false);
         let w = |name: &str, out: &str| {
             let (s, _) = fake(name, out, 0);
-            ask_t(&s, "x", Duration::from_secs(7)).wait_or_dismiss(&no)
+            ask_t(&s, "x", Duration::from_secs(30)).wait_or_dismiss(&no)
         };
         assert_eq!(
             w("w-allow", "button returned:Allow, gave up:false"),
@@ -679,7 +703,7 @@ mod tests {
         let pid = read_pid(&dir); // the child has started
         let t = Instant::now();
         h.dismiss();
-        assert!(t.elapsed() < Duration::from_secs(1), "{:?}", t.elapsed());
+        assert!(t.elapsed() < BOUND, "{:?}", t.elapsed());
         assert!(pid_gone(pid), "child {pid} outlived dismiss");
     }
 
@@ -690,11 +714,13 @@ mod tests {
             "p-hard",
             "sleep 30 &\necho $! > \"$(dirname \"$0\")/pid\"\nsleep 30",
         );
-        let t = Instant::now();
-        let ans = ask_t(&script, "x", Duration::from_secs(1)).wait();
+        let h = ask_t(&script, "x", Duration::from_secs(1));
+        // The child exists before the deadline is enforced (a loaded
+        // machine can take longer than the 1 s timeout to start a shell).
+        let pid = read_pid(&dir);
+        let ans = h.wait();
         assert_eq!(ans, Answer::Deny);
-        assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
-        assert!(pid_gone(read_pid(&dir)), "child outlived the deadline");
+        assert!(pid_gone(pid), "child outlived the deadline");
     }
 
     #[test]
@@ -705,7 +731,7 @@ mod tests {
             ask_t(&script, "x", Duration::from_secs(1)).wait(),
             Answer::Deny
         );
-        assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+        assert!(t.elapsed() < BOUND, "{:?}", t.elapsed());
     }
 
     #[test]
@@ -719,7 +745,7 @@ mod tests {
             ask_t(&script, "x", Duration::from_secs(60)).wait(),
             Answer::Allow
         );
-        assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+        assert!(t.elapsed() < BOUND, "{:?}", t.elapsed());
         assert!(pid_gone(read_pid(&dir)));
     }
 

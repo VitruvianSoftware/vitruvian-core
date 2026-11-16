@@ -227,15 +227,37 @@ pub fn login(cfg: &Config) -> Result<Tokens> {
     }
 }
 
+/// Why a refresh did not give a token.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RefreshError {
+    /// The sign-in is over: no refresh token is saved, or the token endpoint
+    /// answered and said no (HTTP 400/401: revoked, expired, invalid). Only
+    /// `vrelay login` fixes it, so asking again is pointless.
+    Rejected(String),
+    /// The issuer could not be reached or failed (network, discovery, 5xx).
+    /// Worth trying again later.
+    Unavailable(String),
+}
+
+impl std::fmt::Display for RefreshError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RefreshError::Rejected(e) | RefreshError::Unavailable(e) => {
+                write!(f, "{SIGN_IN_AGAIN} ({e})")
+            }
+        }
+    }
+}
+
 fn refresh_once(
     cfg: &Config,
     agent: &ureq::Agent,
     endpoints: &mut Option<Endpoints>,
     rt: &str,
-) -> Result<Tokens> {
+) -> std::result::Result<Tokens, RefreshError> {
     // Discovered once per `fresh_token` call; a failed discovery is tried again.
     if endpoints.is_none() {
-        *endpoints = Some(discover(agent, &cfg.issuer)?);
+        *endpoints = Some(discover(agent, &cfg.issuer).map_err(RefreshError::Unavailable)?);
     }
     let token_endpoint = &endpoints.as_ref().expect("set above").token;
     let scope = cfg.scope();
@@ -248,15 +270,19 @@ fn refresh_once(
             ("client_id", &cfg.client_id),
             ("scope", &scope),
         ],
-    )?;
+    )
+    .map_err(RefreshError::Unavailable)?;
     match parse_token_response(status, &body, now_unix()) {
         Poll::Done(mut t) => {
             // Zitadel may rotate the refresh token; keep the old one if it doesn't.
             t.refresh_token = t.refresh_token.or_else(|| Some(rt.to_string()));
             Ok(t)
         }
-        Poll::Failed(why) => Err(why),
-        Poll::Pending | Poll::SlowDown => Err("unexpected answer to a refresh".into()),
+        Poll::Failed(why) if status == 400 || status == 401 => Err(RefreshError::Rejected(why)),
+        Poll::Failed(why) => Err(RefreshError::Unavailable(why)),
+        Poll::Pending | Poll::SlowDown => Err(RefreshError::Unavailable(
+            "unexpected answer to a refresh".into(),
+        )),
     }
 }
 
@@ -268,21 +294,29 @@ fn refresh_once(
 /// If the refreshed token cannot be saved, the good token is still returned
 /// and a warning (never the token) goes to stderr.
 pub fn fresh_token(cfg: &Config, tokens: &mut Tokens) -> Result<String> {
+    fresh_token_checked(cfg, tokens).map_err(|e| e.to_string())
+}
+
+/// [`fresh_token`], saying whether the sign-in is over ([`RefreshError::Rejected`],
+/// decided by the last attempt) or the issuer was out of reach.
+pub fn fresh_token_checked(
+    cfg: &Config,
+    tokens: &mut Tokens,
+) -> std::result::Result<String, RefreshError> {
     if !needs_refresh(tokens, now_unix()) {
         return Ok(tokens.access_token.clone());
     }
     let rt = tokens
         .refresh_token
         .clone()
-        .ok_or_else(|| format!("{SIGN_IN_AGAIN} (no refresh token saved)"))?;
+        .ok_or_else(|| RefreshError::Rejected("no refresh token saved".into()))?;
     let agent = agent();
     let mut endpoints = None;
     let fresh = match refresh_once(cfg, &agent, &mut endpoints, &rt) {
         Ok(t) => t,
         Err(_) => {
             std::thread::sleep(cfg.retry_delay);
-            refresh_once(cfg, &agent, &mut endpoints, &rt)
-                .map_err(|e| format!("{SIGN_IN_AGAIN} ({e})"))?
+            refresh_once(cfg, &agent, &mut endpoints, &rt)?
         }
     };
     *tokens = fresh;
@@ -525,6 +559,43 @@ mod tests {
         // The discovery document is fetched once, not again for the retry.
         assert_eq!(discoveries.load(std::sync::atomic::Ordering::SeqCst), 1);
         assert_eq!(t.access_token, "old-access");
+    }
+
+    #[test]
+    fn a_rejected_refresh_is_told_apart_from_an_outage() {
+        let no = || (400, json!({"error": "invalid_grant"}).to_string());
+        let check = |answers: Vec<(u16, String)>, name: &str| {
+            let (base, _, _) = token_server(answers);
+            fresh_token_checked(&cfg_for(&base, test_dir(name)), &mut near_expiry()).unwrap_err()
+        };
+        // The token endpoint says no: the sign-in is over.
+        let e = check(vec![no(), no()], "rej-400");
+        assert!(matches!(e, RefreshError::Rejected(_)), "{e:?}");
+        assert!(e.to_string().starts_with("sign in again"), "{e}");
+        let e = check(
+            vec![
+                (500, "{}".into()),
+                (401, json!({"error": "invalid_client"}).to_string()),
+            ],
+            "rej-401",
+        );
+        assert!(matches!(e, RefreshError::Rejected(_)), "{e:?}");
+        // A server error on the last try is an outage, not a sign-out.
+        let e = check(vec![no(), (503, "{}".into())], "rej-503");
+        assert!(matches!(e, RefreshError::Unavailable(_)), "{e:?}");
+        // Nobody listening.
+        let e = fresh_token_checked(
+            &cfg_for("http://127.0.0.1:1", test_dir("rej-down")),
+            &mut near_expiry(),
+        )
+        .unwrap_err();
+        assert!(matches!(e, RefreshError::Unavailable(_)), "{e:?}");
+        // No refresh token: nothing to retry, ever.
+        let mut t = near_expiry();
+        t.refresh_token = None;
+        let e = fresh_token_checked(&cfg_for("http://127.0.0.1:1", test_dir("rej-none")), &mut t)
+            .unwrap_err();
+        assert!(matches!(e, RefreshError::Rejected(_)), "{e:?}");
     }
 
     #[test]

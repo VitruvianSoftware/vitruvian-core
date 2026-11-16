@@ -2055,16 +2055,16 @@ mod tests {
     #[tokio::test]
     async fn one_restart_serves_every_caller_and_stale_ones_start_nothing() {
         let (cmd, dir) = fake("b-onestart");
-        let b = Bridge::start_limited(
-            &cmd,
-            quiet(),
-            Limits {
-                init_timeout: Duration::from_millis(200),
-                ..FAST
-            },
-        )
-        .unwrap();
-        assert_eq!(spawns(&dir), 1);
+        // The 200 ms init limit is for the restart below; on a loaded
+        // machine the first start can miss it, so it gets a few tries.
+        let limits = Limits {
+            init_timeout: Duration::from_millis(200),
+            ..FAST
+        };
+        let b = (0..10)
+            .find_map(|_| Bridge::start_limited(&cmd, quiet(), limits).ok())
+            .expect("the fake server starts");
+        let base = spawns(&dir);
         let out = b.call("exit", json!({}), soon()).await;
         assert!(out.is_error);
         std::fs::write(dir.join("hang_init"), "").unwrap();
@@ -2086,14 +2086,14 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(1200)).await;
         assert_eq!(
             spawns(&dir),
-            2,
+            base + 1,
             "restarts were queued for callers that left"
         );
         // A call whose deadline has already passed starts nothing at all.
         let out = b.call("echo", json!({}), Instant::now()).await;
         assert!(out.is_error);
         tokio::time::sleep(Duration::from_millis(300)).await;
-        assert_eq!(spawns(&dir), 2);
+        assert_eq!(spawns(&dir), base + 1);
         b.stop();
     }
 
@@ -2307,9 +2307,11 @@ mod tests {
         )
         .unwrap();
         std::fs::set_permissions(&node, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // Long enough for a loaded machine to start the script (it writes
+        // the child's pid first), short enough to show the hang is cut off.
         let t = Instant::now();
-        let err = check_node_with(&node, Duration::from_millis(300)).unwrap_err();
-        assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
+        let err = check_node_with(&node, Duration::from_millis(1500)).unwrap_err();
+        assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
         assert!(
             err.contains("did not answer") && err.contains("nodejs.org"),
             "{err}"

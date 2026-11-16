@@ -138,7 +138,7 @@ fn cmd_run(cfg: &Config) -> Result<()> {
         relay_url: cfg.relay_url.clone(),
         tools: bridge.clone(),
         asker: Arc::new(Dialog),
-        tokens: Arc::new(FileTokens(cfg.clone())),
+        tokens: Arc::new(FileTokens::new(cfg.clone())),
         rules,
         key,
         timing: Timing::default(),
