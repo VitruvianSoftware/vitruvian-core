@@ -223,16 +223,16 @@ public final class InboxPreferences: ObservableObject {
         }
     }
 
-    /// The chats the app has filed under Low Priority by default (`ShortCodeSenders`). Not a setting: a record, so a
-    /// chat the person moves back to the inbox is not filed a second time.
-    public var filedShortCodeRoomIDs: Set<String> {
-        Set(defaults.stringArray(forKey: Self.key("filedShortCodeRoomIDs")) ?? [])
+    /// The short-code chats the app has already looked at (`ShortCodeSenders`), whether or not it filed them. Not a
+    /// setting: a record, so a chat the person moves is never moved again by the default.
+    public var evaluatedShortCodeRoomIDs: Set<String> {
+        Set(defaults.stringArray(forKey: Self.key("evaluatedShortCodeRoomIDs")) ?? [])
     }
 
-    /// Remembers that these chats were filed. Not gated by the app lock: it is not something a person set.
-    public func recordFiledShortCodes(_ ids: [String]) {
+    /// Remembers that these chats were looked at. Not gated by the app lock: it is not something a person set.
+    public func recordEvaluatedShortCodes(_ ids: [String]) {
         guard !ids.isEmpty else { return }
-        set(Array(filedShortCodeRoomIDs.union(ids)).sorted(), "filedShortCodeRoomIDs")
+        set(Array(evaluatedShortCodeRoomIDs.union(ids)).sorted(), "evaluatedShortCodeRoomIDs")
     }
 
     @discardableResult

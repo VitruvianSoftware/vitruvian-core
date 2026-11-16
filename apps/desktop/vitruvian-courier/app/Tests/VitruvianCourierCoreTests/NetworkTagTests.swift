@@ -87,6 +87,18 @@ final class NetworkTagTests: XCTestCase {
         XCTAssertEqual(title, "Toan & Adam")
     }
 
+    /// A group's own name, a custom title and a name no member list explains all lose a trailing network tag, so every
+    /// surface reads as search and forward do.
+    func testAGroupNameLosesAKnownTagAndOnlyThat() {
+        XCTAssertEqual(ChatDisplayTitle.format(name: "Trail Crew (WA)", isDirect: false), "Trail Crew")
+        XCTAssertEqual(ChatDisplayTitle.format(name: "Trail Crew (WA)", isDirect: false, localName: "Trail Crew (WA)"),
+                       "Trail Crew")
+        XCTAssertEqual(ChatDisplayTitle.format(name: "#general (Work)", isDirect: false), "#general (Work)")
+        XCTAssertEqual(InboxRow(roomID: "!g", network: "whatsapp", name: "Trail Crew (WA)", avatarPath: "", isDirect: false,
+                                lastTS: 0, preview: "", previewKind: .text, previewMine: false, unread: 0,
+                                muted: false).displayTitle, "Trail Crew")
+    }
+
     func testAGroupsOwnNameIsLeftAlone() {
         XCTAssertEqual(ChatDisplayTitle.format(name: "Book club (2)", isDirect: false), "Book club (2)")
     }

@@ -588,4 +588,55 @@ final class NotificationPolicyTests: XCTestCase {
         XCTAssertEqual(lockedReminder.body, "Reminder due")
         XCTAssertEqual(lockedReminder.category, .scheduled)
     }
+
+    // MARK: - Verification codes in Low Priority, and names without network tags
+
+    private func codeEvent(_ body: String, senderName: String = "Sam") -> Event {
+        event(content: .object(["msgtype": .string("m.text"), "body": .string(body)]), senderName: senderName)
+    }
+
+    /// Short-code senders are filed under Low Priority by default, so a verification code must still get through the
+    /// Low Priority guard as it gets through the mute guard. Anything else in a Low Priority chat stays silent.
+    func testAVerificationCodeNotifiesInALowPriorityChat() throws {
+        let suiteName = "courier.test.otp.lowpriority.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let prefs = NotificationPreferences(defaults: defaults)
+        prefs.autoCopyOTP = true
+
+        let low = row("!code", name: "787473", lowPriority: true)
+        let code = NotificationPolicy.evaluate(event: codeEvent("Your verification code is 482910"), room: low,
+                                               context: context(), preferences: prefs)
+        XCTAssertTrue(code.shouldNotify, "a code in a Low Priority chat notifies")
+        XCTAssertEqual(code.content?.category, .messageOTP)
+
+        let chat = NotificationPolicy.evaluate(event: codeEvent("See you at 6"), room: low, context: context(),
+                                               preferences: prefs)
+        XCTAssertFalse(chat.shouldNotify, "a message that is not a code in a Low Priority chat stays silent")
+
+        let hidden = NotificationPolicy.evaluate(event: codeEvent("Your verification code is 482910"),
+                                                 room: row("!code", name: "787473", lowPriority: true, hidden: true),
+                                                 context: context(), preferences: prefs)
+        XCTAssertFalse(hidden.shouldNotify, "a hidden chat stays silent, code or not")
+    }
+
+    func testNotificationsNameThePersonWithoutTheNetworkTag() {
+        let live = codeEvent("hello", senderName: "Sam Lee (WA)")
+        let direct = NotificationPolicy.content(for: live, room: row(name: "Toan Vu (WA)"))
+        XCTAssertEqual(direct.title, "Toan Vu")
+        XCTAssertNil(direct.subtitle)
+        let group = NotificationPolicy.content(for: live, room: row(name: "Trail Crew", direct: false))
+        XCTAssertEqual(group.title, "Trail Crew")
+        XCTAssertEqual(group.subtitle, "Sam Lee", "the sender's name loses its tag too")
+        let unnamed = NotificationPolicy.content(for: live, room: row(name: ""))
+        XCTAssertEqual(unnamed.title, "Sam Lee")
+
+        let decided = NotificationPolicy.evaluate(event: live, room: row(name: "Toan Vu (WA)", direct: false),
+                                                  context: context())
+        XCTAssertEqual(decided.content?.title, "Toan Vu")
+        XCTAssertEqual(decided.content?.subtitle, "Sam Lee")
+
+        XCTAssertEqual(NotificationPolicy.reminderContent(room: row(name: "Toan Vu (WA)")).title, "Toan Vu")
+        XCTAssertEqual(NotificationPolicy.content(for: live, room: row(name: "Room (2)")).title, "Room (2)")
+    }
 }

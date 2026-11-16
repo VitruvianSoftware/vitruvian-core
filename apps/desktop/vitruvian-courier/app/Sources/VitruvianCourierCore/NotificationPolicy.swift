@@ -512,7 +512,10 @@ public enum NotificationPolicy {
         let autoCopyOTP = preferences?.autoCopyOTP ?? false
         let isUrgentOTP = otpCode != nil && autoCopyOTP
 
-        guard !room.lowPriority, !room.hidden else { return noNotify }
+        // A verification code is what a person is waiting for, so it passes the Low Priority guard as it passes the mute
+        // guard below: short-code senders are filed under Low Priority by default (`ShortCodeSenders`), and their codes
+        // must still notify. A hidden chat stays silent.
+        guard !room.hidden, !room.lowPriority || isUrgentOTP else { return noNotify }
         let allowRequests = preferences?.requestNotificationsEnabled ?? context.requestNotifications
         guard !room.request || allowRequests else { return noNotify }
 
@@ -540,9 +543,9 @@ public enum NotificationPolicy {
             : (preferences?.groupSound ?? .default)
         let sound = override?.sound ?? baseSound
 
-        var title = room.name.isEmpty ? event.senderName : room.name
+        var title = room.name.isEmpty ? NetworkTag.stripped(event.senderName) : NetworkTag.stripped(room.name)
         if title.isEmpty { title = String(localized: "Vitruvian Courier") }
-        let sender = event.senderName.trimmingCharacters(in: .whitespaces)
+        let sender = NetworkTag.stripped(event.senderName.trimmingCharacters(in: .whitespaces))
         var subtitle: String? = room.isDirect || sender.isEmpty ? nil : sender
         var textBody: String
         var attachment: String?
@@ -686,7 +689,7 @@ public enum NotificationPolicy {
     public static func typingContent(room: InboxRow) -> NotificationContent {
         NotificationContent(
             eventID: typingID(roomID: room.roomID), roomID: room.roomID,
-            title: room.name.isEmpty ? String(localized: "Vitruvian Courier") : room.name, subtitle: nil,
+            title: room.name.isEmpty ? String(localized: "Vitruvian Courier") : NetworkTag.stripped(room.name), subtitle: nil,
             body: room.typingLine ?? "", category: .typing)
     }
 
@@ -699,14 +702,14 @@ public enum NotificationPolicy {
     public static func reminderContent(room: InboxRow) -> NotificationContent {
         NotificationContent(
             eventID: "reminder-" + room.roomID + "-" + UUID().uuidString, roomID: room.roomID,
-            title: room.name.isEmpty ? String(localized: "Vitruvian Courier") : room.name, subtitle: nil,
+            title: room.name.isEmpty ? String(localized: "Vitruvian Courier") : NetworkTag.stripped(room.name), subtitle: nil,
             body: String(localized: "You asked to be reminded about this chat."), category: .reminder)
     }
 
     /// A scheduled message that won't go by itself: canceled because they wrote first, or missed while Vitruvian Courier was
     /// closed. The chat's name comes from its row; without one, "the chat".
     public static func scheduledContent(_ message: ScheduledMessage, room: InboxRow?) -> NotificationContent {
-        let name = room?.name.isEmpty == false ? room!.name : String(localized: "the chat")
+        let name = room?.name.isEmpty == false ? NetworkTag.stripped(room!.name) : String(localized: "the chat")
         let body = message.state == .canceled
             ? String(localized: "A scheduled message to \(name) wasn’t sent: they wrote first.")
             : String(localized: "A scheduled message to \(name) missed its time while Vitruvian Courier was closed.")
@@ -718,9 +721,9 @@ public enum NotificationPolicy {
 
     /// What the notification for `event` says.
     public static func content(for event: Event, room: InboxRow) -> NotificationContent {
-        var name = room.name.isEmpty ? event.senderName : room.name
+        var name = room.name.isEmpty ? NetworkTag.stripped(event.senderName) : NetworkTag.stripped(room.name)
         if name.isEmpty { name = String(localized: "Vitruvian Courier") }
-        let sender = event.senderName.trimmingCharacters(in: .whitespaces)
+        let sender = NetworkTag.stripped(event.senderName.trimmingCharacters(in: .whitespaces))
         return NotificationContent(
             eventID: event.eventID, roomID: event.roomID, title: name,
             subtitle: room.isDirect || sender.isEmpty ? nil : sender, body: body(of: event),

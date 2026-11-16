@@ -227,9 +227,6 @@ public final class InboxModel: ObservableObject {
     private var reading: Task<Void, Never>?
     /// A read is in flight (or about to be, once the window is over): changes now ask for one more read.
     private var readInFlight = false
-    /// Short-code chats this run has already tried to file under Low Priority (`ShortCodeSenders`), so a refused
-    /// try is not repeated on every read.
-    private var shortCodeFilingTried = Set<String>()
     private var readAgain = false
 
     /// The cursor of the page after `rows`; nil when `rows` ends the list.
@@ -1649,30 +1646,30 @@ public final class InboxModel: ObservableObject {
         if !isLoaded {
             isLoaded = true
         }
-        if query.space == "inbox" { fileShortCodeSenders(in: deduped, using: client) }
+        fileShortCodeSenders(in: deduped, isInbox: query.space == "inbox", using: client)
         return true
     }
 
-    /// Files verification-code senders in the inbox under Low Priority, quietly and once each (`ShortCodeSenders`).
-    /// Needs a plan that includes Low Priority, as moving a chat there by hand does. A chat that fails to move is not
-    /// tried again until the app is next opened. What moved is remembered, so moving a chat back to the inbox sticks.
-    private func fileShortCodeSenders(in listed: [InboxRow], using client: EngineClient) {
-        guard entitlement.isEntitled(.lowPriority) else { return }
-        let ids = ShortCodeSenders.lowPriorityCandidates(
-            in: listed, alreadyFiled: preferences.filedShortCodeRoomIDs.union(shortCodeFilingTried))
-        guard !ids.isEmpty else { return }
-        shortCodeFilingTried.formUnion(ids)
+    /// Looks at short-code chats the app has not seen before (`ShortCodeSenders`): records every one, and files those
+    /// the person has not touched, if they are in the inbox, under Low Priority, quietly. Recording comes first and is
+    /// kept whether or not the filing works, so a chat is dealt with at most once, ever. Filing needs a plan that
+    /// includes Low Priority, as moving a chat there by hand does.
+    private func fileShortCodeSenders(in listed: [InboxRow], isInbox: Bool, using client: EngineClient) {
+        let seen = preferences.evaluatedShortCodeRoomIDs
+        let evaluation = ShortCodeSenders.evaluate(listed, isInbox: isInbox, alreadySeen: seen)
+        guard !evaluation.newlySeen.isEmpty else { return }
+        preferences.recordEvaluatedShortCodes(evaluation.newlySeen)
+        guard !evaluation.toFile.isEmpty, entitlement.isEntitled(.lowPriority) else { return }
+        let ids = evaluation.toFile
         Task { [weak self] in
             guard let self else { return }
-            var filed: [String] = []
+            var filed = false
             for chunk in ids.chunked(Self.batchSize) {
                 let result: RoomsChanged? = try? await client.call(
                     "room.setLowPriority", RoomsFlagParams(roomIDs: chunk, on: true))
-                filed += result?.roomIDs ?? []
+                filed = filed || !(result?.roomIDs.isEmpty ?? true)
             }
-            guard !filed.isEmpty else { return }
-            self.preferences.recordFiledShortCodes(filed)
-            self.requestRead(waiting: false)
+            if filed { self.requestRead(waiting: false) }
         }
     }
 

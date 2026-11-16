@@ -644,6 +644,8 @@ public enum ChatDisplayTitle {
         return splitCommaSegments(trimmed) != nil
     }
 
+    /// The title a chat is shown under. Whatever the chat's kind, a trailing bridge network tag is taken off
+    /// (`NetworkTag`), so a group's own name, a custom title and a person's name all read the same as in search.
     public static func format(
         name: String,
         isDirect: Bool = false,
@@ -651,9 +653,21 @@ public enum ChatDisplayTitle {
         members: [GroupTitleMember] = [],
         isCompleteMemberList: Bool = true
     ) -> String {
-        // A one-to-one chat is named for the person, in full as the network gave it, less the bridge's own tag
-        // (`Toan Vu (WA)`). First-name shortening below is for group titles only.
-        guard !isDirect else { return NetworkTag.stripped(name) }
+        NetworkTag.stripped(formatUntagged(
+            name: name, isDirect: isDirect, localName: localName, members: members,
+            isCompleteMemberList: isCompleteMemberList))
+    }
+
+    private static func formatUntagged(
+        name: String,
+        isDirect: Bool,
+        localName: String,
+        members: [GroupTitleMember],
+        isCompleteMemberList: Bool
+    ) -> String {
+        // A one-to-one chat is named for the person, in full as the network gave it. First-name shortening below is
+        // for group titles only.
+        guard !isDirect else { return name }
         guard localName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return name }
 
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)

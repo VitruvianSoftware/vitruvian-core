@@ -63,7 +63,7 @@ final class ShortCodeSendersTests: XCTestCase {
 
     func testNamedSendersAreNotFiledEvenIfTheirMessagesAreCodes() {
         let rows = [row("!bank", "Chase Bank"), row("!code", "787473")]
-        XCTAssertEqual(ShortCodeSenders.lowPriorityCandidates(in: rows, alreadyFiled: []), ["!code"])
+        XCTAssertEqual(ShortCodeSenders.evaluate(rows, isInbox: true, alreadySeen: []).toFile, ["!code"])
     }
 
     func testAnythingThePersonDidKeepsTheChatWhereItIs() {
@@ -79,22 +79,35 @@ final class ShortCodeSendersTests: XCTestCase {
             row("!request", "10009", request: true),
             row("!plain", "10010"),
         ]
-        XCTAssertEqual(ShortCodeSenders.lowPriorityCandidates(in: rows, alreadyFiled: []), ["!plain"])
+        let evaluation = ShortCodeSenders.evaluate(rows, isInbox: true, alreadySeen: [])
+        XCTAssertEqual(evaluation.toFile, ["!plain"])
+        XCTAssertEqual(evaluation.newlySeen.count, 9, "every short-code chat is recorded, filed or not; the renamed one is no longer a code")
     }
 
-    func testAChatTheAppFiledBeforeIsNotFiledAgain() {
-        let rows = [row("!moved-back", "787473"), row("!new", "32665")]
-        XCTAssertEqual(ShortCodeSenders.lowPriorityCandidates(in: rows, alreadyFiled: ["!moved-back"]), ["!new"])
+    func testAChatSeenBeforeIsNeverFiledNorRecordedAgain() {
+        let rows = [row("!seen", "787473"), row("!new", "32665")]
+        let evaluation = ShortCodeSenders.evaluate(rows, isInbox: true, alreadySeen: ["!seen"])
+        XCTAssertEqual(evaluation.toFile, ["!new"])
+        XCTAssertEqual(evaluation.newlySeen, ["!new"])
     }
 
-    func testTheLedgerKeepsWhatWasFiled() {
+    func testAChatSeenOutsideTheInboxIsRecordedButNotFiled() {
+        let rows = [row("!archived", "787473", archived: true), row("!low", "32665", lowPriority: true)]
+        let evaluation = ShortCodeSenders.evaluate(rows, isInbox: false, alreadySeen: [])
+        XCTAssertEqual(evaluation.newlySeen, ["!archived", "!low"])
+        XCTAssertEqual(evaluation.toFile, [])
+        // Even if one of them is later in the inbox, it was seen: it is left where the person put it.
+        XCTAssertEqual(ShortCodeSenders.evaluate(rows, isInbox: true, alreadySeen: Set(evaluation.newlySeen)).toFile, [])
+    }
+
+    func testTheLedgerKeepsWhatWasSeen() {
         let store = TestDefaults()
         let preferences = InboxPreferences(defaults: store.defaults)
-        XCTAssertEqual(preferences.filedShortCodeRoomIDs, [])
-        preferences.recordFiledShortCodes(["!a", "!b"])
-        preferences.recordFiledShortCodes(["!b", "!c"])
-        preferences.recordFiledShortCodes([])
-        XCTAssertEqual(InboxPreferences(defaults: store.defaults).filedShortCodeRoomIDs, ["!a", "!b", "!c"])
+        XCTAssertEqual(preferences.evaluatedShortCodeRoomIDs, [])
+        preferences.recordEvaluatedShortCodes(["!a", "!b"])
+        preferences.recordEvaluatedShortCodes(["!b", "!c"])
+        preferences.recordEvaluatedShortCodes([])
+        XCTAssertEqual(InboxPreferences(defaults: store.defaults).evaluatedShortCodeRoomIDs, ["!a", "!b", "!c"])
     }
 
     // MARK: - In the inbox
@@ -124,7 +137,8 @@ final class ShortCodeSendersTests: XCTestCase {
         XCTAssertEqual(calls.count, 1)
         XCTAssertEqual(Set(calls[0]["room_ids"] as? [String] ?? []), ["!code", "!short"])
         XCTAssertEqual(calls[0]["on"] as? Bool, true)
-        XCTAssertEqual(h.preferences.filedShortCodeRoomIDs, ["!code", "!short"])
+        XCTAssertEqual(h.preferences.evaluatedShortCodeRoomIDs, ["!code", "!short", "!pinned", "!marked", "!labelled"],
+                       "the chats the person had touched are recorded too, so they are never filed later")
         XCTAssertNil(h.inbox.toast, "it is a default, not an action the person took: no toast")
     }
 
@@ -132,7 +146,7 @@ final class ShortCodeSendersTests: XCTestCase {
     func testAChatMovedBackToTheInboxIsNotFiledAgain() async throws {
         let h = try await start([room("!code", ts: 100, name: "787473")])
         try await waitUntil { h.server.receivedParams("room.setLowPriority").count == 1 }
-        try await waitUntil { h.preferences.filedShortCodeRoomIDs == ["!code"] }
+        try await waitUntil { h.preferences.evaluatedShortCodeRoomIDs == ["!code"] }
 
         // Back in the inbox (the stand-in engine never moved it): a new message, then a fresh read.
         await h.inbox.setLowPriority(false, ids: ["!code"])
@@ -147,7 +161,52 @@ final class ShortCodeSendersTests: XCTestCase {
         let h = try await start([room("!code", ts: 100, name: "787473")], entitlement: Denies(denied: [.lowPriority]))
         try await settle()
         XCTAssertEqual(h.server.receivedParams("room.setLowPriority").count, 0)
-        XCTAssertEqual(h.preferences.filedShortCodeRoomIDs, [])
+        XCTAssertEqual(h.preferences.evaluatedShortCodeRoomIDs, ["!code"], "seen once: it is never filed later either")
+    }
+
+    /// Waits until the app has looked at `id`.
+    private func waitUntilSeen(_ h: InboxHarness, _ id: String) async throws {
+        try await waitUntil { h.preferences.evaluatedShortCodeRoomIDs.contains(id) }
+    }
+
+    /// The person moved the chat to Low Priority by hand, and later back to the inbox: the app saw it first in Low
+    /// Priority, so it never files it.
+    func testAChatMovedByHandToLowPriorityAndBackIsNotFiled() async throws {
+        let h = try await start([])
+        h.inbox.query.space = "low_priority"
+        h.script.rooms = [room("!code", ts: 100, name: "787473")]
+        h.server.notify(["kind": "room"])
+        try await waitUntilSeen(h, "!code")
+
+        h.inbox.query.space = "inbox"
+        h.server.notify(["kind": "room"])
+        try await settle()
+        XCTAssertEqual(h.inbox.rows.map(\.roomID), ["!code"], "it is back in the inbox")
+        XCTAssertEqual(h.server.receivedParams("room.setLowPriority").count, 0)
+    }
+
+    func testAnUnarchivedShortCodeChatIsNotFiled() async throws {
+        let h = try await start([])
+        h.inbox.query.space = "archive"
+        h.script.rooms = [room("!code", ts: 100, name: "787473", archived: true)]
+        h.server.notify(["kind": "room"])
+        try await waitUntilSeen(h, "!code")
+
+        h.inbox.query.space = "inbox"
+        h.script.rooms = [room("!code", ts: 100, name: "787473")]
+        h.server.notify(["kind": "room"])
+        try await settle()
+        XCTAssertEqual(h.server.receivedParams("room.setLowPriority").count, 0)
+    }
+
+    /// A chat the person had pinned when the app first saw it, then unpinned, is left in the inbox.
+    func testAChatTheyHadPinnedIsNotFiledOnceUnpinned() async throws {
+        let h = try await start([room("!code", ts: 100, name: "787473", pinned: true)])
+        try await waitUntilSeen(h, "!code")
+        h.script.rooms = [room("!code", ts: 100, name: "787473")]
+        h.server.notify(["kind": "room"])
+        try await settle()
+        XCTAssertEqual(h.server.receivedParams("room.setLowPriority").count, 0)
     }
 
     func testOtherPlacesAreNotFiled() async throws {
@@ -156,7 +215,8 @@ final class ShortCodeSendersTests: XCTestCase {
         h.inbox.query.space = "archive"
         h.script.rooms = [room("!other", ts: 50, name: "99999")]
         h.server.notify(["kind": "room"])
+        try await waitUntilSeen(h, "!other")
         try await settle()
-        XCTAssertEqual(h.server.receivedParams("room.setLowPriority").count, 1, "only the inbox's chats are looked at")
+        XCTAssertEqual(h.server.receivedParams("room.setLowPriority").count, 1, "only the inbox's chats are filed")
     }
 }
