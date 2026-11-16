@@ -1,0 +1,78 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Defaults for the Vitruvian Relay chart. The live values (image digest,
+# Zitadel ids, node affinity) are set in gitops/argocd/platform/relay/values.yaml.
+
+image:
+  repository: ghcr.io/vitruviansoftware/vitruvian-relay
+  # Required: "main@sha256:..." or "sha256:...". Never a tag.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+# Public hostname (must be under ipv1337.dev for external-dns). The DNS record
+# and PUBLIC_URL (https://<hostname>) both read it.
+hostname: relay.ipv1337.dev
+
+# The Cloudflare Tunnel the DNSEndpoint CNAMEs to. Same value as
+# gitops/argocd/platform/cloudflared/configmap.yaml.
+tunnel:
+  id: 1f7b9704-bb66-41f4-966f-5bb722e3c10e
+
+oidc:
+  issuer: https://auth.ipv1337.dev
+  # All required, from the zitadel-apps-relay stack's outputs.
+  projectId: ""
+  # Comma-separated client ids of the AI apps allowed on /mcp/d/{device}:
+  # relay-claude, relay-gemini (and relay-chatgpt once it exists).
+  mcpClientIds: ""
+  # The connector's client id, the only one allowed on /devices and /connect.
+  # Must not also be in mcpClientIds (the relay refuses to start).
+  connectorClientId: ""
+  # Comma-separated Zitadel user ids allowed in (the only identity check
+  # beyond the client pin; aud is caller-authored in this instance).
+  allowedSubjects: ""
+
+# The device records (devices.json), mounted at /data (the relay's DATA_DIR).
+# `nfs` (the NAS), not the default local-path: local-path pins the volume, and
+# so the pod, to one node, which would defeat the node allow list in affinity.
+persistence:
+  storageClassName: nfs
+  size: 1Gi
+
+# How long Envoy keeps an idle upstream connection to the relay. Must stay
+# below the relay's own 75 s idle close (header_read_timeout in src/http.rs),
+# or Envoy now and then reuses a connection the relay just closed (a 503).
+# Envoy Gateway's default is 1 h.
+upstreamIdleTimeout: 60s
+
+terminationGracePeriodSeconds: 10
+
+# Where the pod may run (a standard Kubernetes affinity block). Empty means
+# anywhere. The homelab deployment keeps it on always-on nodes; see
+# gitops/argocd/platform/relay/values.yaml.
+affinity: {}
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 128Mi

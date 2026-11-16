@@ -27,3 +27,8 @@
 [workspace]
 resolver = "2"
 members = ["relay", "protocol", "connector", "connector/scripts"]
+
+# A smaller image: the release binary ships without debug symbols (as the
+# spike's did). Bazel builds ignore cargo profiles.
+[profile.release]
+strip = true
