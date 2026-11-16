@@ -123,12 +123,20 @@ fn mint(pair: &RsaKeyPair, client_id: &str, sub: &str) -> String {
 }
 
 fn mint_exp(pair: &RsaKeyPair, client_id: &str, sub: &str, exp: u64) -> String {
+    mint_claims(pair, client_id, sub, Some(exp))
+}
+
+/// `exp: None` leaves the claim out.
+fn mint_claims(pair: &RsaKeyPair, client_id: &str, sub: &str, exp: Option<u64>) -> String {
     let now = now_secs();
     let header = b64url(json!({"alg": "RS256", "kid": "k1"}).to_string().as_bytes());
-    let claims = json!({
+    let mut claims = json!({
         "iss": ISSUER, "aud": [PROJECT_ID], "sub": sub, "client_id": client_id,
-        "iat": now, "exp": exp,
+        "iat": now,
     });
+    if let Some(exp) = exp {
+        claims["exp"] = json!(exp);
+    }
     let input = format!("{header}.{}", b64url(claims.to_string().as_bytes()));
     let mut sig = vec![0u8; pair.public().modulus_len()];
     pair.sign(
@@ -406,6 +414,18 @@ impl Harness {
         tokio_tungstenite::tungstenite::Error,
     > {
         let stream = tokio::net::TcpStream::connect(self.addr).await.unwrap();
+        self.ws_on(stream, token).await
+    }
+
+    #[allow(clippy::result_large_err)]
+    async fn ws_on<S>(
+        &self,
+        stream: S,
+        token: &str,
+    ) -> Result<tokio_tungstenite::WebSocketStream<S>, tokio_tungstenite::tungstenite::Error>
+    where
+        S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+    {
         let mut req = format!("ws://{}/connect", self.addr)
             .into_client_request()
             .unwrap();
@@ -426,8 +446,24 @@ impl Harness {
         key: &Ed25519KeyPair,
         tools: Vec<ToolDef>,
     ) -> FakeDevice {
+        let stream = tokio::net::TcpStream::connect(self.addr).await.unwrap();
+        self.connect_on(stream, sub, device, key, tools).await
+    }
+
+    /// `connect` over a stream the test chooses (e.g. a throttled one).
+    async fn connect_on<S>(
+        &self,
+        stream: S,
+        sub: &str,
+        device: &str,
+        key: &Ed25519KeyPair,
+        tools: Vec<ToolDef>,
+    ) -> FakeDevice
+    where
+        S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+    {
         let token = self.connector_token(sub);
-        let mut ws = self.ws(&token).await.unwrap();
+        let mut ws = self.ws_on(stream, &token).await.unwrap();
         ws.send(Message::Text(hello(device, key, &token, now_secs(), tools)))
             .await
             .unwrap();
@@ -493,7 +529,10 @@ struct FakeDevice {
 }
 
 impl FakeDevice {
-    fn spawn(ws: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>) -> Self {
+    fn spawn<S>(ws: tokio_tungstenite::WebSocketStream<S>) -> Self
+    where
+        S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+    {
         let (frames_tx, frames) = mpsc::unbounded_channel();
         let (out, mut out_rx) = mpsc::unbounded_channel::<ToRelay>();
         let answer_pings = Arc::new(AtomicBool::new(true));
@@ -1436,6 +1475,7 @@ fn production_timing_matches_the_spec() {
     assert_eq!(t.send_timeout, Duration::from_secs(30));
     assert_eq!(t.header_read_timeout, Duration::from_secs(10));
     assert_eq!(t.body_timeout, Duration::from_secs(30));
+    assert_eq!(t.max_connection_lifetime, Duration::from_secs(12 * 60 * 60));
     let now = (t.clock)();
     assert!(now.abs_diff(now_secs()) <= 5, "the clock is the wall clock");
 }
@@ -1697,4 +1737,225 @@ async fn connect_requires_websocket_version_13() {
         let got = h.raw(req.as_bytes()).await;
         assert!(got.starts_with("HTTP/1.1 400"), "{version:?}: {got:?}");
     }
+}
+
+// ------------------------------------------------------- fix round 2 tests
+
+#[tokio::test]
+async fn stale_key_hello_in_the_gap_does_not_displace_the_new_connection() {
+    let h = harness().await;
+    let (device, old_key) = h.new_device(ALICE).await;
+    // A connection with the old key passes its hello check, then stalls.
+    let (reached, release) = (
+        Arc::new(tokio::sync::Notify::new()),
+        Arc::new(tokio::sync::Notify::new()),
+    );
+    *h.app.after_hello.lock().unwrap() = Some((reached.clone(), release.clone()));
+    let token = h.connector_token(ALICE);
+    let mut stale = h.ws(&token).await.unwrap();
+    stale
+        .send(Message::Text(hello(
+            &device,
+            &old_key,
+            &token,
+            now_secs(),
+            vec![tool("old")],
+        )))
+        .await
+        .unwrap();
+    within(reached.notified()).await;
+    *h.app.after_hello.lock().unwrap() = None;
+    // Meanwhile the device is registered again and connects with its new key.
+    let new_key = ed25519();
+    assert_eq!(h.register(ALICE, &new_key).await.status, StatusCode::OK);
+    let fresh = h.connect(ALICE, &device, &new_key, vec![tool("new")]).await;
+    release.notify_one();
+    // The stale connection ends without ever taking the device's place.
+    while next_frame(&mut stale).await.is_some() {}
+    assert_eq!(h.app.registry.tools(&device), Some(vec![tool("new")]));
+    assert!(!fresh.is_closed.load(Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn frames_without_pongs_keep_a_call_alive() {
+    // 200 ms in-call pings: three missed would end the link in ~600 ms.
+    let h = Arc::new(
+        harness_with(Timing {
+            in_call_ping: Duration::from_millis(200),
+            ..Timing::default()
+        })
+        .await,
+    );
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h.connect(ALICE, &device, &key, vec![tool("t")]).await;
+    let s = h.session(&device, ALICE).await;
+    let pending = spawn_rpc(&h, &device, ALICE, &s, call_body(json!(1), "t", json!({})));
+    let call = fake.next_call().await;
+    fake.answer_pings.store(false, Ordering::SeqCst);
+    // No pongs for 1.5 s, but other frames keep coming.
+    for _ in 0..15 {
+        fake.send(ToRelay::ToolsChanged {
+            tools: vec![tool("t")],
+        });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    fake.reply(&call.call_id, "done");
+    let r = within(pending).await.unwrap();
+    assert_eq!(
+        r.json()["result"]["content"][0]["text"],
+        "done",
+        "{}",
+        r.body
+    );
+}
+
+/// Writes at most `chunk` bytes, then waits `pause`: a slow uplink.
+struct Throttled {
+    inner: tokio::net::TcpStream,
+    chunk: usize,
+    pause: Duration,
+    sleep: Option<std::pin::Pin<Box<tokio::time::Sleep>>>,
+}
+
+impl tokio::io::AsyncRead for Throttled {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_read(cx, buf)
+    }
+}
+
+impl tokio::io::AsyncWrite for Throttled {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        use std::future::Future;
+        use std::task::Poll;
+        if let Some(sleep) = self.sleep.as_mut() {
+            if sleep.as_mut().poll(cx).is_pending() {
+                return Poll::Pending;
+            }
+            self.sleep = None;
+        }
+        let n = buf.len().min(self.chunk);
+        let r = std::pin::Pin::new(&mut self.inner).poll_write(cx, &buf[..n]);
+        if let Poll::Ready(Ok(w)) = &r {
+            if *w > 0 {
+                let pause = self.pause;
+                self.sleep = Some(Box::pin(tokio::time::sleep(pause)));
+            }
+        }
+        r
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
+
+#[tokio::test]
+async fn a_slow_large_result_is_not_dropped_mid_upload() {
+    let h = Arc::new(
+        harness_with(Timing {
+            in_call_ping: Duration::from_millis(200),
+            ..Timing::default()
+        })
+        .await,
+    );
+    let (device, key) = h.new_device(ALICE).await;
+    // 64 KiB per 100 ms: a 1 MiB result takes about 1.6 s, well past the
+    // 600 ms in which three missed pings would end the link, and the device
+    // answers no pings while it uploads.
+    let stream = Throttled {
+        inner: tokio::net::TcpStream::connect(h.addr).await.unwrap(),
+        chunk: 64 * 1024,
+        pause: Duration::from_millis(100),
+        sleep: None,
+    };
+    let mut fake = h
+        .connect_on(stream, ALICE, &device, &key, vec![tool("t")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let pending = spawn_rpc(&h, &device, ALICE, &s, call_body(json!(1), "t", json!({})));
+    let call = fake.next_call().await;
+    fake.answer_pings.store(false, Ordering::SeqCst);
+    let big = "x".repeat(1024 * 1024);
+    fake.reply(&call.call_id, &big);
+    let r = within(pending).await.unwrap();
+    assert_eq!(
+        r.json()["result"]["isError"],
+        false,
+        "{}",
+        &r.body[..r.body.len().min(300)]
+    );
+    assert_eq!(
+        r.json()["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .len(),
+        big.len()
+    );
+}
+
+#[tokio::test]
+async fn connect_refuses_a_token_without_exp() {
+    let h = harness().await;
+    let token = mint_claims(&h.rsa, CONNECTOR_CLIENT, ALICE, None);
+    match h.ws(&token).await {
+        Err(tokio_tungstenite::tungstenite::Error::Http(resp)) => {
+            assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+            let challenge = resp.headers()["www-authenticate"]
+                .to_str()
+                .unwrap()
+                .to_string();
+            assert!(challenge.contains("exp"), "{challenge}");
+        }
+        Err(e) => panic!("expected an HTTP refusal, got {e}"),
+        Ok(_) => panic!("a token with no exp must not open /connect"),
+    }
+}
+
+#[tokio::test]
+async fn connection_closes_at_the_lifetime_cap() {
+    let h = harness_with(Timing {
+        max_connection_lifetime: Duration::from_millis(500),
+        ..Timing::default()
+    })
+    .await;
+    let (device, key) = h.new_device(ALICE).await;
+    // A token good for a long time: the cap still applies.
+    let token = mint_exp(&h.rsa, CONNECTOR_CLIENT, ALICE, now_secs() + 24 * 60 * 60);
+    let mut ws = h.ws(&token).await.unwrap();
+    ws.send(Message::Text(hello(
+        &device,
+        &key,
+        &token,
+        now_secs(),
+        vec![],
+    )))
+    .await
+    .unwrap();
+    assert!(matches!(
+        next_frame(&mut ws).await,
+        Some(ToConnector::Welcome { .. })
+    ));
+    let reason = close_reason(&mut ws)
+        .await
+        .expect("a close frame with a reason");
+    assert!(reason.contains("lifetime"), "{reason}");
+    assert!(h.app.registry.tools(&device).is_none());
 }

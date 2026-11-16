@@ -164,6 +164,31 @@ impl Registry {
         id
     }
 
+    /// `connect`, but only if `still_valid` holds, checked under the
+    /// registry's lock. A device registered again stores its new key and
+    /// then calls `kick`, which takes the same lock; so a connection checked
+    /// with the old key can never register after that kick, nor evict a
+    /// connection made with the new key. `None` if the check fails (nothing
+    /// is changed).
+    pub fn connect_if(
+        &self,
+        device_id: &str,
+        tools: Vec<ToolDef>,
+        tx: mpsc::Sender<ToConnector>,
+        still_valid: impl FnOnce() -> bool,
+    ) -> Option<ConnectionId> {
+        let mut st = self.state.lock().unwrap();
+        if !still_valid() {
+            return None;
+        }
+        st.drop_connection(device_id, None);
+        st.next_conn += 1;
+        let id = ConnectionId(st.next_conn);
+        st.devices
+            .insert(device_id.to_string(), Connection { id, tx, tools });
+        Some(id)
+    }
+
     /// Ends the connection `id`, if it is still the device's current one (a
     /// stale session ending late must not remove its replacement).
     pub fn disconnect(&self, device_id: &str, id: ConnectionId) {
@@ -452,6 +477,23 @@ mod tests {
         // ...and the new connection's own result is accepted.
         reg.complete(new, result("c2", "ok"));
         assert_eq!(within(h).await.unwrap(), Ok(result("c2", "ok")));
+    }
+
+    #[tokio::test]
+    async fn connect_if_leaves_everything_alone_when_the_check_fails() {
+        let reg = Registry::new();
+        let (tx1, _rx1) = mpsc::channel(8);
+        reg.connect("d1", vec![tool("live")], tx1);
+        let (tx2, _rx2) = mpsc::channel(8);
+        assert!(reg
+            .connect_if("d1", vec![tool("stale")], tx2, || false)
+            .is_none());
+        assert_eq!(reg.tools("d1"), Some(vec![tool("live")]));
+        let (tx3, _rx3) = mpsc::channel(8);
+        assert!(reg
+            .connect_if("d1", vec![tool("ok")], tx3, || true)
+            .is_some());
+        assert_eq!(reg.tools("d1"), Some(vec![tool("ok")]));
     }
 
     #[tokio::test]

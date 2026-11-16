@@ -37,6 +37,7 @@
 
 use std::collections::HashMap;
 use std::convert::Infallible;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -109,6 +110,8 @@ pub struct Timing {
     pub header_read_timeout: Duration,
     /// A request's body must arrive within this (408 otherwise).
     pub body_timeout: Duration,
+    /// Longest a `/connect` socket may stay open, whatever its token's `exp`.
+    pub max_connection_lifetime: Duration,
     /// Seconds since the epoch.
     pub clock: fn() -> u64,
 }
@@ -133,6 +136,7 @@ impl Default for Timing {
             send_timeout: Duration::from_secs(30),
             header_read_timeout: Duration::from_secs(10),
             body_timeout: Duration::from_secs(30),
+            max_connection_lifetime: Duration::from_secs(12 * 60 * 60),
             clock: unix_now,
         }
     }
@@ -619,7 +623,14 @@ async fn upgrade(app: Arc<App>, mut req: Request<Incoming>) -> Response<Body> {
     // The hello signature binds this token, so a signature cannot be replayed
     // with another one. Only the hash is kept.
     let token_hash = hex(ring::digest::digest(&ring::digest::SHA256, token.as_bytes()).as_ref());
-    let exp = token_exp(&token);
+    // The socket must not outlive its token, so a token without an expiry
+    // cannot open one.
+    let Some(exp) = token_exp(&token) else {
+        let e = AuthError::InvalidToken {
+            reason: "the token has no expiry (exp claim); /connect needs one".into(),
+        };
+        return refusal(&app, "connect", &metadata_url, Refused::Token(e));
+    };
     drop(token);
 
     let on_upgrade = hyper::upgrade::on(&mut req);
@@ -631,13 +642,13 @@ async fn upgrade(app: Arc<App>, mut req: Request<Incoming>) -> Response<Body> {
                 return;
             }
         };
-        let ws = WebSocketStream::from_raw_socket(
-            TokioIo::new(upgraded),
-            Role::Server,
-            Some(ws_config()),
-        )
-        .await;
-        run_connection(app, ws, caller, token_hash, exp).await;
+        let seen = Arc::new(AtomicBool::new(false));
+        let io = SeenIo {
+            inner: TokioIo::new(upgraded),
+            seen: seen.clone(),
+        };
+        let ws = WebSocketStream::from_raw_socket(io, Role::Server, Some(ws_config())).await;
+        run_connection(app, ws, caller, token_hash, Some(exp), seen).await;
     });
 
     Response::builder()
@@ -734,6 +745,80 @@ fn ping_due(ticks_since_ping: u32, in_flight: bool, idle_every: u32) -> bool {
     ticks_since_ping >= if in_flight { 1 } else { idle_every }
 }
 
+/// Why a healthy socket is closed on a timer.
+#[derive(Debug, Clone, Copy)]
+enum Ending {
+    TokenExpired,
+    LifetimeCap,
+}
+
+impl Ending {
+    fn reason(self) -> &'static str {
+        match self {
+            Ending::TokenExpired => "token expired; reconnect with a fresh token",
+            Ending::LifetimeCap => "connection lifetime cap reached; reconnect",
+        }
+    }
+}
+
+/// The upgraded socket with a flag set whenever bytes arrive from the
+/// device, so liveness counts a large frame still on its way in.
+struct SeenIo<S> {
+    inner: S,
+    seen: Arc<AtomicBool>,
+}
+
+impl<S: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for SeenIo<S> {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let before = buf.filled().len();
+        let r = std::pin::Pin::new(&mut self.inner).poll_read(cx, buf);
+        if buf.filled().len() > before {
+            self.seen.store(true, Ordering::Relaxed);
+        }
+        r
+    }
+}
+
+impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for SeenIo<S> {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.inner).poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+
+    fn poll_write_vectored(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        bufs: &[std::io::IoSlice<'_>],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.inner).poll_write_vectored(cx, bufs)
+    }
+
+    fn is_write_vectored(&self) -> bool {
+        self.inner.is_write_vectored()
+    }
+}
+
 /// What the ping timer says to do on a tick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Beat {
@@ -795,6 +880,15 @@ impl Liveness {
         }
     }
 
+    /// Any frame from the device (result, tools_changed, ping, pong) is a
+    /// sign of life. Passes the read through.
+    fn note<T, E>(&mut self, msg: Option<Result<T, E>>) -> Option<Result<T, E>> {
+        if let Some(Ok(_)) = &msg {
+            self.heard();
+        }
+        msg
+    }
+
     pub(crate) fn heard(&mut self) {
         self.missed = 0;
         self.awaiting = false;
@@ -828,6 +922,7 @@ async fn run_connection<S>(
     caller: Caller,
     token_hash: String,
     token_exp: Option<u64>,
+    seen: Arc<AtomicBool>,
 ) where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
@@ -891,12 +986,34 @@ async fn run_connection<S>(
         return;
     }
     let (tx, mut rx) = mpsc::channel(CONNECTION_QUEUE);
-    let conn: ConnectionId = app.registry.connect(&device_id, hello.tools, tx);
-    // The device may have been registered again (new key) between the hello
-    // check and `connect`: its kick then found nothing to end. Registration
-    // stores the new key before it kicks, so reading the record after
-    // `connect` closes that gap: either this read sees the new key, or the
-    // kick comes after `connect` and ends this connection.
+    // Check the key again before registering, atomically with it: a
+    // connection checked with a key that has since been replaced must not
+    // take the place of one made with the new key.
+    let key_still_current = || {
+        app.store
+            .get(&device_id)
+            .is_some_and(|r| r.owner_sub == caller.subject && r.public_key_ed25519 == verified_key)
+    };
+    let Some(conn) = app
+        .registry
+        .connect_if(&device_id, hello.tools, tx, key_still_current)
+    else {
+        app.log(
+            "connect_rejected",
+            json!({"device_id": device_id, "reason": "device registered again"}),
+        );
+        let _ = send_frame(
+            &mut sink,
+            &reject("this device was registered again; reconnect with its new key".into()),
+            send_timeout,
+        )
+        .await;
+        let _ = tokio::time::timeout(send_timeout, sink.close()).await;
+        return;
+    };
+    let conn: ConnectionId = conn;
+    // Belt and braces: `connect_if` already made the check and the
+    // registration one step; re-reading after it costs nothing.
     match app.store.get(&device_id) {
         Some(r) if r.owner_sub == caller.subject && r.public_key_ed25519 == verified_key => {}
         _ => {
@@ -929,31 +1046,37 @@ async fn run_connection<S>(
     let mut live = Liveness::new(idle_every, t.max_missed_pings);
     // The socket must not outlive its token: the connector reconnects with a
     // fresh one.
-    let expires = async {
-        match token_exp {
-            Some(exp) => {
-                tokio::time::sleep(Duration::from_secs(exp.saturating_sub((t.clock)()))).await
-            }
-            None => std::future::pending().await,
-        }
+    // ...and no socket lives past the lifetime cap, however far off its exp.
+    let until_exp = token_exp.map(|exp| Duration::from_secs(exp.saturating_sub((t.clock)())));
+    let (limit, ending) = match until_exp {
+        Some(d) if d < t.max_connection_lifetime => (d, Ending::TokenExpired),
+        _ => (t.max_connection_lifetime, Ending::LifetimeCap),
     };
+    let expires = tokio::time::sleep(limit);
     tokio::pin!(expires);
-    let mut expired = false;
+    let mut ended: Option<Ending> = None;
 
     let reason: String = loop {
         tokio::select! {
-            _ = ticker.tick() => match live.tick(app.registry.in_flight(&device_id)) {
-                Beat::Nothing => {}
-                Beat::Dead(missed) => break format!("{missed} pings unanswered"),
-                Beat::Ping(n) => {
-                    if let Err(e) = send_frame(&mut sink, &ToConnector::Ping { n }, send_timeout).await {
-                        break e;
+            _ = ticker.tick() => {
+                // Any bytes from the device since the last tick are a sign of
+                // life, even mid-way through a large frame on a slow link.
+                if seen.swap(false, Ordering::Relaxed) {
+                    live.heard();
+                }
+                match live.tick(app.registry.in_flight(&device_id)) {
+                    Beat::Nothing => {}
+                    Beat::Dead(missed) => break format!("{missed} pings unanswered"),
+                    Beat::Ping(n) => {
+                        if let Err(e) = send_frame(&mut sink, &ToConnector::Ping { n }, send_timeout).await {
+                            break e;
+                        }
                     }
                 }
-            },
+            }
             _ = &mut expires => {
-                expired = true;
-                break "token expired".into();
+                ended = Some(ending);
+                break ending.reason().into();
             }
             frame = rx.recv() => match frame {
                 // The registry dropped this connection: a newer one replaced
@@ -974,7 +1097,7 @@ async fn run_connection<S>(
                     }
                 }
             },
-            msg = stream.next() => match msg {
+            msg = stream.next() => match live.note(msg) {
                 None => break "connector went away".into(),
                 Some(Err(e)) => break format!("read error: {e}"),
                 Some(Ok(Message::Text(text))) => match decode_to_relay(&text) {
@@ -997,12 +1120,12 @@ async fn run_connection<S>(
         }
     };
     app.registry.disconnect(&device_id, conn);
-    if expired {
-        // A reason the connector can log; it then reconnects with a
-        // refreshed token.
+    if let Some(ending) = ended {
+        // A reason the connector can log; it then reconnects (with a
+        // refreshed token if that was the reason).
         let frame = CloseFrame {
             code: CloseCode::Policy,
-            reason: "token expired; reconnect with a fresh token".into(),
+            reason: ending.reason().into(),
         };
         let _ = tokio::time::timeout(send_timeout, sink.send(Message::Close(Some(frame)))).await;
     }
