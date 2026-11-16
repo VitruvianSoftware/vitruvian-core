@@ -238,6 +238,8 @@ public fun configurePrivateSentry(
         event.user = null
         event.request = null
         event.serverName = null
+        // isSendModules=false keeps the SDK from adding these; clear any that got here anyway.
+        event.setModules(null)
         event.dist = null
         event.extras = null
         event.debugMeta = null

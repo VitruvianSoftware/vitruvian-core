@@ -35,7 +35,9 @@ import io.sentry.protocol.Device
 import io.sentry.protocol.FeatureFlag
 import io.sentry.protocol.FeatureFlags
 import io.sentry.protocol.OperatingSystem
+import io.sentry.protocol.Request
 import io.sentry.protocol.SentryRuntime
+import io.sentry.protocol.SentryThread
 import io.sentry.protocol.User
 import io.sentry.util.Platform
 import java.io.File
@@ -121,6 +123,10 @@ class WandSentryTest {
           setTag("isSideLoaded", "true")
           setExtra("secret", "x")
           debugMeta = DebugMeta()
+          serverName = "james-macbook-pro"
+          threads = listOf(SentryThread().apply { name = "main" })
+          setModule("io.sentry:sentry", "8.64.0")
+          request = Request().apply { url = "http://10.0.2.2:7499/v1/state" }
           contexts.setApp(
               App().apply {
                 appVersion = "0.1.0"
@@ -155,6 +161,11 @@ class WandSentryTest {
     assertNull(sanitized.dist)
     assertTrue(sanitized.extras.isNullOrEmpty())
     assertNull(sanitized.debugMeta)
+    // What 7.14 sent on origin/main and these apps must no longer send.
+    assertNull(sanitized.serverName)
+    assertTrue(sanitized.threads.isNullOrEmpty())
+    assertNull(sanitized.getModule("io.sentry:sentry"))
+    assertNull(sanitized.request)
     assertNull(sanitized.tags)
     assertTrue(sanitized.contexts.isEmpty())
     assertNull(sanitized.contexts.device)
