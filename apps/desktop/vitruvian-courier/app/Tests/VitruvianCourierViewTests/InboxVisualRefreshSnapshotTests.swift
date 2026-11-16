@@ -40,15 +40,24 @@ final class InboxVisualRefreshSnapshotTests: XCTestCase {
 
     func testRowsWithGroupAvatarsAndTwoLinePreviews() throws {
         let style = RowStyle(InboxPreferences(defaults: defaults()))
+        let threeMember = Fixture.row("!1", "Eddie Stecker, Kent Hua, GitHub", network: "slack", direct: false, ts: 5,
+                                      preview: "Merged the pull request for the new pipeline and the deploy is now running", unread: 3)
+        let fiveMember = Fixture.row("!1b", "Eddie Stecker, Kent Hua, GitHub, Alice Smith, Bob Jones",
+                                     network: "slack", direct: false, ts: 12, preview: "All green on main", unread: 1)
+        let customGroup = Fixture.row("!5", "Weekend Hikers", network: "signal", direct: false, ts: 60 * 24 * 3,
+                                      preview: "Who has the map?")
+        XCTAssertEqual(threeMember.displayTitle, "Eddie, Kent & GitHub")
+        XCTAssertEqual(fiveMember.displayTitle, "Eddie, Kent, GitHub & 2 others")
+        XCTAssertEqual(customGroup.displayTitle, "Weekend Hikers")
         let rows = [
-            Fixture.row("!1", "Eddie Stecker, Kent Hua, GitHub", network: "slack", direct: false, ts: 5,
-                        preview: "Merged the pull request for the new pipeline and the deploy is now running", unread: 3),
+            threeMember,
+            fiveMember,
             Fixture.row("!2", "#data-science", network: "slack", direct: false, ts: 60 * 30,
                         preview: "Model eval finished. Accuracy is up two points on the holdout set."),
             Fixture.row("!3", "#general", network: "slack", direct: false, ts: 60 * 40, preview: "Lunch at noon?"),
             Fixture.row("!4", "Ann & Bo", network: "whatsapp", direct: false, ts: 60 * 26,
                         preview: "See you there", mine: true, status: .seen),
-            Fixture.row("!5", "Weekend Hikers", network: "signal", direct: false, ts: 60 * 24 * 3, preview: "Who has the map?"),
+            customGroup,
             Fixture.row("!6", "Ann Example", network: "telegram", ts: 60 * 24 * 20, preview: "Thanks!"),
             Fixture.row("!7", "Dee Example", network: "imessage", ts: 60 * 24 * 500, preview: "Happy new year"),
             threadRow("!8", "Ann Example", direct: true, mine: false, preview: "Can you look at this thread?"),
@@ -173,6 +182,67 @@ final class InboxVisualRefreshSnapshotTests: XCTestCase {
                 RecentChatsList(rows: rows) { _ in }
             }
             .padding(14)
+        })
+    }
+
+    func testConversationHeaderBarHairlineAndTopMessageClearance() throws {
+        let store = defaults()
+        let preferences = ComposerPreferences(defaults: store)
+        let conversation = ConversationModel(appModel: offlineApp(), preferences: preferences)
+        let groupRow = Fixture.row(
+            "!grp-header",
+            "Eddie Stecker, Kent Hua, GitHub",
+            network: "slack",
+            direct: false,
+            ts: 5,
+            preview: "Merged PR #42"
+        )
+        let events = [
+            Fixture.text(
+                "$k1",
+                "First message below the header",
+                mine: false,
+                ts: 20,
+                sender: "@kent:courier.local",
+                name: "Kent Hua"
+            ),
+            Fixture.text("$k2", "Got it, thanks!", mine: true, ts: 10),
+        ]
+        let items = Fixture.items(events, isDirect: false)
+        conversation.setSnapshotStateForTesting(roomID: "!grp-header", items: items, row: groupRow)
+        let ui = MessageUI()
+        let actions = VitruvianCourier.MessageActions(now: { Fixture.now })
+        let headerInset = PaneHeaderMetrics.stripHeight + PaneHeaderMetrics.hairlineHeight
+
+        check(try Snapshot.render("conversation-header-clearance", width: 560, height: 260) {
+            ZStack(alignment: .top) {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(items) { item in
+                            TimelineItemView(
+                                item: item,
+                                isSelected: false,
+                                showsSent: false,
+                                actions: actions,
+                                ui: ui
+                            )
+                        }
+                    }
+                    .padding(.top, 8)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 8)
+                }
+                .contentMargins(.top, headerInset, for: .scrollContent)
+                .contentMargins(.top, headerInset, for: .scrollIndicators)
+
+                ConversationHeader(
+                    row: groupRow,
+                    displayTitle: groupRow.displayTitle,
+                    networkName: "Slack",
+                    conversation: conversation,
+                    part: .strip
+                )
+            }
         })
     }
 

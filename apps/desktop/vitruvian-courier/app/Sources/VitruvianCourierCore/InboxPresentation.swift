@@ -31,6 +31,18 @@ extension PreviewLabel {
 }
 
 extension InboxRow {
+    /// The chat's display name: rewrites unnamed bridge-built member lists (e.g. `"Eddie Stecker, Kent Hua, GitHub"`)
+    /// into concise first-name lists (`"Eddie, Kent & GitHub"`), while leaving explicit custom titles untouched.
+    public var displayTitle: String {
+        ChatDisplayTitle.format(
+            name: name,
+            isDirect: isDirect,
+            localName: localName,
+            members: memberPreview.map { GroupTitleMember(userID: $0.userID, name: $0.name) },
+            isCompleteMemberList: false
+        )
+    }
+
     /// The label before the preview text; nil for text, and for a kind this app does not know (an engine newer
     /// than the app), which is shown as the text it has.
     public var previewLabel: PreviewLabel? {
@@ -488,4 +500,383 @@ public enum SyncHelp {
     /// Mark as Unread. No network is ever sent an unread mark (Account.syncs never lists one), so this is always
     /// the same.
     public static var markUnread: String { String(localized: "On this Mac only") }
+}
+
+/// Someone in a group chat considered when formatting an unnamed group's display title.
+public struct GroupTitleMember: Equatable, Sendable {
+    public let userID: String
+    public let name: String
+    public let isBot: Bool
+
+    public init(userID: String = "", name: String, isBot: Bool = false) {
+        self.userID = userID
+        self.name = name
+        self.isBot = isBot
+    }
+}
+
+/// Formats a chat's display title cleanly.
+///
+/// When a group chat has no custom title and its display name is a bridge-built comma-separated list of member names
+/// (e.g. `"Eddie Stecker, Kent Hua, GitHub"`), this condenses it to first names (`"Eddie, Kent & GitHub"`, or
+/// `"Eddie, Kent, GitHub & 2 others"` for 4+ members). Chats with explicit custom titles, channels (`#general`),
+/// local overrides (`localName`), and 1:1 chats are never rewritten.
+public enum ChatDisplayTitle {
+    private static let clauseStarters: Set<String> = [
+        "if", "or", "but", "when", "while", "unless", "because", "though",
+        "although", "since", "where", "which", "that", "then", "so", "for",
+    ]
+
+    public static func format(
+        name: String,
+        isDirect: Bool = false,
+        localName: String = "",
+        members: [GroupTitleMember] = [],
+        isCompleteMemberList: Bool = true
+    ) -> String {
+        guard !isDirect else { return name }
+        guard localName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return name }
+
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("#") { return name }
+
+        let otherMembers = deduplicatedMembers(
+            members.filter { $0.userID != Timeline.meUserID }
+        )
+
+        if trimmed.isEmpty {
+            guard otherMembers.count >= 2 else { return name }
+            return render(entries: otherMembers, totalCount: otherMembers.count) ?? name
+        }
+
+        guard let parsed = parseBridgeMemberList(
+            trimmed,
+            otherMembers: otherMembers,
+            isCompleteMemberList: isCompleteMemberList
+        ) else {
+            return name
+        }
+
+        let entries: [GroupTitleMember]
+        let totalCount: Int
+        if isCompleteMemberList, otherMembers.count >= 2 {
+            let ordered = orderMembers(otherMembers, matching: parsed.segments)
+            entries = ordered
+            totalCount = max(ordered.count, parsed.segments.count + parsed.extraCount)
+        } else {
+            var mapped = parsed.segments.map { segment in
+                matchedMember(for: segment, in: otherMembers) ?? GroupTitleMember(name: segment)
+            }
+            if parsed.extraCount == 0, mapped.count < 3 {
+                let matchedKeys = Set(mapped.map { canonical($0.name) })
+                for member in otherMembers where mapped.count < 3 && !matchedKeys.contains(canonical(member.name)) {
+                    mapped.append(member)
+                }
+            }
+            entries = mapped
+            totalCount = max(entries.count + parsed.extraCount, isCompleteMemberList ? otherMembers.count : 0)
+        }
+
+        return render(entries: entries, totalCount: totalCount) ?? name
+    }
+
+    private struct ParsedMemberList {
+        let segments: [String]
+        let extraCount: Int
+    }
+
+    private static func parseBridgeMemberList(
+        _ trimmed: String,
+        otherMembers: [GroupTitleMember],
+        isCompleteMemberList: Bool
+    ) -> ParsedMemberList? {
+        var rawSegments: [String]
+        var extraCount = 0
+
+        if trimmed.contains(", ") {
+            rawSegments = trimmed.components(separatedBy: ", ").map {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            guard !rawSegments.contains(where: \.isEmpty) else { return nil }
+            if let last = rawSegments.last {
+                if rawSegments.count >= 3, let count = standaloneOthersCount(last) {
+                    rawSegments.removeLast()
+                    extraCount = count
+                } else if let stripped = stripOthersSuffix(from: last) {
+                    rawSegments[rawSegments.count - 1] = stripped.prefix
+                    extraCount = stripped.count
+                } else if let splitAmpersand = splitSingleAmpersand(last) {
+                    rawSegments.removeLast()
+                    rawSegments.append(contentsOf: splitAmpersand)
+                }
+            }
+        } else if isCompleteMemberList, otherMembers.count >= 2,
+                  let splitAmpersand = splitSingleAmpersand(trimmed) {
+            // Only rewrite a two-part "A & B" title without commas when the full member list confirms both parts
+            // correspond to distinct group members (preserving custom titles like "Research & Development").
+            rawSegments = splitAmpersand
+        } else {
+            return nil
+        }
+
+        rawSegments = rawSegments.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard rawSegments.count >= 2, rawSegments.allSatisfy({ !$0.isEmpty }) else { return nil }
+
+        for (index, segment) in rawSegments.enumerated() {
+            if segment.contains(":") || segment.contains(";") || segment.contains("?") || segment.contains("!") {
+                return nil
+            }
+            let words = segment.split(whereSeparator: \.isWhitespace)
+            if words.isEmpty || words.count > 4 {
+                return nil
+            }
+            if index > 0, let firstWord = words.first, clauseStarters.contains(firstWord.lowercased()) {
+                return nil
+            }
+        }
+
+        let uniqueSegments = deduplicatedStrings(rawSegments)
+        guard uniqueSegments.count >= 2 else { return nil }
+
+        if !otherMembers.isEmpty {
+            if isCompleteMemberList || (otherMembers.count < 3 && extraCount == 0) {
+                guard uniqueSegments.allSatisfy({ segment in
+                    otherMembers.contains { memberMatches(segment: segment, member: $0) }
+                }) else {
+                    return nil
+                }
+            } else {
+                let matchCount = uniqueSegments.filter { segment in
+                    otherMembers.contains { memberMatches(segment: segment, member: $0) }
+                }.count
+                let requiredMatches = extraCount == 0 ? min(2, otherMembers.count) : 1
+                guard matchCount >= requiredMatches else {
+                    return nil
+                }
+            }
+        }
+
+        return ParsedMemberList(segments: uniqueSegments, extraCount: extraCount)
+    }
+
+    private static func standaloneOthersCount(_ segment: String) -> Int? {
+        let lower = segment.lowercased()
+        let remainder: Substring
+        if lower.hasPrefix("and ") {
+            remainder = segment.dropFirst(4)
+        } else if lower.hasPrefix("& ") {
+            remainder = segment.dropFirst(2)
+        } else {
+            return nil
+        }
+        let parts = remainder.trimmingCharacters(in: .whitespacesAndNewlines).split(whereSeparator: \.isWhitespace)
+        guard parts.count == 2,
+              let count = Int(parts[0]), count >= 1,
+              parts[1].lowercased() == "other" || parts[1].lowercased() == "others"
+        else {
+            return nil
+        }
+        return count
+    }
+
+    private static func stripOthersSuffix(from segment: String) -> (prefix: String, count: Int)? {
+        for separator in [" and ", " & "] {
+            guard let range = segment.range(of: separator, options: [.backwards, .caseInsensitive]) else {
+                continue
+            }
+            let prefix = segment[..<range.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+            let suffix = segment[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+            let parts = suffix.split(whereSeparator: \.isWhitespace)
+            guard parts.count == 2,
+                  let count = Int(parts[0]), count >= 1,
+                  parts[1].lowercased() == "other" || parts[1].lowercased() == "others",
+                  !prefix.isEmpty
+            else {
+                continue
+            }
+            return (prefix, count)
+        }
+        return nil
+    }
+
+    private static func splitSingleAmpersand(_ text: String) -> [String]? {
+        let parts = text.components(separatedBy: " & ")
+        guard parts.count == 2 else { return nil }
+        let lhs = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
+        let rhs = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !lhs.isEmpty, !rhs.isEmpty else { return nil }
+        return [lhs, rhs]
+    }
+
+    private static func render(entries: [GroupTitleMember], totalCount: Int) -> String? {
+        guard !entries.isEmpty else { return nil }
+        let limit = totalCount <= 3 ? min(totalCount, entries.count) : min(3, entries.count)
+        let shownEntries = Array(entries.prefix(limit))
+        let displayNames = disambiguatedShortNames(for: shownEntries)
+
+        switch shownEntries.count {
+        case 0:
+            return nil
+        case 1:
+            return displayNames[0]
+        case 2:
+            if totalCount > 2 {
+                let others = totalCount - 2
+                return others == 1
+                    ? String(localized: "\(displayNames[0]), \(displayNames[1]) & 1 other")
+                    : String(localized: "\(displayNames[0]), \(displayNames[1]) & \(others) others")
+            }
+            return String(localized: "\(displayNames[0]) & \(displayNames[1])")
+        default:
+            if totalCount > 3 {
+                let others = totalCount - 3
+                return others == 1
+                    ? String(localized: "\(displayNames[0]), \(displayNames[1]), \(displayNames[2]) & 1 other")
+                    : String(localized: "\(displayNames[0]), \(displayNames[1]), \(displayNames[2]) & \(others) others")
+            }
+            return String(localized: "\(displayNames[0]), \(displayNames[1]) & \(displayNames[2])")
+        }
+    }
+
+    private static func disambiguatedShortNames(for entries: [GroupTitleMember]) -> [String] {
+        let baseNames = entries.map(baseShortName(of:))
+        var baseCounts: [String: Int] = [:]
+        for name in baseNames {
+            baseCounts[canonical(name), default: 0] += 1
+        }
+
+        let candidates: [String] = entries.enumerated().map { index, entry in
+            let base = baseNames[index]
+            guard (baseCounts[canonical(base)] ?? 0) > 1 else { return base }
+            let trimmed = entry.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let words = trimmed.split(whereSeparator: \.isWhitespace)
+            guard words.count >= 2,
+                  !entry.isBot,
+                  words.last?.caseInsensitiveCompare("bot") != .orderedSame,
+                  let initial = words[1].first(where: { $0.isLetter || $0.isNumber })
+            else {
+                return trimmed
+            }
+            return "\(words[0]) \(initial)."
+        }
+
+        var candidateCounts: [String: Int] = [:]
+        for name in candidates {
+            candidateCounts[canonical(name), default: 0] += 1
+        }
+
+        return entries.enumerated().map { index, entry in
+            let candidate = candidates[index]
+            if (candidateCounts[canonical(candidate)] ?? 0) > 1 {
+                return entry.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            return candidate
+        }
+    }
+
+    private static func baseShortName(of member: GroupTitleMember) -> String {
+        let trimmed = member.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        let words = trimmed.split(whereSeparator: \.isWhitespace)
+        if words.count <= 1 { return trimmed }
+        if member.isBot || words.last?.caseInsensitiveCompare("bot") == .orderedSame {
+            return trimmed
+        }
+        if isPhoneOrNumericHandle(trimmed) {
+            return trimmed
+        }
+        return String(words[0])
+    }
+
+    private static func isPhoneOrNumericHandle(_ text: String) -> Bool {
+        guard let first = text.first, first == "+" || first.isASCII && first.isNumber else { return false }
+        let allowed = CharacterSet(charactersIn: "0123456789+-(). ").union(.whitespaces)
+        return text.unicodeScalars.allSatisfy { allowed.contains($0) }
+    }
+
+    private static func deduplicatedMembers(_ members: [GroupTitleMember]) -> [GroupTitleMember] {
+        var seenIDs = Set<String>()
+        var seenNames = Set<String>()
+        var out: [GroupTitleMember] = []
+        for member in members {
+            let trimmedName = member.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedName.isEmpty else { continue }
+            if !member.userID.isEmpty {
+                guard seenIDs.insert(member.userID).inserted else { continue }
+            }
+            let key = canonical(trimmedName)
+            if member.userID.isEmpty {
+                guard seenNames.insert(key).inserted else { continue }
+            } else {
+                seenNames.insert(key)
+            }
+            out.append(GroupTitleMember(userID: member.userID, name: trimmedName, isBot: member.isBot))
+        }
+        return out
+    }
+
+    private static func deduplicatedStrings(_ strings: [String]) -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for item in strings {
+            let key = canonical(item)
+            if seen.insert(key).inserted {
+                out.append(item)
+            }
+        }
+        return out
+    }
+
+    private static func memberMatches(segment: String, member: GroupTitleMember) -> Bool {
+        let segKey = canonical(segment)
+        if segKey == canonical(member.name) { return true }
+        if segKey == canonical(baseShortName(of: member)) { return true }
+        let words = member.name.split(whereSeparator: \.isWhitespace)
+        if words.count >= 2, let initial = words[1].first(where: { $0.isLetter || $0.isNumber }) {
+            let initialKey = canonical("\(words[0]) \(initial).")
+            if segKey == initialKey { return true }
+        }
+        return false
+    }
+
+    private static func matchedMember(for segment: String, in members: [GroupTitleMember]) -> GroupTitleMember? {
+        let segKey = canonical(segment)
+        if let exact = members.first(where: { canonical($0.name) == segKey }) {
+            return exact
+        }
+        let shortMatches = members.filter { memberMatches(segment: segment, member: $0) }
+        return shortMatches.count == 1 ? shortMatches[0] : nil
+    }
+
+    private static func orderMembers(_ members: [GroupTitleMember], matching segments: [String]) -> [GroupTitleMember] {
+        var remaining = members
+        var ordered: [GroupTitleMember] = []
+        for segment in segments {
+            if let idx = remaining.firstIndex(where: { canonical($0.name) == canonical(segment) }) {
+                ordered.append(remaining.remove(at: idx))
+            } else if let idx = remaining.firstIndex(where: { memberMatches(segment: segment, member: $0) }) {
+                ordered.append(remaining.remove(at: idx))
+            }
+        }
+        ordered.append(contentsOf: remaining)
+        return ordered
+    }
+
+    private static func canonical(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
+extension RoomInfoResult {
+    /// The chat's display name: rewrites unnamed bridge-built member lists into concise first-name lists, while
+    /// leaving explicit custom titles untouched.
+    public var displayTitle: String {
+        ChatDisplayTitle.format(
+            name: name,
+            isDirect: isDirect,
+            localName: localName,
+            members: members.map { GroupTitleMember(userID: $0.userID, name: $0.name, isBot: $0.isBot) },
+            isCompleteMemberList: true
+        )
+    }
 }

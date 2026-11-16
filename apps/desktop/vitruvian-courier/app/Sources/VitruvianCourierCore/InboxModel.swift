@@ -155,6 +155,9 @@ public final class InboxModel: ObservableObject {
                 if map[row.roomID] == nil { map[row.roomID] = row }
             }
             cachedRowsByID = map
+            if let openID = selectedRoomID, let current = map[openID] {
+                onOpenRowUpdated(current)
+            }
         }
     }
     private var cachedRowsByID: [String: InboxRow] = [:]
@@ -192,6 +195,8 @@ public final class InboxModel: ObservableObject {
     /// The open chat's row was looked up because the list doesn't have it: its unread count is known only now,
     /// after the chat opened, for the conversation's "New" divider. The app sets it.
     public var onSelectedRowLookedUp: @MainActor (InboxRow) -> Void = { _ in }
+    /// Called whenever `rows` refreshes and includes a fresh copy of the currently open chat's row.
+    public var onOpenRowUpdated: @MainActor (InboxRow) -> Void = { _ in }
     /// "Reconnect" on a banner: sign that account in again (`accountID`), or with nil the network's own sign-in. The
     /// app points it at the sign-in flow.
     public var onReconnect: @MainActor (_ network: String, _ accountID: String?) -> Void = { _, _ in }

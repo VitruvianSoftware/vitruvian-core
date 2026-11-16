@@ -155,7 +155,7 @@ struct InboxList: View {
         return ScrollViewReader { scroll in
             // The times are read against "now", which moves on: draw again every minute.
             TimelineView(.everyMinute) { timeline in
-                List(selection: selection) {
+                List(selection: selection(for: rows)) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                         InboxRowView(
                             row: row, networkName: inbox.networkName(row.network),
@@ -201,8 +201,10 @@ struct InboxList: View {
 
     /// The open chat is the list's selection. While selecting, a click toggles a chat (⇧-click selects up to it)
     /// and the list shows checkmarks instead; outside it, ⌘-click and ⇧-click start selecting.
-    private var selection: Binding<String?> {
-        Binding(get: { inbox.isSelecting ? nil : inbox.selectedRoomID }, set: { id in
+    private func selection(for listedRows: [InboxRow]) -> Binding<String?> {
+        Binding(get: {
+            inbox.isSelecting ? nil : listedRows.first(where: { inbox.isOpen($0.id) || inbox.isOpen($0.roomID) })?.id
+        }, set: { id in
             let flags = NSEvent.modifierFlags
             let click = [.leftMouseDown, .leftMouseUp].contains(NSApp.currentEvent?.type)
             if inbox.isSelecting {
@@ -214,7 +216,7 @@ struct InboxList: View {
                 if let id { inbox.toggleSelected(id) } else { inbox.beginSelecting() }
             } else if click, flags.contains(.shift), let id {
                 inbox.extendSelection(to: id)
-            } else {
+            } else if let id {
                 inbox.select(id)
             }
         })

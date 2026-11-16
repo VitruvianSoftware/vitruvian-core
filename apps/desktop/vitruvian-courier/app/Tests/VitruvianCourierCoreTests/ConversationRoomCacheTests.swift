@@ -20,8 +20,9 @@ final class ConversationRoomCacheTests: XCTestCase {
         (1 ... count).map { textEvent(id: "\(room)$\($0)", room: room, at: Int64($0), body: "Message \($0)") }
     }
 
-    private func start(_ events: [String: [[String: Any]]]) async throws -> ConversationHarness {
-        let harness = try await startConversation(events)
+    private func start(_ events: [String: [[String: Any]]],
+                       rows: [String: InboxRow] = [:]) async throws -> ConversationHarness {
+        let harness = try await startConversation(events, rows: rows)
         harnesses.append(harness)
         return harness
     }
@@ -87,5 +88,71 @@ final class ConversationRoomCacheTests: XCTestCase {
         XCTAssertEqual(ConversationModel.composerPlaceholder(chatName: "Ann", network: ""), "Message Ann")
         XCTAssertEqual(ConversationModel.composerPlaceholder(chatName: "  ", network: "whatsapp"), "Type a message…")
         XCTAssertEqual(ConversationModel.composerPlaceholder(chatName: nil, network: nil), "Type a message…")
+    }
+
+    func testOpenChatHeaderAndPlaceholderSurviveInboxListChangeExcludingOpenChat() async throws {
+        let dmRow = chatRow("!dm", name: "Florian Burgos", network: "gmessages", direct: true)
+        let grpRow = chatRow("!grp", name: "Eddie Stecker, Kent Hua, GitHub", network: "slack", direct: false)
+        let otherRow = chatRow("!other", name: "Alice Example", network: "signal", direct: true)
+        let h = try await start(
+            [
+                "!dm": [textEvent(id: "$d1", room: "!dm", at: 1)],
+                "!grp": [textEvent(id: "$g1", room: "!grp", at: 1)],
+                "!other": [textEvent(id: "$o1", room: "!other", at: 1)],
+            ],
+            rows: ["!dm": dmRow, "!grp": grpRow, "!other": otherRow]
+        )
+        let inbox = InboxModel(
+            appModel: h.app,
+            preferences: InboxPreferences(defaults: h.store.defaults),
+            window: 0,
+            sleep: { _ in }
+        )
+        let spaces = SpacesModel(appModel: h.app, inbox: inbox, window: 0, sleep: { _ in })
+        inbox.onSelectedRowLookedUp = { [weak conversation = h.conversation] row in
+            conversation?.learnUnreadCount(row.unread, of: row.roomID)
+            conversation?.learnChat(row)
+        }
+        inbox.onOpenRowUpdated = { [weak conversation = h.conversation] row in
+            conversation?.learnChat(row)
+        }
+        inbox.setSnapshotRowsForTesting([dmRow, grpRow])
+
+        try await h.open("!dm")
+        XCTAssertEqual(h.conversation.headerRow?.roomID, "!dm")
+        XCTAssertEqual(h.conversation.openChatDisplayTitle, "Florian Burgos")
+        XCTAssertEqual(h.conversation.composerPlaceholderText(), "Message Florian Burgos on Google Messages")
+
+        // Switching to Reminders / Low Priority / Requests / Send Later / Archive / another network excludes the
+        // open chat from the active inbox list.
+        spaces.select("reminders")
+        h.rows.rows = ["!other": otherRow]
+        inbox.setSnapshotRowsForTesting([otherRow])
+        try await waitUntil { inbox.rows.allSatisfy { $0.roomID != "!dm" } }
+
+        XCTAssertEqual(h.app.selectedRoomID, "!dm")
+        XCTAssertEqual(h.conversation.roomID, "!dm")
+        XCTAssertEqual(h.conversation.headerRow?.roomID, "!dm")
+        XCTAssertEqual(h.conversation.headerRow?.network, "gmessages")
+        XCTAssertEqual(h.conversation.openChatDisplayTitle, "Florian Burgos")
+        XCTAssertEqual(h.conversation.composerPlaceholderText(), "Message Florian Burgos on Google Messages")
+
+        // Verify an unnamed group also preserves its shortened display title and composer placeholder when excluded.
+        h.rows.rows = ["!grp": grpRow]
+        inbox.setSnapshotRowsForTesting([grpRow])
+        try await h.open("!grp")
+        XCTAssertEqual(h.conversation.openChatDisplayTitle, "Eddie, Kent & GitHub")
+        XCTAssertEqual(h.conversation.composerPlaceholderText(), "Message Eddie, Kent & GitHub on Slack")
+
+        spaces.select("low_priority")
+        h.rows.rows = [:]
+        inbox.setSnapshotRowsForTesting([])
+        try await waitUntil { inbox.rows.isEmpty }
+
+        XCTAssertEqual(h.app.selectedRoomID, "!grp")
+        XCTAssertEqual(h.conversation.roomID, "!grp")
+        XCTAssertEqual(h.conversation.headerRow?.roomID, "!grp")
+        XCTAssertEqual(h.conversation.openChatDisplayTitle, "Eddie, Kent & GitHub")
+        XCTAssertEqual(h.conversation.composerPlaceholderText(), "Message Eddie, Kent & GitHub on Slack")
     }
 }

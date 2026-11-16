@@ -74,7 +74,8 @@ struct PinnedChat: View {
 
     /// The chat's name, or with "Redact names and pictures" on, its stand-in, as the chat list shows it.
     private var displayName: String {
-        let raw = row.name.isEmpty ? String(localized: "Unnamed chat") : row.name
+        let formatted = row.displayTitle
+        let raw = formatted.isEmpty ? String(localized: "Unnamed chat") : formatted
         return isRedacted ? AppearancePreferences.redactedText(raw, kind: .chatTitle) : raw
     }
 

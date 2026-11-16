@@ -51,6 +51,8 @@ struct ConversationView: View {
     @State private var inviteCandidates: [ContactCandidate] = []
     /// The thread's and Chat Info's widths, for their headers in the toolbar.
     @State private var sidePaneWidths: [SidePane: CGFloat] = [:]
+    @State private var measuredHeaderOverlayHeight: CGFloat = 0
+    @State private var windowToolbarOverlap: CGFloat = 0
 
     var body: some View {
         HSplitView {
@@ -306,8 +308,8 @@ struct ConversationView: View {
 
     /// The open chat's name, under the thread's title (redacted when names are).
     private var chatName: String? {
-        guard let row = conversation.roomID.flatMap({ inbox.row(of: $0) }) ?? inbox.selectedRow else { return nil }
-        return redact ? AppearancePreferences.redactedText(row.name, kind: .chatTitle) : row.name
+        guard let title = conversation.openChatDisplayTitle else { return nil }
+        return redact ? AppearancePreferences.redactedText(title, kind: .chatTitle) : title
     }
 
     /// With glass, the open side panes' headers as one toolbar item: each exactly as wide as its pane, side by side as
@@ -341,56 +343,99 @@ struct ConversationView: View {
         }
     }
 
+    private var minimumHeaderInset: CGFloat {
+        if drawsLiquidGlass {
+            return windowToolbarOverlap > 0 ? windowToolbarOverlap + PaneHeaderMetrics.hairlineHeight : 0
+        }
+        return PaneHeaderMetrics.stripHeight + PaneHeaderMetrics.hairlineHeight
+    }
+
+    private var effectiveHeaderInset: CGFloat {
+        max(minimumHeaderInset, measuredHeaderOverlayHeight)
+    }
+
+    @ViewBuilder
+    private var chatTopHeaderOverlay: some View {
+        VStack(spacing: 0) {
+            if !drawsLiquidGlass {
+                ConversationHeaderContainer(
+                    inbox: inbox,
+                    conversation: conversation,
+                    readAloud: messageActions.readAloud,
+                    redactNamesAndPictures: redact,
+                    part: .strip
+                )
+            } else if windowToolbarOverlap > 0 {
+                VStack(spacing: 0) {
+                    Rectangle()
+                        .fill(.bar)
+                        .frame(height: windowToolbarOverlap)
+                    Rectangle()
+                        .fill(Color(nsColor: .separatorColor))
+                        .frame(height: PaneHeaderMetrics.hairlineHeight)
+                }
+                // NSToolbar handles clicks in the toolbar band (verified by HeaderLineWindowTests).
+                .allowsHitTesting(false)
+            }
+            if let banner = conversation.unreadThreadsBanner {
+                ThreadRepliesBanner(
+                    text: banner,
+                    mentionsMe: conversation.unreadThreadsMentionMe,
+                    show: conversation.showNextUnreadThread
+                )
+            }
+        }
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: ChatHeaderOverlayHeightKey.self, value: proxy.size.height)
+            }
+        )
+    }
+
     private var chat: some View {
         let effectiveTheme = resolvedAppearance?.effectiveTheme(for: conversation.roomID)
-        return VStack(spacing: 0) {
-            // With glass the chat's name and buttons are in the window's toolbar (courierChatToolbar), not a strip.
-            if !drawsLiquidGlass {
-                ConversationHeaderContainer(inbox: inbox, conversation: conversation, readAloud: messageActions.readAloud,
-                                            redactNamesAndPictures: redact)
-                Divider()
+        return ZStack(alignment: .top) {
+            WindowToolbarOverlapReader { overlap in
+                windowToolbarOverlap = overlap
             }
-            ZStack {
-                if let effectiveTheme, (effectiveTheme.wallpaper != .none || effectiveTheme.customWallpaperPath != nil) {
-                    ChatWallpaperCanvasView(
-                        preset: effectiveTheme.wallpaper,
-                        customImagePath: effectiveTheme.customWallpaperPath,
-                        opacity: effectiveTheme.wallpaperOpacity,
-                        blur: effectiveTheme.wallpaperBlur,
-                        reduceTransparency: resolvedAppearance?.reduceTransparency ?? false
-                    )
-                    .courierExtendsUnderBars()
-                }
-                timeline
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(false)
+            if let effectiveTheme, (effectiveTheme.wallpaper != .none || effectiveTheme.customWallpaperPath != nil) {
+                ChatWallpaperCanvasView(
+                    preset: effectiveTheme.wallpaper,
+                    customImagePath: effectiveTheme.customWallpaperPath,
+                    opacity: effectiveTheme.wallpaperOpacity,
+                    blur: effectiveTheme.wallpaperBlur,
+                    reduceTransparency: resolvedAppearance?.reduceTransparency ?? false
+                )
+                .courierExtendsUnderBars()
             }
-            .courierEdgeBar(.top) {
-                if let banner = conversation.unreadThreadsBanner {
-                    ThreadRepliesBanner(text: banner, mentionsMe: conversation.unreadThreadsMentionMe,
-                                        show: conversation.showNextUnreadThread)
+            timeline
+            chatTopHeaderOverlay
+        }
+        .onPreferenceChange(ChatHeaderOverlayHeightKey.self) { measuredHeaderOverlayHeight = $0 }
+        .modifier(IgnoreTopContainerSafeAreaWhenGlass(enabled: drawsLiquidGlass))
+        // With glass the messages run under the composer, which floats over their bottom.
+        .courierEdgeBar(.bottom) {
+            VStack(spacing: 0) {
+                if let problem = conversation.problem {
+                    ProblemBar(problem: problem, retry: conversation.reload)
                 }
-            }
-            // With glass the messages run under the composer, which floats over their bottom.
-            .courierEdgeBar(.bottom) {
-                VStack(spacing: 0) {
-                    if let problem = conversation.problem {
-                        ProblemBar(problem: problem, retry: conversation.reload)
-                    }
-                    ScheduledStrip(scheduled: scheduled)
-                    TypingLine(text: conversation.typingLine)
-                    ConversationComposerContainer(
-                        composer: composer,
-                        inbox: inbox,
-                        conversation: conversation,
-                        preferences: preferences,
-                        messageActions: messageActions,
-                        focus: focus,
-                        textHeight: $composerTextHeight,
-                        chromeSignature: $composerChromeSignature,
-                        closeThread: { conversation.deselectMessage() || closeThread() },
-                        upArrow: upArrow,
-                        redactNames: redact
-                    )
-                }
+                ScheduledStrip(scheduled: scheduled)
+                TypingLine(text: conversation.typingLine)
+                ConversationComposerContainer(
+                    composer: composer,
+                    inbox: inbox,
+                    conversation: conversation,
+                    preferences: preferences,
+                    messageActions: messageActions,
+                    focus: focus,
+                    textHeight: $composerTextHeight,
+                    chromeSignature: $composerChromeSignature,
+                    closeThread: { conversation.deselectMessage() || closeThread() },
+                    upArrow: upArrow,
+                    redactNames: redact
+                )
             }
         }
         .overlay {
@@ -655,11 +700,14 @@ struct ConversationView: View {
                             }
                         }
                 }
+                .padding(.top, 8)
                 .padding(.horizontal, 14)
                 .padding(.bottom, 8)
             }
+            .contentMargins(.top, effectiveHeaderInset, for: .scrollContent)
+            .contentMargins(.top, effectiveHeaderInset, for: .scrollIndicators)
             .defaultScrollAnchor(.bottom)
-            .courierScrollEdges()
+            .modifier(ConversationBottomScrollEdge())
             // A click on the timeline's empty space (not on a message, which takes its own click) deselects.
             .deselectsOnEmptyClick { conversation.deselectMessage() }
             .overlay(alignment: .bottomTrailing) { jumpButton }
@@ -812,10 +860,15 @@ struct ConversationView: View {
     private var placeholder: some View {
         if !conversation.isLoaded {
             // Only when nothing is kept for the chat, and only after a moment: a fast read never flashes it.
-            if conversation.problem == nil { DelayedSpinner().id(conversation.roomID) }
+            if conversation.problem == nil {
+                DelayedSpinner()
+                    .id(conversation.roomID)
+                    .padding(.top, effectiveHeaderInset)
+            }
         } else if conversation.items.isEmpty {
             Text(String(localized: "No messages yet"))
                 .foregroundStyle(.secondary)
+                .padding(.top, effectiveHeaderInset)
         }
     }
 
@@ -953,14 +1006,15 @@ private struct ConversationHeaderContainer: View {
     var part: ConversationHeader.Part = .strip
 
     var body: some View {
-        let headerRow = conversation.roomID.flatMap { inbox.row(of: $0) } ?? inbox.selectedRow
+        let headerRow = conversation.headerRow
         ConversationHeader(
             row: headerRow,
+            displayTitle: conversation.openChatDisplayTitle,
             networkName: headerRow.map { NetworkNames.displayName(of: $0.network) ?? inbox.networkName($0.network) },
             conversation: conversation,
             readAloud: readAloud.isVitruvianSpeakerInstalled ? headerRow?.effectiveReadAloud : nil,
             onSelectReadAloud: { choice in
-                guard let roomID = headerRow?.roomID else { return }
+                guard let roomID = headerRow?.roomID ?? conversation.roomID else { return }
                 Task { await inbox.setReadAloud(choice, ids: [roomID]) }
             },
             redactNamesAndPictures: redactNamesAndPictures,
@@ -986,11 +1040,10 @@ private struct ConversationComposerContainer: View {
 
     /// "Message Florian on Google Messages": the chat's name and, in a merged chat, the network replies go to.
     private var placeholder: String {
-        let name = redactNames ? nil
-            : (conversation.mergedChat?.name ?? conversation.roomID.flatMap { inbox.row(of: $0)?.name })
-        let network = conversation.activeReplyNetwork ?? conversation.network
-        let networkName = network.isEmpty ? "" : (NetworkNames.displayName(of: network) ?? inbox.networkName(network))
-        return ConversationModel.composerPlaceholder(chatName: name, network: networkName)
+        conversation.composerPlaceholderText(
+            networkDisplayName: { net in NetworkNames.displayName(of: net) ?? inbox.networkName(net) },
+            redactNames: redactNames
+        )
     }
 
     private var currentChromeSignature: String {
@@ -1006,7 +1059,8 @@ private struct ConversationComposerContainer: View {
             mergedChat: conversation.mergedChat,
             activeReplyRoomID: conversation.activeReplyRoomID,
             activeReplyNetwork: conversation.activeReplyNetwork,
-            activeReplyAccountName: conversation.activeReplyRoomID.flatMap { inbox.row(of: $0)?.loginName } ?? "",
+            activeReplyAccountName: conversation.activeReplyRoomID.flatMap { inbox.row(of: $0)?.loginName }
+                ?? conversation.headerRow?.loginName ?? "",
             onCycleReplyNetwork: conversation.cycleMergedReplyNetwork,
             placeholder: placeholder,
             menus: ComposerMenus(
@@ -1034,6 +1088,7 @@ struct ConversationHeader: View {
     enum Part { case strip, identity, actions }
 
     let row: InboxRow?
+    var displayTitle: String? = nil
     let networkName: String?
     @ObservedObject var conversation: ConversationModel
     /// The chat's Read Aloud on Vitruvian Speaker choice; nil hides the menu (Vitruvian Speaker is not installed).
@@ -1053,10 +1108,19 @@ struct ConversationHeader: View {
             // The height every column's header strip has, so the titles share a line (PaneHeader.swift).
             .padding(.horizontal, PaneHeaderMetrics.inset)
             .frame(height: PaneHeaderMetrics.stripHeight)
+            .clipped()
+            .background(.bar)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(Color(nsColor: .separatorColor))
+                    .frame(height: PaneHeaderMetrics.hairlineHeight)
+            }
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isHeader)
         case .identity:
-            HStack(spacing: 10) { identity }
+            HStack(alignment: .center, spacing: 8) { identity }
+                .frame(maxHeight: 34)
+                .clipped()
                 .accessibilityElement(children: .combine)
                 .accessibilityAddTraits(.isHeader)
         case .actions:
@@ -1067,30 +1131,41 @@ struct ConversationHeader: View {
     @ViewBuilder
     private var identity: some View {
         if let row {
+            let formatted = displayTitle.flatMap { $0.isEmpty ? nil : $0 } ?? row.displayTitle
+            let shownTitle = formatted.isEmpty ? String(localized: "Unnamed chat") : formatted
             // The inbox's picture: a group with none gets the group picture, not initials.
-            ChatAvatar(row: row, size: 32)
-                .frame(width: 32, height: 32)
+            // 28 pt with a square clip keeps multi-circle group avatars fully inside the header and above its hairline.
+            ChatAvatar(row: row, size: 28)
+                .frame(width: 28, height: 28)
                 .blur(radius: redactNamesAndPictures ? 6 : 0)
-                .clipShape(Circle())
+                .clipShape(Rectangle())
             VStack(alignment: .leading, spacing: 1) {
                 Text(
                     redactNamesAndPictures
-                        ? AppearancePreferences.redactedText(row.name, kind: .chatTitle)
-                        : row.name
+                        ? AppearancePreferences.redactedText(shownTitle, kind: .chatTitle)
+                        : shownTitle
                 )
-                    .font(.headline)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                let subtitle = subtitle(of: row)
+                if subtitle != nil || conversation.timerLine != nil {
+                    HStack(spacing: 4) {
+                        if let subtitle {
+                            Text(subtitle)
+                                .lineLimit(1)
+                        }
+                        if subtitle != nil, conversation.timerLine != nil {
+                            Text(verbatim: "·")
+                        }
+                        if let timer = conversation.timerLine {
+                            Label(timer, systemImage: "timer")
+                                .lineLimit(1)
+                        }
+                    }
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
-                if let subtitle = subtitle(of: row) {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                if let timer = conversation.timerLine {
-                    Label(timer, systemImage: "timer")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
                 }
             }
         }
@@ -1193,6 +1268,127 @@ private struct DelayedSpinner: View {
         .task {
             try? await Task.sleep(for: delay)
             if !Task.isCancelled { isShown = true }
+        }
+    }
+}
+
+private struct ChatHeaderOverlayHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct IgnoreTopContainerSafeAreaWhenGlass: ViewModifier {
+    let enabled: Bool
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.ignoresSafeArea(.container, edges: .top)
+        } else {
+            content
+        }
+    }
+}
+
+private struct ConversationBottomScrollEdge: ViewModifier {
+    @Environment(\.liquidGlass) private var liquidGlass
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *), liquidGlass {
+            content.scrollEdgeEffectStyle(.hard, for: .bottom)
+        } else {
+            content
+        }
+    }
+}
+
+/// Measures how many vertical points the top of `ConversationView` extends under the window's unified toolbar
+/// (`contentLayoutRect`) so the transcript can reserve exact top clearance inside `HSplitView`.
+private struct WindowToolbarOverlapReader: NSViewRepresentable {
+    let onChange: (CGFloat) -> Void
+
+    func makeNSView(context: Context) -> OverlapObserverView {
+        OverlapObserverView(onChange: onChange)
+    }
+
+    func updateNSView(_ nsView: OverlapObserverView, context: Context) {
+        nsView.onChange = onChange
+    }
+
+    final class OverlapObserverView: NSView {
+        var onChange: (CGFloat) -> Void
+        private var contentLayoutObservation: NSKeyValueObservation?
+        private var resizeObserver: NSObjectProtocol?
+        private var lastReported: CGFloat = -1
+
+        init(onChange: @escaping (CGFloat) -> Void) {
+            self.onChange = onChange
+            super.init(frame: .zero)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { nil }
+
+        deinit {
+            contentLayoutObservation?.invalidate()
+            if let resizeObserver {
+                NotificationCenter.default.removeObserver(resizeObserver)
+            }
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            contentLayoutObservation?.invalidate()
+            contentLayoutObservation = nil
+            if let resizeObserver {
+                NotificationCenter.default.removeObserver(resizeObserver)
+                self.resizeObserver = nil
+            }
+            guard let window else {
+                reportIfNeeded(0)
+                return
+            }
+            contentLayoutObservation = window.observe(\.contentLayoutRect, options: [.initial, .new]) { [weak self] _, _ in
+                Task { @MainActor [weak self] in
+                    self?.measure()
+                }
+            }
+            resizeObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResizeNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.measure()
+                }
+            }
+            Task { @MainActor [weak self] in
+                self?.measure()
+            }
+        }
+
+        override func layout() {
+            super.layout()
+            measure()
+        }
+
+        private func measure() {
+            guard let window, window.toolbar != nil else {
+                reportIfNeeded(0)
+                return
+            }
+            let topInWindow = convert(bounds, to: nil).maxY
+            let overlap = max(0, ceil(topInWindow - window.contentLayoutRect.maxY))
+            reportIfNeeded(overlap)
+        }
+
+        private func reportIfNeeded(_ value: CGFloat) {
+            guard abs(value - lastReported) > 0.25 else { return }
+            lastReported = value
+            DispatchQueue.main.async { [weak self] in
+                self?.onChange(value)
+            }
         }
     }
 }

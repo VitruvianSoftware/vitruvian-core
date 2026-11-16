@@ -202,4 +202,201 @@ final class InboxPresentationTests: XCTestCase {
         )
         XCTAssertEqual(mediaReply.formattedPreviewText, "Ann, in a thread: Image")
     }
+
+    func testChatDisplayTitleGroupCountsAndMemberSources() {
+        // 2 members (joined string only and with member list excluding me).
+        XCTAssertEqual(
+            ChatDisplayTitle.format(name: "Eddie Stecker, Kent Hua"),
+            "Eddie & Kent"
+        )
+        XCTAssertEqual(
+            ChatDisplayTitle.format(
+                name: "",
+                members: [
+                    GroupTitleMember(userID: Timeline.meUserID, name: "James Nguyen"),
+                    GroupTitleMember(userID: "@eddie", name: "Eddie Stecker"),
+                    GroupTitleMember(userID: "@kent", name: "Kent Hua"),
+                ]
+            ),
+            "Eddie & Kent"
+        )
+
+        // 3 members.
+        XCTAssertEqual(
+            ChatDisplayTitle.format(name: "Eddie Stecker, Kent Hua, GitHub"),
+            "Eddie, Kent & GitHub"
+        )
+        let threeMemberRow = InboxRow(
+            roomID: "!g3", network: "slack", name: "Eddie Stecker, Kent Hua, GitHub", avatarPath: "",
+            isDirect: false, lastTS: 1, preview: "", previewKind: .none, previewMine: false,
+            unread: 0, muted: false,
+            memberPreview: [
+                RowMember(userID: "@eddie", name: "Eddie Stecker"),
+                RowMember(userID: "@kent", name: "Kent Hua"),
+                RowMember(userID: "@gh", name: "GitHub"),
+            ]
+        )
+        XCTAssertEqual(threeMemberRow.displayTitle, "Eddie, Kent & GitHub")
+
+        // 4+ members (full list, bridge "and N others", Oxford-comma ", and N others", and complete member list).
+        XCTAssertEqual(
+            ChatDisplayTitle.format(name: "Eddie Stecker, Kent Hua, GitHub, Alice Smith"),
+            "Eddie, Kent, GitHub & 1 other"
+        )
+        XCTAssertEqual(
+            ChatDisplayTitle.format(name: "Eddie Stecker, Kent Hua, GitHub, Alice Smith, Bob Jones"),
+            "Eddie, Kent, GitHub & 2 others"
+        )
+        XCTAssertEqual(
+            ChatDisplayTitle.format(name: "Eddie Stecker, Kent Hua, GitHub and 2 others"),
+            "Eddie, Kent, GitHub & 2 others"
+        )
+        XCTAssertEqual(
+            ChatDisplayTitle.format(
+                name: "Eddie Stecker, Kent Hua, GitHub, and 2 others",
+                members: [
+                    GroupTitleMember(userID: "@eddie", name: "Eddie Stecker"),
+                    GroupTitleMember(userID: "@kent", name: "Kent Hua"),
+                    GroupTitleMember(userID: "@gh", name: "GitHub"),
+                ],
+                isCompleteMemberList: false
+            ),
+            "Eddie, Kent, GitHub & 2 others"
+        )
+        XCTAssertEqual(
+            ChatDisplayTitle.format(
+                name: "Eddie Stecker, Kent Hua, GitHub",
+                members: [
+                    GroupTitleMember(userID: Timeline.meUserID, name: "James Nguyen"),
+                    GroupTitleMember(userID: "@eddie", name: "Eddie Stecker"),
+                    GroupTitleMember(userID: "@kent", name: "Kent Hua"),
+                    GroupTitleMember(userID: "@gh", name: "GitHub"),
+                    GroupTitleMember(userID: "@alice", name: "Alice Smith"),
+                    GroupTitleMember(userID: "@bob", name: "Bob Jones"),
+                ],
+                isCompleteMemberList: true
+            ),
+            "Eddie, Kent, GitHub & 2 others"
+        )
+    }
+
+    func testChatDisplayTitleLeavesCustomTitlesDirectChatsAndBotsUntouched() {
+        let members = [
+            GroupTitleMember(userID: "@eddie", name: "Eddie Stecker"),
+            GroupTitleMember(userID: "@kent", name: "Kent Hua"),
+            GroupTitleMember(userID: "@gh", name: "GitHub"),
+        ]
+
+        // Explicit custom titles, channels, local overrides, and 1:1 chats are never rewritten.
+        XCTAssertEqual(
+            ChatDisplayTitle.format(name: "Weekend Hikers", members: members, isCompleteMemberList: true),
+            "Weekend Hikers"
+        )
+        XCTAssertEqual(
+            ChatDisplayTitle.format(name: "#general", members: members, isCompleteMemberList: true),
+            "#general"
+        )
+        XCTAssertEqual(
+            ChatDisplayTitle.format(name: "Research & Development", members: members, isCompleteMemberList: true),
+            "Research & Development"
+        )
+        XCTAssertEqual(
+            ChatDisplayTitle.format(name: "Design, Product, Eng, QA", members: members, isCompleteMemberList: false),
+            "Design, Product, Eng, QA"
+        )
+        XCTAssertEqual(
+            ChatDisplayTitle.format(name: "Eddie Stecker, Kent Hua", localName: "My Squad"),
+            "Eddie Stecker, Kent Hua"
+        )
+        XCTAssertEqual(
+            ChatDisplayTitle.format(name: "Stecker, Eddie", isDirect: true),
+            "Stecker, Eddie"
+        )
+
+        // Single-word names and bot names stay intact.
+        XCTAssertEqual(
+            ChatDisplayTitle.format(
+                name: "GitHub, Deploy Bot, Release Helper",
+                members: [
+                    GroupTitleMember(userID: "@gh", name: "GitHub"),
+                    GroupTitleMember(userID: "@db", name: "Deploy Bot"),
+                    GroupTitleMember(userID: "@rh", name: "Release Helper", isBot: true),
+                ]
+            ),
+            "GitHub, Deploy Bot & Release Helper"
+        )
+    }
+
+    @MainActor
+    func testChatDisplayTitleNonLatinNamesDuplicatesAndRoomInfo() {
+        // Non-Latin & diacritic names.
+        XCTAssertEqual(
+            ChatDisplayTitle.format(name: "김민준, 이서연"),
+            "김민준 & 이서연"
+        )
+        XCTAssertEqual(
+            ChatDisplayTitle.format(name: "田中 太郎, 佐藤 花子, 鈴木 一郎"),
+            "田中, 佐藤 & 鈴木"
+        )
+        XCTAssertEqual(
+            ChatDisplayTitle.format(name: "Élodie Moreau, Łukasz Kowalski"),
+            "Élodie & Łukasz"
+        )
+        XCTAssertEqual(
+            ChatDisplayTitle.format(name: "李小明, 王芳, 张伟, 陈静"),
+            "李小明, 王芳, 张伟 & 1 other"
+        )
+
+        // Duplicates: repeated identical member collapses; distinct members sharing a first name disambiguate.
+        XCTAssertEqual(
+            ChatDisplayTitle.format(name: "Eddie Stecker, Kent Hua, Eddie Stecker"),
+            "Eddie & Kent"
+        )
+        XCTAssertEqual(
+            ChatDisplayTitle.format(
+                name: "",
+                members: [
+                    GroupTitleMember(userID: "@eddie", name: "Eddie Stecker"),
+                    GroupTitleMember(userID: "@eddie", name: "Eddie Stecker"),
+                    GroupTitleMember(userID: "@kent", name: "Kent Hua"),
+                ]
+            ),
+            "Eddie & Kent"
+        )
+        XCTAssertEqual(
+            ChatDisplayTitle.format(name: "Eddie Stecker, Eddie Wu"),
+            "Eddie S. & Eddie W."
+        )
+
+        // RoomInfoResult.displayTitle & ConversationModel.applyingDisplayTitle for Chat Info.
+        let unnamedInfo = RoomInfoResult(
+            roomID: "!grp",
+            name: "Eddie Stecker, Kent Hua, GitHub",
+            remoteName: "Eddie Stecker, Kent Hua, GitHub",
+            network: "slack",
+            isDirect: false,
+            members: [
+                Member(userID: "@eddie", name: "Eddie Stecker"),
+                Member(userID: "@kent", name: "Kent Hua"),
+                Member(userID: "@gh", name: "GitHub", isBot: true),
+            ],
+            features: .noFeatures
+        )
+        XCTAssertEqual(unnamedInfo.displayTitle, "Eddie, Kent & GitHub")
+        let appliedUnnamed = ConversationModel.applyingDisplayTitle(to: unnamedInfo)
+        XCTAssertEqual(appliedUnnamed.name, "Eddie, Kent & GitHub")
+        XCTAssertEqual(appliedUnnamed.remoteName, "Eddie, Kent & GitHub")
+
+        let customInfo = RoomInfoResult(
+            roomID: "!custom",
+            name: "Design Systems",
+            remoteName: "Design Systems",
+            network: "slack",
+            isDirect: false,
+            members: unnamedInfo.members,
+            features: .noFeatures
+        )
+        XCTAssertEqual(customInfo.displayTitle, "Design Systems")
+        XCTAssertEqual(ConversationModel.applyingDisplayTitle(to: customInfo).name, "Design Systems")
+    }
 }

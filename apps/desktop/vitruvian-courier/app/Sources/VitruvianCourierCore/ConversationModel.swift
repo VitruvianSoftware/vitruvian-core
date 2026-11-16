@@ -278,6 +278,10 @@ public final class ConversationModel: ObservableObject {
 
     /// The open chat; nil when none is.
     @Published public private(set) var roomID: String?
+    /// The open chat's row, retained on the conversation itself so switching the inbox list to another space
+    /// (Reminders, Low Priority, Requests, Archive, or another network) never strips the open chat's header or
+    /// composer recipient placeholder.
+    @Published public private(set) var openChatRow: InboxRow?
     /// When the open chat is a merged chat (`openMergedChat`), its definition from `AppModel.mergedChats`; nil for a single room.
     public var mergedChat: MergedChat? {
         roomID.flatMap { appModel.mergedChats[$0] }
@@ -648,9 +652,14 @@ public final class ConversationModel: ObservableObject {
         }
         subscriptions.append(appModel.$mergedChats.dropFirst().sink { [weak self] merges in
             guard let self else { return }
-            if let room = self.roomID, room.hasPrefix("merge:"), merges[room] == nil {
-                self.activeReplyRoomID = nil
-                self.activeReplyNetwork = nil
+            if let room = self.roomID, room.hasPrefix("merge:") {
+                if let updatedMerged = merges[room] {
+                    self.openChatRow = self.chat(room)
+                        ?? Self.synthesizedRow(for: updatedMerged, activeNetwork: self.activeReplyNetwork ?? self.network)
+                } else {
+                    self.activeReplyRoomID = nil
+                    self.activeReplyNetwork = nil
+                }
             }
             self.objectWillChange.send()
         })
@@ -695,6 +704,116 @@ public final class ConversationModel: ObservableObject {
         return String(localized: "Message \(name) on \(networkName)")
     }
 
+    /// The row driving the conversation header: the open chat's retained row, falling back to `chat(roomID)` or a
+    /// synthesized row from `chatInfo` when `roomID` is open. Nil when no chat is open.
+    public var headerRow: InboxRow? {
+        guard let room = roomID else { return nil }
+        if let merged = mergedChat, room == merged.mergeID {
+            if let listed = chat(merged.mergeID) { return listed }
+            if let openChatRow, openChatRow.roomID == merged.mergeID || openChatRow.id == merged.mergeID {
+                return openChatRow
+            }
+            return Self.synthesizedRow(for: merged, activeNetwork: activeReplyNetwork ?? network)
+        }
+        if let live = chat(room) { return live }
+        if let openChatRow, openChatRow.roomID == room || openChatRow.id == room {
+            return openChatRow
+        }
+        if let info = chatInfo, info.roomID == room {
+            return Self.synthesizedRow(from: info)
+        }
+        return nil
+    }
+
+    /// The open chat's formatted display title (first-name group list for unnamed groups, custom title otherwise).
+    public var openChatDisplayTitle: String? {
+        guard let room = roomID else { return nil }
+        if let merged = mergedChat, room == merged.mergeID {
+            let trimmed = merged.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        if let info = chatInfo, info.roomID == room {
+            let title = info.displayTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !title.isEmpty { return title }
+        }
+        if let row = headerRow {
+            let title = row.displayTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !title.isEmpty { return title }
+        }
+        if let otherPerson, !otherPerson.isEmpty {
+            return otherPerson
+        }
+        return nil
+    }
+
+    /// Composer placeholder derived strictly from the open chat itself (never from whether the current inbox list
+    /// contains the open chat).
+    public func composerPlaceholderText(
+        networkDisplayName: (String) -> String? = NetworkNames.displayName(of:),
+        redactNames: Bool = false
+    ) -> String {
+        guard roomID != nil else { return String(localized: "Type a message…") }
+        let name = redactNames ? nil : openChatDisplayTitle
+        let rawNet = activeReplyNetwork ?? (!network.isEmpty ? network : (headerRow?.network ?? ""))
+        let resolvedNet = rawNet.isEmpty ? "" : (networkDisplayName(rawNet) ?? rawNet)
+        return Self.composerPlaceholder(chatName: name, network: resolvedNet)
+    }
+
+    static func applyingDisplayTitle(to info: RoomInfoResult) -> RoomInfoResult {
+        let formatted = info.displayTitle
+        guard formatted != info.name else { return info }
+        var copy = info
+        let trimmedLocal = info.localName.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Keep remoteName aligned when no local override is set so ChatInfoPane does not mistake the shortened
+        // member list for a user-set local override ("On <Network>: ...").
+        if trimmedLocal.isEmpty, info.remoteName == info.name {
+            copy.remoteName = formatted
+        }
+        copy.name = formatted
+        return copy
+    }
+
+    private static func synthesizedRow(for merged: MergedChat, activeNetwork: String) -> InboxRow {
+        InboxRow(
+            roomID: merged.mergeID,
+            network: activeNetwork,
+            name: merged.name,
+            avatarPath: merged.avatarPath,
+            isDirect: true,
+            lastTS: 0,
+            preview: "",
+            previewKind: .none,
+            previewMine: false,
+            unread: 0,
+            muted: false,
+            mergeID: merged.mergeID
+        )
+    }
+
+    private static func synthesizedRow(from info: RoomInfoResult) -> InboxRow {
+        let previews = info.members
+            .filter { $0.userID != Timeline.meUserID && !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .prefix(3)
+            .map { RowMember(userID: $0.userID, name: $0.name, avatarPath: $0.avatarPath.isEmpty ? nil : $0.avatarPath) }
+        return InboxRow(
+            roomID: info.roomID,
+            network: info.network,
+            name: info.displayTitle,
+            avatarPath: info.localAvatarURI.isEmpty ? info.avatarPath : info.localAvatarURI,
+            isDirect: info.isDirect,
+            lastTS: 0,
+            preview: "",
+            previewKind: .none,
+            previewMine: false,
+            unread: 0,
+            muted: false,
+            remoteName: info.remoteName,
+            localName: info.localName,
+            localAvatarPath: info.localAvatarURI,
+            memberPreview: Array(previews)
+        )
+    }
+
     /// Opens `room` directly on this conversation model (used by detached chat and space windows).
     public func openDetachedRoom(_ room: String?) {
         open(room)
@@ -723,7 +842,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Shows `info` as the open chat's Chat Info, for view tests without an engine.
     public func setChatInfoForTesting(_ info: RoomInfoResult?) {
-        chatInfo = info
+        chatInfo = info.map(Self.applyingDisplayTitle(to:))
         isShowingChatInfo = info != nil
     }
 
@@ -775,6 +894,8 @@ public final class ConversationModel: ObservableObject {
         let trimmedName = merged.name.trimmingCharacters(in: .whitespacesAndNewlines)
         otherPerson = trimmedName.isEmpty ? nil : trimmedName
         isDirectChat = true
+        openChatRow = chat(merged.mergeID)
+            ?? Self.synthesizedRow(for: merged, activeNetwork: activeReplyNetwork ?? "")
         handOnChat()
         typingLine = nil
         startReading()
@@ -799,6 +920,8 @@ public final class ConversationModel: ObservableObject {
         activeReplyRoomID = nextRoom
         activeReplyNetwork = nextNet
         network = nextNet ?? ""
+        openChatRow = chat(merged.mergeID)
+            ?? Self.synthesizedRow(for: merged, activeNetwork: nextNet ?? "")
         composer.open(nextRoom)
         handOnChat()
         readFeatures()
@@ -852,11 +975,24 @@ public final class ConversationModel: ObservableObject {
     private func learnChat(_ row: InboxRow?, of room: String?) {
         guard room == roomID else { return }
         if let merged = mergedChat, room == merged.mergeID { return }
-        network = row?.network ?? ""
-        let name = row?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        otherPerson = row?.isDirect == true && !name.isEmpty ? name : nil
+        guard let row else {
+            // When the open chat is excluded from the current inbox list (e.g. Reminders, Low Priority, Archive),
+            // `chat(room)` returns nil. Never wipe metadata already learned for the open chat.
+            if openChatRow != nil { return }
+            network = ""
+            otherPerson = nil
+            let wasDirect = isDirectChat
+            isDirectChat = nil
+            handOnChat()
+            if isDirectChat != wasDirect, !events.isEmpty { rebuild() }
+            return
+        }
+        openChatRow = row
+        network = row.network
+        let name = row.displayTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        otherPerson = row.isDirect && !name.isEmpty ? name : nil
         let wasDirect = isDirectChat
-        isDirectChat = row?.isDirect
+        isDirectChat = row.isDirect
         handOnChat()
         if isDirectChat != wasDirect, !events.isEmpty { rebuild() } // "Seen" names no one one-to-one
     }
@@ -1042,6 +1178,14 @@ public final class ConversationModel: ObservableObject {
         readingTyping = false
         typingAgain = false
         holdsRead = false
+        if room != roomID || room == nil {
+            openChatRow = nil
+        }
+        if room == nil {
+            network = ""
+            otherPerson = nil
+            isDirectChat = nil
+        }
         if room != roomID {
             mySends = []
             repliesRead = []
@@ -1121,8 +1265,8 @@ public final class ConversationModel: ObservableObject {
     }
 
     private func startReading() {
-        guard roomID != nil, appModel.client != nil else { return }
-        if isShowingChatInfo {
+        guard let room = roomID, appModel.client != nil else { return }
+        if isShowingChatInfo || (openChatRow == nil && !room.hasPrefix("merge:")) {
             Task { [weak self] in await self?.refreshChatInfo() }
         }
         if let anchor = anchorID {
@@ -2058,10 +2202,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Builds `AIChatContext` from the open chat's title and loaded text messages.
     public var aiChatContext: AIChatContext {
-        let title = chatInfo?.name
-            ?? roomID.flatMap { chat($0)?.name }
-            ?? otherPerson
-            ?? ""
+        let title = openChatDisplayTitle ?? ""
         return AIChatContext(title: title, timelineMessages: timelineMessages)
     }
 
@@ -2160,6 +2301,9 @@ public final class ConversationModel: ObservableObject {
         guard !isLocked, room == roomID else { return }
         if let info {
             chatInfo = info
+            if openChatRow == nil {
+                learnChat(Self.synthesizedRow(from: info), of: room)
+            }
         }
         chatInfoBookmarks = bookmarks
     }
@@ -2183,7 +2327,7 @@ public final class ConversationModel: ObservableObject {
         let info = await infoCall
         let search = await searchCall
         guard client === appModel.client else { return (nil, []) }
-        return (info, search?.bookmarks?.hits ?? [])
+        return (info.map(Self.applyingDisplayTitle(to:)), search?.bookmarks?.hits ?? [])
     }
 
     /// Opens the chat at `eventID` (for jumping to a pinned or bookmarked message from Chat Info).
