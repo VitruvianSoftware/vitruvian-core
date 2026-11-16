@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.100.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.99.0...vitruvian-atrium-v3.100.0) (2026-11-16)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 43, Claude account selection ([#4954](https://github.com/VitruvianSoftware/vitruvian-core/issues/4954)) ([6de90fc](https://github.com/VitruvianSoftware/vitruvian-core/commit/6de90fc2f2f223c102f9fa252a6ebabe161f176f))
+
 ## [3.99.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.98.1...vitruvian-atrium-v3.99.0) (2026-11-15)
 
 
