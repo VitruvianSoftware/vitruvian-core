@@ -374,6 +374,10 @@ struct MessageRowView: View {
     @Environment(\.redactNamesAndPictures) private var redactEnv
     @Environment(\.themeAccentColor) private var envThemeAccent
     @Environment(\.reactionCardOverride) private var cardOverride
+    @Environment(\.timelineCovered) private var timelineCovered
+    /// Where the pointer is, for the action bar: it goes when the pointer leaves the message.
+    @State private var pointer = ActionBarPointer()
+    @State private var settling: Task<Void, Never>?
     @State private var barSize: CGSize = .zero
     /// The reaction chip under the pointer, and the one whose card is open (after a short rest on it).
     @State private var hoveredChip: String?
@@ -447,6 +451,8 @@ struct MessageRowView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.28 * highlight)))
         .onChange(of: isHighlighted, initial: true) { _, on in fadeHighlight(on) }
         .contentShape(Rectangle())
+        .onHover { pointer.rowHover($0); pointerMoved() }
+        .onChange(of: isSelected) { _, _ in pointer.selectionChanged() }
         .gesture(TapGesture(count: 2).onEnded {
             guard canAct else { return }
             if actions.doubleClickShowsMenu { showsMenu = true } else { actions.doubleClick(message.id) }
@@ -484,6 +490,7 @@ struct MessageRowView: View {
                     if let bar {
                         MessageActionBar(message: message, actions: actions) { showsMenu = true }
                             .fixedSize()
+                            .onHover { pointer.barHover($0); pointerMoved() }
                             .onGeometryChange(for: CGSize.self) { $0.size } action: { barSize = $0 }
                             .offset(x: bar.minX, y: bar.minY)
                             .opacity(barSize == .zero ? 0 : 1)
@@ -551,9 +558,25 @@ struct MessageRowView: View {
 
     /// The action bar is the selected message's (a click, or the arrow keys, select it), and stays up while its
     /// menu or its reaction picker is open. Pointing at a message shows nothing: moving the pointer quickly over
-    /// the chat flashed a bar on every row it crossed.
+    /// the chat flashed a bar on every row it crossed. It goes when the pointer leaves the message, and while a
+    /// panel or a sheet covers the chat (`ActionBarVisibility`).
     private var showsActionBar: Bool {
-        canAct && (isSelected || showsMenu || actions.isPickingReaction(message.id))
+        ActionBarVisibility.isShown(
+            canAct: canAct, isSelected: isSelected, menuOpen: showsMenu,
+            pickingReaction: actions.isPickingReaction(message.id), pointer: pointer,
+            timelineCovered: timelineCovered)
+    }
+
+    /// The pointer entered or left the row or the bar: entering shows the bar again at once; leaving hides it once
+    /// the pointer has stayed off both for a moment (it crosses from the row to the bar through neither).
+    private func pointerMoved() {
+        settling?.cancel()
+        guard !pointer.isOver else { return }
+        settling = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(ActionBarPointer.settleMilliseconds))
+            guard !Task.isCancelled else { return }
+            pointer.settle()
+        }
     }
 
     /// The chip whose who-reacted card is open: the one the pointer rested on, or the one the snapshot tests open.
@@ -1621,6 +1644,19 @@ extension EnvironmentValues {
     var reactionCardOverride: ReactionCardOverride? {
         get { self[ReactionCardOverrideKey.self] }
         set { self[ReactionCardOverrideKey.self] = newValue }
+    }
+}
+
+/// True while a panel or a sheet covers the timeline (the ⌘K search panel, the command bar, a sheet, an alert): no
+/// message shows its hover bar then (`ActionBarVisibility`). False (the default) in the snapshot tests.
+private struct TimelineCoveredKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var timelineCovered: Bool {
+        get { self[TimelineCoveredKey.self] }
+        set { self[TimelineCoveredKey.self] = newValue }
     }
 }
 

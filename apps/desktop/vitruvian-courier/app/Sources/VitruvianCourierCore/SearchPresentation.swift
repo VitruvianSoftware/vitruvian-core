@@ -70,3 +70,81 @@ extension MessageHit {
         return senderName.isEmpty ? sender : senderName
     }
 }
+
+/// Where a found message is, in one line: "Kent Hua in Eddie & Kent · Google Chat"; in a one-to-one chat, whose
+/// title is only the other person's name, "Kent Hua · Google Chat".
+public enum SearchResultLocation {
+    /// - Parameters:
+    ///   - sender: who sent it, as the row says it ("You" for mine).
+    ///   - chatTitle: the chat's title, as the inbox row shows it. Left out of a one-to-one chat's line.
+    ///   - networkName: the network's name for people ("Google Chat"). Left out when empty.
+    ///   - isDirect: a one-to-one chat.
+    public static func subtitle(sender: String, chatTitle: String, networkName: String, isDirect: Bool) -> String {
+        let title = chatTitle.isEmpty ? String(localized: "Unnamed chat") : chatTitle
+        switch (isDirect, networkName.isEmpty) {
+        case (true, true):
+            return sender
+        case (true, false):
+            return String(localized: "\(sender) · \(networkName)",
+                          comment: "Search result in a one-to-one chat: who sent it, then the network.")
+        case (false, true):
+            return String(localized: "\(sender) in \(title)",
+                          comment: "Search result in a group: who sent it, then the chat's title.")
+        case (false, false):
+            return String(localized: "\(sender) in \(title) · \(networkName)",
+                          comment: "Search result in a group: who sent it, the chat's title, then the network.")
+        }
+    }
+}
+
+extension InboxModel {
+    /// The title of the chat a found message is in, as that chat's inbox row shows it (`displayTitle(for:)`, the
+    /// inbox's own): the engine's `room_name` is the bridge's name, and a group still named by its members' names
+    /// shows shorter in the list ("Eddie & Kent"). `fetchedRow` is the chat's row when the inbox's list doesn't
+    /// have it (an old chat past the first pages of the list). With no row at all, the engine's name.
+    public func chatTitle(for hit: MessageHit, fetchedRow: InboxRow? = nil) -> String {
+        chatTitle(forRoomID: hit.roomID, fetchedRow: fetchedRow) ?? hit.roomName
+    }
+
+    /// The same for a chat by its ID (the open chat, for "Press ⌘F to search in …"); nil when there is no row, or
+    /// the row has no title.
+    public func chatTitle(forRoomID roomID: String, fetchedRow: InboxRow? = nil) -> String? {
+        guard let row = row(of: roomID) ?? fetchedRow else { return nil }
+        let title = displayTitle(for: row)
+        return title.isEmpty ? nil : title
+    }
+}
+
+/// The first line of the search panel while a chat is open: "Press ⌘F to search in <chat>". Return on it, or a
+/// click, searches that chat with what is typed.
+public struct SearchInChatOffer: Equatable, Sendable {
+    public let roomID: String
+    /// The chat's title as its inbox row shows it; empty when the chat has no row yet.
+    public let title: String
+    /// The chord that opens in-chat search ("⌘F" unless the person changed it); nil when it has none.
+    public let shortcut: String?
+
+    public init(roomID: String, title: String, shortcut: String?) {
+        self.roomID = roomID
+        self.title = title
+        self.shortcut = shortcut
+    }
+
+    public var text: String {
+        let name = title.isEmpty ? String(localized: "this chat") : title
+        if let shortcut, !shortcut.isEmpty {
+            return String(localized: "Press \(shortcut) to search in \(name)",
+                          comment: "First line of the search panel while a chat is open. The first argument is the shortcut, the second the chat's title.")
+        }
+        return String(localized: "Search in \(name)",
+                      comment: "First line of the search panel while a chat is open, when Search in Chat has no shortcut. The argument is the chat's title.")
+    }
+
+    /// The offer for the open chat, from where the app keeps the chord: Search in Chat in the shortcut registry.
+    @MainActor
+    public static func make(roomID: String?, title: String, hotkeys: HotkeyRegistry) -> SearchInChatOffer? {
+        guard let roomID, !roomID.isEmpty else { return nil }
+        return SearchInChatOffer(roomID: roomID, title: title,
+                                 shortcut: hotkeys.primaryChord(for: HotkeyID.searchInChat)?.symbols)
+    }
+}

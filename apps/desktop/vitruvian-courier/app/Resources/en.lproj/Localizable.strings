@@ -1473,7 +1473,19 @@
 "Show more" = "Show more";
 
 /* Under the Messages section of search: what search covers. */
-"Vitruvian Courier searches the messages on this Mac. Older history appears as each network sends it." = "Vitruvian Courier searches the messages on this Mac. Older history appears as each network sends it.";
+"Only messages on this Mac are searched. Older messages appear as each network sends them." = "Only messages on this Mac are searched. Older messages appear as each network sends them.";
+
+/* Search result in a group: who sent it, then the chat's title. */
+"%@ in %@" = "%1$@ in %2$@";
+
+/* Search result in a group: who sent it, the chat's title, then the network. */
+"%@ in %@ · %@" = "%1$@ in %2$@ · %3$@";
+
+/* First line of the search panel while a chat is open. The first argument is the shortcut, the second the chat's title. */
+"Press %@ to search in %@" = "Press %1$@ to search in %2$@";
+
+/* First line of the search panel while a chat is open, when Search in Chat has no shortcut. The argument is the chat's title. */
+"Search in %@" = "Search in %@";
 
 /* In the title row of the Recent searches section of search. */
 "Clear Recent Searches" = "Clear Recent Searches";
