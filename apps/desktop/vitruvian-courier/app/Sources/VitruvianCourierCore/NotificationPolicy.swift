@@ -514,10 +514,13 @@ public enum NotificationPolicy {
         // that setting decides copying and nothing else.
         let holdsCode = otpCode != nil
         let autoCopiesCode = holdsCode && (preferences?.autoCopyOTP ?? false)
+        // Which codes get through a quiet chat: one sent to me alone (codes come from a sender, one to one), or any
+        // when auto-copy is on, as before. A "code" in a muted group is more likely a "pin 1234" in conversation.
+        let codeGetsThrough = holdsCode && (room.isDirect || autoCopiesCode)
 
         // Short-code senders are filed under Low Priority by default (`ShortCodeSenders`), and their codes must still
         // notify, so a code passes this guard as it passes the mute guard below. A hidden chat stays silent.
-        guard !room.hidden, !room.lowPriority || holdsCode else { return noNotify }
+        guard !room.hidden, !room.lowPriority || codeGetsThrough else { return noNotify }
         let allowRequests = preferences?.requestNotificationsEnabled ?? context.requestNotifications
         guard !room.request || allowRequests else { return noNotify }
 
@@ -526,7 +529,7 @@ public enum NotificationPolicy {
         // A code gets through a chat's mute (as through Low Priority above): that chat is quiet, but this is what the
         // person asked for. The switches that turn notifications off for all messages, all groups or a whole account
         // still hold for a code, unless auto-copy is on, which has always meant "always tell me about codes".
-        if !holdsCode {
+        if !codeGetsThrough {
             guard !isMuted(room) else { return noNotify }
         }
         if !autoCopiesCode {

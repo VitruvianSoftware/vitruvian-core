@@ -681,5 +681,31 @@ final class NotificationPolicyTests: XCTestCase {
 
         XCTAssertEqual(NotificationPolicy.reminderContent(room: row(name: "Toan Vu (WA)")).title, "Toan Vu")
         XCTAssertEqual(NotificationPolicy.content(for: live, room: row(name: "Room (2)")).title, "Room (2)")
+
+        XCTAssertEqual(NotificationPolicy.typingContent(room: row(name: "Toan Vu (WA)")).title, "Toan Vu")
+        let scheduled = ScheduledMessage(outboxID: 7, roomID: "!a", text: "hi", entities: [], dueAt: 2000,
+                                         condition: .ifNoReply, state: .canceled, setAt: 1000)
+        let missed = NotificationPolicy.scheduledContent(scheduled, room: row(name: "Toan Vu (WA)"))
+        XCTAssertTrue(missed.body.contains("Toan Vu"), missed.body)
+        XCTAssertFalse(missed.body.contains("(WA)"), missed.body)
+    }
+
+    /// In a muted group, a message the detector reads as a code ("pin 1234") stays quiet unless auto-copy is on: only a
+    /// code sent to me alone gets through a quiet chat by itself.
+    func testACodeInAMutedOrLowPriorityGroupNotifiesOnlyWithAutoCopy() throws {
+        let code = codeEvent("Your verification code is 482910")
+        for autoCopy in [false, true] {
+            let suiteName = "courier.test.otp.group.\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            let prefs = NotificationPreferences(defaults: defaults)
+            prefs.autoCopyOTP = autoCopy
+            let muted = NotificationPolicy.evaluate(event: code, room: row(direct: false, muted: true),
+                                                    context: context(), preferences: prefs)
+            XCTAssertEqual(muted.shouldNotify, autoCopy, "muted group (auto-copy \(autoCopy))")
+            let low = NotificationPolicy.evaluate(event: code, room: row(direct: false, lowPriority: true),
+                                                  context: context(), preferences: prefs)
+            XCTAssertEqual(low.shouldNotify, autoCopy, "Low Priority group (auto-copy \(autoCopy))")
+        }
     }
 }
