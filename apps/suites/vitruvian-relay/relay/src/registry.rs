@@ -21,10 +21,11 @@
 //! Which devices are connected, and routing a call to one and back.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Notify};
 use vitruvian_relay_protocol::{Call, CallResult, ToConnector, ToolDef};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -58,7 +59,46 @@ struct Connection {
     id: ConnectionId,
     tx: mpsc::Sender<ToConnector>,
     tools: Vec<ToolDef>,
+    closer: Arc<Closer>,
 }
+
+/// Tells a session to end its connection now, without sending what is still
+/// queued for it (see [`Registry::closer`]).
+#[derive(Default)]
+pub struct Closer {
+    closed: AtomicBool,
+    notify: Notify,
+}
+
+impl Closer {
+    pub fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::SeqCst)
+    }
+
+    /// Resolves once the connection is to be closed.
+    pub async fn closed(&self) {
+        loop {
+            let wait = self.notify.notified();
+            tokio::pin!(wait);
+            // Registered before the check, so a close between the two is
+            // not missed.
+            wait.as_mut().enable();
+            if self.is_closed() {
+                return;
+            }
+            wait.await;
+        }
+    }
+
+    fn close(&self) {
+        self.closed.store(true, Ordering::SeqCst);
+        self.notify.notify_waiters();
+    }
+}
+
+/// How long a `Cancel` may wait for room in a full connection queue before
+/// the connection is closed instead.
+pub const CANCEL_WAIT: Duration = Duration::from_secs(2);
 
 struct Pending {
     conn_id: ConnectionId,
@@ -110,18 +150,32 @@ impl State {
 }
 
 /// Cheap to clone; every clone shares the same state.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Registry {
     state: Arc<Mutex<State>>,
+    cancel_wait: Duration,
+}
+
+impl Default for Registry {
+    fn default() -> Self {
+        Registry {
+            state: Arc::default(),
+            cancel_wait: CANCEL_WAIT,
+        }
+    }
 }
 
 /// Forgets a call if its caller goes away (the HTTP request was dropped), and
 /// tells the device to stop it.
 struct PendingGuard<'a> {
     registry: &'a Registry,
+    device_id: String,
+    conn_id: ConnectionId,
     call_id: String,
     token: u64,
     tx: mpsc::Sender<ToConnector>,
+    /// Whether the call went into the connection's queue.
+    sent: &'a AtomicBool,
     armed: bool,
 }
 
@@ -134,10 +188,14 @@ impl Drop for PendingGuard<'_> {
                 .lock()
                 .unwrap()
                 .forget(&self.call_id, self.token)
+            && self.sent.load(Ordering::SeqCst)
         {
-            let _ = self.tx.try_send(ToConnector::Cancel {
-                call_id: self.call_id.clone(),
-            });
+            self.registry.cancel(
+                &self.device_id,
+                self.conn_id,
+                &self.tx,
+                std::mem::take(&mut self.call_id),
+            );
         }
     }
 }
@@ -145,6 +203,75 @@ impl Drop for PendingGuard<'_> {
 impl Registry {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// A registry whose `Cancel`s wait `d` for room (tests).
+    pub fn with_cancel_wait(d: Duration) -> Self {
+        Registry {
+            cancel_wait: d,
+            ..Self::default()
+        }
+    }
+
+    /// The handle the session for connection `id` watches: once it says
+    /// closed, the session ends at once, sending nothing more.
+    pub fn closer(&self, device_id: &str, id: ConnectionId) -> Option<Arc<Closer>> {
+        let st = self.state.lock().unwrap();
+        st.devices
+            .get(device_id)
+            .filter(|c| c.id == id)
+            .map(|c| c.closer.clone())
+    }
+
+    /// Ends connection `id` now: its pending calls fail and its session
+    /// stops without sending what is still queued.
+    fn close_now(&self, device_id: &str, id: ConnectionId) {
+        let mut st = self.state.lock().unwrap();
+        if let Some(c) = st.devices.get(device_id).filter(|c| c.id == id) {
+            c.closer.close();
+        }
+        st.drop_connection(device_id, Some(id));
+    }
+
+    /// Tells the device to stop a call the relay has given up on. That must
+    /// never be lost: if the queue has no room, the cancel waits for it (in
+    /// order, behind the call it cancels) for `cancel_wait`; failing that,
+    /// the connection is closed, which the connector treats as a drop (it
+    /// closes the call's dialog and does not start it).
+    fn cancel(
+        &self,
+        device_id: &str,
+        id: ConnectionId,
+        tx: &mpsc::Sender<ToConnector>,
+        call_id: String,
+    ) {
+        let frame = ToConnector::Cancel { call_id };
+        let frame = match tx.try_send(frame) {
+            Ok(()) => return,
+            // The session is gone: so is the connection.
+            Err(mpsc::error::TrySendError::Closed(_)) => return,
+            Err(mpsc::error::TrySendError::Full(f)) => f,
+        };
+        let (reg, device, tx, wait) = (
+            self.clone(),
+            device_id.to_string(),
+            tx.clone(),
+            self.cancel_wait,
+        );
+        let closer = move |reg: &Registry| reg.close_now(&device, id);
+        match tokio::runtime::Handle::try_current() {
+            Ok(h) => {
+                h.spawn(async move {
+                    let sent =
+                        matches!(tokio::time::timeout(wait, tx.send(frame)).await, Ok(Ok(())));
+                    if !sent {
+                        closer(&reg);
+                    }
+                });
+            }
+            // No runtime to wait in (shutting down): close at once.
+            Err(_) => closer(&reg),
+        }
     }
 
     /// Registers a live connection. A newer connection for the same device
@@ -159,8 +286,15 @@ impl Registry {
         st.drop_connection(device_id, None);
         st.next_conn += 1;
         let id = ConnectionId(st.next_conn);
-        st.devices
-            .insert(device_id.to_string(), Connection { id, tx, tools });
+        st.devices.insert(
+            device_id.to_string(),
+            Connection {
+                id,
+                tx,
+                tools,
+                closer: Arc::default(),
+            },
+        );
         id
     }
 
@@ -184,8 +318,15 @@ impl Registry {
         st.drop_connection(device_id, None);
         st.next_conn += 1;
         let id = ConnectionId(st.next_conn);
-        st.devices
-            .insert(device_id.to_string(), Connection { id, tx, tools });
+        st.devices.insert(
+            device_id.to_string(),
+            Connection {
+                id,
+                tx,
+                tools,
+                closer: Arc::default(),
+            },
+        );
         Some(id)
     }
 
@@ -231,11 +372,13 @@ impl Registry {
     /// its deadline, or the connection ending, whichever comes first. The
     /// deadline and a disconnect also cover a connection whose queue is full,
     /// so a stuck connection never leaves the caller hanging.
-    pub async fn call(&self, device_id: &str, call: Call) -> Result<CallResult, CallError> {
+    pub async fn call(&self, device_id: &str, mut call: Call) -> Result<CallResult, CallError> {
         let call_id = call.call_id.clone();
         let deadline = Duration::from_millis(call.deadline_ms);
+        let started = Instant::now();
+        let sent = AtomicBool::new(false);
         let (done, mut rx) = oneshot::channel();
-        let (tx, token) = {
+        let (tx, token, conn_id) = {
             let mut st = self.state.lock().unwrap();
             let conn = st.devices.get(device_id).ok_or(CallError::Offline)?;
             let (conn_id, tx) = (conn.id, conn.tx.clone());
@@ -252,13 +395,16 @@ impl Registry {
                     done,
                 },
             );
-            (tx, token)
+            (tx, token, conn_id)
         };
         let mut guard = PendingGuard {
             registry: self,
+            device_id: device_id.to_string(),
+            conn_id,
             call_id: call_id.clone(),
             token,
             tx: tx.clone(),
+            sent: &sent,
             armed: true,
         };
 
@@ -267,7 +413,15 @@ impl Registry {
             // connection ends (which answers `rx`).
             tokio::select! {
                 permit = tx.reserve() => match permit {
-                    Ok(permit) => permit.send(ToConnector::Call(call)),
+                    Ok(permit) => {
+                        // The device counts the deadline from when it gets
+                        // the call: send what is left of it, not the time
+                        // already spent waiting for room.
+                        let left = deadline.saturating_sub(started.elapsed());
+                        call.deadline_ms = left.as_millis() as u64;
+                        permit.send(ToConnector::Call(call));
+                        sent.store(true, Ordering::SeqCst);
+                    }
                     // The session's receiver is gone: the connection is dead.
                     Err(_) => return Err(CallError::Disconnected),
                 },
@@ -294,8 +448,10 @@ impl Registry {
                 // in, the entry is removed here, the late result is dropped, and
                 // the device gets a `Cancel` for a call it may have finished
                 // (harmless; it ignores unknown ids).
-                if self.state.lock().unwrap().forget(&call_id, token) {
-                    let _ = tx.try_send(ToConnector::Cancel { call_id });
+                // A call that never got into the queue needs no cancel.
+                if self.state.lock().unwrap().forget(&call_id, token) && sent.load(Ordering::SeqCst)
+                {
+                    self.cancel(device_id, conn_id, &tx, call_id);
                 }
                 Err(CallError::Deadline)
             }
@@ -615,6 +771,88 @@ mod tests {
         reg.disconnect("d1", conn);
         within(h).await.unwrap().unwrap_err();
         assert!(!reg.in_flight("d1"));
+    }
+
+    #[tokio::test]
+    async fn a_call_that_waited_for_room_carries_the_time_left() {
+        let reg = Registry::new();
+        let (_conn, mut rx) = full_connection(&reg).await;
+        let h = spawn_call(&reg, "c1", 1_000);
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        rx.recv().await; // makes room
+        let c = expect_call(&mut rx).await;
+        assert!(
+            c.deadline_ms > 0 && c.deadline_ms <= 700,
+            "{}",
+            c.deadline_ms
+        );
+        assert_eq!(within(h).await.unwrap(), Err(CallError::Deadline));
+        // It was queued, so it is cancelled.
+        assert_eq!(
+            within(rx.recv()).await,
+            Some(ToConnector::Cancel {
+                call_id: "c1".into()
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn a_call_that_never_got_room_is_not_cancelled() {
+        let reg = Registry::with_cancel_wait(Duration::from_millis(100));
+        let (conn, mut rx) = full_connection(&reg).await;
+        let h = spawn_call(&reg, "c1", 50);
+        assert_eq!(within(h).await.unwrap(), Err(CallError::Deadline));
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(rx.recv().await, Some(ToConnector::Ping { n: 0 }));
+        assert!(rx.try_recv().is_err(), "nothing else queued");
+        assert!(!reg.closer("d1", conn).unwrap().is_closed());
+    }
+
+    #[tokio::test]
+    async fn a_give_up_with_a_full_queue_waits_for_room_for_its_cancel() {
+        let reg = Registry::with_cancel_wait(Duration::from_secs(5));
+        let (tx, mut rx) = mpsc::channel(1);
+        let conn = reg.connect("d1", vec![], tx.clone());
+        let h = spawn_call(&reg, "c1", 100);
+        // Queued, but the session is busy: then the queue is full.
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert_eq!(within(h).await.unwrap(), Err(CallError::Deadline));
+        // The cancel is waiting for room, not given up on.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(!reg.closer("d1", conn).unwrap().is_closed());
+        // Room appears: the call, then its cancel, in that order.
+        assert_eq!(expect_call(&mut rx).await.call_id, "c1");
+        assert_eq!(
+            within(rx.recv()).await,
+            Some(ToConnector::Cancel {
+                call_id: "c1".into()
+            })
+        );
+        assert!(!reg.closer("d1", conn).unwrap().is_closed());
+    }
+
+    #[tokio::test]
+    async fn a_cancel_that_finds_no_room_closes_the_connection() {
+        for caller_leaves in [false, true] {
+            let reg = Registry::with_cancel_wait(Duration::from_millis(100));
+            let (tx, _rx) = mpsc::channel(1);
+            let conn = reg.connect("d1", vec![], tx.clone());
+            let closer = reg.closer("d1", conn).unwrap();
+            // The call fills the queue, and nothing ever drains it.
+            let h = spawn_call(&reg, "c1", if caller_leaves { 180_000 } else { 100 });
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            if caller_leaves {
+                h.abort();
+            } else {
+                assert_eq!(within(h).await.unwrap(), Err(CallError::Deadline));
+            }
+            within(closer.closed()).await;
+            assert!(reg.tools("d1").is_none(), "the connection is gone");
+            assert_eq!(
+                within(reg.call("d1", call("c2", 1_000))).await,
+                Err(CallError::Offline)
+            );
+        }
     }
 
     #[tokio::test]

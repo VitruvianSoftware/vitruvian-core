@@ -1013,6 +1013,9 @@ async fn run_connection<S>(
         return;
     };
     let conn: ConnectionId = conn;
+    // Set when a cancel could not be queued: end at once, sending nothing
+    // more, so the device treats it as a drop (and never runs the call).
+    let closer = app.registry.closer(&device_id, conn).unwrap_or_default();
     // Belt and braces: `connect_if` already made the check and the
     // registration one step; re-reading after it costs nothing.
     match app.store.get(&device_id) {
@@ -1075,6 +1078,7 @@ async fn run_connection<S>(
                     }
                 }
             }
+            _ = closer.closed() => break "closed: a cancel could not be queued".into(),
             _ = &mut expires => {
                 ended = Some(ending);
                 break ending.reason().into();
@@ -1083,6 +1087,8 @@ async fn run_connection<S>(
                 // The registry dropped this connection: a newer one replaced
                 // it, or the device was registered again.
                 None => break "replaced".into(),
+                // Closed while this frame waited: it is never sent.
+                Some(_) if closer.is_closed() => break "closed: a cancel could not be queued".into(),
                 Some(f) => {
                     let is_call = matches!(f, ToConnector::Call(_));
                     if let Err(e) = send_frame(&mut sink, &f, send_timeout).await {

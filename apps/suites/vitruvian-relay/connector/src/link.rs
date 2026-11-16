@@ -150,6 +150,8 @@ pub struct Timing {
     pub results_cap_bytes: usize,
     /// `calls.log` is rotated to `calls.log.1` past this size.
     pub log_max_bytes: u64,
+    /// How long a call waits for its `running` line to be on disk.
+    pub log_wait: Duration,
 }
 
 impl Default for Timing {
@@ -178,6 +180,7 @@ impl Default for Timing {
             max_dialogs: 1,
             results_cap_bytes: 16 * 1024 * 1024,
             log_max_bytes: 10 * 1024 * 1024,
+            log_wait: Duration::from_secs(10),
         }
     }
 }
@@ -1186,14 +1189,24 @@ impl<T: Tools, A: Asker> Shared<T, A> {
             "approval": approval,
         });
         let log = self.calls_log.clone();
-        let written =
-            tokio::task::spawn_blocking(move || log.line_synced(line, Duration::from_secs(10)))
-                .await
-                .unwrap_or_else(|e| Err(format!("the log task failed: {e}")));
+        let wait = self.timing.log_wait;
+        let written = tokio::task::spawn_blocking(move || log.line_synced(line, wait))
+            .await
+            .unwrap_or_else(|e| Err(format!("the log task failed: {e}")));
         if let Err(e) = written {
             (self.log)(&format!("call {call_id}: not logged, so not run: {e}"));
             let r = error_result(&call_id, NOT_LOGGED);
             self.calls.lock().unwrap().finish(&call_id, r.clone(), cap);
+            // The `running` line may still be written once the disk recovers
+            // (it waits in the writer's queue): this line, behind it, says the
+            // call did not run after all.
+            self.log_call(
+                &call_id,
+                &tool,
+                &args,
+                "refused",
+                json!({"reason": "could not write the calls log"}),
+            );
             let _ = out.send(ToRelay::Result(r));
             return;
         }
@@ -1259,18 +1272,22 @@ impl<T: Tools, A: Asker> Shared<T, A> {
     }
 
     /// Closes every open dialog (of one connection, or all) and marks those
-    /// calls stopped, so a later Allow cannot run them.
+    /// calls stopped, so a later Allow cannot run them. A call cleared to
+    /// run that has not started yet is stopped too (one already running
+    /// keeps running, but its result has nowhere to go).
     fn stop_prompts(&self, conn: Option<u64>, why: Stop) {
         let mut calls = self.calls.lock().unwrap();
         for e in calls.live.values_mut() {
             if conn.is_some_and(|c| c != e.conn) {
                 continue;
             }
-            if let Phase::Prompting { dismiss, stop } = &mut e.phase {
-                if stop.is_none() {
+            match &mut e.phase {
+                Phase::Prompting { dismiss, stop } if stop.is_none() => {
                     *stop = Some(why);
                     dismiss.store(true, Ordering::SeqCst);
                 }
+                Phase::Running { cancelled } => *cancelled = true,
+                _ => {}
             }
         }
     }

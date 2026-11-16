@@ -1166,7 +1166,13 @@ async fn call_reaches_the_device_and_answers() {
         (call.tool.as_str(), &call.arguments),
         ("read_file", &json!({"path": "/tmp/x"}))
     );
-    assert_eq!(call.deadline_ms, 180_000);
+    // What is left of the 180 s budget when the frame is queued: a little
+    // under it, never over.
+    assert!(
+        (175_000..=180_000).contains(&call.deadline_ms),
+        "{}",
+        call.deadline_ms
+    );
     assert_eq!(call.call_id.len(), 32);
     fake.reply(&call.call_id, "contents");
     let r = within(pending).await.unwrap();

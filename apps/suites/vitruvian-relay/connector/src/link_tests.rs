@@ -360,6 +360,7 @@ fn fast() -> Timing {
         max_dialogs: 1,
         results_cap_bytes: 16 * 1024 * 1024,
         log_max_bytes: 10 * 1024 * 1024,
+        log_wait: WAIT,
     }
 }
 
@@ -1135,6 +1136,7 @@ fn production_limits_are_pinned() {
     assert_eq!(t.max_dialogs, 1);
     assert_eq!(t.results_cap_bytes, 16 * 1024 * 1024);
     assert_eq!(t.log_max_bytes, 10 * 1024 * 1024);
+    assert_eq!(t.log_wait, Duration::from_secs(10));
 }
 
 #[test]
@@ -1990,4 +1992,57 @@ async fn a_refused_id_is_not_recorded_as_started() {
     let (mut c, _) = relay.welcome().await;
     c.call("r1", "set_config_value", json!({"key": "x"}));
     assert_eq!(text(&c.result().await), refused);
+}
+
+// ------------------------------------------------------- fix round 3 tests
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_log_timeout_leaves_a_refused_line_after_the_running_one() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-log-timeout");
+    let mut p = parts();
+    let hold = Arc::new(AtomicBool::new(true));
+    p.hooks.hold_log = Some(hold.clone());
+    p.timing.log_wait = Duration::from_millis(200);
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    assert_eq!(text(&c.result().await), NOT_LOGGED);
+    // The disk recovers: the queued `running` line lands, and after it the
+    // line that says the call did not run.
+    hold.store(false, Ordering::SeqCst);
+    until("both lines", || log_lines(&dir).len() >= 2).await;
+    let lines = log_lines(&dir);
+    let decisions: Vec<_> = lines
+        .iter()
+        .filter(|l| l["call_id"] == "c1")
+        .map(|l| l["decision"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(decisions, ["running", "refused"]);
+    assert_eq!(lines[1]["reason"], "could not write the calls log");
+    assert_eq!(tools.count(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_drop_before_a_cleared_call_starts_stops_it() {
+    // The relay closes a connection whose cancel it could not queue; a call
+    // that was cleared to run but has not started must then not start.
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-drop-before-run");
+    let mut p = parts();
+    let g = gate();
+    p.hooks.before_run = Some(g.clone());
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (c, _) = relay.welcome().await;
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    tokio::time::timeout(WAIT, g.reached.notified())
+        .await
+        .unwrap();
+    drop(c);
+    let _next = relay.next_conn().await; // the drop has been seen
+    g.go.notify_one();
+    until_logged(&dir, "cancelled before running").await;
+    assert_eq!(tools.count(), 0);
 }
