@@ -12,6 +12,7 @@ main checkout.
 bazel run //tools/git:commit -- --agent <you> -m "fix(scope): what changed" <paths>...
 bazel run //tools/git:push -- --agent <you>
 bazel run //tools/git:sync                                # catch up with main
+bazel run //tools/git:update-main                         # fast-forward the main checkout to origin/main
 ```
 
 ## Commit

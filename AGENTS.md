@@ -143,6 +143,7 @@ prints the command to use instead. If no target fits, stop and say which one is 
 | Commit | `bazel run //tools/git:commit -- --agent <you> -m "fix(scope): …" <paths>` (or `--all`; `--fixup <sha>`) |
 | Push | `bazel run //tools/git:push` (`--agent <you>`; `--force-with-lease` after a rebase) |
 | Catch up with main | `bazel run //tools/git:sync` (`--autosquash [--keep-base]`; `--merge` for a pushed branch; `--abort`) |
+| Bring the main checkout up to date | `bazel run //tools/git:update-main` (fast-forward only; from any worktree) |
 | Finish a merge | `bazel run //tools/git:commit -- <fixed files>` |
 | Scan for secrets | `bazel run //tools/secret-scan` (`--staged`, `--range a..b`) |
 | Lint workflows | `bazel run //tools/ci:actionlint` |
