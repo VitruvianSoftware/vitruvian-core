@@ -55,12 +55,25 @@ public enum ChatInfoPresentation {
         }
     }
 
-    /// Filters `events` to only non-view-once image and video events (`m.image` / `m.video`),
-    /// excluding link-preview text messages, files, audio, and other non-media items.
+    /// Resolves the header avatar path for `info`: the user's local avatar override wins over the network avatar.
+    public static func displayAvatarPath(for info: RoomInfoResult) -> String {
+        !info.localAvatarURI.isEmpty ? info.localAvatarURI : info.avatarPath
+    }
+
+    /// Returns `false` (unarchive) when `rows` is non-empty and every row is already archived;
+    /// otherwise `true` (archive — when none or only some are archived, or no rows are loaded).
+    public static func shouldArchive(_ rows: [InboxRow]) -> Bool {
+        rows.isEmpty || !rows.allSatisfy(\.archived)
+    }
+
+    /// Filters `events` to only non-view-once image and video messages (`m.room.message` with `m.image` / `m.video`),
+    /// excluding link-preview text messages, stickers, files, audio, and view-once items.
     public static func sharedMediaEvents(_ events: [Event]) -> [Event] {
         events.filter { event in
-            guard event.viewOnce != true else { return false }
+            guard event.type == "m.room.message", event.viewOnce != true else { return false }
             guard case let .object(dict) = event.content,
+                  dict["com.beeper.view_once"] != .bool(true),
+                  dict["view_once"] != .bool(true),
                   case let .string(msgtype)? = dict["msgtype"] else {
                 return false
             }

@@ -333,4 +333,60 @@ final class DetachedWindowModelTests: XCTestCase {
         registry.open(.chat(roomID: "!r1"))
         XCTAssertEqual(openedViaAlias, [.chat(roomID: "!r1")])
     }
+
+    func testDetachedWindowSessionWiresQuickActionsAndSearchToGivenRoomID() {
+        let appModel = makeAppModel()
+        let prefs = InboxPreferences()
+        let mainInbox = InboxModel(appModel: appModel, preferences: prefs)
+        mainInbox.setSnapshotRowsForTesting([
+            InboxRow(roomID: "!selected", network: "signal", name: "Selected", avatarPath: "", isDirect: true,
+                     lastTS: 100, preview: "", previewKind: .text, previewMine: false, unread: 0, muted: false),
+            InboxRow(roomID: "!other", network: "signal", name: "Other", avatarPath: "", isDirect: true,
+                     lastTS: 90, preview: "", previewKind: .text, previewMine: false, unread: 0, muted: false),
+            InboxRow(roomID: "!detached", network: "signal", name: "Detached", avatarPath: "", isDirect: true,
+                     lastTS: 80, preview: "", previewKind: .text, previewMine: false, unread: 0, muted: false),
+        ])
+        mainInbox.select("!selected")
+        mainInbox.beginSelecting()
+        mainInbox.toggleSelected("!other")
+
+        var searchedRooms: [String] = []
+        let registry = DetachedWindowRegistry(
+            appModel: appModel,
+            mainInbox: mainInbox,
+            inboxPreferences: prefs,
+            onSearchInChat: { searchedRooms.append($0) }
+        )
+
+        let chatTarget = DetachedWindowTarget.chat(roomID: "!detached")
+        registry.open(chatTarget)
+        guard let chatSession = registry.session(for: chatTarget) else {
+            return XCTFail("Missing detached chat session")
+        }
+
+        XCTAssertTrue(chatSession.conversation.inbox === mainInbox)
+        XCTAssertTrue(chatSession.conversation.performSearchInChat("!detached"))
+        XCTAssertEqual(searchedRooms, ["!detached"])
+        XCTAssertTrue(chatSession.conversation.performRemindLater("!detached"))
+        XCTAssertEqual(mainInbox.customReminder?.ids, ["!detached"], "Remind must act on panel room, not inbox selection")
+
+        // Setting onSearchInChat after opening also updates existing sessions.
+        var reboundRooms: [String] = []
+        registry.onSearchInChat = { reboundRooms.append($0) }
+        XCTAssertTrue(chatSession.conversation.performSearchInChat("!detached"))
+        XCTAssertEqual(reboundRooms, ["!detached"])
+
+        // Space session also scopes remind and search to the passed roomID and binds space inbox.
+        let spaceTarget = DetachedWindowTarget.space(spaceID: "work")
+        registry.open(spaceTarget)
+        guard let spaceSession = registry.session(for: spaceTarget) else {
+            return XCTFail("Missing detached space session")
+        }
+        XCTAssertTrue(spaceSession.conversation.inbox === spaceSession.inbox)
+        spaceSession.inbox?.select("!other")
+        XCTAssertTrue(spaceSession.conversation.performRemindLater("!detached"))
+        XCTAssertEqual(spaceSession.hostInbox.customReminder?.ids, ["!detached"])
+        XCTAssertTrue(spaceSession.conversation.performSearchInChat("!detached"))
+        XCTAssertEqual(reboundRooms, ["!detached", "!detached"])
+    }
 }

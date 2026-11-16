@@ -56,6 +56,7 @@ public struct ChatInfoPane: View {
     public var onRemind: () -> Void = {}
     public var onSearchInChat: () -> Void = {}
     public var onClose: () -> Void = {}
+    public var inbox: InboxModel? = nil
     /// With glass in the main window the header is a toolbar item (`ChatInfoHeader`, placed by ConversationView), so
     /// the pane draws none of its own.
     public var headerInToolbar: Bool = false
@@ -110,9 +111,11 @@ public struct ChatInfoPane: View {
         onRemind: @escaping () -> Void = {},
         onSearchInChat: @escaping () -> Void = {},
         onClose: @escaping () -> Void = {},
+        inbox: InboxModel? = nil,
         headerInToolbar: Bool = false
     ) {
         self.headerInToolbar = headerInToolbar
+        self.inbox = inbox
         self.info = info
         self.bookmarks = bookmarks
         self.isRefreshing = isRefreshing
@@ -305,9 +308,7 @@ public struct ChatInfoPane: View {
 
     @ViewBuilder
     private var avatarView: some View {
-        let displayAvatar = !info.avatarPath.isEmpty
-            ? info.avatarPath
-            : (info.localAvatarURI.hasPrefix("/") ? info.localAvatarURI : "")
+        let displayAvatar = ChatInfoPresentation.displayAvatarPath(for: info)
         if !displayAvatar.isEmpty {
             AvatarView(path: displayAvatar, initials: Self.initials(of: info.name), seed: info.name, size: 56)
         } else if !info.isDirect {
@@ -326,35 +327,31 @@ public struct ChatInfoPane: View {
 
     // MARK: - Quick Actions
 
+    @ViewBuilder
     private var quickActionsRow: some View {
-        HStack(spacing: 2) {
-            ChatInfoQuickActionButton(
-                symbol: isMuted ? "bell.slash" : "bell",
-                title: isMuted ? String(localized: "Unmute") : String(localized: "Mute"),
-                action: onToggleMute
+        if let inbox {
+            ObservedChatInfoQuickActionsRow(
+                roomID: info.roomID,
+                inbox: inbox,
+                fallbackMuted: isMuted,
+                fallbackPinned: isPinned,
+                onToggleMute: onToggleMute,
+                onTogglePin: onTogglePin,
+                onArchive: onArchive,
+                onRemind: onRemind,
+                onSearchInChat: onSearchInChat
             )
-            ChatInfoQuickActionButton(
-                symbol: isPinned ? "pin.slash" : "pin",
-                title: isPinned ? String(localized: "Unpin") : String(localized: "Pin"),
-                action: onTogglePin
-            )
-            ChatInfoQuickActionButton(
-                symbol: "archivebox",
-                title: String(localized: "Archive"),
-                action: onArchive
-            )
-            ChatInfoQuickActionButton(
-                symbol: "alarm",
-                title: String(localized: "Remind…"),
-                action: onRemind
-            )
-            ChatInfoQuickActionButton(
-                symbol: "magnifyingglass",
-                title: String(localized: "Search"),
-                action: onSearchInChat
+        } else {
+            ChatInfoQuickActionsRow(
+                isMuted: isMuted,
+                isPinned: isPinned,
+                onToggleMute: onToggleMute,
+                onTogglePin: onTogglePin,
+                onArchive: onArchive,
+                onRemind: onRemind,
+                onSearchInChat: onSearchInChat
             )
         }
-        .frame(maxWidth: .infinity)
     }
 
     private static func initials(of name: String) -> String {
@@ -991,10 +988,136 @@ private struct ChatInfoSection<Content: View>: View {
     }
 }
 
+private struct ObservedChatInfoQuickActionsRow: View {
+    let roomID: String
+    @ObservedObject var inbox: InboxModel
+    let fallbackMuted: Bool
+    let fallbackPinned: Bool
+    let onToggleMute: () -> Void
+    let onTogglePin: () -> Void
+    let onArchive: () -> Void
+    let onRemind: () -> Void
+    let onSearchInChat: () -> Void
+
+    var body: some View {
+        let row = inbox.row(of: roomID)
+        ChatInfoQuickActionsRow(
+            isMuted: row?.muted ?? fallbackMuted,
+            isPinned: row?.pinned ?? fallbackPinned,
+            onToggleMute: onToggleMute,
+            onTogglePin: onTogglePin,
+            onArchive: onArchive,
+            onRemind: onRemind,
+            onSearchInChat: onSearchInChat
+        )
+    }
+}
+
+private struct ChatInfoQuickActionsRow: View {
+    let isMuted: Bool
+    let isPinned: Bool
+    let onToggleMute: () -> Void
+    let onTogglePin: () -> Void
+    let onArchive: () -> Void
+    let onRemind: () -> Void
+    let onSearchInChat: () -> Void
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ChatInfoQuickActionButton(
+                symbol: isMuted ? "bell.slash" : "bell",
+                title: isMuted ? String(localized: "Unmute") : String(localized: "Mute"),
+                action: onToggleMute
+            )
+            ChatInfoQuickActionButton(
+                symbol: isPinned ? "pin.slash" : "pin",
+                title: isPinned ? String(localized: "Unpin") : String(localized: "Pin"),
+                action: onTogglePin
+            )
+            ChatInfoQuickActionButton(
+                symbol: "archivebox",
+                title: String(localized: "Archive"),
+                action: onArchive
+            )
+            ChatInfoQuickActionButton(
+                symbol: "alarm",
+                title: String(localized: "Remind…"),
+                action: onRemind
+            )
+            ChatInfoQuickActionButton(
+                symbol: "magnifyingglass",
+                title: String(localized: "Search"),
+                action: onSearchInChat
+            )
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+struct ChatInfoQuickActionProbeKey: EnvironmentKey {
+    static let defaultValue: (@MainActor (String, NSRect?) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    var chatInfoQuickActionProbe: (@MainActor (String, NSRect?) -> Void)? {
+        get { self[ChatInfoQuickActionProbeKey.self] }
+        set { self[ChatInfoQuickActionProbeKey.self] = newValue }
+    }
+}
+
+private struct QuickActionWindowRectProbe: NSViewRepresentable {
+    let title: String
+    let report: @MainActor (String, NSRect?) -> Void
+
+    final class ProbeView: NSView {
+        var title: String = ""
+        var report: (@MainActor (String, NSRect?) -> Void)?
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func layout() {
+            super.layout()
+            publish()
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            publish()
+        }
+
+        func publish() {
+            guard window != nil, !bounds.isEmpty else { return }
+            report?(title, convert(bounds, to: nil))
+        }
+    }
+
+    func makeNSView(context: Context) -> ProbeView {
+        let view = ProbeView()
+        view.title = title
+        view.report = report
+        return view
+    }
+
+    func updateNSView(_ nsView: ProbeView, context: Context) {
+        if nsView.title != title {
+            let previous = nsView.title
+            nsView.report?(previous, nil)
+            nsView.title = title
+        }
+        nsView.report = report
+        nsView.publish()
+    }
+
+    static func dismantleNSView(_ nsView: ProbeView, coordinator: ()) {
+        nsView.report?(nsView.title, nil)
+    }
+}
+
 private struct ChatInfoQuickActionButton: View {
     let symbol: String
     let title: String
     let action: () -> Void
+    @Environment(\.chatInfoQuickActionProbe) private var quickActionProbe
     @State private var isHovered = false
 
     var body: some View {
@@ -1022,6 +1145,11 @@ private struct ChatInfoQuickActionButton: View {
         .onHover { isHovered = $0 }
         .help(title)
         .accessibilityLabel(title)
+        .background {
+            if let quickActionProbe {
+                QuickActionWindowRectProbe(title: title, report: quickActionProbe)
+            }
+        }
     }
 }
 
@@ -1111,9 +1239,15 @@ private struct ChatInfoMediaTile: View {
 struct ChatInfoWindow: View {
     let roomID: String
     @ObservedObject var conversation: ConversationModel
+    var inbox: InboxModel? = nil
     @State private var loadedInfo: RoomInfoResult?
     @State private var loadedBookmarks: [MessageHit] = []
+    @State private var loadedRow: InboxRow?
     @State private var isRefreshing = false
+
+    private var resolvedInbox: InboxModel? {
+        inbox ?? conversation.inbox
+    }
 
     private var effectiveInfo: RoomInfoResult? {
         if conversation.chatInfo?.roomID == roomID {
@@ -1132,7 +1266,7 @@ struct ChatInfoWindow: View {
     var body: some View {
         Group {
             if let info = effectiveInfo {
-                let row = conversation.chatRow(for: roomID)
+                let row = resolvedInbox?.row(of: info.roomID) ?? conversation.chatRow(for: info.roomID) ?? loadedRow
                 ChatInfoPane(
                     info: info,
                     bookmarks: effectiveBookmarks,
@@ -1146,20 +1280,20 @@ struct ChatInfoWindow: View {
                         Task { await conversation.setTimer(choice) }
                     },
                     onEditTitleAndAvatar: {
-                        Task { await conversation.beginEditChat(info: info, roomID: roomID) }
+                        Task { await conversation.beginEditChat(info: info, roomID: info.roomID) }
                     },
                     onAddParticipants: {
                         Task { await conversation.beginAddParticipants(info: info) }
                     },
                     onMessageMember: { member in
-                        Task { _ = await conversation.messageParticipant(userID: member.userID, in: roomID) }
+                        Task { _ = await conversation.messageParticipant(userID: member.userID, in: info.roomID) }
                     },
                     onToggleMemberAdmin: { member, makeAdmin in
                         Task {
                             _ = await conversation.setParticipantAdmin(
                                 userID: member.userID,
                                 isAdmin: makeAdmin,
-                                in: roomID
+                                in: info.roomID
                             )
                         }
                     },
@@ -1167,7 +1301,7 @@ struct ChatInfoWindow: View {
                         conversation.requestRemoveParticipant(member, info: info)
                     },
                     onSelectEvent: { eventID in
-                        conversation.openEvent(eventID, in: roomID)
+                        conversation.openEvent(eventID, in: info.roomID)
                     },
                     onRefresh: {
                         Task { await refresh(force: true) }
@@ -1175,7 +1309,7 @@ struct ChatInfoWindow: View {
                     onExport: { url in
                         Task {
                             do {
-                                let count = try await conversation.exportChat(roomID: roomID, to: url)
+                                let count = try await conversation.exportChat(roomID: info.roomID, to: url)
                                 conversation.onToast(String(localized: "Exported \(count) messages"))
                             } catch {
                                 conversation.onToast(
@@ -1188,13 +1322,13 @@ struct ChatInfoWindow: View {
                         }
                     },
                     onLeaveGroup: {
-                        conversation.requestLeaveGroup(info: info, roomID: roomID)
+                        conversation.requestLeaveGroup(info: info, roomID: info.roomID)
                     },
                     onDeleteChat: {
-                        conversation.requestDeleteChat(info: info, roomID: roomID)
+                        conversation.requestDeleteChat(info: info, roomID: info.roomID)
                     },
                     onReportSpam: {
-                        Task { await conversation.beginReportSpam(info: info, roomID: roomID) }
+                        Task { await conversation.beginReportSpam(info: info, roomID: info.roomID) }
                     },
                     isAIAvailable: conversation.composer.aiProvider.isAvailable,
                     onSummarizeChat: {
@@ -1204,20 +1338,34 @@ struct ChatInfoWindow: View {
                         conversation.onOpenAISettings()
                     },
                     onToggleMute: {
-                        conversation.onToggleMute(roomID)
+                        if !conversation.performToggleMute(info.roomID), let resolvedInbox {
+                            Task { await resolvedInbox.toggleMute(ids: [info.roomID]) }
+                        }
                     },
                     onTogglePin: {
-                        conversation.onTogglePin(roomID)
+                        if !conversation.performTogglePin(info.roomID), let resolvedInbox {
+                            Task { await resolvedInbox.togglePin(ids: [info.roomID]) }
+                        }
                     },
                     onArchive: {
-                        conversation.onToggleArchive(roomID)
+                        if !conversation.performToggleArchive(info.roomID), let resolvedInbox {
+                            let rows = resolvedInbox.row(of: info.roomID).map { [$0] }
+                                ?? resolvedInbox.targetRows([info.roomID])
+                            Task { await resolvedInbox.archive(ChatInfoPresentation.shouldArchive(rows), ids: [info.roomID]) }
+                        }
                     },
                     onRemind: {
-                        _ = conversation.onRemindLater(roomID)
+                        if !conversation.performRemindLater(info.roomID),
+                           let resolvedInbox,
+                           !resolvedInbox.isLocked,
+                           resolvedInbox.isEntitled(.reminders) {
+                            resolvedInbox.customReminder = ReminderRequest(ids: [info.roomID])
+                        }
                     },
                     onSearchInChat: {
-                        conversation.onSearchInChat(roomID)
-                    }
+                        conversation.onSearchInChat(info.roomID)
+                    },
+                    inbox: resolvedInbox
                 )
             } else {
                 ProgressView()
@@ -1227,6 +1375,11 @@ struct ChatInfoWindow: View {
         .frame(minWidth: 280, idealWidth: 340, minHeight: 480)
         .task(id: roomID) {
             await refresh(force: false)
+        }
+        .onChange(of: resolvedInbox?.rows ?? []) { _, _ in
+            Task {
+                await refreshRow()
+            }
         }
     }
 
@@ -1238,6 +1391,20 @@ struct ChatInfoWindow: View {
             loadedInfo = info
         }
         loadedBookmarks = bookmarks
+        await refreshRow()
+    }
+
+    private func refreshRow() async {
+        guard let resolvedInbox else { return }
+        if let row = resolvedInbox.row(of: roomID) {
+            if loadedRow != row {
+                loadedRow = row
+            }
+            return
+        }
+        if let fetched = await resolvedInbox.lookUpRow(roomID), loadedRow != fetched {
+            loadedRow = fetched
+        }
     }
 }
 

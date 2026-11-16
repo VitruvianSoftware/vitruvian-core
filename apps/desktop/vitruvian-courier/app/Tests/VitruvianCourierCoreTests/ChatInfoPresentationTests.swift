@@ -118,21 +118,80 @@ final class ChatInfoPresentationTests: XCTestCase {
         let img = makeEvent(id: "$img", msgtype: "m.image")
         let vid = makeEvent(id: "$vid", msgtype: "m.video")
         let linkPreviewText = makeEvent(id: "$txt", msgtype: "m.text")
+        var linkPreviewWithBeeper = Event(
+            eventID: "$lp",
+            roomID: "!room:courier.local",
+            sender: "@alice:courier.local",
+            senderName: "Alice",
+            mine: false,
+            type: "m.room.message",
+            content: .object([
+                "msgtype": .string("m.text"),
+                "body": .string("https://example.com"),
+                "com.beeper.linkpreviews": .array([.object(["url": .string("https://example.com")])]),
+            ]),
+            ts: 1_700_000_000_000,
+            seq: 2,
+            status: .sent,
+            linkPreviews: [LinkPreviewItem(matchedURL: "https://example.com")]
+        )
+        linkPreviewWithBeeper.linkPreviews = [LinkPreviewItem(matchedURL: "https://example.com")]
+        let sticker = Event(
+            eventID: "$stk",
+            roomID: "!room:courier.local",
+            sender: "@alice:courier.local",
+            senderName: "Alice",
+            mine: false,
+            type: "m.sticker",
+            content: .object(["msgtype": .string("m.image"), "body": .string("sticker")]),
+            ts: 1_700_000_000_000,
+            seq: 3,
+            status: .sent
+        )
         let file = makeEvent(id: "$file", msgtype: "m.file")
         let audio = makeEvent(id: "$aud", msgtype: "m.audio")
         let notice = makeEvent(id: "$notice", msgtype: "m.notice")
         let viewOnceImg = makeEvent(id: "$vo", msgtype: "m.image", viewOnce: true)
+        let contentViewOnceImg = Event(
+            eventID: "$vo2",
+            roomID: "!room:courier.local",
+            sender: "@alice:courier.local",
+            senderName: "Alice",
+            mine: false,
+            type: "m.room.message",
+            content: .object([
+                "msgtype": .string("m.image"),
+                "body": .string("secret.jpg"),
+                "com.beeper.view_once": .bool(true),
+            ]),
+            ts: 1_700_000_000_000,
+            seq: 4,
+            status: .sent
+        )
+
+        var tenMedia: [Event] = []
+        for idx in 1...10 {
+            tenMedia.append(makeEvent(id: "$m\(idx)", msgtype: idx.isMultiple(of: 3) ? "m.video" : "m.image"))
+        }
 
         let filtered = ChatInfoPresentation.sharedMediaEvents([
             img,
             linkPreviewText,
+            linkPreviewWithBeeper,
             vid,
+            sticker,
             file,
             audio,
             notice,
             viewOnceImg,
+            contentViewOnceImg,
         ])
         XCTAssertEqual(filtered.map(\.eventID), ["$img", "$vid"])
+
+        let mixedTen = ChatInfoPresentation.sharedMediaEvents(
+            tenMedia + [linkPreviewText, linkPreviewWithBeeper, sticker, file, viewOnceImg]
+        )
+        XCTAssertEqual(mixedTen.count, 10, "Shared Media count must reflect only image/video events and exclude link previews")
     }
 
     func testMediaSenderAttributionAndUnknownSender() {
@@ -254,6 +313,77 @@ final class ChatInfoPresentationTests: XCTestCase {
         XCTAssertEqual(
             ChatInfoPresentation.groupCompositeMembers(for: namedPeopleInfo).map(\.name),
             ["Alice", "Bob"]
+        )
+    }
+
+    // MARK: - Header avatar precedence & archive decision
+
+    func testDisplayAvatarPathPrefersLocalAvatarOverNetworkAvatar() {
+        let both = RoomInfoResult(
+            roomID: "!r1",
+            name: "Group",
+            remoteName: "Group",
+            avatarPath: "/tmp/network.png",
+            localAvatarURI: "/tmp/local.png",
+            network: "whatsapp",
+            isDirect: false,
+            features: .noFeatures
+        )
+        XCTAssertEqual(ChatInfoPresentation.displayAvatarPath(for: both), "/tmp/local.png")
+
+        let networkOnly = RoomInfoResult(
+            roomID: "!r2",
+            name: "Group",
+            remoteName: "Group",
+            avatarPath: "/tmp/network.png",
+            localAvatarURI: "",
+            network: "whatsapp",
+            isDirect: false,
+            features: .noFeatures
+        )
+        XCTAssertEqual(ChatInfoPresentation.displayAvatarPath(for: networkOnly), "/tmp/network.png")
+
+        let neither = RoomInfoResult(
+            roomID: "!r3",
+            name: "Group",
+            remoteName: "Group",
+            avatarPath: "",
+            localAvatarURI: "",
+            network: "whatsapp",
+            isDirect: false,
+            features: .noFeatures
+        )
+        XCTAssertEqual(ChatInfoPresentation.displayAvatarPath(for: neither), "")
+    }
+
+    func testShouldArchiveDecisions() {
+        func makeRow(_ id: String, archived: Bool) -> InboxRow {
+            InboxRow(
+                roomID: id,
+                network: "whatsapp",
+                name: id,
+                avatarPath: "",
+                isDirect: true,
+                lastTS: 1,
+                preview: "",
+                previewKind: .text,
+                previewMine: false,
+                unread: 0,
+                muted: false,
+                archived: archived
+            )
+        }
+
+        XCTAssertTrue(ChatInfoPresentation.shouldArchive([]), "empty target list defaults to archive")
+        XCTAssertTrue(ChatInfoPresentation.shouldArchive([makeRow("!a", archived: false)]), "unarchived row -> archive")
+        XCTAssertTrue(
+            ChatInfoPresentation.shouldArchive([makeRow("!a", archived: true), makeRow("!b", archived: false)]),
+            "mixed rows -> archive"
+        )
+        XCTAssertFalse(ChatInfoPresentation.shouldArchive([makeRow("!a", archived: true)]), "all archived (single) -> unarchive")
+        XCTAssertFalse(
+            ChatInfoPresentation.shouldArchive([makeRow("!a", archived: true), makeRow("!b", archived: true)]),
+            "all archived (multiple) -> unarchive"
         )
     }
 }
