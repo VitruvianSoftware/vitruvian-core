@@ -131,10 +131,10 @@ public struct StatusSnapshot: Equatable, Sendable {
 
     public var agentLine: String {
         switch state {
-        case .notInstalled: return "Agent not installed"
-        case .down: return "Agent not responding"
-        case .stale(let v): return "Agent running, readings stale" + versionSuffix(v)
-        case .running(let v): return "Agent running" + versionSuffix(v)
+        case .notInstalled: return "Mac helper not installed"
+        case .down: return "Mac helper not responding"
+        case .stale(let v): return "Mac helper running, readings stale" + versionSuffix(v)
+        case .running(let v): return "Mac helper running" + versionSuffix(v)
         }
     }
 

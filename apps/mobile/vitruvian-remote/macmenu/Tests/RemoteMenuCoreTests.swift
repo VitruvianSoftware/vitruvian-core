@@ -53,10 +53,10 @@ final class RemoteMenuCoreTests: XCTestCase {
     }
 
     func testAgentLine() {
-        XCTAssertEqual(StatusSnapshot(state: .running(version: "1.8.0")).agentLine, "Agent running · v1.8.0")
-        XCTAssertEqual(StatusSnapshot(state: .running(version: nil)).agentLine, "Agent running")
-        XCTAssertEqual(StatusSnapshot(state: .down).agentLine, "Agent not responding")
-        XCTAssertEqual(StatusSnapshot(state: .notInstalled).agentLine, "Agent not installed")
+        XCTAssertEqual(StatusSnapshot(state: .running(version: "1.8.0")).agentLine, "Mac helper running · v1.8.0")
+        XCTAssertEqual(StatusSnapshot(state: .running(version: nil)).agentLine, "Mac helper running")
+        XCTAssertEqual(StatusSnapshot(state: .down).agentLine, "Mac helper not responding")
+        XCTAssertEqual(StatusSnapshot(state: .notInstalled).agentLine, "Mac helper not installed")
     }
 
     func testPhoneLine() throws {

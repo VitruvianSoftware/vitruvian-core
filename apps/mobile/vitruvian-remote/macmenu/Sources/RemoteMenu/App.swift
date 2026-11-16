@@ -79,8 +79,8 @@ struct MenuContent: View {
             default:
                 Button("Pair with QR Code…") { model.pairWithQR() }
                 Button("Pair with a Code…") { model.pairPhone() }
-                Button("Restart Agent") { model.restartAgent() }
-                Button("Open Agent Log") { model.openLog() }
+                Button("Restart Mac Helper") { model.restartAgent() }
+                Button("Open Mac Helper Log") { model.openLog() }
                 Divider()
                 Button("Unpair All Phones…") { model.unpairAll() }
             }
@@ -192,7 +192,7 @@ final class RemoteModel: ObservableObject {
         let choice = RemoteChoiceFile.read(at: profile.choiceFileURL)
         let alert = NSAlert()
         alert.messageText = "Switch to the Vitruvian Remote Extension?"
-        alert.informativeText = "The Vitruvian extension will manage the agent on port 7411, and this standalone app will quit."
+        alert.informativeText = "The Vitruvian extension will manage the Mac helper on port 7411, and this standalone app will quit."
         let copyCheckbox = NSButton(checkboxWithTitle: "Copy pairing, tokens, and settings into the extension", target: nil, action: nil)
         copyCheckbox.state = .on
         alert.accessoryView = copyCheckbox
@@ -245,7 +245,7 @@ final class RemoteModel: ObservableObject {
             if r.succeeded {
                 showInfo("Pairing is open", "The phone showing \(code) will connect within a few seconds.")
             } else {
-                showError("Pairing failed", r.firstErrorLine ?? "The agent exited with code \(r.exitCode).")
+                showError("Pairing failed", r.firstErrorLine ?? "The Mac helper exited with code \(r.exitCode).")
             }
             await refresh()
         }
@@ -264,13 +264,13 @@ final class RemoteModel: ObservableObject {
         Task {
             // A QR the phone can't open is worse than none: check first.
             guard await client.answers(on: address) else {
-                showError("The phone can't reach the agent",
-                          "The agent isn't answering on this Mac's Tailscale address (\(address)). Choose Restart Agent, then try again.")
+                showError("The phone can't reach the Mac helper",
+                          "The Mac helper isn't answering on this Mac's Tailscale address (\(address)). Choose Restart Mac Helper, then try again.")
                 return
             }
             let r = await Runner.run(profile.agentBinaryURL, ["pair", code])
             guard r.succeeded else {
-                showError("Couldn't open pairing", r.firstErrorLine ?? "The agent exited with code \(r.exitCode).")
+                showError("Couldn't open pairing", r.firstErrorLine ?? "The Mac helper exited with code \(r.exitCode).")
                 return
             }
             // The agent's window is five minutes from now; show the same.
@@ -282,7 +282,7 @@ final class RemoteModel: ObservableObject {
         Task {
             let r = await Runner.run(URL(fileURLWithPath: "/bin/launchctl"), AgentPaths.restartArguments(uid: getuid()))
             if !r.succeeded {
-                showError("Couldn't restart the agent", r.firstErrorLine ?? "launchctl exited with code \(r.exitCode).")
+                showError("Couldn't restart the Mac helper", r.firstErrorLine ?? "launchctl exited with code \(r.exitCode).")
             }
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             await refresh()
@@ -291,7 +291,7 @@ final class RemoteModel: ObservableObject {
 
     func openLog() {
         guard FileManager.default.fileExists(atPath: paths.log.path) else {
-            showError("No log yet", "The agent hasn't written \(paths.log.path).")
+            showError("No log yet", "The Mac helper hasn't written \(paths.log.path).")
             return
         }
         let console = URL(fileURLWithPath: "/System/Applications/Utilities/Console.app")
@@ -313,7 +313,7 @@ final class RemoteModel: ObservableObject {
             if r.succeeded {
                 showInfo("All phones unpaired", "Pair a phone again whenever you're ready.")
             } else {
-                showError("Couldn't unpair", r.firstErrorLine ?? "The agent exited with code \(r.exitCode).")
+                showError("Couldn't unpair", r.firstErrorLine ?? "The Mac helper exited with code \(r.exitCode).")
             }
             await refresh()
         }

@@ -190,15 +190,15 @@ public final class AgentSupervisor: @unchecked Sendable {
     @discardableResult
     public func restartAgent(settings: RemoteSettings) -> CommandResult {
         guard allowChildSpawn else {
-            return CommandResult(exitStatus: 0, output: "Agent restarted")
+            return CommandResult(exitStatus: 0, output: "Mac helper restarted")
         }
         switch profile.door {
         case .extension:
             stopSupervisedProcess()
             let ok = startSupervisedProcess(settings: settings)
             return ok
-                ? CommandResult(exitStatus: 0, output: "Agent restarted")
-                : CommandResult(exitStatus: 1, output: "Could not start vitruvian-remote-agent at \(profile.agentBinaryURL.path)")
+                ? CommandResult(exitStatus: 0, output: "Mac helper restarted")
+                : CommandResult(exitStatus: 1, output: "Could not start the Mac helper at \(profile.agentBinaryURL.path)")
         case .app:
             if let plistURL = profile.launchAgentPlistURL,
                FileManager.default.fileExists(atPath: plistURL.path)
@@ -216,8 +216,8 @@ public final class AgentSupervisor: @unchecked Sendable {
                 stopSupervisedProcess()
                 let ok = startSupervisedProcess(settings: settings)
                 return ok
-                    ? CommandResult(exitStatus: 0, output: "Agent restarted")
-                    : CommandResult(exitStatus: 1, output: "Could not start vitruvian-remote-agent")
+                    ? CommandResult(exitStatus: 0, output: "Mac helper restarted")
+                    : CommandResult(exitStatus: 1, output: "Could not start the Mac helper")
             }
         }
     }

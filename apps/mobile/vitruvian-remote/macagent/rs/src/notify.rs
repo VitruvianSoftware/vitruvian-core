@@ -126,7 +126,7 @@ impl Notifier {
         }
         self.publish(&Notification {
             title: format!("Vitruvian Remote · {}", hostname),
-            body: "Test notification from the Mac agent.".to_string(),
+            body: "Test notification from the Mac helper.".to_string(),
             priority: "default".to_string(),
             tags: "laptop".to_string(),
             ..Default::default()
