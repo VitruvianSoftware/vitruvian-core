@@ -677,10 +677,9 @@ async fn slow_uplink(to: SocketAddr, bytes_per_sec: usize) -> String {
                 let _ = tokio::io::copy(&mut up_r, &mut down_w).await;
             });
             tokio::spawn(async move {
-                // Paced by the bytes passed so far, whatever size each read
-                // comes in: never ahead of `bytes_per_sec` since the start.
-                let start = tokio::time::Instant::now();
-                let mut passed = 0usize;
+                // Paced by bytes passed, whatever size each read comes in,
+                // with no credit saved up while idle.
+                let mut next = tokio::time::Instant::now();
                 let mut buf = vec![0u8; 32 * 1024];
                 loop {
                     match down_r.read(&mut buf).await {
@@ -689,9 +688,9 @@ async fn slow_uplink(to: SocketAddr, bytes_per_sec: usize) -> String {
                             if up_w.write_all(&buf[..n]).await.is_err() {
                                 break;
                             }
-                            passed += n;
-                            let due = Duration::from_secs_f64(passed as f64 / bytes_per_sec as f64);
-                            tokio::time::sleep_until(start + due).await;
+                            let cost = Duration::from_secs_f64(n as f64 / bytes_per_sec as f64);
+                            next = next.max(tokio::time::Instant::now()) + cost;
+                            tokio::time::sleep_until(next).await;
                         }
                     }
                 }

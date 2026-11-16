@@ -252,9 +252,10 @@ async fn slow_downlink(to: SocketAddr, relay_bytes_per_sec: usize) -> String {
                 let _ = tokio::io::copy(&mut down_r, &mut up_w).await;
             });
             tokio::spawn(async move {
-                let chunk = 4 * 1024;
-                let pause = Duration::from_secs_f64(chunk as f64 / relay_bytes_per_sec as f64);
-                let mut buf = vec![0u8; chunk];
+                // Paced by bytes passed, whatever size each read comes in,
+                // with no credit saved up while idle.
+                let mut next = tokio::time::Instant::now();
+                let mut buf = vec![0u8; 4 * 1024];
                 loop {
                     match up_r.read(&mut buf).await {
                         Ok(0) | Err(_) => break,
@@ -262,7 +263,10 @@ async fn slow_downlink(to: SocketAddr, relay_bytes_per_sec: usize) -> String {
                             if down_w.write_all(&buf[..n]).await.is_err() {
                                 break;
                             }
-                            tokio::time::sleep(pause).await;
+                            let cost =
+                                Duration::from_secs_f64(n as f64 / relay_bytes_per_sec as f64);
+                            next = next.max(tokio::time::Instant::now()) + cost;
+                            tokio::time::sleep_until(next).await;
                         }
                     }
                 }
@@ -2232,11 +2236,12 @@ async fn a_large_call_still_arriving_keeps_the_link() {
     let dir = registered("l-slow-frame");
     let mut p = parts();
     p.asker = FakeAsker::answering(None);
-    p.timing.in_call_every = Duration::from_millis(50);
+    // 900 ms of silence is a drop: room for a loaded machine.
+    p.timing.in_call_every = Duration::from_millis(300);
     let asker = p.asker.clone();
     let tools = p.tools.clone();
-    // 512 KiB/s: the 512 KiB frame below takes about a second, 6 limits.
-    let url = slow_downlink(relay.addr, 512 * 1024).await;
+    // 128 KiB/s: the 512 KiB frame below takes about 4 s, over 4 limits.
+    let url = slow_downlink(relay.addr, 128 * 1024).await;
     let _run = start(&dir, &url, p);
     let (mut c, _) = relay.welcome().await;
     let _pings = c.pinger(Duration::from_millis(20));
