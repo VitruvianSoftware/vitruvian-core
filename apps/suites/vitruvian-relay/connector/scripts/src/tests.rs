@@ -24,7 +24,18 @@
 
 use super::*;
 use crate::layout::{fake_package, rg_platform, test_dir};
+
+/// A temp folder outside Bazel's output base: `node` there passes the
+/// stable-node check, which refuses anything under an output base (where
+/// `TEST_TMPDIR` is).
+fn outside_dir(name: &str) -> PathBuf {
+    let d = PathBuf::from("/tmp").join(format!("vrelay-install-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    d
+}
 use std::os::unix::fs::PermissionsExt;
+use std::time::Duration;
 use vitruvian_relay_connector::bridge::{locate_from, BridgeCommand};
 
 const TEMPLATE: &str = include_str!("../com.vitruvian.vrelay.plist");
@@ -32,10 +43,25 @@ const LISTING: &str = "  1) 0123456789ABCDEF0123456789ABCDEF01234567 \"Apple Dev
 const NO_IDENTITY: &str = "     0 valid identities found\n";
 const UID: u32 = 501;
 
+/// Removes a folder when dropped.
+struct Rm(PathBuf);
+
+impl Drop for Rm {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 struct World {
     t: PathBuf,
     home: PathBuf,
     install: Install,
+}
+
+impl Drop for World {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.t);
+    }
 }
 
 impl World {
@@ -58,7 +84,7 @@ fn script(path: &Path, body: &str) {
 /// `listing` is what `security find-identity` prints; `node_version` and
 /// `probe_exit` are what the fake `node` answers.
 fn world(name: &str, listing: &str, node_version: &str, probe_exit: i32) -> World {
-    let t = test_dir(name);
+    let t = outside_dir(name);
     let home = t.join("home");
     std::fs::create_dir_all(&home).unwrap();
     let log = t.join("calls.log");
@@ -74,18 +100,33 @@ fn world(name: &str, listing: &str, node_version: &str, probe_exit: i32) -> Worl
         &format!(
             r#"echo "launchctl $*" >> {log}
 case "$1" in
-  print) [ -e {loaded} ] ;;
+  print) [ -e {loaded} ] || [ -e {t}/stuck ] ;;
   bootout) rm -f {loaded} ;;
-  bootstrap) [ -d {logs} ] || {{ echo "no log folder" >&2; exit 5; }}; touch {loaded} ;;
+  enable) rm -f {t}/disabled ;;
+  bootstrap)
+    [ -d {logs} ] || {{ echo "no log folder" >&2; exit 5; }}
+    [ -e {t}/disabled ] && {{ echo "Service is disabled" >&2; exit 119; }}
+    [ -e {t}/fail-bootstrap ] && {{ echo "Input/output error" >&2; exit 5; }}
+    touch {loaded} ;;
   *) exit 0 ;;
 esac"#,
             loaded = loaded.display(),
-            logs = logs_dir.display()
+            logs = logs_dir.display(),
+            t = t.display()
         ),
     );
     script(
         &bin.join("codesign"),
-        &format!(r#"echo "codesign $*" >> {log}"#),
+        // Signing (`--force`) fails while `sign-failures` counts down.
+        &format!(
+            r#"echo "codesign $*" >> {log}
+if [ "$1" = "--force" ] && [ -s {t}/sign-failures ]; then
+  n=$(cat {t}/sign-failures); echo $((n - 1)) > {t}/sign-failures
+  [ "$n" -gt 0 ] && {{ echo "timestamp service unavailable" >&2; exit 1; }}
+fi
+exit 0"#,
+            t = t.display()
+        ),
     );
     std::fs::write(t.join("listing"), listing).unwrap();
     script(
@@ -97,12 +138,16 @@ esac"#,
     );
     script(
         &bin.join("plutil"),
-        &format!(r#"echo "plutil $*" >> {log}"#),
+        &format!(
+            r#"echo "plutil $*" >> {log}; [ ! -e {t}/fail-plutil ] || {{ echo "bad plist"; exit 1; }}"#,
+            t = t.display()
+        ),
     );
     script(
         &bin.join("node"),
         &format!(
             r#"if [ "$1" = "--version" ]; then echo {node_version}; exit 0; fi
+if [ "$1" = "-p" ]; then echo "$0"; exit 0; fi
 echo "node $1 $2" >> {log}
 echo /found/rg
 exit {probe_exit}"#
@@ -131,6 +176,11 @@ exit {probe_exit}"#
         },
         node: bin.join("node"),
         unsigned: false,
+        workspace: None,
+        timing: Timing {
+            bootout_wait: Duration::from_millis(400),
+            sign_backoff: Duration::from_millis(10),
+        },
     };
     World { t, home, install }
 }
@@ -170,7 +220,8 @@ fn render_plist_fills_paths_and_args() {
 fn plist_path_includes_node_dir() {
     let path = plist_path_env(Path::new(
         "/Users/a/.local/share/mise/installs/node/22.12.0/bin/node",
-    ));
+    ))
+    .unwrap();
     assert_eq!(
         path,
         "/Users/a/.local/share/mise/installs/node/22.12.0/bin:/usr/bin:/bin"
@@ -183,7 +234,13 @@ fn plist_path_includes_node_dir() {
         "{p}"
     );
     // A node in /usr/bin is not listed twice.
-    assert_eq!(plist_path_env(Path::new("/usr/bin/node")), "/usr/bin:/bin");
+    assert_eq!(
+        plist_path_env(Path::new("/usr/bin/node")).unwrap(),
+        "/usr/bin:/bin"
+    );
+    // A colon would split PATH.
+    let err = plist_path_env(Path::new("/opt/a:b/bin/node")).unwrap_err();
+    assert!(err.contains(':'), "{err}");
 }
 
 #[test]
@@ -273,7 +330,9 @@ fn install_signs_and_loads_in_order() {
     assert!(
         lines[sign].contains("--identifier dev.vitruvian.vrelay")
             && lines[sign].contains("--sign FEDCBA9876543210FEDCBA9876543210FEDCBA98")
-            && lines[sign].contains("--options runtime"),
+            && lines[sign].contains("--options runtime")
+            && lines[sign].contains("--timestamp")
+            && lines[sign].contains("--strip-disallowed-xattrs"),
         "{}",
         lines[sign]
     );
@@ -286,13 +345,12 @@ fn install_signs_and_loads_in_order() {
     ));
     let enable = pos(&format!("launchctl enable gui/{UID}/com.vitruvian.vrelay"));
     let lint = pos("plutil -lint");
-    // Signed and checked before the running agent is stopped; loaded last.
+    // Everything that can fail (signing, the search check, the plist lint)
+    // runs before the running agent is stopped. Enable comes before
+    // bootstrap, so a service someone disabled can load again.
     assert!(sign < verify && verify < bootout, "{calls}");
-    assert!(probe < bootout, "{calls}");
-    assert!(
-        bootout < lint && lint < bootstrap && bootstrap < enable,
-        "{calls}"
-    );
+    assert!(probe < bootout && lint < bootout, "{calls}");
+    assert!(bootout < enable && enable < bootstrap, "{calls}");
     assert!(out.contains("Developer ID Application: Some One"), "{out}");
     let plist = std::fs::read_to_string(&p.plist).unwrap();
     assert!(
@@ -439,22 +497,204 @@ fn inputs_come_from_the_runfiles() {
 
 #[test]
 fn node_must_be_absolute_and_new_enough() {
-    let t = test_dir("resolve-node");
+    let t = outside_dir("resolve-node");
+    let _rm = Rm(t.clone());
     let bin = t.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     script(&bin.join("node"), "echo v22.12.0");
     let path = format!("/nonexistent:{}", bin.display());
-    assert_eq!(resolve_node(None, Some(&path)).unwrap(), bin.join("node"));
     assert_eq!(
-        resolve_node(Some(&bin.join("node")), Some("/nonexistent")).unwrap(),
+        resolve_node(None, Some(&path), None).unwrap(),
         bin.join("node")
     );
-    let err = resolve_node(None, Some("/nonexistent")).unwrap_err();
+    assert_eq!(
+        resolve_node(Some(&bin.join("node")), Some("/nonexistent"), None).unwrap(),
+        bin.join("node")
+    );
+    let err = resolve_node(None, Some("/nonexistent"), None).unwrap_err();
     assert!(err.contains("22.12") && err.contains("--node"), "{err}");
-    let err = resolve_node(Some(Path::new("bin/node")), None).unwrap_err();
+    let err = resolve_node(Some(Path::new("bin/node")), None, None).unwrap_err();
     assert!(err.contains("absolute"), "{err}");
     script(&bin.join("node"), "echo v18.0.0");
-    assert!(resolve_node(None, Some(&path))
+    assert!(resolve_node(None, Some(&path), None)
         .unwrap_err()
         .contains("22.12"));
+}
+
+#[test]
+fn render_plist_substitutes_in_one_pass() {
+    // A home whose name holds placeholder text keeps it, escaped as text.
+    let p = render_plist(
+        TEMPLATE,
+        Path::new("/Users/__LOG__&__PATH__/vrelay"),
+        &["__BIN__"],
+        Path::new("/l/vrelay.log"),
+        "/n:/usr/bin:/bin",
+    );
+    assert!(
+        p.contains(
+            "<string>/Users/__LOG__&amp;__PATH__/vrelay</string>\n\t\t<string>__BIN__</string>"
+        ),
+        "{p}"
+    );
+    assert_eq!(
+        p.matches("<string>/l/vrelay.log</string>").count(),
+        2,
+        "{p}"
+    );
+    assert!(p.contains("<string>/n:/usr/bin:/bin</string>"), "{p}");
+}
+
+/// A fake `node` that answers 22.21.1; `-p` prints `exec_path` (what
+/// `process.execPath` would say; default: the script itself).
+fn fake_node(dir: &Path, exec_path: Option<&Path>) -> PathBuf {
+    std::fs::create_dir_all(dir).unwrap();
+    let node = dir.join("node");
+    let exec = exec_path.map_or("$0".to_string(), |p| p.display().to_string());
+    script(
+        &node,
+        &format!(r#"[ "$1" = "-p" ] && {{ echo "{exec}"; exit 0; }}; echo v22.21.1"#),
+    );
+    node
+}
+
+#[test]
+fn a_node_in_a_bazel_tree_is_passed_over_for_a_stable_one() {
+    let t = outside_dir("node-bazel-out");
+    let _rm = Rm(t.clone());
+    // The repo's bazel_env node: a launcher under bazel-out.
+    let bazel = fake_node(
+        &t.join("ws/bazel-out/bazel_env-opt/bin/tools/bazel_env/bin"),
+        None,
+    );
+    // A launcher outside that runs a node in Bazel's output base.
+    let ob = t.join("output_base");
+    std::fs::create_dir_all(ob.join("execroot")).unwrap();
+    std::fs::create_dir_all(ob.join("external/nodejs/bin")).unwrap();
+    let shim = fake_node(
+        &t.join("shim/bin"),
+        Some(&ob.join("external/nodejs/bin/node")),
+    );
+    // One in the checkout itself.
+    let ws = t.join("ws");
+    let in_ws = fake_node(&ws.join("tools/bin"), None);
+    let stable = fake_node(&t.join("opt/homebrew/bin"), None);
+    let path = [&bazel, &shim, &in_ws, &stable]
+        .iter()
+        .map(|n| n.parent().unwrap().display().to_string())
+        .collect::<Vec<_>>()
+        .join(":");
+    assert_eq!(resolve_node(None, Some(&path), Some(&ws)).unwrap(), stable);
+}
+
+#[test]
+fn only_bazel_nodes_is_an_error_that_says_to_pass_node() {
+    let t = outside_dir("node-bazel-only");
+    let _rm = Rm(t.clone());
+    let bazel = fake_node(&t.join("ws/bazel-out/k8-opt/bin"), None);
+    let path = bazel.parent().unwrap().display().to_string();
+    let err = resolve_node(None, Some(&path), None).unwrap_err();
+    for want in ["--node", "bazel-out", "Homebrew", "mise"] {
+        assert!(err.contains(want), "{want}: {err}");
+    }
+    // Named with --node, it is refused too.
+    let err = resolve_node(Some(&bazel), None, None).unwrap_err();
+    assert!(err.contains("--node") && err.contains("bazel-out"), "{err}");
+}
+
+#[test]
+fn install_refuses_a_node_in_a_bazel_tree() {
+    let mut w = ok_world("install-bazel-node");
+    w.install.node = fake_node(&w.t.join("bazel-out/bin"), None);
+    let err = w.run().0.unwrap_err();
+    assert!(err.contains("bazel-out"), "{err}");
+    assert!(!w.calls().contains("launchctl"), "{}", w.calls());
+}
+
+#[test]
+fn a_failing_check_leaves_the_running_agent_alone() {
+    let w = ok_world("lint-fails");
+    std::fs::write(w.t.join("fail-plutil"), "").unwrap();
+    let (r, _) = w.run();
+    let err = r.unwrap_err();
+    assert!(
+        err.contains("plutil") && err.contains("keeps running"),
+        "{err}"
+    );
+    assert!(!w.calls().contains("launchctl"), "{}", w.calls());
+    let p = Paths::for_home(&w.home);
+    assert!(!p.plist.exists() && !p.bin.exists() && !p.bridge_json.exists());
+    // Nothing staged is left.
+    let left: Vec<_> = std::fs::read_dir(&p.share)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert!(left.is_empty(), "{left:?}");
+}
+
+#[test]
+fn a_failure_after_stopping_says_vrelay_is_stopped() {
+    let w = ok_world("bootstrap-fails");
+    std::fs::write(w.t.join("fail-bootstrap"), "").unwrap();
+    let err = w.run().0.unwrap_err();
+    assert!(err.contains("Input/output error"), "{err}");
+    assert!(
+        err.contains("vrelay is stopped") && err.contains("install again"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_disabled_service_is_enabled_and_loads() {
+    let w = ok_world("disabled");
+    std::fs::write(w.t.join("disabled"), "").unwrap();
+    w.run().0.unwrap();
+    assert!(w.t.join("loaded").exists());
+}
+
+#[test]
+fn a_stop_timeout_cleans_the_staged_copy() {
+    let w = ok_world("stuck");
+    w.run().0.unwrap();
+    let p = Paths::for_home(&w.home);
+    let before = std::fs::read(&p.bin).unwrap();
+    std::fs::write(w.t.join("stuck"), "").unwrap();
+    let err = w.run().0.unwrap_err();
+    assert!(
+        err.contains("did not stop") && err.contains("Nothing was replaced"),
+        "{err}"
+    );
+    let mut names: Vec<_> = std::fs::read_dir(&p.share)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["bridge.json", "node_modules", "vrelay"]);
+    assert_eq!(std::fs::read(&p.bin).unwrap(), before);
+}
+
+#[test]
+fn signing_retries_the_timestamp_server_three_times() {
+    let w = ok_world("sign-retry");
+    std::fs::write(w.t.join("sign-failures"), "2").unwrap();
+    w.run().0.unwrap();
+    assert_eq!(
+        w.calls().matches("codesign --force").count(),
+        3,
+        "{}",
+        w.calls()
+    );
+    let w = ok_world("sign-gives-up");
+    std::fs::write(w.t.join("sign-failures"), "9").unwrap();
+    let err = w.run().0.unwrap_err();
+    assert!(
+        err.contains("timestamp service unavailable") && err.contains("keeps running"),
+        "{err}"
+    );
+    assert_eq!(
+        w.calls().matches("codesign --force").count(),
+        3,
+        "{}",
+        w.calls()
+    );
 }

@@ -56,6 +56,7 @@ rust_library(
         "src/lib.rs",
         "src/link.rs",
         "src/link_tests.rs",
+        "src/proc.rs",
         "src/prompt.rs",
         "src/rules.rs",
         "src/state.rs",

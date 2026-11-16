@@ -21,7 +21,9 @@
 //! The installer's placement against the real pinned desktop-commander:
 //! copied out of the runfiles the way `:install` copies it, the copy stands
 //! alone (no link back into Bazel's output tree) and holds a pinned `rg`
-//! for this platform that runs. Builds `layout.rs` on its own, so only a
+//! for this platform that runs, and the installer's search check
+//! (`search_probe.mjs`, run by the repo's hermetic Node) finds that `rg`
+//! the way desktop-commander does. Builds `layout.rs` on its own, so only a
 //! change to it or to the package (dc/) runs this test and its npm fetch.
 
 #![allow(dead_code)]
@@ -30,6 +32,23 @@
 mod layout;
 
 use std::path::{Path, PathBuf};
+
+const SEARCH_PROBE: &str = include_str!("search_probe.mjs");
+
+/// The hermetic Node from `VRELAY_TEST_NODE` (`$(NODE_PATH)`, a path like
+/// `external/<repo>/bin/node`, relative to the runfiles' `_main`).
+fn hermetic_node() -> PathBuf {
+    let rel = std::env::var("VRELAY_TEST_NODE").expect("VRELAY_TEST_NODE is set in BUILD");
+    let mut candidates = vec![PathBuf::from(&rel)];
+    if let Some(inside) = rel.strip_prefix("external/") {
+        candidates.push(runfiles().join(inside));
+    }
+    candidates.push(runfiles().join("_main").join(&rel));
+    candidates
+        .into_iter()
+        .find(|p| p.is_file())
+        .unwrap_or_else(|| panic!("no node at {rel}"))
+}
 
 fn runfiles() -> PathBuf {
     std::env::var_os("RUNFILES_DIR")
@@ -89,5 +108,20 @@ fn the_installed_copy_carries_a_working_rg() {
     assert!(out.status.success(), "{}", rg.display());
     let v = String::from_utf8_lossy(&out.stdout);
     assert!(v.starts_with("ripgrep "), "{v}");
+
+    // The installer's search check, with a real node, against the copy.
+    let entry = std::fs::canonicalize(dst.join(layout::DC_PACKAGE).join(layout::DC_ENTRY)).unwrap();
+    let probe = std::process::Command::new(hermetic_node())
+        .args(["--input-type=module", "-e", SEARCH_PROBE])
+        .arg(&entry)
+        .output()
+        .unwrap();
+    assert!(
+        probe.status.success(),
+        "{}",
+        String::from_utf8_lossy(&probe.stderr)
+    );
+    let found = PathBuf::from(String::from_utf8_lossy(&probe.stdout).trim());
+    assert_eq!(std::fs::canonicalize(&found).unwrap(), rg);
     let _ = std::fs::remove_dir_all(&tmp);
 }

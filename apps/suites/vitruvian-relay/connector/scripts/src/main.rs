@@ -26,7 +26,7 @@ use std::path::PathBuf;
 
 use vitruvian_relay_connector::bridge::dc_home;
 use vitruvian_relay_connector::Result;
-use vrelay_install::{install, resolve_node, uninstall, Inputs, Install, Tools};
+use vrelay_install::{install, resolve_node, uninstall, Inputs, Install, Timing, Tools};
 
 const SCRIPT: &str = match option_env!("VRELAY_SCRIPT") {
     Some(s) => s,
@@ -71,8 +71,10 @@ fn run_install(args: &[String]) -> Result<()> {
         runfiles.push(PathBuf::from(d));
     }
     let inputs = Inputs::from_runfiles(&runfiles)?;
+    // Under `bazel run`, the checkout: a node from in there would not last.
+    let workspace = std::env::var_os("BUILD_WORKSPACE_DIRECTORY").map(PathBuf::from);
     let path = std::env::var("PATH").ok();
-    let node = resolve_node(node.as_deref(), path.as_deref())?;
+    let node = resolve_node(node.as_deref(), path.as_deref(), workspace.as_deref())?;
     install(
         &Install {
             home,
@@ -81,6 +83,8 @@ fn run_install(args: &[String]) -> Result<()> {
             tools: Tools::system(),
             node,
             unsigned,
+            workspace,
+            timing: Timing::default(),
         },
         &mut std::io::stdout(),
     )

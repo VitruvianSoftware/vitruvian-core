@@ -41,7 +41,10 @@ rust_library(
         "src/lib.rs",
         "src/tests.rs",
     ],
-    compile_data = ["com.vitruvian.vrelay.plist"],
+    compile_data = [
+        "com.vitruvian.vrelay.plist",
+        "src/search_probe.mjs",
+    ],
     crate_name = "vrelay_install",
     crate_root = "src/lib.rs",
     edition = "2021",
@@ -83,7 +86,7 @@ test_suite(
 )
 
 # The placement against the real pinned package (a ~600-package fetch on a
-# cold cache). It builds only layout.rs, so it runs with dc/'s own unit
+# cold cache), and the search check run by the hermetic Node. It builds only layout.rs, so it runs with dc/'s own unit
 # (connector/dc/BUILD), not on every connector change.
 rust_test(
     name = "package_layout_test",
@@ -92,9 +95,15 @@ rust_test(
         "src/layout.rs",
         "src/package_test.rs",
     ],
+    compile_data = ["src/search_probe.mjs"],
     crate_root = "src/package_test.rs",
-    data = ["//apps/suites/vitruvian-relay/connector/dc:desktop_commander"],
+    data = [
+        "//apps/suites/vitruvian-relay/connector/dc:desktop_commander",
+        "@nodejs_toolchains//:resolved_toolchain",
+    ],
     edition = "2021",
+    env = {"VRELAY_TEST_NODE": "$(NODE_PATH)"},
+    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
     visibility = ["//apps/suites/vitruvian-relay/connector/dc:__pkg__"],
 )
 

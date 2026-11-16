@@ -211,42 +211,20 @@ pub fn check_node(node: &Path) -> Result<()> {
     check_node_with(node, NODE_VERSION_TIMEOUT)
 }
 
-/// Runs `node --version` in its own process group, for at most `timeout`;
-/// past that the group is killed.
+/// Runs `node --version` for at most `timeout` ([`crate::proc::output_within`]:
+/// its own process group, killed past that).
 fn check_node_with(node: &Path, timeout: Duration) -> Result<()> {
-    let mut child = Command::new(node)
-        .arg("--version")
-        .process_group(0)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| format!("cannot run {}: {e}. {NODE_ADVICE}", node.display()))?;
-    let deadline = Instant::now() + timeout;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(st)) => break Some(st),
-            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(10)),
-            _ => break None,
-        }
-    };
-    // Whatever it started goes too (the leader is reaped only below, or
-    // just was, in which case the group is empty or its own).
-    if status.is_none() {
-        kill_group(child.id() as i32, libc::SIGKILL);
-        let _ = child.wait();
-        return Err(format!(
-            "{} --version did not answer in {} s. {NODE_ADVICE}",
-            node.display(),
-            timeout.as_secs_f32()
-        ));
-    }
-    let mut out = String::new();
-    if let Some(mut o) = child.stdout.take() {
-        let _ = o.by_ref().take(256).read_to_string(&mut out);
-    }
-    let version = out.trim().to_string();
-    if status.is_some_and(|s| s.success()) && node_ok(&version) {
+    let out = crate::proc::output_within(Command::new(node).arg("--version"), timeout, 256)
+        .map_err(|e| format!("cannot run {}: {e}. {NODE_ADVICE}", node.display()))?
+        .ok_or_else(|| {
+            format!(
+                "{} --version did not answer in {} s. {NODE_ADVICE}",
+                node.display(),
+                timeout.as_secs_f32()
+            )
+        })?;
+    let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if out.status.success() && node_ok(&version) {
         Ok(())
     } else {
         Err(format!(

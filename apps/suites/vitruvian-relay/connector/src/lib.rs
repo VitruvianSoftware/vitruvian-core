@@ -27,6 +27,7 @@ pub mod bridge;
 pub mod config;
 pub mod keys;
 pub mod link;
+pub mod proc;
 pub mod prompt;
 pub mod rules;
 pub mod state;
