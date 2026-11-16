@@ -23,13 +23,14 @@ Because Alder Lake (Core i9-12900) deep C-states can occasionally induce ring-bu
 | **Chassis / Motherboard** | Intel NUC 12 Extreme (`NUC12EDBi9`) |
 | **Processor** | 12th-Gen Intel Core i9-12900 (Alder Lake) |
 | **Role in Cluster** | Control-plane / etcd voter, CUDA/GPU worker |
-| **Tailscale IP** | `100.97.82.15` |
+| **Tailscale IP** | `100.64.0.7` |
 | **Local LAN IP** | `192.168.86.64` |
 | **Local Subnet** | `192.168.86.0/24` (Subnet mask: `255.255.255.0`, Broadcast: `192.168.86.255`) |
 | **Smart Power Strip** | TP-Link Kasa HS300 Smart Power Strip (`192.168.86.48`) |
 | **PDU Outlet** | Socket 6 (Alias: `NUC12I9`) |
-| **Network Interface** | Intel I225-LM 2.5GbE Ethernet (`enp110s0`) |
-| **MAC Address** | `1c:69:7a:d5:11:4f` |
+| **Network Interface (Active)** | Aquantia AQC113C 10GbE (`enp110s0`, `atlantic`, MAC `1c:69:7a:d5:11:4f`) |
+| **Network Interface (Fallback)** | Intel I225-LM 2.5GbE (`enp109s0`, `igc`, MAC `1c:69:7a:d5:11:48`, currently `NO-CARRIER`) |
+| **MAC Address (WoL Target)** | `1c:69:7a:d5:11:4f` |
 | **Wake-on-LAN (WoL)** | Supported: `pg`, Configured: `g` (MagicPacket enabled in ACPI S5) |
 | **Operating System** | Fedora Silverblue (rpm-ostree immutable root) |
 
@@ -48,7 +49,7 @@ flowchart TD
         E --> F["Dispatch WoL Magic Packet to 1c:69:7a:d5:11:4f"]
     end
 
-    F --> G["Wait & Poll for Tailscale Ping (100.97.82.15)"]
+    F --> G["Wait & Poll for Tailscale Ping (100.64.0.7)"]
     G --> H{"Host Online & SSH Up?"}
     H -- No --> B
     H -- Yes --> I["Fedora Silverblue rpm-ostree Storage Remediation"]
@@ -91,7 +92,7 @@ The script executes the following four-phase recovery cycle autonomously:
 
 1. **Power Cut (Socket 6):** Connects to the TP-Link Kasa HS300 strip at `192.168.86.48` using `python-kasa` (in `~/.kasa-venv/bin/python3`), locates Socket 6 (`NUC12I9`), and powers it off. It sleeps for **10 seconds** to allow the NUC power delivery capacitors and motherboard standby rails to fully discharge.
 2. **Power Restoration:** Powers Socket 6 back on. The chassis enters the ACPI S5 standby power state.
-3. **Standby PHY Stabilization:** Waits **4 seconds** for the Intel I225-LM 2.5GbE PHY to negotiate a link speed (10/100/1000 Mbps standby link) and initialize its WoL magic-packet reception buffer.
+3. **Standby PHY Stabilization:** Waits **4 seconds** for the active Ethernet PHY (`enp110s0`) to negotiate a standby link and initialize its WoL magic-packet reception buffer.
 4. **Wake-on-LAN Magic Packet Dispatch:** Sends an Ethernet Wake-on-LAN magic packet containing 16 repetitions of MAC `1c:69:7a:d5:11:4f` broadcast to `192.168.86.255` using `/opt/homebrew/bin/wakeonlan`.
 5. **Rejoin Polling:** Iterates up to 45 times (90 seconds maximum) polling `tailscale ping -c 1 fedora`.
 6. **Kubernetes Verification:** Queries `kubectl get node fedora -o wide` to verify that the node rejoins the k3s cluster.
@@ -133,7 +134,10 @@ asyncio.run(main())
 
 ### Step 2: Standby Delay & Wake-on-LAN Dispatch
 
-Wait 4-5 seconds after power is restored before sending the WoL packet. The Intel I225-LM controller requires this interval to complete its internal self-test and bring up auxiliary standby link power.
+Wait 4-5 seconds after power is restored before sending the WoL packet. The NIC requires this interval to complete its internal self-test and bring up auxiliary standby link power.
+
+> [!NOTE]
+> After a hard freeze or cold AC power cut on the Kasa strip, WoL on `enp110s0` (`atlantic`) or BIOS POST may not bring the chassis up automatically; a physical press of the NUC power button may be required.
 
 Broadcast the WoL packet to the local subnet broadcast address (`192.168.86.255`):
 
@@ -153,19 +157,22 @@ Monitor Tailscale network connectivity:
 # Test Tailscale ping
 tailscale ping -c 2 fedora
 
-# Test direct SSH uptime (passwordless sudo key)
-ssh james@100.97.82.15 uptime
+# Test direct SSH uptime (passwordless sudo key; use 192.168.86.64 on LAN if Tailscale is still converging)
+ssh james@100.64.0.7 uptime
 ```
 
 Expected output:
 ```text
-pong from fedora (100.97.82.15) via [LAN_IP]:41641 in 1ms
+pong from fedora (100.64.0.7) via [LAN_IP]:41641 in 1ms
  05:12:01 up 1 min,  0 users,  load average: 0.85, 0.23, 0.08
 ```
 
 ---
 
-### Step 4: Fedora Silverblue (rpm-ostree) Storage & Daemon Remediation
+### Step 4: Fedora Silverblue (rpm-ostree) Storage & Daemon Remediation (Longhorn Only)
+
+> [!NOTE]
+> Longhorn is **not currently deployed** in the cluster (`longhorn-system` has no resources). Skip this step unless Longhorn is re-installed.
 
 Fedora Silverblue uses an immutable `/usr` filesystem managed by `rpm-ostree`. Following an unexpected reboot or kernel deployment switch, layered packages such as `iscsi-initiator-utils` and the kernel module `iscsi_tcp` may fail to load, which causes `longhorn-manager` to crashloop (`iscsiadm: No such file or directory`).
 
@@ -174,7 +181,7 @@ Fedora Silverblue uses an immutable `/usr` filesystem managed by `rpm-ostree`. F
    Run the idempotent live-layer command via SSH:
 
    ```bash
-   ssh james@100.97.82.15 'sudo rpm-ostree install --idempotent iscsi-initiator-utils && \
+   ssh james@100.64.0.7 'sudo rpm-ostree install --idempotent iscsi-initiator-utils && \
      sudo rpm-ostree apply-live --allow-replacement && \
      sudo modprobe iscsi_tcp && \
      echo iscsi_tcp | sudo tee /etc/modules-load.d/iscsi.conf && \
@@ -203,7 +210,7 @@ Fedora Silverblue uses an immutable `/usr` filesystem managed by `rpm-ostree`. F
 1. **Verify Kubernetes Node Status:**
 
    ```bash
-   NO_PROXY='*' kubectl get node fedora -o wide
+   bazel run //tools/gitops:get -- node fedora -o wide
    ```
    Confirm `STATUS` is `Ready` and roles show `control-plane,etcd` (or master).
 
@@ -213,13 +220,13 @@ Fedora Silverblue uses an immutable `/usr` filesystem managed by `rpm-ostree`. F
 
    ```bash
    # Check for terminating pods
-   kubectl get pods -A | grep Terminating
+   bazel run //tools/gitops:get -- pods -A | grep Terminating
 
-   # Force-delete stuck terminating pod if necessary
+   # Force-delete stuck terminating pod if necessary (once kubelet on fedora is Ready, most clear automatically)
    kubectl delete pod <pod-name> -n <namespace> --force --grace-period=0
 
-   # Check for orphaned Longhorn volume attachments
-   kubectl get volumeattachment | grep fedora
+   # Check for orphaned volume attachments
+   bazel run //tools/gitops:get -- volumeattachment | grep fedora
    ```
 
    If a volume attachment is stuck attaching to the old instance:
@@ -229,21 +236,16 @@ Fedora Silverblue uses an immutable `/usr` filesystem managed by `rpm-ostree`. F
 
 3. **Verify CloudNativePG Cluster Health:**
 
-   Check that the primary and standby Postgres replicas are streaming with zero lag:
+   Check that all Postgres clusters report `3/3` ready and `Cluster in healthy state`:
 
    ```bash
-   kubectl cnpg status cnpg-cluster -n cnpg-system
+   bazel run //tools/gitops:get -- cluster -A
    ```
-
-   Confirm:
-   - Primary and replicas report `3/3 Ready` or `Cluster in healthy state`.
-   - Hostname anti-affinity has kept replicas distributed across separate physical hosts.
 
 4. **Verify Prometheus & Alertmanager Workloads:**
 
    ```bash
-   kubectl get pods -n monitoring -l app.kubernetes.io/name=prometheus
-   kubectl get pods -n monitoring -l app.kubernetes.io/name=alertmanager
+   bazel run //tools/gitops:get -- pods -n monitoring -l 'app.kubernetes.io/name in (prometheus,alertmanager)' -o wide
    ```
    Confirm all monitoring pods have bound their volumes and are in `Running` state.
 
@@ -261,9 +263,10 @@ Fedora Silverblue uses an immutable `/usr` filesystem managed by `rpm-ostree`. F
 
 - If a pending rpm-ostree transaction is blocked:
   ```bash
-  ssh james@100.97.82.15 'sudo rpm-ostree cancel'
+  ssh james@100.64.0.7 'sudo rpm-ostree cancel'
   ```
   Then re-run the layer command in Step 4.
+- Note: `rpm-ostree install` can fail with a `libheif-freeworld` dependency conflict if `libheif-freeworld` is layered against a mismatched base `libheif` version.
 
 ### Longhorn Volumes Remain in `Degraded` State
 
@@ -343,5 +346,14 @@ On October 11, remediations were attempted but contained two critical flaws:
 3. **Wake-on-LAN Subnet Routing**:
    - `wakeonlan` was broadcasting to `255.255.255.255`, which got swallowed by Tailscale tunnel interfaces on macOS.
    - Updated `/Users/james/bin/power-cycle-fedora` to explicitly broadcast to `192.168.86.255`.
+
+---
+
+## 8. November 16, 2026 Freeze & Runbook Drift
+
+- **Symptoms:** At 06:59:38 PST (14:59:38 UTC), `fedora` suffered an instant, unlogged hard freeze during an `arc-runners_vitruvian-queue-runner` job (no kernel warnings/errors or `pstore` crash dumps). Two automated `power-cycle-fedora` runs did not wake the host; manual power-on restored it.
+- **Root-Cause Findings:**
+  - `disable-deep-cstates.service` (`C8`/`C10` disabled) and `/dev/watchdog1` (`wdat_wdt`) were active, but the October 12 kernel arguments (`intel_idle.max_cstate=2` and `module_blacklist=intel_oc_wdt`) were missing from `/proc/cmdline` on `44.20261002.0`. Re-staged via `sudo rpm-ostree kargs --append-if-missing=intel_idle.max_cstate=2 --append-if-missing=module_blacklist=intel_oc_wdt`.
+  - The node's Tailscale IP is `100.64.0.7`, its active NIC is `enp110s0` (`atlantic`, Aquantia 10GbE), and Longhorn is no longer installed in the cluster.
 
 
