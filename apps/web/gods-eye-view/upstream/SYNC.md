@@ -96,6 +96,9 @@ a sync that passed every check was never committed. Work like this instead:
    `tail` hides a failure.
    - `bazel run //apps/web/gods-eye-view:track_upstream -- check`
    - `bazel test //apps/web/gods-eye-view:unit_tests //apps/web/gods-eye-view:server_test //apps/web/gods-eye-view:tle_mirror_test //apps/web/gods-eye-view:cesium_assets_test //apps/web/gods-eye-view:upstream_test`
+     and the Rust ports of upstream's gates, which CI runs and a sync that changes
+     upstream's rules must port: `:scripts_test :check_import_directions_test
+     :check_package_boundaries_test :check_format_scope_test`
    - `bazel build //apps/web/gods-eye-view:build`
    - `bazel run //tools/license:check`
    - `bazel run //tools/license:verify`: CI runs it too, and it catches what `:check` and `:add` miss.
