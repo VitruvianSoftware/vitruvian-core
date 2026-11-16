@@ -267,9 +267,9 @@ absent), so the verifier pins `client_id`.
 - [x] Spike server on the homelab (one small service, chart, image build, GitOps
       app): `/mcp` behind OAuth with one echo tool, protected-resource metadata,
       and `/connect` as a WebSocket with ping/pong
-- [x] **A (Claude, web; phone app still to try):** James adds `https://<spike-host>/mcp` in Claude with the
-      `relay-claude` client id, signs in, and the echo tool runs from claude.ai
-      and from the Claude phone app
+- [x] **A (Claude, web):** James adds `https://<spike-host>/mcp` in Claude with
+      the `relay-claude` client id, signs in, and the echo tool runs from
+      claude.ai. The Claude phone app is not tried yet (spec §11 question 12)
 - [ ] **A (ChatGPT, not tried; moved to spec §11 questions 3 and 8):** James starts adding the connector in ChatGPT and copies its
       callback into `chatgptRedirectUris`, then re-apply, then finish. Only if his
       plan allows custom MCP servers

@@ -32,7 +32,8 @@ involves, and we copy none of their server, website or branding.
 2. **We don't fork their remote agent.** Our connector is our own code. For the
    actual tools on the machine (terminal, files, search, edit) it runs the
    **unmodified** upstream `@wonderwhy-er/desktop-commander` package as a local
-   MCP server over stdio. It does not use that package's `remote` mode. MIT allows
+   MCP server over stdio (the program's standard input and output, so no network
+   port is involved). It does not use that package's `remote` mode. MIT allows
    this. We get their tool improvements for free and we never patch their code.
 3. **The connector implements both Desktop Commander and Cua Driver (`cua.ai`), plus any other local MCP server.**
    Desktop Commander handles terminal, file, search, and edit tools; Cua Driver handles background GUI automation (macOS Accessibility-tree inspection, window screenshots, and non-focus-stealing clicks and keystrokes for native desktop apps). The same connector can also expose Courier, Roborock, or any other stdio MCP server the user lists. This sets us apart from the incumbent instead of just cloning it.
@@ -85,7 +86,8 @@ used as a queue:
 2. **Their design confirms the job is small.** The work is routing, sign-in, device
    records and metering, not anything clever. Our version uses a direct WebSocket
    in place of a database queue: one fewer moving part, a call reaches the device
-   the moment it's sent, and results can stream.
+   the moment it's sent, and results could stream if a bridged server sends
+   progress (§4).
 3. **A tool list sent by the device is an improvement.** It lets the user hide tools
    locally and lets one connector bridge several MCP servers (decision 3).
 4. **We keep less data.** Their relay holds arguments and results in a table for a
@@ -151,14 +153,15 @@ JSON frames over `wss://<relay>/connect`. Every frame has a `type`.
 | `hello` | connector → relay | Device id, connector version, protocol version, signed proof of the device key (§6), the allowed tool list |
 | `welcome` / `reject` | relay → connector | Accepted, or refused with a reason the connector can show |
 | `call` | relay → connector | Call id, tool name, arguments, deadline |
-| `progress` | connector → relay | Streamed output for a running call, for bridged servers that send it (`desktop-commander` doesn't; see §5) |
+| `progress` | connector → relay | Streamed output for a running call. Reserved: none of the v1 servers sends progress (`desktop-commander` returns output in steps, §5), so P1 doesn't build it |
 | `result` | connector → relay | Final content or error for a call id |
 | `cancel` | relay → connector | The AI gave up or the deadline passed |
 | `tools_changed` | connector → relay | New allowed tool list |
 | `ping` / `pong` | both | Liveness every 20 s. Three missed pings mark the device offline |
 
 Rules: call ids are unique, and the connector ignores a repeated id for ten
-minutes, so a retry never runs a command twice. Frames are capped at 4 MiB, and the
+minutes, so the relay resending the same call never runs it twice. (An AI app's
+own retry is a different call; see below.) Frames are capped at 4 MiB, and the
 connector truncates bigger outputs with a note saying so. The relay times out a call
 at its deadline and sends `cancel`. Reconnects use exponential backoff with jitter,
 from 1 s up to 60 s.
@@ -383,7 +386,7 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
 | Phase | Scope | Done when |
 |---|---|---|
 | **P0 spikes** | (a) ChatGPT web, Claude web and Gemini web each add an OAuth-protected MCP on our domain with Zitadel sign-in (ChatGPT researched, not tried). Settles the registration question. (b) Zitadel device flow from a CLI. (c) A WebSocket through the Cloudflare Tunnel stays up for 24 hours with reconnects. (d) A connector drives unmodified `desktop-commander` over stdio | **Done 2026-11-15.** (a) yes for Claude and Gemini, live; ChatGPT yes on paper, not tried. (b) yes. (c) yes with reconnects, no for one unbroken connection. (d) yes, with process-group shutdown. Evidence in [the P0 plan](../plans/2026-11-09-relay-p0-spikes.md) |
-| **P1 single-user alpha** | Relay and connector on the homelab, one user, one device, local rules file, no billing. Builds in the P0 findings: automatic reconnect, clean failure of in-flight calls, process-group shutdown, telemetry and flag fetch off, `server/discover`, and one sign-in session shared by the device approval page and the AI apps' sign-in (spike B had to sign in twice) | James runs a command on his Mac from Claude on his phone, and the "ask first" prompt appears on the Mac |
+| **P1 single-user alpha** | Relay and connector on the homelab, one user, one device, local rules file, no billing. Builds in the P0 findings: automatic reconnect, clean failure of in-flight calls, process-group shutdown, telemetry and flag fetch off, an answer to `server/discover` (Claude's request for the server to describe itself), and one sign-in session shared by the device approval page and the AI apps' sign-in (spike B had to sign in twice) | James runs a command on his Mac from Claude on his phone, and the "ask first" prompt appears on the Mac |
 | **P2 multi-user** | Sign-up, several devices, dashboard, local settings screen, both activity logs, the isolation test in CI | A second invited user connects, and the isolation test fails against a deliberately broken check |
 | **P3 launch readiness** | Stripe product line and entitlements, §9 checklist, move to GCP, Zitadel hosting, signed installers for macOS then Linux and Windows, and **Cua Driver** (`cua.ai`) alongside Desktop Commander | A stranger can sign up, pay in Stripe test mode, connect without help, and drive both terminal/file tools (Desktop Commander) and native desktop app UIs in the background (Cua Driver) |
 
@@ -414,7 +417,8 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
 11. **Gemini at scale.** Gemini's form wants a client secret and gives each Google
     user their own callback, which the form shows for copying before the client
     exists. Options: a client per customer created by the
-    dashboard (the customer pastes their own id and secret), or open registration
+    dashboard (the customer first copies Gemini's callback into the dashboard,
+    then pastes the id and secret the dashboard creates into Gemini), or open registration
     (letting the AI app create its own client automatically) if Gemini supports it
     when the fields are left empty (untested).
 12. **Phone apps.** The echo tool has run from the Claude and Gemini web apps, not
@@ -423,6 +427,9 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
     than one copy of the relay, because a node going away caused outages of 3 to
     6 minutes. But a call must reach the copy holding the device's connection
     (§8), so this spec overrides that: until there is a message bus (question 9),
-    the alpha runs one copy on an always-on node and relies on a fast restart.
+    the alpha runs one copy on an always-on node and relies on Kubernetes
+    restarting it elsewhere if that node fails. How long such a restart takes
+    wasn't measured: the 3 to 6 minute outages were a laptop node dropping out,
+    not a restart.
 14. **Retries that run twice.** An AI app's retry after a dropped connection
     arrives as a new call (§4). Decide whether the relay should detect it.
