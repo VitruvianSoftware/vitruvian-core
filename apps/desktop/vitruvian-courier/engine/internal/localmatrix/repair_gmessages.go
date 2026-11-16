@@ -23,6 +23,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/store"
 )
 
 // This file repairs the chats Google Messages mixed up before mautrix-gmessages learned to route by the IDs Google
@@ -65,7 +66,12 @@ var (
 type restoredChat struct {
 	ID       networkid.PortalID    `json:"id"`
 	Receiver networkid.UserLoginID `json:"receiver"`
+	// LastTS is the time of the newest message its room already held when it was restored (Unix milliseconds):
+	// the room has those events already, so the resync fetches only what is newer.
+	LastTS int64 `json:"last_ts,omitempty"`
 }
+
+func (r restoredChat) sameChat(o restoredChat) bool { return r.ID == o.ID && r.Receiver == o.Receiver }
 
 // repairMu serializes a repair's resync bookkeeping (the KV entry) between the bridge start and its resync loop.
 var repairMu sync.Mutex
@@ -87,7 +93,9 @@ func (c *Connector) repairGoogleMessages(ctx context.Context) {
 	}
 }
 
-// doRepairGoogleMessages is the repair; it returns the chats it restored.
+// doRepairGoogleMessages is the repair; it returns the chats it restored. The chat with no conversation ID goes last:
+// its room is what the tombstones of the chats it swallowed point to, which is how they are told from a real merge,
+// so everything that reads them comes first, and a start that stops halfway finds the same state again.
 func (c *Connector) doRepairGoogleMessages(ctx context.Context) ([]restoredChat, error) {
 	var restored []restoredChat
 	var firstErr error
@@ -99,28 +107,73 @@ func (c *Connector) doRepairGoogleMessages(ctx context.Context) ([]restoredChat,
 
 	empty, err := c.emptyConversationPortals(ctx)
 	keep(err)
-	for _, p := range empty {
-		keep(c.removeEmptyConversationPortal(ctx, p))
-	}
+	catchAll, err := c.catchAllRooms(ctx, empty)
+	keep(err)
 
 	hasMapping, err := c.hasTable(ctx, gmessagesMappingTable)
 	if err != nil {
 		return restored, errors.Join(firstErr, err)
 	}
-	if !hasMapping {
-		return restored, firstErr
-	}
-	dangling, err := c.danglingMappings(ctx)
-	keep(err)
-	for _, m := range dangling {
-		chat, ok, err := c.restoreOrDropMapping(ctx, m)
+	if hasMapping {
+		restored, err = c.repairMappings(ctx, catchAll, restored)
 		keep(err)
+		keep(c.liftTombstonesOfMappedChats(ctx, catchAll))
+	}
+	for _, p := range empty {
+		keep(c.removeEmptyConversationPortal(ctx, p))
+	}
+	if hasMapping {
+		// What pointed at the chats just removed has nothing left to point at.
+		restored, err = c.repairMappings(ctx, catchAll, restored)
+		keep(err)
+	}
+	return restored, firstErr
+}
+
+// repairMappings restores or drops each mapping that has no usable chat.
+func (c *Connector) repairMappings(ctx context.Context, catchAll map[string]bool, restored []restoredChat) ([]restoredChat, error) {
+	var firstErr error
+	broken, err := c.brokenMappings(ctx)
+	if err != nil {
+		return restored, err
+	}
+	for _, m := range broken {
+		chat, ok, err := c.restoreOrDropMapping(ctx, m, catchAll)
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
 		if ok {
 			restored = append(restored, chat)
 		}
 	}
-	keep(c.liftTombstonesOfMappedChats(ctx))
 	return restored, firstErr
+}
+
+// catchAllRooms are the rooms of the chats with no conversation ID: those of the portals given, and any room of
+// the store whose bridge info names such a chat. A tombstone pointing to one of them is what the bug left.
+func (c *Connector) catchAllRooms(ctx context.Context, empty []*database.Portal) (map[string]bool, error) {
+	out := map[string]bool{}
+	for _, p := range empty {
+		if p.MXID != "" {
+			out[string(p.MXID)] = true
+		}
+	}
+	rooms, err := c.store.ChannelRooms(ctx, c.network, "")
+	if err != nil {
+		return out, err
+	}
+	for _, r := range rooms {
+		if emptyConversationPortalRE.MatchString(r.ChannelID) {
+			out[r.RoomID] = true
+		}
+	}
+	return out, nil
+}
+
+// liftable says a tombstone was left by the bug: it points to a chat with no conversation ID, or to nothing. Any
+// other tombstone is a real merge of two chats, which is not ours to undo.
+func liftable(replacement string, catchAll map[string]bool) bool {
+	return replacement == "" || catchAll[replacement]
 }
 
 func (c *Connector) hasTable(ctx context.Context, name string) (bool, error) {
@@ -195,19 +248,21 @@ func (c *Connector) removeEmptyConversationPortal(ctx context.Context, p *databa
 	return nil
 }
 
-// dmMapping is one row of the phone number to portal table.
+// dmMapping is one row of the phone number to portal table. hasRow says its portal has a row (without a room).
 type dmMapping struct {
-	login  networkid.UserLoginID
-	phone  string
-	portal networkid.PortalID
+	login         networkid.UserLoginID
+	phone         string
+	portal        networkid.PortalID
+	lastMessageTS sql.NullInt64
+	hasRow        bool
 }
 
-// danglingMappings lists the mappings whose portal has no row.
-func (c *Connector) danglingMappings(ctx context.Context) ([]dmMapping, error) {
-	rows, err := c.br.DB.Query(ctx, `SELECT dc.login_id, dc.phone_number, dc.portal_id
+// brokenMappings lists the mappings whose portal has no row, or a row with no room.
+func (c *Connector) brokenMappings(ctx context.Context) ([]dmMapping, error) {
+	rows, err := c.br.DB.Query(ctx, `SELECT dc.login_id, dc.phone_number, dc.portal_id, dc.last_message_ts, p.id IS NOT NULL
 		FROM `+gmessagesMappingTable+` dc
 		LEFT JOIN portal p ON p.bridge_id = dc.bridge_id AND p.id = dc.portal_id AND p.receiver = dc.login_id
-		WHERE dc.bridge_id = $1 AND p.id IS NULL`, c.br.ID)
+		WHERE dc.bridge_id = $1 AND (p.id IS NULL OR p.mxid IS NULL OR p.mxid = '')`, c.br.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +270,7 @@ func (c *Connector) danglingMappings(ctx context.Context) ([]dmMapping, error) {
 	var out []dmMapping
 	for rows.Next() {
 		var m dmMapping
-		if err := rows.Scan(&m.login, &m.phone, &m.portal); err != nil {
+		if err := rows.Scan(&m.login, &m.phone, &m.portal, &m.lastMessageTS, &m.hasRow); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
@@ -229,40 +284,134 @@ func (c *Connector) dropMapping(ctx context.Context, m dmMapping) error {
 	return err
 }
 
-// restoreOrDropMapping puts a mapping's portal back on the room it had, when that room is in the store tombstoned
-// and nobody else uses it; otherwise the mapping goes, and the next sync makes the chat and its mapping again. The
+// restoreOrDropMapping gives a mapping with no usable chat its chat back, on the room it had. That room is one the
+// bug tombstoned (liftable) that nobody else uses, found two ways: it was made for the mapped chat itself (the chat's
+// row was deleted and the mapping never moved), or, when the mapping had already moved to a new conversation ID that
+// never got its portal (a start that stopped between the two), it is the room of an old chat of the same contact
+// that has no portal and no mapping. Otherwise the mapping goes, and the next sync makes the chat and its mapping
+// again; but only when its chat has no row: a row with no room yet is a chat that isn't made yet, and stays. The
 // phone number and the chat's name are never logged.
-func (c *Connector) restoreOrDropMapping(ctx context.Context, m dmMapping) (restoredChat, bool, error) {
+func (c *Connector) restoreOrDropMapping(ctx context.Context, m dmMapping, catchAll map[string]bool) (restoredChat, bool, error) {
 	log := c.log.With().Str("portal_id", string(m.portal)).Logger()
 	if emptyConversationPortalRE.MatchString(string(m.portal)) {
 		log.Warn().Msg("dropped a Google Messages contact's mapping to a chat with no conversation ID")
 		return restoredChat{}, false, c.dropMapping(ctx, m)
 	}
-	rooms, err := c.store.RoomsForChannel(ctx, c.network, string(m.portal), string(m.login))
+	room, oldPortal, found, err := c.oldRoomFor(ctx, m, catchAll)
 	if err != nil {
 		return restoredChat{}, false, err
 	}
-	for _, r := range rooms {
-		if !r.Tombstoned {
-			continue
+	if !found {
+		if m.hasRow {
+			return restoredChat{}, false, nil
 		}
-		taken, err := c.br.DB.Portal.GetByMXID(ctx, id.RoomID(r.RoomID))
+		log.Warn().Msg("dropped a Google Messages contact's mapping to a chat that is gone; the next sync makes the chat again")
+		return restoredChat{}, false, c.dropMapping(ctx, m)
+	}
+	key := networkid.PortalKey{ID: oldPortal, Receiver: m.login}
+	if oldPortal != m.portal {
+		// The mapping moves to the old chat first: a start that stops after it finds that chat's mapping with its
+		// room tombstoned, and restores it as above. A row with no room at the new ID goes (the next sync of the
+		// contact's conversation moves the chat there, after its mapping is stored).
+		err := c.br.DB.DoTxn(ctx, nil, func(ctx context.Context) error {
+			if err := c.dropMapping(ctx, m); err != nil {
+				return err
+			}
+			_, err := c.br.DB.Exec(ctx, "INSERT INTO "+gmessagesMappingTable+
+				" (bridge_id, login_id, phone_number, portal_id, last_message_ts) VALUES ($1, $2, $3, $4, $5)",
+				c.br.ID, m.login, m.phone, oldPortal, m.lastMessageTS)
+			if err != nil {
+				return err
+			}
+			if m.hasRow {
+				return c.br.DB.Portal.Delete(ctx, networkid.PortalKey{ID: m.portal, Receiver: m.login})
+			}
+			return nil
+		})
 		if err != nil {
 			return restoredChat{}, false, err
 		}
-		if taken != nil {
-			continue
-		}
-		key := networkid.PortalKey{ID: m.portal, Receiver: m.login}
-		if err := c.restorePortal(ctx, key, id.RoomID(r.RoomID)); err != nil {
+	}
+	if oldPortal == m.portal && m.hasRow {
+		// Its row has no room: the room is given back by making the row again.
+		if err := c.br.DB.Portal.Delete(ctx, key); err != nil {
 			return restoredChat{}, false, err
 		}
-		log.Warn().Str("room_id", r.RoomID).
-			Msg("restored a Google Messages chat that was merged into a chat with no conversation ID; it will be synced from the phone")
-		return restoredChat{ID: key.ID, Receiver: key.Receiver}, true, nil
 	}
-	log.Warn().Msg("dropped a Google Messages contact's mapping to a chat that is gone; the next sync makes the chat again")
-	return restoredChat{}, false, c.dropMapping(ctx, m)
+	lastTS, err := c.store.RoomLastTS(ctx, room.RoomID)
+	if err != nil {
+		return restoredChat{}, false, err
+	}
+	if err := c.restorePortal(ctx, key, id.RoomID(room.RoomID)); err != nil {
+		return restoredChat{}, false, err
+	}
+	log.Warn().Str("room_id", room.RoomID).
+		Msg("restored a Google Messages chat that was merged into a chat with no conversation ID; it will be synced from the phone")
+	return restoredChat{ID: key.ID, Receiver: key.Receiver, LastTS: lastTS}, true, nil
+}
+
+// oldRoomFor finds the room a broken mapping's chat had.
+func (c *Connector) oldRoomFor(ctx context.Context, m dmMapping, catchAll map[string]bool) (store.ChannelRoom, networkid.PortalID, bool, error) {
+	usable := func(r store.ChannelRoom) (bool, error) {
+		if !r.Tombstoned || !liftable(r.Replacement, catchAll) {
+			return false, nil
+		}
+		taken, err := c.br.DB.Portal.GetByMXID(ctx, id.RoomID(r.RoomID))
+		return taken == nil, err
+	}
+	own, err := c.store.RoomsForChannel(ctx, c.network, string(m.portal), string(m.login))
+	if err != nil {
+		return store.ChannelRoom{}, "", false, err
+	}
+	for _, r := range own {
+		if ok, err := usable(r); err != nil || ok {
+			return r, m.portal, ok, err
+		}
+	}
+	all, err := c.store.ChannelRooms(ctx, c.network, string(m.login))
+	if err != nil {
+		return store.ChannelRoom{}, "", false, err
+	}
+	for _, r := range all {
+		if r.ChannelID == "" || r.ChannelID == string(m.portal) || emptyConversationPortalRE.MatchString(r.ChannelID) {
+			continue
+		}
+		if ok, err := usable(r); err != nil {
+			return store.ChannelRoom{}, "", false, err
+		} else if !ok {
+			continue
+		}
+		old := networkid.PortalKey{ID: networkid.PortalID(r.ChannelID), Receiver: m.login}
+		if p, err := c.br.DB.Portal.GetByKey(ctx, old); err != nil {
+			return store.ChannelRoom{}, "", false, err
+		} else if p != nil {
+			continue
+		}
+		var mapped int
+		err := c.br.DB.QueryRow(ctx, "SELECT COUNT(*) FROM "+gmessagesMappingTable+" WHERE bridge_id = $1 AND login_id = $2 AND portal_id = $3",
+			c.br.ID, m.login, old.ID).Scan(&mapped)
+		if err != nil {
+			return store.ChannelRoom{}, "", false, err
+		}
+		if mapped > 0 {
+			continue
+		}
+		if ghost := c.theOtherGhost(ctx, id.RoomID(r.RoomID)); ghost != "" && m.phone != "" && c.ghostPhone(ctx, ghost) == m.phone {
+			return r, old.ID, true, nil
+		}
+	}
+	return store.ChannelRoom{}, "", false, nil
+}
+
+// ghostPhone is the phone number the bridge keeps on a ghost ("" when it has none).
+func (c *Connector) ghostPhone(ctx context.Context, ghost networkid.UserID) string {
+	var phone sql.NullString
+	err := c.br.DB.QueryRow(ctx, "SELECT json_extract(metadata, '$.phone') FROM ghost WHERE bridge_id = $1 AND id = $2",
+		c.br.ID, ghost).Scan(&phone)
+	if err != nil {
+		return ""
+	}
+	return phone.String
 }
 
 // restorePortal makes key's portal row again, pointing at room, and takes the tombstone off the room. The row is
@@ -330,10 +479,11 @@ func (c *Connector) theOtherGhost(ctx context.Context, room id.RoomID) networkid
 	return found
 }
 
-// liftTombstonesOfMappedChats takes the tombstone off the room of every one-to-one chat the mapping table lists:
-// a chat that has a portal row is live, whatever its room says. It only matters after a repair that stopped
-// between making a portal row and clearing its room's tombstone.
-func (c *Connector) liftTombstonesOfMappedChats(ctx context.Context) error {
+// liftTombstonesOfMappedChats takes the tombstone off the room of every one-to-one chat the mapping table lists, when
+// the bug left it (liftable): a chat that has a portal row is live, whatever its room says. It only matters after a
+// repair that stopped between making a portal row and clearing its room's tombstone. A tombstone that points
+// anywhere else is a real merge, and stays.
+func (c *Connector) liftTombstonesOfMappedChats(ctx context.Context, catchAll map[string]bool) error {
 	rows, err := c.br.DB.Query(ctx, `SELECT p.mxid FROM portal p
 		JOIN `+gmessagesMappingTable+` dc ON dc.bridge_id = p.bridge_id AND dc.portal_id = p.id AND dc.login_id = p.receiver
 		WHERE p.bridge_id = $1 AND p.mxid IS NOT NULL AND p.mxid <> ''`, c.br.ID)
@@ -353,11 +503,16 @@ func (c *Connector) liftTombstonesOfMappedChats(ctx context.Context) error {
 		return err
 	}
 	for _, room := range rooms {
-		lifted, err := c.store.ClearTombstone(ctx, room)
+		tombstoned, replacement, err := c.store.TombstoneReplacement(ctx, room)
 		if err != nil {
 			return err
 		}
-		if lifted {
+		if !tombstoned || !liftable(replacement, catchAll) {
+			continue
+		}
+		if lifted, err := c.store.ClearTombstone(ctx, room); err != nil {
+			return err
+		} else if lifted {
 			c.log.Warn().Str("room_id", room).Msg("took a tombstone off the room of a live Google Messages chat")
 		}
 	}
@@ -403,7 +558,7 @@ func (c *Connector) addPendingResyncs(ctx context.Context, add []restoredChat) {
 	for _, a := range add {
 		dup := false
 		for _, have := range chats {
-			dup = dup || have == a
+			dup = dup || have.sameChat(a)
 		}
 		if !dup {
 			chats = append(chats, a)
@@ -417,7 +572,7 @@ func (c *Connector) donePendingResync(ctx context.Context, done restoredChat) {
 	defer repairMu.Unlock()
 	var left []restoredChat
 	for _, have := range c.loadPendingResyncs(ctx) {
-		if have != done {
+		if !have.sameChat(done) {
 			left = append(left, have)
 		}
 	}
@@ -425,9 +580,9 @@ func (c *Connector) donePendingResync(ctx context.Context, done restoredChat) {
 }
 
 // resyncRestoredChats syncs each restored chat from the network once its login is connected: the chat's info (which
-// brings its ghosts back into the room) and, as it has no messages of its own any more, its latest messages. A chat
-// stays in the pending list until its resync is queued, so a start that ends first (the phone was off) tries again
-// at the next one. It gives up after resyncGiveUpAfter, again leaving the list as it is.
+// brings its ghosts back into the room) and the messages the room doesn't have (resyncOne). A chat stays in the
+// pending list until its resync is queued, so a start that ends first (the phone was off) tries again at the next
+// one. It gives up after resyncGiveUpAfter, again leaving the list as it is.
 func (c *Connector) resyncRestoredChats(ctx context.Context) {
 	if ctx == nil {
 		return
@@ -446,7 +601,10 @@ func (c *Connector) resyncRestoredChats(ctx context.Context) {
 			if login == nil || login.Client == nil || login.BridgeState.GetPrev().StateEvent != status.StateConnected {
 				continue
 			}
-			c.queueResync(login, networkid.PortalKey{ID: chat.ID, Receiver: chat.Receiver})
+			if err := c.resyncOne(ctx, login, chat); err != nil {
+				c.log.Debug().Err(err).Str("portal_id", string(chat.ID)).Msg("couldn't resync a restored chat yet; trying again")
+				continue
+			}
 			c.donePendingResync(ctx, chat)
 		}
 		select {
@@ -460,7 +618,89 @@ func (c *Connector) resyncRestoredChats(ctx context.Context) {
 	}
 }
 
-func (c *Connector) queueResync(login *bridgev2.UserLogin, key networkid.PortalKey) {
+// resyncOne queues one restored chat's resync. The chat's room already holds its old history, but the bridge has no
+// message rows for it, so a backfill would send the latest messages all over again. So first the newest message the
+// phone has that the room already holds (not newer than the room's newest event) is put in as the bridge's last
+// message of the chat, and the backfill (bridgev2 drops everything not newer than it) sends only what came after.
+// An error means "not yet": nothing was queued, and the chat stays pending.
+func (c *Connector) resyncOne(ctx context.Context, login *bridgev2.UserLogin, chat restoredChat) error {
+	key := networkid.PortalKey{ID: chat.ID, Receiver: chat.Receiver}
+	portal, err := c.br.GetExistingPortalByKey(ctx, key)
+	if err != nil {
+		return err
+	}
+	if portal == nil {
+		return nil // the chat was deleted meanwhile: nothing to resync
+	}
+	var anchor networkid.MessageID
+	if api, ok := login.Client.(bridgev2.BackfillingNetworkAPI); ok && chat.LastTS > 0 {
+		if anchor, err = c.seedBackfillAnchor(ctx, api, portal, chat.LastTS); err != nil {
+			return err
+		}
+	}
+	c.queueResync(login, key, anchor)
+	return nil
+}
+
+// seedBackfillAnchor makes the newest message of the phone's latest ones that is not newer than lastTS the chat's last
+// bridged message, and returns its ID: "" when there is none to make (the chat has messages of its own, none of the
+// phone's is that old, or the chat can't be backfilled).
+func (c *Connector) seedBackfillAnchor(ctx context.Context, api bridgev2.BackfillingNetworkAPI, portal *bridgev2.Portal, lastTS int64) (networkid.MessageID, error) {
+	existing, err := c.br.DB.Message.GetLastPartAtOrBeforeTime(ctx, portal.PortalKey, time.Now().Add(10*time.Second))
+	if err != nil || existing != nil {
+		return "", err
+	}
+	limit := c.br.Config.Backfill.MaxInitialMessages
+	if !c.br.Config.Backfill.Enabled || limit <= 0 {
+		return "", nil
+	}
+	resp, err := api.FetchMessages(ctx, bridgev2.FetchMessagesParams{Portal: portal, Forward: true, Count: limit})
+	if err != nil {
+		return "", err
+	}
+	if resp == nil {
+		return "", nil
+	}
+	var newest *bridgev2.BackfillMessage
+	for _, m := range resp.Messages {
+		if m != nil && m.ID != "" && m.Timestamp.UnixMilli() <= lastTS && (newest == nil || m.Timestamp.After(newest.Timestamp)) {
+			newest = m
+		}
+	}
+	if newest == nil {
+		return "", nil
+	}
+	sender := newest.Sender.Sender
+	if sender == "" {
+		sender = portal.OtherUserID
+	}
+	if sender == "" {
+		return "", nil
+	}
+	if _, err := c.br.GetGhostByID(ctx, sender); err != nil { // the message's sender must be a ghost the bridge has
+		return "", err
+	}
+	senderMXID := ids.GhostMXID(c.network, sender)
+	if newest.Sender.IsFromMe {
+		senderMXID = ids.Me
+	}
+	err = c.br.DB.Message.Insert(ctx, &database.Message{
+		BridgeID:   c.br.ID,
+		ID:         newest.ID,
+		MXID:       c.GenerateDeterministicEventID(portal.MXID, portal.PortalKey, newest.ID, ""),
+		Room:       portal.PortalKey,
+		SenderID:   sender,
+		SenderMXID: senderMXID,
+		Timestamp:  newest.Timestamp,
+		Metadata:   map[string]any{},
+	})
+	if err != nil {
+		return "", err
+	}
+	return newest.ID, nil
+}
+
+func (c *Connector) queueResync(login *bridgev2.UserLogin, key networkid.PortalKey, anchor networkid.MessageID) {
 	c.br.QueueRemoteEvent(login, &simplevent.ChatResync{
 		EventMeta: simplevent.EventMeta{
 			Type:      bridgev2.RemoteEventChatResync,
@@ -472,10 +712,10 @@ func (c *Connector) queueResync(login *bridgev2.UserLogin, key networkid.PortalK
 		GetChatInfoFunc: func(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 			return login.Client.GetChatInfo(ctx, portal)
 		},
-		// The restored chat has no messages of its own: it takes the latest ones from the network. One that has
-		// some by now (a message came in since) is left to the usual syncs.
+		// Backfill from the anchor, or from nothing when the chat has no message at all. A chat that has messages of
+		// its own by now (one came in since) is left to the usual syncs.
 		CheckNeedsBackfillFunc: func(_ context.Context, latest *database.Message) (bool, error) {
-			return latest == nil, nil
+			return latest == nil || (anchor != "" && latest.ID == anchor), nil
 		},
 	})
 }

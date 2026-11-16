@@ -6,7 +6,9 @@ package localmatrix
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/fakenet"
@@ -63,7 +66,10 @@ func newRepairWorld(t *testing.T) *repairWorld {
 	require.NoError(t, err)
 	c := New("gmessages", s, &media.Store{Dir: filepath.Join(dir, "media")})
 	net := fakenet.New()
-	cfg := &bridgeconfig.BridgeConfig{CommandPrefix: "!gm", Permissions: bridgeconfig.PermissionConfig{string(ids.Me): &bridgeconfig.PermissionLevelAdmin}}
+	cfg := &bridgeconfig.BridgeConfig{
+		CommandPrefix: "!gm", Permissions: bridgeconfig.PermissionConfig{string(ids.Me): &bridgeconfig.PermissionLevelAdmin},
+		Backfill: bridgeconfig.BackfillConfig{Enabled: true, MaxInitialMessages: 50, MaxCatchupMessages: 500},
+	}
 	br := bridgev2.NewBridge("gmessages", bdb, zerolog.Nop(), cfg, c, net,
 		func(b *bridgev2.Bridge) bridgev2.CommandProcessor { return commands.NewProcessor(b) })
 	require.NoError(t, br.Start(ctx))
@@ -273,6 +279,7 @@ func TestRepairGuards(t *testing.T) {
 	t.Run("a room that has a portal", func(t *testing.T) {
 		w := newRepairWorld(t)
 		w.withMappingTable(t)
+		w.room(t, roomEmpty, "Mixed up", "1.", "")
 		w.room(t, roomContact, "A Contact", "1.81", roomEmpty, "1.137")
 		w.portal(t, "1.77", roomContact) // another chat holds the tombstoned room
 		w.mapping(t, "+15550000081", "1.81")
@@ -286,6 +293,7 @@ func TestRepairGuards(t *testing.T) {
 	t.Run("a room that is not tombstoned", func(t *testing.T) {
 		w := newRepairWorld(t)
 		w.withMappingTable(t)
+		w.room(t, roomEmpty, "Mixed up", "1.", "")
 		w.room(t, roomContact, "A Contact", "1.81", "", "1.137") // never merged: not ours to give back
 		w.mapping(t, "+15550000081", "1.81")
 		restored, err := w.c.doRepairGoogleMessages(ctx)
@@ -296,6 +304,7 @@ func TestRepairGuards(t *testing.T) {
 	t.Run("another login's room", func(t *testing.T) {
 		w := newRepairWorld(t)
 		w.withMappingTable(t)
+		w.room(t, roomEmpty, "Mixed up", "1.", "")
 		w.room(t, roomContact, "A Contact", "1.81", roomEmpty, "1.137")
 		_, err := w.s.SetState(ctx, roomContact, "m.bridge", "gmessages",
 			json.RawMessage(`{"channel":{"id":"1.81","fi.mau.receiver":"someone-else"}}`))
@@ -313,6 +322,7 @@ func TestRepairFinishesARestoreThatStoppedHalfway(t *testing.T) {
 	w := newRepairWorld(t)
 	ctx := context.Background()
 	w.withMappingTable(t)
+	w.room(t, roomEmpty, "Mixed up", "1.", "")
 	w.room(t, roomContact, "A Contact", "1.81", roomEmpty, "1.137")
 	w.portal(t, "1.81", roomContact)
 	w.mapping(t, "+15550000081", "1.81")
@@ -392,4 +402,246 @@ func TestStartRepairsAndRemembersTheRestoredChats(t *testing.T) {
 
 	require.NoError(t, w.c.Start(ctx)) // the next start: nothing more to repair, the list is as it was
 	require.Len(t, w.c.pendingResyncs(ctx), 2)
+}
+
+// ghost puts a ghost in the bridge's database, with the phone number the bridge keeps on it.
+func (w *repairWorld) ghost(t *testing.T, id, phone string) {
+	t.Helper()
+	require.NoError(t, w.br.DB.Ghost.Insert(context.Background(), &database.Ghost{
+		BridgeID: w.br.ID, ID: networkid.UserID(id), Metadata: map[string]any{"phone": phone},
+	}))
+}
+
+// A start that stopped between the mapping's move to the contact's new conversation ID and the chat's own move leaves
+// a mapping to a chat that has no row, or a row with no room, with the contact's old room (tombstoned, no portal, no
+// mapping) still in the store. The repair gives the contact's chat back on that room and points the mapping at it,
+// instead of dropping the mapping. The room of another contact is not taken.
+func TestRepairRestoresOntoTheOldRoomWhenTheMappingAlreadyMoved(t *testing.T) {
+	const phone = "+15550000081"
+	setup := func(t *testing.T) *repairWorld {
+		w := newRepairWorld(t)
+		w.withMappingTable(t)
+		w.room(t, roomEmpty, "Mixed up", "1.", "")
+		w.room(t, roomContact, "A Contact", "1.81", roomEmpty, "1.137")
+		w.room(t, roomSecond, "Someone Else", "1.55", roomEmpty, "1.138")
+		w.ghost(t, "1.137", phone)
+		w.ghost(t, "1.138", "+15550000055")
+		w.mapping(t, phone, "1.90") // moved to the contact's new conversation
+		return w
+	}
+	check := func(t *testing.T, w *repairWorld) {
+		ctx := context.Background()
+		restored, err := w.c.doRepairGoogleMessages(ctx)
+		require.NoError(t, err)
+		require.Equal(t, []restoredChat{{ID: "1.81", Receiver: repairLogin}}, restored)
+		room, ok := w.portalMXID(t, "1.81")
+		require.True(t, ok)
+		require.Equal(t, id.RoomID(roomContact), room, "the contact's chat is back on its old room")
+		_, newOne := w.portalMXID(t, "1.90")
+		require.False(t, newOne, "nothing is left at the new ID: the next sync of the conversation moves the chat there")
+		require.Equal(t, map[string]string{phone: "1.81"}, w.mappings(t))
+		tomb, err := w.s.RoomIsTombstoned(ctx, roomContact)
+		require.NoError(t, err)
+		require.False(t, tomb)
+		tomb, err = w.s.RoomIsTombstoned(ctx, roomSecond)
+		require.NoError(t, err)
+		require.True(t, tomb, "another contact's old room is left as it was")
+		again, err := w.c.doRepairGoogleMessages(ctx)
+		require.NoError(t, err)
+		require.Empty(t, again, "a second run is a no-op")
+		require.Equal(t, map[string]string{phone: "1.81"}, w.mappings(t))
+	}
+	t.Run("the new chat has no row", func(t *testing.T) { check(t, setup(t)) })
+	t.Run("the new chat has a row with no room", func(t *testing.T) {
+		w := setup(t)
+		w.portal(t, "1.90", "")
+		check(t, w)
+	})
+	t.Run("no old room: a row with no room and its mapping are left", func(t *testing.T) {
+		w := newRepairWorld(t)
+		w.withMappingTable(t)
+		w.portal(t, "1.90", "")
+		w.mapping(t, phone, "1.90")
+		restored, err := w.c.doRepairGoogleMessages(context.Background())
+		require.NoError(t, err)
+		require.Empty(t, restored)
+		require.Equal(t, map[string]string{phone: "1.90"}, w.mappings(t), "a chat not made yet is not a chat that is gone")
+		_, has := w.portalMXID(t, "1.90")
+		require.True(t, has)
+	})
+}
+
+// Only a tombstone the bug left is taken off: one that points to the room of a chat with no conversation ID, or to no
+// room. A tombstone that points to a real room is a real merge of two chats, in the room of a chat that is alive (the
+// mapping table lists it) as well as in a room that would be given back.
+func TestRepairLeavesRealMergesAlone(t *testing.T) {
+	const realRoom = "!real:courier.local"
+	ctx := context.Background()
+	w := newRepairWorld(t)
+	w.withMappingTable(t)
+	w.room(t, roomEmpty, "Mixed up", "1.", "")
+	w.room(t, realRoom, "The Chat Merged Into", "1.99", "", "1.150")
+	w.portal(t, "1.99", realRoom)
+	w.mapping(t, "+15550000099", "1.99")
+	// a live chat whose room was merged into a real room (not ours); a live chat whose tombstone points to nothing and
+	// one that points to the catch-all room (ours).
+	w.room(t, roomContact, "Merged", "1.81", realRoom, "1.137")
+	w.portal(t, "1.81", roomContact)
+	w.mapping(t, "+15550000081", "1.81")
+	w.room(t, roomSecond, "Pointing Nowhere", "1.82", "", "1.138")
+	_, err := w.s.SetState(ctx, roomSecond, "m.room.tombstone", "", json.RawMessage(`{"body":"merged"}`))
+	require.NoError(t, err)
+	w.portal(t, "1.82", roomSecond)
+	w.mapping(t, "+15550000082", "1.82")
+	w.room(t, roomUntouched, "Left By The Bug", "1.83", roomEmpty, "1.139")
+	w.portal(t, "1.83", roomUntouched)
+	w.mapping(t, "+15550000083", "1.83")
+	// a chat with no portal whose old room was merged into a real room: not given back, so its mapping goes
+	w.room(t, "!gone:courier.local", "Gone", "1.84", realRoom, "1.140")
+	w.mapping(t, "+15550000084", "1.84")
+
+	restored, err := w.c.doRepairGoogleMessages(ctx)
+	require.NoError(t, err)
+	require.Empty(t, restored)
+	for room, want := range map[string]bool{roomContact: true, roomSecond: false, roomUntouched: false, "!gone:courier.local": true} {
+		tomb, err := w.s.RoomIsTombstoned(ctx, room)
+		require.NoError(t, err)
+		require.Equal(t, want, tomb, "the tombstone of %s", room)
+	}
+	_, has := w.portalMXID(t, "1.84")
+	require.False(t, has)
+	require.NotContains(t, w.mappings(t), "+15550000084", "no room to give back: the mapping goes")
+}
+
+// The room already holds the chat's history. A restored chat has no message rows in the bridge, so a backfill would
+// fetch the phone's latest messages and send them again: the room would show them twice. The messages the room holds
+// are not sent again, the ones newer than its newest event (what arrived while the chat was merged into the chat with
+// no conversation ID) are, and the second resync of the same chat changes nothing.
+func TestRestoredChatGetsOnlyMessagesNewerThanItsRoomHolds(t *testing.T) {
+	prevPoll, prevGiveUp := resyncPollInterval, resyncGiveUpAfter
+	resyncPollInterval, resyncGiveUpAfter = 10*time.Millisecond, 30*time.Second
+	t.Cleanup(func() { resyncPollInterval, resyncGiveUpAfter = prevPoll, prevGiveUp })
+
+	w := newRepairWorld(t)
+	ctx := context.Background()
+	w.damaged(t)
+	// The room's history, in events a re-send would not recognize as the same (their IDs aren't the bridge's).
+	at := func(sec int64) time.Time { return time.Unix(sec, 0) }
+	for i, sec := range []int64{1000, 2000, 3000} {
+		_, err := w.s.InsertEvent(ctx, store.Event{
+			RoomID: roomContact, EventID: fmt.Sprintf("$old%d", i+1), Sender: string(ids.GhostMXID("gmessages", "1.137")),
+			Type: "m.room.message", Content: json.RawMessage(fmt.Sprintf(`{"msgtype":"m.text","body":"old %d"}`, i+1)), TS: at(sec),
+		})
+		require.NoError(t, err)
+	}
+
+	login, err := w.net.LoginAs(ctx, w.br, repairLogin, "Me")
+	require.NoError(t, err)
+	name, direct := "A Contact", true
+	w.net.SetChat("1.81", fakenet.Chat{Name: &name, Direct: &direct, Members: []string{"1.137"}})
+	w.net.SetChat("1.367", fakenet.Chat{Name: &name, Direct: &direct, Members: []string{"1.353"}})
+	msg := func(id, body string, sec int64) *bridgev2.BackfillMessage {
+		return &bridgev2.BackfillMessage{
+			ID: networkid.MessageID(id), Timestamp: at(sec), Sender: bridgev2.EventSender{Sender: "1.137"},
+			ConvertedMessage: &bridgev2.ConvertedMessage{Parts: []*bridgev2.ConvertedMessagePart{{
+				Type: event.EventMessage, Content: &event.MessageEventContent{MsgType: event.MsgText, Body: body},
+			}}},
+		}
+	}
+	// What the phone has: the three messages the room holds, and the three that came after.
+	phone := []*bridgev2.BackfillMessage{
+		msg("1.m1", "old 1", 1000), msg("1.m2", "old 2", 2000), msg("1.m3", "old 3", 3000),
+		msg("1.m4", "new 4", 4000), msg("1.m5", "new 5", 5000), msg("1.m6", "new 6", 6000),
+	}
+	client := &backfillClient{NetworkAPI: login.Client, messages: phone}
+	login.Client = client
+
+	restored, err := w.c.doRepairGoogleMessages(ctx)
+	require.NoError(t, err)
+	var contact restoredChat
+	for _, r := range restored {
+		if r.ID == "1.81" {
+			contact = r
+		}
+	}
+	require.Equal(t, int64(3000*1000), contact.LastTS, "the restore notes the room's newest message")
+	w.c.addPendingResyncs(ctx, restored)
+
+	login.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+	done := make(chan struct{})
+	go func() { w.c.resyncRestoredChats(w.br.BackgroundCtx); close(done) }()
+	require.Eventually(t, func() bool { return bodiesIn(t, w.s, roomContact)["new 6"] > 0 }, 10*time.Second, 20*time.Millisecond,
+		"the messages newer than the room's history arrive")
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the resync loop did not end")
+	}
+
+	bodies := bodiesIn(t, w.s, roomContact)
+	require.Equal(t, map[string]int{"old 1": 1, "old 2": 1, "old 3": 1, "new 4": 1, "new 5": 1, "new 6": 1}, bodies,
+		"each message once: none of the room's history is sent again")
+	anchor, err := w.br.DB.Message.GetFirstPartByID(ctx, repairLogin, "1.m3")
+	require.NoError(t, err)
+	require.NotNil(t, anchor, "the newest message the room held is the bridge's last message of the chat, as the backfill's anchor")
+	var contactCalls []bridgev2.FetchMessagesParams
+	for _, c := range client.fetches() {
+		if c.Portal.ID == "1.81" {
+			contactCalls = append(contactCalls, c)
+		}
+	}
+	require.Len(t, contactCalls, 2, "one fetch to find the anchor, one to backfill from it")
+	require.Nil(t, contactCalls[0].AnchorMessage)
+	require.Equal(t, networkid.MessageID("1.m3"), contactCalls[1].AnchorMessage.ID, "the backfill went forward from it")
+
+	// Again (the bridge restarted before it noted the chat done): the chat has messages of its own now, nothing is sent.
+	w.c.addPendingResyncs(ctx, []restoredChat{contact})
+	before := len(client.fetches())
+	require.NoError(t, w.c.resyncOne(ctx, login, contact))
+	time.Sleep(200 * time.Millisecond)
+	require.Equal(t, bodies, bodiesIn(t, w.s, roomContact), "a second resync changes nothing")
+	require.Equal(t, before, len(client.fetches()), "and asks the phone for nothing")
+}
+
+// backfillClient is a login client that can be backfilled from a phone that always has the same messages, as a real
+// network sends the newest ones whatever the anchor is (bridgev2 cuts off what the anchor says it has).
+type backfillClient struct {
+	bridgev2.NetworkAPI
+	messages []*bridgev2.BackfillMessage
+
+	mu    sync.Mutex
+	calls []bridgev2.FetchMessagesParams
+}
+
+func (b *backfillClient) FetchMessages(_ context.Context, p bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.calls = append(b.calls, p)
+	if p.Portal.ID != "1.81" { // the phone's messages are the contact's chat's: a message ID is the account's, in one chat
+		return &bridgev2.FetchMessagesResponse{Forward: true}, nil
+	}
+	return &bridgev2.FetchMessagesResponse{Messages: append([]*bridgev2.BackfillMessage(nil), b.messages...), Forward: true}, nil
+}
+
+func (b *backfillClient) fetches() []bridgev2.FetchMessagesParams {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]bridgev2.FetchMessagesParams(nil), b.calls...)
+}
+
+// bodiesIn counts a room's message events by their text.
+func bodiesIn(t *testing.T, s *store.Store, room string) map[string]int {
+	t.Helper()
+	evs, err := s.Events(context.Background(), room, 100)
+	require.NoError(t, err)
+	out := map[string]int{}
+	for _, e := range evs {
+		var c struct {
+			Body string `json:"body"`
+		}
+		if e.Type == "m.room.message" && json.Unmarshal(e.Content, &c) == nil && c.Body != "" {
+			out[c.Body]++
+		}
+	}
+	return out
 }

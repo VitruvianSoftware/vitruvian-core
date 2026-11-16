@@ -364,3 +364,39 @@ func TestGoogleMessagesNothingIsMovedOutOfAChatWithNoConversationID(t *testing.T
 	require.False(t, tomb)
 	require.Equal(t, "1.81", w.mapped(t, phone), "the contact's number is mapped to the contact's own conversation now")
 }
+
+// The portal's move can fail after the mapping was stored (here: the database refuses the portal's new ID). The
+// mapping is then put back, in the database and in the bridge's memory: it points at the portal that is still there,
+// and the same move goes through once the failure is over.
+func TestGoogleMessagesDMMoveThatFailsAfterItsMappingWasStoredPutsTheMappingBack(t *testing.T) {
+	ctx := context.Background()
+	w := newGMWorld(t)
+	const phone = "+15550000081"
+	w.seedChat(t, "1.81", "!old:courier.local", phone, time.Unix(1000, 0))
+	w.reload(t)
+
+	_, err := w.h.Bridge.DB.Exec(ctx, `CREATE TRIGGER fail_reid BEFORE UPDATE OF id ON portal
+		BEGIN SELECT RAISE(ABORT, 'forced failure'); END`)
+	require.NoError(t, err)
+
+	w.deliver(t, conversationUpdate(directConversation("90", "", phone, time.Unix(2000, 0).UnixMicro())))
+
+	room, ok := w.portalRoom(t, "1.81")
+	require.True(t, ok, "the portal is where it was")
+	require.Equal(t, id.RoomID("!old:courier.local"), room)
+	_, moved := w.portalRoom(t, "1.90")
+	require.False(t, moved)
+	require.Equal(t, "1.81", w.mapped(t, phone), "and the mapping points at it again")
+	var ts int64
+	require.NoError(t, w.h.Bridge.DB.QueryRow(ctx, "SELECT last_message_ts FROM gmessages_direct_conversation WHERE phone_number=$1", phone).Scan(&ts))
+	require.Equal(t, time.Unix(1000, 0).UnixMicro(), ts, "as it was, last message time included")
+
+	_, err = w.h.Bridge.DB.Exec(ctx, "DROP TRIGGER fail_reid")
+	require.NoError(t, err)
+	w.deliver(t, conversationUpdate(directConversation("90", "", phone, time.Unix(2001, 0).UnixMicro())))
+
+	room, ok = w.portalRoom(t, "1.90")
+	require.True(t, ok, "the move goes through now: the bridge's memory of the mapping is right again")
+	require.Equal(t, id.RoomID("!old:courier.local"), room)
+	require.Equal(t, "1.90", w.mapped(t, phone))
+}
