@@ -581,36 +581,52 @@ public struct AttachmentCarouselOverlay: View {
     }
 }
 
-private struct CarouselFilmstripTile: View {
+/// One thumbnail in the viewer's filmstrip. Until its thumbnail loads (a photo or video that is not downloaded yet) it
+/// shows the symbol the main viewer's "not downloaded" placeholder uses for that kind, centred on the dark tile.
+struct CarouselFilmstripTile: View {
+    static let tileSize: CGFloat = 48
+    /// The placeholder symbol is this fraction of the tile.
+    static let placeholderSymbolFraction: CGFloat = 0.4
+
     let item: CarouselItem
     let isSelected: Bool
     let action: () -> Void
 
+    /// The SF Symbol for media with nothing to show yet: `video` for a video, `photo` for an image or sticker.
+    static func placeholderSymbol(for kind: MessageKind) -> String {
+        kind == .video ? "video" : "photo"
+    }
+
+    private var thumbnail: NSImage? {
+        guard !item.viewOnce, isLocalMediaStorePath(item.thumbnailPath) else { return nil }
+        return NSImage(contentsOfFile: item.thumbnailPath)
+    }
+
     var body: some View {
         Button(action: action) {
             ZStack {
-                // Neutral tile with a photo symbol until (or unless) the thumbnail loads; never blank.
+                // A dark tile whatever the app's appearance, so the symbol is drawn for a dark background.
                 Color(white: 0.16)
-                if !item.viewOnce,
-                   isLocalMediaStorePath(item.thumbnailPath),
-                   let nsImage = NSImage(contentsOfFile: item.thumbnailPath) {
+                if let nsImage = thumbnail {
                     Image(nsImage: nsImage)
                         .resizable()
                         .scaledToFill()
+                    if item.kind == .video {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(4)
+                            .background(Circle().fill(Color.black.opacity(0.6)))
+                    }
                 } else {
-                    Image(systemName: "photo")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.65))
-                }
-                if item.kind == .video {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(4)
-                        .background(Circle().fill(Color.black.opacity(0.6)))
+                    Image(systemName: Self.placeholderSymbol(for: item.kind))
+                        .font(.system(size: Self.tileSize * Self.placeholderSymbolFraction))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                 }
             }
-            .frame(width: 48, height: 48)
+            .environment(\.colorScheme, .dark)
+            .frame(width: Self.tileSize, height: Self.tileSize)
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(
                 RoundedRectangle(cornerRadius: 6)

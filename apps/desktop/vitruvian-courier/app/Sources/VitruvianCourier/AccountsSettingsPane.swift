@@ -344,7 +344,8 @@ struct AccountsSettingsPane: View {
                 displayName: entry.displayName
             )
         } label: {
-            Text(String(localized: "Remove Account…"))
+            // System red, never the accent, with a symbol so it reads as destructive by shape too.
+            Label(String(localized: "Remove Account…"), systemImage: "person.crop.circle.badge.minus")
                 .foregroundStyle(model.isLocked ? Color.secondary : Color.red)
                 .frame(maxWidth: .infinity)
         }

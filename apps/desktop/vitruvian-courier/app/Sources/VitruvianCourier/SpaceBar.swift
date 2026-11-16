@@ -141,7 +141,7 @@ struct SpaceBar: View {
                     ?? String(localized: "Reconnect")) { inbox.perform(banner) }
             }
             Divider()
-            Button(String(localized: "Remove Account…"), role: .destructive) {
+            Button(role: .destructive) {
                 if let login = primaryLogin(for: space.network) {
                     accountsAndBridges?.requestRemoveAccount(
                         network: space.network,
@@ -151,6 +151,8 @@ struct SpaceBar: View {
                     )
                 }
                 onOpenAccountSettings?(space.network)
+            } label: {
+                Label(String(localized: "Remove Account…"), systemImage: "person.crop.circle.badge.minus")
             }
             Menu(String(localized: "Developer")) {
                 Button(String(localized: "Copy Account ID")) {
