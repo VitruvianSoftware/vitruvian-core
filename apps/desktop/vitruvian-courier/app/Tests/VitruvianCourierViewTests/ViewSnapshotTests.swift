@@ -2392,6 +2392,84 @@ final class ViewSnapshotTests: XCTestCase {
                 menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
             )
         })
+
+        let noGIFModel = composer(text: "No GIF button on networks without GIF support")
+        noGIFModel.preferences = preferences
+        noGIFModel.network = "gchat"
+        noGIFModel.features = ChatFeatures(
+            reply: true,
+            formatting: [.bold, .italic, .link],
+            source: .stored,
+            voiceFeatures: FileKindFeatures(supported: true, mimeTypes: ["audio/mp4"]),
+            fileFeatures: FileKindFeatures(supported: true, mimeTypes: ["*/*"])
+        )
+        XCTAssertFalse(noGIFModel.canSendGIF)
+        check(try Snapshot.render("composer-toolbar-no-gif", width: 620) {
+            ComposerView(
+                composer: noGIFModel,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            )
+        })
+    }
+
+    func testReactionPillAvatarsAndOverflowSnapshot() throws {
+        var events = [
+            Fixture.text("$rx0", "Who is in for dinner on Friday?", mine: false, ts: 20, name: "Kent Hua"),
+            Fixture.text("$rx1", "Count me in!", mine: true, ts: 15),
+        ]
+        // 1 known reactor ("Kent Hua")
+        events.append(Fixture.event("$r-one", type: "m.reaction", mine: false, ts: 14, content: [
+            "m.relates_to": .object(["rel_type": .string("m.annotation"), "event_id": .string("$rx0"), "key": .string("❤️")]),
+        ], sender: "@kent:courier.local", name: "Kent Hua"))
+        // 5 known reactors -> 3 avatars + "+2", including me (own reaction highlight)
+        let reactors = ["Kent Hua", "Eddie Stecker", "Ann Example", "Bo Example", "Cy Example"]
+        for (idx, name) in reactors.enumerated() {
+            events.append(Fixture.event("$r-many-\(idx)", type: "m.reaction", mine: idx == 1, ts: 13 - idx, content: [
+                "m.relates_to": .object(["rel_type": .string("m.annotation"), "event_id": .string("$rx0"), "key": .string("👍")]),
+            ], sender: idx == 1 ? nil : "@u\(idx):courier.local", name: name))
+        }
+        let ui = MessageUI()
+        let actions = VitruvianCourier.MessageActions(now: { Fixture.now })
+        let builtFirst = Fixture.messages(events).first
+        let unknownReactorMsg = TimelineMessage(
+            id: "$rx1",
+            roomID: Fixture.room,
+            sender: Timeline.meUserID,
+            senderName: "",
+            senderAvatarPath: "",
+            mine: true,
+            ts: Fixture.millis(15),
+            kind: .text,
+            body: "Count me in!",
+            rich: RichText(text: "Count me in!"),
+            isEdited: false,
+            editCount: 0,
+            editFailed: nil,
+            failedEditID: nil,
+            fileName: "",
+            mimeType: "",
+            byteSize: nil,
+            width: nil,
+            height: nil,
+            mediaPath: "",
+            statusLine: .sent,
+            countsAsUnread: false,
+            poll: nil,
+            thread: nil,
+            bookmarked: false,
+            expiresAt: nil,
+            timerChange: nil,
+            call: nil,
+            reply: nil,
+            reactions: [ReactionChip(key: "🔥", count: 4, mine: false)],
+            startsGroup: true
+        )
+        let items: [TimelineItem] = (builtFirst.map { [.message($0)] } ?? []) + [.message(unknownReactorMsg)]
+        try assertLightAndDarkSnapshot("reaction-pills-avatars", width: 620) {
+            timeline(items, ui: ui, actions: actions)
+        }
     }
 
     func testEmojiAutocompletePublicInterfaceThumbnailLoaderAndStickerEmoticonFilter() async throws {
@@ -3643,7 +3721,7 @@ final class ViewSnapshotTests: XCTestCase {
         let nav = SettingsNavigationModel(selectedPane: .notifications)
         nav.searchQuery = "delay"
         nav.highlightedSettingID = "notifications.delay"
-        check(try Snapshot.render("settings-window-search", width: 840, height: 640) {
+        check(try Snapshot.render("settings-window-search", width: 980, height: 640) {
             SettingsWindow(
                 navigation: nav,
                 app: app,
@@ -3666,7 +3744,7 @@ final class ViewSnapshotTests: XCTestCase {
 
         // 6. Settings shell showing Appearance, Notifications, Quick Replies, and About panes
         let appearanceNav = SettingsNavigationModel(selectedPane: .appearance)
-        check(try Snapshot.render("settings-appearance", width: 840, height: 640) {
+        check(try Snapshot.render("settings-appearance", width: 980, height: 640) {
             SettingsWindow(
                 navigation: appearanceNav,
                 app: app,
@@ -3688,7 +3766,7 @@ final class ViewSnapshotTests: XCTestCase {
         })
 
         let notifNav = SettingsNavigationModel(selectedPane: .notifications)
-        check(try Snapshot.render("settings-notifications", width: 840, height: 640) {
+        check(try Snapshot.render("settings-notifications", width: 980, height: 640) {
             SettingsWindow(
                 navigation: notifNav,
                 app: app,
@@ -3710,7 +3788,7 @@ final class ViewSnapshotTests: XCTestCase {
         })
 
         let quickRepliesNav = SettingsNavigationModel(selectedPane: .quickReplies)
-        check(try Snapshot.render("settings-quick-replies", width: 840, height: 580) {
+        check(try Snapshot.render("settings-quick-replies", width: 980, height: 580) {
             SettingsWindow(
                 navigation: quickRepliesNav,
                 app: app,
@@ -3732,7 +3810,7 @@ final class ViewSnapshotTests: XCTestCase {
         })
 
         let aboutNav = SettingsNavigationModel(selectedPane: .about)
-        check(try Snapshot.render("settings-about", width: 840, height: 600) {
+        check(try Snapshot.render("settings-about", width: 980, height: 600) {
             SettingsWindow(
                 navigation: aboutNav,
                 app: app,
@@ -3958,7 +4036,7 @@ final class ViewSnapshotTests: XCTestCase {
                     problemReport: reportModel
                 )
                 let host = NSHostingView(rootView: windowView)
-                host.frame = NSRect(x: 0, y: 0, width: 840, height: 4200)
+                host.frame = NSRect(x: 0, y: 0, width: 980, height: 4200)
                 host.layoutSubtreeIfNeeded()
                 _ = host.fittingSize
 
@@ -4332,7 +4410,7 @@ final class ViewSnapshotTests: XCTestCase {
         let f = try makeMilestone46SnapshotFixture()
 
         let generalNav = SettingsNavigationModel(selectedPane: .general)
-        try assertLightAndDarkSnapshot("settings-window-general", width: 880, height: 1580) {
+        try assertLightAndDarkSnapshot("settings-window-general", width: 980, height: 1580) {
             SettingsWindow(
                 navigation: generalNav,
                 app: f.app,
@@ -4356,7 +4434,7 @@ final class ViewSnapshotTests: XCTestCase {
         let searchNav = SettingsNavigationModel(selectedPane: .general)
         searchNav.searchQuery = "Touch ID"
         searchNav.highlightedSettingID = "general.requireTouchID"
-        try assertLightAndDarkSnapshot("settings-window-search-suggestions", width: 880, height: 680) {
+        try assertLightAndDarkSnapshot("settings-window-search-suggestions", width: 980, height: 680) {
             SettingsWindow(
                 navigation: searchNav,
                 app: f.app,
@@ -4382,7 +4460,7 @@ final class ViewSnapshotTests: XCTestCase {
         let f = try makeMilestone46SnapshotFixture()
 
         let appearanceNav = SettingsNavigationModel(selectedPane: .appearance)
-        try assertLightAndDarkSnapshot("settings-window-appearance", width: 880, height: 1020) {
+        try assertLightAndDarkSnapshot("settings-window-appearance", width: 980, height: 1020) {
             SettingsWindow(
                 navigation: appearanceNav,
                 app: f.app,
@@ -4404,7 +4482,7 @@ final class ViewSnapshotTests: XCTestCase {
         }
 
         let notificationsNav = SettingsNavigationModel(selectedPane: .notifications)
-        try assertLightAndDarkSnapshot("settings-window-notifications", width: 880, height: 920) {
+        try assertLightAndDarkSnapshot("settings-window-notifications", width: 980, height: 920) {
             SettingsWindow(
                 navigation: notificationsNav,
                 app: f.app,
@@ -4429,9 +4507,33 @@ final class ViewSnapshotTests: XCTestCase {
     func testAccountsAndAccountDetailPaneSnapshots() throws {
         let f = try makeMilestone46SnapshotFixture()
 
-        // 1. Connected account detail (Telegram with Space & Inbox, Notifications override, Folders & Bots, and Remove from Dock)
+        // 0. Full 3-column Settings window on the Accounts pane (sidebar badge + 200pt accounts list + detail pane).
+        let accountsNav = SettingsNavigationModel(selectedPane: .accounts)
         f.accountsModel.selectedAccountKey = "telegram:tg-1"
-        try assertLightAndDarkSnapshot("settings-accounts-connected", width: 780, height: 860) {
+        try assertLightAndDarkSnapshot("settings-window-accounts", width: 980, height: 920) {
+            SettingsWindow(
+                navigation: accountsNav,
+                app: f.app,
+                inbox: f.inbox,
+                spaces: f.spaces,
+                labels: f.labels,
+                conversation: f.conversation,
+                inboxPreferences: f.inboxPrefs,
+                composerPreferences: f.composerPrefs,
+                notificationPreferences: f.notificationPrefs,
+                quickReplies: f.quickReplies,
+                hotkeys: f.hotkeys,
+                lifecycle: f.lifecycle,
+                dockPreferences: f.dockPrefs,
+                accountsAndBridges: f.accountsModel,
+                loginFlow: f.login,
+                problemReport: f.reportModel
+            )
+        }
+
+        // 1. Connected account detail (Telegram with Space & Inbox, Notifications override, Spaces & Communities, Dock cleanup, and bottom Remove Account)
+        f.accountsModel.selectedAccountKey = "telegram:tg-1"
+        try assertLightAndDarkSnapshot("settings-accounts-connected", width: 780, height: 920) {
             AccountsSettingsPane(
                 model: f.accountsModel,
                 spaces: f.spaces,
@@ -4443,7 +4545,7 @@ final class ViewSnapshotTests: XCTestCase {
 
         // 2. Disconnected account detail (Slack in BAD_CREDENTIALS state showing "Signed out — reconnect", error banner, and "Reconnect…" button)
         f.accountsModel.selectedAccountKey = "slack:sl-1"
-        try assertLightAndDarkSnapshot("settings-accounts-disconnected", width: 780, height: 640) {
+        try assertLightAndDarkSnapshot("settings-accounts-disconnected", width: 780, height: 740) {
             AccountsSettingsPane(
                 model: f.accountsModel,
                 spaces: f.spaces,
@@ -4488,7 +4590,7 @@ final class ViewSnapshotTests: XCTestCase {
         let f = try makeMilestone46SnapshotFixture()
 
         let quickRepliesNav = SettingsNavigationModel(selectedPane: .quickReplies)
-        try assertLightAndDarkSnapshot("settings-window-quick-replies", width: 860, height: 600) {
+        try assertLightAndDarkSnapshot("settings-window-quick-replies", width: 980, height: 600) {
             SettingsWindow(
                 navigation: quickRepliesNav,
                 app: f.app,

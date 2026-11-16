@@ -1037,7 +1037,8 @@ struct MessageRowView: View {
     }
 
     private var reactions: some View {
-        HStack(spacing: 4) {
+        let isRedacted = resolvedAppearance?.redactNamesAndPictures ?? false
+        return HStack(spacing: 4) {
             ForEach(message.reactions) { chip in
                 Button {
                     // Mine again takes it back; anyone else's adds mine.
@@ -1047,9 +1048,19 @@ struct MessageRowView: View {
                         actions.react(message.id, chip.key)
                     }
                 } label: {
-                    HStack(spacing: 3) {
+                    HStack(spacing: 4) {
                         Text(chip.key)
-                        Text("\(chip.count)").font(.caption.monospacedDigit())
+                        switch chip.pillDisplay() {
+                        case let .avatars(items, overflowText):
+                            ReactionAvatarStack(items: items, isRedacted: isRedacted)
+                            if let overflowText {
+                                Text(overflowText)
+                                    .font(.caption.monospacedDigit())
+                            }
+                        case let .count(countText):
+                            Text(countText)
+                                .font(.caption.monospacedDigit())
+                        }
                     }
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
@@ -1058,6 +1069,7 @@ struct MessageRowView: View {
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .help(chip.tooltipText())
                 .onHover { chipHovered(chip.key, $0) }
                 .clickTargetProbe("chip/\(message.id)/\(chip.key)")
                 .takesOwnClick()
@@ -1364,6 +1376,57 @@ private struct AddReactionGlyph: View {
             }
             .padding(.trailing, 3)
             .accessibilityHidden(true)
+    }
+}
+
+/// Overlapping 14pt circular reactor avatars shown inside a reaction pill.
+private struct ReactionAvatarStack: View {
+    let items: [ReactionAvatarItem]
+    let isRedacted: Bool
+
+    var body: some View {
+        HStack(spacing: -4) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                ReactorAvatarCircle(item: item, isRedacted: isRedacted)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+private struct ReactorAvatarCircle: View {
+    let item: ReactionAvatarItem
+    let isRedacted: Bool
+    @State private var image: NSImage?
+
+    private var effectiveImage: NSImage? {
+        image ?? AvatarCache.shared.cachedImage(atPath: item.avatarPath)
+    }
+
+    var body: some View {
+        ZStack {
+            if let effectiveImage {
+                Image(nsImage: effectiveImage)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Circle().fill(AvatarView.color(for: item.seed))
+                Text(verbatim: item.initials)
+                    .font(.system(size: 6.5, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+        }
+        .frame(width: 14, height: 14)
+        .blur(radius: isRedacted ? 3 : 0)
+        .clipShape(Circle())
+        .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 1))
+        .task(id: item.avatarPath) {
+            if let cached = AvatarCache.shared.cachedImage(atPath: item.avatarPath) {
+                image = cached
+            } else {
+                image = await AvatarCache.shared.image(atPath: item.avatarPath)
+            }
+        }
     }
 }
 

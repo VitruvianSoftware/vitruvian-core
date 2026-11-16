@@ -73,7 +73,7 @@ struct SettingsWindow: View {
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
         }
-        .frame(minWidth: 780, minHeight: 540)
+        .frame(minWidth: 980, minHeight: 540)
         .background(
             Button("") {
                 guard !lifecycle.isLocked else { return }
@@ -266,16 +266,12 @@ struct SettingsWindow: View {
                 if pane == .accounts && connectedCount > 0 {
                     Text("\(connectedCount)")
                         .font(.caption2.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                        .foregroundStyle(.secondary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 1)
                         .background(
                             Capsule()
-                                .fill(
-                                    isSelected
-                                        ? Color.accentColor.opacity(0.18)
-                                        : Color.secondary.opacity(0.14)
-                                )
+                                .fill(Color.secondary.opacity(0.15))
                         )
                 }
             }

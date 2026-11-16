@@ -139,12 +139,38 @@ public struct Reactor: Equatable, Sendable {
     /// Their name as the reaction carried it, or their user id when it carried none.
     public let name: String
     public let isMe: Bool
+    public let avatarPath: String
 
-    public init(userID: String, name: String, isMe: Bool) {
+    public init(userID: String, name: String, isMe: Bool, avatarPath: String = "") {
         self.userID = userID
         self.name = name
         self.isMe = isMe
+        self.avatarPath = avatarPath
     }
+}
+
+/// One reactor avatar item shown inside a reaction pill.
+public struct ReactionAvatarItem: Equatable, Sendable {
+    public let userID: String
+    public let avatarPath: String
+    public let initials: String
+    public let seed: String
+    public let isMe: Bool
+
+    public init(userID: String, avatarPath: String, initials: String, seed: String, isMe: Bool) {
+        self.userID = userID
+        self.avatarPath = avatarPath
+        self.initials = initials
+        self.seed = seed
+        self.isMe = isMe
+    }
+}
+
+/// How a `ReactionChip` renders its pill contents: up to 3 avatars + optional `"+N"` when reactors are known,
+/// or plain count text when reactor identities are unknown.
+public enum ReactionPillDisplay: Equatable, Sendable {
+    case avatars(items: [ReactionAvatarItem], overflowText: String?)
+    case count(String)
 }
 
 /// One emoji under a message, with how many people gave it and who.
@@ -186,6 +212,77 @@ public struct ReactionChip: Equatable, Identifiable, Sendable {
         guard !parts.isEmpty else { return String(localized: "Reacted with \(key)") }
         let list = parts.formatted(.list(type: .and).locale(locale))
         return String(localized: "\(list) reacted with \(key)")
+    }
+
+    /// Chooses up to `maxAvatars` reactor avatars plus optional `"+N"` overflow when reactor identities are known,
+    /// falling back to plain count text when `reactors` is empty.
+    public func pillDisplay(maxAvatars: Int = 3) -> ReactionPillDisplay {
+        guard !reactors.isEmpty else {
+            return .count("\(count)")
+        }
+        let limit = max(1, maxAvatars)
+        let shown = Array(reactors.prefix(limit))
+        let items = shown.map { reactor in
+            let seed: String
+            if reactor.isMe {
+                seed = reactor.userID.isEmpty ? "me" : reactor.userID
+            } else {
+                seed = reactor.name.isEmpty ? reactor.userID : reactor.name
+            }
+            return ReactionAvatarItem(
+                userID: reactor.userID,
+                avatarPath: reactor.avatarPath,
+                initials: Self.avatarInitials(for: reactor),
+                seed: seed,
+                isMe: reactor.isMe
+            )
+        }
+        let total = max(count, reactors.count)
+        let overflow = max(0, total - shown.count)
+        let overflowText = overflow > 0 ? "+\(overflow)" : nil
+        return .avatars(items: items, overflowText: overflowText)
+    }
+
+    /// Lists reactor names for the pill tooltip (e.g. `"Kent Hua, Eddie Stecker"`), or falls back to `summary()`.
+    public func tooltipText() -> String {
+        guard !reactors.isEmpty else {
+            return summary()
+        }
+        var names = reactors.map { reactor -> String in
+            if reactor.isMe {
+                return String(localized: "You")
+            }
+            return reactor.name.isEmpty ? reactor.userID : reactor.name
+        }
+        let rest = max(0, count - reactors.count)
+        if rest == 1 {
+            names.append(String(localized: "+1 other"))
+        } else if rest > 1 {
+            names.append(String(localized: "+\(rest) others"))
+        }
+        return names.joined(separator: ", ")
+    }
+
+    private static func reactorDisplayName(_ reactor: Reactor) -> String {
+        if reactor.isMe {
+            return (reactor.name.isEmpty || reactor.name == reactor.userID)
+                ? String(localized: "You")
+                : reactor.name
+        }
+        return reactor.name.isEmpty ? reactor.userID : reactor.name
+    }
+
+    private static func avatarInitials(for reactor: Reactor) -> String {
+        var raw = reactorDisplayName(reactor)
+        if raw.hasPrefix("@") {
+            let withoutAt = String(raw.dropFirst())
+            if let colon = withoutAt.firstIndex(of: ":") {
+                raw = String(withoutAt[..<colon])
+            } else {
+                raw = withoutAt
+            }
+        }
+        return InboxRow.initials(of: raw)
     }
 }
 
@@ -1036,6 +1133,10 @@ public enum Timeline {
 
         // Reactions: one chip per emoji per message, counted by distinct people, who are kept in the order each first
         // gave it. My newest live one is what taking it back unsends.
+        var avatarBySender: [String: String] = [:]
+        for event in ordered where !event.senderAvatarPath.isEmpty {
+            avatarBySender[event.sender] = event.senderAvatarPath
+        }
         struct Tally {
             var people = Set<String>()
             var reactors: [Reactor] = []
@@ -1053,7 +1154,12 @@ public enum Timeline {
             if tallies[target]?[key] == nil { order[target, default: []].append(key) }
             let isMe = event.mine || event.sender == me
             if tally.people.insert(event.sender).inserted {
-                tally.reactors.append(Reactor(userID: event.sender, name: senderName(of: event), isMe: isMe))
+                let avatar = event.senderAvatarPath.isEmpty
+                    ? (avatarBySender[event.sender] ?? "")
+                    : event.senderAvatarPath
+                tally.reactors.append(
+                    Reactor(userID: event.sender, name: senderName(of: event), isMe: isMe, avatarPath: avatar)
+                )
             }
             if isMe {
                 tally.mine = true
