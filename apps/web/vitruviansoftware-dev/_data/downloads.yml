@@ -120,7 +120,7 @@ categories:
 
       - id: vitruvian-courier
         name: Vitruvian Courier
-        version: "0.3.21"
+        version: "0.3.22"
         summary: >-
           Every chat app in one inbox, on this Mac. A native macOS app that brings
           your messaging accounts into one window, signed with Developer ID and notarized.
@@ -128,20 +128,20 @@ categories:
         brew_cask: vitruviansoftware/tap/vitruvian-courier
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.21/VitruvianCourier-0.3.21-universal.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.22/VitruvianCourier-0.3.22-universal.dmg
             size: 150.5 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.21/VitruvianCourier-0.3.21-arm64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.22/VitruvianCourier-0.3.22-arm64.dmg
             size: 73.0 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.21/VitruvianCourier-0.3.21-x86_64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.22/VitruvianCourier-0.3.22-x86_64.dmg
             size: 78.4 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.21/VitruvianCourier-0.3.21-universal.zip
-            size: 151.1 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.22/VitruvianCourier-0.3.22-universal.zip
+            size: 151.2 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-courier
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-courier
@@ -152,16 +152,16 @@ categories:
     items:
       - id: vitruvian-remote
         name: Vitruvian Remote
-        version: "0.1.40"
+        version: "0.1.46"
         summary: >-
           Android companion app for Vitruvian. Answer agent permission prompts, monitor
           coding sessions, and review status updates directly from your phone.
         platforms: ["Android (arm64-v8a, x86_64)"]
         downloads:
           - label: Android APK
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.40/VitruvianRemote-0.1.40.apk
-            size: 8.5 MB
-        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/vitruvian-remote-v0.1.40
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.46/VitruvianRemote-0.1.46.apk
+            size: 9.2 MB
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/vitruvian-remote-v0.1.46
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/vitruvian-remote
         extensions_url: /ai/#eco-vitruvian-remote
         extensions_label: Companion Extensions
