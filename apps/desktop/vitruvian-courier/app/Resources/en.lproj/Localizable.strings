@@ -1473,7 +1473,7 @@
 "Show more" = "Show more";
 
 /* Under the Messages section of search: what search covers. */
-"Only messages on this Mac are searched. Messages a network hasn’t sent here yet won’t appear." = "Only messages on this Mac are searched. Messages a network hasn’t sent here yet won’t appear.";
+"Only messages on this Mac are searched. Older messages appear as each network sends them." = "Only messages on this Mac are searched. Older messages appear as each network sends them.";
 
 /* Search result in a group: who sent it, then the chat's title. */
 "%@ in %@" = "%1$@ in %2$@";

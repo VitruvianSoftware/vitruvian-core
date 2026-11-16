@@ -206,6 +206,11 @@ public final class SearchModel: ObservableObject {
     private var generation = 0
     /// The debounce and the request of the newest change.
     private var running: Task<Void, Never>?
+    /// The chats whose rows are being read, so a second answer for the same chat doesn't ask again; the reads
+    /// themselves; and which batch of reads is current (a cancelled read that still answers is dropped).
+    private var rowReads = Set<String>()
+    private var rowReadTasks: [Task<Void, Never>] = []
+    private var rowReadToken = 0
     private var searchingTimer: Task<Void, Never>?
     /// The request that found the results shown. Show more pages from it.
     private var firstPage: SearchParams?
@@ -308,6 +313,7 @@ public final class SearchModel: ObservableObject {
         engineRan = false
         complete = true
         hitRows = [:]
+        cancelRowReads()
         firstPage = nil
         cursors = [:]
         pendingOpen = nil
@@ -534,6 +540,7 @@ public final class SearchModel: ObservableObject {
         guard phase != .closed else { return }
         generation += 1
         pendingOpen = nil // a keystroke after Return cancels the open
+        cancelRowReads()
         let generation = generation
         let sleep = sleep
         running?.cancel()
@@ -613,6 +620,8 @@ public final class SearchModel: ObservableObject {
         selection = built.first?.items.first?.id
         phase = .home
         shown(generation)
+        // Bookmarks are messages too: their chats are named as a result's are.
+        readHitRows(of: built.flatMap(\.items), generation: generation)
     }
 
     private func runSearch(_ client: EngineClient, _ generation: Int) async {
@@ -682,24 +691,46 @@ public final class SearchModel: ObservableObject {
         readHitRows(of: built.flatMap(\.items), generation: generation)
     }
 
-    /// Reads the rows of the chats the messages shown are in (the ones not read yet), so a result names its chat as
-    /// the inbox row does. A failure leaves the engine's name.
+    /// Reads the rows of the chats the messages shown are in, and of the open chat (for "Press ⌘F to search in …"),
+    /// so a result and that line name their chat as the inbox row does. Messages here are every kind of row that
+    /// carries a hit: the results, and home's bookmarks. A failure leaves the engine's name.
     private func readHitRows(of items: [SearchItem], generation: Int) {
+        guard phase != .closed else { return }
+        var wanted = items.compactMap { item -> String? in
+            if case let .message(hit) = item { return hit.roomID }
+            return nil
+        }
+        if let open = inChatOfferRoomID { wanted.append(open) }
+        readRows(wanted, generation: generation)
+    }
+
+    /// Reads the rows of `roomIDs` it has not read in this panel's session and is not already reading, one request
+    /// for all of them. A change of query cancels the reads under way (`cancelRowReads`), and what they were
+    /// reading is asked for again by the next answer that needs it.
+    private func readRows(_ roomIDs: [String], generation: Int) {
         guard let client = appModel.client else { return }
         var seen = Set<String>()
-        let missing = items.compactMap { item -> String? in
-            guard case let .message(hit) = item, hitRows[hit.roomID] == nil, seen.insert(hit.roomID).inserted
-            else { return nil }
-            return hit.roomID
-        }
+        let missing = roomIDs.filter { hitRows[$0] == nil && !rowReads.contains($0) && seen.insert($0).inserted }
         guard !missing.isEmpty else { return }
-        Task { [weak self] in
+        rowReads.formUnion(missing)
+        let token = rowReadToken
+        let task = Task { [weak self] in
             for ids in stride(from: 0, to: missing.count, by: 100).map({ Array(missing[$0 ..< min($0 + 100, missing.count)]) }) {
                 let result: InboxResult? = try? await client.call("inbox.list", InboxListParams(roomIDs: ids))
-                guard let self, let result, self.generation == generation, self.phase != .closed else { return }
-                for row in result.rooms { self.hitRows[row.roomID] = row }
+                guard let self, self.rowReadToken == token, !Task.isCancelled, self.phase != .closed else { return }
+                self.rowReads.subtract(ids)
+                if let result { for row in result.rooms { self.hitRows[row.roomID] = row } }
             }
         }
+        rowReadTasks.append(task)
+    }
+
+    /// A change of query, or closing: the reads under way are dropped, not waited for.
+    private func cancelRowReads() {
+        rowReadToken += 1
+        rowReadTasks.forEach { $0.cancel() }
+        rowReadTasks = []
+        rowReads = []
     }
 
     /// The rows on screen are now `generation`'s. If Return was pressed for it, its first row opens (a recent

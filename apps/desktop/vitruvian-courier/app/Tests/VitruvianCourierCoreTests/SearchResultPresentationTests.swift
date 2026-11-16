@@ -207,13 +207,18 @@ final class SearchResultPresentationTests: XCTestCase {
         XCTAssertTrue(shown(picking: true, pointer: pointer))
     }
 
-    func testCoveringTheChatSendsThePointerAwayUntilItReturns() {
+    func testCoveringTheChatOnlyPausesTheBar() {
         var pointer = ActionBarPointer()
         pointer.rowHover(true)
-        pointer.timelineCovered()
-        XCTAssertFalse(shown(pointer: pointer), "the panel closed with the pointer's last place unknown")
-        pointer.rowHover(true)
-        XCTAssertTrue(shown(pointer: pointer))
+        XCTAssertFalse(shown(pointer: pointer, covered: true), "a panel or sheet is over the chat")
+        XCTAssertTrue(shown(pointer: pointer, covered: false),
+                      "it closed with the pointer still over the message: the bar is back, no re-entry needed")
+
+        // A pointer that left while covered is gone when the cover lifts.
+        pointer.rowHover(false)
+        pointer.settle()
+        XCTAssertFalse(shown(pointer: pointer, covered: true))
+        XCTAssertFalse(shown(pointer: pointer, covered: false))
     }
 
     func testKeyboardSelectionShowsTheBarWithoutAPointer() {

@@ -166,7 +166,10 @@ final class SearchModelTests: XCTestCase {
         XCTAssertEqual(h.chatIDs(.recent), ["!b", "!a"], "the open chat isn't in Recent")
         XCTAssertEqual(h.chatIDs(.lastArchived), ["!z"])
         XCTAssertEqual(h.search.sections.last?.items, [.recentSearch("picnic"), .recentSearch("lunch")])
-        XCTAssertEqual(dicts(h.server.receivedParams("inbox.list")), dicts([["room_ids": ["!b", "!a"]]]))
+        try await waitUntil { h.search.hitRows["!open"] != nil }
+        // The recent chats, then the open chat's own row (for "Press ⌘F to search in …").
+        XCTAssertEqual(dicts(h.server.receivedParams("inbox.list")),
+                       dicts([["room_ids": ["!b", "!a"]], ["room_ids": ["!open"]]]))
         XCTAssertEqual(dicts(h.searches), dicts([["text": "", "open_room_id": "!open"]]),
                        "last archived leaves out the open chat")
 
@@ -843,6 +846,7 @@ final class SearchScript: @unchecked Sendable {
     private var _lastArchived: [String: Any]?
     private var _homeBookmarks: [[String: Any]]?
     private var _hold = false
+    private var _holdRows = false
     private var _fail = false
     private var _respond: (@Sendable ([String: Any]) -> [String: Any]?)?
 
@@ -870,6 +874,12 @@ final class SearchScript: @unchecked Sendable {
         set { lock.withLock { _hold = newValue } }
     }
 
+    /// While set, inbox.list isn't answered until the test replies.
+    var holdRows: Bool {
+        get { lock.withLock { _holdRows } }
+        set { lock.withLock { _holdRows = newValue } }
+    }
+
     /// While set, search.query fails.
     var fail: Bool {
         get { lock.withLock { _fail } }
@@ -887,6 +897,7 @@ final class SearchScript: @unchecked Sendable {
         case "hello": return TestEngineServer.helloOK
         case "accounts.list": return .result(["accounts": [[String: Any]]()])
         case "inbox.list":
+            if holdRows { return .later }
             let ids = params["room_ids"] as? [String] ?? []
             let rooms = lock.withLock { _rooms }
             return .result(page(ids.compactMap { id in rooms.first { $0["room_id"] as? String == id } }))

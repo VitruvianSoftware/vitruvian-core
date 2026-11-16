@@ -103,9 +103,15 @@ extension InboxModel {
     /// shows shorter in the list ("Eddie & Kent"). `fetchedRow` is the chat's row when the inbox's list doesn't
     /// have it (an old chat past the first pages of the list). With no row at all, the engine's name.
     public func chatTitle(for hit: MessageHit, fetchedRow: InboxRow? = nil) -> String {
-        guard let row = row(of: hit.roomID) ?? fetchedRow else { return hit.roomName }
+        chatTitle(forRoomID: hit.roomID, fetchedRow: fetchedRow) ?? hit.roomName
+    }
+
+    /// The same for a chat by its ID (the open chat, for "Press ⌘F to search in …"); nil when there is no row, or
+    /// the row has no title.
+    public func chatTitle(forRoomID roomID: String, fetchedRow: InboxRow? = nil) -> String? {
+        guard let row = row(of: roomID) ?? fetchedRow else { return nil }
         let title = displayTitle(for: row)
-        return title.isEmpty ? hit.roomName : title
+        return title.isEmpty ? nil : title
     }
 }
 

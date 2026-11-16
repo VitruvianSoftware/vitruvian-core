@@ -293,7 +293,7 @@ The inventory has no row for these, but they are what this part was built to do.
 - [ ] Every chat is searched, wherever it is: inbox, Archive, Low Priority, hidden and Requests. A result outside the inbox carries a tag: "Archived", "Low priority", "Hidden" or "Request".
 - [ ] Your own messages are found too. The Sent / Received filter narrows them.
 - [ ] The Chats section stops at 100 chats and says "Showing the first 100 chats. Type more to narrow it down."
-- [ ] The foot of the Messages section reads "Only messages on this Mac are searched. Messages a network hasn’t sent here yet won’t appear."
+- [ ] The foot of the Messages section reads "Only messages on this Mac are searched. Older messages appear as each network sends them."
 - [ ] Each message result reads "Kent Hua in Eddie & Kent · Google Chat" (the sender, the chat as the chat list names it, the network), or "Kent Hua · Google Chat" in a one-to-one chat. The words you searched for are bold on a soft yellow tint, with capitals and accents ignored.
 - [ ] While a chat is open, the first line of the panel reads "Press ⌘F to search in <chat>" (⌘F is whatever Search in Chat is set to). ↑ from the first result reaches it; Return or a click searches that chat with what you typed.
 

@@ -50,9 +50,10 @@ struct SearchPanel: View {
     static let width: CGFloat = 640
 
     /// Under the messages found. There is no way to ask a network for older messages from here: the engine searches
-    /// what it has stored, and a chat's older pages are stored ones too. So it says only that.
+    /// what it has stored, and a chat's older pages are stored ones too. History a network sends later is stored and
+    /// searched then.
     static var onThisMacFooter: String {
-        String(localized: "Only messages on this Mac are searched. Messages a network hasn’t sent here yet won’t appear.",
+        String(localized: "Only messages on this Mac are searched. Older messages appear as each network sends them.",
                comment: "Under the Messages section of search: what search covers.")
     }
     /// What the field, the filter bar and the quiet line take above the rows, about.
@@ -116,7 +117,8 @@ struct SearchPanel: View {
     /// "Press ⌘F to search in <chat>", while a chat is open and the panel searches every chat.
     private var inChatOffer: SearchInChatOffer? {
         guard let roomID = search.inChatOfferRoomID else { return nil }
-        let raw = inbox.row(of: roomID).map(inbox.displayTitle(for:)) ?? ""
+        // The list's row, else the one read for the panel: an archived or old chat may not be in the list.
+        let raw = inbox.chatTitle(forRoomID: roomID, fetchedRow: search.hitRows[roomID]) ?? ""
         let title = raw.isEmpty ? "" : SearchRedaction.chatTitle(raw, redacted: isRedacted)
         return SearchInChatOffer.make(roomID: roomID, title: title, hotkeys: hotkeys)
     }

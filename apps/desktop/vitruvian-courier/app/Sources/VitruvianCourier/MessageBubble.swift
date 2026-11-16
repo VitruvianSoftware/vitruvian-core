@@ -452,9 +452,6 @@ struct MessageRowView: View {
         .onChange(of: isHighlighted, initial: true) { _, on in fadeHighlight(on) }
         .contentShape(Rectangle())
         .onHover { pointer.rowHover($0); pointerMoved() }
-        .onChange(of: timelineCovered) { _, covered in
-            if covered { pointer.timelineCovered() }
-        }
         .onChange(of: isSelected) { _, _ in pointer.selectionChanged() }
         .gesture(TapGesture(count: 2).onEnded {
             guard canAct else { return }

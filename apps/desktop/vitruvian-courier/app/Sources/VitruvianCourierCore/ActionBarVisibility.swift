@@ -7,7 +7,9 @@ import Foundation
 ///
 /// It is the selected message's. It goes when the pointer leaves the message (its row, or the bar itself, which sits
 /// over the row's top corner), and while anything covers the timeline: the ⌘K search panel, the command bar, a sheet
-/// or an alert. It stays while the message's own menu or reaction picker is open, which the pointer leaves to reach.
+/// or an alert. Covering only pauses it: the pointer's place is kept, so when the cover closes with the pointer
+/// still over the message, the bar is back without the pointer having to leave and return. It stays while the
+/// message's own menu or reaction picker is open, which the pointer leaves to reach.
 public enum ActionBarVisibility {
     public static func isShown(canAct: Bool, isSelected: Bool, menuOpen: Bool, pickingReaction: Bool,
                                pointer: ActionBarPointer, timelineCovered: Bool) -> Bool {
@@ -49,13 +51,6 @@ public struct ActionBarPointer: Equatable, Sendable {
     /// The moment after the pointer left both: it is gone, unless it came back.
     public mutating func settle() {
         if !isOver { hasLeft = true }
-    }
-
-    /// Something now covers the timeline: the bar goes, and comes back only when the pointer re-enters.
-    public mutating func timelineCovered() {
-        inRow = false
-        onBar = false
-        hasLeft = true
     }
 
     /// The message was selected anew (a key, say): its bar shows.
