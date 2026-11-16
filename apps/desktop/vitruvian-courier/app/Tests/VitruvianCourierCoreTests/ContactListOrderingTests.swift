@@ -82,8 +82,8 @@ final class ContactListOrderingTests: XCTestCase {
             "+1 (213) 447-6502 (WA)",
             "tel:+1 213 447 6502",
         ]
-        XCTAssertEqual(Set(spellings.compactMap(ContactListOrdering.phoneKey)), ["2134476502"])
-        XCTAssertNotEqual(ContactListOrdering.phoneKey("+12134476503"), "2134476502")
+        XCTAssertEqual(Set(spellings.compactMap(ContactListOrdering.phoneKey)), ["+12134476502"])
+        XCTAssertNotEqual(ContactListOrdering.phoneKey("+12134476503"), "+12134476502")
     }
 
     func testPhoneKeyIsNilForNamesAndHandles() {
@@ -192,22 +192,32 @@ final class ContactListOrderingTests: XCTestCase {
     func testSameLastTenDigitsFromDifferentCountryCodesAreDifferentNumbers() {
         let alice = candidate("Alice", identifiers: ["+44 7911 123456"])
         let stranger = candidate("(791) 112-3456")
-        XCTExpectFailure(
-            "phoneKey keeps only the last 10 digits, so a UK number matches a US number; remove this XCTExpectFailure wrapper when fixed"
-        ) {
-            XCTAssertEqual(ContactListOrdering.sections([stranger, alice]).other, [stranger])
-        }
+        XCTAssertEqual(ContactListOrdering.sections([stranger, alice]).other, [stranger])
     }
 
     func testFiveOrSixDigitShortCodeIsNotAName() {
         let shortCode = candidate("32665")
         let bea = candidate("Bea")
         let sections = ContactListOrdering.sections([shortCode, bea])
-        XCTExpectFailure(
-            "phoneDigits needs 7 digits, so a short code counts as a name and sorts above the named people; remove this XCTExpectFailure wrapper when fixed"
-        ) {
-            XCTAssertEqual(sections.named.map(\.name), ["Bea"])
-            XCTAssertEqual(sections.other.map(\.name), ["32665"])
+        XCTAssertEqual(sections.named.map(\.name), ["Bea"])
+        XCTAssertEqual(sections.other.map(\.name), ["32665"])
+    }
+
+    func testCountryCodeIsKeptAndAssumedOnlyWhenMissing() {
+        XCTAssertEqual(ContactListOrdering.phoneKey("+44 7911 123456"), "+447911123456")
+        XCTAssertEqual(ContactListOrdering.phoneKey("0044 7911 123456"), "+447911123456")
+        XCTAssertEqual(ContactListOrdering.phoneKey("(791) 112-3456"), "+17911123456")
+        XCTAssertEqual(ContactListOrdering.phoneKey("1 (213) 447-6502"), "+12134476502")
+        XCTAssertNil(ContactListOrdering.phoneKey("447-6502"), "A 7-digit local number has no full number")
+        XCTAssertNil(ContactListOrdering.phoneKey("32665"), "A short code has no full number")
+    }
+
+    func testShortCodesAreNumbersWhateverTheirLength() {
+        for text in ["123", "32665", "898 332", "5-5-5-0-1", "88022", "12345678"] {
+            XCTAssertTrue(ContactListOrdering.isNumberOrHandle(text), "\(text) is a short code, not a name")
+        }
+        for text in ["12", "3M", "24 Hour Gym"] {
+            XCTAssertFalse(ContactListOrdering.isNumberOrHandle(text), "\(text) is a name")
         }
     }
 }

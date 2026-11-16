@@ -802,7 +802,8 @@ public struct StartNewChatView: View {
             }
         }
         if !visibleOther.isEmpty {
-            // Entries that are only a number or handle: after every named person, under their own small heading.
+            // Entries with no name (only a number, handle or opaque ID): after every named person, under their own
+            // small heading.
             sectionHeader(String(localized: "Other numbers"))
                 .padding(.top, recents.isEmpty && visibleNamed.isEmpty ? 0 : 6)
             ForEach(visibleOther) { candidate in

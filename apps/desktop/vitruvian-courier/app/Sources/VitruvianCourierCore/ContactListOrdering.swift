@@ -25,9 +25,12 @@ public enum ContactListOrdering {
     /// "Studio 54"). Local numbers without a country code are 7 digits (NANP) at the shortest.
     static let minimumPhoneDigits = 7
 
-    /// Digits compared when matching two phone numbers. A number with a country code and the same number written
-    /// without one agree on their last ten digits.
-    static let phoneKeyLength = 10
+    /// Short codes (SMS sender IDs such as `32665`) run 3 to 8 digits. They are never a person's name.
+    static let shortCodeDigits = 3 ... 8
+
+    /// The country code assumed for a national-format number written without one: the user's region, here the
+    /// US/Canada (`+1`). A number that does carry its country code never uses this.
+    static let defaultCountryCode = "1"
 
     /// Whether `name` is not a name at all: empty, a phone number (E.164 `+12134476502`, or formatted
     /// `(213) 447-6502`, `+1 213-447-6502`, `tel:…`), an email address, or an `@handle`. A trailing network tag such
@@ -39,22 +42,41 @@ public enum ContactListOrdering {
         let lower = core.lowercased()
         if lower.hasPrefix("tel:") || lower.hasPrefix("mailto:") { return true }
         if isEmailAddress(core) { return true }
-        return phoneDigits(in: core) != nil
+        return parsedNumber(core) != nil || isShortCode(core)
     }
 
-    /// The key two spellings of one phone number share (`+12134476502`, `(213) 447-6502`, `+1 (213) 447-6502 (WA)`
-    /// all give `2134476502`), or `nil` when `raw` is not a phone number.
+    /// The full E.164 number two spellings of one phone number share (`+12134476502`, `+1 (213) 447-6502 (WA)`,
+    /// and the national-format `(213) 447-6502` all give `+12134476502`), or `nil` when `raw` is not a phone number
+    /// that can be put in full. A number with a country code keeps it (so `+44 7911 123456` and `(791) 112-3456` are
+    /// different numbers). A national-format number without one is taken to be in the user's region
+    /// (`defaultCountryCode`): 10 digits, or 11 starting with that code. Anything else (a 7-digit local number, a
+    /// short code) has no full number and matches nothing.
     public static func phoneKey(_ raw: String) -> String? {
         var text = strippedOfNetworkTag(raw.trimmingCharacters(in: .whitespacesAndNewlines))
         if text.lowercased().hasPrefix("tel:") {
             text = String(text.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        guard let digits = phoneDigits(in: text) else { return nil }
-        return String(digits.suffix(phoneKeyLength))
+        guard let number = parsedNumber(text) else { return nil }
+        var digits = number.digits
+        if number.hasPlus {
+            return "+" + digits
+        }
+        if digits.hasPrefix("00") {
+            // `0044 7911 123456`: the international call prefix in place of `+`.
+            digits.removeFirst(2)
+            return digits.isEmpty ? nil : "+" + digits
+        }
+        if digits.count == 10 {
+            return "+" + defaultCountryCode + digits
+        }
+        if digits.count == 11, digits.hasPrefix(defaultCountryCode) {
+            return "+" + digits
+        }
+        return nil
     }
 
     /// `candidates` split into named people and number-only entries, each A–Z, with a number-only entry dropped when
-    /// a named contact has the same phone number (on any network). Nothing else is removed.
+    /// a named contact has the same full phone number (on any network). Nothing else is removed.
     public static func sections(_ candidates: [ContactCandidate]) -> Sections {
         var named: [ContactCandidate] = []
         var unnamed: [ContactCandidate] = []
@@ -112,9 +134,19 @@ public enum ContactListOrdering {
         return rest.isEmpty ? text : rest
     }
 
-    /// The digits of `text` when it is nothing but a phone number: digits, an optional `+` before the first digit, and the
-    /// separators people type (space, `-`, `.`, parentheses); at least `minimumPhoneDigits` digits.
-    private static func phoneDigits(in text: String) -> String? {
+    /// A run of 3 to 8 digits with nothing else but spaces and dashes (`32665`, `5 5 5 0 1`, `888-222`): an SMS short
+    /// code, which is a sender and not a name.
+    private static func isShortCode(_ text: String) -> Bool {
+        guard !text.isEmpty, text.allSatisfy({ ($0.isASCII && $0.isNumber) || $0 == " " || $0 == "-" }) else {
+            return false
+        }
+        return shortCodeDigits.contains(text.filter { $0.isASCII && $0.isNumber }.count)
+    }
+
+    /// The digits of `text`, and whether it had a `+`, when it is nothing but a phone number: digits, an optional `+`
+    /// before the first digit, and the separators people type (space, `-`, `.`, parentheses); at least
+    /// `minimumPhoneDigits` digits.
+    private static func parsedNumber(_ text: String) -> (digits: String, hasPlus: Bool)? {
         var digits = ""
         var sawPlus = false
         for ch in text {
@@ -129,7 +161,7 @@ public enum ContactListOrdering {
                 return nil
             }
         }
-        return digits.count >= minimumPhoneDigits ? digits : nil
+        return digits.count >= minimumPhoneDigits ? (digits, sawPlus) : nil
     }
 
     /// `name@domain.tld`: one `@` with something either side and a dot in the domain.

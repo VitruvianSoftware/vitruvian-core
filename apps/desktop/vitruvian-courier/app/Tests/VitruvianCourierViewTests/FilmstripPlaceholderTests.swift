@@ -76,3 +76,12 @@ final class FilmstripPlaceholderTests: XCTestCase {
         XCTAssertNotEqual(try render(.image).grey, try render(.video).grey)
     }
 }
+
+/// The routine link style's cues for a pointer and for the keyboard.
+final class RoutineLinkStyleTests: XCTestCase {
+    func testALinkIsUnderlinedUnderThePointerOrWithKeyboardFocus() {
+        XCTAssertFalse(RoutineLinkButtonStyle.isUnderlined(hovered: false, focused: false))
+        XCTAssertTrue(RoutineLinkButtonStyle.isUnderlined(hovered: true, focused: false))
+        XCTAssertTrue(RoutineLinkButtonStyle.isUnderlined(hovered: false, focused: true))
+    }
+}
