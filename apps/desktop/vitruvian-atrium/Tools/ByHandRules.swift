@@ -25,15 +25,41 @@ enum ByHandRules {
         var pid: Int32
         var hasProgram: Bool
         var isTerminated: Bool = false
+        /// Whether the program is the bundle's own, in its Contents/MacOS.
+        var isBundleProgram: Bool = true
     }
 
     /// Which of the entries macOS lists under the app's bundle id is the app
     /// that runs. After the app updated itself into a bundle of a new name
     /// (3.89.0 to 3.90.1, on 2026-11-12) macOS kept an entry for it with no
     /// program behind it, listed first and marked as the app in front, so
-    /// taking the first entry found no windows and no menu.
+    /// taking the first entry found no windows and no menu. And each
+    /// extension's `tool` the app starts is listed under the app's bundle id
+    /// and bundle too, with its own program (`Tools/<id>/bin/tool`), often
+    /// before the app (seen 2026-11-15 on 3.99.0): taking it found no
+    /// Settings window and no "Settings…". So the app's own program wins,
+    /// and only without one does any running program do.
     static func running(among listed: [Listed]) -> Int? {
-        listed.firstIndex { $0.pid > 0 && $0.hasProgram && !$0.isTerminated }
+        let alive = { (l: Listed) in l.pid > 0 && l.hasProgram && !l.isTerminated }
+        return listed.firstIndex { alive($0) && $0.isBundleProgram } ?? listed.firstIndex(where: alive)
+    }
+
+    /// Whether a program is its bundle's own: inside the bundle's
+    /// Contents/MacOS folder, not a helper the app started from elsewhere.
+    static func isBundleProgram(executable: String?, bundle: String?) -> Bool {
+        guard let executable, let bundle, !bundle.isEmpty else { return false }
+        let macOS = (bundle.hasSuffix("/") ? bundle : bundle + "/") + "Contents/MacOS/"
+        return executable.hasPrefix(macOS)
+    }
+
+    /// What a control is called on a page: its value, else its title, else
+    /// its description. SwiftUI gives some buttons only a description:
+    /// Extensions' "Add from Folder…" (3.99.0) has no title or value, so a
+    /// label without the description never found the page.
+    static func label(value: String, title: String, description: String) -> String {
+        if !value.isEmpty { return value }
+        if !title.isEmpty { return title }
+        return description
     }
 
     /// Which control to press for a name: one whose title or description IS

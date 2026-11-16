@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.45](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.44...vitruvian-remote-v0.1.45) (2026-11-16)
+
+
+### Bug Fixes
+
+* **vitruvian-remote:** say the crash server doesn't store IP addresses ([#4927](https://github.com/VitruvianSoftware/vitruvian-core/issues/4927)) ([4836923](https://github.com/VitruvianSoftware/vitruvian-core/commit/4836923d02edbf5e345a8c36ef8a0390b79c3b14))
+
 ## [0.1.44](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.43...vitruvian-remote-v0.1.44) (2026-11-16)
 
 

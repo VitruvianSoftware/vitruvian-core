@@ -150,6 +150,7 @@ Additional tooling:
 | `//tools/gitops:seal-alert-ntfy` | Encrypt and seal the alert delivery endpoint for Alertmanager |
 | `//tools/gitops:seal-alert-pagerduty` | Seal the PagerDuty Events API keys Alertmanager pages with, read from the PagerDuty stack's outputs on stdin; never printed |
 | `//tools/gitops:seal-alert-heartbeat` | Seal the healthchecks.io ping URL that the Watchdog dead-man's switch pings (prompts for it; `--apply` to apply now) |
+| `//tools/gitops:alert-test` | Fire one test alert through Alertmanager, hold it (default 90s), then resolve it, to prove alerts reach ntfy and clear themselves (`--hold SECS`, `--fire-only`, `--resolve TEST_ID`) |
 | `//tools/gitops:seal-argocd-backstage-token` | Mint and seal read-only ArgoCD token for Backstage UI |
 | `//tools/gitops:seal-headplane-secret` | Generate and seal 32-character cookie secret for Headplane |
 | `//tools/gitops:seal-zitadel-login-cookie-secret` | Generate and seal the Zitadel Login UI session-cookie signing secret (re-running signs everyone out) |

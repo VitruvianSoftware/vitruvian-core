@@ -252,10 +252,17 @@ data:
         req = _authorized_request(NTFY_BASE_URL, data=body, method="POST")
         req.add_header("Content-Type", "application/json")
         with urllib.request.urlopen(req, timeout=10) as resp:
+            log_ntfy("published", payload.get("sequence_id", "-"), payload.get("title", ""), resp.status)
             return resp.status
 
 
-    def delete_from_ntfy(seq_id):
+    def log_ntfy(action, seq_id, what, status):
+        """One line per ntfy call, so a fire or resolve can be traced from the
+        log alone (bazel run //tools/gitops:alert-test checks for these)."""
+        sys.stderr.write(f"ntfy: {action} {seq_id} ({what}) -> {status}\n")
+
+
+    def delete_from_ntfy(seq_id, what=""):
         """Remove the group's notification from every client.
 
         DELETE /<topic>/<sequence_id> makes ntfy send a message_delete event,
@@ -268,9 +275,11 @@ data:
         req = _authorized_request(url, method="DELETE")
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
+                log_ntfy("deleted", seq_id, what, resp.status)
                 return resp.status
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
+                log_ntfy("delete found nothing for", seq_id, what, 404)
                 return 200
             raise
 
@@ -278,7 +287,8 @@ data:
     def handle_alertmanager(am_payload):
         """Fire/re-fire -> publish (replace); whole group resolved -> delete."""
         if am_payload.get("status") == "resolved":
-            return delete_from_ntfy(sequence_id(am_payload))
+            name = am_payload.get("commonLabels", {}).get("alertname", "")
+            return delete_from_ntfy(sequence_id(am_payload), name)
         return forward_to_ntfy(build_ntfy_payload(am_payload))
 
 
