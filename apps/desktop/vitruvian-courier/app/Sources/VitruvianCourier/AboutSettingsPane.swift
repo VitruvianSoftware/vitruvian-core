@@ -232,7 +232,7 @@ struct UpdatesSection: View {
             .padding(.vertical, 2)
             .settingAnchor("about.updates", highlighted: highlightedSettingID)
 
-            Toggle(String(localized: "Check for updates automatically"), isOn: $updates.checksAutomatically)
+            SettingsSwitchRow(String(localized: "Check for updates automatically"), isOn: $updates.checksAutomatically)
             Text(String(localized: "Vitruvian Courier checks GitHub when it opens and once a day. An update is installed only after its checksum, its Developer ID signature and Apple’s notarization check out; Vitruvian Courier then quits and opens again."))
                 .font(.caption)
                 .foregroundStyle(.secondary)

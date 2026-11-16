@@ -45,20 +45,20 @@ struct MessagesSettingsPane: View {
                     }
                 }
                 .help(String(localized: "⌘⇧R reacts with it to the selected message."))
-                Toggle(String(localized: "Include timestamps when copying messages with ⌘C"),
+                SettingsSwitchRow(String(localized: "Include timestamps when copying messages with ⌘C"),
                        isOn: $preferences.copyWithTimestamps)
-                Toggle(String(localized: "Hide deleted messages"), isOn: $preferences.hideDeletedMessages)
+                SettingsSwitchRow(String(localized: "Hide deleted messages"), isOn: $preferences.hideDeletedMessages)
                     .help(String(localized: "Off, a deleted message leaves a line saying it was deleted."))
-                Toggle(String(localized: "Show chat updates in timeline"), isOn: $preferences.showChatUpdatesInTimeline)
-                Toggle(
+                SettingsSwitchRow(String(localized: "Show chat updates in timeline"), isOn: $preferences.showChatUpdatesInTimeline)
+                SettingsSwitchRow(
                     String(localized: "Disable link previews in outgoing messages"),
                     isOn: $preferences.disableOutgoingLinkPreviews
                 )
-                Toggle(
+                SettingsSwitchRow(
                     String(localized: "Load external embeds automatically"),
                     isOn: $preferences.loadExternalEmbedsAutomatically
                 )
-                Toggle(
+                SettingsSwitchRow(
                     String(localized: "Automatically play the next voice note"),
                     isOn: $preferences.autoPlayNextVoiceNote
                 )
@@ -91,7 +91,7 @@ struct MessagesSettingsPane: View {
                     }
                 }
             }
-            Toggle(
+            SettingsSwitchRow(
                 String(localized: "Always ask where to save files before downloading"),
                 isOn: $preferences.alwaysAskWhereToSaveFiles
             )
@@ -119,15 +119,15 @@ struct MessagesSettingsPane: View {
     private var privacy: some View {
         Section(String(localized: "Privacy")) {
             if isEntitled(.incognito) {
-                Toggle(String(localized: "Incognito mode"), isOn: Binding(
+                SettingsSwitchRow(String(localized: "Incognito mode"), isOn: Binding(
                     get: { preferences.incognito }, set: { conversation.setIncognito($0) }))
                     .help(String(localized: "Chats stay unread when you open them, and no one is told you read their messages, until you reply or mark the chat read (⌘⇧U)."))
             } else {
                 LabeledContent(String(localized: "Incognito mode"), value: String(localized: "Available with a plan"))
             }
-            Toggle(String(localized: "Show recipients I’m typing"), isOn: $preferences.showTyping)
+            SettingsSwitchRow(String(localized: "Show recipients I’m typing"), isOn: $preferences.showTyping)
                 .help(String(localized: "Networks that show typing are told while you write."))
-            Toggle(String(localized: "Show the incognito mark in the message box"), isOn: $preferences.showIncognitoMark)
+            SettingsSwitchRow(String(localized: "Show the incognito mark in the message box"), isOn: $preferences.showIncognitoMark)
                 .disabled(!(isEntitled(.incognito) && preferences.incognito))
         }
     }
@@ -145,7 +145,7 @@ struct MessagesSettingsPane: View {
                 LabeledContent(String(localized: "Allow undo send (⌘Z) for"), value: String(localized: "Available with a plan"))
             }
             if isEntitled(.undoSend) {
-                Toggle(String(localized: "Click pending messages to undo send"), isOn: $preferences.clickPendingToUndo)
+                SettingsSwitchRow(String(localized: "Click pending messages to undo send"), isOn: $preferences.clickPendingToUndo)
                     .disabled(preferences.undoSendMillis == 0)
             } else {
                 LabeledContent(String(localized: "Click pending messages to undo send"),
@@ -180,8 +180,8 @@ struct MessagesSettingsPane: View {
                 Text(String(localized: "Move focus to the message list")).tag(UpArrowAction.focusMessages)
                 Text(String(localized: "Edit your last message")).tag(UpArrowAction.editLast)
             }
-            Toggle(String(localized: "Enable spellcheck"), isOn: $preferences.enableSpellcheck)
-            Toggle(String(localized: "Show formatting menu"), isOn: $preferences.showFormattingMenu)
+            SettingsSwitchRow(String(localized: "Enable spellcheck"), isOn: $preferences.enableSpellcheck)
+            SettingsSwitchRow(String(localized: "Show formatting menu"), isOn: $preferences.showFormattingMenu)
                 .help(String(localized: "A bar of formatting buttons over the text you select."))
             Picker(String(localized: "Primary composer button"), selection: $preferences.primaryComposerButton) {
                 ForEach(preferences.availablePrimaryComposerButtons, id: \.self) { button in
@@ -201,18 +201,21 @@ struct MessagesSettingsPane: View {
                 }
             }
             .accessibilityIdentifier("settings.composing.secondaryComposerButton")
-            Toggle(String(localized: "Enable emoji autocomplete"), isOn: $preferences.enableEmojiAutocomplete)
-                .accessibilityIdentifier("settings.composing.enableEmojiAutocomplete")
-            Toggle(
+            SettingsSwitchRow(
+                String(localized: "Enable emoji autocomplete"),
+                isOn: $preferences.enableEmojiAutocomplete,
+                identifier: "settings.composing.enableEmojiAutocomplete"
+            )
+            SettingsSwitchRow(
                 String(localized: "Disable automatic replacement of emoticons with emojis"),
-                isOn: $preferences.disableEmoticonReplacement
+                isOn: $preferences.disableEmoticonReplacement,
+                identifier: "settings.composing.disableEmoticonReplacement"
             )
-            .accessibilityIdentifier("settings.composing.disableEmoticonReplacement")
-            Toggle(
+            SettingsSwitchRow(
                 String(localized: "Automatically send GIFs after selection"),
-                isOn: $preferences.autoSendGIFs
+                isOn: $preferences.autoSendGIFs,
+                identifier: "settings.composing.autoSendGIFs"
             )
-            .accessibilityIdentifier("settings.composing.autoSendGIFs")
         }
     }
 

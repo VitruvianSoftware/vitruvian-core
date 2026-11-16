@@ -60,18 +60,56 @@ extension View {
     }
 }
 
-/// Pill badge for experimental settings (`SettingBadge.labs`).
+/// The anchor of a whole Settings section, placed once on the section's header, so that scrolling to it lands at the
+/// top of the section. (An `.id` on the section's rows would repeat it for each row.) Pair it with `sectionHighlight`.
+struct SectionAnchorModifier: ViewModifier {
+    let settingID: String
+    let highlightedSettingID: String?
+
+    func body(content: Content) -> some View {
+        let _ = MainActor.assumeIsolated {
+            SettingAnchorTracker.record(id: settingID, isHighlighted: highlightedSettingID == settingID)
+        }
+        content
+            .id(settingID)
+            .accessibilityIdentifier(settingID)
+    }
+}
+
+extension View {
+    /// Marks a section header as the place `settingID` scrolls to.
+    func sectionAnchor(_ id: String, highlighted: String? = nil) -> some View {
+        modifier(SectionAnchorModifier(settingID: id, highlightedSettingID: highlighted))
+    }
+
+    /// Washes every row of a section when it is the one a search result jumped to. Put on the `Section`.
+    func sectionHighlight(_ id: String, highlighted: String?) -> some View {
+        listRowBackground(highlighted == id ? Rectangle().fill(.tint).opacity(0.14) : nil)
+    }
+}
+
+/// Tag for experimental settings (`SettingBadge.labs`): a small flask and the word, in secondary text on a faint pill.
+/// Neutral on purpose: it says "experimental", not "problem", so it takes no accent or red.
 struct SettingBadgeView: View {
     let badge: SettingBadge
 
+    /// `flask` arrives with macOS 15; `testtube.2` is the same idea on macOS 14.
+    private static let flaskSymbol = NSImage(systemSymbolName: "flask", accessibilityDescription: nil) != nil
+        ? "flask" : "testtube.2"
+
     var body: some View {
-        Text(badge.label)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(Color.accentColor)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Capsule().fill(Color.accentColor.opacity(0.14)))
-            .help(badge.tooltip)
+        HStack(spacing: 3) {
+            Image(systemName: Self.flaskSymbol)
+                .font(.system(size: 9, weight: .semibold))
+                .accessibilityHidden(true)
+            Text(badge.label)
+        }
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Capsule().fill(.quaternary))
+        .help(badge.tooltip)
     }
 }
 
@@ -130,7 +168,7 @@ struct GeneralSettingsPane: View {
         Section(String(localized: "Privacy")) {
             Group {
                 if isEntitled(.incognito) {
-                    Toggle(
+                    SettingsSwitchRow(
                         SettingsNavigationModel.title(for: "general.incognito"),
                         isOn: Binding(
                             get: { composerPreferences.incognito },
@@ -147,14 +185,14 @@ struct GeneralSettingsPane: View {
             }
             .settingAnchor("general.incognito", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "general.showTyping"),
                 isOn: $composerPreferences.showTyping
             )
             .help(String(localized: "Networks that show typing are told while you write."))
             .settingAnchor("general.showTyping", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "general.showIncognitoMark"),
                 isOn: $composerPreferences.showIncognitoMark
             )
@@ -177,7 +215,7 @@ struct GeneralSettingsPane: View {
             .help(RemindHelp.condition)
             .settingAnchor("general.remindDefault", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "general.archiveAfterReminder"),
                 isOn: $inboxPreferences.archiveAfterReminder
             )
@@ -244,7 +282,7 @@ struct GeneralSettingsPane: View {
 
     private var archivingSection: some View {
         Section(String(localized: "Archiving")) {
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "general.markReadOnArchive"),
                 isOn: $inboxPreferences.markReadOnArchive
             )
@@ -397,7 +435,7 @@ struct GeneralSettingsPane: View {
 
             Group {
                 if isEntitled(.undoSend) {
-                    Toggle(
+                    SettingsSwitchRow(
                         SettingsNavigationModel.title(for: "general.clickPendingToUndo"),
                         isOn: $composerPreferences.clickPendingToUndo
                     )
@@ -439,31 +477,31 @@ struct GeneralSettingsPane: View {
             }
             .settingAnchor("general.upArrow", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "general.copyWithTimestamps"),
                 isOn: $composerPreferences.copyWithTimestamps
             )
             .settingAnchor("general.copyWithTimestamps", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "general.enableEmojiAutocomplete"),
                 isOn: $composerPreferences.enableEmojiAutocomplete
             )
             .settingAnchor("general.enableEmojiAutocomplete", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "general.disableEmoticonReplacement"),
                 isOn: $composerPreferences.disableEmoticonReplacement
             )
             .settingAnchor("general.disableEmoticonReplacement", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "general.autoSendGIFs"),
                 isOn: $composerPreferences.autoSendGIFs
             )
             .settingAnchor("general.autoSendGIFs", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "general.autoPlayNextVoiceNote"),
                 isOn: $composerPreferences.autoPlayNextVoiceNote
             )
@@ -485,7 +523,7 @@ struct GeneralSettingsPane: View {
             .settingAnchor("general.preferredMicrophone", highlighted: highlightedSettingID)
             .task { await activeVoiceRecorder.refreshDevices() }
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "general.autoCopyOTP"),
                 isOn: Binding(
                     get: { inboxPreferences.notifications.autoCopyOTP },
@@ -515,7 +553,7 @@ struct GeneralSettingsPane: View {
             }
             .settingAnchor("general.downloadsLocation", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "general.alwaysAskWhereToSave"),
                 isOn: $composerPreferences.alwaysAskWhereToSaveFiles
             )
@@ -541,19 +579,19 @@ struct GeneralSettingsPane: View {
 
     private var startupAndSecuritySection: some View {
         Section(String(localized: "Startup & Security")) {
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "general.openAtLogin"),
                 isOn: $lifecycle.launchAtLogin
             )
             .settingAnchor("general.openAtLogin", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "general.keepMinimizedOnLaunch"),
                 isOn: $lifecycle.startMinimized
             )
             .settingAnchor("general.keepMinimizedOnLaunch", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "general.quitOnClose"),
                 isOn: Binding(
                     get: { lifecycle.quitOnMainWindowClose },
@@ -562,7 +600,7 @@ struct GeneralSettingsPane: View {
             )
             .settingAnchor("general.quitOnClose", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "general.requireTouchID"),
                 isOn: $lifecycle.autoLockEnabled
             )
@@ -753,20 +791,20 @@ struct AppearanceSettingsPane: View {
                             .foregroundStyle(.secondary)
                             .frame(width: 38, alignment: .trailing)
                     }
-                    Toggle(
+                    SettingsSwitchRow(
                         String(localized: "Blur wallpaper"),
                         isOn: $appearance.wallpaperBlur
                     )
                     .font(.caption)
                 }
 
-                Toggle(
+                SettingsSwitchRow(
                     String(localized: "Show chat background when no chat is selected"),
                     isOn: $appearance.showEmptyStateBackground
                 )
                 .font(.caption)
 
-                Toggle(
+                SettingsSwitchRow(
                     String(localized: "Show unread chat cards on empty conversation canvas"),
                     isOn: $appearance.showHoneycombCards
                 )
@@ -846,7 +884,7 @@ struct AppearanceSettingsPane: View {
             }
             .settingAnchor("appearance.zoomLevel", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.reduceTransparency"),
                 isOn: $appearance.reduceTransparency
             )
@@ -856,7 +894,7 @@ struct AppearanceSettingsPane: View {
             // Only where the Mac draws Liquid Glass (macOS 26 and later). Reduce transparency wins over it.
             if appearance.liquidGlassIsSupported {
                 VStack(alignment: .leading, spacing: 2) {
-                    Toggle(
+                    SettingsSwitchRow(
                         SettingsNavigationModel.title(for: "appearance.liquidGlass"),
                         isOn: $appearance.useLiquidGlass
                     )
@@ -871,26 +909,26 @@ struct AppearanceSettingsPane: View {
                 .settingAnchor("appearance.liquidGlass", highlighted: highlightedSettingID)
             }
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.enableMessageAnimations"),
                 isOn: $appearance.enableMessageAnimations
             )
             .settingAnchor("appearance.enableMessageAnimations", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.balanceMessageText"),
                 isOn: $appearance.balanceMessageText
             )
             .help(String(localized: "Wraps multi-line messages evenly to avoid single trailing words."))
             .settingAnchor("appearance.balanceMessageText", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.usePointerCursor"),
                 isOn: $appearance.usePointerCursor
             )
             .settingAnchor("appearance.usePointerCursor", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.showFeedbackWidget"),
                 isOn: $appearance.showFeedbackWidget
             )
@@ -900,7 +938,7 @@ struct AppearanceSettingsPane: View {
 
     private var privacyAndScreenshotsSection: some View {
         Section(String(localized: "Privacy & Screenshots")) {
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.redactNamesAndPictures"),
                 isOn: $appearance.redactNamesAndPictures
             )
@@ -960,44 +998,44 @@ struct AppearanceSettingsPane: View {
 
     private var chatListSection: some View {
         Section(String(localized: "Chat list")) {
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.showSpaceBar"),
                 isOn: $inboxPreferences.showSpaceBar
             )
             .settingAnchor("appearance.showSpaceBar", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.regularPinnedRows"),
                 isOn: $inboxPreferences.regularPinnedRows
             )
             .help(String(localized: "Off, pinned chats sit above the list as small pictures."))
             .settingAnchor("appearance.regularPinnedRows", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.showUnreadCounts"),
                 isOn: $inboxPreferences.showUnreadCounts
             )
             .settingAnchor("appearance.showUnreadCounts", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.showPreviews"),
                 isOn: $inboxPreferences.showPreviews
             )
             .settingAnchor("appearance.showPreviews", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.compactList"),
                 isOn: $inboxPreferences.compactList
             )
             .settingAnchor("appearance.compactList", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.showNetworkIcons"),
                 isOn: $inboxPreferences.showNetworkIcons
             )
             .settingAnchor("appearance.showNetworkIcons", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.colorNetworkIcons"),
                 isOn: $inboxPreferences.colorNetworkIcons
             )
@@ -1032,26 +1070,26 @@ struct AppearanceSettingsPane: View {
 
     private var conversationSection: some View {
         Section(String(localized: "Conversation")) {
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.showMessageTimestamps"),
                 isOn: $composerPreferences.showMessageTimestamps
             )
             .settingAnchor("appearance.showMessageTimestamps", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.hideDeletedMessages"),
                 isOn: $composerPreferences.hideDeletedMessages
             )
             .help(String(localized: "Off, a deleted message leaves a line saying it was deleted."))
             .settingAnchor("appearance.hideDeletedMessages", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.showMembershipEvents"),
                 isOn: $composerPreferences.showChatUpdatesInTimeline
             )
             .settingAnchor("appearance.showMembershipEvents", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.loadExternalEmbeds"),
                 isOn: $composerPreferences.loadExternalEmbedsAutomatically
             )
@@ -1073,20 +1111,20 @@ struct AppearanceSettingsPane: View {
 
     private var composerSection: some View {
         Section(String(localized: "Composer")) {
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.enableSpellcheck"),
                 isOn: $composerPreferences.enableSpellcheck
             )
             .settingAnchor("appearance.enableSpellcheck", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.showFormattingMenu"),
                 isOn: $composerPreferences.showFormattingMenu
             )
             .help(String(localized: "A bar of formatting buttons over the text you select."))
             .settingAnchor("appearance.showFormattingMenu", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.disableOutgoingLinkPreviews"),
                 isOn: $composerPreferences.disableOutgoingLinkPreviews
             )
@@ -1119,7 +1157,7 @@ struct AppearanceSettingsPane: View {
 
     private var systemSection: some View {
         Section(String(localized: "System")) {
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.showMenuBarIcon"),
                 isOn: $dockPreferences.showMenuBarIcon
             )

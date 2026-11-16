@@ -97,9 +97,9 @@ struct InboxSettingsPane: View {
             archiving
             reminders
             Section(String(localized: "Notifications")) {
-                Toggle(String(localized: "Notify me about message requests"), isOn: $preferences.requestNotifications)
+                SettingsSwitchRow(String(localized: "Notify me about message requests"), isOn: $preferences.requestNotifications)
                     .help(String(localized: "A message request is someone you haven’t chatted with before writing to you."))
-                Toggle(String(localized: "Notify me when someone starts typing"), isOn: $preferences.typingNotifications)
+                SettingsSwitchRow(String(localized: "Notify me when someone starts typing"), isOn: $preferences.typingNotifications)
                     .help(String(localized: "Only on networks that send typing. Off, you’re told when the message arrives."))
             }
         }
@@ -113,14 +113,14 @@ struct InboxSettingsPane: View {
 
     private var chatList: some View {
         Section(String(localized: "Chat list")) {
-            Toggle(String(localized: "Show the space bar"), isOn: $preferences.showSpaceBar)
-            Toggle(String(localized: "Show pinned chats as full rows"), isOn: $preferences.regularPinnedRows)
+            SettingsSwitchRow(String(localized: "Show the space bar"), isOn: $preferences.showSpaceBar)
+            SettingsSwitchRow(String(localized: "Show pinned chats as full rows"), isOn: $preferences.regularPinnedRows)
                 .help(String(localized: "Off, pinned chats sit above the list as small pictures."))
-            Toggle(String(localized: "Show unread counts"), isOn: $preferences.showUnreadCounts)
-            Toggle(String(localized: "Show message previews"), isOn: $preferences.showPreviews)
-            Toggle(String(localized: "Compact chat list"), isOn: $preferences.compactList)
-            Toggle(String(localized: "Show network icons"), isOn: $preferences.showNetworkIcons)
-            Toggle(String(localized: "Colour network icons"), isOn: $preferences.colorNetworkIcons)
+            SettingsSwitchRow(String(localized: "Show unread counts"), isOn: $preferences.showUnreadCounts)
+            SettingsSwitchRow(String(localized: "Show message previews"), isOn: $preferences.showPreviews)
+            SettingsSwitchRow(String(localized: "Compact chat list"), isOn: $preferences.compactList)
+            SettingsSwitchRow(String(localized: "Show network icons"), isOn: $preferences.showNetworkIcons)
+            SettingsSwitchRow(String(localized: "Colour network icons"), isOn: $preferences.colorNetworkIcons)
                 .disabled(!preferences.showNetworkIcons)
             Picker(String(localized: "Button on a chat you point at"), selection: $preferences.hoverAction) {
                 Text(String(localized: "Archive")).tag(HoverAction.archive)
@@ -143,7 +143,7 @@ struct InboxSettingsPane: View {
 
     private var archiving: some View {
         Section(String(localized: "Archiving")) {
-            Toggle(String(localized: "Mark chats read when I archive them"), isOn: $preferences.markReadOnArchive)
+            SettingsSwitchRow(String(localized: "Mark chats read when I archive them"), isOn: $preferences.markReadOnArchive)
                 .help(String(localized: "Your networks are told the chat was read, as when you open it."))
             Picker(String(localized: "After archiving the open chat"), selection: $preferences.afterArchive) {
                 afterChoices
@@ -242,7 +242,7 @@ struct InboxSettingsPane: View {
                 Text(String(localized: "Always")).tag(RemindCondition.always)
             }
             .help(RemindHelp.condition)
-            Toggle(String(localized: "Archive a chat when I set a reminder on it"), isOn: $preferences.archiveAfterReminder)
+            SettingsSwitchRow(String(localized: "Archive a chat when I set a reminder on it"), isOn: $preferences.archiveAfterReminder)
                 .help(String(localized: "The reminder brings it back to your inbox when it is due."))
         }
     }
