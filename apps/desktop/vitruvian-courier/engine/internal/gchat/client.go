@@ -870,6 +870,10 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
 		meta.AppUserIDs = appIDs
 		meta.NameFromGoogle = nameFromGoogle
+		if fetchedGroupMembers {
+			// A space's world item lists no members, so this read is the first the portal hears of them.
+			meta.MemberUserIDs = slices.Clone(memberGaiaIDs)
+		}
 		if fetchedGroupMembers && (!recomposeName || name != "") {
 			meta.AppRosterChecked = true
 		}

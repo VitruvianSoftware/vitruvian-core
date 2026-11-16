@@ -687,3 +687,158 @@ func TestSyncWorldRemembersAGoogleGivenRoomName(t *testing.T) {
 	require.NoError(t, client.syncWorld(ctx))
 	require.True(t, portal.Metadata.(*PortalMetadata).NameFromGoogle)
 }
+
+// spaceWorldAPI answers paginated_world with one joined space that lists no members (as Google does for a space)
+// and serves everything else, get_group included, from groupAPI.
+func spaceWorldAPI(spaceID, roomName string, groupAPI http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/u/0/api/paginated_world" {
+			groupAPI(w, r)
+			return
+		}
+		item := &pb.WorldItemLite{
+			GroupId:       pb.SpaceGroupID(spaceID),
+			GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(10)},
+			SortTimestamp: pb.Int64(1710000002000000),
+			ReadState:     &pb.GroupReadState{MembershipState: pb.MembershipState_MEMBER_JOINED.Enum()},
+		}
+		if roomName != "" {
+			item.RoomName = pb.String(roomName)
+		}
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		_, _ = w.Write(pb.MustMarshal(&pb.PaginatedWorldResponse{
+			UserRevision: &pb.ReadRevision{Timestamp: pb.Int64(700)},
+			WorldItems:   []*pb.WorldItemLite{item},
+		}))
+	}
+}
+
+// spacePortalWithName is a space portal as an older build left it: no member list, no app roster, and (the
+// interesting part) whatever name it had composed or been given.
+func spacePortalWithName(t *testing.T, ctx context.Context, bridge *bridgev2.Bridge, ul *bridgev2.UserLogin, spaceID, name string) *bridgev2.Portal {
+	t.Helper()
+	portal, err := bridge.GetPortalByKey(ctx, networkid.PortalKey{ID: MakeSpacePortalID(spaceID), Receiver: ul.ID})
+	require.NoError(t, err)
+	portal.RoomType = database.RoomTypeDefault
+	portal.Name = name
+	portal.NameSet = true
+	portal.Metadata = &PortalMetadata{Revision: 5, GroupRevision: 5, ThreadsEnabled: true}
+	require.NoError(t, portal.Save(ctx))
+	return portal
+}
+
+func TestSyncWorldLeavesAppsOutOfAnUnnamedSpaceAndRepairsItsName(t *testing.T) {
+	ctx := context.Background()
+	groupAPI := membersAPI(
+		"",
+		joinedMembership(pb.UserMemberID(ownGaia)),
+		joinedMembership(pb.UserMemberID(annGaia)),
+		joinedMembership(pb.UserMemberID(bobGaia)),
+		joinedMembership(appMemberID(githubGaia)),
+	)
+	h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_unnamed", "", groupAPI))
+	portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_unnamed", "Ann, Bob, GitHub")
+
+	require.NoError(t, client.syncWorld(ctx))
+
+	meta := portal.Metadata.(*PortalMetadata)
+	require.ElementsMatch(t, []string{ownGaia, annGaia, bobGaia, githubGaia}, meta.MemberUserIDs)
+	require.Equal(t, []string{githubGaia}, meta.AppUserIDs)
+	require.True(t, meta.AppRosterChecked, "the space's roster is read once, and the answer kept")
+	require.False(t, meta.NameFromGoogle)
+	require.Equal(t, "Ann, Bob", portal.Name, "the composed name that listed the app is recomposed from the people")
+	require.False(t, client.needsAppRosterCheck(portal, client.ownUserID()), "read once, not again")
+
+	// The same read, seen as the chat info it hands the room: people only, and the app leaves silently.
+	portal.Metadata = &PortalMetadata{Revision: 5, GroupRevision: 5, ThreadsEnabled: true}
+	info, err := client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []networkid.UserID{"", MakeUserID(annGaia), MakeUserID(bobGaia)}, memberUserIDs(info.Members.MemberMap))
+	require.True(t, info.Members.IsFull)
+	require.True(t, info.Members.ExcludeChangesFromTimeline, "the app's removal must not post a 'left' line")
+}
+
+func TestSyncWorldNeverRenamesANamedSpace(t *testing.T) {
+	ctx := context.Background()
+	people := []*pb.Membership{
+		joinedMembership(pb.UserMemberID(ownGaia)),
+		joinedMembership(pb.UserMemberID(annGaia)),
+		joinedMembership(pb.UserMemberID(bobGaia)),
+		joinedMembership(appMemberID(githubGaia)),
+	}
+	t.Run("name from Google Chat's world list", func(t *testing.T) {
+		// The name happens to list the app, but Google gave it: it stays.
+		h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_named_world", "Ann, Bob, GitHub", membersAPI("Ann, Bob, GitHub", people...)))
+		portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_named_world", "Ann, Bob, GitHub")
+		require.NoError(t, client.syncWorld(ctx))
+		meta := portal.Metadata.(*PortalMetadata)
+		require.Equal(t, "Ann, Bob, GitHub", portal.Name)
+		require.True(t, meta.NameFromGoogle)
+		require.Equal(t, []string{githubGaia}, meta.AppUserIDs, "the app is still left out of the members")
+		require.True(t, meta.AppRosterChecked)
+	})
+	t.Run("name from get_group", func(t *testing.T) {
+		h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_named_group", "", membersAPI("Release Room", people...)))
+		portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_named_group", "Ann, Bob, GitHub")
+		require.NoError(t, client.syncWorld(ctx))
+		meta := portal.Metadata.(*PortalMetadata)
+		require.Equal(t, "Release Room", portal.Name)
+		require.True(t, meta.NameFromGoogle)
+		require.True(t, meta.AppRosterChecked)
+	})
+}
+
+func TestSyncWorldLeavesAnUnnamedSpaceWithADifferentStoredNameAlone(t *testing.T) {
+	ctx := context.Background()
+	groupAPI := membersAPI(
+		"",
+		joinedMembership(pb.UserMemberID(ownGaia)),
+		joinedMembership(pb.UserMemberID(annGaia)),
+		joinedMembership(pb.UserMemberID(bobGaia)),
+		joinedMembership(appMemberID(githubGaia)),
+	)
+	h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_typed", "", groupAPI))
+	// Google gives the space no name, but this one is not the list of everyone's names: someone typed it.
+	portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_typed", "Release crew")
+
+	require.NoError(t, client.syncWorld(ctx))
+
+	meta := portal.Metadata.(*PortalMetadata)
+	require.Equal(t, "Release crew", portal.Name)
+	require.Equal(t, []string{githubGaia}, meta.AppUserIDs, "the app is still told apart")
+	require.True(t, meta.AppRosterChecked)
+}
+
+func TestSyncWorldRetriesASpaceRepairWhenGetGroupFails(t *testing.T) {
+	ctx := context.Background()
+	fallback := membersAPI(
+		"",
+		joinedMembership(pb.UserMemberID(ownGaia)),
+		joinedMembership(pb.UserMemberID(annGaia)),
+		joinedMembership(pb.UserMemberID(bobGaia)),
+		joinedMembership(appMemberID(githubGaia)),
+	)
+	var failGetGroup atomic.Bool
+	failGetGroup.Store(true)
+	h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_retry", "", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/u/0/api/get_group" && failGetGroup.Load() {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		fallback(w, r)
+	}))
+	portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_retry", "Ann, Bob, GitHub")
+
+	require.NoError(t, client.syncWorld(ctx))
+	meta := portal.Metadata.(*PortalMetadata)
+	require.False(t, meta.AppRosterChecked, "a failed read is not an answer")
+	require.True(t, client.needsAppRosterCheck(portal, client.ownUserID()))
+	require.Equal(t, "Ann, Bob, GitHub", portal.Name, "nothing is changed on a guess")
+
+	failGetGroup.Store(false)
+	require.NoError(t, client.syncWorld(ctx))
+	meta = portal.Metadata.(*PortalMetadata)
+	require.True(t, meta.AppRosterChecked)
+	require.Equal(t, []string{githubGaia}, meta.AppUserIDs)
+	require.Equal(t, "Ann, Bob", portal.Name)
+}

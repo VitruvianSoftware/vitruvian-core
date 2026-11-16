@@ -376,14 +376,26 @@ func (c *Client) isOneToOneDMPortal(portal *bridgev2.Portal, own networkid.UserI
 	return false
 }
 
-// needsAppRosterCheck is whether portal lists more than one other member and has not had its roster read since
-// apps were told apart from people: GetChatInfo reads it (get_group carries each member's type) and records the
-// answer, so this is true once per chat.
+// needsAppRosterCheck is whether portal has not had its roster read since apps were told apart from people:
+// GetChatInfo reads it (get_group carries each member's type) and records the answer, so this is true once per chat.
+// A group DM qualifies once it lists more than one other member. A space always qualifies: the world list carries
+// no member list for a space (only a DM's), so there is nothing to count, and a space that Google Chat shows by its
+// members' names (an unnamed one) is where an app ends up in the stored name.
 func (c *Client) needsAppRosterCheck(portal *bridgev2.Portal, own networkid.UserID) bool {
+	isDM, _, err := ParsePortalID(portal.ID)
+	if err != nil {
+		return false
+	}
 	c.metaMu.Lock()
 	defer c.metaMu.Unlock()
 	meta, ok := portal.Metadata.(*PortalMetadata)
-	if !ok || meta == nil || meta.AppRosterChecked {
+	if ok && meta != nil && meta.AppRosterChecked {
+		return false
+	}
+	if !isDM {
+		return true
+	}
+	if !ok || meta == nil {
 		return false
 	}
 	return len(otherMemberIDs(meta.MemberUserIDs, own)) > 1
@@ -404,8 +416,9 @@ func (c *Client) refreshUnnamedGroupPortals(ctx context.Context, syncedPortals [
 			return
 		}
 		seen[p.ID] = struct{}{}
-		// A chat that lists several others and has never been read since apps were told apart is read once, named
-		// or not: it may list an app, and the name this client composed for it may have the app's in it.
+		// A chat that has never been read since apps were told apart is read once, named or not: it may list an app,
+		// and the name this client composed for it may have the app's in it. A space's world item lists no members,
+		// so a space is read whatever it lists.
 		if fromWorld && c.needsAppRosterCheck(p, own) {
 			candidates = append(candidates, p)
 			return
