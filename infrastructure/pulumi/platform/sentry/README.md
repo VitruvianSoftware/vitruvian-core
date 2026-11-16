@@ -34,7 +34,7 @@ Every project exports both an internal and public ingest DSN:
 1. **Internal Cluster / Tailnet (`sentry.lab.ipv1337.dev`)** — `<slug>_dsn_public`
    - Used by in-cluster workloads inside the homelab k3s cluster (e.g., Backstage backend, `vitruvian-slack-mcp` pod).
 2. **Public / Browser / Mobile / Cloud Run (`sentry-ingest.ipv1337.dev`)** — `<slug>_dsn_browser`
-   - Routed via Cloudflare Tunnel directly to Sentry Relay ingest without exposing the Sentry Web UI or admin API. Used by browser frontends, Cloud Run services, desktop apps, and mobile apps.
+   - Routed via Cloudflare Tunnel directly to Sentry Relay ingest without exposing the Sentry Web UI or admin API. Used by browser frontends, Cloud Run services, desktop apps, mobile apps, CLIs, and Atrium extensions.
 
 ## Onboarded Applications
 
@@ -55,6 +55,26 @@ Every project exports both an internal and public ingest DSN:
 | **Desktop** | Vitruvian Courier | `vitruvian-courier` | `go` | Browser (`sentry-ingest.ipv1337.dev/13`) |
 | **Mobile** | Vitruvian Remote | `vitruvian-remote` | `android` | Browser (`sentry-ingest.ipv1337.dev/4`) |
 | **Mobile** | Vitruvian Watch | `vitruvian-watch` | `android` | Browser (`sentry-ingest.ipv1337.dev/3`) |
+| **CLI** | Vitruvian DevX | `vitruvian-devx` | `go` | Browser (`sentry-ingest.ipv1337.dev/18`) |
+| **CLI** | Vitruvian Homelab | `vitruvian-homelab` | `rust` | Browser (`sentry-ingest.ipv1337.dev/17`) |
+| **CLI** | Ostation | `ostation` | `rust` | Browser (`sentry-ingest.ipv1337.dev/16`) |
+| **Extension** | Vitruvian GitHub | `vitruvian-github` | `apple-macos` | Browser (`sentry-ingest.ipv1337.dev/19`) |
+| **Extension** | Vitruvian TV | `vitruvian-tv` | `rust` | Browser (`sentry-ingest.ipv1337.dev/20`) |
+
+### Fail-Open Invariants for CLIs & Extensions
+
+All CLI tools and Atrium extensions are instrumented to **fail open**:
+- If Sentry is unreachable, misconfigured, or experiencing an outage, these clients **never block, panic, or alter program exit codes**.
+- Client initialization silently ignores connection or configuration errors.
+- Transports and flushes enforce strict timeouts or execute asynchronously (fire-and-forget), preventing latency during user execution or host extension cycles.
+
+| Application | Ecosystem | Project ID | Client / Transport | Fallback DSN | Fail-Open Behavior |
+|---|---|---|---|---|---|
+| `vitruvian-devx` | CLI | `18` | Go (`sentry-go`) | `https://f5f0bc21a4b8f3f1c63fb5f684e070ca@sentry-ingest.ipv1337.dev/18` | `1s` HTTP timeout, `500ms` flush timeout |
+| `vitruvian-homelab` | CLI | `17` | Rust (`sentry` crate, `ureq`) | `https://d28a9615550bccaa0c33eabe4c3f44ed@sentry-ingest.ipv1337.dev/17` | `500ms` shutdown timeout |
+| `ostation` | CLI | `16` | Rust (`sentry` crate, `ureq`) | `https://3bacdd14dd3bb4d326948b35048dfdb6@sentry-ingest.ipv1337.dev/16` | `500ms` shutdown timeout |
+| `vitruvian-github` | Atrium Extension | `19` | Swift (`SentryLite`) | `https://466d926919488c1b0dde293066f2cd09@sentry-ingest.ipv1337.dev/19` | Fire-and-forget async |
+| `vitruvian-tv` | Atrium Extension | `20` | Rust (`sentry` crate, `ureq`) | `https://828935861c1450efdb3b653f342d6bcf@sentry-ingest.ipv1337.dev/20` | `250ms` shutdown timeout |
 
 ## Verifying Events
 
