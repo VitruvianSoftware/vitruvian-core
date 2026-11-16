@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-export { LiveSourceError } from './contract.js';
+export { LiveSourceError, readSnapshotTimeline } from './contract.js';
 export {
   normalizeOpenSkyAircraft,
   normalizeReadsbAircraft,
@@ -38,4 +38,5 @@ export {
   createFlightSource,
   createMilitarySource,
   createVesselSource,
+  fetchOpenVesselPhoto,
 } from './standalone.js';

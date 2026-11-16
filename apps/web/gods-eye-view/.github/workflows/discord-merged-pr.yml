@@ -1,0 +1,60 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Announce merged PRs in Discord
+
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  announce:
+    if: github.repository == 'bilawalsidhu/gods-eye-view' && github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      # This uses the trusted base workflow and never checks out or runs PR code.
+      - name: Post to Discord contributions
+        shell: bash
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_CONTRIBUTIONS_WEBHOOK_URL }}
+        run: |
+          if [[ ! "$DISCORD_WEBHOOK_URL" =~ ^https://discord\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+$ ]]; then
+            echo '::error::Set DISCORD_CONTRIBUTIONS_WEBHOOK_URL to the Discord channel webhook URL.'
+            exit 1
+          fi
+
+          payload=$(jq -ce '
+            .pull_request | {
+              allowed_mentions: {parse: []},
+              embeds: [{
+                title: ("Merged #" + (.number | tostring) + ": " + (.title | .[0:115])),
+                url: .html_url,
+                footer: {text: ("By " + .user.login + " · into " + (.base.ref | .[0:100]))}
+              }]
+            }
+          ' "$GITHUB_EVENT_PATH")
+
+          curl --silent --show-error --fail --output /dev/null \
+            --connect-timeout 10 --max-time 20 --retry 3 --retry-max-time 50 \
+            --header 'Content-Type: application/json' --data-binary "$payload" \
+            --url "$DISCORD_WEBHOOK_URL?wait=true"

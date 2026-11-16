@@ -1,0 +1,121 @@
+/**
+ * Copyright (c) 2026 VitruvianSoftware
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+// Transit: a manager tick that failed over Boston must not keep its error on
+// the row the coverage repaint draws after the camera leaves for London.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createState } from './state.js';
+import { createViewport } from './viewport.js';
+import { createQueries } from './queries.js';
+import { LayerLifecycle } from '../../data/lifecycle.js';
+import { LayerPanel, layerFeedState } from '../../ui/layerPanel.js';
+import { bindRenderer } from '../../render/rendererOf.js';
+
+const LONDON = { lat: 51.5072, lon: -0.1276 };
+const BOSTON = { lat: 42.3601, lon: -71.0589 };
+
+/** A viewer double whose camera port stands at `at`, `height` metres up. */
+function viewer(at, height) {
+  const host = {};
+  bindRenderer(host, {
+    camera: {
+      pose: () => ({ lon: at.lon, lat: at.lat, height }),
+      viewRectangle: () => null,
+      on: () => () => {},
+    },
+  });
+  return host;
+}
+
+test('leaving a feed whose tick failed repaints its error away', async () => {
+  const services = {
+    overlays: {
+      setOverlayEntries() {},
+      setOverlaySourceVisible() {},
+      clearOverlaySource() {},
+    },
+    render: { governorRequestRender() {} },
+  };
+  const state = createState({ services });
+  const feedStatus = (feedId) => {
+    if (!state._feedStatus.has(feedId))
+      state._feedStatus.set(feedId, { count: 0, error: null, loading: false });
+    return state._feedStatus.get(feedId);
+  };
+  const parts = {
+    ingestion: {
+      feedStatus,
+      // As pollFeed's catch does when the proxy answers 503.
+      pollFeed(feed) {
+        Object.assign(feedStatus(feed.id), {
+          error: `${feed.name} feed unavailable`,
+          loading: false,
+        });
+        return Promise.resolve();
+      },
+      removeFeedVehicles() {},
+      sweepAgedVehicles() {},
+    },
+    rendering: { requestVisibility() {}, syncRenderHold() {} },
+  };
+  parts.viewport = createViewport({ state, services, parts });
+  const queries = createQueries({ state, parts }).methods;
+  state._enabled = true;
+
+  const lifecycle = new LayerLifecycle(null);
+  lifecycle.register({
+    id: 'transit',
+    name: 'Transit',
+    source: 'GTFS-RT',
+    getStats: () => queries.getStats(),
+    async update() {},
+  });
+  const entry = lifecycle.layers.get('transit');
+  entry.enabled = true;
+  entry.lifecycleState = 'enabled';
+  entry.initialized = true;
+
+  const row = () => {
+    const layer = lifecycle.getAll()[0];
+    return `${layerFeedState(layer.stats)} | ${LayerPanel.prototype._buildMetaText(layer)}`;
+  };
+  const painted = [];
+  state._dataManager = {
+    refreshLayerStats(layerId) {
+      lifecycle.refreshLayerStats(layerId);
+      painted.push(row());
+    },
+  };
+
+  state._viewer = viewer(BOSTON, 4_000);
+  parts.viewport.runProximityCheck();
+  await lifecycle.refreshLayer('transit');
+  assert.match(row(), /feed unavailable/, 'the tick recorded the failure');
+
+  const before = painted.length;
+  state._viewer = viewer(LONDON, 4_000);
+  parts.viewport.runProximityCheck();
+  assert.equal(queries.getStats().status, 'zoom-in');
+  assert.ok(painted.length > before, 'leaving Boston repainted the row');
+  assert.doesNotMatch(painted.at(-1), /feed unavailable/);
+});

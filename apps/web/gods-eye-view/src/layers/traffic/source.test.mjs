@@ -458,6 +458,11 @@ async function matchingContext(fetchFlowForBounds) {
       jamDensityOn: () => false,
       baseDotSize: () => 2,
       activeSizeDelta: () => 0,
+      showDot: (dot, show) => {
+        dot.point.show = show;
+      },
+      paintDot() {},
+      emphasizeJamDot() {},
     },
     rendering: {
       rebuildHeatLines() {},

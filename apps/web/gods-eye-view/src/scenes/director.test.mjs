@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 
+import { bindFakeCesiumCamera } from '../testSupport/fakeCameraPort.mjs';
 import { readShellSource } from '../testSupport/readShellSource.mjs';
 import { useStatusStore } from '../ui/stores/status.js';
 import { applicationPinia } from '../ui/vueRuntime.js';
@@ -1094,7 +1095,7 @@ function fakeViewer() {
   const flights = [];
   const views = [];
   let cancelled = 0;
-  return {
+  return bindFakeCesiumCamera({
     flights,
     views,
     get cancelledFlights() { return cancelled; },
@@ -1108,7 +1109,7 @@ function fakeViewer() {
       },
       cancelFlight() { cancelled++; },
     },
-  };
+  });
 }
 
 /** Yield enough turns for the director's pending awaits to advance. */
@@ -1798,7 +1799,7 @@ test('destroy drains cancelled LOAD work before its viewer can be discarded', as
   t.after(restore);
   let finishVisual;
   const dataManager = fakeDataManager();
-  const viewer = { camera: { cancelFlight() {} } };
+  const viewer = bindFakeCesiumCamera({ camera: { cancelFlight() {} } });
   const director = new SceneDirector(viewer, {
     applyVisualState: () => new Promise((resolve) => { finishVisual = resolve; }),
   }, dataManager);

@@ -23,38 +23,17 @@
 /**
  * Default landing view.
  *
- * With no share link the globe must open over Irvine, CA. The fly-in is a
- * two-step: an instant high setView, then a cinematic flyTo down to street
- * level. Both steps must target HOME_VIEW, so changing the home city is a
- * single-constant edit that this pin verifies end to end.
+ * With no share link and no host start view the globe opens over Irvine, CA:
+ * controls.js defaults `startView` to HOME_START_VIEW, which is built from
+ * HOME_VIEW, so changing the home city is a single-constant edit that this pin
+ * verifies end to end.
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as Cesium from 'cesium';
 
-import { HOME_VIEW, flyToHome } from './camera.js';
-
-function toDegrees(cartesian) {
-  const c = Cesium.Cartographic.fromCartesian(cartesian);
-  return {
-    longitude: Cesium.Math.toDegrees(c.longitude),
-    latitude: Cesium.Math.toDegrees(c.latitude),
-    height: c.height,
-  };
-}
-
-function fakeViewer() {
-  const calls = { setView: null, flyTo: null };
-  return {
-    calls,
-    isDestroyed: () => false,
-    camera: {
-      setView(options) { calls.setView = options; },
-      flyTo(options) { calls.flyTo = options; },
-      cancelFlight() {},
-    },
-  };
-}
+import { HOME_START_VIEW, HOME_VIEW, applyStartView } from './camera.js';
+import { bindFakeCesiumCamera } from './testSupport/fakeCameraPort.mjs';
 
 test('HOME_VIEW is Irvine, California', () => {
   assert.equal(HOME_VIEW.name, 'Irvine, CA');
@@ -63,22 +42,28 @@ test('HOME_VIEW is Irvine, California', () => {
   assert.ok(HOME_VIEW.longitude > -117.87 && HOME_VIEW.longitude < -117.7, `lon ${HOME_VIEW.longitude}`);
 });
 
-test('flyToHome lands both fly-in steps on HOME_VIEW', async () => {
-  const viewer = fakeViewer();
-  flyToHome(viewer);
+test('HOME_START_VIEW starts over HOME_VIEW, above the city', () => {
+  assert.equal(HOME_START_VIEW.lon, HOME_VIEW.longitude);
+  assert.equal(HOME_START_VIEW.lat, HOME_VIEW.latitude);
+  assert.ok(HOME_START_VIEW.height > 10_000, 'high enough to see the city');
+  assert.ok(HOME_START_VIEW.height < 1_000_000, 'low enough to be a city, not the planet');
+});
 
-  assert.ok(viewer.calls.setView, 'the initial high view is set synchronously');
-  const start = toDegrees(viewer.calls.setView.destination);
-  assert.ok(Math.abs(start.longitude - HOME_VIEW.longitude) < 1e-6);
-  assert.ok(Math.abs(start.latitude - HOME_VIEW.latitude) < 1e-6);
-  assert.ok(start.height > 10_000, 'starts high so the fly-in is visible');
-
-  assert.equal(viewer.calls.flyTo, null, 'the cinematic descent waits for the pause');
-  await new Promise((resolve) => setTimeout(resolve, 700));
-
-  assert.ok(viewer.calls.flyTo, 'the cinematic descent fires after the pause');
-  const end = toDegrees(viewer.calls.flyTo.destination);
-  assert.ok(Math.abs(end.longitude - HOME_VIEW.longitude) < 1e-6);
-  assert.ok(Math.abs(end.latitude - HOME_VIEW.latitude) < 1e-6);
-  assert.ok(end.height < start.height, 'descends toward street level');
+test('applyStartView with HOME_START_VIEW sets the camera over HOME_VIEW', () => {
+  const views = [];
+  applyStartView(
+    bindFakeCesiumCamera({
+      isDestroyed: () => false,
+      camera: {
+        setView(view) {
+          views.push(view);
+        },
+      },
+    }),
+    HOME_START_VIEW,
+  );
+  assert.equal(views.length, 1);
+  const at = Cesium.Cartographic.fromCartesian(views[0].destination);
+  assert.ok(Math.abs(Cesium.Math.toDegrees(at.longitude) - HOME_VIEW.longitude) < 1e-6);
+  assert.ok(Math.abs(Cesium.Math.toDegrees(at.latitude) - HOME_VIEW.latitude) < 1e-6);
 });

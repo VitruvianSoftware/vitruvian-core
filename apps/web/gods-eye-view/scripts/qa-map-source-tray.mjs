@@ -364,7 +364,7 @@ try {
     const before = {
       activeId: controller.getActiveId(),
       creditVisible: document.body.innerText.includes('Powered by Esri'),
-      globeShown: styleManager.viewer.scene.globe.show,
+      globeShown: window.__godsEyeView.viewer.scene.globe.show,
       hasLayer: Boolean(controller._imageryLayer),
     };
     provider?.errorEvent?.raiseEvent?.({ timesRetried: 0 });
@@ -391,7 +391,7 @@ try {
       activeId: controller.getActiveId(),
       lastError: controller.getState().lastError,
       creditVisible: document.body.innerText.includes('Powered by Esri'),
-      globeShown: styleManager.viewer.scene.globe.show,
+      globeShown: window.__godsEyeView.viewer.scene.globe.show,
       hasLayer: Boolean(controller._imageryLayer),
       active: [...document.querySelectorAll('.map-stack-chip')]
         .filter((chip) => chip.getAttribute('aria-pressed') === 'true')

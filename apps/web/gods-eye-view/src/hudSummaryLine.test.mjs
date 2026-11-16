@@ -24,6 +24,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import './testSupport/stubMgrs.mjs';
 import { hudReadouts } from './testSupport/hudReadouts.mjs';
+import { fakeCameraPort } from './testSupport/fakeCameraPort.mjs';
+import { toDegrees as deg } from './geo/index.js';
 
 const { IntelHUD } = await import('./hud.js');
 const { setLocale } = await import('./i18n/index.js');
@@ -72,6 +74,9 @@ function createHud(
   };
   const sent = [];
   const hud = new IntelHUD(viewer, {
+    camera: fakeCameraPort({
+      pose: { lat: deg(0.53), lon: deg(-1.7), height: 600 },
+    }).port,
     publish,
     summaryService: {
       configured: async () => true,
@@ -165,6 +170,7 @@ for (const [locale, summary] of [
   ['ja', '東京上空のLive Flights'],
   ['zh-CN', '北京航班stale数据'],
   ['ru', 'Остин Live-Flights частично'],
+  ['he', 'תל אביב stale טיסות'],
 ]) {
   test(`English flush against other text is an echo: ${summary}`, () => {
     assert.ok(hudSummaryHasEnglish(summary, locale, ['stale', 'Live Flights']));

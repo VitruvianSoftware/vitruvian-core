@@ -24,9 +24,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import * as Cesium from 'cesium';
 import { createInfrastructureLayers } from 'gods-eye-view/infrastructure';
 import { createLocalGeoJsonLayer } from 'gods-eye-view/infrastructure/geojson';
+import { fakeInput } from '../input/testDoubles.mjs';
+import { bindFakeGroundRenderer } from '../testSupport/fakeGroundRenderer.mjs';
 
 function services() {
   const records = new Map();
@@ -140,8 +141,6 @@ test('two viewers use their supplied contexts and dispose independently', async 
   }));
   const hosts = [services(), services()];
   const instances = hosts.map((host) => {
-    const sources = new Cesium.DataSourceCollection();
-    let click;
     const layer = createLocalGeoJsonLayer(
       {
         id: 'local-dams',
@@ -149,27 +148,25 @@ test('two viewers use their supplied contexts and dispose independently', async 
         osmDerived: true,
         color: '#0088ff',
         url: '/dams.geojsonl',
-        screenSpaceEventHandlerFactory: () => ({
-          setInputAction(fn) {
-            click = fn;
-          },
-          destroy() {},
-        }),
       },
       host,
     );
+    // A click picks the feature's stem, as the renderer's pick names it.
     const viewer = {
-      dataSources: sources,
-      scene: {
-        canvas: {},
-        preRender: new Cesium.Event(),
-        requestRender() {},
-        screenSpaceCameraController: { enableInputs: true },
-        pick: () => ({ id: sources.get(0).entities.values[0] }),
-      },
-      camera: { moveEnd: new Cesium.Event(), flyTo() {} },
+      scene: { screenSpaceCameraController: { enableInputs: true } },
     };
-    return { layer, viewer, click: () => click({ position: {} }) };
+    const fake = bindFakeGroundRenderer(viewer);
+    fake.setPick(() => {
+      const [stem] = fake.set('stems').items.values();
+      return {
+        set: fake.set('stems').spec.id,
+        id: stem.id,
+        meta: stem.meta,
+        surface: false,
+      };
+    });
+    const input = fakeInput(viewer);
+    return { layer, viewer, fake, click: () => input.click({ x: 0, y: 0 }) };
   });
   t.after(() =>
     instances.forEach(({ layer, viewer }) => layer.destroy(viewer)),
@@ -184,10 +181,16 @@ test('two viewers use their supplied contexts and dispose independently', async 
   instances[0].click();
   assert.ok(hosts[0].selection());
   assert.equal(hosts[1].selection(), undefined);
+  assert.deepEqual(
+    instances[0].fake.flights.map(({ destination }) => destination.height),
+    [5000],
+    'the click flies to the feature',
+  );
   instances[0].layer.destroy(instances[0].viewer);
   assert.equal(hosts[0].records.size, 0);
   assert.equal(hosts[1].records.size, 1);
-  assert.equal(instances[1].viewer.dataSources.length, 1);
+  assert.equal(instances[0].fake.liveSets().length, 0);
+  assert.equal(instances[1].fake.liveSets().length, 6);
 });
 
 test('consumer build includes only infrastructure code and resolves assets under a non-root base', async () => {
@@ -212,24 +215,20 @@ test('consumer build includes only infrastructure code and resolves assets under
   const output = result.output;
   const entry = output.find((item) => item.type === 'chunk' && item.isEntry);
   const sources = Object.keys(entry.modules).filter((id) => id.endsWith('.js'));
-  // Assert the property the test is named after — that no module outside the
-  // infrastructure layer is pulled in — rather than the exact chunk
-  // composition, which belongs to the bundler. Vite 8 (Rolldown) hoists
-  // src/data/inputOwnership.js into a module of its own; Vite 6's Rollup folded
-  // it into a neighbour, so an exact list breaks on every chunking change.
-  // The ids are Bazel paths (bazel-out/... under test), so match the layer by
-  // suffix, and keep node_modules out explicitly: the build resolves the
-  // package's own sources, never a dependency's.
+  // It draws and takes clicks through the renderer's ports: a viewer with no
+  // renderer bound draws once the caller has loaded
+  // `./render/cesium/unbound`.
+  //
+  // Assert the property the test is named after rather than the exact chunk
+  // composition, which belongs to the bundler: Vite 8 (Rolldown) chunks the
+  // build differently from Vite 6's Rollup, so an exact list breaks on every
+  // chunking change. The ids are Bazel paths (bazel-out/... under test), and
+  // the build resolves the package's own sources, never a dependency's.
   for (const id of sources) {
     assert.doesNotMatch(
       id,
       /(^|\/)node_modules\//,
       `${id} comes from a dependency; the consumer build must need none`,
-    );
-    assert.match(
-      id,
-      /\/src\/(data|sources)\//,
-      `${id} is not infrastructure code; the consumer build pulled it in`,
     );
   }
   const names = sources.map((id) => id.split('/').at(-1));
@@ -237,14 +236,11 @@ test('consumer build includes only infrastructure code and resolves assets under
     'infrastructure.js',
     'localGeojsonCore.js',
     'localGeojsonLod.js',
+    'rendererOf.js',
   ]) {
     assert.ok(names.includes(name), `${name} must stay in the consumer build`);
   }
-  assert.deepEqual(
-    entry.imports,
-    ['cesium'],
-    'the viewer supplies the same Cesium dependency',
-  );
+  assert.deepEqual(entry.imports, [], 'it reaches no Cesium of its own');
   for (const name of ['datacenters', 'dams']) {
     const asset = output.find(
       (item) => item.type === 'asset' && item.fileName.includes(name),

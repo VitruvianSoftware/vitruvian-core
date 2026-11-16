@@ -46,7 +46,6 @@ export {
   createCableOverlayEntry,
   cableClassificationTypeForStack,
   cableClassificationTypeForScene,
-  applyTranslucentMarkerBlend,
   createCableReferenceSweepGate,
   updateCableReferenceStem,
 } from '../layers/submarineCables/index.js';

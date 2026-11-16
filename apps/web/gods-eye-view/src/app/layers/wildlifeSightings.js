@@ -20,7 +20,6 @@
  * SOFTWARE.
  */
 
-import * as Cesium from 'cesium';
 import { createWildlifeSightingsLayer } from '../../layers/wildlifeSightings/index.js';
 import * as picking from '../../data/pickRegistry.js';
 import * as overlays from '../../overlays/worldOverlay.js';
@@ -39,8 +38,6 @@ export function createApplicationWildlifeSightings(options) {
       clearSource: overlays.clearOverlaySource,
       hitTest: overlays.hitTestWorldOverlay,
     },
-    screenSpaceEventHandlerFactory: (viewer) =>
-      new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas),
     picking,
     pointer: { isPointerFree },
     sprites,

@@ -26,6 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
+import { stubPlanespotters } from './qa-photo-stub.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const shotsDir = path.join(repoRoot, 'qa-shots', 'cockpit-utility');
@@ -51,6 +52,7 @@ const browser = await puppeteer.launch({
   ],
 });
 const page = await browser.newPage();
+await stubPlanespotters(page);
 const failures = [];
 const consoleErrors = [];
 const localHttpErrors = [];
@@ -785,7 +787,7 @@ try {
         } : null,
         navigation: snapshot?.navigation || null,
         afterId: trackedInfo?.icao24 || null,
-        viewerTrackedId: viewer.trackedEntity?.gevTrackedId || null,
+        viewerTrackedId: window.__godsEyeView.entityRecords.read(viewer.trackedEntity)?.trackedId || null,
         contextVisible: !document.getElementById('military-awareness-panel')?.hidden,
         entryAvailableAfterSettlement: Boolean(entry && !entry.hidden),
         blockerStillRegistered: dataManager.layers.has(blockerId),
@@ -847,6 +849,7 @@ try {
   // a legitimate retained snapshot cannot satisfy or invalidate a FIRST-fetch
   // assertion when camera motion supersedes the manager's initial update.
   const readinessPage = await browser.newPage();
+  await stubPlanespotters(readinessPage);
   let deferredInstallationReadiness;
   try {
     await readinessPage.setViewport({ width: 1440, height: 900 });
@@ -1384,7 +1387,7 @@ try {
         contextMode: styleManager._contextControls._contextMode,
         contextChanging: styleManager._contextControls._contextModeChanging,
         subject: context?.subject ? `${context.subject.layerId}:${context.subject.id}` : null,
-        tracked: tracker?.gevTrackedId || null,
+        tracked: window.__godsEyeView.entityRecords.read(tracker)?.trackedId || null,
         density: styleManager.getDetectionState().densityPct,
         detectionMode: styleManager.getDetectionState().detectionMode,
         installations: dataManager.getLayerLifecycleState('military-installations'),

@@ -20,7 +20,8 @@
  * SOFTWARE.
  */
 
-import * as Cesium from 'cesium';
+import { toDegrees, toRadians } from './geo/index.js';
+import { findCamera } from './render/rendererOf.js';
 import { BLOOM_INTENSITY_DEFAULT, BLOOM_SCALE_VERSION } from './bloom.js';
 import {
   migrateDetectionState,
@@ -39,6 +40,7 @@ import {
   SHARE_VIEW_STYLE_PARAMS,
   decodeShareView,
   encodeShareView,
+  normalizeLibraryTokens,
 } from './share/viewCodec.js';
 import {
   fromLegacyShareState,
@@ -91,10 +93,13 @@ export class ShareLinkManager {
       isNavigationCurrent,
       cancelOwnedNavigation,
       initialShareCode = null,
+      camera = findCamera(viewer),
       worldClock = pageWorldClock,
     } = {},
   ) {
+    if (!camera) throw new Error('ShareLinkManager needs a camera port');
     this.viewer = viewer;
+    this._camera = camera;
     this._worldClock = worldClock;
     // A host may hand over the share code to open instead of the address.
     this._initialShareCode =
@@ -125,11 +130,19 @@ export class ShareLinkManager {
     this._celestialRingEnabled = false;
     this._scopeEnabled = true;
     this._scopeFeatherPct = 100;
+    // How strongly the scope mask shows, 0..100; 100 (the full mask) is the
+    // default and leaves `sco` out of the link.
+    this._scopeOpacityPct = 100;
     // null = the altitude-adaptive terminus (the default). A number pins the
     // outside-fill opacity as a percent, 94..100. (`sce`, 2026-08-17)
     this._scopeTerminusPct = null;
     this._mapStack = 'photoreal';
     this._layerStateProvider = null;
+    this._libraryParamsEncoder = null;
+    this._libraryShareListener = null;
+    // The opening share's Data Library tokens: null when the page opened
+    // without a share, [] for a share that switches no library entry on.
+    this._initialLibraryTokens = null;
     this._panelStateProvider = null;
     this._styleParamStateProvider = null;
     this._initialRestorePending = false;
@@ -157,12 +170,13 @@ export class ShareLinkManager {
         ? cancelOwnedNavigation
         : null;
 
-    // Listen for camera changes
-    this._removeCameraChanged = this.viewer.camera.changed.addEventListener(
-      () => {
-        this._scheduleUpdate();
-      },
-    );
+    // The hash follows the camera as it moves, and catches up with where
+    // it comes to rest.
+    const schedule = () => this._scheduleUpdate();
+    this._cameraOffs = [
+      camera.on('changed', schedule),
+      camera.on('moveEnd', schedule),
+    ];
   }
 
   /**
@@ -182,8 +196,30 @@ export class ShareLinkManager {
     const state =
       code === null ? this._parseShareHash(hash) : this._parseShareCode(code);
     if (!state) return null;
+    // A share decides which library entries are on, as it does for core
+    // layers: one without `lib` switches none on.
+    this._initialLibraryTokens = state.library ?? [];
     this._beginIncomingRestore(state);
     return state;
+  }
+
+  /**
+   * The Data Library tokens of the share this page opened with, or null when
+   * it opened without one. Read by the library once it knows its entries.
+   * @returns {string[]|null}
+   */
+  get initialLibraryTokens() {
+    return this._initialLibraryTokens ? [...this._initialLibraryTokens] : null;
+  }
+
+  /**
+   * Install the Data Library's listener for shares opened in this tab after
+   * start-up. It receives the share's tokens ([] when it switches none on).
+   * @param {((tokens: string[]) => void) | null} listener
+   */
+  setLibraryShareListener(listener) {
+    this._libraryShareListener =
+      typeof listener === 'function' ? listener : null;
   }
 
   /**
@@ -280,6 +316,10 @@ export class ShareLinkManager {
       // mirrors live state for the link this session generates, so it must match
       // the mask, not the archive.)
       scopeFeatherPct: clampScopeFeatherPct(parseOr(params.get('scf'), 35)),
+      scopeOpacityPct: Math.max(
+        0,
+        Math.min(100, Math.round(parseOr(params.get('sco'), 100))),
+      ),
       // Absent (or non-numeric) `sce` = adaptive (null), the default behavior;
       // a value pins the terminus opacity percent, clamped into the SUPPORTED
       // 94..100 band. `sce=0` used to survive as a sub-94 terminus — a hole in
@@ -294,6 +334,7 @@ export class ShareLinkManager {
         params.has('l') &&
         decodedLayerState === null,
       panelState: decodePanelStateParams(params),
+      library: normalizeLibraryTokens(params.get('lib')),
       sharedAtMs: decodeShareCreatedAtMs(params),
     };
     return state;
@@ -345,6 +386,11 @@ export class ShareLinkManager {
     if (!state) return;
     this._beginIncomingRestore(state);
     onNavigate(state);
+    try {
+      this._libraryShareListener?.(state.library ?? []);
+    } catch (error) {
+      console.warn('[ShareLink] library restore failed:', error);
+    }
   }
 
   /**
@@ -354,15 +400,11 @@ export class ShareLinkManager {
     if (this._destroyed || !state)
       return { succeeded: false, reason: 'unavailable' };
     const view = {
-      destination: Cesium.Cartesian3.fromDegrees(
-        state.lon,
-        state.lat,
-        state.alt,
-      ),
+      destination: { lon: state.lon, lat: state.lat, height: state.alt },
       orientation: {
-        heading: Cesium.Math.toRadians(state.heading),
-        pitch: Cesium.Math.toRadians(state.pitch),
-        roll: Cesium.Math.toRadians(state.roll),
+        heading: toRadians(state.heading),
+        pitch: toRadians(state.pitch),
+        roll: toRadians(state.roll),
       },
     };
     let cameraPromise = Promise.resolve({
@@ -387,11 +429,11 @@ export class ShareLinkManager {
       };
       // Re-apply the final pose only while this share restoration still owns
       // navigation. A later user or voice command wins over delayed restore.
-      this.viewer.camera.flyTo({
-        ...view,
-        duration: 3.0,
-        easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT,
-        complete: () => {
+      this._camera.flyTo(view.destination, {
+        orientation: view.orientation,
+        durationS: 3.0,
+        easing: 'cubicInOut',
+        onComplete: () => {
           if (
             this._destroyed ||
             restoreGeneration !== this._restoreGeneration ||
@@ -400,11 +442,10 @@ export class ShareLinkManager {
             releaseOwnedFlight('superseded');
             return;
           }
-          this.viewer.camera.setView(view);
-          this.viewer.scene?.requestRender?.();
+          this._camera.setView(view);
           releaseOwnedFlight('applied');
         },
-        cancel: () => releaseOwnedFlight('cancelled'),
+        onCancel: () => releaseOwnedFlight('cancelled'),
       });
     }
 
@@ -447,6 +488,7 @@ export class ShareLinkManager {
         celestialRing: visualCurrent ? state.celestialRing : undefined,
         scopeEnabled: visualCurrent ? state.scopeEnabled : undefined,
         scopeFeatherPct: visualCurrent ? state.scopeFeatherPct : undefined,
+        scopeOpacityPct: visualCurrent ? state.scopeOpacityPct : undefined,
         scopeTerminusPct: visualCurrent ? state.scopeTerminusPct : undefined,
         mapStack: mapCurrent ? state.mapStack : undefined,
         panelState,
@@ -495,6 +537,20 @@ export class ShareLinkManager {
   /** Install the finalized durable layer-state source used by URL generation. */
   setLayerStateProvider(provider) {
     this._layerStateProvider = typeof provider === 'function' ? provider : null;
+  }
+
+  /**
+   * Install the Data Library's `lib=` writer. Library selections travel in
+   * their own field and never touch the core layer-token ledger.
+   * @param {((params: URLSearchParams) => void) | null} encoder
+   */
+  setLibraryParamsEncoder(encoder) {
+    this._libraryParamsEncoder = typeof encoder === 'function' ? encoder : null;
+  }
+
+  /** Called when the Data Library selection changes. */
+  onLibraryStateChange() {
+    this._scheduleUpdate();
   }
 
   /**
@@ -599,6 +655,12 @@ export class ShareLinkManager {
     if (typeof extras.scopeFeatherPct === 'number') {
       this._scopeFeatherPct = clampScopeFeatherPct(extras.scopeFeatherPct);
     }
+    if (typeof extras.scopeOpacityPct === 'number') {
+      this._scopeOpacityPct = Math.max(
+        0,
+        Math.min(100, Math.round(extras.scopeOpacityPct)),
+      );
+    }
     if (extras.scopeTerminusPct === null) this._scopeTerminusPct = null;
     else if (typeof extras.scopeTerminusPct === 'number') {
       this._scopeTerminusPct = clampScopeTerminusPct(extras.scopeTerminusPct);
@@ -677,27 +739,17 @@ export class ShareLinkManager {
   /** Build a deterministic snapshot without mutating history. */
   _buildHashParams() {
     if (this._destroyed) return null;
-    const camera = this.viewer.camera;
-    const carto = camera.positionCartographic;
-    if (!carto) return null;
+    const pose = this._camera.pose();
+    if (!Number.isFinite(pose.lat) || !Number.isFinite(pose.lon)) return null;
 
     const params = new URLSearchParams();
     params.set('v', '2');
-    params.set('lat', Cesium.Math.toDegrees(carto.latitude).toFixed(4));
-    params.set('lon', Cesium.Math.toDegrees(carto.longitude).toFixed(4));
-    params.set('alt', Math.round(carto.height).toString());
-    params.set(
-      'heading',
-      Math.round(Cesium.Math.toDegrees(camera.heading)).toString(),
-    );
-    params.set(
-      'pitch',
-      Math.round(Cesium.Math.toDegrees(camera.pitch)).toString(),
-    );
-    params.set(
-      'roll',
-      Math.round(Cesium.Math.toDegrees(camera.roll)).toString(),
-    );
+    params.set('lat', pose.lat.toFixed(4));
+    params.set('lon', pose.lon.toFixed(4));
+    params.set('alt', Math.round(pose.height).toString());
+    params.set('heading', Math.round(toDegrees(pose.heading)).toString());
+    params.set('pitch', Math.round(toDegrees(pose.pitch)).toString());
+    params.set('roll', Math.round(toDegrees(pose.roll)).toString());
     params.set('style', STYLE_TO_URL[this._currentStyle] || 'normal');
     params.set('bloom', this._bloomEnabled ? '1' : '0');
     params.set('sharpen', this._sharpenEnabled ? '1' : '0');
@@ -714,6 +766,8 @@ export class ShareLinkManager {
     params.set('cr', this._celestialRingEnabled ? '1' : '0');
     params.set('sc', this._scopeEnabled ? '1' : '0');
     params.set('scf', Math.round(this._scopeFeatherPct).toString());
+    if (this._scopeOpacityPct !== 100)
+      params.set('sco', String(this._scopeOpacityPct));
     // Only written when pinned — an absent `sce` IS the adaptive default, so a
     // shared link never freezes the ramp for the recipient by accident. The
     // same 94..100 clamp applies on the way OUT, so a link can never carry an
@@ -723,6 +777,7 @@ export class ShareLinkManager {
     params.set('map', this._mapStack);
     const layerState = this._layerStateProvider?.();
     if (layerState) encodeLayerStateParams(params, layerState);
+    this._libraryParamsEncoder?.(params);
     this._encodePanelStateParam(params, this._panelStateProvider?.());
     encodeStyleParamState(
       params,
@@ -752,10 +807,11 @@ export class ShareLinkManager {
     this._destroyed = true;
     clearTimeout(this._debounceTimer);
     this._debounceTimer = null;
-    this._removeCameraChanged?.();
-    this._removeCameraChanged = null;
+    for (const off of this._cameraOffs.splice(0)) off();
     this._unwatchNavigation?.();
     this._layerStateProvider = null;
+    this._libraryParamsEncoder = null;
+    this._libraryShareListener = null;
     this._panelStateProvider = null;
     this._styleParamStateProvider = null;
     this._followSubjectProvider = null;

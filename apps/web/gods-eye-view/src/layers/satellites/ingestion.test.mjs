@@ -45,14 +45,15 @@ function tleSet(name, field) {
   ].join('\n');
 }
 
+// Orbit tracks hand their path to the renderer; positions pass through here.
+const orbitParts = {
+  rendering: { _rendererPositions: (positions) => positions },
+};
+
 function ingestionFor(catalogText, { source: sourceExtras = {} } = {}) {
   const state = {
     _trackingRefreshEpoch: 0,
     _activeUpdateControllers: new Set(),
-    _pointCollection: {
-      removeAll() {},
-      add: (point) => point,
-    },
     _points: new Map(),
     _orbitPaths: new Map(),
     _catalog: new Map(),
@@ -82,7 +83,20 @@ function ingestionFor(catalogText, { source: sourceExtras = {} } = {}) {
         state.rowNotified = (state.rowNotified || 0) + 1;
       },
     },
-    rendering: { _showOrbitPath() {} },
+    rendering: {
+      _clearPoints() {
+        state._points.clear();
+      },
+      _clearOrbitPaths() {
+        state._orbitPaths.clear();
+      },
+      _addPoint(noradId, position, style, show = true) {
+        state._points.set(noradId, { position, show });
+      },
+      _setPointStyle() {},
+      _showOrbitPath() {},
+      _setOrbitPathShown() {},
+    },
     tracking: {
       async _reconcileTrackedSubjectContext() {},
       _applyPendingTrackingRestore() {},
@@ -98,7 +112,7 @@ function ingestionFor(catalogText, { source: sourceExtras = {} } = {}) {
     ...sourceExtras,
   };
   const { methods } = createIngestion({ state, services: {}, parts, source });
-  return { state, update: () => methods.update({ scene: {} }) };
+  return { state, update: () => methods.update({}) };
 }
 
 test('every Alpha-5 satellite keeps its own catalog entry through dedupe', async (t) => {
@@ -136,7 +150,7 @@ test('a mission payload does not match a loaded satellite from another launch ye
     ].join('\n'),
   );
   await update();
-  const { getSatelliteOrbitTrack } = createOrbits({ state });
+  const { getSatelliteOrbitTrack } = createOrbits({ state, parts: orbitParts });
   const track = (launchTime) =>
     getSatelliteOrbitTrack('Sirius SXM-11', { launchTime });
   assert.equal(track('2026-06-29T02:25:00Z')?.noradId, 69728);
@@ -154,7 +168,7 @@ test('a satellite with a blank designator keeps matching by name', async (t) => 
     ].join('\n'),
   );
   await update();
-  const { getSatelliteOrbitTrack } = createOrbits({ state });
+  const { getSatelliteOrbitTrack } = createOrbits({ state, parts: orbitParts });
   assert.equal(tleLineLaunchYear('1 69728U          26208.65166678'), null);
   assert.equal(
     getSatelliteOrbitTrack('Sirius SXM-11', {

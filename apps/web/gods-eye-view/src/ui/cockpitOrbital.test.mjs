@@ -67,7 +67,7 @@ function fixture(t) {
 test('the orbital HUD is hidden until a satellite view is published', async (t) => {
   const f = fixture(t);
   assert.equal(f.section().hidden, true);
-  assert.equal(f.section().querySelector('#cockpit-orbital-zoom-in'), null);
+  assert.equal(f.section().querySelector('#cockpit-orbital-zoom-in') === null, true);
 });
 
 test('a published orbital view renders its readouts and zoom controls', async (t) => {
@@ -119,7 +119,7 @@ test('an unknown velocity leaves its row out', async (t) => {
   const f = fixture(t);
   f.store.publishOrbital({ ...VIEW, velocityMps: null });
   await nextTick();
-  assert.equal(f.section().querySelector('.cockpit-orbital-velocity'), null);
+  assert.equal(f.section().querySelector('.cockpit-orbital-velocity') === null, true);
   assert.equal(f.text('.cockpit-orbital-altitude'), '418 KM');
 });
 
@@ -167,7 +167,7 @@ test('publishing null hides the orbital HUD again', async (t) => {
   f.store.publishOrbital(null);
   await nextTick();
   assert.equal(f.section().hidden, true);
-  assert.equal(f.section().querySelector('.cockpit-orbital-name'), null);
+  assert.equal(f.section().querySelector('.cockpit-orbital-name') === null, true);
 });
 
 const ISS_TLE = Object.freeze({
@@ -182,7 +182,7 @@ test('the place below shows at the top once known', async (t) => {
   const f = fixture(t);
   f.store.publishOrbital({ ...VIEW, place: undefined });
   await nextTick();
-  assert.equal(f.section().querySelector('#cockpit-orbital-over'), null);
+  assert.equal(f.section().querySelector('#cockpit-orbital-over') === null, true);
   const over = () =>
     f.section().querySelector('#cockpit-orbital-over strong')?.textContent;
   f.store.publishOrbital({
@@ -217,7 +217,7 @@ test('the place below shows at the top once known', async (t) => {
   // says nothing rather than call land open ocean.
   f.store.publishOrbital({ ...VIEW, place: null });
   await nextTick();
-  assert.equal(document.querySelector('#cockpit-orbital-over'), null);
+  assert.equal(document.querySelector('#cockpit-orbital-over') === null, true);
 });
 
 test('an owner country shows its flag from the sheet, or its code if the sheet will not load', async (t) => {
@@ -238,7 +238,7 @@ test('an owner country shows its flag from the sheet, or its code if the sheet w
     owner: { countryCode: 'US', label: 'USA' },
   });
   await nextTick();
-  assert.equal(f.section().querySelector('.cockpit-orbital-flag'), null);
+  assert.equal(f.section().querySelector('.cockpit-orbital-flag') === null, true);
   assert.equal(images.length, 1, 'the sheet is asked for');
   images[0].onerror();
   await settle();
@@ -266,7 +266,7 @@ test('an owner country shows its flag from the sheet, or its code if the sheet w
     flag.style.backgroundPosition,
     ownerFlagStyle('FR').backgroundPosition,
   );
-  assert.equal(f.section().querySelector('.cockpit-orbital-owner-badge'), null);
+  assert.equal(f.section().querySelector('.cockpit-orbital-owner-badge') === null, true);
 });
 
 test('the readout names the owner, operator and element set', async (t) => {
@@ -349,7 +349,7 @@ test('unknown identity fields leave their rows out', async (t) => {
     '.cockpit-orbital-ident',
     '#cockpit-orbital-tle',
   ])
-    assert.equal(f.section().querySelector(selector), null, selector);
+    assert.equal(f.section().querySelector(selector) === null, true, selector);
   // An element set with no NORAD id still dates itself.
   f.store.publishOrbital({ ...VIEW, tle: ISS_TLE });
   await nextTick();

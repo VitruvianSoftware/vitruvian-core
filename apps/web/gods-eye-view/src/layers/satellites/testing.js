@@ -20,8 +20,25 @@
  * SOFTWARE.
  */
 
-import * as Cesium from 'cesium';
+import { rendererOf } from '../../render/rendererOf.js';
 import { ISS_NORAD, ISS_OVERLAY_SOURCE_ID } from './policy.js';
+
+/** A draw port that draws nothing, for seams that need sets but no renderer. */
+const NO_DRAW = (() => {
+  const set = (spec) => ({
+    id: spec.id,
+    show: spec.show !== false,
+    set() {},
+    upsert() {},
+    remove() {},
+    clear() {},
+    setOptions() {},
+    size: () => 0,
+    on: () => () => {},
+    dispose() {},
+  });
+  return { points: set, lines: set, icons: set, shapes: set };
+})();
 
 export function createTesting({ state: layerState, services, parts, source }) {
   /**
@@ -31,8 +48,8 @@ export function createTesting({ state: layerState, services, parts, source }) {
    * @param {number} state.noradId
    * @param {string} state.name
    * @param {object} state.satrec
-   * @param {object} state.entity
-   * @param {object} state.point
+   * @param {object} state.entity The tracked carrier.
+   * @param {object} state.point The satellite's point item (`pos` ECEF).
    * @param {object} state.viewer
    * @param {() => (number|Date)} state.now
    */
@@ -109,7 +126,7 @@ export function createTesting({ state: layerState, services, parts, source }) {
     return layerState._trackedFrameCartesian;
   }
 
-  /** Invoke the same callback registered on `scene.preRender` in production. */
+  /** Invoke the same per-frame tick the frame port runs in production. */
 
   function _runSatellitePreRenderForTest() {
     parts.rendering._preRenderTick();
@@ -126,9 +143,7 @@ export function createTesting({ state: layerState, services, parts, source }) {
     catalog = 'core',
     showPoints = true,
   } = {}) {
-    layerState._viewer = {
-      scene: { primitives: { add: (p) => p, remove() {} } },
-    };
+    layerState._viewer = {};
     // Neutralize the shared world-overlay host: these tests exercise catalog and
     // row-control logic, not the ISS callout.
     layerState._overlayHost = {
@@ -136,12 +151,7 @@ export function createTesting({ state: layerState, services, parts, source }) {
       setVisible() {},
       clearSource() {},
     };
-    layerState._pointCollection = {
-      show: true,
-      add: (opts) => ({ ...opts }),
-      remove() {},
-      removeAll() {},
-    };
+    parts.rendering._attachTo(NO_DRAW);
     layerState._catalog = new Map();
     layerState._points = new Map();
     layerState._detectionObjects = new Map();
@@ -165,7 +175,7 @@ export function createTesting({ state: layerState, services, parts, source }) {
     layerState._overlayHost = layerState.DEFAULT_OVERLAY_HOST;
     layerState._orbitPaths = new Map();
     layerState._viewer = null;
-    layerState._pointCollection = null;
+    parts.rendering._detach();
     layerState._catalog = new Map();
     layerState._points = new Map();
     layerState._denseIds = [];
@@ -205,13 +215,23 @@ export function createTesting({ state: layerState, services, parts, source }) {
       [
         ISS_NORAD,
         {
-          primitive: { show: true, modelMatrix: new Cesium.Matrix4() },
+          // A stand-in ring: shown, baked with no points.
+          base: [],
           gmstAtBake: 0,
+          item: {
+            id: String(ISS_NORAD),
+            positions: new Float64Array(0),
+            show: true,
+          },
         },
       ],
     ]);
     layerState._trackedNorad = null;
     layerState._trackedEntity = null;
+    // Drawn through the viewer's renderer when it has one bound.
+    parts.rendering._detach();
+    const draw = rendererOf(viewer)?.draw;
+    if (draw) parts.rendering._attachTo(draw);
     if (!preservePending) parts.tracking._cancelPendingTrackingRestore();
     layerState._trackedFrameNumber = -1;
     layerState._trackedFrameGeo = null;
@@ -256,6 +276,7 @@ export function createTesting({ state: layerState, services, parts, source }) {
 
   function _clearSatelliteLabelLifecycleForTest() {
     parts.tracking._clearTracking();
+    parts.rendering._detach();
     layerState._enabled = false;
     layerState._overlayHost.clearSource(ISS_OVERLAY_SOURCE_ID);
     layerState._overlayHost.setVisible(ISS_OVERLAY_SOURCE_ID, false);

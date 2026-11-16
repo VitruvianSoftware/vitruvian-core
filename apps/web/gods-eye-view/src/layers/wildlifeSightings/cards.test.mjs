@@ -22,6 +22,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { bindWildlifeViewer } from '../../testSupport/wildlifeViewer.mjs';
 import {
   ambientScore,
   selectWildlifeAmbientRows,
@@ -478,6 +479,7 @@ function ambientFixture(rows, screens) {
       camera: { positionCartographic: { height: 30_000 } },
     },
   };
+  bindWildlifeViewer(state.viewer);
   const photos = [];
   const painted = [];
   const entries = new Map();

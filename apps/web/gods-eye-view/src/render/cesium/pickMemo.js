@@ -1,0 +1,71 @@
+/**
+ * Copyright (c) 2026 VitruvianSoftware
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+/**
+ * @module render/cesium/pickMemo
+ * @description Each scene's `pick` passes made in the task running now, as
+ * Cesium gave them, so a click's own Cesium picks (`nativeClick.js`) reuse
+ * the query port's pick of the same pixel and window rather than draw the
+ * pick buffer again. Nothing draws between them: they are forgotten once
+ * the task that made them ends. No imports.
+ */
+
+/**
+ * Each scene's passes in this task, by pixel and window.
+ * @type {WeakMap<object, Map<string, unknown>>}
+ */
+let taskPicks = new WeakMap();
+let clearing = false;
+
+const keyOf = (x, y, width, height) => `${x},${y},${width},${height}`;
+
+/**
+ * Note a `pick` pass `scene.pick` just made, for `recentPick`.
+ * @param {object} scene
+ */
+export function rememberPick(scene, x, y, width, height, picked) {
+  let picks = taskPicks.get(scene);
+  if (!picks) {
+    picks = new Map();
+    taskPicks.set(scene, picks);
+  }
+  picks.set(keyOf(x, y, width, height), picked);
+  if (!clearing) {
+    clearing = true;
+    queueMicrotask(() => {
+      clearing = false;
+      taskPicks = new WeakMap();
+    });
+  }
+}
+
+/**
+ * What the query port's `pick` on `scene` found at exactly this pixel and
+ * window in the task running now; undefined when it made none there.
+ * @param {object} scene
+ * @returns {{picked: unknown} | undefined}
+ */
+export function recentPick(scene, x, y, width = 3, height = 3) {
+  const picks = taskPicks.get(scene);
+  const key = keyOf(x, y, width, height);
+  return picks?.has(key) ? { picked: picks.get(key) } : undefined;
+}

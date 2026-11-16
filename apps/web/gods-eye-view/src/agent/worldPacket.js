@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-import * as Cesium from 'cesium';
+import { findCamera } from '../render/rendererOf.js';
 import {
   feedProvenanceEnvelope,
   layerSnapshot,
@@ -126,14 +126,12 @@ export function getWorldPacket(options = {}) {
   // A default parameter only covers undefined; null or NaN would age every
   // feed against the epoch and report stale data as "just now".
   const now = Number.isFinite(requestedNow) ? requestedNow : Date.now();
-  if (!viewer?.camera?.positionWC)
-    throw new TypeError('World Packet requires a viewer camera');
+  const pose = findCamera(viewer)?.pose();
+  if (!pose) throw new TypeError('World Packet requires a viewer camera');
   if (!dataManager || typeof dataManager.getAll !== 'function')
     throw new TypeError('World Packet requires a data manager');
 
-  const cartographic = Cesium.Cartographic.fromCartesian(
-    viewer.camera.positionWC,
-  );
+  const eye = { lon: pose.lon, lat: pose.lat, height: pose.height };
   // Read the roster once. Voice must not rewalk disabled layers: preserving the
   // current enabled-only view keeps the model's context budget bounded.
   const rows = dataManager.getAll();
@@ -148,9 +146,9 @@ export function getWorldPacket(options = {}) {
     ok: true,
     action: 'get_current_view_state',
     camera: {
-      latitude: Cesium.Math.toDegrees(cartographic.latitude),
-      longitude: Cesium.Math.toDegrees(cartographic.longitude),
-      heightM: cartographic.height,
+      latitude: eye.lat,
+      longitude: eye.lon,
+      heightM: eye.height,
     },
     style: styleManager?.activeStyle || 'normal',
     context: contextState
