@@ -240,3 +240,22 @@ fn a_silent_device_gets_an_actionable_error() {
     let err = FrameReader::new(s).read_frame(KEY).unwrap_err();
     assert!(err.to_string().contains("Olight app"), "{err}");
 }
+
+#[test]
+fn sentry_fail_open_unreachable_port() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
+    let port = listener.local_addr().expect("local addr").port();
+    drop(listener);
+
+    let dsn = format!("http://abc@127.0.0.1:{port}/1");
+    let start = std::time::Instant::now();
+    let guard = crate::init_sentry(&dsn);
+    sentry::capture_message("ostation fail-open test", sentry::Level::Info);
+    drop(guard);
+
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(2),
+        "sentry shutdown stalled: {:?}",
+        start.elapsed()
+    );
+}

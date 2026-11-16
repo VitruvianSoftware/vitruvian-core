@@ -16,6 +16,11 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 # the boundary at the app root for consistency and future root-package targets.
 package(default_visibility = ["//apps/cli/vitruvian-homelab:__subpackages__"])
 
+exports_files([
+    "rs/Cargo.lock",
+    "rs/Cargo.toml",
+])
+
 # Developer-environment check: `bazel run //apps/cli/vitruvian-homelab:doctor` (CLI `run` ignores
 # visibility, so the package default is wide enough).
 doctor(
@@ -59,6 +64,7 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/cli/vitruvian-homelab:__subpackages__"],
+    deps = ["@vitruvian_homelab_crates//:sentry"],
 )
 
 rust_binary(
@@ -67,7 +73,10 @@ rust_binary(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/cli/vitruvian-homelab:__subpackages__"],
-    deps = [":homelab_lib"],
+    deps = [
+        ":homelab_lib",
+        "@vitruvian_homelab_crates//:sentry",
+    ],
 )
 
 rust_test(

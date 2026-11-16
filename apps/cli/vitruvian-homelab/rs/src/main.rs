@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use std::process;
+use std::process::ExitCode;
 
 use homelab_rs::cmd::RootCmd;
 
@@ -26,10 +26,13 @@ const VERSION: &str = "dev";
 const COMMIT: &str = "none";
 const DATE: &str = "unknown";
 
-fn main() {
+fn main() -> ExitCode {
+    let _sentry_guard = homelab_rs::init_sentry(&homelab_rs::resolve_sentry_dsn());
+
     let root = RootCmd::new(VERSION, COMMIT, DATE);
     if let Err(err) = root.execute() {
         eprintln!("{}", err);
-        process::exit(1);
+        return ExitCode::FAILURE;
     }
+    ExitCode::SUCCESS
 }
