@@ -18,9 +18,16 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-load("//tools/pulumi:defs.bzl", "pulumi_project")
+load("//tools/pulumi:defs.bzl", "pulumi_go_test", "pulumi_project")
 
 pulumi_project(
     name = "sentry",
     dir = "infrastructure/pulumi/platform/sentry",
+)
+
+# Checks the organization privacy settings (IP scrubbing) and their command
+# resource under Pulumi mocks.
+pulumi_go_test(
+    # Cold `go test` compilation of the Pulumi SDKs can exceed the 300 s default.
+    timeout = "long",
 )
