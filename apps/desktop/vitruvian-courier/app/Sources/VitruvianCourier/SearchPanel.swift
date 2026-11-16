@@ -102,6 +102,8 @@ struct SearchPanel: View {
         .contentShape(RoundedRectangle(cornerRadius: 12))
         // Esc while a filter's menu or a button has the keyboard, as in the field.
         .onExitCommand { _ = search.escape() }
+        // A chat renamed while the panel is open: its cached row gives way to the inbox's newer one.
+        .onChange(of: inbox.rows) { _, _ in search.refreshHitRows(from: inbox.row(of:)) }
         .onChange(of: search.text) { _, newValue in
             if newValue.hasPrefix(">") {
                 let forwarded = String(newValue.dropFirst()).trimmingCharacters(in: .whitespaces)

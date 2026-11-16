@@ -209,6 +209,9 @@ public final class SearchModel: ObservableObject {
     /// The chats whose rows are being read, so a second answer for the same chat doesn't ask again; the reads
     /// themselves; and which batch of reads is current (a cancelled read that still answers is dropped).
     private var rowReads = Set<String>()
+    /// Chats the engine answered a read for with no row (gone, or never a chat): not asked for again while the
+    /// panel is open.
+    private var rowMisses = Set<String>()
     private var rowReadTasks: [Task<Void, Never>] = []
     private var rowReadToken = 0
     private var searchingTimer: Task<Void, Never>?
@@ -313,6 +316,7 @@ public final class SearchModel: ObservableObject {
         engineRan = false
         complete = true
         hitRows = [:]
+        rowMisses = []
         cancelRowReads()
         firstPage = nil
         cursors = [:]
@@ -704,25 +708,40 @@ public final class SearchModel: ObservableObject {
         readRows(wanted, generation: generation)
     }
 
-    /// Reads the rows of `roomIDs` it has not read in this panel's session and is not already reading, one request
-    /// for all of them. A change of query cancels the reads under way (`cancelRowReads`), and what they were
-    /// reading is asked for again by the next answer that needs it.
+    /// Reads the rows of `roomIDs` it has not read in this panel's session (and was not told were missing) and is not
+    /// already reading, one request for all of them. A change of query cancels the reads under way
+    /// (`cancelRowReads`), and what they were reading is asked for again by the next answer that needs it.
     private func readRows(_ roomIDs: [String], generation: Int) {
         guard let client = appModel.client else { return }
         var seen = Set<String>()
-        let missing = roomIDs.filter { hitRows[$0] == nil && !rowReads.contains($0) && seen.insert($0).inserted }
+        let missing = roomIDs.filter { hitRows[$0] == nil && !rowMisses.contains($0) && !rowReads.contains($0) && seen.insert($0).inserted }
         guard !missing.isEmpty else { return }
         rowReads.formUnion(missing)
         let token = rowReadToken
         let task = Task { [weak self] in
             for ids in stride(from: 0, to: missing.count, by: 100).map({ Array(missing[$0 ..< min($0 + 100, missing.count)]) }) {
+                // Cancelled by a new query: the chunks not yet asked for are not.
+                guard !Task.isCancelled else { return }
                 let result: InboxResult? = try? await client.call("inbox.list", InboxListParams(roomIDs: ids))
-                guard let self, self.rowReadToken == token, !Task.isCancelled, self.phase != .closed else { return }
+                guard let self, self.phase != .closed else { return }
+                // An answer sent for an older query is dropped, whether or not the read was cancelled in time.
+                guard self.rowReadToken == token else { continue }
                 self.rowReads.subtract(ids)
-                if let result { for row in result.rooms { self.hitRows[row.roomID] = row } }
+                guard let result else { continue } // a failed read is not a miss: the next answer may try again
+                for row in result.rooms { self.hitRows[row.roomID] = row }
+                let found = Set(result.rooms.map(\.roomID))
+                self.rowMisses.formUnion(ids.filter { !found.contains($0) })
             }
         }
         rowReadTasks.append(task)
+    }
+
+    /// The inbox has newer rows: the ones the panel cached replace theirs, so a chat renamed while the panel is open
+    /// shows its new title. Chats the panel has not read are not added.
+    public func refreshHitRows(from newest: (String) -> InboxRow?) {
+        for (roomID, cached) in hitRows {
+            if let row = newest(roomID), row != cached { hitRows[roomID] = row }
+        }
     }
 
     /// A change of query, or closing: the reads under way are dropped, not waited for.
