@@ -15,6 +15,8 @@
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 
 //! Device records and where they are kept.
 //!
@@ -41,7 +43,7 @@ pub trait DeviceStore: Send + Sync {
 }
 
 /// On disk the key is hex, so the file is readable and diffable.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct StoredDevice {
     owner_sub: String,
     public_key_ed25519: String,
@@ -62,8 +64,9 @@ fn from_hex_32(s: &str) -> Option<[u8; 32]> {
     Some(out)
 }
 
-/// A JSON file, written to a temporary sibling and renamed into place so a
-/// crash never leaves half a file. The whole map is read at open and kept in
+/// A JSON file, written to a temporary sibling (mode 0600), synced, renamed
+/// into place, and the directory synced, so after a crash the file is either
+/// the old version or the new one, not a mix. The whole map is read at open and kept in
 /// memory; `put` writes through.
 pub struct FileDeviceStore {
     path: PathBuf,
@@ -75,16 +78,51 @@ impl FileDeviceStore {
     /// but cannot be parsed is an error (never silently start empty over it).
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
         let path = path.as_ref().to_path_buf();
-        let devices = match std::fs::read(&path) {
+        let devices: BTreeMap<String, StoredDevice> = match std::fs::read(&path) {
             Ok(bytes) => serde_json::from_slice(&bytes)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
             Err(e) if e.kind() == io::ErrorKind::NotFound => BTreeMap::new(),
             Err(e) => return Err(e),
         };
+        // A bad key would make `get` quietly report the device as unknown, so
+        // refuse to start instead, like a corrupt file.
+        for (id, d) in &devices {
+            if from_hex_32(&d.public_key_ed25519).is_none() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("device {id}: public key is not 64 hex characters"),
+                ));
+            }
+        }
         Ok(Self {
             path,
             devices: Mutex::new(devices),
         })
+    }
+}
+
+impl FileDeviceStore {
+    fn write_atomically(&self, tmp: &Path, json: &[u8]) -> io::Result<()> {
+        use std::io::Write;
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
+        let mut f = opts.open(tmp)?;
+        f.write_all(json)?;
+        f.sync_all()?;
+        drop(f);
+        std::fs::rename(tmp, &self.path)?;
+        // Make the rename itself durable.
+        if let Some(dir) = self.path.parent() {
+            let dir = if dir.as_os_str().is_empty() {
+                Path::new(".")
+            } else {
+                dir
+            };
+            std::fs::File::open(dir)?.sync_all()?;
+        }
+        Ok(())
     }
 }
 
@@ -101,16 +139,7 @@ impl DeviceStore for FileDeviceStore {
 
     fn put(&self, rec: DeviceRecord) -> io::Result<()> {
         let mut devices = self.devices.lock().unwrap();
-        let mut next = BTreeMap::new();
-        for (k, v) in devices.iter() {
-            next.insert(
-                k.clone(),
-                StoredDevice {
-                    owner_sub: v.owner_sub.clone(),
-                    public_key_ed25519: v.public_key_ed25519.clone(),
-                },
-            );
-        }
+        let mut next = devices.clone();
         next.insert(
             rec.device_id,
             StoredDevice {
@@ -123,8 +152,10 @@ impl DeviceStore for FileDeviceStore {
         let mut tmp = self.path.clone().into_os_string();
         tmp.push(".tmp");
         let tmp = PathBuf::from(tmp);
-        std::fs::write(&tmp, json)?;
-        std::fs::rename(&tmp, &self.path)?;
+        if let Err(e) = self.write_atomically(&tmp, &json) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
+        }
         *devices = next;
         Ok(())
     }
@@ -179,6 +210,45 @@ mod tests {
             Some(rec("d1", 8))
         );
         assert!(!path.with_file_name("devices.json.tmp").exists());
+    }
+
+    #[test]
+    fn invalid_key_in_the_file_refuses_to_load() {
+        for bad in ["zz", &"g".repeat(64), &"ab".repeat(31)] {
+            let path = temp_path("badkey");
+            std::fs::write(
+                &path,
+                format!(r#"{{"d1":{{"owner_sub":"s","public_key_ed25519":"{bad}"}}}}"#),
+            )
+            .unwrap();
+            assert!(FileDeviceStore::open(&path).is_err(), "{bad}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn store_file_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = temp_path("mode");
+        let store = FileDeviceStore::open(&path).unwrap();
+        store.put(rec("d1", 1)).unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+    }
+
+    #[test]
+    fn failed_write_leaves_no_temp_file_and_keeps_memory_unchanged() {
+        let path = temp_path("failed");
+        let store = FileDeviceStore::open(&path).unwrap();
+        store.put(rec("d1", 1)).unwrap();
+        // Make the rename fail: the target is now a non-empty directory.
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        std::fs::write(path.join("x"), "x").unwrap();
+        assert!(store.put(rec("d2", 2)).is_err());
+        assert!(!path.with_file_name("devices.json.tmp").exists());
+        assert_eq!(store.get("d2"), None);
+        assert_eq!(store.get("d1"), Some(rec("d1", 1)));
     }
 
     #[test]

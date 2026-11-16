@@ -51,6 +51,3 @@ ureq = { version = "2.12", default-features = false, features = ["tls"] }
 vitruvian-relay-protocol = { path = "../protocol" }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
-
-[dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt", "sync", "time", "test-util"] }
