@@ -220,4 +220,15 @@ final class ContactListOrderingTests: XCTestCase {
             XCTAssertFalse(ContactListOrdering.isNumberOrHandle(text), "\(text) is a name")
         }
     }
+
+    func testNumberWithAnExtensionIsStillANumber() {
+        let ext = candidate("+1 213 447 6502 x123")
+        let bea = candidate("Bea")
+        XCTExpectFailure(
+            "an x extension makes the entry a name, so it sorts above the named people; remove this wrapper when fixed"
+        ) {
+            XCTAssertEqual(ContactListOrdering.sections([ext, bea]).named.map(\.name), ["Bea"])
+            XCTAssertEqual(ContactListOrdering.sections([ext, bea]).other.map(\.name), ["+1 213 447 6502 x123"])
+        }
+    }
 }
