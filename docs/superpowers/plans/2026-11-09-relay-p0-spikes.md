@@ -11,11 +11,11 @@ Each spike ends in a written yes or no with evidence. This file is the record.
 | Spike | Question | Status |
 |---|---|---|
 | A | Can ChatGPT, Claude and Gemini add an OAuth-protected MCP on our domain, with Zitadel sign-in? | **Claude: yes, live** (2026-11-11, claude.ai). **Gemini: yes, live** (2026-11-15, gemini.google.com; needs a client secret). ChatGPT: yes on paper for one user, needs open registration for many; not tried live |
-| B | Does Zitadel's device flow work from a command-line app? | **Yes** (2026-11-11), with `relay-spike-client login` |
+| B | Does Zitadel's device flow work from a command-line app? | **Yes** (2026-11-11), with `vitruvian-relay-spike-client login` |
 | C | Does a WebSocket through the Cloudflare Tunnel stay up for 24 hours? | **No for one connection, yes for the service** (2026-11-12). 10 drops in 24 hours, connected 99.3% of the time; reconnecting is mandatory |
 | D | Can a connector drive unmodified `desktop-commander` over stdio? | **Yes** (2026-11-12), version 0.3.1 run through Bazel. The connector must kill the whole process group, turn telemetry off and redirect its feature-flag fetch |
 
-## Live results (2026-11-11)
+## Live results (2026-11-11 to 2026-11-15)
 
 ### A (Claude): yes
 
@@ -62,7 +62,8 @@ Each spike ends in a written yes or no with evidence. This file is the record.
 
 ### B: yes
 
-- `bazel run //apps/suites/relay/spike:relay-spike-client -- login` asked
+- `bazel run //apps/suites/vitruvian-relay/spike:vitruvian-relay-spike-client -- login`
+  (then `//apps/suites/relay/spike:relay-spike-client`, renamed in #4631) asked
   Zitadel for a device code with the relay project's audience scope, James
   approved it in the browser, and a token came back 97 seconds later, with a
   refresh token.
@@ -93,7 +94,7 @@ and reconnected with backoff.
 | Probe round trip | p50 62 ms, p95 152 ms, max 462 ms (2,814 probes) |
 | Longest gap | 352 s |
 
-The 10 drops had three causes:
+The 10 drops had two causes, and one refresh failed alongside a drop:
 
 - **8 resets from the network**, between 06:59 and 15:06, after 5 minutes to
   12.7 hours. They were TCP resets or closes without a WebSocket close frame.
@@ -115,7 +116,9 @@ What this means for the relay:
 - Calls in flight when a connection drops are lost, so the relay has to fail
   them cleanly and Claude has to be able to retry them.
 - **Production relay pods must not run on laptop nodes.** Pin them to always-on
-  nodes, and run more than one replica so a node going away isn't an outage.
+  nodes. This plan first suggested more than one replica too; the spec overrides
+  that (§8, §11 question 13), because a call must reach the copy holding the
+  device's connection.
 - The test client and the laptop node may be the same machine. Repeating the
   test from an always-on host would tell home-network resets apart from
   Cloudflare ones. That isn't needed for P0: the design has to reconnect either
@@ -246,8 +249,9 @@ made from a local branch. To repeat it:
 ### One correction to the spec, recorded there too
 
 The sibling `zitadel-apps-mcp-slack` stack found that in this Zitadel, a token's
-`aud` is caller-authored. The relay must authorise on client id (`azp`) and
-subject.
+`aud` is caller-authored. The relay must authorise on the client id and the
+subject. Zitadel puts the client id in `client_id`, not `azp` (spike B found `azp`
+absent), so the verifier pins `client_id`.
 
 ## Steps
 
@@ -259,7 +263,7 @@ subject.
       allowed 2026-11-09); CI reaches Zitadel over Headscale since #4857
 - [x] **B:** run the device flow from a terminal against `relay-connector`, James
       approves in the browser, and the access token decodes as a JWT with the
-      expected `azp` and `sub`
+      expected `client_id` and `sub` (`azp` turned out to be absent)
 - [x] Spike server on the homelab (one small service, chart, image build, GitOps
       app): `/mcp` behind OAuth with one echo tool, protected-resource metadata,
       and `/connect` as a WebSocket with ping/pong

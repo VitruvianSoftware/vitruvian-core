@@ -151,7 +151,7 @@ JSON frames over `wss://<relay>/connect`. Every frame has a `type`.
 | `hello` | connector → relay | Device id, connector version, protocol version, signed proof of the device key (§6), the allowed tool list |
 | `welcome` / `reject` | relay → connector | Accepted, or refused with a reason the connector can show |
 | `call` | relay → connector | Call id, tool name, arguments, deadline |
-| `progress` | connector → relay | Streamed output for a running call |
+| `progress` | connector → relay | Streamed output for a running call, for bridged servers that send it (`desktop-commander` doesn't; see §5) |
 | `result` | connector → relay | Final content or error for a call id |
 | `cancel` | relay → connector | The AI gave up or the deadline passed |
 | `tools_changed` | connector → relay | New allowed tool list |
@@ -163,16 +163,22 @@ connector truncates bigger outputs with a note saying so. The relay times out a 
 at its deadline and sends `cancel`. Reconnects use exponential backoff with jitter,
 from 1 s up to 60 s.
 
-**Drops are routine, so both ends are built for them (spike C).** A connection
-through the Cloudflare Tunnel stayed up 99.3% of a 24-hour test but dropped 10
-times: 8 network resets, each back in about 1 s, and 2 outages of 3 to 6 minutes
-when the node running the relay went away. Round trips were p50 62 ms, p95 152 ms.
-So:
+**Drops are routine, so both ends are built for them (spike C).** Over a 24-hour
+test through the Cloudflare Tunnel, the computer was connected 99.3% of the time,
+but across 11 separate connections: it dropped 10 times, and the longest single
+connection lasted 12.7 hours. 8 drops were network resets, each back in about 1 s.
+2 were outages of 3 to 6 minutes when the node running the relay went away.
+Messages took 62 ms to go there and back in a typical case, and 152 ms in the
+slowest one in twenty. So:
 
 - The connector reconnects by itself, quietly; the backoff above was enough.
 - A call in flight when its device's connection drops gets a clear error at once
-  ("Your computer disconnected; try again"), not a hang until the deadline. The
-  AI app can retry, and the repeated-id rule keeps a retry from running twice.
+  ("Your computer disconnected; try again"), not a hang until the deadline.
+- **A retry can run a command twice.** The repeated-id rule only covers the
+  relay resending the same call. If the AI app retries, the relay sees a new
+  call with a new id, and the computer may already have run the first one.
+  Whether to detect that (for example, by asking the connector what finished
+  before the drop) is open (§11). Nothing in P0 tested it.
 - The connector refreshes its token on reconnect and retries a failed refresh;
   one refresh in the test failed on a reset and worked a second later.
 
@@ -193,17 +199,20 @@ package requires it. In v1 the connector checks for Node and explains how to ins
 it. Bundling a runtime is an open question (§11).
 
 **Running `desktop-commander` safely (spike D, version 0.3.1).** It works
-unmodified over stdio: about 0.3 to 0.5 s to start, 25 tools, and stdout carries
-only protocol messages. What the connector must do:
+unmodified over stdio: 0.25 to 0.55 s to start, 25 tools, and its output stream
+carries only protocol messages. What the connector must do:
 
-- **Start it in its own process group and stop the whole group.** When its Node
-  process died mid-call, a command it had started kept running. Killing only the
-  main process leaves orphans; closing its stdin stops it cleanly in under 40 ms.
+- **Stop it together with everything it started.** When its Node process died
+  mid-call, a command it had started kept running on its own. So the connector
+  starts it in its own process group (a family of processes the operating system
+  can stop in one go) and stops the whole group. Closing its input stops it
+  cleanly in under 40 ms.
 - **Treat its log messages as logs.** It sends `notifications/message` during
   calls; forward or drop them, never mistake them for replies.
-- **Command output is polled, not streamed.** It returns output so far plus a
-  process id, and the AI calls `read_process_output` for more. The relay just
-  forwards each call; it needs no streaming of its own for this.
+- **Command output is collected in steps, not streamed.** It returns the output
+  so far plus a process id, and the AI calls `read_process_output` for more. The
+  relay just forwards each call, so `desktop-commander` never needs the
+  `progress` frame.
 - **Turn telemetry off** with `DESKTOP_COMMANDER_DISABLE_TELEMETRY=1`, not through
   the shared config file.
 - **It fetches feature flags from its maker every 30 minutes, even with telemetry
@@ -234,11 +243,14 @@ Slack MCP with Gemini Spark. What P0 research found (details in
 
 - **Claude: yes, live (2026-11-11).** It works with a client we register
   ourselves, on every plan (`relay-claude`, no secret). It found everything else
-  from the relay's published sign-in details. It also sends `server/discover`,
-  which the relay should answer.
+  from the relay's published sign-in details. It also sends `server/discover` (a
+  newer request asking the server to describe itself), which the spike ignored
+  and the relay should answer.
 - **Gemini: yes, live (2026-11-15).** The Gemini web app's custom connector asks
-  for a client id **and a client secret**, so `relay-gemini` has a secret. Its
-  callback address is unique to each Google user
+  for a client id **and a client secret** (a password the app proves itself with
+  when it swaps the sign-in code for a token), so `relay-gemini` has a secret. Its
+  callback address (where the sign-in sends the user back, with the code) is
+  unique to each Google user
   (`oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-…`). Both of
   those work for one user but not for a product: a secret handed to every
   customer isn't secret, and one shared client would need every customer's
@@ -370,8 +382,8 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
 
 | Phase | Scope | Done when |
 |---|---|---|
-| **P0 spikes** | (a) ChatGPT web and Claude web each add an OAuth-protected MCP on our domain with Zitadel sign-in. Settles the registration question. (b) Zitadel device flow from a CLI. (c) A WebSocket through the Cloudflare Tunnel stays up for 24 hours with reconnects. (d) A connector drives unmodified `desktop-commander` over stdio | **Done 2026-11-15.** (a) yes for Claude and Gemini, live; ChatGPT yes on paper, not tried. (b) yes. (c) yes with reconnects, no for one unbroken connection. (d) yes, with process-group shutdown. Evidence in [the P0 plan](../plans/2026-11-09-relay-p0-spikes.md) |
-| **P1 single-user alpha** | Relay and connector on the homelab, one user, one device, local rules file, no billing. Builds in the P0 findings: automatic reconnect, clean failure of in-flight calls, process-group shutdown, telemetry and flag fetch off, `server/discover` | James runs a command on his Mac from Claude on his phone, and the "ask first" prompt appears on the Mac |
+| **P0 spikes** | (a) ChatGPT web, Claude web and Gemini web each add an OAuth-protected MCP on our domain with Zitadel sign-in (ChatGPT researched, not tried). Settles the registration question. (b) Zitadel device flow from a CLI. (c) A WebSocket through the Cloudflare Tunnel stays up for 24 hours with reconnects. (d) A connector drives unmodified `desktop-commander` over stdio | **Done 2026-11-15.** (a) yes for Claude and Gemini, live; ChatGPT yes on paper, not tried. (b) yes. (c) yes with reconnects, no for one unbroken connection. (d) yes, with process-group shutdown. Evidence in [the P0 plan](../plans/2026-11-09-relay-p0-spikes.md) |
+| **P1 single-user alpha** | Relay and connector on the homelab, one user, one device, local rules file, no billing. Builds in the P0 findings: automatic reconnect, clean failure of in-flight calls, process-group shutdown, telemetry and flag fetch off, `server/discover`, and one sign-in session shared by the device approval page and the AI apps' sign-in (spike B had to sign in twice) | James runs a command on his Mac from Claude on his phone, and the "ask first" prompt appears on the Mac |
 | **P2 multi-user** | Sign-up, several devices, dashboard, local settings screen, both activity logs, the isolation test in CI | A second invited user connects, and the isolation test fails against a deliberately broken check |
 | **P3 launch readiness** | Stripe product line and entitlements, §9 checklist, move to GCP, Zitadel hosting, signed installers for macOS then Linux and Windows, and **Cua Driver** (`cua.ai`) alongside Desktop Commander | A stranger can sign up, pay in Stripe test mode, connect without help, and drive both terminal/file tools (Desktop Commander) and native desktop app UIs in the background (Cua Driver) |
 
@@ -394,17 +406,23 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
 8. **Open client registration for ChatGPT**: turn on Zitadel's open dynamic
    client registration (and live with anyone being able to create clients), put
    a gate in front of it, or support Claude only at first.
-9. **Scaling past one relay instance**: which message bus, and when.
+9. **Scaling past one relay instance**: which message bus, and when. (Question
+   13 is the alpha side of the same limit.)
 10. **Positioning**: a direct alternative to Desktop Commander's hosted service, or
    "reach any local MCP server from any AI app" with Desktop Commander as one
    option. The spec assumes the second.
 11. **Gemini at scale.** Gemini's form wants a client secret and gives each Google
-    user their own callback. Options: a client per customer created by the
+    user their own callback, which the form shows for copying before the client
+    exists. Options: a client per customer created by the
     dashboard (the customer pastes their own id and secret), or open registration
-    if Gemini supports it when the fields are left empty (untested).
+    (letting the AI app create its own client automatically) if Gemini supports it
+    when the fields are left empty (untested).
 12. **Phone apps.** The echo tool has run from the Claude and Gemini web apps, not
     yet from their phone apps. P1's "done when" depends on the Claude phone app.
-13. **Alpha availability vs one relay instance.** Spike C suggests more than one
-    replica so a node going away isn't an outage, but a call must reach the
-    instance holding the device's connection (§8). Until there is a message bus,
-    the alpha runs one replica on an always-on node and relies on a fast restart.
+13. **Alpha availability vs one relay instance.** Spike C's plan suggested more
+    than one copy of the relay, because a node going away caused outages of 3 to
+    6 minutes. But a call must reach the copy holding the device's connection
+    (§8), so this spec overrides that: until there is a message bus (question 9),
+    the alpha runs one copy on an always-on node and relies on a fast restart.
+14. **Retries that run twice.** An AI app's retry after a dropped connection
+    arrives as a new call (§4). Decide whether the relay should detect it.
