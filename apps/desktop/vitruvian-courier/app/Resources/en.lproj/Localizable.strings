@@ -2539,3 +2539,7 @@
 "Not installed · Read Aloud uses this Mac’s voice" = "Not installed · Read Aloud uses this Mac’s voice";
 "Vitruvian Speaker couldn’t read it aloud." = "Vitruvian Speaker couldn’t read it aloud.";
 "Vitruvian Speaker couldn’t read it aloud. %@" = "Vitruvian Speaker couldn’t read it aloud. %@";
+
+/* Formatted display titles for unnamed group chats using member first names. */
+"%@ & %@" = "%1$@ & %2$@";
+"%@, %@ & %@" = "%1$@, %2$@ & %3$@";

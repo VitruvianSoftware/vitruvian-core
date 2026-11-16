@@ -53,6 +53,7 @@ struct RowStyle: Equatable {
 /// and what marks it: unread, a mention, a reminder that came due, muted, a message request.
 struct InboxRowView<HoverMenu: View>: View {
     let row: InboxRow
+    var displayTitleOverride: String? = nil
     let networkName: String
     /// When this row represents a merged chat, the networks of its member rooms (`>= 2`).
     var mergedNetworks: [String] = []
@@ -81,15 +82,12 @@ struct InboxRowView<HoverMenu: View>: View {
         isHovered ?? localHovered
     }
 
-    /// The chat's name: the body or headline style (13 pt), at the zoom level.
-    private var titleFont: Font {
-        guard zoom != 1 else { return style.compact ? .body : .headline }
-        return .system(size: round(13 * zoom * 2) / 2, weight: style.compact ? .regular : .bold)
-    }
-
-    /// The preview line: the font size setting, at the zoom level.
-    private var previewPointSize: CGFloat {
-        round((appearanceEnv?.fontSizeScale ?? style.fontSizeScale).inboxPreviewPointSize * zoom * 2) / 2
+    /// The chat's name, preview, and time font sizes, scaled together so the name is always larger than the preview.
+    private var pointSizes: (title: CGFloat, preview: CGFloat, time: CGFloat) {
+        FontSizeScale.inboxRowPointSizes(
+            scale: appearanceEnv?.fontSizeScale ?? style.fontSizeScale,
+            zoom: zoom
+        )
     }
 
     private var isRedacted: Bool {
@@ -97,7 +95,8 @@ struct InboxRowView<HoverMenu: View>: View {
     }
 
     private var displayTitle: String {
-        let raw = row.name.isEmpty ? String(localized: "Unnamed chat") : row.name
+        let formatted = displayTitleOverride ?? row.displayTitle
+        let raw = formatted.isEmpty ? String(localized: "Unnamed chat") : formatted
         return isRedacted ? AppearancePreferences.redactedText(raw, kind: .chatTitle) : raw
     }
 
@@ -113,8 +112,8 @@ struct InboxRowView<HoverMenu: View>: View {
             VStack(alignment: .leading, spacing: style.compact ? 1 : 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(displayTitle)
-                        .font(titleFont)
-                        .fontWeight(row.isUnread ? .semibold : .regular)
+                        .font(.system(size: pointSizes.title, weight: .semibold))
+                        .foregroundStyle(.primary)
                         .lineLimit(1)
                         // The name keeps its room first; the account tag gives way before it.
                         .layoutPriority(1)
@@ -125,8 +124,8 @@ struct InboxRowView<HoverMenu: View>: View {
                     } else {
                         HStack(spacing: 3) {
                             Text(RelativeTime.text(forMillis: row.lastTS, now: now, timeFormat: style.timeFormat))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(.system(size: pointSizes.time))
+                                .foregroundStyle(.tertiary)
                             if let tick = row.previewTick { PreviewTickMark(tick: tick) }
                         }
                         .fixedSize()
@@ -134,7 +133,7 @@ struct InboxRowView<HoverMenu: View>: View {
                 }
                 HStack(alignment: .top, spacing: 6) {
                     secondLine
-                        .font(.system(size: previewPointSize))
+                        .font(.system(size: pointSizes.preview))
                         .foregroundStyle(.secondary)
                         // Two lines, as Beeper's rows; compact rows stay at one.
                         .lineLimit(style.compact ? 1 : 2)
@@ -143,7 +142,7 @@ struct InboxRowView<HoverMenu: View>: View {
                     HStack(alignment: .center, spacing: 5) {
                         marks
                     }
-                    .frame(minHeight: round(previewPointSize * 1.25))
+                    .frame(minHeight: round(pointSizes.preview * 1.25))
                 }
                 if row.request {
                     HStack(spacing: 6) {

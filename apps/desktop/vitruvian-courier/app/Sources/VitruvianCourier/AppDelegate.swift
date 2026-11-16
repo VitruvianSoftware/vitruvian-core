@@ -223,6 +223,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             conversation?.learnUnreadCount(row.unread, of: row.roomID)
             conversation?.learnChat(row)
         }
+        inbox.onOpenRowUpdated = { [weak conversation] row in
+            conversation?.learnChat(row)
+        }
         inbox.onOpenMergedChat = { [weak conversation] merged in
             conversation?.openMergedChat(merged)
         }

@@ -14,6 +14,10 @@ import SwiftUI
 enum PaneHeaderMetrics {
     /// A header strip's height without glass, the same in every column.
     static let stripHeight: CGFloat = 48
+    /// Unified macOS window toolbar height when a chat header sits in the toolbar band.
+    static let toolbarHeight: CGFloat = 52
+    /// Bottom separator hairline thickness under a header bar.
+    static let hairlineHeight: CGFloat = 0.5
     /// The space before a header's title and after its last button, the same as the pane's content inset, so the
     /// title lines up with what is under it.
     static let inset: CGFloat = 14

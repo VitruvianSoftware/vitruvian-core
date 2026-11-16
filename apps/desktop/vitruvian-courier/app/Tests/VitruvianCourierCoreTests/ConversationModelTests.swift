@@ -2428,6 +2428,7 @@ final class ConversationScript: @unchecked Sendable {
     private var _directChat = "!direct"
     private var _mergedRooms: [String: [String]] = [:]
     private var _roomInfos: [String: [String: Any]] = [:]
+    private var _roomMembers: [String: [[String: Any]]] = [:]
     private var _bookmarksByRoom: [String: [[String: Any]]] = [:]
     private var _inGroupsByQuery: [String: [[String: Any]]] = [:]
     private var _unreadThreads: [String: [[String: Any]]] = [:]
@@ -2441,6 +2442,11 @@ final class ConversationScript: @unchecked Sendable {
     var roomInfos: [String: [String: Any]] {
         get { lock.withLock { _roomInfos } }
         set { lock.withLock { _roomInfos = newValue } }
+    }
+
+    var roomMembers: [String: [[String: Any]]] {
+        get { lock.withLock { _roomMembers } }
+        set { lock.withLock { _roomMembers = newValue } }
     }
 
     var bookmarksByRoom: [String: [[String: Any]]] {
@@ -2570,6 +2576,9 @@ final class ConversationScript: @unchecked Sendable {
         case "room.info":
             let room = params?["room_id"] as? String ?? ""
             return .result(roomInfos[room] ?? [String: Any]())
+        case "room.members":
+            let room = params?["room_id"] as? String ?? ""
+            return .result(["members": roomMembers[room] ?? [[String: Any]]()])
         case "room.export":
             let room = params?["room_id"] as? String ?? ""
             let count = lock.withLock { events[room]?.count ?? 0 }

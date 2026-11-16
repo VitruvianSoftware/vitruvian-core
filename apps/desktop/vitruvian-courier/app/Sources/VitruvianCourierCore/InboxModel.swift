@@ -155,6 +155,10 @@ public final class InboxModel: ObservableObject {
                 if map[row.roomID] == nil { map[row.roomID] = row }
             }
             cachedRowsByID = map
+            if let openID = selectedRoomID, let current = map[openID] {
+                onOpenRowUpdated(current)
+            }
+            refreshCandidateGroupMembersIfNeeded()
         }
     }
     private var cachedRowsByID: [String: InboxRow] = [:]
@@ -192,6 +196,8 @@ public final class InboxModel: ObservableObject {
     /// The open chat's row was looked up because the list doesn't have it: its unread count is known only now,
     /// after the chat opened, for the conversation's "New" divider. The app sets it.
     public var onSelectedRowLookedUp: @MainActor (InboxRow) -> Void = { _ in }
+    /// Called whenever `rows` refreshes and includes a fresh copy of the currently open chat's row.
+    public var onOpenRowUpdated: @MainActor (InboxRow) -> Void = { _ in }
     /// "Reconnect" on a banner: sign that account in again (`accountID`), or with nil the network's own sign-in. The
     /// app points it at the sign-in flow.
     public var onReconnect: @MainActor (_ network: String, _ accountID: String?) -> Void = { _, _ in }
@@ -244,7 +250,11 @@ public final class InboxModel: ObservableObject {
     /// The open chat's row when the list doesn't have it (a search opened an archived, hidden, low priority or
     /// request chat, or one past the pages read): looked up once by id when it opened, and kept until another chat
     /// opens. The list's own row wins whenever it has the chat.
-    @Published private var lookedUpRow: InboxRow?
+    @Published private var lookedUpRow: InboxRow? {
+        didSet { refreshCandidateGroupMembersIfNeeded() }
+    }
+    private var memberLookupAttempted = Set<String>()
+    private var knownMembersSubscription: AnyCancellable?
     /// The lookup in flight for the open chat, which a draft asked for meanwhile shares. `serial` tells a lookup
     /// from an older one for the same chat.
     private var rowLookup: (roomID: String, serial: Int, task: Task<InboxRow?, Never>)?
@@ -292,7 +302,16 @@ public final class InboxModel: ObservableObject {
         self.observedLifecycle = lifecycle
         // The views watch this model; the open chat and the accounts are the app model's.
         subscription = appModel.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
-        appModel.onConnect { [weak self] _ in self?.requestRead(waiting: false) }
+        knownMembersSubscription = KnownGroupMembersStore.shared.didUpdate.sink { [weak self] appID in
+            guard let self, appID == ObjectIdentifier(self.appModel) else { return }
+            self.objectWillChange.send()
+        }
+        appModel.onConnect { [weak self] _ in
+            guard let self else { return }
+            self.memberLookupAttempted.removeAll()
+            KnownGroupMembersStore.shared.clear(in: self.appModel)
+            self.requestRead(waiting: false)
+        }
         appModel.onChange { [weak self] change in self?.handle(change) }
         if followsAppSelection {
             selectionSubscription = appModel.$selectedRoomID.removeDuplicates().sink { [weak self] roomID in
@@ -378,6 +397,58 @@ public final class InboxModel: ObservableObject {
     public func setSnapshotRowsForTesting(_ rows: [InboxRow]) {
         self.rows = rows
         self.isLoaded = true
+    }
+
+    /// Display title for `row`, preferring confirmed room members in `KnownGroupMembersStore` over `memberPreview`.
+    public func displayTitle(for row: InboxRow) -> String {
+        if let entry = KnownGroupMembersStore.shared.entry(for: row.roomID, in: appModel) {
+            return row.displayTitle(knownMembers: entry.members, isCompleteMemberList: entry.isComplete)
+        }
+        return row.displayTitle
+    }
+
+    /// Records confirmed members for `roomID` (for tests or pre-populated member lists).
+    public func setKnownMembers(_ members: [GroupTitleMember], isComplete: Bool = true, for roomID: String) {
+        KnownGroupMembersStore.shared.record(members, isComplete: isComplete, for: roomID, in: appModel)
+    }
+
+    private func refreshCandidateGroupMembersIfNeeded() {
+        guard let client = appModel.client else { return }
+        var candidates: [String] = []
+        var allRows = rows
+        if let lookedUpRow { allRows.append(lookedUpRow) }
+        for row in allRows {
+            guard !row.roomID.hasPrefix("merge:"),
+                  row.mergeID.isEmpty,
+                  ChatDisplayTitle.isCandidateGroupList(name: row.name, isDirect: row.isDirect, localName: row.localName),
+                  KnownGroupMembersStore.shared.entry(for: row.roomID, in: appModel) == nil,
+                  row.displayTitle == row.name,
+                  !memberLookupAttempted.contains(row.roomID)
+            else { continue }
+            memberLookupAttempted.insert(row.roomID)
+            candidates.append(row.roomID)
+            if candidates.count >= 20 { break }
+        }
+        guard !candidates.isEmpty else { return }
+        Task { [weak self] in
+            for roomID in candidates {
+                guard let self, client === self.appModel.client else { return }
+                let result: MembersResult? = try? await client.call(
+                    "room.members",
+                    MembersParams(roomID: roomID, query: "", limit: 50)
+                )
+                guard client === self.appModel.client else { return }
+                if let members = result?.members, !members.isEmpty {
+                    let mapped = members.map { GroupTitleMember(userID: $0.userID, name: $0.name, isBot: $0.isBot) }
+                    KnownGroupMembersStore.shared.record(
+                        mapped,
+                        isComplete: members.count < 50,
+                        for: roomID,
+                        in: self.appModel
+                    )
+                }
+            }
+        }
     }
 
     /// The list's row of a chat, else the open chat's looked-up row.
@@ -1464,9 +1535,17 @@ public final class InboxModel: ObservableObject {
     /// its preview's status (sent, delivered, seen). The accounts are the app model's.
     public func handle(_ change: Change) {
         switch change {
-        case .room, .event, .status, .read, .spaces, .typing, .reminder, .scheduled, .receipt:
+        case let .room(roomID):
+            if let roomID {
+                memberLookupAttempted.remove(roomID)
+            } else {
+                memberLookupAttempted.removeAll()
+            }
+            requestRead(waiting: true)
+        case .event, .status, .read, .spaces, .typing, .reminder, .scheduled, .receipt:
             requestRead(waiting: true)
         case .resync:
+            memberLookupAttempted.removeAll()
             requestRead(waiting: false)
         case .bridge:
             break

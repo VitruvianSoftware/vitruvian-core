@@ -159,6 +159,9 @@ public final class DetachedWindowSession: ObservableObject {
                 conv?.learnUnreadCount(row.unread, of: row.roomID)
                 conv?.learnChat(row)
             }
+            spaceInbox.onOpenRowUpdated = { [weak conv] row in
+                conv?.learnChat(row)
+            }
             spaceInbox.onOpenMergedChat = { [weak conv, weak scheduled] merged in
                 conv?.openMergedChat(merged)
                 scheduled?.openDetachedRoom(merged.mergeID)

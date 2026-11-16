@@ -206,6 +206,20 @@ public enum FontSizeScale: String, CaseIterable, Codable, Sendable, Identifiable
 
     public var messageBodyPointSize: CGFloat { round(13.0 * multiplier * 2) / 2 }
     public var inboxPreviewPointSize: CGFloat { round(12.0 * multiplier * 2) / 2 }
+    public var inboxTitlePointSize: CGFloat { max(inboxPreviewPointSize + 1, round(13.0 * multiplier * 2) / 2) }
+    public var inboxTimePointSize: CGFloat { min(inboxPreviewPointSize - 0.5, round(11.0 * multiplier * 2) / 2) }
+
+    /// Point sizes for an inbox row's chat name, preview, and timestamp at `scale` and `zoom`, guaranteeing
+    /// `title > preview > time` across all scales and zoom levels.
+    public static func inboxRowPointSizes(
+        scale: FontSizeScale,
+        zoom: CGFloat = 1
+    ) -> (title: CGFloat, preview: CGFloat, time: CGFloat) {
+        let preview = round(scale.inboxPreviewPointSize * zoom * 2) / 2
+        let title = max(preview + 1, round(scale.inboxTitlePointSize * zoom * 2) / 2)
+        let time = min(preview - 0.5, round(scale.inboxTimePointSize * zoom * 2) / 2)
+        return (title: title, preview: preview, time: time)
+    }
 }
 
 public enum RedactedTextKind: String, Codable, Sendable {

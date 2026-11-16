@@ -479,6 +479,29 @@ final class AppearancePreferencesTests: XCTestCase {
         XCTAssertNil(prefs.chatThemes["!locked:courier.local"])
         XCTAssertEqual(prefs.confettiTriggerCount, 1)
     }
+
+    func testInboxRowPointSizesDefaultAndHierarchyInvariant() {
+        let defaultSizes = FontSizeScale.inboxRowPointSizes(scale: .default, zoom: 1)
+        XCTAssertEqual(defaultSizes.title, 13)
+        XCTAssertEqual(defaultSizes.preview, 12)
+        XCTAssertEqual(defaultSizes.time, 11)
+
+        for scale in FontSizeScale.allCases {
+            for zoom in [0.8, 0.9, 1.0, 1.1, 1.25, 1.5] as [CGFloat] {
+                let sizes = FontSizeScale.inboxRowPointSizes(scale: scale, zoom: zoom)
+                XCTAssertGreaterThan(
+                    sizes.title,
+                    sizes.preview,
+                    "Chat name must exceed preview at scale=\(scale) zoom=\(zoom)"
+                )
+                XCTAssertGreaterThan(
+                    sizes.preview,
+                    sizes.time,
+                    "Preview must exceed timestamp at scale=\(scale) zoom=\(zoom)"
+                )
+            }
+        }
+    }
 }
 
 private struct StubLoginItemService: LoginItemService {

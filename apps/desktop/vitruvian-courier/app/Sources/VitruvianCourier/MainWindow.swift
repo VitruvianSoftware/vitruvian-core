@@ -348,7 +348,7 @@ struct MainWindow: View {
                         if inbox.showsAddNetwork {
                             AddNetworkPrompt(add: inbox.addNetwork)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        } else if model.selectedRoomID != nil {
+                        } else if conversation.roomID != nil || model.selectedRoomID != nil {
                             ConversationView(conversation: conversation, composer: conversation.composer, inbox: inbox,
                                              messageActions: messageActions, scheduled: scheduled, preferences: composerPreferences,
                                              thread: conversation.thread, focus: focus, appModel: model,
@@ -423,7 +423,8 @@ struct MainWindow: View {
         guard !lifecycle.isLocked else { return }
         let canCopy = CopyResponder.canCopy()
         // Not the search panel, a sheet over the window, or a window without a chat open.
-        let inConversation = ui.isMainWindowKey && search.phase == .closed && model.selectedRoomID != nil
+        let inConversation = ui.isMainWindowKey && search.phase == .closed
+            && (conversation.roomID != nil || model.selectedRoomID != nil)
             && NSApp.keyWindow?.attachedSheet == nil
         Task {
             switch await messageActions.copySelected(responderCanCopy: canCopy, inConversation: inConversation,

@@ -86,10 +86,11 @@ enum Fixture {
     /// A chat in the inbox, its newest message `minutesAgo`.
     static func row(_ id: String, _ name: String, network: String = "whatsapp", direct: Bool = true,
                     ts minutesAgo: Int, preview: String, mine: Bool = false, unread: Int = 0,
-                    status: PreviewStatus = .none, login: String = "", typing: [String] = []) -> InboxRow {
+                    status: PreviewStatus = .none, login: String = "", typing: [String] = [],
+                    memberPreview: [RowMember] = []) -> InboxRow {
         InboxRow(roomID: id, network: network, name: name, avatarPath: "", isDirect: direct,
                  lastTS: millis(minutesAgo), preview: preview, previewKind: .text, previewMine: mine, unread: unread,
-                 muted: false, typing: typing, previewStatus: status, loginName: login)
+                 muted: false, typing: typing, previewStatus: status, loginName: login, memberPreview: memberPreview)
     }
 
     static func messages(_ events: [Event]) -> [TimelineMessage] {

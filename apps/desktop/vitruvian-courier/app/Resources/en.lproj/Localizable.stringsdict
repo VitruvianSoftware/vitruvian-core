@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Copyright 2026 VitruvianSoftware. SPDX-License-Identifier: AGPL-3.0-or-later. -->
+<plist version="1.0">
+<dict>
+	<key>%@, %@ &amp; %lld others</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$@, %2$@ &amp; %3$#@others@</string>
+		<key>others</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%3$lld other</string>
+			<key>other</key>
+			<string>%3$lld others</string>
+		</dict>
+	</dict>
+	<key>%@, %@, %@ &amp; %lld others</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$@, %2$@, %3$@ &amp; %4$#@others@</string>
+		<key>others</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%4$lld other</string>
+			<key>other</key>
+			<string>%4$lld others</string>
+		</dict>
+	</dict>
+</dict>
+</plist>
