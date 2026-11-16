@@ -1,5 +1,5 @@
 ---
-status: in progress
+status: completed
 date: 2026-11-09
 ---
 
@@ -36,20 +36,28 @@ Each spike ends in a written yes or no with evidence. This file is the record.
 - Added in the Gemini web app as a custom connector (Settings → Connectors →
   + Custom): URL `https://relay-spike.ipv1337.dev/mcp`, client id
   `399781767172589504`, plus a client secret.
-- Unlike Claude, Gemini's form asks for a client **secret**, so `relay-gemini` is
-  the one confidential client (`client_secret_post`, #4776). Its callback is per
-  Google user, `https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-{id}`,
-  shown by the form's "Copy redirect URI" before the client exists. Gemini found
-  the authorization and token endpoints from the server's metadata, so the form
-  needs only the URL, client id and secret.
+- Unlike Claude, Gemini's form asks for a client **secret**: a password the app
+  proves itself with when it swaps the sign-in code for a token. So `relay-gemini`
+  is the one client that has a secret (`client_secret_post`, #4776; callback
+  checks #4853). Its callback address is unique to the Google user,
+  `https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-{id}`, and
+  the form shows it ("Copy redirect URI") before the client exists.
+- The form asks for nothing else, no sign-in or token address, so Gemini must
+  have read them from the server's published sign-in details (its
+  protected-resource metadata). That fetch isn't logged, so this is inferred from
+  the form, not seen.
+- The spike only accepts clients on its list, so the client id was added there
+  first (#4913).
 - Sign-in went through Zitadel and back to Gemini. The server log shows
-  initialize, tools/list and a tools/call from client `399781767172589504` as
-  subject 378818267051722263 (16:03 PST). `echo "hello from Gemini"` came back
-  unchanged.
+  client `399781767172589504`, as subject 378818267051722263, starting sessions
+  from 15:56 PST, listing the tools, and making one tools/call at 16:03 PST.
+  The log holds no request bodies; the reply, `hello from Gemini`, is what James
+  saw in Gemini.
 - Gemini read the tool list correctly: asked for free disk space, it said the
   spike only offers echo and whoami, and called nothing.
-- Getting here needed CI to reach Zitadel over Headscale (#4857), because the
-  homelab had moved off commercial Tailscale.
+- Creating the client needed CI to reach Zitadel over Headscale (#4857), because
+  the homelab had moved off commercial Tailscale. The sign-in itself doesn't
+  depend on that.
 - Not yet tried: the Gemini phone app.
 
 ### B: yes
@@ -258,16 +266,19 @@ subject.
 - [x] **A (Claude, web; phone app still to try):** James adds `https://<spike-host>/mcp` in Claude with the
       `relay-claude` client id, signs in, and the echo tool runs from claude.ai
       and from the Claude phone app
-- [ ] **A (ChatGPT):** James starts adding the connector in ChatGPT and copies its
+- [ ] **A (ChatGPT, not tried; moved to spec §11 questions 3 and 8):** James starts adding the connector in ChatGPT and copies its
       callback into `chatgptRedirectUris`, then re-apply, then finish. Only if his
       plan allows custom MCP servers
-- [x] **A (Gemini):** `relay-gemini` client (#4776, confidential,
-      `client_secret_post`; client id `399781767172589504`, applied 2026-11-15) with
-      Gemini's callback; the spike accepts it in `mcpClientIds`. James pastes the
-      client id and secret into Gemini (Settings → Connectors → + Custom, URL
-      `https://relay-spike.ipv1337.dev/mcp`), signs in, and the echo tool runs
+- [x] **A (Gemini):** `relay-gemini` client (#4776, has a client secret,
+      `client_secret_post`; client id `399781767172589504`, applied 2026-11-15)
+      with Gemini's callback; the spike accepts it in `mcpClientIds` (#4913).
+      James pasted the client id and secret into Gemini (Settings → Connectors →
+      + Custom, URL `https://relay-spike.ipv1337.dev/mcp`), signed in, and the
+      echo tool ran
 - [x] **C:** a WebSocket client on this Mac holds `/connect` open for 24 hours,
       logging drops, reconnect times and ping round trips
 - [x] **D:** add a Bazel route for running an npm package (`//tools/pnpm:lock`,
       #4663), then run it
-- [ ] Write the yes or no for each spike here and update spec §10 and §11
+- [x] Write the yes or no for each spike here and update spec §10 and §11
+      (done 2026-11-15; still-open checks, the phone apps and ChatGPT, moved
+      to spec §11)
