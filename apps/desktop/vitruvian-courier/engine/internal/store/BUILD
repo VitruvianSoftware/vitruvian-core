@@ -8,6 +8,7 @@ go_library(
         "autoarchive.go",
         "bookmarks.go",
         "callnotes.go",
+        "channelrooms.go",
         "chatstate.go",
         "deletes.go",
         "events.go",
