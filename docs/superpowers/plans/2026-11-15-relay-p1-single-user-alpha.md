@@ -52,9 +52,9 @@ is retired in the last task.
   James's decision. `pulumi-zitadel` v0.2.0, the newest on the Go module proxy when checked on 2026-11-15, has no
   per-app login-version field, so there is no IaC switch for the relay alone.
   The instance already serves Login V2 (`/ui/v2/login`, routed in
-  `gitops/argocd/platform/zitadel/applicationset.yaml`); spike B's second
-  sign-in is most likely the device-approval page still on the older screen,
-  which may need a Zitadel upgrade. Task 10 records what was checked and asks
+  `gitops/argocd/platform/zitadel/applicationset.yaml`); a guess, not yet
+  checked, is that spike B's second sign-in comes from the device-approval page
+  using the older screen, which might need a Zitadel upgrade. Task 10 records what was checked and asks
   James; P1 does not silently ship two sign-ins.
 - **`desktop-commander`'s own log** (`~/.claude-server-commander/claude_tool_call.log`)
   records full arguments outside the connector's log. Changing `HOME` would
@@ -88,6 +88,7 @@ is retired in the last task.
 - **Hosting (§8):** relay pod on the always-on pools only (the same
   allow-list affinity as the spike, #4916), one replica.
 - **License headers** on every new source and config file (`addlicense`; CI's `license-check` fails without them).
+- **CI coverage:** every new package's `BUILD` declares a `pipeline_unit` (as the spike's does: `load("//tools/pipeline:defs.bzl", "pipeline_unit")`, `persona = "backend"`, `runner = "ubuntu-26.04"`, `tier = "L1"`, `test_targets = [":unit_tests"]`), or its tests never run on PRs or in the merge queue. After adding or removing one, regenerate the presubmit workflow with `bazel run //tools/pipeline:gen -- --format=workflow --output-file=.github/workflows/presubmit.yaml` (tidy-check fails if it's stale). Each hand-written `BUILD` starts with `# gazelle:ignore`, as the spike's does.
 - **Repo rules:** every git, gh, cluster and Pulumi operation through the Bazel
   targets in `AGENTS.md`. Commits via `bazel run //tools/git:commit -- --agent
   <you>`. Raw `cargo` is blocked; re-lock with `bazel run //tools/crates:lock
@@ -146,7 +147,7 @@ let one verifier accept several client ids.
 
 **Files:**
 - Create: `packages/rust/vitruvian-mcp-auth/{Cargo.toml,BUILD,src/lib.rs,src/verifier.rs,src/prm.rs}`. Its BUILD takes its crates from `@vitruvian_relay_crates` and sets `package(default_visibility = ["//apps/suites/vitruvian-relay:__subpackages__"])`; the Slack MCP is added to that list when it moves over. Its `Cargo.toml` has its own empty `[workspace]` table, as slack-mcp's does, so cargo doesn't treat it as an unlisted member of the repo-root workspace when the relay path-depends on it
-- Create: `apps/suites/vitruvian-relay/{BUILD,Cargo.toml,Cargo.lock}` (the BUILD makes the folder a package, so `MODULE.bazel` can name `//apps/suites/vitruvian-relay:Cargo.toml` and `:Cargo.lock`, as it names the spike's; the workspace's member list grows in later tasks, and `vitruvian-mcp-auth` is a `path` dependency of the crates that use it, not a member)
+- Create: `apps/suites/vitruvian-relay/{BUILD,Cargo.toml,Cargo.lock}` (the BUILD makes the folder a package, so `MODULE.bazel` can name `//apps/suites/vitruvian-relay:Cargo.toml` and `:Cargo.lock`, as it names the spike's). The hub only contains crates that some workspace member depends on, so Task 1 also creates the `relay` member as a stub (`relay/Cargo.toml` path-depending on `vitruvian-mcp-auth`, and an empty `relay/src/main.rs`); that puts the shared crate's dependencies in the lock and the hub. Later tasks fill in the relay and add the other members
 - Modify: `MODULE.bazel`: add hub `vitruvian_relay_crates`, and add it to the `repositories` list of the `ring` `crate.annotation` (every hub that builds ring is listed there, the spike's included). Keep the spike hub until the spike is retired (Task 10), which removes it from both places.
 - Test: `packages/rust/vitruvian-mcp-auth/src/verifier.rs` (`#[cfg(test)]`)
 
@@ -165,7 +166,7 @@ The token checks are the same as slack-mcp's `auth.rs` (the helper signatures di
 bits, JWKS `{issuer}/oauth/v2/keys` cached 600 s with a 30 s refetch
 cooldown, `iss` exact, `exp`/`nbf` 30 s skew, `aud` contains `project_id`,
 `sub` in the allow-list, any `azp` rejected, `client_id` in
-`allowed_client_ids`. Use `serde_json` instead of slack-mcp's own `JsonValue`.
+`allowed_client_ids`. Use `serde_json` instead of slack-mcp's own `JsonValue`. The JWKS fetch uses slack-mcp's TLS stack: rustls 0.23 on ring, rustls-native-certs 0.8, and ureq without its `native-certs` feature, so the unmaintained rustls-pemfile (RUSTSEC-2025-0134) never enters the lock and osv-scan stays green.
 
 - [ ] **Step 1: Write the failing tests** — port slack-mcp's verifier tests,
   plus `accepts_any_listed_client_id` (two ids, a token for each verifies) and
@@ -176,7 +177,7 @@ cooldown, `iss` exact, `exp`/`nbf` 30 s skew, `aud` contains `project_id`,
 - [ ] **Step 2:** `bazel test //packages/rust/vitruvian-mcp-auth:unit_tests` → FAIL (crate missing).
 - [ ] **Step 3: Implement** the crate; add the hub, re-lock with
   `bazel run //tools/crates:lock -- --dir apps/suites/vitruvian-relay`, then `bazel run //:gazelle` and confirm it changes nothing under `apps/suites/vitruvian-relay` or `packages/rust/vitruvian-mcp-auth` (the spike's BUILD is hand-written). `apps/suites` is already excluded in the root `BUILD` file; if gazelle touches `packages/rust/vitruvian-mcp-auth`, add a `# gazelle:exclude packages/rust/vitruvian-mcp-auth` line there, in the same form as the existing ones.
-- [ ] **Step 4:** the same test → PASS; `bazel run //tools/crates:lock -- --dir apps/suites/vitruvian-relay --check` → clean.
+- [ ] **Step 4:** the same test → PASS; `bazel run //tools/crates:lock -- --dir apps/suites/vitruvian-relay --check` → clean; the crate's `pipeline_unit` is declared and `bazel run //tools/pipeline:gen -- --format=workflow --output-file=.github/workflows/presubmit.yaml --check` passes after regenerating.
 - [ ] **Step 5: Commit** `feat(relay): shared MCP token checking crate`.
 
 Moving the Slack MCP onto this crate is **not** in P1: it builds from its own
@@ -254,11 +255,13 @@ device replaces the old one (its pending calls fail `Disconnected`).
   - `vitruvian-relay --version` prints the version and exits 0 (the image workflow runs it to check the image).
   - `struct Settings` from env: `PORT` (3000), `PUBLIC_URL`, `ISSUER`, `PROJECT_ID`, `MCP_CLIENT_IDS` (CSV), `CONNECTOR_CLIENT_ID`, `ALLOWED_SUBJECTS` (CSV), `DATA_DIR` (`/data`). Same validation as the spike's `Settings::from_lookup`.
   - Routes:
+    - `GET /healthz` → 200 `ok` (the chart's probes use it, as the spike's do; not routed publicly).
+    - `GET` and `DELETE /mcp/d/{device_id}` → 405 (no SSE stream or session delete in P1), as the spike does.
     - `POST /mcp/d/{device_id}` — MCP over Streamable HTTP (JSON responses; SSE not needed in P1). Bearer verified with the MCP client ids; caller `sub` must equal the device's `owner_sub`, else 404 (don't reveal the device).
     - `GET /.well-known/oauth-protected-resource/mcp/d/{device_id}` — PRM with `resource` = that device's URL. The bare `/.well-known/oauth-protected-resource` returns the same metadata with `resource` = `PUBLIC_URL` (the relay itself), for clients that look there first.
     - `POST /devices` — bearer verified with `CONNECTOR_CLIENT_ID`; body `{ "public_key": "<base64 32 bytes>" }`; creates a record owned by the caller, returns `{ "device_id": "<uuid v4>", "mcp_url": "…" }`. P1 allows one device per subject: a second call for the same subject replaces the key, keeps the id, and calls `Registry::kick` so a session signed with the old key ends at once.
     - `GET /connect` — WebSocket. Bearer verified with `CONNECTOR_CLIENT_ID`. First frame must be `hello` within 10 s: device exists, owned by the caller, `|now − ts| ≤ 60 s`, Ed25519 `sig` over `hello_message(device_id, ts, sha256(bearer))` verifies, `protocol == 1`. Otherwise `reject` with the reason and close. Then `welcome`, `Registry::connect`, ping every 20 s (every 2 s while the device has a call in flight), answer the connector's pings, disconnect after 3 missed pongs.
-  - `mcp::handle(req, device_id, caller, registry) -> Option<Value>`: `initialize` (protocol versions as the spike's `PROTOCOL_VERSIONS`; capabilities `tools: { listChanged: false }`, because P1 answers in JSON only and has no stream to push a change on), `ping`, `server/discover` (returns the same `serverInfo` — name `vitruvian-relay`, version — `capabilities` and supported protocol versions as `initialize`, without starting a session), `tools/list` (the device's current tools; empty list and no error if offline), `tools/call` (→ `Registry::call` with a 180 s budget; `CallError` becomes an MCP tool result with `isError: true` and `user_message()`). Sessions: `initialize` returns an `Mcp-Session-Id` header (a random 128-bit id), and every later request carries it; a request without a known one gets 400 (except `initialize` and `server/discover`). Cancelling: the relay keeps a map from (session id, JSON-RPC `id`) to `call_id`, so one chat can never cancel another's call. An MCP `notifications/cancelled` with that `requestId`, or the HTTP request being dropped before the result is ready, sends `cancel { call_id }` to the device (Task 8 dismisses a pending prompt on it). A `tools_changed` frame calls `Registry::update_tools`; AI apps see the new list on their next `tools/list`.
+  - `mcp::handle(req, device_id, caller, registry) -> Option<Value>`: `initialize` (protocol versions as the spike's `PROTOCOL_VERSIONS`; capabilities `tools: { listChanged: false }`, because P1 answers in JSON only and has no stream to push a change on), `ping`, `server/discover` (returns the same `serverInfo` — name `vitruvian-relay`, version — `capabilities` and supported protocol versions as `initialize`, without starting a session), `tools/list` (the device's current tools; empty list and no error if offline), `tools/call` (→ `Registry::call` with a 180 s budget; `CallError` becomes an MCP tool result with `isError: true` and `user_message()`). Sessions: `initialize` returns an `Mcp-Session-Id` header (a random 128-bit id), and every later request carries it; a request with a missing id gets 400, and one with an unknown id gets 404, which tells the AI app to start a new session (MCP's rule for an ended session). Sessions live in memory, so after a relay restart every client gets 404 once and re-initializes. `initialize` and `server/discover` need no session. Cancelling: the relay keeps a map from (session id, JSON-RPC `id`) to `call_id`, so one chat can never cancel another's call. An MCP `notifications/cancelled` with that `requestId`, or the HTTP request being dropped before the result is ready, sends `cancel { call_id }` to the device (Task 8 dismisses a pending prompt on it). A `tools_changed` frame calls `Registry::update_tools`; AI apps see the new list on their next `tools/list`.
   - Logging: one line per call — device id, caller client id, tool, argument bytes, result bytes, duration, outcome. Never arguments or output (§7.2).
 
 - [ ] **Step 1: Tests** (hyper test client against an in-process server, with a
@@ -268,6 +271,7 @@ device replaces the old one (its pending calls fail `Disconnected`).
   `connect_rejects_stale_ts`, `connect_rejects_token_for_another_client`,
   `register_device_returns_mcp_url`, `reregister_kicks_old_session`,
   `notifications_cancelled_sends_cancel`, `dropped_request_sends_cancel`,
+  `healthz_ok`, `unknown_session_gets_404`, `get_and_delete_get_405`,
   `cancel_only_affects_own_session` (two sessions using the same JSON-RPC id;
   cancelling in one leaves the other's call running),
   `silent_drop_mid_call_fails_within_seconds` (a fake connector that stops
@@ -294,7 +298,7 @@ device replaces the old one (its pending calls fail `Disconnected`).
   - `auth::fresh_token(&mut Tokens) -> Result<String>` — refresh when within 300 s of expiry; on failure retry once after 1 s, then report "sign in again" (P0: one refresh failed on a reset and worked a second later).
   - `keys::load_or_create(dir) -> Result<Ed25519KeyPair>`, `keys::sign_hello(&key, device_id, ts, token) -> String` (base64 of the signature over Task 2's `hello_message`, with `sha256(token)` hex).
   - `login` ends by calling `POST /devices`, saving `device.json`, and printing the MCP URL plus the client id to paste into Claude.
-  - Defaults: issuer `https://auth.ipv1337.dev`, relay `https://relay.ipv1337.dev`, connector client id and project id from the `zitadel-apps-relay` outputs (overridable by `VRELAY_*` env vars).
+  - Defaults, as constants in `connector/src/config.rs`: issuer `https://auth.ipv1337.dev`, relay `https://relay.ipv1337.dev`, connector client id `398912442404505402` and project id `398912441632687930` (the `zitadel-apps-relay` outputs `connectorClientId` and `projectId`, as the spike's `client.rs` hard-codes them). Each can be overridden by a `VRELAY_*` env var. A test, `defaults_match_relay_stack`, compares the constants with the values in `gitops/argocd/platform/relay/values.yaml` once that file exists (Task 10), so a re-created client can't leave the connector pointing at the old one.
 
 - [ ] **Step 1: Tests** `key_file_is_0600_and_reused`, `token_file_is_0600`, `sign_hello_verifies_with_public_key`,
   `fresh_token_refreshes_near_expiry`, `fresh_token_retries_once_then_asks_to_sign_in`
@@ -315,6 +319,9 @@ device replaces the old one (its pending calls fail `Disconnected`).
     ```toml
     paused = false
     hidden = ["set_config_value", "get_config"]   # never exposed remotely
+    config_allow = []    # settings tools to expose anyway; any other tool whose
+                         # name contains "config" is hidden
+    # While paused, no tools are visible and every call is refused.
     # Run without asking: reads only. Every other tool, including any tool a
     # future desktop-commander adds, asks first.
     no_prompt = ["read_file", "read_multiple_files", "list_directory",
@@ -347,7 +354,7 @@ device replaces the old one (its pending calls fail `Disconnected`).
 
 **Files:**
 - Create: `apps/suites/vitruvian-relay/connector/src/bridge.rs`, `apps/suites/vitruvian-relay/connector/package.json` (pins `@wonderwhy-er/desktop-commander` `0.3.1`)
-- Create: `apps/suites/vitruvian-relay/connector/pnpm-lock.yaml` and a separate `npm_translate_lock` repository (`@vrelay_npm`) in `MODULE.bazel`, so `desktop-commander`'s dependency tree lives in its own lock and can't move the main workspace's versions (spike D's re-lock changed unrelated Backstage entries; a second set of versions in the shared lock would break the One Version Rule, while a separate hub is the sanctioned way to diverge). Lock it with `bazel run //tools/pnpm:lock`; if that target can't take a folder yet, add a `--dir` option to it in this task, as `//tools/crates:lock` has. `BUILD` uses that repository's `desktop-commander` binary as a runfile. `pnpm-workspace.yaml` is not changed
+- Create: `apps/suites/vitruvian-relay/connector/dc/{pnpm-workspace.yaml,package.json,pnpm-lock.yaml}` and a separate `npm_translate_lock` repository (`@vrelay_npm`) in `MODULE.bazel`. The folder's own `pnpm-workspace.yaml` makes it a workspace root, so pnpm stops there instead of joining the repo-root workspace; add its `pnpm-lock.yaml` to the ignore list in `tools/license/BUILD`, next to the root one. That keeps `desktop-commander`'s dependency tree in its own lock and can't move the main workspace's versions (spike D's re-lock changed unrelated Backstage entries; a second set of versions in the shared lock would break the One Version Rule, while a separate hub is the sanctioned way to diverge). `//tools/pnpm:lock` always runs from the repo root, so this task adds a `--dir` option to it (as `//tools/crates:lock` has, with a test) and locks with `bazel run //tools/pnpm:lock -- --dir apps/suites/vitruvian-relay/connector/dc`. `BUILD` uses that repository's `desktop-commander` binary as a runfile. `pnpm-workspace.yaml` is not changed
 
 **Interfaces:**
 - Produces:
@@ -373,14 +380,16 @@ device replaces the old one (its pending calls fail `Disconnected`).
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4:** → PASS. Then check the locks: the root `pnpm-lock.yaml` is unchanged, and the
   connector's own lock passes its `--check`. Before pinning, check npm for the
-  latest `desktop-commander`; stay on 0.3.1 (the version spike D tested) and
-  note any newer one for a later reviewed bump.
+  latest `desktop-commander` and write the version and date seen into this
+  plan. Stay on 0.3.1 (the version spike D tested); a newer one is a later
+  reviewed bump.
 - [ ] **Step 5:** One manual check with the real package:
   `bazel run //apps/suites/vitruvian-relay/connector:vrelay -- tools` lists its
   tools (spike D saw 25) minus the hidden ones. Compare the names with Task 6's
   `hidden` and `no_prompt` lists, and the argument names Task 6's prompt
   summary reads with each tool's `inputSchema` properties; fix any that differ.
   Save that `tools/list` output as `connector/testdata/dc-0.3.1-tools.json`
+  (listed in `:unit_tests`' `data` and read through runfiles)
   and add the test `summary_keys_exist_in_pinned_schemas` (every key the
   summary reads exists in the saved schema for that tool).
 - [ ] **Step 6: Commit** `feat(relay): run desktop-commander safely over stdio`.
@@ -393,7 +402,7 @@ device replaces the old one (its pending calls fail `Disconnected`).
 **Interfaces:**
 - Consumes: Tasks 2, 5, 6, 7.
 - Produces:
-  - TLS for `wss://`: tokio-tungstenite with a `rustls` client config built the way slack-mcp's `tls::client_config()` builds one (rustls-native-certs 0.8, ring provider), passed as `Connector::Rustls`. That avoids the old rustls-native-certs 0.7 and its unmaintained rustls-pemfile, which slack-mcp's comment notes. The same config serves the device flow and `POST /devices` calls.
+  - TLS for `wss://`: tokio-tungstenite with a `rustls` client config built the way slack-mcp's `tls::client_config()` builds one (rustls-native-certs 0.8, ring provider), passed as `Connector::Rustls` (tokio-tungstenite's `__rustls-tls` feature exposes `Connector::Rustls` without its own root-store crates; it is an internal-looking feature name, so after locking confirm `rustls-pemfile` and `rustls-native-certs` 0.7 are absent from `Cargo.lock` and osv-scan passes). That avoids the old rustls-native-certs 0.7 and its unmaintained rustls-pemfile, which slack-mcp's comment notes. The same config serves the device flow and `POST /devices` calls.
   - `vrelay run`: start the bridge, connect to `wss://<relay>/connect` with a fresh token, send `hello` with `Rules::visible(bridge.tools())`, then loop.
   - On `call`: dedupe by `call_id` for 10 minutes. A repeat re-sends the stored result or, if still running, nothing. Started ids are also appended to `seen_calls.jsonl` in the state dir (id and time only, pruned after 10 minutes), so after a LaunchAgent restart a resent id is refused with "This call already started before vrelay restarted; not run again." rather than run twice. This is the spec's repeated-id rule (§4), kept as a safeguard: the P1 relay never resends a call (Task 3 fails it instead), and an id repeated after the 10-minute window runs again. The real duplicate risk, an AI app's own retry, arrives with a new id and is spec §11 question 14. `Rules::decide` → `Run` / `AskFirst` (prompt) / `Refuse`, then `Bridge::call`, then `result`. A denied prompt returns `is_error: true`, "Denied on the computer."
   - On `cancel`: if the call is still waiting at its "ask first" prompt, dismiss the dialog and never run it. If it is already running, drop the result (the command itself is not killed in P1; the local log notes it).
@@ -412,7 +421,9 @@ device replaces the old one (its pending calls fail `Disconnected`).
   `call_id`),
   `cancel_during_prompt_never_runs`, `pongs_flow_while_prompt_open` (a
   fake prompt held open for 30 s while the fake relay pings every 2 s: no
-  ping missed), `link_drop_dismisses_open_prompts`
+  ping missed), `link_drop_dismisses_open_prompts` (the link drops while the fake
+  dialog is open: dialog dismissed, call refused locally, even if the fake
+  then answers Allow)
   (cancel arrives while the fake dialog is open: dialog dismissed, bridge never
   called, even if the fake then answers Allow), `reconnects_with_jittered_backoff`
   (inject clock/rng; every delay within `[1, min(60, 2^n)]`), `waits_for_token_instead_of_exiting`, `refreshes_token_before_reconnect`,
@@ -425,15 +436,15 @@ device replaces the old one (its pending calls fail `Disconnected`).
 ### Task 9: Install as a LaunchAgent (signed)
 
 **Files:**
-- Create: `apps/suites/vitruvian-relay/connector/scripts/{BUILD,src/lib.rs,src/main.rs,com.vitruvian.vrelay.plist}`
+- Create: `apps/suites/vitruvian-relay/connector/scripts/{Cargo.toml,BUILD,src/lib.rs,src/main.rs,com.vitruvian.vrelay.plist}` (it is a workspace member, so it needs its own `Cargo.toml`)
 
 Follow `apps/mobile/vitruvian-remote/macagent/scripts` (`render_plist`,
 `launchctl bootout` / `bootstrap gui/<uid>` / `enable`).
 
 **Interfaces:**
-- Produces: `bazel run //apps/suites/vitruvian-relay/connector/scripts:install` — copies `vrelay` and the pinned `desktop-commander` package to `~/.local/share/vrelay/` and writes `~/.local/share/vrelay/bridge.json` with the absolute `node` path and `desktop-commander/dist/index.js` path (Task 7's `BridgeCommand::locate`), signs the binary with the Developer ID identity (identifier `dev.vitruvian.vrelay`; every Mac app here is Developer ID-signed). If `security find-identity -p codesigning` doesn't list it, the install **fails** with how to get it, unless `--unsigned` is passed explicitly. Resolves the absolute path of `node` (≥ 22.12) at install time and writes it into the plist's `EnvironmentVariables` `PATH` (its folder, then `/usr/bin:/bin`), because launchd starts agents with a minimal `PATH` that usually lacks Homebrew or mise. Writes the plist from the template at `connector/scripts/com.vitruvian.vrelay.plist`, with label `com.vitruvian.vrelay`, `KeepAlive` true and log `~/Library/Logs/vrelay/vrelay.log`, and loads it. `//apps/suites/vitruvian-relay/connector/scripts:uninstall` reverses it.
+- Produces: `bazel run //apps/suites/vitruvian-relay/connector/scripts:install` — copies `vrelay` and the pinned `desktop-commander` package to `~/.local/share/vrelay/` and writes `~/.local/share/vrelay/bridge.json` with the absolute `node` path and `desktop-commander/dist/index.js` path (Task 7's `BridgeCommand::locate`), signs the binary with the Developer ID identity (identifier `dev.vitruvian.vrelay`), as the Mac apps are signed (see `apps/desktop/vitruvian-atrium/build.sh`). The macagent pattern this follows signs with its own identity and falls back to unsigned; vrelay doesn't fall back. If `security find-identity -p codesigning` doesn't list it, the install **fails** with how to get it, unless `--unsigned` is passed explicitly. Resolves the absolute path of `node` (≥ 22.12) at install time and writes it into the plist's `EnvironmentVariables` `PATH` (its folder, then `/usr/bin:/bin`), because launchd starts agents with a minimal `PATH` that usually lacks Homebrew or mise. Writes the plist from the template at `connector/scripts/com.vitruvian.vrelay.plist`, with label `com.vitruvian.vrelay`, `KeepAlive` true and log `~/Library/Logs/vrelay/vrelay.log`, creates `~/Library/Logs/vrelay/` (mode `0700`) first because launchd won't create it and the agent then never starts, and loads it. `//apps/suites/vitruvian-relay/connector/scripts:uninstall` reverses it.
 
-- [ ] **Step 1: Tests** `render_plist_fills_paths_and_args`, `plist_path_includes_node_dir`, `install_fails_without_identity`, `unsigned_flag_skips_signing_with_warning`.
+- [ ] **Step 1: Tests** `render_plist_fills_paths_and_args`, `plist_path_includes_node_dir`, `install_fails_without_identity`, `install_creates_log_dir`, `unsigned_flag_skips_signing_with_warning`.
 - [ ] **Step 2:** `bazel test //apps/suites/vitruvian-relay/connector/scripts:unit_tests` → FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4:** → PASS.
@@ -444,23 +455,23 @@ Follow `apps/mobile/vitruvian-remote/macagent/scripts` (`render_plist`,
 **Files:**
 This task ships as **two PRs** (step 2 says why). **PR A:** the Dockerfile, chart, chart-render values file and image workflow. **PR B:** the AppProject, the Argo CD Application and the gitops values file.
 
-- Create: `gitops/argocd/projects/relay-project.yaml` (PR B) (from `relay-spike-project.yaml`, with its destination namespace changed to `relay` and `PersistentVolumeClaim` added to `namespaceResourceWhitelist`, or Argo CD refuses the volume), `tools/ci/chart-render/vitruvian-relay.values.yaml` (from the spike's; CI finds it by chart name, so the chart is named `vitruvian-relay` in `Chart.yaml`), `apps/suites/vitruvian-relay/relay/Dockerfile`. The build context is the workspace root, `apps/suites/vitruvian-relay` (from the repo root: `docker buildx build -f apps/suites/vitruvian-relay/relay/Dockerfile --build-context mcpauth=packages/rust/vitruvian-mcp-auth … apps/suites/vitruvian-relay`), because the relay is a member of that workspace. The shared crate comes in as a named build context, `mcpauth=packages/rust/vitruvian-mcp-auth` (the spike does the same with `slackmcp`), copied to `/src/packages/rust/vitruvian-mcp-auth` (its `Cargo.toml` and `src/` only: it has no `Cargo.lock` of its own, because the relay workspace's lock covers it); the workspace is copied to `/src/apps/suites/vitruvian-relay`, so the relay's `../../../../packages/rust/vitruvian-mcp-auth` path dependency (declared in `relay/Cargo.toml`, four levels up from `apps/suites/vitruvian-relay/relay`) resolves. `WORKDIR /src/apps/suites/vitruvian-relay`, then `cargo build --release --locked -p vitruvian-relay`. The image workflow passes `--build-context mcpauth=…` everywhere the spike's passes `slackmcp`, its `paths:` filter lists `apps/suites/vitruvian-relay/**` and `packages/rust/vitruvian-mcp-auth/**`, it runs `vitruvian-relay --version` in its verify step, and it pushes to `ghcr.io/vitruviansoftware/vitruvian-relay`, the chart's `image.repository`, `relay/deploy/chart/` (Service, HTTPRoute, DNSEndpoint for `relay.ipv1337.dev`, NetworkPolicy and the `affinity` value copied from the spike's chart, with the HTTPRoute also passing `/devices` (match type `Exact`), which the spike's route lacks, and `/mcp/d/` as a `PathPrefix`; the affinity *rule* itself comes from `gitops/argocd/platform/relay-spike/values.yaml`; new: a 1 GiB PVC mounted at `/data` for the device file, with `storageClassName: nfs`, and `fsGroup: 10001` in the pod's securityContext, because the pod runs as UID 10001 and the NFS volume starts root-owned (likely, not yet confirmed: step 2 checks a real write). The default `local-path` class would pin the volume, and so the pod, to one node, defeating the three-node allow list), `gitops/argocd/applications/relay.yaml`, `gitops/argocd/platform/relay/values.yaml` (with the #4916 allow-list affinity; `MCP_CLIENT_IDS` = the `claudeClientId` and `geminiClientId` outputs), image build workflow mirroring `vitruvian-relay-spike-image`
+- Create: `gitops/argocd/projects/relay-project.yaml` and `gitops/argocd/applications/relay.yaml` (PR B) (from `relay-spike-project.yaml`, with its destination namespace changed to `relay` and `PersistentVolumeClaim` added to `namespaceResourceWhitelist`, or Argo CD refuses the volume), `tools/ci/chart-render/vitruvian-relay.values.yaml` (from the spike's; CI finds it by chart name, so the chart is named `vitruvian-relay` in `Chart.yaml`), `apps/suites/vitruvian-relay/relay/Dockerfile`. The build context is the workspace root, `apps/suites/vitruvian-relay` (from the repo root: `docker buildx build -f apps/suites/vitruvian-relay/relay/Dockerfile --build-context mcpauth=packages/rust/vitruvian-mcp-auth … apps/suites/vitruvian-relay`), because the relay is a member of that workspace. The shared crate comes in as a named build context, `mcpauth=packages/rust/vitruvian-mcp-auth` (the spike does the same with `slackmcp`), copied to `/src/packages/rust/vitruvian-mcp-auth` (its `Cargo.toml` and `src/` only: it has no `Cargo.lock` of its own, because the relay workspace's lock covers it); the workspace is copied to `/src/apps/suites/vitruvian-relay`, so the relay's `../../../../packages/rust/vitruvian-mcp-auth` path dependency (declared in `relay/Cargo.toml`, four levels up from `apps/suites/vitruvian-relay/relay`) resolves. `WORKDIR /src/apps/suites/vitruvian-relay`, then `cargo build --release --locked -p vitruvian-relay`. The image workflow passes `--build-context mcpauth=…` everywhere the spike's passes `slackmcp`, its `paths:` filter lists `apps/suites/vitruvian-relay/**` and `packages/rust/vitruvian-mcp-auth/**`, it runs `vitruvian-relay --version` in its verify step, and it pushes to `ghcr.io/vitruviansoftware/vitruvian-relay`, the chart's `image.repository`, `relay/deploy/chart/` (Service, HTTPRoute, DNSEndpoint for `relay.ipv1337.dev`, NetworkPolicy and the `affinity` value copied from the spike's chart, with `_helpers.tpl`'s `vitruvian-relay-spike.*` template names renamed to `vitruvian-relay.*`, with the HTTPRoute also passing `/devices` (match type `Exact`), which the spike's route lacks, and `/mcp/d/` as a `PathPrefix`; the affinity *rule* itself comes from `gitops/argocd/platform/relay-spike/values.yaml`; new: a 1 GiB PVC mounted at `/data` for the device file, with `storageClassName: nfs`, and `fsGroup: 10001` in the pod's securityContext, because the pod runs as UID 10001 and the NFS volume starts root-owned (likely, not yet confirmed: step 2 checks a real write). The default `local-path` class would pin the volume, and so the pod, to one node, defeating the three-node allow list), `gitops/argocd/applications/relay.yaml`, `gitops/argocd/platform/relay/values.yaml` (with the #4916 allow-list affinity; `MCP_CLIENT_IDS` = the `claudeClientId` and `geminiClientId` outputs), image build workflow mirroring `vitruvian-relay-spike-image`
 - One sign-in (P1-required, James decides). Check, and write down in this
   plan: which login screen the device-approval page (`/oauth/v2/device`)
   uses, whether this Zitadel version's Login V2 serves it, and whether any
   `pulumi-zitadel` release newer than v0.2.0 adds a per-app login version.
   Then **stop and ask James**, with the options found: upgrade Zitadel, change
   an instance-wide setting (it affects every app, and the instance carries a
-  known Login V2 bug with OTP second factors, upstream zitadel/zitadel#12148, which a weekly scheduled check tracks), or
+  known Login V2 bug with OTP second factors, upstream zitadel/zitadel#12148), or
   accept two sign-ins for P1 and record it.
 - Optional for P1 (unlike the one sign-in above): Gemini's callback is tied to
   the server URL (spike A), so the new relay URL needs a new callback in
   `geminiRedirectUris` before Gemini can use it. Note it in the stack README if
   not done.
-- Delete (in a separate PR, after Task 11 passes), also removing `vitruvian_relay_spike_crates` from the `ring` annotation and `tools/ci/chart-render/vitruvian-relay-spike.values.yaml`: `apps/suites/vitruvian-relay/spike/`, `gitops/argocd/applications/relay-spike.yaml`, `gitops/argocd/platform/relay-spike/`, `gitops/argocd/projects/relay-spike-project.yaml`, `.github/workflows/vitruvian-relay-spike-image.yaml`, the spike hub in `MODULE.bazel`, and the slack-mcp visibility exception for the spike.
+- Delete (in a separate PR, after Task 11 passes), also removing `vitruvian_relay_spike_crates` from the `ring` annotation, regenerating `.github/workflows/presubmit.yaml` (it lists `vitruvian-relay-spike-service`), and `tools/ci/chart-render/vitruvian-relay-spike.values.yaml`: `apps/suites/vitruvian-relay/spike/`, `gitops/argocd/applications/relay-spike.yaml`, `gitops/argocd/platform/relay-spike/`, `gitops/argocd/projects/relay-spike-project.yaml`, `.github/workflows/vitruvian-relay-spike-image.yaml`, the spike hub in `MODULE.bazel`, and the slack-mcp visibility exception for the spike.
 
 - [ ] **Step 1:** Set the chart defaults that the spike's chart pins to itself: `hostname: relay.ipv1337.dev` (the DNS record and `PUBLIC_URL` both read it) and `image.repository: ghcr.io/vitruviansoftware/vitruvian-relay`. Render check in PR A, with the CI values file (the gitops values come in PR B): `bazel run //tools/gitops:helm -- template t apps/suites/vitruvian-relay/relay/deploy/chart -f tools/ci/chart-render/vitruvian-relay.values.yaml` → a Deployment with the PVC, `fsGroup` and env.
-- [ ] **Step 2:** Ship in two PRs, because the chart pins its image by digest and the digest exists only after the image workflow's first push-to-`main` run. **PR A:** relay code, Dockerfile, chart, chart-render values and image workflow, with no Argo CD app yet. After it merges, read the pushed digest from that run's output. **PR B:** the AppProject, `gitops/argocd/applications/relay.yaml` and `gitops/argocd/platform/relay/values.yaml`, which sets every value the chart requires: `image.digest` (that digest), `oidc.projectId`, `oidc.mcpClientIds`, `oidc.connectorClientId` and `oidc.allowedSubjects` (the `zitadel-apps-relay` outputs and James's subject, as the spike's values file does), plus the affinity. PR B renders with `bazel run //tools/gitops:helm -- template t apps/suites/vitruvian-relay/relay/deploy/chart -f gitops/argocd/platform/relay/values.yaml` before it opens (later bumps come from the same automated digest PRs the other apps get). Merge PR B; confirm the Argo CD app is Synced and Healthy (the PVC is accepted), then confirm with `bazel run //tools/gitops:get -- pods -n relay -o wide` that the pod is Running on `fedora`, `nuc9i5` or `nuc9i9`, that a test device registration wrote `/data/devices.json` (relay log line on startup and after `POST /devices`), and that `https://relay.ipv1337.dev/.well-known/oauth-protected-resource` serves PRM.
+- [ ] **Step 2:** Ship in two PRs, because the chart pins its image by digest and the digest exists only after the image workflow's first push-to-`main` run. **PR A:** relay code, Dockerfile, chart, chart-render values and image workflow, with no Argo CD app yet. After it merges, read the pushed digest from that run's output. **PR B:** the AppProject, `gitops/argocd/applications/relay.yaml` and `gitops/argocd/platform/relay/values.yaml`, which sets every value the chart requires: `image.digest` (that digest), `oidc.projectId`, `oidc.mcpClientIds`, `oidc.connectorClientId` and `oidc.allowedSubjects` (the `zitadel-apps-relay` outputs and James's subject, as the spike's values file does), plus the affinity. `tunnel.id` keeps the chart default copied from the spike. `gitops/argocd/applications/relay.yaml` names `project: relay-project`. PR B renders with `bazel run //tools/gitops:helm -- template t apps/suites/vitruvian-relay/relay/deploy/chart -f gitops/argocd/platform/relay/values.yaml` before it opens (later bumps are by hand, as the spike's are: the plan adds no image-updater config). Merge PR B; confirm the Argo CD app is Synced and Healthy (the PVC is accepted), then confirm with `bazel run //tools/gitops:get -- pods -n relay -o wide` that the pod is Running on `fedora`, `nuc9i5` or `nuc9i9`, that a test device registration wrote `/data/devices.json` (relay log line on startup and after `POST /devices`), and that `https://relay.ipv1337.dev/.well-known/oauth-protected-resource` serves PRM.
 - [ ] **Step 3:** If James chose a change in the `zitadel-apps-relay` stack: preview then apply `zitadel-apps-relay-apply.yaml`. `workflow-run` works only as wren, so run it without `--agent`: `bazel run //tools/agent-app -- workflow-run zitadel-apps-relay-apply.yaml -f action=preview`, read it, then `-f action=up`. Expect only in-place updates.
 - [ ] **Step 4:** After Task 11 passes, retire the spike (the Delete list above) in its own PR.
 - [ ] **Step 5: Commit** `feat(relay): deploy the relay to the homelab`.
