@@ -34,7 +34,9 @@ _CRATES = [
     "@vitruvian_relay_crates//:ring",
     "@vitruvian_relay_crates//:rustls",
     "@vitruvian_relay_crates//:rustls-native-certs",
+    "@vitruvian_relay_crates//:serde",
     "@vitruvian_relay_crates//:serde_json",
+    "@vitruvian_relay_crates//:toml",
     "@vitruvian_relay_crates//:ureq",
 ]
 
@@ -45,6 +47,8 @@ rust_library(
         "src/config.rs",
         "src/keys.rs",
         "src/lib.rs",
+        "src/prompt.rs",
+        "src/rules.rs",
         "src/state.rs",
         "src/status.rs",
     ],

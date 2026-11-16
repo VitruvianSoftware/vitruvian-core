@@ -25,6 +25,8 @@
 pub mod auth;
 pub mod config;
 pub mod keys;
+pub mod prompt;
+pub mod rules;
 pub mod state;
 pub mod status;
 
