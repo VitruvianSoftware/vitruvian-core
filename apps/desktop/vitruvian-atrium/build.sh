@@ -296,6 +296,7 @@ if (( TEST )); then
         Sources/VitruvianAtrium/Core/NotchGestureStrings.swift
         Sources/VitruvianAtrium/Core/NotchAgentStrings.swift
         Sources/VitruvianAtrium/Core/CodexAccountStrings.swift
+        Sources/VitruvianAtrium/Core/ClaudeAccountStrings.swift
         Sources/VitruvianAtrium/Core/Notch/NotchAgentSupport.swift
         Sources/VitruvianAtrium/Core/NotchLockScreenStrings.swift
         Sources/VitruvianAtrium/Services/Notch/NotchLockScreenSupport.swift
@@ -314,6 +315,7 @@ if (( TEST )); then
         Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeAppUsage.swift
         Sources/VitruvianAtrium/Services/AgentUsage/AgentCLIConversation.swift
         Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeServer.swift
+        Sources/VitruvianAtrium/Services/AgentUsage/ClaudeAccountProfile.swift
         Sources/VitruvianAtrium/Services/AgentUsage/AgentCodexServer.swift
         Sources/VitruvianAtrium/Services/AgentUsage/CodexAccountLimits.swift
         Sources/VitruvianAtrium/Services/AgentUsage/CodexProfileLimitsService.swift

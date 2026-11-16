@@ -1519,12 +1519,16 @@ package final class NotchService: ObservableObject {
         // Added Codex accounts have cards before, or without, any log.
         let accounts = NotchAgentSupport.showsCodexAccounts(in: defaults)
             ? CodexProfileLimitsService.shared.states.map(\.id) : []
+        let claudeProfile = AgentUsageService.shared.claudeProfile
+        let claudeAccount = claudeProfile.isDefault ? nil : claudeProfile.id
         guard usage.loaded || !accounts.isEmpty else { return nil }
         // The same agents the page draws, so the island is sized for the tab shown.
         let providers = NotchAgentSupport.pageProviders(seen: usage.seen, filter: NotchAgentSupport.telemetryFilter(in: defaults),
-                                                        hasCodexAccounts: !accounts.isEmpty, in: defaults)
+                                                        hasCodexAccounts: !accounts.isEmpty,
+                                                        hasClaudeAccount: claudeAccount != nil, in: defaults)
         let rows = providers.isEmpty ? []
-            : NotchAgentSupport.pageRows(providers: providers, width: width, codexAccounts: accounts, in: defaults)
+            : NotchAgentSupport.pageRows(providers: providers, width: width, codexAccounts: accounts,
+                                         claudeAccount: claudeAccount, in: defaults)
         return NotchAgentSupport.telemetryHeight(rows, limitRows: NotchAgentSupport.limitRows(usage.limits))
     }
     package var expandedGeometry: NotchGeometry {
