@@ -289,9 +289,55 @@ pub fn cap_log(fd: i32, path: &Path, max_bytes: u64) -> Result<bool> {
     Ok(true)
 }
 
+/// Held while the sign-in files change: `vrelay logout` removing them, and a
+/// refresh writing its new token. An advisory `flock` on
+/// `.signin.lock` in the state folder; released when dropped.
+pub struct SignInLock(#[allow(dead_code)] std::fs::File);
+
+pub fn sign_in_lock(dir: &Path) -> Result<SignInLock> {
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::os::unix::io::AsRawFd;
+    ensure_dir(dir)?;
+    let path = dir.join(".signin.lock");
+    let f = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .mode(0o600)
+        .open(&path)
+        .map_err(|e| format!("open {}: {e}", path.display()))?;
+    loop {
+        // SAFETY: flock on a descriptor we own.
+        if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX) } == 0 {
+            return Ok(SignInLock(f));
+        }
+        let e = std::io::Error::last_os_error();
+        if e.raw_os_error() != Some(libc::EINTR) {
+            return Err(format!("lock {}: {e}", path.display()));
+        }
+    }
+}
+
+/// Saves a refreshed token, but only if `token.json` still holds what the
+/// refresh started from (`before`): if `vrelay logout` removed it, or a new
+/// `vrelay login` replaced it, while the refresh was out, the result is
+/// discarded (false) rather than undoing either. Under [`sign_in_lock`].
+pub fn save_tokens_if_unchanged(dir: &Path, before: &[u8], t: &Tokens) -> Result<bool> {
+    let _lock = sign_in_lock(dir)?;
+    match std::fs::read(token_path(dir)) {
+        Ok(now) if now == before => {
+            save_tokens(dir, t)?;
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
 /// Signs out: removes the token and the device record. The device key stays,
-/// so signing in again re-registers the same key.
+/// so signing in again re-registers the same key. Under [`sign_in_lock`],
+/// so a refresh finishing at the same moment cannot write the token back.
 pub fn clear_sign_in(dir: &Path) -> Result<bool> {
+    let _lock = sign_in_lock(dir)?;
     let mut removed = false;
     for p in [token_path(dir), device_path(dir)] {
         match std::fs::remove_file(&p) {

@@ -2530,3 +2530,108 @@ async fn old_moved_aside_records_are_deleted_at_start() {
     assert!(open.exists(), "the open window's record was deleted");
     assert!(unrelated.exists(), "a file it did not write was deleted");
 }
+
+// ------------------------------------------- off switches: calls in flight
+
+fn pause_now(dir: &Path) {
+    crate::rules::set_paused(dir, true).unwrap();
+}
+
+/// A pause that lands while a call waits at its dialog closes the dialog,
+/// refuses the call, and a later Allow runs nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pause_refuses_a_call_waiting_at_its_dialog() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-pause-dialog");
+    let mut p = parts();
+    p.rules = crate::rules::load(&dir).unwrap();
+    p.asker = FakeAsker::answering(None);
+    let asker = p.asker.clone();
+    let tools = p.tools.clone();
+    let run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("c1", "start_process", json!({"command": "make"}));
+    until("the dialog", || asker.opened.load(Ordering::SeqCst) == 1).await;
+    pause_now(&dir);
+    run.reload.send(()).await.unwrap();
+    let r = loop {
+        match c.recv().await {
+            ToRelay::Result(r) => break r,
+            ToRelay::ToolsChanged { .. } => {}
+            other => panic!("{other:?}"),
+        }
+    };
+    assert_eq!(r.call_id, "c1");
+    assert!(r.is_error);
+    assert_eq!(text(&r), PAUSED);
+    until("the dialog to close", || {
+        asker.dismissed.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    asker.set(Waited::Allow);
+    until_logged(&dir, "paused at prompt").await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(tools.count(), 0, "a late Allow ran it");
+}
+
+/// A call cleared to run but not yet started when the pause lands is
+/// refused at the last check before the tool; one already running keeps
+/// running, and the log says so.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pause_stops_a_cleared_call_but_not_a_running_one() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-pause-cleared");
+    let mut p = parts();
+    p.rules = crate::rules::load(&dir).unwrap();
+    let g = gate();
+    *p.tools.restart.lock().unwrap() = Some(g.clone());
+    let tools = p.tools.clone();
+    let run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("cleared", "read_file", json!({"path": "/a"}));
+    tokio::time::timeout(WAIT, g.reached.notified())
+        .await
+        .unwrap();
+    pause_now(&dir);
+    run.reload.send(()).await.unwrap();
+    // The reload has been applied once the tools list is sent.
+    loop {
+        if let ToRelay::ToolsChanged { tools } = c.recv_any().await {
+            assert!(tools.is_empty());
+            break;
+        }
+    }
+    g.go.notify_one();
+    let r = c.result().await;
+    assert_eq!((r.call_id.as_str(), text(&r).as_str()), ("cleared", PAUSED));
+    assert_eq!(tools.count(), 0, "it started after the pause");
+    until_logged(&dir, "paused before running").await;
+
+    // Already running: keeps running, and its result still comes.
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-pause-running");
+    let mut p = parts();
+    p.rules = crate::rules::load(&dir).unwrap();
+    let tools = p.tools.clone();
+    let run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call(
+        "running",
+        "read_file",
+        json!({"path": "/a", "sleep_ms": 800}),
+    );
+    until("it to start", || tools.count() == 1).await;
+    pause_now(&dir);
+    run.reload.send(()).await.unwrap();
+    let r = loop {
+        match c.recv().await {
+            ToRelay::Result(r) => break r,
+            ToRelay::ToolsChanged { .. } => {}
+            other => panic!("{other:?}"),
+        }
+    };
+    assert_eq!(r.call_id, "running");
+    assert!(!r.is_error, "{}", text(&r));
+    let line = until_logged(&dir, "running when paused").await;
+    assert_eq!(line["call_id"], "running");
+}

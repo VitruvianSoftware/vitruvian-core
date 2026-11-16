@@ -82,6 +82,8 @@ use crate::state::{
 };
 
 pub const DENIED: &str = "Denied on the computer.";
+/// A pause landed (`vrelay pause`) while the call waited or before it started.
+pub const PAUSED: &str = "Paused on the computer.";
 pub const ALREADY_STARTED: &str =
     "This call already started before vrelay restarted; not run again.";
 pub const NOT_RECORDED: &str = "vrelay could not record this call; not run.";
@@ -571,6 +573,8 @@ enum Stop {
     Shutdown,
     /// Its deadline passed: the relay has given up on it.
     Expired,
+    /// `vrelay pause` (the rules now say paused).
+    Paused,
 }
 
 enum Phase {
@@ -579,10 +583,11 @@ enum Phase {
         dismiss: Arc<AtomicBool>,
         stop: Option<Stop>,
     },
-    /// In `desktop-commander` (or about to be). A cancel before it starts
-    /// stops it; after, it only drops the result (P1 does not stop the
-    /// command).
-    Running { cancelled: bool },
+    /// In `desktop-commander` (or about to be). A cancel or a pause before
+    /// it starts stops it; after, a cancel only drops the result and a pause
+    /// lets it finish (P1 does not stop the command). `started` turns true
+    /// at the last check before the tool is sent the call.
+    Running { cancelled: bool, started: bool },
     /// The result, kept to answer a repeat of the id.
     Done(CallResult),
     /// Done, but its result was dropped to save memory. A repeat gets
@@ -686,7 +691,11 @@ impl Calls {
                 && now < e.deadline
                 && matches!(
                     e.phase,
-                    Phase::Prompting { stop: None, .. } | Phase::Running { cancelled: false }
+                    Phase::Prompting { stop: None, .. }
+                        | Phase::Running {
+                            cancelled: false,
+                            ..
+                        }
                 )
         })
     }
@@ -1020,7 +1029,10 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                     at: received,
                     deadline,
                     conn,
-                    phase: Phase::Running { cancelled: false },
+                    phase: Phase::Running {
+                        cancelled: false,
+                        started: false,
+                    },
                 },
             );
             calls.finish(&call_id, error_result(&call_id, ALREADY_STARTED), cap);
@@ -1054,7 +1066,10 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                 dismiss: dismiss.clone(),
                 stop: None,
             },
-            _ => Phase::Running { cancelled: false },
+            _ => Phase::Running {
+                cancelled: false,
+                started: false,
+            },
         };
         calls.live.insert(
             call_id.clone(),
@@ -1182,6 +1197,8 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                 (Some(Stop::LinkDropped), _) => Some(("link dropped at prompt", DROPPED, false)),
                 (Some(Stop::Shutdown), _) => Some(("link dropped at prompt", STOPPING, false)),
                 (Some(Stop::Expired), _) => Some(("timed out", TIMED_OUT, false)),
+                // The relay still waits on it: say why.
+                (Some(Stop::Paused), _) => Some(("paused at prompt", PAUSED, true)),
                 (None, Waited::Allow) if Instant::now() < deadline => None,
                 (None, Waited::Allow) | (None, Waited::TimedOut) => {
                     Some(("timed out", TIMED_OUT, true))
@@ -1189,7 +1206,12 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                 (None, Waited::Deny) | (None, Waited::Dismissed) => Some(("denied", DENIED, true)),
             };
             match refusal {
-                None => entry.phase = Phase::Running { cancelled: false },
+                None => {
+                    entry.phase = Phase::Running {
+                        cancelled: false,
+                        started: false,
+                    }
+                }
                 Some((_, text, _)) => calls.finish(
                     &call_id,
                     error_result(&call_id, text),
@@ -1215,27 +1237,79 @@ impl<T: Tools, A: Asker> Shared<T, A> {
     }
 
     /// Whether the call may still start: not cancelled, not past its
-    /// deadline (the relay has given up on it). If not, it is finished here
-    /// (nothing is sent: the relay no longer waits) and logged. Checked
-    /// under the lock a cancel takes.
-    fn may_start(&self, call_id: &str, tool: &str, args: &Value, deadline: Instant) -> bool {
+    /// deadline (the relay has given up on it), and the rules not paused
+    /// since it was cleared. If not, it is finished here and logged; only a
+    /// pause sends its answer (the relay still waits on that call). Checked
+    /// under the lock a cancel takes, and the rules are read under it too,
+    /// so a pause applied after this says yes finds the call `started`.
+    /// `last`: the check just before the tool is sent the call.
+    fn may_start(
+        &self,
+        call_id: &str,
+        tool: &str,
+        args: &Value,
+        deadline: Instant,
+        last: bool,
+        out: &Out,
+    ) -> bool {
         let mut calls = self.calls.lock().unwrap();
-        let stop = match calls.live.get(call_id).map(|e| &e.phase) {
-            Some(Phase::Running { cancelled: true }) => {
-                ("cancelled before running", CANCELLED_EARLY)
+        let paused = self.rules.lock().unwrap().paused;
+        let stop = match calls.live.get_mut(call_id).map(|e| &mut e.phase) {
+            Some(Phase::Running {
+                cancelled: true, ..
+            }) => ("cancelled before running", CANCELLED_EARLY, false),
+            Some(Phase::Running { .. }) if paused => ("paused before running", PAUSED, true),
+            Some(Phase::Running { started, .. }) if Instant::now() < deadline => {
+                *started |= last;
+                return true;
             }
-            Some(Phase::Running { cancelled: false }) if Instant::now() < deadline => return true,
-            Some(Phase::Running { cancelled: false }) => ("timed out", TIMED_OUT),
+            Some(Phase::Running { .. }) => ("timed out", TIMED_OUT, false),
             _ => return false,
         };
-        calls.finish(
-            call_id,
-            error_result(call_id, stop.1),
-            self.timing.results_cap_bytes,
-        );
+        let r = error_result(call_id, stop.1);
+        calls.finish(call_id, r.clone(), self.timing.results_cap_bytes);
         drop(calls);
         self.log_call(call_id, tool, args, stop.0, json!({}));
+        if stop.2 {
+            let _ = out.send(ToRelay::Result(r));
+        }
         false
+    }
+
+    /// The rules just became paused: close every open dialog (those calls
+    /// are refused) and log the calls already running, which keep running
+    /// (P1 does not stop a command). A call cleared but not started is
+    /// refused at its last check (`may_start`).
+    fn on_paused(&self) {
+        let mut running = Vec::new();
+        {
+            let mut calls = self.calls.lock().unwrap();
+            for (id, e) in calls.live.iter_mut() {
+                match &mut e.phase {
+                    Phase::Prompting { dismiss, stop } if stop.is_none() => {
+                        *stop = Some(Stop::Paused);
+                        dismiss.store(true, Ordering::SeqCst);
+                    }
+                    Phase::Running {
+                        cancelled: false,
+                        started: true,
+                    } => running.push(id.clone()),
+                    _ => {}
+                }
+            }
+        }
+        for id in running {
+            (self.log)(&format!(
+                "call {id} was already running when vrelay was paused: it keeps running \
+                 (the command is not stopped)"
+            ));
+            self.calls_log.line(json!({
+                "t": (self.clock)(),
+                "call_id": id,
+                "decision": "running when paused",
+                "note": "it keeps running; the command is not stopped",
+            }));
+        }
     }
 
     async fn run_tool(
@@ -1248,7 +1322,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         out: Out,
     ) {
         let cap = self.timing.results_cap_bytes;
-        if !self.may_start(&call_id, &tool, &args, deadline) {
+        if !self.may_start(&call_id, &tool, &args, deadline, false, &out) {
             return;
         }
         // On disk before it starts, so a command cut off by a crash, a
@@ -1287,8 +1361,8 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         // or may yet come while desktop-commander restarts: the bridge asks
         // again just before it sends the call.
         let me = self.clone();
-        let (id, t, a) = (call_id.clone(), tool.clone(), args.clone());
-        let wanted: StillWanted = Arc::new(move || me.may_start(&id, &t, &a, deadline));
+        let (id, t, a, o) = (call_id.clone(), tool.clone(), args.clone(), out.clone());
+        let wanted: StillWanted = Arc::new(move || me.may_start(&id, &t, &a, deadline, true, &o));
         let started = Instant::now();
         let Some(output) = self.tools.call(&tool, args, deadline, wanted).await else {
             return;
@@ -1303,7 +1377,10 @@ impl<T: Tools, A: Asker> Shared<T, A> {
             let mut calls = self.calls.lock().unwrap();
             let c = matches!(
                 calls.live.get(&call_id).map(|e| &e.phase),
-                Some(Phase::Running { cancelled: true })
+                Some(Phase::Running {
+                    cancelled: true,
+                    ..
+                })
             );
             calls.finish(&call_id, r.clone(), cap);
             c
@@ -1337,7 +1414,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                 *stop = Some(Stop::Cancelled);
                 dismiss.store(true, Ordering::SeqCst);
             }
-            Phase::Running { cancelled } => {
+            Phase::Running { cancelled, .. } => {
                 *cancelled = true;
                 (self.log)(&format!(
                     "call {call_id} was cancelled: it will not start, or if it already has, \
@@ -1363,7 +1440,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                     *stop = Some(why);
                     dismiss.store(true, Ordering::SeqCst);
                 }
-                Phase::Running { cancelled } => *cancelled = true,
+                Phase::Running { cancelled, .. } => *cancelled = true,
                 _ => {}
             }
         }
@@ -1382,8 +1459,12 @@ impl<T: Tools, A: Asker> Shared<T, A> {
             }
             Ok(r) => {
                 let visible = r.rules.visible(&tools);
+                let paused = r.rules.paused;
                 *self.rules_state.lock().unwrap() = rules_state(&r.rules, n, None);
                 *self.rules.lock().unwrap() = r.rules;
+                if paused {
+                    self.on_paused();
+                }
                 self.rules_gen.fetch_add(1, Ordering::SeqCst);
                 (self.log)("rules reloaded");
                 if r.visible_changed {

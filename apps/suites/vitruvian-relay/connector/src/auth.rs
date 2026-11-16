@@ -303,6 +303,14 @@ pub fn fresh_token_checked(
         .refresh_token
         .clone()
         .ok_or_else(|| RefreshError::Rejected("no refresh token saved".into()))?;
+    // What the refresh starts from: its result is saved only over this.
+    // (A file that cannot be read at all is not a sign-out: the result is
+    // used, and saving it is tried as before.)
+    let before = match std::fs::read(crate::state::token_path(&cfg.dir)) {
+        Ok(b) => Some(Some(b)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => Some(None),
+    };
     let agent = agent();
     let mut endpoints = None;
     let fresh = match refresh_once(cfg, &agent, &mut endpoints, &rt) {
@@ -312,10 +320,21 @@ pub fn fresh_token_checked(
             refresh_once(cfg, &agent, &mut endpoints, &rt)?
         }
     };
-    *tokens = fresh;
-    if let Err(e) = save_tokens(&cfg.dir, tokens) {
-        eprintln!("vrelay: warning: could not save the refreshed token: {e}");
+    // Signed out (or in again) while the refresh was out: this result is
+    // not the current sign-in's, so it is dropped and never written.
+    let gone = || {
+        RefreshError::Rejected("signed out on this Mac while the token was being refreshed".into())
+    };
+    let saved = match before.ok_or_else(gone)? {
+        Some(b) => crate::state::save_tokens_if_unchanged(&cfg.dir, &b, &fresh),
+        None => save_tokens(&cfg.dir, &fresh).map(|()| true),
+    };
+    match saved {
+        Ok(true) => {}
+        Ok(false) => return Err(gone()),
+        Err(e) => eprintln!("vrelay: warning: could not save the refreshed token: {e}"),
     }
+    *tokens = fresh;
     Ok(tokens.access_token.clone())
 }
 
@@ -472,6 +491,61 @@ mod tests {
         }
     }
 
+    /// Coordinator's off-switch item 2: `vrelay logout` while the agent is
+    /// mid-refresh. The refresh must not write `token.json` back (that
+    /// would undo the logout), nor overwrite a newer sign-in made
+    /// meanwhile; it says the sign-in is over instead.
+    #[test]
+    fn a_logout_during_a_refresh_is_not_undone() {
+        for login_again in [false, true] {
+            let dir = test_dir(if login_again {
+                "auth-race-relogin"
+            } else {
+                "auth-race-logout"
+            });
+            let (at_tx, at_rx) = std::sync::mpsc::channel::<()>();
+            let (go_tx, go_rx) = std::sync::mpsc::channel::<()>();
+            let go_rx = Mutex::new(go_rx);
+            let base = Arc::new(Mutex::new(String::new()));
+            let b2 = base.clone();
+            let url = fake_server(Box::new(move |_m, path, _h, _b| {
+                if path == "/.well-known/openid-configuration" {
+                    return (200, discovery(&b2.lock().unwrap()));
+                }
+                // The injected pause: the refresh is in flight here.
+                let _ = at_tx.send(());
+                let _ = go_rx.lock().unwrap().recv();
+                ok_answer()
+            }));
+            *base.lock().unwrap() = url.clone();
+            let cfg = cfg_for(&url, dir.clone());
+            save_tokens(&dir, &near_expiry()).unwrap();
+            let c = cfg.clone();
+            let refresh = std::thread::spawn(move || {
+                let mut t = load_tokens(&c.dir).unwrap().unwrap();
+                fresh_token_checked(&c, &mut t)
+            });
+            at_rx.recv().unwrap();
+            crate::state::clear_sign_in(&dir).unwrap();
+            let newer = Tokens {
+                access_token: "newer-login".into(),
+                refresh_token: Some("newer-refresh".into()),
+                expires_at_unix: now_unix() + 3600,
+            };
+            if login_again {
+                save_tokens(&dir, &newer).unwrap();
+            }
+            go_tx.send(()).unwrap();
+            let r = refresh.join().unwrap();
+            assert!(matches!(r, Err(RefreshError::Rejected(_))), "{r:?}");
+            if login_again {
+                assert_eq!(load_tokens(&dir).unwrap(), Some(newer));
+            } else {
+                assert!(!token_path(&dir).exists(), "the logout was undone");
+            }
+        }
+    }
+
     fn ok_answer() -> (u16, String) {
         (
             200,
@@ -500,6 +574,7 @@ mod tests {
         let (base, calls, _) = token_server(vec![ok_answer()]);
         let dir = test_dir("fresh-near");
         let mut t = near_expiry();
+        save_tokens(&dir, &t).unwrap();
         let got = fresh_token(&cfg_for(&base, dir.clone()), &mut t).unwrap();
         assert_eq!(got, "new-access");
         let calls = calls.lock().unwrap();
@@ -534,6 +609,7 @@ mod tests {
         let (base, calls, _) = token_server(vec![(500, "{}".into()), ok_answer()]);
         let mut t = near_expiry();
         let dir = test_dir("fresh-retry-ok");
+        save_tokens(&dir, &t).unwrap();
         assert_eq!(
             fresh_token(&cfg_for(&base, dir), &mut t).unwrap(),
             "new-access"
