@@ -72,6 +72,13 @@ const GIT_SH_HEADER: &str = r#"# git.sh — the git writes agents make, with the
 #   keep using --merge. --from origin/<branch> (with --merge only) merges that
 #   pushed branch instead of origin/main, with every check above unchanged.
 #
+# Bring the main checkout up to date (from any worktree):
+#   bazel run //tools/git:update-main             # fast-forward the main checkout to origin/main
+#
+#   It only fast-forwards: it refuses if the main checkout is not on main, has
+#   commits of its own, or has uncommitted changes to tracked files. Untracked
+#   files are left alone. It never merges, rebases or stashes.
+#
 # Exit codes: 0 done, 1 refused or failed (the reason and what to run instead
 # are printed), 2 bad arguments.
 
@@ -1338,10 +1345,15 @@ pub fn run_os(args: &[OsString]) -> i32 {
         b"commit" => cmd_commit(&state, sub_args),
         b"push" => cmd_push(&state, sub_args),
         b"sync" => cmd_sync(&state, sub_args),
+        b"update-main" => cmd_update_main(&state, sub_args),
         _ => bad_args_bytes(
             &state.prog,
             b"//tools/git",
-            &bconcat(&[b"unknown command: ", cmd, b" (one of: commit, push, sync)"]),
+            &bconcat(&[
+                b"unknown command: ",
+                cmd,
+                b" (one of: commit, push, sync, update-main)",
+            ]),
         ),
     }
 }
@@ -2212,6 +2224,206 @@ fn parse_merge_source(value: &[u8]) -> Result<Vec<u8>, &'static str> {
     Ok(branch.to_vec())
 }
 
+/// The main checkout's directory, from the repository's common git dir.
+/// Every worktree shares one common dir; for the main checkout it is
+/// `<main>/.git`. None when the layout is anything else (a bare repo, or a
+/// common dir not named .git), which update-main then refuses.
+pub fn main_checkout_dir(common_dir: &[u8]) -> Option<Vec<u8>> {
+    let trimmed = common_dir.strip_suffix(b"/").unwrap_or(common_dir);
+    let parent = trimmed.strip_suffix(b"/.git")?;
+    if parent.is_empty() {
+        return None;
+    }
+    Some(parent.to_vec())
+}
+
+/// `git pull --ff-only` for the main checkout, done the safe way: fetch, then
+/// fast-forward only when the main checkout is on main, has no commits of its
+/// own and no uncommitted changes to tracked files. Agents can't run raw git
+/// writes in the main checkout (agent-guard), and the main checkout going
+/// stale meant `bazel run` there didn't have targets that had already merged.
+fn cmd_update_main(state: &EnvState, args: &[OsString]) -> i32 {
+    for a in args {
+        let a = a.as_bytes();
+        if a == b"-h" || a == b"--help" {
+            return print_usage(&state.prog);
+        }
+        return bad_args_bytes(
+            &state.prog,
+            &state.name,
+            &bconcat(&[b"update-main takes no arguments, got: ", a]),
+        );
+    }
+    let main_dir = match main_checkout_dir(&state.common_dir) {
+        Some(d) => d,
+        None => {
+            return refuse_bytes(
+                &state.prog,
+                &state.name,
+                &bconcat(&[
+                    b"could not find the main checkout from git's common dir ",
+                    &state.common_dir,
+                ]),
+                &[],
+            );
+        }
+    };
+    let rc = git_status_bytes(
+        &state.prog,
+        2601,
+        &[b"-C", &main_dir, b"fetch", b"--quiet", b"origin", b"main"],
+        &[],
+        true,
+        false,
+    );
+    if rc != 0 {
+        return rc;
+    }
+    let (_rc, branch) = git_output_bytes(
+        &state.prog,
+        2602,
+        &[
+            b"-C",
+            &main_dir,
+            b"symbolic-ref",
+            b"--quiet",
+            b"--short",
+            b"HEAD",
+        ],
+        &[],
+        true,
+    );
+    if branch != b"main" {
+        let shown: &[u8] = if branch.is_empty() {
+            b"a detached HEAD"
+        } else {
+            &branch
+        };
+        return refuse_bytes(
+            &state.prog,
+            &state.name,
+            &bconcat(&[&main_dir, b" is on ", shown, b", not main"]),
+            &[b"switch it back to main yourself, then re-run"],
+        );
+    }
+    let (_rc, ahead) = git_output_bytes(
+        &state.prog,
+        2603,
+        &[
+            b"-C",
+            &main_dir,
+            b"rev-list",
+            b"--count",
+            b"origin/main..main",
+        ],
+        &[],
+        true,
+    );
+    if ahead != b"0" {
+        return refuse_bytes(
+            &state.prog,
+            &state.name,
+            &bconcat(&[
+                &main_dir,
+                b" has ",
+                &ahead,
+                b" commit(s) on main that origin/main does not",
+            ]),
+            &[b"move them to a branch: bazel run //tools/worktree -- <branch>"],
+        );
+    }
+    let (_rc, dirty) = git_output_bytes(
+        &state.prog,
+        2604,
+        &[
+            b"-C",
+            &main_dir,
+            b"status",
+            b"--porcelain",
+            b"--untracked-files=no",
+        ],
+        &[],
+        true,
+    );
+    if !dirty.is_empty() {
+        return refuse_bytes(
+            &state.prog,
+            &state.name,
+            &bconcat(&[
+                &main_dir,
+                b" has uncommitted changes to tracked files:\n",
+                &dirty,
+            ]),
+            &[b"commit them on a branch, or discard them yourself, then re-run"],
+        );
+    }
+    let (_rc, behind) = git_output_bytes(
+        &state.prog,
+        2605,
+        &[
+            b"-C",
+            &main_dir,
+            b"rev-list",
+            b"--count",
+            b"main..origin/main",
+        ],
+        &[],
+        true,
+    );
+    if behind == b"0" {
+        let _ = echo_stdout(
+            &state.prog,
+            2606,
+            &bconcat(&[
+                &state.name,
+                b": ",
+                &main_dir,
+                b" is already up to date with origin/main",
+            ]),
+        );
+        return 0;
+    }
+    let rc = git_status_bytes(
+        &state.prog,
+        2607,
+        &[
+            b"-C",
+            &main_dir,
+            b"merge",
+            b"--ff-only",
+            b"--quiet",
+            b"origin/main",
+        ],
+        &[],
+        true,
+        false,
+    );
+    if rc != 0 {
+        return rc;
+    }
+    let (_rc, head) = git_output_bytes(
+        &state.prog,
+        2608,
+        &[b"-C", &main_dir, b"log", b"-1", b"--format=%h %s"],
+        &[],
+        true,
+    );
+    let _ = echo_stdout(
+        &state.prog,
+        2609,
+        &bconcat(&[
+            &state.name,
+            b": fast-forwarded ",
+            &main_dir,
+            b" by ",
+            &behind,
+            b" commit(s), now at ",
+            &head,
+        ]),
+    );
+    0
+}
+
 fn cmd_sync(state: &EnvState, args: &[OsString]) -> i32 {
     let mut mode = "rebase";
     let mut autosquash = false;
@@ -2869,6 +3081,20 @@ fn cmd_sync(state: &EnvState, args: &[OsString]) -> i32 {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn main_checkout_dir_from_common_dir() {
+        assert_eq!(
+            super::main_checkout_dir(b"/Users/j/repo/.git"),
+            Some(b"/Users/j/repo".to_vec())
+        );
+        assert_eq!(
+            super::main_checkout_dir(b"/Users/j/repo/.git/"),
+            Some(b"/Users/j/repo".to_vec())
+        );
+        assert_eq!(super::main_checkout_dir(b"/srv/repo.git"), None);
+        assert_eq!(super::main_checkout_dir(b"/.git"), None);
+    }
     use super::*;
 
     #[test]
