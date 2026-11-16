@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.44](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.43...vitruvian-remote-v0.1.44) (2026-11-16)
+
+
+### Bug Fixes
+
+* **vitruvian-remote:** say Mac helper in the extension's description and commands ([#4925](https://github.com/VitruvianSoftware/vitruvian-core/issues/4925)) ([9d0211a](https://github.com/VitruvianSoftware/vitruvian-core/commit/9d0211a9f592779c97711dbdb14cf9cca46ca15d))
+
 ## [0.1.43](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.42...vitruvian-remote-v0.1.43) (2026-11-16)
 
 
