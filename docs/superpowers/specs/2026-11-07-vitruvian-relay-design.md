@@ -347,15 +347,18 @@ consequences to plan for:
 Two things to know about the paid setup:
 
 - Cloud Run ends a WebSocket after at most 60 minutes (its request timeout, per
-  [Cloud Run's WebSocket docs](https://cloud.google.com/run/docs/triggering/websockets)). The connector therefore reconnects on its own about every
-  50 minutes, with jitter. That should be invisible to the user; it is untested.
-- With several relay instances, a computer is connected to one instance but a call
-  can arrive at another. Cloud Run instances can't be addressed one by one, and
-  Postgres `NOTIFY` messages are capped at 8,000 bytes, too small for results. So
-  **launch runs a single relay instance** (Cloud Run max instances = 1; how fast
-  it restarts hasn't been measured). Scaling out later needs a message bus
-  between instances, such as Redis or NATS, which is an added cost. That decision waits until one
-  instance is actually too small (§11).
+  [Cloud Run's WebSocket docs][cloudrun-ws]). The connector therefore
+  reconnects on its own about every 50 minutes, with jitter. That should be
+  invisible to the user; it is untested.
+- With several relay instances, a computer is connected to one instance but a
+  call can arrive at another. Cloud Run instances can't be addressed one by
+  one, and Postgres `NOTIFY` messages are capped at 8,000 bytes, too small for
+  results. So **launch runs a single relay instance** (Cloud Run max instances
+  = 1; how fast it restarts hasn't been measured). Scaling out later needs a
+  message bus between instances, such as Redis or NATS, which is an added cost.
+  That decision waits until one instance is actually too small (§11).
+
+[cloudrun-ws]: https://cloud.google.com/run/docs/triggering/websockets
 
 **Zitadel is a launch dependency.** It runs on the homelab today, so a homelab
 outage would also be a sign-in outage for paying users. Launch needs Zitadel on
