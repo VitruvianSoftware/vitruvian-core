@@ -35,12 +35,28 @@ const STRING_REJECT_CONTROLS: &[(&str, &str)] = &[(
 
 /// A value guard's negative and positive controls: each bad value, set with
 /// `--set-string`, must refuse the render with a message naming the path, and
-/// each good value must render and appear in the output.
+/// each good value must render with a line that, trimmed, equals `expect`
+/// with `{v}` replaced by the value after its last `@` (the whole value if it
+/// has none).
 pub struct ValueControl {
     pub chart_dir: &'static str,
     pub path: &'static str,
     pub bad: &'static [&'static str],
     pub good: &'static [&'static str],
+    pub expect: &'static str,
+}
+
+/// The exact line a good value must render as.
+pub fn expected_line(expect: &str, value: &str) -> String {
+    expect.replace("{v}", value.rsplit('@').next().unwrap_or(value))
+}
+
+/// Whether any line of `rendered`, trimmed of surrounding whitespace, is
+/// exactly `line`.
+pub fn has_exact_line(rendered: &[u8], line: &str) -> bool {
+    rendered
+        .split(|&c| c == b'\n')
+        .any(|l| l.trim_ascii() == line.as_bytes())
 }
 
 /// Chart-dir → value guards beyond `required`. Declared, not derived: an
@@ -60,13 +76,15 @@ pub const VALUE_CONTROLS: &[ValueControl] = &[
             "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "main@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         ],
+        expect: "image: ghcr.io/vitruviansoftware/vitruvian-relay@{v}",
     },
     // Below the relay's 75 s idle close (_helpers.tpl upstreamIdleTimeout).
     ValueControl {
         chart_dir: "apps/suites/vitruvian-relay/relay/deploy/chart",
         path: "upstreamIdleTimeout",
         bad: &["75s", "90s", "2m", "1m15s", "0s", "60", "10ms", "1h"],
-        good: &["60s", "74s", "1m", "1m14s"],
+        good: &["60s", "74s", "1m", "1m10s", "1m14s"],
+        expect: "connectionIdleTimeout: \"{v}\"",
     },
 ];
 
@@ -466,7 +484,7 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             }
             for &v in ctl.good {
                 let r = run_with(v);
-                let shown = v.rsplit('@').next().unwrap_or(v);
+                let want = expected_line(ctl.expect, v);
                 if !r.ok() {
                     fail(
                         &cat(&[
@@ -481,7 +499,7 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
                     );
                     err(&r.stderr);
                     err(b"\n");
-                } else if !shell_compat::contains(&r.stdout, shown.as_bytes()) {
+                } else if !has_exact_line(&r.stdout, &want) {
                     fail(
                         &cat(&[
                             &reldir,
@@ -489,7 +507,9 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
                             ctl.path.as_bytes(),
                             b"=",
                             v.as_bytes(),
-                            b" rendered but the value is not in the output",
+                            b" rendered but no line is exactly `",
+                            want.as_bytes(),
+                            b"`",
                         ]),
                         &mut failures,
                     );
@@ -527,6 +547,41 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exact_line_match_is_not_a_substring_match() {
+        let out = b"spec:\n      connectionIdleTimeout: \"1m10s\"\n  image: r@sha256:ab\n";
+        let want = expected_line("connectionIdleTimeout: \"{v}\"", "1m10s");
+        assert!(has_exact_line(out, &want));
+        // A value that only appears inside the line, or a prefix of it, is not a match.
+        assert!(!has_exact_line(
+            out,
+            &expected_line("connectionIdleTimeout: \"{v}\"", "10s")
+        ));
+        assert!(!has_exact_line(
+            out,
+            &expected_line("connectionIdleTimeout: \"{v}\"", "1m")
+        ));
+        assert!(has_exact_line(
+            out,
+            &expected_line("image: r@{v}", "main@sha256:ab")
+        ));
+        assert!(!has_exact_line(
+            out,
+            &expected_line("image: r@{v}", "sha256:a")
+        ));
+    }
+
+    #[test]
+    fn value_controls_expect_names_the_value() {
+        for ctl in VALUE_CONTROLS {
+            assert!(
+                ctl.expect.contains("{v}"),
+                "{}: expect has no {{v}}",
+                ctl.path
+            );
+        }
+    }
 
     #[test]
     fn value_controls_have_both_arms() {
