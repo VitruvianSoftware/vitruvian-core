@@ -67,7 +67,7 @@ is retired in the last task.
   changes `desktop-commander`'s own settings is hidden from remote callers.
 - **Protocol (§4):** JSON frames `hello`, `welcome`/`reject`, `call`,
   `result`, `cancel`, `tools_changed`, `ping`/`pong`. `progress` is reserved
-  and not built. Ping every **20 s**, **3** missed pings = offline. Frames
+  and not built. Ping every **20 s**, **3** missed pings = offline. **While a device has a call in flight**, the relay pings it every **2 s** and treats **3** missed pings (about 6 s) as a drop, so a silent network loss fails the call in seconds, not a minute (a P1 refinement of §4, recorded in the spec by this plan's PR). Frames
   capped at **4 MiB**; bigger output is truncated with a note. Repeated call
   ids ignored for **10 minutes**. Reconnect backoff **1 s doubling to 60 s,
   with jitter**.
@@ -82,6 +82,7 @@ is retired in the last task.
   and retries a failed refresh; the relay answers `server/discover`.
 - **Hosting (§8):** relay pod on the always-on pools only (the same
   allow-list affinity as the spike, #4916), one replica.
+- **License headers** on every new source and config file (`addlicense`; CI's `license-check` fails without them).
 - **Repo rules:** every git, gh, cluster and Pulumi operation through the Bazel
   targets in `AGENTS.md`. Commits via `bazel run //tools/git:commit -- --agent
   <you>`. Raw `cargo` is blocked; re-lock with `bazel run //tools/crates:lock
@@ -89,9 +90,12 @@ is retired in the last task.
 
 ## Review Focus
 
-1. **The Mac sleeps or drops off Wi-Fi mid-call.** The AI app should get
-   "Your computer disconnected; try again." within a second or two, not wait for the
-   deadline. Test in Task 3 (`pending_call_fails_when_device_drops`).
+1. **The Mac sleeps or drops off Wi-Fi mid-call.** A closed connection fails
+   the call at once. A silent loss (Wi-Fi off sends nothing) is caught by the
+   fast in-call pings within about 6 s. Either way the AI app gets "Your
+   computer disconnected; try again." instead of waiting for the deadline.
+   Tests in Task 3 (`pending_call_fails_when_device_drops`) and Task 4
+   (`silent_drop_mid_call_fails_within_seconds`).
 2. **Nobody is at the Mac when an "ask first" call arrives.** The prompt must
    time out as **Deny**, never Allow. Test in Task 6
    (`prompt_timeout_denies`).
@@ -135,7 +139,7 @@ Pull the verifier out of the Slack MCP so the relay doesn't copy it (§5), and
 let one verifier accept several client ids.
 
 **Files:**
-- Create: `packages/rust/vitruvian-mcp-auth/{Cargo.toml,BUILD,src/lib.rs,src/verifier.rs,src/prm.rs}`. Its `Cargo.toml` has its own empty `[workspace]` table, as slack-mcp's does, so cargo doesn't treat it as an unlisted member of the repo-root workspace when the relay path-depends on it
+- Create: `packages/rust/vitruvian-mcp-auth/{Cargo.toml,BUILD,src/lib.rs,src/verifier.rs,src/prm.rs}`. Its BUILD takes its crates from `@vitruvian_relay_crates` and sets `package(default_visibility = ["//apps/suites/vitruvian-relay:__subpackages__"])`; the Slack MCP is added to that list when it moves over. Its `Cargo.toml` has its own empty `[workspace]` table, as slack-mcp's does, so cargo doesn't treat it as an unlisted member of the repo-root workspace when the relay path-depends on it
 - Create: `apps/suites/vitruvian-relay/{BUILD,Cargo.toml,Cargo.lock}` (the BUILD makes the folder a package, so `MODULE.bazel` can name `//apps/suites/vitruvian-relay:Cargo.toml` and `:Cargo.lock`, as it names the spike's; the workspace's member list grows in later tasks, and `vitruvian-mcp-auth` is a `path` dependency of the crates that use it, not a member)
 - Modify: `MODULE.bazel`: add hub `vitruvian_relay_crates`, and add it to the `repositories` list of the `ring` `crate.annotation` (every hub that builds ring is listed there, the spike's included). Keep the spike hub until the spike is retired (Task 10), which removes it from both places.
 - Test: `packages/rust/vitruvian-mcp-auth/src/verifier.rs` (`#[cfg(test)]`)
@@ -246,7 +250,7 @@ device replaces the old one (its pending calls fail `Disconnected`).
     - `POST /mcp/d/{device_id}` — MCP over Streamable HTTP (JSON responses; SSE not needed in P1). Bearer verified with the MCP client ids; caller `sub` must equal the device's `owner_sub`, else 404 (don't reveal the device).
     - `GET /.well-known/oauth-protected-resource/mcp/d/{device_id}` — PRM with `resource` = that device's URL. The bare `/.well-known/oauth-protected-resource` returns the same metadata with `resource` = `PUBLIC_URL` (the relay itself), for clients that look there first.
     - `POST /devices` — bearer verified with `CONNECTOR_CLIENT_ID`; body `{ "public_key": "<base64 32 bytes>" }`; creates a record owned by the caller, returns `{ "device_id": "<uuid v4>", "mcp_url": "…" }`. P1 allows one device per subject: a second call for the same subject replaces the key, keeps the id, and calls `Registry::kick` so a session signed with the old key ends at once.
-    - `GET /connect` — WebSocket. Bearer verified with `CONNECTOR_CLIENT_ID`. First frame must be `hello` within 10 s: device exists, owned by the caller, `|now − ts| ≤ 60 s`, Ed25519 `sig` over `hello_message(device_id, ts, sha256(bearer))` verifies, `protocol == 1`. Otherwise `reject` with the reason and close. Then `welcome`, `Registry::connect`, ping every 20 s, answer the connector's pings, disconnect after 3 missed pongs.
+    - `GET /connect` — WebSocket. Bearer verified with `CONNECTOR_CLIENT_ID`. First frame must be `hello` within 10 s: device exists, owned by the caller, `|now − ts| ≤ 60 s`, Ed25519 `sig` over `hello_message(device_id, ts, sha256(bearer))` verifies, `protocol == 1`. Otherwise `reject` with the reason and close. Then `welcome`, `Registry::connect`, ping every 20 s (every 2 s while the device has a call in flight), answer the connector's pings, disconnect after 3 missed pongs.
   - `mcp::handle(req, device_id, caller, registry) -> Option<Value>`: `initialize` (protocol versions as the spike's `PROTOCOL_VERSIONS`; capabilities `tools: { listChanged: false }`, because P1 answers in JSON only and has no stream to push a change on), `ping`, `server/discover` (returns the same `serverInfo` — name `vitruvian-relay`, version — `capabilities` and supported protocol versions as `initialize`, without starting a session), `tools/list` (the device's current tools; empty list and no error if offline), `tools/call` (→ `Registry::call` with a 180 s budget; `CallError` becomes an MCP tool result with `isError: true` and `user_message()`). A `tools_changed` frame calls `Registry::update_tools`; AI apps see the new list on their next `tools/list`.
   - Logging: one line per call — device id, tool, argument bytes, result bytes, duration, outcome. Never arguments or output (§7.2).
 
@@ -256,6 +260,9 @@ device replaces the old one (its pending calls fail `Disconnected`).
   `tools_list_reflects_hello_tools`, `connect_rejects_bad_signature`,
   `connect_rejects_stale_ts`, `connect_rejects_token_for_another_client`,
   `register_device_returns_mcp_url`, `reregister_kicks_old_session`,
+  `silent_drop_mid_call_fails_within_seconds` (a fake connector that stops
+  answering pings mid-call, with an injected clock: the call fails
+  `Disconnected` after about 6 s),
   `bare_prm_names_the_relay`, `logs_never_contain_arguments_outputs_or_tokens`
   (a call with a marker string in its arguments and its result, and a known
   bearer: none of the three appears in the captured log).
@@ -267,7 +274,7 @@ device replaces the old one (its pending calls fail `Disconnected`).
 ### Task 5: Connector sign-in, device key and token refresh
 
 **Files:**
-- Create: `apps/suites/vitruvian-relay/connector/src/{main.rs,auth.rs,keys.rs}`, `BUILD`, `Cargo.toml`
+- Create: `apps/suites/vitruvian-relay/connector/src/{main.rs,auth.rs,keys.rs}`, `BUILD` (a `rust_binary` named `vrelay`, so `bazel run //apps/suites/vitruvian-relay/connector:vrelay -- <command>`, plus `:unit_tests`), `Cargo.toml`
 
 **Interfaces:**
 - Produces:
@@ -304,7 +311,7 @@ device replaces the old one (its pending calls fail `Disconnected`).
                  "get_file_info", "start_search", "get_more_search_results",
                  "stop_search", "list_searches"]
     ```
-  - `rules::load(dir) -> Result<Rules>`; `Rules::visible(&self, tools: &[ToolDef]) -> Vec<ToolDef>`; `Rules::decide(&self, tool: &str) -> Decision` with `enum Decision { Run, AskFirst, Refuse(&'static str) }`: `Refuse` for hidden tools or when paused, `Run` only for `no_prompt` tools, `AskFirst` for everything else (an unknown tool asks; it never runs silently). The exact tool names are checked against the pinned 0.3.1 `tools/list` in Task 7 and corrected here if they differ.
+  - `rules::load(dir) -> Result<Rules>`; `Rules::visible(&self, tools: &[ToolDef]) -> Vec<ToolDef>`; `Rules::decide(&self, tool: &str) -> Decision` with `enum Decision { Run, AskFirst, Refuse(&'static str) }`: `Refuse` for hidden tools or when paused, `Run` only for `no_prompt` tools, `AskFirst` for everything else (an unknown tool asks; it never runs silently). The tool names in `hidden`, `no_prompt` and the prompt summaries are provisional: they come from desktop-commander's source, not from the pinned 0.3.1 package's own `tools/list`. Task 7 step 5 checks them against the real list and corrects them here before Task 8.
   - `prompt::ask(tool: &str, summary: &str, timeout: Duration) -> PromptHandle`; `PromptHandle::wait(self) -> Answer` and `PromptHandle::dismiss(self)` (kills the dialog), with `enum Answer { Allow, Deny }`.
     The dialog is a fixed script, `osascript -e 'on run argv' -e 'display dialog (item 1 of argv) buttons {"Deny","Allow"} default button "Deny" giving up after (item 2 of argv as integer)' -e 'end run' -- <summary> <secs>`: the summary travels as an argument and is never put inside the script, so quotes and backslashes can't break out. `summary` is the tool name plus its key arguments, each cut to 200 characters with control characters removed: `start_process` → `command`; `interact_with_process` → `pid` and `input`; `write_file` → `path`; `edit_block` → `file_path`; `move_file` → `source` and `destination`; `create_directory` → `path`; `kill_process` / `force_terminate` → `pid`; `write_pdf` → `outputPath`. Any other tool shows its arguments as compact JSON. (Names are checked against the pinned package in Task 7.) Timeout, a non-zero exit or anything but "Allow" → `Deny`. Default timeout **60 s**.
   - The rules file is read at start and on `SIGHUP`; nothing received from the relay changes it.
@@ -414,7 +421,7 @@ Follow `apps/mobile/vitruvian-remote/macagent/scripts` (`render_plist`,
 ### Task 10: Deploy the relay, Zitadel changes, retire the spike
 
 **Files:**
-- Create: `gitops/argocd/projects/relay-project.yaml` (from `relay-spike-project.yaml`, with its destination namespace changed to `relay` and `PersistentVolumeClaim` added to `namespaceResourceWhitelist`, or Argo CD refuses the volume), `tools/ci/chart-render/vitruvian-relay.values.yaml` (from the spike's; CI finds it by chart name, so the chart is named `vitruvian-relay` in `Chart.yaml`), `apps/suites/vitruvian-relay/relay/Dockerfile` (builds with a second named build context, `mcpauth=packages/rust/vitruvian-mcp-auth`, the way the spike's uses `slackmcp`, because the path dependency sits outside the relay folder; the image workflow passes `--build-context mcpauth=…` everywhere the spike's passes `slackmcp`), `relay/deploy/chart/` (Service, HTTPRoute, DNSEndpoint for `relay.ipv1337.dev`, NetworkPolicy and the `affinity` value copied from the spike's chart, with the HTTPRoute also passing `/devices` (match type `Exact`), which the spike's route lacks, and `/mcp/d/` as a `PathPrefix`; the affinity *rule* itself comes from `gitops/argocd/platform/relay-spike/values.yaml`; new: a 1 GiB PVC mounted at `/data` for the device file, with `storageClassName: nfs`. The default `local-path` class would pin the volume, and so the pod, to one node, defeating the three-node allow list), `gitops/argocd/applications/relay.yaml`, `gitops/argocd/platform/relay/values.yaml` (with the #4916 allow-list affinity; `MCP_CLIENT_IDS` = the `claudeClientId` and `geminiClientId` outputs), image build workflow mirroring `vitruvian-relay-spike-image`
+- Create: `gitops/argocd/projects/relay-project.yaml` (from `relay-spike-project.yaml`, with its destination namespace changed to `relay` and `PersistentVolumeClaim` added to `namespaceResourceWhitelist`, or Argo CD refuses the volume), `tools/ci/chart-render/vitruvian-relay.values.yaml` (from the spike's; CI finds it by chart name, so the chart is named `vitruvian-relay` in `Chart.yaml`), `apps/suites/vitruvian-relay/relay/Dockerfile`. The build context is the workspace root, `apps/suites/vitruvian-relay` (`docker buildx build -f relay/Dockerfile … apps/suites/vitruvian-relay`), because the relay is a member of that workspace. The shared crate comes in as a named build context, `mcpauth=packages/rust/vitruvian-mcp-auth` (the spike does the same with `slackmcp`), copied to `/src/packages/rust/vitruvian-mcp-auth`; the workspace is copied to `/src/apps/suites/vitruvian-relay`, so the `../../../packages/rust/vitruvian-mcp-auth` path dependency resolves. `WORKDIR /src/apps/suites/vitruvian-relay`, then `cargo build --release --locked -p vitruvian-relay`. The image workflow passes `--build-context mcpauth=…` everywhere the spike's passes `slackmcp`, `relay/deploy/chart/` (Service, HTTPRoute, DNSEndpoint for `relay.ipv1337.dev`, NetworkPolicy and the `affinity` value copied from the spike's chart, with the HTTPRoute also passing `/devices` (match type `Exact`), which the spike's route lacks, and `/mcp/d/` as a `PathPrefix`; the affinity *rule* itself comes from `gitops/argocd/platform/relay-spike/values.yaml`; new: a 1 GiB PVC mounted at `/data` for the device file, with `storageClassName: nfs`. The default `local-path` class would pin the volume, and so the pod, to one node, defeating the three-node allow list), `gitops/argocd/applications/relay.yaml`, `gitops/argocd/platform/relay/values.yaml` (with the #4916 allow-list affinity; `MCP_CLIENT_IDS` = the `claudeClientId` and `geminiClientId` outputs), image build workflow mirroring `vitruvian-relay-spike-image`
 - Modify: `infrastructure/pulumi/platform/zitadel-apps-relay/` for one sign-in
   (P1-required). The pinned `pulumi-zitadel` SDK v0.2.0 has no per-app
   login-version field. In order:
@@ -424,13 +431,14 @@ Follow `apps/mobile/vitruvian-remote/macagent/scripts` (`render_plist`,
   2. If not, **stop and ask James** before going further: the remaining route
      is Zitadel's instance-wide Login V2 switch, which changes sign-in for every
      app on the instance, not just the relay.
-  Gemini's callback is tied to the server URL (spike A), so the new relay URL
-  needs a new callback in `geminiRedirectUris` before Gemini can use it.
-  Optional for P1; note it in the stack README if not done.
+- Optional for P1 (unlike the one sign-in above): Gemini's callback is tied to
+  the server URL (spike A), so the new relay URL needs a new callback in
+  `geminiRedirectUris` before Gemini can use it. Note it in the stack README if
+  not done.
 - Delete (in a separate PR, after Task 11 passes), also removing `vitruvian_relay_spike_crates` from the `ring` annotation and `tools/ci/chart-render/vitruvian-relay-spike.values.yaml`: `apps/suites/vitruvian-relay/spike/`, `gitops/argocd/applications/relay-spike.yaml`, `gitops/argocd/platform/relay-spike/`, the spike hub in `MODULE.bazel`, and the slack-mcp visibility exception for the spike.
 
 - [ ] **Step 1:** Render check (and CI's chart-render job picks up the new values file): `bazel run //tools/gitops:helm -- template t apps/suites/vitruvian-relay/relay/deploy/chart -f gitops/argocd/platform/relay/values.yaml` → Deployment with the affinity, PVC, env from values.
-- [ ] **Step 2:** Merge; confirm the Argo CD app is Synced and Healthy (the PVC is accepted), then confirm with `bazel run //tools/gitops:get -- pods -n relay -o wide` that the pod is Running on `fedora`, `nuc9i5` or `nuc9i9`, and that `https://relay.ipv1337.dev/.well-known/oauth-protected-resource` serves PRM.
+- [ ] **Step 2:** Ship in two PRs, because the chart pins its image by digest and the digest exists only after the image workflow's first push-to-`main` run. **PR A:** relay code, Dockerfile, chart, chart-render values and image workflow, with no Argo CD app yet. After it merges, read the pushed digest from that run's output. **PR B:** the AppProject, `gitops/argocd/applications/relay.yaml` and `gitops/argocd/platform/relay/values.yaml` with that digest (later bumps come from the same automated digest PRs the other apps get). Merge PR B; confirm the Argo CD app is Synced and Healthy (the PVC is accepted), then confirm with `bazel run //tools/gitops:get -- pods -n relay -o wide` that the pod is Running on `fedora`, `nuc9i5` or `nuc9i9`, and that `https://relay.ipv1337.dev/.well-known/oauth-protected-resource` serves PRM.
 - [ ] **Step 3:** If Login V2 was set: preview then apply `zitadel-apps-relay-apply.yaml`. `workflow-run` works only as wren, so run it without `--agent`: `bazel run //tools/agent-app -- workflow-run zitadel-apps-relay-apply.yaml -f action=preview`, read it, then `-f action=up`. Expect only in-place updates.
 - [ ] **Step 4:** After Task 11 passes, retire the spike (the Delete list above) in its own PR.
 - [ ] **Step 5: Commit** `feat(relay): deploy the relay to the homelab`.
@@ -446,5 +454,5 @@ Manual, with James.
 - [ ] **Step 5:** Leave a "run" request's dialog unanswered for 60 s: Claude
   shows "Denied on the computer." Then send one and stop it from the phone while
   the dialog is open: the dialog closes and nothing runs (`calls.log`).
-- [ ] **Step 6:** Turn the Mac's Wi-Fi off mid-command: the phone gets "Your computer disconnected; try again." quickly. Wi-Fi on: `vrelay status` shows connected within about a minute.
+- [ ] **Step 6:** Turn the Mac's Wi-Fi off mid-command: the phone gets "Your computer disconnected; try again." within about 6 s. Wi-Fi on: `vrelay status` shows connected within about a minute.
 - [ ] **Step 7:** Record the result in this plan (yes or no, with log lines), set `status: completed`, and update spec §10's P1 row.

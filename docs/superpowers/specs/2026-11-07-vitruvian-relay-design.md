@@ -158,7 +158,7 @@ JSON frames over `wss://<relay>/connect`. Every frame has a `type`.
 | `result` | connector → relay | Final content or error for a call id |
 | `cancel` | relay → connector | The AI gave up or the deadline passed |
 | `tools_changed` | connector → relay | New allowed tool list |
-| `ping` / `pong` | both | Liveness every 20 s. Three missed pings mark the device offline |
+| `ping` / `pong` | both | Liveness every 20 s. Three missed pings mark the device offline. While a device has a call in flight, the relay pings every 2 s, so a silent network loss (no close frame) fails the call within about 6 s instead of a minute |
 
 Rules: call ids are unique, and the connector ignores a repeated id for ten
 minutes, so the relay resending the same call never runs it twice. (An AI app's
