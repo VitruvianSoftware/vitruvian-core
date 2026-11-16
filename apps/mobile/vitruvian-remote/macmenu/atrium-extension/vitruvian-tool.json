@@ -4,7 +4,7 @@
     "en": "Vitruvian Remote"
   },
   "description": {
-    "en": "Pairs your Android phone with this Mac's Vitruvian Remote agent over Tailscale, manages push notifications and Claude Code permission prompts, and exposes the phone's MCP bridge."
+    "en": "Pairs your Android phone with this Mac's Vitruvian Remote helper over Tailscale, manages push notifications and Claude Code permission prompts, and exposes the phone's MCP bridge."
   },
   "version": "0.1.43",
   "protocol": "2",
@@ -37,7 +37,7 @@
       {
         "id": "restartAgent",
         "title": {
-          "en": "Restart the Vitruvian Remote agent"
+          "en": "Restart the Vitruvian Remote Mac helper"
         },
         "icon": "arrow.clockwise",
         "surfaces": [
@@ -77,7 +77,7 @@
       {
         "id": "openLog",
         "title": {
-          "en": "Open the Vitruvian Remote agent log"
+          "en": "Open the Vitruvian Remote Mac helper log"
         },
         "icon": "doc.text",
         "surfaces": [
