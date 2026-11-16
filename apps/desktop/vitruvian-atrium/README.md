@@ -16,6 +16,11 @@ menu-bar icon.
 Requirements: macOS 14 or newer on Apple Silicon, and the Xcode pinned in the
 repository's `.xcode-version`.
 
+Vitruvian Atrium is macOS-only on purpose, and keeps taking upstream's fixes:
+see [`docs/multi-os-strategy.md`](docs/multi-os-strategy.md) for the decision
+against Linux, Windows, a shared Rust core and the Mac App Store, and what
+would reopen it.
+
 ## Install
 
 1. Download `VitruvianAtrium-X.Y.Z.dmg` from the latest `vitruvian-atrium-v*` release.
