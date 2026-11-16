@@ -21,7 +21,7 @@ This phone talks to the Macs you add, and to Vitruvian Software's crash server i
 ## What leaves the phone
 
 1. **Crash reports (on by default).**
-   If the app crashes, it sends a report to Vitruvian Software's own crash server (`sentry-ingest.ipv1337.dev`) so we can fix the problem. A report contains the error and where in the app it happened, the time, the app and Android versions, your phone model, screen size and total memory, and a random report ID. It never contains your texts, contacts, files, what you type, your Macs' addresses, or a record of what you did in the app. The app doesn't add your IP address, though like any connection the server can see the address a report comes from.
+   If the app crashes, it sends a report to Vitruvian Software's own crash server (`sentry-ingest.ipv1337.dev`) so we can fix the problem. A report contains the error and where in the app it happened, the time, the app and Android versions, your phone model, screen size and total memory, and a random report ID. It never contains your texts, contacts, files, what you type, your Macs' addresses, or a record of what you did in the app. The app doesn't add your IP address, and the crash server is set not to store it.
 
    You can turn crash reports off at any time under **Settings → About → Privacy** using the **Send crash reports** switch. Turning it off stops reports right away, deletes any that haven't been sent yet, and keeps crash reporting off when the app opens.
 
