@@ -21,8 +21,14 @@ use shell_compat as sc;
 
 use super::common::*;
 
-const AM_URL: &str =
-    "http://prometheus-alertmanager.monitoring.svc.cluster.local:9093/api/v2/alerts";
+/// Alertmanager runs as a StatefulSet of several replicas. Each keeps its OWN
+/// alert list (gossip only shares silences and the notification log), so an
+/// alert must be posted to every replica, as Prometheus does. Posting through
+/// the load-balanced Service put a test's fire on one replica and its resolve
+/// on the other, and the first stayed firing until its endsAt (seen live,
+/// 2026-11-15).
+const AM_STATEFULSET: &[u8] = b"prometheus-alertmanager";
+const AM_HEADLESS: &str = "prometheus-alertmanager-headless";
 /// curl, pinned by digest (Docker Hub, 2026-11-15).
 const CURL_IMAGE: &str = "curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93";
 const ALERTNAME: &str = "VitruvianAlertTest";
@@ -89,9 +95,55 @@ fn now() -> u64 {
 /// kubectl sends that body without `Content-Type: application/json`, and
 /// Alertmanager answers 415 Unsupported Media Type (seen live, 2026-11-15).
 /// curl in a pod sets the header and talks to the Service directly.
-pub fn job_yaml(job: &str, json: &str) -> String {
+pub fn replica_url(i: usize) -> String {
+    format!(
+        "http://{sts}-{i}.{svc}.monitoring.svc.cluster.local:9093/api/v2/alerts",
+        sts = String::from_utf8_lossy(AM_STATEFULSET),
+        i = i,
+        svc = AM_HEADLESS,
+    )
+}
+
+pub fn job_yaml(job: &str, json: &str, replicas: usize) -> String {
     // The JSON goes in a single-quoted YAML scalar; alert_json never emits a
     // single quote (checked in the tests), so no escaping is needed.
+    let mut containers = String::new();
+    for i in 0..replicas {
+        containers.push_str(&format!(
+            r#"        - name: post-{i}
+          image: {image}
+          env:
+            - name: ALERT_JSON
+              value: '{json}'
+          args:
+            - -fsS
+            - --retry
+            - "3"
+            - -X
+            - POST
+            - -H
+            - "Content-Type: application/json"
+            - --data-binary
+            - $(ALERT_JSON)
+            - {url}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+"#,
+            i = i,
+            image = CURL_IMAGE,
+            json = json,
+            url = replica_url(i),
+        ));
+    }
     format!(
         r#"apiVersion: batch/v1
 kind: Job
@@ -115,41 +167,43 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: post
-          image: {image}
-          env:
-            - name: ALERT_JSON
-              value: '{json}'
-          args:
-            - -fsS
-            - -X
-            - POST
-            - -H
-            - "Content-Type: application/json"
-            - --data-binary
-            - $(ALERT_JSON)
-            - {url}
-          resources:
-            requests:
-              cpu: 10m
-              memory: 16Mi
-            limits:
-              memory: 32Mi
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
-"#,
+{containers}"#,
         job = job,
-        image = CURL_IMAGE,
-        json = json,
-        url = AM_URL,
+        containers = containers,
     )
 }
 
+/// How many Alertmanager replicas to post to (the StatefulSet's spec).
+fn replicas(k: &[u8]) -> Res<usize> {
+    let (st, out) = capture(
+        64,
+        kubectl(
+            k,
+            &[
+                b"get",
+                b"statefulset",
+                AM_STATEFULSET,
+                b"-n",
+                b"monitoring",
+                b"-o",
+                b"jsonpath={.spec.replicas}",
+            ],
+        ),
+    );
+    match (
+        st,
+        test_int(String::from_utf8_lossy(&out).trim().as_bytes()),
+    ) {
+        (0, Some(n)) if (1..=9).contains(&n) => Ok(n as usize),
+        _ => die(
+            1,
+            b"ERROR: could not read the prometheus-alertmanager replica count.",
+        ),
+    }
+}
+
 fn post(k: &[u8], job: &str, json: &str) -> Res<()> {
-    let yaml = job_yaml(job, json);
+    let yaml = job_yaml(job, json, replicas(k)?);
     let st = feed(
         60,
         kubectl(k, &[b"apply", b"-f", b"-"]),
@@ -335,12 +389,26 @@ mod tests {
             !json.contains('\''),
             "alert_json must never emit a single quote"
         );
-        let y = job_yaml("alert-test-42-fire", &json);
+        let y = job_yaml("alert-test-42-fire", &json, 2);
         assert!(y.contains(&format!("value: '{}'", json)));
         assert!(y.contains("\"Content-Type: application/json\""));
         assert!(y.contains("name: alert-test-42-fire"));
         assert!(y.contains(CURL_IMAGE));
-        assert!(y.contains(AM_URL));
+    }
+
+    #[test]
+    fn job_posts_to_every_replica_not_the_service() {
+        let y = job_yaml("j", &alert_json("1", 0, 60), 2);
+        assert!(y.contains("name: post-0") && y.contains("name: post-1"));
+        assert!(!y.contains("name: post-2"));
+        assert!(y.contains(
+            "http://prometheus-alertmanager-0.prometheus-alertmanager-headless.monitoring.svc.cluster.local:9093/api/v2/alerts"
+        ));
+        assert!(y.contains(
+            "http://prometheus-alertmanager-1.prometheus-alertmanager-headless.monitoring.svc.cluster.local:9093/api/v2/alerts"
+        ));
+        // The load-balanced Service is what split fire and resolve.
+        assert!(!y.contains("prometheus-alertmanager.monitoring.svc"));
     }
 
     #[test]
