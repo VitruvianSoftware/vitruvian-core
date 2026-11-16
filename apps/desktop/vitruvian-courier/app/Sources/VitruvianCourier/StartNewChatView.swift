@@ -226,6 +226,7 @@ public struct StartNewChatView: View {
     public var onQueryChanged: (StartNewChatDraft) -> Void
     public var onOpenDirectChat: (ContactCandidate) -> Void
     public var onLookup: (StartNewChatLookupAction) -> Void
+    public var onRetrySearch: () -> Void
     public var onCreateGroup: (StartNewChatDraft) -> Void
     public var onSendBlast: (StartNewChatDraft) -> Void
     public var onCancel: () -> Void
@@ -236,6 +237,7 @@ public struct StartNewChatView: View {
         onQueryChanged: @escaping (StartNewChatDraft) -> Void = { _ in },
         onOpenDirectChat: @escaping (ContactCandidate) -> Void = { _ in },
         onLookup: @escaping (StartNewChatLookupAction) -> Void = { _ in },
+        onRetrySearch: @escaping () -> Void = {},
         onCreateGroup: @escaping (StartNewChatDraft) -> Void = { _ in },
         onSendBlast: @escaping (StartNewChatDraft) -> Void = { _ in },
         onCancel: @escaping () -> Void = {}
@@ -246,6 +248,7 @@ public struct StartNewChatView: View {
         self.onQueryChanged = onQueryChanged
         self.onOpenDirectChat = onOpenDirectChat
         self.onLookup = onLookup
+        self.onRetrySearch = onRetrySearch
         self.onCreateGroup = onCreateGroup
         self.onSendBlast = onSendBlast
         self.onCancel = onCancel
@@ -756,6 +759,9 @@ public struct StartNewChatView: View {
                     if draft.isSearching {
                         searchingRow
                     }
+                    if draft.searchFailed {
+                        searchFailedRow
+                    }
                     if StartNewChatPresentation.hasTypedQuery(draft.query) {
                         typedResultsContent
                     } else {
@@ -814,7 +820,7 @@ public struct StartNewChatView: View {
                 .buttonStyle(.plain)
             }
         }
-        if recents.isEmpty && visibleContacts.isEmpty && !draft.isSearching {
+        if recents.isEmpty && visibleContacts.isEmpty && !draft.isSearching && !draft.searchFailed {
             Text(String(localized: "Enter a phone number, email, or @username above to start a chat."))
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -861,6 +867,25 @@ public struct StartNewChatView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
+    }
+
+    /// The contact search itself failed: not "no matches". Typing a phone number, email or @handle still works.
+    private var searchFailedRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(String(localized: "Couldn't search contacts"))
+                .font(.callout)
+                .foregroundStyle(.primary)
+            Spacer(minLength: 0)
+            Button(String(localized: "Retry")) {
+                onRetrySearch()
+            }
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.14)))
     }
 
     private func sectionHeader(_ title: String) -> some View {

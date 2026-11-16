@@ -214,6 +214,9 @@ struct MainWindow: View {
                             onLookup: { action in
                                 Task { await inbox.performStartNewChatLookup(action) }
                             },
+                            onRetrySearch: {
+                                Task { await inbox.retryStartNewChatSearch() }
+                            },
                             onCreateGroup: { updated in
                                 inbox.startNewChatDraft = updated
                                 Task { await inbox.submitNewGroupChat() }

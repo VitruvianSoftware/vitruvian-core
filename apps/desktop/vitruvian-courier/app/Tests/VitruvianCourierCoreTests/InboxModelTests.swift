@@ -1702,6 +1702,40 @@ final class InboxModelTests: XCTestCase {
         await stop(h)
     }
 
+    func testStartNewChatContactSearchFailureIsAnErrorNotNoMatchesAndRetryRecovers() async throws {
+        let h = try await start(autoRelease: true)
+        let alice: [String: Any] = [
+            "user_id": "@alice:courier.local", "name": "Alice Example", "avatar_path": "",
+            "network": "whatsapp", "account_id": "wa-1", "identifiers": ["+15550100"], "room_id": "",
+        ]
+        h.script.contacts = [alice]
+        h.script.fail("people.contacts", code: -32000)
+
+        h.inbox.openStartNewChat()
+        h.inbox.updateStartNewChatQuery("zed")
+        try await waitUntil { h.inbox.startNewChatDraft?.isSearching == false }
+        var draft = try XCTUnwrap(h.inbox.startNewChatDraft)
+        XCTAssertTrue(draft.searchFailed, "a failed call is an error state")
+        XCTAssertEqual(draft.candidates, [])
+        XCTAssertFalse(draft.showsNoMatchingContacts, "a failed search must not read as 'No matching contacts found'")
+
+        // Typing a phone number, email or @handle still works: the lookup is not a contact search.
+        draft.query = "+1 555 010 0199"
+        XCTAssertTrue(draft.isLookupQuery)
+        XCTAssertFalse(draft.showsNoMatchingContacts)
+
+        // Retry runs the same query again, and a good answer clears the error.
+        h.script.succeed("people.contacts")
+        await h.inbox.retryStartNewChatSearch()
+        draft = try XCTUnwrap(h.inbox.startNewChatDraft)
+        XCTAssertFalse(draft.searchFailed)
+        XCTAssertFalse(draft.isSearching)
+        XCTAssertEqual(draft.query, "zed")
+        XCTAssertEqual(draft.candidates.count, 1)
+        XCTAssertEqual(h.server.receivedParams("people.contacts").last?["query"] as? String, "zed")
+        await stop(h)
+    }
+
     func testArchiveMergedChatWithOneMemberAlreadyArchivedCountsAsOneRowAndUndoKeepsAlreadyArchivedMember() async throws {
         let h = try await start(autoRelease: true)
         var waRow = room("!wa:courier.local", ts: 100, network: "whatsapp", name: "Alice Merged", archived: false)
@@ -1962,6 +1996,7 @@ final class InboxScript: @unchecked Sendable {
 
     /// Every call of the method fails with this code.
     func fail(_ method: String, code: Int) { lock.withLock { _errors[method] = code } }
+    func succeed(_ method: String) { lock.withLock { _errors[method] = nil } }
 
     var onMarkRead: (@Sendable (String) -> Void)? {
         get { lock.withLock { _onMarkRead } }
