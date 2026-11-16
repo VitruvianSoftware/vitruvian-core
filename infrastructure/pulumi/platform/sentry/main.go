@@ -26,6 +26,7 @@ import (
 
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/sentry/internal/alerts"
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/sentry/internal/config"
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/sentry/internal/orgsettings"
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/sentry/internal/projects"
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/sentry/internal/teams"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -56,6 +57,11 @@ func main() {
 		}
 
 		provOpt := pulumi.Provider(provider)
+
+		// Organization-wide privacy: store no IP address on any event.
+		if _, err := orgsettings.Reconcile(ctx, cfg.BaseURL, cfg.Organization); err != nil {
+			return err
+		}
 
 		team, err := teams.Reconcile(ctx, cfg.Organization, &cfg.Team, provOpt)
 		if err != nil {
