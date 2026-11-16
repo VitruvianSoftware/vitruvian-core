@@ -394,9 +394,14 @@ impl Registry {
         self.state.lock().unwrap().drop_connection(device_id, None);
     }
 
-    pub fn update_tools(&self, device_id: &str, tools: Vec<ToolDef>) {
+    /// The device's new tool list, from connection `conn`: only if that is
+    /// still its current connection (a `tools_changed` read by a session
+    /// that was just replaced must not overwrite its replacement's list).
+    pub fn update_tools(&self, device_id: &str, conn: ConnectionId, tools: Vec<ToolDef>) {
         if let Some(c) = self.state.lock().unwrap().devices.get_mut(device_id) {
-            c.tools = tools;
+            if c.id == conn {
+                c.tools = tools;
+            }
         }
     }
 
@@ -707,11 +712,26 @@ mod tests {
     async fn update_tools_changes_the_list() {
         let reg = Registry::new();
         let (tx, _rx) = mpsc::channel(8);
-        reg.connect("d1", vec![tool("a")], tx);
+        let conn = reg.connect("d1", vec![tool("a")], tx);
         assert_eq!(reg.tools("d1"), Some(vec![tool("a")]));
-        reg.update_tools("d1", vec![tool("a"), tool("b")]);
+        reg.update_tools("d1", conn, vec![tool("a"), tool("b")]);
         assert_eq!(reg.tools("d1"), Some(vec![tool("a"), tool("b")]));
         assert_eq!(reg.tools("other"), None);
+    }
+
+    /// Final review M1: a replaced connection's late `tools_changed` leaves
+    /// its replacement's list alone.
+    #[tokio::test]
+    async fn a_stale_connection_cannot_change_the_new_ones_tools() {
+        let reg = Registry::new();
+        let (tx, _rx) = mpsc::channel(8);
+        let old = reg.connect("d1", vec![tool("a")], tx);
+        let (tx2, _rx2) = mpsc::channel(8);
+        let new = reg.connect("d1", vec![tool("new")], tx2);
+        reg.update_tools("d1", old, vec![tool("stale")]);
+        assert_eq!(reg.tools("d1"), Some(vec![tool("new")]));
+        reg.update_tools("d1", new, vec![tool("newer")]);
+        assert_eq!(reg.tools("d1"), Some(vec![tool("newer")]));
     }
 
     #[tokio::test]

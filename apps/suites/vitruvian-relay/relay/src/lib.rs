@@ -67,6 +67,21 @@ pub fn random_bytes<const N: usize>() -> [u8; N] {
     out
 }
 
+/// Resolves when the server is told to stop: SIGTERM (what Kubernetes sends
+/// on a rollout; as PID 1 nothing else would act on it) or Ctrl-C. The
+/// SIGTERM handler is in place once this returns, so a signal sent after
+/// it is never lost. Says which it was.
+pub fn stop_signal() -> std::io::Result<impl std::future::Future<Output = &'static str>> {
+    use tokio::signal::unix::{signal, SignalKind};
+    let mut term = signal(SignalKind::terminate())?;
+    Ok(async move {
+        tokio::select! {
+            _ = term.recv() => "SIGTERM",
+            _ = tokio::signal::ctrl_c() => "SIGINT",
+        }
+    })
+}
+
 pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -95,6 +110,21 @@ pub fn uuid_v4() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Final review M2: SIGTERM stops the server, not just Ctrl-C.
+    #[tokio::test]
+    async fn sigterm_is_a_stop() {
+        let stop = stop_signal().unwrap();
+        let status = std::process::Command::new("kill")
+            .args(["-TERM", &std::process::id().to_string()])
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let why = tokio::time::timeout(std::time::Duration::from_secs(10), stop)
+            .await
+            .expect("the stop signal resolved");
+        assert_eq!(why, "SIGTERM");
+    }
 
     #[test]
     fn ids_are_random_and_well_formed() {

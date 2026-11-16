@@ -1486,7 +1486,8 @@ fn production_timing_matches_the_spec() {
     assert_eq!(t.max_clock_skew_secs, 60);
     assert_eq!(t.send_timeout, Duration::from_secs(30));
     assert_eq!(t.transit_margin, Duration::from_secs(6));
-    assert_eq!(t.header_read_timeout, Duration::from_secs(10));
+    assert_eq!(t.first_header_timeout, Duration::from_secs(10));
+    assert_eq!(t.header_read_timeout, Duration::from_secs(75));
     assert_eq!(t.body_timeout, Duration::from_secs(30));
     assert_eq!(t.max_connection_lifetime, Duration::from_secs(12 * 60 * 60));
     let now = (t.clock)();
@@ -1592,14 +1593,88 @@ fn an_answered_ping_keeps_the_link_alive() {
 
 #[tokio::test]
 async fn slow_headers_are_cut_off() {
+    // The first request gets the short limit even though the idle limit
+    // (hyper's header timer) is long.
     let h = harness_with(Timing {
-        header_read_timeout: Duration::from_millis(200),
+        first_header_timeout: Duration::from_millis(200),
+        header_read_timeout: Duration::from_secs(60),
         ..Timing::default()
     })
     .await;
     // Headers never finish; the server must not wait forever.
+    let t = Instant::now();
     let got = h.raw(b"POST /devices HTTP/1.1\r\nHost: relay\r\n").await;
     assert!(got.is_empty() || got.starts_with("HTTP/1.1 408"), "{got:?}");
+    assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
+}
+
+/// Final review M4: a kept-alive connection idle between requests is not
+/// closed after the first request's short header limit (a proxy reuses its
+/// pooled connections).
+#[tokio::test]
+async fn an_idle_kept_alive_connection_outlives_the_first_header_limit() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let h = harness_with(Timing {
+        first_header_timeout: Duration::from_millis(200),
+        header_read_timeout: Duration::from_secs(5),
+        ..Timing::default()
+    })
+    .await;
+    let mut stream = tokio::net::TcpStream::connect(h.addr).await.unwrap();
+    async fn healthz(stream: &mut tokio::net::TcpStream) -> String {
+        stream
+            .write_all(b"GET /healthz HTTP/1.1\r\nHost: relay\r\n\r\n")
+            .await
+            .unwrap();
+        let mut got = Vec::new();
+        let mut buf = [0u8; 1024];
+        within(async {
+            while !String::from_utf8_lossy(&got).ends_with("ok") {
+                let n = stream.read(&mut buf).await.unwrap();
+                assert!(n > 0, "closed: {}", String::from_utf8_lossy(&got));
+                got.extend_from_slice(&buf[..n]);
+            }
+        })
+        .await;
+        String::from_utf8_lossy(&got).into_owned()
+    }
+    assert!(healthz(&mut stream).await.starts_with("HTTP/1.1 200"));
+    // Idle for five first-header limits.
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    assert!(healthz(&mut stream).await.starts_with("HTTP/1.1 200"));
+}
+
+#[test]
+fn the_first_head_ends_at_the_blank_line_even_split_across_reads() {
+    // Drive FirstHead's matcher through reads that split "\r\n\r\n".
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    rt.block_on(async {
+        use tokio::io::AsyncReadExt;
+        let (client, server) = tokio::io::duplex(64);
+        let mut head = FirstHead::new(server, Duration::from_millis(300));
+        let writer = tokio::spawn(async move {
+            use tokio::io::AsyncWriteExt;
+            let mut client = client;
+            for part in [&b"GET / HTTP/1.1\r"[..], b"\nHost: x\r\n\r", b"\n"] {
+                client.write_all(part).await.unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            // Past the limit, after the head: still readable.
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            client.write_all(b"body").await.unwrap();
+            client
+        });
+        let mut got = Vec::new();
+        let mut buf = [0u8; 64];
+        while !got.ends_with(b"body") {
+            let n = head.read(&mut buf).await.expect("no time-out after the head");
+            got.extend_from_slice(&buf[..n]);
+        }
+        let _client = writer.await.unwrap();
+    });
 }
 
 #[tokio::test]
@@ -1783,8 +1858,16 @@ async fn stale_key_hello_in_the_gap_does_not_displace_the_new_connection() {
     assert_eq!(h.register(ALICE, &new_key).await.status, StatusCode::OK);
     let fresh = h.connect(ALICE, &device, &new_key, vec![tool("new")]).await;
     release.notify_one();
-    // The stale connection ends without ever taking the device's place.
-    while next_frame(&mut stale).await.is_some() {}
+    // The stale connection ends without ever taking the device's place,
+    // and is never told "welcome" first (final-wave item 4a).
+    let mut frames = Vec::new();
+    while let Some(f) = next_frame(&mut stale).await {
+        frames.push(f);
+    }
+    assert!(
+        matches!(frames.as_slice(), [ToConnector::Reject { .. }]),
+        "{frames:?}"
+    );
     assert_eq!(h.app.registry.tools(&device), Some(vec![tool("new")]));
     assert!(!fresh.is_closed.load(Ordering::SeqCst));
 }

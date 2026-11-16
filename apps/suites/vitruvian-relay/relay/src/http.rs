@@ -113,7 +113,13 @@ pub struct Timing {
     /// call frame near the 4 MiB cap on a slow uplink is not mistaken for a
     /// dead link; a silent drop is still caught by the pings, which are small.
     pub send_timeout: Duration,
-    /// A request's headers must arrive within this.
+    /// The first request's headers must arrive within this of the
+    /// connection opening (a client that connects and trickles is cut off).
+    pub first_header_timeout: Duration,
+    /// Every later request's headers must arrive within this. hyper's timer
+    /// also runs while a kept-alive connection sits idle between requests,
+    /// so this is in effect the idle timeout: long enough that a proxy's
+    /// pooled connection is not closed under it.
     pub header_read_timeout: Duration,
     /// A request's body must arrive within this (408 otherwise).
     pub body_timeout: Duration,
@@ -142,7 +148,8 @@ impl Default for Timing {
             max_clock_skew_secs: 60,
             transit_margin: Duration::from_secs(IN_CALL_PING_SECS) * MAX_MISSED_PINGS,
             send_timeout: Duration::from_secs(30),
-            header_read_timeout: Duration::from_secs(10),
+            first_header_timeout: Duration::from_secs(10),
+            header_read_timeout: Duration::from_secs(75),
             body_timeout: Duration::from_secs(30),
             max_connection_lifetime: Duration::from_secs(12 * 60 * 60),
             clock: unix_now,
@@ -1000,18 +1007,6 @@ async fn run_connection<S>(
     let device_id = hello.device_id.clone();
     let send_timeout = t.send_timeout;
     let (mut sink, mut stream) = ws.split();
-    if send_frame(
-        &mut sink,
-        &ToConnector::Welcome {
-            device_id: device_id.clone(),
-        },
-        send_timeout,
-    )
-    .await
-    .is_err()
-    {
-        return;
-    }
     let (tx, mut rx) = mpsc::channel(CONNECTION_QUEUE);
     // Check the key again before registering, atomically with it: a
     // connection checked with a key that has since been replaced must not
@@ -1042,25 +1037,22 @@ async fn run_connection<S>(
         return;
     };
     let conn: ConnectionId = conn;
-    // Belt and braces: `connect_if` already made the check and the
-    // registration one step; re-reading after it costs nothing.
-    match app.store.get(&device_id) {
-        Some(r) if r.owner_sub == caller.subject && r.public_key_ed25519 == verified_key => {}
-        _ => {
-            app.registry.disconnect(&device_id, conn);
-            app.log(
-                "connect_rejected",
-                json!({"device_id": device_id, "reason": "device registered again"}),
-            );
-            let _ = send_frame(
-                &mut sink,
-                &reject("this device was registered again; reconnect with its new key".into()),
-                send_timeout,
-            )
-            .await;
-            let _ = tokio::time::timeout(send_timeout, sink.close()).await;
-            return;
-        }
+    // Welcomed only once registered: a connector told "welcome" is never
+    // then rejected (it would write "connected" and send `tools_changed`
+    // to a link about to close). A call queued meanwhile waits in `rx`
+    // until the welcome is out.
+    if send_frame(
+        &mut sink,
+        &ToConnector::Welcome {
+            device_id: device_id.clone(),
+        },
+        send_timeout,
+    )
+    .await
+    .is_err()
+    {
+        app.registry.disconnect(&device_id, conn);
+        return;
     }
     let started = Instant::now();
     app.log(
@@ -1167,7 +1159,7 @@ async fn run_connection<S>(
                 Some(Err(e)) => break format!("read error: {e}"),
                 Some(Ok(Message::Text(text))) => match decode_to_relay(&text) {
                     Ok(ToRelay::Result(r)) => app.registry.complete(conn, r),
-                    Ok(ToRelay::ToolsChanged { tools }) => app.registry.update_tools(&device_id, tools),
+                    Ok(ToRelay::ToolsChanged { tools }) => app.registry.update_tools(&device_id, conn, tools),
                     Ok(ToRelay::Ping { n }) => {
                         if let Err(e) = send_frame(&mut sink, &ToConnector::Pong { n }, send_timeout).await {
                             break e;
@@ -1203,6 +1195,95 @@ async fn run_connection<S>(
 
 // ------------------------------------------------------------------- server
 
+/// A new connection whose first request head (up to the blank line) must
+/// arrive within a time limit; after that it reads as the plain socket.
+/// hyper's own header timer is per request and also covers idle time, so it
+/// is set long for kept-alive connections; this keeps the short limit for
+/// the first request, where a slow-header client would otherwise get the
+/// long one.
+struct FirstHead<S> {
+    inner: S,
+    /// `None` once the first head is in.
+    limit: Option<std::pin::Pin<Box<tokio::time::Sleep>>>,
+    /// How much of "\r\n\r\n" the bytes so far end with.
+    matched: usize,
+}
+
+impl<S> FirstHead<S> {
+    fn new(inner: S, limit: Duration) -> Self {
+        FirstHead {
+            inner,
+            limit: Some(Box::pin(tokio::time::sleep(limit))),
+            matched: 0,
+        }
+    }
+}
+
+impl<S: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for FirstHead<S> {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        if let Some(limit) = self.limit.as_mut() {
+            if std::future::Future::poll(limit.as_mut(), cx).is_ready() {
+                return std::task::Poll::Ready(Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "the first request's headers took too long",
+                )));
+            }
+        }
+        let before = buf.filled().len();
+        let r = std::pin::Pin::new(&mut self.inner).poll_read(cx, buf);
+        if self.limit.is_some() {
+            const END: &[u8] = b"\r\n\r\n";
+            let mut matched = self.matched;
+            for &b in &buf.filled()[before..] {
+                matched = if b == END[matched] {
+                    matched + 1
+                } else if b == END[0] {
+                    1
+                } else {
+                    0
+                };
+                if matched == END.len() {
+                    break;
+                }
+            }
+            if matched == END.len() {
+                self.limit = None;
+            } else {
+                self.matched = matched;
+            }
+        }
+        r
+    }
+}
+
+impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for FirstHead<S> {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.inner).poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
+
 /// Accepts connections until the listener fails for good.
 pub async fn serve(listener: TcpListener, app: Arc<App>) {
     loop {
@@ -1216,6 +1297,7 @@ pub async fn serve(listener: TcpListener, app: Arc<App>) {
         };
         let app = app.clone();
         let header_timeout = app.timing.header_read_timeout;
+        let first = FirstHead::new(stream, app.timing.first_header_timeout);
         tokio::spawn(async move {
             let svc = service_fn(move |req| {
                 let app = app.clone();
@@ -1224,7 +1306,7 @@ pub async fn serve(listener: TcpListener, app: Arc<App>) {
             let _ = http1::Builder::new()
                 .timer(TokioTimer::new())
                 .header_read_timeout(header_timeout)
-                .serve_connection(TokioIo::new(stream), svc)
+                .serve_connection(TokioIo::new(first), svc)
                 .with_upgrades()
                 .await;
         });

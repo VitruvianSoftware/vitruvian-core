@@ -28,7 +28,7 @@ use vitruvian_mcp_auth::{verifier, VerifierConfig};
 use vitruvian_relay::config::{wants_version, Settings};
 use vitruvian_relay::devices::FileDeviceStore;
 use vitruvian_relay::http::{serve, App, Timing};
-use vitruvian_relay::{log_event, stdout_log};
+use vitruvian_relay::{log_event, stdout_log, stop_signal};
 
 fn fail(msg: String) -> ! {
     eprintln!("{msg}");
@@ -85,8 +85,9 @@ async fn main() {
     let listener = TcpListener::bind(("0.0.0.0", port))
         .await
         .unwrap_or_else(|e| fail(format!("cannot listen on port {port}: {e}")));
+    let stop = stop_signal().unwrap_or_else(|e| fail(format!("cannot watch for SIGTERM: {e}")));
     tokio::select! {
         _ = serve(listener, app) => {}
-        _ = tokio::signal::ctrl_c() => log_event(&log, "stop", serde_json::json!({})),
+        why = stop => log_event(&log, "stop", serde_json::json!({"signal": why})),
     }
 }
