@@ -481,9 +481,33 @@ public final class ComposerPreferences: ObservableObject {
     public static let defaultPrimaryComposerButton: PrimaryComposerButton = .emojiPicker
     public static let defaultSecondaryComposerButton: SecondaryComposerButton = .none
 
+    /// Effective secondary composer button: `.none` whenever `secondaryComposerButton` duplicates a non-`.none` `primaryComposerButton`.
+    public var effectiveSecondaryComposerButton: SecondaryComposerButton {
+        if primaryComposerButton != .none, secondaryComposerButton.rawValue == primaryComposerButton.rawValue {
+            return .none
+        }
+        return secondaryComposerButton
+    }
+
+    /// Options shown in the Primary composer button picker: omits a non-`.none` option already active on Secondary.
+    public var availablePrimaryComposerButtons: [PrimaryComposerButton] {
+        let other = effectiveSecondaryComposerButton
+        return PrimaryComposerButton.allCases.filter { button in
+            button == .none || button.rawValue != other.rawValue
+        }
+    }
+
+    /// Options shown in the Secondary composer button picker: omits a non-`.none` option already chosen on Primary.
+    public var availableSecondaryComposerButtons: [SecondaryComposerButton] {
+        let other = primaryComposerButton
+        return SecondaryComposerButton.allCases.filter { button in
+            button == .none || button.rawValue != other.rawValue
+        }
+    }
+
     /// Whether Send Later moves into the "+" menu because it is not chosen as a visible toolbar button.
     public var showsSendLaterInPlusMenu: Bool {
-        primaryComposerButton != .sendLater && secondaryComposerButton != .sendLater
+        primaryComposerButton != .sendLater && effectiveSecondaryComposerButton != .sendLater
     }
 
     /// The visible composer controls in left-to-right order: "+", primary button, secondary button, and "send".
@@ -492,8 +516,9 @@ public final class ComposerPreferences: ObservableObject {
         if primaryComposerButton != .none {
             controls.append(primaryComposerButton.rawValue)
         }
-        if !isEditing, secondaryComposerButton != .none {
-            controls.append(secondaryComposerButton.rawValue)
+        let secondary = effectiveSecondaryComposerButton
+        if !isEditing, secondary != .none {
+            controls.append(secondary.rawValue)
         }
         controls.append("send")
         return controls

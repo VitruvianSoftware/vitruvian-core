@@ -682,8 +682,9 @@ struct MessageRowView: View {
     @ViewBuilder
     private var avatarColumn: some View {
         if message.startsGroup {
-            AvatarView(path: message.senderAvatarPath, initials: InboxRow.initials(of: message.senderName),
-                       seed: message.senderName, size: Self.avatarSize)
+            let avatar = message.senderAvatar(redacted: isRedacted)
+            AvatarView(path: avatar.path, initials: avatar.initials,
+                       seed: avatar.seed, size: Self.avatarSize)
                 .blur(radius: isRedacted ? 6 : 0)
                 .clipShape(Circle())
                 .frame(width: Self.avatarSize, height: Self.avatarSize)

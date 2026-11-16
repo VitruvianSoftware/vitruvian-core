@@ -349,4 +349,88 @@ final class ReactionSummaryTests: XCTestCase {
             XCTFail("Expected avatars display")
         }
     }
+
+    func testSenderAvatarRedactionBlanksPathAndInitialsAndPseudonymisesSeed() {
+        let message = TimelineMessage(
+            id: "$m-avatar",
+            roomID: "!r:example.test",
+            sender: "@kent:example.test",
+            senderName: "Kent Hua",
+            senderAvatarPath: "/tmp/kent.png",
+            mine: false,
+            ts: 1000,
+            kind: .text,
+            body: "Hello",
+            rich: RichText(text: "Hello"),
+            isEdited: false,
+            editCount: 0,
+            editFailed: nil,
+            failedEditID: nil,
+            fileName: "",
+            mimeType: "",
+            byteSize: nil,
+            width: nil,
+            height: nil,
+            mediaPath: "",
+            statusLine: .sent,
+            countsAsUnread: false,
+            poll: nil,
+            thread: nil,
+            bookmarked: false,
+            expiresAt: nil,
+            timerChange: nil,
+            call: nil,
+            reply: nil,
+            reactions: [],
+            startsGroup: true
+        )
+
+        let unredacted = message.senderAvatar(redacted: false)
+        XCTAssertEqual(unredacted.path, "/tmp/kent.png")
+        XCTAssertEqual(unredacted.initials, "KH")
+        XCTAssertEqual(unredacted.seed, "Kent Hua")
+
+        let redacted = message.senderAvatar(redacted: true)
+        XCTAssertEqual(redacted.path, "")
+        XCTAssertEqual(redacted.initials, "")
+        XCTAssertEqual(redacted.seed, AppearancePreferences.redactedText("Kent Hua", kind: .name))
+
+        let emptyNameMessage = TimelineMessage(
+            id: "$m-avatar-empty",
+            roomID: "!r:example.test",
+            sender: "@anon:example.test",
+            senderName: "",
+            senderAvatarPath: "/tmp/anon.png",
+            mine: false,
+            ts: 2000,
+            kind: .text,
+            body: "Hi",
+            rich: RichText(text: "Hi"),
+            isEdited: false,
+            editCount: 0,
+            editFailed: nil,
+            failedEditID: nil,
+            fileName: "",
+            mimeType: "",
+            byteSize: nil,
+            width: nil,
+            height: nil,
+            mediaPath: "",
+            statusLine: .sent,
+            countsAsUnread: false,
+            poll: nil,
+            thread: nil,
+            bookmarked: false,
+            expiresAt: nil,
+            timerChange: nil,
+            call: nil,
+            reply: nil,
+            reactions: [],
+            startsGroup: true
+        )
+        let redactedEmptyName = emptyNameMessage.senderAvatar(redacted: true)
+        XCTAssertEqual(redactedEmptyName.path, "")
+        XCTAssertEqual(redactedEmptyName.initials, "")
+        XCTAssertEqual(redactedEmptyName.seed, AppearancePreferences.redactedText("@anon:example.test", kind: .name))
+    }
 }

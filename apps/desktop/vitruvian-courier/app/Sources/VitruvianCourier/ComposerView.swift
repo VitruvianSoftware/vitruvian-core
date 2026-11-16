@@ -668,7 +668,7 @@ struct ComposerView: View {
 
     @ViewBuilder
     private var secondaryActionButton: some View {
-        switch preferences.secondaryComposerButton {
+        switch preferences.effectiveSecondaryComposerButton {
         case .emojiPicker:
             emojiToolbarButton
         case .sendLater:

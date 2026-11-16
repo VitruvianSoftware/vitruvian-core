@@ -524,6 +524,18 @@ public struct GIFAttachment: Equatable, Sendable {
     }
 }
 
+public struct SenderAvatarDisplay: Equatable, Sendable {
+    public let path: String
+    public let initials: String
+    public let seed: String
+
+    public init(path: String, initials: String, seed: String) {
+        self.path = path
+        self.initials = initials
+        self.seed = seed
+    }
+}
+
 public struct TimelineMessage: Equatable, Identifiable, Sendable {
     public let id: String
     public let roomID: String
@@ -729,6 +741,23 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     /// The message as a reply chip or a quote shows it.
     public var quoted: QuotedMessage {
         QuotedMessage(eventID: id, senderName: senderName, mine: mine, text: body, kind: kind)
+    }
+
+    /// Presentation values for the timeline sender avatar: blanks the photo and initials and pseudonymises the colour seed when redacted.
+    public func senderAvatar(redacted: Bool = false) -> SenderAvatarDisplay {
+        if redacted {
+            let rawSeed = senderName.isEmpty ? sender : senderName
+            return SenderAvatarDisplay(
+                path: "",
+                initials: "",
+                seed: AppearancePreferences.redactedText(rawSeed, kind: .name)
+            )
+        }
+        return SenderAvatarDisplay(
+            path: senderAvatarPath,
+            initials: InboxRow.initials(of: senderName),
+            seed: senderName
+        )
     }
 }
 

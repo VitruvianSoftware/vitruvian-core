@@ -2513,8 +2513,28 @@ final class ViewSnapshotTests: XCTestCase {
         try assertLightAndDarkSnapshot("reaction-pills-redacted-card", width: 620) {
             timeline(items, ui: ui, actions: redactedActions)
                 .environment(\.appearancePreferences, redactedAppearance)
+                .environment(\.redactNamesAndPictures, true)
                 .environment(\.reactionCardOverride, ReactionCardOverride(messageID: "$rx0", reactionKey: "👍"))
         }
+
+        let senderItems = Fixture.items([
+            Fixture.text("$sa1", "On my way!", mine: false, ts: 20, sender: "@kent:courier.local", name: "Kent Hua"),
+        ], isDirect: false)
+        let defaultActions = VitruvianCourier.MessageActions(now: { Fixture.now })
+        try assertLightAndDarkSnapshot("sender-avatar-unredacted", width: 560) {
+            timeline(senderItems, ui: ui, actions: defaultActions)
+        }
+        try assertLightAndDarkSnapshot("sender-avatar-redacted", width: 560) {
+            timeline(senderItems, ui: ui, actions: defaultActions)
+                .environment(\.redactNamesAndPictures, true)
+        }
+        let unredactedLight = try Data(contentsOf: Snapshot.directory.appendingPathComponent("sender-avatar-unredacted-light.png"))
+        let redactedLight = try Data(contentsOf: Snapshot.directory.appendingPathComponent("sender-avatar-redacted-light.png"))
+        XCTAssertNotEqual(
+            redactedLight,
+            unredactedLight,
+            "Redacting via redactNamesAndPictures environment must change the rendered sender avatar and name"
+        )
     }
 
     func testEmojiAutocompletePublicInterfaceThumbnailLoaderAndStickerEmoticonFilter() async throws {

@@ -166,4 +166,41 @@ final class ComposerPreferencesTests: XCTestCase {
             XCTAssertEqual(testStore.defaults.string(forKey: "courier.composer.secondaryComposerButton"), "none")
         }
     }
+
+    func testDuplicateSecondaryComposerButtonIsTreatedAsNoneAndOmittedFromPickers() {
+        let preferences = ComposerPreferences(defaults: store.defaults)
+        preferences.primaryComposerButton = .emojiPicker
+        preferences.secondaryComposerButton = .emojiPicker
+
+        XCTAssertEqual(preferences.effectiveSecondaryComposerButton, .none)
+        XCTAssertEqual(preferences.visibleControlIDs(), ["plus", "emojiPicker", "send"])
+        XCTAssertEqual(preferences.availableSecondaryComposerButtons, [.sendLater, .none])
+        XCTAssertEqual(preferences.availablePrimaryComposerButtons, [.emojiPicker, .sendLater, .none])
+
+        let duplicateStore = TestDefaults()
+        defer { duplicateStore.remove() }
+        duplicateStore.defaults.set("emojiPicker", forKey: "courier.composer.primaryComposerButton")
+        duplicateStore.defaults.set("emojiPicker", forKey: "courier.composer.secondaryComposerButton")
+        let reloaded = ComposerPreferences(defaults: duplicateStore.defaults)
+        XCTAssertEqual(reloaded.effectiveSecondaryComposerButton, .none)
+        XCTAssertEqual(reloaded.visibleControlIDs(), ["plus", "emojiPicker", "send"])
+        XCTAssertEqual(reloaded.availableSecondaryComposerButtons, [.sendLater, .none])
+
+        preferences.primaryComposerButton = .sendLater
+        preferences.secondaryComposerButton = .sendLater
+        XCTAssertEqual(preferences.effectiveSecondaryComposerButton, .none)
+        XCTAssertEqual(preferences.visibleControlIDs(), ["plus", "sendLater", "send"])
+        XCTAssertFalse(preferences.showsSendLaterInPlusMenu)
+
+        preferences.primaryComposerButton = .emojiPicker
+        preferences.secondaryComposerButton = .sendLater
+        XCTAssertEqual(preferences.effectiveSecondaryComposerButton, .sendLater)
+        XCTAssertEqual(preferences.availablePrimaryComposerButtons, [.emojiPicker, .none])
+        XCTAssertEqual(preferences.availableSecondaryComposerButtons, [.sendLater, .none])
+
+        preferences.primaryComposerButton = .none
+        preferences.secondaryComposerButton = .none
+        XCTAssertEqual(preferences.availablePrimaryComposerButtons, [.emojiPicker, .sendLater, .none])
+        XCTAssertEqual(preferences.availableSecondaryComposerButtons, [.emojiPicker, .sendLater, .none])
+    }
 }
