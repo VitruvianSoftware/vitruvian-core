@@ -85,6 +85,7 @@ kt_android_library(
         ":tuning",
         ":wake_on_lan",
         ":wire",
+        "//packages/android-crash-privacy",
         "//packages/design-system-android:lib",
         "@maven//:androidx_activity_activity_compose",
         "@maven//:androidx_compose_animation_animation",
@@ -242,6 +243,7 @@ kt_jvm_test(
         ":tuning",
         ":wake_on_lan",
         ":wire",
+        "//packages/android-crash-privacy",
         "//packages/design-system-android:lib",
         "@maven//:androidx_compose_runtime_runtime",
         "@maven//:junit_junit",
@@ -262,6 +264,7 @@ kt_jvm_library(
     name = "app_info",
     srcs = ["src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt"],
     deps = [
+        "//packages/android-crash-privacy",
         "@maven//:io_sentry_sentry",
         "@maven//:io_sentry_sentry_android_core",
     ],
@@ -275,6 +278,7 @@ kt_jvm_test(
         "BUILD",
         "LICENSE",
         "src/main/AndroidManifest.xml",
+        "//packages/android-crash-privacy:BUILD",
         "//packages/design-system-android:BUILD",
     ] + glob([
         "src/main/kotlin/**/*.kt",
@@ -284,6 +288,7 @@ kt_jvm_test(
     runtime_deps = [":android_sdk_stub_jar"],
     deps = [
         ":app_info",
+        "//packages/android-crash-privacy",
         "@maven//:io_sentry_sentry",
         "@maven//:io_sentry_sentry_android_core",
         "@maven//:junit_junit",

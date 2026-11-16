@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (c) 2026 VitruvianSoftware
+  SPDX-License-Identifier: MIT
+
+  Shared Android crash-privacy helper library: no activities, services, or permissions.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />
