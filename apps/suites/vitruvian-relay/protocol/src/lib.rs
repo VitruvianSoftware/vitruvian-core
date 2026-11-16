@@ -16,6 +16,7 @@
 // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 
 //! JSON frames spoken between the relay server and the `vrelay` connector.
 
@@ -287,5 +288,63 @@ mod tests {
         assert_eq!(PROTOCOL, 1);
         assert_eq!(MAX_FRAME_BYTES, 4 * 1024 * 1024);
         assert_eq!((PING_SECS, IN_CALL_PING_SECS, MAX_MISSED_PINGS), (20, 2, 3));
+    }
+
+    #[test]
+    fn unknown_fields_are_ignored() {
+        let f = decode_to_connector(
+            r#"{"type":"call","call_id":"c","tool":"t","arguments":{},"deadline_ms":5,"extra":1}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            f,
+            ToConnector::Call(Call {
+                call_id: "c".into(),
+                tool: "t".into(),
+                arguments: json!({}),
+                deadline_ms: 5,
+            })
+        );
+        assert!(!encode(&f).unwrap().contains("extra"));
+    }
+
+    // A ping frame padded with whitespace to an exact byte length.
+    fn ping_of_len(n: usize) -> String {
+        let base = r#"{"type":"ping","n":1}"#;
+        format!("{base}{}", " ".repeat(n - base.len()))
+    }
+
+    #[test]
+    fn decode_accepts_exactly_max_and_refuses_one_over() {
+        assert!(decode_to_relay(&ping_of_len(MAX_FRAME_BYTES)).is_ok());
+        assert!(decode_to_connector(&ping_of_len(MAX_FRAME_BYTES)).is_ok());
+        assert!(matches!(
+            decode_to_relay(&ping_of_len(MAX_FRAME_BYTES + 1)),
+            Err(FrameError::TooLarge(_))
+        ));
+        assert!(matches!(
+            decode_to_connector(&ping_of_len(MAX_FRAME_BYTES + 1)),
+            Err(FrameError::TooLarge(_))
+        ));
+    }
+
+    #[test]
+    fn encode_accepts_exactly_max_and_refuses_one_over() {
+        // Encoded size is the empty-text frame plus the text length.
+        let frame = |len: usize| {
+            ToRelay::Result(CallResult {
+                call_id: "c".into(),
+                content: json!("x".repeat(len)),
+                is_error: false,
+                truncated: false,
+            })
+        };
+        let overhead = encode(&frame(0)).unwrap().len();
+        let at_max = encode(&frame(MAX_FRAME_BYTES - overhead)).unwrap();
+        assert_eq!(at_max.len(), MAX_FRAME_BYTES);
+        assert!(matches!(
+            encode(&frame(MAX_FRAME_BYTES - overhead + 1)),
+            Err(FrameError::TooLarge(n)) if n == MAX_FRAME_BYTES + 1
+        ));
     }
 }
