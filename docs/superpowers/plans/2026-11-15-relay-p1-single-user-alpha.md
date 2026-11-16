@@ -109,8 +109,10 @@ is retired in the last task.
 packages/rust/vitruvian-mcp-auth/         shared token checking (from slack-mcp auth.rs)
   Cargo.toml, BUILD, src/lib.rs, src/verifier.rs, src/prm.rs
 apps/suites/vitruvian-relay/
-  Cargo.toml, Cargo.lock                   workspace: protocol, relay, connector, connector/scripts,
-                                           ../../../packages/rust/vitruvian-mcp-auth
+  BUILD, Cargo.toml, Cargo.lock            workspace: protocol, relay, connector, connector/scripts;
+                                           vitruvian-mcp-auth joins as a path dependency
+                                           (it sits outside this root, as the spike's
+                                           slack-mcp dependency does)
   protocol/  src/lib.rs                    frame types shared by relay and connector
   relay/     src/{main,config,registry,mcp,http,devices}.rs, Dockerfile, deploy/chart/
   connector/ src/{main,auth,keys,rules,prompt,bridge,link}.rs, package.json (desktop-commander pin)
@@ -130,7 +132,7 @@ let one verifier accept several client ids.
 
 **Files:**
 - Create: `packages/rust/vitruvian-mcp-auth/{Cargo.toml,BUILD,src/lib.rs,src/verifier.rs,src/prm.rs}`
-- Create: `apps/suites/vitruvian-relay/Cargo.toml` (workspace; member list grows in later tasks), `Cargo.lock`
+- Create: `apps/suites/vitruvian-relay/{BUILD,Cargo.toml,Cargo.lock}` (the BUILD exports `Cargo.toml` and `Cargo.lock` for the hub label, as the spike's does; the workspace's member list grows in later tasks, and `vitruvian-mcp-auth` is a `path` dependency of the crates that use it, not a member)
 - Modify: `MODULE.bazel` (add hub `vitruvian_relay_crates`; keep the spike hub until Task 10)
 - Test: `packages/rust/vitruvian-mcp-auth/src/verifier.rs` (`#[cfg(test)]`)
 
@@ -354,7 +356,7 @@ device replaces the old one (its pending calls fail `Disconnected`).
 - Consumes: Tasks 2, 5, 6, 7.
 - Produces:
   - `vrelay run`: start the bridge, connect to `wss://<relay>/connect` with a fresh token, send `hello` with `Rules::visible(bridge.tools())`, then loop.
-  - On `call`: dedupe by `call_id` (remember ids for 10 minutes; a repeat re-sends the stored result or, if still running, nothing), `Rules::decide` → `Run` / `AskFirst` (prompt) / `Refuse`, then `Bridge::call`, then `result`. A denied prompt returns `is_error: true`, "Denied on the computer."
+  - On `call`: dedupe by `call_id` for 10 minutes. A repeat re-sends the stored result or, if still running, nothing. Started ids are also appended to `seen_calls.jsonl` in the state dir (id and time only, pruned after 10 minutes), so after a LaunchAgent restart a resent id is refused with "This call already started before vrelay restarted; not run again." rather than run twice. `Rules::decide` → `Run` / `AskFirst` (prompt) / `Refuse`, then `Bridge::call`, then `result`. A denied prompt returns `is_error: true`, "Denied on the computer."
   - On `cancel`: if the call is still waiting at its "ask first" prompt, dismiss the dialog and never run it. If it is already running, drop the result (the command itself is not killed in P1; the local log notes it).
   - Ping the relay every 20 s and answer its pings. 3 unanswered pings either way → reconnect.
   - Reconnect after any drop: backoff `min(60, 2^attempt)` s with full jitter (random 0..delay), reset after 60 s connected; refresh the token before each attempt (`auth::fresh_token`).
@@ -363,7 +365,8 @@ device replaces the old one (its pending calls fail `Disconnected`).
 
 - [ ] **Step 1: Tests** with an in-process fake relay (tokio-tungstenite server):
   `sends_hello_with_visible_tools_only`, `repeated_call_id_runs_once`,
-  `ask_first_denied_returns_error`, `cancel_during_prompt_never_runs`
+  `ask_first_denied_returns_error`, `repeated_call_id_after_restart_is_refused`,
+  `cancel_during_prompt_never_runs`
   (cancel arrives while the fake dialog is open: dialog dismissed, bridge never
   called, even if the fake then answers Allow), `reconnects_with_jittered_backoff`
   (inject clock/rng; delays within `[0, min(60, 2^n)]`), `refreshes_token_before_reconnect`,
@@ -382,7 +385,7 @@ Follow `apps/mobile/vitruvian-remote/macagent/scripts` (`render_plist`,
 `launchctl bootout` / `bootstrap gui/<uid>` / `enable`).
 
 **Interfaces:**
-- Produces: `bazel run //apps/suites/vitruvian-relay/connector:install` — copies `vrelay` and the pinned `desktop-commander` runfiles to `~/.local/share/vrelay/`, signs the binary with the Developer ID identity (identifier `dev.vitruvian.vrelay`; every Mac app here is Developer ID-signed). If `security find-identity -p codesigning` doesn't list it, the install **fails** with how to get it, unless `--unsigned` is passed explicitly. Writes the plist (template at `connector/scripts/com.vitruvian.vrelay.plist`, (label `com.vitruvian.vrelay`, `KeepAlive` true, log `~/Library/Logs/vrelay/vrelay.log`), and loads it. `:uninstall` reverses it.
+- Produces: `bazel run //apps/suites/vitruvian-relay/connector:install` — copies `vrelay` and the pinned `desktop-commander` runfiles to `~/.local/share/vrelay/`, signs the binary with the Developer ID identity (identifier `dev.vitruvian.vrelay`; every Mac app here is Developer ID-signed). If `security find-identity -p codesigning` doesn't list it, the install **fails** with how to get it, unless `--unsigned` is passed explicitly. Writes the plist from the template at `connector/scripts/com.vitruvian.vrelay.plist`, with label `com.vitruvian.vrelay`, `KeepAlive` true and log `~/Library/Logs/vrelay/vrelay.log`, and loads it. `:uninstall` reverses it.
 
 - [ ] **Step 1: Tests** `render_plist_fills_paths_and_args`, `install_fails_without_identity`, `unsigned_flag_skips_signing_with_warning`.
 - [ ] **Step 2:** `bazel test //apps/suites/vitruvian-relay/connector/scripts:unit_tests` → FAIL.
@@ -393,7 +396,7 @@ Follow `apps/mobile/vitruvian-remote/macagent/scripts` (`render_plist`,
 ### Task 10: Deploy the relay, Zitadel changes, retire the spike
 
 **Files:**
-- Create: `apps/suites/vitruvian-relay/relay/Dockerfile`, `relay/deploy/chart/` (Service, HTTPRoute, DNSEndpoint for `relay.ipv1337.dev`, NetworkPolicy and the affinity value copied from the spike's chart; new: a 1 GiB PVC mounted at `/data` for the device file), `gitops/argocd/applications/relay.yaml`, `gitops/argocd/platform/relay/values.yaml` (with the #4916 allow-list affinity; `MCP_CLIENT_IDS` = the `claudeClientId` and `geminiClientId` outputs), image build workflow mirroring `vitruvian-relay-spike-image`
+- Create: `apps/suites/vitruvian-relay/relay/Dockerfile`, `relay/deploy/chart/` (Service, HTTPRoute, DNSEndpoint for `relay.ipv1337.dev`, NetworkPolicy and the `affinity` value copied from the spike's chart; the affinity *rule* itself comes from `gitops/argocd/platform/relay-spike/values.yaml`; new: a 1 GiB PVC mounted at `/data` for the device file), `gitops/argocd/applications/relay.yaml`, `gitops/argocd/platform/relay/values.yaml` (with the #4916 allow-list affinity; `MCP_CLIENT_IDS` = the `claudeClientId` and `geminiClientId` outputs), image build workflow mirroring `vitruvian-relay-spike-image`
 - Modify: `infrastructure/pulumi/platform/zitadel-apps-relay/` for one sign-in
   (P1-required). The pinned `pulumi-zitadel` SDK v0.2.0 has no per-app
   login-version field. In order:
@@ -422,5 +425,8 @@ Manual, with James.
 - [ ] **Step 2:** James adds that URL in Claude (web) as a custom connector with the `relay-claude` client id and signs in.
 - [ ] **Step 3:** From the **Claude phone app**: "list the files in my Downloads folder" runs without a prompt (a read). Relay log shows `tools/call` from client `398912442404439866`, no arguments.
 - [ ] **Step 4:** From the phone: "run `uname -a`". The "Allow?" dialog appears on the Mac; Allow → the output comes back to the phone. Repeat and Deny → Claude shows "Denied on the computer."
-- [ ] **Step 5:** Turn the Mac's Wi-Fi off mid-command: the phone gets "Your computer disconnected; try again." quickly. Wi-Fi on: `vrelay status` shows connected within about a minute.
-- [ ] **Step 6:** Record the result in this plan (yes or no, with log lines), set `status: completed`, and update spec §10's P1 row.
+- [ ] **Step 5:** Leave a "run" request's dialog unanswered for 60 s: Claude
+  shows "Denied on the computer." Then send one and stop it from the phone while
+  the dialog is open: the dialog closes and nothing runs (`calls.log`).
+- [ ] **Step 6:** Turn the Mac's Wi-Fi off mid-command: the phone gets "Your computer disconnected; try again." quickly. Wi-Fi on: `vrelay status` shows connected within about a minute.
+- [ ] **Step 7:** Record the result in this plan (yes or no, with log lines), set `status: completed`, and update spec §10's P1 row.
