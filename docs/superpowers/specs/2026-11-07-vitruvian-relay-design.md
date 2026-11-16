@@ -153,7 +153,7 @@ JSON frames over `wss://<relay>/connect`. Every frame has a `type`.
 | `hello` | connector → relay | Device id, connector version, protocol version, signed proof of the device key (§6), the allowed tool list |
 | `welcome` / `reject` | relay → connector | Accepted, or refused with a reason the connector can show |
 | `call` | relay → connector | Call id, tool name, arguments, deadline |
-| `progress` | connector → relay | Streamed output for a running call. Reserved: `desktop-commander`, the one server P1 bridges, returns output in steps instead (§5), so P1 doesn't build it. Other bridged servers may need it later |
+| `progress` | connector → relay | Streamed output for a running call. Reserved: P1 bridges only `desktop-commander` (§10), which returns output in steps instead (§5), so P1 doesn't build it. Other bridged servers may need it later |
 | `result` | connector → relay | Final content or error for a call id |
 | `cancel` | relay → connector | The AI gave up or the deadline passed |
 | `tools_changed` | connector → relay | New allowed tool list |
@@ -219,13 +219,13 @@ carries only protocol messages. What the connector must do:
   so far plus a process id, and the AI calls `read_process_output` for more. The
   relay just forwards each call, so `desktop-commander` never needs the
   `progress` frame.
-- **Turn telemetry off** with `DESKTOP_COMMANDER_DISABLE_TELEMETRY=1`, not through
-  the shared config file.
+- **Turn telemetry off** with `DESKTOP_COMMANDER_DISABLE_TELEMETRY=1` (per its
+  source code), not through the shared config file.
 - **It fetches feature flags from its maker every 30 minutes, even with telemetry
-  off.** The connector points that fetch elsewhere (`DC_FLAG_URL`) so a customer's
+  off** (read in its source code, not observed in the run). The connector points that fetch elsewhere (`DC_FLAG_URL`) so a customer's
   computer doesn't contact a third party because of us.
 - **Its settings file is shared** with any Desktop Commander the user already runs
-  (`~/.claude-server-commander`). The connector must not depend on, or silently
+  (`~/.claude-server-commander`; read in its source code). The connector must not depend on, or silently
   change, that file.
 
 ## 6. Sign-in, devices and billing
@@ -262,7 +262,7 @@ Slack MCP with Gemini Spark. What P0 research found (details in
   customer isn't secret, and one shared client would need every customer's
   callback registered. Gemini at scale therefore has the same registration
   problem as ChatGPT (§11).
-- **ChatGPT** gives each connector its own callback URL, so one pre-registered
+- **ChatGPT** (per OpenAI's docs; not tried live) gives each connector its own callback URL, so one pre-registered
   client can't serve many users. For a product, ChatGPT needs Zitadel's dynamic
   client registration. Zitadel supports it, but it's off on our instance, and
   turning it on in its open form lets anyone create clients. That's an open
@@ -389,7 +389,7 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
 | Phase | Scope | Done when |
 |---|---|---|
 | **P0 spikes** | (a) ChatGPT web, Claude web and Gemini web each add an OAuth-protected MCP on our domain with Zitadel sign-in (ChatGPT researched, not tried). Settles the registration question. (b) Zitadel device flow from a CLI. (c) A WebSocket through the Cloudflare Tunnel stays up for 24 hours with reconnects. (d) A connector drives unmodified `desktop-commander` over stdio | **Done 2026-11-15.** (a) yes for Claude and Gemini, live; ChatGPT yes on paper, not tried. (b) yes. (c) yes with reconnects, no for one unbroken connection. (d) yes; the spike also showed a started command outlives a killed `desktop-commander`, so the connector needs process-group shutdown (not yet tested). Evidence in [the P0 plan](../plans/2026-11-09-relay-p0-spikes.md) |
-| **P1 single-user alpha** | Relay and connector on the homelab, one user, one device, local rules file, no billing. Builds in the P0 findings: automatic reconnect, clean failure of in-flight calls, process-group shutdown, telemetry and flag fetch off, an answer to `server/discover` (Claude's request for the server to describe itself), and one sign-in session shared by the device approval page and the AI apps' sign-in (spike B had to sign in twice) | James runs a command on his Mac from Claude on his phone, and the "ask first" prompt appears on the Mac |
+| **P1 single-user alpha** | Relay and connector on the homelab, one user, one device, bridging only `desktop-commander`, local rules file, no billing. Builds in the P0 findings: automatic reconnect, clean failure of in-flight calls, process-group shutdown, telemetry and flag fetch off, an answer to `server/discover` (Claude's request for the server to describe itself), and one sign-in session shared by the device approval page and the AI apps' sign-in (spike B had to sign in twice) | James runs a command on his Mac from Claude on his phone, and the "ask first" prompt appears on the Mac |
 | **P2 multi-user** | Sign-up, several devices, dashboard, local settings screen, both activity logs, the isolation test in CI | A second invited user connects, and the isolation test fails against a deliberately broken check |
 | **P3 launch readiness** | Stripe product line and entitlements, §9 checklist, move to GCP, Zitadel hosting, signed installers for macOS then Linux and Windows, and **Cua Driver** (`cua.ai`) alongside Desktop Commander | A stranger can sign up, pay in Stripe test mode, connect without help, and drive both terminal/file tools (Desktop Commander) and native desktop app UIs in the background (Cua Driver) |
 
@@ -433,9 +433,8 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
     (§8), so this spec overrides that: until there is a message bus (question 9),
     the alpha runs one copy on an always-on node and relies on Kubernetes
     restarting it elsewhere if that node fails. Spike C gives a rough cost: two
-    outages of 3 to 6 minutes while a laptop node was going `NotReady` (17:36 and
-    17:59 PST). The first ended on its own about 17:44; the second lasted until
-    Kubernetes moved the pod to `nuc9i9` (18:04 PST). Keeping the pod off laptop
-    nodes should make this rare.
+    outages of 3 to 6 minutes, starting 17:36 and 17:59 PST, while the laptop
+    node running the pod went `NotReady`. Kubernetes moved the pod to `nuc9i9`
+    at 18:04 PST. Keeping the pod off laptop nodes should make this rare.
 14. **Retries that run twice.** An AI app's retry after a dropped connection
     arrives as a new call (§4). Decide whether the relay should detect it.

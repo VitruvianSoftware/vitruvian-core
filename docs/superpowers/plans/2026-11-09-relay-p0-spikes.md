@@ -56,8 +56,8 @@ Each spike ends in a written yes or no with evidence. This file is the record.
 - Gemini read the tool list correctly: asked for free disk space, it said the
   spike only offers echo and whoami, and called nothing.
 - Creating the client needed CI to reach Zitadel over Headscale (#4857), because
-  the homelab had moved off commercial Tailscale. The sign-in itself doesn't
-  depend on that.
+  the homelab had moved off commercial Tailscale. The sign-in itself goes from
+  Gemini to Zitadel's and the spike's public addresses, not through that tunnel.
 - Not yet tried: the Gemini phone app.
 
 ### B: yes
@@ -96,7 +96,7 @@ and reconnected with backoff.
 
 The 10 drops had two causes, and one refresh failed alongside a drop:
 
-- **8 resets from the network**, between 06:59 and 15:06, after 5 minutes to
+- **8 resets from the network**, between 06:59 and 15:06 PST, after 5 minutes to
   12.7 hours. They were TCP resets or closes without a WebSocket close frame.
   Each time, the client was back in about 1 s. Which hop reset them (home
   network, Cloudflare's edge, or `cloudflared`) is **not established**: nothing
@@ -106,7 +106,7 @@ The 10 drops had two causes, and one refresh failed alongside a drop:
   was running on the node `james-mbp16`, a laptop, which went `NotReady` twice
   in that window. The pod was then evicted and rescheduled on `nuc9i9` (cluster
   events, 18:04 PST). These are the gaps of 3 to 6 minutes.
-- **1 token refresh failed** on a reset (06:59, same moment as a drop) and
+- **1 token refresh failed** on a reset (06:59 PST, same moment as a drop) and
   succeeded on the next try a second later.
 
 What this means for the relay:
