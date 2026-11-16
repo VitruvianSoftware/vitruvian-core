@@ -1073,7 +1073,9 @@ async fn status_file_tracks_link_state() {
     let tokens = p.tokens.clone();
     // Slow enough retries to see "connecting" with a retry time, even on a
     // busy machine (the status writer keeps only the newest state).
-    p.timing.backoff_unit = Duration::from_millis(1000);
+    // (3 s: under 8 copies at once the status writer has been seen to
+    // miss a 1 s window.)
+    p.timing.backoff_unit = Duration::from_millis(3000);
     let _run = start(&dir, &relay.url(), p);
     let state = || link_state(&dir, now_unix());
     let mut c = relay.next_conn().await;

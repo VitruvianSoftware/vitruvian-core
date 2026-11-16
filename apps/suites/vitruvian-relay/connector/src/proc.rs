@@ -286,10 +286,12 @@ mod tests {
             "sleep 30 &\necho $! > \"$(dirname \"$0\")/child\"\nsleep 30",
         );
         let t = Instant::now();
-        let o = output_within(&mut Command::new(&s), Duration::from_secs(4), 1024).unwrap();
+        // 10 s: under 8 copies of the suite at once a shell has been seen
+        // to take over 4 s to start its child.
+        let o = output_within(&mut Command::new(&s), Duration::from_secs(10), 1024).unwrap();
         assert!(o.is_none());
         // Cut off near the limit, not after the script's 30 s.
-        assert!(t.elapsed() < Duration::from_secs(15), "{:?}", t.elapsed());
+        assert!(t.elapsed() < Duration::from_secs(25), "{:?}", t.elapsed());
         let child: i32 = std::fs::read_to_string(dir.join("child"))
             .unwrap()
             .trim()
