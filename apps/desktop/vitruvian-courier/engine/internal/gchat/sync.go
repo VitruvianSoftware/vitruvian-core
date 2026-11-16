@@ -314,8 +314,9 @@ func (c *Client) syncWorld(ctx context.Context) error {
 			return fmt.Errorf("save portal %q: %w", portalID, saveErr)
 		}
 		syncedPortals = append(syncedPortals, portalRefreshCandidate{
-			portal:     portal,
-			storedName: storedNameBeforeResync,
+			portal:       portal,
+			storedName:   storedNameBeforeResync,
+			worldUnnamed: !item.hasRoomName || isPlaceholderChatName(portal.ID, item.roomName),
 		})
 
 		roomType := portal.RoomType
@@ -345,8 +346,9 @@ func (c *Client) syncWorld(ctx context.Context) error {
 }
 
 type portalRefreshCandidate struct {
-	portal     *bridgev2.Portal
-	storedName string
+	portal       *bridgev2.Portal
+	storedName   string
+	worldUnnamed bool // the world list gave the chat no room name this time
 }
 
 func (c *Client) isOneToOneDMPortal(portal *bridgev2.Portal, own networkid.UserID) bool {
@@ -416,6 +418,12 @@ func (c *Client) refreshUnnamedGroupPortals(ctx context.Context, syncedPortals [
 	own := c.ownUserID()
 	seen := make(map[networkid.PortalID]struct{}, len(syncedPortals))
 	var candidates []*bridgev2.Portal
+	worldUnnamed := make(map[networkid.PortalID]bool, len(syncedPortals))
+	for _, cand := range syncedPortals {
+		if cand.portal != nil && cand.worldUnnamed {
+			worldUnnamed[cand.portal.ID] = true
+		}
+	}
 	addCandidate := func(p *bridgev2.Portal, storedName string, fromWorld bool) {
 		if p == nil {
 			return
@@ -490,18 +498,18 @@ func (c *Client) refreshUnnamedGroupPortals(ctx context.Context, syncedPortals [
 		go func(p *bridgev2.Portal) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			c.refreshPortalChatInfo(ctx, p)
+			c.refreshPortalChatInfo(ctx, p, worldUnnamed[p.ID])
 		}(portal)
 	}
 	wg.Wait()
 }
 
-func (c *Client) refreshPortalChatInfo(ctx context.Context, portal *bridgev2.Portal) {
+func (c *Client) refreshPortalChatInfo(ctx context.Context, portal *bridgev2.Portal, worldUnnamed bool) {
 	if portal == nil || c.UserLogin == nil || ctx.Err() != nil {
 		return
 	}
 	before := c.portalAppRoster(portal)
-	info, err := c.GetChatInfo(ctx, portal)
+	info, err := c.getChatInfo(ctx, portal, worldUnnamed)
 	if err != nil || info == nil || ctx.Err() != nil {
 		return
 	}

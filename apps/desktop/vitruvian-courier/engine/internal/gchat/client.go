@@ -751,6 +751,13 @@ func (c *Client) composeGroupMemberName(ctx context.Context, otherIDs []networki
 }
 
 func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+	return c.getChatInfo(ctx, portal, false)
+}
+
+// getChatInfo is GetChatInfo. worldUnnamed says the world list just showed this chat with no room name, so a
+// get_group that also gives none is enough to drop a Google-given name remembered from before; without that
+// (false) a name once remembered as Google's is never dropped here.
+func (c *Client) getChatInfo(ctx context.Context, portal *bridgev2.Portal, worldUnnamed bool) (*bridgev2.ChatInfo, error) {
 	isDM, rawID, err := ParsePortalID(portal.ID)
 	if err != nil {
 		return nil, err
@@ -787,10 +794,9 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 		roster.add(&pb.UserId{Id: pb.String(id)})
 	}
 	fetchedGroupMembers := false
-	readGroup := false     // get_group answered and was understood (it may have listed nobody)
-	attemptedRead := false // get_group was asked for
+	readGroup := false  // get_group answered with a reply that was understood (it may have listed nobody)
+	failedRead := false // get_group was asked for and failed outright (an empty reply is neither)
 	if rawID != "" && (!isDM || len(listedOthers) > 1) {
-		attemptedRead = true
 		reqBytes, mErr := pb.Marshal(&pb.GetGroupRequest{
 			GroupId: pb.PartsToGroupID(rawID, isDM),
 			FetchOptions: []pb.GetGroupRequest_FetchOptions{
@@ -799,10 +805,18 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 			},
 			IncludeInviteDms: pb.Bool(true),
 		})
-		if mErr == nil {
-			if respBytes, rpcErr := c.rpcCall(ctx, "get_group", reqBytes); rpcErr == nil {
+		if mErr != nil {
+			failedRead = true
+		} else {
+			respBytes, rpcErr := c.rpcCall(ctx, "get_group", reqBytes)
+			if rpcErr != nil {
+				failedRead = true
+			} else if len(respBytes) > 0 {
+				// An empty reply says nothing about the chat (it is not "nobody is in it"), so it is not an answer.
 				var resp pb.GetGroupResponse
-				if pb.Unmarshal(respBytes, &resp) == nil {
+				if pb.Unmarshal(respBytes, &resp) != nil {
+					failedRead = true
+				} else {
 					readGroup = true
 					c.queueReceiptsAfterCurrent(ctx, c.readReceiptEvents(ctx, isDM, rawID, resp.GetReadReceiptSet()))
 					if g := resp.GetGroup(); g != nil {
@@ -814,6 +828,10 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 						if gName := strings.TrimSpace(g.GetName()); gName != "" && !isPlaceholderChatName(portal.ID, gName) {
 							name = gName
 							nameFromGoogle = true
+						} else if worldUnnamed {
+							// Neither the world list nor get_group names the chat any more: a Google-given name
+							// remembered from before is stale.
+							nameFromGoogle = false
 						}
 						if desc := strings.TrimSpace(g.GetGroupDetails().GetDescription()); desc != "" {
 							topic = &desc
@@ -887,7 +905,7 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 			// Google answered and listed nobody: there is nothing to learn, so the chat is not read again.
 			meta.AppRosterChecked = true
 			meta.AppRosterAttemptedAt = 0
-		case attemptedRead && !readGroup:
+		case failedRead:
 			// The read failed: remember when, so a chat that keeps failing is not asked again on every connect.
 			meta.AppRosterAttemptedAt = time.Now().Unix()
 		}
