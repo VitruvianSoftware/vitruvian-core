@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -202,6 +203,15 @@ func (c *Client) createDM(ctx context.Context, targetGaiaID, targetEmail string)
 			meta.GroupRevision = groupRev
 			meta.Revision = groupRev
 		}
+		// Keep what create_dm said about who is an app, so the new chat starts out right and is not read again.
+		if len(roster.ids) > 0 {
+			meta.MemberUserIDs = slices.Clone(roster.ids)
+			meta.AppUserIDs = mergeAppIDs(meta.AppUserIDs, roster.appIDs(), roster.ids)
+			meta.AppRosterChecked = true
+		}
+		if dmName != "" {
+			meta.NameFromGoogle = true
+		}
 		portal.Metadata = meta
 		c.metaMu.Unlock()
 	}
@@ -230,11 +240,13 @@ func (c *Client) createDM(ctx context.Context, targetGaiaID, targetEmail string)
 	chatInfo := &bridgev2.ChatInfo{
 		Type: &roomType,
 		Members: &bridgev2.ChatMemberList{
-			IsFull:           true,
-			OtherUserID:      otherUserID,
-			CheckAllLogins:   true,
-			TotalMemberCount: len(memberMap),
-			MemberMap:        memberMap,
+			IsFull:         true,
+			OtherUserID:    otherUserID,
+			CheckAllLogins: true,
+			// Taking an app out of the room is a tidy-up, not something that happened in the chat.
+			ExcludeChangesFromTimeline: len(memberGaiaIDs) < len(roster.ids),
+			TotalMemberCount:           len(memberMap),
+			MemberMap:                  memberMap,
 			PowerLevels: &bridgev2.PowerLevelOverrides{
 				Invite:       &level,
 				Kick:         &level,

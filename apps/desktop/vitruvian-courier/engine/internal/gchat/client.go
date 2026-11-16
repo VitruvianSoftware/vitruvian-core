@@ -767,10 +767,12 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 	var topic *string
 	var memberGaiaIDs []string
 	var storedAppIDs []string
+	nameFromGoogle := false
 	c.metaMu.Lock()
 	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
 		memberGaiaIDs = append(memberGaiaIDs, meta.MemberUserIDs...)
 		storedAppIDs = slices.Clone(meta.AppUserIDs)
+		nameFromGoogle = meta.NameFromGoogle
 	}
 	c.metaMu.Unlock()
 
@@ -784,7 +786,6 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 		roster.add(&pb.UserId{Id: pb.String(id)})
 	}
 	fetchedGroupMembers := false
-	nameFromGoogle := false
 	if rawID != "" && (!isDM || len(listedOthers) > 1) {
 		reqBytes, mErr := pb.Marshal(&pb.GetGroupRequest{
 			GroupId: pb.PartsToGroupID(rawID, isDM),
@@ -803,6 +804,9 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 						if gName := strings.TrimSpace(g.GetName()); gName != "" && !isPlaceholderChatName(portal.ID, gName) {
 							name = gName
 							nameFromGoogle = true
+						} else {
+							// Google answered and gave the chat no name of its own.
+							nameFromGoogle = false
 						}
 						if desc := strings.TrimSpace(g.GetGroupDetails().GetDescription()); desc != "" {
 							topic = &desc
@@ -865,6 +869,7 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 	c.metaMu.Lock()
 	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
 		meta.AppUserIDs = appIDs
+		meta.NameFromGoogle = nameFromGoogle
 		if fetchedGroupMembers && (!recomposeName || name != "") {
 			meta.AppRosterChecked = true
 		}
@@ -876,12 +881,15 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 		namePtr = &name
 	}
 
+	members := c.buildChatMemberList(own, isDM, otherUserID, visibleIDs, fetchedGroupMembers)
+	// Taking an app out of the room is a tidy-up, not something that happened in the chat: no "left" line.
+	members.ExcludeChangesFromTimeline = hiddenApps > 0
 	return &bridgev2.ChatInfo{
 		Name:        namePtr,
 		Topic:       topic,
 		Type:        &roomType,
 		CanBackfill: true,
-		Members:     c.buildChatMemberList(own, isDM, otherUserID, visibleIDs, fetchedGroupMembers),
+		Members:     members,
 	}, nil
 }
 

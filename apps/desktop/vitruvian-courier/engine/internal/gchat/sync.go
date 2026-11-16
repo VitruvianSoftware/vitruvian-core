@@ -301,6 +301,9 @@ func (c *Client) syncWorld(ctx context.Context) error {
 			meta.MemberUserIDs = slices.Clone(item.memberUserIDs)
 			meta.AppUserIDs = appIDs
 		}
+		if item.hasRoomName && !isPlaceholderChatName(portal.ID, item.roomName) {
+			meta.NameFromGoogle = true
+		}
 		if item.groupRevision > meta.GroupRevision {
 			meta.GroupRevision = item.groupRevision
 			meta.Revision = item.groupRevision
@@ -321,6 +324,8 @@ func (c *Client) syncWorld(ctx context.Context) error {
 			CanBackfill: true,
 			Members:     c.buildChatMemberList(own, item.isDM, portal.OtherUserID, visibleIDs, false),
 		}
+		// Taking an app out of the room is a tidy-up, not something that happened in the chat: no "left" line.
+		chatInfo.Members.ExcludeChangesFromTimeline = len(visibleIDs) < len(item.memberUserIDs)
 		if item.hasRoomName && !isPlaceholderChatName(portal.ID, item.roomName) {
 			roomName := item.roomName
 			chatInfo.Name = &roomName
@@ -474,14 +479,15 @@ func (c *Client) refreshPortalChatInfo(ctx context.Context, portal *bridgev2.Por
 	if portal == nil || c.UserLogin == nil || ctx.Err() != nil {
 		return
 	}
-	checkedBefore, appsBefore := c.portalAppRoster(portal)
+	before := c.portalAppRoster(portal)
 	info, err := c.GetChatInfo(ctx, portal)
 	if err != nil || info == nil || ctx.Err() != nil {
 		return
 	}
 	// GetChatInfo records which members are apps on the portal's metadata; keep that if it changed.
-	checkedAfter, appsAfter := c.portalAppRoster(portal)
-	rosterChanged := checkedBefore != checkedAfter || !slices.Equal(appsBefore, appsAfter)
+	after := c.portalAppRoster(portal)
+	rosterChanged := before.checked != after.checked || before.nameFromGoogle != after.nameFromGoogle ||
+		!slices.Equal(before.apps, after.apps)
 	c.ghostMu.Lock()
 	defer c.ghostMu.Unlock()
 	hadPlaceholder := portal.Name != "" && isPlaceholderChatName(portal.ID, portal.Name)
@@ -499,28 +505,43 @@ func (c *Client) refreshPortalChatInfo(ctx context.Context, portal *bridgev2.Por
 	}
 }
 
-// isKnownAppInGroup is whether the chat's stored roster already names gaiaID as an app, for the events that do not
-// carry the member's type.
-func (c *Client) isKnownAppInGroup(ctx context.Context, isDM bool, rawGroupID, gaiaID string) bool {
+// knownAppIDsInGroup is the apps the chat's stored roster already names, for the events that do not carry the
+// member's type.
+func (c *Client) knownAppIDsInGroup(ctx context.Context, isDM bool, rawGroupID string) []string {
 	if c.UserLogin == nil || c.UserLogin.Bridge == nil {
-		return false
+		return nil
 	}
 	portal, err := c.UserLogin.Bridge.GetExistingPortalByKey(ctx, c.portalKeyFromGroup(isDM, rawGroupID))
 	if err != nil || portal == nil {
-		return false
+		return nil
 	}
-	_, apps := c.portalAppRoster(portal)
-	return slices.Contains(apps, strings.TrimSpace(gaiaID))
+	return c.portalAppRoster(portal).apps
 }
 
-// portalAppRoster is whether portal's roster has been checked for apps, and the apps it knows of.
-func (c *Client) portalAppRoster(portal *bridgev2.Portal) (checked bool, apps []string) {
+// isAppInGroup is whether u is an app: by its own type, or because the chat's stored roster names it as one.
+func (c *Client) isAppInGroup(ctx context.Context, isDM bool, rawGroupID string, u *pb.UserId) bool {
+	if isAppUser(u) {
+		return true
+	}
+	id := strings.TrimSpace(u.GetId())
+	return id != "" && slices.Contains(c.knownAppIDsInGroup(ctx, isDM, rawGroupID), id)
+}
+
+// appRosterState is what a portal's metadata remembers about its apps and its name.
+type appRosterState struct {
+	checked        bool
+	apps           []string
+	nameFromGoogle bool
+}
+
+// portalAppRoster reads portal's appRosterState.
+func (c *Client) portalAppRoster(portal *bridgev2.Portal) appRosterState {
 	c.metaMu.Lock()
 	defer c.metaMu.Unlock()
 	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
-		return meta.AppRosterChecked, slices.Clone(meta.AppUserIDs)
+		return appRosterState{meta.AppRosterChecked, slices.Clone(meta.AppUserIDs), meta.NameFromGoogle}
 	}
-	return false, nil
+	return appRosterState{}
 }
 
 func (c *Client) advanceUserRevision(ctx context.Context, rev int64) error {
@@ -688,10 +709,18 @@ func (c *Client) convertParsedMessage(ctx context.Context, pm parsedMessage) (*b
 // before that time read (handleRemoteReadReceipt), as their marker; mine is my own read (IsFromMe).
 func (c *Client) readReceiptEvents(ctx context.Context, isDM bool, rawGroupID string, set *pb.ReadReceiptSet) []bridgev2.RemoteEvent {
 	var out []bridgev2.RemoteEvent
+	var knownApps []string
+	if len(set.GetReadReceipts()) > 0 {
+		knownApps = c.knownAppIDsInGroup(ctx, isDM, rawGroupID)
+	}
 	for _, rr := range set.GetReadReceipts() {
 		readTimeMicros := rr.GetReadTimeMicros()
 		readerGaiaID := rr.GetUser().GetUserId().GetId()
 		if readerGaiaID == "" || readTimeMicros <= 0 {
+			continue
+		}
+		// An app does not read a chat (members.go).
+		if isAppUser(rr.GetUser().GetUserId()) || slices.Contains(knownApps, strings.TrimSpace(readerGaiaID)) {
 			continue
 		}
 		senderID := MakeUserID(readerGaiaID)
@@ -1444,6 +1473,10 @@ func (c *Client) translateSingleEventBody(
 			isDM, rawGroupID, hasGroup = dm, rg, true
 		}
 		typerGaiaID := tsc.GetUserId().GetId()
+		// An app does not type (members.go).
+		if hasGroup && typerGaiaID != "" && c.isAppInGroup(ctx, isDM, rawGroupID, tsc.GetUserId()) {
+			hasGroup = false
+		}
 		if hasGroup && typerGaiaID != "" {
 			var timeout time.Duration
 			if tsc.GetState() == pb.TypingState_TYPING {
@@ -1475,7 +1508,7 @@ func (c *Client) translateSingleEventBody(
 		}
 		// An app joining or leaving is not a member joining or leaving (members.go).
 		if hasGroup && memberGaiaID != "" &&
-			(isAppUser(nm.GetId().GetMemberId().GetUserId()) || c.isKnownAppInGroup(ctx, isDM, rawGroupID, memberGaiaID)) {
+			c.isAppInGroup(ctx, isDM, rawGroupID, nm.GetId().GetMemberId().GetUserId()) {
 			hasGroup = false
 		}
 		if hasGroup && memberGaiaID != "" {

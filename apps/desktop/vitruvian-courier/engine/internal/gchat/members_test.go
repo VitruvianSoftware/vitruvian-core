@@ -456,3 +456,234 @@ func TestRepairRetriedWhenGetGroupFails(t *testing.T) {
 	require.False(t, meta.AppRosterChecked)
 	require.True(t, client.needsAppRosterCheck(portal, client.ownUserID()))
 }
+
+func TestAppRemovalFromTheRoomIsNotATimelineEvent(t *testing.T) {
+	ctx := context.Background()
+	h, ul, client := setupLoggedInGChatTestEnv(t, membersAPI(
+		"",
+		joinedMembership(pb.UserMemberID(ownGaia)),
+		joinedMembership(pb.UserMemberID(annGaia)),
+		joinedMembership(pb.UserMemberID(bobGaia)),
+		joinedMembership(appMemberID(githubGaia)),
+	))
+	portal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{ID: MakeDMPortalID("grp_silent"), Receiver: ul.ID})
+	require.NoError(t, err)
+	portal.RoomType = database.RoomTypeDM
+	portal.Metadata = &PortalMetadata{MemberUserIDs: []string{ownGaia, annGaia, bobGaia, githubGaia}}
+
+	info, err := client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	require.True(t, info.Members.IsFull, "a full list is what takes the app out of the room")
+	require.True(t, info.Members.ExcludeChangesFromTimeline, "the app's removal must not post a 'left' line in the chat")
+
+	// A chat with no app keeps real-time member changes visible.
+	h2, ul2, client2 := setupLoggedInGChatTestEnv(t, membersAPI(
+		"",
+		joinedMembership(pb.UserMemberID(ownGaia)),
+		joinedMembership(pb.UserMemberID(annGaia)),
+		joinedMembership(pb.UserMemberID(bobGaia)),
+	))
+	other, err := h2.Bridge.GetPortalByKey(ctx, networkid.PortalKey{ID: MakeDMPortalID("grp_no_app"), Receiver: ul2.ID})
+	require.NoError(t, err)
+	other.RoomType = database.RoomTypeDM
+	other.Metadata = &PortalMetadata{MemberUserIDs: []string{ownGaia, annGaia, bobGaia}}
+	plain, err := client2.GetChatInfo(ctx, other)
+	require.NoError(t, err)
+	require.False(t, plain.Members.ExcludeChangesFromTimeline)
+}
+
+func TestSyncWorldResyncOfAChatWithAnAppIsSilent(t *testing.T) {
+	ctx := context.Background()
+	groupAPI := membersAPI("")
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/u/0/api/paginated_world" {
+			groupAPI(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		_, _ = w.Write(pb.MustMarshal(&pb.PaginatedWorldResponse{
+			UserRevision: &pb.ReadRevision{Timestamp: pb.Int64(700)},
+			WorldItems: []*pb.WorldItemLite{{
+				GroupId:       pb.DMGroupID("grp_world_silent"),
+				GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(10)},
+				SortTimestamp: pb.Int64(1710000002000000),
+				ReadState: &pb.GroupReadState{
+					MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+					JoinedUsers:     []*pb.UserId{pb.HumanUserID(ownGaia), pb.HumanUserID(annGaia), pb.HumanUserID(bobGaia), appUserID(githubGaia)},
+				},
+			}},
+		}))
+	})
+	_, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{ID: MakeDMPortalID("grp_world_silent"), Receiver: ul.ID})
+	require.NoError(t, err)
+
+	require.NoError(t, client.syncWorld(ctx))
+	resyncs := client.recordedChatResyncs()
+	require.Len(t, resyncs, 1)
+	require.True(t, resyncs[0].ChatInfo.Members.ExcludeChangesFromTimeline)
+}
+
+func typingEvent(gid *pb.GroupId, u *pb.UserId) []byte {
+	return pb.MustMarshal(&pb.Event{
+		GroupId: gid,
+		Type:    pb.Event_TYPING_STATE_CHANGED.Enum(),
+		Body: &pb.Event_EventBody{
+			Type: &pb.Event_EventBody_TypingStateChanged{
+				TypingStateChanged: &pb.TypingStateChangedEvent{
+					State:              pb.TypingState_TYPING.Enum(),
+					UserId:             u,
+					Context:            &pb.TypingContext{Context: &pb.TypingContext_GroupId{GroupId: gid}},
+					StartTimestampUsec: pb.Int64(1710000125000000),
+				},
+			},
+			EventType: pb.Event_TYPING_STATE_CHANGED.Enum(),
+		},
+	})
+}
+
+func TestAnAppIsNeverShownTyping(t *testing.T) {
+	ctx := context.Background()
+	h, ul, client := setupLoggedInGChatTestEnv(t, nil)
+	portal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{ID: MakeSpacePortalID("space_typing"), Receiver: ul.ID})
+	require.NoError(t, err)
+	portal.Metadata = &PortalMetadata{MemberUserIDs: []string{annGaia, githubGaia}, AppUserIDs: []string{githubGaia}}
+	require.NoError(t, portal.Save(ctx))
+	gid := pb.SpaceGroupID("space_typing")
+
+	evts, err := client.translateWebChannelEvent(ctx, typingEvent(gid, pb.HumanUserID(annGaia)))
+	require.NoError(t, err)
+	require.Len(t, evts, 1, "a person typing is shown")
+
+	evts, err = client.translateWebChannelEvent(ctx, typingEvent(gid, appUserID(githubGaia)))
+	require.NoError(t, err)
+	require.Empty(t, evts, "an app typing, by its own type, is not shown")
+
+	evts, err = client.translateWebChannelEvent(ctx, typingEvent(gid, &pb.UserId{Id: pb.String(githubGaia)}))
+	require.NoError(t, err)
+	require.Empty(t, evts, "an app typing, known from the chat's roster, is not shown")
+}
+
+func TestAnAppIsNeverShownReadingAChat(t *testing.T) {
+	ctx := context.Background()
+	h, ul, client := setupLoggedInGChatTestEnv(t, nil)
+	portal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{ID: MakeSpacePortalID("space_reads"), Receiver: ul.ID})
+	require.NoError(t, err)
+	portal.Metadata = &PortalMetadata{MemberUserIDs: []string{annGaia, bobGaia, githubGaia}, AppUserIDs: []string{githubGaia}}
+	require.NoError(t, portal.Save(ctx))
+
+	receipt := func(u *pb.UserId) *pb.ReadReceipt {
+		return &pb.ReadReceipt{ReadTimeMicros: pb.Int64(1710000200000000), User: &pb.User{UserId: u}}
+	}
+	evts := client.readReceiptEvents(ctx, false, "space_reads", &pb.ReadReceiptSet{ReadReceipts: []*pb.ReadReceipt{
+		receipt(pb.HumanUserID(annGaia)),
+		receipt(appUserID(githubGaia)),
+		receipt(&pb.UserId{Id: pb.String(githubGaia)}),
+		receipt(appUserID("100000000000000000009")), // an app the chat's roster does not name yet
+		receipt(pb.HumanUserID(bobGaia)),
+	}})
+	var readers []networkid.UserID
+	for _, e := range evts {
+		readers = append(readers, e.GetSender().Sender)
+	}
+	require.Equal(t, []networkid.UserID{MakeUserID(annGaia), MakeUserID(bobGaia)}, readers)
+}
+
+func TestCreateDMKeepsWhichMembersAreApps(t *testing.T) {
+	ctx := context.Background()
+	_, _, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		switch r.URL.Path {
+		case "/u/0/api/create_dm":
+			_, _ = w.Write(pb.MustMarshal(&pb.CreateDmResponse{
+				Dm:            &pb.Group{GroupId: pb.DMGroupID("dm_created_app")},
+				GroupRevision: &pb.WriteRevision{Timestamp: pb.Int64(1710000500000000)},
+				Memberships: []*pb.Membership{
+					joinedMembership(pb.UserMemberID(ownGaia)),
+					joinedMembership(appMemberID(githubGaia)),
+					joinedMembership(pb.UserMemberID(annGaia)),
+				},
+			}))
+		case "/u/0/api/get_members":
+			_, _ = w.Write(buildSyntheticGetMembersResponse(annGaia, "Ann", "", ""))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	res, err := client.createDM(ctx, annGaia, "")
+	require.NoError(t, err)
+	require.Equal(t, MakeUserID(annGaia), res.UserID, "the DM's peer is the person, not the app")
+	members := res.Chat.PortalInfo.Members
+	require.ElementsMatch(t, []networkid.UserID{"", MakeUserID(annGaia)}, memberUserIDs(members.MemberMap))
+	require.True(t, members.ExcludeChangesFromTimeline)
+
+	meta := res.Chat.Portal.Metadata.(*PortalMetadata)
+	require.ElementsMatch(t, []string{ownGaia, githubGaia, annGaia}, meta.MemberUserIDs)
+	require.Equal(t, []string{githubGaia}, meta.AppUserIDs)
+	require.True(t, meta.AppRosterChecked, "create_dm already carried each member's type: no second read")
+	require.False(t, client.needsAppRosterCheck(res.Chat.Portal, client.ownUserID()))
+}
+
+func TestAGoogleGivenNameIsRememberedAcrossFailedReads(t *testing.T) {
+	ctx := context.Background()
+	fallback := membersAPI(
+		"Ann, Bob, GitHub",
+		joinedMembership(pb.UserMemberID(annGaia)),
+		joinedMembership(pb.UserMemberID(bobGaia)),
+		joinedMembership(appMemberID(githubGaia)),
+	)
+	var failGetGroup atomic.Bool
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/u/0/api/get_group" && failGetGroup.Load() {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		fallback(w, r)
+	})
+	portal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{ID: MakeDMPortalID("grp_google_name"), Receiver: ul.ID})
+	require.NoError(t, err)
+	portal.RoomType = database.RoomTypeDM
+	portal.Name = "Ann, Bob, GitHub"
+	portal.NameSet = true
+	portal.Metadata = &PortalMetadata{MemberUserIDs: []string{ownGaia, annGaia, bobGaia, githubGaia}}
+
+	// Google gives the chat a name that happens to list the app: it is Google's, so it stays, and is remembered.
+	info, err := client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	require.Equal(t, "Ann, Bob, GitHub", *info.Name)
+	require.True(t, portal.Metadata.(*PortalMetadata).NameFromGoogle)
+
+	// A later read that fails must not let the same name be taken for one this client composed.
+	failGetGroup.Store(true)
+	info, err = client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	require.Equal(t, "Ann, Bob, GitHub", *info.Name)
+	require.NotContains(t, memberUserIDs(info.Members.MemberMap), MakeUserID(githubGaia), "the app is still left out of the members")
+}
+
+func TestSyncWorldRemembersAGoogleGivenRoomName(t *testing.T) {
+	ctx := context.Background()
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			_, _ = w.Write(pb.MustMarshal(&pb.PaginatedWorldResponse{
+				UserRevision: &pb.ReadRevision{Timestamp: pb.Int64(700)},
+				WorldItems: []*pb.WorldItemLite{{
+					GroupId:       pb.SpaceGroupID("space_named_world"),
+					GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(10)},
+					SortTimestamp: pb.Int64(1710000002000000),
+					ReadState:     &pb.GroupReadState{MembershipState: pb.MembershipState_MEMBER_JOINED.Enum()},
+					RoomName:      pb.String("Ann, Bob, GitHub"),
+				}},
+			}))
+		default:
+			_, _ = w.Write(pb.MustMarshal(&pb.GetGroupResponse{}))
+		}
+	})
+	portal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{ID: MakeSpacePortalID("space_named_world"), Receiver: ul.ID})
+	require.NoError(t, err)
+
+	require.NoError(t, client.syncWorld(ctx))
+	require.True(t, portal.Metadata.(*PortalMetadata).NameFromGoogle)
+}
