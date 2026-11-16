@@ -162,9 +162,18 @@ mod tests {
         assert!(Arc::ptr_eq(&client_config(), &client_config()));
     }
 
-    /// The value of `key:` under the top-level `section:` of a values file
-    /// (a flat two-level read; enough for these files).
-    fn values_entry(text: &str, section: &str, key: &str) -> String {
+    fn clean(v: &str) -> String {
+        v.split('#')
+            .next()
+            .unwrap()
+            .trim()
+            .trim_matches('"')
+            .to_string()
+    }
+
+    /// `key:` under the top-level `section:` of a values file (a flat
+    /// two-level read; enough for these files), or None.
+    fn find_entry(text: &str, section: &str, key: &str) -> Option<String> {
         let mut in_section = false;
         for line in text.lines() {
             if line.starts_with(&format!("{section}:")) {
@@ -173,20 +182,36 @@ mod tests {
                 in_section = false;
             } else if in_section {
                 if let Some(rest) = line.trim().strip_prefix(&format!("{key}:")) {
-                    let v = rest.split('#').next().unwrap().trim();
-                    return v.trim_matches('"').to_string();
+                    return Some(clean(rest));
                 }
             }
         }
-        panic!("{section}.{key} not found");
+        None
+    }
+
+    fn values_entry(text: &str, section: &str, key: &str) -> String {
+        find_entry(text, section, key).unwrap_or_else(|| panic!("{section}.{key} not found"))
+    }
+
+    /// A top-level `key: value`, or None.
+    fn find_top(text: &str, key: &str) -> Option<String> {
+        text.lines()
+            .find_map(|l| l.strip_prefix(&format!("{key}:")))
+            .map(clean)
     }
 
     fn top_entry(text: &str, key: &str) -> String {
-        let line = text
-            .lines()
-            .find_map(|l| l.strip_prefix(&format!("{key}:")))
-            .unwrap_or_else(|| panic!("{key} not found"));
-        line.trim().trim_matches('"').to_string()
+        find_top(text, key).unwrap_or_else(|| panic!("{key} not found"))
+    }
+
+    #[test]
+    fn values_parser_strips_comments() {
+        let t = "hostname: a.example  # the record\nname: \"q\"\noidc:\n  issuer: https://i # why\n  other: x\n";
+        assert_eq!(top_entry(t, "hostname"), "a.example");
+        assert_eq!(top_entry(t, "name"), "q");
+        assert_eq!(values_entry(t, "oidc", "issuer"), "https://i");
+        assert_eq!(find_top(t, "missing"), None);
+        assert_eq!(find_entry(t, "oidc", "missing"), None);
     }
 
     fn runfile_text(rel: &str) -> String {
@@ -211,10 +236,12 @@ mod tests {
             mcp.split(',').any(|c| c == DEFAULT_CLAUDE_CLIENT_ID),
             "mcpClientIds {mcp} lacks the claude client"
         );
-        assert_eq!(values_entry(&chart, "oidc", "issuer"), DEFAULT_ISSUER);
-        assert_eq!(
-            format!("https://{}", top_entry(&chart, "hostname")),
-            DEFAULT_RELAY_URL
-        );
+        // What Argo CD deploys: the gitops file's value when it sets one,
+        // else the chart's default.
+        let issuer = find_entry(&live, "oidc", "issuer")
+            .unwrap_or_else(|| values_entry(&chart, "oidc", "issuer"));
+        assert_eq!(issuer, DEFAULT_ISSUER);
+        let host = find_top(&live, "hostname").unwrap_or_else(|| top_entry(&chart, "hostname"));
+        assert_eq!(format!("https://{host}"), DEFAULT_RELAY_URL);
     }
 }
