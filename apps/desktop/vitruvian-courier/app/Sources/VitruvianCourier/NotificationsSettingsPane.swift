@@ -245,7 +245,7 @@ struct NotificationsSettingsPane: View {
                                 }
                             )
                         )
-                        .toggleStyle(.switch)
+                        .toggleStyle(SettingsSwitchToggleStyle(fillsWidth: false))
                         .controlSize(.small)
 
                         Toggle(

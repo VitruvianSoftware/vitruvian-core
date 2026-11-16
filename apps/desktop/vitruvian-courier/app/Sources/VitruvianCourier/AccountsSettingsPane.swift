@@ -148,7 +148,7 @@ struct AccountsSettingsPane: View {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(entry.displayName)
                                             .font(.body.weight(isSelected ? .semibold : .medium))
-                                            .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                                            .foregroundStyle(Color.primary)
                                             .lineLimit(1)
                                             .truncationMode(.tail)
                                         Text(entry.remoteName)
@@ -164,7 +164,7 @@ struct AccountsSettingsPane: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .background(
                                     RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                        .fill(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
+                                        .fill(isSelected ? Color.primary.opacity(0.10) : Color.clear)
                                 )
                             }
                             .buttonStyle(.plain)

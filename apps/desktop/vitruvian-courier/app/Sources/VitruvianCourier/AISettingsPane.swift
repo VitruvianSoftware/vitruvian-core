@@ -604,6 +604,7 @@ public struct AISettingsPane: View {
                     }
                 }
             }
+            .settingAnchor("ai.translation", highlighted: highlightedSettingID)
         }
     }
 
@@ -640,11 +641,13 @@ public struct AISettingsPane: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .settingAnchor("ai.talkToType", highlighted: highlightedSettingID)
 
             Toggle(
                 String(localized: "Automatically transcribe incoming voice notes"),
                 isOn: $preferences.autoTranscribeVoiceNotes
             )
+            .settingAnchor("ai.talkToType", highlighted: highlightedSettingID)
             Picker(
                 String(localized: "Transcription language"),
                 selection: $preferences.transcriptionLanguage
@@ -654,6 +657,7 @@ public struct AISettingsPane: View {
                     Text(language).tag(language)
                 }
             }
+            .settingAnchor("ai.talkToType", highlighted: highlightedSettingID)
         }
     }
 

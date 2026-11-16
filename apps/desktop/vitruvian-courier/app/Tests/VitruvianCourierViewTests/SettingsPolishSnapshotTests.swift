@@ -78,4 +78,45 @@ final class SettingsPolishSnapshotTests: XCTestCase {
         }
         XCTAssertEqual(sizes.count, 2)
     }
+
+    /// The switch keeps its colour in a window that is not in front (these windows are never shown, so none is key):
+    /// the system's own switch is grey and white there, which is what made "on" and "off" look alike. Look at
+    /// settings-switch-on-* and settings-switch-off-*.
+    func testSwitchKeepsItsColourWhenOnEvenInAWindowNotInFront() throws {
+        for (name, isOn) in [("settings-switch-on", true), ("settings-switch-off", false)] {
+            let sizes = try Snapshot.render(name, width: 160, height: 40) {
+                Toggle("Switch", isOn: .constant(isOn))
+                    .toggleStyle(SettingsSwitchToggleStyle())
+                    .tint(.blue)
+                    .padding(8)
+            }
+            XCTAssertEqual(sizes.count, 2)
+            for suffix in ["light", "dark"] {
+                let chroma = try greatestChroma(of: name, suffix: suffix)
+                if isOn {
+                    XCTAssertGreaterThan(chroma, 120, "an 'on' switch is grey in \(suffix) mode")
+                } else {
+                    XCTAssertLessThan(chroma, 24, "an 'off' switch takes a colour in \(suffix) mode")
+                }
+            }
+        }
+    }
+
+    /// The card at the top of the sidebar, with the longest text it shows, fits the sidebar's width without cutting
+    /// the count short. Look at settings-account-card-*.
+    func testAccountCardShowsItsFullTextAtSidebarWidth() throws {
+        let accounts = (0 ..< 10).map { Account(network: "net\($0)", displayName: "N", flows: [], state: .connected) }
+        let card = SettingsAccountCard.make(accounts: accounts)
+        XCTAssertEqual(card.title, "10 accounts connected")
+        var pressed = 0
+        let sizes = try Snapshot.render("settings-account-card", width: 244) {
+            SettingsAccountCardView(card: card) { pressed += 1 }.padding(12)
+        }
+        XCTAssertEqual(sizes.count, 2)
+        let font = NSFont.systemFont(ofSize: NSFont.preferredFont(forTextStyle: .subheadline).pointSize, weight: .semibold)
+        let titleWidth = (card.title as NSString).size(withAttributes: [.font: font]).width
+        // The card is 244 wide, less 12 either side, 10 either side inside, the 34 picture, 10 and 6 of gaps, the chevron.
+        XCTAssertLessThan(titleWidth, 244 - 24 - 20 - 34 - 10 - 6 - 10, "the card's title no longer fits")
+        XCTAssertEqual(pressed, 0)
+    }
 }
