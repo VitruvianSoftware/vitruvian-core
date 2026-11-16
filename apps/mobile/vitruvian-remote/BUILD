@@ -115,7 +115,7 @@ _MANIFEST_BASE = {
     # exactly as ANDROID.md prescribes.
     "minSdkVersion": "26",
     "targetSdkVersion": "35",
-    "versionName": "0.1.43",  # x-release-please-version
+    "versionName": "0.1.44",  # x-release-please-version
 }
 
 _VERSION_PARTS = [int(p) for p in _MANIFEST_BASE["versionName"].split(".")]
