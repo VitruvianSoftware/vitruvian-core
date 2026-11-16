@@ -2463,3 +2463,27 @@ async fn a_refused_link_says_why_until_one_is_welcomed() {
     assert!(!out.contains("Refused"), "{out}");
     assert!(status_json(&dir).get("refused").is_none());
 }
+
+/// Final-wave deferred item 7b: a moved-aside record whose refusal window
+/// is over is deleted at start (they would pile up for ever); one whose
+/// window is still open is kept, and still refuses.
+#[tokio::test(flavor = "multi_thread")]
+async fn old_moved_aside_records_are_deleted_at_start() {
+    let dir = registered("l-corrupt-tidy");
+    let now = now_unix();
+    let old = dir.join(format!("{SEEN_CALLS}.corrupt-{}", now - 601));
+    let older = dir.join(format!("{SEEN_CALLS}.corrupt-{}", now - 86_400));
+    let open = dir.join(format!("{SEEN_CALLS}.corrupt-{}", now - 60));
+    let unrelated = dir.join(format!("{SEEN_CALLS}.corrupt-notatime"));
+    for f in [&old, &older, &open, &unrelated] {
+        std::fs::write(f, "x\n").unwrap();
+    }
+    let mut relay = FakeRelay::start().await;
+    let _run = start(&dir, &relay.url(), parts());
+    let (mut c, _) = relay.welcome().await;
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    assert_eq!(text(&c.result().await), BLIND);
+    assert!(!old.exists() && !older.exists(), "expired records were kept");
+    assert!(open.exists(), "the open window's record was deleted");
+    assert!(unrelated.exists(), "a file it did not write was deleted");
+}

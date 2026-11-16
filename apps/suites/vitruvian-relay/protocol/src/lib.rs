@@ -149,6 +149,12 @@ pub fn hello_message(device_id: &str, ts: u64, token_sha256_hex: &str) -> String
 }
 
 /// Serialise a frame; refuses one whose encoded form is over `MAX_FRAME_BYTES`.
+///
+/// The whole frame is serialised before its size is checked, so a frame
+/// far over the limit costs its full size in memory once before it is
+/// refused. Callers keep what they send near the limit first (the
+/// connector cuts tool output to fit, `bridge::fit_to_frame`; the relay
+/// caps an MCP body at `MAX_MCP_BODY_BYTES`).
 pub fn encode<T: Serialize>(frame: &T) -> Result<String, FrameError> {
     let s = serde_json::to_string(frame)?;
     if s.len() > MAX_FRAME_BYTES {

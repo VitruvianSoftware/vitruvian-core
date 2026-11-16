@@ -767,6 +767,32 @@ fn open_window(dir: &Path, now_unix: u64, window: Duration) -> Option<u64> {
         .max()
 }
 
+/// Deletes the moved-aside records whose refusal window is over: every id
+/// in them is older than the window, so they mark nothing any more.
+/// Returns how many went.
+fn remove_expired_records(dir: &Path, now_unix: u64, window: Duration) -> usize {
+    let prefix = format!("{SEEN_CALLS}{CORRUPT}");
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut gone = 0;
+    for e in entries.filter_map(|e| e.ok()) {
+        let name = e.file_name();
+        let Some(ts) = name
+            .to_str()
+            .and_then(|n| n.strip_prefix(&prefix))
+            .and_then(|t| t.parse::<u64>().ok())
+        else {
+            continue;
+        };
+        if ts.min(now_unix) + window.as_secs() <= now_unix && std::fs::remove_file(e.path()).is_ok()
+        {
+            gone += 1;
+        }
+    }
+    gone
+}
+
 fn error_result(call_id: &str, text: &str) -> CallResult {
     CallResult {
         call_id: call_id.to_string(),
@@ -1645,6 +1671,13 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
                 ));
                 calls.blind_until = Some(now_unix + window.as_secs());
             }
+        }
+        // Records whose window is over mark nothing; they would pile up.
+        let gone = remove_expired_records(&self.dir, now_unix, window);
+        if gone > 0 {
+            (self.log)(&format!(
+                "deleted {gone} old unreadable record(s) of started calls"
+            ));
         }
         // A window opened by an earlier vrelay still holds: the moved-aside
         // file's name says when it began.

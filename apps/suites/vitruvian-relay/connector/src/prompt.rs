@@ -283,6 +283,37 @@ fn ask_limited(
 }
 
 const MAX_FIELD: usize = 200;
+/// LEFT-TO-RIGHT ISOLATE and POP DIRECTIONAL ISOLATE.
+const ISOLATE: char = '\u{2066}';
+const END_ISOLATE: char = '\u{2069}';
+
+/// Characters that look like a double quote. Shown as `\u{XXXX}` text, so
+/// only a real (escaped) quote can look like one, and a value cannot seem
+/// to end early and start another.
+fn is_quote_look_alike(c: char) -> bool {
+    matches!(
+        c,
+        '\u{02BA}'
+            | '\u{02DD}'
+            | '\u{02EE}'
+            | '\u{201C}'
+            | '\u{201D}'
+            | '\u{201E}'
+            | '\u{201F}'
+            | '\u{2033}'
+            | '\u{2036}'
+            | '\u{275D}'
+            | '\u{275E}'
+            | '\u{2760}'
+            | '\u{2E42}'
+            | '\u{301D}'
+            | '\u{301E}'
+            | '\u{301F}'
+            | '\u{3003}'
+            | '\u{FF02}'
+            | '\u{1F676}'..='\u{1F678}'
+    )
+}
 /// Shown where the text has a line break.
 const LINE_BREAK: char = '⏎';
 
@@ -365,7 +396,7 @@ fn pieces(s: &str, quote: bool) -> Vec<String> {
             out.push(" ".into());
         }
         space = false;
-        if is_break_look_alike(c) {
+        if is_break_look_alike(c) || is_quote_look_alike(c) {
             out.push(format!("\\u{{{:X}}}", c as u32));
         } else if quote && (c == '"' || c == '\\') {
             out.push(format!("\\{c}"));
@@ -393,8 +424,11 @@ fn render(s: &str, quote: bool) -> String {
         kept += n;
         text.push_str(p);
     }
+    // Each value is its own bidi isolate (LRI … PDI): right-to-left text in
+    // it cannot reorder what is shown around it. The input's own isolates
+    // and overrides were removed (`is_hidden_char`), so these stay paired.
     if quote {
-        text = format!("\"{text}\"");
+        text = format!("\"{ISOLATE}{text}{END_ISOLATE}\"");
     }
     if kept < total {
         text.push_str(&format!("… (truncated, {} more characters)", total - kept));
@@ -492,8 +526,8 @@ pub fn summarize(tool: &str, args: &Value) -> String {
     if keys.is_empty() || problem.is_some() {
         let json = serde_json::to_string(args).unwrap_or_default();
         return match problem {
-            Some(p) => format!("{name} ({p}): {}", clean(&json)),
-            None => format!("{name}: {}", clean(&json)),
+            Some(p) => format!("{name} ({p}): {ISOLATE}{}{END_ISOLATE}", clean(&json)),
+            None => format!("{name}: {ISOLATE}{}{END_ISOLATE}", clean(&json)),
         };
     }
     format!("{name}: {}", parts.join(", "))
@@ -540,6 +574,52 @@ mod tests {
 
     fn ask_t(script: &Path, summary: &str, timeout: Duration) -> PromptHandle {
         ask_with(script, summary, timeout)
+    }
+
+    /// The summary without its bidi isolates, which most tests are not
+    /// about (`each_value_is_its_own_isolate` is).
+    fn summarize(tool: &str, args: &Value) -> String {
+        super::summarize(tool, args).replace(['\u{2066}', '\u{2069}'], "")
+    }
+
+    /// Final-wave deferred item 6a: a character that looks like a double
+    /// quote is shown escaped, so it cannot fake the end of one value and
+    /// the start of the next.
+    #[test]
+    fn quote_look_alikes_are_escaped() {
+        for c in [
+            '\u{02BA}', '\u{02DD}', '\u{201C}', '\u{201D}', '\u{201E}', '\u{201F}', '\u{2033}',
+            '\u{2036}', '\u{275D}', '\u{275E}', '\u{301D}', '\u{301E}', '\u{301F}', '\u{3003}',
+            '\u{FF02}',
+        ] {
+            let v = format!("/tmp/a{c}, destination={c}/etc");
+            let m = summarize("move_file", &json!({"source": v, "destination": "~/d"}));
+            assert!(!m.contains(c), "{c:?} {m}");
+            assert!(m.contains(&format!("a\\u{{{:X}}}, ", c as u32)), "{m}");
+        }
+        // Plain text is untouched.
+        let m = summarize("read_file", &json!({"path": "/tmp/it's"}));
+        assert_eq!(m, "read_file: path=\"/tmp/it's\"");
+    }
+
+    /// Final-wave deferred item 6b: each value is its own bidi isolate
+    /// (LRI … PDI, inside its quotes), so right-to-left text in one value
+    /// cannot reorder what is shown around it. The input's own isolates
+    /// and overrides are removed, so ours stay balanced.
+    #[test]
+    fn each_value_is_its_own_isolate() {
+        let m = super::summarize(
+            "move_file",
+            &json!({"source": "\u{202E}abc\u{2066}", "destination": "\u{05D0}\u{05D1}"}),
+        );
+        assert_eq!(
+            m,
+            "move_file: source=\"\u{2066}abc\u{2069}\", destination=\"\u{2066}\u{05D0}\u{05D1}\u{2069}\""
+        );
+        // What was sent, in full, when a key argument is missing: one
+        // isolate around it.
+        let m = super::summarize("mystery", &json!({"k": "\u{05D0}"}));
+        assert!(m.starts_with("mystery: \u{2066}") && m.ends_with('\u{2069}'), "{m:?}");
     }
 
     /// A dialog told to give up after 1 s that we stop waiting for after
