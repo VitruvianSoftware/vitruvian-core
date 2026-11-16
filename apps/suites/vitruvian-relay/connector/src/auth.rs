@@ -425,6 +425,7 @@ mod tests {
             project_id: "proj".into(),
             claude_client_id: "claude".into(),
             log_dir: dir.join("logs"),
+            home: dir.clone(),
             dir,
             retry_delay: Duration::from_millis(10),
         }

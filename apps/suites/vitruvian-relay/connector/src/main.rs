@@ -163,8 +163,10 @@ fn cmd_tools(cfg: &Config, raw: bool) -> Result<()> {
 /// (it waits for `vrelay login`), but not with a rules file it cannot read.
 fn cmd_run(cfg: &Config) -> Result<()> {
     ensure_dir(&cfg.dir)?;
-    let rules = rules::load(&cfg.dir)
+    let mut rules = rules::load(&cfg.dir)
         .map_err(|e| format!("not starting: the rules file does not load: {e}"))?;
+    // vrelay's own folders are off limits to remote calls (ruling R17).
+    rules.guard = rules::Guard::new(cfg);
     let key = Arc::new(load_or_create(&cfg.dir)?);
     let cmd = BridgeCommand::locate()?;
     let rt = tokio::runtime::Builder::new_multi_thread()

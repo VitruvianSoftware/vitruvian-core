@@ -30,8 +30,160 @@ use serde::Deserialize;
 use serde_json::Value;
 use vitruvian_relay_protocol::ToolDef;
 
+use crate::config::Config;
 use crate::state::write_private;
 use crate::Result;
+
+/// The arguments that name a file or folder, in desktop-commander 0.3.1's
+/// tools (`paths` is a list of them).
+const PATH_ARGS: &[&str] = &["path", "file_path", "source", "destination", "outputPath"];
+/// The tools that read what is under their `path`, however deep: one rooted
+/// at or above a guarded folder would reach it.
+const SEARCH_TOOLS: &[&str] = &["start_search"];
+
+/// Folders a remote call may never touch: vrelay's own sign-in, device key,
+/// logs and install, and desktop-commander's own folder (its log holds
+/// every call's arguments). Ruling R17. A path is resolved the way the call
+/// would see it (`~`, relative to the working folder, `..`, symlinks)
+/// before it is checked; a search rooted at or above one of these asks
+/// first. Folder limits for every file tool are P2 (desktop-commander's own
+/// setting, or the Keychain for the secrets).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Guard {
+    /// Each folder as written and as resolved, lowercased (APFS ignores
+    /// case by default; erring that way only refuses more).
+    roots: Vec<PathBuf>,
+    home: PathBuf,
+    cwd: PathBuf,
+}
+
+impl Guard {
+    /// The folders for this configuration, relative paths from this
+    /// process's working folder (desktop-commander inherits it).
+    pub fn new(cfg: &Config) -> Guard {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+        Guard::for_config(cfg, &cwd)
+    }
+
+    pub fn for_config(cfg: &Config, cwd: &Path) -> Guard {
+        let h = &cfg.home;
+        Guard::with_roots(
+            h,
+            cwd,
+            &[
+                cfg.dir.clone(),
+                cfg.log_dir.clone(),
+                h.join("Library/Application Support/vrelay"),
+                h.join("Library/Logs/vrelay"),
+                h.join(".local/share/vrelay"),
+                h.join(crate::bridge::DC_CONFIG_DIR),
+            ],
+        )
+    }
+
+    pub fn with_roots(home: &Path, cwd: &Path, roots: &[PathBuf]) -> Guard {
+        let mut g = Guard {
+            roots: Vec::new(),
+            home: home.to_path_buf(),
+            cwd: cwd.to_path_buf(),
+        };
+        let mut all = Vec::new();
+        for r in roots {
+            all.push(lower(&normalize(&g.absolute(&r.to_string_lossy()))));
+            all.push(g.resolve(&r.to_string_lossy()));
+        }
+        all.sort();
+        all.dedup();
+        g.roots = all;
+        g
+    }
+
+    /// `raw` as an absolute path: `~` is home, a relative path is from the
+    /// working folder.
+    fn absolute(&self, raw: &str) -> PathBuf {
+        let raw = raw.trim();
+        if raw == "~" {
+            return self.home.clone();
+        }
+        if let Some(rest) = raw.strip_prefix("~/") {
+            return self.home.join(rest);
+        }
+        let p = Path::new(raw);
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            self.cwd.join(p)
+        }
+    }
+
+    /// Where `raw` really points: the longest part that exists with its
+    /// symlinks and `..` resolved by the system, the rest cleaned of `.`
+    /// and `..`. Lowercased.
+    fn resolve(&self, raw: &str) -> PathBuf {
+        let abs = normalize(&self.absolute(raw));
+        let mut head = abs.clone();
+        let mut tail = Vec::new();
+        loop {
+            if let Ok(real) = std::fs::canonicalize(&head) {
+                let mut out = real;
+                for part in tail.iter().rev() {
+                    out.push(part);
+                }
+                return lower(&normalize(&out));
+            }
+            match (head.file_name().map(|n| n.to_os_string()), head.parent()) {
+                (Some(name), Some(parent)) => {
+                    tail.push(name);
+                    head = parent.to_path_buf();
+                }
+                _ => return lower(&abs),
+            }
+        }
+    }
+
+    fn under(&self, raw: &str) -> bool {
+        let p = self.resolve(raw);
+        self.roots.iter().any(|r| p.starts_with(r))
+    }
+
+    fn at_or_above(&self, raw: &str) -> bool {
+        let p = self.resolve(raw);
+        self.roots.iter().any(|r| r.starts_with(&p))
+    }
+}
+
+/// `.` and `..` taken out without touching the disk (a `..` above the root
+/// stays at the root).
+fn normalize(p: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for c in p.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+fn lower(p: &Path) -> PathBuf {
+    PathBuf::from(p.to_string_lossy().to_lowercase())
+}
+
+/// The path-like string arguments of a call.
+fn path_args(args: &Value) -> Vec<&str> {
+    let mut out: Vec<&str> = PATH_ARGS
+        .iter()
+        .filter_map(|k| args.get(*k).and_then(Value::as_str))
+        .collect();
+    if let Some(list) = args.get("paths").and_then(Value::as_array) {
+        out.extend(list.iter().filter_map(Value::as_str));
+    }
+    out
+}
 
 pub const DEFAULT_RULES: &str = r#"# What the relay may do on this Mac. vrelay reads this file when it starts.
 # After an edit, run `vrelay reload`: until then the rules it loaded stay in
@@ -114,6 +266,10 @@ pub struct Rules {
     /// file has changed since.
     #[serde(skip)]
     pub source_sha256: String,
+    /// The folders no call may touch. Not in the file: `vrelay run` sets
+    /// it from its configuration, and a reload keeps it.
+    #[serde(skip)]
+    pub guard: Guard,
 }
 
 /// The file's text with its `paused = …` line (if any) set to `paused`.
@@ -223,7 +379,8 @@ pub struct Reloaded {
 /// see differ from `current`'s, so the caller knows to send `tools_changed`.
 /// On an error the caller keeps `current`.
 pub fn reload(dir: &Path, current: &Rules, tools: &[ToolDef]) -> Result<Reloaded> {
-    let rules = load(dir)?;
+    let mut rules = load(dir)?;
+    rules.guard = current.guard.clone();
     let visible_changed = rules.visible(tools) != current.visible(tools);
     Ok(Reloaded {
         rules,
@@ -267,6 +424,15 @@ impl Rules {
         }
         if self.is_hidden(tool) {
             return Decision::Refuse("this tool is not available remotely");
+        }
+        let paths = path_args(args);
+        if paths.iter().any(|p| self.guard.under(p)) {
+            return Decision::Refuse(
+                "that path is in a folder holding vrelay's own sign-in, keys or logs",
+            );
+        }
+        if SEARCH_TOOLS.contains(&tool) && paths.iter().any(|p| self.guard.at_or_above(p)) {
+            return Decision::AskFirst;
         }
         let risky_arg = ASK_FIRST_ARGS
             .iter()
@@ -798,5 +964,83 @@ no_prompt = ["read_file", "read_multiple_files", "list_directory",
         let w = file_warnings(&dir);
         assert_eq!(w.len(), 1, "{w:?}");
         assert!(w[0].contains("does not load"), "{w:?}");
+    }
+
+    /// Ruling R17: remote calls never touch vrelay's own folders, however
+    /// the path is written, and a search that would reach them asks first.
+    #[test]
+    fn calls_never_reach_vrelays_own_folders() {
+        let root = test_dir("rules-guard");
+        let home = root.join("home");
+        let state = home.join("Library/Application Support/vrelay");
+        let dc = home.join(".claude-server-commander");
+        std::fs::create_dir_all(&state).unwrap();
+        std::fs::create_dir_all(&dc).unwrap();
+        std::fs::create_dir_all(home.join("work")).unwrap();
+        std::fs::write(state.join("token.json"), "{}").unwrap();
+        let cfg = Config::from_lookup(|k| (k == "HOME").then(|| home.display().to_string()));
+        let mut r = defaults();
+        r.guard = Guard::for_config(&cfg, &home.join("work"));
+        let refused = |r: &Rules, tool: &str, args: Value| {
+            matches!(r.decide(tool, &args), Decision::Refuse(why) if why.contains("vrelay's own"))
+        };
+        let token = state.join("token.json").display().to_string();
+        // Directly, and through `~`, `..`, a relative path and odd case.
+        for p in [
+            token.clone(),
+            "~/Library/Application Support/vrelay/token.json".into(),
+            "~/work/../Library/Application Support/vrelay/device.key".into(),
+            "../Library/Application Support/vrelay/token.json".into(),
+            "~/LIBRARY/Application Support/VRELAY/token.json".into(),
+            "~/Library/Logs/vrelay/calls.log".into(),
+            "~/.local/share/vrelay/bridge.json".into(),
+            "~/.claude-server-commander/claude_tool_call.log".into(),
+            "~/Library/Application Support/vrelay".into(),
+        ] {
+            assert!(refused(&r, "read_file", json!({ "path": p })), "{p}");
+        }
+        // Through a symlink that looks harmless.
+        let link = home.join("work/notes");
+        std::os::unix::fs::symlink(&state, &link).unwrap();
+        assert!(refused(&r, "read_file", json!({"path": "~/work/notes/token.json"})));
+        assert!(refused(&r, "get_file_info", json!({"path": link.display().to_string()})));
+        // Every path argument, every tool: lists, writes, moves.
+        assert!(refused(
+            &r,
+            "read_multiple_files",
+            json!({"paths": ["/tmp/a", token.clone()]})
+        ));
+        assert!(refused(&r, "write_file", json!({"path": token.clone(), "content": "x"})));
+        assert!(refused(&r, "edit_block", json!({"file_path": token.clone()})));
+        assert!(refused(
+            &r,
+            "move_file",
+            json!({"source": "/tmp/a", "destination": "~/.claude-server-commander/x"})
+        ));
+        assert!(refused(&r, "list_directory", json!({"path": "~/.local/share/vrelay"})));
+        // A search rooted inside is refused; at or above, it asks first.
+        assert!(refused(&r, "start_search", json!({"path": "~/Library/Logs/vrelay", "pattern": "x"})));
+        for above in ["~", "~/Library", "/", "~/work/.."] {
+            assert_eq!(
+                r.decide("start_search", &json!({"path": above, "pattern": "token"})),
+                Decision::AskFirst,
+                "{above}"
+            );
+        }
+        // Elsewhere nothing changes.
+        assert_eq!(r.decide("read_file", &json!({"path": "~/work/a.txt"})), Decision::Run);
+        assert_eq!(
+            r.decide("start_search", &json!({"path": "~/work", "pattern": "x"})),
+            Decision::Run
+        );
+        assert_eq!(
+            r.decide("read_file", &json!({"path": "~/Library/Application Support/vrelay-other/x"})),
+            Decision::Run
+        );
+        // A reload keeps the guard (it is not in the file).
+        let dir = root.join("rules");
+        load(&dir).unwrap();
+        let again = reload(&dir, &r, &[]).unwrap().rules;
+        assert!(refused(&again, "read_file", json!({ "path": token })));
     }
 }

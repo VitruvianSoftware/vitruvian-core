@@ -51,6 +51,9 @@ pub struct Config {
     pub dir: PathBuf,
     /// Where `calls.log` goes (`VRELAY_LOG_DIR`, else `~/Library/Logs/vrelay`).
     pub log_dir: PathBuf,
+    /// `HOME` (`.` if unset): where `~` in a call's path points, and the
+    /// base of the folders remote calls may not touch (rules.rs `Guard`).
+    pub home: PathBuf,
     /// Wait before the one retry of a failed token refresh.
     pub retry_delay: Duration,
 }
@@ -88,6 +91,7 @@ impl Config {
             claude_client_id: val("VRELAY_CLAUDE_CLIENT_ID", DEFAULT_CLAUDE_CLIENT_ID),
             dir,
             log_dir,
+            home: home(),
             retry_delay: Duration::from_secs(1),
         }
     }
