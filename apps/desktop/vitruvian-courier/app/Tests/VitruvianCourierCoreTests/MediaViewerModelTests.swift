@@ -1151,6 +1151,17 @@ final class MediaViewerModelTests: XCTestCase {
         XCTAssertNil(conversation.activeLightboxMessageID)
     }
 
+    /// Chat Info's Shared Media (the engine's `store.SharedMediaKinds`, pinned in its Go test) and the viewer count one
+    /// set of kinds. If either changes, both tests fail until they agree again.
+    func testViewerKindsAreTheKindsChatInfoCounts() {
+        XCTAssertEqual(CarouselItem.viewableKindNames, ["image", "video", "sticker"])
+        let kinds: [MessageKind] = [.image, .video, .sticker]
+        XCTAssertTrue(kinds.allSatisfy(CarouselItem.isViewableKind))
+        for other: MessageKind in [.text, .notice, .emote, .file, .voiceNote, .location, .deleted, .undecryptable, .poll] {
+            XCTAssertFalse(CarouselItem.isViewableKind(other), "\(other) is not media")
+        }
+    }
+
     func testSingleItemViewerShowsOneOfOneAndNeverPages() async throws {
         let path = try makeLocalMediaFile(named: "only.png")
         let roomID = "!solo:courier.local"

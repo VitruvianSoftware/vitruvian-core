@@ -22,6 +22,21 @@ public func isLocalMediaStorePath(_ path: String) -> Bool {
 /// `isLocalMediaStorePath`; an item whose local file is not yet downloaded keeps `mediaPath == ""` so the viewer
 /// count matches Chat Info and its thumbnail renders a neutral placeholder instead of blank.
 public struct CarouselItem: Identifiable, Equatable, Sendable {
+    /// The kinds the viewer shows, by the names the engine's search uses. This is the one definition on the Swift
+    /// side; the engine's `store.SharedMediaKinds` (Chat Info's Shared Media) lists the same kinds, and a test on each
+    /// side pins them.
+    public static let viewableKindNames: [String] = ["image", "video", "sticker"]
+
+    /// Whether a message of `kind` is one the viewer shows.
+    public static func isViewableKind(_ kind: MessageKind) -> Bool {
+        switch kind {
+        case .image: viewableKindNames.contains("image")
+        case .video: viewableKindNames.contains("video")
+        case .sticker: viewableKindNames.contains("sticker")
+        default: false
+        }
+    }
+
     public var id: String { eventID }
     public let eventID: String
     public let roomID: String
@@ -89,7 +104,7 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
     public init?(message: TimelineMessage) {
         guard !message.viewOnce,
               !message.showsMediaRemovedPlaceholder,
-              message.kind == .image || message.kind == .video || message.kind == .sticker
+              Self.isViewableKind(message.kind)
         else {
             return nil
         }
@@ -240,7 +255,7 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
                 if !msg.galleryItems.isEmpty {
                     guard !msg.viewOnce else { continue }
                     for galleryItem in msg.galleryItems where !galleryItem.showsMediaRemovedPlaceholder {
-                        guard galleryItem.kind == .image || galleryItem.kind == .video || galleryItem.kind == .sticker else { continue }
+                        guard isViewableKind(galleryItem.kind) else { continue }
                         let resolvedMediaPath = isLocalMediaStorePath(galleryItem.mediaPath) ? galleryItem.mediaPath : ""
                         let thumb = galleryItem.thumbnailPath ?? ""
                         let resolvedThumb = isLocalMediaStorePath(thumb) ? thumb : resolvedMediaPath
@@ -447,7 +462,7 @@ public final class AttachmentCarouselModel: ObservableObject {
 
     private static func isViewable(_ item: CarouselItem) -> Bool {
         !item.viewOnce
-            && (item.kind == .image || item.kind == .video || item.kind == .sticker)
+            && CarouselItem.isViewableKind(item.kind)
             && (item.mediaPath.isEmpty || isLocalMediaStorePath(item.mediaPath))
     }
 

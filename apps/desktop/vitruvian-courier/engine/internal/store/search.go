@@ -403,6 +403,24 @@ func (s *Store) isContentViewOnce(ctx context.Context, roomID, network, kind str
 	return s.isContentViewOnceWithNetwork(ctx, roomID, network, string(content))
 }
 
+// listsMedia reports whether the search is for media (SharedMediaKinds), whose hits leave out media that was removed.
+func (m messageSearch) listsMedia() bool {
+	for _, k := range m.kinds {
+		if slices.Contains(SharedMediaKinds, k) {
+			return true
+		}
+	}
+	return false
+}
+
+// contentMediaRemoved reports whether an event's media was removed to free space (com.courier.media_removed).
+func contentMediaRemoved(content json.RawMessage) bool {
+	var c struct {
+		Removed bool `json:"com.courier.media_removed"`
+	}
+	return json.Unmarshal(content, &c) == nil && c.Removed
+}
+
 func (m messageSearch) excludesViewOnce() bool {
 	for _, k := range m.kinds {
 		if k == "image" || k == "video" || k == "audio" || k == "file" {
@@ -468,6 +486,7 @@ func (s *Store) SearchMessages(ctx context.Context, q MessageQuery) ([]MessageHi
 	hits := []MessageHit{}
 	size := 2 // the list's brackets
 	skipViewOnce := m.excludesViewOnce()
+	skipRemoved := m.listsMedia()
 	for ; phase <= m.lastPhase(); phase, upper, start = phase+1, m.top(), nil {
 		last := start
 		for {
@@ -482,6 +501,9 @@ func (s *Store) SearchMessages(ctx context.Context, q MessageQuery) ([]MessageHi
 					return nil, "", err
 				}
 				if skipViewOnce && h.ViewOnce {
+					continue
+				}
+				if skipRemoved && contentMediaRemoved(r.e.Content) {
 					continue
 				}
 				if len(hits) == m.limit {
@@ -832,17 +854,35 @@ type SharedLink struct {
 	Host    string
 }
 
-// RoomSharedMedia is a chat's images, videos and stickers, newest first: what Chat Info lists as Shared Media and
-// what the image viewer pages through. Link previews, files and audio are not media.
+// SharedMediaKinds is the one definition of "media" that Chat Info's Shared Media and the image viewer both count:
+// images, videos and stickers. Link previews, files and audio are not media, and neither is media that was removed
+// to free space. The Swift viewer's filter (CarouselItem.viewableKinds) must list the same kinds; a test on each side
+// pins them.
+var SharedMediaKinds = []string{"image", "video", "sticker"}
+
+// sharedMediaWhere is the SQL for SharedMediaKinds. A sticker is its own event type (m.sticker), but one stored as an
+// m.room.message with msgtype m.sticker counts too, as it does for storage accounting (storageCategory). An event
+// whose media was removed is stamped com.courier.media_removed and left out.
+var sharedMediaWhere = func() string {
+	msgtypes := make([]string, len(SharedMediaKinds))
+	for i, k := range SharedMediaKinds {
+		msgtypes[i] = "'m." + k + "'"
+	}
+	return `deleted_for_me = 0 AND redacted = 0
+		  AND (type = 'm.sticker'
+		       OR (type = 'm.room.message' AND json_extract(content, '$.msgtype') IN (` + strings.Join(msgtypes, ", ") + `)))
+		  AND COALESCE(json_extract(content, '$.url'), '') <> ''
+		  AND COALESCE(json_extract(content, '$."com.courier.media_removed"'), 0) = 0`
+}()
+
+// RoomSharedMedia is a chat's images, videos and stickers (SharedMediaKinds), newest first: what Chat Info lists as
+// Shared Media and what the image viewer pages through.
 func (s *Store) RoomSharedMedia(ctx context.Context, roomID string, limit int) ([]Event, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	evts, err := s.queryEvents(ctx, `SELECT `+eventCols+` FROM events
-		WHERE room_id = $1 AND deleted_for_me = 0 AND redacted = 0
-		  AND (type = 'm.sticker'
-		       OR (type = 'm.room.message' AND json_extract(content, '$.msgtype') IN ('m.image', 'm.video')))
-		  AND COALESCE(json_extract(content, '$.url'), '') <> ''
+		WHERE room_id = $1 AND `+sharedMediaWhere+`
 		ORDER BY ts DESC, seq DESC LIMIT $2`, roomID, limit*2)
 	if err != nil {
 		return nil, err
