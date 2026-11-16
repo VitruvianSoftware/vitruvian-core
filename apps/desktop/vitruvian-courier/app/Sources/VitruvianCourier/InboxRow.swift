@@ -590,7 +590,8 @@ struct AvatarView: View {
     @State private var image: NSImage?
 
     private var effectiveImage: NSImage? {
-        image ?? AvatarCache.shared.cachedImage(atPath: path)
+        guard !path.isEmpty else { return nil }
+        return image ?? AvatarCache.shared.cachedImage(atPath: path)
     }
 
     var body: some View {
@@ -601,14 +602,20 @@ struct AvatarView: View {
                     .scaledToFill()
             } else {
                 Circle().fill(Self.color(for: seed))
-                Text(initials)
-                    .font(.system(size: max(10, round(size * 0.38)), weight: .semibold))
-                    .foregroundStyle(.white)
+                if !initials.isEmpty {
+                    Text(initials)
+                        .font(.system(size: max(10, round(size * 0.38)), weight: .semibold))
+                        .foregroundStyle(.white)
+                }
             }
         }
         .clipShape(Circle())
         .accessibilityHidden(true)
         .task(id: path) {
+            guard !path.isEmpty else {
+                image = nil
+                return
+            }
             if let cached = AvatarCache.shared.cachedImage(atPath: path) {
                 image = cached
             } else {

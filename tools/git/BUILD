@@ -79,6 +79,17 @@ rust_binary(
     deps = [":git_lib"],
 )
 
+rust_binary(
+    name = "update-main",
+    srcs = ["src/main.rs"],
+    args = ["update-main"],
+    data = _DATA,
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":git_lib"],
+)
+
 rust_test(
     name = "git_lib_test",
     size = "small",

@@ -139,12 +139,38 @@ public struct Reactor: Equatable, Sendable {
     /// Their name as the reaction carried it, or their user id when it carried none.
     public let name: String
     public let isMe: Bool
+    public let avatarPath: String
 
-    public init(userID: String, name: String, isMe: Bool) {
+    public init(userID: String, name: String, isMe: Bool, avatarPath: String = "") {
         self.userID = userID
         self.name = name
         self.isMe = isMe
+        self.avatarPath = avatarPath
     }
+}
+
+/// One reactor avatar item shown inside a reaction pill.
+public struct ReactionAvatarItem: Equatable, Sendable {
+    public let userID: String
+    public let avatarPath: String
+    public let initials: String
+    public let seed: String
+    public let isMe: Bool
+
+    public init(userID: String, avatarPath: String, initials: String, seed: String, isMe: Bool) {
+        self.userID = userID
+        self.avatarPath = avatarPath
+        self.initials = initials
+        self.seed = seed
+        self.isMe = isMe
+    }
+}
+
+/// How a `ReactionChip` renders its pill contents: up to 3 avatars + optional `"+N"` when reactors are known,
+/// or plain count text when reactor identities are unknown.
+public enum ReactionPillDisplay: Equatable, Sendable {
+    case avatars(items: [ReactionAvatarItem], overflowText: String?)
+    case count(String)
 }
 
 /// One emoji under a message, with how many people gave it and who.
@@ -171,10 +197,13 @@ public struct ReactionChip: Equatable, Identifiable, Sendable {
 
     /// Who reacted, in words, as Slack says it: "You, Ann and Bo reacted with 👍". I am "You" and come first; past
     /// `maxNames` names the rest are counted ("… and 2 others").
-    public func summary(maxNames: Int = 10, locale: Locale = .current) -> String {
+    public func summary(maxNames: Int = 10, locale: Locale = .current, redacted: Bool = false) -> String {
         var names: [String] = []
         if mine || reactors.contains(where: \.isMe) { names.append(String(localized: "You")) }
-        names += reactors.filter { !$0.isMe }.map(\.name)
+        names += reactors.filter { !$0.isMe }.map { reactor in
+            let raw = reactor.name.isEmpty ? reactor.userID : reactor.name
+            return redacted ? AppearancePreferences.redactedText(raw, kind: .name) : raw
+        }
         let total = max(count, names.count)
         var parts = Array(names.prefix(max(maxNames, 1)))
         let rest = total - parts.count
@@ -186,6 +215,103 @@ public struct ReactionChip: Equatable, Identifiable, Sendable {
         guard !parts.isEmpty else { return String(localized: "Reacted with \(key)") }
         let list = parts.formatted(.list(type: .and).locale(locale))
         return String(localized: "\(list) reacted with \(key)")
+    }
+
+    /// Returns a real display name for `isMe`, or `nil` when `name` is empty or just a placeholder like `"You"` or `"me"`.
+    public static func cleanedSelfRealName(_ name: String, userID: String) -> String? {
+        var cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleaned.lowercased().hasSuffix(" (you)") {
+            cleaned = String(cleaned.dropLast(6)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard !cleaned.isEmpty,
+              cleaned != userID,
+              cleaned != Timeline.meUserID,
+              cleaned.caseInsensitiveCompare("you") != .orderedSame,
+              cleaned.caseInsensitiveCompare("me") != .orderedSame,
+              cleaned != String(localized: "You")
+        else {
+            return nil
+        }
+        return cleaned
+    }
+
+    /// Chooses up to `maxAvatars` reactor avatars plus optional `"+N"` overflow when reactor identities are known,
+    /// falling back to plain count text when `reactors` is empty.
+    public func pillDisplay(maxAvatars: Int = 3, redacted: Bool = false) -> ReactionPillDisplay {
+        guard !reactors.isEmpty else {
+            return .count("\(count)")
+        }
+        let limit = max(1, maxAvatars)
+        let shown = Array(reactors.prefix(limit))
+        let items = shown.map { reactor in
+            let rawSeed: String
+            if reactor.isMe {
+                rawSeed = Self.cleanedSelfRealName(reactor.name, userID: reactor.userID)
+                    ?? (reactor.userID.isEmpty ? "me" : reactor.userID)
+            } else {
+                rawSeed = reactor.name.isEmpty ? reactor.userID : reactor.name
+            }
+            if redacted {
+                return ReactionAvatarItem(
+                    userID: reactor.userID,
+                    avatarPath: "",
+                    initials: "",
+                    seed: AppearancePreferences.redactedText(rawSeed, kind: .name),
+                    isMe: reactor.isMe
+                )
+            }
+            return ReactionAvatarItem(
+                userID: reactor.userID,
+                avatarPath: reactor.avatarPath,
+                initials: Self.avatarInitials(for: reactor),
+                seed: rawSeed,
+                isMe: reactor.isMe
+            )
+        }
+        let total = max(count, reactors.count)
+        let overflow = max(0, total - shown.count)
+        let overflowText = overflow > 0 ? "+\(overflow)" : nil
+        return .avatars(items: items, overflowText: overflowText)
+    }
+
+    /// Lists reactor names for the pill tooltip (e.g. `"Kent Hua, Eddie Stecker"`), or falls back to `summary()`.
+    public func tooltipText(redacted: Bool = false) -> String {
+        guard !reactors.isEmpty else {
+            return summary(redacted: redacted)
+        }
+        var names = reactors.map { reactor -> String in
+            if reactor.isMe {
+                return String(localized: "You")
+            }
+            let raw = reactor.name.isEmpty ? reactor.userID : reactor.name
+            return redacted ? AppearancePreferences.redactedText(raw, kind: .name) : raw
+        }
+        let rest = max(0, count - reactors.count)
+        if rest == 1 {
+            names.append(String(localized: "+1 other"))
+        } else if rest > 1 {
+            names.append(String(localized: "+\(rest) others"))
+        }
+        return names.joined(separator: ", ")
+    }
+
+    private static func avatarInitials(for reactor: Reactor) -> String {
+        if reactor.isMe {
+            guard let realName = cleanedSelfRealName(reactor.name, userID: reactor.userID) else {
+                return ""
+            }
+            return InboxRow.initials(of: realName)
+        }
+        var raw = reactor.name.isEmpty ? reactor.userID : reactor.name
+        if raw.hasPrefix("@") {
+            let withoutAt = String(raw.dropFirst())
+            if let colon = withoutAt.firstIndex(of: ":") {
+                raw = String(withoutAt[..<colon])
+            } else {
+                raw = withoutAt
+            }
+        }
+        return InboxRow.initials(of: raw)
     }
 }
 
@@ -398,6 +524,18 @@ public struct GIFAttachment: Equatable, Sendable {
     }
 }
 
+public struct SenderAvatarDisplay: Equatable, Sendable {
+    public let path: String
+    public let initials: String
+    public let seed: String
+
+    public init(path: String, initials: String, seed: String) {
+        self.path = path
+        self.initials = initials
+        self.seed = seed
+    }
+}
+
 public struct TimelineMessage: Equatable, Identifiable, Sendable {
     public let id: String
     public let roomID: String
@@ -604,6 +742,23 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     public var quoted: QuotedMessage {
         QuotedMessage(eventID: id, senderName: senderName, mine: mine, text: body, kind: kind)
     }
+
+    /// Presentation values for the timeline sender avatar: blanks the photo and initials and pseudonymises the colour seed when redacted.
+    public func senderAvatar(redacted: Bool = false) -> SenderAvatarDisplay {
+        if redacted {
+            let rawSeed = senderName.isEmpty ? sender : senderName
+            return SenderAvatarDisplay(
+                path: "",
+                initials: "",
+                seed: AppearancePreferences.redactedText(rawSeed, kind: .name)
+            )
+        }
+        return SenderAvatarDisplay(
+            path: senderAvatarPath,
+            initials: InboxRow.initials(of: senderName),
+            seed: senderName
+        )
+    }
 }
 
 public enum TimelineItem: Equatable, Identifiable, Sendable {
@@ -668,6 +823,8 @@ public enum Timeline {
     public static func build(events: [Event], me: String, firstUnreadID: String? = nil, now: Date = Date(),
                              hideDeleted: Bool = false, isDirect: Bool = false,
                              showChatUpdates: Bool = true,
+                             myName: String = "",
+                             myAvatarPath: String = "",
                              calendar: Calendar = .autoupdatingCurrent) -> [TimelineItem] {
         var seen = Set<String>()
         let ordered = events
@@ -679,7 +836,7 @@ public enum Timeline {
             if let target = event.content["redacts"]?.stringValue { redacted.insert(target) }
         }
 
-        let builtMessages = messages(ordered: ordered, redacted: redacted, me: me, now: now, hideDeleted: hideDeleted, isDirect: isDirect)
+        let builtMessages = messages(ordered: ordered, redacted: redacted, me: me, now: now, hideDeleted: hideDeleted, isDirect: isDirect, myName: myName, myAvatarPath: myAvatarPath)
         let messageByID = Dictionary(builtMessages.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
         var items: [TimelineItem] = []
@@ -983,7 +1140,7 @@ public enum Timeline {
     // MARK: - Messages
 
     private static func messages(events: [Event], me: String, now: Date?, hideDeleted: Bool,
-                                 isDirect: Bool) -> [TimelineMessage] {
+                                 isDirect: Bool, myName: String = "", myAvatarPath: String = "") -> [TimelineMessage] {
         var seen = Set<String>()
         let ordered = events
             .filter { seen.insert($0.eventID).inserted }
@@ -993,11 +1150,11 @@ public enum Timeline {
         for event in ordered where event.type == "m.room.redaction" && event.status != .failed {
             if let target = event.content["redacts"]?.stringValue { redacted.insert(target) }
         }
-        return messages(ordered: ordered, redacted: redacted, me: me, now: now, hideDeleted: hideDeleted, isDirect: isDirect)
+        return messages(ordered: ordered, redacted: redacted, me: me, now: now, hideDeleted: hideDeleted, isDirect: isDirect, myName: myName, myAvatarPath: myAvatarPath)
     }
 
     private static func messages(ordered: [Event], redacted: Set<String>, me: String, now: Date?, hideDeleted: Bool,
-                                 isDirect: Bool) -> [TimelineMessage] {
+                                 isDirect: Bool, myName: String = "", myAvatarPath: String = "") -> [TimelineMessage] {
 
         // A message past its disappearing time is gone, as if it were not on the page: nothing quotes it, and its
         // reactions and edits find nothing.
@@ -1036,6 +1193,22 @@ public enum Timeline {
 
         // Reactions: one chip per emoji per message, counted by distinct people, who are kept in the order each first
         // gave it. My newest live one is what taking it back unsends.
+        var avatarBySender: [String: String] = [:]
+        var eventSelfName: String?
+        var eventSelfAvatar: String?
+        for event in ordered {
+            if !event.senderAvatarPath.isEmpty {
+                avatarBySender[event.sender] = event.senderAvatarPath
+                if isMine(event) {
+                    eventSelfAvatar = event.senderAvatarPath
+                }
+            }
+            if isMine(event), let real = ReactionChip.cleanedSelfRealName(event.senderName, userID: event.sender) {
+                eventSelfName = real
+            }
+        }
+        let realSelfName = eventSelfName ?? ReactionChip.cleanedSelfRealName(myName, userID: me)
+        let realSelfAvatar = eventSelfAvatar ?? myAvatarPath
         struct Tally {
             var people = Set<String>()
             var reactors: [Reactor] = []
@@ -1053,7 +1226,19 @@ public enum Timeline {
             if tallies[target]?[key] == nil { order[target, default: []].append(key) }
             let isMe = event.mine || event.sender == me
             if tally.people.insert(event.sender).inserted {
-                tally.reactors.append(Reactor(userID: event.sender, name: senderName(of: event), isMe: isMe))
+                let fallbackAvatar = isMe ? realSelfAvatar : (avatarBySender[event.sender] ?? "")
+                let avatar = event.senderAvatarPath.isEmpty ? fallbackAvatar : event.senderAvatarPath
+                let reactorName: String
+                if isMe {
+                    reactorName = ReactionChip.cleanedSelfRealName(event.senderName, userID: event.sender)
+                        ?? realSelfName
+                        ?? senderName(of: event)
+                } else {
+                    reactorName = senderName(of: event)
+                }
+                tally.reactors.append(
+                    Reactor(userID: event.sender, name: reactorName, isMe: isMe, avatarPath: avatar)
+                )
             }
             if isMe {
                 tally.mine = true

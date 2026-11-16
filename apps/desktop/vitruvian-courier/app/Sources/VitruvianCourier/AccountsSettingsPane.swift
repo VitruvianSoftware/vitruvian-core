@@ -8,7 +8,7 @@ import SwiftUI
 /// Settings ▸ Accounts pane (`02` §1.4, `NetworksSettings.tsx` / `AccountView.tsx`):
 /// connected accounts list, `+ Add Account` flow trigger, per-account status & reconnect,
 /// Space Bar pin + Show in Inbox + Mute Space + Auto-Archive, per-account notification overrides,
-/// Telegram Folders & Bots (`accounts.subAccounts` / `accounts.setSubAccount`),
+/// Spaces & Communities (`accounts.subAccounts` / `accounts.setSubAccount`),
 /// official desktop app Dock cleanup, and destructive `Remove Account…` confirmation.
 struct AccountsSettingsPane: View {
     @ObservedObject var model: AccountsAndBridgesModel
@@ -23,7 +23,7 @@ struct AccountsSettingsPane: View {
     var body: some View {
         HStack(spacing: 0) {
             accountsSidebar
-                .frame(width: 220)
+                .frame(width: 200)
             Divider()
             accountDetail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -133,18 +133,29 @@ struct AccountsSettingsPane: View {
                             Button {
                                 model.selectedAccountKey = entry.key
                             } label: {
-                                HStack(spacing: 8) {
-                                    Circle()
-                                        .fill(statusColor(entry.state))
-                                        .frame(width: 8, height: 8)
+                                HStack(spacing: 10) {
+                                    NetworkBadge(network: entry.network, name: entry.displayName, size: 24, showsTooltip: false)
+                                        .overlay(alignment: .bottomTrailing) {
+                                            Circle()
+                                                .fill(accountDotColor(entry.state))
+                                                .frame(width: 8, height: 8)
+                                                .overlay(
+                                                    Circle()
+                                                        .stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 1.5)
+                                                )
+                                                .offset(x: 2, y: 2)
+                                        }
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(entry.displayName)
                                             .font(.body.weight(isSelected ? .semibold : .medium))
                                             .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
                                         Text(entry.remoteName)
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                             .lineLimit(1)
+                                            .truncationMode(.tail)
                                     }
                                     Spacer()
                                 }
@@ -191,6 +202,7 @@ struct AccountsSettingsPane: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
+                        removeAccountButton(entry)
                     }
                     .padding(20)
                 }
@@ -233,8 +245,8 @@ struct AccountsSettingsPane: View {
                         }
                         .settingAnchor("accounts.connectedNetworks", highlighted: highlightedSettingID)
 
-                        GroupBox(String(localized: "Sub-Accounts")) {
-                            Text(String(localized: "Connect or select an account to expose spaces, folders, communities, or bots as dedicated views."))
+                        GroupBox(String(localized: "Spaces & Communities")) {
+                            Text(String(localized: "Connect or select an account to show its spaces, folders, communities or bots as their own views."))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -288,8 +300,12 @@ struct AccountsSettingsPane: View {
                     HStack(spacing: 8) {
                         Text(entry.displayName)
                             .font(.title3.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
                         Text(stateLabel(entry.state))
                             .font(.caption.weight(.medium))
+                            .lineLimit(1)
+                            .fixedSize()
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(statusColor(entry.state).opacity(0.15))
@@ -311,22 +327,31 @@ struct AccountsSettingsPane: View {
                         onReconnect(entry.network, entry.accountID)
                     }
                     .buttonStyle(.borderedProminent)
+                    .fixedSize()
                     .disabled(model.isLocked)
                 }
-                Button(role: .destructive) {
-                    model.requestRemoveAccount(
-                        network: entry.network,
-                        accountID: entry.accountID,
-                        remoteName: entry.remoteName,
-                        displayName: entry.displayName
-                    )
-                } label: {
-                    Text(String(localized: "Remove Account…"))
-                }
-                .disabled(model.isLocked)
             }
             .padding(8)
         }
+    }
+
+    private func removeAccountButton(_ entry: AccountEntry) -> some View {
+        Button(role: .destructive) {
+            model.requestRemoveAccount(
+                network: entry.network,
+                accountID: entry.accountID,
+                remoteName: entry.remoteName,
+                displayName: entry.displayName
+            )
+        } label: {
+            Text(String(localized: "Remove Account…"))
+                .foregroundStyle(model.isLocked ? Color.secondary : Color.red)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .tint(.red)
+        .controlSize(.large)
+        .disabled(model.isLocked)
     }
 
     @ViewBuilder
@@ -489,10 +514,10 @@ struct AccountsSettingsPane: View {
         let items = model.subAccountsByKey[entry.key] ?? []
         let spacesItems = items.filter { $0.kind == "space" }
         let botItems = items.filter { $0.kind == "bot" }
-        return GroupBox(String(localized: "Sub-Accounts")) {
+        return GroupBox(String(localized: "Spaces & Communities")) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text(String(localized: "Expose spaces, folders, communities, or bots as dedicated views"))
+                    Text(String(localized: "Show this account's spaces, folders, communities or bots as their own views"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -506,6 +531,7 @@ struct AccountsSettingsPane: View {
                         }
                     }
                     .controlSize(.small)
+                    .fixedSize()
                     .disabled(model.isLocked)
                 }
 
@@ -598,9 +624,10 @@ struct AccountsSettingsPane: View {
                     Button(String(localized: "Remove \(entry.displayName) from macOS Dock")) {
                         _ = model.removeOfficialAppFromDock(network: entry.network)
                     }
+                    .fixedSize()
                     .disabled(model.isLocked)
                 } else {
-                    Text(String(localized: "No duplicate \(entry.displayName) icon is pinned in your macOS Dock."))
+                    Text(String(localized: "No extra \(entry.displayName) icon in your Dock."))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -616,16 +643,19 @@ struct AccountsSettingsPane: View {
                 Button(String(localized: "Copy Account ID")) {
                     model.copyAccountID(entry.accountID)
                 }
+                .fixedSize()
                 .disabled(model.isLocked)
 
                 Button(String(localized: "Copy Bridge ID")) {
                     model.copyBridgeID(for: entry.network)
                 }
+                .fixedSize()
                 .disabled(model.isLocked)
 
                 Button(String(localized: "Copy Info as JSON")) {
                     model.copyBridgeInfoJSON(for: entry.network)
                 }
+                .fixedSize()
                 .disabled(model.isLocked)
 
                 Spacer()
@@ -633,10 +663,22 @@ struct AccountsSettingsPane: View {
                 Button(String(localized: "Restart Bridge")) {
                     Task { await model.restartBridge(network: entry.network) }
                 }
+                .fixedSize()
                 .disabled(model.isLocked || model.busyNetworks.contains(entry.network))
             }
             .controlSize(.small)
             .padding(8)
+        }
+    }
+
+    private func accountDotColor(_ state: AccountState) -> Color {
+        switch state {
+        case .connected, .running:
+            return .green
+        case .transientDisconnect, .bridgeUnreachable, .badCredentials, .unknownError, .loggedOut, .connecting, .backfilling:
+            return .orange
+        default:
+            return .gray
         }
     }
 

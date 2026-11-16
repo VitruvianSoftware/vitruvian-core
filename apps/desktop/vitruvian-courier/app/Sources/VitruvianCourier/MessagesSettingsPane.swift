@@ -184,15 +184,23 @@ struct MessagesSettingsPane: View {
             Toggle(String(localized: "Show formatting menu"), isOn: $preferences.showFormattingMenu)
                 .help(String(localized: "A bar of formatting buttons over the text you select."))
             Picker(String(localized: "Primary composer button"), selection: $preferences.primaryComposerButton) {
-                ForEach(PrimaryComposerButton.allCases, id: \.self) { button in
+                ForEach(preferences.availablePrimaryComposerButtons, id: \.self) { button in
                     Text(button.label).tag(button)
                 }
             }
-            Picker(String(localized: "Secondary composer button"), selection: $preferences.secondaryComposerButton) {
-                ForEach(SecondaryComposerButton.allCases, id: \.self) { button in
+            .accessibilityIdentifier("settings.composing.primaryComposerButton")
+            Picker(
+                String(localized: "Secondary composer button"),
+                selection: Binding(
+                    get: { preferences.effectiveSecondaryComposerButton },
+                    set: { preferences.secondaryComposerButton = $0 }
+                )
+            ) {
+                ForEach(preferences.availableSecondaryComposerButtons, id: \.self) { button in
                     Text(button.label).tag(button)
                 }
             }
+            .accessibilityIdentifier("settings.composing.secondaryComposerButton")
             Toggle(String(localized: "Enable emoji autocomplete"), isOn: $preferences.enableEmojiAutocomplete)
                 .accessibilityIdentifier("settings.composing.enableEmojiAutocomplete")
             Toggle(

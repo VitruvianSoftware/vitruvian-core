@@ -15,11 +15,13 @@ import UniformTypeIdentifiers
 ///   - Filter field (`@FocusState`) filtering participants, files, links, and bookmarks.
 ///   - Collapsible sections: Participants (with `Admin` / `Bot` badges and **Add Participants** button),
 ///     Pinned, Shared Media (3×3 grid), Files, Links, Bookmarks (`search.query` with `sections: [.bookmarks]`),
-///     Encryption, Disappearing Messages, **Refresh Chat Info**, and **Export Chat…** (`NSSavePanel` in view only).
+///     Encryption, Disappearing Messages, **Reload Chat Details**, and **Export Chat…** (`NSSavePanel` in view only).
 public struct ChatInfoPane: View {
     public let info: RoomInfoResult
     public let bookmarks: [MessageHit]
     public var isRefreshing: Bool = false
+    public var isMuted: Bool = false
+    public var isPinned: Bool = false
     public var showsCloseButton: Bool = true
     public var focusSearchTrigger: Int = 0
     public var now: () -> Date = Date.init
@@ -48,7 +50,13 @@ public struct ChatInfoPane: View {
     public var isAIAvailable: Bool = false
     public var onSummarizeChat: (() -> Void)? = nil
     public var onOpenAISettings: (() -> Void)? = nil
+    public var onToggleMute: () -> Void = {}
+    public var onTogglePin: () -> Void = {}
+    public var onArchive: () -> Void = {}
+    public var onRemind: () -> Void = {}
+    public var onSearchInChat: () -> Void = {}
     public var onClose: () -> Void = {}
+    public var inbox: InboxModel? = nil
     /// With glass in the main window the header is a toolbar item (`ChatInfoHeader`, placed by ConversationView), so
     /// the pane draws none of its own.
     public var headerInToolbar: Bool = false
@@ -68,6 +76,8 @@ public struct ChatInfoPane: View {
         info: RoomInfoResult,
         bookmarks: [MessageHit] = [],
         isRefreshing: Bool = false,
+        isMuted: Bool = false,
+        isPinned: Bool = false,
         showsCloseButton: Bool = true,
         focusSearchTrigger: Int = 0,
         now: @escaping () -> Date = Date.init,
@@ -95,13 +105,22 @@ public struct ChatInfoPane: View {
         isAIAvailable: Bool = false,
         onSummarizeChat: (() -> Void)? = nil,
         onOpenAISettings: (() -> Void)? = nil,
+        onToggleMute: @escaping () -> Void = {},
+        onTogglePin: @escaping () -> Void = {},
+        onArchive: @escaping () -> Void = {},
+        onRemind: @escaping () -> Void = {},
+        onSearchInChat: @escaping () -> Void = {},
         onClose: @escaping () -> Void = {},
+        inbox: InboxModel? = nil,
         headerInToolbar: Bool = false
     ) {
         self.headerInToolbar = headerInToolbar
+        self.inbox = inbox
         self.info = info
         self.bookmarks = bookmarks
         self.isRefreshing = isRefreshing
+        self.isMuted = isMuted
+        self.isPinned = isPinned
         self.showsCloseButton = showsCloseButton
         self.focusSearchTrigger = focusSearchTrigger
         self.now = now
@@ -126,6 +145,11 @@ public struct ChatInfoPane: View {
         self.isAIAvailable = isAIAvailable
         self.onSummarizeChat = onSummarizeChat
         self.onOpenAISettings = onOpenAISettings
+        self.onToggleMute = onToggleMute
+        self.onTogglePin = onTogglePin
+        self.onArchive = onArchive
+        self.onRemind = onRemind
+        self.onSearchInChat = onSearchInChat
         self.onClose = onClose
     }
 
@@ -160,6 +184,7 @@ public struct ChatInfoPane: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     identityHeader
+                    quickActionsRow
                     filterBar
                     if !info.isDirect {
                         participantsSection
@@ -167,7 +192,7 @@ public struct ChatInfoPane: View {
                     if !info.pinnedEventIDs.isEmpty {
                         pinnedSection
                     }
-                    if !info.sharedMedia.isEmpty {
+                    if !mediaItems.isEmpty {
                         mediaSection
                     }
                     if !filteredFiles.isEmpty {
@@ -181,6 +206,7 @@ public struct ChatInfoPane: View {
                     }
                     securityAndTimerSection
                     actionsSection
+                    destructiveActionsSection
                 }
                 // The header's inset, so the sections line up under its title.
                 .padding(PaneHeaderMetrics.inset)
@@ -216,10 +242,10 @@ public struct ChatInfoPane: View {
     private var identityHeader: some View {
         VStack(alignment: .center, spacing: 6) {
             avatarView
-                .frame(width: 52, height: 52)
+                .clipShape(Rectangle())
+                .frame(width: 56, height: 56)
                 .overlay(alignment: .bottomTrailing) {
-                    NetworkBadge(network: info.network, name: networkDisplayName, size: 16)
-                        .background(Circle().fill(.background))
+                    NetworkBadge(network: info.network, name: networkDisplayName, size: 16, ringed: true)
                         .offset(x: 2, y: 2)
                 }
 
@@ -282,13 +308,49 @@ public struct ChatInfoPane: View {
 
     @ViewBuilder
     private var avatarView: some View {
-        let displayAvatar = !info.localAvatarURI.isEmpty ? info.localAvatarURI : info.avatarPath
+        let displayAvatar = ChatInfoPresentation.displayAvatarPath(for: info)
         if !displayAvatar.isEmpty {
-            AvatarView(path: displayAvatar, initials: Self.initials(of: info.name), seed: info.name, size: 52)
+            AvatarView(path: displayAvatar, initials: Self.initials(of: info.name), seed: info.name, size: 56)
         } else if !info.isDirect {
-            GroupAvatar(seed: info.name)
+            let compositeMembers = ChatInfoPresentation.groupCompositeMembers(for: info)
+            if info.name.isEmpty && compositeMembers.isEmpty {
+                UnknownAvatar()
+            } else {
+                GroupCompositeAvatar(name: info.name, members: compositeMembers, size: 56)
+            }
+        } else if info.name.isEmpty {
+            UnknownAvatar()
         } else {
-            AvatarView(path: "", initials: Self.initials(of: info.name), seed: info.name, size: 52)
+            AvatarView(path: "", initials: Self.initials(of: info.name), seed: info.name, size: 56)
+        }
+    }
+
+    // MARK: - Quick Actions
+
+    @ViewBuilder
+    private var quickActionsRow: some View {
+        if let inbox {
+            ObservedChatInfoQuickActionsRow(
+                roomID: info.roomID,
+                inbox: inbox,
+                fallbackMuted: isMuted,
+                fallbackPinned: isPinned,
+                onToggleMute: onToggleMute,
+                onTogglePin: onTogglePin,
+                onArchive: onArchive,
+                onRemind: onRemind,
+                onSearchInChat: onSearchInChat
+            )
+        } else {
+            ChatInfoQuickActionsRow(
+                isMuted: isMuted,
+                isPinned: isPinned,
+                onToggleMute: onToggleMute,
+                onTogglePin: onTogglePin,
+                onArchive: onArchive,
+                onRemind: onRemind,
+                onSearchInChat: onSearchInChat
+            )
         }
     }
 
@@ -364,11 +426,19 @@ public struct ChatInfoPane: View {
         }
     }
 
+    private var mediaItems: [Event] {
+        ChatInfoPresentation.sharedMediaEvents(info.sharedMedia)
+    }
+
+    private var deduplicatedLinks: [RoomLink] {
+        RoomLink.deduplicated(info.sharedLinks)
+    }
+
     private var filteredLinks: [RoomLink] {
-        guard !trimmedFilter.isEmpty else { return info.sharedLinks }
-        return info.sharedLinks.filter { link in
+        guard !trimmedFilter.isEmpty else { return deduplicatedLinks }
+        return deduplicatedLinks.filter { link in
             link.url.localizedCaseInsensitiveContains(trimmedFilter)
-                || link.host.localizedCaseInsensitiveContains(trimmedFilter)
+                || link.displayDomain.localizedCaseInsensitiveContains(trimmedFilter)
         }
     }
 
@@ -427,10 +497,10 @@ public struct ChatInfoPane: View {
                             }
                             Spacer(minLength: 4)
                             if member.isBot {
-                                ChatInfoBadge(text: String(localized: "Bot"), tinted: false)
+                                ChatInfoBadge(text: String(localized: "Bot"))
                             }
-                            if member.isAdmin {
-                                ChatInfoBadge(text: String(localized: "Admin"), tinted: true)
+                            if ChatInfoPresentation.showsAdminBadge(for: member, in: info.members) {
+                                ChatInfoBadge(text: String(localized: "Admin"))
                             }
                         }
                         .contentShape(Rectangle())
@@ -489,7 +559,7 @@ public struct ChatInfoPane: View {
     private var mediaSection: some View {
         ChatInfoSection(
             title: String(localized: "Shared Media"),
-            count: info.sharedMedia.count,
+            count: mediaItems.count,
             isExpanded: $mediaExpanded,
             onSeeAll: {
                 openWindow(
@@ -498,10 +568,13 @@ public struct ChatInfoPane: View {
                 )
             }
         ) {
-            let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 3)
+            let columns = Array(repeating: GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 4), count: 3)
             LazyVGrid(columns: columns, spacing: 4) {
-                ForEach(info.sharedMedia.prefix(9), id: \.eventID) { event in
-                    ChatInfoMediaTile(event: event) {
+                ForEach(mediaItems.prefix(9), id: \.eventID) { event in
+                    ChatInfoMediaTile(
+                        event: event,
+                        sender: ChatInfoPresentation.mediaSender(for: event, members: info.members)
+                    ) {
                         onSelectEvent(event.eventID)
                     }
                 }
@@ -566,15 +639,16 @@ public struct ChatInfoPane: View {
                         HStack(spacing: 8) {
                             Image(systemName: "link")
                                 .font(.caption)
-                                .foregroundStyle(Color.accentColor)
+                                .foregroundStyle(.secondary)
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(verbatim: link.host.isEmpty ? link.url : link.host)
-                                    .font(.callout.weight(.medium))
+                                Text(verbatim: link.displayDomain)
+                                    .font(.body)
                                     .lineLimit(1)
                                 Text(verbatim: link.url)
-                                    .font(.caption2)
+                                    .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
+                                    .truncationMode(.middle)
                             }
                             Spacer(minLength: 0)
                         }
@@ -640,7 +714,7 @@ public struct ChatInfoPane: View {
                 Image(systemName: info.encrypted ? "lock.fill" : "lock.open")
                     .foregroundStyle(info.encrypted ? .green : .secondary)
                     .frame(width: 16)
-                Text(info.encrypted ? String(localized: "Encrypted") : String(localized: "Transport TLS"))
+                Text(info.encrypted ? String(localized: "Encrypted") : String(localized: "Not end-to-end encrypted"))
                     .font(.callout)
                 Spacer(minLength: 0)
             }
@@ -702,7 +776,7 @@ public struct ChatInfoPane: View {
         }
     }
 
-    // MARK: - Actions Section (Refresh & Export Chat)
+    // MARK: - Actions Section (Reload & Export Chat)
 
     private var actionsSection: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -734,7 +808,7 @@ public struct ChatInfoPane: View {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.clockwise")
                         .frame(width: 16)
-                    Text(String(localized: "Refresh Chat Info"))
+                    Text(String(localized: "Reload Chat Details"))
                         .font(.callout)
                     Spacer(minLength: 0)
                     if isRefreshing {
@@ -789,7 +863,14 @@ public struct ChatInfoPane: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+        }
+    }
 
+    // MARK: - Destructive Actions Section
+
+    private var destructiveActionsSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Divider()
             if !info.isDirect, info.features.canLeave {
                 Button(role: .destructive, action: onLeaveGroup) {
                     HStack(spacing: 8) {
@@ -907,25 +988,187 @@ private struct ChatInfoSection<Content: View>: View {
     }
 }
 
+private struct ObservedChatInfoQuickActionsRow: View {
+    let roomID: String
+    @ObservedObject var inbox: InboxModel
+    let fallbackMuted: Bool
+    let fallbackPinned: Bool
+    let onToggleMute: () -> Void
+    let onTogglePin: () -> Void
+    let onArchive: () -> Void
+    let onRemind: () -> Void
+    let onSearchInChat: () -> Void
+
+    var body: some View {
+        let row = inbox.row(of: roomID)
+        ChatInfoQuickActionsRow(
+            isMuted: row?.muted ?? fallbackMuted,
+            isPinned: row?.pinned ?? fallbackPinned,
+            onToggleMute: onToggleMute,
+            onTogglePin: onTogglePin,
+            onArchive: onArchive,
+            onRemind: onRemind,
+            onSearchInChat: onSearchInChat
+        )
+    }
+}
+
+private struct ChatInfoQuickActionsRow: View {
+    let isMuted: Bool
+    let isPinned: Bool
+    let onToggleMute: () -> Void
+    let onTogglePin: () -> Void
+    let onArchive: () -> Void
+    let onRemind: () -> Void
+    let onSearchInChat: () -> Void
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ChatInfoQuickActionButton(
+                symbol: isMuted ? "bell.slash" : "bell",
+                title: isMuted ? String(localized: "Unmute") : String(localized: "Mute"),
+                action: onToggleMute
+            )
+            ChatInfoQuickActionButton(
+                symbol: isPinned ? "pin.slash" : "pin",
+                title: isPinned ? String(localized: "Unpin") : String(localized: "Pin"),
+                action: onTogglePin
+            )
+            ChatInfoQuickActionButton(
+                symbol: "archivebox",
+                title: String(localized: "Archive"),
+                action: onArchive
+            )
+            ChatInfoQuickActionButton(
+                symbol: "alarm",
+                title: String(localized: "Remind…"),
+                action: onRemind
+            )
+            ChatInfoQuickActionButton(
+                symbol: "magnifyingglass",
+                title: String(localized: "Search"),
+                action: onSearchInChat
+            )
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+struct ChatInfoQuickActionProbeKey: EnvironmentKey {
+    static let defaultValue: (@MainActor (String, NSRect?) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    var chatInfoQuickActionProbe: (@MainActor (String, NSRect?) -> Void)? {
+        get { self[ChatInfoQuickActionProbeKey.self] }
+        set { self[ChatInfoQuickActionProbeKey.self] = newValue }
+    }
+}
+
+private struct QuickActionWindowRectProbe: NSViewRepresentable {
+    let title: String
+    let report: @MainActor (String, NSRect?) -> Void
+
+    final class ProbeView: NSView {
+        var title: String = ""
+        var report: (@MainActor (String, NSRect?) -> Void)?
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func layout() {
+            super.layout()
+            publish()
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            publish()
+        }
+
+        func publish() {
+            guard window != nil, !bounds.isEmpty else { return }
+            report?(title, convert(bounds, to: nil))
+        }
+    }
+
+    func makeNSView(context: Context) -> ProbeView {
+        let view = ProbeView()
+        view.title = title
+        view.report = report
+        return view
+    }
+
+    func updateNSView(_ nsView: ProbeView, context: Context) {
+        if nsView.title != title {
+            let previous = nsView.title
+            nsView.report?(previous, nil)
+            nsView.title = title
+        }
+        nsView.report = report
+        nsView.publish()
+    }
+
+    static func dismantleNSView(_ nsView: ProbeView, coordinator: ()) {
+        nsView.report?(nsView.title, nil)
+    }
+}
+
+private struct ChatInfoQuickActionButton: View {
+    let symbol: String
+    let title: String
+    let action: () -> Void
+    @Environment(\.chatInfoQuickActionProbe) private var quickActionProbe
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: symbol)
+                    .font(.system(size: 15))
+                    .foregroundStyle(.primary)
+                    .frame(height: 18)
+                Text(title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .padding(.vertical, 6)
+            .frame(minWidth: 44, maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isHovered ? Color.primary.opacity(0.08) : Color.clear)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help(title)
+        .accessibilityLabel(title)
+        .background {
+            if let quickActionProbe {
+                QuickActionWindowRectProbe(title: title, report: quickActionProbe)
+            }
+        }
+    }
+}
+
 private struct ChatInfoBadge: View {
     let text: String
-    let tinted: Bool
 
     var body: some View {
         Text(text)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(tinted ? Color.accentColor : Color.secondary)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
             .padding(.horizontal, 6)
             .padding(.vertical, 1)
-            .background(
-                Capsule()
-                    .fill(tinted ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.08))
-            )
+            .background(Capsule().fill(Color.secondary.opacity(0.15)))
     }
 }
 
 private struct ChatInfoMediaTile: View {
     let event: Event
+    let sender: ChatInfoPresentation.MediaSender?
     let action: () -> Void
     @State private var image: CGImage?
 
@@ -936,27 +1179,57 @@ private struct ChatInfoMediaTile: View {
         return false
     }
 
+    private var thumbnailSourceKey: String {
+        "\(event.thumbnailPath ?? "")|\(event.mediaPath)"
+    }
+
     var body: some View {
         Button(action: action) {
-            ZStack {
-                Color.primary.opacity(0.07)
-                if let image {
-                    Image(decorative: image, scale: 1)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    Image(systemName: isVideo ? "film" : "photo")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+            Color.primary.opacity(0.07)
+                .aspectRatio(1, contentMode: .fit)
+                .overlay {
+                    if let image {
+                        Image(decorative: image, scale: 1)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                            .aspectRatio(1, contentMode: .fit)
+                            .clipped()
+                    } else {
+                        Image(systemName: isVideo ? "film" : "photo")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-            }
-            .frame(height: 72)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .contentShape(Rectangle())
+                .overlay(alignment: .bottomLeading) {
+                    if let sender {
+                        AvatarView(
+                            path: sender.avatarPath,
+                            initials: sender.initials,
+                            seed: sender.name.isEmpty ? "?" : sender.name,
+                            size: 16
+                        )
+                        .frame(width: 16, height: 16)
+                        .overlay(Circle().strokeBorder(Color.black.opacity(0.75), lineWidth: 1))
+                        .padding(4)
+                    }
+                }
+                .frame(minWidth: 0, maxWidth: .infinity)
+                .aspectRatio(1, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .contentShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
-        .task(id: event.mediaPath) {
-            guard !event.mediaPath.isEmpty else { return }
+        .task(id: thumbnailSourceKey) {
+            if let thumbPath = event.thumbnailPath, !thumbPath.isEmpty,
+               let loaded = await ThumbnailLoader.shared.thumbnail(atPath: thumbPath)?.image {
+                image = loaded
+                return
+            }
+            guard !event.mediaPath.isEmpty else {
+                image = nil
+                return
+            }
             image = await ThumbnailLoader.shared.thumbnail(atPath: event.mediaPath)?.image
         }
     }
@@ -966,9 +1239,15 @@ private struct ChatInfoMediaTile: View {
 struct ChatInfoWindow: View {
     let roomID: String
     @ObservedObject var conversation: ConversationModel
+    var inbox: InboxModel? = nil
     @State private var loadedInfo: RoomInfoResult?
     @State private var loadedBookmarks: [MessageHit] = []
+    @State private var loadedRow: InboxRow?
     @State private var isRefreshing = false
+
+    private var resolvedInbox: InboxModel? {
+        inbox ?? conversation.inbox
+    }
 
     private var effectiveInfo: RoomInfoResult? {
         if conversation.chatInfo?.roomID == roomID {
@@ -987,10 +1266,13 @@ struct ChatInfoWindow: View {
     var body: some View {
         Group {
             if let info = effectiveInfo {
+                let row = resolvedInbox?.row(of: info.roomID) ?? conversation.chatRow(for: info.roomID) ?? loadedRow
                 ChatInfoPane(
                     info: info,
                     bookmarks: effectiveBookmarks,
                     isRefreshing: isRefreshing,
+                    isMuted: row?.muted ?? false,
+                    isPinned: row?.pinned ?? false,
                     showsCloseButton: false,
                     now: { conversation.currentTime },
                     timerChoices: conversation.roomID == roomID ? conversation.timerChoices : [],
@@ -998,20 +1280,20 @@ struct ChatInfoWindow: View {
                         Task { await conversation.setTimer(choice) }
                     },
                     onEditTitleAndAvatar: {
-                        Task { await conversation.beginEditChat(info: info, roomID: roomID) }
+                        Task { await conversation.beginEditChat(info: info, roomID: info.roomID) }
                     },
                     onAddParticipants: {
                         Task { await conversation.beginAddParticipants(info: info) }
                     },
                     onMessageMember: { member in
-                        Task { _ = await conversation.messageParticipant(userID: member.userID, in: roomID) }
+                        Task { _ = await conversation.messageParticipant(userID: member.userID, in: info.roomID) }
                     },
                     onToggleMemberAdmin: { member, makeAdmin in
                         Task {
                             _ = await conversation.setParticipantAdmin(
                                 userID: member.userID,
                                 isAdmin: makeAdmin,
-                                in: roomID
+                                in: info.roomID
                             )
                         }
                     },
@@ -1019,7 +1301,7 @@ struct ChatInfoWindow: View {
                         conversation.requestRemoveParticipant(member, info: info)
                     },
                     onSelectEvent: { eventID in
-                        conversation.openEvent(eventID, in: roomID)
+                        conversation.openEvent(eventID, in: info.roomID)
                     },
                     onRefresh: {
                         Task { await refresh(force: true) }
@@ -1027,7 +1309,7 @@ struct ChatInfoWindow: View {
                     onExport: { url in
                         Task {
                             do {
-                                let count = try await conversation.exportChat(roomID: roomID, to: url)
+                                let count = try await conversation.exportChat(roomID: info.roomID, to: url)
                                 conversation.onToast(String(localized: "Exported \(count) messages"))
                             } catch {
                                 conversation.onToast(
@@ -1040,13 +1322,13 @@ struct ChatInfoWindow: View {
                         }
                     },
                     onLeaveGroup: {
-                        conversation.requestLeaveGroup(info: info, roomID: roomID)
+                        conversation.requestLeaveGroup(info: info, roomID: info.roomID)
                     },
                     onDeleteChat: {
-                        conversation.requestDeleteChat(info: info, roomID: roomID)
+                        conversation.requestDeleteChat(info: info, roomID: info.roomID)
                     },
                     onReportSpam: {
-                        Task { await conversation.beginReportSpam(info: info, roomID: roomID) }
+                        Task { await conversation.beginReportSpam(info: info, roomID: info.roomID) }
                     },
                     isAIAvailable: conversation.composer.aiProvider.isAvailable,
                     onSummarizeChat: {
@@ -1054,7 +1336,36 @@ struct ChatInfoWindow: View {
                     },
                     onOpenAISettings: {
                         conversation.onOpenAISettings()
-                    }
+                    },
+                    onToggleMute: {
+                        if !conversation.performToggleMute(info.roomID), let resolvedInbox {
+                            Task { await resolvedInbox.toggleMute(ids: [info.roomID]) }
+                        }
+                    },
+                    onTogglePin: {
+                        if !conversation.performTogglePin(info.roomID), let resolvedInbox {
+                            Task { await resolvedInbox.togglePin(ids: [info.roomID]) }
+                        }
+                    },
+                    onArchive: {
+                        if !conversation.performToggleArchive(info.roomID), let resolvedInbox {
+                            let rows = resolvedInbox.row(of: info.roomID).map { [$0] }
+                                ?? resolvedInbox.targetRows([info.roomID])
+                            Task { await resolvedInbox.archive(ChatInfoPresentation.shouldArchive(rows), ids: [info.roomID]) }
+                        }
+                    },
+                    onRemind: {
+                        if !conversation.performRemindLater(info.roomID),
+                           let resolvedInbox,
+                           !resolvedInbox.isLocked,
+                           resolvedInbox.isEntitled(.reminders) {
+                            resolvedInbox.customReminder = ReminderRequest(ids: [info.roomID])
+                        }
+                    },
+                    onSearchInChat: {
+                        conversation.onSearchInChat(info.roomID)
+                    },
+                    inbox: resolvedInbox
                 )
             } else {
                 ProgressView()
@@ -1064,6 +1375,11 @@ struct ChatInfoWindow: View {
         .frame(minWidth: 280, idealWidth: 340, minHeight: 480)
         .task(id: roomID) {
             await refresh(force: false)
+        }
+        .onChange(of: resolvedInbox?.rows ?? []) { _, _ in
+            Task {
+                await refreshRow()
+            }
         }
     }
 
@@ -1075,6 +1391,20 @@ struct ChatInfoWindow: View {
             loadedInfo = info
         }
         loadedBookmarks = bookmarks
+        await refreshRow()
+    }
+
+    private func refreshRow() async {
+        guard let resolvedInbox else { return }
+        if let row = resolvedInbox.row(of: roomID) {
+            if loadedRow != row {
+                loadedRow = row
+            }
+            return
+        }
+        if let fetched = await resolvedInbox.lookUpRow(roomID), loadedRow != fetched {
+            loadedRow = fetched
+        }
     }
 }
 

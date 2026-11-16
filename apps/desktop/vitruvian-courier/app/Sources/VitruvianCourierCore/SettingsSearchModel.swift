@@ -707,7 +707,7 @@ public final class SettingsNavigationModel: ObservableObject {
         SettingDefinition(
             id: "accounts.subAccounts",
             pane: .accounts,
-            section: "Sub-Accounts",
+            section: "Spaces & Communities",
             title: "Slack channels, WhatsApp Communities, and Telegram Topics",
             keywords: ["sub-accounts", "channels", "communities", "topics", "spaces"]
         ),

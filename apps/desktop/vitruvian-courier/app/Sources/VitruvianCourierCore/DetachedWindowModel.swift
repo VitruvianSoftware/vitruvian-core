@@ -52,7 +52,9 @@ public final class DetachedWindowSession: ObservableObject {
         hotkeys: HotkeyRegistry? = nil,
         lifecycle: SystemLifecycleModel? = nil,
         aiProviderStore: AIProviderStore? = nil,
-        readAloud: ReadAloudService? = nil
+        readAloud: ReadAloudService? = nil,
+        onSearchInChat: (@MainActor (String) -> Void)? = nil,
+        onRemindLater: (@MainActor (String) -> Bool)? = nil
     ) {
         self.target = target
         self.appModel = appModel
@@ -184,6 +186,7 @@ public final class DetachedWindowSession: ObservableObject {
 
         let host = self.hostInbox
         let conv = self.conversation
+        conv.bindInbox(host)
         for composer in [conv.composer, conv.thread.composer] {
             composer.entitlement = resolvedEntitlement
             composer.quickReplies = resolvedQuickReplies
@@ -195,6 +198,40 @@ public final class DetachedWindowSession: ObservableObject {
         conv.planAfterToggleRead = { [weak host] in host?.planAfterToggleRead() ?? {} }
         conv.isEntitled = { [weak host] feature in
             host?.isEntitled(feature) ?? resolvedEntitlement.isEntitled(feature)
+        }
+        conv.onToggleMute = { [weak host] roomID in
+            guard !roomID.isEmpty else { return }
+            Task { await host?.toggleMute(ids: [roomID]) }
+        }
+        conv.onTogglePin = { [weak host] roomID in
+            guard !roomID.isEmpty else { return }
+            Task { await host?.togglePin(ids: [roomID]) }
+        }
+        conv.onToggleArchive = { [weak host] roomID in
+            guard let host, !roomID.isEmpty else { return }
+            let rows = host.row(of: roomID).map { [$0] } ?? host.targetRows([roomID])
+            Task { await host.archive(ChatInfoPresentation.shouldArchive(rows), ids: [roomID]) }
+        }
+        if self.inbox != nil {
+            conv.onRemindLater = { [weak host] roomID in
+                guard let host, !roomID.isEmpty else { return false }
+                guard !host.isLocked, host.isEntitled(.reminders) else { return true }
+                host.customReminder = ReminderRequest(ids: [roomID])
+                return true
+            }
+        } else {
+            conv.onRemindLater = { [weak host, onRemindLater] roomID in
+                guard !roomID.isEmpty else { return false }
+                if let onRemindLater, onRemindLater(roomID) {
+                    return true
+                }
+                guard let host, !host.isLocked, host.isEntitled(.reminders) else { return true }
+                host.customReminder = ReminderRequest(ids: [roomID])
+                return true
+            }
+        }
+        if let onSearchInChat {
+            conv.onSearchInChat = onSearchInChat
         }
         self.messageActions.quickReplies = resolvedQuickReplies
         self.messageActions.onToast = { [weak host] message in host?.announce(message) }
@@ -241,6 +278,31 @@ public final class DetachedWindowRegistry: ObservableObject {
     }
     public var onFocus: ((DetachedWindowTarget) -> Void)?
     public var onClose: ((DetachedWindowTarget) -> Void)?
+    public var onSearchInChat: (@MainActor (String) -> Void)? {
+        didSet {
+            guard let onSearchInChat else { return }
+            for session in sessions.values {
+                session.conversation.onSearchInChat = onSearchInChat
+            }
+        }
+    }
+    public var onRemindLater: (@MainActor (String) -> Bool)? {
+        didSet {
+            guard let onRemindLater else { return }
+            for session in sessions.values where session.inbox == nil {
+                let host = session.hostInbox
+                session.conversation.onRemindLater = { [weak host, onRemindLater] roomID in
+                    guard !roomID.isEmpty else { return false }
+                    if onRemindLater(roomID) {
+                        return true
+                    }
+                    guard let host, !host.isLocked, host.isEntitled(.reminders) else { return true }
+                    host.customReminder = ReminderRequest(ids: [roomID])
+                    return true
+                }
+            }
+        }
+    }
 
     public init(
         appModel: AppModel? = nil,
@@ -255,6 +317,8 @@ public final class DetachedWindowRegistry: ObservableObject {
         hotkeys: HotkeyRegistry? = nil,
         aiProviderStore: AIProviderStore? = nil,
         readAloud: ReadAloudService? = nil,
+        onSearchInChat: (@MainActor (String) -> Void)? = nil,
+        onRemindLater: (@MainActor (String) -> Bool)? = nil,
         onOpen: ((DetachedWindowTarget) -> Void)? = nil,
         onFocus: ((DetachedWindowTarget) -> Void)? = nil,
         onClose: ((DetachedWindowTarget) -> Void)? = nil
@@ -271,6 +335,8 @@ public final class DetachedWindowRegistry: ObservableObject {
         self.hotkeys = hotkeys
         self.aiProviderStore = aiProviderStore
         self.readAloud = readAloud
+        self.onSearchInChat = onSearchInChat
+        self.onRemindLater = onRemindLater
         self.onOpen = onOpen
         self.onFocus = onFocus
         self.onClose = onClose
@@ -302,7 +368,9 @@ public final class DetachedWindowRegistry: ObservableObject {
                 hotkeys: hotkeys,
                 lifecycle: lifecycle,
                 aiProviderStore: aiProviderStore,
-                readAloud: readAloud
+                readAloud: readAloud,
+                onSearchInChat: onSearchInChat,
+                onRemindLater: onRemindLater
             )
         }
         openTargets.append(target)
