@@ -18,7 +18,99 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! The relay's core: which devices are connected, and how calls reach them.
+//! The relay server: which devices are connected, how calls reach them, and
+//! the HTTP side (MCP for AI apps, device registration, `/connect`).
 
+pub mod config;
 pub mod devices;
+pub mod http;
+pub mod mcp;
 pub mod registry;
+
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use serde_json::{json, Value};
+
+/// Where log lines go: stdout in production, a buffer in tests. Lines are
+/// JSON objects. Nothing that reaches a sink may carry call arguments, call
+/// output or a token (spec §7.2).
+pub type LogSink = Arc<dyn Fn(&str) + Send + Sync>;
+
+pub fn stdout_log() -> LogSink {
+    Arc::new(|line| println!("{line}"))
+}
+
+/// Writes one event with a millisecond timestamp.
+pub fn log_event(sink: &LogSink, event: &str, fields: Value) {
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let mut line = json!({"ts_ms": ts, "event": event});
+    if let (Some(obj), Some(extra)) = (line.as_object_mut(), fields.as_object()) {
+        for (k, v) in extra {
+            obj.insert(k.clone(), v.clone());
+        }
+    }
+    sink(&line.to_string());
+}
+
+/// `n` random bytes from the OS. Panics if the OS has no randomness to give,
+/// which is not something the relay can run without.
+pub fn random_bytes<const N: usize>() -> [u8; N] {
+    use ring::rand::SecureRandom;
+    let mut out = [0u8; N];
+    ring::rand::SystemRandom::new()
+        .fill(&mut out)
+        .expect("the OS random source failed");
+    out
+}
+
+pub fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// 128 random bits as 32 hex characters: session ids and call ids.
+pub fn random_id() -> String {
+    hex(&random_bytes::<16>())
+}
+
+/// A random (version 4) UUID in its usual text form.
+pub fn uuid_v4() -> String {
+    let mut b = random_bytes::<16>();
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    let h = hex(&b);
+    format!(
+        "{}-{}-{}-{}-{}",
+        &h[0..8],
+        &h[8..12],
+        &h[12..16],
+        &h[16..20],
+        &h[20..32]
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ids_are_random_and_well_formed() {
+        let (a, b) = (random_id(), random_id());
+        assert_eq!(a.len(), 32);
+        assert!(a.bytes().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(a, b);
+
+        let u = uuid_v4();
+        let parts: Vec<&str> = u.split('-').collect();
+        assert_eq!(
+            parts.iter().map(|p| p.len()).collect::<Vec<_>>(),
+            vec![8, 4, 4, 4, 12]
+        );
+        assert!(parts[2].starts_with('4'), "{u}");
+        assert!("89ab".contains(&parts[3][..1]), "{u}");
+        assert_ne!(u, uuid_v4());
+    }
+}

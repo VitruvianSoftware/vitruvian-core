@@ -20,30 +20,60 @@
 
 # gazelle:ignore
 
-load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
-# The relay server's core: device registry and call routing.
+# The relay server: device registry and call routing, MCP over Streamable HTTP
+# for AI apps, device registration, and the /connect WebSocket.
 package(default_visibility = ["//apps/suites/vitruvian-relay:__subpackages__"])
 
 _CRATES = [
     "//apps/suites/vitruvian-relay/protocol:vitruvian_relay_protocol",
+    "//packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth",
+    "@vitruvian_relay_crates//:base64",
+    "@vitruvian_relay_crates//:bytes",
+    "@vitruvian_relay_crates//:futures-util",
+    "@vitruvian_relay_crates//:http",
+    "@vitruvian_relay_crates//:http-body-util",
+    "@vitruvian_relay_crates//:hyper",
+    "@vitruvian_relay_crates//:hyper-util",
+    "@vitruvian_relay_crates//:ring",
     "@vitruvian_relay_crates//:serde",
     "@vitruvian_relay_crates//:serde_json",
     "@vitruvian_relay_crates//:tokio",
+    "@vitruvian_relay_crates//:tokio-tungstenite",
 ]
 
 rust_library(
     name = "vitruvian_relay",
     srcs = [
+        "src/config.rs",
         "src/devices.rs",
+        "src/http.rs",
+        "src/http_tests.rs",
         "src/lib.rs",
+        "src/mcp.rs",
         "src/registry.rs",
     ],
     crate_name = "vitruvian_relay",
     crate_root = "src/lib.rs",
     edition = "2021",
     deps = _CRATES,
+)
+
+# The server. `--version` prints the version and exits 0 (the image workflow
+# runs it to check the image).
+rust_binary(
+    name = "vitruvian-relay",
+    srcs = ["src/main.rs"],
+    crate_root = "src/main.rs",
+    edition = "2021",
+    deps = [
+        ":vitruvian_relay",
+        "//packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth",
+        "@vitruvian_relay_crates//:serde_json",
+        "@vitruvian_relay_crates//:tokio",
+    ],
 )
 
 rust_test(

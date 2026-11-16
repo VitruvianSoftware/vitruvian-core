@@ -39,7 +39,12 @@ pub struct DeviceRecord {
 
 pub trait DeviceStore: Send + Sync {
     fn get(&self, id: &str) -> Option<DeviceRecord>;
+    /// `Err` can mean the record was written but may not survive a crash
+    /// (see `FileDeviceStore::put`); `get` tells the two apart.
     fn put(&self, rec: DeviceRecord) -> io::Result<()>;
+    /// The device a person owns. P1 allows one per subject, so re-registering
+    /// replaces its key and keeps its id.
+    fn find_by_owner(&self, owner_sub: &str) -> Option<DeviceRecord>;
 }
 
 /// On disk the key is hex, so the file is readable and diffable.
@@ -142,6 +147,17 @@ impl DeviceStore for FileDeviceStore {
         })
     }
 
+    fn find_by_owner(&self, owner_sub: &str) -> Option<DeviceRecord> {
+        let id = self
+            .devices
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(_, d)| d.owner_sub == owner_sub)
+            .map(|(id, _)| id.clone())?;
+        self.get(&id)
+    }
+
     fn put(&self, rec: DeviceRecord) -> io::Result<()> {
         let mut devices = self.devices.lock().unwrap();
         let mut next = devices.clone();
@@ -224,6 +240,17 @@ mod tests {
             Some(rec("d1", 8))
         );
         assert!(!path.with_file_name("devices.json.tmp").exists());
+    }
+
+    #[test]
+    fn find_by_owner_returns_that_owners_device() {
+        let store = FileDeviceStore::open(temp_path("owner")).unwrap();
+        assert_eq!(store.find_by_owner("sub-d1"), None);
+        store.put(rec("d1", 1)).unwrap();
+        store.put(rec("d2", 2)).unwrap();
+        assert_eq!(store.find_by_owner("sub-d2"), Some(rec("d2", 2)));
+        assert_eq!(store.find_by_owner("sub-d1"), Some(rec("d1", 1)));
+        assert_eq!(store.find_by_owner("nobody"), None);
     }
 
     #[test]
