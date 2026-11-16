@@ -63,6 +63,39 @@ fn kill_group(child: &Child) {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LeaderState {
+    Running,
+    Exited,
+    /// The check itself failed; treated like a timeout (kill, Deny).
+    Error,
+}
+
+/// Has the dialog process exited? Uses `waitid(WNOWAIT)`, which reports the
+/// exit but leaves the zombie in place (`try_wait` would reap it).
+fn leader_state(child: &Child) -> LeaderState {
+    // SAFETY: `info` is plain zeroed memory that waitid fills in.
+    let (ret, pid) = unsafe {
+        let mut info: libc::siginfo_t = std::mem::zeroed();
+        let ret = libc::waitid(
+            libc::P_PID,
+            child.id() as libc::id_t,
+            &mut info,
+            libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+        );
+        #[cfg(target_os = "macos")]
+        let pid = info.si_pid;
+        #[cfg(not(target_os = "macos"))]
+        let pid = info.si_pid();
+        (ret, pid)
+    };
+    match (ret, pid) {
+        (0, 0) => LeaderState::Running,
+        (0, _) => LeaderState::Exited,
+        _ => LeaderState::Error,
+    }
+}
+
 impl PromptHandle {
     /// Waits for the person's answer, for at most the timeout plus a short
     /// grace, however the dialog process behaves. Only a clean exit whose
@@ -72,18 +105,24 @@ impl PromptHandle {
         let Some(mut child) = self.child.take() else {
             return Answer::Deny;
         };
-        let success = loop {
-            match child.try_wait() {
-                Ok(Some(s)) => break s.success(),
-                Ok(None) if Instant::now() < self.deadline => {
+        // Watch for the leader's exit without reaping it, so its process
+        // group id cannot be reused before the group is killed.
+        let mut ok = false;
+        loop {
+            match leader_state(&child) {
+                LeaderState::Exited => {
+                    ok = true;
+                    break;
+                }
+                LeaderState::Running if Instant::now() < self.deadline => {
                     std::thread::sleep(Duration::from_millis(20))
                 }
-                _ => break false,
+                _ => break,
             }
-        };
+        }
         // Whatever the outcome, nothing the dialog started stays alive.
         kill_group(&child);
-        let _ = child.wait();
+        let success = child.wait().map(|s| s.success()).unwrap_or(false) && ok;
         if !success {
             return Answer::Deny;
         }
@@ -182,6 +221,8 @@ pub fn ask_with(osascript: &Path, summary: &str, timeout: Duration) -> PromptHan
 }
 
 const MAX_FIELD: usize = 200;
+/// Shown where the text has a line break.
+const LINE_BREAK: char = '⏎';
 
 /// Characters that show nothing or change how the text reads: controls
 /// (Cc), the line and paragraph separators (Zl, Zp), and the invisible
@@ -190,8 +231,8 @@ const MAX_FIELD: usize = 200;
 fn is_hidden_char(c: char) -> bool {
     c.is_control()
         || matches!(c,
-            '\u{00AD}' | '\u{0600}'..='\u{0605}' | '\u{061C}' | '\u{06DD}' | '\u{070F}'
-            | '\u{0890}'..='\u{0891}' | '\u{08E2}' | '\u{180E}' | '\u{200B}'..='\u{200F}'
+            '\u{00AD}' | '\u{034F}' | '\u{0600}'..='\u{0605}' | '\u{061C}' | '\u{06DD}' | '\u{070F}'
+            | '\u{0890}'..='\u{0891}' | '\u{08E2}' | '\u{115F}' | '\u{1160}' | '\u{17B4}' | '\u{17B5}' | '\u{180B}'..='\u{180E}' | '\u{2800}' | '\u{3164}' | '\u{FE00}'..='\u{FE0F}' | '\u{FFA0}' | '\u{E0100}'..='\u{E01EF}' | '\u{200B}'..='\u{200F}'
             | '\u{2028}'..='\u{202E}' | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206F}'
             | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}' | '\u{110BD}' | '\u{110CD}'
             | '\u{13430}'..='\u{1343F}' | '\u{1BCA0}'..='\u{1BCA3}'
@@ -204,9 +245,30 @@ fn is_hidden_char(c: char) -> bool {
 fn clean(s: &str) -> String {
     let mut out = String::new();
     let mut space = false;
-    for c in s.chars().filter(|c| !is_hidden_char(*c)) {
+    let mut after_cr = false;
+    for c in s.chars() {
+        // A line break is a command separator or Enter: show it, never
+        // blend it into a space. "\r\n" is one break. Tabs and other
+        // whitespace become a single space.
+        if matches!(c, '\n' | '\r' | '\u{85}' | '\u{2028}' | '\u{2029}') {
+            if c == '\n' && after_cr {
+                after_cr = false;
+                continue;
+            }
+            after_cr = c == '\r';
+            if !out.is_empty() && !out.ends_with(' ') {
+                out.push(' ');
+            }
+            out.push(LINE_BREAK);
+            space = true;
+            continue;
+        }
+        after_cr = false;
         if c.is_whitespace() {
             space = true;
+            continue;
+        }
+        if is_hidden_char(c) {
             continue;
         }
         if space && !out.is_empty() {
@@ -545,7 +607,7 @@ mod tests {
 
     #[test]
     fn summary_strips_invisible_and_format_characters() {
-        let nasty = "a\u{2028}b\u{2029}c\u{202A}d\u{202D}e\u{202E}f\u{2066}g\u{2067}h\u{2068}i\u{2069}j\u{200B}k\u{200E}l\u{200F}m\u{FEFF}n\u{00AD}o\u{2060}p\u{E0041}q";
+        let nasty = "a\u{202A}b\u{202A}c\u{202A}d\u{202D}e\u{202E}f\u{2066}g\u{2067}h\u{2068}i\u{2069}j\u{200B}k\u{200E}l\u{200F}m\u{FEFF}n\u{00AD}o\u{2060}p\u{E0041}q";
         let m = summarize("start_process", &json!({ "command": nasty }));
         assert_eq!(m, "start_process: command=abcdefghijklmnopq");
         let m = summarize("mystery", &json!({ "k": "x\u{202E}y" }));
@@ -598,5 +660,82 @@ mod tests {
         // A tool with two keys where one is missing also falls back.
         let m = summarize("move_file", &json!({ "source": "/a" }));
         assert!(m.contains("no destination") && m.contains("/a"), "{m}");
+    }
+
+    #[test]
+    fn line_breaks_stay_visible() {
+        let m = summarize(
+            "start_process",
+            &json!({"command": "echo backup done\nrm -rf ~/Documents"}),
+        );
+        assert_eq!(
+            m,
+            "start_process: command=echo backup done ⏎ rm -rf ~/Documents"
+        );
+        for (input, want) in [
+            ("a\r\nb", "a ⏎ b"),
+            ("a\rb", "a ⏎ b"),
+            ("a\u{2028}b", "a ⏎ b"),
+            ("a\u{2029}b", "a ⏎ b"),
+            ("a\u{85}b", "a ⏎ b"),
+            ("a\n\nb", "a ⏎ ⏎ b"),
+            ("a\n", "a ⏎"),
+            ("\nb", "⏎ b"),
+            ("a\tb", "a b"),
+            ("a \n  b", "a ⏎ b"),
+        ] {
+            let m = summarize("start_process", &json!({ "command": input }));
+            assert_eq!(m, format!("start_process: command={want}"), "{input:?}");
+        }
+        // Interactive input: a newline is Enter.
+        let m = summarize(
+            "interact_with_process",
+            &json!({"pid": 3, "input": "y\nrm x"}),
+        );
+        assert!(m.contains("y ⏎ rm x"), "{m}");
+    }
+
+    #[test]
+    fn line_break_marker_counts_as_one_character_in_the_cut() {
+        let long = format!("{}\nrm -rf ~", "a".repeat(190));
+        let m = summarize("start_process", &json!({ "command": long }));
+        // 190 a's + " ⏎ " + 6 more characters = 200, then the cut.
+        assert!(m.contains('⏎'), "{m}");
+        assert!(m.contains("truncated"), "{m}");
+        let m = summarize(
+            "start_process",
+            &json!({ "command": format!("{}\nrm", "a".repeat(195)) }),
+        );
+        assert!(m.contains("a ⏎") || m.contains("a ⏎ "), "{m}");
+        let field: String = m
+            .trim_start_matches("start_process: command=")
+            .chars()
+            .take_while(|c| *c != '…')
+            .collect();
+        assert!(field.chars().count() <= 200, "{}", field.chars().count());
+    }
+
+    #[test]
+    fn summary_strips_blank_look_alikes() {
+        let nasty = "a\u{115F}b\u{1160}c\u{3164}d\u{FFA0}e\u{2800}f\u{034F}g\u{FE00}h\u{FE0F}i\u{E0100}j\u{E01EF}k";
+        let m = summarize("start_process", &json!({ "command": nasty }));
+        assert_eq!(m, "start_process: command=abcdefghijk");
+    }
+
+    #[test]
+    fn exit_is_observed_without_reaping() {
+        let mut child = Command::new("/bin/sh")
+            .args(["-c", "exit 0"])
+            .spawn()
+            .unwrap();
+        let t = Instant::now();
+        while leader_state(&child) == LeaderState::Running {
+            assert!(t.elapsed() < Duration::from_secs(5));
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        // Still a zombie: the id cannot be reused yet, and asking again says the same.
+        assert_eq!(leader_state(&child), LeaderState::Exited);
+        assert_eq!(leader_state(&child), LeaderState::Exited);
+        assert!(child.wait().unwrap().success());
     }
 }
