@@ -286,7 +286,7 @@ package final class AgentUsageService: ObservableObject {
     }
 
     /// A deliberate retry after choosing or signing in to an account.
-    func checkClaudeAccount() {
+    package func checkClaudeAccount() {
         guard running, !paused, claudeAccountRequest == nil else { return }
         claudeAccountAttempted = .distantPast
         refreshClaudeLimits(pageShows: true)

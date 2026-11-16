@@ -8,7 +8,7 @@ import VitruvianAtriumServices
 
 /// Chooses an existing login. Claude Code remains responsible for signing in.
 struct ClaudeAccountSettings: View {
-    @AppStorage(Preferences.notchAgentsClaudeProfile) private var selected = ""
+    @AppStorage(Preferences.notchAgentsClaudeProfile) private var selected: String
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var usage = AgentUsageService.shared
     @State private var entries: [Entry] = []
