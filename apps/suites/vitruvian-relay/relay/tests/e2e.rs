@@ -56,7 +56,7 @@ use vitruvian_relay::LogSink;
 use vitruvian_relay_connector::bridge::BridgeOutput;
 use vitruvian_relay_connector::keys::{load_or_create, public_key_b64};
 use vitruvian_relay_connector::link::{
-    Asker, Link, TokenError, TokenSource, Tools, Timing as LinkTiming,
+    Asker, Link, StillWanted, TokenError, TokenSource, Tools, Timing as LinkTiming,
 };
 use vitruvian_relay_connector::prompt::Waited;
 use vitruvian_relay_connector::state::{save_device, DeviceInfo};
@@ -460,7 +460,11 @@ impl Tools for E2eTools {
         tool: &str,
         args: Value,
         _deadline: Instant,
-    ) -> impl std::future::Future<Output = BridgeOutput> + Send {
+        wanted: StillWanted,
+    ) -> impl std::future::Future<Output = Option<BridgeOutput>> + Send {
+        if !wanted() {
+            return futures_ready(None);
+        }
         self.ran
             .lock()
             .unwrap()
@@ -471,14 +475,16 @@ impl Tools for E2eTools {
             ("start_process", _, Some(c)) => format!("ran {c}"),
             _ => "?".into(),
         };
-        async move {
-            BridgeOutput {
-                content: json!([{"type": "text", "text": text}]),
-                is_error: false,
-                truncated: false,
-            }
-        }
+        futures_ready(Some(BridgeOutput {
+            content: json!([{"type": "text", "text": text}]),
+            is_error: false,
+            truncated: false,
+        }))
     }
+}
+
+fn futures_ready<T: Send>(v: T) -> impl std::future::Future<Output = T> + Send {
+    std::future::ready(v)
 }
 
 /// The dialog: waits for the test's answer, or for the link to close it.

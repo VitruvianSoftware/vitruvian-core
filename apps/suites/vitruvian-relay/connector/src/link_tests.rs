@@ -193,6 +193,85 @@ impl FakeConn {
             deadline_ms: 30_000,
         }));
     }
+
+    /// Pings every `every`, as the real relay does while a call is in
+    /// flight, until the returned handle is dropped or aborted.
+    fn pinger(&self, every: Duration) -> Pinger {
+        let to = self.to.clone();
+        let paused = Arc::new(AtomicBool::new(false));
+        let p = paused.clone();
+        let task = tokio::spawn(async move {
+            let mut n = 1000;
+            loop {
+                tokio::time::sleep(every).await;
+                if p.load(Ordering::SeqCst) {
+                    continue;
+                }
+                n += 1;
+                if to.send(ToConnector::Ping { n }).is_err() {
+                    return;
+                }
+            }
+        });
+        Pinger { task, paused }
+    }
+}
+
+/// Stops its pings when dropped.
+struct Pinger {
+    task: tokio::task::JoinHandle<()>,
+    paused: Arc<AtomicBool>,
+}
+
+impl Pinger {
+    fn pause(&self, on: bool) {
+        self.paused.store(on, Ordering::SeqCst);
+    }
+}
+
+impl Drop for Pinger {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+/// A loopback proxy to `to` that passes what the connector sends at once
+/// but what the relay sends at `relay_bytes_per_sec`: a slow downlink.
+async fn slow_downlink(to: SocketAddr, relay_bytes_per_sec: usize) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        while let Ok((down, _)) = listener.accept().await {
+            let Ok(up) = tokio::net::TcpStream::connect(to).await else {
+                continue;
+            };
+            let (mut down_r, mut down_w) = down.into_split();
+            let (mut up_r, mut up_w) = up.into_split();
+            tokio::spawn(async move {
+                let _ = tokio::io::copy(&mut down_r, &mut up_w).await;
+            });
+            tokio::spawn(async move {
+                let chunk = 4 * 1024;
+                let pause =
+                    Duration::from_secs_f64(chunk as f64 / relay_bytes_per_sec as f64);
+                let mut buf = vec![0u8; chunk];
+                loop {
+                    match up_r.read(&mut buf).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            if down_w.write_all(&buf[..n]).await.is_err() {
+                                break;
+                            }
+                            tokio::time::sleep(pause).await;
+                        }
+                    }
+                }
+                let _ = down_w.shutdown().await;
+            });
+        }
+    });
+    format!("http://{addr}")
 }
 
 // --------------------------------------------------- fake tools, dialog, token
@@ -214,6 +293,9 @@ struct FakeTools {
     /// `running` line, and notes the answer.
     log_path: Mutex<Option<PathBuf>>,
     logged_first: Mutex<Vec<bool>>,
+    /// If set, each call waits here before it asks whether it is still
+    /// wanted, as the bridge does while desktop-commander restarts.
+    restart: Mutex<Option<Gate>>,
 }
 
 impl FakeTools {
@@ -234,6 +316,30 @@ impl Tools for FakeTools {
     }
 
     fn call(
+        &self,
+        tool: &str,
+        args: Value,
+        deadline: Instant,
+        wanted: StillWanted,
+    ) -> impl Future<Output = Option<BridgeOutput>> + Send {
+        // Stands in for the wait on a desktop-commander restart.
+        let restart = self.restart.lock().unwrap().clone();
+        let tool = tool.to_string();
+        async move {
+            if let Some(g) = restart {
+                g.reached.notify_one();
+                g.go.notified().await;
+            }
+            if !wanted() {
+                return None;
+            }
+            Some(self.run(&tool, args, deadline).await)
+        }
+    }
+}
+
+impl FakeTools {
+    fn run(
         &self,
         tool: &str,
         args: Value,
@@ -1767,6 +1873,10 @@ async fn cancelling_a_running_call_does_not_trip_the_silence_check() {
     let tools = p.tools.clone();
     let _run = start(&dir, &relay.url(), p);
     let (mut c, _) = relay.welcome().await;
+    // Like the real relay, it pings while it waits on a call: on a loaded
+    // machine the record and log syncs before the call starts can take
+    // longer than 3 silent intervals.
+    let pings = c.pinger(Duration::from_millis(50));
     c.call("slow", "read_file", json!({"path": "/a", "sleep_ms": 1500}));
     until("the slow call to start", || tools.count() == 1).await;
     c.send(ToConnector::Cancel {
@@ -1774,6 +1884,8 @@ async fn cancelling_a_running_call_does_not_trip_the_silence_check() {
     });
     c.call("fast", "read_file", json!({"path": "/b"}));
     assert_eq!(c.result().await.call_id, "fast");
+    // Nothing is pending on the relay's side now: it stops pinging.
+    drop(pings);
     // Silent for 8 intervals: the link stays up.
     c.quiet_for(Duration::from_millis(800)).await;
     assert!(relay.conns.try_recv().is_err(), "the link was dropped");
@@ -2045,4 +2157,138 @@ async fn a_drop_before_a_cleared_call_starts_stops_it() {
     g.go.notify_one();
     until_logged(&dir, "cancelled before running").await;
     assert_eq!(tools.count(), 0);
+}
+
+// --------------------------------------------------------- final fix wave
+
+/// Final review I1. A send can take longer than the silence limit (a large
+/// result on a slow uplink); the loop reads nothing meanwhile, so whatever
+/// the relay sent then is still unread. That time is not silence. Here the
+/// send held is a pong (the same code path as a result, without the disk
+/// syncs a call adds), and the relay sends nothing during the hold, so no
+/// unread frame can win the race for the check: it must leave the send's
+/// time out.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_slow_send_during_a_dialog_keeps_the_link() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-held-send");
+    let mut p = parts();
+    p.asker = FakeAsker::answering(None);
+    // 300 ms of silence is a drop.
+    p.timing.in_call_every = Duration::from_millis(100);
+    let g = gate();
+    // Only the test's own pings (the pinger numbers from 1001).
+    p.hooks.hold_pong = Some((1000, g.clone()));
+    let asker = p.asker.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    let pings = c.pinger(Duration::from_millis(20));
+    c.call("ask", "start_process", json!({"command": "make"}));
+    until("the dialog", || asker.opened.load(Ordering::SeqCst) == 1).await;
+    for n in 0..3 {
+        // The relay's own pings stop, and the ones sent are read, before
+        // the ping whose pong is held: nothing is left unread.
+        pings.pause(true);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        c.send(ToConnector::Ping { n });
+        tokio::time::timeout(WAIT, g.reached.notified())
+            .await
+            .expect("the pong send was reached");
+        // Three silence limits, all of it spent "sending".
+        tokio::time::sleep(Duration::from_millis(900)).await;
+        g.go.notify_one();
+        loop {
+            match c.recv_any().await {
+                ToRelay::Pong { n: got } if got == n => break,
+                ToRelay::Ping { .. } | ToRelay::Pong { .. } => {}
+                other => panic!("expected pong {n}, got {other:?}"),
+            }
+        }
+        pings.pause(false);
+    }
+    assert_eq!(asker.dismissed.load(Ordering::SeqCst), 0, "the dialog closed");
+    assert!(relay.conns.try_recv().is_err(), "the link was dropped");
+    asker.set(Waited::Allow);
+    assert_eq!(c.result().await.call_id, "ask");
+}
+
+/// Final-wave deferred item 7a. A large call frame that takes longer to
+/// arrive than the silence limit, while another call waits at its dialog:
+/// its bytes are the relay's sign of life (no ping can overtake it on the
+/// same socket).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_large_call_still_arriving_keeps_the_link() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-slow-frame");
+    let mut p = parts();
+    p.asker = FakeAsker::answering(None);
+    p.timing.in_call_every = Duration::from_millis(50);
+    let asker = p.asker.clone();
+    let tools = p.tools.clone();
+    // 512 KiB/s: the 512 KiB frame below takes about a second, 6 limits.
+    let url = slow_downlink(relay.addr, 512 * 1024).await;
+    let _run = start(&dir, &url, p);
+    let (mut c, _) = relay.welcome().await;
+    let _pings = c.pinger(Duration::from_millis(20));
+    c.call("ask", "start_process", json!({"command": "make"}));
+    until("the dialog", || asker.opened.load(Ordering::SeqCst) == 1).await;
+    // Pings sent after it wait behind it on the socket.
+    let big = "x".repeat(512 * 1024);
+    c.call("big", "read_file", json!({"path": "/a", "pad": big}));
+    let r = c.result().await;
+    assert_eq!(r.call_id, "big");
+    assert!(!r.is_error, "{}", text(&r));
+    assert_eq!(tools.count(), 1);
+    assert_eq!(asker.dismissed.load(Ordering::SeqCst), 0, "the dialog closed");
+    assert!(relay.conns.try_recv().is_err(), "the link was dropped");
+    asker.set(Waited::Deny);
+    assert_eq!(c.result().await.call_id, "ask");
+}
+
+/// Final review I2. A call cleared to run waits while desktop-commander
+/// restarts; a cancel (or a drop) in that wait must still stop it: the
+/// bridge asks once more just before it sends the call.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cancel_during_a_restart_stops_the_call() {
+    for drop_link in [false, true] {
+        let mut relay = FakeRelay::start().await;
+        let dir = registered(if drop_link {
+            "l-restart-drop"
+        } else {
+            "l-restart-cancel"
+        });
+        let p = parts();
+        let g = gate();
+        *p.tools.restart.lock().unwrap() = Some(g.clone());
+        let tools = p.tools.clone();
+        let _run = start(&dir, &relay.url(), p);
+        let (c, _) = relay.welcome().await;
+        c.call("c1", "read_file", json!({"path": "/a"}));
+        tokio::time::timeout(WAIT, g.reached.notified())
+            .await
+            .expect("the call reached the restart");
+        if drop_link {
+            drop(c);
+            let _next = relay.next_conn().await; // the drop has been seen
+        } else {
+            c.send(ToConnector::Cancel {
+                call_id: "c1".into(),
+            });
+            // The cancel is read before this ping is answered.
+            c.send(ToConnector::Ping { n: 7 });
+            let mut c = c;
+            loop {
+                if let ToRelay::Pong { n: 7 } = c.recv_any().await {
+                    break;
+                }
+            }
+            g.go.notify_one();
+            until_logged(&dir, "cancelled before running").await;
+            assert_eq!(tools.count(), 0, "it ran after its cancel");
+            continue;
+        }
+        g.go.notify_one();
+        until_logged(&dir, "cancelled before running").await;
+        assert_eq!(tools.count(), 0, "it ran after the link dropped");
+    }
 }

@@ -36,7 +36,10 @@
 //!   waiting at its dialog has its state changed under the same lock that
 //!   the dialog's answer is checked under, so a late "Allow" finds it
 //!   stopped. While a call is in flight the relay pings every 2 s; three
-//!   silent intervals count as a drop, as they do on the relay's side.
+//!   silent intervals count as a drop, as they do on the relay's side. Any
+//!   bytes from the relay count as life, even part of a large frame still
+//!   arriving, and time this loop spends sending is not silence: it cannot
+//!   read meanwhile.
 //! - **A tool outside `no_prompt` runs without Allow.** `Rules::decide`
 //!   picks; only `Run` skips the dialog.
 //! - **A flood of calls.** At most 16 calls in flight and one dialog on
@@ -240,16 +243,24 @@ pub fn connect_url(relay: &str) -> std::result::Result<String, String> {
     ))
 }
 
+/// Asked at the last moment before a call is sent to the tool: is it still
+/// wanted? (Not cancelled, the link not dropped, the deadline not passed.)
+pub type StillWanted = Arc<dyn Fn() -> bool + Send + Sync>;
+
 /// The tool side: `desktop-commander` through the bridge (fakes in tests).
 pub trait Tools: Send + Sync + 'static {
     /// Every tool, unfiltered.
     fn list(&self) -> impl Future<Output = Vec<ToolDef>> + Send;
+    /// Runs `tool`, but only if `wanted` still says yes once the tool side
+    /// is ready to take it (after a restart of desktop-commander, say):
+    /// `None` means it was not sent.
     fn call(
         &self,
         tool: &str,
         args: Value,
         deadline: Instant,
-    ) -> impl Future<Output = BridgeOutput> + Send;
+        wanted: StillWanted,
+    ) -> impl Future<Output = Option<BridgeOutput>> + Send;
 }
 
 impl Tools for Bridge {
@@ -262,8 +273,9 @@ impl Tools for Bridge {
         tool: &str,
         args: Value,
         deadline: Instant,
-    ) -> impl Future<Output = BridgeOutput> + Send {
-        Bridge::call(self, tool, args, deadline)
+        wanted: StillWanted,
+    ) -> impl Future<Output = Option<BridgeOutput>> + Send {
+        Bridge::call_if(self, tool, args, deadline, move || wanted())
     }
 }
 
@@ -370,6 +382,10 @@ pub(crate) struct Hooks {
     pub before_ask: Option<Gate>,
     /// While set, the calls-log writer waits before each line.
     pub hold_log: Option<Arc<AtomicBool>>,
+    /// The link loop, about to send the pong for a ping numbered below the
+    /// first: it waits here as it would in a slow send (it reads nothing
+    /// meanwhile).
+    pub hold_pong: Option<(u64, Gate)>,
 }
 
 /// `reached` is notified when the task gets there; it then waits for `go`.
@@ -1210,12 +1226,16 @@ impl<T: Tools, A: Asker> Shared<T, A> {
             let _ = out.send(ToRelay::Result(r));
             return;
         }
-        // A cancel or the deadline may have come while the line was synced.
-        if !self.may_start(&call_id, &tool, &args, deadline) {
-            return;
-        }
+        // A cancel or the deadline may have come while the line was synced,
+        // or may yet come while desktop-commander restarts: the bridge asks
+        // again just before it sends the call.
+        let me = self.clone();
+        let (id, t, a) = (call_id.clone(), tool.clone(), args.clone());
+        let wanted: StillWanted = Arc::new(move || me.may_start(&id, &t, &a, deadline));
         let started = Instant::now();
-        let output = self.tools.call(&tool, args, deadline).await;
+        let Some(output) = self.tools.call(&tool, args, deadline, wanted).await else {
+            return;
+        };
         let r = CallResult {
             call_id: call_id.clone(),
             content: output.content,
@@ -1374,8 +1394,126 @@ async fn status_writer(dir: PathBuf, log: Log, mut rx: watch::Receiver<Option<St
 
 // -------------------------------------------------------------------- link
 
-type Ws = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type Ws = WebSocketStream<MaybeTlsStream<Counted<TcpStream>>>;
 type Sink = SplitSink<Ws, Message>;
+
+/// What the socket under the WebSocket has read: how many bytes, and when
+/// the last ones came. So the link knows the relay is there while a large
+/// frame is still on its way (the relay does the same: `SeenIo` in
+/// relay/src/http.rs).
+pub(crate) struct ReadMeter {
+    bytes: AtomicU64,
+    /// Milliseconds after `since` of the last read that returned bytes.
+    last_ms: AtomicU64,
+    since: Instant,
+}
+
+impl ReadMeter {
+    fn new() -> ReadMeter {
+        ReadMeter {
+            bytes: AtomicU64::new(0),
+            last_ms: AtomicU64::new(0),
+            since: Instant::now(),
+        }
+    }
+
+    fn bytes(&self) -> u64 {
+        self.bytes.load(Ordering::Relaxed)
+    }
+
+    /// When bytes last arrived (`since` if none have).
+    fn last(&self) -> Instant {
+        self.since + Duration::from_millis(self.last_ms.load(Ordering::Relaxed))
+    }
+}
+
+pub(crate) struct Counted<S> {
+    inner: S,
+    meter: Arc<ReadMeter>,
+}
+
+impl<S: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for Counted<S> {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let before = buf.filled().len();
+        let r = std::pin::Pin::new(&mut self.inner).poll_read(cx, buf);
+        let n = buf.filled().len() - before;
+        if n > 0 {
+            let m = &self.meter;
+            m.bytes.fetch_add(n as u64, Ordering::Relaxed);
+            m.last_ms
+                .fetch_max(m.since.elapsed().as_millis() as u64, Ordering::Relaxed);
+        }
+        r
+    }
+}
+
+impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Counted<S> {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.inner).poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+
+    fn poll_write_vectored(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        bufs: &[std::io::IoSlice<'_>],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.inner).poll_write_vectored(cx, bufs)
+    }
+
+    fn is_write_vectored(&self) -> bool {
+        self.inner.is_write_vectored()
+    }
+}
+
+/// When the relay was last heard from, for the in-call silence check. Time
+/// the link loop spends sending is not counted: it cannot read meanwhile,
+/// so whatever the relay sent then is still waiting to be read.
+struct Silence {
+    last: Instant,
+}
+
+impl Silence {
+    fn heard(&mut self) {
+        self.last = Instant::now();
+    }
+
+    /// Bytes read from the socket count from when they came, even part of a
+    /// frame not yet whole.
+    fn saw(&mut self, read: &ReadMeter) {
+        self.last = self.last.max(read.last());
+    }
+
+    /// The loop just spent `spent` sending.
+    fn sent(&mut self, spent: Duration) {
+        self.last = (self.last + spent).min(Instant::now());
+    }
+
+    fn silent_for(&self) -> Duration {
+        self.last.elapsed()
+    }
+}
 
 /// Resolves once `stop` says so; never if its sender is gone.
 async fn stopped(stop: &mut watch::Receiver<bool>) {
@@ -1588,7 +1726,7 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
                     (self.log)(&format!("could not reach the relay: {e}"));
                     None
                 }
-                Ok(ws) => {
+                Ok((ws, read)) => {
                     let gen = shared.rules_gen.load(Ordering::SeqCst);
                     let Some(hello) = self
                         .guarded(
@@ -1600,8 +1738,16 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
                     else {
                         break;
                     };
-                    let (up, shut) =
-                        session(&shared, ws, conn, hello, gen, &mut status, &mut shutdown).await;
+                    let (up, shut) = session(
+                        &shared,
+                        (ws, read),
+                        conn,
+                        hello,
+                        gen,
+                        &mut status,
+                        &mut shutdown,
+                    )
+                    .await;
                     if shut {
                         break;
                     }
@@ -1678,12 +1824,24 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
         self.pause(wait, status, shutdown).await
     }
 
-    async fn connect(&self, token: &str) -> std::result::Result<Ws, String> {
+    /// The WebSocket, and what has been read from under it.
+    async fn connect(&self, token: &str) -> std::result::Result<(Ws, Arc<ReadMeter>), String> {
         let url = connect_url(&self.relay_url)?;
         let mut req = url
             .as_str()
             .into_client_request()
             .map_err(|e| format!("{url}: {e}"))?;
+        let host = req
+            .uri()
+            .host()
+            .ok_or_else(|| format!("{url}: no host"))?
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .to_string();
+        let port = req
+            .uri()
+            .port_u16()
+            .unwrap_or(if url.starts_with("wss://") { 443 } else { 80 });
         let bearer = HeaderValue::from_str(&format!("Bearer {token}"))
             .map_err(|_| "the token is not a valid header value".to_string())?;
         req.headers_mut().insert("authorization", bearer);
@@ -1697,20 +1855,27 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
             max_frame_size: Some(MAX_FRAME_BYTES),
             ..Default::default()
         };
-        let dial = tokio_tungstenite::connect_async_tls_with_config(
-            req,
-            Some(config),
-            true,
-            Some(connector),
-        );
+        let read = Arc::new(ReadMeter::new());
+        let meter = read.clone();
+        let dial = async move {
+            let tcp = TcpStream::connect((host.as_str(), port))
+                .await
+                .map_err(|e| format!("connect to {host}:{port}: {e}"))?;
+            let _ = tcp.set_nodelay(true);
+            let tcp = Counted { inner: tcp, meter };
+            tokio_tungstenite::client_async_tls_with_config(req, tcp, Some(config), Some(connector))
+                .await
+                .map_err(|e| match e {
+                    tokio_tungstenite::tungstenite::Error::Http(resp) => {
+                        format!("the relay refused the link (HTTP {})", resp.status())
+                    }
+                    e => e.to_string(),
+                })
+        };
         match tokio::time::timeout(self.timing.connect_timeout, dial).await {
             Err(_) => Err("timed out".into()),
-            Ok(Err(tokio_tungstenite::tungstenite::Error::Http(resp))) => Err(format!(
-                "the relay refused the link (HTTP {})",
-                resp.status()
-            )),
-            Ok(Err(e)) => Err(e.to_string()),
-            Ok(Ok((ws, _))) => Ok(ws),
+            Ok(Err(e)) => Err(e),
+            Ok(Ok((ws, _))) => Ok((ws, read)),
         }
     }
 
@@ -1733,7 +1898,7 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
 /// after `welcome` (if it got that far) and whether vrelay is stopping.
 async fn session<T: Tools, A: Asker>(
     shared: &Arc<Shared<T, A>>,
-    ws: Ws,
+    (ws, read): (Ws, Arc<ReadMeter>),
     conn: u64,
     hello: Hello,
     rules_gen: u64,
@@ -1761,7 +1926,11 @@ async fn session<T: Tools, A: Asker>(
     let mut in_call = tokio::time::interval_at(start + t.in_call_every, t.in_call_every);
     in_call.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let silent_limit = t.in_call_every * t.max_missed.max(1);
-    let mut last_heard = Instant::now();
+    let mut silence = Silence {
+        last: Instant::now(),
+    };
+    // Bytes read when our last ping went out: any since answer it.
+    let mut read_at_ping = read.bytes();
     let mut beat = Beat::default();
     let mut shut = false;
     let why: String = loop {
@@ -1772,6 +1941,11 @@ async fn session<T: Tools, A: Asker>(
                 break "vrelay is stopping".into();
             }
             _ = pings.tick() => {
+                let now_read = read.bytes();
+                if now_read != read_at_ping {
+                    beat.heard();
+                }
+                read_at_ping = now_read;
                 if beat.awaiting {
                     beat.missed += 1;
                     if beat.missed >= t.max_missed {
@@ -1780,15 +1954,18 @@ async fn session<T: Tools, A: Asker>(
                 }
                 beat.n = beat.n.wrapping_add(1);
                 beat.awaiting = true;
+                let at = Instant::now();
                 if let Err(e) = send(&mut sink, &ToRelay::Ping { n: beat.n }, t.send_timeout).await {
                     break e;
                 }
+                silence.sent(at.elapsed());
             }
             // While a call is in flight the relay pings every 2 s and drops
             // the call after 3 missed: go down as quickly, so no dialog
             // outlives a link the relay has already given up on.
             _ = in_call.tick() => {
-                if last_heard.elapsed() >= silent_limit
+                silence.saw(&read);
+                if silence.silent_for() >= silent_limit
                     && shared.calls.lock().unwrap().relay_waiting_on(conn, Instant::now())
                 {
                     break format!("nothing from the relay for {silent_limit:?} during a call");
@@ -1796,9 +1973,12 @@ async fn session<T: Tools, A: Asker>(
             }
             _ = refresh.tick() => status.write(),
             Some(f) = out_rx.recv() => {
+                let at = Instant::now();
                 if let Err(e) = send(&mut sink, &f, t.send_timeout).await {
                     break e;
                 }
+                // Whatever the relay sent meanwhile is still unread.
+                silence.sent(at.elapsed());
             }
             msg = stream.next() => {
                 let text = match msg {
@@ -1813,12 +1993,12 @@ async fn session<T: Tools, A: Asker>(
                     }
                     Some(Ok(_)) => {
                         beat.heard();
-                        last_heard = Instant::now();
+                        silence.heard();
                         continue;
                     }
                 };
                 beat.heard();
-                last_heard = Instant::now();
+                silence.heard();
                 match decode_to_connector(&text) {
                     // Size only: a bad frame may hold arguments.
                     Err(_) => log(&format!("ignored a bad frame ({} bytes)", text.len())),
@@ -1849,9 +2029,18 @@ async fn session<T: Tools, A: Asker>(
                         break format!("the relay refused the link: {reason}");
                     }
                     Ok(ToConnector::Ping { n }) => {
+                        let at = Instant::now();
+                        #[cfg(test)]
+                        if let Some((below, g)) = shared.hooks.hold_pong.clone() {
+                            if n < below {
+                                g.reached.notify_one();
+                                g.go.notified().await;
+                            }
+                        }
                         if let Err(e) = send(&mut sink, &ToRelay::Pong { n }, t.send_timeout).await {
                             break e;
                         }
+                        silence.sent(at.elapsed());
                     }
                     Ok(ToConnector::Pong { .. }) => {
                         status.last_pong = Some(clock());

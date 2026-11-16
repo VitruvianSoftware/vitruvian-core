@@ -52,7 +52,7 @@ use serde_json::{json, Value};
 use tokio::sync::{oneshot, watch};
 use vitruvian_relay_protocol::{encode, CallResult, FrameError, ToRelay, ToolDef, MAX_FRAME_BYTES};
 
-use crate::proc::may_kill_group_after;
+use crate::proc::{kill_group, may_kill_group_after};
 use crate::Result;
 
 /// The oldest Node `desktop-commander` 0.3.1 runs on (its `engines`).
@@ -716,15 +716,6 @@ impl Proc {
     }
 }
 
-fn kill_group(pgid: i32, sig: i32) {
-    if pgid > 1 {
-        // SAFETY: a plain syscall on a group we created; no memory is touched.
-        unsafe {
-            libc::kill(-pgid, sig);
-        }
-    }
-}
-
 fn write_loop(mut stdin: std::process::ChildStdin, rx: mpsc::Receiver<String>) {
     for line in rx {
         if stdin
@@ -1373,10 +1364,28 @@ impl Bridge {
     /// fails as such: a crash, a timeout or a refusal comes back as an error
     /// result. The output is cut to fit one frame.
     pub async fn call(&self, tool: &str, args: Value, deadline: Instant) -> BridgeOutput {
+        self.call_if(tool, args, deadline, || true)
+            .await
+            .unwrap_or_else(|| BridgeOutput::error("not sent"))
+    }
+
+    /// [`call`](Self::call), but `wanted` is asked once desktop-commander is
+    /// ready (a restart can take seconds), just before the request is
+    /// written: if it says no, nothing is sent and the answer is `None`.
+    pub async fn call_if(
+        &self,
+        tool: &str,
+        args: Value,
+        deadline: Instant,
+        wanted: impl Fn() -> bool,
+    ) -> Option<BridgeOutput> {
         let p = match self.running(deadline).await {
             Ok(p) => p,
-            Err(e) => return BridgeOutput::error(e),
+            Err(e) => return Some(BridgeOutput::error(e)),
         };
+        if !wanted() {
+            return None;
+        }
         let reply = p
             .request_async(
                 "tools/call",
@@ -1384,14 +1393,14 @@ impl Bridge {
                 deadline,
             )
             .await;
-        match reply {
+        Some(match reply {
             Ok(result) => fit_to_frame(BridgeOutput::from_result(result)),
             Err(e @ Fail::TooBig(..)) => BridgeOutput {
                 truncated: true,
                 ..BridgeOutput::error(e.to_string())
             },
             Err(e) => fit_to_frame(BridgeOutput::error(e.to_string())),
-        }
+        })
     }
 
     /// Marks the bridge stopped and kills any restart under way at once,
@@ -2167,6 +2176,38 @@ mod tests {
         let out = b.call("echo", json!({}), soon()).await;
         assert!(out.is_error);
         assert_eq!(spawns(&dir), 2);
+    }
+
+    /// Final review I2: a call that waits for a restart asks whether it is
+    /// still wanted once the server is ready, and sends nothing if not.
+    #[tokio::test]
+    async fn a_call_no_longer_wanted_after_a_restart_is_never_sent() {
+        let (cmd, dir) = fake("b-wanted");
+        let b = Bridge::start_limited(&cmd, quiet(), FAST).unwrap();
+        let out = b.call("exit", json!({}), soon()).await;
+        assert!(out.is_error);
+        // The next start takes a second; the call is cancelled meanwhile.
+        std::fs::write(dir.join("slow_init"), "1").unwrap();
+        let wanted = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let w = wanted.clone();
+        let flip = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            w.store(false, Ordering::SeqCst);
+        });
+        let w = wanted.clone();
+        let out = b
+            .call_if("spawn", json!({}), soon(), move || w.load(Ordering::SeqCst))
+            .await;
+        flip.await.unwrap();
+        assert!(out.is_none(), "{out:?}");
+        // `spawn` writes sleep.pid when it runs: it never did.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(!dir.join("sleep.pid").exists(), "the call was sent");
+        assert_eq!(spawns(&dir), 2, "the restart itself went ahead");
+        // Still wanted: it runs.
+        let out = b.call_if("echo", json!({}), soon(), || true).await;
+        assert_eq!(text_of(&out.unwrap()), "ok");
+        b.stop();
     }
 
     #[tokio::test]

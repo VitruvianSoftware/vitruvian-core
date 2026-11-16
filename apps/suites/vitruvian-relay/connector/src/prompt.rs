@@ -30,6 +30,8 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
+use crate::proc::{kill_group, leader_state, may_kill_group_after, Leader};
+
 pub const OSASCRIPT: &str = "/usr/bin/osascript";
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -54,59 +56,18 @@ pub enum Waited {
 /// How long past the dialog's own time limit we wait for osascript to exit
 /// before killing it.
 const GRACE: Duration = Duration::from_millis(500);
-/// After the dialog process is gone, how long to wait for its last output.
-const OUTPUT_WAIT: Duration = Duration::from_millis(500);
+/// After the dialog process has exited, how long to wait for its last
+/// output. It is normally there at once; the wait only matters on a loaded
+/// machine, where a short one turns an Allow into a Deny.
+const OUTPUT_WAIT: Duration = Duration::from_secs(2);
 
 /// A dialog that is showing (or failed to start, which answers `Deny`).
 pub struct PromptHandle {
     child: Option<Child>,
     output: Option<Receiver<String>>,
     deadline: Instant,
-}
-
-/// Kills the dialog's whole process group (it was started as its own group
-/// leader), so a child that inherited the output pipe dies with it.
-fn kill_group(child: &Child) {
-    let pgid = child.id() as i32;
-    if pgid > 1 {
-        // SAFETY: plain syscall on a group we created; no memory is touched.
-        unsafe {
-            libc::kill(-pgid, libc::SIGKILL);
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LeaderState {
-    Running,
-    Exited,
-    /// The check itself failed; treated like a timeout (kill, Deny).
-    Error,
-}
-
-/// Has the dialog process exited? Uses `waitid(WNOWAIT)`, which reports the
-/// exit but leaves the zombie in place (`try_wait` would reap it).
-fn leader_state(child: &Child) -> LeaderState {
-    // SAFETY: `info` is plain zeroed memory that waitid fills in.
-    let (ret, pid) = unsafe {
-        let mut info: libc::siginfo_t = std::mem::zeroed();
-        let ret = libc::waitid(
-            libc::P_PID,
-            child.id() as libc::id_t,
-            &mut info,
-            libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
-        );
-        #[cfg(target_os = "macos")]
-        let pid = info.si_pid;
-        #[cfg(not(target_os = "macos"))]
-        let pid = info.si_pid();
-        (ret, pid)
-    };
-    match (ret, pid) {
-        (0, 0) => LeaderState::Running,
-        (0, _) => LeaderState::Exited,
-        _ => LeaderState::Error,
-    }
+    /// How the leader is checked: `proc::leader_state`, or a test's stand-in.
+    check: fn(i32) -> Leader,
 }
 
 impl PromptHandle {
@@ -133,33 +94,49 @@ impl PromptHandle {
             return Waited::Deny;
         };
         // Watch for the leader's exit without reaping it, so its process
-        // group id cannot be reused before the group is killed.
+        // group id cannot be reused before the group is killed. The check
+        // asks again when a signal interrupts it (`proc::leader_state`).
+        let pid = child.id() as i32;
         let mut ok = false;
         let mut timed_out = false;
         let mut dismissed = false;
+        let mut gone = false;
         loop {
             // Checked first: a dismiss that races a click is never an answer.
             if dismiss.is_some_and(|d| d.load(Ordering::SeqCst)) {
                 dismissed = true;
                 break;
             }
-            match leader_state(&child) {
-                LeaderState::Exited => {
+            match (self.check)(pid) {
+                Leader::Exited => {
                     ok = true;
                     break;
                 }
-                LeaderState::Running if Instant::now() < self.deadline => {
+                Leader::Running if Instant::now() < self.deadline => {
                     std::thread::sleep(Duration::from_millis(20))
                 }
-                LeaderState::Running => {
+                Leader::Running => {
                     timed_out = true;
                     break;
                 }
-                LeaderState::Error => break,
+                // Someone else reaped it: its group id may already belong
+                // to another process. No answer can be trusted either.
+                Leader::Gone => {
+                    gone = true;
+                    break;
+                }
             }
         }
-        // Whatever the outcome, nothing the dialog started stays alive.
-        kill_group(&child);
+        // Whatever the outcome, nothing the dialog started stays alive, as
+        // long as the group id is still ours (the one rule, proc.rs).
+        let held = if gone {
+            Err(std::io::Error::from_raw_os_error(libc::ECHILD))
+        } else {
+            Ok(())
+        };
+        if may_kill_group_after(&held) {
+            kill_group(pid, libc::SIGKILL);
+        }
         let success = child.wait().map(|s| s.success()).unwrap_or(false) && ok;
         if dismissed {
             return Waited::Dismissed;
@@ -188,7 +165,14 @@ impl PromptHandle {
     /// elsewhere).
     pub fn dismiss(mut self) {
         if let Some(mut child) = self.child.take() {
-            kill_group(&child);
+            let pid = child.id() as i32;
+            let held = match (self.check)(pid) {
+                Leader::Gone => Err(std::io::Error::from_raw_os_error(libc::ECHILD)),
+                _ => Ok(()),
+            };
+            if may_kill_group_after(&held) {
+                kill_group(pid, libc::SIGKILL);
+            }
             let _ = child.wait();
         }
     }
@@ -218,6 +202,26 @@ const SPAWN_TRIES: u32 = 1;
 /// summary can be read as script. The dialog runs in its own process group.
 pub fn ask_with(osascript: &Path, summary: &str, timeout: Duration) -> PromptHandle {
     let secs = timeout.as_secs().max(1);
+    ask_limited(
+        osascript,
+        summary,
+        secs,
+        Duration::from_secs(secs) + GRACE,
+        leader_state,
+    )
+}
+
+/// The dialog is told to give up after `secs`; we stop waiting for it
+/// `hard_limit` after it starts, whatever it does. Tests shorten the limit
+/// (a fake that never answers need not cost them seconds) and give the
+/// leader check.
+fn ask_limited(
+    osascript: &Path,
+    summary: &str,
+    secs: u64,
+    hard_limit: Duration,
+    check: fn(i32) -> Leader,
+) -> PromptHandle {
     let mut cmd = Command::new(osascript);
     cmd.args(["-e", "on run argv", "-e"])
         .arg(
@@ -248,7 +252,7 @@ pub fn ask_with(osascript: &Path, summary: &str, timeout: Duration) -> PromptHan
         }
     }
     // From when the dialog is up (only a test's spawn retries come between).
-    let deadline = Instant::now() + Duration::from_secs(secs) + GRACE;
+    let deadline = Instant::now() + hard_limit;
     let Some(mut child) = spawned else {
         #[cfg(test)]
         eprintln!("test: no dialog after {SPAWN_TRIES} tries");
@@ -256,6 +260,7 @@ pub fn ask_with(osascript: &Path, summary: &str, timeout: Duration) -> PromptHan
             child: None,
             output: None,
             deadline,
+            check,
         };
     };
     let mut stdout = child.stdout.take();
@@ -273,6 +278,7 @@ pub fn ask_with(osascript: &Path, summary: &str, timeout: Duration) -> PromptHan
         child: Some(child),
         output: Some(rx),
         deadline,
+        check,
     }
 }
 
@@ -536,6 +542,14 @@ mod tests {
         ask_with(script, summary, timeout)
     }
 
+    /// A dialog told to give up after 1 s that we stop waiting for after
+    /// `SHORT`: the hard limit is the thing under test, not the wait.
+    const SHORT: Duration = Duration::from_millis(300);
+
+    fn ask_short(script: &Path) -> PromptHandle {
+        ask_limited(script, "x", 1, SHORT, leader_state)
+    }
+
     // Fakes that answer at once; the long limit is only so a loaded machine
     // never turns their answer into a timeout.
     fn run(script: &Path, summary: &str) -> Answer {
@@ -687,10 +701,7 @@ mod tests {
         );
         // A dialog that never answers hits the hard deadline: timed out.
         let (script, _) = script_in("w-backstop", "sleep 30");
-        assert_eq!(
-            ask_t(&script, "x", Duration::from_secs(1)).wait_or_dismiss(&no),
-            Waited::TimedOut
-        );
+        assert_eq!(ask_short(&script).wait_or_dismiss(&no), Waited::TimedOut);
     }
 
     #[test]
@@ -714,9 +725,9 @@ mod tests {
             "p-hard",
             "sleep 30 &\necho $! > \"$(dirname \"$0\")/pid\"\nsleep 30",
         );
-        let h = ask_t(&script, "x", Duration::from_secs(1));
+        let h = ask_short(&script);
         // The child exists before the deadline is enforced (a loaded
-        // machine can take longer than the 1 s timeout to start a shell).
+        // machine can take longer than the limit to start a shell).
         let pid = read_pid(&dir);
         let ans = h.wait();
         assert_eq!(ans, Answer::Deny);
@@ -727,10 +738,7 @@ mod tests {
     fn deadline_backstop_denies_a_dialog_that_never_answers() {
         let (script, _) = script_in("p-backstop", "sleep 30");
         let t = Instant::now();
-        assert_eq!(
-            ask_t(&script, "x", Duration::from_secs(1)).wait(),
-            Answer::Deny
-        );
+        assert_eq!(ask_short(&script).wait(), Answer::Deny);
         assert!(t.elapsed() < BOUND, "{:?}", t.elapsed());
     }
 
@@ -958,15 +966,81 @@ mod tests {
             .args(["-c", "exit 0"])
             .spawn()
             .unwrap();
+        let pid = child.id() as i32;
         let t = Instant::now();
-        while leader_state(&child) == LeaderState::Running {
+        while leader_state(pid) == Leader::Running {
             assert!(t.elapsed() < Duration::from_secs(5));
             std::thread::sleep(Duration::from_millis(10));
         }
         // Still a zombie: the id cannot be reused yet, and asking again says the same.
-        assert_eq!(leader_state(&child), LeaderState::Exited);
-        assert_eq!(leader_state(&child), LeaderState::Exited);
+        assert_eq!(leader_state(pid), Leader::Exited);
+        assert_eq!(leader_state(pid), Leader::Exited);
         assert!(child.wait().unwrap().success());
+    }
+
+    /// Final review I3, `ECHILD`: a dialog someone else reaped is a Deny,
+    /// and its group is never signalled (the id may belong to another
+    /// process by now).
+    #[test]
+    fn a_dialog_reaped_elsewhere_denies_and_leaves_its_group_alone() {
+        let (script, dir) = script_in(
+            "p-gone",
+            "sleep 60 &\necho $! > \"$(dirname \"$0\")/pid\"\necho 'button returned:Allow, gave up:false'",
+        );
+        let h = ask_limited(&script, "x", 30, Duration::from_secs(30), |_| Leader::Gone);
+        let child = read_pid(&dir);
+        assert_eq!(h.wait(), Answer::Deny);
+        // A killed child can linger a moment as a zombie: watch it for a
+        // while rather than look once.
+        let died = (0..25).any(|_| {
+            std::thread::sleep(Duration::from_millis(20));
+            // SAFETY: signal 0 only checks the pid exists.
+            unsafe { libc::kill(child, 0) != 0 }
+        });
+        // SAFETY: our own test child.
+        unsafe { libc::kill(child, libc::SIGKILL) };
+        assert!(!died, "the group was signalled");
+    }
+
+    /// Final review I3, `EINTR`: a signal landing during the check (common
+    /// with many children at once) is asked again, not read as a failure
+    /// that turns the person's Allow into a Deny.
+    #[test]
+    fn an_interrupted_check_keeps_the_answer() {
+        use std::sync::atomic::AtomicU32;
+        static N: AtomicU32 = AtomicU32::new(0);
+        fn interrupted_every_other_time(pid: i32) -> std::result::Result<i32, i32> {
+            if N.fetch_add(1, Ordering::SeqCst) % 2 == 0 {
+                return Err(libc::EINTR);
+            }
+            // SAFETY: as in proc.rs's waitid; plain zeroed memory.
+            let (ret, si_pid) = unsafe {
+                let mut info: libc::siginfo_t = std::mem::zeroed();
+                let ret = libc::waitid(
+                    libc::P_PID,
+                    pid as libc::id_t,
+                    &mut info,
+                    libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+                );
+                #[cfg(target_os = "macos")]
+                let si_pid = info.si_pid;
+                #[cfg(not(target_os = "macos"))]
+                let si_pid = info.si_pid();
+                (ret, si_pid)
+            };
+            if ret == 0 {
+                Ok(si_pid)
+            } else {
+                Err(std::io::Error::last_os_error().raw_os_error().unwrap_or(0))
+            }
+        }
+        fn check(pid: i32) -> Leader {
+            crate::proc::leader_state_with(pid, interrupted_every_other_time)
+        }
+        let (s, _) = fake("p-eintr", "button returned:Allow, gave up:false", 0);
+        let h = ask_limited(&s, "x", 30, Duration::from_secs(30), check);
+        assert_eq!(h.wait(), Answer::Allow);
+        assert!(N.load(Ordering::SeqCst) >= 2, "the check was never interrupted");
     }
 
     #[test]

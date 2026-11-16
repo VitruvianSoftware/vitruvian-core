@@ -56,33 +56,60 @@ pub(crate) enum Leader {
 /// counts as still running, so the time limit decides, and the leader is
 /// still unreaped when the group is killed.
 pub(crate) fn leader_state(pid: i32) -> Leader {
+    leader_state_with(pid, waitid_nowait)
+}
+
+/// One `waitid(P_PID, pid, WEXITED | WNOHANG | WNOWAIT)`: the exited
+/// child's pid (0 while it runs), or the error number.
+pub(crate) type WaitId = fn(i32) -> std::result::Result<i32, i32>;
+
+fn waitid_nowait(pid: i32) -> std::result::Result<i32, i32> {
+    // SAFETY: `info` is plain zeroed memory that waitid fills in.
+    let (ret, si_pid) = unsafe {
+        let mut info: libc::siginfo_t = std::mem::zeroed();
+        let ret = libc::waitid(
+            libc::P_PID,
+            pid as libc::id_t,
+            &mut info,
+            libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+        );
+        #[cfg(target_os = "macos")]
+        let si_pid = info.si_pid;
+        #[cfg(not(target_os = "macos"))]
+        let si_pid = info.si_pid();
+        (ret, si_pid)
+    };
+    if ret == 0 {
+        Ok(si_pid)
+    } else {
+        Err(std::io::Error::last_os_error()
+            .raw_os_error()
+            .unwrap_or(libc::EIO))
+    }
+}
+
+/// [`leader_state`] with the system call given (tests stand in for an
+/// interrupted one).
+pub(crate) fn leader_state_with(pid: i32, waitid: WaitId) -> Leader {
     loop {
-        // SAFETY: `info` is plain zeroed memory that waitid fills in.
-        let (ret, si_pid) = unsafe {
-            let mut info: libc::siginfo_t = std::mem::zeroed();
-            let ret = libc::waitid(
-                libc::P_PID,
-                pid as libc::id_t,
-                &mut info,
-                libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
-            );
-            #[cfg(target_os = "macos")]
-            let si_pid = info.si_pid;
-            #[cfg(not(target_os = "macos"))]
-            let si_pid = info.si_pid();
-            (ret, si_pid)
-        };
-        if ret == 0 {
-            return if si_pid != 0 {
-                Leader::Exited
-            } else {
-                Leader::Running
-            };
+        match waitid(pid) {
+            Ok(0) => return Leader::Running,
+            Ok(_) => return Leader::Exited,
+            Err(libc::EINTR) => continue,
+            Err(libc::ECHILD) => return Leader::Gone,
+            Err(_) => return Leader::Running,
         }
-        match std::io::Error::last_os_error().raw_os_error() {
-            Some(libc::EINTR) => continue,
-            Some(libc::ECHILD) => return Leader::Gone,
-            _ => return Leader::Running,
+    }
+}
+
+/// Kills process group `pgid` (a leader we started with `process_group(0)`
+/// and have not reaped), so a child holding a pipe dies with it. Only after
+/// [`may_kill_group_after`] says the id is still ours.
+pub(crate) fn kill_group(pgid: i32, sig: i32) {
+    if pgid > 1 {
+        // SAFETY: a plain syscall on a group we created; no memory is touched.
+        unsafe {
+            libc::kill(-pgid, sig);
         }
     }
 }
@@ -150,12 +177,10 @@ pub(crate) fn output_within_using(
         Ok(_) => Ok(()),
         Err(_) => Err(std::io::Error::from_raw_os_error(libc::ECHILD)),
     };
-    if may_kill_group_after(&held) && pid > 1 {
+    if may_kill_group_after(&held) {
         // Whatever is left in its group dies with it, which also closes any
-        // pipe a child kept open. SAFETY: a plain syscall on our own group.
-        unsafe {
-            libc::kill(-pid, libc::SIGKILL);
-        }
+        // pipe a child kept open.
+        kill_group(pid, libc::SIGKILL);
     }
     let status = child.wait();
     // When gone, the drain threads are left: a child may still hold the pipe.
@@ -269,6 +294,26 @@ mod tests {
         )
         .is_err());
     }
+    /// A signal landing during the check (another child's `SIGCHLD`) makes
+    /// waitid fail with `EINTR`: that is asked again, never read as an exit,
+    /// a reap elsewhere or a run.
+    #[test]
+    fn an_interrupted_check_is_asked_again() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static CALLS: AtomicU32 = AtomicU32::new(0);
+        fn flaky(_: i32) -> std::result::Result<i32, i32> {
+            match CALLS.fetch_add(1, Ordering::SeqCst) {
+                0 | 1 => Err(libc::EINTR),
+                _ => Ok(4242),
+            }
+        }
+        assert_eq!(leader_state_with(99, flaky), Leader::Exited);
+        assert_eq!(CALLS.load(Ordering::SeqCst), 3);
+        assert_eq!(leader_state_with(99, |_| Ok(0)), Leader::Running);
+        assert_eq!(leader_state_with(99, |_| Err(libc::ECHILD)), Leader::Gone);
+        assert_eq!(leader_state_with(99, |_| Err(libc::EINVAL)), Leader::Running);
+    }
+
     #[test]
     fn a_leader_reaped_elsewhere_is_gone() {
         // pid 1 is not our child: waitid fails with ECHILD.
@@ -297,10 +342,15 @@ mod tests {
             .trim()
             .parse()
             .unwrap();
-        // SAFETY: signal 0 only checks the pid exists.
-        let alive = unsafe { libc::kill(child, 0) } == 0;
+        // A killed child can linger a moment as a zombie: watch it for a
+        // while rather than look once.
+        let died = (0..25).any(|_| {
+            std::thread::sleep(Duration::from_millis(20));
+            // SAFETY: signal 0 only checks the pid exists.
+            unsafe { libc::kill(child, 0) != 0 }
+        });
         // SAFETY: our own test child.
         unsafe { libc::kill(child, libc::SIGKILL) };
-        assert!(alive, "the group was signalled");
+        assert!(!died, "the group was signalled");
     }
 }
