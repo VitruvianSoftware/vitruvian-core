@@ -38,8 +38,9 @@ oidc:
 # Keep the relay off laptop nodes. In spike C (2026-11-12) both outages came
 # while the laptop node james-mbp16 went NotReady, and the pod was there again
 # on 2026-11-15. "Wired" alone isn't enough: james-mbp and james-mbp32 are wired
-# laptops. This leaves fedora, nuc9i5 and nuc9i9. A new laptop pool must be
-# added to the NotIn list.
+# laptops. So this is an allow list of the always-on pools (fedora, nuc9i5,
+# nuc9i9): a node with any other pool, or none, is never used. Add a new
+# always-on node's pool here for the relay to use it.
 affinity:
   nodeAffinity:
     requiredDuringSchedulingIgnoredDuringExecution:
@@ -49,5 +50,5 @@ affinity:
               operator: In
               values: [wired]
             - key: pool
-              operator: NotIn
-              values: [laptop-worker-1, laptop-cp-2, laptop-cp-3]
+              operator: In
+              values: [linux, nuc-worker-1, nuc-worker-2]
