@@ -37,7 +37,7 @@ fn write_exe(path: &Path, body: &str) {
 /// `bazel run //tools/pipeline-status` behaves as the real one did with an
 /// expired token while GH_TOKEN is `tok-1`, and reports the batched push
 /// green once it is anything newer.
-fn watch(name: &str) -> Run {
+fn watch(name: &str, bad_token: &str) -> Run {
     let tmp = PathBuf::from(std::env::var("TEST_TMPDIR").unwrap()).join(name);
     let bin = tmp.join("bin");
     fs::create_dir_all(&bin).unwrap();
@@ -71,7 +71,7 @@ case "$*" in
     ;;
   *//tools/pipeline-status*)
     echo "→ Checking GitHub Actions pipeline status for commit fa49ec5e in VitruvianSoftware/vitruvian-core..."
-    if [ "$GH_TOKEN" = "tok-1" ]; then
+    if [ "$GH_TOKEN" = "tok-1" ] || [ "{bad_token}" = "any" ]; then
       echo "⚠ No verdict yet for commit fa49ec5e: cannot read the push history: gh api repos/VitruvianSoftware/vitruvian-core/activity?ref=refs/heads/main&per_page=100 failed (exit 1)"
       exit 3
     fi
@@ -111,7 +111,7 @@ esac
 /// runs registered" until the watchdog timed out (exit 2).
 #[test]
 fn an_expired_token_is_reminted_and_the_batched_push_goes_green() {
-    let run = watch("expired");
+    let run = watch("expired", "tok-1");
     let all = format!("stdout:\n{}\nstderr:\n{}", run.stdout, run.stderr);
     assert_eq!(run.code, 0, "{all}");
     // It says why there was no verdict, not that no runs exist.
@@ -127,4 +127,21 @@ fn an_expired_token_is_reminted_and_the_batched_push_goes_green() {
             .contains("batched: fa49ec5e landed in a push whose tip is 5373aea8"),
         "{all}"
     );
+}
+
+/// A failure a new token does not fix must not re-mint every poll: one
+/// re-mint per run of failed reads, then the watchdog times out as before.
+#[test]
+fn a_failure_a_new_token_does_not_fix_remints_once() {
+    let run = watch("always-failing", "any");
+    let all = format!("stdout:\n{}\nstderr:\n{}", run.stdout, run.stderr);
+    assert_eq!(run.code, 2, "{all}");
+    let tmp = PathBuf::from(std::env::var("TEST_TMPDIR").unwrap()).join("always-failing");
+    let mints: u32 = fs::read_to_string(tmp.join("mints"))
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    // The startup mint, plus one forced re-mint for the whole failure run.
+    assert_eq!(mints, 2, "{all}");
 }

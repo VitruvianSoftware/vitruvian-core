@@ -667,6 +667,9 @@ pub fn run(script: &str, args: &[String]) -> i32 {
 
     let post_merge_start = now();
     let mut said_batched = false;
+    // One forced re-mint per run of failed reads: a failure a new token does
+    // not fix (a permissions error, an outage) must not re-mint every poll.
+    let mut reminted_for_failure = false;
     loop {
         let now = now();
         if now >= deadline {
@@ -705,6 +708,9 @@ pub fn run(script: &str, args: &[String]) -> i32 {
                 said_batched = true;
             }
         }
+        if report.no_verdict.is_none() {
+            reminted_for_failure = false;
+        }
         let decision = decide(status.status, post_elapsed);
         match decision {
             Decision::Green => {
@@ -741,8 +747,11 @@ pub fn run(script: &str, args: &[String]) -> i32 {
                 warn(&format!(
                     "No verdict yet for {short}: {why} ({post_elapsed}s since landing, {elapsed}s elapsed)"
                 ));
-                if report.read_failed {
+                if report.read_failed && !reminted_for_failure {
                     refresh_token(&mut minted, &mut shell, true);
+                    reminted_for_failure = true;
+                } else if !report.read_failed {
+                    reminted_for_failure = false;
                 }
                 sh::sleep(&interval);
             }
