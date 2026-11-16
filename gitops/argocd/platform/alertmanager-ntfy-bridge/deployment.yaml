@@ -46,8 +46,9 @@ spec:
         # not restart the pod. Bump this with every server.py change so the
         # rollout picks the new code up. 2 = self-clearing alerts,
         # 3 = /heartbeat for the healthchecks.io dead-man's switch.
-        # 4 = quieter priorities now that PagerDuty is the primary pager.
-        vitruvian.dev/bridge-code-version: "4"
+        # 4 = quieter priorities now that PagerDuty is the primary pager,
+        # 5 = log every ntfy publish/delete with its result.
+        vitruvian.dev/bridge-code-version: "5"
     spec:
       # Pin to a wired node, same convention as zitadel-db
       # (gitops/argocd/platform/zitadel-db/applicationset.yaml): WiFi nodes on
