@@ -49,9 +49,13 @@ package final class SpaceHop {
                               windowOwnerPID: pid_t,
                               sourcePID: pid_t?,
                               app: NSRunningApplication) -> Bool {
-        guard let topology = SpaceWindowBridge.topology(),
-              SpaceWindowBridge.isParkedOnHiddenSpace(windowID, visibleSpaces: topology.visibleSpaces)
-        else { return false }
+        let topology = SpaceWindowBridge.topology()
+        // The topology decides whether the window can be reached at all, so
+        // the check only runs when there is a topology to check against.
+        let parkedOnHiddenSpace = topology.map {
+            SpaceWindowBridge.isParkedOnHiddenSpace(windowID, visibleSpaces: $0.visibleSpaces)
+        } ?? false
+        guard topology != nil, parkedOnHiddenSpace else { return false }
         cancelPending()
         let focusState = arrivalFocusState(windowID: windowID, windowOwnerPID: windowOwnerPID,
                                            snapshot: { WindowActivator.focusSnapshot(ownerPID: $0) })
@@ -70,12 +74,14 @@ package final class SpaceHop {
         -> SwitcherWindowFocusRetryState {
         SwitcherWindowFocusRetryState(targetWindowID: windowID,
                                       targetStartedMinimized: false,
+                                      targetWasObservedRestored: true,
                                       knownWindowIDs: snapshot(windowOwnerPID))
     }
 
     package static func cancelPending() {
         current?.restoreCursorIfNeeded()
         current?.cancelled = true
+        current?.writeGuard?.invalidate()
         current = nil
     }
 
@@ -86,6 +92,7 @@ package final class SpaceHop {
     private let focusState: SwitcherWindowFocusRetryState
     private let app: NSRunningApplication
     private var cancelled = false
+    private var writeGuard: SwitcherActivationWriteGuard?
     private var arrowPressesLeft = SpaceHopSupport.maximumArrowSteps
     private var originalCursorLocation: CGPoint?
     private var warpedCursorLocation: CGPoint?
@@ -201,8 +208,13 @@ package final class SpaceHop {
         }
         guard arrowPressesLeft > 0 else { finish(); return }
         arrowPressesLeft -= 1
-        guard let topology = SpaceWindowBridge.topology(),
-              let targetSpace = SpaceWindowBridge.spaces(of: windowID).first,
+        guard let topology = SpaceWindowBridge.topology() else {
+            // When system Spaces shortcuts are disabled, try direct Accessibility activation as fallback
+            focusOnArrival()
+            return
+        }
+        let targetSpaces = SpaceWindowBridge.spaces(of: windowID)
+        guard let targetSpace = targetSpaces.first,
               let steps = SpaceHopSupport.arrowSteps(orderedSpacesPerDisplay: topology.orderedSpacesPerDisplay,
                                                     visibleSpaces: topology.visibleSpaces,
                                                     target: targetSpace),
@@ -244,10 +256,12 @@ package final class SpaceHop {
     }
 
     private func focusOnArrival() {
+        let writeGuard = self.writeGuard ?? SwitcherActivationWriteGuard()
+        self.writeGuard = writeGuard
         Self.scheduleArrivalPulses(
             state: focusState,
             schedule: { self.schedule(after: $0, $1) },
-            isLive: { !self.cancelled && !self.app.isTerminated },
+            isLive: { !self.cancelled && writeGuard.isActive && !self.app.isTerminated },
             shouldFocus: { isFirstPulse in
                 SpaceHopSupport.arrivalPulseShouldFocus(
                     isFirstPulse: isFirstPulse,
@@ -262,7 +276,8 @@ package final class SpaceHop {
                                                    appPID: self.appPID,
                                                    windowOwnerPID: self.windowOwnerPID,
                                                    sourcePID: self.sourcePID,
-                                                   state: state)
+                                                   state: state,
+                                                   writeGuard: writeGuard)
             },
             finish: { self.finish() })
     }
