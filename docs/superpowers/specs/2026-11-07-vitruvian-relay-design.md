@@ -327,7 +327,7 @@ connected computer, within what each computer allows. The design starts from tha
 
 | Stage | Where | Why |
 |---|---|---|
-| Alpha (James, then a few invitees) | Homelab k3s behind the Cloudflare Tunnel, Postgres on CNPG, the same pattern as the hosted Slack MCP. The relay pod must be kept off laptop nodes (spike C: both outages came with a laptop node going away). Not done yet: the spike's chart has no node rule, and its pod was on the laptop node `james-mbp16` when checked on 2026-11-15 at 15:38 PST (`//tools/gitops:get`) | No new cost. Fine for dogfooding |
+| Alpha (James, then a few invitees) | Homelab k3s behind the Cloudflare Tunnel, Postgres on CNPG, the same pattern as the hosted Slack MCP. The relay pod must be kept off laptop nodes (spike C: both outages came with a laptop node going away). Done for the spike in #4916: an allow list of the always-on nodes' pools; after it merged, the pod moved from the laptop node `james-mbp16` to `fedora` (checked 2026-11-15 about 17:31 PST with `//tools/gitops:get`) | No new cost. Fine for dogfooding |
 | Paid launch | GCP through the OSS application stage: Cloud Run plus Cloud SQL Postgres | Homelab availability (Wi-Fi nodes, a single database instance) is not good enough for people paying us |
 
 **Domains (decided 2026-11-09).** The spikes and the alpha run under `ipv1337.dev`
