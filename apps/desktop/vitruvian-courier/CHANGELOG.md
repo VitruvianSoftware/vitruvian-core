@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.22](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.21...vitruvian-courier-v0.3.22) (2026-11-16)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** make the Update to … menu item install the update ([#4923](https://github.com/VitruvianSoftware/vitruvian-core/issues/4923)) ([d340e37](https://github.com/VitruvianSoftware/vitruvian-core/commit/d340e37127ba0be94424670fb224ecaf22f5dfde))
+
 ## [0.3.21](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.20...vitruvian-courier-v0.3.21) (2026-11-14)
 
 
