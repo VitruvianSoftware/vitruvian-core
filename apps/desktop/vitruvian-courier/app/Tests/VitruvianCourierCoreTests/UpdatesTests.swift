@@ -177,6 +177,29 @@ final class UpdatesTests: XCTestCase {
         XCTAssertEqual(quits, 1, "Vitruvian Courier quits so the installer can swap the apps")
     }
 
+    /// The menu item installs what is on offer straight away, and only checks when nothing is.
+    func testMenuItemInstallsWhatIsOnOfferAndOtherwiseChecks() async throws {
+        let fake = FakeUpdates()
+        var quits = 0
+        let updates = model(fake, quit: { quits += 1 })
+
+        await updates.menuItemChosen()
+        let version = try XCTUnwrap(SemanticVersion("0.7.1"))
+        XCTAssertEqual(updates.phase, .available(version), "with nothing on offer yet, it checks")
+        XCTAssertTrue(fake.downloads.isEmpty, "a check downloads nothing")
+        XCTAssertNil(fake.installer)
+
+        await updates.menuItemChosen()
+        XCTAssertEqual(updates.phase, .installing(version), "with a version on offer, it installs it")
+        XCTAssertEqual(fake.downloads, [CourierReleases.diskImageURL(for: version)])
+        XCTAssertNotNil(fake.installer)
+        XCTAssertEqual(quits, 1)
+
+        await updates.menuItemChosen()
+        XCTAssertEqual(fake.downloads.count, 1, "nothing starts again while an install is under way")
+        XCTAssertEqual(quits, 1)
+    }
+
     func testRefusesWhatFailsAnyCheck() async {
         let failures: [(String, (FakeUpdates) -> Void)] = [
             ("checksum", { $0.fileChecksum = String(repeating: "cd", count: 32) }),
