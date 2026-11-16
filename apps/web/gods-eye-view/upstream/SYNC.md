@@ -98,6 +98,7 @@ a sync that passed every check was never committed. Work like this instead:
    - `bazel test //apps/web/gods-eye-view:unit_tests //apps/web/gods-eye-view:server_test //apps/web/gods-eye-view:tle_mirror_test //apps/web/gods-eye-view:cesium_assets_test //apps/web/gods-eye-view:upstream_test`
    - `bazel build //apps/web/gods-eye-view:build`
    - `bazel run //tools/license:check`
+   - `bazel run //tools/license:verify`: CI runs it too, and it catches what `:check` and `:add` miss.
 6. Commit as `feat(gods-eye-view): sync upstream to <short sha>`, with the
    report's "What landed upstream" list and an "Adapted to this copy:" paragraph
    naming each conflict and how it was resolved, and every follow-up left for
@@ -132,6 +133,9 @@ a sync that passed every check was never committed. Work like this instead:
   complete: `cesium_assets_test` checks it.
 - pnpm does not hoist transitive dependencies the way npm does, so an upstream
   import of a package npm happened to hoist must be declared in `package.json`.
+- `//tools/license:add` skips a file that says "copyright" or "licensed under" in its first 30 lines
+  (a URL, a doc comment), and `:verify` then calls that a non-MIT header. Prepend the MIT header by
+  hand (copy it from `src/camera.js`). The 2026-11-16 sync hit this in two files.
 - The landing view is `HOME_VIEW` (Irvine, CA) in `src/camera.js`.
 - Dependabot bumps this app's dependencies between syncs, and a major bump can
   change upstream files to keep the build green. `status` then reports them as
