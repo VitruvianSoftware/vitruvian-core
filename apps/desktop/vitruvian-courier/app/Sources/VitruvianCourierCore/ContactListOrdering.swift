@@ -146,7 +146,13 @@ public enum ContactListOrdering {
     /// The digits of `text`, and whether it had a `+`, when it is nothing but a phone number: digits, an optional `+`
     /// before the first digit, and the separators people type (space, `-`, `.`, parentheses); at least
     /// `minimumPhoneDigits` digits.
-    private static func parsedNumber(_ text: String) -> (digits: String, hasPlus: Bool)? {
+    private static func parsedNumber(_ raw: String) -> (digits: String, hasPlus: Bool)? {
+        var text = strippedOfExtension(raw)
+        if text.hasPrefix("+") {
+            // `+44 (0) 20 7946 0958`: the `(0)` is the national trunk prefix, dialled only from inside the country.
+            text = text.replacingOccurrences(of: "(0)", with: "")
+        }
+        text = vanityDigits(text) ?? text
         var digits = ""
         var sawPlus = false
         for ch in text {
@@ -162,6 +168,40 @@ public enum ContactListOrdering {
             }
         }
         return digits.count >= minimumPhoneDigits ? (digits, sawPlus) : nil
+    }
+
+    /// `text` without a trailing extension: `x123`, `ext 123`, `ext. 123`, `;ext=123`, `#123`. The number before
+    /// it is the one that identifies the contact.
+    private static func strippedOfExtension(_ text: String) -> String {
+        let pattern = #"\s*(?:(?:x|ext\.?|extension)\s*|;ext=|#)\d{1,6}$"#
+        guard let range = text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) else { return text }
+        let rest = text[text.startIndex ..< range.lowerBound]
+        // Only an extension after a number: "Suite #12" is not a phone number either way.
+        return rest.filter { $0.isASCII && $0.isNumber }.count >= minimumPhoneDigits ? String(rest) : text
+    }
+
+    /// A vanity number spelled out on the keypad (`1-800-FLOWERS`, `+1 (800) FLOWERS`) as its digits, or `nil` when
+    /// `text` is not one. It must start like a number (`+` or a digit), have at least 3 digits before the first
+    /// letter, and come to 10 or more digits, so names such as "3M" or "24 Hour Gym" stay names.
+    private static func vanityDigits(_ text: String) -> String? {
+        guard let first = text.first, first == "+" || (first.isASCII && first.isNumber) else { return nil }
+        guard let firstLetter = text.firstIndex(where: { $0.isASCII && $0.isLetter }) else { return nil }
+        guard text[..<firstLetter].filter({ $0.isASCII && $0.isNumber }).count >= 3 else { return nil }
+        let keypad: [Character: Character] = [
+            "a": "2", "b": "2", "c": "2", "d": "3", "e": "3", "f": "3", "g": "4", "h": "4", "i": "4",
+            "j": "5", "k": "5", "l": "5", "m": "6", "n": "6", "o": "6", "p": "7", "q": "7", "r": "7", "s": "7",
+            "t": "8", "u": "8", "v": "8", "w": "9", "x": "9", "y": "9", "z": "9",
+        ]
+        var out = ""
+        for ch in text {
+            if ch.isASCII && ch.isLetter {
+                guard let digit = keypad[Character(ch.lowercased())] else { return nil }
+                out.append(digit)
+            } else {
+                out.append(ch)
+            }
+        }
+        return out.filter { $0.isASCII && $0.isNumber }.count >= 10 ? out : nil
     }
 
     /// `name@domain.tld`: one `@` with something either side and a dot in the domain.

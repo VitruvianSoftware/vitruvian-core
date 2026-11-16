@@ -224,11 +224,42 @@ final class ContactListOrderingTests: XCTestCase {
     func testNumberWithAnExtensionIsStillANumber() {
         let ext = candidate("+1 213 447 6502 x123")
         let bea = candidate("Bea")
-        XCTExpectFailure(
-            "an x extension makes the entry a name, so it sorts above the named people; remove this wrapper when fixed"
-        ) {
-            XCTAssertEqual(ContactListOrdering.sections([ext, bea]).named.map(\.name), ["Bea"])
-            XCTAssertEqual(ContactListOrdering.sections([ext, bea]).other.map(\.name), ["+1 213 447 6502 x123"])
+        XCTAssertEqual(ContactListOrdering.sections([ext, bea]).named.map(\.name), ["Bea"])
+        XCTAssertEqual(ContactListOrdering.sections([ext, bea]).other.map(\.name), ["+1 213 447 6502 x123"])
+        for text in ["+1 213 447 6502 ext. 9", "(213) 447-6502 ext 12", "+12134476502;ext=4", "213-447-6502 #77"] {
+            XCTAssertEqual(ContactListOrdering.phoneKey(text), "+12134476502", text)
         }
+        XCTAssertFalse(ContactListOrdering.isNumberOrHandle("Suite #12"))
+    }
+
+    func testNumberWithAnExtensionIsLeftOutWhenTheNamedContactHasIt() {
+        let ann = candidate("Ann", identifiers: ["+12134476502"])
+        let ext = candidate("+1 213 447 6502 x123")
+        let sections = ContactListOrdering.sections([ext, ann])
+        XCTAssertEqual(sections.named.map(\.name), ["Ann"])
+        XCTAssertEqual(sections.other, [])
+    }
+
+    func testVanityNumbersAreNumbers() {
+        for text in ["1-800-FLOWERS", "+1 (800) FLOWERS", "1 800 GOT JUNK"] {
+            XCTAssertTrue(ContactListOrdering.isNumberOrHandle(text), "\(text) is a vanity number")
+        }
+        XCTAssertEqual(ContactListOrdering.phoneKey("1-800-FLOWERS"), "+18003569377")
+        for text in ["3M", "24 Hour Gym", "7 Eleven", "Route 66 Diner"] {
+            XCTAssertFalse(ContactListOrdering.isNumberOrHandle(text), "\(text) is a name")
+        }
+    }
+
+    func testUKTrunkZeroInBracketsIsDropped() {
+        XCTAssertEqual(ContactListOrdering.phoneKey("+44 (0) 20 7946 0958"), "+442079460958")
+        XCTAssertEqual(ContactListOrdering.phoneKey("+44 20 7946 0958"), "+442079460958")
+    }
+
+    func testEmailNamedContactGoesUnderOtherContacts() {
+        let mail = candidate("ann@example.com")
+        let bea = candidate("Bea")
+        let sections = ContactListOrdering.sections([mail, bea])
+        XCTAssertEqual(sections.named.map(\.name), ["Bea"])
+        XCTAssertEqual(sections.other.map(\.name), ["ann@example.com"])
     }
 }

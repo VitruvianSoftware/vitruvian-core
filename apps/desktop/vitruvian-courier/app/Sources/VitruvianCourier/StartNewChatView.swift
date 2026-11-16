@@ -804,7 +804,7 @@ public struct StartNewChatView: View {
         if !visibleOther.isEmpty {
             // Entries with no name (only a number, handle or opaque ID): after every named person, under their own
             // small heading.
-            sectionHeader(String(localized: "Other numbers"))
+            sectionHeader(String(localized: "Other contacts"))
                 .padding(.top, recents.isEmpty && visibleNamed.isEmpty ? 0 : 6)
             ForEach(visibleOther) { candidate in
                 candidateRow(candidate, rowID: "contact:\(candidate.id)")
