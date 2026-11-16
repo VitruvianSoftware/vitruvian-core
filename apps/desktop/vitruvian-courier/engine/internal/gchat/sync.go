@@ -115,7 +115,8 @@ type parsedWorldItem struct {
 	hasRoomName        bool
 	topicThreaded      bool
 	flatThreadsEnabled bool
-	memberUserIDs      []string
+	memberUserIDs      []string // everyone the item lists, apps included
+	appUserIDs         []string // which of memberUserIDs are Google Chat apps, not people (members.go)
 }
 
 func parseWorldItemLiteFromProto(w *pb.WorldItemLite) parsedWorldItem {
@@ -123,13 +124,7 @@ func parseWorldItemLiteFromProto(w *pb.WorldItemLite) parsedWorldItem {
 	if w == nil {
 		return item
 	}
-	seenMembers := make(map[string]bool)
-	addMember := func(uid string) {
-		if uid != "" && !seenMembers[uid] {
-			seenMembers[uid] = true
-			item.memberUserIDs = append(item.memberUserIDs, uid)
-		}
-	}
+	var roster memberRoster
 
 	if rawID, isDM, ok := pb.GroupIDToParts(w.GetGroupId()); ok {
 		item.isDM = isDM
@@ -147,7 +142,7 @@ func parseWorldItemLiteFromProto(w *pb.WorldItemLite) parsedWorldItem {
 			item.hasMembershipState = true
 		}
 		for _, u := range rs.GetJoinedUsers() {
-			addMember(u.GetId())
+			roster.add(u)
 		}
 	}
 	if roomName := strings.TrimSpace(w.GetRoomName()); roomName != "" {
@@ -156,10 +151,10 @@ func parseWorldItemLiteFromProto(w *pb.WorldItemLite) parsedWorldItem {
 	}
 	if dm := w.GetDmMembers(); dm != nil {
 		for _, u := range dm.GetMembers() {
-			addMember(u.GetId())
+			roster.add(u)
 		}
 		for _, m := range dm.GetMemberships() {
-			addMember(m.GetUserId().GetId())
+			roster.add(m.GetUserId())
 		}
 	}
 	if w.GetThreadedGroup() != nil {
@@ -168,6 +163,8 @@ func parseWorldItemLiteFromProto(w *pb.WorldItemLite) parsedWorldItem {
 	if w.GetFlatThreadsEnabled() {
 		item.flatThreadsEnabled = true
 	}
+	item.memberUserIDs = roster.ids
+	item.appUserIDs = roster.appIDs()
 	return item
 }
 
@@ -267,9 +264,19 @@ func (c *Client) syncWorld(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("get portal %q: %w", portalID, err)
 		}
+		// Apps are listed with the people but are not members: the chat's members, its DM peer and its name come
+		// from the people (members.go).
+		var storedApps []string
+		c.metaMu.Lock()
+		if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
+			storedApps = slices.Clone(meta.AppUserIDs)
+		}
+		c.metaMu.Unlock()
+		appIDs := mergeAppIDs(storedApps, item.appUserIDs, item.memberUserIDs)
+		visibleIDs := visibleMemberIDs(item.memberUserIDs, appIDs, own)
 		if item.isDM {
 			portal.RoomType = database.RoomTypeDM
-			portal.OtherUserID = derivePeerUserID(item.memberUserIDs, own)
+			portal.OtherUserID = derivePeerUserID(visibleIDs, own)
 		} else {
 			portal.RoomType = database.RoomTypeDefault
 			if isPlaceholderChatName(portal.ID, portal.Name) {
@@ -292,6 +299,7 @@ func (c *Client) syncWorld(ctx context.Context) error {
 		meta.ThreadsEnabled = item.topicThreaded || item.flatThreadsEnabled
 		if len(item.memberUserIDs) > 0 {
 			meta.MemberUserIDs = slices.Clone(item.memberUserIDs)
+			meta.AppUserIDs = appIDs
 		}
 		if item.groupRevision > meta.GroupRevision {
 			meta.GroupRevision = item.groupRevision
@@ -311,7 +319,7 @@ func (c *Client) syncWorld(ctx context.Context) error {
 		chatInfo := &bridgev2.ChatInfo{
 			Type:        &roomType,
 			CanBackfill: true,
-			Members:     c.buildChatMemberList(own, item.isDM, portal.OtherUserID, item.memberUserIDs, false),
+			Members:     c.buildChatMemberList(own, item.isDM, portal.OtherUserID, visibleIDs, false),
 		}
 		if item.hasRoomName && !isPlaceholderChatName(portal.ID, item.roomName) {
 			roomName := item.roomName
@@ -347,7 +355,7 @@ func (c *Client) isOneToOneDMPortal(portal *bridgev2.Portal, own networkid.UserI
 	c.metaMu.Lock()
 	var members []string
 	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
-		members = slices.Clone(meta.MemberUserIDs)
+		members = visibleMemberIDs(slices.Clone(meta.MemberUserIDs), meta.AppUserIDs, own)
 	}
 	c.metaMu.Unlock()
 	others := otherMemberIDs(members, own)
@@ -363,6 +371,19 @@ func (c *Client) isOneToOneDMPortal(portal *bridgev2.Portal, own networkid.UserI
 	return false
 }
 
+// needsAppRosterCheck is whether portal lists more than one other member and has not had its roster read since
+// apps were told apart from people: GetChatInfo reads it (get_group carries each member's type) and records the
+// answer, so this is true once per chat.
+func (c *Client) needsAppRosterCheck(portal *bridgev2.Portal, own networkid.UserID) bool {
+	c.metaMu.Lock()
+	defer c.metaMu.Unlock()
+	meta, ok := portal.Metadata.(*PortalMetadata)
+	if !ok || meta == nil || meta.AppRosterChecked {
+		return false
+	}
+	return len(otherMemberIDs(meta.MemberUserIDs, own)) > 1
+}
+
 func (c *Client) refreshUnnamedGroupPortals(ctx context.Context, syncedPortals []portalRefreshCandidate) {
 	if c.UserLogin == nil || c.UserLogin.Bridge == nil || ctx.Err() != nil {
 		return
@@ -370,7 +391,7 @@ func (c *Client) refreshUnnamedGroupPortals(ctx context.Context, syncedPortals [
 	own := c.ownUserID()
 	seen := make(map[networkid.PortalID]struct{}, len(syncedPortals))
 	var candidates []*bridgev2.Portal
-	addCandidate := func(p *bridgev2.Portal, storedName string) {
+	addCandidate := func(p *bridgev2.Portal, storedName string, fromWorld bool) {
 		if p == nil {
 			return
 		}
@@ -378,6 +399,12 @@ func (c *Client) refreshUnnamedGroupPortals(ctx context.Context, syncedPortals [
 			return
 		}
 		seen[p.ID] = struct{}{}
+		// A chat that lists several others and has never been read since apps were told apart is read once, named
+		// or not: it may list an app, and the name this client composed for it may have the app's in it.
+		if fromWorld && c.needsAppRosterCheck(p, own) {
+			candidates = append(candidates, p)
+			return
+		}
 		if c.isOneToOneDMPortal(p, own) {
 			return
 		}
@@ -389,7 +416,7 @@ func (c *Client) refreshUnnamedGroupPortals(ctx context.Context, syncedPortals [
 	}
 
 	for _, cand := range syncedPortals {
-		addCandidate(cand.portal, cand.storedName)
+		addCandidate(cand.portal, cand.storedName, true)
 	}
 	if c.UserLogin.Bridge.DB != nil && c.UserLogin.Bridge.DB.Database != nil {
 		rows, err := c.UserLogin.Bridge.DB.Query(ctx, `SELECT id, name FROM portal WHERE bridge_id = $1 AND receiver = $2`, c.UserLogin.Bridge.ID, c.UserLogin.ID)
@@ -415,7 +442,7 @@ func (c *Client) refreshUnnamedGroupPortals(ctx context.Context, syncedPortals [
 					Receiver: c.UserLogin.ID,
 				})
 				if err == nil && p != nil {
-					addCandidate(p, row.name)
+					addCandidate(p, row.name, false)
 				}
 			}
 		}
@@ -447,10 +474,14 @@ func (c *Client) refreshPortalChatInfo(ctx context.Context, portal *bridgev2.Por
 	if portal == nil || c.UserLogin == nil || ctx.Err() != nil {
 		return
 	}
+	checkedBefore, appsBefore := c.portalAppRoster(portal)
 	info, err := c.GetChatInfo(ctx, portal)
 	if err != nil || info == nil || ctx.Err() != nil {
 		return
 	}
+	// GetChatInfo records which members are apps on the portal's metadata; keep that if it changed.
+	checkedAfter, appsAfter := c.portalAppRoster(portal)
+	rosterChanged := checkedBefore != checkedAfter || !slices.Equal(appsBefore, appsAfter)
 	c.ghostMu.Lock()
 	defer c.ghostMu.Unlock()
 	hadPlaceholder := portal.Name != "" && isPlaceholderChatName(portal.ID, portal.Name)
@@ -463,9 +494,33 @@ func (c *Client) refreshPortalChatInfo(ctx context.Context, portal *bridgev2.Por
 		portal.Name = *info.Name
 		portal.NameSet = portal.MXID != ""
 		_ = portal.Save(ctx)
-	} else if hadPlaceholder && info.Name == nil {
+	} else if (hadPlaceholder && info.Name == nil) || rosterChanged {
 		_ = portal.Save(ctx)
 	}
+}
+
+// isKnownAppInGroup is whether the chat's stored roster already names gaiaID as an app, for the events that do not
+// carry the member's type.
+func (c *Client) isKnownAppInGroup(ctx context.Context, isDM bool, rawGroupID, gaiaID string) bool {
+	if c.UserLogin == nil || c.UserLogin.Bridge == nil {
+		return false
+	}
+	portal, err := c.UserLogin.Bridge.GetExistingPortalByKey(ctx, c.portalKeyFromGroup(isDM, rawGroupID))
+	if err != nil || portal == nil {
+		return false
+	}
+	_, apps := c.portalAppRoster(portal)
+	return slices.Contains(apps, strings.TrimSpace(gaiaID))
+}
+
+// portalAppRoster is whether portal's roster has been checked for apps, and the apps it knows of.
+func (c *Client) portalAppRoster(portal *bridgev2.Portal) (checked bool, apps []string) {
+	c.metaMu.Lock()
+	defer c.metaMu.Unlock()
+	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
+		return meta.AppRosterChecked, slices.Clone(meta.AppUserIDs)
+	}
+	return false, nil
 }
 
 func (c *Client) advanceUserRevision(ctx context.Context, rev int64) error {
@@ -1417,6 +1472,11 @@ func (c *Client) translateSingleEventBody(
 		memberGaiaID := nm.GetId().GetMemberId().GetUserId().GetId()
 		if rg, dm, ok := pb.GroupIDToParts(nm.GetId().GetGroupId()); ok {
 			isDM, rawGroupID, hasGroup = dm, rg, true
+		}
+		// An app joining or leaving is not a member joining or leaving (members.go).
+		if hasGroup && memberGaiaID != "" &&
+			(isAppUser(nm.GetId().GetMemberId().GetUserId()) || c.isKnownAppInGroup(ctx, isDM, rawGroupID, memberGaiaID)) {
+			hasGroup = false
 		}
 		if hasGroup && memberGaiaID != "" {
 			evMembership := event.MembershipJoin

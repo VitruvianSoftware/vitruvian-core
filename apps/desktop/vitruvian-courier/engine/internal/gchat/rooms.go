@@ -145,26 +145,16 @@ func (c *Client) createDM(ctx context.Context, targetGaiaID, targetEmail string)
 		groupRev = resp.GetDm().GetRevisionTime()
 	}
 
-	var memberGaiaIDs []string
-	addMember := func(id string) {
-		if id == "" {
-			return
-		}
-		for _, existing := range memberGaiaIDs {
-			if existing == id {
-				return
-			}
-		}
-		memberGaiaIDs = append(memberGaiaIDs, id)
-	}
+	var roster memberRoster
 	for _, u := range resp.GetDm().GetGroupReadState().GetJoinedUsers() {
-		addMember(u.GetId())
+		roster.add(u)
 	}
 	for _, m := range resp.GetMemberships() {
-		addMember(m.GetId().GetMemberId().GetUserId().GetId())
+		roster.add(m.GetId().GetMemberId().GetUserId())
 	}
-
+	// The DM's peer is a person when there is one; an app is only the peer of a DM with that app (members.go).
 	ownGaia := ParseUserLoginID(c.UserLogin.ID)
+	memberGaiaIDs := visibleMemberIDs(roster.ids, roster.appIDs(), MakeUserID(ownGaia))
 	otherGaia := targetGaiaID
 	for _, m := range memberGaiaIDs {
 		if m != "" && m != ownGaia {

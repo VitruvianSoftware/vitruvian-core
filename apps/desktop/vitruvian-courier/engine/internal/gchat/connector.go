@@ -29,13 +29,18 @@ type UserLoginMetadata struct {
 	UserRevision int64             `json:"user_revision,omitempty"`
 }
 
-// PortalMetadata stores per-portal Google Chat revision and threading state.
+// PortalMetadata stores per-portal Google Chat revision and threading state. MemberUserIDs is everyone the chat
+// lists, apps included; AppUserIDs is which of them are Google Chat apps rather than people, so the chat can show
+// the people only (members.go); AppRosterChecked says get_group has been read since apps were told apart, so an
+// old chat is looked at once.
 type PortalMetadata struct {
-	Revision       int64    `json:"revision,omitempty"`
-	GroupRevision  int64    `json:"group_revision,omitempty"`
-	TopicThreaded  bool     `json:"topic_threaded,omitempty"`
-	ThreadsEnabled bool     `json:"threads_enabled,omitempty"`
-	MemberUserIDs  []string `json:"member_user_ids,omitempty"`
+	Revision         int64    `json:"revision,omitempty"`
+	GroupRevision    int64    `json:"group_revision,omitempty"`
+	TopicThreaded    bool     `json:"topic_threaded,omitempty"`
+	ThreadsEnabled   bool     `json:"threads_enabled,omitempty"`
+	MemberUserIDs    []string `json:"member_user_ids,omitempty"`
+	AppUserIDs       []string `json:"app_user_ids,omitempty"`
+	AppRosterChecked bool     `json:"app_roster_checked,omitempty"`
 }
 
 // GhostMetadata stores per-ghost Google Chat metadata.
