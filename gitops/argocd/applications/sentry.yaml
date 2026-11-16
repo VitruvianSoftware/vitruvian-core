@@ -34,7 +34,7 @@ spec:
     # Source 1: Upstream Sentry Helm chart.
     - repoURL: https://sentry-kubernetes.github.io/charts
       chart: sentry
-      targetRevision: 36.0.0
+      targetRevision: 36.0.1
       helm:
         releaseName: sentry
         valueFiles:
