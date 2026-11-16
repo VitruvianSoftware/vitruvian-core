@@ -405,6 +405,10 @@ pub(crate) struct Hooks {
     /// first: it waits here as it would in a slow send (it reads nothing
     /// meanwhile).
     pub hold_pong: Option<(u64, Gate)>,
+    /// Before a call's id is appended to `seen_calls.jsonl`.
+    pub before_record: Option<Gate>,
+    /// While set, appending an id fails (a full or broken disk).
+    pub fail_record: Option<Arc<AtomicBool>>,
 }
 
 /// `reached` is notified when the task gets there; it then waits for `go`.
@@ -914,16 +918,34 @@ impl<T: Tools, A: Asker> Shared<T, A> {
     /// often, rewrites the file without expired ids). Off the link loop.
     /// An error (or a panic) means the id is not safely on disk.
     async fn record(self: &Arc<Self>, id: String, t: u64) -> std::result::Result<(), String> {
+        #[cfg(test)]
+        if let Some(g) = self.hooks.before_record.clone() {
+            g.reached.notify_one();
+            g.go.notified().await;
+        }
         let me = self.clone();
         tokio::task::spawn_blocking(move || {
             let compact = {
                 let _turn = me.seen_lock.lock().unwrap();
+                #[cfg(test)]
+                if me
+                    .hooks
+                    .fail_record
+                    .as_ref()
+                    .is_some_and(|f| f.load(Ordering::SeqCst))
+                {
+                    return Err("test hook: the disk is full".to_string());
+                }
                 let path = me.dir.join(SEEN_CALLS);
                 let mut f = open_private_append(&path)?;
                 f.write_all(format!("{}\n", json!({"id": id, "t": t})).as_bytes())
                     .and_then(|_| f.sync_data())
                     .map_err(|e| format!("write {}: {e}", path.display()))?;
+                // Kept for rewrites only now that it is on disk, and still
+                // under the turn a rewrite takes: no rewrite can come
+                // between the append and this.
                 let mut calls = me.calls.lock().unwrap();
+                calls.seen.push((id, t));
                 calls.appended += 1;
                 calls.appended >= COMPACT_EVERY
             };
@@ -1061,10 +1083,8 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         }
         // Only a call that will run goes into the record (a refused one
         // never ran, so a later repeat must not be told it "already
-        // started").
-        if !matches!(decision, Decision::Refuse(_)) {
-            calls.seen.push((call_id.clone(), now_unix));
-        }
+        // started"), and only once its own append has succeeded (`record`):
+        // a rewrite of the file meanwhile writes only recorded ids.
         let dismiss = Arc::new(AtomicBool::new(false));
         let phase = match &decision {
             Decision::AskFirst => Phase::Prompting {

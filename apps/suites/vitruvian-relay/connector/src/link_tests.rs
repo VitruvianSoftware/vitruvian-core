@@ -2656,3 +2656,58 @@ async fn a_pause_stops_a_cleared_call_but_not_a_running_one() {
     assert_eq!(r.call_id, "running");
     assert!(!r.is_error, "{}", text(&r));
 }
+
+/// PR review: a rewrite of `seen_calls.jsonl` while a call's own record is
+/// still pending must not write that call's id. If the record then fails,
+/// the call never ran, and after a restart a resend of the same id must
+/// run, not be told it "already started".
+#[tokio::test(flavor = "multi_thread")]
+async fn a_rewrite_keeps_only_calls_whose_record_succeeded() {
+    let dir = registered("l-compact-pending");
+    // An id about to expire, so the prune timer rewrites the record.
+    let old = json!({"id": "old", "t": now_unix() - 590});
+    std::fs::write(dir.join("seen_calls.jsonl"), format!("{old}\n")).unwrap();
+    let clock = Arc::new(TestClock::default());
+    let mut p = parts();
+    p.clock = clock.clock();
+    p.timing.prune_every = Duration::from_millis(50);
+    let g = gate();
+    p.hooks.before_record = Some(g.clone());
+    let fail = Arc::new(AtomicBool::new(true));
+    p.hooks.fail_record = Some(fail.clone());
+    let tools = p.tools.clone();
+    let mut relay = FakeRelay::start().await;
+    let first = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    tokio::time::timeout(WAIT, g.reached.notified())
+        .await
+        .unwrap();
+    // The rewrite happens while c1's record is pending.
+    clock.advance(20);
+    let seen = dir.join("seen_calls.jsonl");
+    until("the rewrite", || {
+        !std::fs::read_to_string(&seen)
+            .unwrap_or_default()
+            .contains("old")
+    })
+    .await;
+    g.go.notify_one();
+    assert_eq!(text(&c.result().await), NOT_RECORDED);
+    assert!(
+        !std::fs::read_to_string(&seen).unwrap().contains("c1"),
+        "an unrecorded call's id was written"
+    );
+    // After a restart the same id runs.
+    drop(first);
+    drop(c);
+    let mut p = parts();
+    p.clock = clock.clock();
+    let mut relay = FakeRelay::start().await;
+    let _second = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    let r = c.result().await;
+    assert!(!r.is_error, "{}", text(&r));
+    assert_eq!(tools.count(), 0, "the first vrelay ran it");
+}

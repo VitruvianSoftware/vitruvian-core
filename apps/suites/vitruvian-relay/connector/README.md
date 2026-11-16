@@ -59,9 +59,12 @@ and logs.
 | `~/.local/share/vrelay/` | The installed binary, desktop-commander and `bridge.json` |
 | `~/Library/LaunchAgents/com.vitruvian.vrelay.plist` | The LaunchAgent |
 
-Remote calls can never read or write these folders, nor
-`~/.claude-server-commander` (desktop-commander's own log); a search that
-would reach them asks first.
+A remote call that names a path in these folders, or in
+`~/.claude-server-commander` (desktop-commander's own log), is refused,
+however the path is written (`~`, `..`, a symlink), and a search rooted at or
+above them asks first. That is not a wall: a search or a terminal command you
+approve can still read them (spec §7, §11 item 17; the Keychain and folder
+limits for every tool are P2).
 
 ## Rules
 

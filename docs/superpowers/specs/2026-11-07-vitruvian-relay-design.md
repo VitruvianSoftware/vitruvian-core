@@ -446,9 +446,14 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
     outages of 3 to 6 minutes, starting 17:36 and 17:59 PST on 2026-11-12, while the laptop
     node running the pod went `NotReady`. Kubernetes moved the pod to `nuc9i9`
     at 18:04 PST that day. Keeping the pod off laptop nodes should make this rare.
-14. **Retries that run twice.** Under this design, an AI app's retry after a
-    dropped connection would arrive as a new call with a new id (§4); no spike
-    tested how the apps retry. Decide whether the relay should detect it.
+14. **Retries that run twice (accepted for P1, ruling R19).** An AI app's
+    retry after a dropped connection arrives as a new call with a new id
+    (§4), and can run again; no spike tested how the apps retry. The
+    connector cannot tell a retry under a new id from a new request. What
+    limits the harm: every tool that is not a read asks first, so a retried
+    write or command shows a second Allow / Deny dialog the person can deny,
+    and repeating a read does no harm. The real fix, an idempotency key from
+    the client or duplicate detection per MCP session, is P2.
 15. **A call frame stalled in the network (accepted for P1, ruling R14).** The
     relay sends each call with what is left of its own wait, less an allowance
     for the frame to arrive, and drops the link if writing the frame takes
