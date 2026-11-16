@@ -562,7 +562,7 @@ final class ViewSnapshotTests: XCTestCase {
         )
         XCTAssertNil(ChatInfoPane.localTimeText(for: "Invalid/Timezone", now: Fixture.now))
         XCTAssertNil(ChatInfoPane.localTimeText(for: "", now: Fixture.now))
-        let sizes = try Snapshot.render("chat-info-direct", width: 280, height: 760) {
+        let sizes = try Snapshot.render("chat-info-direct", width: 280, height: 900) {
             ChatInfoPane(info: info, bookmarks: bookmarks, now: { Fixture.now })
         }
         XCTAssertEqual(sizes.count, 2)
@@ -573,12 +573,128 @@ final class ViewSnapshotTests: XCTestCase {
 
     func testChatInfoPaneGroupWithAdminsLightAndDark() throws {
         let info = Fixture.groupChatInfoWithAdmins()
-        let sizes = try Snapshot.render("chat-info-group-admins", width: 280, height: 640) {
+        let sizes = try Snapshot.render("chat-info-group-admins", width: 280, height: 760) {
             ChatInfoPane(info: info, bookmarks: [], now: { Fixture.now })
         }
         XCTAssertEqual(sizes.count, 2)
         for size in sizes {
             XCTAssertGreaterThanOrEqual(size.width, 280)
+        }
+    }
+
+    func testChatInfoPaneMediaGridLinksAndUnencryptedStates() throws {
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("chat-info-media-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        func writeTestPNG(name: String, width: Int, height: Int, color: NSColor) throws -> String {
+            let rep = try XCTUnwrap(NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: width,
+                pixelsHigh: height,
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 0,
+                bitsPerPixel: 0
+            ))
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+            color.setFill()
+            NSRect(x: 0, y: 0, width: width, height: height).fill()
+            NSGraphicsContext.restoreGraphicsState()
+            let data = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+            let url = tmpDir.appendingPathComponent(name)
+            try data.write(to: url)
+            return url.path
+        }
+
+        let widePath = try writeTestPNG(name: "wide.png", width: 400, height: 100, color: .systemTeal)
+        let tallPath = try writeTestPNG(name: "tall.png", width: 100, height: 400, color: .systemIndigo)
+
+        var mediaEvents: [Event] = []
+        for idx in 1...10 {
+            var ev = Fixture.mediaEvent(
+                "$m-\(idx)",
+                msgtype: idx.isMultiple(of: 3) ? "m.video" : "m.image",
+                body: "Photo \(idx).jpg",
+                ts: idx
+            )
+            ev.mediaPath = idx.isMultiple(of: 2) ? widePath : tallPath
+            ev.sender = idx == 1 ? "@wa_alice:courier.local" : (idx == 2 ? "" : Timeline.meUserID)
+            ev.senderName = idx == 1 ? "Alice Example" : ""
+            ev.mine = idx > 2
+            mediaEvents.append(ev)
+        }
+        // Non-media link-preview message that must be filtered out of the Shared Media grid.
+        var linkPreviewMsg = Fixture.text(
+            "$lp-1",
+            "https://vitruviansoftware.dev/courier",
+            mine: false,
+            ts: 11,
+            sender: "@wa_alice:courier.local",
+            name: "Alice Example"
+        )
+        linkPreviewMsg.linkPreviews = [LinkPreviewItem(matchedURL: "https://vitruviansoftware.dev/courier")]
+        mediaEvents.insert(linkPreviewMsg, at: 0)
+
+        let allAdmins = [
+            Member(userID: "@wa_alice:courier.local", name: "Alice Example", isAdmin: true),
+            Member(userID: "@wa_bob:courier.local", name: "Bob Example", isAdmin: true),
+        ]
+        XCTAssertFalse(ChatInfoPresentation.showsAdminBadge(for: allAdmins[0], in: allAdmins))
+        XCTAssertEqual(ChatInfoPresentation.sharedMediaEvents(mediaEvents).count, 10)
+
+        let dupOld = RoomLink(
+            eventID: "$l1",
+            sender: "@wa_alice:courier.local",
+            ts: Fixture.millis(20),
+            url: "https://vitruviansoftware.dev/very/long/path/to/release-notes/2026/courier",
+            host: "vitruviansoftware.dev"
+        )
+        let dupNew = RoomLink(
+            eventID: "$l2",
+            sender: "@wa_bob:courier.local",
+            ts: Fixture.millis(2),
+            url: "https://vitruviansoftware.dev/very/long/path/to/release-notes/2026/courier",
+            host: "vitruviansoftware.dev"
+        )
+        XCTAssertEqual(RoomLink.deduplicated([dupOld, dupNew]), [dupNew])
+
+        var groupFeatures = Fixture.features
+        groupFeatures.canLeave = true
+        groupFeatures.canDelete = true
+
+        let info = RoomInfoResult(
+            roomID: "!grp-media:courier.local",
+            name: "Design & Media",
+            remoteName: "Design & Media",
+            network: "slack",
+            isDirect: false,
+            encrypted: false,
+            members: allAdmins,
+            sharedMedia: mediaEvents,
+            sharedLinks: [dupOld, dupNew],
+            features: groupFeatures
+        )
+
+        let sizes = try Snapshot.render("chat-info-media-unencrypted", width: 280, height: 960) {
+            ChatInfoPane(
+                info: info,
+                bookmarks: [],
+                isMuted: true,
+                isPinned: true,
+                now: { Fixture.now }
+            )
+        }
+        XCTAssertEqual(sizes.count, 2)
+        for size in sizes {
+            XCTAssertEqual(size.width, sizes[0].width)
+            XCTAssertGreaterThanOrEqual(size.width, 280)
+            XCTAssertLessThanOrEqual(size.width, 560)
         }
     }
 

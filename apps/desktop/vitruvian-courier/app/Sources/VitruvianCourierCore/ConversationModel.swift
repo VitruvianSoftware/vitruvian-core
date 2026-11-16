@@ -399,6 +399,16 @@ public final class ConversationModel: ObservableObject {
     @Published public var isChatSummaryExpanded = false
     /// Opens Settings ▸ AI.
     public var onOpenAISettings: @MainActor () -> Void = {}
+    /// Toggles mute on the given room (or current inbox targets when nil), wired by `AppDelegate`.
+    public var onToggleMute: @MainActor (String?) -> Void = { _ in }
+    /// Toggles pin on the given room (or current inbox targets when nil), wired by `AppDelegate`.
+    public var onTogglePin: @MainActor (String?) -> Void = { _ in }
+    /// Archives/unarchives the given room (or current inbox targets when nil), wired by `AppDelegate`.
+    public var onToggleArchive: @MainActor (String?) -> Void = { _ in }
+    /// Opens the Remind Me UI for the given room (or current inbox targets when nil); returns true if handled.
+    public var onRemindLater: @MainActor (String?) -> Bool = { _ in false }
+    /// Opens Search in Chat (`⌘F`) for the given room, wired by `AppDelegate`.
+    public var onSearchInChat: @MainActor (String?) -> Void = { _ in }
     private var summarizeTask: Task<Void, Never>?
     private var summarizeToken = 0
     /// Active view-once message being viewed in `ViewOnceSheet`.
@@ -444,6 +454,11 @@ public final class ConversationModel: ObservableObject {
     private let appModel: AppModel
     private let unreadCount: @MainActor (String) -> Int
     private let chat: @MainActor (String) -> InboxRow?
+
+    /// Returns the inbox row for `roomID` if known, for views such as `ChatInfoWindow`.
+    public func chatRow(for roomID: String) -> InboxRow? {
+        chat(roomID)
+    }
     private var hideDeletedPreference = false
     private var showChatUpdatesPreference = true
     private var preferenceSubscription: AnyCancellable?

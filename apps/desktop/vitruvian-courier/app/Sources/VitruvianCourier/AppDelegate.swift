@@ -292,6 +292,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.menuCoordinator.openSettings(pane: .ai)
         }
         conversation.onOpenAISettings = openAISettings
+        conversation.onToggleMute = { [weak inbox] roomID in
+            Task { await inbox?.toggleMute(ids: roomID.map { [$0] }) }
+        }
+        conversation.onTogglePin = { [weak inbox] roomID in
+            Task { await inbox?.togglePin(ids: roomID.map { [$0] }) }
+        }
+        conversation.onToggleArchive = { [weak inbox] roomID in
+            guard let inbox else { return }
+            let ids = roomID.map { [$0] }
+            let rows = inbox.targetRows(ids)
+            let allArchived = !rows.isEmpty && rows.allSatisfy(\.archived)
+            Task { await inbox.archive(!allArchived, ids: ids) }
+        }
+        conversation.onRemindLater = { [weak self] roomID in
+            guard let self else { return false }
+            if (roomID == nil || roomID == self.inbox.selectedRoomID),
+               self.menuCoordinator.isSidebarVisible,
+               self.hotkeyDispatcher.perform("Remind Later") {
+                return true
+            }
+            guard !self.lifecycle.isLocked, self.inbox.isEntitled(.reminders) else { return true }
+            let targets = roomID.map { [$0] } ?? self.inbox.targets
+            guard !targets.isEmpty else { return true }
+            let request = ReminderRequest(ids: targets)
+            self.inbox.customReminder = request
+            self.inboxUI.customReminder = request
+            return true
+        }
+        conversation.onSearchInChat = { [weak self] roomID in
+            guard let self else { return }
+            if (roomID == nil || roomID == self.inbox.selectedRoomID),
+               self.hotkeyDispatcher.perform("Search: Room") {
+                return
+            }
+            guard !self.lifecycle.isLocked else { return }
+            self.windowOpener.show()
+            self.search.show(in: roomID)
+        }
         for composer in [conversation.composer, conversation.thread.composer] {
             composer.onOpenAISettings = openAISettings
         }

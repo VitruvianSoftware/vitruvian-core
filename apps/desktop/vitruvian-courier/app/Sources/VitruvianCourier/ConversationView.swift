@@ -68,6 +68,8 @@ struct ConversationView: View {
                     info: info,
                     bookmarks: conversation.chatInfoBookmarks,
                     isRefreshing: conversation.isRefreshingChatInfo,
+                    isMuted: (inbox.row(of: info.roomID) ?? inbox.selectedRow)?.muted ?? false,
+                    isPinned: (inbox.row(of: info.roomID) ?? inbox.selectedRow)?.pinned ?? false,
                     showsCloseButton: true,
                     focusSearchTrigger: conversation.focusChatInfoSearchRequest,
                     now: { conversation.currentTime },
@@ -137,6 +139,24 @@ struct ConversationView: View {
                     },
                     onOpenAISettings: {
                         conversation.onOpenAISettings()
+                    },
+                    onToggleMute: { Task { await inbox.toggleMute() } },
+                    onTogglePin: { Task { await inbox.togglePin() } },
+                    onArchive: {
+                        let rows = inbox.targetRows()
+                        let allArchived = !rows.isEmpty && rows.allSatisfy(\.archived)
+                        Task { await inbox.archive(!allArchived) }
+                    },
+                    onRemind: {
+                        if !conversation.onRemindLater(nil) {
+                            let targets = inbox.targets.isEmpty ? [info.roomID] : inbox.targets
+                            if inbox.isEntitled(.reminders) {
+                                inbox.customReminder = ReminderRequest(ids: targets)
+                            }
+                        }
+                    },
+                    onSearchInChat: {
+                        conversation.onSearchInChat(inbox.selectedRoomID ?? info.roomID)
                     },
                     onClose: conversation.toggleChatInfo,
                     headerInToolbar: drawsLiquidGlass

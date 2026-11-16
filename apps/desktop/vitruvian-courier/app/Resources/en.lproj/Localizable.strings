@@ -2330,8 +2330,9 @@
 "Pinned message" = "Pinned message";
 "Shared Media" = "Shared Media";
 "Encrypted" = "Encrypted";
-"Transport TLS" = "Transport TLS";
-"Refresh Chat Info" = "Refresh Chat Info";
+"Not end-to-end encrypted" = "Not end-to-end encrypted";
+"Reload Chat Details" = "Reload Chat Details";
+"Remind…" = "Remind…";
 "Export Chat…" = "Export Chat…";
 "Exported %lld messages" = "Exported %lld messages";
 "Couldn’t export the chat." = "Couldn’t export the chat.";
