@@ -842,3 +842,24 @@ func TestSyncWorldRetriesASpaceRepairWhenGetGroupFails(t *testing.T) {
 	require.Equal(t, []string{githubGaia}, meta.AppUserIDs)
 	require.Equal(t, "Ann, Bob", portal.Name)
 }
+
+func TestSyncWorldKeepsAGoogleGivenSpaceNameWhenGetGroupOmitsIt(t *testing.T) {
+	ctx := context.Background()
+	groupAPI := membersAPI(
+		"",
+		joinedMembership(pb.UserMemberID(ownGaia)),
+		joinedMembership(pb.UserMemberID(annGaia)),
+		joinedMembership(pb.UserMemberID(bobGaia)),
+		joinedMembership(appMemberID(githubGaia)),
+	)
+	h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_world_named", "Ann, Bob, GitHub", groupAPI))
+	portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_world_named", "Ann, Bob, GitHub")
+
+	require.NoError(t, client.syncWorld(ctx))
+
+	meta := portal.Metadata.(*PortalMetadata)
+	require.Equal(t, "Ann, Bob, GitHub", portal.Name)
+	require.True(t, meta.NameFromGoogle)
+	require.Equal(t, []string{githubGaia}, meta.AppUserIDs)
+	require.True(t, meta.AppRosterChecked)
+}
