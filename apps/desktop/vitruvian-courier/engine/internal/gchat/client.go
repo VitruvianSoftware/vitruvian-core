@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
@@ -786,7 +787,10 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 		roster.add(&pb.UserId{Id: pb.String(id)})
 	}
 	fetchedGroupMembers := false
+	readGroup := false     // get_group answered and was understood (it may have listed nobody)
+	attemptedRead := false // get_group was asked for
 	if rawID != "" && (!isDM || len(listedOthers) > 1) {
+		attemptedRead = true
 		reqBytes, mErr := pb.Marshal(&pb.GetGroupRequest{
 			GroupId: pb.PartsToGroupID(rawID, isDM),
 			FetchOptions: []pb.GetGroupRequest_FetchOptions{
@@ -796,17 +800,20 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 			IncludeInviteDms: pb.Bool(true),
 		})
 		if mErr == nil {
-			if respBytes, rpcErr := c.rpcCall(ctx, "get_group", reqBytes); rpcErr == nil && len(respBytes) > 0 {
+			if respBytes, rpcErr := c.rpcCall(ctx, "get_group", reqBytes); rpcErr == nil {
 				var resp pb.GetGroupResponse
 				if pb.Unmarshal(respBytes, &resp) == nil {
+					readGroup = true
 					c.queueReceiptsAfterCurrent(ctx, c.readReceiptEvents(ctx, isDM, rawID, resp.GetReadReceiptSet()))
 					if g := resp.GetGroup(); g != nil {
+						// Only a name Google gives sets the flag. A get_group that leaves the name out does not clear it:
+						// the world list may have given one (syncWorld records that) and get_group omits it for some
+						// spaces, so silence here is not proof the chat is unnamed. Observed live on an unnamed space
+						// (space:AAQASdOkDXg, 2026-11): get_group returned no name for it, not the member-list name
+						// Google Chat shows, so an unnamed space reaches the recompose below with the flag still unset.
 						if gName := strings.TrimSpace(g.GetName()); gName != "" && !isPlaceholderChatName(portal.ID, gName) {
 							name = gName
 							nameFromGoogle = true
-						} else {
-							// Google answered and gave the chat no name of its own.
-							nameFromGoogle = false
 						}
 						if desc := strings.TrimSpace(g.GetGroupDetails().GetDescription()); desc != "" {
 							topic = &desc
@@ -870,12 +877,19 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
 		meta.AppUserIDs = appIDs
 		meta.NameFromGoogle = nameFromGoogle
-		if fetchedGroupMembers {
-			// A space's world item lists no members, so this read is the first the portal hears of them.
-			meta.MemberUserIDs = slices.Clone(memberGaiaIDs)
-		}
-		if fetchedGroupMembers && (!recomposeName || name != "") {
+		// A space can have thousands of members, so only which of them are apps is kept (app_user_ids); the member
+		// list itself is read from get_group each time it is needed.
+		switch {
+		case fetchedGroupMembers && (!recomposeName || name != ""):
 			meta.AppRosterChecked = true
+			meta.AppRosterAttemptedAt = 0
+		case readGroup && !isDM && !fetchedGroupMembers:
+			// Google answered and listed nobody: there is nothing to learn, so the chat is not read again.
+			meta.AppRosterChecked = true
+			meta.AppRosterAttemptedAt = 0
+		case attemptedRead && !readGroup:
+			// The read failed: remember when, so a chat that keeps failing is not asked again on every connect.
+			meta.AppRosterAttemptedAt = time.Now().Unix()
 		}
 	}
 	c.metaMu.Unlock()

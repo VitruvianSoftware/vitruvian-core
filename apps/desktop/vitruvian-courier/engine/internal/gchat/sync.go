@@ -376,6 +376,9 @@ func (c *Client) isOneToOneDMPortal(portal *bridgev2.Portal, own networkid.UserI
 	return false
 }
 
+// appRosterRetryAfter is how long a chat whose roster read failed is left alone before it is tried again.
+const appRosterRetryAfter = 24 * time.Hour
+
 // needsAppRosterCheck is whether portal has not had its roster read since apps were told apart from people:
 // GetChatInfo reads it (get_group carries each member's type) and records the answer, so this is true once per chat.
 // A group DM qualifies once it lists more than one other member. A space always qualifies: the world list carries
@@ -389,8 +392,13 @@ func (c *Client) needsAppRosterCheck(portal *bridgev2.Portal, own networkid.User
 	c.metaMu.Lock()
 	defer c.metaMu.Unlock()
 	meta, ok := portal.Metadata.(*PortalMetadata)
-	if ok && meta != nil && meta.AppRosterChecked {
-		return false
+	if ok && meta != nil {
+		if meta.AppRosterChecked {
+			return false
+		}
+		if meta.AppRosterAttemptedAt > 0 && time.Since(time.Unix(meta.AppRosterAttemptedAt, 0)) < appRosterRetryAfter {
+			return false
+		}
 	}
 	if !isDM {
 		return true
@@ -500,6 +508,7 @@ func (c *Client) refreshPortalChatInfo(ctx context.Context, portal *bridgev2.Por
 	// GetChatInfo records which members are apps on the portal's metadata; keep that if it changed.
 	after := c.portalAppRoster(portal)
 	rosterChanged := before.checked != after.checked || before.nameFromGoogle != after.nameFromGoogle ||
+		before.attemptedAt != after.attemptedAt ||
 		!slices.Equal(before.apps, after.apps)
 	c.ghostMu.Lock()
 	defer c.ghostMu.Unlock()
@@ -545,6 +554,7 @@ type appRosterState struct {
 	checked        bool
 	apps           []string
 	nameFromGoogle bool
+	attemptedAt    int64
 }
 
 // portalAppRoster reads portal's appRosterState.
@@ -552,7 +562,7 @@ func (c *Client) portalAppRoster(portal *bridgev2.Portal) appRosterState {
 	c.metaMu.Lock()
 	defer c.metaMu.Unlock()
 	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
-		return appRosterState{meta.AppRosterChecked, slices.Clone(meta.AppUserIDs), meta.NameFromGoogle}
+		return appRosterState{meta.AppRosterChecked, slices.Clone(meta.AppUserIDs), meta.NameFromGoogle, meta.AppRosterAttemptedAt}
 	}
 	return appRosterState{}
 }

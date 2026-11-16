@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"maunium.net/go/mautrix/bridgev2"
@@ -454,6 +455,11 @@ func TestRepairRetriedWhenGetGroupFails(t *testing.T) {
 
 	meta := portal.Metadata.(*PortalMetadata)
 	require.False(t, meta.AppRosterChecked)
+	require.NotZero(t, meta.AppRosterAttemptedAt, "the failed read is remembered")
+	require.False(t, client.needsAppRosterCheck(portal, client.ownUserID()), "a failed read backs off rather than retrying on every connect")
+
+	// After the back-off it is tried again.
+	meta.AppRosterAttemptedAt = time.Now().Add(-appRosterRetryAfter - time.Minute).Unix()
 	require.True(t, client.needsAppRosterCheck(portal, client.ownUserID()))
 }
 
@@ -742,7 +748,7 @@ func TestSyncWorldLeavesAppsOutOfAnUnnamedSpaceAndRepairsItsName(t *testing.T) {
 	require.NoError(t, client.syncWorld(ctx))
 
 	meta := portal.Metadata.(*PortalMetadata)
-	require.ElementsMatch(t, []string{ownGaia, annGaia, bobGaia, githubGaia}, meta.MemberUserIDs)
+	require.Empty(t, meta.MemberUserIDs, "a space's member list is not stored, only which members are apps")
 	require.Equal(t, []string{githubGaia}, meta.AppUserIDs)
 	require.True(t, meta.AppRosterChecked, "the space's roster is read once, and the answer kept")
 	require.False(t, meta.NameFromGoogle)
@@ -832,10 +838,17 @@ func TestSyncWorldRetriesASpaceRepairWhenGetGroupFails(t *testing.T) {
 	require.NoError(t, client.syncWorld(ctx))
 	meta := portal.Metadata.(*PortalMetadata)
 	require.False(t, meta.AppRosterChecked, "a failed read is not an answer")
-	require.True(t, client.needsAppRosterCheck(portal, client.ownUserID()))
+	require.NotZero(t, meta.AppRosterAttemptedAt)
 	require.Equal(t, "Ann, Bob, GitHub", portal.Name, "nothing is changed on a guess")
 
+	// Within the back-off the next sync does not ask again.
 	failGetGroup.Store(false)
+	require.False(t, client.needsAppRosterCheck(portal, client.ownUserID()))
+	require.NoError(t, client.syncWorld(ctx))
+	require.False(t, portal.Metadata.(*PortalMetadata).AppRosterChecked, "backed off: not read again yet")
+
+	// Once the back-off has passed it is retried and repaired.
+	meta.AppRosterAttemptedAt = time.Now().Add(-appRosterRetryAfter - time.Minute).Unix()
 	require.NoError(t, client.syncWorld(ctx))
 	meta = portal.Metadata.(*PortalMetadata)
 	require.True(t, meta.AppRosterChecked)
@@ -862,4 +875,43 @@ func TestSyncWorldKeepsAGoogleGivenSpaceNameWhenGetGroupOmitsIt(t *testing.T) {
 	require.True(t, meta.NameFromGoogle)
 	require.Equal(t, []string{githubGaia}, meta.AppUserIDs)
 	require.True(t, meta.AppRosterChecked)
+}
+
+func TestSpaceMemberListIsNotStoredEvenWhenLarge(t *testing.T) {
+	ctx := context.Background()
+	memberships := []*pb.Membership{joinedMembership(appMemberID(githubGaia))}
+	for i := 0; i < 500; i++ {
+		memberships = append(memberships, joinedMembership(pb.UserMemberID(fmt.Sprintf("2%020d", i))))
+	}
+	h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_large", "Big Room", membersAPI("Big Room", memberships...)))
+	portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_large", "Big Room")
+
+	require.NoError(t, client.syncWorld(ctx))
+
+	meta := portal.Metadata.(*PortalMetadata)
+	require.True(t, meta.AppRosterChecked)
+	require.Equal(t, []string{githubGaia}, meta.AppUserIDs)
+	require.Empty(t, meta.MemberUserIDs, "a large space must not persist its member list")
+	encoded, err := json.Marshal(meta)
+	require.NoError(t, err)
+	require.Less(t, len(encoded), 400)
+}
+
+func TestSpaceWithNoJoinedMembersIsStillMarkedChecked(t *testing.T) {
+	ctx := context.Background()
+	// get_group answers (with a group, so the body is not empty) but lists nobody.
+	groupAPI := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		_, _ = w.Write(pb.MustMarshal(&pb.GetGroupResponse{Group: &pb.Group{GroupId: pb.SpaceGroupID("space_empty")}}))
+	}
+	h, ul, client := setupLoggedInGChatTestEnv(t, spaceWorldAPI("space_empty", "", groupAPI))
+	portal := spacePortalWithName(t, ctx, h.Bridge, ul, "space_empty", "Release crew")
+
+	require.NoError(t, client.syncWorld(ctx))
+
+	meta := portal.Metadata.(*PortalMetadata)
+	require.True(t, meta.AppRosterChecked, "nothing to learn, so it is not read again")
+	require.Zero(t, meta.AppRosterAttemptedAt)
+	require.False(t, client.needsAppRosterCheck(portal, client.ownUserID()))
+	require.Equal(t, "Release crew", portal.Name)
 }
