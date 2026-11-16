@@ -20,9 +20,13 @@
 
 package dev.vitruvian.remote.state
 
+import io.sentry.OptionsContainer
 import io.sentry.Sentry
+import io.sentry.SentryOpenTelemetryMode
 import io.sentry.SentryOptions
+import io.sentry.android.core.SentryAndroidOptions
 import io.sentry.protocol.Device
+import io.sentry.protocol.FeatureFlags
 import io.sentry.protocol.OperatingSystem
 import io.sentry.protocol.SentryRuntime
 import java.io.File
@@ -231,13 +235,42 @@ public object AppInfo {
    */
   public fun disableCrashReporting(
       appCacheDir: File,
-      options: SentryOptions = Sentry.getCurrentHub().options,
+      options: SentryOptions = Sentry.getCurrentScopes().options,
       closeSentry: () -> Unit = { Sentry.close() },
       deleteCache: (File) -> Unit = ::clearSentryCache,
   ) {
     options.shutdownTimeoutMillis = 0L
     closeSentry()
     deleteCache(appCacheDir)
+  }
+
+  private object PlainJavaSentryOptionsContainer : OptionsContainer<SentryOptions>() {
+    override fun createInstance(): SentryOptions = SentryAndroidOptions()
+  }
+
+  /**
+   * Initializes the plain Java Sentry SDK using [SentryAndroidOptions] so Sentry 8.x's Android
+   * check passes without pulling in `sentry-android-core` or using reflection.
+   */
+  public fun initSentry(
+      dsn: String = DEFAULT_SENTRY_DSN,
+      appVersion: String?,
+      device: CrashReportDeviceDetails = CrashReportDeviceDetails(),
+      appCacheDir: File? = null,
+  ) {
+    Sentry.init(
+        PlainJavaSentryOptionsContainer,
+        { options ->
+          configureSentryOptions(
+              options = options,
+              dsn = dsn,
+              appVersion = appVersion,
+              device = device,
+              appCacheDir = appCacheDir,
+          )
+        },
+        /* globalHubMode = */ true,
+    )
   }
 
   /**
@@ -259,11 +292,10 @@ public object AppInfo {
       options.cacheDirPath = sentryCacheDir(appCacheDir).absolutePath
     }
     options.isSendDefaultPii = false
-    // Sentry 7.14.0 builds CircularFifoQueue(maxBreadcrumbs) inside Scope.<init> and throws if <=
-    // 0;
-    // beforeBreadcrumb drops every breadcrumb before insertion and beforeSend clears
-    // event.breadcrumbs.
-    options.maxBreadcrumbs = 1
+    // Sentry 8.x uses DisabledQueue when maxBreadcrumbs <= 0; beforeBreadcrumb and beforeSend
+    // remain as defense-in-depth.
+    options.maxBreadcrumbs = 0
+    options.maxFeatureFlags = 0
     options.isAttachServerName = false
     options.serverName = null
     options.isAttachThreads = false
@@ -274,14 +306,37 @@ public object AppInfo {
     // No breadcrumbs (so no taps, URLs, or Mac addresses).
     options.beforeBreadcrumb = SentryOptions.BeforeBreadcrumbCallback { _, _ -> null }
 
-    // Leave performance tracing unset/disabled (tracesSampleRate stays null).
-    options.enableTracing = false
+    // Leave performance tracing and profiling unset/disabled (tracesSampleRate stays null).
     options.tracesSampleRate = null
     options.tracesSampler = null
     options.profilesSampleRate = null
     options.profilesSampler = null
+    options.profileSessionSampleRate = null
+    options.isStartProfilerOnAppStart = false
+    options.isEnableAppStartProfiling = false
     options.setTracePropagationTargets(emptyList())
     options.beforeSendTransaction = SentryOptions.BeforeSendTransactionCallback { _, _ -> null }
+
+    // Disable 8.x session replay, logs, metrics, backpressure monitoring, OTel, UI tracking, and
+    // scope persistence.
+    options.sessionReplay.sessionSampleRate = null
+    options.sessionReplay.onErrorSampleRate = null
+    options.sessionReplay.isTrackConfiguration = false
+    options.beforeSendReplay = SentryOptions.BeforeSendReplayCallback { _, _ -> null }
+
+    options.logs.isEnabled = false
+    options.logs.beforeSend = SentryOptions.Logs.BeforeSendLogCallback { _ -> null }
+    options.metrics.isEnabled = false
+    options.metrics.beforeSend = SentryOptions.Metrics.BeforeSendMetricCallback { _, _ -> null }
+
+    options.isEnableBackpressureHandling = false
+    options.openTelemetryMode = SentryOpenTelemetryMode.OFF
+    options.isCaptureOpenTelemetryEvents = false
+    options.isEnableUserInteractionBreadcrumbs = false
+    options.isEnableUserInteractionTracing = false
+    options.isEnableScreenTracking = false
+    options.isEnableScopePersistence = false
+    options.isEnableSpotlight = false
 
     val cleanModel = device.model.trim().takeIf { it.isNotEmpty() }
     val cleanOs = device.androidRelease.trim().takeIf { it.isNotEmpty() }
@@ -292,8 +347,8 @@ public object AppInfo {
         SentryOptions.BeforeSendCallback { event, hint ->
           hint.clearAttachments()
           event.breadcrumbs = null
-          // MainEventProcessor.mergeUser sets user.ipAddress = "{{auto}}" even when sendDefaultPii
-          // is false; dropping user prevents IP inference and strips any user context.
+          // MainEventProcessor.mergeUser attaches an empty User even when sendDefaultPii is
+          // false; dropping user strips any user context and ensures ipAddress is never sent.
           event.user = null
           event.request = null
           event.serverName = null
@@ -309,6 +364,7 @@ public object AppInfo {
             msg.params = msg.params?.map { param -> param?.let(::scrubCrashMessage) }
           }
           event.contexts.remove(SentryRuntime.TYPE)
+          event.contexts.remove(FeatureFlags.TYPE)
           if (cleanOs != null) {
             event.contexts.setOperatingSystem(
                 OperatingSystem().apply {

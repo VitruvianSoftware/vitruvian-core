@@ -70,6 +70,7 @@ kt_android_library(
             "src/main/kotlin/dev/vitruvian/remote/state/WakeOnLan.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Wire.kt",
             "src/main/kotlin/dev/vitruvian/remote/trackpad/Tuning.kt",
+            "src/main/kotlin/io/sentry/android/core/SentryAndroidOptions.kt",
         ],
     ),
     custom_package = "dev.vitruvian.remote",
@@ -259,7 +260,10 @@ kt_jvm_test(
 # than carrying a copy of them.
 kt_jvm_library(
     name = "app_info",
-    srcs = ["src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt"],
+    srcs = [
+        "src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt",
+        "src/main/kotlin/io/sentry/android/core/SentryAndroidOptions.kt",
+    ],
     deps = ["@maven//:io_sentry_sentry"],
 )
 

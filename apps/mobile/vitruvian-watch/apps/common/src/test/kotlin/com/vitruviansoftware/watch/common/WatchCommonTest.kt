@@ -20,6 +20,8 @@
 
 package com.vitruviansoftware.watch.common
 
+import io.sentry.Sentry
+import io.sentry.util.Platform
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -149,5 +151,21 @@ class WatchCommonTest {
         """{"itemId":"pr-3839","decision":"approve_enqueue","agent":"scout","prNumber":3839}""",
         VoiceAgentRouter.encodeApproval(item, ApprovalDecision.APPROVE_AND_ENQUEUE),
     )
+  }
+
+  @Test
+  fun watchSentryInitializesWhenPlatformIsAndroid() {
+    val isAndroidField =
+        Platform::class.java.getDeclaredField("isAndroid").apply { isAccessible = true }
+    val originalIsAndroid = isAndroidField.getBoolean(null)
+    try {
+      isAndroidField.setBoolean(null, true)
+      WatchSentry.init(appName = "vitruvian-watch-test", dsn = "https://public@127.0.0.1:1/0")
+      assertTrue(Sentry.isEnabled())
+      assertEquals("vitruvian-watch-test@1.0", Sentry.getCurrentScopes().options.release)
+    } finally {
+      Sentry.close()
+      isAndroidField.setBoolean(null, originalIsAndroid)
+    }
   }
 }

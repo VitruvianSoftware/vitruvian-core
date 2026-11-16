@@ -54,7 +54,7 @@
     "io.opencensus:opencensus-api": 2042364617,
     "io.opencensus:opencensus-contrib-grpc-metrics": 317094357,
     "io.perfmark:perfmark-api": 1019157794,
-    "io.sentry:sentry": -1795538956,
+    "io.sentry:sentry": -1655683986,
     "junit:junit": -744267592,
     "org.checkerframework:checker-qual": -819031361,
     "org.codehaus.mojo:animal-sniffer-annotations": -1634689353,
@@ -182,7 +182,7 @@
     "io.opencensus:opencensus-contrib-grpc-metrics": 1140516600,
     "io.opencensus:opencensus-contrib-http-util": 1172924790,
     "io.perfmark:perfmark-api": -1795841558,
-    "io.sentry:sentry": 1813982308,
+    "io.sentry:sentry": 260531245,
     "javax.annotation:javax.annotation-api": -1009230154,
     "junit:junit": -1256429642,
     "org.apache.httpcomponents:httpclient": -1749744464,
@@ -906,9 +906,9 @@
     },
     "io.sentry:sentry": {
       "shasums": {
-        "jar": "62f2d01013a6c3592f2a079f56b28db0971f6413991edb20c4a51ff4a9da36ff"
+        "jar": "3fa99cd4218f05f3926398a2721a4a126b83a47182b6096440cc27f3817d34d5"
       },
-      "version": "7.14.0"
+      "version": "8.64.0"
     },
     "javax.annotation:javax.annotation-api": {
       "shasums": {
@@ -2029,21 +2029,31 @@
       "io.sentry",
       "io.sentry.backpressure",
       "io.sentry.cache",
+      "io.sentry.cache.tape",
       "io.sentry.clientreport",
       "io.sentry.config",
       "io.sentry.exception",
+      "io.sentry.featureflags",
       "io.sentry.hints",
       "io.sentry.instrumentation.file",
+      "io.sentry.internal",
       "io.sentry.internal.debugmeta",
+      "io.sentry.internal.eventprocessor",
       "io.sentry.internal.gestures",
       "io.sentry.internal.modules",
       "io.sentry.internal.viewhierarchy",
+      "io.sentry.logger",
       "io.sentry.metrics",
+      "io.sentry.opentelemetry",
       "io.sentry.profilemeasurements",
+      "io.sentry.profiling",
       "io.sentry.protocol",
+      "io.sentry.protocol.profiling",
       "io.sentry.rrweb",
+      "io.sentry.time",
       "io.sentry.transport",
       "io.sentry.util",
+      "io.sentry.util.network",
       "io.sentry.util.thread",
       "io.sentry.vendor",
       "io.sentry.vendor.gson.internal.bind.util",

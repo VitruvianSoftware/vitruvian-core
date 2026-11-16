@@ -4058,14 +4058,11 @@ public class DeriveTest {
       java.io.File(sentryDir, "nested").mkdirs()
       java.io.File(sentryDir, "nested/queued.envelope").writeText("pending")
       java.io.File(sentryDir, "root.txt").writeText("marker")
-      io.sentry.Sentry.init { opts ->
-        AppInfo.configureSentryOptions(
-            options = opts,
-            dsn = "https://public@127.0.0.1:1/0",
-            appVersion = "0.1.41",
-            appCacheDir = cacheDir,
-        )
-      }
+      AppInfo.initSentry(
+          dsn = "https://public@127.0.0.1:1/0",
+          appVersion = "0.1.41",
+          appCacheDir = cacheDir,
+      )
       assertTrue(io.sentry.Sentry.isEnabled())
       assertTrue(sentryDir.exists())
 
@@ -4125,15 +4122,12 @@ public class DeriveTest {
       // Also verify default options wiring against a real initialized hub.
       java.io.File(sentryDir, "outbox").apply { mkdirs() }
       java.io.File(sentryDir, "outbox/queued.envelope").writeText("queued")
-      io.sentry.Sentry.init { opts ->
-        AppInfo.configureSentryOptions(
-            options = opts,
-            dsn = "https://public@127.0.0.1:1/0",
-            appVersion = "0.1.41",
-            appCacheDir = cacheDir,
-        )
-      }
-      val liveOptions = io.sentry.Sentry.getCurrentHub().options
+      AppInfo.initSentry(
+          dsn = "https://public@127.0.0.1:1/0",
+          appVersion = "0.1.41",
+          appCacheDir = cacheDir,
+      )
+      val liveOptions = io.sentry.Sentry.getCurrentScopes().options
       assertEquals(2000L, liveOptions.shutdownTimeoutMillis)
 
       AppInfo.disableCrashReporting(cacheDir)

@@ -28,13 +28,22 @@ import io.sentry.Scope
 import io.sentry.Sentry
 import io.sentry.SentryEnvelope
 import io.sentry.SentryEvent
+import io.sentry.SentryLogEvent
+import io.sentry.SentryLogLevel
+import io.sentry.SentryMetricsEvent
+import io.sentry.SentryOpenTelemetryMode
 import io.sentry.SentryOptions
+import io.sentry.SentryReplayEvent
 import io.sentry.cache.EnvelopeCache
 import io.sentry.cache.PersistingOptionsObserver
+import io.sentry.protocol.FeatureFlag
+import io.sentry.protocol.FeatureFlags
 import io.sentry.protocol.Message
+import io.sentry.protocol.SentryId
 import io.sentry.protocol.SentryTransaction
 import io.sentry.protocol.TransactionInfo
 import io.sentry.protocol.User
+import io.sentry.util.Platform
 import java.io.File
 import java.io.StringWriter
 import java.nio.file.Files
@@ -463,6 +472,11 @@ public class AppInfoTest {
                 "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt")
             .readText()
     assertEquals(emptyList<String>(), findForbiddenSentryReflectionTokens(appInfoSource))
+    val androidOptionsSource =
+        resolvePath(
+                "apps/mobile/vitruvian-remote/src/main/kotlin/io/sentry/android/core/SentryAndroidOptions.kt")
+            .readText()
+    assertEquals(emptyList<String>(), findForbiddenSentryReflectionTokens(androidOptionsSource))
   }
 
   @Test
@@ -485,7 +499,8 @@ public class AppInfoTest {
     assertEquals("vitruvian-remote@0.1.40", options.release)
     assertEquals("production", options.environment)
     assertFalse(options.isSendDefaultPii)
-    assertEquals(1, options.maxBreadcrumbs)
+    assertEquals(0, options.maxBreadcrumbs)
+    assertEquals(0, options.maxFeatureFlags)
     assertNull(options.beforeBreadcrumb!!.execute(Breadcrumb.info("tap"), Hint()))
     val scope = Scope(options).apply { addBreadcrumb(Breadcrumb.info("tap")) }
     assertTrue(scope.breadcrumbs.isEmpty())
@@ -496,17 +511,55 @@ public class AppInfoTest {
     assertFalse(options.isEnableAutoSessionTracking)
     assertFalse(options.isSendClientReports)
 
-    assertEquals(false, options.enableTracing)
     assertFalse(options.isTracingEnabled)
     assertNull(options.tracesSampleRate)
     assertNull(options.tracesSampler)
     assertNull(options.profilesSampleRate)
     assertNull(options.profilesSampler)
     assertFalse(options.isProfilingEnabled)
+    assertNull(options.profileSessionSampleRate)
+    assertFalse(options.isStartProfilerOnAppStart)
+    assertFalse(options.isEnableAppStartProfiling)
+    assertFalse(options.isContinuousProfilingEnabled)
     assertTrue(options.tracePropagationTargets.isEmpty())
-    val tx =
-        SentryTransaction("tx", 0.0, 1.0, emptyList(), emptyMap(), emptyMap(), TransactionInfo("m"))
+    val tx = SentryTransaction("tx", 0.0, 1.0, emptyList(), emptyMap(), TransactionInfo("m"))
     assertNull(options.beforeSendTransaction!!.execute(tx, Hint()))
+
+    assertNull(options.sessionReplay.sessionSampleRate)
+    assertNull(options.sessionReplay.onErrorSampleRate)
+    assertFalse(options.sessionReplay.isTrackConfiguration)
+    assertFalse(options.sessionReplay.isSessionReplayEnabled)
+    assertFalse(options.sessionReplay.isSessionReplayForErrorsEnabled)
+    assertNull(options.beforeSendReplay!!.execute(SentryReplayEvent(), Hint()))
+
+    assertFalse(options.logs.isEnabled)
+    assertNotNull(options.logs.beforeSend)
+    assertNull(
+        options.logs.beforeSend!!.execute(
+            SentryLogEvent(SentryId(), 0.0, "msg", SentryLogLevel.INFO)))
+    assertFalse(options.metrics.isEnabled)
+    assertNotNull(options.metrics.beforeSend)
+    assertNull(
+        options.metrics.beforeSend!!.execute(
+            SentryMetricsEvent(SentryId(), 0.0, "metric", "counter", 1.0),
+            Hint(),
+        ))
+
+    assertFalse(options.isEnableBackpressureHandling)
+    assertEquals(SentryOpenTelemetryMode.OFF, options.openTelemetryMode)
+    assertFalse(options.isCaptureOpenTelemetryEvents)
+    assertFalse(options.isEnableUserInteractionBreadcrumbs)
+    assertFalse(options.isEnableUserInteractionTracing)
+    assertFalse(options.isEnableScreenTracking)
+    assertFalse(options.isEnableScopePersistence)
+    assertFalse(options.isEnableSpotlight)
+    assertEquals(
+        setOf(
+            "io.sentry.UncaughtExceptionHandlerIntegration",
+            "io.sentry.ShutdownHookIntegration",
+        ),
+        options.integrations.map { it.javaClass.name }.toSet(),
+    )
 
     assertEquals("Pixel Fold", options.tags["device.model"])
     assertEquals("15", options.tags["os.version"])
@@ -533,10 +586,11 @@ public class AppInfoTest {
         SentryEvent(RuntimeException("boom")).apply {
           addBreadcrumb(Breadcrumb.info("tap"))
           user = User().apply { email = "user@example.com" }
+          contexts.setFeatureFlags(FeatureFlags(listOf(FeatureFlag("flag", true))))
         }
     val hint = Hint().apply { addAttachment(Attachment(byteArrayOf(6, 7), "extra.txt")) }
 
-    // MainEventProcessor runs before beforeSend in SentryClient and sets user.ipAddress="{{auto}}".
+    // MainEventProcessor.mergeUser attaches a User when null; beforeSend drops user completely.
     val processed = MainEventProcessor(options).process(rawEvent, hint)
     assertNull(processed.threads)
     val sanitized = options.beforeSend!!.execute(processed, hint)!!
@@ -550,6 +604,7 @@ public class AppInfoTest {
     assertNull(sanitized.serverName)
     assertTrue(sanitized.threads.isNullOrEmpty())
     assertNull(sanitized.contexts.runtime)
+    assertNull(sanitized.contexts.featureFlags)
     assertTrue(hint.attachments.isEmpty())
 
     assertEquals("Android", sanitized.contexts.operatingSystem?.name)
@@ -584,7 +639,7 @@ public class AppInfoTest {
       assertTrue(dsnCacheDir.absolutePath.startsWith(sentryBaseDir.absolutePath + File.separator))
       assertEquals(File(dsnCacheDir, "outbox").absolutePath, outboxDir.absolutePath)
 
-      // Exercise the real 7.14.0 Java SDK EnvelopeCache and PersistingOptionsObserver disk layout.
+      // Exercise the real 8.x Java SDK EnvelopeCache and PersistingOptionsObserver disk layout.
       dsnCacheDir.mkdirs()
       outboxDir.mkdirs()
       val envelope =
@@ -789,15 +844,12 @@ public class AppInfoTest {
 
       File(sentryDir, "outbox").apply { mkdirs() }
       File(sentryDir, "outbox/queued.envelope").writeText("queued")
-      Sentry.init { opts ->
-        AppInfo.configureSentryOptions(
-            options = opts,
-            dsn = "https://public@127.0.0.1:1/0",
-            appVersion = "0.1.41",
-            appCacheDir = cacheDir,
-        )
-      }
-      val liveOptions = Sentry.getCurrentHub().options
+      AppInfo.initSentry(
+          dsn = "https://public@127.0.0.1:1/0",
+          appVersion = "0.1.41",
+          appCacheDir = cacheDir,
+      )
+      val liveOptions = Sentry.getCurrentScopes().options
       assertEquals(2000L, liveOptions.shutdownTimeoutMillis)
 
       AppInfo.disableCrashReporting(cacheDir)
@@ -807,6 +859,39 @@ public class AppInfoTest {
       assertFalse(sentryDir.exists())
     } finally {
       Sentry.close()
+      cacheDir.deleteRecursively()
+    }
+  }
+
+  @Test
+  public fun `initSentry succeeds when Platform isAndroid is true while raw Sentry init throws`() {
+    val cacheDir = Files.createTempDirectory("vitruvian-sentry-android-check").toFile()
+    val isAndroidField =
+        Platform::class.java.getDeclaredField("isAndroid").apply { isAccessible = true }
+    val originalIsAndroid = isAndroidField.getBoolean(null)
+    try {
+      isAndroidField.setBoolean(null, true)
+      val thrown =
+          try {
+            Sentry.init { opts -> opts.dsn = "https://public@127.0.0.1:1/0" }
+            null
+          } catch (e: IllegalArgumentException) {
+            e
+          }
+      assertNotNull(
+          "Expected plain Sentry.init to throw IllegalArgumentException on Android", thrown)
+      assertTrue(thrown!!.message!!.contains("SentryAndroid.init"))
+
+      AppInfo.initSentry(
+          dsn = "https://public@127.0.0.1:1/0",
+          appVersion = "0.1.44",
+          appCacheDir = cacheDir,
+      )
+      assertTrue(Sentry.isEnabled())
+      assertEquals(0, Sentry.getCurrentScopes().options.maxBreadcrumbs)
+    } finally {
+      Sentry.close()
+      isAndroidField.setBoolean(null, originalIsAndroid)
       cacheDir.deleteRecursively()
     }
   }

@@ -209,15 +209,12 @@ public class MainActivity : ComponentActivity() {
     }
     val sentryDsn = System.getenv("SENTRY_DSN") ?: AppInfo.DEFAULT_SENTRY_DSN
     val device = readCrashReportDeviceDetails()
-    io.sentry.Sentry.init { options ->
-      AppInfo.configureSentryOptions(
-          options = options,
-          dsn = sentryDsn,
-          appVersion = appVersion,
-          device = device,
-          appCacheDir = cacheDir,
-      )
-    }
+    AppInfo.initSentry(
+        dsn = sentryDsn,
+        appVersion = appVersion,
+        device = device,
+        appCacheDir = cacheDir,
+    )
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {

@@ -20,18 +20,31 @@
 
 package com.vitruviansoftware.watch.common
 
+import io.sentry.OptionsContainer
 import io.sentry.Sentry
+import io.sentry.SentryOptions
+import io.sentry.android.core.SentryAndroidOptions
 
 public object WatchSentry {
   public const val DEFAULT_DSN: String =
       "https://d273aa0e507187dad4c8cbad5567fcfc@sentry-ingest.ipv1337.dev/3"
 
-  public fun init(appName: String = "vitruvian-watch") {
-    val dsn = System.getenv("SENTRY_DSN") ?: DEFAULT_DSN
-    Sentry.init { options ->
-      options.dsn = dsn
-      options.release = "$appName@1.0"
-      options.environment = "production"
-    }
+  private object PlainJavaOptionsContainer : OptionsContainer<SentryOptions>() {
+    override fun createInstance(): SentryOptions = SentryAndroidOptions()
+  }
+
+  public fun init(
+      appName: String = "vitruvian-watch",
+      dsn: String = System.getenv("SENTRY_DSN") ?: DEFAULT_DSN,
+  ) {
+    Sentry.init(
+        PlainJavaOptionsContainer,
+        { options ->
+          options.dsn = dsn
+          options.release = "$appName@1.0"
+          options.environment = "production"
+        },
+        /* globalHubMode = */ true,
+    )
   }
 }

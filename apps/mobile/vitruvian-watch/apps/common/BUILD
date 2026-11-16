@@ -39,6 +39,7 @@ kt_jvm_test(
     test_class = "com.vitruviansoftware.watch.common.WatchCommonTest",
     deps = [
         ":common",
+        "@maven//:io_sentry_sentry",
         "@maven//:junit_junit",
     ],
 )
