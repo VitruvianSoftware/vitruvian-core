@@ -20,8 +20,33 @@
 
 package com.vitruviansoftware.watch.common
 
+import dev.vitruvian.crashprivacy.DeviceField
+import io.sentry.Attachment
+import io.sentry.Breadcrumb
+import io.sentry.Hint
+import io.sentry.MainEventProcessor
+import io.sentry.OptionsContainer
+import io.sentry.Sentry
+import io.sentry.SentryEvent
+import io.sentry.android.core.SentryAndroidOptions
+import io.sentry.protocol.App
+import io.sentry.protocol.DebugMeta
+import io.sentry.protocol.Device
+import io.sentry.protocol.FeatureFlag
+import io.sentry.protocol.FeatureFlags
+import io.sentry.protocol.OperatingSystem
+import io.sentry.protocol.Request
+import io.sentry.protocol.SentryRuntime
+import io.sentry.protocol.SentryThread
+import io.sentry.protocol.User
+import io.sentry.util.Platform
+import java.io.File
+import java.util.EnumSet
+import java.util.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -149,5 +174,176 @@ class WatchCommonTest {
         """{"itemId":"pr-3839","decision":"approve_enqueue","agent":"scout","prNumber":3839}""",
         VoiceAgentRouter.encodeApproval(item, ApprovalDecision.APPROVE_AND_ENQUEUE),
     )
+  }
+
+  private fun resolvePath(rel: String): File {
+    val direct = File(rel)
+    if (direct.exists()) return direct
+    val base = System.getenv("TEST_SRCDIR") ?: error("TEST_SRCDIR unset and missing $rel")
+    return listOf("_main", "vitruvian_core", "")
+        .map { sub -> if (sub.isEmpty()) File(base, rel) else File(File(base, sub), rel) }
+        .firstOrNull { it.exists() } ?: error("Runfile not found: $rel")
+  }
+
+  @Test
+  fun watchManifestsDisableSentryAutoInit() {
+    val manifests =
+        listOf(
+            "apps/mobile/vitruvian-watch/apps/common/src/main/AndroidManifest.xml",
+            "apps/mobile/vitruvian-watch/apps/code/src/main/AndroidManifest.xml",
+            "apps/mobile/vitruvian-watch/apps/home-control/src/main/AndroidManifest.xml",
+            "apps/mobile/vitruvian-watch/apps/remote/src/main/AndroidManifest.xml",
+            "apps/mobile/vitruvian-watch/apps/vitruvian-pulse/src/main/AndroidManifest.xml",
+        )
+    val pattern =
+        Regex("""<meta-data[^>]*android:name="io\.sentry\.auto-init"[^>]*android:value="false"""")
+    for (manifestPath in manifests) {
+      val manifest = resolvePath(manifestPath).readText()
+      assertTrue(
+          "Missing io.sentry.auto-init=false in $manifestPath", pattern.containsMatchIn(manifest))
+    }
+  }
+
+  @Test
+  fun watchSentryStripsDeviceAndOsContextsAndMatchesOriginMainReleaseEnvDsn() {
+    assertEquals(EnumSet.of(DeviceField.APP_VERSION), WatchSentry.KEPT_DEVICE_FIELDS)
+
+    val defaultOptions = SentryAndroidOptions()
+    WatchSentry.configureOptions(options = defaultOptions)
+    assertEquals(WatchSentry.DEFAULT_DSN, defaultOptions.dsn)
+    assertEquals("vitruvian-watch@1.0", defaultOptions.release)
+    assertEquals("production", defaultOptions.environment)
+
+    for (appName in
+        listOf(
+            "vitruvian-watch-code",
+            "vitruvian-watch-home",
+            "vitruvian-watch-remote",
+            "vitruvian-pulse",
+        )) {
+      val options =
+          SentryAndroidOptions().apply {
+            distinctId = "pre-existing-id"
+            setTag("device.model", "Pixel Watch 3")
+            setTag("os.version", "14")
+          }
+      WatchSentry.configureOptions(
+          options = options,
+          appName = appName,
+          dsn = "https://public@127.0.0.1:1/0",
+      )
+
+      assertEquals("https://public@127.0.0.1:1/0", options.dsn)
+      assertEquals("$appName@1.0", options.release)
+      assertEquals("production", options.environment)
+      assertTrue(options.dataCollection.isExplicitlyConfigured)
+      assertFalse(options.dataCollectionResolver.isUserInfo)
+      assertNull(options.distinctId)
+      assertEquals(0, options.maxBreadcrumbs)
+      assertTrue(options.tags.isEmpty())
+
+      val event =
+          SentryEvent(RuntimeException("boom")).apply {
+            addBreadcrumb(Breadcrumb.info("tap"))
+            user =
+                User().apply {
+                  id = "install-id"
+                  email = "user@example.com"
+                }
+            dist = "1"
+            setTag("device.model", "Pixel Watch 3")
+            setTag("os.version", "14")
+            setTag("isSideLoaded", "true")
+            setExtra("secret", "x")
+            debugMeta = DebugMeta()
+            serverName = "james-macbook-pro"
+            threads = listOf(SentryThread().apply { name = "main" })
+            setModule("io.sentry:sentry", "8.64.0")
+            request = Request().apply { url = "http://10.0.2.2:7499/v1/state" }
+            contexts.setApp(
+                App().apply {
+                  appVersion = "1.0"
+                  permissions = mapOf("VIBRATE" to "granted")
+                })
+            contexts.setDevice(
+                Device().apply {
+                  model = "Pixel Watch 3"
+                  screenWidthPixels = 454
+                  screenHeightPixels = 454
+                  memorySize = 2_147_483_648L
+                  manufacturer = "Google"
+                  timezone = TimeZone.getTimeZone("UTC")
+                })
+            contexts.setOperatingSystem(
+                OperatingSystem().apply {
+                  name = "Android"
+                  version = "14"
+                  kernelVersion = "6.1"
+                })
+            contexts.setRuntime(SentryRuntime().apply { name = "ART" })
+            contexts.setFeatureFlags(FeatureFlags(listOf(FeatureFlag("flag", true))))
+          }
+      val hint = Hint().apply { addAttachment(Attachment(byteArrayOf(1), "a.txt")) }
+      val processed = MainEventProcessor(options).process(event, hint)
+      val sanitized = options.beforeSend!!.execute(processed, hint)!!
+
+      assertEquals("$appName@1.0", sanitized.release)
+      assertEquals("production", sanitized.environment)
+      assertNull(sanitized.user)
+      assertNull(sanitized.breadcrumbs)
+      assertNull(sanitized.dist)
+      assertTrue(sanitized.extras.isNullOrEmpty())
+      assertNull(sanitized.debugMeta)
+      // What 7.14 sent on origin/main and these apps must no longer send.
+      assertNull(sanitized.serverName)
+      assertTrue(sanitized.threads.isNullOrEmpty())
+      assertNull(sanitized.getModule("io.sentry:sentry"))
+      assertNull(sanitized.request)
+      assertNull(sanitized.tags)
+      assertTrue(sanitized.contexts.isEmpty())
+      assertNull(sanitized.contexts.device)
+      assertNull(sanitized.contexts.operatingSystem)
+      assertNull(sanitized.contexts.app)
+      assertNull(sanitized.contexts.runtime)
+      assertNull(sanitized.contexts.featureFlags)
+      assertTrue(hint.attachments.isEmpty())
+    }
+  }
+
+  @Test
+  fun watchSentryInitializesWhenPlatformIsAndroid() {
+    val isAndroidField =
+        Platform::class.java.getDeclaredField("isAndroid").apply { isAccessible = true }
+    val originalIsAndroid = isAndroidField.getBoolean(null)
+    try {
+      isAndroidField.setBoolean(null, true)
+      val thrown =
+          try {
+            Sentry.init { opts -> opts.dsn = "https://public@127.0.0.1:1/0" }
+            null
+          } catch (e: IllegalArgumentException) {
+            e
+          }
+      assertNotNull(thrown)
+      assertTrue(thrown!!.message!!.contains("SentryAndroid.init"))
+
+      Sentry.init(
+          OptionsContainer.create(SentryAndroidOptions::class.java),
+          { opts ->
+            WatchSentry.configureOptions(
+                options = opts,
+                appName = "vitruvian-watch-test",
+                dsn = "https://public@127.0.0.1:1/0",
+            )
+          },
+          true,
+      )
+      assertTrue(Sentry.isEnabled())
+      assertEquals("vitruvian-watch-test@1.0", Sentry.getCurrentScopes().options.release)
+      assertEquals(0, Sentry.getCurrentScopes().options.maxBreadcrumbs)
+    } finally {
+      Sentry.close()
+      isAndroidField.setBoolean(null, originalIsAndroid)
+    }
   }
 }

@@ -20,18 +20,45 @@
 
 package com.vitruviansoftware.watch.common
 
-import io.sentry.Sentry
+import android.content.Context
+import dev.vitruvian.crashprivacy.DeviceField
+import dev.vitruvian.crashprivacy.configurePrivateSentry
+import io.sentry.android.core.SentryAndroid
+import io.sentry.android.core.SentryAndroidOptions
+import java.util.EnumSet
 
 public object WatchSentry {
   public const val DEFAULT_DSN: String =
       "https://d273aa0e507187dad4c8cbad5567fcfc@sentry-ingest.ipv1337.dev/3"
 
-  public fun init(appName: String = "vitruvian-watch") {
-    val dsn = System.getenv("SENTRY_DSN") ?: DEFAULT_DSN
-    Sentry.init { options ->
-      options.dsn = dsn
-      options.release = "$appName@1.0"
-      options.environment = "production"
+  /** Match origin/main Java SDK behavior: release, environment, and DSN only. */
+  public val KEPT_DEVICE_FIELDS: Set<DeviceField> = EnumSet.of(DeviceField.APP_VERSION)
+
+  public fun init(
+      context: Context,
+      appName: String = "vitruvian-watch",
+      dsn: String = System.getenv("SENTRY_DSN") ?: DEFAULT_DSN,
+  ) {
+    SentryAndroid.init(context) { options ->
+      configureOptions(
+          options = options,
+          appName = appName,
+          dsn = dsn,
+      )
     }
+  }
+
+  public fun configureOptions(
+      options: SentryAndroidOptions,
+      appName: String = "vitruvian-watch",
+      dsn: String = DEFAULT_DSN,
+  ) {
+    configurePrivateSentry(
+        options = options,
+        dsn = dsn,
+        keepDeviceFields = KEPT_DEVICE_FIELDS,
+        release = "$appName@1.0",
+        environment = "production",
+    )
   }
 }

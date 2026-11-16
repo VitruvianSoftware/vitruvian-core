@@ -116,6 +116,14 @@
         android:theme="@style/Theme.VitruvianRemote">
 
         <!--
+          Sentry is started manually in MainActivity.onCreate only after checking the
+          Privacy crash-report switch, so SentryInitProvider must never auto-init.
+        -->
+        <meta-data
+            android:name="io.sentry.auto-init"
+            android:value="false" />
+
+        <!--
           resizeableActivity plus the size/orientation/uiMode config changes are what
           make fold, unfold, tabletop, and theme transitions a re-layout or recompose
           rather than an activity restart - without them the shell would drop back

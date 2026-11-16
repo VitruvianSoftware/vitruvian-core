@@ -20,25 +20,48 @@
 
 # gazelle:ignore
 
-load("@rules_kotlin//kotlin:jvm.bzl", "kt_jvm_library", "kt_jvm_test")
+load("@rules_java//java:java_import.bzl", "java_import")
+load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
+load("@rules_kotlin//kotlin:jvm.bzl", "kt_jvm_test")
 
 package(default_visibility = ["//apps/mobile/vitruvian-watch:__subpackages__"])
 
-kt_jvm_library(
+kt_android_library(
     name = "common",
     srcs = glob(["src/main/kotlin/**/*.kt"]),
+    custom_package = "com.vitruviansoftware.watch.common",
+    manifest = "src/main/AndroidManifest.xml",
     deps = [
+        "//packages/android-crash-privacy",
         "@maven//:io_sentry_sentry",
+        "@maven//:io_sentry_sentry_android_core",
     ],
+)
+
+java_import(
+    name = "android_sdk_stub_jar",
+    testonly = True,
+    jars = ["@androidsdk//:platforms/android-35/android.jar"],
 )
 
 kt_jvm_test(
     name = "common_test",
     size = "small",
     srcs = ["src/test/kotlin/com/vitruviansoftware/watch/common/WatchCommonTest.kt"],
+    data = [
+        "src/main/AndroidManifest.xml",
+        "//apps/mobile/vitruvian-watch/apps/code:src/main/AndroidManifest.xml",
+        "//apps/mobile/vitruvian-watch/apps/home-control:src/main/AndroidManifest.xml",
+        "//apps/mobile/vitruvian-watch/apps/remote:src/main/AndroidManifest.xml",
+        "//apps/mobile/vitruvian-watch/apps/vitruvian-pulse:src/main/AndroidManifest.xml",
+    ],
     test_class = "com.vitruviansoftware.watch.common.WatchCommonTest",
     deps = [
+        ":android_sdk_stub_jar",
         ":common",
+        "//packages/android-crash-privacy",
+        "@maven//:io_sentry_sentry",
+        "@maven//:io_sentry_sentry_android_core",
         "@maven//:junit_junit",
     ],
 )

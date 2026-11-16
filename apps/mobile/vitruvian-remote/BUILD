@@ -85,6 +85,7 @@ kt_android_library(
         ":tuning",
         ":wake_on_lan",
         ":wire",
+        "//packages/android-crash-privacy",
         "//packages/design-system-android:lib",
         "@maven//:androidx_activity_activity_compose",
         "@maven//:androidx_compose_animation_animation",
@@ -99,6 +100,7 @@ kt_android_library(
         "@maven//:androidx_window_window",
         "@maven//:androidx_window_window_core",
         "@maven//:io_sentry_sentry",
+        "@maven//:io_sentry_sentry_android_core",
         "@maven//:org_jetbrains_kotlinx_kotlinx_coroutines_android",
     ],
 )
@@ -241,6 +243,7 @@ kt_jvm_test(
         ":tuning",
         ":wake_on_lan",
         ":wire",
+        "//packages/android-crash-privacy",
         "//packages/design-system-android:lib",
         "@maven//:androidx_compose_runtime_runtime",
         "@maven//:junit_junit",
@@ -260,7 +263,11 @@ kt_jvm_test(
 kt_jvm_library(
     name = "app_info",
     srcs = ["src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt"],
-    deps = ["@maven//:io_sentry_sentry"],
+    deps = [
+        "//packages/android-crash-privacy",
+        "@maven//:io_sentry_sentry",
+        "@maven//:io_sentry_sentry_android_core",
+    ],
 )
 
 kt_jvm_test(
@@ -271,15 +278,19 @@ kt_jvm_test(
         "BUILD",
         "LICENSE",
         "src/main/AndroidManifest.xml",
+        "//packages/android-crash-privacy:BUILD",
         "//packages/design-system-android:BUILD",
     ] + glob([
         "src/main/kotlin/**/*.kt",
         "src/main/res/**",
     ]),
     test_class = "dev.vitruvian.remote.state.AppInfoTest",
+    runtime_deps = [":android_sdk_stub_jar"],
     deps = [
         ":app_info",
+        "//packages/android-crash-privacy",
         "@maven//:io_sentry_sentry",
+        "@maven//:io_sentry_sentry_android_core",
         "@maven//:junit_junit",
     ],
 )
@@ -319,6 +330,7 @@ kt_jvm_test(
         "src/main/kotlin/dev/vitruvian/remote/shell/*.kt",
     ]),
     test_class = "dev.vitruvian.remote.state.DeriveTest",
+    runtime_deps = [":android_sdk_stub_jar"],
     deps = [
         ":app_info",
         ":derive",
@@ -327,6 +339,8 @@ kt_jvm_test(
         ":lib",
         ":wire",
         "//packages/design-system-android:lib",
+        "@maven//:io_sentry_sentry",
+        "@maven//:io_sentry_sentry_android_core",
         "@maven//:junit_junit",
     ],
 )
