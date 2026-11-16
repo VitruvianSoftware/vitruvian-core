@@ -596,28 +596,46 @@ final class NotificationPolicyTests: XCTestCase {
     }
 
     /// Short-code senders are filed under Low Priority by default, so a verification code must still get through the
-    /// Low Priority guard as it gets through the mute guard. Anything else in a Low Priority chat stays silent.
-    func testAVerificationCodeNotifiesInALowPriorityChat() throws {
-        let suiteName = "courier.test.otp.lowpriority.\(UUID().uuidString)"
+    /// Low Priority guard as it gets through the mute guard, whatever the auto-copy setting: that setting only decides
+    /// whether the code is copied. Anything else in a Low Priority chat stays silent.
+    func testAVerificationCodeNotifiesInALowPriorityChatWhateverAutoCopySays() throws {
+        let code = codeEvent("Your verification code is 482910")
+        let low = row("!code", name: "787473", lowPriority: true)
+        for autoCopy in [false, true] {
+            let suiteName = "courier.test.otp.lowpriority.\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            let prefs = NotificationPreferences(defaults: defaults)
+            prefs.autoCopyOTP = autoCopy
+
+            let decision = NotificationPolicy.evaluate(event: code, room: low, context: context(), preferences: prefs)
+            XCTAssertTrue(decision.shouldNotify, "a code in a Low Priority chat notifies (auto-copy \(autoCopy))")
+            XCTAssertEqual(decision.otpCode, "482910")
+            XCTAssertEqual(decision.shouldAutoCopyOTP, autoCopy, "it is copied only when auto-copy is on")
+
+            let chat = NotificationPolicy.evaluate(event: codeEvent("See you at 6"), room: low, context: context(),
+                                                   preferences: prefs)
+            XCTAssertFalse(chat.shouldNotify, "a message that is not a code in a Low Priority chat stays silent")
+
+            let hidden = NotificationPolicy.evaluate(event: code, room: row("!code", name: "787473", lowPriority: true,
+                                                                            hidden: true),
+                                                     context: context(), preferences: prefs)
+            XCTAssertFalse(hidden.shouldNotify, "a hidden chat stays silent, code or not")
+        }
+    }
+
+    func testAVerificationCodeNotifiesInAMutedChatWhateverAutoCopySays() throws {
+        let suiteName = "courier.test.otp.muted.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let prefs = NotificationPreferences(defaults: defaults)
-        prefs.autoCopyOTP = true
-
-        let low = row("!code", name: "787473", lowPriority: true)
-        let code = NotificationPolicy.evaluate(event: codeEvent("Your verification code is 482910"), room: low,
-                                               context: context(), preferences: prefs)
-        XCTAssertTrue(code.shouldNotify, "a code in a Low Priority chat notifies")
-        XCTAssertEqual(code.content?.category, .messageOTP)
-
-        let chat = NotificationPolicy.evaluate(event: codeEvent("See you at 6"), room: low, context: context(),
-                                               preferences: prefs)
-        XCTAssertFalse(chat.shouldNotify, "a message that is not a code in a Low Priority chat stays silent")
-
-        let hidden = NotificationPolicy.evaluate(event: codeEvent("Your verification code is 482910"),
-                                                 room: row("!code", name: "787473", lowPriority: true, hidden: true),
-                                                 context: context(), preferences: prefs)
-        XCTAssertFalse(hidden.shouldNotify, "a hidden chat stays silent, code or not")
+        prefs.autoCopyOTP = false
+        let decision = NotificationPolicy.evaluate(event: codeEvent("Your verification code is 482910"),
+                                                   room: row(muted: true), context: context(), preferences: prefs)
+        XCTAssertTrue(decision.shouldNotify)
+        XCTAssertFalse(decision.shouldAutoCopyOTP)
+        XCTAssertFalse(NotificationPolicy.evaluate(event: codeEvent("See you at 6"), room: row(muted: true),
+                                                   context: context(), preferences: prefs).shouldNotify)
     }
 
     func testNotificationsNameThePersonWithoutTheNetworkTag() {

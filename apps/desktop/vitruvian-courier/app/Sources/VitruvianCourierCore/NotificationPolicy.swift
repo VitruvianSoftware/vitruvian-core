@@ -509,19 +509,21 @@ public enum NotificationPolicy {
 
         let rawText = event.type == "m.room.message" ? (event.content["body"]?.stringValue ?? "") : ""
         let otpCode = rawText.isEmpty ? nil : OTPDetector.extractCode(from: rawText)
-        let autoCopyOTP = preferences?.autoCopyOTP ?? false
-        let isUrgentOTP = otpCode != nil && autoCopyOTP
+        // Two questions, kept apart. Does the message hold a verification code? Then it is what a person is waiting
+        // for, and it notifies through the mute and Low Priority guards. Is the code copied? Only when auto-copy is on:
+        // that setting decides copying and nothing else.
+        let holdsCode = otpCode != nil
+        let autoCopiesCode = holdsCode && (preferences?.autoCopyOTP ?? false)
 
-        // A verification code is what a person is waiting for, so it passes the Low Priority guard as it passes the mute
-        // guard below: short-code senders are filed under Low Priority by default (`ShortCodeSenders`), and their codes
-        // must still notify. A hidden chat stays silent.
-        guard !room.hidden, !room.lowPriority || isUrgentOTP else { return noNotify }
+        // Short-code senders are filed under Low Priority by default (`ShortCodeSenders`), and their codes must still
+        // notify, so a code passes this guard as it passes the mute guard below. A hidden chat stays silent.
+        guard !room.hidden, !room.lowPriority || holdsCode else { return noNotify }
         let allowRequests = preferences?.requestNotificationsEnabled ?? context.requestNotifications
         guard !room.request || allowRequests else { return noNotify }
 
         let override = resolveAccountOverride(for: room, preferences: preferences, explicitKey: accountKey)
 
-        if !isUrgentOTP {
+        if !holdsCode {
             guard !isMuted(room) else { return noNotify }
             if room.isDirect {
                 guard preferences?.messageNotificationsEnabled ?? true else { return noNotify }
@@ -556,7 +558,7 @@ public enum NotificationPolicy {
             textBody = body(of: event)
             attachment = attachmentPath(of: event)
         }
-        let category: NotificationCategory = isUrgentOTP ? .messageOTP : .message
+        let category: NotificationCategory = autoCopiesCode ? .messageOTP : .message
 
         if override?.showPreviews == false {
             subtitle = nil
@@ -586,7 +588,7 @@ public enum NotificationPolicy {
             delaySeconds: effectiveDelay,
             repeatUnreadMinutes: effectiveRepeat,
             otpCode: context.isAppLocked ? nil : otpCode,
-            shouldAutoCopyOTP: isUrgentOTP && !context.isAppLocked
+            shouldAutoCopyOTP: autoCopiesCode && !context.isAppLocked
         )
     }
 
