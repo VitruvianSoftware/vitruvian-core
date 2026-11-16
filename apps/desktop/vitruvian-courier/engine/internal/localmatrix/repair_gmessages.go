@@ -664,9 +664,10 @@ func (c *Connector) resyncRestoredChats(ctx context.Context) {
 		if len(pending) == 0 {
 			return
 		}
+		connected := c.connectedLogins(ctx)
 		for _, chat := range pending {
 			login := c.br.GetCachedUserLoginByID(chat.Receiver)
-			if login == nil || login.Client == nil || login.BridgeState.GetPrev().StateEvent != status.StateConnected {
+			if login == nil || login.Client == nil || !connected[string(chat.Receiver)] {
 				continue
 			}
 			key := string(chat.Receiver) + "|" + string(chat.ID)
@@ -857,4 +858,23 @@ func (c *Connector) queueResync(login *bridgev2.UserLogin, key networkid.PortalK
 			return latest == nil || (anchor != "" && latest.ID == anchor), nil
 		},
 	})
+}
+
+// connectedLogins is the set of this network's logins whose latest bridge state is CONNECTED, read from the store's
+// copy of each login's state (SendBridgeState keeps it). Not login.BridgeState.GetPrev(): bridgev2 reads and writes
+// that without a lock, from its own state goroutine, so polling it is a data race.
+func (c *Connector) connectedLogins(ctx context.Context) map[string]bool {
+	states, err := c.store.LoginStates(ctx, c.network)
+	if err != nil {
+		c.log.Warn().Err(err).Msg("couldn't read the login states to resync restored Google Messages chats")
+		return nil
+	}
+	out := make(map[string]bool, len(states))
+	for _, l := range states {
+		var st status.BridgeState
+		if json.Unmarshal(l.State, &st) == nil && st.StateEvent == status.StateConnected {
+			out[l.LoginID] = true
+		}
+	}
+	return out
 }
