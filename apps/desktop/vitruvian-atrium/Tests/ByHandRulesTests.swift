@@ -33,9 +33,32 @@ enum ByHandRulesTests {
                          && ByHandRules.running(among: []) == nil,
                      "the app is the entry with a program running behind it, not an entry macOS kept after the "
                          + "app updated itself into a bundle of a new name")
+        let tool = Listed(pid: 74344, hasProgram: true, isBundleProgram: false)
+        suite.expect(ByHandRules.running(among: [tool, app]) == 1
+                         && ByHandRules.running(among: [tool, ghost, app]) == 2
+                         && ByHandRules.running(among: [tool]) == 0,
+                     "the app is the entry running the bundle's own program, not an extension's tool listed "
+                         + "under the app's bundle id; a tool is taken only when nothing else runs")
+        let bundle = "/Applications/Vitruvian Atrium.app"
+        suite.expect(ByHandRules.isBundleProgram(executable: bundle + "/Contents/MacOS/VitruvianAtrium", bundle: bundle)
+                         && ByHandRules.isBundleProgram(executable: bundle + "/Contents/MacOS/VitruvianAtrium",
+                                                        bundle: bundle + "/")
+                         && !ByHandRules.isBundleProgram(
+                             executable: "/Users/a/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/"
+                                 + "dev.vitruvian.code/bin/tool", bundle: bundle)
+                         && !ByHandRules.isBundleProgram(executable: bundle + " Copy.app/Contents/MacOS/X", bundle: bundle)
+                         && !ByHandRules.isBundleProgram(executable: nil, bundle: bundle)
+                         && !ByHandRules.isBundleProgram(executable: bundle + "/Contents/MacOS/X", bundle: nil),
+                     "a program is the bundle's own only inside that bundle's Contents/MacOS")
     }
 
     static func extensionsPage(_ suite: TestSuite) {
+        suite.expect(ByHandRules.label(value: "Extensions", title: "T", description: "D") == "Extensions"
+                         && ByHandRules.label(value: "", title: "Installed", description: "D") == "Installed"
+                         && ByHandRules.label(value: "", title: "", description: ByHandRules.Words.addTool)
+                             == ByHandRules.Words.addTool,
+                     "a control is labelled by its value, else its title, else its description, so a button "
+                         + "SwiftUI names only by description is found")
         let title = ByHandRules.Words.extensionsPage
         let add = ByHandRules.Words.addTool
         let window = ["General", "Features", title, "Dynamic Island", title, add, "Installed", "Deploys"]

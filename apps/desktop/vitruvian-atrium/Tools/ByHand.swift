@@ -61,7 +61,9 @@ func runningApp() -> NSRunningApplication? {
     let listed = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
     let seen = listed.map {
         ByHandRules.Listed(pid: $0.processIdentifier, hasProgram: $0.executableURL != nil,
-                           isTerminated: $0.isTerminated)
+                           isTerminated: $0.isTerminated,
+                           isBundleProgram: ByHandRules.isBundleProgram(executable: $0.executableURL?.path,
+                                                                        bundle: $0.bundleURL?.path))
     }
     return ByHandRules.running(among: seen).map { listed[$0] }
 }
@@ -371,7 +373,7 @@ func showExtensionsPage(_ app: AXUIElement, step: String) -> [Control] {
         pause(0.8)
         let all = controls(of: app, window: Words.settingsWindow)
         if let start = ByHandRules.pageStart(Words.extensionsPage, button: Words.addTool,
-                                             among: all.map { $0.value.isEmpty ? $0.title : $0.value }) {
+                                             among: all.map { ByHandRules.label(value: $0.value, title: $0.title, description: $0.description) }) {
             return Array(all[start...])
         }
     }
