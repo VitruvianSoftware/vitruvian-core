@@ -32,7 +32,8 @@ involves, and we copy none of their server, website or branding.
 2. **We don't fork their remote agent.** Our connector is our own code. For the
    actual tools on the machine (terminal, files, search, edit) it runs the
    **unmodified** upstream `@wonderwhy-er/desktop-commander` package as a local
-   MCP server over stdio. It does not use that package's `remote` mode. MIT allows
+   MCP server over stdio (the program's standard input and output, so no network
+   port is involved). It does not use that package's `remote` mode. MIT allows
    this. We get their tool improvements for free and we never patch their code.
 3. **The connector implements both Desktop Commander and Cua Driver (`cua.ai`), plus any other local MCP server.**
    Desktop Commander handles terminal, file, search, and edit tools; Cua Driver handles background GUI automation (macOS Accessibility-tree inspection, window screenshots, and non-focus-stealing clicks and keystrokes for native desktop apps). The same connector can also expose Courier, Roborock, or any other stdio MCP server the user lists. This sets us apart from the incumbent instead of just cloning it.
@@ -85,7 +86,8 @@ used as a queue:
 2. **Their design confirms the job is small.** The work is routing, sign-in, device
    records and metering, not anything clever. Our version uses a direct WebSocket
    in place of a database queue: one fewer moving part, a call reaches the device
-   the moment it's sent, and results can stream.
+   the moment it's sent, and results could stream if a bridged server sends
+   progress (§4).
 3. **A tool list sent by the device is an improvement.** It lets the user hide tools
    locally and lets one connector bridge several MCP servers (decision 3).
 4. **We keep less data.** Their relay holds arguments and results in a table for a
@@ -122,7 +124,8 @@ routers and office firewalls. Everything travels over port 443.
    deadline.
 4. The connector checks its **local** rules (§7). If the rules say "ask first", it
    shows a prompt on the computer. It then passes the call to the right local MCP
-   server, streams any progress back, and returns the result.
+   server, streams any progress back if that server sends it (§4), and returns
+   the result.
 5. The relay returns the result to the AI. It records the tool name, size, duration
    and outcome for the user's activity view and for metering. It does **not** store
    the arguments or the output.
@@ -151,17 +154,40 @@ JSON frames over `wss://<relay>/connect`. Every frame has a `type`.
 | `hello` | connector → relay | Device id, connector version, protocol version, signed proof of the device key (§6), the allowed tool list |
 | `welcome` / `reject` | relay → connector | Accepted, or refused with a reason the connector can show |
 | `call` | relay → connector | Call id, tool name, arguments, deadline |
-| `progress` | connector → relay | Streamed output for a running call |
+| `progress` | connector → relay | Streamed output for a running call. Reserved: P1 bridges only `desktop-commander` (§10), which returns output in steps instead (§5), so P1 doesn't build it. Other bridged servers may need it later |
 | `result` | connector → relay | Final content or error for a call id |
 | `cancel` | relay → connector | The AI gave up or the deadline passed |
 | `tools_changed` | connector → relay | New allowed tool list |
 | `ping` / `pong` | both | Liveness every 20 s. Three missed pings mark the device offline |
 
 Rules: call ids are unique, and the connector ignores a repeated id for ten
-minutes, so a retry never runs a command twice. Frames are capped at 4 MiB, and the
+minutes, so the relay resending the same call never runs it twice. (An AI app's
+own retry is a different call; see below.) Frames are capped at 4 MiB, and the
 connector truncates bigger outputs with a note saying so. The relay times out a call
 at its deadline and sends `cancel`. Reconnects use exponential backoff with jitter,
 from 1 s up to 60 s.
+
+**Drops are routine, so both ends must be built for them (spike C).** Over a 24-hour
+test through the Cloudflare Tunnel, the computer was connected 99.3% of the time,
+but across 11 separate connections: it dropped 10 times, and the longest single
+connection lasted 12.7 hours. 8 drops were network resets, each back in about 1 s.
+2 were outages of 3 to 6 minutes when the node running the relay went away.
+Messages took 62 ms to go there and back in a typical case, and 152 ms in the
+slowest one in twenty. So:
+
+- The connector must reconnect by itself, quietly. The spike's test client used
+  the same schedule as above (1 s, doubling, capped at 60 s) but without jitter,
+  and was back about 1 s after each reset.
+- A call in flight when its device's connection drops must get a clear error at
+  once ("Your computer disconnected; try again"), not a hang until the deadline.
+  This is a requirement for P1; no spike tested it.
+- **A retry could run a command twice.** The repeated-id rule only covers the
+  relay resending the same call. If the AI app retries, the relay would see a
+  new call with a new id, and the computer may already have run the first one.
+  Whether to detect that (for example, by asking the connector what finished
+  before the drop) is open (§11). Nothing in P0 tested it.
+- The connector must refresh its token on reconnect and retry a failed refresh.
+  In the test, one refresh failed on a reset and worked a second later.
 
 ## 5. Components
 
@@ -179,6 +205,31 @@ The connector needs Node.js 22.12 or newer to run `desktop-commander`, because t
 package requires it. In v1 the connector checks for Node and explains how to install
 it. Bundling a runtime is an open question (§11).
 
+**Running `desktop-commander` safely (spike D, version 0.3.1).** It works
+unmodified over stdio: 0.25 to 0.55 s to start, 25 tools, and its output stream
+carries only protocol messages. What the connector must do:
+
+- **Stop it together with everything it started.** When its Node process died
+  mid-call, a command it had started kept running on its own. So the connector
+  starts it in its own process group (a family of processes the operating system
+  can stop in one go) and stops the whole group (not yet tested). Closing its
+  input stops it cleanly in under 40 ms.
+- **Treat its log messages as logs.** It sends `notifications/message` during
+  calls; forward or drop them, never mistake them for replies.
+- **Command output is collected in steps, not streamed.** It returns the output
+  so far plus a process id, and the AI calls `read_process_output` for more. The
+  relay just forwards each call, so `desktop-commander` never needs the
+  `progress` frame.
+- **Turn telemetry off** with `DESKTOP_COMMANDER_DISABLE_TELEMETRY=1` (per its
+  source code), not through the shared config file.
+- **It fetches feature flags from its maker every 30 minutes, even with telemetry
+  off** (read in its source code, not observed in the run). The connector
+  points that fetch elsewhere (`DC_FLAG_URL`) so a customer's computer doesn't
+  contact a third party because of us.
+- **Its settings file is shared** with any Desktop Commander the user already runs
+  (`~/.claude-server-commander`; read in its source code). The connector must
+  not depend on, or silently change, that file.
+
 ## 6. Sign-in, devices and billing
 
 **Identity.** Zitadel, in a project of its own, so that an access token for any
@@ -187,7 +238,8 @@ other app of ours can never be used at the relay. This is the same reason
 customer organisation.
 
 **Connecting a computer.** `vrelay login` uses the OAuth device flow (RFC 8628). The
-terminal shows a code, the browser opens, and the user signs in and approves. The
+terminal shows a code, the browser opens, and the user signs in and approves
+(spike B: yes, a token came back with a refresh token). The
 connector then creates a key pair for this computer and registers the public half
 with the relay. Every later `hello` proves it holds the private half. Revoking a
 device in the dashboard deletes its key, and the next connect is refused.
@@ -197,15 +249,34 @@ and the relay is the resource server. This is the same arrangement as the hosted
 Slack MCP with Gemini Spark. What P0 research found (details in
 [the P0 plan](../plans/2026-11-09-relay-p0-spikes.md)):
 
-- **Claude** works with a client we register ourselves, on every plan. That's the
-  `relay-claude` client.
-- **ChatGPT** gives each connector its own callback URL, so one pre-registered
-  client can't serve many users. For a product, ChatGPT needs Zitadel's dynamic
-  client registration. Zitadel supports it, but it's off on our instance, and
-  turning it on in its open form lets anyone create clients. That's an open
+- **Claude: yes, live (2026-11-11).** It works with a client we register
+  ourselves (`relay-claude`, no secret). Claude's docs say this works on every
+  plan; only James's plan was tried. It found everything else
+  from the relay's published sign-in details. It also sends `server/discover` (a
+  newer request asking the server to describe itself), which the spike ignored
+  and the relay should answer.
+- **Gemini: yes, live (2026-11-15).** The Gemini web app's custom connector asks
+  for a client id **and a client secret** (a password the app proves itself with
+  when it swaps the sign-in code for a token), so `relay-gemini` has a secret. Its
+  callback address (where the sign-in sends the user back, with the code) is
+  unique to each Google user
+  (`oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-…`). Both of
+  those work for one user but not for a product: a secret handed to every
+  customer isn't secret, and one shared client would need every customer's
+  callback registered. Gemini at scale therefore has the same registration
+  problem as ChatGPT (§11).
+- **ChatGPT** (per OpenAI's docs; not tried live) gives each connector its own
+  callback URL, so one pre-registered client can't serve many users. For a
+  product, ChatGPT needs Zitadel's dynamic client registration. Zitadel
+  supports it, but it's off on our instance, and turning it on in its open form
+  lets anyone create clients. That's an open
   decision (§11).
 - **The relay authorises on client id and subject, never on audience alone.** In
-  our Zitadel, any signed-in user can put any project in a token's audience.
+  our Zitadel, any signed-in user can put any project in a token's audience
+  (found by the sibling `zitadel-apps-mcp-slack` stack, and seen again in spike
+  B, where a connector token's audience listed the Claude client too).
+- **Callback addresses are pinned exactly** (host and path shape) in the Zitadel
+  stack, because a wrong one would send a sign-in code to someone else.
 
 **Billing.** A second product line in the Stripe stack: a free tier with a monthly
 call allowance and one device, and a paid tier with a much larger allowance and
@@ -256,7 +327,7 @@ connected computer, within what each computer allows. The design starts from tha
 
 | Stage | Where | Why |
 |---|---|---|
-| Alpha (James, then a few invitees) | Homelab k3s behind the Cloudflare Tunnel, Postgres on CNPG, the same pattern as the hosted Slack MCP | No new cost. Fine for dogfooding |
+| Alpha (James, then a few invitees) | Homelab k3s behind the Cloudflare Tunnel, Postgres on CNPG, the same pattern as the hosted Slack MCP. The relay pod must be kept off laptop nodes (spike C: both outages came with a laptop node going away). Not done yet: the spike's chart has no node rule, and its pod was on the laptop node `james-mbp16` when checked on 2026-11-15 at 15:38 PST (`//tools/gitops:get`) | No new cost. Fine for dogfooding |
 | Paid launch | GCP through the OSS application stage: Cloud Run plus Cloud SQL Postgres | Homelab availability (Wi-Fi nodes, a single database instance) is not good enough for people paying us |
 
 **Domains (decided 2026-11-09).** The spikes and the alpha run under `ipv1337.dev`
@@ -275,16 +346,19 @@ consequences to plan for:
 
 Two things to know about the paid setup:
 
-- Cloud Run ends a WebSocket after at most 60 minutes. The connector therefore
-  reconnects on its own about every 50 minutes, with jitter, and the user notices
-  nothing.
-- With several relay instances, a computer is connected to one instance but a call
-  can arrive at another. Cloud Run instances can't be addressed one by one, and
-  Postgres `NOTIFY` messages are capped at 8,000 bytes, too small for results. So
-  **launch runs a single relay instance** (Cloud Run max instances = 1, which
-  restarts quickly). Scaling out later needs a message bus between instances,
-  such as Redis or NATS, which is an added cost. That decision waits until one
-  instance is actually too small (§11).
+- Cloud Run ends a WebSocket after at most 60 minutes (its request timeout, per
+  [Cloud Run's WebSocket docs][cloudrun-ws]). The connector therefore
+  reconnects on its own about every 50 minutes, with jitter. That should be
+  invisible to the user; it is untested.
+- With several relay instances, a computer is connected to one instance but a
+  call can arrive at another. Cloud Run instances can't be addressed one by
+  one, and Postgres `NOTIFY` messages are capped at 8,000 bytes, too small for
+  results. So **launch runs a single relay instance** (Cloud Run max instances
+  = 1; how fast it restarts hasn't been measured). Scaling out later needs a
+  message bus between instances, such as Redis or NATS, which is an added cost.
+  That decision waits until one instance is actually too small (§11).
+
+[cloudrun-ws]: https://cloud.google.com/run/docs/triggering/websockets
 
 **Zitadel is a launch dependency.** It runs on the homelab today, so a homelab
 outage would also be a sign-in outage for paying users. Launch needs Zitadel on
@@ -323,8 +397,8 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
 
 | Phase | Scope | Done when |
 |---|---|---|
-| **P0 spikes** | (a) ChatGPT web and Claude web each add an OAuth-protected MCP on our domain with Zitadel sign-in. Settles the registration question. (b) Zitadel device flow from a CLI. (c) A WebSocket through the Cloudflare Tunnel stays up for 24 hours with reconnects. (d) A connector drives unmodified `desktop-commander` over stdio | Each spike has a written yes or no with evidence |
-| **P1 single-user alpha** | Relay and connector on the homelab, one user, one device, local rules file, no billing | James runs a command on his Mac from Claude on his phone, and the "ask first" prompt appears on the Mac |
+| **P0 spikes** | (a) ChatGPT web, Claude web and Gemini web each add an OAuth-protected MCP on our domain with Zitadel sign-in (ChatGPT researched, not tried). Settles the registration question. (b) Zitadel device flow from a CLI. (c) A WebSocket through the Cloudflare Tunnel stays up for 24 hours with reconnects. (d) A connector drives unmodified `desktop-commander` over stdio | **Done 2026-11-15.** (a) yes for Claude and Gemini, live; ChatGPT yes on paper, not tried. (b) yes. (c) yes with reconnects, no for one unbroken connection. (d) yes; the spike also showed a started command outlives a killed `desktop-commander`, so the connector needs process-group shutdown (not yet tested). Evidence in [the P0 plan](../plans/2026-11-09-relay-p0-spikes.md). Open checks moved to §11: ChatGPT (questions 3 and 8), the phone apps (question 12) |
+| **P1 single-user alpha** | Relay and connector on the homelab, one user, one device, bridging only `desktop-commander`, local rules file, no billing. Builds in the P0 findings: automatic reconnect, clean failure of in-flight calls, process-group shutdown, telemetry and flag fetch off, an answer to `server/discover` (Claude's request for the server to describe itself), and one sign-in session shared by the device approval page and the AI apps' sign-in (spike B had to sign in twice; the likely cause, not confirmed, is the two login screens) | James runs a command on his Mac from Claude on his phone, and the "ask first" prompt appears on the Mac |
 | **P2 multi-user** | Sign-up, several devices, dashboard, local settings screen, both activity logs, the isolation test in CI | A second invited user connects, and the isolation test fails against a deliberately broken check |
 | **P3 launch readiness** | Stripe product line and entitlements, §9 checklist, move to GCP, Zitadel hosting, signed installers for macOS then Linux and Windows, and **Cua Driver** (`cua.ai`) alongside Desktop Commander | A stranger can sign up, pay in Stripe test mode, connect without help, and drive both terminal/file tools (Desktop Commander) and native desktop app UIs in the background (Cua Driver) |
 
@@ -338,7 +412,8 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
    token carries, so it happens before launch, not after.
 3. **Which ChatGPT plans can add a custom MCP server.** Not confirmed. Some
    sources say only Business, Enterprise and Edu workspaces can, which would shrink
-   the ChatGPT market a lot. Claude allows it on every plan.
+   the ChatGPT market a lot. Claude's docs say every plan can; only one plan was
+   tried.
 4. **Where Zitadel runs for a paid product**, and whether that cost is worth it now
    or only at launch.
 5. **Pricing** for the free and paid tiers.
@@ -347,7 +422,30 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
 8. **Open client registration for ChatGPT**: turn on Zitadel's open dynamic
    client registration (and live with anyone being able to create clients), put
    a gate in front of it, or support Claude only at first.
-9. **Scaling past one relay instance**: which message bus, and when.
+9. **Scaling past one relay instance**: which message bus, and when. (Question
+   13 is the alpha side of the same limit.)
 10. **Positioning**: a direct alternative to Desktop Commander's hosted service, or
    "reach any local MCP server from any AI app" with Desktop Commander as one
    option. The spec assumes the second.
+11. **Gemini at scale.** Gemini's form wants a client secret and gives each Google
+    user their own callback, which the form shows for copying before the client
+    exists. Options: a client per customer created by the
+    dashboard (the customer first copies Gemini's callback into the dashboard,
+    then pastes the id and secret the dashboard creates into Gemini), or open
+    registration (question 8), where Gemini could create its own client
+    automatically. That would need Gemini to try registering when the client id
+    and secret fields are left blank, which is untested.
+12. **Phone apps.** The echo tool has run from the Claude and Gemini web apps, not
+    yet from their phone apps. P1's "done when" depends on the Claude phone app.
+13. **Alpha availability vs one relay instance.** Spike C's plan suggested more
+    than one copy of the relay, because a node going away caused outages of 3 to
+    6 minutes. But a call must reach the copy holding the device's connection
+    (§8), so this spec overrides that: until there is a message bus (question 9),
+    the alpha runs one copy on an always-on node and relies on Kubernetes
+    restarting it elsewhere if that node fails. Spike C gives a rough cost: two
+    outages of 3 to 6 minutes, starting 17:36 and 17:59 PST on 2026-11-12, while the laptop
+    node running the pod went `NotReady`. Kubernetes moved the pod to `nuc9i9`
+    at 18:04 PST that day. Keeping the pod off laptop nodes should make this rare.
+14. **Retries that run twice.** Under this design, an AI app's retry after a
+    dropped connection would arrive as a new call with a new id (§4); no spike
+    tested how the apps retry. Decide whether the relay should detect it.

@@ -1,5 +1,5 @@
 ---
-status: in progress
+status: completed
 date: 2026-11-09
 ---
 
@@ -11,11 +11,11 @@ Each spike ends in a written yes or no with evidence. This file is the record.
 | Spike | Question | Status |
 |---|---|---|
 | A | Can ChatGPT, Claude and Gemini add an OAuth-protected MCP on our domain, with Zitadel sign-in? | **Claude: yes, live** (2026-11-11, claude.ai). **Gemini: yes, live** (2026-11-15, gemini.google.com; needs a client secret). ChatGPT: yes on paper for one user, needs open registration for many; not tried live |
-| B | Does Zitadel's device flow work from a command-line app? | **Yes** (2026-11-11), with `relay-spike-client login` |
+| B | Does Zitadel's device flow work from a command-line app? | **Yes** (2026-11-11), with `vitruvian-relay-spike-client login` |
 | C | Does a WebSocket through the Cloudflare Tunnel stay up for 24 hours? | **No for one connection, yes for the service** (2026-11-12). 10 drops in 24 hours, connected 99.3% of the time; reconnecting is mandatory |
-| D | Can a connector drive unmodified `desktop-commander` over stdio? | **Yes** (2026-11-12), version 0.3.1 run through Bazel. The connector must kill the whole process group, turn telemetry off and redirect its feature-flag fetch |
+| D | Can a connector drive unmodified `desktop-commander` over stdio (its standard input and output)? | **Yes** (2026-11-12), version 0.3.1 run through Bazel. The connector must kill the whole process group (needed, not yet tested), turn telemetry off and redirect its feature-flag fetch |
 
-## Live results (2026-11-11)
+## Live results (2026-11-11 to 2026-11-15)
 
 ### A (Claude): yes
 
@@ -36,25 +36,35 @@ Each spike ends in a written yes or no with evidence. This file is the record.
 - Added in the Gemini web app as a custom connector (Settings → Connectors →
   + Custom): URL `https://relay-spike.ipv1337.dev/mcp`, client id
   `399781767172589504`, plus a client secret.
-- Unlike Claude, Gemini's form asks for a client **secret**, so `relay-gemini` is
-  the one confidential client (`client_secret_post`, #4776). Its callback is per
-  Google user, `https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-{id}`,
-  shown by the form's "Copy redirect URI" before the client exists. Gemini found
-  the authorization and token endpoints from the server's metadata, so the form
-  needs only the URL, client id and secret.
+- Unlike Claude, Gemini's form asks for a client **secret**: a password the app
+  proves itself with when it swaps the sign-in code for a token. So `relay-gemini`
+  is the one client that has a secret (`client_secret_post`, #4776; callback
+  checks #4853). Its callback address is unique to the Google user,
+  `https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-{id}`, and
+  the form shows it ("Copy redirect URI") before the client exists.
+- The form asks for nothing else, no sign-in or token address, so Gemini must
+  have read them from the server's published sign-in details (its
+  protected-resource metadata). That fetch isn't logged, so this is inferred from
+  the form, not seen.
+- The spike only accepts clients on its list, so the client id was added there
+  first (#4913).
 - Sign-in went through Zitadel and back to Gemini. The server log shows
-  initialize, tools/list and a tools/call from client `399781767172589504` as
-  subject 378818267051722263 (16:03 PST). `echo "hello from Gemini"` came back
-  unchanged.
+  client `399781767172589504`, as subject 378818267051722263, starting sessions
+  from 15:56 PST, listing the tools, and making one tools/call at 16:03 PST.
+  The log holds no request bodies; the reply, `hello from Gemini`, is what James
+  saw in Gemini.
 - Gemini read the tool list correctly: asked for free disk space, it said the
   spike only offers echo and whoami, and called nothing.
-- Getting here needed CI to reach Zitadel over Headscale (#4857), because the
-  homelab had moved off commercial Tailscale.
+- Creating the client needed CI to reach Zitadel over Headscale (#4857), because
+  the homelab had moved off commercial Tailscale. The sign-in itself should go from
+  Gemini to Zitadel's and the spike's public addresses, not through that tunnel
+  (inferred from how they are exposed, not traced).
 - Not yet tried: the Gemini phone app.
 
 ### B: yes
 
-- `bazel run //apps/suites/relay/spike:relay-spike-client -- login` asked
+- `bazel run //apps/suites/vitruvian-relay/spike:vitruvian-relay-spike-client -- login`
+  (run at the time under its old name and path, since renamed in #4631) asked
   Zitadel for a device code with the relay project's audience scope, James
   approved it in the browser, and a token came back 97 seconds later, with a
   refresh token.
@@ -66,13 +76,15 @@ Each spike ends in a written yes or no with evidence. This file is the record.
   connector asked for nothing of Claude's. This repeats the earlier finding:
   audience is not proof of which app a token is for. Pin the client id.
 - The access token lives 12 hours.
-- One snag: the device-approval page uses Zitadel's older login screen, which
-  doesn't share the session of the newer one Claude's sign-in used, so James
-  signed in twice. Worth fixing before real users see it.
+- One snag: James had to sign in twice. The likely reason, not confirmed, is
+  that the device-approval page uses Zitadel's older login screen, which
+  doesn't share the session of the newer one Claude's sign-in used. Worth
+  fixing before real users see it.
 
 ### C: no for one connection, yes with reconnects
 
-`relay-spike-client hold --hours 24` (now `bazel run //apps/suites/vitruvian-relay/spike:vitruvian-relay-spike-client -- hold`) ran
+`relay-spike-client hold --hours 24` (renamed in #4631; now
+`bazel run //apps/suites/vitruvian-relay/spike:vitruvian-relay-spike-client -- hold`) ran
 from 2026-11-11 18:15 to 2026-11-12 18:15 PST from James's MacBook, over home
 Wi-Fi, to `wss://relay-spike.ipv1337.dev/connect`. It sent a probe every 30 s
 and reconnected with backoff.
@@ -85,29 +97,32 @@ and reconnected with backoff.
 | Probe round trip | p50 62 ms, p95 152 ms, max 462 ms (2,814 probes) |
 | Longest gap | 352 s |
 
-The 10 drops had three causes:
+The 10 drops had two causes, and one refresh failed alongside a drop:
 
-- **8 resets from the network**, between 06:59 and 15:06, after 5 minutes to
+- **8 resets from the network**, between 06:59 and 15:06 PST, after 5 minutes to
   12.7 hours. They were TCP resets or closes without a WebSocket close frame.
   Each time, the client was back in about 1 s. Which hop reset them (home
   network, Cloudflare's edge, or `cloudflared`) is **not established**: nothing
   on the server side was logged for these.
-- **2 server outages, 17:36 and 17:59.** The client heard nothing for 90 s,
+- **2 server outages, 17:36 and 17:59 PST.** The client heard nothing for 90 s,
   then Cloudflare answered 503 or 504 for up to 6 minutes. The relay-spike pod
   was running on the node `james-mbp16`, a laptop, which went `NotReady` twice
   in that window. The pod was then evicted and rescheduled on `nuc9i9` (cluster
-  events, 18:04). These are the gaps of 3 to 6 minutes.
-- **1 token refresh failed** on a reset (06:59, same moment as a drop) and
+  events, 18:04 PST). These are the gaps of 3 to 6 minutes.
+- **1 token refresh failed** on a reset (06:59 PST, same moment as a drop) and
   succeeded on the next try a second later.
 
 What this means for the relay:
 
 - **The connector must reconnect by itself, quietly and quickly.** A drop every
-  few hours is normal, and the backoff used here was enough.
+  few hours is normal, and the backoff used here was enough: 1 s, doubling,
+  capped at 60 s, no jitter (`backoff_secs` in the spike's `client.rs`).
 - Calls in flight when a connection drops are lost, so the relay has to fail
   them cleanly and Claude has to be able to retry them.
 - **Production relay pods must not run on laptop nodes.** Pin them to always-on
-  nodes, and run more than one replica so a node going away isn't an outage.
+  nodes. This plan first suggested more than one replica too; the spec overrides
+  that (§8, §11 question 13), because a call must reach the copy holding the
+  device's connection.
 - The test client and the laptop node may be the same machine. Repeating the
   test from an always-on host would tell home-network resets apart from
   Cloudflare ones. That isn't needed for P0: the design has to reconnect either
@@ -152,8 +167,9 @@ read-only request:
   `https://chatgpt.com/connector_platform_oauth_redirect`. Without it, which is
   our case, it is `https://chatgpt.com/connector/oauth/{callback_id}`, unique per
   connector.
-- So one pre-registered client works for a single connector (spike A), but not
-  for a product with many users. The product needs DCR.
+- So one pre-registered client should work for a single connector, but not for
+  a product with many users. (Spike A never ran ChatGPT live, so the single
+  connector case is from the docs, not tested.) The product needs DCR.
 - **Not confirmed:** which plans can add a custom MCP server. Third-party sources
   say Business, Enterprise and Edu. The official pages read here don't say.
 
@@ -163,7 +179,7 @@ read-only request:
   settings.
 - For MCP clients it has to be **open**, meaning no authentication to register.
   On our shared instance that means anyone could create clients. Whether to do
-  that is now spec §11 question 7.
+  that is now spec §11 question 8.
 - The docs don't say which version first shipped it, so whether our running
   Zitadel has it is unknown. Enabling it would show.
 
@@ -178,7 +194,8 @@ These came from reading code at `d05721a`, not from running it:
 - **Telemetry is on by default.** The connector has to ask at setup and set it.
 - It logs every tool call, with arguments, to `claude_tool_call.log` in that
   folder.
-- It needs Node 22.12 or newer. The latest published version is 0.3.1
+- It needs Node 22.12 or newer. The latest published version, when checked for
+  the spike (2026-11-12), was 0.3.1
   (`sha512-cx7KTscLF951adHmDLVCDIVTqJ/Bg1LtdRILZoo5wa/UMeyOfMAuOJOEBulNMKBKb5Xd3nHDQnB9aXroN9Fw5A==`).
 
 ### D: yes (live run, 2026-11-12)
@@ -207,25 +224,29 @@ Bazel's launcher.
 - **Crash:** when the Node process was killed mid-call, stdout closed within
   5 ms and the pending call got no answer. **The command it had started
   (`sleep 30`) kept running.** Commands are its children, so the connector must
-  start it in its own process group and kill the group, not just the PID.
+  start it in its own process group and kill the group, not just the PID. (The
+  group kill itself was not tested here.)
 - **Wrapper trap (Bazel only):** `bazel run`'s launcher is a shell script with
   Node underneath. Killing only the launcher left Node running with stdout open,
   so no EOF arrived. A connector that starts it through a wrapper must kill the
   group for the same reason.
-- **Telemetry:** `DESKTOP_COMMANDER_DISABLE_TELEMETRY=1` stops every event
-  before one is built (`utils/capture.js`). The connector should set it, not
+- **Telemetry (from reading the source, not observed in the run):**
+  `DESKTOP_COMMANDER_DISABLE_TELEMETRY=1` stops every event before one is built
+  (`utils/capture.js`). The connector should set it, not
   rely on the shared config file.
-- **It phones home for feature flags even with telemetry off.** At start-up and
+- **It phones home for feature flags even with telemetry off** (from the
+  source, not observed in the run). At start-up and
   every 30 minutes it fetches `https://desktopcommander.app/flags/v2/production.json`
   and caches it in `feature-flags.json`. The only way to change this is to
   redirect it with `DC_FLAG_URL`. The connector should point that at a local
   file or an address that refuses the connection.
-- **Its install script reports the install** (`postinstall` runs
+- **Its install script reports the install** (read in its `package.json`: `postinstall` runs
   `track-installation.js`, which uses HTTPS). rules_js ran no install scripts:
   the build had only extract and symlink actions.
 - **Files it wrote** under `~/.claude-server-commander/`: `config.json`,
-  `feature-flags.json`, `tool-history.jsonl` and `claude_tool_call.log`. The log
-  records every call with its full arguments. `HOME` controls where these go.
+  `feature-flags.json`, `tool-history.jsonl` and `claude_tool_call.log`. Per its
+  source, the log records every call with its full arguments; the run showed the
+  file, not a check of its contents. `HOME` controls where these go.
 
 Not committed: pinning it changed how some unrelated Backstage webpack packages
 resolve in `pnpm-lock.yaml`. That's too much reach for a spike, so the run was
@@ -238,8 +259,9 @@ made from a local branch. To repeat it:
 ### One correction to the spec, recorded there too
 
 The sibling `zitadel-apps-mcp-slack` stack found that in this Zitadel, a token's
-`aud` is caller-authored. The relay must authorise on client id (`azp`) and
-subject.
+`aud` is caller-authored. The relay must authorise on the client id and the
+subject. Zitadel puts the client id in `client_id`, not `azp` (spike B found `azp`
+absent), so the verifier pins `client_id`.
 
 ## Steps
 
@@ -251,23 +273,27 @@ subject.
       allowed 2026-11-09); CI reaches Zitadel over Headscale since #4857
 - [x] **B:** run the device flow from a terminal against `relay-connector`, James
       approves in the browser, and the access token decodes as a JWT with the
-      expected `azp` and `sub`
+      expected `client_id` and `sub` (`azp` turned out to be absent)
 - [x] Spike server on the homelab (one small service, chart, image build, GitOps
       app): `/mcp` behind OAuth with one echo tool, protected-resource metadata,
       and `/connect` as a WebSocket with ping/pong
-- [x] **A (Claude, web; phone app still to try):** James adds `https://<spike-host>/mcp` in Claude with the
-      `relay-claude` client id, signs in, and the echo tool runs from claude.ai
-      and from the Claude phone app
-- [ ] **A (ChatGPT):** James starts adding the connector in ChatGPT and copies its
-      callback into `chatgptRedirectUris`, then re-apply, then finish. Only if his
-      plan allows custom MCP servers
-- [x] **A (Gemini):** `relay-gemini` client (#4776, confidential,
-      `client_secret_post`; client id `399781767172589504`, applied 2026-11-15) with
-      Gemini's callback; the spike accepts it in `mcpClientIds`. James pastes the
-      client id and secret into Gemini (Settings → Connectors → + Custom, URL
-      `https://relay-spike.ipv1337.dev/mcp`), signs in, and the echo tool runs
+- [x] **A (Claude, web):** James adds `https://<spike-host>/mcp` in Claude with
+      the `relay-claude` client id, signs in, and the echo tool runs from
+      claude.ai. The Claude phone app is not tried yet (spec §11 question 12)
+- [ ] **A (ChatGPT): not done, moved to spec §11 questions 3 and 8.** The
+      planned step was this: James starts adding the connector in ChatGPT and
+      copies its callback into `chatgptRedirectUris`, then we re-apply and he
+      finishes, if his plan allows custom MCP servers.
+- [x] **A (Gemini):** `relay-gemini` client (#4776, has a client secret,
+      `client_secret_post`; client id `399781767172589504`, applied 2026-11-15)
+      with Gemini's callback; the spike accepts it in `mcpClientIds` (#4913).
+      James pasted the client id and secret into Gemini (Settings → Connectors →
+      + Custom, URL `https://relay-spike.ipv1337.dev/mcp`), signed in, and the
+      echo tool ran
 - [x] **C:** a WebSocket client on this Mac holds `/connect` open for 24 hours,
       logging drops, reconnect times and ping round trips
 - [x] **D:** add a Bazel route for running an npm package (`//tools/pnpm:lock`,
       #4663), then run it
-- [ ] Write the yes or no for each spike here and update spec §10 and §11
+- [x] Write the yes or no for each spike here and update spec §10 and §11
+      (done 2026-11-15; still-open checks, the phone apps and ChatGPT, moved
+      to spec §11)
