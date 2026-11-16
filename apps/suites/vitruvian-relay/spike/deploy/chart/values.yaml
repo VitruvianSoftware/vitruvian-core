@@ -49,6 +49,11 @@ oidc:
 
 terminationGracePeriodSeconds: 10
 
+# Where the pod may run (a standard Kubernetes affinity block). Empty means
+# anywhere. The homelab deployment keeps it off laptop nodes; see
+# gitops/argocd/platform/relay-spike/values.yaml.
+affinity: {}
+
 resources:
   requests:
     cpu: 10m

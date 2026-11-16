@@ -34,3 +34,20 @@ oidc:
   mcpClientIds: "398912442404439866,399781767172589504"
   connectorClientId: "398912442404505402"
   allowedSubjects: "378818267051722263" # James (the stack's only grant)
+
+# Keep the relay off laptop nodes. In spike C (2026-11-12) both outages came
+# while the laptop node james-mbp16 went NotReady, and the pod was there again
+# on 2026-11-15. "Wired" alone isn't enough: james-mbp and james-mbp32 are wired
+# laptops. This leaves fedora, nuc9i5 and nuc9i9. A new laptop pool must be
+# added to the NotIn list.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node.ipv1337.dev/link
+              operator: In
+              values: [wired]
+            - key: pool
+              operator: NotIn
+              values: [laptop-worker-1, laptop-cp-2, laptop-cp-3]
