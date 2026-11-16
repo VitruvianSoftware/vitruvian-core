@@ -21,14 +21,15 @@
 //! `vrelay` commands. `run` and `install` come in later tasks.
 
 use vitruvian_relay_connector::auth::{fresh_token, login, register_device};
+use vitruvian_relay_connector::bridge::{Bridge, BridgeCommand};
 use vitruvian_relay_connector::config::Config;
 use vitruvian_relay_connector::keys::{load_or_create, public_key_b64};
 use vitruvian_relay_connector::state::{
     clear_sign_in, ensure_dir, now_unix, save_device, save_tokens,
 };
-use vitruvian_relay_connector::{status, Result};
+use vitruvian_relay_connector::{rules, status, Result};
 
-const USAGE: &str = "usage: vrelay <login|status|logout>";
+const USAGE: &str = "usage: vrelay <login|status|logout|tools [--raw]>";
 
 fn cmd_login(cfg: &Config) -> Result<()> {
     ensure_dir(&cfg.dir)?;
@@ -56,6 +57,53 @@ fn cmd_logout(cfg: &Config) -> Result<()> {
     Ok(())
 }
 
+/// Starts desktop-commander, lists its tools with what the rules decide for
+/// each (`run`, `ask first`, `hidden`), and stops it. With `--raw`, prints its
+/// own `tools/list` result as JSON instead, unfiltered.
+fn cmd_tools(cfg: &Config, raw: bool) -> Result<()> {
+    let rules = if raw {
+        None
+    } else {
+        Some(rules::load(&cfg.dir)?)
+    };
+    let cmd = BridgeCommand::locate()?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("start the runtime: {e}"))?;
+    let bridge = Bridge::start(&cmd)?;
+    let out = match rules {
+        None => rt.block_on(bridge.tools_raw()).and_then(|v| {
+            serde_json::to_string_pretty(&v).map_err(|e| format!("print tools: {e}"))
+        }),
+        Some(rules) => {
+            let tools = rt.block_on(bridge.tools());
+            let mut s = String::new();
+            if rules.paused {
+                s.push_str("Paused in rules.toml: every tool is hidden.\n");
+            }
+            let width = tools.iter().map(|t| t.name.len()).max().unwrap_or(0);
+            for t in &tools {
+                let what = if rules.paused || rules.is_hidden(&t.name) {
+                    "hidden"
+                } else {
+                    match rules.decide(&t.name) {
+                        rules::Decision::Run => "run",
+                        rules::Decision::AskFirst => "ask first",
+                        rules::Decision::Refuse(_) => "hidden",
+                    }
+                };
+                s.push_str(&format!("{:width$}  {what}\n", t.name));
+            }
+            s.push_str(&format!("{} tools from desktop-commander.", tools.len()));
+            Ok(s)
+        }
+    };
+    bridge.stop();
+    println!("{}", out?);
+    Ok(())
+}
+
 fn main() {
     let cfg = Config::from_env();
     let result = match std::env::args().nth(1).as_deref() {
@@ -65,6 +113,11 @@ fn main() {
             Ok(())
         }
         Some("logout") => cmd_logout(&cfg),
+        Some("tools") => match std::env::args().nth(2).as_deref() {
+            None => cmd_tools(&cfg, false),
+            Some("--raw") => cmd_tools(&cfg, true),
+            Some(_) => Err(USAGE.to_string()),
+        },
         _ => Err(USAGE.to_string()),
     };
     if let Err(e) = result {

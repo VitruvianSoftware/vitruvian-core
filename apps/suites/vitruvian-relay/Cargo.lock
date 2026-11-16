@@ -1015,6 +1015,7 @@ dependencies = [
  "rustls-native-certs",
  "serde",
  "serde_json",
+ "tokio",
  "toml",
  "ureq",
  "vitruvian-relay-protocol",

@@ -23,6 +23,7 @@
 //! `install` come later.
 
 pub mod auth;
+pub mod bridge;
 pub mod config;
 pub mod keys;
 pub mod prompt;

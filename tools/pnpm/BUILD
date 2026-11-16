@@ -2,6 +2,8 @@
 
   bazel run //tools/pnpm:lock              # after editing any package.json in the workspace
   bazel run //tools/pnpm:lock -- --check   # is pnpm-lock.yaml in step? changes nothing, exits 1 if not
+  bazel run //tools/pnpm:lock -- --dir P   # a separate pnpm workspace at P (its own
+                                           # pnpm-workspace.yaml and pnpm-lock.yaml); --check works too
 
 To add, remove or bump a JavaScript dependency, edit the package.json by hand
 (exact version or range), then run :lock. There is deliberately no `add`:
@@ -15,6 +17,7 @@ Bazel (rules_js) installs packages itself when you build or test.
 """
 
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 sh_binary(
     name = "lock",
@@ -22,5 +25,13 @@ sh_binary(
     data = ["@pnpm"],
     env = {"PNPM_BIN": "$(rlocationpath @pnpm)"},
     visibility = ["//visibility:public"],
+    deps = ["@bazel_tools//tools/bash/runfiles"],
+)
+
+sh_test(
+    name = "lock_test",
+    size = "small",
+    srcs = ["lock_test.sh"],
+    data = ["lock.sh"],
     deps = ["@bazel_tools//tools/bash/runfiles"],
 )

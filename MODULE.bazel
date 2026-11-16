@@ -255,6 +255,20 @@ npm.npm_translate_lock(
 )
 use_repo(npm, "npm")
 
+# vrelay's pinned desktop-commander (exactly 0.3.1), in its own pnpm workspace
+# and lock so its dependency tree cannot move the root workspace's versions
+# (One Version Rule: a separate hub is the sanctioned way to diverge). No
+# install scripts: desktop-commander's postinstall reports the install over
+# HTTPS (relay spike D). Re-lock with
+# bazel run //tools/pnpm:lock -- --dir apps/suites/vitruvian-relay/connector/dc
+npm.npm_translate_lock(
+    name = "vrelay_npm",
+    npmrc = "//:.npmrc",
+    pnpm_lock = "//apps/suites/vitruvian-relay/connector/dc:pnpm-lock.yaml",
+    run_lifecycle_hooks = False,
+)
+use_repo(npm, "vrelay_npm")
+
 rules_ts_ext = use_extension("@aspect_rules_ts//ts:extensions.bzl", "ext")
 
 # ts_integrity is REQUIRED for TypeScript versions newer than what rules_ts

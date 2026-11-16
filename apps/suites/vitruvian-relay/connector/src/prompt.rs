@@ -351,39 +351,83 @@ fn field(v: &Value) -> Option<String> {
     (!pieces(&raw, true).is_empty()).then(|| render(&raw, true))
 }
 
-/// What the dialog shows: the tool name and its key arguments, each cleaned
-/// and cut to 200 characters (see [`clean`]). If a key argument is missing or
-/// is not plain text, the person sees everything that was sent instead, with
-/// a note of what was missing, so a renamed argument is never approved
-/// blind. Names are checked against the pinned desktop-commander in Task 7.
-pub fn summarize(tool: &str, args: &Value) -> String {
-    let keys: &[&str] = match tool {
-        "start_process" => &["command"],
-        "interact_with_process" => &["pid", "input"],
-        "write_file" => &["path"],
-        "edit_block" => &["file_path"],
-        "move_file" => &["source", "destination"],
-        "create_directory" => &["path"],
-        "kill_process" | "force_terminate" => &["pid"],
-        "write_pdf" => &["outputPath"],
+/// Whether a key argument must be there for the summary to stand alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Need {
+    /// Missing or not plain text: the person sees everything that was sent.
+    Required,
+    /// Shown when sent; if sent as something other than plain text, the
+    /// person sees everything that was sent.
+    Optional,
+}
+
+use Need::{Optional, Required};
+
+/// The tools [`summary_keys`] knows, checked against the pinned
+/// desktop-commander 0.3.1 schemas (`testdata/dc-0.3.1-tools.json`).
+pub const SUMMARY_TOOLS: &[&str] = &[
+    "start_process",
+    "interact_with_process",
+    "read_process_output",
+    "write_file",
+    "edit_block",
+    "move_file",
+    "create_directory",
+    "kill_process",
+    "force_terminate",
+    "write_pdf",
+];
+
+/// The arguments the dialog shows for `tool`, in order: everything that says
+/// what runs or where. Names are desktop-commander 0.3.1's (dispatched by
+/// exact, case-sensitive name).
+pub fn summary_keys(tool: &str) -> &'static [(&'static str, Need)] {
+    match tool {
+        // `shell` picks the program that runs `command`.
+        "start_process" => &[("command", Required), ("shell", Optional)],
+        "interact_with_process" => &[("pid", Required), ("input", Required)],
+        "read_process_output" => &[("pid", Required)],
+        // `mode` is rewrite (the default) or append.
+        "write_file" => &[("path", Required), ("mode", Optional)],
+        "edit_block" => &[("file_path", Required)],
+        "move_file" => &[("source", Required), ("destination", Required)],
+        "create_directory" => &[("path", Required)],
+        "kill_process" | "force_terminate" => &[("pid", Required)],
+        // `path` is the PDF read or created; `outputPath` where a changed copy goes.
+        "write_pdf" => &[("path", Required), ("outputPath", Optional)],
         _ => &[],
-    };
+    }
+}
+
+/// What the dialog shows: the tool name and its key arguments, each cleaned
+/// and cut to 200 characters (see [`clean`]). If a required key argument is
+/// missing, or any key argument is sent as something other than plain text,
+/// the person sees everything that was sent instead, with a note of which,
+/// so a renamed or odd argument is never approved blind.
+pub fn summarize(tool: &str, args: &Value) -> String {
+    let keys = summary_keys(tool);
     let mut parts = Vec::new();
-    let mut missing = None;
-    for k in keys {
-        match args.get(*k).and_then(field) {
-            Some(v) => parts.push(format!("{k}={v}")),
-            None => {
-                missing = Some(*k);
-                break;
-            }
+    let mut problem = None;
+    for (k, need) in keys {
+        match (args.get(*k), need) {
+            (None, Optional) => {}
+            (v, _) => match v.and_then(field) {
+                Some(v) => parts.push(format!("{k}={v}")),
+                None => {
+                    problem = Some(match (v, need) {
+                        (None, _) | (_, Required) => format!("no {k}"),
+                        (Some(_), Optional) => format!("odd {k}"),
+                    });
+                    break;
+                }
+            },
         }
     }
     let name = clean(tool);
-    if keys.is_empty() || missing.is_some() {
+    if keys.is_empty() || problem.is_some() {
         let json = serde_json::to_string(args).unwrap_or_default();
-        return match missing {
-            Some(k) => format!("{name} (no {k}): {}", clean(&json)),
+        return match problem {
+            Some(p) => format!("{name} ({p}): {}", clean(&json)),
             None => format!("{name}: {}", clean(&json)),
         };
     }
@@ -628,11 +672,18 @@ mod tests {
         assert!(s("create_directory", json!({"path": "/tmp/d"})).contains("/tmp/d"));
         assert!(s("kill_process", json!({"pid": 7})).contains('7'));
         assert!(s("force_terminate", json!({"pid": 8})).contains('8'));
-        assert!(s(
+        let w = s(
             "write_pdf",
-            json!({"outputPath": "/tmp/o.pdf", "content": "z"})
-        )
-        .contains("/tmp/o.pdf"));
+            json!({"path": "/tmp/i.pdf", "outputPath": "/tmp/o.pdf", "content": "z"}),
+        );
+        assert_eq!(
+            w, "write_pdf: path=\"/tmp/i.pdf\", outputPath=\"/tmp/o.pdf\"",
+            "{w}"
+        );
+        assert_eq!(
+            s("read_process_output", json!({"pid": 9, "length": 5})),
+            "read_process_output: pid=\"9\""
+        );
         // Any other tool: compact JSON of the arguments.
         let o = s("mystery", json!({"a": 1, "b": "two"}));
         assert!(o.starts_with("mystery"), "{o}");
@@ -847,5 +898,217 @@ mod tests {
         assert_eq!(m, "kill_process: pid=\"12\"");
         let m = summarize("start_process", &json!({"command": "z".repeat(300)}));
         assert!(m.contains("\"… (truncated, 100 more characters)"), "{m}");
+    }
+
+    /// The pinned desktop-commander's own `tools/list` (testdata, saved from
+    /// `vrelay tools --raw`), as tool name → its `inputSchema`.
+    fn pinned_schemas() -> std::collections::HashMap<String, Value> {
+        let base = std::env::var("TEST_SRCDIR").expect("run under bazel test");
+        let path = PathBuf::from(base)
+            .join("_main/apps/suites/vitruvian-relay/connector/testdata/dc-0.3.1-tools.json");
+        let raw: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        raw["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| {
+                (
+                    t["name"].as_str().unwrap().to_string(),
+                    t["inputSchema"].clone(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn summary_keys_exist_in_pinned_schemas() {
+        let schemas = pinned_schemas();
+        assert_eq!(schemas.len(), 25, "desktop-commander 0.3.1 lists 25 tools");
+        for tool in SUMMARY_TOOLS {
+            let schema = schemas
+                .get(*tool)
+                .unwrap_or_else(|| panic!("{tool} is not a desktop-commander 0.3.1 tool"));
+            let required: Vec<&str> = schema["required"]
+                .as_array()
+                .map(|r| r.iter().filter_map(Value::as_str).collect())
+                .unwrap_or_default();
+            for (key, need) in summary_keys(tool) {
+                assert!(
+                    schema["properties"].get(*key).is_some(),
+                    "{tool}: the summary reads {key}, which its schema does not have"
+                );
+                // A key marked required is required by the schema too, so its
+                // absence (the fallback to the full arguments) means a bad call.
+                if *need == Need::Required {
+                    assert!(required.contains(key), "{tool}: {key} is optional upstream");
+                }
+            }
+        }
+    }
+
+    /// Every argument of every tool that asks first, as the pinned version
+    /// names them, and whether the prompt shows it. An argument that changes
+    /// what runs or where must be shown. A new argument in a bump fails here
+    /// until someone decides.
+    #[test]
+    fn every_ask_first_argument_was_reviewed() {
+        use crate::rules::{Decision, Rules, DEFAULT_RULES};
+        let rules: Rules = toml::from_str(DEFAULT_RULES).unwrap();
+        // (tool, argument, shown, why not, if not shown)
+        let reviewed: &[(&str, &str, bool, &str)] = &[
+            ("write_file", "path", true, ""),
+            ("write_file", "mode", true, ""),
+            ("write_file", "content", false, "the file's body"),
+            ("write_file", "origin", false, "telemetry tag only"),
+            ("write_pdf", "path", true, ""),
+            ("write_pdf", "outputPath", true, ""),
+            ("write_pdf", "content", false, "the document's body"),
+            ("write_pdf", "options", false, "page styling"),
+            ("create_directory", "path", true, ""),
+            ("move_file", "source", true, ""),
+            ("move_file", "destination", true, ""),
+            ("edit_block", "file_path", true, ""),
+            ("edit_block", "old_string", false, "the edit's body"),
+            ("edit_block", "new_string", false, "the edit's body"),
+            ("edit_block", "content", false, "the edit's body"),
+            ("edit_block", "range", false, "a place inside the same file"),
+            ("edit_block", "options", false, "formatting"),
+            (
+                "edit_block",
+                "expected_replacements",
+                false,
+                "a count check",
+            ),
+            ("edit_block", "origin", false, "telemetry tag only"),
+            ("start_process", "command", true, ""),
+            ("start_process", "shell", true, ""),
+            (
+                "start_process",
+                "timeout_ms",
+                false,
+                "how long to wait for output",
+            ),
+            ("start_process", "verbose_timing", false, "reporting only"),
+            ("start_process", "origin", false, "telemetry tag only"),
+            ("read_process_output", "pid", true, ""),
+            ("read_process_output", "offset", false, "which output lines"),
+            ("read_process_output", "length", false, "which output lines"),
+            (
+                "read_process_output",
+                "timeout_ms",
+                false,
+                "how long to wait",
+            ),
+            (
+                "read_process_output",
+                "verbose_timing",
+                false,
+                "reporting only",
+            ),
+            ("interact_with_process", "pid", true, ""),
+            ("interact_with_process", "input", true, ""),
+            (
+                "interact_with_process",
+                "timeout_ms",
+                false,
+                "how long to wait",
+            ),
+            (
+                "interact_with_process",
+                "wait_for_prompt",
+                false,
+                "how long to wait",
+            ),
+            (
+                "interact_with_process",
+                "verbose_timing",
+                false,
+                "reporting only",
+            ),
+            ("force_terminate", "pid", true, ""),
+            ("kill_process", "pid", true, ""),
+            (
+                "get_recent_tool_calls",
+                "maxResults",
+                false,
+                "shown as JSON (no key)",
+            ),
+            (
+                "get_recent_tool_calls",
+                "since",
+                false,
+                "shown as JSON (no key)",
+            ),
+            (
+                "get_recent_tool_calls",
+                "toolName",
+                false,
+                "shown as JSON (no key)",
+            ),
+        ];
+        let schemas = pinned_schemas();
+        let mut seen = std::collections::HashSet::new();
+        for (tool, schema) in &schemas {
+            if rules.decide(tool) != Decision::AskFirst {
+                continue;
+            }
+            let props = schema["properties"]
+                .as_object()
+                .cloned()
+                .unwrap_or_default();
+            for arg in props.keys() {
+                let entry = reviewed
+                    .iter()
+                    .find(|(t, a, _, _)| t == tool && a == arg)
+                    .unwrap_or_else(|| panic!("{tool}.{arg} has not been reviewed"));
+                seen.insert((entry.0, entry.1));
+                let keys = summary_keys(tool);
+                let shown = keys.iter().any(|(k, _)| k == arg);
+                assert_eq!(shown, entry.2, "{tool}.{arg}: shown should be {}", entry.2);
+                if !keys.is_empty() && shown {
+                    // And the prompt really carries it.
+                    let mut args = serde_json::Map::new();
+                    for (k, _) in keys {
+                        args.insert(k.to_string(), json!(format!("V-{k}")));
+                    }
+                    let m = summarize(tool, &Value::Object(args));
+                    assert!(m.contains(&format!("{arg}=\"V-{arg}\"")), "{m}");
+                }
+            }
+        }
+        for (t, a, _, _) in reviewed {
+            assert!(
+                seen.contains(&(*t, *a)),
+                "{t}.{a} is reviewed but not in the schema"
+            );
+        }
+    }
+
+    #[test]
+    fn optional_keys_show_when_sent() {
+        let m = summarize("start_process", &json!({"command": "ls", "timeout_ms": 5}));
+        assert_eq!(m, "start_process: command=\"ls\"");
+        let m = summarize(
+            "start_process",
+            &json!({"command": "ls", "shell": "/usr/bin/python3", "timeout_ms": 5}),
+        );
+        assert_eq!(
+            m,
+            "start_process: command=\"ls\", shell=\"/usr/bin/python3\""
+        );
+        let m = summarize(
+            "write_file",
+            &json!({"path": "/a", "mode": "append", "content": "x"}),
+        );
+        assert_eq!(m, "write_file: path=\"/a\", mode=\"append\"");
+        // An optional key sent as something other than plain text: the person
+        // sees everything that was sent, as for a missing required key.
+        let m = summarize(
+            "start_process",
+            &json!({"command": "ls", "shell": ["/bin/sh", "-c"]}),
+        );
+        assert!(m.contains("(odd shell)") && m.contains("/bin/sh"), "{m}");
+        let m = summarize("start_process", &json!({"command": "ls", "shell": ""}));
+        assert!(m.contains("(odd shell)"), "{m}");
     }
 }

@@ -18,8 +18,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# vrelay: the connector that runs on the Mac. This task adds sign-in, the
-# device key and token refresh; the WebSocket bridge and install come later.
+# vrelay: the connector that runs on the Mac: sign-in, the device key, token
+# refresh, the rules, and the bridge to desktop-commander. The WebSocket link
+# and install come later.
 # The crates are named here so the @vitruvian_relay_crates hub exposes them
 # (it only labels crates a workspace member names itself).
 [package]
@@ -47,5 +48,8 @@ rustls = { version = "0.23", default-features = false, features = ["logging", "r
 rustls-native-certs = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Same features as the relay's (they unify through the crate hub). No
+# `test-util`: it would unify into the production build.
+tokio = { version = "1", features = ["macros", "net", "rt", "rt-multi-thread", "signal", "sync", "time"] }
 toml = { version = "0.8", default-features = false, features = ["parse"] }
 ureq = { version = "2.12", default-features = false, features = ["tls"] }

@@ -43,6 +43,9 @@ usage() {
   cat <<'USAGE'
 bazel run //tools/pnpm:lock              # after editing any package.json in the workspace
 bazel run //tools/pnpm:lock -- --check   # is pnpm-lock.yaml in step? changes nothing, exits 1 if not
+bazel run //tools/pnpm:lock -- --dir P [--check]
+                                         # lock the separate pnpm workspace at P (repo-relative,
+                                         # it has its own pnpm-workspace.yaml) instead of the root one
 USAGE
 }
 
@@ -64,6 +67,30 @@ export JS_BINARY__NO_CD_BINDIR=1
 export JS_BINARY__CHDIR="$root"
 
 safe=(--lockfile-only --ignore-scripts)
+
+# --dir P: a separate workspace inside the repository. Relative, no "..", and
+# it must be a workspace root of its own, or pnpm would walk up and re-lock
+# the root workspace instead.
+dir="$root"
+if [[ "${1:-}" == "--dir" ]]; then
+  rel="${2:-}"
+  if [[ -z "$rel" ]]; then
+    echo "lock: --dir needs a path" >&2
+    usage >&2
+    exit 2
+  fi
+  if [[ "$rel" == /* || "/$rel/" == */../* ]]; then
+    echo "lock: --dir must be a path inside the repository, got $rel" >&2
+    exit 2
+  fi
+  rel="${rel%/}"
+  if [[ ! -f "$root/$rel/pnpm-workspace.yaml" || ! -f "$root/$rel/package.json" ]]; then
+    echo "lock: $rel has no pnpm-workspace.yaml and package.json of its own" >&2
+    exit 2
+  fi
+  dir="$root/$rel"
+  shift 2
+fi
 
 case "${1:-}" in
 "")
@@ -87,6 +114,7 @@ if [[ $# -gt 1 ]]; then
   exit 2
 fi
 
-cd "$root"
-echo "+ pnpm ${args[*]}" >&2
-exec "$pnpm" --dir "$root" "${args[@]}"
+cd "$dir"
+export JS_BINARY__CHDIR="$dir"
+echo "+ pnpm --dir $dir ${args[*]}" >&2
+exec "$pnpm" --dir "$dir" "${args[@]}"

@@ -21,10 +21,12 @@
 # gazelle:ignore
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # vrelay, the connector that runs on the Mac: sign-in, the device key, token
-# refresh, and (in later tasks) the WebSocket bridge. `bazel run
+# refresh, the rules, the bridge to desktop-commander, and (in later tasks)
+# the WebSocket link. `bazel run
 # //apps/suites/vitruvian-relay/connector:vrelay -- <command>`.
 package(default_visibility = ["//apps/suites/vitruvian-relay:__subpackages__"])
 
@@ -37,6 +39,7 @@ _CRATES = [
     "@vitruvian_relay_crates//:rustls-native-certs",
     "@vitruvian_relay_crates//:serde",
     "@vitruvian_relay_crates//:serde_json",
+    "@vitruvian_relay_crates//:tokio",
     "@vitruvian_relay_crates//:toml",
     "@vitruvian_relay_crates//:ureq",
 ]
@@ -45,6 +48,7 @@ rust_library(
     name = "vitruvian_relay_connector",
     srcs = [
         "src/auth.rs",
+        "src/bridge.rs",
         "src/config.rs",
         "src/keys.rs",
         "src/lib.rs",
@@ -59,20 +63,37 @@ rust_library(
     deps = _CRATES,
 )
 
+# Under `bazel run` the pinned desktop-commander comes from the runfiles
+# (bridge.rs, `BridgeCommand::locate`); an installed vrelay reads bridge.json.
 rust_binary(
     name = "vrelay",
     srcs = ["src/main.rs"],
     crate_root = "src/main.rs",
+    data = ["//apps/suites/vitruvian-relay/connector/dc:desktop_commander"],
     edition = "2021",
     deps = [
         ":vitruvian_relay_connector",
+        "@vitruvian_relay_crates//:serde_json",
+        "@vitruvian_relay_crates//:tokio",
     ],
+)
+
+# A tiny stand-in MCP server for the bridge tests.
+sh_binary(
+    name = "fake_mcp",
+    testonly = True,
+    srcs = ["testdata/fake_mcp.sh"],
 )
 
 rust_test(
     name = "vitruvian_relay_connector_test",
     size = "small",
     crate = ":vitruvian_relay_connector",
+    data = [
+        "testdata/dc-0.3.1-tools.json",
+        ":fake_mcp",
+        "//apps/suites/vitruvian-relay/connector/dc:package.json",
+    ],
 )
 
 test_suite(
