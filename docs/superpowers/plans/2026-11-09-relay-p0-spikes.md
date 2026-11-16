@@ -13,7 +13,7 @@ Each spike ends in a written yes or no with evidence. This file is the record.
 | A | Can ChatGPT, Claude and Gemini add an OAuth-protected MCP on our domain, with Zitadel sign-in? | **Claude: yes, live** (2026-11-11, claude.ai). **Gemini: yes, live** (2026-11-15, gemini.google.com; needs a client secret). ChatGPT: yes on paper for one user, needs open registration for many; not tried live |
 | B | Does Zitadel's device flow work from a command-line app? | **Yes** (2026-11-11), with `vitruvian-relay-spike-client login` |
 | C | Does a WebSocket through the Cloudflare Tunnel stay up for 24 hours? | **No for one connection, yes for the service** (2026-11-12). 10 drops in 24 hours, connected 99.3% of the time; reconnecting is mandatory |
-| D | Can a connector drive unmodified `desktop-commander` over stdio (its standard input and output)? | **Yes** (2026-11-12), version 0.3.1 run through Bazel. The connector must kill the whole process group, turn telemetry off and redirect its feature-flag fetch |
+| D | Can a connector drive unmodified `desktop-commander` over stdio (its standard input and output)? | **Yes** (2026-11-12), version 0.3.1 run through Bazel. The connector must kill the whole process group (needed, not yet tested), turn telemetry off and redirect its feature-flag fetch |
 
 ## Live results (2026-11-11 to 2026-11-15)
 
@@ -224,7 +224,8 @@ Bazel's launcher.
 - **Crash:** when the Node process was killed mid-call, stdout closed within
   5 ms and the pending call got no answer. **The command it had started
   (`sleep 30`) kept running.** Commands are its children, so the connector must
-  start it in its own process group and kill the group, not just the PID.
+  start it in its own process group and kill the group, not just the PID. (The
+  group kill itself was not tested here.)
 - **Wrapper trap (Bazel only):** `bazel run`'s launcher is a shell script with
   Node underneath. Killing only the launcher left Node running with stdout open,
   so no EOF arrived. A connector that starts it through a wrapper must kill the
@@ -243,8 +244,9 @@ Bazel's launcher.
   `track-installation.js`, which uses HTTPS). rules_js ran no install scripts:
   the build had only extract and symlink actions.
 - **Files it wrote** under `~/.claude-server-commander/`: `config.json`,
-  `feature-flags.json`, `tool-history.jsonl` and `claude_tool_call.log`. The log
-  records every call with its full arguments. `HOME` controls where these go.
+  `feature-flags.json`, `tool-history.jsonl` and `claude_tool_call.log`. Per its
+  source, the log records every call with its full arguments; the run showed the
+  file, not a check of its contents. `HOME` controls where these go.
 
 Not committed: pinning it changed how some unrelated Backstage webpack packages
 resolve in `pnpm-lock.yaml`. That's too much reach for a spike, so the run was
