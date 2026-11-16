@@ -180,7 +180,8 @@ pub fn locate_from(
     }
 }
 
-fn find_on_path(name: &str, path: Option<&str>) -> Option<PathBuf> {
+/// The first executable `name` in a `PATH`-style list.
+pub fn find_on_path(name: &str, path: Option<&str>) -> Option<PathBuf> {
     use std::os::unix::fs::PermissionsExt;
     path?
         .split(':')
@@ -205,7 +206,8 @@ pub fn node_ok(version: &str) -> bool {
     parse_node_version(version).is_some_and(|v| v >= MIN_NODE)
 }
 
-fn check_node(node: &Path) -> Result<()> {
+/// An error, saying how to get one, unless `node` is Node 22.12 or newer.
+pub fn check_node(node: &Path) -> Result<()> {
     check_node_with(node, NODE_VERSION_TIMEOUT)
 }
 

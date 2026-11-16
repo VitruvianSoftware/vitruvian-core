@@ -1039,6 +1039,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "vitruvian-relay-install"
+version = "0.0.0"
+dependencies = [
+ "libc",
+ "serde_json",
+ "vitruvian-relay-connector",
+]
+
+[[package]]
 name = "vitruvian-relay-protocol"
 version = "0.0.0"
 dependencies = [

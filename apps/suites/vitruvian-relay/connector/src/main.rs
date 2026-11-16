@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! `vrelay` commands. `install` comes in a later task.
+//! `vrelay` commands. Installing it is `scripts:install`.
 
 use vitruvian_relay_connector::auth::{fresh_token, login, register_device};
 use vitruvian_relay_connector::bridge::{Bridge, BridgeCommand};

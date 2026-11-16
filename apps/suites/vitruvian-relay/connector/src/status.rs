@@ -110,6 +110,9 @@ pub fn render(dir: &Path, now: u64) -> String {
     if let Some(why) = waiting_reason(dir, now) {
         out.push_str(&format!("Why:      {why}\n"));
     }
+    for w in crate::rules::file_warnings(dir) {
+        out.push_str(&format!("Rules:    {w}\n"));
+    }
     out
 }
 
@@ -228,5 +231,19 @@ mod tests {
         assert_eq!(link_state(&dir, now), Link::WaitingForSignIn);
         write_status(&dir, "not json");
         assert_eq!(link_state(&dir, now), Link::Stopped);
+    }
+
+    #[test]
+    fn status_warns_when_an_edited_rules_file_misses_new_hidden_defaults() {
+        let dir = test_dir("status-rules");
+        assert!(!render(&dir, 1000).contains("Rules:"));
+        write_private(
+            &crate::rules::rules_path(&dir),
+            b"hidden = [\"set_config_value\"]\nno_prompt = []\n",
+        )
+        .unwrap();
+        let out = render(&dir, 1000);
+        assert!(out.contains("Rules:    "), "{out}");
+        assert!(out.contains("get_recent_tool_calls"), "{out}");
     }
 }

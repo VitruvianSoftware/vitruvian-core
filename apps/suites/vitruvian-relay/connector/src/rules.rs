@@ -185,6 +185,55 @@ impl Rules {
     }
 }
 
+/// What is worth telling the person about their rules file, without
+/// changing it: a file that does not load, or an edited file that no longer
+/// hides a tool the current defaults hide (a newer default the person never
+/// got, because [`load`] only upgrades an untouched file). No file, or an
+/// untouched copy of older defaults (`load` upgrades it at the next start),
+/// gives nothing. The installer and `vrelay status` print these.
+pub fn file_warnings(dir: &Path) -> Vec<String> {
+    let path = rules_path(dir);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+        Err(e) => return vec![format!("cannot read {}: {e}", path.display())],
+    };
+    if PREVIOUS_DEFAULTS.contains(&text.as_str()) {
+        return Vec::new();
+    }
+    let rules: Rules = match toml::from_str(&text) {
+        Ok(r) => r,
+        Err(e) => {
+            return vec![format!(
+                "{} does not load, so vrelay will not start: {e}",
+                path.display()
+            )]
+        }
+    };
+    let missing = missing_default_hidden(&rules);
+    if missing.is_empty() {
+        return Vec::new();
+    }
+    vec![format!(
+        "{} does not hide {}, which the current defaults hide. It was edited, \
+         so it is never changed for you: add them to `hidden` (or keep them \
+         visible on purpose).",
+        path.display(),
+        missing.join(", ")
+    )]
+}
+
+/// The tools [`DEFAULT_RULES`] hides that `rules` does not (by the same
+/// test calls use, [`Rules::is_hidden`]).
+pub fn missing_default_hidden(rules: &Rules) -> Vec<String> {
+    let defaults: Rules = toml::from_str(DEFAULT_RULES).expect("the default rules parse");
+    defaults
+        .hidden
+        .into_iter()
+        .filter(|t| !rules.is_hidden(t))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -521,5 +570,75 @@ no_prompt = ["read_file", "read_multiple_files", "list_directory",
         assert!(r.paused);
         assert!(!r.is_hidden("get_recent_tool_calls"));
         assert_eq!(std::fs::read_to_string(rules_path(&dir)).unwrap(), edited);
+    }
+
+    #[test]
+    fn an_edited_file_missing_new_hidden_defaults_is_warned_about_not_edited() {
+        let dir = test_dir("rules-warn-edited");
+        std::fs::create_dir_all(&dir).unwrap();
+        let edited = R6_DEFAULTS.replace("paused = false", "paused = true");
+        std::fs::write(rules_path(&dir), &edited).unwrap();
+        let w = file_warnings(&dir);
+        assert_eq!(w.len(), 1, "{w:?}");
+        for t in [
+            "get_recent_tool_calls",
+            "give_feedback_to_desktop_commander",
+            "track_ui_event",
+        ] {
+            assert!(w[0].contains(t), "{w:?}");
+        }
+        // get_config is hidden by the "config" rule anyway: not missing.
+        assert!(!w[0].contains("get_config"), "{w:?}");
+        assert!(w[0].contains("rules.toml"), "{w:?}");
+        // Never edited.
+        assert_eq!(std::fs::read_to_string(rules_path(&dir)).unwrap(), edited);
+    }
+
+    #[test]
+    fn no_warning_for_current_untouched_old_or_missing_files() {
+        let dir = test_dir("rules-warn-none");
+        // No file: nothing to say, and nothing written.
+        assert!(file_warnings(&dir).is_empty());
+        assert!(!rules_path(&dir).exists());
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(rules_path(&dir), DEFAULT_RULES).unwrap();
+        assert!(file_warnings(&dir).is_empty());
+        // An untouched old default is upgraded by `load` at start: no
+        // warning, and not upgraded here either.
+        std::fs::write(rules_path(&dir), R6_DEFAULTS).unwrap();
+        assert!(file_warnings(&dir).is_empty());
+        assert_eq!(
+            std::fs::read_to_string(rules_path(&dir)).unwrap(),
+            R6_DEFAULTS
+        );
+    }
+
+    #[test]
+    fn missing_default_hidden_follows_the_hiding_rules() {
+        assert!(missing_default_hidden(&defaults()).is_empty());
+        let mut r = defaults();
+        r.hidden = vec!["SET_CONFIG_VALUE ".into()];
+        assert_eq!(
+            missing_default_hidden(&r),
+            vec![
+                "get_recent_tool_calls",
+                "give_feedback_to_desktop_commander",
+                "track_ui_event"
+            ]
+        );
+        // Exposing a settings tool through config_allow takes it out of
+        // hiding: that is missing too.
+        r.config_allow = vec!["get_config".into()];
+        assert!(missing_default_hidden(&r).contains(&"get_config".to_string()));
+    }
+
+    #[test]
+    fn a_file_that_does_not_load_is_warned_about() {
+        let dir = test_dir("rules-warn-bad");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(rules_path(&dir), "hidden = [").unwrap();
+        let w = file_warnings(&dir);
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert!(w[0].contains("does not load"), "{w:?}");
     }
 }

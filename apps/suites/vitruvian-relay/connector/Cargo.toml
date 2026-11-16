@@ -20,7 +20,7 @@
 
 # vrelay: the connector that runs on the Mac: sign-in, the device key, token
 # refresh, the rules, the bridge to desktop-commander, and the WebSocket link
-# to the relay (`vrelay run`). Install comes later.
+# to the relay (`vrelay run`). The installer is scripts/ (`:install`).
 # The crates are named here so the @vitruvian_relay_crates hub exposes them
 # (it only labels crates a workspace member names itself).
 [package]

@@ -39,12 +39,17 @@ exports_files([
 alias(
     name = "desktop_commander",
     actual = ":node_modules/@wonderwhy-er/desktop-commander",
-    visibility = ["//apps/suites/vitruvian-relay/connector:__pkg__"],
+    visibility = [
+        "//apps/suites/vitruvian-relay/connector:__pkg__",
+        "//apps/suites/vitruvian-relay/connector/scripts:__pkg__",
+    ],
 )
 
 # The pinned package fetches and links from this folder's lock. Its own unit,
 # so the npm fetch runs only for changes here (the planner picks units by the
-# tests a change reaches), not for every connector change.
+# tests a change reaches), not for every connector change. The installer's
+# placement test (an installed copy holds a working rg) rides along: it
+# reaches only the package and scripts/src/layout.rs.
 build_test(
     name = "desktop_commander_builds",
     targets = [":desktop_commander"],
@@ -54,7 +59,10 @@ pipeline_unit(
     name = "vrelay-dc",
     persona = "backend",
     runner = "ubuntu-26.04",
-    test_targets = [":desktop_commander_builds"],
+    test_targets = [
+        ":desktop_commander_builds",
+        "//apps/suites/vitruvian-relay/connector/scripts:package_layout_test",
+    ],
     tier = "L1",
     timeout_minutes = 15,
 )

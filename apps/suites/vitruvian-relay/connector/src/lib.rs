@@ -20,7 +20,7 @@
 
 //! `vrelay`, the connector that runs on the Mac: sign-in, the device key,
 //! token refresh, `status`, the rules, the bridge to desktop-commander and
-//! the WebSocket link to the relay (`run`). `install` comes later.
+//! the WebSocket link to the relay (`run`). The installer is `scripts/`.
 
 pub mod auth;
 pub mod bridge;

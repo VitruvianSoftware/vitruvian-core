@@ -26,4 +26,4 @@
 # Re-lock: bazel run //tools/crates:lock -- --dir apps/suites/vitruvian-relay
 [workspace]
 resolver = "2"
-members = ["relay", "protocol", "connector"]
+members = ["relay", "protocol", "connector", "connector/scripts"]
