@@ -60,6 +60,10 @@ var emptyConversationPortalRE = regexp.MustCompile(`^[0-9]+\.$`)
 var (
 	resyncPollInterval = 2 * time.Second
 	resyncGiveUpAfter  = 30 * time.Minute
+	// A resync that fails is tried again after resyncRetryInitial, then after twice as long each time, up to
+	// resyncRetryMax (the phone may be off, or Google slow: asking every poll would be a flood).
+	resyncRetryInitial = 2 * time.Second
+	resyncRetryMax     = 5 * time.Minute
 )
 
 // restoredChat is a chat the repair put back, waiting for its resync.
@@ -297,9 +301,15 @@ func (c *Connector) restoreOrDropMapping(ctx context.Context, m dmMapping, catch
 		log.Warn().Msg("dropped a Google Messages contact's mapping to a chat with no conversation ID")
 		return restoredChat{}, false, c.dropMapping(ctx, m)
 	}
-	room, oldPortal, found, err := c.oldRoomFor(ctx, m, catchAll)
+	room, oldPortal, found, doubt, err := c.oldRoomFor(ctx, m, catchAll)
 	if err != nil {
 		return restoredChat{}, false, err
+	}
+	if doubt {
+		// Not sure whose room it is (a number two contacts share, or a room that isn't surely one-to-one): giving the
+		// wrong person's history to this chat is worse than leaving both as they are.
+		log.Warn().Msg("left a Google Messages contact's mapping and the old rooms that might be its chat as they are: not sure which room is its chat")
+		return restoredChat{}, false, nil
 	}
 	if !found {
 		if m.hasRow {
@@ -350,8 +360,10 @@ func (c *Connector) restoreOrDropMapping(ctx context.Context, m dmMapping, catch
 	return restoredChat{ID: key.ID, Receiver: key.Receiver, LastTS: lastTS}, true, nil
 }
 
-// oldRoomFor finds the room a broken mapping's chat had.
-func (c *Connector) oldRoomFor(ctx context.Context, m dmMapping, catchAll map[string]bool) (store.ChannelRoom, networkid.PortalID, bool, error) {
+// oldRoomFor finds the room a broken mapping's chat had. The room of the mapped chat itself is found by its ID. One
+// of the contact's old chat is found by the contact's phone number, and only when that is certain: exactly one
+// candidate has it (doubt otherwise: two contacts can share a number), and that room is surely one-to-one (oneToOne).
+func (c *Connector) oldRoomFor(ctx context.Context, m dmMapping, catchAll map[string]bool) (room store.ChannelRoom, portal networkid.PortalID, found, doubt bool, err error) {
 	usable := func(r store.ChannelRoom) (bool, error) {
 		if !r.Tombstoned || !liftable(r.Replacement, catchAll) {
 			return false, nil
@@ -361,29 +373,35 @@ func (c *Connector) oldRoomFor(ctx context.Context, m dmMapping, catchAll map[st
 	}
 	own, err := c.store.RoomsForChannel(ctx, c.network, string(m.portal), string(m.login))
 	if err != nil {
-		return store.ChannelRoom{}, "", false, err
+		return room, "", false, false, err
 	}
 	for _, r := range own {
 		if ok, err := usable(r); err != nil || ok {
-			return r, m.portal, ok, err
+			return r, m.portal, ok, false, err
 		}
 	}
 	all, err := c.store.ChannelRooms(ctx, c.network, string(m.login))
 	if err != nil {
-		return store.ChannelRoom{}, "", false, err
+		return room, "", false, false, err
 	}
+	type candidate struct {
+		room  store.ChannelRoom
+		ghost networkid.UserID
+		old   networkid.PortalID
+	}
+	var matches []candidate
 	for _, r := range all {
 		if r.ChannelID == "" || r.ChannelID == string(m.portal) || emptyConversationPortalRE.MatchString(r.ChannelID) {
 			continue
 		}
 		if ok, err := usable(r); err != nil {
-			return store.ChannelRoom{}, "", false, err
+			return room, "", false, false, err
 		} else if !ok {
 			continue
 		}
 		old := networkid.PortalKey{ID: networkid.PortalID(r.ChannelID), Receiver: m.login}
 		if p, err := c.br.DB.Portal.GetByKey(ctx, old); err != nil {
-			return store.ChannelRoom{}, "", false, err
+			return room, "", false, false, err
 		} else if p != nil {
 			continue
 		}
@@ -391,16 +409,61 @@ func (c *Connector) oldRoomFor(ctx context.Context, m dmMapping, catchAll map[st
 		err := c.br.DB.QueryRow(ctx, "SELECT COUNT(*) FROM "+gmessagesMappingTable+" WHERE bridge_id = $1 AND login_id = $2 AND portal_id = $3",
 			c.br.ID, m.login, old.ID).Scan(&mapped)
 		if err != nil {
-			return store.ChannelRoom{}, "", false, err
+			return room, "", false, false, err
 		}
 		if mapped > 0 {
 			continue
 		}
 		if ghost := c.theOtherGhost(ctx, id.RoomID(r.RoomID)); ghost != "" && m.phone != "" && c.ghostPhone(ctx, ghost) == m.phone {
-			return r, old.ID, true, nil
+			matches = append(matches, candidate{r, ghost, old.ID})
 		}
 	}
-	return store.ChannelRoom{}, "", false, nil
+	switch {
+	case len(matches) == 0:
+		return room, "", false, false, nil
+	case len(matches) > 1:
+		return room, "", false, true, nil
+	}
+	only := matches[0]
+	surely, err := c.oneToOne(ctx, only.room, only.ghost)
+	if err != nil || !surely {
+		return room, "", false, true, err
+	}
+	return only.room, only.old, true, false, nil
+}
+
+// oneToOne reports whether a room is surely a one-to-one chat with ghost: its bridge info says it is a direct chat (and
+// never a group), the store says it is direct, and nobody is in it but the user, the bridge bot and that ghost (the
+// ghost itself left with the tombstone).
+func (c *Connector) oneToOne(ctx context.Context, r store.ChannelRoom, ghost networkid.UserID) (bool, error) {
+	room, ok, err := c.store.GetRoom(ctx, r.RoomID)
+	if err != nil || !ok || !room.IsDirect {
+		return false, err
+	}
+	raw, ok, err := c.store.GetState(ctx, r.RoomID, "m.bridge", c.network)
+	if err != nil || !ok {
+		return false, err
+	}
+	var info struct {
+		RoomType   string `json:"com.beeper.room_type"`
+		RoomTypeV2 string `json:"com.beeper.room_type.v2"`
+	}
+	if json.Unmarshal(raw, &info) != nil || info.RoomTypeV2 != "dm" || (info.RoomType != "" && info.RoomType != "dm") {
+		return false, nil
+	}
+	members, err := c.store.Members(ctx, r.RoomID)
+	if err != nil {
+		return false, err
+	}
+	allowed := map[string]bool{
+		string(ids.Me): true, string(id.NewUserID(c.network+"bot", ids.ServerName)): true, string(ids.GhostMXID(c.network, ghost)): true,
+	}
+	for member := range members {
+		if !allowed[member] {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // ghostPhone is the phone number the bridge keeps on a ghost ("" when it has none).
@@ -587,6 +650,11 @@ func (c *Connector) resyncRestoredChats(ctx context.Context) {
 	if ctx == nil {
 		return
 	}
+	type retry struct {
+		next  time.Time
+		delay time.Duration
+	}
+	retries := map[string]*retry{}
 	deadline := time.NewTimer(resyncGiveUpAfter)
 	defer deadline.Stop()
 	tick := time.NewTicker(resyncPollInterval)
@@ -601,17 +669,30 @@ func (c *Connector) resyncRestoredChats(ctx context.Context) {
 			if login == nil || login.Client == nil || login.BridgeState.GetPrev().StateEvent != status.StateConnected {
 				continue
 			}
-			if err := c.resyncOne(ctx, login, chat); err != nil {
-				c.log.Debug().Err(err).Str("portal_id", string(chat.ID)).Msg("couldn't resync a restored chat yet; trying again")
+			key := string(chat.Receiver) + "|" + string(chat.ID)
+			if r := retries[key]; r != nil && time.Now().Before(r.next) {
 				continue
 			}
+			if err := c.resyncOne(ctx, login, chat); err != nil {
+				r := retries[key]
+				if r == nil {
+					r = &retry{delay: resyncRetryInitial / 2}
+					retries[key] = r
+				}
+				r.delay = min(r.delay*2, resyncRetryMax)
+				r.next = time.Now().Add(r.delay)
+				c.log.Warn().Err(err).Str("portal_id", string(chat.ID)).Dur("retry_in", r.delay).
+					Msg("couldn't resync a restored Google Messages chat yet; trying again later")
+				continue
+			}
+			delete(retries, key)
 			c.donePendingResync(ctx, chat)
 		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-deadline.C:
-			c.log.Warn().Msg("restored Google Messages chats are still waiting for their login to connect; trying again at the next start")
+			c.log.Warn().Msg("restored Google Messages chats are still waiting for their resync; trying again at the next start")
 			return
 		case <-tick.C:
 		}
@@ -620,9 +701,11 @@ func (c *Connector) resyncRestoredChats(ctx context.Context) {
 
 // resyncOne queues one restored chat's resync. The chat's room already holds its old history, but the bridge has no
 // message rows for it, so a backfill would send the latest messages all over again. So first the newest message the
-// phone has that the room already holds (not newer than the room's newest event) is put in as the bridge's last
-// message of the chat, and the backfill (bridgev2 drops everything not newer than it) sends only what came after.
-// An error means "not yet": nothing was queued, and the chat stays pending.
+// phone has that the room already holds (not newer than the room's newest event when it was restored) is put in as a
+// message of the chat (a real one: replies to it resolve), and the backfill (bridgev2 drops everything not newer than
+// the chat's last message) sends only what came after. When a message came in live before this, it is the chat's last
+// message and the backfill would start after it, so what the room is missing before it is sent as messages instead.
+// An error means "not yet": the chat stays pending.
 func (c *Connector) resyncOne(ctx context.Context, login *bridgev2.UserLogin, chat restoredChat) error {
 	key := networkid.PortalKey{ID: chat.ID, Receiver: chat.Receiver}
 	portal, err := c.br.GetExistingPortalByKey(ctx, key)
@@ -633,44 +716,79 @@ func (c *Connector) resyncOne(ctx context.Context, login *bridgev2.UserLogin, ch
 		return nil // the chat was deleted meanwhile: nothing to resync
 	}
 	var anchor networkid.MessageID
-	if api, ok := login.Client.(bridgev2.BackfillingNetworkAPI); ok && chat.LastTS > 0 {
-		if anchor, err = c.seedBackfillAnchor(ctx, api, portal, chat.LastTS); err != nil {
+	var gap []*bridgev2.BackfillMessage
+	if api, ok := login.Client.(bridgev2.BackfillingNetworkAPI); ok {
+		if anchor, gap, err = c.seedBackfillAnchor(ctx, api, portal, chat.LastTS); err != nil {
 			return err
 		}
 	}
 	c.queueResync(login, key, anchor)
+	for _, m := range gap {
+		c.queueMissedMessage(login, key, m)
+	}
 	return nil
 }
 
-// seedBackfillAnchor makes the newest message of the phone's latest ones that is not newer than lastTS the chat's last
-// bridged message, and returns its ID: "" when there is none to make (the chat has messages of its own, none of the
-// phone's is that old, or the chat can't be backfilled).
-func (c *Connector) seedBackfillAnchor(ctx context.Context, api bridgev2.BackfillingNetworkAPI, portal *bridgev2.Portal, lastTS int64) (networkid.MessageID, error) {
-	existing, err := c.br.DB.Message.GetLastPartAtOrBeforeTime(ctx, portal.PortalKey, time.Now().Add(10*time.Second))
-	if err != nil || existing != nil {
-		return "", err
-	}
+// seedBackfillAnchor makes the newest message of the phone's latest ones that is not newer than lastTS (the newest
+// event the room held before the chat was restored) a message of the chat, and returns its ID ("" when there is none
+// to make: lastTS is 0, none of the phone's is that old, or the chat can't be backfilled). It also returns the
+// messages the room is missing, when a live message has already become the chat's last message: those newer than
+// lastTS that the bridge doesn't have.
+func (c *Connector) seedBackfillAnchor(ctx context.Context, api bridgev2.BackfillingNetworkAPI, portal *bridgev2.Portal, lastTS int64) (networkid.MessageID, []*bridgev2.BackfillMessage, error) {
 	limit := c.br.Config.Backfill.MaxInitialMessages
 	if !c.br.Config.Backfill.Enabled || limit <= 0 {
-		return "", nil
+		return "", nil, nil
 	}
 	resp, err := api.FetchMessages(ctx, bridgev2.FetchMessagesParams{Portal: portal, Forward: true, Count: limit})
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if resp == nil {
-		return "", nil
+		return "", nil, nil
 	}
 	var newest *bridgev2.BackfillMessage
 	for _, m := range resp.Messages {
-		if m != nil && m.ID != "" && m.Timestamp.UnixMilli() <= lastTS && (newest == nil || m.Timestamp.After(newest.Timestamp)) {
+		if m != nil && m.ID != "" && lastTS > 0 && m.Timestamp.UnixMilli() <= lastTS && (newest == nil || m.Timestamp.After(newest.Timestamp)) {
 			newest = m
 		}
 	}
-	if newest == nil {
-		return "", nil
+	var anchor networkid.MessageID
+	if newest != nil {
+		if anchor, err = c.insertAnchor(ctx, portal, newest); err != nil {
+			return "", nil, err
+		}
 	}
-	sender := newest.Sender.Sender
+	latest, err := c.br.DB.Message.GetLastPartAtOrBeforeTime(ctx, portal.PortalKey, time.Now().Add(10*time.Second))
+	if err != nil {
+		return "", nil, err
+	}
+	if latest == nil || (anchor != "" && latest.ID == anchor) {
+		return anchor, nil, nil
+	}
+	var gap []*bridgev2.BackfillMessage
+	for _, m := range resp.Messages {
+		if m == nil || m.ID == "" || m.ConvertedMessage == nil || m.Timestamp.UnixMilli() <= lastTS {
+			continue
+		}
+		have, err := c.br.DB.Message.GetFirstPartByID(ctx, portal.Receiver, m.ID)
+		if err != nil {
+			return "", nil, err
+		}
+		if have == nil {
+			gap = append(gap, m)
+		}
+	}
+	return anchor, gap, nil
+}
+
+// insertAnchor makes m (a message of the phone's that the room holds) a message of the chat, with the event the room
+// has it under (the bridge's own event IDs are made from the message's ID, so a reply to it is a reply to that event).
+// It returns m's ID, or "" when there is no sender to give it.
+func (c *Connector) insertAnchor(ctx context.Context, portal *bridgev2.Portal, m *bridgev2.BackfillMessage) (networkid.MessageID, error) {
+	if have, err := c.br.DB.Message.GetFirstPartByID(ctx, portal.Receiver, m.ID); err != nil || have != nil {
+		return m.ID, err
+	}
+	sender := m.Sender.Sender
 	if sender == "" {
 		sender = portal.OtherUserID
 	}
@@ -681,23 +799,44 @@ func (c *Connector) seedBackfillAnchor(ctx context.Context, api bridgev2.Backfil
 		return "", err
 	}
 	senderMXID := ids.GhostMXID(c.network, sender)
-	if newest.Sender.IsFromMe {
+	if m.Sender.IsFromMe {
 		senderMXID = ids.Me
 	}
-	err = c.br.DB.Message.Insert(ctx, &database.Message{
+	err := c.br.DB.Message.Insert(ctx, &database.Message{
 		BridgeID:   c.br.ID,
-		ID:         newest.ID,
-		MXID:       c.GenerateDeterministicEventID(portal.MXID, portal.PortalKey, newest.ID, ""),
+		ID:         m.ID,
+		MXID:       c.GenerateDeterministicEventID(portal.MXID, portal.PortalKey, m.ID, ""),
 		Room:       portal.PortalKey,
 		SenderID:   sender,
 		SenderMXID: senderMXID,
-		Timestamp:  newest.Timestamp,
+		Timestamp:  m.Timestamp,
 		Metadata:   map[string]any{},
 	})
 	if err != nil {
 		return "", err
 	}
-	return newest.ID, nil
+	return m.ID, nil
+}
+
+// queueMissedMessage sends one message the room is missing as the network would have delivered it. A message the
+// bridge got meanwhile is ignored. (Its reactions are not sent: a backfill would, this does not.)
+func (c *Connector) queueMissedMessage(login *bridgev2.UserLogin, key networkid.PortalKey, m *bridgev2.BackfillMessage) {
+	c.br.QueueRemoteEvent(login, &simplevent.Message[*bridgev2.BackfillMessage]{
+		EventMeta: simplevent.EventMeta{
+			Type:      bridgev2.RemoteEventMessage,
+			PortalKey: key,
+			Sender:    m.Sender,
+			Timestamp: m.Timestamp,
+		},
+		Data: m,
+		ID:   m.ID,
+		ConvertMessageFunc: func(_ context.Context, _ *bridgev2.Portal, _ bridgev2.MatrixAPI, data *bridgev2.BackfillMessage) (*bridgev2.ConvertedMessage, error) {
+			return data.ConvertedMessage, nil
+		},
+		HandleExistingFunc: func(context.Context, *bridgev2.Portal, bridgev2.MatrixAPI, []*database.Message, *bridgev2.BackfillMessage) (bridgev2.UpsertResult, error) {
+			return bridgev2.UpsertResult{}, nil
+		},
+	})
 }
 
 func (c *Connector) queueResync(login *bridgev2.UserLogin, key networkid.PortalKey, anchor networkid.MessageID) {
