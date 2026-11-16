@@ -510,7 +510,8 @@ public class AppInfoTest {
 
     assertEquals("vitruvian-remote@0.1.40", options.release)
     assertEquals("production", options.environment)
-    assertFalse(options.isSendDefaultPii)
+    assertTrue(options.dataCollection.isExplicitlyConfigured)
+    assertFalse(options.dataCollectionResolver.isUserInfo)
     assertNull(options.distinctId)
     assertEquals(0, options.maxBreadcrumbs)
     assertEquals(mapOf("device.model" to "Pixel Fold", "os.version" to "15"), options.tags)

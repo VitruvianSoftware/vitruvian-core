@@ -23,6 +23,8 @@ package dev.vitruvian.crashprivacy
 import io.sentry.Attachment
 import io.sentry.Breadcrumb
 import io.sentry.Hint
+import io.sentry.HttpBodyType
+import io.sentry.KeyValueCollectionBehavior
 import io.sentry.MainEventProcessor
 import io.sentry.OptionsContainer
 import io.sentry.Scope
@@ -107,6 +109,14 @@ public class CrashPrivacyTest {
                 "packages/android-crash-privacy/src/main/kotlin/dev/vitruvian/crashprivacy/CrashPrivacy.kt")
             .readText()
     assertEquals(emptyList<String>(), findForbiddenSentryReflectionTokens(source))
+    assertFalse(
+        "CrashPrivacy.kt must not use deprecated isSendDefaultPii",
+        source.contains("isSendDefaultPii"),
+    )
+    assertFalse(
+        "CrashPrivacy.kt must not use deprecated setSendDefaultPii",
+        source.contains("setSendDefaultPii"),
+    )
   }
 
   @Test
@@ -115,6 +125,11 @@ public class CrashPrivacyTest {
         SentryAndroidOptions().apply {
           distinctId = "pre-existing-id"
           setTag("stale", "value")
+          dataCollection.apply {
+            userInfo = true
+            databaseQueryData = true
+            filePaths = true
+          }
         }
     configurePrivateSentry(
         options = options,
@@ -133,7 +148,45 @@ public class CrashPrivacyTest {
 
     assertEquals("vitruvian-remote@0.1.40", options.release)
     assertEquals("production", options.environment)
-    assertFalse(options.isSendDefaultPii)
+    assertTrue(options.dataCollection.isExplicitlyConfigured)
+    assertEquals(false, options.dataCollection.userInfo)
+    assertEquals(false, options.dataCollection.databaseQueryData)
+    assertEquals(false, options.dataCollection.filePaths)
+    assertEquals(emptySet<HttpBodyType>(), options.dataCollection.httpBodies)
+    assertEquals(KeyValueCollectionBehavior.off(), options.dataCollection.cookies)
+    assertEquals(KeyValueCollectionBehavior.off(), options.dataCollection.urlQueryParams)
+    assertEquals(KeyValueCollectionBehavior.off(), options.dataCollection.httpHeaders.request)
+    assertEquals(KeyValueCollectionBehavior.off(), options.dataCollection.httpHeaders.response)
+    assertEquals(false, options.dataCollection.graphql.document)
+    assertEquals(false, options.dataCollection.graphql.variables)
+    assertTrue(options.dataCollectionResolver.isDataCollectionConfigured)
+    assertFalse(options.dataCollectionResolver.isUserInfo)
+    assertFalse(options.dataCollectionResolver.isDatabaseQueryData)
+    assertFalse(options.dataCollectionResolver.isFilePaths)
+    assertFalse(options.dataCollectionResolver.isGraphqlDocument)
+    assertFalse(options.dataCollectionResolver.isGraphqlDocumentWithLegacyBodyGate)
+    assertFalse(options.dataCollectionResolver.isGraphqlDocumentWithLegacyAlways)
+    assertFalse(options.dataCollectionResolver.isGraphqlVariables)
+    assertFalse(options.dataCollectionResolver.isGraphqlVariablesWithLegacyBodyGate)
+    assertFalse(options.dataCollectionResolver.isGraphqlVariablesWithLegacyAlways)
+    assertFalse(options.dataCollectionResolver.isIncomingRequestBody)
+    assertFalse(options.dataCollectionResolver.isOutgoingRequestBody)
+    assertFalse(options.dataCollectionResolver.isIncomingResponseBody)
+    assertFalse(options.dataCollectionResolver.isOutgoingResponseBody)
+    assertFalse(options.dataCollectionResolver.isOutgoingResponseBodyWithLegacyBodyGate)
+    assertEquals(KeyValueCollectionBehavior.Mode.OFF, options.dataCollectionResolver.cookies.mode)
+    assertEquals(
+        KeyValueCollectionBehavior.Mode.OFF,
+        options.dataCollectionResolver.urlQueryParams.mode,
+    )
+    assertEquals(
+        KeyValueCollectionBehavior.Mode.OFF,
+        options.dataCollectionResolver.httpRequestHeaders.mode,
+    )
+    assertEquals(
+        KeyValueCollectionBehavior.Mode.OFF,
+        options.dataCollectionResolver.httpResponseHeaders.mode,
+    )
     assertNull(options.distinctId)
     assertEquals(0, options.maxBreadcrumbs)
     assertEquals(0, options.maxFeatureFlags)

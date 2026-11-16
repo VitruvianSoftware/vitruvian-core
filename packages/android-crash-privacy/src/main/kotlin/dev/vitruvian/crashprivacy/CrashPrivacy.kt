@@ -20,6 +20,8 @@
 
 package dev.vitruvian.crashprivacy
 
+import io.sentry.DataCollection
+import io.sentry.KeyValueCollectionBehavior
 import io.sentry.Sentry
 import io.sentry.SentryOpenTelemetryMode
 import io.sentry.SentryOptions
@@ -81,6 +83,20 @@ public fun disableCrashReporting(
   deleteCache(appCacheDir)
 }
 
+private fun createAllOffDataCollection(): DataCollection =
+    DataCollection().apply {
+      userInfo = false
+      cookies = KeyValueCollectionBehavior.off()
+      urlQueryParams = KeyValueCollectionBehavior.off()
+      httpBodies = emptySet()
+      databaseQueryData = false
+      filePaths = false
+      httpHeaders.request = KeyValueCollectionBehavior.off()
+      httpHeaders.response = KeyValueCollectionBehavior.off()
+      graphql.document = false
+      graphql.variables = false
+    }
+
 /**
  * Configures [SentryAndroidOptions] for privacy-hardened crash reporting: disables PII,
  * breadcrumbs, server hostname, extra threads, ANR/tombstone/NDK/exit tracking, screenshots, view
@@ -109,7 +125,7 @@ public fun configurePrivateSentry(
   if (appCacheDir != null) {
     options.cacheDirPath = sentryCacheDir(appCacheDir).absolutePath
   }
-  options.isSendDefaultPii = false
+  options.setDataCollection(createAllOffDataCollection())
   options.distinctId = null
   // Sentry 8.x uses DisabledQueue when maxBreadcrumbs <= 0; beforeBreadcrumb and beforeSend
   // remain as defense-in-depth.
