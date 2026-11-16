@@ -729,6 +729,11 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
         self.isDirect = isDirect
     }
 
+    /// Whether the row draws the other person's picture: on the first message of a run from one sender, in a group
+    /// and in a one-to-one chat alike (a run is `startsGroup`'s: same sender, under five minutes apart, no day or
+    /// "New" divider between). My own messages never draw one.
+    public var showsSenderAvatar: Bool { !mine && startsGroup }
+
     /// Stickers render in a borderless container without the coloured text bubble background tint.
     public var suppressesBubbleBackground: Bool {
         kind == .sticker && !viewOnce && !showsMediaRemovedPlaceholder && sticker != nil

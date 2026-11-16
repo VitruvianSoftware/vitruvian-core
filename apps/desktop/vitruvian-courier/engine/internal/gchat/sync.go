@@ -697,6 +697,13 @@ func (c *Client) convertParsedMessage(ctx context.Context, pm parsedMessage) (*b
 		}
 		content.Mentions = mentions
 	}
+	// Google's own link cards (title, snippet, site), so a link arrives with a preview as in Google Chat itself.
+	var rawMessage pb.Message
+	if err := pb.Unmarshal(pm.rawProto, &rawMessage); err == nil {
+		if previews := linkPreviewsFromMessage(&rawMessage); len(previews) > 0 {
+			content.BeeperLinkPreviews = previews
+		}
+	}
 
 	mediaParts, err := c.extractInboundMediaParts(ctx, pm)
 	if err != nil {

@@ -1981,6 +1981,26 @@ final class ViewSnapshotTests: XCTestCase {
             .padding(14)
         })
 
+        // 4b. The placeholder is a compact card, not the old tall "blocked" box: its title can come from a preview the
+        // network sent, and the privacy note lives in the tooltip, not the body.
+        check(try Snapshot.render("embed-consent-card-titled", width: 360) {
+            EmbedConsentCard(
+                messageID: "$embed-2",
+                descriptor: descriptor,
+                isLoaded: false,
+                title: "Never Gonna Give You Up (Official Video)",
+                onLoadEmbed: {}
+            )
+            .padding(14)
+        })
+        let compact = NSHostingView(
+            rootView: EmbedConsentCard(messageID: "$embed-1", descriptor: descriptor, isLoaded: false, onLoadEmbed: {})
+                .frame(width: 320)
+        )
+        XCTAssertLessThanOrEqual(compact.fittingSize.height, 64, "the placeholder is one compact row")
+        XCTAssertEqual(descriptor.siteName, "YouTube")
+        XCTAssertEqual(descriptor.fallbackTitle, "Watch on YouTube")
+
         // 5. Verify no WKWebView is created at all while isLoaded == false, and verify non-persistent store config.
         let consentHosting = NSHostingView(
             rootView: EmbedConsentCard(

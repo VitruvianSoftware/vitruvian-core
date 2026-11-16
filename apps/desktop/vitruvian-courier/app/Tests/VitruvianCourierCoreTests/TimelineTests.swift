@@ -316,6 +316,31 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(messages(build(events)).map(\.id), ["$a", "$b"])
     }
 
+    /// The picture sits on the first message of a run from one sender, the same in a one-to-one chat as in a group.
+    /// A run is `startsGroup`'s: same sender, under five minutes apart, no day or "New" divider between.
+    func testThePictureIsOnTheFirstMessageOfEachRunInGroupsAndOneToOneChatsAlike() {
+        let events = [
+            message("$1", ts: at(14, 10, 0)),
+            message("$2", ts: at(14, 10, 1)),
+            message("$3", ts: at(14, 10, 2)), // run 1: $1 $2 $3
+            message("$4", ts: at(14, 10, 3), mine: true), // mine: never a picture
+            message("$5", ts: at(14, 10, 4)), // after my reply: a run of its own
+            message("$6", ts: at(14, 10, 20)), // past the grouping gap: a new run
+            message("$7", ts: at(14, 10, 21)),
+            message("$8", ts: at(14, 10, 22)), // still that run
+            message("$9", ts: at(15, 0, 5)), // the next day
+        ]
+        let expected = [true, false, false, false, true, true, false, false, true]
+        for direct in [true, false] {
+            let shown = messages(build(events, isDirect: direct))
+            XCTAssertEqual(shown.map(\.showsSenderAvatar), expected, "isDirect: \(direct)")
+            XCTAssertEqual(shown.filter(\.showsSenderAvatar).map(\.id), ["$1", "$5", "$6", "$9"], "isDirect: \(direct)")
+        }
+        let divided = messages(build(events, firstUnread: "$2", isDirect: true))
+        XCTAssertEqual(divided.filter(\.showsSenderAvatar).map(\.id), ["$1", "$2", "$5", "$6", "$9"],
+                       "the New divider opens a run")
+    }
+
     func testNewDividerAtReadMarker() {
         let events = [
             message("$1", ts: at(14, 10, 0)),

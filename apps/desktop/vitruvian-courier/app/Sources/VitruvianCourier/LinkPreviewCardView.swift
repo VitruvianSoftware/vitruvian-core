@@ -170,6 +170,24 @@ public struct ExternalEmbedDescriptor: Equatable, Sendable {
         self.embedURL = embedURL
     }
 
+    /// The site as people say it ("YouTube"), for the card's second line.
+    public var siteName: String {
+        switch host {
+        case "youtube.com": "YouTube"
+        case "vimeo.com": "Vimeo"
+        case "open.spotify.com": "Spotify"
+        case "loom.com": "Loom"
+        default: host
+        }
+    }
+
+    /// What the card says when nothing better is known about the link: what it is, on which site.
+    public var fallbackTitle: String {
+        host == "open.spotify.com"
+            ? String(localized: "Listen on \(siteName)")
+            : String(localized: "Watch on \(siteName)")
+    }
+
     /// Returns a descriptor when `urlString` matches an embeddable YouTube, Vimeo, Spotify, or Loom link.
     public static func match(urlString: String) -> ExternalEmbedDescriptor? {
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -252,6 +270,23 @@ public struct ExternalEmbedDescriptor: Equatable, Sendable {
         return nil
     }
 
+    /// Whether a network-supplied preview is for an embeddable link: the embed card stands for it.
+    public static func isEmbedPreview(_ preview: LinkPreviewItem) -> Bool {
+        match(urlString: preview.url ?? "") != nil || match(urlString: preview.matchedURL) != nil
+    }
+
+    /// The previews a message draws as link cards. A link with an embed card (YouTube and the like) gets that one
+    /// card, not a second for the same link: its preview is left out here and its title goes on the embed card.
+    public static func cardPreviews(in message: TimelineMessage) -> [LinkPreviewItem] {
+        guard first(in: message) != nil else { return message.linkPreviews }
+        return message.linkPreviews.filter { !isEmbedPreview($0) }
+    }
+
+    /// The title the network's preview gives the embedded link, for the embed card to carry.
+    public static func embedTitle(in message: TimelineMessage) -> String? {
+        message.linkPreviews.first(where: isEmbedPreview)?.title
+    }
+
     private static func isSafeEmbedToken(_ token: String) -> Bool {
         guard !token.isEmpty, token.count <= 64 else { return false }
         return token.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
@@ -260,23 +295,26 @@ public struct ExternalEmbedDescriptor: Equatable, Sendable {
 
 /// Privacy-gated external embed placeholder and sandboxed loader (`MessageIFrame.tsx`).
 ///
-/// Until the person clicks **Load Embed** (when `loadExternalEmbedsAutomatically == false`), no `WKWebView` is
-/// instantiated at all. Once loaded, the `WKWebView` runs with a non-persistent `WKWebsiteDataStore` and blocks
-/// navigation away from the embed URL.
+/// Until the person clicks the card (when `loadExternalEmbedsAutomatically == false`), no `WKWebView` is
+/// instantiated at all. The card is a compact preview (a play glyph, a title, the site); its tooltip says the embed
+/// is held back to protect the person's IP address, and clicking it loads the embed. Once loaded, the `WKWebView`
+/// runs with a non-persistent `WKWebsiteDataStore` and blocks navigation away from the embed URL.
 public struct EmbedConsentCard: View {
     /// The theme's accent, never the system one (which can be red).
     @Environment(\.themeAccentColor) private var themeAccent
     public let messageID: String
     public let descriptor: ExternalEmbedDescriptor
     public let isLoaded: Bool
+    /// The link's title when the message already carries one (a preview its network sent); else the card names the site.
+    public var title: String?
     public var onBubble: Bool
     public let onLoadEmbed: () -> Void
     public var onOpenURL: (URL) -> Void
 
     public static let userVisibleStrings: [String] = [
-        String(localized: "Load embed from youtube.com"),
-        String(localized: "External embed from youtube.com is blocked to protect your IP address"),
-        String(localized: "Load Embed"),
+        String(localized: "Watch on YouTube"),
+        String(localized: "Listen on Spotify"),
+        String(localized: "External embed from youtube.com is blocked to protect your IP address. Click to load it."),
         String(localized: "Open in Browser"),
     ]
 
@@ -284,6 +322,7 @@ public struct EmbedConsentCard: View {
         messageID: String,
         descriptor: ExternalEmbedDescriptor,
         isLoaded: Bool,
+        title: String? = nil,
         onBubble: Bool = false,
         onLoadEmbed: @escaping () -> Void,
         onOpenURL: @escaping (URL) -> Void = { url in
@@ -293,9 +332,19 @@ public struct EmbedConsentCard: View {
         self.messageID = messageID
         self.descriptor = descriptor
         self.isLoaded = isLoaded
+        self.title = title
         self.onBubble = onBubble
         self.onLoadEmbed = onLoadEmbed
         self.onOpenURL = onOpenURL
+    }
+
+    private var displayTitle: String {
+        if let title = title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
+        return descriptor.fallbackTitle
+    }
+
+    private var tooltip: String {
+        String(localized: "External embed from \(descriptor.host) is blocked to protect your IP address. Click to load it.")
     }
 
     public var body: some View {
@@ -332,57 +381,50 @@ public struct EmbedConsentCard: View {
                     .strokeBorder(onBubble ? Color.white.opacity(0.22) : Color.primary.opacity(0.12), lineWidth: 1)
             )
         } else {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
+            Button(action: onLoadEmbed) {
+                HStack(spacing: 10) {
                     ZStack {
-                        Circle()
-                            .fill(themeAccent.opacity(onBubble ? 0.28 : 0.14))
-                            .frame(width: 30, height: 30)
-                        Image(systemName: "lock.shield.fill")
-                            .font(.system(size: 14, weight: .semibold))
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(themeAccent.opacity(onBubble ? 0.30 : 0.16))
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(onBubble ? Color.white : themeAccent)
                     }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "Load embed from \(descriptor.host)"))
+                    .frame(width: 48, height: 36)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(displayTitle)
                             .font(.callout.weight(.semibold))
                             .foregroundStyle(onBubble ? Color.white : Color.primary)
-                        Text(String(localized: "External embed from \(descriptor.host) is blocked to protect your IP address"))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        // The site's name under a real title; under the stand-in title (which names it), the address.
+                        Text(displayTitle == descriptor.fallbackTitle ? descriptor.host : descriptor.siteName)
                             .font(.caption)
-                            .foregroundStyle(onBubble ? Color.white.opacity(0.82) : Color.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .foregroundStyle(onBubble ? Color.white.opacity(0.78) : Color.secondary)
+                            .lineLimit(1)
                     }
+                    Spacer(minLength: 0)
                 }
-
-                HStack(spacing: 8) {
-                    Button(action: onLoadEmbed) {
-                        Label(String(localized: "Load Embed"), systemImage: "play.rectangle")
-                            .font(.caption.weight(.semibold))
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-
-                    Button {
-                        onOpenURL(descriptor.originalURL)
-                    } label: {
-                        Label(String(localized: "Open in Browser"), systemImage: "safari")
-                            .font(.caption.weight(.medium))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
+                .padding(8)
+                .frame(maxWidth: 320, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(onBubble ? Color.black.opacity(0.18) : Color.primary.opacity(0.05))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(onBubble ? Color.white.opacity(0.22) : Color.primary.opacity(0.12), lineWidth: 1)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 10))
             }
-            .padding(10)
-            .frame(maxWidth: 320, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(onBubble ? Color.black.opacity(0.18) : Color.primary.opacity(0.05))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(onBubble ? Color.white.opacity(0.22) : Color.primary.opacity(0.12), lineWidth: 1)
-            )
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(String(localized: "Load embed from \(descriptor.host)"))
+            .buttonStyle(.plain)
+            .help(tooltip)
+            .contextMenu {
+                Button(String(localized: "Open in Browser")) { onOpenURL(descriptor.originalURL) }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(descriptor.siteName): \(displayTitle)")
+            .accessibilityHint(tooltip)
         }
     }
 

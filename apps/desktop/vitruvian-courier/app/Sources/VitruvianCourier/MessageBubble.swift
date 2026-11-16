@@ -704,7 +704,8 @@ struct MessageRowView: View {
 
     @ViewBuilder
     private var avatarColumn: some View {
-        if message.startsGroup {
+        // On the first message of a run, in a group (beside the name) and in a one-to-one chat alike.
+        if message.showsSenderAvatar {
             let avatar = message.senderAvatar(redacted: isRedacted)
             AvatarView(path: avatar.path, initials: avatar.initials,
                        seed: avatar.seed, size: Self.avatarSize)
@@ -745,7 +746,8 @@ struct MessageRowView: View {
 
     private var senderNameLabel: some View {
         Text(displaySenderName)
-            .font(.caption.weight(.semibold))
+            // One step up from the 10 pt caption (on macOS caption, caption2 and footnote are all 10 pt).
+            .font(.subheadline.weight(.semibold))
             .foregroundStyle(senderNameColor)
             .lineLimit(1)
             .onHover { hovering in
@@ -789,7 +791,8 @@ struct MessageRowView: View {
     /// everything else (pictures, files, cards under the text) gets it on a line of its own at the trailing edge.
     private var metaIsInline: Bool {
         guard hasMeta, message.kind == .text || message.kind == .notice, contentIsText,
-              message.linkPreviews.isEmpty, ExternalEmbedDescriptor.first(in: message) == nil else { return false }
+              message.linkPreviews.isEmpty,
+              ExternalEmbedDescriptor.first(in: message) == nil else { return false }
         return true
     }
 
@@ -850,7 +853,7 @@ struct MessageRowView: View {
                     content.takesOwnClick()
                 }
                 if message.kind != .deleted && message.kind != .undecryptable {
-                    ForEach(Array(message.linkPreviews.enumerated()), id: \.offset) { _, preview in
+                    ForEach(Array(ExternalEmbedDescriptor.cardPreviews(in: message).enumerated()), id: \.offset) { _, preview in
                         LinkPreviewCardView(preview: preview, onBubble: message.mine && !message.suppressesBubbleBackground)
                             .takesOwnClick()
                     }
@@ -859,6 +862,7 @@ struct MessageRowView: View {
                             messageID: message.id,
                             descriptor: embed,
                             isLoaded: actions.loadExternalEmbedsAutomatically || ui.loadedEmbeds.contains(message.id),
+                            title: ExternalEmbedDescriptor.embedTitle(in: message),
                             onBubble: message.mine && !message.suppressesBubbleBackground,
                             onLoadEmbed: { ui.loadedEmbeds.insert(message.id) }
                         )
