@@ -312,6 +312,17 @@ public final class UpdateModel: ObservableObject {
         }
     }
 
+    /// Vitruvian Courier ▸ Update to Vitruvian Courier X… / Check for Updates…: installs the version on offer, or checks
+    /// when none is. Does nothing while a check or an install is already running. The menu opens Settings ▸ About
+    /// beside it, so the download's progress and any refusal show there.
+    public func menuItemChosen() async {
+        switch phase {
+        case .available: await installUpdate()
+        case .checking, .downloading, .verifying, .installing: return
+        case .idle, .upToDate, .failed: await check()
+        }
+    }
+
     /// Downloads the offered version, checks it, puts it beside this one and quits so the installer can swap them.
     /// Nothing is replaced unless every check passes.
     public func installUpdate() async {

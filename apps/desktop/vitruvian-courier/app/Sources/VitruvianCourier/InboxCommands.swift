@@ -38,14 +38,13 @@ struct InboxCommands: Commands {
                 openSettingsPane(.about)
             }
             .disabled(lifecycle.isLocked)
-            // Opens Settings ▸ About, where the check's answer and the Install button are, and checks.
+            // Installs the version on offer (or checks, when none is), and opens Settings ▸ About, where the
+            // download's progress and any refusal show.
             Button(checkForUpdatesMenuTitle) {
                 openSettingsPane(.updates)
-                if updates.availableVersion == nil {
-                    Task { await updates.check() }
-                }
+                Task { await updates.menuItemChosen() }
             }
-            .disabled(lifecycle.isLocked)
+            .disabled(lifecycle.isLocked || updates.isBusy)
         }
         CommandGroup(replacing: .appSettings) {
             Button(String(localized: "Settings…")) {
