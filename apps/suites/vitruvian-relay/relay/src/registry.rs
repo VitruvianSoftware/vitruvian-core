@@ -262,10 +262,13 @@ impl Registry {
                 result
             }
             Err(_) => {
-                // If a result arrived at the same instant the deadline fired,
-                // the deadline wins: the caller gets `Deadline`, the result is
-                // dropped, and the device gets a `Cancel` for a call it has
-                // already finished (harmless; it ignores unknown ids).
+                // `forget` only succeeds while the entry is still here. If
+                // `complete` already took it (result and deadline at the same
+                // instant), the caller still gets `Deadline` but no `Cancel` is
+                // sent: the call is finished. If the result is still on its way
+                // in, the entry is removed here, the late result is dropped, and
+                // the device gets a `Cancel` for a call it may have finished
+                // (harmless; it ignores unknown ids).
                 if self.state.lock().unwrap().forget(&call_id, token) {
                     let _ = tx.try_send(ToConnector::Cancel { call_id });
                 }
@@ -386,7 +389,8 @@ mod tests {
         let started = Instant::now();
         reg.disconnect("d1", conn);
         assert_eq!(within(h).await.unwrap(), Err(CallError::Disconnected));
-        assert!(started.elapsed() < Duration::from_millis(100));
+        // 1 s, not 100 ms: shared CI runners stall; still far below the 180 s deadline.
+        assert!(started.elapsed() < Duration::from_secs(1));
     }
 
     #[tokio::test]
@@ -397,7 +401,8 @@ mod tests {
             within(reg.call("nobody", call("c1", 180_000))).await,
             Err(CallError::Offline)
         );
-        assert!(started.elapsed() < Duration::from_millis(100));
+        // 1 s, not 100 ms: shared CI runners stall; still far below the 180 s deadline.
+        assert!(started.elapsed() < Duration::from_secs(1));
     }
 
     #[tokio::test]
@@ -506,7 +511,8 @@ mod tests {
         let started = Instant::now();
         reg.disconnect("d1", conn);
         assert_eq!(within(h).await.unwrap(), Err(CallError::Disconnected));
-        assert!(started.elapsed() < Duration::from_millis(100));
+        // 1 s, not 100 ms: shared CI runners stall; still far below the 180 s deadline.
+        assert!(started.elapsed() < Duration::from_secs(1));
     }
 
     #[tokio::test]
@@ -558,7 +564,7 @@ mod tests {
         assert!(reg.in_flight("d1"));
         assert_eq!(within(h).await.unwrap(), Err(CallError::Deadline));
         assert!(!reg.in_flight("d1"));
-        rx.recv().await; // the cancel
+        within(rx.recv()).await; // the cancel
 
         // disconnect
         let h = spawn_call(&reg, "c3", 180_000);

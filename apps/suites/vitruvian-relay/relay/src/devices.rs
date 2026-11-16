@@ -71,6 +71,12 @@ fn from_hex_32(s: &str) -> Option<[u8; 32]> {
 pub struct FileDeviceStore {
     path: PathBuf,
     devices: Mutex<BTreeMap<String, StoredDevice>>,
+    /// Syncs the directory after the rename. A field so a test can make it fail.
+    sync_dir: fn(&Path) -> io::Result<()>,
+}
+
+fn sync_dir(dir: &Path) -> io::Result<()> {
+    std::fs::File::open(dir)?.sync_all()
 }
 
 impl FileDeviceStore {
@@ -97,12 +103,15 @@ impl FileDeviceStore {
         Ok(Self {
             path,
             devices: Mutex::new(devices),
+            sync_dir,
         })
     }
 }
 
 impl FileDeviceStore {
-    fn write_atomically(&self, tmp: &Path, json: &[u8]) -> io::Result<()> {
+    /// `Err` means nothing changed on disk. `Ok(Some(e))` means the new file is
+    /// in place but syncing the directory failed, so it may not survive a crash.
+    fn write_atomically(&self, tmp: &Path, json: &[u8]) -> io::Result<Option<io::Error>> {
         use std::io::Write;
         let mut opts = std::fs::OpenOptions::new();
         opts.write(true).create(true).truncate(true);
@@ -114,15 +123,11 @@ impl FileDeviceStore {
         drop(f);
         std::fs::rename(tmp, &self.path)?;
         // Make the rename itself durable.
-        if let Some(dir) = self.path.parent() {
-            let dir = if dir.as_os_str().is_empty() {
-                Path::new(".")
-            } else {
-                dir
-            };
-            std::fs::File::open(dir)?.sync_all()?;
-        }
-        Ok(())
+        let dir = match self.path.parent() {
+            Some(d) if !d.as_os_str().is_empty() => d,
+            _ => Path::new("."),
+        };
+        Ok((self.sync_dir)(dir).err())
     }
 }
 
@@ -152,12 +157,21 @@ impl DeviceStore for FileDeviceStore {
         let mut tmp = self.path.clone().into_os_string();
         tmp.push(".tmp");
         let tmp = PathBuf::from(tmp);
-        if let Err(e) = self.write_atomically(&tmp, &json) {
-            let _ = std::fs::remove_file(&tmp);
-            return Err(e);
-        }
+        let dir_sync_error = match self.write_atomically(&tmp, &json) {
+            Ok(e) => e,
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(e);
+            }
+        };
+        // The file on disk is now the new one, so memory must match it even if
+        // the directory sync failed; otherwise `get` would disagree with what a
+        // restart loads. The sync failure is still reported to the caller.
         *devices = next;
-        Ok(())
+        match dir_sync_error {
+            None => Ok(()),
+            Some(e) => Err(e),
+        }
     }
 }
 
@@ -249,6 +263,20 @@ mod tests {
         assert!(!path.with_file_name("devices.json.tmp").exists());
         assert_eq!(store.get("d2"), None);
         assert_eq!(store.get("d1"), Some(rec("d1", 1)));
+    }
+
+    #[test]
+    fn directory_sync_failure_is_reported_but_memory_matches_disk() {
+        let path = temp_path("dirsync");
+        let mut store = FileDeviceStore::open(&path).unwrap();
+        store.sync_dir = |_| Err(io::Error::other("sync failed"));
+        assert!(store.put(rec("d1", 1)).is_err());
+        // The record is on disk and in memory alike.
+        assert_eq!(store.get("d1"), Some(rec("d1", 1)));
+        assert_eq!(
+            FileDeviceStore::open(&path).unwrap().get("d1"),
+            Some(rec("d1", 1))
+        );
     }
 
     #[test]
