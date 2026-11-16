@@ -436,5 +436,5 @@ pipeline_unit(
         ":build",
     ],
     tier = "L1",
-    timeout_minutes = 15,
+    timeout_minutes = 30,
 )

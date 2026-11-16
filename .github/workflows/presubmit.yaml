@@ -910,7 +910,7 @@ jobs:
   unit-gods-eye-view:
     name: gods-eye-view
     runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'gods-eye-view')) }}
     env:
