@@ -87,6 +87,25 @@ const INIT_TIMEOUT: Duration = Duration::from_secs(30);
 const LIST_TIMEOUT: Duration = Duration::from_secs(30);
 /// Each step of `stop`: after closing stdin, after SIGTERM.
 const STOP_STEP: Duration = Duration::from_secs(2);
+
+/// The bridge's limits. Production uses [`Limits::default`]; tests shrink
+/// them so the same code paths run in a fraction of the time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Limits {
+    pub max_line: usize,
+    pub init_timeout: Duration,
+    pub stop_step: Duration,
+}
+
+impl Default for Limits {
+    fn default() -> Limits {
+        Limits {
+            max_line: MAX_LINE,
+            init_timeout: INIT_TIMEOUT,
+            stop_step: STOP_STEP,
+        }
+    }
+}
 /// Longest notification or stray line copied into the log.
 const MAX_LOG_LINE: usize = 2000;
 
@@ -490,8 +509,9 @@ pub fn fit_to_frame(mut out: BridgeOutput) -> BridgeOutput {
 #[derive(Debug)]
 enum Fail {
     Msg(String),
-    /// The reply line was this many bytes, over [`MAX_LINE`]; none was kept.
-    TooBig(usize),
+    /// The reply line was this many bytes, over the cap (the second
+    /// number, [`MAX_LINE`] in production); none was kept.
+    TooBig(usize, usize),
 }
 
 impl From<String> for Fail {
@@ -510,11 +530,11 @@ impl std::fmt::Display for Fail {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Fail::Msg(m) => f.write_str(m),
-            Fail::TooBig(n) => write!(
+            Fail::TooBig(n, cap) => write!(
                 f,
                 "desktop-commander's reply was {n} bytes, over vrelay's {} MiB limit for one \
                  message, so none of it was kept.\n{}",
-                MAX_LINE / (1024 * 1024),
+                cap / (1024 * 1024),
                 note(*n)
             ),
         }
@@ -545,10 +565,16 @@ struct Proc {
     pending: Arc<Mutex<Pending>>,
     exit: Arc<(Mutex<ExitState>, Condvar)>,
     next_id: Arc<AtomicU64>,
+    limits: Limits,
 }
 
 impl Proc {
-    fn spawn(cmd: &BridgeCommand, log: &Log, next_id: Arc<AtomicU64>) -> Result<Proc> {
+    fn spawn(
+        cmd: &BridgeCommand,
+        log: &Log,
+        next_id: Arc<AtomicU64>,
+        limits: Limits,
+    ) -> Result<Proc> {
         let mut child = Command::new(&cmd.node)
             .arg(&cmd.entry)
             .env("DESKTOP_COMMANDER_DISABLE_TELEMETRY", "1")
@@ -576,7 +602,7 @@ impl Proc {
             let pending = pending.clone();
             let writer = writer.clone();
             let log = log.clone();
-            std::thread::spawn(move || read_loop(stdout, &pending, &writer, &log));
+            std::thread::spawn(move || read_loop(stdout, &pending, &writer, &log, limits.max_line));
         }
         {
             let pending = pending.clone();
@@ -591,6 +617,7 @@ impl Proc {
             pending,
             exit,
             next_id,
+            limits,
         })
     }
 
@@ -694,16 +721,17 @@ impl Proc {
 
     /// Close stdin, wait 2 s; SIGTERM the group, wait 2 s; SIGKILL it.
     fn stop(&self) {
+        let step = self.limits.stop_step;
         self.writer.lock().unwrap().take();
-        if self.wait_exit(STOP_STEP) {
+        if self.wait_exit(step) {
             return;
         }
         self.signal_group(libc::SIGTERM);
-        if self.wait_exit(STOP_STEP) {
+        if self.wait_exit(step) {
             return;
         }
         self.signal_group(libc::SIGKILL);
-        self.wait_exit(STOP_STEP);
+        self.wait_exit(step);
     }
 }
 
@@ -758,13 +786,15 @@ const KEEP_ENDS: usize = 1024;
 /// never held whole.
 struct LineReader<R> {
     r: BufReader<R>,
+    cap: usize,
     peak: usize,
 }
 
 impl<R: Read> LineReader<R> {
-    fn new(r: R) -> Self {
+    fn new(r: R, cap: usize) -> Self {
         LineReader {
             r: BufReader::with_capacity(64 * 1024, r),
+            cap,
             peak: 0,
         }
     }
@@ -800,7 +830,7 @@ impl<R: Read> LineReader<R> {
                 };
                 len += chunk.len();
                 match long.as_mut() {
-                    None if buf.len() + chunk.len() <= MAX_LINE => {
+                    None if buf.len() + chunk.len() <= self.cap => {
                         buf.extend_from_slice(chunk);
                         self.peak = self.peak.max(buf.capacity());
                     }
@@ -879,15 +909,16 @@ fn read_loop(
     pending: &Mutex<Pending>,
     writer: &Mutex<Option<mpsc::Sender<String>>>,
     log: &Log,
+    max_line: usize,
 ) {
-    let mut r = LineReader::new(stdout);
+    let mut r = LineReader::new(stdout, max_line);
     loop {
         let buf = match r.next_line() {
             Line::Eof => return,
             Line::Text(b) => b,
             Line::TooLong { len, head, tail } => {
                 log(&format!(
-                    "desktop-commander wrote a {len}-byte line, over vrelay's {MAX_LINE}-byte limit; dropped it"
+                    "desktop-commander wrote a {len}-byte line, over vrelay's {max_line}-byte limit; dropped it"
                 ));
                 if is_notification_head(&head) {
                     continue;
@@ -900,7 +931,7 @@ fn read_loop(
                     .and_then(|id| pending.lock().unwrap().waiting.remove(&id));
                 match tx {
                     Some(tx) => {
-                        let _ = tx.send(Err(Fail::TooBig(len)));
+                        let _ = tx.send(Err(Fail::TooBig(len, max_line)));
                     }
                     None => log("no waiting call matches that line; no call was failed"),
                 }
@@ -1122,8 +1153,10 @@ pub struct Bridge {
     /// The last tool list seen, for when a fresh one cannot be had.
     tools: Mutex<Vec<ToolDef>>,
     next_id: Arc<AtomicU64>,
-    /// How long a restart waits for `initialize` (tests shorten it).
-    pub(crate) init_timeout: Duration,
+    limits: Limits,
+    /// Test hook: the next restart task panics before it reports.
+    #[cfg(test)]
+    panic_next_restart: Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// Kills a server now: no grace. The waiter thread then reaps it and fails
@@ -1142,11 +1175,16 @@ async fn restart(
     cmd: BridgeCommand,
     log: Log,
     next_id: Arc<AtomicU64>,
-    init_timeout: Duration,
+    limits: Limits,
+    #[cfg(test)] panic_now: bool,
 ) {
+    #[cfg(test)]
+    if panic_now {
+        panic!("test hook: the restart task dies before it reports");
+    }
     log("starting desktop-commander again");
     let result: std::result::Result<Arc<Proc>, String> = async {
-        let p = Arc::new(Proc::spawn(&cmd, &log, next_id)?);
+        let p = Arc::new(Proc::spawn(&cmd, &log, next_id, limits)?);
         {
             let mut st = slot.lock().unwrap();
             if st.stopped {
@@ -1160,7 +1198,7 @@ async fn restart(
             .request_async(
                 "initialize",
                 initialize_params(),
-                Instant::now() + init_timeout,
+                Instant::now() + limits.init_timeout,
             )
             .await;
         if let Err(e) = init {
@@ -1199,12 +1237,16 @@ impl Bridge {
     }
 
     pub fn start_with_log(cmd: &BridgeCommand, log: Log) -> Result<Bridge> {
+        Bridge::start_limited(cmd, log, Limits::default())
+    }
+
+    pub(crate) fn start_limited(cmd: &BridgeCommand, log: Log, limits: Limits) -> Result<Bridge> {
         check_node(&cmd.node)?;
         secure_dc_config_dir(&dc_home(std::env::var_os("HOME"))?)?;
         let next_id = Arc::new(AtomicU64::new(1));
-        let proc = Arc::new(Proc::spawn(cmd, &log, next_id.clone())?);
+        let proc = Arc::new(Proc::spawn(cmd, &log, next_id.clone(), limits)?);
         let started = (|| -> std::result::Result<Vec<ToolDef>, Fail> {
-            proc.request_blocking("initialize", initialize_params(), INIT_TIMEOUT)?;
+            proc.request_blocking("initialize", initialize_params(), limits.init_timeout)?;
             proc.notify("notifications/initialized", json!({}));
             let mut all = Vec::new();
             let mut cursor = None;
@@ -1236,7 +1278,9 @@ impl Bridge {
             })),
             tools: Mutex::new(tools),
             next_id,
-            init_timeout: INIT_TIMEOUT,
+            limits,
+            #[cfg(test)]
+            panic_next_restart: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 
@@ -1270,7 +1314,9 @@ impl Bridge {
                         self.cmd.clone(),
                         self.log.clone(),
                         self.next_id.clone(),
-                        self.init_timeout,
+                        self.limits,
+                        #[cfg(test)]
+                        self.panic_next_restart.swap(false, Ordering::SeqCst),
                     ));
                     rx
                 }
@@ -1280,10 +1326,31 @@ impl Bridge {
             tokio::time::Instant::from_std(deadline),
             rx.wait_for(Option::is_some),
         )
-        .await;
+        .await
+        .map(|r| r.map(|v| v.clone()));
         match waited {
-            Ok(Ok(v)) => v.clone().unwrap_or_else(|| Err("no restart result".into())),
-            Ok(Err(_)) => Err("desktop-commander's restart was abandoned".into()),
+            Ok(Ok(v)) => v.unwrap_or_else(|| Err("no restart result".into())),
+            Ok(Err(_)) => {
+                // The restart task died without reporting (a panic, or its
+                // runtime went away). Forget it, so the next call can try
+                // again instead of joining a dead restart for ever.
+                let orphan = {
+                    let mut st = self.slot.lock().unwrap();
+                    if st.starting.as_ref().is_some_and(|s| s.same_channel(&rx)) {
+                        st.starting = None;
+                        st.starting_proc.take()
+                    } else {
+                        None
+                    }
+                };
+                if let Some(p) = orphan {
+                    kill_now(&p);
+                }
+                (self.log)(
+                    "a desktop-commander restart died without a result; the next call retries",
+                );
+                Err("desktop-commander's restart failed; try again".into())
+            }
             Err(_) => Err(
                 "desktop-commander was starting again and was not ready in time for this call"
                     .into(),
@@ -1344,7 +1411,7 @@ impl Bridge {
             .await;
         match reply {
             Ok(result) => fit_to_frame(BridgeOutput::from_result(result)),
-            Err(e @ Fail::TooBig(_)) => BridgeOutput {
+            Err(e @ Fail::TooBig(..)) => BridgeOutput {
                 truncated: true,
                 ..BridgeOutput::error(e.to_string())
             },
@@ -1413,6 +1480,28 @@ mod tests {
             entry: dir.clone(),
         };
         (cmd, dir)
+    }
+
+    /// Small limits, so the slow paths (a too-long line, a slow start, the
+    /// stop escalation) run in well under a second each.
+    const FAST: Limits = Limits {
+        max_line: 1024 * 1024,
+        init_timeout: Duration::from_secs(5),
+        stop_step: Duration::from_millis(200),
+    };
+    /// A line just over FAST's cap.
+    const HUGE: usize = 2 * 1024 * 1024;
+
+    fn quiet() -> Log {
+        Arc::new(|_: &str| {})
+    }
+
+    #[test]
+    fn production_limits_are_the_documented_ones() {
+        let l = Limits::default();
+        assert_eq!(l.max_line, 16 * 1024 * 1024);
+        assert_eq!(l.init_timeout, Duration::from_secs(30));
+        assert_eq!(l.stop_step, Duration::from_secs(2));
     }
 
     fn logged() -> (Log, Arc<StdMutex<Vec<String>>>) {
@@ -1593,17 +1682,18 @@ mod tests {
     async fn stop_escalates_when_the_server_ignores_stdin_and_term() {
         let (cmd, dir) = fake("b-stubborn");
         std::fs::write(dir.join("stubborn"), "").unwrap();
-        let b = Bridge::start(&cmd).unwrap();
+        let b = Bridge::start_limited(&cmd, quiet(), FAST).unwrap();
         let out = b.call("spawn", json!({}), soon()).await;
         assert_eq!(text_of(&out), "spawned");
         let sleep_pid = read_pid(&dir, "sleep.pid");
         let fake_pid = read_pid(&dir, "fake.pid");
         let t = Instant::now();
         b.stop();
-        // 2 s for stdin, 2 s for SIGTERM, then SIGKILL.
+        // One step for stdin, one for SIGTERM, then SIGKILL (2 s each in
+        // production, 200 ms here).
         let took = t.elapsed();
-        assert!(took >= Duration::from_secs(4), "{took:?}");
-        assert!(took < Duration::from_secs(7), "{took:?}");
+        assert!(took >= 2 * FAST.stop_step, "{took:?}");
+        assert!(took < Duration::from_secs(2), "{took:?}");
         assert!(pid_gone(fake_pid), "server outlived stop");
         assert!(pid_gone(sleep_pid), "child {sleep_pid} outlived stop");
     }
@@ -1816,11 +1906,15 @@ mod tests {
 
     #[test]
     fn line_reader_never_buffers_a_line_past_the_cap() {
-        let huge = 64 * 1024 * 1024;
-        let mut r = LineReader::new(Gen {
-            left: huge,
-            rest: std::io::Cursor::new(b"tail\"id\":7}\n{\"next\":1}\npartial".to_vec()),
-        });
+        let cap = 1024 * 1024;
+        let huge = 4 * cap;
+        let mut r = LineReader::new(
+            Gen {
+                left: huge,
+                rest: std::io::Cursor::new(b"tail\"id\":7}\n{\"next\":1}\npartial".to_vec()),
+            },
+            cap,
+        );
         match r.next_line() {
             Line::TooLong { len, tail, .. } => {
                 assert_eq!(len, huge + "tail\"id\":7}".len());
@@ -1833,7 +1927,7 @@ mod tests {
             _ => panic!("expected TooLong"),
         }
         // Memory stayed bounded by the cap, not the line.
-        assert!(r.peak_buffer() <= 2 * MAX_LINE, "{}", r.peak_buffer());
+        assert!(r.peak_buffer() <= 2 * cap, "{}", r.peak_buffer());
         // The reader is still in step: the next line is whole.
         match r.next_line() {
             Line::Text(t) => assert_eq!(t, b"{\"next\":1}"),
@@ -1874,14 +1968,22 @@ mod tests {
     #[tokio::test]
     async fn a_line_over_the_cap_fails_its_call_and_the_bridge_carries_on() {
         let (cmd, dir) = fake("b-huge");
+        std::fs::write(dir.join("huge_bytes"), HUGE.to_string()).unwrap();
         let (log, lines) = logged();
-        let b = Bridge::start_with_log(&cmd, log).unwrap();
+        let b = Bridge::start_limited(&cmd, log, FAST).unwrap();
         let pid = read_pid(&dir, "fake.pid");
         let out = b.call("huge", json!({}), soon()).await;
         assert!(out.is_error && out.truncated, "{out:?}");
         let text = text_of(&out);
         assert!(text.contains("[output truncated by vrelay: "), "{text}");
-        assert!(text.contains("67108"), "{text}");
+        // The whole line: the text plus the JSON around it (under 100 bytes).
+        let n: usize = text
+            .split("reply was ")
+            .nth(1)
+            .and_then(|r| r.split(' ').next())
+            .and_then(|n| n.parse().ok())
+            .expect("the size is reported");
+        assert!(n > HUGE && n < HUGE + 100, "{text}");
         // Same server, still answering.
         let out = b.call("echo", json!({}), soon()).await;
         assert_eq!(text_of(&out), "ok");
@@ -1899,8 +2001,9 @@ mod tests {
 
     #[tokio::test]
     async fn a_line_over_the_cap_without_an_id_fails_no_call() {
-        let (cmd, _dir) = fake("b-huge-noid");
-        let b = Bridge::start(&cmd).unwrap();
+        let (cmd, dir) = fake("b-huge-noid");
+        std::fs::write(dir.join("huge_bytes"), HUGE.to_string()).unwrap();
+        let b = Bridge::start_limited(&cmd, quiet(), FAST).unwrap();
         // Nobody can tell whose it is, so no call is failed by it: the call
         // ends at its own deadline, as an honest timeout.
         let t = Instant::now();
@@ -1908,12 +2011,12 @@ mod tests {
             .call(
                 "huge_noid",
                 json!({}),
-                Instant::now() + Duration::from_secs(4),
+                Instant::now() + Duration::from_secs(1),
             )
             .await;
         assert!(out.is_error && !out.truncated, "{out:?}");
         assert!(text_of(&out).contains("in time"), "{}", text_of(&out));
-        assert!(t.elapsed() >= Duration::from_secs(4), "{:?}", t.elapsed());
+        assert!(t.elapsed() >= Duration::from_secs(1), "{:?}", t.elapsed());
         let out = b.call("echo", json!({}), soon()).await;
         assert_eq!(text_of(&out), "ok");
         b.stop();
@@ -1921,14 +2024,16 @@ mod tests {
 
     #[tokio::test]
     async fn a_huge_reply_for_a_forgotten_call_leaves_other_calls_alone() {
-        let (cmd, _dir) = fake("b-huge-late");
-        let b = Bridge::start(&cmd).unwrap();
+        let (cmd, dir) = fake("b-huge-late");
+        std::fs::write(dir.join("huge_bytes"), HUGE.to_string()).unwrap();
+        std::fs::write(dir.join("late"), "0.6").unwrap();
+        let b = Bridge::start_limited(&cmd, quiet(), FAST).unwrap();
         // A gives up before its huge reply comes; B is still waiting when it
         // does, and must get its own real answer.
         let a = b.call(
             "huge_late",
             json!({}),
-            Instant::now() + Duration::from_millis(500),
+            Instant::now() + Duration::from_millis(300),
         );
         let c = async {
             tokio::time::sleep(Duration::from_millis(100)).await;
@@ -1950,8 +2055,15 @@ mod tests {
     #[tokio::test]
     async fn one_restart_serves_every_caller_and_stale_ones_start_nothing() {
         let (cmd, dir) = fake("b-onestart");
-        let mut b = Bridge::start(&cmd).unwrap();
-        b.init_timeout = Duration::from_millis(400);
+        let b = Bridge::start_limited(
+            &cmd,
+            quiet(),
+            Limits {
+                init_timeout: Duration::from_millis(200),
+                ..FAST
+            },
+        )
+        .unwrap();
         assert_eq!(spawns(&dir), 1);
         let out = b.call("exit", json!({}), soon()).await;
         assert!(out.is_error);
@@ -1970,7 +2082,8 @@ mod tests {
             assert!(out.is_error, "{out:?}");
         }
         // Long after every deadline, only the one restart ever ran.
-        tokio::time::sleep(Duration::from_secs(3)).await;
+        // (Queued restarts would run one per 200 ms init limit by now.)
+        tokio::time::sleep(Duration::from_millis(1200)).await;
         assert_eq!(
             spawns(&dir),
             2,
@@ -1979,7 +2092,7 @@ mod tests {
         // A call whose deadline has already passed starts nothing at all.
         let out = b.call("echo", json!({}), Instant::now()).await;
         assert!(out.is_error);
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
         assert_eq!(spawns(&dir), 2);
         b.stop();
     }
@@ -2020,9 +2133,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_restart_that_dies_does_not_wedge_the_bridge() {
+        let (cmd, dir) = fake("b-deadrestart");
+        let b = Bridge::start_limited(&cmd, quiet(), FAST).unwrap();
+        let out = b.call("exit", json!({}), soon()).await;
+        assert!(out.is_error);
+        // The restart task panics before it reports.
+        b.panic_next_restart.store(true, Ordering::SeqCst);
+        let out = b.call("echo", json!({}), soon()).await;
+        assert!(out.is_error, "{out:?}");
+        assert_eq!(spawns(&dir), 1);
+        // The next call does not join the dead restart: it starts afresh.
+        let out = b.call("echo", json!({}), soon()).await;
+        assert_eq!(text_of(&out), "ok", "{out:?}");
+        assert_eq!(spawns(&dir), 2);
+        b.stop();
+    }
+
+    #[tokio::test]
     async fn stop_during_a_restart_returns_at_once_and_kills_it() {
         let (cmd, dir) = fake("b-stopstart");
-        let b = Arc::new(Bridge::start(&cmd).unwrap());
+        let b = Arc::new(Bridge::start_limited(&cmd, quiet(), FAST).unwrap());
         let out = b.call("exit", json!({}), soon()).await;
         assert!(out.is_error);
         std::fs::write(dir.join("hang_init"), "").unwrap();
@@ -2066,19 +2197,19 @@ mod tests {
     #[tokio::test]
     async fn the_deadline_covers_a_restart() {
         let (cmd, dir) = fake("b-slowinit");
-        let b = Bridge::start(&cmd).unwrap();
-        // It dies; the next start takes 3 s to answer initialize.
+        let b = Bridge::start_limited(&cmd, quiet(), FAST).unwrap();
+        // It dies; the next start takes 1 s to answer initialize.
         let out = b.call("exit", json!({}), soon()).await;
         assert!(out.is_error);
-        std::fs::write(dir.join("slow_init"), "").unwrap();
-        let short = || Instant::now() + Duration::from_millis(500);
+        std::fs::write(dir.join("slow_init"), "1").unwrap();
+        let short = || Instant::now() + Duration::from_millis(300);
         let t = Instant::now();
         let (a, c) = tokio::join!(
             b.call("echo", json!({}), short()),
             b.call("echo", json!({}), short())
         );
         assert!(
-            t.elapsed() < Duration::from_millis(1500),
+            t.elapsed() < Duration::from_millis(900),
             "{:?}",
             t.elapsed()
         );

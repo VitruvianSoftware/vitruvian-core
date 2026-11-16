@@ -87,7 +87,9 @@ sh_binary(
 
 rust_test(
     name = "vitruvian_relay_connector_test",
-    size = "small",
+    # The bridge tests start real processes; medium leaves room on a slow
+    # one-CPU executor.
+    size = "medium",
     crate = ":vitruvian_relay_connector",
     data = [
         "testdata/dc-0.3.1-tools.json",

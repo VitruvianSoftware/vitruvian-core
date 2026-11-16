@@ -24,7 +24,8 @@
 # serves MCP over stdin/stdout. DIR is the test's own folder: the fake writes
 # its pid to DIR/fake.pid and a started child's pid to DIR/sleep.pid. If
 # DIR/stubborn exists it ignores SIGTERM and the end of its input. If
-# DIR/slow_init exists it waits 3 s before answering `initialize`; if
+# DIR/slow_init exists it waits that many seconds (default 3) before
+# answering `initialize`; if
 # DIR/hang_init exists it never answers it. Every start appends a line to
 # DIR/spawns.
 #
@@ -36,10 +37,11 @@
 #   big          answers ~3 MB of text that is all `"` and line breaks
 #   exit         exits without answering
 #   fail         answers with a JSON-RPC error
-#   huge         answers with one 64 MiB line, its id last (as the MCP SDK
+#   huge         answers with one line of DIR/huge_bytes bytes (default
+#                64 MiB), its id last (as the MCP SDK
 #                orders a result: result, jsonrpc, id)
-#   huge_noid    writes one 64 MiB line with no id, then nothing
-#   huge_late    waits 2 s, then answers like huge
+#   huge_noid    writes one such line with no id, then nothing
+#   huge_late    waits DIR/late seconds (default 2), then answers like huge
 
 if [ "${1:-}" = "--version" ]; then
 	echo "v22.12.0"
@@ -47,6 +49,7 @@ if [ "${1:-}" = "--version" ]; then
 fi
 
 dir="$1"
+huge=$(cat "$dir/huge_bytes" 2>/dev/null || echo 67108864)
 echo $$ >"$dir/fake.pid"
 echo $$ >>"$dir/spawns"
 if [ -e "$dir/stubborn" ]; then
@@ -66,7 +69,7 @@ while IFS= read -r line; do
 	method=$(printf '%s' "$line" | sed -n 's/.*"method":"\([^"]*\)".*/\1/p')
 	case "$method" in
 	initialize)
-		if [ -e "$dir/slow_init" ]; then sleep 3; fi
+		if [ -e "$dir/slow_init" ]; then sleep "$(cat "$dir/slow_init" 2>/dev/null | grep . || echo 3)"; fi
 		if [ -e "$dir/hang_init" ]; then
 			sleep 300 &
 			echo $! >"$dir/init_sleep.pid"
@@ -102,18 +105,18 @@ while IFS= read -r line; do
 			;;
 		huge)
 			printf '{"result":{"content":[{"type":"text","text":"'
-			head -c 67108864 /dev/zero | tr '\0' 'q'
+			head -c "$huge" /dev/zero | tr '\0' 'q'
 			printf '"}]},"jsonrpc":"2.0","id":%s}\n' "$id"
 			;;
 		huge_late)
-			sleep 2
+			sleep "$(cat "$dir/late" 2>/dev/null || echo 2)"
 			printf '{"result":{"content":[{"type":"text","text":"'
-			head -c 67108864 /dev/zero | tr '\0' 'q'
+			head -c "$huge" /dev/zero | tr '\0' 'q'
 			printf '"}]},"jsonrpc":"2.0","id":%s}\n' "$id"
 			;;
 		huge_noid)
 			printf '{"result":{"content":[{"type":"text","text":"'
-			head -c 67108864 /dev/zero | tr '\0' 'q'
+			head -c "$huge" /dev/zero | tr '\0' 'q'
 			printf '"}]}}\n'
 			;;
 		exit) exit 3 ;;
