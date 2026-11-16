@@ -227,6 +227,9 @@ public final class InboxModel: ObservableObject {
     private var reading: Task<Void, Never>?
     /// A read is in flight (or about to be, once the window is over): changes now ask for one more read.
     private var readInFlight = false
+    /// Short-code chats this run has already tried to file under Low Priority (`ShortCodeSenders`), so a refused
+    /// try is not repeated on every read.
+    private var shortCodeFilingTried = Set<String>()
     private var readAgain = false
 
     /// The cursor of the page after `rows`; nil when `rows` ends the list.
@@ -1646,7 +1649,31 @@ public final class InboxModel: ObservableObject {
         if !isLoaded {
             isLoaded = true
         }
+        if query.space == "inbox" { fileShortCodeSenders(in: deduped, using: client) }
         return true
+    }
+
+    /// Files verification-code senders in the inbox under Low Priority, quietly and once each (`ShortCodeSenders`).
+    /// Needs a plan that includes Low Priority, as moving a chat there by hand does. A chat that fails to move is not
+    /// tried again until the app is next opened. What moved is remembered, so moving a chat back to the inbox sticks.
+    private func fileShortCodeSenders(in listed: [InboxRow], using client: EngineClient) {
+        guard entitlement.isEntitled(.lowPriority) else { return }
+        let ids = ShortCodeSenders.lowPriorityCandidates(
+            in: listed, alreadyFiled: preferences.filedShortCodeRoomIDs.union(shortCodeFilingTried))
+        guard !ids.isEmpty else { return }
+        shortCodeFilingTried.formUnion(ids)
+        Task { [weak self] in
+            guard let self else { return }
+            var filed: [String] = []
+            for chunk in ids.chunked(Self.batchSize) {
+                let result: RoomsChanged? = try? await client.call(
+                    "room.setLowPriority", RoomsFlagParams(roomIDs: chunk, on: true))
+                filed += result?.roomIDs ?? []
+            }
+            guard !filed.isEmpty else { return }
+            self.preferences.recordFiledShortCodes(filed)
+            self.requestRead(waiting: false)
+        }
     }
 
     /// Collapses member rows sharing a non-empty `mergeID` into a single row in the inbox,

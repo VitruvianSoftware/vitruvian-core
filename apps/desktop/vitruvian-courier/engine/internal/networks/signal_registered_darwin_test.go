@@ -133,3 +133,19 @@ func platformReceiptColumns() map[string]receiptNetwork {
 		},
 	}
 }
+
+// The inbox named a Signal person by the name they gave Signal, which is often only "Hans". The phone's name for
+// them ("Hans Wunsch") comes first, then the name they gave Signal, then their number.
+func TestSignalNamesPeopleInFull(t *testing.T) {
+	tmpl := signalDisplaynameTemplate
+	require.Equal(t, "Hans Wunsch", renderName(t, tmpl, nameParts{ContactName: "Hans Wunsch", ProfileName: "Hans", PhoneNumber: "+1949"}))
+	require.Equal(t, "Hans", renderName(t, tmpl, nameParts{ProfileName: "Hans", PhoneNumber: "+1949"}))
+	require.Equal(t, "+19499334267", renderName(t, tmpl, nameParts{PhoneNumber: "+19499334267"}))
+	require.Equal(t, "Unknown user", renderName(t, tmpl, nameParts{}))
+
+	spec, err := signalSpec()
+	require.NoError(t, err)
+	cfg := &signal.SignalConfig{DisplaynameTemplate: `{{.ProfileName}}`}
+	require.NoError(t, spec.Configure(cfg), "the connector parses the template it is given: ours must parse")
+	require.Equal(t, signalDisplaynameTemplate, cfg.DisplaynameTemplate)
+}

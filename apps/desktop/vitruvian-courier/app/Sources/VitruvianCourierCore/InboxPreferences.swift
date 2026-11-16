@@ -223,6 +223,18 @@ public final class InboxPreferences: ObservableObject {
         }
     }
 
+    /// The chats the app has filed under Low Priority by default (`ShortCodeSenders`). Not a setting: a record, so a
+    /// chat the person moves back to the inbox is not filed a second time.
+    public var filedShortCodeRoomIDs: Set<String> {
+        Set(defaults.stringArray(forKey: Self.key("filedShortCodeRoomIDs")) ?? [])
+    }
+
+    /// Remembers that these chats were filed. Not gated by the app lock: it is not something a person set.
+    public func recordFiledShortCodes(_ ids: [String]) {
+        guard !ids.isEmpty else { return }
+        set(Array(filedShortCodeRoomIDs.union(ids)).sorted(), "filedShortCodeRoomIDs")
+    }
+
     @discardableResult
     public func addTimeSuggestion(_ raw: String) -> Bool {
         guard AppLockGate.isCurrentActionAllowedForSettings else { return false }

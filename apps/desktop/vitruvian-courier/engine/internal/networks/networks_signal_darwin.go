@@ -65,8 +65,13 @@ func imessageSpec() (engine.Spec, error) {
 	}, nil
 }
 
-// signalSpec is Signal's example config with one change: polls arrive as polls (extev_polls), not as text asking
-// people to vote on the phone.
+// signalDisplaynameTemplate names a Signal person by the name the phone's address book has for them (ContactName,
+// "Hans Wunsch"), else the name they gave Signal (ProfileName, often only "Hans"), else their number. The example
+// config's template leaves the address-book name out.
+const signalDisplaynameTemplate = `{{or .ContactName .ProfileName .PhoneNumber "Unknown user"}}`
+
+// signalSpec is Signal's example config with two changes: polls arrive as polls (extev_polls), not as text asking
+// people to vote on the phone, and a person is named in full (signalDisplaynameTemplate).
 func signalSpec() (engine.Spec, error) {
 	return engine.Spec{
 		Name:        "signal",
@@ -79,7 +84,9 @@ func signalSpec() (engine.Spec, error) {
 				return fmt.Errorf("unexpected Signal config type %T", data)
 			}
 			cfg.ExtEvPolls = true
-			return nil
+			// The connector parsed the example's template when it decoded the config: parse ours the same way.
+			cfg.DisplaynameTemplate = signalDisplaynameTemplate
+			return cfg.PostProcess()
 		},
 	}, nil
 }

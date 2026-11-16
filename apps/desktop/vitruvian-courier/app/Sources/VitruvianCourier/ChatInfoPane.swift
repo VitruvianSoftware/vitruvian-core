@@ -363,7 +363,7 @@ public struct ChatInfoPane: View {
     }
 
     public static func participantDisplayName(for member: Member) -> String {
-        let base = member.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = NetworkTag.stripped(member.name.trimmingCharacters(in: .whitespacesAndNewlines))
         if member.userID == Timeline.meUserID {
             if base.isEmpty || base.caseInsensitiveCompare("me") == .orderedSame {
                 return String(localized: "You")

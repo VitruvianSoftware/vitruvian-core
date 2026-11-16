@@ -651,7 +651,9 @@ public enum ChatDisplayTitle {
         members: [GroupTitleMember] = [],
         isCompleteMemberList: Bool = true
     ) -> String {
-        guard !isDirect else { return name }
+        // A one-to-one chat is named for the person, in full as the network gave it, less the bridge's own tag
+        // (`Toan Vu (WA)`). First-name shortening below is for group titles only.
+        guard !isDirect else { return NetworkTag.stripped(name) }
         guard localName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return name }
 
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -806,7 +808,10 @@ public enum ChatDisplayTitle {
     private static func render(entries: [GroupTitleMember], totalCount: Int) -> String? {
         guard !entries.isEmpty else { return nil }
         let limit = totalCount <= 3 ? min(totalCount, entries.count) : min(3, entries.count)
-        let shownEntries = Array(entries.prefix(limit))
+        // A member's bridge tag never reaches a title ("Toan (WA), Adam (WA)").
+        let shownEntries = entries.prefix(limit).map {
+            GroupTitleMember(userID: $0.userID, name: NetworkTag.stripped($0.name), isBot: $0.isBot)
+        }
         let displayNames = disambiguatedShortNames(for: shownEntries)
 
         switch shownEntries.count {
