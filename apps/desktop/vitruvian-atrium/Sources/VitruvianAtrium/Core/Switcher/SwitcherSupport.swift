@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import ApplicationServices
 import CoreGraphics
 import Foundation
 
@@ -186,21 +187,195 @@ package enum SwitcherAppActivationRoute: Equatable {
     case wholeApp
 }
 
-/// Shared by the bounded focus passes on the main thread. Once a pass sees
-/// a newer user action, the remaining passes cannot reclaim the old target.
-/// Every pass runs on the main thread, so it is `@unchecked Sendable`.
+/// Metadata from one complete WindowServer snapshot, before filtering or caps.
+/// A cheap current ID list proves that the owner baseline is still complete:
+/// a window ID keeps its owner for its lifetime. New IDs require a fresh query.
+package struct SwitcherWindowServerSnapshot: Sendable {
+    package let windowIDs: Set<CGWindowID>
+    package let normalLevelWindowIDs: Set<CGWindowID>
+    package let normalLevelOwnerPIDs: [pid_t]
+    private let ownerWindowIDs: [pid_t: Set<CGWindowID>]?
+
+    package init(windowInfo: [[String: Any]], capturesActivationBaseline: Bool) {
+        var ids: Set<CGWindowID> = []
+        var normalIDs: Set<CGWindowID> = []
+        var normalOwners: [pid_t] = []
+        var owners: [pid_t: Set<CGWindowID>] = [:]
+        var complete = true
+        for info in windowInfo {
+            let id = (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value
+            let owner = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value
+            if let id { ids.insert(id) }
+            if capturesActivationBaseline {
+                if let id, let owner {
+                    owners[owner, default: []].insert(id)
+                } else {
+                    complete = false
+                }
+            }
+            if (info[kCGWindowLayer as String] as? NSNumber)?.intValue == 0 {
+                if let id { normalIDs.insert(id) }
+                if let owner { normalOwners.append(owner) }
+            }
+        }
+        windowIDs = ids
+        normalLevelWindowIDs = normalIDs
+        normalLevelOwnerPIDs = normalOwners
+        ownerWindowIDs = capturesActivationBaseline && complete ? owners : nil
+    }
+
+    package func activationWindowIDs(ownerPID: pid_t, targetWindowID: CGWindowID,
+                                     currentWindowIDs: Set<CGWindowID>) -> Set<CGWindowID>? {
+        guard let ownerWindowIDs,
+              currentWindowIDs.contains(targetWindowID),
+              currentWindowIDs.isSubset(of: windowIDs),
+              let known = ownerWindowIDs[ownerPID],
+              known.contains(targetWindowID) else { return nil }
+        return known.intersection(currentWindowIDs)
+    }
+}
+
+/// Where a fresh minimized state came from. The window server answers
+/// without the other app's help, so an ordinary target never waits on the
+/// Accessibility of a busy app; the app's own Accessibility is the fallback
+/// for the cases the window server cannot answer.
+package enum SwitcherMinimizedStateSource: String {
+    /// The window server answered.
+    case windowServer
+    /// The app's Accessibility answered.
+    case accessibility
+}
+
+/// The Accessibility element of one activation's target window.
+///
+/// An app answers a window-list request once per copy, and every window in
+/// that list is resolved one by one, so the steps of one activation that
+/// need the same window — the minimized-state read, the minimize/restore
+/// observer and the window preparation — share one element instead of asking
+/// the app for the same list again. The element is resolved for the exact
+/// window id it belongs to, and it belongs to its own activation: it is
+/// never carried into another activation or another session, and a step that
+/// is given none resolves its own, exactly as before.
+package final class SwitcherActivationTargetWindow: @unchecked Sendable {
+    package let windowID: CGWindowID
+    private let resolveElement: () -> AXUIElement?
+    private let lock = NSLock()
+    private var resolved = false
+    private var cachedElement: AXUIElement?
+
+    package init(windowID: CGWindowID, resolveElement: @escaping () -> AXUIElement?) {
+        self.windowID = windowID
+        self.resolveElement = resolveElement
+    }
+
+    /// The element for the target window, resolved at most once. Nil when
+    /// the app cannot describe the window: the step that asked falls back to
+    /// its own lookup, exactly as before.
+    package func element() -> AXUIElement? {
+        lock.withLock {
+            if resolved { return cachedElement }
+            resolved = true
+            cachedElement = resolveElement()
+            return cachedElement
+        }
+    }
+
+    /// The window's minimized state as the app's Accessibility reports it.
+    /// Nil when the app cannot answer at all.
+    package static func minimizedState(of axWindow: AXUIElement) -> Bool? {
+        var minimized: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axWindow, kAXMinimizedAttribute as CFString, &minimized) == .success,
+              let minimized
+        else { return nil }
+        if CFGetTypeID(minimized) == CFBooleanGetTypeID() {
+            return CFBooleanGetValue((minimized as! CFBoolean))
+        }
+        return minimized as? Bool
+    }
+}
+
+/// What one source-staging pass achieved. Only a pass whose every
+/// Accessibility operation was confirmed leaves the source window behind the
+/// target; anything else leaves it unstaged so a later retry pass stages it
+/// again.
+package enum SwitcherSourceStagingOutcome: Equatable {
+    /// Nothing to stage: no session source window, no target window, or no
+    /// Accessibility permission.
+    case notApplicable
+    /// The source window is minimized, so it cannot sit behind the target yet.
+    case sourceMinimized
+    /// A window lookup, the minimized-state read or a staging operation did
+    /// not succeed.
+    case unresolved
+    /// Every staging operation was confirmed by Accessibility.
+    case staged
+}
+
+/// Whether the source window is already staged behind the target in one
+/// activation. The state belongs to a single activation generation, so a
+/// later activation starts with an unstaged source.
+package final class SwitcherSourceStagingState: @unchecked Sendable {
+    private let lock = NSLock()
+    private let generation: UInt64
+    private var outcome: SwitcherSourceStagingOutcome = .notApplicable
+
+    package init(generation: UInt64) {
+        self.generation = generation
+    }
+
+    /// The outcome of the last staging pass in this generation.
+    package var lastOutcome: SwitcherSourceStagingOutcome {
+        lock.withLock { outcome }
+    }
+
+    /// Remembers a staging pass. Only a confirmed staging counts: a failed or
+    /// unresolved pass leaves the source unstaged for the next retry pass. A
+    /// pass that belongs to another generation belongs to another activation.
+    package func record(_ outcome: SwitcherSourceStagingOutcome, generation: UInt64) {
+        guard generation == self.generation else { return }
+        lock.withLock { self.outcome = outcome }
+    }
+}
+
+/// Initial AX observations run on the observation lane; retry decisions run
+/// on main. Once a pass sees a newer user action, later passes cannot reclaim the old target.
+/// Passes run on those queues one at a time, so it is `@unchecked Sendable`.
 package final class SwitcherWindowFocusRetryState: @unchecked Sendable {
     package let targetStartedMinimized: Bool
+    private let targetWindowID: CGWindowID
     package let knownWindowIDs: Set<CGWindowID>
     package private(set) var targetWasObservedRestored: Bool
     package private(set) var isActive = true
 
-    package init(targetWindowID: CGWindowID, targetStartedMinimized: Bool, knownWindowIDs: Set<CGWindowID>) {
+    /// `targetWasObservedRestored` is the caller's answer to "did a read say
+    /// this window is restored?", so a state that was never read has to pass
+    /// false: an unanswered read is not evidence of a restored window.
+    package init(targetWindowID: CGWindowID,
+         targetStartedMinimized: Bool,
+         targetWasObservedRestored: Bool,
+         knownWindowIDs: Set<CGWindowID>) {
+        self.targetWindowID = targetWindowID
         self.targetStartedMinimized = targetStartedMinimized
-        // The selected target is already known even if the server's snapshot
-        // missed it. An entirely unavailable snapshot still stays unavailable.
         self.knownWindowIDs = knownWindowIDs.isEmpty ? [] : knownWindowIDs.union([targetWindowID])
-        self.targetWasObservedRestored = !targetStartedMinimized
+        self.targetWasObservedRestored = targetWasObservedRestored
+    }
+
+    /// A state whose target was never read: a window that did not start
+    /// minimized counts as restored, as before the initial read existed.
+    package convenience init(targetWindowID: CGWindowID,
+                             targetStartedMinimized: Bool,
+                             knownWindowIDs: Set<CGWindowID>) {
+        self.init(targetWindowID: targetWindowID,
+                  targetStartedMinimized: targetStartedMinimized,
+                  targetWasObservedRestored: !targetStartedMinimized,
+                  knownWindowIDs: knownWindowIDs)
+    }
+
+    /// A restored-at-start target already satisfies retry state. Minimized
+    /// targets need the observation so later user minimization stops retries.
+    package func observeInitialMinimizedState(_ readMinimizedState: () -> Bool?) {
+        guard targetStartedMinimized else { return }
+        observe(targetMinimizedState: readMinimizedState())
     }
 
     package func observe(targetMinimizedState: Bool?) {
@@ -212,6 +387,7 @@ package final class SwitcherWindowFocusRetryState: @unchecked Sendable {
     package func shouldContinue(targetPID: pid_t,
                         sourcePID: pid_t?,
                         frontmostPID: @autoclosure () -> pid_t?,
+                        frontmostAfterFocusQueryPID: (() -> pid_t?)? = nil,
                         targetMinimizedState: Bool?,
                         targetAppWindowIDs: @autoclosure () -> Set<CGWindowID>,
                         targetAppFocusedWindowID: @autoclosure () -> CGWindowID?,
@@ -220,19 +396,46 @@ package final class SwitcherWindowFocusRetryState: @unchecked Sendable {
                         ignoresForeground: Bool = false,
                         ownPID: pid_t = ProcessInfo.processInfo.processIdentifier) -> Bool {
         guard isActive else { return false }
-        let observedFrontmostPID = frontmostPID()
+        // The foreground is the cheaper reading, so it is asked before the
+        // focus state. One sample answers both this check and the helper's
+        // first reading, so the number of foreground readings does not grow;
+        // every later reading goes back to the caller's autoclosure, which
+        // is what makes the helper's reading after the focus query a real
+        // re-read.
+        let callerFrontmostPID = frontmostPID
+        var sampledFrontmostPID: pid_t?
+        var hasSampledFrontmostPID = false
+        func readFrontmostPID() -> pid_t? {
+            if hasSampledFrontmostPID {
+                hasSampledFrontmostPID = false
+                return sampledFrontmostPID
+            }
+            return callerFrontmostPID()
+        }
+        // A minimized target keeps its retry until this pass reads it as
+        // restored. After that it is held to the same stand-down as any other
+        // target, so a restored and focused window is not raised again.
+        let minimizedStillRestoring = targetStartedMinimized
+            && targetMinimizedState != false
         if stopsWhenTargetFocused,
            !ignoresForeground,
-           !targetStartedMinimized,
-           observedFrontmostPID == targetPID,
-           targetWindowIsFocused() {
-            isActive = false
-            return false
+           !minimizedStillRestoring {
+            let observedFrontmostPID = callerFrontmostPID()
+            sampledFrontmostPID = observedFrontmostPID
+            hasSampledFrontmostPID = true
+            if observedFrontmostPID == targetPID, targetWindowIsFocused() {
+                isActive = false
+                return false
+            }
         }
         isActive = SwitcherSupport.shouldContinueFocusRetry(
             targetPID: targetPID,
             sourcePID: sourcePID,
-            frontmostPID: frontmostPID(),
+            // The sample answers the helper's first reading; a reading after
+            // the focus query goes back to the caller's autoclosure, so a
+            // slow query cannot reclaim the app after the user left it.
+            frontmostPID: readFrontmostPID(),
+            frontmostAfterFocusQueryPID: frontmostAfterFocusQueryPID,
             targetIsMinimized: targetMinimizedState == true,
             targetStartedMinimized: targetStartedMinimized,
             targetWasObservedRestored: targetWasObservedRestored,
@@ -1958,6 +2161,17 @@ package enum SwitcherSupport {
         return true
     }
 
+    /// Whether a repeated source-staging pass in the same activation can be
+    /// skipped. A confirmed staging only repeats when the source app is in
+    /// front again, because a source window that came back to the front is no
+    /// longer behind the target window.
+    package static func shouldSkipSourceStaging(outcome: SwitcherSourceStagingOutcome,
+                                                 frontmostPID: pid_t?,
+                                                 sourcePID: pid_t?) -> Bool {
+        guard outcome == .staged, let frontmostPID else { return false }
+        return frontmostPID != sourcePID
+    }
+
     /// Window identities, not a list of focusable windows: keeping every layer
     /// prevents an existing dialog or auxiliary surface from appearing new.
     package static func focusRetryWindowIDs(in windows: [[String: Any]], ownerPID: pid_t) -> Set<CGWindowID> {
@@ -1985,6 +2199,7 @@ package enum SwitcherSupport {
     package static func shouldContinueFocusRetry(targetPID: pid_t,
                                          sourcePID: pid_t?,
                                          frontmostPID: @autoclosure () -> pid_t?,
+                                         frontmostAfterFocusQueryPID: (() -> pid_t?)? = nil,
                                          targetIsMinimized: Bool,
                                          targetStartedMinimized: Bool,
                                          targetWasObservedRestored: Bool = false,
@@ -2015,6 +2230,11 @@ package enum SwitcherSupport {
            !waitingForInitialMinimizedRestore {
             return false
         }
+        if !ignoresForeground,
+           let readPostQueryFrontmost = frontmostAfterFocusQueryPID,
+           readPostQueryFrontmost() != targetPID {
+            return false
+        }
         // Z-order cannot identify keyboard focus: a new transparent helper
         // may sit above a real window. Only query Accessibility when this app
         // is active and the cheap window-server list contains something new.
@@ -2023,9 +2243,11 @@ package enum SwitcherSupport {
               !knownWindowIDs.isEmpty,
               !targetAppWindowIDs().isSubset(of: knownWindowIDs) else { return true }
         let focusedWindowID = targetAppFocusedWindowID()
-        // Accessibility can wait on the other process. Do not act on the old
-        // foreground observation if the user left the app during that wait.
-        if !ignoresForeground, frontmostPID() != targetPID { return false }
+        // Accessibility can wait on the other process. Validate against the
+        // separately sampled foreground after that query when one is supplied.
+        if !ignoresForeground, frontmostAfterFocusQueryPID == nil, frontmostPID() != targetPID {
+            return false
+        }
         guard let focusedWindowID else { return true }
         return knownWindowIDs.contains(focusedWindowID)
     }

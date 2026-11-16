@@ -550,6 +550,7 @@ if (( TEST )); then
         Sources/VitruvianAtrium/Core/Switcher/SwitcherSupport.swift
         Sources/VitruvianAtrium/Core/Switcher/SpaceHopSupport.swift
         Sources/VitruvianAtrium/Services/Switcher/WindowUseOrder.swift
+        Sources/VitruvianAtrium/Services/Switcher/WindowEnumeratorAccessibilityPrefetch.swift
         Sources/VitruvianAtrium/Core/Metrics/MetricFormat.swift
         Sources/VitruvianAtrium/Services/Metrics/VMStatisticsDecoder.swift
         Sources/VitruvianAtrium/Core/KeepAwakeAutomationSupport.swift

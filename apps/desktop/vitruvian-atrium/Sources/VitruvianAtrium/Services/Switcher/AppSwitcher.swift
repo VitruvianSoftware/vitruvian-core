@@ -157,6 +157,7 @@ package final class AppSwitcher: ObservableObject {
 
     private var panel: NSPanel?
     private var sessionItems: [SwitcherItem] = []
+    private var sessionWindowServerSnapshot: SwitcherWindowServerSnapshot?
 
     // The tap lives on a dedicated thread: an active keyDown tap makes the
     // window server hold every keystroke in the login session until this
@@ -364,7 +365,9 @@ package final class AppSwitcher: ObservableObject {
     /// churn the window server's keyboard path for no reason (issue #275).
     /// Main thread only, like every other write to the routing state.
     package func setCapturingShortcut(_ capturing: Bool) {
-        if capturing, sessionActive { cancelSession() }
+        if capturing, sessionActive {
+            cancelSession()
+        }
         routeLock.withLock {
             routeCapturing = capturing
             if capturing {
@@ -632,7 +635,9 @@ package final class AppSwitcher: ObservableObject {
             applyNativeHotkeySuppressionIfTapLive()
             return
         }
-        routeLock.withLock { routePendingSessionStart = nil }
+        routeLock.withLock {
+            routePendingSessionStart = nil
+        }
         if sessionActive { cancelSession() }
         applyNativeHotkeySuppressionIfTapLive()
         if secureInputHotKeys.isEmpty, !routeLock.withLock({ routeCapturing }) { restoreNativeHotkeys() }
@@ -1195,7 +1200,9 @@ package final class AppSwitcher: ObservableObject {
                 generation: generation,
                 pendingGeneration: routePendingSessionStart?.generation
             )
-        }) else { return }
+        }) else {
+            return
+        }
         guard Permissions.shared.accessibility,
               AXIsProcessTrusted(),
               lifecycleLock.withLock({ tap != nil && !shouldStopTapThread })
@@ -1223,10 +1230,31 @@ package final class AppSwitcher: ObservableObject {
             mergeWindowsByApp: mergeWindowsByApp,
             simpleMode: simpleModeEnabled
         )
-        guard let reportedFrontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier else {
+        guard let sourceApplication = NSWorkspace.shared.frontmostApplication else {
             discardPendingSessionStart(generation: generation)
             return
         }
+        let reportedFrontPID = sourceApplication.processIdentifier
+        // Both the walk and its source query stop when this session expires.
+        let isCancelled: @Sendable () -> Bool = { [weak self] in
+            guard let self else { return true }
+            return !self.routeLock.withLock {
+                SwitcherSupport.isCurrentSessionStart(
+                    generation: generation,
+                    pendingGeneration: self.routePendingSessionStart?.generation
+                )
+            }
+        }
+        // Only fix the CG candidate IDs before AX; the expensive metadata and
+        // source query can then run beside this main-thread snapshot.
+        let windowServerCapture = WindowEnumerator.beginWindowServerCapture(
+            isCancelled: isCancelled)
+        let sourcePrefetch = WindowEnumerator.beginSourcePrefetch(
+            for: reportedFrontPID,
+            isRegular: sourceApplication.activationPolicy == .regular,
+            accessibilityGranted: Permissions.shared.accessibility,
+            windowServerCapture: windowServerCapture,
+            isCancelled: isCancelled)
         let enumerationSnapshot = WindowEnumerator.snapshot()
         SwitcherSessionSteps.enumerate(displayScope: { currentDisplayScope },
                                        enqueue: { enumerationQueue.async(execute: $0) }) { [weak self] displayScope in
@@ -1237,7 +1265,9 @@ package final class AppSwitcher: ObservableObject {
                           pendingGeneration: self.routePendingSessionStart?.generation
                       )
                   })
-            else { return }
+            else {
+                return
+            }
             var focusedSourceWindowID: CGWindowID?
             let enumeration = WindowEnumerator.enumerateSwitcherWindows(
                 groupByApp: groupByApp,
@@ -1246,6 +1276,9 @@ package final class AppSwitcher: ObservableObject {
                 windowsOnly: requested.scope == .allWindows,
                 displayScope: displayScope,
                 scopedToFrontmostPID: requested.scope == .frontmostApp ? reportedFrontPID : nil,
+                sourcePID: reportedFrontPID,
+                sourcePrefetch: sourcePrefetch,
+                windowServerCapture: windowServerCapture,
                 resolveSource: { items in
                     let sourceItems = SwitcherSupport.windowsForSession(
                         items, scope: requested.scope, frontmostPID: reportedFrontPID)
@@ -1259,15 +1292,7 @@ package final class AppSwitcher: ObservableObject {
                                                              focusedWindowID: focusedSourceWindowID,
                                                              items: sourceItems)
                 },
-                isCancelled: { [weak self] in
-                    guard let self else { return true }
-                    return !self.routeLock.withLock {
-                        SwitcherSupport.isCurrentSessionStart(
-                            generation: generation,
-                            pendingGeneration: self.routePendingSessionStart?.generation
-                        )
-                    }
-                }
+                isCancelled: isCancelled
             )
             guard self.routeLock.withLock({
                 SwitcherSupport.isCurrentSessionStart(
@@ -1282,7 +1307,8 @@ package final class AppSwitcher: ObservableObject {
                                            reportedFrontPID: reportedFrontPID,
                                            focusedSourceWindowID: focusedSourceWindowID,
                                            windows: sessionWindows,
-                                           sourceItems: enumeration.sourceItems)
+                                           sourceItems: enumeration.sourceItems,
+                                           windowServerSnapshot: enumeration.activationSnapshot)
             }
         }
     }
@@ -1291,7 +1317,8 @@ package final class AppSwitcher: ObservableObject {
                                       reportedFrontPID: pid_t,
                                       focusedSourceWindowID: CGWindowID?,
                                       windows: [SwitcherItem],
-                                      sourceItems: [SwitcherItem]) {
+                                      sourceItems: [SwitcherItem],
+                                      windowServerSnapshot: SwitcherWindowServerSnapshot?) {
         guard routeLock.withLock({
             SwitcherSupport.isCurrentSessionStart(
                 generation: generation,
@@ -1326,6 +1353,7 @@ package final class AppSwitcher: ObservableObject {
             return pending
         }) else { return }
         sessionItems = list
+        sessionWindowServerSnapshot = windowServerSnapshot
         totalWindowCount = list.count
         searchQuery = ""
         isSearchPinned = false
@@ -1366,14 +1394,12 @@ package final class AppSwitcher: ObservableObject {
                                                                                    items: list))
         sessionShortcut = pending.shortcut
         shiftBackNavigationHeld = pending.reversed && pending.shortcut.shiftIsNavigationModifier
-
         if pending.additionalNavigation != 0 {
             let delta = pending.additionalNavigation < 0 ? -1 : 1
             for _ in 0..<abs(pending.additionalNavigation) {
                 advanceSelection(by: delta)
             }
         }
-
         startObservingTermination(generation: generation)
         if pending.commitWhenReady {
             commitSession()
@@ -1392,6 +1418,9 @@ package final class AppSwitcher: ObservableObject {
     }
 
     private func discardPendingSessionStart(generation: UInt64) {
+        // Only the lock that really cleared this generation may end the
+        // session: a generation that was already replaced keeps the terminal
+        // it was given then.
         routeLock.withLock {
             guard SwitcherSupport.isCurrentSessionStart(
                 generation: generation,
@@ -1614,7 +1643,9 @@ package final class AppSwitcher: ObservableObject {
         }
         userNavigated = true
         let next = selectedIndex + delta
-        if !wrapping, !windows.indices.contains(next) { return }
+        if !wrapping, !windows.indices.contains(next) {
+            return
+        }
         selectedIndex = (next + windows.count) % windows.count
     }
 
@@ -1918,6 +1949,10 @@ package final class AppSwitcher: ObservableObject {
                                                        closingItemIDs: closingItemIDs)
             .flatMap { id in windows.first { $0.id == id } }
         let source = sessionSourceContext
+        let windowServerSnapshot = sessionWindowServerSnapshot
+        // A session can open without a source item (the app in front has no
+        // window left); the app in front still keeps the settling retry.
+        let handoffSourcePID = NSWorkspace.shared.frontmostApplication?.processIdentifier
         let previousWindowID = sessionStartWindowID
         SwitcherSessionSteps.commit(
             selection,
@@ -1928,7 +1963,7 @@ package final class AppSwitcher: ObservableObject {
             frontmostPID: { NSWorkspace.shared.frontmostApplication?.processIdentifier },
             endSession: { endSession() },
             recordUse: { recordUse($0, previous: previousWindowID) },
-            activate: { WindowActivator.activate($0, sources: $1) })
+            activate: { WindowActivator.activate($0, sources: $1, windowServerSnapshot: windowServerSnapshot) })
     }
 
     private func resumePendingCommitAfterClose() {
@@ -1955,6 +1990,7 @@ package final class AppSwitcher: ObservableObject {
         panel?.orderOut(nil)
         unregisterSecureInputActionHotKeys()
         sessionItems = []
+        sessionWindowServerSnapshot = nil
         windows = []
         previews = [:]
         selectedIndex = 0
@@ -2366,6 +2402,7 @@ package final class AppSwitcher: ObservableObject {
         self.panel = panel
         return panel
     }
+
 }
 
 /// Grid metrics for one switcher session: large cards laid out in as many
