@@ -70,7 +70,7 @@ import dev.vitruvian.design.VitruvianTheme
 
 public class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
-    WatchSentry.init("vitruvian-watch-code")
+    WatchSentry.init(this, "vitruvian-watch-code")
     super.onCreate(savedInstanceState)
     setContent { VitruvianTheme { CodeWristScreen() } }
   }

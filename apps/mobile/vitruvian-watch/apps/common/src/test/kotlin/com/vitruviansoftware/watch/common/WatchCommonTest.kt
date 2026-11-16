@@ -20,10 +20,36 @@
 
 package com.vitruviansoftware.watch.common
 
+import io.sentry.Attachment
+import io.sentry.Breadcrumb
+import io.sentry.Hint
+import io.sentry.OptionsContainer
 import io.sentry.Sentry
+import io.sentry.SentryEvent
+import io.sentry.SentryLogEvent
+import io.sentry.SentryLogLevel
+import io.sentry.SentryMetricsEvent
+import io.sentry.SentryOpenTelemetryMode
+import io.sentry.SentryReplayEvent
+import io.sentry.android.core.SentryAndroidOptions
+import io.sentry.protocol.App
+import io.sentry.protocol.DebugMeta
+import io.sentry.protocol.Device
+import io.sentry.protocol.FeatureFlag
+import io.sentry.protocol.FeatureFlags
+import io.sentry.protocol.OperatingSystem
+import io.sentry.protocol.SentryId
+import io.sentry.protocol.SentryRuntime
+import io.sentry.protocol.SentryTransaction
+import io.sentry.protocol.TransactionInfo
+import io.sentry.protocol.User
 import io.sentry.util.Platform
+import java.io.File
+import java.util.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -153,6 +179,178 @@ class WatchCommonTest {
     )
   }
 
+  private fun resolvePath(rel: String): File {
+    val direct = File(rel)
+    if (direct.exists()) return direct
+    val base = System.getenv("TEST_SRCDIR") ?: error("TEST_SRCDIR unset and missing $rel")
+    return listOf("_main", "vitruvian_core", "")
+        .map { sub -> if (sub.isEmpty()) File(base, rel) else File(File(base, sub), rel) }
+        .firstOrNull { it.exists() } ?: error("Runfile not found: $rel")
+  }
+
+  @Test
+  fun watchManifestsDisableSentryAutoInit() {
+    val manifests =
+        listOf(
+            "apps/mobile/vitruvian-watch/apps/common/src/main/AndroidManifest.xml",
+            "apps/mobile/vitruvian-watch/apps/code/src/main/AndroidManifest.xml",
+            "apps/mobile/vitruvian-watch/apps/home-control/src/main/AndroidManifest.xml",
+            "apps/mobile/vitruvian-watch/apps/remote/src/main/AndroidManifest.xml",
+            "apps/mobile/vitruvian-watch/apps/vitruvian-pulse/src/main/AndroidManifest.xml",
+        )
+    val pattern =
+        Regex("""<meta-data[^>]*android:name="io\.sentry\.auto-init"[^>]*android:value="false"""")
+    for (manifestPath in manifests) {
+      val manifest = resolvePath(manifestPath).readText()
+      assertTrue(
+          "Missing io.sentry.auto-init=false in $manifestPath", pattern.containsMatchIn(manifest))
+    }
+  }
+
+  @Test
+  fun watchSentryConfiguresNoExtraDataDefaultsAndScrubsEvents() {
+    val options = SentryAndroidOptions().apply { distinctId = "pre-existing-id" }
+    WatchSentry.configureOptions(
+        options = options,
+        appName = "vitruvian-watch-test",
+        dsn = "https://public@127.0.0.1:1/0",
+        osVersion = "14",
+        deviceModel = "Pixel Watch 3",
+    )
+
+    assertEquals("vitruvian-watch-test@1.0", options.release)
+    assertEquals("production", options.environment)
+    assertFalse(options.isSendDefaultPii)
+    assertNull(options.distinctId)
+    assertEquals(0, options.maxBreadcrumbs)
+    assertEquals(0, options.maxFeatureFlags)
+    assertNull(options.beforeBreadcrumb!!.execute(Breadcrumb.info("tap"), Hint()))
+    assertFalse(options.isAttachServerName)
+    assertNull(options.serverName)
+    assertFalse(options.isAttachThreads)
+    assertFalse(options.isSendModules)
+    assertFalse(options.isEnableAutoSessionTracking)
+    assertFalse(options.isSendClientReports)
+
+    assertFalse(options.isEnableActivityLifecycleBreadcrumbs)
+    assertFalse(options.isEnableAppLifecycleBreadcrumbs)
+    assertFalse(options.isEnableSystemEventBreadcrumbs)
+    assertFalse(options.isEnableSystemEventBreadcrumbsExtras)
+    assertFalse(options.isEnableAppComponentBreadcrumbs)
+    assertFalse(options.isEnableNetworkEventBreadcrumbs)
+    assertFalse(options.isEnableUserInteractionBreadcrumbs)
+
+    assertFalse(options.isAnrEnabled)
+    assertFalse(options.isAnrReportInDebug)
+    assertFalse(options.isReportHistoricalAnrs)
+    assertFalse(options.isAttachAnrThreadDump)
+    assertNull(options.anrProfilingSampleRate)
+    assertFalse(options.isEnableNdkAppHangTracking)
+    assertFalse(options.isTombstoneEnabled)
+    assertFalse(options.isReportHistoricalTombstones)
+    assertFalse(options.isAttachRawTombstone)
+    assertFalse(options.isMemoryLimiterEnabled)
+    assertFalse(options.isReportHistoricalMemoryLimiterExits)
+    assertFalse(options.isEnableNdk)
+    assertFalse(options.isEnableScopeSync)
+
+    assertFalse(options.isAttachScreenshot)
+    assertFalse(options.isAttachViewHierarchy)
+    assertFalse(options.isEnableFramesTracking)
+    assertFalse(options.isCollectAdditionalContext)
+    assertFalse(options.isCollectExternalStorageContext)
+    assertFalse(options.isEnableRootCheck)
+    assertFalse(options.feedbackOptions.isUseShakeGesture)
+    assertFalse(options.feedbackOptions.isEnableAttachScreenshot)
+
+    assertFalse(options.isTracingEnabled)
+    assertNull(options.tracesSampleRate)
+    assertNull(options.tracesSampler)
+    assertFalse(options.isEnableAutoActivityLifecycleTracing)
+    assertFalse(options.isEnableActivityLifecycleTracingAutoFinish)
+    assertFalse(options.isEnableUserInteractionTracing)
+    assertFalse(options.isEnableTimeToFullDisplayTracing)
+    assertFalse(options.isEnablePerformanceV2)
+    assertFalse(options.isEnableStandaloneAppStartTracing)
+    assertFalse(options.isEnableAutoTraceIdGeneration)
+    assertFalse(options.isEnableScreenTracking)
+    assertTrue(options.tracePropagationTargets.isEmpty())
+    assertTrue(options.webViewTracing.allowedHosts.isEmpty())
+    val tx = SentryTransaction("tx", 0.0, 1.0, emptyList(), emptyMap(), TransactionInfo("m"))
+    assertNull(options.beforeSendTransaction!!.execute(tx, Hint()))
+
+    assertNull(options.profilesSampleRate)
+    assertNull(options.profilesSampler)
+    assertNull(options.profileSessionSampleRate)
+    assertFalse(options.isStartProfilerOnAppStart)
+    assertFalse(options.isEnableAppStartProfiling)
+    assertFalse(options.isContinuousProfilingEnabled)
+
+    assertNull(options.sessionReplay.sessionSampleRate)
+    assertNull(options.sessionReplay.onErrorSampleRate)
+    assertFalse(options.sessionReplay.isTrackConfiguration)
+    assertNull(options.beforeSendReplay!!.execute(SentryReplayEvent(), Hint()))
+    assertFalse(options.logs.isEnabled)
+    assertNull(
+        options.logs.beforeSend!!.execute(
+            SentryLogEvent(SentryId(), 0.0, "msg", SentryLogLevel.INFO)))
+    assertFalse(options.metrics.isEnabled)
+    assertNull(
+        options.metrics.beforeSend!!.execute(
+            SentryMetricsEvent(SentryId(), 0.0, "metric", "counter", 1.0), Hint()))
+
+    assertFalse(options.isEnableBackpressureHandling)
+    assertEquals(SentryOpenTelemetryMode.OFF, options.openTelemetryMode)
+    assertFalse(options.isCaptureOpenTelemetryEvents)
+    assertFalse(options.isEnableScopePersistence)
+    assertFalse(options.isEnableSpotlight)
+
+    val event =
+        SentryEvent(RuntimeException("boom")).apply {
+          addBreadcrumb(Breadcrumb.info("tap"))
+          user =
+              User().apply {
+                id = "install-id"
+                email = "user@example.com"
+              }
+          dist = "1"
+          setTag("isSideLoaded", "true")
+          setExtra("secret", "x")
+          debugMeta = DebugMeta()
+          contexts.setApp(App().apply { permissions = mapOf("VIBRATE" to "granted") })
+          contexts.setDevice(
+              Device().apply {
+                manufacturer = "Google"
+                timezone = TimeZone.getTimeZone("UTC")
+              })
+          contexts.setOperatingSystem(
+              OperatingSystem().apply {
+                name = "Android"
+                kernelVersion = "6.1"
+              })
+          contexts.setRuntime(SentryRuntime().apply { name = "ART" })
+          contexts.setFeatureFlags(FeatureFlags(listOf(FeatureFlag("flag", true))))
+        }
+    val hint = Hint().apply { addAttachment(Attachment(byteArrayOf(1), "a.txt")) }
+    val sanitized = options.beforeSend!!.execute(event, hint)!!
+    assertNull(sanitized.user)
+    assertNull(sanitized.breadcrumbs)
+    assertNull(sanitized.dist)
+    assertTrue(sanitized.extras.isNullOrEmpty())
+    assertNull(sanitized.debugMeta)
+    assertEquals(mapOf("device.model" to "Pixel Watch 3", "os.version" to "14"), sanitized.tags)
+    assertNull(sanitized.contexts.app)
+    assertNull(sanitized.contexts.runtime)
+    assertNull(sanitized.contexts.featureFlags)
+    assertEquals("Pixel Watch 3", sanitized.contexts.device?.model)
+    assertNull(sanitized.contexts.device?.manufacturer)
+    assertNull(sanitized.contexts.device?.timezone)
+    assertEquals("Android", sanitized.contexts.operatingSystem?.name)
+    assertEquals("14", sanitized.contexts.operatingSystem?.version)
+    assertNull(sanitized.contexts.operatingSystem?.kernelVersion)
+    assertTrue(hint.attachments.isEmpty())
+  }
+
   @Test
   fun watchSentryInitializesWhenPlatformIsAndroid() {
     val isAndroidField =
@@ -160,9 +358,30 @@ class WatchCommonTest {
     val originalIsAndroid = isAndroidField.getBoolean(null)
     try {
       isAndroidField.setBoolean(null, true)
-      WatchSentry.init(appName = "vitruvian-watch-test", dsn = "https://public@127.0.0.1:1/0")
+      val thrown =
+          try {
+            Sentry.init { opts -> opts.dsn = "https://public@127.0.0.1:1/0" }
+            null
+          } catch (e: IllegalArgumentException) {
+            e
+          }
+      assertNotNull(thrown)
+      assertTrue(thrown!!.message!!.contains("SentryAndroid.init"))
+
+      Sentry.init(
+          OptionsContainer.create(SentryAndroidOptions::class.java),
+          { opts ->
+            WatchSentry.configureOptions(
+                options = opts,
+                appName = "vitruvian-watch-test",
+                dsn = "https://public@127.0.0.1:1/0",
+            )
+          },
+          true,
+      )
       assertTrue(Sentry.isEnabled())
       assertEquals("vitruvian-watch-test@1.0", Sentry.getCurrentScopes().options.release)
+      assertEquals(0, Sentry.getCurrentScopes().options.maxBreadcrumbs)
     } finally {
       Sentry.close()
       isAndroidField.setBoolean(null, originalIsAndroid)

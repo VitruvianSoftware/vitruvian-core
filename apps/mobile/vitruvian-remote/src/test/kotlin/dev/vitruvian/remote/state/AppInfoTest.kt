@@ -24,6 +24,7 @@ import io.sentry.Attachment
 import io.sentry.Breadcrumb
 import io.sentry.Hint
 import io.sentry.MainEventProcessor
+import io.sentry.OptionsContainer
 import io.sentry.Scope
 import io.sentry.Sentry
 import io.sentry.SentryEnvelope
@@ -34,12 +35,19 @@ import io.sentry.SentryMetricsEvent
 import io.sentry.SentryOpenTelemetryMode
 import io.sentry.SentryOptions
 import io.sentry.SentryReplayEvent
+import io.sentry.android.core.SentryAndroidOptions
+import io.sentry.android.core.cache.AndroidEnvelopeCache
 import io.sentry.cache.EnvelopeCache
 import io.sentry.cache.PersistingOptionsObserver
+import io.sentry.protocol.App
+import io.sentry.protocol.DebugMeta
+import io.sentry.protocol.Device
 import io.sentry.protocol.FeatureFlag
 import io.sentry.protocol.FeatureFlags
 import io.sentry.protocol.Message
+import io.sentry.protocol.OperatingSystem
 import io.sentry.protocol.SentryId
+import io.sentry.protocol.SentryRuntime
 import io.sentry.protocol.SentryTransaction
 import io.sentry.protocol.TransactionInfo
 import io.sentry.protocol.User
@@ -48,6 +56,7 @@ import java.io.File
 import java.io.StringWriter
 import java.nio.file.Files
 import java.util.Locale
+import java.util.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -290,6 +299,7 @@ public class AppInfoTest {
     assertEquals("Apache-2.0", byName.getValue("AndroidX Annotation").license)
     assertEquals("Apache-2.0", byName.getValue("AndroidX Compose").license)
     assertEquals("MIT", byName.getValue("Sentry SDK").license)
+    assertEquals("MIT", byName.getValue("Sentry Android SDK").license)
     assertEquals("SIL OFL 1.1", byName.getValue("JetBrains Mono").license)
     assertEquals("SIL OFL 1.1", byName.getValue("IBM Plex Sans").license)
   }
@@ -451,9 +461,6 @@ public class AppInfoTest {
             ".javaClass",
             "::class.java",
             "setBooleanOptionIfPresent",
-            "setAttachScreenshot",
-            "setAttachViewHierarchy",
-            "viewHierarchy",
         )
     return forbiddenTokens.filter { token -> source.contains(token) }
   }
@@ -472,16 +479,29 @@ public class AppInfoTest {
                 "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt")
             .readText()
     assertEquals(emptyList<String>(), findForbiddenSentryReflectionTokens(appInfoSource))
-    val androidOptionsSource =
-        resolvePath(
-                "apps/mobile/vitruvian-remote/src/main/kotlin/io/sentry/android/core/SentryAndroidOptions.kt")
-            .readText()
-    assertEquals(emptyList<String>(), findForbiddenSentryReflectionTokens(androidOptionsSource))
   }
 
   @Test
-  public fun `configureSentryOptions sets Java SDK privacy options directly`() {
-    val options = SentryOptions()
+  public fun `manifest disables sentry auto-init and MainActivity uses SentryAndroid init`() {
+    val manifest =
+        resolvePath("apps/mobile/vitruvian-remote/src/main/AndroidManifest.xml").readText()
+    val appSection = manifest.substringAfter("<application")
+    assertTrue(
+        "Expected io.sentry.auto-init metadata in <application>",
+        Regex("""<meta-data[^>]*android:name="io\.sentry\.auto-init"[^>]*android:value="false"""")
+            .containsMatchIn(appSection),
+    )
+    val mainActivity =
+        resolvePath(
+                "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/MainActivity.kt")
+            .readText()
+    assertTrue(mainActivity.contains("SentryAndroid.init(this)"))
+    assertFalse(mainActivity.contains("Sentry.init("))
+  }
+
+  @Test
+  public fun `configureSentryOptions sets Android and Java SDK privacy options directly`() {
+    val options = SentryAndroidOptions().apply { distinctId = "pre-existing-id" }
     AppInfo.configureSentryOptions(
         options = options,
         dsn = "https://examplePublicKey@o0.ingest.sentry.io/0",
@@ -499,6 +519,7 @@ public class AppInfoTest {
     assertEquals("vitruvian-remote@0.1.40", options.release)
     assertEquals("production", options.environment)
     assertFalse(options.isSendDefaultPii)
+    assertNull(options.distinctId)
     assertEquals(0, options.maxBreadcrumbs)
     assertEquals(0, options.maxFeatureFlags)
     assertNull(options.beforeBreadcrumb!!.execute(Breadcrumb.info("tap"), Hint()))
@@ -511,9 +532,52 @@ public class AppInfoTest {
     assertFalse(options.isEnableAutoSessionTracking)
     assertFalse(options.isSendClientReports)
 
+    // Android auto-breadcrumbs.
+    assertFalse(options.isEnableActivityLifecycleBreadcrumbs)
+    assertFalse(options.isEnableAppLifecycleBreadcrumbs)
+    assertFalse(options.isEnableSystemEventBreadcrumbs)
+    assertFalse(options.isEnableSystemEventBreadcrumbsExtras)
+    assertFalse(options.isEnableAppComponentBreadcrumbs)
+    assertFalse(options.isEnableNetworkEventBreadcrumbs)
+    assertFalse(options.isEnableUserInteractionBreadcrumbs)
+
+    // Android ANR / tombstone / memory-limiter / NDK.
+    assertFalse(options.isAnrEnabled)
+    assertFalse(options.isAnrReportInDebug)
+    assertFalse(options.isReportHistoricalAnrs)
+    assertFalse(options.isAttachAnrThreadDump)
+    assertNull(options.anrProfilingSampleRate)
+    assertFalse(options.isEnableNdkAppHangTracking)
+    assertFalse(options.isTombstoneEnabled)
+    assertFalse(options.isReportHistoricalTombstones)
+    assertFalse(options.isAttachRawTombstone)
+    assertFalse(options.isMemoryLimiterEnabled)
+    assertFalse(options.isReportHistoricalMemoryLimiterExits)
+    assertFalse(options.isEnableNdk)
+    assertFalse(options.isEnableScopeSync)
+
+    // Android screenshots, view hierarchy, frames, extra IPC/storage/root checks, and feedback.
+    assertFalse(options.isAttachScreenshot)
+    assertFalse(options.isAttachViewHierarchy)
+    assertFalse(options.isEnableFramesTracking)
+    assertFalse(options.isCollectAdditionalContext)
+    assertFalse(options.isCollectExternalStorageContext)
+    assertFalse(options.isEnableRootCheck)
+    assertFalse(options.feedbackOptions.isUseShakeGesture)
+    assertFalse(options.feedbackOptions.isEnableAttachScreenshot)
+
+    // Tracing & profiling.
     assertFalse(options.isTracingEnabled)
     assertNull(options.tracesSampleRate)
     assertNull(options.tracesSampler)
+    assertFalse(options.isEnableAutoActivityLifecycleTracing)
+    assertFalse(options.isEnableActivityLifecycleTracingAutoFinish)
+    assertFalse(options.isEnableUserInteractionTracing)
+    assertFalse(options.isEnableTimeToFullDisplayTracing)
+    assertFalse(options.isEnablePerformanceV2)
+    assertFalse(options.isEnableStandaloneAppStartTracing)
+    assertFalse(options.isEnableAutoTraceIdGeneration)
+    assertFalse(options.isEnableScreenTracking)
     assertNull(options.profilesSampleRate)
     assertNull(options.profilesSampler)
     assertFalse(options.isProfilingEnabled)
@@ -522,9 +586,11 @@ public class AppInfoTest {
     assertFalse(options.isEnableAppStartProfiling)
     assertFalse(options.isContinuousProfilingEnabled)
     assertTrue(options.tracePropagationTargets.isEmpty())
+    assertTrue(options.webViewTracing.allowedHosts.isEmpty())
     val tx = SentryTransaction("tx", 0.0, 1.0, emptyList(), emptyMap(), TransactionInfo("m"))
     assertNull(options.beforeSendTransaction!!.execute(tx, Hint()))
 
+    // Replay, logs, metrics, backpressure, OTel, scope persistence, spotlight.
     assertNull(options.sessionReplay.sessionSampleRate)
     assertNull(options.sessionReplay.onErrorSampleRate)
     assertFalse(options.sessionReplay.isTrackConfiguration)
@@ -548,9 +614,6 @@ public class AppInfoTest {
     assertFalse(options.isEnableBackpressureHandling)
     assertEquals(SentryOpenTelemetryMode.OFF, options.openTelemetryMode)
     assertFalse(options.isCaptureOpenTelemetryEvents)
-    assertFalse(options.isEnableUserInteractionBreadcrumbs)
-    assertFalse(options.isEnableUserInteractionTracing)
-    assertFalse(options.isEnableScreenTracking)
     assertFalse(options.isEnableScopePersistence)
     assertFalse(options.isEnableSpotlight)
     assertEquals(
@@ -566,8 +629,8 @@ public class AppInfoTest {
   }
 
   @Test
-  public fun `configureSentryOptions beforeSend strips user IP breadcrumbs threads runtime and attachments and keeps bounded device details`() {
-    val options = SentryOptions()
+  public fun `configureSentryOptions beforeSend strips Android contexts user tags dist extras and attachments and keeps bounded device details`() {
+    val options = SentryAndroidOptions()
     AppInfo.configureSentryOptions(
         options = options,
         dsn = "https://examplePublicKey@o0.ingest.sentry.io/0",
@@ -585,12 +648,48 @@ public class AppInfoTest {
     val rawEvent =
         SentryEvent(RuntimeException("boom")).apply {
           addBreadcrumb(Breadcrumb.info("tap"))
-          user = User().apply { email = "user@example.com" }
+          user =
+              User().apply {
+                id = "install-id"
+                email = "user@example.com"
+                ipAddress = "{{auto}}"
+              }
+          dist = "144"
+          setTag("isSideLoaded", "true")
+          setTag("installerStore", "com.android.vending")
+          setExtra("secret", "1")
+          debugMeta = DebugMeta()
+          contexts.setApp(
+              App().apply {
+                permissions = mapOf("READ_SMS" to "granted")
+                appName = "Vitruvian Remote"
+                appIdentifier = "dev.vitruvian.remote"
+                inForeground = true
+              })
+          contexts.setDevice(
+              Device().apply {
+                manufacturer = "Google"
+                brand = "google"
+                locale = "en_US"
+                timezone = TimeZone.getTimeZone("UTC")
+                storageSize = 128_000_000_000L
+                batteryLevel = 80f
+                id = "install-id"
+              })
+          contexts.setOperatingSystem(
+              OperatingSystem().apply {
+                name = "Android"
+                version = "15"
+                build = "AP4A"
+                kernelVersion = "6.1"
+                isRooted = false
+              })
+          contexts["os_linux"] = OperatingSystem().apply { name = "Linux" }
+          contexts.setRuntime(SentryRuntime().apply { name = "Android Runtime" })
           contexts.setFeatureFlags(FeatureFlags(listOf(FeatureFlag("flag", true))))
         }
     val hint = Hint().apply { addAttachment(Attachment(byteArrayOf(6, 7), "extra.txt")) }
 
-    // MainEventProcessor.mergeUser attaches a User when null; beforeSend drops user completely.
     val processed = MainEventProcessor(options).process(rawEvent, hint)
     assertNull(processed.threads)
     val sanitized = options.beforeSend!!.execute(processed, hint)!!
@@ -602,18 +701,32 @@ public class AppInfoTest {
     assertNull(sanitized.breadcrumbs)
     assertNull(sanitized.request)
     assertNull(sanitized.serverName)
+    assertNull(sanitized.dist)
+    assertTrue(sanitized.extras.isNullOrEmpty())
+    assertNull(sanitized.debugMeta)
+    assertEquals(mapOf("device.model" to "Pixel Fold", "os.version" to "15"), sanitized.tags)
     assertTrue(sanitized.threads.isNullOrEmpty())
+    assertNull(sanitized.contexts.app)
     assertNull(sanitized.contexts.runtime)
     assertNull(sanitized.contexts.featureFlags)
+    assertNull(sanitized.contexts["os_linux"])
     assertTrue(hint.attachments.isEmpty())
 
     assertEquals("Android", sanitized.contexts.operatingSystem?.name)
     assertEquals("15", sanitized.contexts.operatingSystem?.version)
+    assertNull(sanitized.contexts.operatingSystem?.build)
+    assertNull(sanitized.contexts.operatingSystem?.kernelVersion)
+    assertNull(sanitized.contexts.operatingSystem?.isRooted)
+
     val device = sanitized.contexts.device!!
     assertEquals("Pixel Fold", device.model)
     assertEquals(2208, device.screenWidthPixels)
     assertEquals(1840, device.screenHeightPixels)
     assertEquals(12_884_901_888L, device.memorySize)
+    assertNull(device.manufacturer)
+    assertNull(device.brand)
+    assertNull(device.storageSize)
+    assertNull(device.batteryLevel)
     assertNull(device.name)
     assertNull(device.id)
     assertNull(device.timezone)
@@ -621,10 +734,10 @@ public class AppInfoTest {
   }
 
   @Test
-  public fun `clearSentryCache removes Java SDK EnvelopeCache options cache and outbox dirs without touching unrelated cache files`() {
+  public fun `clearSentryCache removes AndroidEnvelopeCache options cache and outbox dirs without touching unrelated cache files`() {
     val appCacheDir = Files.createTempDirectory("vitruvian-sentry-cache-test").toFile()
     try {
-      val options = SentryOptions()
+      val options = SentryAndroidOptions()
       AppInfo.configureSentryOptions(
           options = options,
           dsn = "https://examplePublicKey@o0.ingest.sentry.io/0",
@@ -639,19 +752,27 @@ public class AppInfoTest {
       assertTrue(dsnCacheDir.absolutePath.startsWith(sentryBaseDir.absolutePath + File.separator))
       assertEquals(File(dsnCacheDir, "outbox").absolutePath, outboxDir.absolutePath)
 
-      // Exercise the real 8.x Java SDK EnvelopeCache and PersistingOptionsObserver disk layout.
+      // Exercise the real 8.x AndroidEnvelopeCache, EnvelopeCache, and PersistingOptionsObserver
+      // disk layout.
       dsnCacheDir.mkdirs()
       outboxDir.mkdirs()
       val envelope =
           SentryEnvelope.from(
               options.serializer, SentryEvent(RuntimeException("cached")), options.sdkVersion)
+      val androidCache = AndroidEnvelopeCache(options)
+      assertEquals(dsnCacheDir.absolutePath, androidCache.directory.absolutePath)
       EnvelopeCache.create(options).store(envelope, Hint())
+      AndroidEnvelopeCache.markAnrReported(options, 123L)
       PersistingOptionsObserver(options).setRelease(options.release)
       val queuedOutbox = File(outboxDir, "queued.envelope").apply { writeText("envelope") }
 
       assertTrue(
           "Expected EnvelopeCache to write a .envelope file inside ${dsnCacheDir.absolutePath}",
           dsnCacheDir.listFiles().orEmpty().any { it.isFile && it.name.endsWith(".envelope") },
+      )
+      assertTrue(
+          "Expected AndroidEnvelopeCache marker file inside ${dsnCacheDir.absolutePath}",
+          File(dsnCacheDir, AndroidEnvelopeCache.LAST_ANR_REPORT).exists(),
       )
       assertTrue(
           "Expected PersistingOptionsObserver to populate .options-cache inside ${dsnCacheDir.absolutePath}",
@@ -744,7 +865,7 @@ public class AppInfoTest {
 
   @Test
   public fun `configureSentryOptions beforeSend scrubs addresses from exceptions and event message`() {
-    val options = SentryOptions()
+    val options = SentryAndroidOptions()
     AppInfo.configureSentryOptions(
         options = options,
         dsn = "https://examplePublicKey@o0.ingest.sentry.io/0",
@@ -844,10 +965,17 @@ public class AppInfoTest {
 
       File(sentryDir, "outbox").apply { mkdirs() }
       File(sentryDir, "outbox/queued.envelope").writeText("queued")
-      AppInfo.initSentry(
-          dsn = "https://public@127.0.0.1:1/0",
-          appVersion = "0.1.41",
-          appCacheDir = cacheDir,
+      Sentry.init(
+          OptionsContainer.create(SentryAndroidOptions::class.java),
+          { opts ->
+            AppInfo.configureSentryOptions(
+                options = opts,
+                dsn = "https://public@127.0.0.1:1/0",
+                appVersion = "0.1.41",
+                appCacheDir = cacheDir,
+            )
+          },
+          true,
       )
       val liveOptions = Sentry.getCurrentScopes().options
       assertEquals(2000L, liveOptions.shutdownTimeoutMillis)
@@ -864,7 +992,7 @@ public class AppInfoTest {
   }
 
   @Test
-  public fun `initSentry succeeds when Platform isAndroid is true while raw Sentry init throws`() {
+  public fun `SentryAndroidOptions succeeds when Platform isAndroid is true while raw Sentry init throws`() {
     val cacheDir = Files.createTempDirectory("vitruvian-sentry-android-check").toFile()
     val isAndroidField =
         Platform::class.java.getDeclaredField("isAndroid").apply { isAccessible = true }
@@ -882,10 +1010,17 @@ public class AppInfoTest {
           "Expected plain Sentry.init to throw IllegalArgumentException on Android", thrown)
       assertTrue(thrown!!.message!!.contains("SentryAndroid.init"))
 
-      AppInfo.initSentry(
-          dsn = "https://public@127.0.0.1:1/0",
-          appVersion = "0.1.44",
-          appCacheDir = cacheDir,
+      Sentry.init(
+          OptionsContainer.create(SentryAndroidOptions::class.java),
+          { opts ->
+            AppInfo.configureSentryOptions(
+                options = opts,
+                dsn = "https://public@127.0.0.1:1/0",
+                appVersion = "0.1.44",
+                appCacheDir = cacheDir,
+            )
+          },
+          true,
       )
       assertTrue(Sentry.isEnabled())
       assertEquals(0, Sentry.getCurrentScopes().options.maxBreadcrumbs)

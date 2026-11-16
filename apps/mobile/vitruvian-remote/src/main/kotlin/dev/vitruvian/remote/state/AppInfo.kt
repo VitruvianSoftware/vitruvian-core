@@ -20,15 +20,12 @@
 
 package dev.vitruvian.remote.state
 
-import io.sentry.OptionsContainer
 import io.sentry.Sentry
 import io.sentry.SentryOpenTelemetryMode
 import io.sentry.SentryOptions
 import io.sentry.android.core.SentryAndroidOptions
 import io.sentry.protocol.Device
-import io.sentry.protocol.FeatureFlags
 import io.sentry.protocol.OperatingSystem
-import io.sentry.protocol.SentryRuntime
 import java.io.File
 import java.util.Locale
 
@@ -133,6 +130,12 @@ public object AppInfo {
               detail = "io.sentry:sentry",
               license = "MIT",
               mavenTargets = setOf("@maven//:io_sentry_sentry"),
+          ),
+          OpenSourceLicense(
+              name = "Sentry Android SDK",
+              detail = "io.sentry:sentry-android-core",
+              license = "MIT",
+              mavenTargets = setOf("@maven//:io_sentry_sentry_android_core"),
           ),
           OpenSourceLicense(
               name = "JetBrains Mono",
@@ -244,42 +247,13 @@ public object AppInfo {
     deleteCache(appCacheDir)
   }
 
-  private object PlainJavaSentryOptionsContainer : OptionsContainer<SentryOptions>() {
-    override fun createInstance(): SentryOptions = SentryAndroidOptions()
-  }
-
   /**
-   * Initializes the plain Java Sentry SDK using [SentryAndroidOptions] so Sentry 8.x's Android
-   * check passes without pulling in `sentry-android-core` or using reflection.
-   */
-  public fun initSentry(
-      dsn: String = DEFAULT_SENTRY_DSN,
-      appVersion: String?,
-      device: CrashReportDeviceDetails = CrashReportDeviceDetails(),
-      appCacheDir: File? = null,
-  ) {
-    Sentry.init(
-        PlainJavaSentryOptionsContainer,
-        { options ->
-          configureSentryOptions(
-              options = options,
-              dsn = dsn,
-              appVersion = appVersion,
-              device = device,
-              appCacheDir = appCacheDir,
-          )
-        },
-        /* globalHubMode = */ true,
-    )
-  }
-
-  /**
-   * Configures Sentry directly on the plain Java SDK `SentryOptions` so every privacy setting (no
-   * PII, no breadcrumbs, no server hostname, no other thread stacks, no tracing/profiling, and
-   * bounded device details) is provable in JVM unit tests.
+   * Configures Sentry on [SentryAndroidOptions] so every privacy setting (no PII, no breadcrumbs,
+   * no server hostname, no other thread stacks, no ANR/tombstone/NDK/tracing/profiling/replay/logs,
+   * and bounded device details) is provable in JVM unit tests.
    */
   public fun configureSentryOptions(
-      options: SentryOptions,
+      options: SentryAndroidOptions,
       dsn: String = DEFAULT_SENTRY_DSN,
       appVersion: String?,
       device: CrashReportDeviceDetails = CrashReportDeviceDetails(),
@@ -292,6 +266,7 @@ public object AppInfo {
       options.cacheDirPath = sentryCacheDir(appCacheDir).absolutePath
     }
     options.isSendDefaultPii = false
+    options.distinctId = null
     // Sentry 8.x uses DisabledQueue when maxBreadcrumbs <= 0; beforeBreadcrumb and beforeSend
     // remain as defense-in-depth.
     options.maxBreadcrumbs = 0
@@ -303,22 +278,59 @@ public object AppInfo {
     options.isEnableAutoSessionTracking = false
     options.isSendClientReports = false
 
-    // No breadcrumbs (so no taps, URLs, or Mac addresses).
+    // No breadcrumbs (disable all Android auto-breadcrumbs plus drop anything added manually).
+    options.enableAllAutoBreadcrumbs(false)
+    options.isEnableSystemEventBreadcrumbsExtras = false
     options.beforeBreadcrumb = SentryOptions.BeforeBreadcrumbCallback { _, _ -> null }
+
+    // Disable Android crash/exit integrations that capture thread dumps, historical exits, or NDK.
+    options.isAnrEnabled = false
+    options.isAnrReportInDebug = false
+    options.isReportHistoricalAnrs = false
+    options.isAttachAnrThreadDump = false
+    options.anrProfilingSampleRate = null
+    options.isEnableNdkAppHangTracking = false
+    options.isTombstoneEnabled = false
+    options.isReportHistoricalTombstones = false
+    options.isAttachRawTombstone = false
+    options.isMemoryLimiterEnabled = false
+    options.isReportHistoricalMemoryLimiterExits = false
+    options.isEnableNdk = false
+    options.isEnableScopeSync = false
+
+    // Disable Android screenshot, view hierarchy, frame tracking, extra IPC/storage/root checks,
+    // and shake-to-feedback dialogs.
+    options.isAttachScreenshot = false
+    options.isAttachViewHierarchy = false
+    options.isEnableFramesTracking = false
+    options.isCollectAdditionalContext = false
+    options.isCollectExternalStorageContext = false
+    options.isEnableRootCheck = false
+    options.feedbackOptions.isUseShakeGesture = false
+    options.feedbackOptions.isEnableAttachScreenshot = false
 
     // Leave performance tracing and profiling unset/disabled (tracesSampleRate stays null).
     options.tracesSampleRate = null
     options.tracesSampler = null
+    options.isEnableAutoActivityLifecycleTracing = false
+    options.isEnableActivityLifecycleTracingAutoFinish = false
+    options.isEnableUserInteractionTracing = false
+    options.isEnableTimeToFullDisplayTracing = false
+    options.isEnablePerformanceV2 = false
+    options.isEnableStandaloneAppStartTracing = false
+    options.isEnableAutoTraceIdGeneration = false
+    options.isEnableScreenTracking = false
+    options.setTracePropagationTargets(emptyList())
+    options.webViewTracing.allowedHosts = emptyList()
+    options.beforeSendTransaction = SentryOptions.BeforeSendTransactionCallback { _, _ -> null }
     options.profilesSampleRate = null
     options.profilesSampler = null
     options.profileSessionSampleRate = null
     options.isStartProfilerOnAppStart = false
     options.isEnableAppStartProfiling = false
-    options.setTracePropagationTargets(emptyList())
-    options.beforeSendTransaction = SentryOptions.BeforeSendTransactionCallback { _, _ -> null }
 
-    // Disable 8.x session replay, logs, metrics, backpressure monitoring, OTel, UI tracking, and
-    // scope persistence.
+    // Disable 8.x session replay, logs, metrics, backpressure monitoring, OTel, scope persistence,
+    // and spotlight.
     options.sessionReplay.sessionSampleRate = null
     options.sessionReplay.onErrorSampleRate = null
     options.sessionReplay.isTrackConfiguration = false
@@ -332,26 +344,29 @@ public object AppInfo {
     options.isEnableBackpressureHandling = false
     options.openTelemetryMode = SentryOpenTelemetryMode.OFF
     options.isCaptureOpenTelemetryEvents = false
-    options.isEnableUserInteractionBreadcrumbs = false
-    options.isEnableUserInteractionTracing = false
-    options.isEnableScreenTracking = false
     options.isEnableScopePersistence = false
     options.isEnableSpotlight = false
 
     val cleanModel = device.model.trim().takeIf { it.isNotEmpty() }
     val cleanOs = device.androidRelease.trim().takeIf { it.isNotEmpty() }
-    cleanModel?.let { options.setTag("device.model", it) }
-    cleanOs?.let { options.setTag("os.version", it) }
+    val boundedTags = buildMap {
+      cleanModel?.let { put("device.model", it) }
+      cleanOs?.let { put("os.version", it) }
+    }
+    boundedTags.forEach { (key, value) -> options.setTag(key, value) }
 
     options.beforeSend =
         SentryOptions.BeforeSendCallback { event, hint ->
           hint.clearAttachments()
           event.breadcrumbs = null
-          // MainEventProcessor.mergeUser attaches an empty User even when sendDefaultPii is
-          // false; dropping user strips any user context and ensures ipAddress is never sent.
+          // DefaultAndroidEventProcessor attaches User(id = Installation.id); drop user completely.
           event.user = null
           event.request = null
           event.serverName = null
+          event.dist = null
+          event.extras = null
+          event.debugMeta = null
+          event.tags = if (boundedTags.isEmpty()) null else HashMap(boundedTags)
           if (event.threads != null) {
             event.threads = null
           }
@@ -363,8 +378,7 @@ public object AppInfo {
             msg.message = msg.message?.let(::scrubCrashMessage)
             msg.params = msg.params?.map { param -> param?.let(::scrubCrashMessage) }
           }
-          event.contexts.remove(SentryRuntime.TYPE)
-          event.contexts.remove(FeatureFlags.TYPE)
+          event.contexts.clear()
           if (cleanOs != null) {
             event.contexts.setOperatingSystem(
                 OperatingSystem().apply {

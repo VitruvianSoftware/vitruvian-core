@@ -62,7 +62,7 @@ import dev.vitruvian.design.VitruvianTheme
 
 public class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
-    WatchSentry.init("vitruvian-watch-home")
+    WatchSentry.init(this, "vitruvian-watch-home")
     super.onCreate(savedInstanceState)
     setContent { VitruvianTheme { HomeControlWatchScreen() } }
   }

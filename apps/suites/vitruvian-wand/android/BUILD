@@ -2,6 +2,7 @@
 # gazelle:ignore
 
 load("@rules_android//android:rules.bzl", "android_binary")
+load("@rules_java//java:java_import.bzl", "java_import")
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
 load("@rules_kotlin//kotlin:jvm.bzl", "kt_jvm_library", "kt_jvm_test")
 load("//apps/suites/vitruvian-wand/android:defs.bzl", "vitruvian_wand_multi_abi_apk")
@@ -64,6 +65,31 @@ test_suite(
         ":gesture_planner_test",
         ":native_engine_test",
         ":stroke_coordinator_test",
+        ":wand_sentry_test",
+    ],
+)
+
+java_import(
+    name = "android_sdk_stub_jar",
+    testonly = True,
+    jars = ["@androidsdk//:platforms/android-35/android.jar"],
+)
+
+kt_jvm_test(
+    name = "wand_sentry_test",
+    size = "small",
+    srcs = ["src/test/kotlin/com/vitruviansoftware/wand/WandSentryTest.kt"],
+    data = [
+        "src/main/AndroidManifest.xml",
+        "src/main/kotlin/com/vitruviansoftware/wand/MainActivity.kt",
+    ],
+    test_class = "com.vitruviansoftware.wand.WandSentryTest",
+    deps = [
+        ":android_sdk_stub_jar",
+        ":lib",
+        "@maven//:io_sentry_sentry",
+        "@maven//:io_sentry_sentry_android_core",
+        "@maven//:junit_junit",
     ],
 )
 
@@ -92,6 +118,7 @@ kt_android_library(
         "@maven//:androidx_core_core",
         "@maven//:androidx_core_core_ktx",
         "@maven//:io_sentry_sentry",
+        "@maven//:io_sentry_sentry_android_core",
         "@maven//:org_jetbrains_kotlinx_kotlinx_coroutines_android",
         "@maven//:org_jetbrains_kotlinx_kotlinx_coroutines_core_jvm",
     ],

@@ -70,7 +70,6 @@ kt_android_library(
             "src/main/kotlin/dev/vitruvian/remote/state/WakeOnLan.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Wire.kt",
             "src/main/kotlin/dev/vitruvian/remote/trackpad/Tuning.kt",
-            "src/main/kotlin/io/sentry/android/core/SentryAndroidOptions.kt",
         ],
     ),
     custom_package = "dev.vitruvian.remote",
@@ -100,6 +99,7 @@ kt_android_library(
         "@maven//:androidx_window_window",
         "@maven//:androidx_window_window_core",
         "@maven//:io_sentry_sentry",
+        "@maven//:io_sentry_sentry_android_core",
         "@maven//:org_jetbrains_kotlinx_kotlinx_coroutines_android",
     ],
 )
@@ -260,11 +260,11 @@ kt_jvm_test(
 # than carrying a copy of them.
 kt_jvm_library(
     name = "app_info",
-    srcs = [
-        "src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt",
-        "src/main/kotlin/io/sentry/android/core/SentryAndroidOptions.kt",
+    srcs = ["src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt"],
+    deps = [
+        "@maven//:io_sentry_sentry",
+        "@maven//:io_sentry_sentry_android_core",
     ],
-    deps = ["@maven//:io_sentry_sentry"],
 )
 
 kt_jvm_test(
@@ -281,9 +281,11 @@ kt_jvm_test(
         "src/main/res/**",
     ]),
     test_class = "dev.vitruvian.remote.state.AppInfoTest",
+    runtime_deps = [":android_sdk_stub_jar"],
     deps = [
         ":app_info",
         "@maven//:io_sentry_sentry",
+        "@maven//:io_sentry_sentry_android_core",
         "@maven//:junit_junit",
     ],
 )
@@ -323,6 +325,7 @@ kt_jvm_test(
         "src/main/kotlin/dev/vitruvian/remote/shell/*.kt",
     ]),
     test_class = "dev.vitruvian.remote.state.DeriveTest",
+    runtime_deps = [":android_sdk_stub_jar"],
     deps = [
         ":app_info",
         ":derive",
@@ -331,6 +334,8 @@ kt_jvm_test(
         ":lib",
         ":wire",
         "//packages/design-system-android:lib",
+        "@maven//:io_sentry_sentry",
+        "@maven//:io_sentry_sentry_android_core",
         "@maven//:junit_junit",
     ],
 )

@@ -66,7 +66,7 @@ import dev.vitruvian.design.VitruvianTheme
 
 public class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
-    WatchSentry.init("vitruvian-watch-remote")
+    WatchSentry.init(this, "vitruvian-watch-remote")
     super.onCreate(savedInstanceState)
     setContent { VitruvianTheme { WristRemoteScreen() } }
   }

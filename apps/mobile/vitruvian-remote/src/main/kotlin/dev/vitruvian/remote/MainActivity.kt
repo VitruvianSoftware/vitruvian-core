@@ -68,6 +68,7 @@ import dev.vitruvian.remote.state.Notifier
 import dev.vitruvian.remote.state.Persistence
 import dev.vitruvian.remote.state.PhoneClipboard
 import dev.vitruvian.remote.state.RemoteState
+import io.sentry.android.core.SentryAndroid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -209,12 +210,15 @@ public class MainActivity : ComponentActivity() {
     }
     val sentryDsn = System.getenv("SENTRY_DSN") ?: AppInfo.DEFAULT_SENTRY_DSN
     val device = readCrashReportDeviceDetails()
-    AppInfo.initSentry(
-        dsn = sentryDsn,
-        appVersion = appVersion,
-        device = device,
-        appCacheDir = cacheDir,
-    )
+    SentryAndroid.init(this) { options ->
+      AppInfo.configureSentryOptions(
+          options = options,
+          dsn = sentryDsn,
+          appVersion = appVersion,
+          device = device,
+          appCacheDir = cacheDir,
+      )
+    }
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
