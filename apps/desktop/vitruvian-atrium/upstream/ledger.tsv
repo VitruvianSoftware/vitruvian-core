@@ -538,7 +538,7 @@ da971fd4b7923f6db0bfced82fb25765a4ad7a61	3cb625882722e2adec5720e9bb7512c1061d316
 c5930bfc6fc64d48337c7717ddb7891826f7a54a	0efb0fdd1c20869126b6b4cf18a31ca7c9b10a97	2026-11-04	ported	#4732	fix(notch): hide over an app's own full screen on every display (#3686)
 3afcd0222dd1dfc8b76c8c3782599cba60e44b62	ae744230d0f8c042f5f66a72653270b34c96f6c7	2026-11-04	ported	#4710	fix(recorder): stop compiling GPU programs for every exported frame (#3648)
 b1ffc9d9010eb567d6ebfdd3af26224e322726b7	2cdc059fc51cc59b3eb915ca25eb5153e36fd49b	2026-11-04	ported	#4710	fix(mixer): slide the volume across a block instead of stepping it (#3538)
-73b4846f52a938e1b924abae285813b702459980	801eafc241a6a2ac7342bce12fcf799681878ee4	2026-11-05	pending	-	perf(switcher): reduce quick-switch latency and minimized-window flashes (#3570)
+73b4846f52a938e1b924abae285813b702459980	801eafc241a6a2ac7342bce12fcf799681878ee4	2026-11-05	ported	#4955	perf(switcher): reduce quick-switch latency and minimized-window flashes (#3570)
 d257dfd208634981cef9856e9bd291ec6eab7966	9eca256c08e3eb7df329dbc402a6538df4ecc3d7	2026-11-05	ported	#4710	fix(mouse): focus without raising again when the no-raise path fails (#3737)
 2806d2bcc11f52de78f5786d6e618df147dea414	3968aeb37e67e41b3e676f76dc46b83ab8cb4650	2026-11-05	ported	#4710	fix(window-layout): resolve gesture targets when child hit tests fail (#3773)
 ab7e57131ebbb86135d09917c2b81b8a165f69be	f3d73a7c17384c732a43c6b5ce580b008837fc79	2026-11-04	ported	#4732	fix(switcher): keep the shortcut working under secure input (#3643)
