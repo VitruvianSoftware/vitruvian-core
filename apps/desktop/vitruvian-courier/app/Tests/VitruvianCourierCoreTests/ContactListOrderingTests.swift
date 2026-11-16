@@ -188,4 +188,26 @@ final class ContactListOrderingTests: XCTestCase {
         XCTAssertEqual(sections.ordered.count, all.count - 1, "Only the duplicate number is dropped")
         XCTAssertEqual(Set(sections.ordered.map(\.id)).count, sections.ordered.count)
     }
+
+    func testSameLastTenDigitsFromDifferentCountryCodesAreDifferentNumbers() {
+        let alice = candidate("Alice", identifiers: ["+44 7911 123456"])
+        let stranger = candidate("(791) 112-3456")
+        XCTExpectFailure(
+            "phoneKey keeps only the last 10 digits, so a UK number matches a US number; remove this XCTExpectFailure wrapper when fixed"
+        ) {
+            XCTAssertEqual(ContactListOrdering.sections([stranger, alice]).other, [stranger])
+        }
+    }
+
+    func testFiveOrSixDigitShortCodeIsNotAName() {
+        let shortCode = candidate("32665")
+        let bea = candidate("Bea")
+        let sections = ContactListOrdering.sections([shortCode, bea])
+        XCTExpectFailure(
+            "phoneDigits needs 7 digits, so a short code counts as a name and sorts above the named people; remove this XCTExpectFailure wrapper when fixed"
+        ) {
+            XCTAssertEqual(sections.named.map(\.name), ["Bea"])
+            XCTAssertEqual(sections.other.map(\.name), ["32665"])
+        }
+    }
 }
