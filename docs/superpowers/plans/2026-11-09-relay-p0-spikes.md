@@ -10,7 +10,7 @@ Each spike ends in a written yes or no with evidence. This file is the record.
 
 | Spike | Question | Status |
 |---|---|---|
-| A | Can ChatGPT and Claude add an OAuth-protected MCP on our domain, with Zitadel sign-in? | **Claude: yes, live** (2026-11-11, claude.ai). ChatGPT: yes on paper for one user, needs open registration for many; not tried live |
+| A | Can ChatGPT, Claude and Gemini add an OAuth-protected MCP on our domain, with Zitadel sign-in? | **Claude: yes, live** (2026-11-11, claude.ai). **Gemini: yes, live** (2026-11-15, gemini.google.com; needs a client secret). ChatGPT: yes on paper for one user, needs open registration for many; not tried live |
 | B | Does Zitadel's device flow work from a command-line app? | **Yes** (2026-11-11), with `relay-spike-client login` |
 | C | Does a WebSocket through the Cloudflare Tunnel stay up for 24 hours? | **No for one connection, yes for the service** (2026-11-12). 10 drops in 24 hours, connected 99.3% of the time; reconnecting is mandatory |
 | D | Can a connector drive unmodified `desktop-commander` over stdio? | **Yes** (2026-11-12), version 0.3.1 run through Bazel. The connector must kill the whole process group, turn telemetry off and redirect its feature-flag fetch |
@@ -30,6 +30,27 @@ Each spike ends in a written yes or no with evidence. This file is the record.
 - Claude also sends `server/discover`, which the spike doesn't implement. Claude
   carried on without it; the relay should answer it.
 - Not yet tried: the Claude phone app.
+
+### A (Gemini): yes (live run, 2026-11-15)
+
+- Added in the Gemini web app as a custom connector (Settings → Connectors →
+  + Custom): URL `https://relay-spike.ipv1337.dev/mcp`, client id
+  `399781767172589504`, plus a client secret.
+- Unlike Claude, Gemini's form asks for a client **secret**, so `relay-gemini` is
+  the one confidential client (`client_secret_post`, #4776). Its callback is per
+  Google user, `https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-{id}`,
+  shown by the form's "Copy redirect URI" before the client exists. Gemini found
+  the authorization and token endpoints from the server's metadata, so the form
+  needs only the URL, client id and secret.
+- Sign-in went through Zitadel and back to Gemini. The server log shows
+  initialize, tools/list and a tools/call from client `399781767172589504` as
+  subject 378818267051722263 (16:03 PST). `echo "hello from Gemini"` came back
+  unchanged.
+- Gemini read the tool list correctly: asked for free disk space, it said the
+  spike only offers echo and whoami, and called nothing.
+- Getting here needed CI to reach Zitadel over Headscale (#4857), because the
+  homelab had moved off commercial Tailscale.
+- Not yet tried: the Gemini phone app.
 
 ### B: yes
 
@@ -240,7 +261,7 @@ subject.
 - [ ] **A (ChatGPT):** James starts adding the connector in ChatGPT and copies its
       callback into `chatgptRedirectUris`, then re-apply, then finish. Only if his
       plan allows custom MCP servers
-- [ ] **A (Gemini):** `relay-gemini` client (#4776, confidential,
+- [x] **A (Gemini):** `relay-gemini` client (#4776, confidential,
       `client_secret_post`; client id `399781767172589504`, applied 2026-11-15) with
       Gemini's callback; the spike accepts it in `mcpClientIds`. James pastes the
       client id and secret into Gemini (Settings → Connectors → + Custom, URL
