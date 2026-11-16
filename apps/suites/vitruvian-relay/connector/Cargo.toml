@@ -41,6 +41,7 @@ path = "src/main.rs"
 [dependencies]
 vitruvian-relay-protocol = { path = "../protocol" }
 base64 = "0.22"
+libc = "0.2"
 ring = "0.17"
 rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"] }
 rustls-native-certs = "0.8"

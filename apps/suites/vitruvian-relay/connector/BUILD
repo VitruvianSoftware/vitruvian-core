@@ -31,6 +31,7 @@ package(default_visibility = ["//apps/suites/vitruvian-relay:__subpackages__"])
 _CRATES = [
     "//apps/suites/vitruvian-relay/protocol:vitruvian_relay_protocol",
     "@vitruvian_relay_crates//:base64",
+    "@vitruvian_relay_crates//:libc",
     "@vitruvian_relay_crates//:ring",
     "@vitruvian_relay_crates//:rustls",
     "@vitruvian_relay_crates//:rustls-native-certs",

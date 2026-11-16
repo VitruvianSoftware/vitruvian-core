@@ -1009,6 +1009,7 @@ name = "vitruvian-relay-connector"
 version = "0.0.0"
 dependencies = [
  "base64",
+ "libc",
  "ring",
  "rustls",
  "rustls-native-certs",

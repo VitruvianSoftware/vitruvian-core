@@ -15,13 +15,16 @@
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 
 //! The "ask first" dialog, shown on this Mac with `osascript`.
 
 use std::io::Read;
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
-use std::thread::JoinHandle;
+use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
@@ -35,43 +38,64 @@ pub enum Answer {
     Deny,
 }
 
+/// How long past the dialog's own time limit we wait for osascript to exit
+/// before killing it.
+const GRACE: Duration = Duration::from_millis(500);
+/// After the dialog process is gone, how long to wait for its last output.
+const OUTPUT_WAIT: Duration = Duration::from_millis(500);
+
 /// A dialog that is showing (or failed to start, which answers `Deny`).
 pub struct PromptHandle {
     child: Option<Child>,
-    output: Option<JoinHandle<String>>,
-    /// Backstop in case osascript never gives up on its own.
+    output: Option<Receiver<String>>,
     deadline: Instant,
 }
 
+/// Kills the dialog's whole process group (it was started as its own group
+/// leader), so a child that inherited the output pipe dies with it.
+fn kill_group(child: &Child) {
+    let pgid = child.id() as i32;
+    if pgid > 1 {
+        // SAFETY: plain syscall on a group we created; no memory is touched.
+        unsafe {
+            libc::kill(-pgid, libc::SIGKILL);
+        }
+    }
+}
+
 impl PromptHandle {
-    /// Waits for the person's answer. Only a clean exit whose output says
-    /// "Allow" and "gave up:false" is `Allow`; timeout, failure or anything
-    /// else is `Deny`.
+    /// Waits for the person's answer, for at most the timeout plus a short
+    /// grace, however the dialog process behaves. Only a clean exit whose
+    /// output is exactly `button returned:Allow, gave up:false` is `Allow`;
+    /// timeout, failure or anything else is `Deny`.
     pub fn wait(mut self) -> Answer {
         let Some(mut child) = self.child.take() else {
             return Answer::Deny;
         };
-        let status = loop {
+        let success = loop {
             match child.try_wait() {
-                Ok(Some(s)) => break Some(s),
+                Ok(Some(s)) => break s.success(),
                 Ok(None) if Instant::now() < self.deadline => {
-                    std::thread::sleep(Duration::from_millis(25))
+                    std::thread::sleep(Duration::from_millis(20))
                 }
-                _ => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    break None;
-                }
+                _ => break false,
             }
         };
+        // Whatever the outcome, nothing the dialog started stays alive.
+        kill_group(&child);
+        let _ = child.wait();
+        if !success {
+            return Answer::Deny;
+        }
         let out = self
             .output
             .take()
-            .and_then(|h| h.join().ok())
+            .and_then(|rx| rx.recv_timeout(OUTPUT_WAIT).ok())
             .unwrap_or_default();
-        match status {
-            Some(s) if s.success() && is_allow(&out) => Answer::Allow,
-            _ => Answer::Deny,
+        if is_allow(&out) {
+            Answer::Allow
+        } else {
+            Answer::Deny
         }
     }
 
@@ -79,30 +103,33 @@ impl PromptHandle {
     /// elsewhere).
     pub fn dismiss(mut self) {
         if let Some(mut child) = self.child.take() {
-            let _ = child.kill();
+            kill_group(&child);
             let _ = child.wait();
-        }
-        if let Some(h) = self.output.take() {
-            let _ = h.join();
         }
     }
 }
 
-/// `osascript` prints e.g. `button returned:Allow, gave up:false`.
+/// `osascript` prints exactly this when the person clicks Allow.
 fn is_allow(out: &str) -> bool {
-    let out = out.trim();
-    out.contains("button returned:Allow,") && out.ends_with("gave up:false")
+    out.trim() == "button returned:Allow, gave up:false"
 }
 
-pub fn ask(tool: &str, summary: &str, timeout: Duration) -> PromptHandle {
-    ask_with(Path::new(OSASCRIPT), tool, summary, timeout)
+pub fn ask(_tool: &str, summary: &str, timeout: Duration) -> PromptHandle {
+    ask_with(Path::new(OSASCRIPT), summary, timeout)
 }
+
+/// Spawn attempts. Tests write a fake script and run it from parallel
+/// threads, which can briefly fail with "text file busy"; production runs a
+/// binary that is not being written, so one attempt.
+#[cfg(test)]
+const SPAWN_TRIES: u32 = 20;
+#[cfg(not(test))]
+const SPAWN_TRIES: u32 = 1;
 
 /// Like [`ask`] with the `osascript` path given (tests use a fake). The script
 /// is fixed; `summary` and the seconds travel as arguments, so nothing in the
-/// summary can be read as script. `tool` is already part of `summary`
-/// (see [`summarize`]) and is not used separately.
-pub fn ask_with(osascript: &Path, _tool: &str, summary: &str, timeout: Duration) -> PromptHandle {
+/// summary can be read as script. The dialog runs in its own process group.
+pub fn ask_with(osascript: &Path, summary: &str, timeout: Duration) -> PromptHandle {
     let secs = timeout.as_secs().max(1);
     let mut cmd = Command::new(osascript);
     cmd.args(["-e", "on run argv", "-e"])
@@ -113,14 +140,13 @@ pub fn ask_with(osascript: &Path, _tool: &str, summary: &str, timeout: Duration)
         .args(["-e", "end run", "--"])
         .arg(summary)
         .arg(secs.to_string())
+        .process_group(0)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
-    let deadline = Instant::now() + Duration::from_secs(secs) + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(secs) + GRACE;
     let mut spawned = None;
-    // A just-written script can briefly be "text file busy" while another
-    // thread forks; retry that, and treat any other failure as no answer.
-    for _ in 0..20 {
+    for _ in 0..SPAWN_TRIES {
         match cmd.spawn() {
             Ok(c) => {
                 spawned = Some(c);
@@ -138,41 +164,85 @@ pub fn ask_with(osascript: &Path, _tool: &str, summary: &str, timeout: Duration)
         };
     };
     let mut stdout = child.stdout.take();
-    let output = std::thread::spawn(move || {
+    let (tx, rx) = mpsc::channel();
+    // Detached: if a straggler holds the pipe open this thread ends when the
+    // group is killed; nobody waits for it past the deadline.
+    std::thread::spawn(move || {
         let mut s = String::new();
         if let Some(o) = stdout.as_mut() {
             let _ = o.read_to_string(&mut s);
         }
-        s
+        let _ = tx.send(s);
     });
     PromptHandle {
         child: Some(child),
-        output: Some(output),
+        output: Some(rx),
         deadline,
     }
 }
 
 const MAX_FIELD: usize = 200;
 
-fn clean(s: &str) -> String {
-    s.chars()
-        .filter(|c| !c.is_control())
-        .take(MAX_FIELD)
-        .collect()
+/// Characters that show nothing or change how the text reads: controls
+/// (Cc), the line and paragraph separators (Zl, Zp), and the invisible
+/// formatting characters (Cf: zero-width, bidi overrides and isolates,
+/// BOM, soft hyphen, tag characters).
+fn is_hidden_char(c: char) -> bool {
+    c.is_control()
+        || matches!(c,
+            '\u{00AD}' | '\u{0600}'..='\u{0605}' | '\u{061C}' | '\u{06DD}' | '\u{070F}'
+            | '\u{0890}'..='\u{0891}' | '\u{08E2}' | '\u{180E}' | '\u{200B}'..='\u{200F}'
+            | '\u{2028}'..='\u{202E}' | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206F}'
+            | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}' | '\u{110BD}' | '\u{110CD}'
+            | '\u{13430}'..='\u{1343F}' | '\u{1BCA0}'..='\u{1BCA3}'
+            | '\u{1D173}'..='\u{1D17A}' | '\u{E0001}' | '\u{E0020}'..='\u{E007F}')
 }
 
-fn field(v: &Value) -> String {
-    match v {
+/// Hidden characters removed, runs of whitespace made one space (so padding
+/// cannot push text out of view), then cut to 200 characters. A cut ends with
+/// "…" and says how much was dropped, so it never reads as complete.
+fn clean(s: &str) -> String {
+    let mut out = String::new();
+    let mut space = false;
+    for c in s.chars().filter(|c| !is_hidden_char(*c)) {
+        if c.is_whitespace() {
+            space = true;
+            continue;
+        }
+        if space && !out.is_empty() {
+            out.push(' ');
+        }
+        space = false;
+        out.push(c);
+    }
+    let total = out.chars().count();
+    if total <= MAX_FIELD {
+        return out;
+    }
+    let mut cut: String = out.chars().take(MAX_FIELD).collect();
+    cut.push_str(&format!(
+        "… (truncated, {} more characters)",
+        total - MAX_FIELD
+    ));
+    cut
+}
+
+/// A key argument as text; `None` when it is absent, empty or not a scalar.
+fn field(v: &Value) -> Option<String> {
+    let s = match v {
         Value::String(s) => clean(s),
         Value::Number(n) => clean(&n.to_string()),
         Value::Bool(b) => b.to_string(),
-        _ => String::new(),
-    }
+        _ => return None,
+    };
+    (!s.is_empty()).then_some(s)
 }
 
-/// What the dialog shows: the tool name and its key arguments, each cut to
-/// 200 characters with control characters removed. Names are checked against
-/// the pinned desktop-commander in Task 7.
+/// What the dialog shows: the tool name and its key arguments, each cleaned
+/// and cut to 200 characters (see [`clean`]). If a key argument is missing or
+/// is not plain text, the person sees everything that was sent instead, with
+/// a note of what was missing, so a renamed argument is never approved
+/// blind. Names are checked against the pinned desktop-commander in Task 7.
 pub fn summarize(tool: &str, args: &Value) -> String {
     let keys: &[&str] = match tool {
         "start_process" => &["command"],
@@ -183,23 +253,28 @@ pub fn summarize(tool: &str, args: &Value) -> String {
         "create_directory" => &["path"],
         "kill_process" | "force_terminate" => &["pid"],
         "write_pdf" => &["outputPath"],
-        _ => {
-            let json = serde_json::to_string(args).unwrap_or_default();
-            return format!("{}: {}", clean(tool), clean(&json));
-        }
+        _ => &[],
     };
-    let parts: Vec<String> = keys
-        .iter()
-        .filter_map(|k| {
-            let v = field(args.get(*k).unwrap_or(&Value::Null));
-            (!v.is_empty()).then(|| format!("{k}={v}"))
-        })
-        .collect();
-    if parts.is_empty() {
-        clean(tool)
-    } else {
-        format!("{}: {}", clean(tool), parts.join(", "))
+    let mut parts = Vec::new();
+    let mut missing = None;
+    for k in keys {
+        match args.get(*k).and_then(field) {
+            Some(v) => parts.push(format!("{k}={v}")),
+            None => {
+                missing = Some(*k);
+                break;
+            }
+        }
     }
+    let name = clean(tool);
+    if keys.is_empty() || missing.is_some() {
+        let json = serde_json::to_string(args).unwrap_or_default();
+        return match missing {
+            Some(k) => format!("{name} (no {k}): {}", clean(&json)),
+            None => format!("{name}: {}", clean(&json)),
+        };
+    }
+    format!("{name}: {}", parts.join(", "))
 }
 
 #[cfg(test)]
@@ -241,8 +316,43 @@ mod tests {
         parts
     }
 
+    fn ask_t(script: &Path, summary: &str, timeout: Duration) -> PromptHandle {
+        ask_with(script, summary, timeout)
+    }
+
     fn run(script: &Path, summary: &str) -> Answer {
-        ask_with(script, "start_process", summary, Duration::from_secs(7)).wait()
+        ask_t(script, summary, Duration::from_secs(7)).wait()
+    }
+
+    fn script_in(name: &str, body: &str) -> (PathBuf, PathBuf) {
+        let dir = test_dir(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("osascript");
+        std::fs::write(&script, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        (script, dir)
+    }
+
+    fn pid_gone(pid: i32) -> bool {
+        for _ in 0..40 {
+            if unsafe { libc::kill(pid, 0) } != 0 {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        false
+    }
+
+    fn read_pid(dir: &Path) -> i32 {
+        for _ in 0..40 {
+            if let Ok(t) = std::fs::read_to_string(dir.join("pid")) {
+                if let Ok(p) = t.trim().parse() {
+                    return p;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        panic!("no pid file");
     }
 
     #[test]
@@ -278,7 +388,7 @@ mod tests {
     fn prompt_passes_summary_as_argument() {
         let (s, out) = fake("p-argv", "button returned:Allow, gave up:false", 0);
         let nasty = "rm \"a\" \\ b\nline2 ' $(x) `y`";
-        ask_with(&s, "start_process", nasty, Duration::from_secs(60)).wait();
+        ask_t(&s, nasty, Duration::from_secs(60)).wait();
         let a = argv(&out);
         assert_eq!(
             a[..6],
@@ -302,16 +412,69 @@ mod tests {
     }
 
     #[test]
-    fn dismiss_kills_a_pending_dialog() {
-        let dir = test_dir("p-dismiss");
-        std::fs::create_dir_all(&dir).unwrap();
-        let script = dir.join("osascript");
-        std::fs::write(&script, "#!/bin/sh\nsleep 30\n").unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let t = std::time::Instant::now();
-        let h = ask_with(&script, "start_process", "x", Duration::from_secs(60));
+    fn dismiss_kills_the_dialog_and_its_child() {
+        let (script, dir) = script_in(
+            "p-dismiss",
+            "sleep 30 &\necho $! > \"$(dirname \"$0\")/pid\"\nsleep 30",
+        );
+        let h = ask_t(&script, "x", Duration::from_secs(60));
+        let pid = read_pid(&dir); // the child has started
+        let t = Instant::now();
         h.dismiss();
-        assert!(t.elapsed() < Duration::from_secs(10));
+        assert!(t.elapsed() < Duration::from_secs(1), "{:?}", t.elapsed());
+        assert!(pid_gone(pid), "child {pid} outlived dismiss");
+    }
+
+    #[test]
+    fn deadline_is_a_hard_limit_even_with_a_lingering_child() {
+        // The fake neither exits nor gives up, and a child holds stdout.
+        let (script, dir) = script_in(
+            "p-hard",
+            "sleep 30 &\necho $! > \"$(dirname \"$0\")/pid\"\nsleep 30",
+        );
+        let t = Instant::now();
+        let ans = ask_t(&script, "x", Duration::from_secs(1)).wait();
+        assert_eq!(ans, Answer::Deny);
+        assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+        assert!(pid_gone(read_pid(&dir)), "child outlived the deadline");
+    }
+
+    #[test]
+    fn deadline_backstop_denies_a_dialog_that_never_answers() {
+        let (script, _) = script_in("p-backstop", "sleep 30");
+        let t = Instant::now();
+        assert_eq!(
+            ask_t(&script, "x", Duration::from_secs(1)).wait(),
+            Answer::Deny
+        );
+        assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+    }
+
+    #[test]
+    fn a_lingering_child_after_a_real_answer_does_not_delay_it() {
+        let (script, dir) = script_in(
+            "p-linger",
+            "sleep 30 &\necho $! > \"$(dirname \"$0\")/pid\"\necho 'button returned:Allow, gave up:false'",
+        );
+        let t = Instant::now();
+        assert_eq!(
+            ask_t(&script, "x", Duration::from_secs(60)).wait(),
+            Answer::Allow
+        );
+        assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+        assert!(pid_gone(read_pid(&dir)));
+    }
+
+    #[test]
+    fn allow_output_must_match_exactly() {
+        for out in [
+            "button returned:Deny, gave up:false button returned:Allow, gave up:false",
+            "xbutton returned:Allow, gave up:false",
+            "button returned:Allow, gave up:false extra",
+        ] {
+            let (s, _) = fake("p-exact", out, 0);
+            assert_eq!(run(&s, "x"), Answer::Deny, "{out}");
+        }
     }
 
     #[test]
@@ -373,17 +536,67 @@ mod tests {
             &json!({"command": "a\nb\tc\u{1b}[31md\u{0}e"}),
         );
         assert!(!m.chars().any(|c| c.is_control()), "{m:?}");
-        let m = summarize("mystery", &json!({"k": "y".repeat(500)}));
-        // Name, then at most 200 characters of JSON.
-        assert!(
-            m.chars().count() <= "mystery".len() + 2 + 200 + 2,
-            "{}",
-            m.len()
-        );
         // Cutting counts characters, not bytes: no panic on multi-byte text.
         let _ = summarize("start_process", &json!({"command": "é".repeat(300)}));
         // Missing or odd arguments do not panic.
         let _ = summarize("start_process", &json!(null));
         let _ = summarize("kill_process", &json!({"pid": {"x": 1}}));
+    }
+
+    #[test]
+    fn summary_strips_invisible_and_format_characters() {
+        let nasty = "a\u{2028}b\u{2029}c\u{202A}d\u{202D}e\u{202E}f\u{2066}g\u{2067}h\u{2068}i\u{2069}j\u{200B}k\u{200E}l\u{200F}m\u{FEFF}n\u{00AD}o\u{2060}p\u{E0041}q";
+        let m = summarize("start_process", &json!({ "command": nasty }));
+        assert_eq!(m, "start_process: command=abcdefghijklmnopq");
+        let m = summarize("mystery", &json!({ "k": "x\u{202E}y" }));
+        assert!(!m.contains('\u{202E}'), "{m:?}");
+    }
+
+    #[test]
+    fn summary_collapses_whitespace_runs() {
+        let m = summarize(
+            "start_process",
+            &json!({ "command": format!("ls{}; rm -rf ~", " ".repeat(300)) }),
+        );
+        assert!(m.contains("ls ; rm -rf ~"), "{m}");
+    }
+
+    #[test]
+    fn truncation_is_marked() {
+        let m = summarize(
+            "start_process",
+            &json!({ "command": format!("echo {}", "a".repeat(300)) }),
+        );
+        assert!(m.contains('…'), "{m}");
+        assert!(m.contains("truncated"), "{m}");
+        let m = summarize("mystery", &json!({ "k": "y".repeat(500) }));
+        assert!(m.contains('…') && m.contains("truncated"), "{m}");
+        // A field that fits is not marked.
+        let m = summarize("start_process", &json!({ "command": "ls" }));
+        assert!(!m.contains('…') && !m.contains("truncated"), "{m}");
+        let m = summarize("start_process", &json!({ "command": "x".repeat(200) }));
+        assert!(!m.contains("truncated"), "{m}");
+    }
+
+    #[test]
+    fn missing_key_argument_shows_what_was_sent() {
+        let m = summarize(
+            "start_process",
+            &json!({ "cmd": "rm -rf ~", "shell": "/bin/zsh" }),
+        );
+        assert!(m.contains("no command"), "{m}");
+        assert!(m.contains("rm -rf ~") && m.contains("/bin/zsh"), "{m}");
+        for args in [
+            json!({"command": ["a"]}),
+            json!({"command": {"x": 1}}),
+            json!({"command": ""}),
+            json!(null),
+        ] {
+            let m = summarize("start_process", &args);
+            assert!(m.contains("no command"), "{m}");
+        }
+        // A tool with two keys where one is missing also falls back.
+        let m = summarize("move_file", &json!({ "source": "/a" }));
+        assert!(m.contains("no destination") && m.contains("/a"), "{m}");
     }
 }

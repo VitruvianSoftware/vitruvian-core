@@ -15,6 +15,8 @@
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 
 //! The local rules: which `desktop-commander` tools the relay may see, which
 //! run without asking, and which ask first. The file lives on this Mac, is
@@ -98,14 +100,17 @@ pub fn reload(dir: &Path, current: &Rules, tools: &[ToolDef]) -> Result<Reloaded
 }
 
 impl Rules {
-    /// Never shown and never callable: named in `hidden`, or any other tool
-    /// whose name contains "config" unless `config_allow` names it. The
-    /// explicit list wins over `config_allow`.
+    /// Never shown and never callable: named in `hidden` (ignoring case and
+    /// surrounding spaces), or any other tool whose name contains "config"
+    /// unless `config_allow` names it exactly. The explicit list wins over
+    /// `config_allow`. `no_prompt` and `config_allow` stay exact-match: a
+    /// near-miss there is the safe direction (it asks, or stays hidden).
     pub fn is_hidden(&self, tool: &str) -> bool {
-        if self.hidden.iter().any(|h| h == tool) {
+        let norm = tool.trim().to_lowercase();
+        if self.hidden.iter().any(|h| h.trim().to_lowercase() == norm) {
             return true;
         }
-        tool.to_ascii_lowercase().contains("config") && !self.config_allow.iter().any(|a| a == tool)
+        norm.contains("config") && !self.config_allow.iter().any(|a| a == tool)
     }
 
     /// The tools the relay may see. While paused, none.
@@ -316,5 +321,27 @@ mod tests {
             std::fs::write(rules_path(&dir), bad).unwrap();
             assert!(load(&dir).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn hidden_list_ignores_case_and_whitespace() {
+        let mut r = defaults();
+        r.hidden.push("start_process".into());
+        for t in [
+            "start_process",
+            "Start_Process",
+            " start_process ",
+            "START_PROCESS\t",
+        ] {
+            assert!(r.is_hidden(t), "{t:?}");
+            assert!(matches!(r.decide(t), Decision::Refuse(_)), "{t:?}");
+        }
+        assert!(r.visible(&[tool("Start_Process")]).is_empty());
+        // A hidden entry written with odd case or spaces still matches.
+        let mut r = defaults();
+        r.hidden = vec!["  Edit_Block ".into()];
+        assert!(r.is_hidden("edit_block"));
+        // The no_prompt list stays exact: a near-miss still asks.
+        assert_eq!(r.decide(" read_file"), Decision::AskFirst);
     }
 }
