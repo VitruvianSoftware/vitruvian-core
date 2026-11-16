@@ -135,7 +135,7 @@ Pull the verifier out of the Slack MCP so the relay doesn't copy it (§5), and
 let one verifier accept several client ids.
 
 **Files:**
-- Create: `packages/rust/vitruvian-mcp-auth/{Cargo.toml,BUILD,src/lib.rs,src/verifier.rs,src/prm.rs}`
+- Create: `packages/rust/vitruvian-mcp-auth/{Cargo.toml,BUILD,src/lib.rs,src/verifier.rs,src/prm.rs}`. Its `Cargo.toml` has its own empty `[workspace]` table, as slack-mcp's does, so cargo doesn't treat it as an unlisted member of the repo-root workspace when the relay path-depends on it
 - Create: `apps/suites/vitruvian-relay/{BUILD,Cargo.toml,Cargo.lock}` (the BUILD makes the folder a package, so `MODULE.bazel` can name `//apps/suites/vitruvian-relay:Cargo.toml` and `:Cargo.lock`, as it names the spike's; the workspace's member list grows in later tasks, and `vitruvian-mcp-auth` is a `path` dependency of the crates that use it, not a member)
 - Modify: `MODULE.bazel`: add hub `vitruvian_relay_crates`, and add it to the `repositories` list of the `ring` `crate.annotation` (every hub that builds ring is listed there, the spike's included). Keep the spike hub until the spike is retired (Task 10), which removes it from both places.
 - Test: `packages/rust/vitruvian-mcp-auth/src/verifier.rs` (`#[cfg(test)]`)
@@ -165,7 +165,7 @@ cooldown, `iss` exact, `exp`/`nbf` 30 s skew, `aud` contains `project_id`,
   `urn:zitadel:iam:org:project:id:<id>:aud`).
 - [ ] **Step 2:** `bazel test //packages/rust/vitruvian-mcp-auth:unit_tests` → FAIL (crate missing).
 - [ ] **Step 3: Implement** the crate; add the hub, re-lock with
-  `bazel run //tools/crates:lock -- --dir apps/suites/vitruvian-relay`, then `bazel run //:gazelle`.
+  `bazel run //tools/crates:lock -- --dir apps/suites/vitruvian-relay`, then `bazel run //:gazelle` and confirm it changes nothing under `apps/suites/vitruvian-relay` or `packages/rust/vitruvian-mcp-auth` (the spike's BUILD is hand-written). If it does, add `# gazelle:exclude` for those folders to the root `BUILD.bazel`.
 - [ ] **Step 4:** the same test → PASS; `bazel run //tools/crates:lock -- --dir apps/suites/vitruvian-relay --check` → clean.
 - [ ] **Step 5: Commit** `feat(relay): shared MCP token checking crate`.
 
@@ -330,6 +330,7 @@ device replaces the old one (its pending calls fail `Disconnected`).
 
 **Interfaces:**
 - Produces:
+  - `struct BridgeCommand { node: PathBuf, entry: PathBuf }` — where `node` and `desktop-commander`'s `dist/index.js` are. `BridgeCommand::locate()` reads `~/.local/share/vrelay/bridge.json` (`{"node": "...", "entry": "..."}`, written by the installer in Task 9); under `bazel run` it uses the runfiles path of the pinned package and the `node` on `PATH`.
   - `struct Bridge`, `Bridge::start(cmd: &BridgeCommand) -> Result<Bridge>`; `async fn tools(&self) -> Vec<ToolDef>`; `async fn call(&self, tool: &str, args: Value, deadline: Instant) -> BridgeOutput`; `fn stop(self)`.
   - `struct BridgeOutput { content: Value, is_error: bool, truncated: bool }` — Task 8 wraps it with the `call_id` into a `CallResult`.
   - Start: `Command::process_group(0)`, env `DESKTOP_COMMANDER_DISABLE_TELEMETRY=1`, `DC_FLAG_URL=http://127.0.0.1:9/`, stdin/stdout piped, stderr to the connector log. Check `node --version` ≥ 22.12 first and fail with how to install it.
@@ -380,6 +381,9 @@ device replaces the old one (its pending calls fail `Disconnected`).
 - [ ] **Step 1: Tests** with an in-process fake relay (tokio-tungstenite server):
   `sends_hello_with_visible_tools_only`, `repeated_call_id_runs_once`,
   `ask_first_denied_returns_error`, `repeated_call_id_after_restart_is_refused`,
+  `concurrent_calls_are_answered_by_id` (two calls in flight, the fake
+  bridge finishes them in reverse order, each `result` carries its own
+  `call_id`),
   `cancel_during_prompt_never_runs`
   (cancel arrives while the fake dialog is open: dialog dismissed, bridge never
   called, even if the fake then answers Allow), `reconnects_with_jittered_backoff`
@@ -399,7 +403,7 @@ Follow `apps/mobile/vitruvian-remote/macagent/scripts` (`render_plist`,
 `launchctl bootout` / `bootstrap gui/<uid>` / `enable`).
 
 **Interfaces:**
-- Produces: `bazel run //apps/suites/vitruvian-relay/connector:install` — copies `vrelay` and the pinned `desktop-commander` runfiles to `~/.local/share/vrelay/`, signs the binary with the Developer ID identity (identifier `dev.vitruvian.vrelay`; every Mac app here is Developer ID-signed). If `security find-identity -p codesigning` doesn't list it, the install **fails** with how to get it, unless `--unsigned` is passed explicitly. Resolves the absolute path of `node` (≥ 22.12) at install time and writes it into the plist's `EnvironmentVariables` `PATH` (its folder, then `/usr/bin:/bin`), because launchd starts agents with a minimal `PATH` that usually lacks Homebrew or mise. Writes the plist from the template at `connector/scripts/com.vitruvian.vrelay.plist`, with label `com.vitruvian.vrelay`, `KeepAlive` true and log `~/Library/Logs/vrelay/vrelay.log`, and loads it. `:uninstall` reverses it.
+- Produces: `bazel run //apps/suites/vitruvian-relay/connector/scripts:install` — copies `vrelay` and the pinned `desktop-commander` package to `~/.local/share/vrelay/` and writes `~/.local/share/vrelay/bridge.json` with the absolute `node` path and `desktop-commander/dist/index.js` path (Task 7's `BridgeCommand::locate`), signs the binary with the Developer ID identity (identifier `dev.vitruvian.vrelay`; every Mac app here is Developer ID-signed). If `security find-identity -p codesigning` doesn't list it, the install **fails** with how to get it, unless `--unsigned` is passed explicitly. Resolves the absolute path of `node` (≥ 22.12) at install time and writes it into the plist's `EnvironmentVariables` `PATH` (its folder, then `/usr/bin:/bin`), because launchd starts agents with a minimal `PATH` that usually lacks Homebrew or mise. Writes the plist from the template at `connector/scripts/com.vitruvian.vrelay.plist`, with label `com.vitruvian.vrelay`, `KeepAlive` true and log `~/Library/Logs/vrelay/vrelay.log`, and loads it. `//apps/suites/vitruvian-relay/connector/scripts:uninstall` reverses it.
 
 - [ ] **Step 1: Tests** `render_plist_fills_paths_and_args`, `plist_path_includes_node_dir`, `install_fails_without_identity`, `unsigned_flag_skips_signing_with_warning`.
 - [ ] **Step 2:** `bazel test //apps/suites/vitruvian-relay/connector/scripts:unit_tests` → FAIL.
@@ -410,7 +414,7 @@ Follow `apps/mobile/vitruvian-remote/macagent/scripts` (`render_plist`,
 ### Task 10: Deploy the relay, Zitadel changes, retire the spike
 
 **Files:**
-- Create: `gitops/argocd/projects/relay-project.yaml` (from `relay-spike-project.yaml`, adding `PersistentVolumeClaim` to `namespaceResourceWhitelist`, or Argo CD refuses the volume), `tools/ci/chart-render/vitruvian-relay.values.yaml` (from the spike's, so CI renders the new chart), `apps/suites/vitruvian-relay/relay/Dockerfile`, `relay/deploy/chart/` (Service, HTTPRoute, DNSEndpoint for `relay.ipv1337.dev`, NetworkPolicy and the `affinity` value copied from the spike's chart, with the HTTPRoute also passing `/devices`, which the spike's route lacks; the affinity *rule* itself comes from `gitops/argocd/platform/relay-spike/values.yaml`; new: a 1 GiB PVC mounted at `/data` for the device file), `gitops/argocd/applications/relay.yaml`, `gitops/argocd/platform/relay/values.yaml` (with the #4916 allow-list affinity; `MCP_CLIENT_IDS` = the `claudeClientId` and `geminiClientId` outputs), image build workflow mirroring `vitruvian-relay-spike-image`
+- Create: `gitops/argocd/projects/relay-project.yaml` (from `relay-spike-project.yaml`, with its destination namespace changed to `relay` and `PersistentVolumeClaim` added to `namespaceResourceWhitelist`, or Argo CD refuses the volume), `tools/ci/chart-render/vitruvian-relay.values.yaml` (from the spike's; CI finds it by chart name, so the chart is named `vitruvian-relay` in `Chart.yaml`), `apps/suites/vitruvian-relay/relay/Dockerfile` (builds with a second named build context, `mcpauth=packages/rust/vitruvian-mcp-auth`, the way the spike's uses `slackmcp`, because the path dependency sits outside the relay folder; the image workflow passes `--build-context mcpauth=…` everywhere the spike's passes `slackmcp`), `relay/deploy/chart/` (Service, HTTPRoute, DNSEndpoint for `relay.ipv1337.dev`, NetworkPolicy and the `affinity` value copied from the spike's chart, with the HTTPRoute also passing `/devices` (match type `Exact`), which the spike's route lacks, and `/mcp/d/` as a `PathPrefix`; the affinity *rule* itself comes from `gitops/argocd/platform/relay-spike/values.yaml`; new: a 1 GiB PVC mounted at `/data` for the device file, with `storageClassName: nfs`. The default `local-path` class would pin the volume, and so the pod, to one node, defeating the three-node allow list), `gitops/argocd/applications/relay.yaml`, `gitops/argocd/platform/relay/values.yaml` (with the #4916 allow-list affinity; `MCP_CLIENT_IDS` = the `claudeClientId` and `geminiClientId` outputs), image build workflow mirroring `vitruvian-relay-spike-image`
 - Modify: `infrastructure/pulumi/platform/zitadel-apps-relay/` for one sign-in
   (P1-required). The pinned `pulumi-zitadel` SDK v0.2.0 has no per-app
   login-version field. In order:
@@ -435,8 +439,8 @@ Follow `apps/mobile/vitruvian-remote/macagent/scripts` (`render_plist`,
 
 Manual, with James.
 
-- [ ] **Step 1:** `vrelay login` first (`bazel run //apps/suites/vitruvian-relay/connector:vrelay -- login`; one sign-in if Login V2 landed). It prints the MCP URL. Then `bazel run //apps/suites/vitruvian-relay/connector:install`, and `vrelay status` shows connected.
-- [ ] **Step 2:** James adds that URL in Claude (web) as a custom connector with the `relay-claude` client id and signs in.
+- [ ] **Step 1:** `vrelay login` first (`bazel run //apps/suites/vitruvian-relay/connector:vrelay -- login`; one sign-in if Login V2 landed). It prints the MCP URL. Then `bazel run //apps/suites/vitruvian-relay/connector/scripts:install`, and `vrelay status` shows connected.
+- [ ] **Step 2:** James adds that URL in Claude (web) as a custom connector with the `relay-claude` client id (`398912442404439866`, the `claudeClientId` output) and signs in.
 - [ ] **Step 3:** From the **Claude phone app**: "list the files in my Downloads folder" runs without a prompt (a read). Relay log shows `tools/call` from client `398912442404439866`, no arguments.
 - [ ] **Step 4:** From the phone: "run `uname -a`". The "Allow?" dialog appears on the Mac; Allow → the output comes back to the phone. Repeat and Deny → Claude shows "Denied on the computer."
 - [ ] **Step 5:** Leave a "run" request's dialog unanswered for 60 s: Claude
