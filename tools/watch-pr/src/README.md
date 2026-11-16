@@ -18,6 +18,8 @@ Component package providing implementation for `tools/watch-pr/src`.
 - `[post_merge.rs:EXIT_FAILED]`
 - `[post_merge.rs:EXIT_TIMEOUT]`
 - `[post_merge.rs:decide]`
+- `[post_merge.rs:Report]`
+- `[post_merge.rs:read_report]`
 - `[pyjson.rs:Value]`
 - `[pyjson.rs:float_repr]`
 - `[pyjson.rs:str_repr]`

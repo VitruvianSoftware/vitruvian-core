@@ -73,9 +73,21 @@ rust_test(
     env = {"WATCH_PR_BIN": "$(rootpath :watch-pr)"},
 )
 
+# The post-merge phase end to end: token refresh and the batched-push verdict
+# (tests/post_merge_test.rs).
+rust_test(
+    name = "post_merge_test",
+    size = "small",
+    srcs = ["tests/post_merge_test.rs"],
+    data = [":watch-pr"],
+    edition = "2021",
+    env = {"WATCH_PR_BIN": "$(rootpath :watch-pr)"},
+)
+
 test_suite(
     name = "watch-pr_test",
     tests = [
+        ":post_merge_test",
         ":queue_test",
         ":watch_pr_lib_test",
     ],
