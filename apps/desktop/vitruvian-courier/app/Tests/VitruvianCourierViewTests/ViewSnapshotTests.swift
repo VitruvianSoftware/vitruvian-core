@@ -2001,22 +2001,6 @@ final class ViewSnapshotTests: XCTestCase {
         XCTAssertEqual(descriptor.siteName, "YouTube")
         XCTAssertEqual(descriptor.fallbackTitle, "Watch on YouTube")
 
-        // 4c. A link preview this Mac fetched itself: the same card, its picture from data.
-        let fetchedImage = try Data(contentsOf: URL(fileURLWithPath: localThumbPath))
-        XCTAssertNotNil(LinkPreviewCardView.decode(fetchedImage), "fetched picture data decodes")
-        XCTAssertNil(LinkPreviewCardView.decode(Data("not a picture".utf8)))
-        check(try Snapshot.render("link-preview-fetched-locally", width: 360) {
-            LinkPreviewCardView(
-                preview: LocalLinkPreview(
-                    url: URL(string: "https://antigravity.google/docs/dynamic-workflows/")!,
-                    title: "Dynamic workflows",
-                    siteName: "antigravity.google"
-                ).asLinkPreviewItem,
-                imageData: fetchedImage
-            )
-            .padding(14)
-        })
-
         // 5. Verify no WKWebView is created at all while isLoaded == false, and verify non-persistent store config.
         let consentHosting = NSHostingView(
             rootView: EmbedConsentCard(

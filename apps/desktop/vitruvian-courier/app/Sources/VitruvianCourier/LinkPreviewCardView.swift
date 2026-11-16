@@ -2,20 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import ImageIO
 import VitruvianCourierCore
 import SwiftUI
 import WebKit
 
-/// Inline link preview card (`LinkPreviewItem`) rendered from bridge-supplied metadata and local media store files,
-/// or, for a link its network sent no preview for, from what this Mac fetched itself (`LocalLinkPreviewStore` and
-/// `GuardedLinkFetcher`, only with "Load external embeds automatically" on), whose picture arrives as `imageData`.
+/// Inline link preview card (`LinkPreviewItem`) rendered solely from bridge-supplied metadata and local media store files.
 ///
-/// The card itself never fetches anything. Clicking it opens the `http(s)` URL in the default browser.
+/// Never fetches the target URL or any remote image. Clicking the card opens the `http(s)` URL in the default browser.
 public struct LinkPreviewCardView: View {
     public let preview: LinkPreviewItem
-    /// A picture this Mac fetched itself (a local preview); a bridge's picture comes by `preview.imagePath`.
-    public var imageData: Data?
     public var onBubble: Bool
     public var onOpenURL: (URL) -> Void
 
@@ -28,7 +23,6 @@ public struct LinkPreviewCardView: View {
 
     public init(
         preview: LinkPreviewItem,
-        imageData: Data? = nil,
         onBubble: Bool = false,
         onOpenURL: @escaping (URL) -> Void = { url in
             guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return }
@@ -36,25 +30,8 @@ public struct LinkPreviewCardView: View {
         }
     ) {
         self.preview = preview
-        self.imageData = imageData
         self.onBubble = onBubble
         self.onOpenURL = onOpenURL
-    }
-
-    private struct ImageSource: Equatable {
-        let path: String?
-        let dataCount: Int?
-    }
-
-    /// A fetched picture made small enough to draw (ImageIO decodes straight to the size).
-    static func decode(_ data: Data, maxPixelSize: Int = 640) -> CGImage? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
-        ]
-        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 
     private var targetURL: URL? {
@@ -168,14 +145,11 @@ public struct LinkPreviewCardView: View {
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
-        .task(id: ImageSource(path: preview.imagePath, dataCount: imageData?.count)) {
+        .task(id: preview.imagePath) {
             loadedCGImage = nil
-            if let path = localThumbnailPath {
-                if let thumbnail = await ThumbnailLoader.shared.thumbnail(atPath: path) {
-                    loadedCGImage = thumbnail.image
-                }
-            } else if let imageData {
-                loadedCGImage = Self.decode(imageData)
+            guard let path = localThumbnailPath else { return }
+            if let thumbnail = await ThumbnailLoader.shared.thumbnail(atPath: path) {
+                loadedCGImage = thumbnail.image
             }
         }
         .help(targetURL?.absoluteString ?? String(localized: "Open Link"))
@@ -539,17 +513,5 @@ public struct SandboxedEmbedWebView: NSViewRepresentable {
                 decisionHandler(.cancel)
             }
         }
-    }
-}
-
-extension LocalLinkPreviewStore {
-    /// The conversation's store: every row asks this one, so a link is fetched once however many rows show it.
-    static let shared = LocalLinkPreviewStore(fetcher: GuardedLinkFetcher())
-}
-
-extension LocalLinkPreview {
-    /// The card's model for a link this Mac fetched itself.
-    var asLinkPreviewItem: LinkPreviewItem {
-        LinkPreviewItem(matchedURL: url.absoluteString, url: url.absoluteString, title: title, siteName: siteName)
     }
 }
