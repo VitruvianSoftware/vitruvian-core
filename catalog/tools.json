@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-11-16T03:40:56Z",
+  "generated": "2026-11-16T06:01:41Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -198,16 +198,16 @@
       },
       "publisher": "VitruvianSoftware",
       "summary": {
-        "en": "Pairs your Android phone with this Mac's Vitruvian Remote agent over Tailscale, manages push notifications and Claude Code permission prompts, and exposes the phone's MCP bridge."
+        "en": "Pairs your Android phone with this Mac's Vitruvian Remote helper over Tailscale, manages push notifications and Claude Code permission prompts, and exposes the phone's MCP bridge."
       },
-      "version": "0.1.43",
+      "version": "0.1.44",
       "protocol": "2",
       "minimumAppVersion": "3.48.0",
       "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/vitruvian-remote",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.43/VitruvianRemote-0.1.43-tool.zip",
-        "sha256": "919e528c003bcae7721240a3082b0a0a70a652ba05273df2bdc09b4fb008602a",
-        "size": 2492204
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.44/VitruvianRemote-0.1.44-tool.zip",
+        "sha256": "4e4340da2fbc3bb87dde4de1dcbe69cf1740d00c9ec5951d8c70276d26c2754d",
+        "size": 2492202
       },
       "uses": ["notify", "clipboard.write", "open"],
       "commands": [
@@ -220,7 +220,7 @@
         {
           "id": "restartAgent",
           "title": {
-            "en": "Restart the Vitruvian Remote agent"
+            "en": "Restart the Vitruvian Remote Mac helper"
           }
         },
         {
@@ -244,7 +244,7 @@
         {
           "id": "openLog",
           "title": {
-            "en": "Open the Vitruvian Remote agent log"
+            "en": "Open the Vitruvian Remote Mac helper log"
           }
         }
       ],
