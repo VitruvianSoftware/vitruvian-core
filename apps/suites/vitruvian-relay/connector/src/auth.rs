@@ -227,16 +227,21 @@ pub fn login(cfg: &Config) -> Result<Tokens> {
     }
 }
 
-fn refresh_once(cfg: &Config, agent: &ureq::Agent, old: &Tokens) -> Result<Tokens> {
-    let rt = old
-        .refresh_token
-        .as_deref()
-        .ok_or("no refresh token saved")?;
-    let ep = discover(agent, &cfg.issuer)?;
+fn refresh_once(
+    cfg: &Config,
+    agent: &ureq::Agent,
+    endpoints: &mut Option<Endpoints>,
+    rt: &str,
+) -> Result<Tokens> {
+    // Discovered once per `fresh_token` call; a failed discovery is tried again.
+    if endpoints.is_none() {
+        *endpoints = Some(discover(agent, &cfg.issuer)?);
+    }
+    let token_endpoint = &endpoints.as_ref().expect("set above").token;
     let scope = cfg.scope();
     let (status, body) = post_form(
         agent,
-        &ep.token,
+        token_endpoint,
         &[
             ("grant_type", "refresh_token"),
             ("refresh_token", rt),
@@ -259,20 +264,31 @@ fn refresh_once(cfg: &Config, agent: &ureq::Agent, old: &Tokens) -> Result<Token
 /// the result) when the current one is nearly expired. A failed refresh is
 /// tried once more after `cfg.retry_delay` (P0: one failed on a connection
 /// reset and worked a second later); a second failure says to sign in again.
+/// With no refresh token saved there is nothing to retry, so it says so at once.
+/// If the refreshed token cannot be saved, the good token is still returned
+/// and a warning (never the token) goes to stderr.
 pub fn fresh_token(cfg: &Config, tokens: &mut Tokens) -> Result<String> {
     if !needs_refresh(tokens, now_unix()) {
         return Ok(tokens.access_token.clone());
     }
+    let rt = tokens
+        .refresh_token
+        .clone()
+        .ok_or_else(|| format!("{SIGN_IN_AGAIN} (no refresh token saved)"))?;
     let agent = agent();
-    let fresh = match refresh_once(cfg, &agent, tokens) {
+    let mut endpoints = None;
+    let fresh = match refresh_once(cfg, &agent, &mut endpoints, &rt) {
         Ok(t) => t,
         Err(_) => {
             std::thread::sleep(cfg.retry_delay);
-            refresh_once(cfg, &agent, tokens).map_err(|e| format!("{SIGN_IN_AGAIN} ({e})"))?
+            refresh_once(cfg, &agent, &mut endpoints, &rt)
+                .map_err(|e| format!("{SIGN_IN_AGAIN} ({e})"))?
         }
     };
     *tokens = fresh;
-    save_tokens(&cfg.dir, tokens)?;
+    if let Err(e) = save_tokens(&cfg.dir, tokens) {
+        eprintln!("vrelay: warning: could not save the refreshed token: {e}");
+    }
     Ok(tokens.access_token.clone())
 }
 
@@ -311,9 +327,10 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::sync::{Arc, Mutex};
 
-    type Handler = dyn FnMut(&str, &str, &str) -> (u16, String) + Send;
+    type Handler = dyn FnMut(&str, &str, &str, &str) -> (u16, String) + Send;
 
-    /// A tiny HTTP server: calls `handler(method, path, body)` per request.
+    /// A tiny HTTP server: calls `handler(method, path, head, body)` per request;
+    /// `head` is the request line and headers, lowercased.
     /// Returns its base URL.
     fn fake_server(handler: Box<Handler>) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -353,7 +370,8 @@ mod tests {
                     let mut first = head.lines().next().unwrap_or("").split(' ');
                     let (method, path) = (first.next().unwrap_or(""), first.next().unwrap_or(""));
                     let body = String::from_utf8_lossy(&buf[head_end..]).to_string();
-                    let (status, out) = (handler.lock().unwrap())(method, path, &body);
+                    let (status, out) =
+                        (handler.lock().unwrap())(method, path, &head.to_lowercase(), &body);
                     let _ = write!(
                         s,
                         "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{out}",
@@ -386,14 +404,23 @@ mod tests {
     }
 
     /// Serves discovery and a scripted sequence of token answers; counts token calls.
-    fn token_server(answers: Vec<(u16, String)>) -> (String, Arc<Mutex<Vec<String>>>) {
+    fn token_server(
+        answers: Vec<(u16, String)>,
+    ) -> (
+        String,
+        Arc<Mutex<Vec<String>>>,
+        Arc<std::sync::atomic::AtomicUsize>,
+    ) {
+        let discoveries = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let disc = discoveries.clone();
         let calls = Arc::new(Mutex::new(Vec::<String>::new()));
         let seen = calls.clone();
         let answers = Mutex::new(answers.into_iter());
         let base = Arc::new(Mutex::new(String::new()));
         let base2 = base.clone();
-        let url = fake_server(Box::new(move |_m, path, body| {
+        let url = fake_server(Box::new(move |_m, path, _h, body| {
             if path == "/.well-known/openid-configuration" {
+                disc.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 return (200, discovery(&base2.lock().unwrap()));
             }
             assert_eq!(path, "/token");
@@ -405,7 +432,7 @@ mod tests {
                 .expect("more token calls than scripted")
         }));
         *base.lock().unwrap() = url.clone();
-        (url, calls)
+        (url, calls, discoveries)
     }
 
     fn near_expiry() -> Tokens {
@@ -425,7 +452,7 @@ mod tests {
 
     #[test]
     fn fresh_token_does_not_call_the_network_when_valid() {
-        let (base, calls) = token_server(vec![]);
+        let (base, calls, _) = token_server(vec![]);
         let dir = test_dir("fresh-valid");
         let mut t = Tokens {
             access_token: "still-good".into(),
@@ -441,7 +468,7 @@ mod tests {
 
     #[test]
     fn fresh_token_refreshes_near_expiry() {
-        let (base, calls) = token_server(vec![ok_answer()]);
+        let (base, calls, _) = token_server(vec![ok_answer()]);
         let dir = test_dir("fresh-near");
         let mut t = near_expiry();
         let got = fresh_token(&cfg_for(&base, dir.clone()), &mut t).unwrap();
@@ -475,7 +502,7 @@ mod tests {
     #[test]
     fn fresh_token_retries_once_then_asks_to_sign_in() {
         // Fails once, then works: the retry rescues it.
-        let (base, calls) = token_server(vec![(500, "{}".into()), ok_answer()]);
+        let (base, calls, _) = token_server(vec![(500, "{}".into()), ok_answer()]);
         let mut t = near_expiry();
         let dir = test_dir("fresh-retry-ok");
         assert_eq!(
@@ -485,7 +512,7 @@ mod tests {
         assert_eq!(calls.lock().unwrap().len(), 2);
 
         // Fails twice: exactly two attempts, then "sign in again".
-        let (base, calls) = token_server(vec![
+        let (base, calls, discoveries) = token_server(vec![
             (400, json!({"error": "invalid_grant"}).to_string()),
             (500, "{}".into()),
         ]);
@@ -494,7 +521,36 @@ mod tests {
         let err = fresh_token(&cfg_for(&base, dir), &mut t).unwrap_err();
         assert!(err.starts_with("sign in again"), "{err}");
         assert_eq!(calls.lock().unwrap().len(), 2);
+        // The discovery document is fetched once, not again for the retry.
+        assert_eq!(discoveries.load(std::sync::atomic::Ordering::SeqCst), 1);
         assert_eq!(t.access_token, "old-access");
+    }
+
+    #[test]
+    fn no_refresh_token_fails_at_once_without_retry_or_network() {
+        let (base, calls, discoveries) = token_server(vec![]);
+        let mut cfg = cfg_for(&base, test_dir("fresh-norefresh"));
+        cfg.retry_delay = Duration::from_secs(3);
+        let mut t = near_expiry();
+        t.refresh_token = None;
+        let began = Instant::now();
+        let err = fresh_token(&cfg, &mut t).unwrap_err();
+        assert!(err.starts_with("sign in again"), "{err}");
+        assert!(began.elapsed() < Duration::from_secs(1));
+        assert!(calls.lock().unwrap().is_empty());
+        assert_eq!(discoveries.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn a_failed_save_still_returns_the_good_token() {
+        let (base, _calls, _) = token_server(vec![ok_answer()]);
+        // The state "directory" is a file, so saving cannot work.
+        let blocker = test_dir("fresh-nosave");
+        std::fs::write(&blocker, b"x").unwrap();
+        let mut t = near_expiry();
+        let got = fresh_token(&cfg_for(&base, blocker.join("sub")), &mut t).unwrap();
+        assert_eq!(got, "new-access");
+        assert_eq!(t.access_token, "new-access");
     }
 
     #[test]
@@ -502,7 +558,7 @@ mod tests {
         let n = Arc::new(Mutex::new(0u32));
         let base_cell = Arc::new(Mutex::new(String::new()));
         let b = base_cell.clone();
-        let base = fake_server(Box::new(move |_m, path, body| match path {
+        let base = fake_server(Box::new(move |_m, path, _h, body| match path {
             "/.well-known/openid-configuration" => (200, discovery(&b.lock().unwrap())),
             "/device" => {
                 assert!(body.contains("client_id=client"), "{body}");
@@ -541,8 +597,13 @@ mod tests {
 
     #[test]
     fn register_device_sends_bearer_and_key() {
-        let base = fake_server(Box::new(|m, path, body| {
+        let base = fake_server(Box::new(|m, path, head, body| {
             assert_eq!((m, path), ("POST", "/devices"));
+            assert!(head.contains("\r\nauthorization: bearer tok\r\n"), "{head}");
+            assert!(
+                head.contains("\r\ncontent-type: application/json\r\n"),
+                "{head}"
+            );
             assert_eq!(body, r#"{"public_key":"PK"}"#);
             (
                 200,
@@ -556,7 +617,7 @@ mod tests {
 
     #[test]
     fn register_device_reports_a_refusal_without_the_body() {
-        let base = fake_server(Box::new(|_, _, _| (401, "secret-ish body".into())));
+        let base = fake_server(Box::new(|_, _, _, _| (401, "secret-ish body".into())));
         let err = register_device(&cfg_for(&base, test_dir("reg401")), "tok", "PK").unwrap_err();
         assert!(err.contains("401") && !err.contains("secret-ish"), "{err}");
     }

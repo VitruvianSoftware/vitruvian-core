@@ -154,6 +154,7 @@ mod tests {
             c.scope(),
             "openid offline_access urn:zitadel:iam:org:project:id:398912441632687930:aud"
         );
+        assert_eq!(c.retry_delay, Duration::from_secs(1));
         let c = Config::from_lookup(|k| (k == "VRELAY_HOME").then(|| "/t".into()));
         assert_eq!(c.dir, PathBuf::from("/t"));
     }

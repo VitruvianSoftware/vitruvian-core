@@ -50,38 +50,91 @@ pub fn status_path(dir: &Path) -> PathBuf {
     dir.join("status.json")
 }
 
-/// Creates the state directory (and parents) and sets it to 0700.
+/// Makes sure the state directory exists and is private.
+///
+/// A new directory (and any missing parents) is created with mode 0700 from
+/// the start, never made and then chmod'ed. An existing directory is left
+/// alone if it is already closed to others. If it is more open, it is
+/// tightened to 0700: `VRELAY_HOME` names the connector's own folder, so that
+/// is the intended result. Its parents are never touched, and if the folder
+/// is not ours the chmod fails and we report it rather than carry on.
 pub fn ensure_dir(dir: &Path) -> Result<()> {
-    std::fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
-            .map_err(|e| format!("chmod {}: {e}", dir.display()))?;
+        use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+        match std::fs::metadata(dir) {
+            Ok(meta) => {
+                if meta.mode() & 0o077 != 0 {
+                    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+                        .map_err(|e| format!("make {} private: {e}", dir.display()))?;
+                }
+                Ok(())
+            }
+            Err(_) => std::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(dir)
+                .map_err(|e| format!("create {}: {e}", dir.display())),
+        }
     }
-    Ok(())
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))
+    }
 }
 
-/// Writes `bytes` to `path` with mode 0600, atomically (temp file, then rename).
+/// Writes `bytes` to `path` with mode 0600, atomically. The temp file has a
+/// name no other writer or stray file can share (same directory, so the
+/// rename is atomic), is created new with mode 0600 (so an old file's wider
+/// mode can never carry over), and is synced before the rename. Two processes
+/// saving the same file (`vrelay run` refreshing while `vrelay login` saves)
+/// each write their own temp file; the last rename wins and neither is torn.
 pub fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
     if let Some(dir) = path.parent() {
         ensure_dir(dir)?;
     }
-    let tmp = path.with_extension("tmp");
-    let mut opts = std::fs::OpenOptions::new();
-    opts.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        opts.mode(0o600);
-    }
-    let mut f = opts
-        .open(&tmp)
-        .map_err(|e| format!("write {}: {e}", tmp.display()))?;
-    f.write_all(bytes)
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let mut attempt = 0;
+    let (tmp, mut f) = loop {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
+        let tmp = path.with_file_name(format!(
+            ".{name}.{}.{}.{nanos}.tmp",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
+        match opts.open(&tmp) {
+            Ok(f) => break (tmp, f),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 5 => attempt += 1,
+            Err(e) => return Err(format!("write {}: {e}", tmp.display())),
+        }
+    };
+    let result = f
+        .write_all(bytes)
         .and_then(|_| f.sync_all())
-        .map_err(|e| format!("write {}: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("save {}: {e}", path.display()))
+        .map_err(|e| format!("write {}: {e}", tmp.display()))
+        .and_then(|_| {
+            std::fs::rename(&tmp, path).map_err(|e| format!("save {}: {e}", path.display()))
+        });
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -191,6 +244,69 @@ mod tests {
         // Saving again (a refresh) keeps the mode.
         save_tokens(&dir, &t).unwrap();
         assert_eq!(mode(&token_path(&dir)), 0o600);
+    }
+
+    #[test]
+    fn a_stray_wide_temp_file_cannot_widen_the_token() {
+        let dir = test_dir("stray");
+        ensure_dir(&dir).unwrap();
+        for stray in ["token.tmp", "token.json.tmp"] {
+            let p = dir.join(stray);
+            std::fs::write(&p, b"old").unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o666)).unwrap();
+        }
+        write_private(&token_path(&dir), b"{}").unwrap();
+        assert_eq!(mode(&token_path(&dir)), 0o600);
+    }
+
+    #[test]
+    fn concurrent_writers_never_corrupt_the_file() {
+        let dir = test_dir("concurrent");
+        ensure_dir(&dir).unwrap();
+        let path = token_path(&dir);
+        let handles: Vec<_> = (0..6usize)
+            .map(|i| {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    // Different lengths, so a shared temp file would leave a torn tail.
+                    let body = format!("{{\"w\":{i}}}{}", " ".repeat(i * 500));
+                    for _ in 0..60 {
+                        write_private(&path, body.as_bytes()).unwrap();
+                        let read = std::fs::read_to_string(&path).unwrap();
+                        let v: serde_json::Value = serde_json::from_str(&read).expect("whole file");
+                        assert!(v.get("w").is_some());
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+        // No temp files left behind.
+        let left: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(left.len(), 1, "{left:?}");
+    }
+
+    #[test]
+    fn ensure_dir_is_0700_new_and_leaves_existing_parents_alone() {
+        let parent = test_dir("dirs");
+        std::fs::create_dir_all(&parent).unwrap();
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let state = parent.join("vrelay");
+        ensure_dir(&state).unwrap();
+        assert_eq!(mode(&state), 0o700);
+        assert_eq!(mode(&parent), 0o755);
+        // An existing state dir that is too open is tightened (it is ours).
+        std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o755)).unwrap();
+        ensure_dir(&state).unwrap();
+        assert_eq!(mode(&state), 0o700);
+        // A state dir inside a missing parent chain is created 0700 too.
+        let deep = parent.join("a/b");
+        ensure_dir(&deep).unwrap();
+        assert_eq!(mode(&deep), 0o700);
     }
 
     #[test]

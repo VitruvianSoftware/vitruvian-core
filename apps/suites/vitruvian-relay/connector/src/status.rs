@@ -155,6 +155,16 @@ mod tests {
     }
 
     #[test]
+    fn the_staleness_boundary_is_60_seconds() {
+        let dir = test_dir("status-boundary");
+        let body = r#"{"state":"waiting_for_sign_in","updated_unix":1000}"#;
+        write_status(&dir, body);
+        assert_eq!(link_state(&dir, 1059), Link::WaitingForSignIn);
+        assert_eq!(link_state(&dir, 1060), Link::WaitingForSignIn);
+        assert_eq!(link_state(&dir, 1061), Link::Stopped);
+    }
+
+    #[test]
     fn link_states_follow_the_status_file() {
         let dir = test_dir("status-states");
         let now = 1000;
