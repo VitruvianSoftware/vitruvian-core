@@ -16,7 +16,8 @@ at `/connect`, and passes calls down it. The **connector** (`vrelay`) runs on
 the Mac. It signs in with the device flow, dials the relay, checks every call
 against a local rules file (asking first when the rules say so), and runs it
 through an unmodified, pinned `desktop-commander` over stdio. Token checking
-moves out of the Slack MCP into a shared crate both use.
+moves out of the Slack MCP into a shared crate the relay uses; moving the Slack
+MCP itself onto it is a follow-up (Task 1).
 
 **Tech Stack:** Rust 1.98.1 (rules_rust 0.68.1, per-app crate hub via
 `crate.from_cargo`), hyper 1 + tokio, tokio-tungstenite 0.24, ring 0.17 (RS256
@@ -39,7 +40,9 @@ is retired in the last task.
   from a dashboard (§6), the connector settings screen and one-click pause UI
   (the rules file's `paused` flag stands in), Gemini and ChatGPT as P1 targets
   (Claude is the done-when), a notification per call (§7.3, "can post"),
-  bridging other stdio servers (§5; `desktop-commander` only), pushing
+  bridging other stdio servers (§5; `desktop-commander` only), folder limits
+  for file tools (§7.1; `desktop-commander`'s own setting, which remote callers
+  can't change because its config tools are hidden, stays at its default), pushing
   `tools/list_changed` over SSE (the next request picks it up), notarisation
   (P3's installers; P1 is a local Developer ID-signed install), and **Postgres**:
   spec §8 puts the alpha on CNPG, but one user and one device need only a device
@@ -87,7 +90,7 @@ is retired in the last task.
 ## Review Focus
 
 1. **The Mac sleeps or drops off Wi-Fi mid-call.** The AI app should get
-   "Your computer disconnected" within a second or two, not wait for the
+   "Your computer disconnected; try again." within a second or two, not wait for the
    deadline. Test in Task 3 (`pending_call_fails_when_device_drops`).
 2. **Nobody is at the Mac when an "ask first" call arrives.** The prompt must
    time out as **Deny**, never Allow. Test in Task 6
@@ -134,7 +137,7 @@ let one verifier accept several client ids.
 **Files:**
 - Create: `packages/rust/vitruvian-mcp-auth/{Cargo.toml,BUILD,src/lib.rs,src/verifier.rs,src/prm.rs}`
 - Create: `apps/suites/vitruvian-relay/{BUILD,Cargo.toml,Cargo.lock}` (the BUILD makes the folder a package, so `MODULE.bazel` can name `//apps/suites/vitruvian-relay:Cargo.toml` and `:Cargo.lock`, as it names the spike's; the workspace's member list grows in later tasks, and `vitruvian-mcp-auth` is a `path` dependency of the crates that use it, not a member)
-- Modify: `MODULE.bazel` (add hub `vitruvian_relay_crates`; keep the spike hub until Task 10)
+- Modify: `MODULE.bazel`: add hub `vitruvian_relay_crates`, and add it to the `repositories` list of the `ring` `crate.annotation` (every hub that builds ring is listed there, the spike's included). Keep the spike hub until the spike is retired (Task 10), which removes it from both places.
 - Test: `packages/rust/vitruvian-mcp-auth/src/verifier.rs` (`#[cfg(test)]`)
 
 **Interfaces:**
@@ -156,7 +159,8 @@ cooldown, `iss` exact, `exp`/`nbf` 30 s skew, `aud` contains `project_id`,
 
 - [ ] **Step 1: Write the failing tests** — port slack-mcp's verifier tests,
   plus `accepts_any_listed_client_id` (two ids, a token for each verifies) and
-  `rejects_unlisted_client_id` (`AuthError` code `"invalid_client"`), and
+  `rejects_unlisted_client_id` (`AuthError` code `"insufficient_scope"`, as
+  slack-mcp's `ClientNotAllowed` maps it), and
   `prm_lists_project_audience_scope` (scopes `openid`, `offline_access`,
   `urn:zitadel:iam:org:project:id:<id>:aud`).
 - [ ] **Step 2:** `bazel test //packages/rust/vitruvian-mcp-auth:unit_tests` → FAIL (crate missing).
@@ -180,16 +184,17 @@ in this task's PR.
   - `enum ToConnector { Welcome { device_id: String }, Reject { reason: String }, Call(Call), Cancel { call_id: String }, Ping { n: u64 }, Pong { n: u64 } }`
   - Ping and pong go both ways (§4): each side pings every 20 s and treats 3 unanswered pings as a dead link.
   - `struct Hello { device_id: String, connector_version: String, protocol: u32, ts: u64, sig: String, tools: Vec<ToolDef> }`
-  - `struct Call { call_id: String, tool: String, arguments: serde_json::Value, deadline_ms: u64 }`
+  - `struct Call { call_id: String, tool: String, arguments: serde_json::Value, deadline_ms: u64 }` — `deadline_ms` is a duration from when the frame is sent, not a clock time (the two machines' clocks may differ). The relay's budget for a `tools/call` is **180 s**, covering a 60 s "ask first" prompt plus the command
   - `struct CallResult { call_id: String, content: serde_json::Value, is_error: bool, truncated: bool }`
-  - `struct ToolDef { name: String, description: String, input_schema: serde_json::Value }`
+  - `struct ToolDef { name: String, description: String, #[serde(rename = "inputSchema")] input_schema: serde_json::Value }` — the MCP wire name, so a `desktop-commander` tool passes through unchanged
   - `const PROTOCOL: u32 = 1; const MAX_FRAME_BYTES: usize = 4 * 1024 * 1024; const PING_SECS: u64 = 20; const MAX_MISSED_PINGS: u32 = 3;`
   - `fn hello_message(device_id: &str, ts: u64, token_sha256_hex: &str) -> String` → `"vrelay-hello-v1\n{device_id}\n{ts}\n{token_sha256_hex}"` (the bytes the device key signs; binding the token hash stops replay with another token)
-  - `fn encode(&impl Serialize) -> Result<String, FrameError>` (refuses over `MAX_FRAME_BYTES`), `fn decode_to_relay(&str)`, `fn decode_to_connector(&str)`
+  - `fn encode(&impl Serialize) -> Result<String, FrameError>` (refuses over `MAX_FRAME_BYTES`), `fn decode_to_relay(&str)`, `fn decode_to_connector(&str)` (both refuse input over `MAX_FRAME_BYTES`). Both ends also set tokio-tungstenite's `max_message_size` and `max_frame_size` to `MAX_FRAME_BYTES`; its defaults are far larger
 
 - [ ] **Step 1: Tests** `round_trips_every_frame`, `rejects_unknown_type`,
   `encode_refuses_oversized_frame` (asserts on the encoded byte length, not the
-  input length), `hello_message_is_stable` (exact string above).
+  input length), `decode_refuses_oversized_frame`, `tool_def_uses_input_schema_wire_name`
+  (decodes `{"name":…,"description":…,"inputSchema":{…}}`), `hello_message_is_stable` (exact string above).
 - [ ] **Step 2:** `bazel test //apps/suites/vitruvian-relay/protocol:unit_tests` → FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4:** → PASS.
@@ -206,8 +211,8 @@ in this task's PR.
   - `struct DeviceRecord { device_id: String, owner_sub: String, public_key_ed25519: [u8; 32] }`
   - `trait DeviceStore: Send + Sync { fn get(&self, id: &str) -> Option<DeviceRecord>; fn put(&self, rec: DeviceRecord) -> io::Result<()>; }`
   - `struct FileDeviceStore` (JSON file, atomic rename on write; `/data/devices.json` in the pod) — P2 replaces it with Postgres behind the same trait.
-  - `struct Registry` with `connect(&self, device_id, tools, tx: mpsc::Sender<ToConnector>) -> ConnectionId`, `disconnect(&self, device_id, ConnectionId)`, `tools(&self, device_id) -> Option<Vec<ToolDef>>`, `async fn call(&self, device_id, Call) -> Result<CallResult, CallError>`, `complete(&self, CallResult)`
-  - `enum CallError { Offline, Disconnected, Deadline, NotOwner }` with `user_message()`: `"Your computer is offline."`, `"Your computer disconnected; try again."`, `"The command took too long."`, `"Not your device."`
+  - `struct Registry` with `connect(&self, device_id, tools, tx: mpsc::Sender<ToConnector>) -> ConnectionId`, `disconnect(&self, device_id, ConnectionId)`, `update_tools(&self, device_id, tools: Vec<ToolDef>)`, `tools(&self, device_id) -> Option<Vec<ToolDef>>`, `async fn call(&self, device_id, Call) -> Result<CallResult, CallError>`, `complete(&self, CallResult)`, `kick(&self, device_id)` (close the live connection, failing its pending calls)
+  - `enum CallError { Offline, Disconnected, Deadline }` with `user_message()`: `"Your computer is offline."`, `"Your computer disconnected; try again."`, `"The command took too long."` (ownership is checked before the registry, in Task 4)
 
 `call` registers a oneshot under `call_id`, sends the frame, and waits for
 `complete`, the deadline, or the device's disconnect, whichever comes first.
@@ -221,6 +226,7 @@ device replaces the old one (its pending calls fail `Disconnected`).
   `pending_call_fails_when_device_drops` (disconnect mid-call → `Disconnected`
   in under 100 ms), `call_to_offline_device_fails_fast`,
   `deadline_expiry_sends_cancel`, `reconnect_replaces_old_connection`,
+  `update_tools_changes_the_list`, `kick_fails_pending_calls`,
   `file_store_round_trips_and_survives_restart`.
 - [ ] **Step 2:** `bazel test //apps/suites/vitruvian-relay/relay:unit_tests` → FAIL.
 - [ ] **Step 3: Implement.**
@@ -238,10 +244,10 @@ device replaces the old one (its pending calls fail `Disconnected`).
   - `struct Settings` from env: `PORT` (3000), `PUBLIC_URL`, `ISSUER`, `PROJECT_ID`, `MCP_CLIENT_IDS` (CSV), `CONNECTOR_CLIENT_ID`, `ALLOWED_SUBJECTS` (CSV), `DATA_DIR` (`/data`). Same validation as the spike's `Settings::from_lookup`.
   - Routes:
     - `POST /mcp/d/{device_id}` — MCP over Streamable HTTP (JSON responses; SSE not needed in P1). Bearer verified with the MCP client ids; caller `sub` must equal the device's `owner_sub`, else 404 (don't reveal the device).
-    - `GET /.well-known/oauth-protected-resource/mcp/d/{device_id}` and the bare `/.well-known/oauth-protected-resource` — PRM with `resource` = that device's URL.
-    - `POST /devices` — bearer verified with `CONNECTOR_CLIENT_ID`; body `{ "public_key": "<base64 32 bytes>" }`; creates a record owned by the caller, returns `{ "device_id": "<uuid v4>", "mcp_url": "…" }`. P1 allows one device per subject: a second call for the same subject replaces the key and keeps the id.
+    - `GET /.well-known/oauth-protected-resource/mcp/d/{device_id}` — PRM with `resource` = that device's URL. The bare `/.well-known/oauth-protected-resource` returns the same metadata with `resource` = `PUBLIC_URL` (the relay itself), for clients that look there first.
+    - `POST /devices` — bearer verified with `CONNECTOR_CLIENT_ID`; body `{ "public_key": "<base64 32 bytes>" }`; creates a record owned by the caller, returns `{ "device_id": "<uuid v4>", "mcp_url": "…" }`. P1 allows one device per subject: a second call for the same subject replaces the key, keeps the id, and calls `Registry::kick` so a session signed with the old key ends at once.
     - `GET /connect` — WebSocket. Bearer verified with `CONNECTOR_CLIENT_ID`. First frame must be `hello` within 10 s: device exists, owned by the caller, `|now − ts| ≤ 60 s`, Ed25519 `sig` over `hello_message(device_id, ts, sha256(bearer))` verifies, `protocol == 1`. Otherwise `reject` with the reason and close. Then `welcome`, `Registry::connect`, ping every 20 s, answer the connector's pings, disconnect after 3 missed pongs.
-  - `mcp::handle(req, device_id, caller, registry) -> Option<Value>`: `initialize` (protocol versions as the spike's `PROTOCOL_VERSIONS`), `ping`, `server/discover` (name `vitruvian-relay`, version, the device URL), `tools/list` (the device's tools; empty list plus no error if offline), `tools/call` (→ `Registry::call`; `CallError` becomes an MCP tool result with `isError: true` and `user_message()`), and `notifications/tools/list_changed` sent when `tools_changed` arrives (P1: only on the next request, no SSE).
+  - `mcp::handle(req, device_id, caller, registry) -> Option<Value>`: `initialize` (protocol versions as the spike's `PROTOCOL_VERSIONS`; capabilities `tools: { listChanged: false }`, because P1 answers in JSON only and has no stream to push a change on), `ping`, `server/discover` (returns the same `serverInfo` — name `vitruvian-relay`, version — `capabilities` and supported protocol versions as `initialize`, without starting a session), `tools/list` (the device's current tools; empty list and no error if offline), `tools/call` (→ `Registry::call` with a 180 s budget; `CallError` becomes an MCP tool result with `isError: true` and `user_message()`). A `tools_changed` frame calls `Registry::update_tools`; AI apps see the new list on their next `tools/list`.
   - Logging: one line per call — device id, tool, argument bytes, result bytes, duration, outcome. Never arguments or output (§7.2).
 
 - [ ] **Step 1: Tests** (hyper test client against an in-process server, with a
@@ -249,7 +255,10 @@ device replaces the old one (its pending calls fail `Disconnected`).
   `mcp_rejects_other_users_device_as_404`, `server_discover_is_answered`,
   `tools_list_reflects_hello_tools`, `connect_rejects_bad_signature`,
   `connect_rejects_stale_ts`, `connect_rejects_token_for_another_client`,
-  `register_device_returns_mcp_url`, `logs_never_contain_arguments`.
+  `register_device_returns_mcp_url`, `reregister_kicks_old_session`,
+  `bare_prm_names_the_relay`, `logs_never_contain_arguments_outputs_or_tokens`
+  (a call with a marker string in its arguments and its result, and a known
+  bearer: none of the three appears in the captured log).
 - [ ] **Step 2:** `bazel test //apps/suites/vitruvian-relay/relay:unit_tests` → FAIL.
 - [ ] **Step 3: Implement** with hyper 1 + tokio-tungstenite, copying the spike's `main.rs` routing shape.
 - [ ] **Step 4:** → PASS.
@@ -263,14 +272,14 @@ device replaces the old one (its pending calls fail `Disconnected`).
 **Interfaces:**
 - Produces:
   - Commands: `vrelay login`, `vrelay status`, `vrelay logout` (`run` and `install` come in Tasks 8–9).
-  - State dir: `~/Library/Application Support/vrelay/` (`$VRELAY_HOME` overrides, for tests), mode `0700`; files `token.json`, `device.json` (`{device_id, mcp_url}`), `device.key` (Ed25519 seed, mode `0600`).
-  - `auth::login(issuer, client_id, project_id) -> Result<Tokens>` — the spike's device flow (`client.rs`), scope `openid offline_access urn:zitadel:iam:org:project:id:<id>:aud`.
+  - State dir: `~/Library/Application Support/vrelay/` (`$VRELAY_HOME` overrides, for tests), mode `0700`; files `token.json` (holds the refresh token, mode `0600`), `device.json` (`{device_id, mcp_url}`), `device.key` (Ed25519 seed, mode `0600`).
+  - `auth::login(issuer, client_id, project_id) -> Result<Tokens>` — the spike's device flow: `parse_device_start` and `parse_token_response` from `client.rs`, the polling loop from `client_main.rs`; scope `openid offline_access urn:zitadel:iam:org:project:id:<id>:aud`.
   - `auth::fresh_token(&mut Tokens) -> Result<String>` — refresh when within 300 s of expiry; on failure retry once after 1 s, then report "sign in again" (P0: one refresh failed on a reset and worked a second later).
   - `keys::load_or_create(dir) -> Result<Ed25519KeyPair>`, `keys::sign_hello(&key, device_id, ts, token) -> String` (base64 of the signature over Task 2's `hello_message`, with `sha256(token)` hex).
   - `login` ends by calling `POST /devices`, saving `device.json`, and printing the MCP URL plus the client id to paste into Claude.
   - Defaults: issuer `https://auth.ipv1337.dev`, relay `https://relay.ipv1337.dev`, connector client id and project id from the `zitadel-apps-relay` outputs (overridable by `VRELAY_*` env vars).
 
-- [ ] **Step 1: Tests** `key_file_is_0600_and_reused`, `sign_hello_verifies_with_public_key`,
+- [ ] **Step 1: Tests** `key_file_is_0600_and_reused`, `token_file_is_0600`, `sign_hello_verifies_with_public_key`,
   `fresh_token_refreshes_near_expiry`, `fresh_token_retries_once_then_asks_to_sign_in`
   (fake token endpoint failing once, then failing twice), `status_reports_signed_out`.
 - [ ] **Step 2:** `bazel test //apps/suites/vitruvian-relay/connector:unit_tests` → FAIL.
@@ -294,17 +303,17 @@ device replaces the old one (its pending calls fail `Disconnected`).
     no_prompt = ["read_file", "read_multiple_files", "list_directory",
                  "get_file_info", "start_search", "get_more_search_results",
                  "stop_search", "list_searches"]
-    allowed_paths = []        # empty = desktop-commander's own default
     ```
   - `rules::load(dir) -> Result<Rules>`; `Rules::visible(&self, tools: &[ToolDef]) -> Vec<ToolDef>`; `Rules::decide(&self, tool: &str) -> Decision` with `enum Decision { Run, AskFirst, Refuse(&'static str) }`: `Refuse` for hidden tools or when paused, `Run` only for `no_prompt` tools, `AskFirst` for everything else (an unknown tool asks; it never runs silently). The exact tool names are checked against the pinned 0.3.1 `tools/list` in Task 7 and corrected here if they differ.
   - `prompt::ask(tool: &str, summary: &str, timeout: Duration) -> PromptHandle`; `PromptHandle::wait(self) -> Answer` and `PromptHandle::dismiss(self)` (kills the dialog), with `enum Answer { Allow, Deny }`.
-    The dialog is a fixed script, `osascript -e 'on run argv' -e 'display dialog (item 1 of argv) buttons {"Deny","Allow"} default button "Deny" giving up after (item 2 of argv as integer)' -e 'end run' -- <summary> <secs>`: the summary travels as an argument and is never put inside the script, so quotes and backslashes can't break out. `summary` is the tool name plus the first 200 characters of the command or path, with control characters removed. Timeout, a non-zero exit or anything but "Allow" → `Deny`. Default timeout **60 s**.
+    The dialog is a fixed script, `osascript -e 'on run argv' -e 'display dialog (item 1 of argv) buttons {"Deny","Allow"} default button "Deny" giving up after (item 2 of argv as integer)' -e 'end run' -- <summary> <secs>`: the summary travels as an argument and is never put inside the script, so quotes and backslashes can't break out. `summary` is the tool name plus its key arguments, each cut to 200 characters with control characters removed: `start_process` → `command`; `interact_with_process` → `pid` and `input`; `write_file` → `path`; `edit_block` → `file_path`; `move_file` → `source` and `destination`; `create_directory` → `path`; `kill_process` / `force_terminate` → `pid`; `write_pdf` → `outputPath`. Any other tool shows its arguments as compact JSON. (Names are checked against the pinned package in Task 7.) Timeout, a non-zero exit or anything but "Allow" → `Deny`. Default timeout **60 s**.
   - The rules file is read at start and on `SIGHUP`; nothing received from the relay changes it.
 
 - [ ] **Step 1: Tests** `reads_run_without_asking`,
   `unknown_tool_asks_first`, `hidden_tools_never_visible_or_callable`,
   `paused_refuses_everything`, `prompt_timeout_denies` (fake `osascript` on
   `PATH` that reports `gave up:true`), `prompt_failure_denies` (fake exits 1),
+  `summary_shows_key_arguments` (one case per tool above),
   `prompt_passes_summary_as_argument` (fake records argv: a summary with `"`,
   `\` and a newline arrives intact as one argument, and the script text never
   contains it).
@@ -327,6 +336,7 @@ device replaces the old one (its pending calls fail `Disconnected`).
   - JSON-RPC client over stdout lines: `initialize`, `tools/list`, `tools/call`. Lines with a `method` and no `id` (e.g. `notifications/message`) go to the log.
   - Truncation is measured on the **encoded `result` frame**, not the raw output (JSON escaping can grow it): if `protocol::encode` would exceed `MAX_FRAME_BYTES`, cut the text content and append `"[output truncated by vrelay: N bytes omitted]"`, set `truncated: true`, and re-encode until it fits.
   - At start, set `~/.claude-server-commander` to mode `0700` (its call log holds full arguments).
+  - `vrelay tools`: start the bridge, print each tool name with what the rules decide for it (`run`, `ask first`, `hidden`), then stop.
   - Stop: close stdin, wait 2 s, then `killpg(SIGTERM)`, wait 2 s, then `killpg(SIGKILL)`. If the process exits on its own, kill the group too, fail pending calls, and restart on the next call.
 
 - [ ] **Step 1: Tests** against a tiny fake MCP server script (a `sh_binary`
@@ -362,7 +372,8 @@ device replaces the old one (its pending calls fail `Disconnected`).
   - On `call`: dedupe by `call_id` for 10 minutes. A repeat re-sends the stored result or, if still running, nothing. Started ids are also appended to `seen_calls.jsonl` in the state dir (id and time only, pruned after 10 minutes), so after a LaunchAgent restart a resent id is refused with "This call already started before vrelay restarted; not run again." rather than run twice. This is the spec's repeated-id rule (§4), kept as a safeguard: the P1 relay never resends a call (Task 3 fails it instead), and an id repeated after the 10-minute window runs again. The real duplicate risk, an AI app's own retry, arrives with a new id and is spec §11 question 14. `Rules::decide` → `Run` / `AskFirst` (prompt) / `Refuse`, then `Bridge::call`, then `result`. A denied prompt returns `is_error: true`, "Denied on the computer."
   - On `cancel`: if the call is still waiting at its "ask first" prompt, dismiss the dialog and never run it. If it is already running, drop the result (the command itself is not killed in P1; the local log notes it).
   - Ping the relay every 20 s and answer its pings. 3 unanswered pings either way → reconnect.
-  - Reconnect after any drop: backoff `min(60, 2^attempt)` s with full jitter (random 0..delay), reset after 60 s connected; refresh the token before each attempt (`auth::fresh_token`).
+  - Reconnect after any drop: attempt `n` starts at 0, delay = `max(1, random(0..=min(60, 2^n)))` seconds (full jitter with a 1 s floor, so the first retry is 1 s and none is ever 0 s or over 60 s). Reset `n` after 60 s connected. Refresh the token before each attempt (`auth::fresh_token`).
+  - With no token yet (installed before `vrelay login`), `run` waits, checking for `token.json` every 10 s, instead of exiting; launchd's `KeepAlive` would otherwise restart it in a loop.
   - Local log of every call with full arguments at `~/Library/Logs/vrelay/calls.log` (§7.3, user-only `0600`).
   - On `SIGHUP`: reload rules and send `tools_changed`.
 
@@ -372,7 +383,7 @@ device replaces the old one (its pending calls fail `Disconnected`).
   `cancel_during_prompt_never_runs`
   (cancel arrives while the fake dialog is open: dialog dismissed, bridge never
   called, even if the fake then answers Allow), `reconnects_with_jittered_backoff`
-  (inject clock/rng; delays within `[0, min(60, 2^n)]`), `refreshes_token_before_reconnect`,
+  (inject clock/rng; every delay within `[1, min(60, 2^n)]`), `waits_for_token_instead_of_exiting`, `refreshes_token_before_reconnect`,
   `missed_pings_trigger_reconnect`, `call_log_is_0600_and_has_arguments`.
 - [ ] **Step 2:** `bazel test //apps/suites/vitruvian-relay/connector:unit_tests` → FAIL.
 - [ ] **Step 3: Implement.**
@@ -388,9 +399,9 @@ Follow `apps/mobile/vitruvian-remote/macagent/scripts` (`render_plist`,
 `launchctl bootout` / `bootstrap gui/<uid>` / `enable`).
 
 **Interfaces:**
-- Produces: `bazel run //apps/suites/vitruvian-relay/connector:install` — copies `vrelay` and the pinned `desktop-commander` runfiles to `~/.local/share/vrelay/`, signs the binary with the Developer ID identity (identifier `dev.vitruvian.vrelay`; every Mac app here is Developer ID-signed). If `security find-identity -p codesigning` doesn't list it, the install **fails** with how to get it, unless `--unsigned` is passed explicitly. Writes the plist from the template at `connector/scripts/com.vitruvian.vrelay.plist`, with label `com.vitruvian.vrelay`, `KeepAlive` true and log `~/Library/Logs/vrelay/vrelay.log`, and loads it. `:uninstall` reverses it.
+- Produces: `bazel run //apps/suites/vitruvian-relay/connector:install` — copies `vrelay` and the pinned `desktop-commander` runfiles to `~/.local/share/vrelay/`, signs the binary with the Developer ID identity (identifier `dev.vitruvian.vrelay`; every Mac app here is Developer ID-signed). If `security find-identity -p codesigning` doesn't list it, the install **fails** with how to get it, unless `--unsigned` is passed explicitly. Resolves the absolute path of `node` (≥ 22.12) at install time and writes it into the plist's `EnvironmentVariables` `PATH` (its folder, then `/usr/bin:/bin`), because launchd starts agents with a minimal `PATH` that usually lacks Homebrew or mise. Writes the plist from the template at `connector/scripts/com.vitruvian.vrelay.plist`, with label `com.vitruvian.vrelay`, `KeepAlive` true and log `~/Library/Logs/vrelay/vrelay.log`, and loads it. `:uninstall` reverses it.
 
-- [ ] **Step 1: Tests** `render_plist_fills_paths_and_args`, `install_fails_without_identity`, `unsigned_flag_skips_signing_with_warning`.
+- [ ] **Step 1: Tests** `render_plist_fills_paths_and_args`, `plist_path_includes_node_dir`, `install_fails_without_identity`, `unsigned_flag_skips_signing_with_warning`.
 - [ ] **Step 2:** `bazel test //apps/suites/vitruvian-relay/connector/scripts:unit_tests` → FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4:** → PASS.
@@ -399,7 +410,7 @@ Follow `apps/mobile/vitruvian-remote/macagent/scripts` (`render_plist`,
 ### Task 10: Deploy the relay, Zitadel changes, retire the spike
 
 **Files:**
-- Create: `apps/suites/vitruvian-relay/relay/Dockerfile`, `relay/deploy/chart/` (Service, HTTPRoute, DNSEndpoint for `relay.ipv1337.dev`, NetworkPolicy and the `affinity` value copied from the spike's chart; the affinity *rule* itself comes from `gitops/argocd/platform/relay-spike/values.yaml`; new: a 1 GiB PVC mounted at `/data` for the device file), `gitops/argocd/applications/relay.yaml`, `gitops/argocd/platform/relay/values.yaml` (with the #4916 allow-list affinity; `MCP_CLIENT_IDS` = the `claudeClientId` and `geminiClientId` outputs), image build workflow mirroring `vitruvian-relay-spike-image`
+- Create: `gitops/argocd/projects/relay-project.yaml` (from `relay-spike-project.yaml`, adding `PersistentVolumeClaim` to `namespaceResourceWhitelist`, or Argo CD refuses the volume), `tools/ci/chart-render/vitruvian-relay.values.yaml` (from the spike's, so CI renders the new chart), `apps/suites/vitruvian-relay/relay/Dockerfile`, `relay/deploy/chart/` (Service, HTTPRoute, DNSEndpoint for `relay.ipv1337.dev`, NetworkPolicy and the `affinity` value copied from the spike's chart, with the HTTPRoute also passing `/devices`, which the spike's route lacks; the affinity *rule* itself comes from `gitops/argocd/platform/relay-spike/values.yaml`; new: a 1 GiB PVC mounted at `/data` for the device file), `gitops/argocd/applications/relay.yaml`, `gitops/argocd/platform/relay/values.yaml` (with the #4916 allow-list affinity; `MCP_CLIENT_IDS` = the `claudeClientId` and `geminiClientId` outputs), image build workflow mirroring `vitruvian-relay-spike-image`
 - Modify: `infrastructure/pulumi/platform/zitadel-apps-relay/` for one sign-in
   (P1-required). The pinned `pulumi-zitadel` SDK v0.2.0 has no per-app
   login-version field. In order:
@@ -412,10 +423,10 @@ Follow `apps/mobile/vitruvian-remote/macagent/scripts` (`render_plist`,
   Gemini's callback is tied to the server URL (spike A), so the new relay URL
   needs a new callback in `geminiRedirectUris` before Gemini can use it.
   Optional for P1; note it in the stack README if not done.
-- Delete (in a separate PR, after Task 11 passes): `apps/suites/vitruvian-relay/spike/`, `gitops/argocd/applications/relay-spike.yaml`, `gitops/argocd/platform/relay-spike/`, the spike hub in `MODULE.bazel`, and the slack-mcp visibility exception for the spike.
+- Delete (in a separate PR, after Task 11 passes), also removing `vitruvian_relay_spike_crates` from the `ring` annotation and `tools/ci/chart-render/vitruvian-relay-spike.values.yaml`: `apps/suites/vitruvian-relay/spike/`, `gitops/argocd/applications/relay-spike.yaml`, `gitops/argocd/platform/relay-spike/`, the spike hub in `MODULE.bazel`, and the slack-mcp visibility exception for the spike.
 
-- [ ] **Step 1:** Render check: `bazel run //tools/gitops:helm -- template t apps/suites/vitruvian-relay/relay/deploy/chart -f gitops/argocd/platform/relay/values.yaml` → Deployment with the affinity, PVC, env from values.
-- [ ] **Step 2:** Merge; confirm with `bazel run //tools/gitops:get -- pods -n relay -o wide` that the pod is Running on `fedora`, `nuc9i5` or `nuc9i9`, and that `https://relay.ipv1337.dev/.well-known/oauth-protected-resource` serves PRM.
+- [ ] **Step 1:** Render check (and CI's chart-render job picks up the new values file): `bazel run //tools/gitops:helm -- template t apps/suites/vitruvian-relay/relay/deploy/chart -f gitops/argocd/platform/relay/values.yaml` → Deployment with the affinity, PVC, env from values.
+- [ ] **Step 2:** Merge; confirm the Argo CD app is Synced and Healthy (the PVC is accepted), then confirm with `bazel run //tools/gitops:get -- pods -n relay -o wide` that the pod is Running on `fedora`, `nuc9i5` or `nuc9i9`, and that `https://relay.ipv1337.dev/.well-known/oauth-protected-resource` serves PRM.
 - [ ] **Step 3:** If Login V2 was set: preview then apply `zitadel-apps-relay-apply.yaml`. `workflow-run` works only as wren, so run it without `--agent`: `bazel run //tools/agent-app -- workflow-run zitadel-apps-relay-apply.yaml -f action=preview`, read it, then `-f action=up`. Expect only in-place updates.
 - [ ] **Step 4:** After Task 11 passes, retire the spike (the Delete list above) in its own PR.
 - [ ] **Step 5: Commit** `feat(relay): deploy the relay to the homelab`.
@@ -424,7 +435,7 @@ Follow `apps/mobile/vitruvian-remote/macagent/scripts` (`render_plist`,
 
 Manual, with James.
 
-- [ ] **Step 1:** `bazel run //apps/suites/vitruvian-relay/connector:install`, then `vrelay login` (one sign-in if Login V2 landed). It prints the MCP URL.
+- [ ] **Step 1:** `vrelay login` first (`bazel run //apps/suites/vitruvian-relay/connector:vrelay -- login`; one sign-in if Login V2 landed). It prints the MCP URL. Then `bazel run //apps/suites/vitruvian-relay/connector:install`, and `vrelay status` shows connected.
 - [ ] **Step 2:** James adds that URL in Claude (web) as a custom connector with the `relay-claude` client id and signs in.
 - [ ] **Step 3:** From the **Claude phone app**: "list the files in my Downloads folder" runs without a prompt (a read). Relay log shows `tools/call` from client `398912442404439866`, no arguments.
 - [ ] **Step 4:** From the phone: "run `uname -a`". The "Allow?" dialog appears on the Mac; Allow → the output comes back to the phone. Repeat and Deny → Claude shows "Denied on the computer."
