@@ -1,0 +1,10 @@
+{
+  "name": "vrelay-desktop-commander",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The desktop-commander version vrelay runs, pinned exactly. Bump only after re-running the spike D checks against the new version.",
+  "license": "MIT",
+  "dependencies": {
+    "@wonderwhy-er/desktop-commander": "0.3.1"
+  }
+}

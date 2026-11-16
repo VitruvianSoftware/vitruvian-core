@@ -34,6 +34,8 @@ _IGNORE_GLOBS = [
     "**/internal/scaffold/templates/**",
     # lockfiles + generated manifests
     "pnpm-lock.yaml",
+    # vrelay's own pnpm workspace (the pinned desktop-commander)
+    "apps/suites/vitruvian-relay/connector/dc/pnpm-lock.yaml",
     "**/package-lock.json",
     "**/Cargo.lock",
     "MODULE.bazel.lock",

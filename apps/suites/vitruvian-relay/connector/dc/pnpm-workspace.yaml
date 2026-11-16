@@ -1,0 +1,32 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# vrelay's own pnpm workspace, apart from the repo root's: it holds only the
+# pinned desktop-commander, so that package's dependency tree lives in this
+# folder's pnpm-lock.yaml and can never move a version in the main workspace
+# (One Version Rule: a separate hub, @vrelay_npm in MODULE.bazel, is the
+# sanctioned way to diverge). This file makes the folder a workspace root, so
+# pnpm stops here instead of joining the root workspace.
+# Re-lock: bazel run //tools/pnpm:lock -- --dir apps/suites/vitruvian-relay/connector/dc
+packages:
+  - "."
+# No package runs install scripts (desktop-commander's postinstall reports the
+# install over HTTPS). rules_js requires this to be stated.
+onlyBuiltDependencies: []
