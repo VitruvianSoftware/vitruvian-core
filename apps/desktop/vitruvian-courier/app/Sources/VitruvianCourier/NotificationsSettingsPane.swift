@@ -38,7 +38,7 @@ struct NotificationsSettingsPane: View {
 
     private var alertTypesSection: some View {
         Section(String(localized: "Alert Types")) {
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "notifications.messages"),
                 isOn: $preferences.messageNotificationsEnabled
             )
@@ -50,7 +50,7 @@ struct NotificationsSettingsPane: View {
                 isEnabled: preferences.messageNotificationsEnabled
             )
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "notifications.groups"),
                 isOn: $preferences.groupNotificationsEnabled
             )
@@ -62,20 +62,23 @@ struct NotificationsSettingsPane: View {
                 isEnabled: preferences.groupNotificationsEnabled
             )
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "notifications.requests"),
                 isOn: $preferences.requestNotificationsEnabled
             )
             .help(String(localized: "A message request is someone you haven’t chatted with before writing to you."))
             .settingAnchor("notifications.requests", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "notifications.reactions"),
                 isOn: $preferences.notifyOnReaction
             )
             .settingAnchor("notifications.reactions", highlighted: highlightedSettingID)
 
-            Toggle(isOn: $preferences.typingNotificationsEnabled) {
+            SettingsSwitchRow(
+                isOn: $preferences.typingNotificationsEnabled,
+                title: SettingsNavigationModel.title(for: "notifications.typing")
+            ) {
                 HStack(spacing: 8) {
                     Text(SettingsNavigationModel.title(for: "notifications.typing"))
                     SettingBadgeView(badge: .labs)
@@ -84,7 +87,7 @@ struct NotificationsSettingsPane: View {
             .help(String(localized: "Only on networks that send typing. Off, you’re told when the message arrives."))
             .settingAnchor("notifications.typing", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "notifications.inFocus"),
                 isOn: $preferences.notifyWhenInFocus
             )
@@ -136,7 +139,7 @@ struct NotificationsSettingsPane: View {
             }
             .settingAnchor("notifications.repeatUnread", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "notifications.autoCopyOTP"),
                 isOn: $preferences.autoCopyOTP
             )
@@ -234,7 +237,7 @@ struct NotificationsSettingsPane: View {
                             }
                         }
                         Spacer()
-                        Toggle(
+                        SettingsSwitchRow(
                             String(localized: "Alerts"),
                             isOn: Binding(
                                 get: { preferences.accountOverrides[key]?.enabled ?? true },
@@ -243,9 +246,9 @@ struct NotificationsSettingsPane: View {
                                     entry.enabled = enabled
                                     preferences.accountOverrides[key] = entry
                                 }
-                            )
+                            ),
+                            fillsWidth: false
                         )
-                        .toggleStyle(SettingsSwitchToggleStyle(fillsWidth: false))
                         .controlSize(.small)
 
                         Toggle(

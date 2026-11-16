@@ -549,7 +549,7 @@ public struct AISettingsPane: View {
 
     private var customInstructionsSection: some View {
         Section(String(localized: "Contextual AI & Chat Assistant")) {
-            Toggle(
+            SettingsSwitchRow(
                 String(localized: "Mention an AI to get answers and help in chat"),
                 isOn: $preferences.mentionAIInChats
             )
@@ -565,7 +565,7 @@ public struct AISettingsPane: View {
     // MARK: - Translation Languages
 
     private var translationLanguagesSection: some View {
-        Section(String(localized: "Translation Languages")) {
+        Section {
             Picker(
                 String(localized: "Preferred response language"),
                 selection: $preferences.responseLanguage
@@ -574,7 +574,6 @@ public struct AISettingsPane: View {
                     Text(language).tag(language)
                 }
             }
-            .settingAnchor("ai.translation", highlighted: highlightedSettingID)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(String(localized: "Enabled translation languages"))
@@ -604,50 +603,43 @@ public struct AISettingsPane: View {
                     }
                 }
             }
-            .settingAnchor("ai.translation", highlighted: highlightedSettingID)
+        } header: {
+            Text(String(localized: "Translation Languages"))
+                .sectionAnchor("ai.translation", highlighted: highlightedSettingID)
         }
+        .sectionHighlight("ai.translation", highlighted: highlightedSettingID)
     }
 
     // MARK: - Talk to Type
 
     private var talkToTypeSection: some View {
         let hasOpenAIKey = store.hasKey(for: .openAI)
-        return Section(String(localized: "Talk to Type & Voice Transcription")) {
+        return Section {
             Text(store.speechStatusLine)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .settingAnchor("ai.talkToType", highlighted: highlightedSettingID)
                 .task(id: "\(preferences.useWhisperForTalkToType)|\(preferences.transcriptionLanguage)|\(hasOpenAIKey)") {
                     await store.refreshSpeechStatus()
                 }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Toggle(
-                    String(localized: "Use OpenAI's Whisper model for Talk to Type and transcribing"),
-                    isOn: Binding(
-                        get: { hasOpenAIKey && preferences.useWhisperForTalkToType },
-                        set: { enabled in
-                            guard hasOpenAIKey else { return }
-                            preferences.useWhisperForTalkToType = enabled
-                        }
-                    )
-                )
-                .disabled(!hasOpenAIKey)
-                .help(hasOpenAIKey ? "" : SpeechEngineFactory.whisperMissingKeyMessage)
+            SettingsSwitchRow(
+                String(localized: "Use OpenAI's Whisper model for Talk to Type and transcribing"),
+                isOn: Binding(
+                    get: { hasOpenAIKey && preferences.useWhisperForTalkToType },
+                    set: { enabled in
+                        guard hasOpenAIKey else { return }
+                        preferences.useWhisperForTalkToType = enabled
+                    }
+                ),
+                footnote: hasOpenAIKey ? nil : SpeechEngineFactory.whisperMissingKeyMessage
+            )
+            .disabled(!hasOpenAIKey)
+            .help(hasOpenAIKey ? "" : SpeechEngineFactory.whisperMissingKeyMessage)
 
-                if !hasOpenAIKey {
-                    Text(SpeechEngineFactory.whisperMissingKeyMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .settingAnchor("ai.talkToType", highlighted: highlightedSettingID)
-
-            Toggle(
+            SettingsSwitchRow(
                 String(localized: "Automatically transcribe incoming voice notes"),
                 isOn: $preferences.autoTranscribeVoiceNotes
             )
-            .settingAnchor("ai.talkToType", highlighted: highlightedSettingID)
             Picker(
                 String(localized: "Transcription language"),
                 selection: $preferences.transcriptionLanguage
@@ -657,15 +649,18 @@ public struct AISettingsPane: View {
                     Text(language).tag(language)
                 }
             }
-            .settingAnchor("ai.talkToType", highlighted: highlightedSettingID)
+        } header: {
+            Text(String(localized: "Talk to Type & Voice Transcription"))
+                .sectionAnchor("ai.talkToType", highlighted: highlightedSettingID)
         }
+        .sectionHighlight("ai.talkToType", highlighted: highlightedSettingID)
     }
 
     // MARK: - Slash Commands
 
     private var slashCommandsSection: some View {
         Section(String(localized: "Slash Command Triggers")) {
-            Toggle(
+            SettingsSwitchRow(
                 String(localized: "Enable / slash command triggers in the message box"),
                 isOn: $preferences.enableSlashCommands
             )

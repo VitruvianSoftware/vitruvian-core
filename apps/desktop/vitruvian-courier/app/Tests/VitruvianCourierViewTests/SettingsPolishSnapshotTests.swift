@@ -85,8 +85,7 @@ final class SettingsPolishSnapshotTests: XCTestCase {
     func testSwitchKeepsItsColourWhenOnEvenInAWindowNotInFront() throws {
         for (name, isOn) in [("settings-switch-on", true), ("settings-switch-off", false)] {
             let sizes = try Snapshot.render(name, width: 160, height: 40) {
-                Toggle("Switch", isOn: .constant(isOn))
-                    .toggleStyle(SettingsSwitchToggleStyle())
+                SettingsSwitchRow("Switch", isOn: .constant(isOn))
                     .tint(.blue)
                     .padding(8)
             }

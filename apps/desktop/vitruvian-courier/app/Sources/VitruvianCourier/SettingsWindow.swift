@@ -60,7 +60,6 @@ struct SettingsWindow: View {
 
                 rightPane
                     .tint(controlTint)
-                    .toggleStyle(SettingsSwitchToggleStyle())
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color(nsColor: .textBackgroundColor).opacity(0.35))
             }
