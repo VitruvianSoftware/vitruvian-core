@@ -1082,4 +1082,61 @@ final class MediaViewerModelTests: XCTestCase {
         XCTAssertFalse(conversation.carousel.isPresented, "Opening Settings must close open viewer first")
         XCTAssertNil(conversation.activeLightboxMessageID)
     }
+
+    func testTappingAStickerStillOpensTheViewerOnIt() async throws {
+        let stickerPath = try makeLocalMediaFile(named: "sticker.webp")
+        let roomID = "!r1:courier.local"
+        let stickerEvent = Event(
+            eventID: "$s1",
+            roomID: roomID,
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            type: "m.sticker",
+            content: .object([
+                "body": .string("sticker.webp"),
+                "url": .string("mxc://courier.local/s1"),
+                "info": .object([
+                    "mimetype": .string("image/webp"),
+                    "w": .int(512),
+                    "h": .int(512),
+                ]),
+            ]),
+            ts: 1_760_000_001_000,
+            seq: 1,
+            status: .sent,
+            mediaPath: stickerPath,
+            thumbnailPath: stickerPath,
+            viewOnce: nil,
+            played: false
+        )
+        let timelineItems = Timeline.build(
+            events: [stickerEvent],
+            me: "@me:courier.local",
+            now: Date(timeIntervalSince1970: 1_760_000_002)
+        )
+        let messages = timelineItems.compactMap { item -> TimelineMessage? in
+            if case let .message(msg) = item { return msg }
+            return nil
+        }
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages.first?.id, "$s1")
+        XCTAssertEqual(messages.first?.kind, .sticker)
+
+        let (_, appModel) = try await startApp { method, _ in
+            switch method {
+            case "hello": return TestEngineServer.helloOK
+            case "accounts.list": return .result(["accounts": []])
+            default: return .result([String: Any]())
+            }
+        }
+        let conversation = ConversationModel(appModel: appModel, unreadCount: { _ in 0 }, chat: { _ in nil })
+        conversation.setSnapshotStateForTesting(roomID: roomID, items: timelineItems)
+        conversation.openLightbox("$s1")
+
+        XCTExpectFailure("Regression: stickers no longer open in the viewer (review of feat/courier-ux2-newchat)") {
+            XCTAssertTrue(conversation.carousel.isPresented)
+            XCTAssertEqual(conversation.carousel.currentItem?.eventID, "$s1")
+        }
+    }
 }
