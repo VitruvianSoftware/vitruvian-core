@@ -1,0 +1,101 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# One replica, replaced with Recreate rather than rolled: the relay holds each
+# device's /connect WebSocket in memory and owns devices.json, so two relays at
+# once would split devices between them and race on the file.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vitruvian-relay.name" . }}
+  labels: {{- include "vitruvian-relay.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {{- include "vitruvian-relay.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "vitruvian-relay.selectorLabels" . | nindent 8 }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      automountServiceAccountToken: false
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # fsGroup: the pod runs as UID 10001 and a fresh NFS volume starts
+      # root-owned, so the group is what lets the relay write devices.json.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: vitruvian-relay
+          image: {{ include "vitruvian-relay.imageRef" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          # The names src/config.rs reads.
+          env:
+            - name: PORT
+              value: "3000"
+            - name: PUBLIC_URL
+              value: {{ printf "https://%s" .Values.hostname | quote }}
+            - name: ISSUER
+              value: {{ .Values.oidc.issuer | quote }}
+            - name: PROJECT_ID
+              value: {{ required "oidc.projectId is required (zitadel-apps-relay output projectId)" .Values.oidc.projectId | quote }}
+            - name: MCP_CLIENT_IDS
+              value: {{ required "oidc.mcpClientIds is required: comma-separated zitadel-apps-relay outputs claudeClientId, geminiClientId, chatgptClientId (each one configured)" .Values.oidc.mcpClientIds | quote }}
+            - name: CONNECTOR_CLIENT_ID
+              value: {{ required "oidc.connectorClientId is required (zitadel-apps-relay output connectorClientId)" .Values.oidc.connectorClientId | quote }}
+            - name: ALLOWED_SUBJECTS
+              value: {{ required "oidc.allowedSubjects is required: an empty list would admit every account in the instance" .Values.oidc.allowedSubjects | quote }}
+            - name: DATA_DIR
+              value: /data
+          ports:
+            - name: http
+              containerPort: 3000
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "vitruvian-relay.name" . }}-data
