@@ -68,11 +68,11 @@ swift_test(
     size = "medium",
     srcs = glob(["Tests/VitruvianCourierCoreTests/**/*.swift"]),
     data = [
+        "Resources/Info.plist",
         "//apps/desktop/vitruvian-courier/engine/internal/gchat:gchat_test",
         "//apps/desktop/vitruvian-courier/protocol",
         "//apps/desktop/vitruvian-courier/protocol:logscrub_cases",
         "//apps/desktop/vitruvian-courier/protocol:richtext_cases",
-        "Resources/Info.plist",
     ] + glob([
         "Resources/*.lproj/*",
         "Sources/**/*.swift",
@@ -95,8 +95,8 @@ swift_test(
     srcs = glob(["Tests/VitruvianCourierViewTests/**/*.swift"]),
     # The made-up chats the test copy can open with: SeedScenarioSnapshotTests draws one (SeedScenario.swift).
     data = [
-        "//apps/desktop/vitruvian-courier/seed:scenarios",
         "Resources/Info.plist",
+        "//apps/desktop/vitruvian-courier/seed:scenarios",
     ] + glob(["Resources/*.lproj/*"]),
     tags = [
         "exclusive",
@@ -168,7 +168,10 @@ macos_application(
     executable_name = "VitruvianCourier",
     infoplists = ["Resources/Info.plist"],
     minimum_os_version = "14.0",
-    resources = ["Resources/AppIcon.icns"] + glob(["Resources/*.lproj/*.strings", "Resources/*.lproj/*.stringsdict"]),
+    resources = ["Resources/AppIcon.icns"] + glob([
+        "Resources/*.lproj/*.strings",
+        "Resources/*.lproj/*.stringsdict",
+    ]),
     tags = ["manual"],
     version = ":version",
     visibility = ["//apps/desktop/vitruvian-courier:__subpackages__"],
@@ -199,7 +202,10 @@ macos_application(
     executable_name = "VitruvianCourier",
     infoplists = [":test_copy_infoplist"],
     minimum_os_version = "14.0",
-    resources = ["Resources/AppIcon.icns"] + glob(["Resources/*.lproj/*.strings", "Resources/*.lproj/*.stringsdict"]),
+    resources = ["Resources/AppIcon.icns"] + glob([
+        "Resources/*.lproj/*.strings",
+        "Resources/*.lproj/*.stringsdict",
+    ]),
     tags = ["manual"],
     version = ":version",
     deps = [":VitruvianCourierLib"],
