@@ -2058,19 +2058,22 @@ mod tests {
         for out in futures_join_all(calls).await {
             assert!(out.is_error, "{out:?}");
         }
-        // Long after every deadline, only the one restart ever ran.
-        // (Queued restarts would run one per 200 ms init limit by now.)
+        // Long after every deadline, at most the one restart ever ran.
+        // (Queued restarts would run one per 200 ms init limit by now.) On a
+        // loaded machine its shell can be stopped by the init limit before
+        // it writes its spawns line, so "none" is a pass too.
         tokio::time::sleep(Duration::from_millis(1200)).await;
-        assert_eq!(
-            spawns(&dir),
-            base + 1,
-            "restarts were queued for callers that left"
+        let after = spawns(&dir);
+        assert!(
+            after <= base + 1,
+            "restarts were queued for callers that left: {after} > {}",
+            base + 1
         );
         // A call whose deadline has already passed starts nothing at all.
         let out = b.call("echo", json!({}), Instant::now()).await;
         assert!(out.is_error);
         tokio::time::sleep(Duration::from_millis(300)).await;
-        assert_eq!(spawns(&dir), base + 1);
+        assert_eq!(spawns(&dir), after);
         b.stop();
     }
 

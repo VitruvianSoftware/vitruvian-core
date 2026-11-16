@@ -194,15 +194,17 @@ struct Relay {
     logs: Arc<Mutex<Vec<String>>>,
 }
 
-/// In-call pings every 200 ms: three missed (600 ms) is a drop on either side.
-const IN_CALL: Duration = Duration::from_millis(200);
+/// In-call pings every 2 s, as in production: three missed (6 s) is a drop
+/// on either side. Shorter would be faster, but with the relay, the
+/// connector and the slow proxy below sharing one test process, a loaded
+/// machine (8 copies at once) has been seen to stall a task for over 3 s.
+const IN_CALL: Duration = Duration::from_secs(2);
 
 fn relay_timing() -> RelayTiming {
     RelayTiming {
         idle_ping: Duration::from_secs(1),
         in_call_ping: IN_CALL,
         transit_margin: IN_CALL * 3,
-        call_budget: Duration::from_secs(30),
         ..RelayTiming::default()
     }
 }
@@ -553,8 +555,6 @@ fn link_timing() -> LinkTiming {
         backoff_unit: Duration::from_millis(10),
         connect_timeout: WAIT,
         welcome_timeout: WAIT,
-        max_prompt: Duration::from_secs(20),
-        max_call: Duration::from_secs(30),
         ..LinkTiming::default()
     }
 }
@@ -677,9 +677,11 @@ async fn slow_uplink(to: SocketAddr, bytes_per_sec: usize) -> String {
                 let _ = tokio::io::copy(&mut up_r, &mut down_w).await;
             });
             tokio::spawn(async move {
-                let chunk = 8 * 1024;
-                let pause = Duration::from_secs_f64(chunk as f64 / bytes_per_sec as f64);
-                let mut buf = vec![0u8; chunk];
+                // Paced by the bytes passed so far, whatever size each read
+                // comes in: never ahead of `bytes_per_sec` since the start.
+                let start = tokio::time::Instant::now();
+                let mut passed = 0usize;
+                let mut buf = vec![0u8; 32 * 1024];
                 loop {
                     match down_r.read(&mut buf).await {
                         Ok(0) | Err(_) => break,
@@ -687,7 +689,9 @@ async fn slow_uplink(to: SocketAddr, bytes_per_sec: usize) -> String {
                             if up_w.write_all(&buf[..n]).await.is_err() {
                                 break;
                             }
-                            tokio::time::sleep(pause).await;
+                            passed += n;
+                            let due = Duration::from_secs_f64(passed as f64 / bytes_per_sec as f64);
+                            tokio::time::sleep_until(start + due).await;
                         }
                     }
                 }
@@ -819,8 +823,8 @@ async fn registering_again_kicks_the_old_link_and_the_new_key_takes_over() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_slow_large_result_during_a_dialog_keeps_the_link() {
     let relay = start_relay().await;
-    // ~2 MiB/s: a 3 MiB result takes about 1.5 s, the silence limit is 0.6 s.
-    let url = slow_uplink(relay.addr, 2 * 1024 * 1024).await;
+    // 320 KiB/s: a 3 MiB result takes about 10 s, the silence limit is 6 s.
+    let url = slow_uplink(relay.addr, 320 * 1024).await;
     let c = start_connector(&relay, "e-big", &url, 0).await;
     c.tools.big_bytes.store(3 * 1024 * 1024, Ordering::SeqCst);
     let mcp = Arc::new(relay.mcp(&c.device_id).await);
@@ -832,13 +836,16 @@ async fn a_slow_large_result_during_a_dialog_keeps_the_link() {
         c.asker.opened.load(Ordering::SeqCst) == 1
     })
     .await;
-    // Three uploads, so a race the old code lost about half the time is
-    // all but certain to show.
-    for _ in 0..3 {
-        let (text, is_error) = mcp.call("read_file", json!({"path": "/big"})).await;
-        assert!(!is_error, "{}", &text[..text.len().min(200)]);
-        assert_eq!(text.len(), 3 * 1024 * 1024);
-    }
+    // One upload: the old code dropped the link here about half the time;
+    // link_tests.rs has the deterministic check.
+    let (text, is_error) = mcp.call("read_file", json!({"path": "/big"})).await;
+    assert!(
+        !is_error,
+        "{} / relay: {}",
+        &text[..text.len().min(200)],
+        relay.logs()
+    );
+    assert_eq!(text.len(), 3 * 1024 * 1024);
     assert_eq!(
         c.asker.dismissed.load(Ordering::SeqCst),
         0,
