@@ -1605,7 +1605,8 @@ public final class InboxModel: ObservableObject {
         let draft = StartNewChatDraft(
             accounts: accounts,
             candidates: [],
-            startsInMultiSelect: multiSelect
+            startsInMultiSelect: multiSelect,
+            isSearching: true
         )
         startNewChatDraft = draft
         Task { [weak self] in
@@ -1620,6 +1621,8 @@ public final class InboxModel: ObservableObject {
         if let accountFilter {
             startNewChatDraft?.selectedAccountFilter = accountFilter
         }
+        startNewChatDraft?.candidates = []
+        startNewChatDraft?.isSearching = true
         scheduleStartNewChatSearch()
     }
 
@@ -1630,6 +1633,9 @@ public final class InboxModel: ObservableObject {
             || startNewChatDraft?.selectedAccountFilter != updated.selectedAccountFilter
         startNewChatDraft = updated
         if queryChanged {
+            // The old query's contacts are not this query's answer: drop them now, and say we are waiting.
+            startNewChatDraft?.candidates = []
+            startNewChatDraft?.isSearching = true
             scheduleStartNewChatSearch()
         }
     }
@@ -1646,7 +1652,11 @@ public final class InboxModel: ObservableObject {
 
     /// Queries `people.contacts` for the current `startNewChatDraft` query and optional account filter.
     public func refreshStartNewChatCandidates() async {
-        guard !isLocked, let draft = startNewChatDraft, let client = appModel.client else { return }
+        guard !isLocked, let draft = startNewChatDraft else { return }
+        guard let client = appModel.client else {
+            startNewChatDraft?.isSearching = false
+            return
+        }
         let query = draft.query
         let filter = draft.selectedAccountFilter
         let params: PeopleContactsParams
@@ -1659,9 +1669,11 @@ public final class InboxModel: ObservableObject {
         } else {
             params = PeopleContactsParams(query: query.isEmpty ? nil : query)
         }
-        guard let result: PeopleContactsResult = try? await client.call("people.contacts", params) else { return }
+        let result: PeopleContactsResult? = try? await client.call("people.contacts", params)
+        // An answer for an earlier query is dropped; a newer search is already on its way.
         guard startNewChatDraft?.query == query, startNewChatDraft?.selectedAccountFilter == filter else { return }
-        startNewChatDraft?.candidates = result.contacts
+        startNewChatDraft?.candidates = result?.contacts ?? []
+        startNewChatDraft?.isSearching = false
     }
 
     /// Opens or creates a 1:1 chat with `candidate` and closes the Start New Chat sheet.
@@ -2036,6 +2048,9 @@ public struct StartNewChatDraft: Equatable, Sendable {
     public private(set) var blastOutcomes: [BlastRecipientOutcome]
     public var errorMessage: String?
     public var isSubmitting: Bool
+    /// Whether `candidates` is still being fetched for the current query and account filter. While it is, `candidates`
+    /// is empty: the previous query's contacts are never shown as this query's results.
+    public var isSearching: Bool
 
     public init(
         accounts: [Account] = [],
@@ -2050,7 +2065,8 @@ public struct StartNewChatDraft: Equatable, Sendable {
         isConfirmingBlast: Bool = false,
         blastOutcomes: [BlastRecipientOutcome] = [],
         errorMessage: String? = nil,
-        isSubmitting: Bool = false
+        isSubmitting: Bool = false,
+        isSearching: Bool = false
     ) {
         self.accounts = accounts
         self.candidates = candidates
@@ -2065,6 +2081,7 @@ public struct StartNewChatDraft: Equatable, Sendable {
         self.blastOutcomes = blastOutcomes
         self.errorMessage = errorMessage
         self.isSubmitting = isSubmitting
+        self.isSearching = isSearching
         if selectedRecipients.count >= 2 {
             recomputeMode()
         }
@@ -2248,6 +2265,15 @@ public struct StartNewChatDraft: Equatable, Sendable {
             }
         }
         return actions
+    }
+
+    /// Whether the sheet says "No matching contacts found": the person has typed, the engine has answered for exactly
+    /// this query, and there is neither a contact nor a phone / email / `@handle` lookup to offer.
+    public var showsNoMatchingContacts: Bool {
+        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !isSearching
+            && filteredCandidates.isEmpty
+            && lookupActions.isEmpty
     }
 
     /// Candidates filtered by the selected account pill and query text.

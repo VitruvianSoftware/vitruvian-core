@@ -15,10 +15,10 @@ public func isLocalMediaStorePath(_ path: String) -> Bool {
     return trimmed.hasPrefix("/")
 }
 
-/// One image or video item shown in `AttachmentCarouselOverlay`.
+/// One image, video or sticker item shown in `AttachmentCarouselOverlay`.
 ///
-/// Only non-view-once images and videos belong in the viewer (matching Chat Info's **Shared Media** and excluding
-/// link previews, stickers, files, voice notes, and removed media). Local paths are sanitized through
+/// Only non-view-once images, videos and stickers belong in the viewer (the same set Chat Info's **Shared Media**
+/// counts, excluding link previews, files, voice notes, and removed media). Local paths are sanitized through
 /// `isLocalMediaStorePath`; an item whose local file is not yet downloaded keeps `mediaPath == ""` so the viewer
 /// count matches Chat Info and its thumbnail renders a neutral placeholder instead of blank.
 public struct CarouselItem: Identifiable, Equatable, Sendable {
@@ -85,11 +85,11 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
         self.viewOnce = viewOnce
     }
 
-    /// Creates a `CarouselItem` from a `TimelineMessage` if it is a non-view-once image or video.
+    /// Creates a `CarouselItem` from a `TimelineMessage` if it is a non-view-once image, video or sticker.
     public init?(message: TimelineMessage) {
         guard !message.viewOnce,
               !message.showsMediaRemovedPlaceholder,
-              message.kind == .image || message.kind == .video
+              message.kind == .image || message.kind == .video || message.kind == .sticker
         else {
             return nil
         }
@@ -121,14 +121,18 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
     }
 
     /// Creates a `CarouselItem` from a raw `Event` (such as `RoomInfoResult.sharedMedia`) if it is a non-view-once
-    /// image or video (`m.image` / `m.video`). Strictly excludes link previews (`m.text`), stickers, files, and audio.
+    /// image, video or sticker (`m.image` / `m.video` / `m.sticker`). Strictly excludes link previews (`m.text`),
+    /// files, and audio.
     public init?(event: Event) {
-        guard event.type == "m.room.message",
+        guard event.type == "m.room.message" || event.type == "m.sticker",
               event.viewOnce != true,
               case let .object(dict) = event.content,
-              dict["com.courier.media_removed"] != .bool(true),
-              let msgtype = dict["msgtype"]?.stringValue
+              dict["com.courier.media_removed"] != .bool(true)
         else {
+            return nil
+        }
+        // A sticker is its own event type; every other media event names its kind in `msgtype`.
+        guard let msgtype = event.type == "m.sticker" ? "m.sticker" : dict["msgtype"]?.stringValue else {
             return nil
         }
         let kind: MessageKind
@@ -137,6 +141,8 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
             kind = .image
         case "m.video":
             kind = .video
+        case "m.sticker":
+            kind = .sticker
         default:
             return nil
         }
@@ -189,7 +195,7 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
         )
     }
 
-    /// Creates a `CarouselItem` from a `MediaHit` if it is a non-view-once image or video.
+    /// Creates a `CarouselItem` from a `MediaHit` if it is a non-view-once image, video or sticker.
     public init?(hit: MediaHit) {
         guard !hit.viewOnce,
               hit.mediaPath.isEmpty || isLocalMediaStorePath(hit.mediaPath)
@@ -202,6 +208,8 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
             messageKind = .image
         case .video:
             messageKind = .video
+        case .sticker:
+            messageKind = .sticker
         default:
             return nil
         }
@@ -232,7 +240,7 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
                 if !msg.galleryItems.isEmpty {
                     guard !msg.viewOnce else { continue }
                     for galleryItem in msg.galleryItems where !galleryItem.showsMediaRemovedPlaceholder {
-                        guard galleryItem.kind == .image || galleryItem.kind == .video else { continue }
+                        guard galleryItem.kind == .image || galleryItem.kind == .video || galleryItem.kind == .sticker else { continue }
                         let resolvedMediaPath = isLocalMediaStorePath(galleryItem.mediaPath) ? galleryItem.mediaPath : ""
                         let thumb = galleryItem.thumbnailPath ?? ""
                         let resolvedThumb = isLocalMediaStorePath(thumb) ? thumb : resolvedMediaPath
@@ -273,7 +281,7 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
     /// Decides which items the viewer shows: the deduplicated, chronological union of the open timeline, Chat Info's
     /// `sharedMedia` events and the `search.query` media hits.
     ///
-    /// Only images and videos that are not view-once, deleted or removed belong (never link previews, stickers,
+    /// Only images, videos and stickers that are not view-once, deleted or removed belong (never link previews,
     /// files or voice notes), and one whose file is not downloaded yet stays in, with an empty `mediaPath`.
     public static func viewerItems(
         timelineItems: [TimelineItem] = [],
@@ -352,7 +360,7 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
 
 /// State and transform controls for the full-window attachment lightbox (`AttachmentCarousel.tsx`).
 ///
-/// Opening it shows the chat's whole list of images and videos (what Chat Info calls Shared Media), not only what
+/// Opening it shows the chat's whole list of images, videos and stickers (what Chat Info calls Shared Media), not only what
 /// the timeline has loaded: the rest is paged in from the engine as you move toward the oldest end.
 @MainActor
 public final class AttachmentCarouselModel: ObservableObject {
@@ -396,6 +404,17 @@ public final class AttachmentCarouselModel: ObservableObject {
         return items[currentIndex]
     }
 
+    /// "3 / 12": where the selection is among the loaded items. A single item reads "1 / 1".
+    public var positionLabel: String {
+        "\(currentIndex + 1) / \(items.count)"
+    }
+
+    /// Whether ← has an item to go to.
+    public var canGoPrevious: Bool { currentIndex > 0 }
+
+    /// Whether → has an item to go to.
+    public var canGoNext: Bool { currentIndex + 1 < items.count }
+
     public init() {}
 
     /// Connects the carousel to the engine (to page in the chat's older media) and to the conversation (to keep its
@@ -407,9 +426,9 @@ public final class AttachmentCarouselModel: ObservableObject {
     }
 
     /// Opens the carousel with `items`, selecting `selectedEventID`, then widens it to the chat's full list of
-    /// images and videos.
+    /// images, videos and stickers.
     ///
-    /// View-once items, anything that is not an image or video, and explicit remote URLs are excluded. If
+    /// View-once items, anything that is not an image, video or sticker, and explicit remote URLs are excluded. If
     /// `selectedEventID` refers to a view-once item, the carousel refuses to open.
     public func open(items candidateItems: [CarouselItem], selectedEventID: String) {
         present(candidates: candidateItems, selectedEventID: selectedEventID, roomID: nil, seedHits: [])
@@ -428,7 +447,7 @@ public final class AttachmentCarouselModel: ObservableObject {
 
     private static func isViewable(_ item: CarouselItem) -> Bool {
         !item.viewOnce
-            && (item.kind == .image || item.kind == .video)
+            && (item.kind == .image || item.kind == .video || item.kind == .sticker)
             && (item.mediaPath.isEmpty || isLocalMediaStorePath(item.mediaPath))
     }
 
@@ -566,7 +585,7 @@ public final class AttachmentCarouselModel: ObservableObject {
         Task { await loadOlderMedia() }
     }
 
-    /// Pages in the next older images and videos for the open viewer.
+    /// Pages in the next older images, videos and stickers for the open viewer.
     public func loadOlderMedia() async {
         guard isPresented, !isLoadingOlderItems, let pager, pager.hasMore else { return }
         let epoch = epoch
@@ -585,9 +604,12 @@ public final class AttachmentCarouselModel: ObservableObject {
         let pager = MediaViewerModel(appModel: appModel, roomID: room, conversation: conversation)
         self.pager = pager
         let epoch = epoch
+        isLoadingOlderItems = true
         pagingTask = Task { [weak self] in
             await pager.refresh()
-            self?.absorbPage(from: pager, epoch: epoch)
+            guard let self, epoch == self.epoch else { return }
+            self.isLoadingOlderItems = false
+            self.absorbPage(from: pager, epoch: epoch)
         }
     }
 

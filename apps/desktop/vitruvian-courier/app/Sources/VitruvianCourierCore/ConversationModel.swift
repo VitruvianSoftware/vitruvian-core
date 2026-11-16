@@ -2941,11 +2941,13 @@ public final class ConversationModel: ObservableObject {
                 timelineCarouselItems = threadCarouselItems
             }
         }
-        if !timelineCarouselItems.isEmpty {
+        // Only an item the viewer actually shows becomes the active one.
+        if timelineCarouselItems.contains(where: { $0.eventID == messageID }) {
             carousel.open(items: timelineCarouselItems, selectedEventID: messageID)
-            activeLightboxMessageID = carousel.currentItem?.eventID ?? messageID
+            activeLightboxMessageID = carousel.currentItem?.eventID
         } else {
-            activeLightboxMessageID = messageID
+            carousel.close()
+            activeLightboxMessageID = nil
         }
     }
 

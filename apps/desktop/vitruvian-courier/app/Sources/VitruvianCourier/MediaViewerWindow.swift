@@ -41,7 +41,7 @@ public struct MediaWithSender: View {
         VStack(alignment: .leading, spacing: 6) {
             ZStack(alignment: .topLeading) {
                 Button(action: onOpen) {
-                    Color(white: 0.16)
+                    Color.primary.opacity(0.07)
                         .frame(maxWidth: .infinity)
                         .frame(height: 128)
                         .overlay {
@@ -51,9 +51,9 @@ public struct MediaWithSender: View {
                                         .resizable()
                                         .scaledToFill()
                                 } else {
-                                    Image(systemName: "photo")
+                                    Image(systemName: hit.kind == .video ? "film" : "photo")
                                         .font(.title2)
-                                        .foregroundStyle(.white.opacity(0.65))
+                                        .foregroundStyle(.secondary)
                                 }
 
                                 if hit.kind == .video {

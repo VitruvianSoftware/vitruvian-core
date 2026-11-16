@@ -120,12 +120,6 @@ enum StartNewChatPresentation {
             }
     }
 
-    /// "No matching contacts found" shows only after the user has typed and there is nothing to pick: no contact
-    /// result and no phone / email / `@handle` lookup to offer.
-    static func shouldShowNoMatchingContacts(draft: StartNewChatDraft) -> Bool {
-        hasTypedQuery(draft.query) && draft.filteredCandidates.isEmpty && draft.lookupActions.isEmpty
-    }
-
     /// Row IDs in on-screen order: `lookup:` / `search:` once typed, else `recent:` then `contact:`.
     static func navigableRowIDs(
         draft: StartNewChatDraft,
@@ -310,7 +304,7 @@ public struct StartNewChatView: View {
             merged.blastText = draft.blastText
             merged.isConfirmingBlast = draft.isConfirmingBlast
             guard merged != draft else { return }
-            if draft.selectedAccountFilter != updated.selectedAccountFilter {
+            if draft.selectedAccountFilter != updated.selectedAccountFilter || draft.query != updated.query {
                 contactsLimit = StartNewChatPresentation.initialContactsLimit
             }
             draft = merged
@@ -555,6 +549,7 @@ public struct StartNewChatView: View {
                         get: { draft.query },
                         set: { newValue in
                             draft.query = newValue
+                            contactsLimit = StartNewChatPresentation.initialContactsLimit
                             pruneSelectionIfNeeded()
                             onQueryChanged(draft)
                         }
@@ -566,6 +561,7 @@ public struct StartNewChatView: View {
                 if !draft.query.isEmpty {
                     Button {
                         draft.query = ""
+                        contactsLimit = StartNewChatPresentation.initialContactsLimit
                         pruneSelectionIfNeeded()
                         onQueryChanged(draft)
                     } label: {
@@ -757,6 +753,9 @@ public struct StartNewChatView: View {
         ScrollViewReader { scrollProxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 4) {
+                    if draft.isSearching {
+                        searchingRow
+                    }
                     if StartNewChatPresentation.hasTypedQuery(draft.query) {
                         typedResultsContent
                     } else {
@@ -815,7 +814,7 @@ public struct StartNewChatView: View {
                 .buttonStyle(.plain)
             }
         }
-        if recents.isEmpty && visibleContacts.isEmpty {
+        if recents.isEmpty && visibleContacts.isEmpty && !draft.isSearching {
             Text(String(localized: "Enter a phone number, email, or @username above to start a chat."))
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -840,13 +839,28 @@ public struct StartNewChatView: View {
             ForEach(candidates) { candidate in
                 candidateRow(candidate, rowID: "search:\(candidate.id)")
             }
-        } else if lookupActions.isEmpty {
+        } else if draft.showsNoMatchingContacts {
             Text(String(localized: "No matching contacts found"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.vertical, 24)
         }
+    }
+
+    /// Shown until the engine answers for the current query, in place of the previous query's contacts.
+    private var searchingRow: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text(String(localized: "Searching…"))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
     }
 
     private func sectionHeader(_ title: String) -> some View {

@@ -1670,6 +1670,38 @@ final class InboxModelTests: XCTestCase {
         await stop(h)
     }
 
+    func testStartNewChatNeverShowsThePreviousQuerysContactsForANewQuery() async throws {
+        let h = try await start()
+        let alice: [String: Any] = [
+            "user_id": "@alice:courier.local", "name": "Alice Example", "avatar_path": "",
+            "network": "whatsapp", "account_id": "wa-1", "identifiers": ["+15550100"], "room_id": "",
+        ]
+        h.script.contacts = [alice]
+
+        // Opening asks for every contact at once: nothing to show yet, and the sheet says it is searching.
+        h.inbox.openStartNewChat()
+        XCTAssertEqual(h.inbox.startNewChatDraft?.isSearching, true)
+        try await waitUntil { h.inbox.startNewChatDraft?.candidates.count == 1 }
+        XCTAssertEqual(h.inbox.startNewChatDraft?.isSearching, false)
+
+        // A new query clears the old contacts at once and waits (here, on the held debounce) for the engine.
+        h.script.contacts = []
+        h.inbox.updateStartNewChatQuery("zed")
+        XCTAssertEqual(h.inbox.startNewChatDraft?.candidates, [], "the previous query's contacts must be gone at once")
+        XCTAssertEqual(h.inbox.startNewChatDraft?.isSearching, true)
+        XCTAssertFalse(
+            h.inbox.startNewChatDraft!.showsNoMatchingContacts,
+            "not 'No matching contacts found' while the engine has not answered"
+        )
+
+        // The engine answers with nothing: only now is it "No matching contacts found".
+        await h.sleeps.releaseAlways()
+        try await waitUntil { h.inbox.startNewChatDraft?.isSearching == false }
+        XCTAssertEqual(h.inbox.startNewChatDraft?.candidates, [])
+        XCTAssertTrue(h.inbox.startNewChatDraft!.showsNoMatchingContacts)
+        await stop(h)
+    }
+
     func testArchiveMergedChatWithOneMemberAlreadyArchivedCountsAsOneRowAndUndoKeepsAlreadyArchivedMember() async throws {
         let h = try await start(autoRelease: true)
         var waRow = room("!wa:courier.local", ts: 100, network: "whatsapp", name: "Alice Merged", archived: false)
@@ -1845,6 +1877,7 @@ final class InboxScript: @unchecked Sendable {
     private var _rules: [[String: Any]] = []
     private var _mergedChats: [[String: Any]] = []
     private var _blastEvents: [[String: Any]] = []
+    private var _contacts: [[String: Any]] = []
 
     init(rooms: [[String: Any]], accounts: [[String: Any]]) {
         _rooms = rooms
@@ -1859,6 +1892,12 @@ final class InboxScript: @unchecked Sendable {
     var blastEvents: [[String: Any]] {
         get { lock.withLock { _blastEvents } }
         set { lock.withLock { _blastEvents = newValue } }
+    }
+
+    /// What `people.contacts` answers with.
+    var contacts: [[String: Any]] {
+        get { lock.withLock { _contacts } }
+        set { lock.withLock { _contacts = newValue } }
     }
 
     /// What the inbox lists, in the engine's order.
@@ -2001,7 +2040,7 @@ final class InboxScript: @unchecked Sendable {
         case "blast.send":
             return .result(["events": blastEvents])
         case "people.contacts":
-            return .result(["contacts": [[String: Any]]()])
+            return .result(["contacts": contacts])
         default: return .result([String: Any]())
         }
     }

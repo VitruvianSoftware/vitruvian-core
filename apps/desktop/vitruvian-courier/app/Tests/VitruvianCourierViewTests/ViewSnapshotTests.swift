@@ -884,7 +884,7 @@ final class ViewSnapshotTests: XCTestCase {
 
         var draft = StartNewChatDraft(accounts: accounts, candidates: contacts)
         XCTAssertFalse(StartNewChatPresentation.hasTypedQuery(draft.query))
-        XCTAssertFalse(StartNewChatPresentation.shouldShowNoMatchingContacts(draft: draft))
+        XCTAssertFalse(draft.showsNoMatchingContacts)
 
         let sorted = StartNewChatPresentation.sortedContacts(contacts, filter: nil)
         XCTAssertEqual(sorted.first?.name, "adam")
@@ -922,13 +922,13 @@ final class ViewSnapshotTests: XCTestCase {
         // Typed, and the engine's answer is empty: now (and only now) "No matching contacts found" shows.
         draft.query = "no-such-person-xyz"
         draft.candidates = []
-        XCTAssertTrue(StartNewChatPresentation.shouldShowNoMatchingContacts(draft: draft))
+        XCTAssertTrue(draft.showsNoMatchingContacts)
         XCTAssertNil(
             StartNewChatPresentation.confirmAction(draft: draft, recentRows: rows, selectedRowID: nil)
         )
 
         draft.query = "grace@example.com"
-        XCTAssertFalse(StartNewChatPresentation.shouldShowNoMatchingContacts(draft: draft))
+        XCTAssertFalse(draft.showsNoMatchingContacts)
         if case let .lookup(action)? = StartNewChatPresentation.confirmAction(
             draft: draft,
             recentRows: rows,

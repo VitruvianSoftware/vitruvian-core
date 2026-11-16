@@ -768,6 +768,7 @@ final class MediaViewerModelTests: XCTestCase {
         func makeMediaEvent(
             _ id: String,
             ts: Int64,
+            type: String = "m.room.message",
             msgtype: String = "m.image",
             body: String = "photo.jpg",
             mediaPath: String,
@@ -791,7 +792,7 @@ final class MediaViewerModelTests: XCTestCase {
                 sender: "@alice:courier.local",
                 senderName: "Alice Example",
                 mine: false,
-                type: "m.room.message",
+                type: type,
                 content: .object(dict),
                 ts: ts,
                 seq: ts,
@@ -834,7 +835,9 @@ final class MediaViewerModelTests: XCTestCase {
             mediaPath: "",
             url: "mxc://courier.local/e1"
         )
-        let sharedEvents: [Event] = [uncachedSharedEvent]
+        // A sticker is its own event type, and the viewer still shows it.
+        let stickerEvent = makeMediaEvent("$stk-evt", ts: 2_500, type: "m.sticker", msgtype: "", body: "sticker.webp", mediaPath: localPath)
+        let sharedEvents: [Event] = [uncachedSharedEvent, stickerEvent]
             + (2 ... 5).map { i in
                 makeMediaEvent(
                     "$e\(i)",
@@ -846,7 +849,6 @@ final class MediaViewerModelTests: XCTestCase {
             }
         let excludedSharedEvents: [Event] = [
             makeMediaEvent("$excl-link", ts: 1_500, msgtype: "m.text", body: "https://example.com", mediaPath: "", url: "https://example.com"),
-            makeMediaEvent("$excl-sticker", ts: 2_500, msgtype: "m.sticker", body: "sticker.webp", mediaPath: localPath),
             makeMediaEvent("$excl-file", ts: 3_500, msgtype: "m.file", body: "notes.pdf", mediaPath: localPath),
             makeMediaEvent("$excl-audio", ts: 4_500, msgtype: "m.audio", body: "voice.ogg", mediaPath: localPath),
             makeMediaEvent("$excl-vo", ts: 5_500, msgtype: "m.image", body: "secret.jpg", mediaPath: localPath, viewOnce: true),
@@ -874,9 +876,8 @@ final class MediaViewerModelTests: XCTestCase {
                 viewOnce: false
             )
         }
-        let excludedHits: [MediaHit] = [
-            MediaHit(
-                eventID: "$hit-sticker",
+        let stickerHit = MediaHit(
+                eventID: "$stk-hit",
                 roomID: roomID,
                 roomName: "Weekend Trail Crew",
                 network: "whatsapp",
@@ -893,7 +894,8 @@ final class MediaViewerModelTests: XCTestCase {
                 mediaPath: localPath,
                 partial: false,
                 viewOnce: false
-            ),
+            )
+        let excludedHits: [MediaHit] = [
             MediaHit(
                 eventID: "$hit-link",
                 roomID: roomID,
@@ -935,9 +937,12 @@ final class MediaViewerModelTests: XCTestCase {
         let viewerItems = CarouselItem.viewerItems(
             timelineItems: timelineItems,
             sharedMedia: sharedEvents + excludedSharedEvents,
-            mediaHits: page1Hits + excludedHits
+            mediaHits: page1Hits + [stickerHit] + excludedHits
         )
-        XCTAssertEqual(viewerItems.map(\.eventID), (1 ... 13).map { "$e\($0)" })
+        let expectedIDs = ["$e1", "$e2", "$stk-evt", "$e3", "$e4", "$e5", "$e6", "$stk-hit"] + (7 ... 13).map { "$e\($0)" }
+        XCTAssertEqual(viewerItems.map(\.eventID), expectedIDs, "images, videos and stickers; no link previews, files or audio")
+        XCTAssertEqual(viewerItems.first { $0.eventID == "$stk-evt" }?.kind, .sticker)
+        XCTAssertEqual(viewerItems.first { $0.eventID == "$stk-hit" }?.kind, .sticker)
         XCTAssertEqual(viewerItems.first?.mediaPath, "", "Uncached older media without local path must stay in viewerItems")
         XCTAssertFalse(viewerItems.contains { $0.eventID.hasPrefix("$excl-") || $0.eventID.hasPrefix("$hit-") })
 
@@ -1134,9 +1139,90 @@ final class MediaViewerModelTests: XCTestCase {
         conversation.setSnapshotStateForTesting(roomID: roomID, items: timelineItems)
         conversation.openLightbox("$s1")
 
-        XCTExpectFailure("Regression: stickers no longer open in the viewer (review of feat/courier-ux2-newchat)") {
-            XCTAssertTrue(conversation.carousel.isPresented)
-            XCTAssertEqual(conversation.carousel.currentItem?.eventID, "$s1")
+        XCTAssertTrue(conversation.carousel.isPresented)
+        XCTAssertEqual(conversation.carousel.currentItem?.eventID, "$s1")
+        XCTAssertEqual(conversation.carousel.currentItem?.kind, .sticker)
+        XCTAssertEqual(conversation.activeLightboxMessageID, "$s1")
+
+        // An ID the viewer has no item for opens nothing and is never recorded as the active one.
+        conversation.closeLightbox()
+        conversation.openLightbox("$not-in-the-chat")
+        XCTAssertFalse(conversation.carousel.isPresented)
+        XCTAssertNil(conversation.activeLightboxMessageID)
+    }
+
+    func testSingleItemViewerShowsOneOfOneAndNeverPages() async throws {
+        let path = try makeLocalMediaFile(named: "only.png")
+        let roomID = "!solo:courier.local"
+        let searchCursors = NSLock()
+        var observed: [String] = []
+        let (_, appModel) = try await startApp { method, params in
+            switch method {
+            case "hello": return TestEngineServer.helloOK
+            case "accounts.list": return .result(["accounts": []])
+            case "search.query":
+                searchCursors.withLock { observed.append(params?["cursor"] as? String ?? "nil") }
+                return .result([
+                    "chats": NSNull(), "in_groups": NSNull(), "bookmarks": NSNull(),
+                    "media": ["hits": [[String: Any]](), "next_cursor": NSNull()] as [String: Any],
+                    "messages": NSNull(), "last_archived": NSNull(), "complete": true, "hint": "",
+                ])
+            default: return .result([String: Any]())
+            }
         }
+        let conversation = ConversationModel(appModel: appModel, unreadCount: { _ in 0 }, chat: { _ in nil })
+        let item = CarouselItem(
+            eventID: "$only", roomID: roomID, kind: .image, mediaPath: path, thumbnailPath: path,
+            fileName: "only.png", mimeType: "image/png", sender: "@alice:courier.local",
+            senderName: "Alice Example", mine: false, ts: 1_000, caption: ""
+        )
+        conversation.carousel.open(items: [item], selectedEventID: "$only")
+        let carousel = conversation.carousel
+
+        XCTAssertEqual(carousel.items.count, 1)
+        XCTAssertEqual(carousel.positionLabel, "1 / 1")
+        XCTAssertFalse(carousel.canGoPrevious, "← is disabled with one item")
+        XCTAssertFalse(carousel.canGoNext, "→ is disabled with one item")
+
+        await waitUntil { !carousel.isLoadingOlderItems }
+        XCTAssertFalse(carousel.hasOlderItems, "the engine has no older page, so there is nothing to page in")
+        carousel.previous()
+        carousel.next()
+        carousel.select(index: 0)
+        await carousel.loadOlderMedia()
+        XCTAssertEqual(carousel.currentItem?.eventID, "$only")
+        XCTAssertEqual(carousel.positionLabel, "1 / 1")
+        XCTAssertEqual(searchCursors.withLock { observed }, ["nil"], "only the first page is ever asked for")
+    }
+
+    func testOlderMediaSpinnerIsOnWhileAPageIsOnItsWay() async throws {
+        let path = try makeLocalMediaFile(named: "spin.png")
+        let roomID = "!spin:courier.local"
+        let gate = DispatchSemaphore(value: 0)
+        let (_, appModel) = try await startApp { method, _ in
+            switch method {
+            case "hello": return TestEngineServer.helloOK
+            case "accounts.list": return .result(["accounts": []])
+            case "search.query":
+                gate.wait()
+                return .result([
+                    "chats": NSNull(), "in_groups": NSNull(), "bookmarks": NSNull(),
+                    "media": ["hits": [[String: Any]](), "next_cursor": NSNull()] as [String: Any],
+                    "messages": NSNull(), "last_archived": NSNull(), "complete": true, "hint": "",
+                ])
+            default: return .result([String: Any]())
+            }
+        }
+        let conversation = ConversationModel(appModel: appModel, unreadCount: { _ in 0 }, chat: { _ in nil })
+        let item = CarouselItem(
+            eventID: "$spin", roomID: roomID, kind: .image, mediaPath: path, thumbnailPath: path,
+            fileName: "spin.png", mimeType: "image/png", sender: "@alice:courier.local",
+            senderName: "Alice Example", mine: false, ts: 1_000, caption: ""
+        )
+        conversation.carousel.open(items: [item], selectedEventID: "$spin")
+        XCTAssertTrue(conversation.carousel.isLoadingOlderItems, "the filmstrip shows a spinner while the engine is asked")
+        gate.signal()
+        await waitUntil { !conversation.carousel.isLoadingOlderItems }
+        conversation.closeLightbox()
     }
 }

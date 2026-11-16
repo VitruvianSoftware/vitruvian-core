@@ -832,13 +832,16 @@ type SharedLink struct {
 	Host    string
 }
 
+// RoomSharedMedia is a chat's images, videos and stickers, newest first: what Chat Info lists as Shared Media and
+// what the image viewer pages through. Link previews, files and audio are not media.
 func (s *Store) RoomSharedMedia(ctx context.Context, roomID string, limit int) ([]Event, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	evts, err := s.queryEvents(ctx, `SELECT `+eventCols+` FROM events
-		WHERE room_id = $1 AND type = 'm.room.message' AND deleted_for_me = 0 AND redacted = 0
-		  AND json_extract(content, '$.msgtype') IN ('m.image', 'm.video')
+		WHERE room_id = $1 AND deleted_for_me = 0 AND redacted = 0
+		  AND (type = 'm.sticker'
+		       OR (type = 'm.room.message' AND json_extract(content, '$.msgtype') IN ('m.image', 'm.video')))
 		  AND COALESCE(json_extract(content, '$.url'), '') <> ''
 		ORDER BY ts DESC, seq DESC LIMIT $2`, roomID, limit*2)
 	if err != nil {

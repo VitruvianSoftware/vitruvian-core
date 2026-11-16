@@ -717,12 +717,15 @@ func TestRoomSharedMediaFilesAndLinks(t *testing.T) {
 	mkMsg(t, s, roomID, "$vid1", me, "m.room.message", `{"msgtype":"m.video","body":"clip.mp4","url":"mxc://courier.test/vid1"}`, t0.Add(2*time.Minute))
 	mkMsg(t, s, roomID, "$file1", me, "m.room.message", `{"msgtype":"m.file","body":"doc.pdf","url":"mxc://courier.test/file1"}`, t0.Add(3*time.Minute))
 	mkMsg(t, s, roomID, "$lnk1", me, "m.room.message", `{"msgtype":"m.text","body":"See https://example.com/spec, and (https://docs.example.org/guide)."}`, t0.Add(4*time.Minute))
+	mkMsg(t, s, roomID, "$stk1", me, "m.sticker", `{"body":"wave.webp","url":"mxc://courier.test/stk1"}`, t0.Add(5*time.Minute))
 
+	// Images, videos and stickers; never the file or the link preview.
 	mediaEvs, err := s.RoomSharedMedia(ctx, roomID, 10)
 	require.NoError(t, err)
-	require.Len(t, mediaEvs, 2)
-	require.Equal(t, "$vid1", mediaEvs[0].EventID)
-	require.Equal(t, "$img1", mediaEvs[1].EventID)
+	require.Len(t, mediaEvs, 3)
+	require.Equal(t, "$stk1", mediaEvs[0].EventID)
+	require.Equal(t, "$vid1", mediaEvs[1].EventID)
+	require.Equal(t, "$img1", mediaEvs[2].EventID)
 
 	fileEvs, err := s.RoomSharedFiles(ctx, roomID, 10)
 	require.NoError(t, err)
