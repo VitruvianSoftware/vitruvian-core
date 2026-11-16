@@ -39,15 +39,49 @@ final class InboxVisualRefreshSnapshotTests: XCTestCase {
     }
 
     func testRowsWithGroupAvatarsAndTwoLinePreviews() throws {
-        let style = RowStyle(InboxPreferences(defaults: defaults()))
-        let threeMember = Fixture.row("!1", "Eddie Stecker, Kent Hua, GitHub", network: "slack", direct: false, ts: 5,
-                                      preview: "Merged the pull request for the new pipeline and the deploy is now running", unread: 3)
-        let fiveMember = Fixture.row("!1b", "Eddie Stecker, Kent Hua, GitHub, Alice Smith, Bob Jones",
-                                     network: "slack", direct: false, ts: 12, preview: "All green on main", unread: 1)
+        let app = offlineApp()
+        let prefs = InboxPreferences(defaults: defaults())
+        let inbox = InboxModel(appModel: app, preferences: prefs)
+        let style = RowStyle(prefs)
+        let threeMember = Fixture.row(
+            "!1",
+            "Eddie Stecker, Kent Hua, GitHub",
+            network: "slack",
+            direct: false,
+            ts: 5,
+            preview: "Merged the pull request for the new pipeline and the deploy is now running",
+            unread: 3,
+            memberPreview: [
+                RowMember(userID: "@eddie", name: "Eddie Stecker"),
+                RowMember(userID: "@kent", name: "Kent Hua"),
+                RowMember(userID: "@gh", name: "GitHub"),
+            ]
+        )
+        let fiveMember = Fixture.row(
+            "!1b",
+            "Eddie Stecker, Kent Hua, GitHub, Alice Smith, Bob Jones",
+            network: "slack",
+            direct: false,
+            ts: 12,
+            preview: "All green on main",
+            unread: 1
+        )
         let customGroup = Fixture.row("!5", "Weekend Hikers", network: "signal", direct: false, ts: 60 * 24 * 3,
                                       preview: "Who has the map?")
         XCTAssertEqual(threeMember.displayTitle, "Eddie, Kent & GitHub")
-        XCTAssertEqual(fiveMember.displayTitle, "Eddie, Kent, GitHub & 2 others")
+        XCTAssertEqual(
+            fiveMember.displayTitle,
+            "Eddie Stecker, Kent Hua, GitHub, Alice Smith, Bob Jones",
+            "Without confirmed members, InboxRow.displayTitle leaves the title unchanged"
+        )
+        inbox.setKnownMembers([
+            GroupTitleMember(userID: "@eddie", name: "Eddie Stecker"),
+            GroupTitleMember(userID: "@kent", name: "Kent Hua"),
+            GroupTitleMember(userID: "@gh", name: "GitHub", isBot: true),
+            GroupTitleMember(userID: "@alice", name: "Alice Smith"),
+            GroupTitleMember(userID: "@bob", name: "Bob Jones"),
+        ], for: "!1b")
+        XCTAssertEqual(inbox.displayTitle(for: fiveMember), "Eddie, Kent, GitHub & 2 others")
         XCTAssertEqual(customGroup.displayTitle, "Weekend Hikers")
         let rows = [
             threeMember,
@@ -66,7 +100,8 @@ final class InboxVisualRefreshSnapshotTests: XCTestCase {
         check(try Snapshot.render("inbox-refresh-rows", width: 340) {
             VStack(spacing: 0) {
                 ForEach(rows, id: \.roomID) { row in
-                    InboxRowView(row: row, networkName: row.network, now: Fixture.now, style: style,
+                    InboxRowView(row: row, displayTitleOverride: inbox.displayTitle(for: row),
+                                 networkName: row.network, now: Fixture.now, style: style,
                                  isSelecting: false, isSelected: false, isHovered: false, hoverAct: {}, accept: {},
                                  decline: {}) { EmptyView() }
                         .padding(.horizontal, 10)
@@ -80,7 +115,8 @@ final class InboxVisualRefreshSnapshotTests: XCTestCase {
         check(try Snapshot.render("inbox-refresh-rows-compact", width: 340) {
             VStack(spacing: 0) {
                 ForEach(rows.prefix(3), id: \.roomID) { row in
-                    InboxRowView(row: row, networkName: row.network, now: Fixture.now, style: compact,
+                    InboxRowView(row: row, displayTitleOverride: inbox.displayTitle(for: row),
+                                 networkName: row.network, now: Fixture.now, style: compact,
                                  isSelecting: false, isSelected: false, isHovered: false, hoverAct: {}, accept: {},
                                  decline: {}) { EmptyView() }
                         .padding(.horizontal, 10)
@@ -187,15 +223,34 @@ final class InboxVisualRefreshSnapshotTests: XCTestCase {
 
     func testConversationHeaderBarHairlineAndTopMessageClearance() throws {
         let store = defaults()
-        let preferences = ComposerPreferences(defaults: store)
-        let conversation = ConversationModel(appModel: offlineApp(), preferences: preferences)
+        let app = offlineApp()
+        let inboxPreferences = InboxPreferences(defaults: store)
+        let composerPreferences = ComposerPreferences(defaults: store)
+        let inbox = InboxModel(appModel: app, preferences: inboxPreferences)
+        let conversation = ConversationModel(appModel: app, preferences: composerPreferences)
+        final class NoPasteboard: TextPasteboard {
+            func setString(_: String) {}
+        }
+        let messageActions = MessageActionsModel(
+            conversation: conversation,
+            appModel: app,
+            preferences: composerPreferences,
+            pasteboard: NoPasteboard()
+        )
+        let scheduled = ScheduledModel(appModel: app)
+        let focus = MessageFocus()
         let groupRow = Fixture.row(
             "!grp-header",
             "Eddie Stecker, Kent Hua, GitHub",
             network: "slack",
             direct: false,
             ts: 5,
-            preview: "Merged PR #42"
+            preview: "Merged PR #42",
+            memberPreview: [
+                RowMember(userID: "@eddie", name: "Eddie Stecker"),
+                RowMember(userID: "@kent", name: "Kent Hua"),
+                RowMember(userID: "@gh", name: "GitHub"),
+            ]
         )
         let events = [
             Fixture.text(
@@ -210,40 +265,223 @@ final class InboxVisualRefreshSnapshotTests: XCTestCase {
         ]
         let items = Fixture.items(events, isDirect: false)
         conversation.setSnapshotStateForTesting(roomID: "!grp-header", items: items, row: groupRow)
-        let ui = MessageUI()
-        let actions = VitruvianCourier.MessageActions(now: { Fixture.now })
-        let headerInset = PaneHeaderMetrics.stripHeight + PaneHeaderMetrics.hairlineHeight
 
-        check(try Snapshot.render("conversation-header-clearance", width: 560, height: 260) {
-            ZStack(alignment: .top) {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(items) { item in
-                            TimelineItemView(
-                                item: item,
-                                isSelected: false,
-                                showsSent: false,
-                                actions: actions,
-                                ui: ui
-                            )
-                        }
-                    }
-                    .padding(.top, 8)
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 8)
-                }
-                .contentMargins(.top, headerInset, for: .scrollContent)
-                .contentMargins(.top, headerInset, for: .scrollIndicators)
-
-                ConversationHeader(
-                    row: groupRow,
-                    displayTitle: groupRow.displayTitle,
-                    networkName: "Slack",
-                    conversation: conversation,
-                    part: .strip
-                )
+        var probedFrames: [String: CGRect] = [:]
+        check(try Snapshot.render("conversation-header-clearance", width: 560, height: 280) {
+            ConversationView(
+                conversation: conversation,
+                composer: conversation.composer,
+                inbox: inbox,
+                messageActions: messageActions,
+                scheduled: scheduled,
+                preferences: composerPreferences,
+                thread: conversation.thread,
+                focus: focus,
+                appModel: app
+            )
+            .environment(\.liquidGlass, false)
+            .environment(\.conversationLayoutProbe) { name, frame in
+                probedFrames[name] = frame
             }
         })
+
+        let headerFrame = try XCTUnwrap(probedFrames["headerOverlay"], "production chatTopHeaderOverlay frame should be reported")
+        let firstMessageFrame = try XCTUnwrap(probedFrames["item/$k1"], "first message frame should be reported")
+        XCTAssertGreaterThanOrEqual(headerFrame.height, PaneHeaderMetrics.stripHeight)
+        XCTAssertGreaterThanOrEqual(
+            firstMessageFrame.minY,
+            headerFrame.maxY,
+            "first message (\(firstMessageFrame)) must start at or below header bottom (\(headerFrame.maxY))"
+        )
+    }
+
+    func testConversationScrollTargetsLandBelowHeader() throws {
+        // Verify normalized anchor math for both top-aligned and centered modes (including tall items).
+        let topAnchor = ConversationView.headerClearedScrollAnchor(
+            headerInset: 48.5,
+            viewportHeight: 220,
+            itemHeight: 36,
+            preferCenter: false
+        )
+        XCTAssertEqual(topAnchor.y * (220 - 36), 48.5 + ConversationView.timelineVerticalPadding, accuracy: 0.5)
+
+        let tallAnchor = ConversationView.headerClearedScrollAnchor(
+            headerInset: 76,
+            viewportHeight: 220,
+            itemHeight: 200,
+            preferCenter: true
+        )
+        XCTAssertEqual(tallAnchor.y, 0, "tall items fall back to top alignment rather than extending under the header")
+
+        let store = defaults()
+        let app = offlineApp()
+        let inboxPreferences = InboxPreferences(defaults: store)
+        let composerPreferences = ComposerPreferences(defaults: store)
+        let inbox = InboxModel(appModel: app, preferences: inboxPreferences)
+        let conversation = ConversationModel(appModel: app, preferences: composerPreferences)
+        final class NoPasteboard: TextPasteboard {
+            func setString(_: String) {}
+        }
+        let messageActions = MessageActionsModel(
+            conversation: conversation,
+            appModel: app,
+            preferences: composerPreferences,
+            pasteboard: NoPasteboard()
+        )
+        let scheduled = ScheduledModel(appModel: app)
+        let focus = MessageFocus()
+
+        let groupRow = Fixture.row(
+            "!grp-scroll",
+            "Eddie Stecker, Kent Hua, GitHub",
+            network: "slack",
+            direct: false,
+            ts: 5,
+            preview: "Message 20",
+            memberPreview: [
+                RowMember(userID: "@eddie", name: "Eddie Stecker"),
+                RowMember(userID: "@kent", name: "Kent Hua"),
+                RowMember(userID: "@gh", name: "GitHub"),
+            ]
+        )
+        let baseEvents: [Event] = (1 ... 20).map { idx in
+            let minutesAgo = 40 - idx
+            let body = idx == 4
+                ? "Unread thread root message #4 with extra context so we can verify clearance"
+                : "Conversation message #\(idx)"
+            return Fixture.text(
+                "$m\(idx)",
+                body,
+                mine: idx % 2 == 0,
+                ts: minutesAgo,
+                sender: idx % 2 == 0 ? nil : "@kent:courier.local",
+                name: "Kent Hua"
+            )
+        }
+        conversation.setSnapshotStateForTesting(
+            roomID: "!grp-scroll",
+            items: Fixture.items(baseEvents, isDirect: false),
+            row: groupRow,
+            hasOlder: true
+        )
+
+        var frames: [String: CGRect] = [:]
+        let rootView = ConversationView(
+            conversation: conversation,
+            composer: conversation.composer,
+            inbox: inbox,
+            messageActions: messageActions,
+            scheduled: scheduled,
+            preferences: composerPreferences,
+            thread: conversation.thread,
+            focus: focus,
+            appModel: app
+        )
+        .environment(\.liquidGlass, false)
+        .environment(\.conversationLayoutProbe) { name, frame in
+            frames[name] = frame
+        }
+
+        let size = NSSize(width: 900, height: 280)
+        let host = NSHostingView(rootView: rootView)
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = host
+        host.frame = NSRect(origin: .zero, size: size)
+        window.setFrameOrigin(NSPoint(x: -10_000, y: -10_000))
+        window.orderFrontRegardless()
+        defer {
+            window.orderOut(nil)
+            window.contentView = nil
+        }
+
+        func pump(for interval: TimeInterval = 0.08, until condition: (() -> Bool)? = nil) {
+            let deadline = Date().addingTimeInterval(interval)
+            while Date() < deadline {
+                RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+                host.layoutSubtreeIfNeeded()
+                if condition?() == true { break }
+            }
+        }
+
+        // Wait past startPinningToBottomDuration (1.5 s) so initial pinning finishes cleanly.
+        pump(for: 1.7)
+        let scrollView = try XCTUnwrap(host.first(NSScrollView.self), "ConversationView must host an NSScrollView")
+
+        // 1. restoreAnchor: scroll to top so ProgressView appears and captures restoreAnchor = "$m1", then prepend older messages.
+        for _ in 0 ..< 4 {
+            if let docView = scrollView.documentView {
+                let docBounds = docView.bounds
+                let topPoint = docView.isFlipped
+                    ? NSPoint(x: 0, y: docBounds.minY)
+                    : NSPoint(x: 0, y: max(docBounds.minY, docBounds.maxY - scrollView.contentView.bounds.height))
+                scrollView.contentView.scroll(to: topPoint)
+                scrollView.reflectScrolledClipView(scrollView.contentView)
+            }
+            pump(for: 0.12)
+            if frames["item/$m1"] != nil { break }
+        }
+        conversation.setSnapshotItemsForTesting(Fixture.items(baseEvents, isDirect: false), hasOlder: true)
+        pump(for: 0.15)
+        let olderEvents: [Event] = (1 ... 5).map { idx in
+            Fixture.text(
+                "$old\(idx)",
+                "Older history message #\(idx)",
+                mine: false,
+                ts: 100 - idx,
+                sender: "@eddie:courier.local",
+                name: "Eddie Stecker"
+            )
+        }
+        conversation.setSnapshotItemsForTesting(Fixture.items(olderEvents + baseEvents, isDirect: false), hasOlder: false)
+        pump(for: 0.25)
+
+        let baseHeader = try XCTUnwrap(frames["headerOverlay"], "headerOverlay frame must be measured")
+        let restoredAnchorFrame = try XCTUnwrap(frames["item/$m1"], "restored anchor message $m1 must be laid out")
+        XCTAssertGreaterThanOrEqual(
+            restoredAnchorFrame.minY,
+            baseHeader.maxY - 0.5,
+            "restoreAnchor target ($m1) must land below the header (\(baseHeader.maxY)), got \(restoredAnchorFrame)"
+        )
+        XCTAssertLessThanOrEqual(
+            restoredAnchorFrame.minY,
+            baseHeader.maxY + ConversationView.timelineVerticalPadding + 16,
+            "restoreAnchor target ($m1) must land near the top below the header, got \(restoredAnchorFrame)"
+        )
+
+        // 2. Jump-to-message (scrollToMessageRequest).
+        conversation.scrollToMessageForTesting("$m2")
+        pump(for: 0.35)
+        let jumpedMessageFrame = try XCTUnwrap(frames["item/$m2"], "jumped message $m2 must be laid out")
+        XCTAssertGreaterThanOrEqual(
+            jumpedMessageFrame.minY,
+            baseHeader.maxY - 0.5,
+            "jump-to-message target ($m2) must land below the header (\(baseHeader.maxY)), got \(jumpedMessageFrame)"
+        )
+
+        // 3. Jump-to-unread (showNextUnreadThread with ThreadRepliesBanner visible in chatTopHeaderOverlay).
+        conversation.setUnreadThreadsForTesting([
+            UnreadThread(rootID: "$m4", unread: 2, unreadMentionsMe: false, firstUnreadID: "$r1"),
+        ])
+        pump(for: 0.15)
+        let bannerHeader = try XCTUnwrap(frames["headerOverlay"], "headerOverlay with unread banner must be measured")
+        XCTAssertGreaterThan(
+            bannerHeader.height,
+            PaneHeaderMetrics.stripHeight + 10,
+            "ThreadRepliesBanner must enlarge chatTopHeaderOverlay"
+        )
+        conversation.showNextUnreadThread()
+        pump(for: 0.35)
+        let unreadRootFrame = try XCTUnwrap(frames["item/$m4"], "unread thread root $m4 must be laid out")
+        XCTAssertGreaterThanOrEqual(
+            unreadRootFrame.minY,
+            bannerHeader.maxY - 0.5,
+            "jump-to-unread target ($m4) must land below the header+banner (\(bannerHeader.maxY)), got \(unreadRootFrame)"
+        )
     }
 
     private func check(_ sizes: [NSSize], file: StaticString = #filePath, line: UInt = #line) {

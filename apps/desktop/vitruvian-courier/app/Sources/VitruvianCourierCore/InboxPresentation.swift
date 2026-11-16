@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import Combine
 import Foundation
 
 // How an inbox row reads. Plain values, so the logic is tested here and the views only draw it.
@@ -32,9 +33,23 @@ extension PreviewLabel {
 
 extension InboxRow {
     /// The chat's display name: rewrites unnamed bridge-built member lists (e.g. `"Eddie Stecker, Kent Hua, GitHub"`)
-    /// into concise first-name lists (`"Eddie, Kent & GitHub"`), while leaving explicit custom titles untouched.
+    /// into concise first-name lists (`"Eddie, Kent & GitHub"`), only when every segment is confirmed by known members.
     public var displayTitle: String {
-        ChatDisplayTitle.format(
+        displayTitle(knownMembers: nil)
+    }
+
+    /// Formats the chat's display name using `knownMembers` when provided, otherwise falling back to `memberPreview`.
+    public func displayTitle(knownMembers: [GroupTitleMember]?, isCompleteMemberList: Bool = true) -> String {
+        if let knownMembers, !knownMembers.isEmpty {
+            return ChatDisplayTitle.format(
+                name: name,
+                isDirect: isDirect,
+                localName: localName,
+                members: knownMembers,
+                isCompleteMemberList: isCompleteMemberList
+            )
+        }
+        return ChatDisplayTitle.format(
             name: name,
             isDirect: isDirect,
             localName: localName,
@@ -502,6 +517,99 @@ public enum SyncHelp {
     public static var markUnread: String { String(localized: "On this Mac only") }
 }
 
+/// Resolves the resource bundle holding `Localizable.stringsdict` in both the `.app` bundle and `swift_test` runs.
+enum CourierLocalization {
+    static let bundle: Bundle = resolveBundle()
+
+    private static func resolveBundle() -> Bundle {
+        if Bundle.main.url(forResource: "Localizable", withExtension: "stringsdict") != nil {
+            return .main
+        }
+        let fm = FileManager.default
+        let env = ProcessInfo.processInfo.environment
+        var candidates: [URL] = []
+        for rootKey in ["TEST_SRCDIR", "RUNFILES_DIR"] {
+            if let root = env[rootKey], !root.isEmpty {
+                let rootURL = URL(fileURLWithPath: root, isDirectory: true)
+                candidates.append(
+                    rootURL.appendingPathComponent("_main/apps/desktop/vitruvian-courier/app/Resources", isDirectory: true)
+                )
+                candidates.append(
+                    rootURL.appendingPathComponent("vitruvian-core/apps/desktop/vitruvian-courier/app/Resources", isDirectory: true)
+                )
+            }
+        }
+        let sourceFallback = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Resources", isDirectory: true)
+        candidates.append(sourceFallback)
+        for candidate in candidates {
+            let dictURL = candidate.appendingPathComponent("en.lproj/Localizable.stringsdict")
+            if fm.fileExists(atPath: dictURL.path), let bundle = Bundle(url: candidate) {
+                return bundle
+            }
+        }
+        return .main
+    }
+}
+
+/// Shared per-`AppModel` cache of confirmed room members (from `room.members` and `room.info`) so inbox rows,
+/// pinned tiles, and the conversation header can shorten bridge-built group lists without changing the Go engine.
+@MainActor
+public final class KnownGroupMembersStore {
+    public static let shared = KnownGroupMembersStore()
+
+    private final class WeakApp {
+        weak var value: AppModel?
+        init(_ value: AppModel) { self.value = value }
+    }
+
+    public struct Entry: Equatable {
+        public let members: [GroupTitleMember]
+        public let isComplete: Bool
+    }
+
+    private var entries: [ObjectIdentifier: (app: WeakApp, rooms: [String: Entry])] = [:]
+    public let didUpdate = PassthroughSubject<ObjectIdentifier, Never>()
+
+    private init() {}
+
+    public func entry(for roomID: String, in appModel: AppModel) -> Entry? {
+        pruneDeallocated()
+        return entries[ObjectIdentifier(appModel)]?.rooms[roomID]
+    }
+
+    public func record(_ members: [GroupTitleMember], isComplete: Bool, for roomID: String, in appModel: AppModel) {
+        guard !roomID.isEmpty, !members.isEmpty else { return }
+        pruneDeallocated()
+        let appID = ObjectIdentifier(appModel)
+        let next = Entry(members: members, isComplete: isComplete)
+        var bucket = entries[appID] ?? (app: WeakApp(appModel), rooms: [:])
+        if bucket.rooms[roomID] == next { return }
+        bucket.rooms[roomID] = next
+        entries[appID] = bucket
+        didUpdate.send(appID)
+    }
+
+    public func clear(for roomID: String? = nil, in appModel: AppModel) {
+        pruneDeallocated()
+        let appID = ObjectIdentifier(appModel)
+        if let roomID {
+            guard entries[appID]?.rooms.removeValue(forKey: roomID) != nil else { return }
+            didUpdate.send(appID)
+        } else {
+            guard entries.removeValue(forKey: appID) != nil else { return }
+            didUpdate.send(appID)
+        }
+    }
+
+    private func pruneDeallocated() {
+        entries = entries.filter { $0.value.app.value != nil }
+    }
+}
+
 /// Someone in a group chat considered when formatting an unnamed group's display title.
 public struct GroupTitleMember: Equatable, Sendable {
     public let userID: String
@@ -518,14 +626,23 @@ public struct GroupTitleMember: Equatable, Sendable {
 /// Formats a chat's display title cleanly.
 ///
 /// When a group chat has no custom title and its display name is a bridge-built comma-separated list of member names
-/// (e.g. `"Eddie Stecker, Kent Hua, GitHub"`), this condenses it to first names (`"Eddie, Kent & GitHub"`, or
-/// `"Eddie, Kent, GitHub & 2 others"` for 4+ members). Chats with explicit custom titles, channels (`#general`),
-/// local overrides (`localName`), and 1:1 chats are never rewritten.
+/// confirmed against the chat's member list (e.g. `"Eddie Stecker, Kent Hua, GitHub"`), this condenses it to first
+/// names (`"Eddie, Kent & GitHub"`, or `"Eddie, Kent, GitHub & 2 others"` for 4+ members). Chats without a member
+/// list, explicit custom titles, channels (`#general`), local overrides (`localName`), and 1:1 chats are never rewritten.
 public enum ChatDisplayTitle {
     private static let clauseStarters: Set<String> = [
         "if", "or", "but", "when", "while", "unless", "because", "though",
         "although", "since", "where", "which", "that", "then", "so", "for",
     ]
+
+    /// Whether `name` looks like a comma-separated bridge member list eligible for member confirmation lookup.
+    public static func isCandidateGroupList(name: String, isDirect: Bool, localName: String = "") -> Bool {
+        guard !isDirect else { return false }
+        guard localName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { return false }
+        return splitCommaSegments(trimmed) != nil
+    }
 
     public static func format(
         name: String,
@@ -540,9 +657,13 @@ public enum ChatDisplayTitle {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasPrefix("#") { return name }
 
+        let selfMembers = deduplicatedMembers(
+            members.filter { $0.userID == Timeline.meUserID }
+        )
         let otherMembers = deduplicatedMembers(
             members.filter { $0.userID != Timeline.meUserID }
         )
+        guard !otherMembers.isEmpty else { return name }
 
         if trimmed.isEmpty {
             guard otherMembers.count >= 2 else { return name }
@@ -551,8 +672,8 @@ public enum ChatDisplayTitle {
 
         guard let parsed = parseBridgeMemberList(
             trimmed,
-            otherMembers: otherMembers,
-            isCompleteMemberList: isCompleteMemberList
+            selfMembers: selfMembers,
+            otherMembers: otherMembers
         ) else {
             return name
         }
@@ -564,17 +685,9 @@ public enum ChatDisplayTitle {
             entries = ordered
             totalCount = max(ordered.count, parsed.segments.count + parsed.extraCount)
         } else {
-            var mapped = parsed.segments.map { segment in
-                matchedMember(for: segment, in: otherMembers) ?? GroupTitleMember(name: segment)
-            }
-            if parsed.extraCount == 0, mapped.count < 3 {
-                let matchedKeys = Set(mapped.map { canonical($0.name) })
-                for member in otherMembers where mapped.count < 3 && !matchedKeys.contains(canonical(member.name)) {
-                    mapped.append(member)
-                }
-            }
+            let mapped = parsed.segments.compactMap { matchedMember(for: $0, in: otherMembers) }
             entries = mapped
-            totalCount = max(entries.count + parsed.extraCount, isCompleteMemberList ? otherMembers.count : 0)
+            totalCount = entries.count + parsed.extraCount
         }
 
         return render(entries: entries, totalCount: totalCount) ?? name
@@ -585,38 +698,21 @@ public enum ChatDisplayTitle {
         let extraCount: Int
     }
 
-    private static func parseBridgeMemberList(
-        _ trimmed: String,
-        otherMembers: [GroupTitleMember],
-        isCompleteMemberList: Bool
-    ) -> ParsedMemberList? {
-        var rawSegments: [String]
+    private static func splitCommaSegments(_ trimmed: String) -> ParsedMemberList? {
+        guard trimmed.contains(", ") else { return nil }
+        var rawSegments = trimmed.components(separatedBy: ", ").map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard !rawSegments.contains(where: \.isEmpty) else { return nil }
         var extraCount = 0
-
-        if trimmed.contains(", ") {
-            rawSegments = trimmed.components(separatedBy: ", ").map {
-                $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let last = rawSegments.last {
+            if rawSegments.count >= 3, let count = standaloneOthersCount(last) {
+                rawSegments.removeLast()
+                extraCount = count
+            } else if let stripped = stripOthersSuffix(from: last) {
+                rawSegments[rawSegments.count - 1] = stripped.prefix
+                extraCount = stripped.count
             }
-            guard !rawSegments.contains(where: \.isEmpty) else { return nil }
-            if let last = rawSegments.last {
-                if rawSegments.count >= 3, let count = standaloneOthersCount(last) {
-                    rawSegments.removeLast()
-                    extraCount = count
-                } else if let stripped = stripOthersSuffix(from: last) {
-                    rawSegments[rawSegments.count - 1] = stripped.prefix
-                    extraCount = stripped.count
-                } else if let splitAmpersand = splitSingleAmpersand(last) {
-                    rawSegments.removeLast()
-                    rawSegments.append(contentsOf: splitAmpersand)
-                }
-            }
-        } else if isCompleteMemberList, otherMembers.count >= 2,
-                  let splitAmpersand = splitSingleAmpersand(trimmed) {
-            // Only rewrite a two-part "A & B" title without commas when the full member list confirms both parts
-            // correspond to distinct group members (preserving custom titles like "Research & Development").
-            rawSegments = splitAmpersand
-        } else {
-            return nil
         }
 
         rawSegments = rawSegments.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -637,26 +733,34 @@ public enum ChatDisplayTitle {
 
         let uniqueSegments = deduplicatedStrings(rawSegments)
         guard uniqueSegments.count >= 2 else { return nil }
+        return ParsedMemberList(segments: uniqueSegments, extraCount: extraCount)
+    }
 
-        if !otherMembers.isEmpty {
-            if isCompleteMemberList || (otherMembers.count < 3 && extraCount == 0) {
-                guard uniqueSegments.allSatisfy({ segment in
-                    otherMembers.contains { memberMatches(segment: segment, member: $0) }
-                }) else {
-                    return nil
-                }
-            } else {
-                let matchCount = uniqueSegments.filter { segment in
-                    otherMembers.contains { memberMatches(segment: segment, member: $0) }
-                }.count
-                let requiredMatches = extraCount == 0 ? min(2, otherMembers.count) : 1
-                guard matchCount >= requiredMatches else {
-                    return nil
-                }
+    private static func parseBridgeMemberList(
+        _ trimmed: String,
+        selfMembers: [GroupTitleMember],
+        otherMembers: [GroupTitleMember]
+    ) -> ParsedMemberList? {
+        guard let split = splitCommaSegments(trimmed) else { return nil }
+
+        let selfKeys = Set(selfMembers.map { canonical($0.name) }.filter { !$0.isEmpty })
+        let otherKeys = Set(otherMembers.map { canonical($0.name) })
+
+        let nonSelfSegments = split.segments.filter { segment in
+            let key = canonical(segment)
+            if selfKeys.contains(key), !otherKeys.contains(key) {
+                return false
             }
+            return true
+        }
+        guard nonSelfSegments.count >= 2 else { return nil }
+
+        // Every comma-separated segment must match a non-self member's full display name (case-insensitive).
+        guard nonSelfSegments.allSatisfy({ otherKeys.contains(canonical($0)) }) else {
+            return nil
         }
 
-        return ParsedMemberList(segments: uniqueSegments, extraCount: extraCount)
+        return ParsedMemberList(segments: nonSelfSegments, extraCount: split.extraCount)
     }
 
     private static func standaloneOthersCount(_ segment: String) -> Int? {
@@ -699,15 +803,6 @@ public enum ChatDisplayTitle {
         return nil
     }
 
-    private static func splitSingleAmpersand(_ text: String) -> [String]? {
-        let parts = text.components(separatedBy: " & ")
-        guard parts.count == 2 else { return nil }
-        let lhs = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
-        let rhs = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !lhs.isEmpty, !rhs.isEmpty else { return nil }
-        return [lhs, rhs]
-    }
-
     private static func render(entries: [GroupTitleMember], totalCount: Int) -> String? {
         guard !entries.isEmpty else { return nil }
         let limit = totalCount <= 3 ? min(totalCount, entries.count) : min(3, entries.count)
@@ -722,19 +817,27 @@ public enum ChatDisplayTitle {
         case 2:
             if totalCount > 2 {
                 let others = totalCount - 2
-                return others == 1
-                    ? String(localized: "\(displayNames[0]), \(displayNames[1]) & 1 other")
-                    : String(localized: "\(displayNames[0]), \(displayNames[1]) & \(others) others")
+                return String(
+                    localized: "\(displayNames[0]), \(displayNames[1]) & \(others) others",
+                    bundle: CourierLocalization.bundle
+                )
             }
-            return String(localized: "\(displayNames[0]) & \(displayNames[1])")
+            return String(
+                localized: "\(displayNames[0]) & \(displayNames[1])",
+                bundle: CourierLocalization.bundle
+            )
         default:
             if totalCount > 3 {
                 let others = totalCount - 3
-                return others == 1
-                    ? String(localized: "\(displayNames[0]), \(displayNames[1]), \(displayNames[2]) & 1 other")
-                    : String(localized: "\(displayNames[0]), \(displayNames[1]), \(displayNames[2]) & \(others) others")
+                return String(
+                    localized: "\(displayNames[0]), \(displayNames[1]), \(displayNames[2]) & \(others) others",
+                    bundle: CourierLocalization.bundle
+                )
             }
-            return String(localized: "\(displayNames[0]), \(displayNames[1]) & \(displayNames[2])")
+            return String(
+                localized: "\(displayNames[0]), \(displayNames[1]) & \(displayNames[2])",
+                bundle: CourierLocalization.bundle
+            )
         }
     }
 
@@ -827,34 +930,17 @@ public enum ChatDisplayTitle {
         return out
     }
 
-    private static func memberMatches(segment: String, member: GroupTitleMember) -> Bool {
-        let segKey = canonical(segment)
-        if segKey == canonical(member.name) { return true }
-        if segKey == canonical(baseShortName(of: member)) { return true }
-        let words = member.name.split(whereSeparator: \.isWhitespace)
-        if words.count >= 2, let initial = words[1].first(where: { $0.isLetter || $0.isNumber }) {
-            let initialKey = canonical("\(words[0]) \(initial).")
-            if segKey == initialKey { return true }
-        }
-        return false
-    }
-
     private static func matchedMember(for segment: String, in members: [GroupTitleMember]) -> GroupTitleMember? {
         let segKey = canonical(segment)
-        if let exact = members.first(where: { canonical($0.name) == segKey }) {
-            return exact
-        }
-        let shortMatches = members.filter { memberMatches(segment: segment, member: $0) }
-        return shortMatches.count == 1 ? shortMatches[0] : nil
+        return members.first { canonical($0.name) == segKey }
     }
 
     private static func orderMembers(_ members: [GroupTitleMember], matching segments: [String]) -> [GroupTitleMember] {
         var remaining = members
         var ordered: [GroupTitleMember] = []
         for segment in segments {
-            if let idx = remaining.firstIndex(where: { canonical($0.name) == canonical(segment) }) {
-                ordered.append(remaining.remove(at: idx))
-            } else if let idx = remaining.firstIndex(where: { memberMatches(segment: segment, member: $0) }) {
+            let segKey = canonical(segment)
+            if let idx = remaining.firstIndex(where: { canonical($0.name) == segKey }) {
                 ordered.append(remaining.remove(at: idx))
             }
         }

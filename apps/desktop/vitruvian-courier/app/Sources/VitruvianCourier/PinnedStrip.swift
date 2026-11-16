@@ -17,7 +17,8 @@ struct PinnedStrip: View {
     var body: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 84, maximum: 112), spacing: 6)], spacing: 6) {
             ForEach(rows, id: \.id) { row in
-                PinnedChat(row: row, networkName: inbox.networkName(row.network),
+                PinnedChat(row: row, displayTitleOverride: inbox.displayTitle(for: row),
+                           networkName: inbox.networkName(row.network),
                            isOpen: !inbox.isSelecting && inbox.isOpen(row.id),
                            isSelected: inbox.isSelecting && inbox.selection.contains(row.id),
                            showsBadge: inbox.preferences.showNetworkIcons,
@@ -64,6 +65,7 @@ struct PinnedStrip: View {
 
 struct PinnedChat: View {
     let row: InboxRow
+    var displayTitleOverride: String? = nil
     let networkName: String
     let isOpen: Bool
     let isSelected: Bool
@@ -74,7 +76,7 @@ struct PinnedChat: View {
 
     /// The chat's name, or with "Redact names and pictures" on, its stand-in, as the chat list shows it.
     private var displayName: String {
-        let formatted = row.displayTitle
+        let formatted = displayTitleOverride ?? row.displayTitle
         let raw = formatted.isEmpty ? String(localized: "Unnamed chat") : formatted
         return isRedacted ? AppearancePreferences.redactedText(raw, kind: .chatTitle) : raw
     }

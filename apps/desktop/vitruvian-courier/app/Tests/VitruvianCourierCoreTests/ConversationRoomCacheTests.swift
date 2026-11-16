@@ -92,7 +92,12 @@ final class ConversationRoomCacheTests: XCTestCase {
 
     func testOpenChatHeaderAndPlaceholderSurviveInboxListChangeExcludingOpenChat() async throws {
         let dmRow = chatRow("!dm", name: "Florian Burgos", network: "gmessages", direct: true)
-        let grpRow = chatRow("!grp", name: "Eddie Stecker, Kent Hua, GitHub", network: "slack", direct: false)
+        var grpRow = chatRow("!grp", name: "Eddie Stecker, Kent Hua, GitHub", network: "slack", direct: false)
+        grpRow.memberPreview = [
+            RowMember(userID: "@eddie", name: "Eddie Stecker"),
+            RowMember(userID: "@kent", name: "Kent Hua"),
+            RowMember(userID: "@gh", name: "GitHub"),
+        ]
         let otherRow = chatRow("!other", name: "Alice Example", network: "signal", direct: true)
         let h = try await start(
             [

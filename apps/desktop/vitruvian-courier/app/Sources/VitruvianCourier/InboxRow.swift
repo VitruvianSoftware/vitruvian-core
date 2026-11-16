@@ -53,6 +53,7 @@ struct RowStyle: Equatable {
 /// and what marks it: unread, a mention, a reminder that came due, muted, a message request.
 struct InboxRowView<HoverMenu: View>: View {
     let row: InboxRow
+    var displayTitleOverride: String? = nil
     let networkName: String
     /// When this row represents a merged chat, the networks of its member rooms (`>= 2`).
     var mergedNetworks: [String] = []
@@ -94,7 +95,7 @@ struct InboxRowView<HoverMenu: View>: View {
     }
 
     private var displayTitle: String {
-        let formatted = row.displayTitle
+        let formatted = displayTitleOverride ?? row.displayTitle
         let raw = formatted.isEmpty ? String(localized: "Unnamed chat") : formatted
         return isRedacted ? AppearancePreferences.redactedText(raw, kind: .chatTitle) : raw
     }

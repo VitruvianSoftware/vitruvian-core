@@ -579,6 +579,7 @@ public final class ConversationModel: ObservableObject {
     /// Marked unread from a message and stayed on: nothing marks the chat read again until it is reopened or a new
     /// message comes (Inferred (inventory 02 §3.4.2 item 8)).
     private var holdsRead = false
+    private var memberLookupAttempted = Set<String>()
 
     // Who is typing.
     private var readingTyping = false
@@ -688,6 +689,12 @@ public final class ConversationModel: ObservableObject {
                     self.dismissAllPresentations()
                 }
         )
+        subscriptions.append(
+            KnownGroupMembersStore.shared.didUpdate.sink { [weak self] appID in
+                guard let self, appID == ObjectIdentifier(self.appModel) else { return }
+                self.objectWillChange.send()
+            }
+        )
         preferencesChanged()
     }
 
@@ -725,7 +732,7 @@ public final class ConversationModel: ObservableObject {
         return nil
     }
 
-    /// The open chat's formatted display title (first-name group list for unnamed groups, custom title otherwise).
+    /// The open chat's formatted display title (first-name group list when confirmed by members, custom title otherwise).
     public var openChatDisplayTitle: String? {
         guard let room = roomID else { return nil }
         if let merged = mergedChat, room == merged.mergeID {
@@ -737,7 +744,13 @@ public final class ConversationModel: ObservableObject {
             if !title.isEmpty { return title }
         }
         if let row = headerRow {
-            let title = row.displayTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            let targetRoom = activeReplyRoomID ?? room
+            let known = KnownGroupMembersStore.shared.entry(for: targetRoom, in: appModel)
+                ?? KnownGroupMembersStore.shared.entry(for: row.roomID, in: appModel)
+            let formatted = known.map {
+                row.displayTitle(knownMembers: $0.members, isCompleteMemberList: $0.isComplete)
+            } ?? row.displayTitle
+            let title = formatted.trimmingCharacters(in: .whitespacesAndNewlines)
             if !title.isEmpty { return title }
         }
         if let otherPerson, !otherPerson.isEmpty {
@@ -825,10 +838,12 @@ public final class ConversationModel: ObservableObject {
         items: [TimelineItem],
         row: InboxRow? = nil,
         features: ChatFeatures = .noFeatures,
-        lastOutgoingID: String? = nil
+        lastOutgoingID: String? = nil,
+        hasOlder: Bool = false
     ) {
         self.roomID = roomID
         self.items = items
+        self.hasOlder = hasOlder
         self.isLoaded = true
         self.features = features
         self.lastOutgoingID = lastOutgoingID
@@ -840,8 +855,31 @@ public final class ConversationModel: ObservableObject {
         }
     }
 
+    /// Updates loaded timeline items and `hasOlder` in snapshot/view tests without an engine.
+    public func setSnapshotItemsForTesting(_ items: [TimelineItem], hasOlder: Bool? = nil) {
+        self.items = items
+        if let hasOlder {
+            self.hasOlder = hasOlder
+        }
+    }
+
+    /// Populates unread thread state in view tests without an engine.
+    public func setUnreadThreadsForTesting(_ threads: [UnreadThread]) {
+        unreadThreads = threads
+    }
+
+    /// Emits a scroll-to-message request in view tests without an engine.
+    public func scrollToMessageForTesting(_ messageID: String) {
+        scrollSerial += 1
+        scrollToMessageRequest = MessageScrollRequest(messageID: messageID, serial: scrollSerial)
+    }
+
     /// Shows `info` as the open chat's Chat Info, for view tests without an engine.
     public func setChatInfoForTesting(_ info: RoomInfoResult?) {
+        if let info, !info.members.isEmpty {
+            let mapped = info.members.map { GroupTitleMember(userID: $0.userID, name: $0.name, isBot: $0.isBot) }
+            KnownGroupMembersStore.shared.record(mapped, isComplete: true, for: info.roomID, in: appModel)
+        }
         chatInfo = info.map(Self.applyingDisplayTitle(to:))
         isShowingChatInfo = info != nil
     }
@@ -995,6 +1033,36 @@ public final class ConversationModel: ObservableObject {
         isDirectChat = row.isDirect
         handOnChat()
         if isDirectChat != wasDirect, !events.isEmpty { rebuild() } // "Seen" names no one one-to-one
+        if !row.isDirect,
+           ChatDisplayTitle.isCandidateGroupList(name: row.name, isDirect: row.isDirect, localName: row.localName),
+           row.displayTitle == row.name {
+            fetchGroupMembersIfNeeded(for: row.roomID)
+        }
+    }
+
+    private func fetchGroupMembersIfNeeded(for targetRoom: String) {
+        guard !targetRoom.hasPrefix("merge:"),
+              let client = appModel.client,
+              KnownGroupMembersStore.shared.entry(for: targetRoom, in: appModel) == nil,
+              !memberLookupAttempted.contains(targetRoom)
+        else { return }
+        memberLookupAttempted.insert(targetRoom)
+        Task { [weak self] in
+            let result: MembersResult? = try? await client.call(
+                "room.members",
+                MembersParams(roomID: targetRoom, query: "", limit: 50)
+            )
+            guard let self, client === self.appModel.client else { return }
+            if let members = result?.members, !members.isEmpty {
+                let mapped = members.map { GroupTitleMember(userID: $0.userID, name: $0.name, isBot: $0.isBot) }
+                KnownGroupMembersStore.shared.record(
+                    mapped,
+                    isComplete: members.count < 50,
+                    for: targetRoom,
+                    in: self.appModel
+                )
+            }
+        }
     }
 
     /// Reads the open chat's features. An answer for a chat no longer open, from an engine that is gone, or older
@@ -1283,6 +1351,8 @@ public final class ConversationModel: ObservableObject {
     private func reload(from client: EngineClient) async {
         guard client === appModel.client else { return }
         clearRoomCache()
+        memberLookupAttempted.removeAll()
+        KnownGroupMembersStore.shared.clear(in: appModel)
         guard let room = roomID else { return }
         learnChat(chat(room), of: room)
         readFeatures()
@@ -1327,6 +1397,11 @@ public final class ConversationModel: ObservableObject {
         case let .room(room):
             // With no room, names or pictures changed in chats unknown: this one may be among them. Its features
             // may have changed too (its bridge writes them as the network's limits change).
+            if let room {
+                memberLookupAttempted.remove(room)
+            } else {
+                memberLookupAttempted.removeAll()
+            }
             if room == nil || matchesOpenRoom(room!) {
                 requestRefetch()
                 learnChat(chat(open), of: open)
@@ -2327,6 +2402,10 @@ public final class ConversationModel: ObservableObject {
         let info = await infoCall
         let search = await searchCall
         guard client === appModel.client else { return (nil, []) }
+        if let info, !info.members.isEmpty {
+            let mapped = info.members.map { GroupTitleMember(userID: $0.userID, name: $0.name, isBot: $0.isBot) }
+            KnownGroupMembersStore.shared.record(mapped, isComplete: true, for: info.roomID, in: appModel)
+        }
         return (info.map(Self.applyingDisplayTitle(to:)), search?.bookmarks?.hits ?? [])
     }
 

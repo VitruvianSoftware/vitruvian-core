@@ -25,7 +25,9 @@ struct ConversationView: View {
     @Environment(\.appearancePreferences) private var appearanceEnv
     @Environment(\.themeAccentHex) private var themeAccentHex
     @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
+    @Environment(\.conversationLayoutProbe) private var conversationLayoutProbe
     @StateObject private var ui = MessageUI()
+    @State private var scrollBox = TimelineScrollBox()
     @State private var isDropTargeted = false
     /// The message that was first when older ones were asked for: the view returns to it once they are in.
     @State private var restoreAnchor: String?
@@ -343,19 +345,22 @@ struct ConversationView: View {
         }
     }
 
-    private var minimumHeaderInset: CGFloat {
+    static let timelineVerticalPadding: CGFloat = 8
+    static let chatCoordinateSpace = "conversation-chat-space"
+
+    var minimumHeaderInset: CGFloat {
         if drawsLiquidGlass {
             return windowToolbarOverlap > 0 ? windowToolbarOverlap + PaneHeaderMetrics.hairlineHeight : 0
         }
         return PaneHeaderMetrics.stripHeight + PaneHeaderMetrics.hairlineHeight
     }
 
-    private var effectiveHeaderInset: CGFloat {
+    var effectiveHeaderInset: CGFloat {
         max(minimumHeaderInset, measuredHeaderOverlayHeight)
     }
 
     @ViewBuilder
-    private var chatTopHeaderOverlay: some View {
+    var chatTopHeaderOverlay: some View {
         VStack(spacing: 0) {
             if !drawsLiquidGlass {
                 ConversationHeaderContainer(
@@ -390,6 +395,11 @@ struct ConversationView: View {
                 Color.clear.preference(key: ChatHeaderOverlayHeightKey.self, value: proxy.size.height)
             }
         )
+        .onGeometryChange(for: CGRect.self) {
+            $0.frame(in: .named(Self.chatCoordinateSpace))
+        } action: { frame in
+            conversationLayoutProbe?("headerOverlay", frame)
+        }
     }
 
     private var chat: some View {
@@ -413,6 +423,7 @@ struct ConversationView: View {
             timeline
             chatTopHeaderOverlay
         }
+        .coordinateSpace(name: Self.chatCoordinateSpace)
         .onPreferenceChange(ChatHeaderOverlayHeightKey.self) { measuredHeaderOverlayHeight = $0 }
         .modifier(IgnoreTopContainerSafeAreaWhenGlass(enabled: drawsLiquidGlass))
         // With glass the messages run under the composer, which floats over their bottom.
@@ -639,6 +650,12 @@ struct ConversationView: View {
                                          isHighlighted: conversation.highlightedMessageID == item.id,
                                          showsSent: conversation.lastOutgoingID == item.id, actions: rowActions, ui: ui)
                             .id(item.id)
+                            .onGeometryChange(for: CGRect.self) {
+                                $0.frame(in: .named(Self.chatCoordinateSpace))
+                            } action: { frame in
+                                scrollBox.itemFrames[item.id] = frame
+                                conversationLayoutProbe?("item/\(item.id)", frame)
+                            }
                             .popover(
                                 isPresented: Binding(
                                     get: { conversation.activeSenderCard?.messageID == item.id },
@@ -692,6 +709,8 @@ struct ConversationView: View {
                                 // Pushed out by content growing, not by the person: follow it down.
                                 if conversation.isAtBottom, !conversation.isAwayFromLatest,
                                    conversation.scrollToMessageRequest == nil,
+                                   restoreAnchor == nil,
+                                   !topInView,
                                    Date().timeIntervalSince(lastUserScroll) > 0.6 {
                                     proxy.scrollTo(Self.bottomID, anchor: .bottom)
                                     return
@@ -700,11 +719,16 @@ struct ConversationView: View {
                             }
                         }
                 }
-                .padding(.top, 8)
+                .padding(.top, effectiveHeaderInset + Self.timelineVerticalPadding)
                 .padding(.horizontal, 14)
-                .padding(.bottom, 8)
+                .padding(.bottom, Self.timelineVerticalPadding)
+                .background(TimelineScrollViewAccessor { scrollBox.nsScrollView = $0 })
             }
-            .contentMargins(.top, effectiveHeaderInset, for: .scrollContent)
+            .onGeometryChange(for: CGFloat.self) {
+                $0.size.height
+            } action: { height in
+                scrollBox.viewportHeight = height
+            }
             .contentMargins(.top, effectiveHeaderInset, for: .scrollIndicators)
             .defaultScrollAnchor(.bottom)
             .modifier(ConversationBottomScrollEdge())
@@ -727,7 +751,7 @@ struct ConversationView: View {
             .onChange(of: conversation.items) { _, _ in
                 // New messages, a reaction or a status line are followed only by someone already at the newest
                 // message. Away from it (opened at a search result), new messages never move the view.
-                if (conversation.isAtBottom || isPinningToBottom), !conversation.isAwayFromLatest {
+                if (conversation.isAtBottom || isPinningToBottom), !conversation.isAwayFromLatest, restoreAnchor == nil {
                     scrollToBottom(proxy)
                 }
             }
@@ -754,10 +778,10 @@ struct ConversationView: View {
                 if conversation.isAtBottom, !conversation.isAwayFromLatest { scrollToBottom(proxy) }
             }
             .onChange(of: firstMessageID) { _, _ in
-                // Older messages came in above: stay where the person was.
+                // Older messages came in above: stay where the person was, cleared below the header overlay.
                 guard let anchor = restoreAnchor else { return }
                 restoreAnchor = nil
-                proxy.scrollTo(anchor, anchor: .top)
+                scrollToBelowHeader(proxy, id: anchor, preferCenter: false)
             }
         }
     }
@@ -771,6 +795,7 @@ struct ConversationView: View {
 
     private func requestOlder() {
         guard conversation.hasOlder, !conversation.isLoadingOlder else { return }
+        stopPinningToBottom()
         restoreAnchor = firstMessageID
         conversation.loadOlder()
     }
@@ -784,10 +809,77 @@ struct ConversationView: View {
         return nil
     }
 
-    /// Opened at a message: scroll to it, in the middle. Once there, reaching the bottom reads newer messages.
+    /// Computes a normalized `ScrollViewReader` anchor that accounts for the top header overlay inset.
+    static func headerClearedScrollAnchor(
+        headerInset: CGFloat,
+        viewportHeight: CGFloat,
+        itemHeight: CGFloat = 0,
+        preferCenter: Bool = false
+    ) -> UnitPoint {
+        let topClearance = headerInset + timelineVerticalPadding
+        guard viewportHeight > topClearance else { return .top }
+        if preferCenter {
+            if itemHeight > 0, itemHeight >= viewportHeight - topClearance {
+                return .top
+            }
+            let rawY: CGFloat = if itemHeight > 0, viewportHeight > itemHeight {
+                ((topClearance + viewportHeight - itemHeight) * 0.5) / (viewportHeight - itemHeight)
+            } else {
+                (topClearance + viewportHeight) / (2 * viewportHeight)
+            }
+            return UnitPoint(x: 0.5, y: min(1, max(0, rawY)))
+        }
+        let rawY: CGFloat = if itemHeight > 0, viewportHeight - itemHeight > topClearance {
+            topClearance / (viewportHeight - itemHeight)
+        } else if itemHeight > 0 {
+            0
+        } else {
+            min(0.45, topClearance / max(viewportHeight, topClearance + 1))
+        }
+        return UnitPoint(x: 0.5, y: min(1, max(0, rawY)))
+    }
+
+    private func scrollToBelowHeader(_ proxy: ScrollViewProxy, id: String, preferCenter: Bool) {
+        let anchor = Self.headerClearedScrollAnchor(
+            headerInset: effectiveHeaderInset,
+            viewportHeight: scrollBox.viewportHeight,
+            itemHeight: scrollBox.itemFrames[id]?.height ?? 0,
+            preferCenter: preferCenter
+        )
+        proxy.scrollTo(id, anchor: anchor)
+        DispatchQueue.main.async {
+            scrollBox.nsScrollView?.layoutSubtreeIfNeeded()
+            adjustScrollIfUnderHeader(id: id, alignTopIfUnaligned: !preferCenter)
+        }
+    }
+
+    private func adjustScrollIfUnderHeader(id: String, alignTopIfUnaligned: Bool) {
+        guard let sv = scrollBox.nsScrollView,
+              let docView = sv.documentView,
+              let frame = scrollBox.itemFrames[id]
+        else { return }
+        let desiredMinY = effectiveHeaderInset + Self.timelineVerticalPadding
+        let needsAdjust = alignTopIfUnaligned
+            ? abs(frame.minY - desiredMinY) > 0.5
+            : frame.minY < desiredMinY - 0.5
+        guard needsAdjust else { return }
+        let docBounds = docView.bounds
+        let clipBounds = sv.contentView.bounds
+        let minOriginY = docBounds.minY
+        let maxOriginY = max(minOriginY, docBounds.maxY - clipBounds.height)
+        let sign: CGFloat = docView.isFlipped ? 1 : -1
+        let targetY = min(maxOriginY, max(minOriginY, clipBounds.origin.y + sign * (frame.minY - desiredMinY)))
+        guard abs(targetY - clipBounds.origin.y) > 0.5 else { return }
+        sv.contentView.scroll(to: NSPoint(x: clipBounds.origin.x, y: targetY))
+        sv.reflectScrolledClipView(sv.contentView)
+        sv.layoutSubtreeIfNeeded()
+    }
+
+    /// Opened at a message or unread thread: scroll so the target lands below the header. Once there, reaching the
+    /// bottom reads newer messages.
     private func scrollToMessage(_ proxy: ScrollViewProxy, _ request: ConversationModel.MessageScrollRequest) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            proxy.scrollTo(request.messageID, anchor: .center)
+            scrollToBelowHeader(proxy, id: request.messageID, preferCenter: true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 scrolledToMessage = request.serial
                 readNewerIfAtBottom()
@@ -830,7 +922,7 @@ struct ConversationView: View {
         for delay in [0.0, 0.05, 0.15, 0.3, 0.5, 0.75, 1.0, 1.25, Self.pinToBottomDuration] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 guard pinToBottomUntil != nil, conversation.roomID == room, !conversation.isAwayFromLatest,
-                      conversation.scrollToMessageRequest == nil else { return }
+                      conversation.scrollToMessageRequest == nil, restoreAnchor == nil else { return }
                 proxy.scrollTo(Self.bottomID, anchor: .bottom)
                 if delay >= Self.pinToBottomDuration { stopPinningToBottom() }
             }
@@ -1268,6 +1360,65 @@ private struct DelayedSpinner: View {
         .task {
             try? await Task.sleep(for: delay)
             if !Task.isCancelled { isShown = true }
+        }
+    }
+}
+
+private struct ConversationLayoutProbeKey: EnvironmentKey {
+    static let defaultValue: ((String, CGRect) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    var conversationLayoutProbe: ((String, CGRect) -> Void)? {
+        get { self[ConversationLayoutProbeKey.self] }
+        set { self[ConversationLayoutProbeKey.self] = newValue }
+    }
+}
+
+@MainActor
+private final class TimelineScrollBox {
+    weak var nsScrollView: NSScrollView?
+    var itemFrames: [String: CGRect] = [:]
+    var viewportHeight: CGFloat = 0
+}
+
+private struct TimelineScrollViewAccessor: NSViewRepresentable {
+    let onResolve: (NSScrollView?) -> Void
+
+    func makeNSView(context: Context) -> AccessorView {
+        AccessorView(onResolve: onResolve)
+    }
+
+    func updateNSView(_ nsView: AccessorView, context: Context) {
+        nsView.onResolve = onResolve
+        nsView.report()
+    }
+
+    final class AccessorView: NSView {
+        var onResolve: (NSScrollView?) -> Void
+
+        init(onResolve: @escaping (NSScrollView?) -> Void) {
+            self.onResolve = onResolve
+            super.init(frame: .zero)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            report()
+        }
+
+        func report() {
+            let sv = superview.flatMap { start in
+                sequence(first: start, next: \.superview)
+                    .compactMap { $0 as? NSScrollView }
+                    .first
+            }
+            DispatchQueue.main.async { [onResolve] in
+                onResolve(sv)
+            }
         }
     }
 }

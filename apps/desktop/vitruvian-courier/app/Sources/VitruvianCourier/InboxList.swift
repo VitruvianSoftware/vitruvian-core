@@ -158,7 +158,9 @@ struct InboxList: View {
                 List(selection: selection(for: rows)) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                         InboxRowView(
-                            row: row, networkName: inbox.networkName(row.network),
+                            row: row,
+                            displayTitleOverride: inbox.displayTitle(for: row),
+                            networkName: inbox.networkName(row.network),
                             mergedNetworks: inbox.mergedNetworks(for: row),
                             now: timeline.date, style: style,
                             isSelecting: inbox.isSelecting, isSelected: inbox.selection.contains(row.id),

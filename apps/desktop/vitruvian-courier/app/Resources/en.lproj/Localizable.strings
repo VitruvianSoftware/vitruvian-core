@@ -2542,7 +2542,3 @@
 /* Formatted display titles for unnamed group chats using member first names. */
 "%@ & %@" = "%1$@ & %2$@";
 "%@, %@ & %@" = "%1$@, %2$@ & %3$@";
-"%@, %@ & 1 other" = "%1$@, %2$@ & 1 other";
-"%@, %@ & %lld others" = "%1$@, %2$@ & %3$lld others";
-"%@, %@, %@ & 1 other" = "%1$@, %2$@, %3$@ & 1 other";
-"%@, %@, %@ & %lld others" = "%1$@, %2$@, %3$@ & %4$lld others";
