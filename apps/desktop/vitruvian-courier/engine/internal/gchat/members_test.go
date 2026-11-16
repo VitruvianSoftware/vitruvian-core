@@ -5,8 +5,11 @@ package gchat
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -403,4 +406,53 @@ func TestMessageFromAnAppStillArrivesWithItsOwnSender(t *testing.T) {
 	require.Len(t, evts, 1, "an app's message is not dropped")
 	require.Equal(t, bridgev2.RemoteEventMessage, evts[0].GetType())
 	require.Equal(t, MakeUserID(githubGaia), evts[0].GetSender().Sender, "the message keeps the app as its sender")
+}
+
+func TestPortalMetadataDecodesOldStoredJSON(t *testing.T) {
+	raw := fmt.Sprintf(
+		`{"revision":5,"group_revision":5,"member_user_ids":[%q,%q,%q]}`,
+		ownGaia, annGaia, githubGaia,
+	)
+	var meta PortalMetadata
+	require.NoError(t, json.Unmarshal([]byte(raw), &meta))
+	require.Equal(t, int64(5), meta.Revision)
+	require.Equal(t, int64(5), meta.GroupRevision)
+	require.Equal(t, []string{ownGaia, annGaia, githubGaia}, meta.MemberUserIDs)
+	require.Empty(t, meta.AppUserIDs)
+	require.False(t, meta.AppRosterChecked)
+
+	encoded, err := json.Marshal(&meta)
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), "app_user_ids")
+	require.NotContains(t, string(encoded), "app_roster_checked")
+}
+
+func TestRepairRetriedWhenGetGroupFails(t *testing.T) {
+	ctx := context.Background()
+	fallback := membersAPI("")
+	var getGroupHits atomic.Int32
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/u/0/api/get_group" {
+			getGroupHits.Add(1)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		fallback(w, r)
+	})
+	portal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{ID: MakeDMPortalID("grp_get_group_fail"), Receiver: ul.ID})
+	require.NoError(t, err)
+	portal.RoomType = database.RoomTypeDM
+	portal.Metadata = &PortalMetadata{
+		MemberUserIDs:    []string{ownGaia, annGaia, bobGaia, githubGaia},
+		AppRosterChecked: false,
+	}
+
+	info, err := client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	require.Equal(t, int32(1), getGroupHits.Load())
+
+	meta := portal.Metadata.(*PortalMetadata)
+	require.False(t, meta.AppRosterChecked)
+	require.True(t, client.needsAppRosterCheck(portal, client.ownUserID()))
 }
