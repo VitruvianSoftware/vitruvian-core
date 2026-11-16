@@ -101,18 +101,19 @@ The 10 drops had two causes, and one refresh failed alongside a drop:
   Each time, the client was back in about 1 s. Which hop reset them (home
   network, Cloudflare's edge, or `cloudflared`) is **not established**: nothing
   on the server side was logged for these.
-- **2 server outages, 17:36 and 17:59.** The client heard nothing for 90 s,
+- **2 server outages, 17:36 and 17:59 PST.** The client heard nothing for 90 s,
   then Cloudflare answered 503 or 504 for up to 6 minutes. The relay-spike pod
   was running on the node `james-mbp16`, a laptop, which went `NotReady` twice
   in that window. The pod was then evicted and rescheduled on `nuc9i9` (cluster
-  events, 18:04). These are the gaps of 3 to 6 minutes.
+  events, 18:04 PST). These are the gaps of 3 to 6 minutes.
 - **1 token refresh failed** on a reset (06:59, same moment as a drop) and
   succeeded on the next try a second later.
 
 What this means for the relay:
 
 - **The connector must reconnect by itself, quietly and quickly.** A drop every
-  few hours is normal, and the backoff used here was enough.
+  few hours is normal, and the backoff used here was enough: 1 s, doubling,
+  capped at 60 s, no jitter (`backoff_secs` in the spike's `client.rs`).
 - Calls in flight when a connection drops are lost, so the relay has to fail
   them cleanly and Claude has to be able to retry them.
 - **Production relay pods must not run on laptop nodes.** Pin them to always-on
@@ -163,8 +164,9 @@ read-only request:
   `https://chatgpt.com/connector_platform_oauth_redirect`. Without it, which is
   our case, it is `https://chatgpt.com/connector/oauth/{callback_id}`, unique per
   connector.
-- So one pre-registered client works for a single connector (spike A), but not
-  for a product with many users. The product needs DCR.
+- So one pre-registered client should work for a single connector, but not for
+  a product with many users. (Spike A never ran ChatGPT live, so the single
+  connector case is from the docs, not tested.) The product needs DCR.
 - **Not confirmed:** which plans can add a custom MCP server. Third-party sources
   say Business, Enterprise and Edu. The official pages read here don't say.
 
@@ -223,10 +225,12 @@ Bazel's launcher.
   Node underneath. Killing only the launcher left Node running with stdout open,
   so no EOF arrived. A connector that starts it through a wrapper must kill the
   group for the same reason.
-- **Telemetry:** `DESKTOP_COMMANDER_DISABLE_TELEMETRY=1` stops every event
-  before one is built (`utils/capture.js`). The connector should set it, not
+- **Telemetry (from reading the source, not observed in the run):**
+  `DESKTOP_COMMANDER_DISABLE_TELEMETRY=1` stops every event before one is built
+  (`utils/capture.js`). The connector should set it, not
   rely on the shared config file.
-- **It phones home for feature flags even with telemetry off.** At start-up and
+- **It phones home for feature flags even with telemetry off** (from the
+  source, not observed in the run). At start-up and
   every 30 minutes it fetches `https://desktopcommander.app/flags/v2/production.json`
   and caches it in `feature-flags.json`. The only way to change this is to
   redirect it with `DC_FLAG_URL`. The connector should point that at a local
@@ -271,9 +275,9 @@ absent), so the verifier pins `client_id`.
       the `relay-claude` client id, signs in, and the echo tool runs from
       claude.ai. The Claude phone app is not tried yet (spec §11 question 12)
 - **A (ChatGPT): not done, moved to spec §11 questions 3 and 8.** The planned
-      step was: James starts adding the connector in ChatGPT and copies its
-      callback into `chatgptRedirectUris`, then re-apply, then finish. Only if his
-      plan allows custom MCP servers
+      step was this: James starts adding the connector in ChatGPT and copies its
+      callback into `chatgptRedirectUris`, then we re-apply and he finishes, if
+      his plan allows custom MCP servers.
 - [x] **A (Gemini):** `relay-gemini` client (#4776, has a client secret,
       `client_secret_post`; client id `399781767172589504`, applied 2026-11-15)
       with Gemini's callback; the spike accepts it in `mcpClientIds` (#4913).
