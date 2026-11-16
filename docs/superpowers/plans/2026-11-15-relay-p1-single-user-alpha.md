@@ -98,8 +98,9 @@ is retired in the last task.
 4. **A command prints far more than 4 MiB.** The result is cut to fit with a
    note saying so, and the WebSocket stays up. Test in Task 7
    (`oversized_result_is_truncated_with_note`).
-5. **The relay resends a call after a reconnect.** The command must not run
-   twice. Test in Task 8 (`repeated_call_id_runs_once`).
+5. **Two calls arrive at once** (two chats, or Claude running tools in
+   parallel). Each result must go back to the call that asked for it, never
+   swapped. Test in Task 3 (`concurrent_calls_get_their_own_results`).
 
 ---
 
@@ -132,7 +133,7 @@ let one verifier accept several client ids.
 
 **Files:**
 - Create: `packages/rust/vitruvian-mcp-auth/{Cargo.toml,BUILD,src/lib.rs,src/verifier.rs,src/prm.rs}`
-- Create: `apps/suites/vitruvian-relay/{BUILD,Cargo.toml,Cargo.lock}` (the BUILD exports `Cargo.toml` and `Cargo.lock` for the hub label, as the spike's does; the workspace's member list grows in later tasks, and `vitruvian-mcp-auth` is a `path` dependency of the crates that use it, not a member)
+- Create: `apps/suites/vitruvian-relay/{BUILD,Cargo.toml,Cargo.lock}` (the BUILD makes the folder a package, so `MODULE.bazel` can name `//apps/suites/vitruvian-relay:Cargo.toml` and `:Cargo.lock`, as it names the spike's; the workspace's member list grows in later tasks, and `vitruvian-mcp-auth` is a `path` dependency of the crates that use it, not a member)
 - Modify: `MODULE.bazel` (add hub `vitruvian_relay_crates`; keep the spike hub until Task 10)
 - Test: `packages/rust/vitruvian-mcp-auth/src/verifier.rs` (`#[cfg(test)]`)
 
@@ -215,6 +216,8 @@ in this task's PR.
 device replaces the old one (its pending calls fail `Disconnected`).
 
 - [ ] **Step 1: Tests** `call_returns_device_result`,
+  `concurrent_calls_get_their_own_results` (two calls in flight, results
+  completed in reverse order, each caller gets its own),
   `pending_call_fails_when_device_drops` (disconnect mid-call → `Disconnected`
   in under 100 ms), `call_to_offline_device_fails_fast`,
   `deadline_expiry_sends_cancel`, `reconnect_replaces_old_connection`,
@@ -356,7 +359,7 @@ device replaces the old one (its pending calls fail `Disconnected`).
 - Consumes: Tasks 2, 5, 6, 7.
 - Produces:
   - `vrelay run`: start the bridge, connect to `wss://<relay>/connect` with a fresh token, send `hello` with `Rules::visible(bridge.tools())`, then loop.
-  - On `call`: dedupe by `call_id` for 10 minutes. A repeat re-sends the stored result or, if still running, nothing. Started ids are also appended to `seen_calls.jsonl` in the state dir (id and time only, pruned after 10 minutes), so after a LaunchAgent restart a resent id is refused with "This call already started before vrelay restarted; not run again." rather than run twice. `Rules::decide` → `Run` / `AskFirst` (prompt) / `Refuse`, then `Bridge::call`, then `result`. A denied prompt returns `is_error: true`, "Denied on the computer."
+  - On `call`: dedupe by `call_id` for 10 minutes. A repeat re-sends the stored result or, if still running, nothing. Started ids are also appended to `seen_calls.jsonl` in the state dir (id and time only, pruned after 10 minutes), so after a LaunchAgent restart a resent id is refused with "This call already started before vrelay restarted; not run again." rather than run twice. This is the spec's repeated-id rule (§4), kept as a safeguard: the P1 relay never resends a call (Task 3 fails it instead), and an id repeated after the 10-minute window runs again. The real duplicate risk, an AI app's own retry, arrives with a new id and is spec §11 question 14. `Rules::decide` → `Run` / `AskFirst` (prompt) / `Refuse`, then `Bridge::call`, then `result`. A denied prompt returns `is_error: true`, "Denied on the computer."
   - On `cancel`: if the call is still waiting at its "ask first" prompt, dismiss the dialog and never run it. If it is already running, drop the result (the command itself is not killed in P1; the local log notes it).
   - Ping the relay every 20 s and answer its pings. 3 unanswered pings either way → reconnect.
   - Reconnect after any drop: backoff `min(60, 2^attempt)` s with full jitter (random 0..delay), reset after 60 s connected; refresh the token before each attempt (`auth::fresh_token`).
