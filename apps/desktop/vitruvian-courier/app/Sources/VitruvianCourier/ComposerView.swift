@@ -104,6 +104,7 @@ struct ComposerView: View {
 
     @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
     @Environment(\.themeAccentColor) private var themeAccent
+    @State private var isPlusHovering = false
 
     /// The message box's height at one line, with glass: the text's height and the field's padding above and below.
     static let floatingFieldPadding: CGFloat = 4
@@ -150,7 +151,7 @@ struct ComposerView: View {
                     extras
                     inputRow(floating: true)
                 }
-                .padding(.leading, 12)
+                .padding(.leading, isEditingMessage ? 12 : 8)
                 .padding(.trailing, Self.floatingFieldPadding + 1)
                 .padding(.vertical, Self.floatingFieldPadding)
                 .courierSurface(.composerField(singleLineHeight: Self.floatingSingleLineHeight))
@@ -210,25 +211,27 @@ struct ComposerView: View {
         }
     }
 
-    /// The text and its buttons, or while a voice note is recorded, its bar. Without glass the plus is its first
-    /// button; with glass it floats beside the box (`floating`) and the send button is the accent glass.
+    /// The text and its buttons, or while a voice note is recorded, its bar. Directly left of the text field sit
+    /// Attach, GIF (when the network supports GIFs), and Voice note; without glass the "+" sits beside them, and with
+    /// glass the "+" floats beside the box (`floating`).
     private func inputRow(floating: Bool) -> some View {
         ComposerInputOrVoiceRow(
             composer: composer,
             preferences: preferences,
             voiceRecorder: composer.voiceRecorder
         ) {
-            HStack(alignment: .bottom, spacing: 8) {
-                if !floating { plusMenu(floating: false) }
+            HStack(alignment: .bottom, spacing: 6) {
+                HStack(alignment: .bottom, spacing: 2) {
+                    if !floating { plusMenu(floating: false) }
+                    leadingComposerButtons
+                }
                 textView(floating: floating)
 
                 if showsIncognitoMark { IncognitoMark() }
 
                 primaryActionButton
 
-                if case .editing = composer.mode {
-                    EmptyView()
-                } else {
+                if !isEditingMessage {
                     secondaryActionButton
                 }
 
@@ -432,7 +435,75 @@ struct ComposerView: View {
         String(localized: "Add Sticker…"),
     ]
 
-    /// The plus menu: Emoji, GIF (⌘⇧G), Sticker (⌘⌥⇧S), Add Attachment (⌘O), and in a chat Send Later… and Create Poll….
+    private var isEditingMessage: Bool {
+        if case .editing = composer.mode { return true }
+        return false
+    }
+
+    private var showsAttachButton: Bool {
+        !isEditingMessage && (composer.features.fileFeatures?.supported != false)
+    }
+
+    private var showsGIFButton: Bool {
+        !isEditingMessage && (composer.features.source == .none || composer.features.gif.supported)
+    }
+
+    private var showsVoiceNoteButton: Bool {
+        !isEditingMessage && (composer.features.voiceFeatures?.supported != false)
+    }
+
+    /// Three always-visible media/input actions directly left of the text box: Attach, GIF (when supported), Voice note.
+    @ViewBuilder
+    private var leadingComposerButtons: some View {
+        if showsAttachButton || showsGIFButton || showsVoiceNoteButton {
+            let locked = composer.isLocked || composer.hotkeyDispatcher?.lifecycle.isLocked == true
+            HStack(alignment: .bottom, spacing: 2) {
+                if showsAttachButton {
+                    ComposerLeadingButton(
+                        symbolName: "paperclip",
+                        tooltip: String(localized: "Add Attachment (⌘O)"),
+                        accessibilityTitle: String(localized: "Add Attachment"),
+                        accessibilityID: "composer.leading.attach",
+                        isDisabled: composer.roomID == nil || locked
+                    ) {
+                        AttachmentPicker.run(into: composer)
+                    }
+                }
+                if showsGIFButton {
+                    ComposerLeadingButton(
+                        symbolName: "photo.on.rectangle",
+                        tooltip: String(localized: "Send GIF (⌘⇧G)"),
+                        accessibilityTitle: String(localized: "Send GIF"),
+                        accessibilityID: "composer.leading.gif",
+                        isDisabled: !composer.canSendGIF || locked
+                    ) {
+                        if let dispatcher = composer.hotkeyDispatcher {
+                            _ = dispatcher.perform("Message: Send GIF")
+                        } else {
+                            _ = composer.openGIFPicker()
+                        }
+                    }
+                    .popover(isPresented: $composer.isGIFPickerPresented, arrowEdge: .top) {
+                        GIFPickerPopover(composer: composer)
+                    }
+                }
+                if showsVoiceNoteButton {
+                    ComposerLeadingButton(
+                        symbolName: "mic",
+                        tooltip: String(localized: "Record Voice Note (⌘⇧A)"),
+                        accessibilityTitle: String(localized: "Record voice note"),
+                        accessibilityID: "composer.leading.voiceNote",
+                        isDisabled: composer.roomID == nil || locked
+                    ) {
+                        composer.preferences = preferences
+                        Task { await composer.startVoiceRecording() }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The plus menu: Emoji, Sticker (⌘⌥⇧S), Send Later…, Create Poll…, Share Location…, Talk to Type, and AI drafting.
     /// With glass (`floating`) a plain plus, as tall as the box at one line, for the round glass button around it.
     private func plusMenu(floating: Bool) -> some View {
         Menu {
@@ -443,18 +514,6 @@ struct ComposerView: View {
                 }
             }
             .disabled(composer.roomID == nil)
-            if preferences.showsGIFInPlusMenu {
-                Button(composer.addGIFMenuTitle) {
-                    if let dispatcher = composer.hotkeyDispatcher {
-                        _ = dispatcher.perform("Message: Send GIF")
-                    } else {
-                        _ = composer.openGIFPicker()
-                    }
-                }
-                .registryShortcut("Message: Send GIF", in: composer.hotkeyDispatcher?.hotkeys ?? HotkeyRegistry())
-                .disabled(!composer.canSendGIF || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
-                .help(composer.canSendGIF ? "" : composer.sendGIFMenuTitle)
-            }
             Button(composer.addStickerMenuTitle) {
                 if let dispatcher = composer.hotkeyDispatcher {
                     _ = dispatcher.perform("Message: Send Sticker")
@@ -465,8 +524,15 @@ struct ComposerView: View {
             .registryShortcut("Message: Send Sticker", in: composer.hotkeyDispatcher?.hotkeys ?? HotkeyRegistry())
             .disabled(!composer.canSendSticker || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
             .help(composer.canSendSticker ? "" : composer.sendStickerMenuTitle)
+            if composer.features.locationSupported {
+                Button(String(localized: "Share Location…")) {
+                    if composer.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        composer.text = "/location "
+                    }
+                }
+                .disabled(composer.roomID == nil || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
+            }
             Divider()
-            Button(String(localized: "Add Attachment…")) { AttachmentPicker.run(into: composer) }
             if preferences.showsSendLaterInPlusMenu {
                 if let sendLater = menus.sendLater {
                     sendLaterItem(sendLater)
@@ -518,27 +584,25 @@ struct ComposerView: View {
                     .frame(width: Self.floatingSingleLineHeight, height: Self.floatingSingleLineHeight)
                     .contentShape(Circle())
             } else {
-                Image(systemName: "plus.circle")
-                    .font(.title3)
-                    .frame(width: 28, height: ComposerTextView.minimumHeight)
+                Image(systemName: "plus")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(isPlusHovering ? Color.primary.opacity(0.08) : .clear)
+                    )
                     .contentShape(Rectangle())
+                    .frame(width: 28, height: ComposerTextView.minimumHeight)
+                    .onHover { isPlusHovering = $0 }
             }
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help(String(localized: "Attach files, send later, or create a poll"))
+        .help(String(localized: "Stickers, polls, Send Later, and more"))
         .accessibilityLabel(String(localized: "More"))
-        .popover(
-            isPresented: Binding(
-                get: { composer.isGIFPickerPresented && preferences.showsGIFInPlusMenu },
-                set: { composer.isGIFPickerPresented = $0 }
-            ),
-            arrowEdge: .top
-        ) {
-            GIFPickerPopover(composer: composer)
-        }
         .popover(isPresented: $composer.isStickerPickerPresented, arrowEdge: .top) {
             StickerPickerPopover(composer: composer)
         }
@@ -595,10 +659,6 @@ struct ComposerView: View {
         switch preferences.primaryComposerButton {
         case .emojiPicker:
             emojiToolbarButton
-        case .gifPicker:
-            gifToolbarButton
-        case .addAttachment:
-            attachmentToolbarButton
         case .sendLater:
             sendLaterToolbarButton
         case .none:
@@ -608,13 +668,9 @@ struct ComposerView: View {
 
     @ViewBuilder
     private var secondaryActionButton: some View {
-        switch preferences.secondaryComposerButton {
-        case .recordAudio:
-            recordAudioToolbarButton
-        case .gifPicker:
-            gifToolbarButton
-        case .addAttachment:
-            attachmentToolbarButton
+        switch preferences.effectiveSecondaryComposerButton {
+        case .emojiPicker:
+            emojiToolbarButton
         case .sendLater:
             sendLaterToolbarButton
         case .none:
@@ -635,79 +691,6 @@ struct ComposerView: View {
         .buttonStyle(.plain)
         .help(String(localized: "Emoji & Symbols (⌃⌘Space)"))
         .accessibilityLabel(String(localized: "Emoji and symbols"))
-    }
-
-    private var recordAudioToolbarButton: some View {
-        Button {
-            composer.preferences = preferences
-            Task { await composer.startVoiceRecording() }
-        } label: {
-            Image(systemName: "mic")
-                .font(.title3)
-                .frame(width: 28, height: ComposerTextView.minimumHeight)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(composer.roomID == nil)
-        .help(String(localized: "Record Voice Note (⌘⇧A)"))
-        .accessibilityLabel(String(localized: "Record voice note"))
-    }
-
-    private var gifToolbarButton: some View {
-        Button {
-            _ = composer.openGIFPicker()
-        } label: {
-            Text(verbatim: "GIF")
-                .font(.system(size: 9.5, weight: .bold, design: .rounded))
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(Color.primary.opacity(0.65), lineWidth: 1.2)
-                )
-                .frame(width: 28, height: ComposerTextView.minimumHeight)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!composer.canSendGIF)
-        .help(composer.canSendGIF ? String(localized: "Send GIF (⌘⇧G)") : composer.sendGIFMenuTitle)
-        .accessibilityLabel(String(localized: "Send GIF"))
-        .popover(isPresented: $composer.isGIFPickerPresented, arrowEdge: .top) {
-            GIFPickerPopover(composer: composer)
-        }
-    }
-
-    private var stickerToolbarButton: some View {
-        Button {
-            _ = composer.openStickerPicker()
-        } label: {
-            Image(systemName: "sparkles.rectangle.stack")
-                .font(.title3)
-                .frame(width: 28, height: ComposerTextView.minimumHeight)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!composer.canSendSticker)
-        .help(composer.canSendSticker ? String(localized: "Send Sticker (⌘⌥⇧S)") : composer.sendStickerMenuTitle)
-        .accessibilityLabel(String(localized: "Send Sticker"))
-        .popover(isPresented: $composer.isStickerPickerPresented, arrowEdge: .top) {
-            StickerPickerPopover(composer: composer)
-        }
-    }
-
-    private var attachmentToolbarButton: some View {
-        Button {
-            AttachmentPicker.run(into: composer)
-        } label: {
-            Image(systemName: "paperclip")
-                .font(.title3)
-                .frame(width: 28, height: ComposerTextView.minimumHeight)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(composer.roomID == nil)
-        .help(String(localized: "Add Attachment (⌘O)"))
-        .accessibilityLabel(String(localized: "Add Attachment"))
     }
 
     private var sendLaterToolbarButton: some View {
@@ -801,6 +784,39 @@ struct ComposerView: View {
 
     private func noticeText(_ notice: ComposerNotice) -> String {
         notice.displayText
+    }
+}
+
+/// A 15pt SF Symbol icon button inside a 28pt hit area, with secondary colour and subtle hover highlight.
+private struct ComposerLeadingButton: View {
+    let symbolName: String
+    let tooltip: String
+    let accessibilityTitle: String
+    let accessibilityID: String
+    var isDisabled: Bool = false
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbolName)
+                .font(.system(size: 15))
+                .foregroundStyle(.secondary)
+                .opacity(isDisabled ? 0.45 : 1)
+                .frame(width: 28, height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(isHovering && !isDisabled ? Color.primary.opacity(0.08) : .clear)
+                )
+                .contentShape(Rectangle())
+                .frame(width: 28, height: ComposerTextView.minimumHeight)
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .onHover { isHovering = $0 }
+        .help(tooltip)
+        .accessibilityLabel(accessibilityTitle)
+        .accessibilityIdentifier(accessibilityID)
     }
 }
 

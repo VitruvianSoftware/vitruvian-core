@@ -371,6 +371,7 @@ struct MessageRowView: View {
     @ObservedObject var ui: MessageUI
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.appearancePreferences) private var appearanceEnv
+    @Environment(\.redactNamesAndPictures) private var redactEnv
     @Environment(\.themeAccentColor) private var envThemeAccent
     @Environment(\.reactionCardOverride) private var cardOverride
     @State private var barSize: CGSize = .zero
@@ -490,7 +491,7 @@ struct MessageRowView: View {
                     if let card, let chip = anchors.openChip {
                         let spot = ReactionCardPlacement.origin(chip: proxy[chip], row: proxy.size, card: cardSize,
                                                                 avoiding: bar)
-                        ReactionCard(chip: card)
+                        ReactionCard(chip: card, isRedacted: isRedacted)
                             .fixedSize()
                             .onGeometryChange(for: CGSize.self) { $0.size } action: { cardSize = $0 }
                             .offset(x: spot.x, y: spot.y)
@@ -666,6 +667,10 @@ struct MessageRowView: View {
         actions.appearance ?? appearanceEnv
     }
 
+    private var isRedacted: Bool {
+        (resolvedAppearance?.redactNamesAndPictures ?? false) || redactEnv
+    }
+
     private var themeAccent: Color {
         if let hex = resolvedAppearance?.effectiveTheme(for: message.roomID).accentColorHex,
            let color = Color(hex: hex) {
@@ -676,10 +681,10 @@ struct MessageRowView: View {
 
     @ViewBuilder
     private var avatarColumn: some View {
-        let isRedacted = resolvedAppearance?.redactNamesAndPictures ?? false
         if message.startsGroup {
-            AvatarView(path: message.senderAvatarPath, initials: InboxRow.initials(of: message.senderName),
-                       seed: message.senderName, size: Self.avatarSize)
+            let avatar = message.senderAvatar(redacted: isRedacted)
+            AvatarView(path: avatar.path, initials: avatar.initials,
+                       seed: avatar.seed, size: Self.avatarSize)
                 .blur(radius: isRedacted ? 6 : 0)
                 .clipShape(Circle())
                 .frame(width: Self.avatarSize, height: Self.avatarSize)
@@ -695,7 +700,7 @@ struct MessageRowView: View {
 
     /// The sender's name as shown (pseudonymised when names are redacted).
     private var displaySenderName: String {
-        (resolvedAppearance?.redactNamesAndPictures ?? false)
+        isRedacted
             ? AppearancePreferences.redactedText(message.senderName, kind: .name)
             : message.senderName
     }
@@ -1047,9 +1052,19 @@ struct MessageRowView: View {
                         actions.react(message.id, chip.key)
                     }
                 } label: {
-                    HStack(spacing: 3) {
+                    HStack(spacing: 4) {
                         Text(chip.key)
-                        Text("\(chip.count)").font(.caption.monospacedDigit())
+                        switch chip.pillDisplay(redacted: isRedacted) {
+                        case let .avatars(items, overflowText):
+                            ReactionAvatarStack(items: items, isRedacted: isRedacted)
+                            if let overflowText {
+                                Text(overflowText)
+                                    .font(.caption.monospacedDigit())
+                            }
+                        case let .count(countText):
+                            Text(countText)
+                                .font(.caption.monospacedDigit())
+                        }
                     }
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
@@ -1058,13 +1073,14 @@ struct MessageRowView: View {
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .help(chip.tooltipText(redacted: isRedacted))
                 .onHover { chipHovered(chip.key, $0) }
                 .clickTargetProbe("chip/\(message.id)/\(chip.key)")
                 .takesOwnClick()
                 .anchorPreference(key: RowAnchorsKey.self, value: .bounds) {
                     RowAnchors(openChip: openCardKey == chip.key ? $0 : nil)
                 }
-                .accessibilityLabel(chip.summary())
+                .accessibilityLabel(chip.summary(redacted: isRedacted))
             }
             if canAct { addReactionChip }
         }
@@ -1367,15 +1383,80 @@ private struct AddReactionGlyph: View {
     }
 }
 
+/// Overlapping 14pt circular reactor avatars shown inside a reaction pill.
+private struct ReactionAvatarStack: View {
+    let items: [ReactionAvatarItem]
+    let isRedacted: Bool
+
+    var body: some View {
+        HStack(spacing: -4) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                ReactorAvatarCircle(item: item, isRedacted: isRedacted)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+private struct ReactorAvatarCircle: View {
+    let item: ReactionAvatarItem
+    let isRedacted: Bool
+    @State private var image: NSImage?
+
+    private var effectiveImage: NSImage? {
+        guard !isRedacted, !item.avatarPath.isEmpty else { return nil }
+        return image ?? AvatarCache.shared.cachedImage(atPath: item.avatarPath)
+    }
+
+    var body: some View {
+        ZStack {
+            if let effectiveImage {
+                Image(nsImage: effectiveImage)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Circle().fill(AvatarView.color(for: item.seed))
+                if !isRedacted {
+                    if !item.initials.isEmpty {
+                        Text(verbatim: item.initials)
+                            .font(.system(size: 6.5, weight: .bold))
+                            .foregroundStyle(.white)
+                    } else {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+            }
+        }
+        .frame(width: 14, height: 14)
+        .blur(radius: isRedacted ? 6 : 0)
+        .clipShape(Circle())
+        .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 1))
+        .task(id: "\(isRedacted)|\(item.avatarPath)") {
+            guard !isRedacted, !item.avatarPath.isEmpty else {
+                image = nil
+                return
+            }
+            if let cached = AvatarCache.shared.cachedImage(atPath: item.avatarPath) {
+                image = cached
+            } else {
+                image = await AvatarCache.shared.image(atPath: item.avatarPath)
+            }
+        }
+    }
+}
+
 /// Who reacted with one emoji: the emoji large, and the names under it (`ReactionChip.summary`).
 private struct ReactionCard: View {
     let chip: ReactionChip
+    var isRedacted: Bool = false
 
     var body: some View {
         CappedWidth(maxWidth: 220) {
             VStack(spacing: 4) {
                 Text(chip.key).font(.system(size: 28))
-                Text(chip.summary())
+                Text(chip.summary(redacted: isRedacted))
                     .font(.caption)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)

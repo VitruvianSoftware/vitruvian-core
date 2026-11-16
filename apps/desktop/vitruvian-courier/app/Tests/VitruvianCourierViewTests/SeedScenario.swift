@@ -106,6 +106,8 @@ struct SeedScenario: Decodable {
         for message in ordered {
             if let root = message.thread { threads[root, default: []].append(message) }
         }
+        let account = accounts?.first { $0.login == chat.account }
+        let myName = (account?.network != "slack" ? account?.name : nil) ?? ""
         var events: [Event] = []
         for message in ordered where message.thread == nil {
             var summary: ThreadSummary?
@@ -125,7 +127,7 @@ struct SeedScenario: Decodable {
             let mine = message.from == "me"
             events.append(Fixture.event(Self.eventID(message.id), mine: mine, ts: message.minutesAgo, content: content,
                                         thread: summary, sender: mine ? nil : Self.userID(message.from),
-                                        name: name(of: message.from)))
+                                        name: mine ? myName : name(of: message.from)))
         }
         for message in ordered where message.thread == nil {
             for (index, reaction) in (message.reactions ?? []).enumerated() {
@@ -138,7 +140,7 @@ struct SeedScenario: Decodable {
                                                     "key": .string(reaction.emoji),
                                                 ]),
                                             ], sender: mine ? nil : Self.userID(reaction.from),
-                                            name: name(of: reaction.from)))
+                                            name: mine ? myName : name(of: reaction.from)))
             }
         }
         return events

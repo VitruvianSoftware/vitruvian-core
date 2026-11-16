@@ -1096,7 +1096,7 @@ struct AppearanceSettingsPane: View {
                 SettingsNavigationModel.title(for: "appearance.primaryComposerButton"),
                 selection: $composerPreferences.primaryComposerButton
             ) {
-                ForEach(PrimaryComposerButton.allCases, id: \.self) { choice in
+                ForEach(composerPreferences.availablePrimaryComposerButtons, id: \.self) { choice in
                     Text(choice.label).tag(choice)
                 }
             }
@@ -1104,9 +1104,12 @@ struct AppearanceSettingsPane: View {
 
             Picker(
                 SettingsNavigationModel.title(for: "appearance.secondaryComposerButton"),
-                selection: $composerPreferences.secondaryComposerButton
+                selection: Binding(
+                    get: { composerPreferences.effectiveSecondaryComposerButton },
+                    set: { composerPreferences.secondaryComposerButton = $0 }
+                )
             ) {
-                ForEach(SecondaryComposerButton.allCases, id: \.self) { choice in
+                ForEach(composerPreferences.availableSecondaryComposerButtons, id: \.self) { choice in
                     Text(choice.label).tag(choice)
                 }
             }

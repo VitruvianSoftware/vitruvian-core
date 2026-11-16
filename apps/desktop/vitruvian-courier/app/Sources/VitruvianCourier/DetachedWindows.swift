@@ -339,6 +339,7 @@ private struct DetachedGlassEnvironment<Content: View>: View {
     var body: some View {
         content
             .environment(\.appearancePreferences, appearance)
+            .environment(\.redactNamesAndPictures, appearance.redactNamesAndPictures)
             .environment(\.liquidGlass, appearance.liquidGlassIsActive)
     }
 }
