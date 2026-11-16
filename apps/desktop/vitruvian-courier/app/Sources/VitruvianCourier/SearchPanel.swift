@@ -10,6 +10,8 @@ struct SearchOverlay: View {
     @ObservedObject var search: SearchModel
     @ObservedObject var inbox: InboxModel
     @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
+    /// Where the chord for searching in the open chat is kept.
+    @ObservedObject var hotkeys: HotkeyRegistry = HotkeyRegistry()
     var onOpenCommandBar: ((String) -> Void)? = nil
 
     var body: some View {
@@ -23,6 +25,7 @@ struct SearchOverlay: View {
                     search: search,
                     inbox: inbox,
                     composerPreferences: composerPreferences,
+                    hotkeys: hotkeys,
                     maxHeight: proxy.size.height * 0.7,
                     onOpenCommandBar: onOpenCommandBar
                 )
@@ -37,14 +40,26 @@ struct SearchPanel: View {
     @ObservedObject var search: SearchModel
     @ObservedObject var inbox: InboxModel
     @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
+    @ObservedObject var hotkeys: HotkeyRegistry = HotkeyRegistry()
     /// 70% of the window's height: the panel grows with its rows up to this.
     let maxHeight: CGFloat
     var onOpenCommandBar: ((String) -> Void)? = nil
     @State private var rowsHeight: CGFloat = 0
+    @Environment(\.redactNamesAndPictures) private var isRedacted
 
     static let width: CGFloat = 640
+
+    /// Under the messages found. There is no way to ask a network for older messages from here: the engine searches
+    /// what it has stored, and a chat's older pages are stored ones too. History a network sends later is stored and
+    /// searched then.
+    static var onThisMacFooter: String {
+        String(localized: "Only messages on this Mac are searched. Older messages appear as each network sends them.",
+               comment: "Under the Messages section of search: what search covers.")
+    }
     /// What the field, the filter bar and the quiet line take above the rows, about.
     private static let chromeHeight: CGFloat = 112
+    /// The "Press ⌘F to search in …" line.
+    private static let offerHeight: CGFloat = 34
 
     var body: some View {
         VStack(spacing: 0) {
@@ -53,6 +68,11 @@ struct SearchPanel: View {
                 .padding(.horizontal, 14)
                 .padding(.bottom, 10)
             Divider()
+            if let offer = inChatOffer {
+                InChatOfferRow(offer: offer, isSelected: search.selection == SearchModel.inChatItemID) {
+                    search.searchInOpenChat()
+                }
+            }
             if !search.complete, search.phase == .results {
                 Text(String(localized: "Still adding older messages to search. Some results may be missing."))
                     .font(.caption)
@@ -75,13 +95,15 @@ struct SearchPanel: View {
             }
         }
         .frame(width: Self.width)
-        .courierSurface(.floatingPanel(cornerRadius: 12, opaque: false))
+        .courierSurface(.searchPanel(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.quaternary))
         .shadow(color: .black.opacity(0.25), radius: 18, y: 6)
         // A click on the panel itself isn't a click on the dim.
         .contentShape(RoundedRectangle(cornerRadius: 12))
         // Esc while a filter's menu or a button has the keyboard, as in the field.
         .onExitCommand { _ = search.escape() }
+        // A chat renamed while the panel is open: its cached row gives way to the inbox's newer one.
+        .onChange(of: inbox.rows) { _, _ in search.refreshHitRows(from: inbox.row(of:)) }
         .onChange(of: search.text) { _, newValue in
             if newValue.hasPrefix(">") {
                 let forwarded = String(newValue.dropFirst()).trimmingCharacters(in: .whitespaces)
@@ -92,6 +114,15 @@ struct SearchPanel: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(String(localized: "Search"))
+    }
+
+    /// "Press ⌘F to search in <chat>", while a chat is open and the panel searches every chat.
+    private var inChatOffer: SearchInChatOffer? {
+        guard let roomID = search.inChatOfferRoomID else { return nil }
+        // The list's row, else the one read for the panel: an archived or old chat may not be in the list.
+        let raw = inbox.chatTitle(forRoomID: roomID, fetchedRow: search.hitRows[roomID]) ?? ""
+        let title = raw.isEmpty ? "" : SearchRedaction.chatTitle(raw, redacted: isRedacted)
+        return SearchInChatOffer.make(roomID: roomID, title: title, hotkeys: hotkeys)
     }
 
     /// The chats most recently active, for the empty in-chat search (not the chat searched in).
@@ -183,7 +214,8 @@ struct SearchPanel: View {
                     }
                 }
             }
-            .frame(height: min(rowsHeight, max(120, maxHeight - Self.chromeHeight)))
+            .frame(height: min(rowsHeight, max(120, maxHeight - Self.chromeHeight
+                                                     - (inChatOffer == nil ? 0 : Self.offerHeight))))
             .onPreferenceChange(RowsHeightKey.self) { rowsHeight = $0 }
             .onChange(of: search.selection) { _, id in
                 guard let id else { return }
@@ -209,6 +241,41 @@ struct SearchPanel: View {
 private struct RowsHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// "Press ⌘F to search in <chat>": the line above the rows. Return on it, or a click, searches that chat.
+private struct InChatOfferRow: View {
+    let offer: SearchInChatOffer
+    let isSelected: Bool
+    let action: () -> Void
+    @Environment(\.themeAccentColor) private var themeAccent
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: "text.magnifyingglass")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20)
+                    .accessibilityHidden(true)
+                Text(verbatim: offer.text)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 7).fill(isSelected ? themeAccent.opacity(0.18) : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 6)
+        .padding(.top, 6)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier("search.inChatOffer")
+    }
 }
 
 /// "In: <chat> ×": the chat searched in. × (or ⌫ in an empty field) searches every chat again.
@@ -257,6 +324,7 @@ private struct SearchSectionView: View {
                         if case let .message(hit) = item {
                             MediaCell(
                                 hit: hit,
+                                chatTitle: inbox.chatTitle(for: hit, fetchedRow: search.hitRows[hit.roomID]),
                                 isSelected: search.selection == item.id,
                                 composerPreferences: composerPreferences
                             )
@@ -272,7 +340,9 @@ private struct SearchSectionView: View {
                         PartialMatchesDivider()
                     }
                     SearchRowView(item: item, isSelected: search.selection == item.id,
-                                  networkName: inbox.networkName, isBookmark: section.kind == .bookmarks,
+                                  networkName: inbox.networkName,
+                                  chatTitle: { inbox.chatTitle(for: $0, fetchedRow: search.hitRows[$0.roomID]) },
+                                  isBookmark: section.kind == .bookmarks,
                                   composerPreferences: composerPreferences)
                         .id(item.id)
                         .contentShape(Rectangle())
@@ -291,7 +361,7 @@ private struct SearchSectionView: View {
             }
             if section.kind == .messages {
                 // The counterpart of 01 §12's limit line, in Vitruvian Courier's words.
-                quietLine(String(localized: "Vitruvian Courier searches the messages on this Mac. Older history appears as each network sends it."))
+                quietLine(SearchPanel.onThisMacFooter)
             }
         }
         .padding(.bottom, 6)
@@ -315,7 +385,7 @@ private struct SearchSectionView: View {
                     : String(localized: "Show partial matches")) {
                     search.filters.partial.toggle()
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.routineLink)
                 .font(.caption)
                 .help(String(localized: "Also list messages that have some of the words, after those with all of them."))
             default:

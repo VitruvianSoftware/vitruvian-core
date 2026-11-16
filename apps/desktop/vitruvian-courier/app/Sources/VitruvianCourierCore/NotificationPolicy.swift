@@ -113,6 +113,14 @@ public final class NotificationPreferences: ObservableObject {
     public static let allowedDelaySeconds: [Int] = [0, 10, 30, 60, 120, 300]
     public static let allowedRepeatUnreadMinutes: [Int] = [0, 2, 5, 10]
 
+    /// What Settings says under "Delay notifications for". Each claim is what the code does: a delayed notification is
+    /// dropped when the chat is read before the wait is over (`NotificationCoordinator.scheduleDelayedDelivery`), and a
+    /// message with a verification code skips the wait (`NotificationPolicy.evaluate`'s `effectiveDelay`). It does not
+    /// say the wait joins several messages into one notification, because each message is held and sent by itself.
+    public static var delayFootnote: String {
+        String(localized: "Wait this long before alerting. If you read the chat in the meantime, no notification is sent. Messages with a verification code always notify right away.")
+    }
+
     @Published public var soundEffectsMode: SoundEffectsMode {
         didSet {
             guard canMutate({ soundEffectsMode = oldValue }) else { return }

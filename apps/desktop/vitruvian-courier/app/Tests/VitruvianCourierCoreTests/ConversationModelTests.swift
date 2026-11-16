@@ -1650,11 +1650,14 @@ extension ConversationModelTests {
         try await h.open("!a")
         h.conversation.composer.text = "On my way"
         await h.conversation.composer.submit()?.value
+        // Wait for what the page shows, not for a count of pages: the send's own page fetch can still be in flight,
+        // and would otherwise stand in for the next change's page (the flake seen in the merge queue).
         try await change(h)
+        try await waitUntil { h.messageIDs(h.conversation.items).last == "$sent" && h.conversation.readsSent == 1 }
         XCTAssertEqual(h.conversation.readsSent, 1, "the reply read the chat")
 
         try await change(h, adding: textEvent(id: "$4", room: "!a", at: 10))
-        XCTAssertEqual(h.messageIDs(h.conversation.items).last, "$4")
+        try await waitUntil { h.messageIDs(h.conversation.items).last == "$4" }
         XCTAssertEqual(h.conversation.readsSent, 1, "their new message stays unread in Incognito")
 
         // Incognito off, Mark as Unread with "Stay on it": a later read of the page doesn't end the hold.

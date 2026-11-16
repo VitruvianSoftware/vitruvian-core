@@ -64,10 +64,12 @@ func (c *Connector) Init(br *bridgev2.Bridge) {
 }
 
 // Start has no server connection to open. bridgev2 calls it once the bridge's database is ready and before the
-// network starts, so it catches up on the reads earlier messages arrived with (reconcileArrivedReads). PreStop has
-// nothing to do.
+// network starts (and so before any login is loaded), so it catches up on the reads earlier messages arrived with
+// (reconcileArrivedReads) and repairs the Google Messages chats that were mixed up (repairGoogleMessages). PreStop
+// has nothing to do.
 func (c *Connector) Start(ctx context.Context) error {
 	c.reconcileArrivedReads(ctx)
+	c.repairGoogleMessages(ctx)
 	return nil
 }
 func (c *Connector) PreStop() {}

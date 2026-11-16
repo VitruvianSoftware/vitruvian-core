@@ -89,17 +89,18 @@ final class MessagePresentationTests: XCTestCase {
         let sections = MessageMenu.sections(for: mine, available: available, features: whatsApp,
                                             disappearsIn: "Disappears in 1 hour", time: { _ in "14:02" })
         XCTAssertEqual(sections.map { $0.map(\.title) }, [
-            ["Edit…", "Reply…"], ["React…"], ["Bookmark"], ["Mark as Unread"], ["Unsend", "Delete for Me…"],
-            ["Copy", "Copy with Timestamp"], ["Forward…"], ["Edit History"], ["Sent at 14:02", "Disappears in 1 hour"],
+            ["Reply…", "React…", "Edit…"], ["Copy", "Copy with Timestamp", "Forward…"],
+            ["Bookmark", "Mark as Unread", "Edit History"], ["Unsend", "Delete for Me…"],
+            ["Sent at 14:02", "Disappears in 1 hour"],
         ])
-        let edit = sections[0][0]
+        let edit = sections[0][2]
         XCTAssertFalse(edit.isEnabled, "30 minutes is past WhatsApp's 15")
         XCTAssertEqual(edit.help, "WhatsApp only lets you edit for 15 minutes")
         XCTAssertEqual(edit.key, .commandT)
-        let markUnread = sections[3][0]
+        let markUnread = sections[2][1]
         XCTAssertTrue(markUnread.isEnabled)
         XCTAssertEqual(markUnread.help, "From this message. On this Mac only.")
-        XCTAssertTrue(sections[8].allSatisfy { !$0.isEnabled && $0.command == .info })
+        XCTAssertTrue(sections[4].allSatisfy { !$0.isEnabled && $0.command == .info })
 
         // Someone else's, in a group: Reply Privately… after Reply….
         let theirs = message(mine: false, minutesAgo: 1)
@@ -107,7 +108,7 @@ final class MessagePresentationTests: XCTestCase {
                                                isDirect: false, networkRunning: true)
         let groupSections = MessageMenu.sections(for: theirs, available: inGroup, features: whatsApp, disappearsIn: nil,
                                                  time: { _ in "14:02" })
-        XCTAssertEqual(groupSections.first?.map(\.title), ["Reply…", "Reply Privately…"])
+        XCTAssertEqual(groupSections.first?.map(\.title), ["Reply…", "Reply Privately…", "React…"])
     }
 
     func testSomeoneElsesThreadRootOffersShowRepliesAndInsertAsDraft() {
@@ -118,12 +119,73 @@ final class MessagePresentationTests: XCTestCase {
         let titles = MessageMenu.sections(for: root, available: available, features: slack, disappearsIn: nil,
                                           time: { _ in "9:00" }).map { $0.map(\.title) }
         XCTAssertEqual(titles, [
-            ["Reply in Thread…", "Show Replies"], ["React…"], ["Remove Bookmark"], ["Mark as Unread"],
-            ["Delete for Me…"],
-            ["Copy", "Copy with Timestamp", "Insert as Draft", "Open Link"], ["Forward…"], ["Received at 9:00"],
+            ["Reply in Thread…", "Show Replies", "React…"],
+            ["Copy", "Copy with Timestamp", "Insert as Draft", "Open Link", "Forward…"],
+            ["Remove Bookmark", "Mark as Unread"], ["Delete for Me…"], ["Received at 9:00"],
         ])
         let gm = ChatFeatures(reply: true, deleteReachesPhone: true, source: .stored)
         XCTAssertEqual(MessageMenu.title(of: .deleteForMe, features: gm), "Delete from This Mac and Your Phone…")
+    }
+
+    /// Everything the menu can hold at once, drawn in five sections: Reply first, then what takes the message
+    /// elsewhere, what is done with it, what removes or reports it, and the greyed lines last.
+    func testTheFullMenuIsFiveSectionsWithReplyFirstAndInfoLast() {
+        let root = message(mine: true, body: "bonjour", thread: ThreadSummary(replies: 1, lastTS: 0, lastSenders: ["Bo"]),
+                           edited: true)
+        let available = MessageActions.available(for: root, in: whatsApp, network: "whatsapp", now: now)
+        let sections = MessageMenu.sections(
+            for: root, available: available, features: whatsApp, disappearsIn: "Disappears in 1 hour",
+            time: { _ in "14:02" }, includeDiagnostics: true, isAIAvailable: true, responseLanguage: "English",
+            translationLanguages: ["English", "Spanish"], canReadAloud: true)
+        XCTAssertEqual(sections.map { $0.map(\.title) }, [
+            ["Reply…", "Show Replies", "React…", "Edit…"],
+            ["Copy", "Copy with Timestamp", "Forward…"],
+            ["Bookmark", "Mark as Unread", "Read Aloud", "Translate", "Translate Into…", "Edit History"],
+            ["Unsend", "Delete for Me…", "Report a Problem…", "Copy Message Details"],
+            ["Sent at 14:02", "Disappears in 1 hour"],
+        ])
+        XCTAssertLessThanOrEqual(sections.count, 5)
+        XCTAssertEqual(sections.first?.first?.command, .action(.reply), "Reply is the first line")
+        XCTAssertTrue(sections.last?.allSatisfy { $0.command == .info && !$0.isEnabled } ?? false)
+    }
+
+    /// Items that don't apply are absent, and a section with nothing left in it leaves no divider.
+    func testItemsThatDontApplyAreAbsentAndEmptySectionsLeaveNoDivider() {
+        let theirs = message(mine: false, body: "hello")
+        let available = MessageActions.available(for: theirs, in: whatsApp, network: "whatsapp", now: now)
+        let plain = MessageMenu.sections(for: theirs, available: available, features: whatsApp, disappearsIn: nil,
+                                         time: { _ in "14:02" })
+        let titles = plain.flatMap { $0.map(\.title) }
+        for absent in ["Edit…", "Unsend", "Show Replies", "Read Aloud", "Translate", "Report a Problem…",
+                       "Copy Message Details", "Transcribe", "Edit History", "Open Link"]
+        {
+            XCTAssertFalse(titles.contains(absent), "\(absent) is not offered here: \(titles)")
+        }
+        XCTAssertTrue(plain.allSatisfy { !$0.isEmpty }, "no empty section, so no double divider")
+
+        // Reading aloud and diagnostics each add their line only when asked for.
+        let more = MessageMenu.sections(for: theirs, available: available, features: whatsApp, disappearsIn: nil,
+                                        time: { _ in "14:02" }, includeDiagnostics: true, canReadAloud: true)
+        XCTAssertEqual(more.map { $0.map(\.title) }.dropLast().last, ["Delete for Me…", "Report a Problem…", "Copy Message Details"],
+                       "someone else's message has nothing to unsend, so Delete for Me… leads the last action section")
+        XCTAssertTrue(more.flatMap { $0 }.contains { $0.command == .readAloud })
+    }
+
+    /// Reply and Copy keep their shortcuts: Reply is ⌘R and its registry key, Copy is ⌘C. The rest keep theirs.
+    func testTheMenuKeepsItsShortcuts() {
+        let root = message(mine: true, body: "see https://example.test",
+                           thread: ThreadSummary(replies: 1, lastTS: 0, lastSenders: ["Bo"]), minutesAgo: 1)
+        let available = MessageActions.available(for: root, in: whatsApp, network: "whatsapp", now: now)
+        let items = MessageMenu.sections(for: root, available: available, features: whatsApp, disappearsIn: nil,
+                                         time: { _ in "14:02" }).flatMap { $0 }
+        func key(_ title: String) -> MenuKey? { items.first { $0.title == title }?.key }
+        XCTAssertEqual(key("Reply…"), .commandR)
+        XCTAssertEqual(MenuKey.commandR.hotkeyID, "Message: Quote & Reply")
+        XCTAssertEqual(key("Copy"), .commandC)
+        XCTAssertEqual(key("Edit…"), .commandT)
+        XCTAssertEqual(key("Show Replies"), .commandDown)
+        XCTAssertEqual(key("Open Link"), .commandShiftH)
+        XCTAssertEqual(key("Forward…"), .commandShiftF)
     }
 
     func testAMessageNotSentHasNoSentAtLine() {

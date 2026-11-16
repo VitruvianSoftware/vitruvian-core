@@ -167,9 +167,16 @@ go_deps.module_override(
 # read receipt only when a live update flips my message to "read", so a message read while the bridge
 # wasn't watching never shows as seen. The patch sends that receipt from the conversation sync, which
 # carries the latest message's status. Not fixed upstream as of v0.2610.0; drop it when it is.
+# The second patch routes messages and conversation updates by the IDs Google nests them under when the top-level
+# ones are empty (upstream #166, b580a1a), and fixes the DM deduplication that, fed those events, merged a contact's
+# chat into a chat with no ID and lost its mapping: it applies on top of the first, so keep the order. Neither
+# change is in v0.2609.0 or v0.2610.0 (a bump to upstream main would also move mautrix to v0.32.0 for every bridge).
 go_deps.module_override(
     patch_strip = 1,
-    patches = ["//tools/go_deps:mautrix-gmessages-conversation-read-receipt.patch"],
+    patches = [
+        "//tools/go_deps:mautrix-gmessages-conversation-read-receipt.patch",
+        "//tools/go_deps:mautrix-gmessages-nested-conversation-ids.patch",
+    ],
     path = "go.mau.fi/mautrix-gmessages",
 )
 

@@ -81,18 +81,17 @@ public struct MessageMenuItem: Equatable, Sendable, Identifiable {
     public var id: String { "\(command)|\(title)" }
 }
 
-/// What a message's menu shows (02 §3.4.2, the 4.4 subset), in its sections:
-///   1. Edit… (⌘T); Reply… (⌘R) or Reply in Thread…; Reply Privately… (others' messages in a group); Show Replies
-///      (⌘↓, on a thread's root)
-///   2. React…
-///   3. Bookmark / Remove Bookmark
-///   4. Mark as Unread ("From this message. On this Mac only.")
-///   5. Unsend; Delete for Me… (or "Delete from This Mac and Your Phone…")
-///   6. Copy (⌘C), Copy with Timestamp; Insert as Draft (others' messages); Open Link (⌘⇧H)
-///   7. Forward… (⌘⇧F)
-///   8. Edit History (when edited)
-///   9. greyed lines: "Sent at …" or "Received at …", and "Disappears in …"
-/// An action the chat shows greyed is there, off, with why (`Unavailable.reason`). Empty sections are left out.
+/// What a message's menu shows (02 §3.4.2, the 4.4 subset), in at most five sections a divider apart. Only what
+/// applies to the message is in it, and an empty section is left out:
+///   1. Reply… (⌘R) or Reply in Thread…; Reply Privately… (others' messages in a group); Show Replies (⌘↓, on a
+///      thread's root); React…; Edit… (⌘T)
+///   2. Copy (⌘C), Copy with Timestamp; Insert as Draft (others' messages); Open Link (⌘⇧H); Forward… (⌘⇧F)
+///   3. Bookmark / Remove Bookmark; Mark as Unread ("From this message. On this Mac only."); Mark as played; Read
+///      Aloud; Transcribe (voice notes); Translate; Edit History (when edited)
+///   4. What can't be taken back or is about the message itself: Unsend; Delete for Me… (or "Delete from This Mac
+///      and Your Phone…"); Report a Problem…; Copy Message Details
+///   5. greyed lines: "Sent at …" or "Received at …", and "Disappears in …"
+/// An action the chat shows greyed is there, off, with why (`Unavailable.reason`).
 public enum MessageMenu {
     /// - Parameters:
     ///   - available: what the message offers (`ConversationModel.availableActions(for:)`).
@@ -123,90 +122,97 @@ public enum MessageMenu {
             return nil
         }
 
-        var first = [item(.edit), item(.reply), item(.replyInThread), item(.replyPrivately)].compactMap { $0 }
+        // 1. Replying.
+        var replying = [item(.reply), item(.replyInThread), item(.replyPrivately)].compactMap { $0 }
         if message.thread != nil, message.kind != .deleted, !message.isNote {
-            first.append(MessageMenuItem(command: .showReplies, title: String(localized: "Show Replies"),
-                                         key: .commandDown, isEnabled: true, help: nil))
+            replying.append(MessageMenuItem(command: .showReplies, title: String(localized: "Show Replies"),
+                                            key: .commandDown, isEnabled: true, help: nil))
         }
-        var sections: [[MessageMenuItem]] = [
-            first,
-            [item(.react)].compactMap { $0 },
-            [item(.bookmark), item(.removeBookmark)].compactMap { $0 },
-            [item(.markUnread), item(.markAsPlayed)].compactMap { $0 },
-            [item(.unsend), item(.deleteForMe)].compactMap { $0 },
-            [item(.copy), item(.copyWithTimestamp), item(.insertAsDraft), item(.openFirstLink)].compactMap { $0 },
-            [item(.forward)].compactMap { $0 },
-            [item(.showHistory)].compactMap { $0 },
-        ]
+        replying += [item(.react), item(.edit)].compactMap { $0 }
+
+        // 2. Taking the message somewhere else.
+        let sharing = [item(.copy), item(.copyWithTimestamp), item(.insertAsDraft), item(.openFirstLink),
+                       item(.forward)].compactMap { $0 }
+
+        // 3. Doing something with the message.
+        var using = [item(.bookmark), item(.removeBookmark), item(.markUnread), item(.markAsPlayed)].compactMap { $0 }
         if canReadAloud {
-            sections.append([
+            using.append(
                 MessageMenuItem(
                     command: .readAloud,
                     title: isReadingAloud ? String(localized: "Reading Aloud…") : String(localized: "Read Aloud"),
                     key: nil,
                     isEnabled: !isReadingAloud,
                     help: nil
-                ),
-            ])
+                )
+            )
         }
         if message.kind == .voiceNote,
            !message.isNote,
            !message.showsMediaRemovedPlaceholder,
            message.statusLine?.hasGone ?? true
         {
-            sections.append([
+            using.append(
                 MessageMenuItem(
                     command: .transcribeVoiceNote,
                     title: String(localized: "Transcribe"),
                     key: nil,
                     isEnabled: true,
                     help: nil
-                ),
-            ])
+                )
+            )
         }
-        if includeDiagnostics, !message.isNote, message.statusLine != .queued, !(message.statusLine?.isWaiting ?? false) {
-            if !message.rich.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, message.kind != .deleted {
-                let translateHelp = isAIAvailable ? nil : String(localized: "Set up AI in Settings")
-                var translateItems: [MessageMenuItem] = [
+        let diagnosable = includeDiagnostics && !message.isNote && message.statusLine != .queued
+            && !(message.statusLine?.isWaiting ?? false)
+        if diagnosable,
+           !message.rich.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, message.kind != .deleted
+        {
+            let translateHelp = isAIAvailable ? nil : String(localized: "Set up AI in Settings")
+            using.append(
+                MessageMenuItem(
+                    command: .translate,
+                    title: String(localized: "Translate"),
+                    key: nil,
+                    isEnabled: isAIAvailable,
+                    help: translateHelp
+                )
+            )
+            let otherLanguages = translationLanguages.filter { $0 != responseLanguage }
+            if !otherLanguages.isEmpty {
+                let children = otherLanguages.map { language in
                     MessageMenuItem(
-                        command: .translate,
-                        title: String(localized: "Translate"),
+                        command: .translateTo(language),
+                        title: language,
                         key: nil,
                         isEnabled: isAIAvailable,
                         help: translateHelp
-                    ),
-                ]
-                let otherLanguages = translationLanguages.filter { $0 != responseLanguage }
-                if !otherLanguages.isEmpty {
-                    let children = otherLanguages.map { language in
-                        MessageMenuItem(
-                            command: .translateTo(language),
-                            title: language,
-                            key: nil,
-                            isEnabled: isAIAvailable,
-                            help: translateHelp
-                        )
-                    }
-                    translateItems.append(
-                        MessageMenuItem(
-                            command: .translate,
-                            title: String(localized: "Translate Into…"),
-                            key: nil,
-                            isEnabled: isAIAvailable,
-                            help: translateHelp,
-                            children: children
-                        )
                     )
                 }
-                sections.append(translateItems)
+                using.append(
+                    MessageMenuItem(
+                        command: .translate,
+                        title: String(localized: "Translate Into…"),
+                        key: nil,
+                        isEnabled: isAIAvailable,
+                        help: translateHelp,
+                        children: children
+                    )
+                )
             }
-            sections.append([
-                MessageMenuItem(command: .copyMessageDetails, title: String(localized: "Copy Message Details"),
-                                key: nil, isEnabled: true, help: nil),
-                MessageMenuItem(command: .reportProblem, title: String(localized: "Report a Problem…"),
-                                key: nil, isEnabled: true, help: nil),
-            ])
         }
+        using += [item(.showHistory)].compactMap { $0 }
+
+        // 4. Removing it, and reporting on it.
+        var removing = [item(.unsend), item(.deleteForMe)].compactMap { $0 }
+        if diagnosable {
+            removing.append(MessageMenuItem(command: .reportProblem, title: String(localized: "Report a Problem…"),
+                                            key: nil, isEnabled: true, help: nil))
+            removing.append(MessageMenuItem(command: .copyMessageDetails,
+                                            title: String(localized: "Copy Message Details"),
+                                            key: nil, isEnabled: true, help: nil))
+        }
+
+        // 5. Lines that only say something.
         var info: [MessageMenuItem] = []
         // A message not yet sent has no time it was sent at.
         if message.statusLine?.hasGone ?? true {
@@ -217,8 +223,7 @@ public enum MessageMenu {
         if let disappearsIn {
             info.append(MessageMenuItem(command: .info, title: disappearsIn, key: nil, isEnabled: false, help: nil))
         }
-        sections.append(info)
-        return sections.filter { !$0.isEmpty }
+        return [replying, sharing, using, removing, info].filter { !$0.isEmpty }
     }
 
     /// An action's title in the menu.

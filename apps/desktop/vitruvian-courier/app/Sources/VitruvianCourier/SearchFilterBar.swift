@@ -142,6 +142,10 @@ struct SearchFilterBar: View {
 }
 
 /// A filter's chip: its menu, named by the choice when one is made, and then an × that clears it.
+///
+/// It has to read as a control that is on: the label in the primary text colour (a menu's own label drew dimmed, dark
+/// grey on the panel), a chevron when nothing is chosen, a fill and a visible outline. A chosen chip is the accent
+/// with white text.
 private struct FilterChip<Choices: View>: View {
     let title: String
     let choice: String?
@@ -150,29 +154,45 @@ private struct FilterChip<Choices: View>: View {
     @Environment(\.themeAccentColor) private var themeAccent
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 4) {
             Menu(content: choices) {
-                Text(choice ?? title)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(choice ?? title)
+                        .lineLimit(1)
+                    if choice == nil {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8, weight: .bold))
+                            .accessibilityHidden(true)
+                    }
+                }
+                .foregroundStyle(labelColor)
             }
-            .menuStyle(.borderlessButton)
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
             .fixedSize()
             .help(title)
+            .accessibilityLabel(choice.map { "\(title): \($0)" } ?? title)
             if choice != nil {
                 Button(action: clear) {
                     Image(systemName: "xmark")
                         .font(.caption2.weight(.bold))
+                        .foregroundStyle(labelColor)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
                 .help(String(localized: "Clear this filter"))
                 .accessibilityLabel(String(localized: "Clear \(title)"))
             }
         }
         .font(.callout.weight(.medium))
-        // A filled pill either way: a clear grey when no choice is made, the accent once one is.
-        .foregroundStyle(choice == nil ? Color.primary : Color.white)
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
-        .background(Capsule().fill(choice == nil ? Color.primary.opacity(0.14) : themeAccent))
+        .background(Capsule().fill(choice == nil ? Color.primary.opacity(0.08) : themeAccent))
+        // The menu's own button draws a little past the label; the capsule is the chip's edge.
+        .clipShape(Capsule())
+        // The outline is for a chip with no choice made; a chosen chip is filled with the accent.
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(choice == nil ? 0.3 : 0), lineWidth: 1))
     }
+
+    private var labelColor: Color { choice == nil ? .primary : .white }
 }

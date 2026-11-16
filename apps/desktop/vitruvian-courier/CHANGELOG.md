@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.24](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.23...vitruvian-courier-v0.3.24) (2026-11-16)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** calmer routine actions, filmstrip placeholders, named contacts first ([#4958](https://github.com/VitruvianSoftware/vitruvian-core/issues/4958)) ([a668777](https://github.com/VitruvianSoftware/vitruvian-core/commit/a6687772963a760a69ac9980ab02aa5536387478))
+* **vitruvian-courier:** route Google Messages by nested IDs and repair mixed-up chats ([#4962](https://github.com/VitruvianSoftware/vitruvian-core/issues/4962)) ([85007ba](https://github.com/VitruvianSoftware/vitruvian-core/commit/85007baae98d66e353fa3adfc1b7ef8e10fc15c6))
+
 ## [0.3.23](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.22...vitruvian-courier-v0.3.23) (2026-11-16)
 
 

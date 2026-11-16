@@ -1,0 +1,369 @@
+Vitruvian Courier (apps/desktop/vitruvian-courier): route Google Messages events by the IDs Google nests them
+under when the top-level ones are empty, and never let one empty ID become a chat.
+
+Google now sends some messages and conversation updates with the top-level message ID (field 1) and conversation
+ID (field 7) empty, and the real ones nested (field 23 carries the conversation ID, field 24 the message ID, field
+35 a conversation's latest message ID). v0.2609.0 keyed the chat on the top-level ID alone: every such event landed
+in one chat with an empty conversation ID ("1."), messages with the same empty ID overwrote each other as edits,
+and deduplicateDM, seeing a contact's phone on that chat, re-ID'd the contact's real portal into it. That deleted the
+real portal and tombstoned its room, and the mapping update after it failed (its first write used the outer
+context, not the transaction's) with the error thrown away, so the mapping kept pointing at a portal that no longer
+existed.
+
+This backports the nested-ID fallback of upstream mautrix-gmessages #166 (b580a1a, fillMissingIDs; also for typing
+notices) and the dedup fixes on upstream main (the transaction's context, the error returned), and adds what
+neither has:
+- the portal move now comes after the mapping is stored, and puts the mapping back if the move fails, so a failure
+  can't leave a deleted portal with a mapping to it;
+- an event that has no conversation ID even after the fallback (or a message with no message ID) is dropped with
+  an error log, in libgm and again in the connector; deduplicateDM refuses a conversation with no ID and never
+  moves a portal out of an empty-ID one.
+
+Neither upstream change is in v0.2609.0 or v0.2610.0. Drop this patch when a release has both. Written against
+the tree with mautrix-gmessages-conversation-read-receipt.patch applied: keep it after that one in MODULE.bazel.
+
+diff --git a/pkg/connector/backfill.go b/pkg/connector/backfill.go
+--- a/pkg/connector/backfill.go
++++ b/pkg/connector/backfill.go
+@@ -125,6 +125,11 @@
+ 	for i, msg := range resp.Messages {
+ 		msgTS := time.UnixMicro(msg.Timestamp)
+ 		log := zerolog.Ctx(ctx).With().Str("message_id", msg.MessageID).Time("message_ts", msgTS).Logger()
++		if msg.MessageID == "" {
++			// Without an ID it would be stored as "1." and overwrite every other message that has none.
++			log.Error().Msg("Ignoring backfilled message with no message ID")
++			continue
++		}
+ 		if !params.Forward && cursor != nil && msgTS.UnixMilli() >= cursor.LastItemTimestamp {
+ 			log.Debug().Int64("cursor_ms", cursor.LastItemTimestamp).Msg("Ignoring message newer than cursor")
+ 			continue
+diff --git a/pkg/connector/chatsync.go b/pkg/connector/chatsync.go
+--- a/pkg/connector/chatsync.go
++++ b/pkg/connector/chatsync.go
+@@ -281,6 +281,14 @@
+ }
+ 
+ func (gc *GMClient) syncConversation(ctx context.Context, v *gmproto.Conversation, source string) {
++	if v.GetConversationID() == "" {
++		// Everything below keys on the conversation ID: with none, the update would become a chat with no ID.
++		zerolog.Ctx(ctx).Error().
++			Str("data_source", source).
++			Stringer("conversation_status", v.GetStatus()).
++			Msg("Dropping conversation update with no conversation ID")
++		return
++	}
+ 	meta, suspiciousUnmarkedSpam := gc.syncConversationMeta(v)
+ 
+ 	log := zerolog.Ctx(ctx).With().
+@@ -405,6 +413,15 @@
+ 
+ var errDontSyncConversation = errors.New("conversation should not be synced")
+ 
++var errEmptyConversationID = errors.New("conversation has no conversation ID")
++
++// hasEmptyConversationID reports whether a portal ID has nothing after its login prefix ("1."): the chat every
++// conversation and message that came without an ID was bridged into. Nothing may be re-ID'd into or out of it.
++func (gc *GMClient) hasEmptyConversationID(portalID networkid.PortalID) bool {
++	prefix, realID := parseAnyID(string(portalID))
++	return prefix != "" && realID == ""
++}
++
+ func (gc *GMClient) bumpDMLastMessageTime(ctx context.Context, convID string, ts jsontime.UnixMicro) error {
+ 	portalID := gc.MakePortalID(convID)
+ 	gc.dmsLock.Lock()
+@@ -427,6 +444,10 @@
+ }
+ 
+ func (gc *GMClient) deduplicateDM(ctx context.Context, evt *gmproto.Conversation) error {
++	if evt.GetConversationID() == "" {
++		// The mapping, and the portal it re-IDs, would be "1.": never make or move anything onto that.
++		return errEmptyConversationID
++	}
+ 	phoneNumber := getOtherUserPhone(evt)
+ 	if phoneNumber == "" {
+ 		return nil
+@@ -443,7 +464,11 @@
+ 	ctx = log.WithContext(ctx)
+ 	gc.dmsLock.Lock()
+ 	defer gc.dmsLock.Unlock()
+-	insertNewConv := func(extraTasks func() error, cacheClear func()) error {
++	// insertNewConv stores the new mapping, after extraTasks, in one transaction. extraTasks gets the transaction's
++	// context: the database accepts only one writer, so a write made with the outer context would wait on the
++	// transaction that is waiting on it. A failed transaction is an error (nothing was changed, and the caller must
++	// not go on to move the portal); the caches change only once it has been committed.
++	insertNewConv := func(extraTasks func(ctx context.Context) error, cacheClear func()) error {
+ 		conv := &gmdb.DirectConversation{
+ 			LoginID:       gc.UserLogin.ID,
+ 			PhoneNumber:   phoneNumber,
+@@ -452,7 +477,7 @@
+ 		}
+ 		err := gc.Main.br.DB.DoTxn(ctx, nil, func(ctx context.Context) error {
+ 			if extraTasks != nil {
+-				err := extraTasks()
++				err := extraTasks(ctx)
+ 				if err != nil {
+ 					return err
+ 				}
+@@ -464,7 +489,7 @@
+ 			return nil
+ 		})
+ 		if err != nil {
+-			return nil
++			return err
+ 		}
+ 		if cacheClear != nil {
+ 			cacheClear()
+@@ -502,8 +527,34 @@
+ 				ID:       byPhone.PortalID,
+ 				Receiver: portalKey.Receiver,
+ 			}
++			// Move the mapping first, then the portal. The portal move can't be undone (when both portals have a
++			// room, the old one is deleted and its room tombstoned), so it must be the last step, and only after
++			// the mapping was stored: a mapping that failed to store used to leave the portal gone with the old
++			// mapping still pointing at it.
++			err := insertNewConv(func(ctx context.Context) error {
++				err := gc.Main.DB.DirectConversation.Delete(ctx, byPhone)
++				if err != nil {
++					return fmt.Errorf("failed to delete old DM conversation row after conversation ID change: %w", err)
++				}
++				return nil
++			}, func() {
++				delete(gc.dmsByConv, byPhone.PortalID)
++			})
++			if err != nil {
++				return fmt.Errorf("not re-ID'ing %s to %s: %w", byPhone.PortalID, portalID, err)
++			}
++			if gc.hasEmptyConversationID(byPhone.PortalID) {
++				log.Warn().
++					Str("old_portal_id", string(byPhone.PortalID)).
++					Msg("Not re-ID'ing the portal of an empty conversation ID, only moved the DM mapping")
++				return nil
++			}
+ 			res, _, err := gc.Main.br.ReIDPortal(ctx, sourceKey, portalKey)
+ 			if err != nil {
++				revertErr := gc.revertDMMapping(ctx, byPhone, portalID)
++				if revertErr != nil {
++					log.Err(revertErr).Msg("Failed to put the DM mapping back after the re-ID failed")
++				}
+ 				return fmt.Errorf("failed to re-ID %s to %s: %w", byPhone.PortalID, portalID, err)
+ 			}
+ 			log.Debug().
+@@ -511,15 +562,7 @@
+ 				Time("old_last_message_ts", byPhone.LastMessageTS.Time).
+ 				Stringer("result", res).
+ 				Msg("Re-ID'd DM portal to match new conversation ID")
+-			return insertNewConv(func() error {
+-				err = gc.Main.DB.DirectConversation.Delete(ctx, byPhone)
+-				if err != nil {
+-					return fmt.Errorf("failed to delete old DM conversation row after conversation ID change: %w", err)
+-				}
+-				return nil
+-			}, func() {
+-				delete(gc.dmsByConv, byPhone.PortalID)
+-			})
++			return nil
+ 		}
+ 		log.Debug().
+ 			Str("existing_portal_id", string(byPhone.PortalID)).
+@@ -531,7 +574,7 @@
+ 		log.Warn().
+ 			Str("old_phone_number", byID.PhoneNumber).
+ 			Msg("Phone number of DM conversation changed")
+-		return insertNewConv(func() error {
++		return insertNewConv(func(ctx context.Context) error {
+ 			err := gc.Main.DB.DirectConversation.Delete(ctx, byID)
+ 			if err != nil {
+ 				return fmt.Errorf("failed to delete old DM conversation row after phone number change: %w", err)
+@@ -546,7 +589,7 @@
+ 			Str("old_phone_number", byID.PhoneNumber).
+ 			Str("old_portal_id_of_new_phone", string(byPhone.PortalID)).
+ 			Msg("Phone number of DM conversation changed and a conflicting conversation already exists")
+-		return insertNewConv(func() error {
++		return insertNewConv(func(ctx context.Context) error {
+ 			err := gc.Main.DB.DirectConversation.Delete(ctx, byID)
+ 			if err != nil {
+ 				return fmt.Errorf("failed to delete old DM conversation row after phone number change with conflict: %w", err)
+@@ -563,6 +606,28 @@
+ 	}
+ }
+ 
++// revertDMMapping puts back the mapping row deduplicateDM replaced with newPortalID's (the portal move that was to
++// follow it failed), in the database and in the caches. The caller holds dmsLock.
++func (gc *GMClient) revertDMMapping(ctx context.Context, old *gmdb.DirectConversation, newPortalID networkid.PortalID) error {
++	replacement := gc.dmsByConv[newPortalID]
++	err := gc.Main.br.DB.DoTxn(ctx, nil, func(ctx context.Context) error {
++		if replacement != nil {
++			err := gc.Main.DB.DirectConversation.Delete(ctx, replacement)
++			if err != nil {
++				return err
++			}
++		}
++		return gc.Main.DB.DirectConversation.Insert(ctx, old)
++	})
++	if err != nil {
++		return err
++	}
++	delete(gc.dmsByConv, newPortalID)
++	gc.dmsByPhone[old.PhoneNumber] = old
++	gc.dmsByConv[old.PortalID] = old
++	return nil
++}
++
+ type GMChatResync struct {
+ 	g    *GMClient
+ 	Conv *gmproto.Conversation
+diff --git a/pkg/connector/handlegmessages.go b/pkg/connector/handlegmessages.go
+--- a/pkg/connector/handlegmessages.go
++++ b/pkg/connector/handlegmessages.go
+@@ -142,6 +142,10 @@
+ 			}
+ 		}()
+ 	case *gmproto.Conversation:
++		if evt.GetConversationID() == "" {
++			log.Error().Msg("Dropping conversation update with no conversation ID")
++			return
++		}
+ 		gc.chatInfoCache.Set(evt.ConversationID, evt)
+ 		if gc.noDataReceivedRecently {
+ 			go gc.resyncAfterDataResume(ctx, gc.lastDataReceived)
+@@ -151,6 +155,15 @@
+ 		gc.syncConversation(ctx, evt, "event")
+ 	//case *gmproto.Message:
+ 	case *libgm.WrappedMessage:
++		if evt.GetConversationID() == "" || evt.GetMessageID() == "" {
++			// A message with no conversation ID would be bridged into a chat with no ID, and one with no message
++			// ID would overwrite every other such message as an edit.
++			log.Error().
++				Bool("has_conversation_id", evt.GetConversationID() != "").
++				Bool("has_message_id", evt.GetMessageID() != "").
++				Msg("Dropping message with no conversation or message ID")
++			return
++		}
+ 		if gc.noDataReceivedRecently {
+ 			go gc.resyncAfterDataResume(ctx, gc.lastDataReceived)
+ 		}
+diff --git a/pkg/libgm/event_handler.go b/pkg/libgm/event_handler.go
+--- a/pkg/libgm/event_handler.go
++++ b/pkg/libgm/event_handler.go
+@@ -102,6 +102,7 @@
+ 						Msg("Errored decrypted data event content")
+ 					return nil, fmt.Errorf("failed to decode decrypted data event: %w", err)
+ 				}
++				FillMissingIDs(msg.DecryptedMessage)
+ 			}
+ 		} else if msg.Message.EncryptedData2 != nil {
+ 			msg.DecryptedData, err = c.AuthData.RequestCrypto.Decrypt(msg.Message.EncryptedData2)
+@@ -130,6 +131,73 @@
+ 	return msg, nil
+ }
+ 
++// Google now sends some messages and conversation updates with the top-level message ID (field 1) and conversation
++// ID (field 7) empty, and carries the real ones in nested fields instead: the conversation ID (and the phone) in
++// field 23 (someKindOfGroupID), the message ID in field 24 (anotherMessageID), and a conversation's latest message ID
++// in field 35. Left alone, every such event shares the empty ID: the bridge keys one chat on "" and the messages in
++// it overwrite one another. These fill the top-level ID from the nested one when it is empty, and only then.
++
++func fillMissingConversationIDs(conv *gmproto.Conversation) {
++	if conv == nil {
++		return
++	}
++	if conv.ConversationID == "" {
++		conv.ConversationID = conv.GetSomeKindOfGroupID().GetConversationID()
++	}
++	if conv.LatestMessageID == "" {
++		conv.LatestMessageID = conv.GetLatestMessageAnotherID().GetMessageID()
++	}
++}
++
++func fillMissingMessageIDs(msg *gmproto.Message) {
++	if msg == nil {
++		return
++	}
++	if msg.MessageID == "" {
++		msg.MessageID = msg.GetAnotherMessageID().GetMessageID()
++	}
++	if msg.ConversationID == "" {
++		msg.ConversationID = msg.GetSomeKindOfGroupID().GetConversationID()
++	}
++}
++
++func fillMissingTypingIDs(typing *gmproto.TypingData) {
++	if typing == nil {
++		return
++	}
++	if typing.ConversationID == "" {
++		typing.ConversationID = typing.GetSomeKindOfGroupID().GetConversationID()
++	}
++}
++
++// FillMissingIDs fills the empty top-level conversation and message IDs of every conversation, message and typing
++// notice in an update or response from the nested IDs Google sends them in (see above). It runs on everything
++// decryptInternalMessage decodes. Exported so it can be tested from outside the module.
++func FillMissingIDs(data proto.Message) {
++	switch typed := data.(type) {
++	case *gmproto.UpdateEvents:
++		for _, conv := range typed.GetConversationEvent().GetData() {
++			fillMissingConversationIDs(conv)
++		}
++		for _, msg := range typed.GetMessageEvent().GetData() {
++			fillMissingMessageIDs(msg)
++		}
++		fillMissingTypingIDs(typed.GetTypingEvent().GetData())
++	case *gmproto.ListConversationsResponse:
++		for _, conv := range typed.GetConversations() {
++			fillMissingConversationIDs(conv)
++		}
++	case *gmproto.GetConversationResponse:
++		fillMissingConversationIDs(typed.GetConversation())
++	case *gmproto.GetOrCreateConversationResponse:
++		fillMissingConversationIDs(typed.GetConversation())
++	case *gmproto.ListMessagesResponse:
++		for _, msg := range typed.GetMessages() {
++			fillMissingMessageIDs(msg)
++		}
++	}
++}
++
+ func (c *Client) deduplicateHash(id string, hash [32]byte) bool {
+ 	const recentUpdatesLen = len(c.recentUpdates)
+ 	for i := c.recentUpdatesPtr + recentUpdatesLen - 1; i >= c.recentUpdatesPtr; i-- {
+@@ -261,6 +329,12 @@
+ 
+ 		case *gmproto.UpdateEvents_ConversationEvent:
+ 			for _, part := range evt.ConversationEvent.GetData() {
++				if part.GetConversationID() == "" {
++					// Even the nested ID is missing. Every such update would share the empty ID and be bridged into
++					// one chat, so drop it.
++					c.Logger.Error().Msg("Dropping conversation event with no conversation ID")
++					continue
++				}
+ 				if c.deduplicateUpdate(part.GetConversationID(), msg) {
+ 					return
+ 				} else if msg.IsOld {
+@@ -272,6 +346,15 @@
+ 
+ 		case *gmproto.UpdateEvents_MessageEvent:
+ 			for _, part := range evt.MessageEvent.GetData() {
++				if part.GetConversationID() == "" || part.GetMessageID() == "" {
++					// Even the nested IDs are missing. A message without them can't be told from any other one
++					// (they would overwrite each other as edits, in a chat with no ID), so drop it.
++					c.Logger.Error().
++						Bool("has_conversation_id", part.GetConversationID() != "").
++						Bool("has_message_id", part.GetMessageID() != "").
++						Msg("Dropping message event with no conversation or message ID")
++					continue
++				}
+ 				if c.deduplicateUpdate(part.GetMessageID(), msg) {
+ 					return
+ 				}
+@@ -287,6 +370,10 @@
+ 			if msg.IsOld {
+ 				return
+ 			}
++			if evt.TypingEvent.GetData().GetConversationID() == "" {
++				c.Logger.Debug().Msg("Dropping typing event with no conversation ID")
++				return
++			}
+ 			c.triggerEvent(evt.TypingEvent.GetData())
+ 
+ 		case *gmproto.UpdateEvents_BrowserPresenceCheckEvent:

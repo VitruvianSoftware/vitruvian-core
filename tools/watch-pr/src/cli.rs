@@ -24,7 +24,7 @@
 
 use crate::arith::{self, Vars};
 use crate::checks::parse_checks_json;
-use crate::post_merge::{decide, Decision, EXIT_TIMEOUT, POST_MERGE_GRACE};
+use crate::post_merge::{self, decide, Decision, EXIT_TIMEOUT, POST_MERGE_GRACE};
 use crate::queue::{self, Verdict};
 use crate::sh::{
     self, capture, capture_merged, capture_or_echo, die, env_or, info, now, ok, on_path, prefix,
@@ -666,6 +666,10 @@ pub fn run(script: &str, args: &[String]) -> i32 {
     ));
 
     let post_merge_start = now();
+    let mut said_batched = false;
+    // One forced re-mint per run of failed reads: a failure a new token does
+    // not fix (a permissions error, an outage) must not re-mint every poll.
+    let mut reminted_for_failure = false;
     loop {
         let now = now();
         if now >= deadline {
@@ -675,6 +679,10 @@ pub fn run(script: &str, args: &[String]) -> i32 {
             return EXIT_TIMEOUT;
         }
         let elapsed = now - start_time;
+        // pipeline-status reads GitHub with our token, so it must stay fresh
+        // here too: on 2026-11-16 it expired an hour into this phase and every
+        // later poll failed (PR #4953 sat "waiting" for four hours).
+        refresh_token(&mut minted, &mut shell, false);
 
         // Like the script: the checkout's own pipeline-status.sh when there is
         // one, else `bazel run //tools/pipeline-status` (now the Rust port).
@@ -691,6 +699,18 @@ pub fn run(script: &str, args: &[String]) -> i32 {
         };
 
         let post_elapsed = now - post_merge_start;
+        let report = post_merge::read_report(&status.out);
+        // A batched merge is judged by the tip of the push that landed it;
+        // say so once, so the verdict is not read as the commit's own runs.
+        if let Some(note) = &report.batched {
+            if !said_batched {
+                info(note);
+                said_batched = true;
+            }
+        }
+        if report.no_verdict.is_none() {
+            reminted_for_failure = false;
+        }
         let decision = decide(status.status, post_elapsed);
         match decision {
             Decision::Green => {
@@ -716,6 +736,23 @@ pub fn run(script: &str, args: &[String]) -> i32 {
                 warn(&format!(
                     "Post-merge push workflows are currently IN PROGRESS / QUEUED... ({elapsed}s elapsed)"
                 ));
+                sh::sleep(&interval);
+            }
+            Decision::AwaitRegistration | Decision::NoRunsStillWaiting
+                if report.no_verdict.is_some() =>
+            {
+                // No verdict is not "no runs": say why. A failed GitHub read
+                // is most often our token expiring, so re-mint it now.
+                let why = report.no_verdict.as_deref().unwrap_or_default();
+                warn(&format!(
+                    "No verdict yet for {short}: {why} ({post_elapsed}s since landing, {elapsed}s elapsed)"
+                ));
+                if report.read_failed && !reminted_for_failure {
+                    refresh_token(&mut minted, &mut shell, true);
+                    reminted_for_failure = true;
+                } else if !report.read_failed {
+                    reminted_for_failure = false;
+                }
                 sh::sleep(&interval);
             }
             Decision::AwaitRegistration => {

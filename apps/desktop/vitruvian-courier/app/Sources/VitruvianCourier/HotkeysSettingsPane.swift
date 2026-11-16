@@ -226,15 +226,16 @@ private struct HotkeyRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
-                Toggle(
-                    "",
+                // The row draws the hotkey's name itself; the label names the switch for VoiceOver.
+                SettingsSwitchRow(
+                    definition.title,
                     isOn: Binding(
                         get: { isEnabled },
                         set: { registry.setEnabled($0, for: definition.id) }
-                    )
+                    ),
+                    fillsWidth: false,
+                    showsLabel: false
                 )
-                .labelsHidden()
-                .toggleStyle(.switch)
                 .controlSize(.mini)
                 .disabled(isLocked)
 
