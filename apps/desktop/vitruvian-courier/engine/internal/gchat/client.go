@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -764,17 +766,27 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 
 	var topic *string
 	var memberGaiaIDs []string
+	var storedAppIDs []string
+	nameFromGoogle := false
 	c.metaMu.Lock()
-	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil && len(meta.MemberUserIDs) > 0 {
+	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
 		memberGaiaIDs = append(memberGaiaIDs, meta.MemberUserIDs...)
+		storedAppIDs = slices.Clone(meta.AppUserIDs)
+		nameFromGoogle = meta.NameFromGoogle
 	}
 	c.metaMu.Unlock()
 
 	own := c.ownUserID()
-	otherIDs := otherMemberIDs(memberGaiaIDs, own)
+	// Everyone the chat lists, apps included. The fetch below keys off this, not the people-only list: a chat of
+	// me, one person and an app still has to be read once to learn the app is one.
+	listedOthers := otherMemberIDs(memberGaiaIDs, own)
 
+	roster := memberRoster{}
+	for _, id := range memberGaiaIDs {
+		roster.add(&pb.UserId{Id: pb.String(id)})
+	}
 	fetchedGroupMembers := false
-	if rawID != "" && (!isDM || len(otherIDs) > 1) {
+	if rawID != "" && (!isDM || len(listedOthers) > 1) {
 		reqBytes, mErr := pb.Marshal(&pb.GetGroupRequest{
 			GroupId: pb.PartsToGroupID(rawID, isDM),
 			FetchOptions: []pb.GetGroupRequest_FetchOptions{
@@ -791,6 +803,10 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 					if g := resp.GetGroup(); g != nil {
 						if gName := strings.TrimSpace(g.GetName()); gName != "" && !isPlaceholderChatName(portal.ID, gName) {
 							name = gName
+							nameFromGoogle = true
+						} else {
+							// Google answered and gave the chat no name of its own.
+							nameFromGoogle = false
 						}
 						if desc := strings.TrimSpace(g.GetGroupDetails().GetDescription()); desc != "" {
 							topic = &desc
@@ -801,8 +817,8 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 						if m.MembershipState != nil && state != pb.MembershipState_MEMBER_JOINED {
 							continue
 						}
-						if uid := strings.TrimSpace(m.GetId().GetMemberId().GetUserId().GetId()); uid != "" {
-							memberGaiaIDs = append(memberGaiaIDs, uid)
+						if u := m.GetId().GetMemberId().GetUserId(); strings.TrimSpace(u.GetId()) != "" {
+							roster.add(u)
 							fetchedGroupMembers = true
 						}
 					}
@@ -811,28 +827,69 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 		}
 	}
 
-	otherIDs = otherMemberIDs(memberGaiaIDs, own)
+	appIDs := mergeAppIDs(storedAppIDs, roster.appIDs(), roster.ids)
+	memberGaiaIDs = roster.ids
+	allOthers := otherMemberIDs(memberGaiaIDs, own)
+	visibleIDs := visibleMemberIDs(memberGaiaIDs, appIDs, own)
+	otherIDs := otherMemberIDs(visibleIDs, own)
+	hiddenApps := len(allOthers) - len(otherIDs)
+	if hiddenApps > 0 {
+		zerolog.Ctx(ctx).Debug().
+			Str("portal_id", string(portal.ID)).
+			Strs("app_user_ids", appIDs).
+			Msg("gchat chat lists apps: leaving them out of its members and name")
+	}
+
+	// A name this client composed from the member list back when apps counted ("Eddie Stecker, Kent Hua, GitHub")
+	// is recomposed from the people. A name Google gave the chat, or one a person typed, never is: it is told
+	// apart by not being the list of everyone's names.
+	recomposeName := false
+	if hiddenApps > 0 && !nameFromGoogle && name != "" &&
+		sameNameList(name, c.composeGroupMemberName(ctx, allOthers)) {
+		name = ""
+		recomposeName = true
+	}
 	isGroup := !isDM || len(otherIDs) > 1
-	if isGroup && name == "" {
+	if name == "" && (isGroup || recomposeName) {
 		name = c.composeGroupMemberName(ctx, otherIDs)
 	}
 
 	otherUserID := portal.OtherUserID
-	if isDM && len(otherIDs) > 1 {
-		otherUserID = ""
+	if isDM {
+		switch {
+		case len(otherIDs) > 1:
+			otherUserID = ""
+		case len(otherIDs) == 1:
+			otherUserID = otherIDs[0]
+		}
 	}
+
+	// Remember what was learned, so the next sync does not have to ask again. It is saved by whoever saves the
+	// portal next (refreshPortalChatInfo).
+	c.metaMu.Lock()
+	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
+		meta.AppUserIDs = appIDs
+		meta.NameFromGoogle = nameFromGoogle
+		if fetchedGroupMembers && (!recomposeName || name != "") {
+			meta.AppRosterChecked = true
+		}
+	}
+	c.metaMu.Unlock()
 
 	var namePtr *string
 	if name != "" {
 		namePtr = &name
 	}
 
+	members := c.buildChatMemberList(own, isDM, otherUserID, visibleIDs, fetchedGroupMembers)
+	// Taking an app out of the room is a tidy-up, not something that happened in the chat: no "left" line.
+	members.ExcludeChangesFromTimeline = hiddenApps > 0
 	return &bridgev2.ChatInfo{
 		Name:        namePtr,
 		Topic:       topic,
 		Type:        &roomType,
 		CanBackfill: true,
-		Members:     c.buildChatMemberList(own, isDM, otherUserID, memberGaiaIDs, fetchedGroupMembers),
+		Members:     members,
 	}, nil
 }
 
