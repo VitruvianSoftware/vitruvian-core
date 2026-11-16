@@ -50,37 +50,41 @@ pub fn status_path(dir: &Path) -> PathBuf {
     dir.join("status.json")
 }
 
-/// Makes sure the state directory exists and is private.
+/// Makes sure a private folder exists: the state directory, the log
+/// folder, desktop-commander's `~/.claude-server-commander`.
 ///
-/// A new directory (and any missing parents) is created with mode 0700 from
-/// the start, never made and then chmod'ed. An existing directory is left
-/// alone if it is already closed to others. If it is more open, it is
-/// tightened to 0700: `VRELAY_HOME` names the connector's own folder, so that
-/// is the intended result. Its parents are never touched, and if the folder
-/// is not ours the chmod fails and we report it rather than carry on.
+/// A new folder (and any missing parents) is created with mode 0700 from
+/// the start, never made and then chmod'ed. Several at once (or another
+/// program making it meanwhile) all succeed. An existing folder is left
+/// alone if it is already closed to others; if it is more open, it is
+/// tightened to 0700. That is deliberate, and the one thing done to an
+/// existing folder: `VRELAY_HOME` names the connector's own folder, so a
+/// state folder someone left open to others (say, made by hand with the
+/// usual 0755) is closed, not used as it is. Its parents are never touched.
+/// Something there that is not a folder (`VRELAY_HOME` naming a file, say)
+/// is an error naming it, never chmod'ed. If the folder is not ours the
+/// chmod fails and that is reported rather than carried on from.
 pub fn ensure_dir(dir: &Path) -> Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
-        match std::fs::metadata(dir) {
-            Ok(meta) => {
-                if meta.mode() & 0o077 != 0 {
-                    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
-                        .map_err(|e| format!("make {} private: {e}", dir.display()))?;
-                }
-                Ok(())
-            }
-            Err(_) => std::fs::DirBuilder::new()
-                .recursive(true)
-                .mode(0o700)
-                .create(dir)
-                .map_err(|e| format!("create {}: {e}", dir.display())),
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+    let made = std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(dir);
+    let meta = std::fs::metadata(dir);
+    match (&made, &meta) {
+        (_, Ok(m)) if !m.is_dir() => {
+            return Err(format!("{} is not a folder", dir.display()));
         }
+        (Err(e), _) => return Err(format!("create {}: {e}", dir.display())),
+        (Ok(()), Err(e)) => return Err(format!("read {}: {e}", dir.display())),
+        (Ok(()), Ok(_)) => {}
     }
-    #[cfg(not(unix))]
-    {
-        std::fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))
+    let mode = meta.map(|m| m.mode()).unwrap_or(0);
+    if mode & 0o077 != 0 {
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+            .map_err(|e| format!("make {} private: {e}", dir.display()))?;
     }
+    Ok(())
 }
 
 /// Writes `bytes` to `path` with mode 0600, atomically. The temp file has a
@@ -158,7 +162,8 @@ pub struct Tokens {
     pub expires_at_unix: u64,
 }
 
-fn str_field(v: &Value, key: &str) -> Option<String> {
+/// A non-empty string field of a JSON object.
+pub(crate) fn str_field(v: &Value, key: &str) -> Option<String> {
     v.get(key)
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
@@ -211,6 +216,57 @@ pub fn load_device(dir: &Path) -> Option<DeviceInfo> {
         device_id: str_field(&v, "device_id")?,
         mcp_url: str_field(&v, "mcp_url")?,
     })
+}
+
+/// `vrelay.log`, where launchd sends the agent's stdout and stderr. launchd
+/// never rotates it.
+pub const AGENT_LOG: &str = "vrelay.log";
+/// `vrelay.log` is cut back once past this (the old part kept as
+/// `vrelay.log.1`), like `calls.log`.
+pub const AGENT_LOG_MAX_BYTES: u64 = 10 * 1024 * 1024;
+
+/// Keeps the log behind file descriptor `fd` under `max_bytes`: once it is
+/// past that, its contents are copied to `<path>.1` (replacing an older
+/// one) and it is emptied, so writes go on from its start. Only when `fd`
+/// is that very file (`path`), opened for appending (as launchd opens
+/// `StandardErrorPath`; anything else would leave a hole). True if it was
+/// cut back.
+// The `stat` field types differ between macOS and Linux, so a cast that is
+// needed on one is a no-op on the other.
+#[allow(clippy::unnecessary_cast)]
+pub fn cap_log(fd: i32, path: &Path, max_bytes: u64) -> Result<bool> {
+    use std::os::unix::fs::MetadataExt;
+    // SAFETY: fstat and fcntl on a descriptor we were given; `st` is plain
+    // memory fstat fills in.
+    let (st, flags) = unsafe {
+        let mut st: libc::stat = std::mem::zeroed();
+        if libc::fstat(fd, &mut st) != 0 {
+            return Ok(false);
+        }
+        (st, libc::fcntl(fd, libc::F_GETFL))
+    };
+    let Ok(named) = std::fs::metadata(path) else {
+        return Ok(false);
+    };
+    let same = named.dev() == st.st_dev as u64 && named.ino() == st.st_ino as u64;
+    let size = st.st_size as u64;
+    if !same || flags < 0 || flags & libc::O_APPEND == 0 || size <= max_bytes {
+        return Ok(false);
+    }
+    let old = path.with_file_name(format!(
+        "{}.1",
+        path.file_name().unwrap_or_default().to_string_lossy()
+    ));
+    std::fs::copy(path, &old).map_err(|e| format!("keep {}: {e}", old.display()))?;
+    // SAFETY: truncating a descriptor we were given.
+    if unsafe { libc::ftruncate(fd, 0) } != 0 {
+        return Err(format!(
+            "empty {}: {}",
+            path.display(),
+            std::io::Error::last_os_error()
+        ));
+    }
+    Ok(true)
 }
 
 /// Signs out: removes the token and the device record. The device key stays,
@@ -321,6 +377,54 @@ mod tests {
         let deep = parent.join("a/b");
         ensure_dir(&deep).unwrap();
         assert_eq!(mode(&deep), 0o700);
+    }
+
+    /// Final review M6: the agent's log (launchd's, never rotated) is cut
+    /// back past its limit, the old part kept once, and writing carries on.
+    #[test]
+    fn the_agent_log_is_capped() {
+        use std::io::Write;
+        use std::os::unix::io::AsRawFd;
+        let dir = test_dir("agent-log");
+        ensure_dir(&dir).unwrap();
+        let path = dir.join(AGENT_LOG);
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .unwrap();
+        f.write_all(&[b'a'; 100]).unwrap();
+        assert!(!cap_log(f.as_raw_fd(), &path, 100).unwrap(), "at the limit");
+        f.write_all(b"b").unwrap();
+        assert!(cap_log(f.as_raw_fd(), &path, 100).unwrap());
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), 0);
+        assert_eq!(std::fs::read(dir.join("vrelay.log.1")).unwrap().len(), 101);
+        f.write_all(b"next").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"next");
+        // Not that file, or not appending: left alone.
+        let other = dir.join("other.log");
+        std::fs::write(&other, [b'x'; 200]).unwrap();
+        assert!(!cap_log(f.as_raw_fd(), &other, 100).unwrap());
+        let g = std::fs::OpenOptions::new().write(true).open(&other).unwrap();
+        assert!(!cap_log(g.as_raw_fd(), &other, 100).unwrap());
+        assert_eq!(std::fs::metadata(&other).unwrap().len(), 200);
+    }
+
+    /// Final-wave deferred item 5a: `VRELAY_HOME` naming a file is a clear
+    /// error, and the file is left as it was.
+    #[test]
+    fn a_file_where_the_folder_should_be_is_a_clear_error() {
+        let parent = test_dir("dirs-file");
+        std::fs::create_dir_all(&parent).unwrap();
+        let file = parent.join("vrelay");
+        std::fs::write(&file, b"x").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let e = ensure_dir(&file).unwrap_err();
+        assert!(e.contains("is not a folder"), "{e}");
+        assert_eq!(mode(&file), 0o644);
+        // And so is a file further up the path.
+        let e = ensure_dir(&file.join("sub")).unwrap_err();
+        assert!(e.contains("create") || e.contains("not a folder"), "{e}");
     }
 
     #[test]

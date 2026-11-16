@@ -30,6 +30,15 @@ use vitruvian_relay::devices::FileDeviceStore;
 use vitruvian_relay::http::{serve, App, Timing};
 use vitruvian_relay::{log_event, stdout_log, stop_signal};
 
+/// A problem with the system's certificates, as a log line like any other.
+fn tls_warning(message: &str) {
+    log_event(
+        &stdout_log(),
+        "tls_warning",
+        serde_json::json!({"message": message}),
+    );
+}
+
 fn fail(msg: String) -> ! {
     eprintln!("{msg}");
     std::process::exit(1);
@@ -41,6 +50,7 @@ async fn main() {
         println!("vitruvian-relay {}", env!("CARGO_PKG_VERSION"));
         return;
     }
+    vitruvian_mcp_auth::set_tls_warning_hook(tls_warning);
     let settings = Settings::from_lookup(|k| std::env::var(k).ok())
         .unwrap_or_else(|e| fail(format!("configuration error: {e}")));
     let verifier_for = |client_ids: Vec<String>| {

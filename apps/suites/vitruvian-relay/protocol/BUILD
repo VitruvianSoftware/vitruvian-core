@@ -20,7 +20,7 @@
 
 # gazelle:ignore
 
-load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_clippy", "rust_library", "rust_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # JSON frames between the relay and the vrelay connector.
@@ -46,6 +46,16 @@ rust_test(
     crate = ":vitruvian_relay_protocol",
 )
 
+# Clippy over the code and its tests; a lint error fails the unit.
+rust_clippy(
+    name = "vitruvian_relay_protocol_clippy",
+    testonly = True,
+    deps = [
+        ":vitruvian_relay_protocol",
+        ":vitruvian_relay_protocol_test",
+    ],
+)
+
 test_suite(
     name = "unit_tests",
     tests = [":vitruvian_relay_protocol_test"],
@@ -55,7 +65,10 @@ pipeline_unit(
     name = "vitruvian-relay-protocol",
     persona = "backend",
     runner = "ubuntu-26.04",
-    test_targets = [":unit_tests"],
+    test_targets = [
+        ":unit_tests",
+        ":vitruvian_relay_protocol_clippy",
+    ],
     tier = "L1",
     timeout_minutes = 15,
 )

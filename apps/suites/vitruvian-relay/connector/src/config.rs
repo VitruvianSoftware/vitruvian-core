@@ -22,7 +22,7 @@
 //! HTTPS call uses (Task 8's WebSocket reuses `client_config`).
 
 use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 pub const DEFAULT_ISSUER: &str = "https://auth.ipv1337.dev";
@@ -106,34 +106,15 @@ impl Config {
     }
 }
 
-/// rustls on ring, trusting the system certificate store as
-/// rustls-native-certs 0.8 finds it. Built the way vitruvian-slack-mcp's
-/// `tls::client_config()` builds it: ureq's own `native-certs` feature would
-/// pull in rustls-native-certs 0.7 and the unmaintained rustls-pemfile.
-/// Built once and shared.
+/// rustls on ring, trusting the system certificate store: the one setup
+/// the relay's token checker uses too (`vitruvian_mcp_auth`), built once and
+/// shared. Its warnings go to vrelay's log (stderr).
 pub fn client_config() -> Arc<rustls::ClientConfig> {
-    static CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
-    CONFIG
-        .get_or_init(|| {
-            let loaded = rustls_native_certs::load_native_certs();
-            for err in &loaded.errors {
-                eprintln!("vrelay: could not read a system CA certificate: {err}");
-            }
-            let mut roots = rustls::RootCertStore::empty();
-            let (added, _unparsable) = roots.add_parsable_certificates(loaded.certs);
-            if added == 0 {
-                eprintln!("vrelay: no CA certificates found; every HTTPS call will fail");
-            }
-            let provider = Arc::new(rustls::crypto::ring::default_provider());
-            Arc::new(
-                rustls::ClientConfig::builder_with_provider(provider)
-                    .with_safe_default_protocol_versions()
-                    .expect("ring supports rustls's default protocol versions")
-                    .with_root_certificates(roots)
-                    .with_no_client_auth(),
-            )
-        })
-        .clone()
+    fn warn(message: &str) {
+        eprintln!("vrelay: {message}");
+    }
+    vitruvian_mcp_auth::set_tls_warning_hook(warn);
+    vitruvian_mcp_auth::tls_client_config()
 }
 
 pub fn agent() -> ureq::Agent {

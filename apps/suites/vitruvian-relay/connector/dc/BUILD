@@ -61,6 +61,7 @@ pipeline_unit(
     runner = "ubuntu-26.04",
     test_targets = [
         ":desktop_commander_builds",
+        "//apps/suites/vitruvian-relay/connector/scripts:package_layout_clippy",
         "//apps/suites/vitruvian-relay/connector/scripts:package_layout_test",
     ],
     tier = "L1",

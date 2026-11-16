@@ -1010,7 +1010,7 @@ mod tests {
         use std::sync::atomic::AtomicU32;
         static N: AtomicU32 = AtomicU32::new(0);
         fn interrupted_every_other_time(pid: i32) -> std::result::Result<i32, i32> {
-            if N.fetch_add(1, Ordering::SeqCst) % 2 == 0 {
+            if N.fetch_add(1, Ordering::SeqCst).is_multiple_of(2) {
                 return Err(libc::EINTR);
             }
             // SAFETY: as in proc.rs's waitid; plain zeroed memory.

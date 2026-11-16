@@ -28,7 +28,7 @@ use vitruvian_relay_connector::link::{system_rng, Dialog, FileTokens, Link, Timi
 use vitruvian_relay_connector::state::{
     clear_sign_in, ensure_dir, now_unix, save_device, save_tokens,
 };
-use vitruvian_relay_connector::{rules, status, Result};
+use vitruvian_relay_connector::{rules, state, status, Result};
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -173,6 +173,16 @@ fn cmd_run(cfg: &Config) -> Result<()> {
         .enable_all()
         .build()
         .map_err(|e| format!("start the runtime: {e}"))?;
+    // launchd never rotates vrelay.log: cut it back now and then.
+    let agent_log = cfg.log_dir.join(state::AGENT_LOG);
+    let cap = move || {
+        for fd in [1, 2] {
+            if let Err(e) = state::cap_log(fd, &agent_log, state::AGENT_LOG_MAX_BYTES) {
+                eprintln!("vrelay: {e}");
+            }
+        }
+    };
+    cap();
     let bridge = Arc::new(Bridge::start(&cmd)?);
     let log: vitruvian_relay_connector::bridge::Log = Arc::new(|s: &str| eprintln!("vrelay: {s}"));
     let link = Link {
@@ -199,6 +209,14 @@ fn cmd_run(cfg: &Config) -> Result<()> {
         tokio::spawn(async move {
             while hup.recv().await.is_some() {
                 let _ = reload_tx.try_send(());
+            }
+        });
+        tokio::spawn(async move {
+            let mut every = tokio::time::interval(Duration::from_secs(60));
+            loop {
+                every.tick().await;
+                let cap = cap.clone();
+                let _ = tokio::task::spawn_blocking(cap).await;
             }
         });
         let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);

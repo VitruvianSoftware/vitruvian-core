@@ -20,7 +20,7 @@
 
 # gazelle:ignore
 
-load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_clippy", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -32,12 +32,12 @@ package(default_visibility = ["//apps/suites/vitruvian-relay:__subpackages__"])
 
 _CRATES = [
     "//apps/suites/vitruvian-relay/protocol:vitruvian_relay_protocol",
+    "//packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth",
     "@vitruvian_relay_crates//:base64",
     "@vitruvian_relay_crates//:futures-util",
     "@vitruvian_relay_crates//:libc",
     "@vitruvian_relay_crates//:ring",
     "@vitruvian_relay_crates//:rustls",
-    "@vitruvian_relay_crates//:rustls-native-certs",
     "@vitruvian_relay_crates//:serde",
     "@vitruvian_relay_crates//:serde_json",
     "@vitruvian_relay_crates//:tokio",
@@ -107,6 +107,17 @@ rust_test(
 # The lock's pin and checksum are checked offline in the Rust tests. Building
 # the package from its lock (a ~600-package fetch) is dc/'s own unit, so it
 # runs only when dc/ changes.
+# Clippy over the code and its tests; a lint error fails the unit.
+rust_clippy(
+    name = "vrelay_clippy",
+    testonly = True,
+    deps = [
+        ":vitruvian_relay_connector",
+        ":vitruvian_relay_connector_test",
+        ":vrelay",
+    ],
+)
+
 test_suite(
     name = "unit_tests",
     tests = [":vitruvian_relay_connector_test"],
@@ -116,7 +127,10 @@ pipeline_unit(
     name = "vrelay",
     persona = "backend",
     runner = "ubuntu-26.04",
-    test_targets = [":unit_tests"],
+    test_targets = [
+        ":unit_tests",
+        ":vrelay_clippy",
+    ],
     tier = "L1",
     timeout_minutes = 15,
 )

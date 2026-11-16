@@ -54,10 +54,6 @@ struct StoredDevice {
     public_key_ed25519: String,
 }
 
-fn to_hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
 fn from_hex_32(s: &str) -> Option<[u8; 32]> {
     if s.len() != 64 || !s.is_ascii() {
         return None;
@@ -165,7 +161,7 @@ impl DeviceStore for FileDeviceStore {
             rec.device_id,
             StoredDevice {
                 owner_sub: rec.owner_sub,
-                public_key_ed25519: to_hex(&rec.public_key_ed25519),
+                public_key_ed25519: crate::hex(&rec.public_key_ed25519),
             },
         );
         let json = serde_json::to_vec_pretty(&next)

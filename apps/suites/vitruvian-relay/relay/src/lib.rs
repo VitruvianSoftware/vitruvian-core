@@ -82,9 +82,7 @@ pub fn stop_signal() -> std::io::Result<impl std::future::Future<Output = &'stat
     })
 }
 
-pub fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
+pub use vitruvian_relay_protocol::hex;
 
 /// 128 random bits as 32 hex characters: session ids and call ids.
 pub fn random_id() -> String {

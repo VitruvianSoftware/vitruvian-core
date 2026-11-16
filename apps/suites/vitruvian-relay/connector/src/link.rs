@@ -1794,17 +1794,15 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
                     let tokens = self.tokens.clone();
                     let dir = self.dir.clone();
                     let signed_in = move || tokens.signed_in() && device_path(&dir).exists();
-                    let (up, shut) = session(
-                        &shared,
-                        (ws, read),
+                    let dialed = Dialed {
+                        ws,
+                        read,
                         conn,
                         hello,
-                        gen,
-                        &signed_in,
-                        &mut status,
-                        &mut shutdown,
-                    )
-                    .await;
+                        rules_gen: gen,
+                    };
+                    let (up, shut) =
+                        session(&shared, dialed, &signed_in, &mut status, &mut shutdown).await;
                     if shut {
                         break;
                     }
@@ -1955,16 +1953,31 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
 
 /// One connection, from `hello` to the drop. Returns how long it was up
 /// after `welcome` (if it got that far) and whether vrelay is stopping.
-async fn session<T: Tools, A: Asker>(
-    shared: &Arc<Shared<T, A>>,
-    (ws, read): (Ws, Arc<ReadMeter>),
+/// A connection made, its `hello` ready to send.
+struct Dialed {
+    ws: Ws,
+    read: Arc<ReadMeter>,
+    /// Its number, for the calls that come on it.
     conn: u64,
     hello: Hello,
+    /// The reload count when the hello's tool list was built.
     rules_gen: u64,
+}
+
+async fn session<T: Tools, A: Asker>(
+    shared: &Arc<Shared<T, A>>,
+    dialed: Dialed,
     signed_in: &(dyn Fn() -> bool + Send + Sync),
     status: &mut Status,
     shutdown: &mut watch::Receiver<bool>,
 ) -> (Option<Duration>, bool) {
+    let Dialed {
+        ws,
+        read,
+        conn,
+        hello,
+        rules_gen,
+    } = dialed;
     let t = shared.timing.clone();
     let log = shared.log.clone();
     let clock = shared.clock.clone();

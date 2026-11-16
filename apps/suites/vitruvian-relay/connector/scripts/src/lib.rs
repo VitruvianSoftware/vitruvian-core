@@ -348,22 +348,6 @@ fn via(node: &Path, p: &Path) -> String {
     }
 }
 
-/// Every executable `name` in a `PATH`-style list, in order.
-fn all_on_path(name: &str, path: Option<&str>) -> Vec<PathBuf> {
-    use std::os::unix::fs::PermissionsExt;
-    let mut found: Vec<PathBuf> = Vec::new();
-    for d in path.unwrap_or("").split(':').filter(|d| !d.is_empty()) {
-        let p = Path::new(d).join(name);
-        let ok = std::fs::metadata(&p)
-            .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false);
-        if ok && !found.contains(&p) {
-            found.push(p);
-        }
-    }
-    found
-}
-
 /// The `node` to write into `bridge.json` and the plist: `explicit`
 /// (`--node`) if given, else the first on `PATH` that is absolute, lasts
 /// (see [`unstable_node`]) and is Node 22.12 or newer; the others are
@@ -392,7 +376,7 @@ pub fn resolve_node(
         return Ok(node.to_path_buf());
     }
     let mut passed_over = Vec::new();
-    for node in all_on_path("node", path) {
+    for node in vitruvian_relay_connector::bridge::all_on_path("node", path) {
         if !node.is_absolute() {
             passed_over.push(format!("{} is not an absolute path", node.display()));
         } else if let Some(why) = unstable_node(&node, workspace) {
@@ -780,22 +764,7 @@ fn bootout(tools: &Tools, uid: u32, wait: Duration) -> Result<()> {
 
 /// The log folder, mode 0700 (tightened if it already exists).
 fn make_log_dir(dir: &Path) -> Result<()> {
-    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
-    if let Some(parent) = dir.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
-    }
-    match std::fs::DirBuilder::new().mode(0o700).create(dir) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-        Err(e) => return Err(format!("create {}: {e}", dir.display())),
-    }
-    let meta =
-        std::fs::symlink_metadata(dir).map_err(|e| format!("read {}: {e}", dir.display()))?;
-    if !meta.is_dir() {
-        return Err(format!("{} is not a folder", dir.display()));
-    }
-    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
-        .map_err(|e| format!("make {} private: {e}", dir.display()))
+    vitruvian_relay_connector::state::ensure_dir(dir)
 }
 
 /// Removes a file, link or folder; nothing there is fine.

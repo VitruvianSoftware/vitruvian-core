@@ -20,7 +20,7 @@
 
 # gazelle:ignore
 
-load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_clippy", "rust_library", "rust_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # Installs vrelay as a signed LaunchAgent for the person running it:
@@ -80,6 +80,18 @@ rust_test(
     crate = ":vrelay_install",
 )
 
+# Clippy over the code and its tests; a lint error fails the unit.
+rust_clippy(
+    name = "vrelay_install_clippy",
+    testonly = True,
+    deps = [
+        ":install",
+        ":uninstall",
+        ":vrelay_install",
+        ":vrelay_install_test",
+    ],
+)
+
 test_suite(
     name = "unit_tests",
     tests = [":vrelay_install_test"],
@@ -107,11 +119,22 @@ rust_test(
     visibility = ["//apps/suites/vitruvian-relay/connector/dc:__pkg__"],
 )
 
+# Clippy for the placement test, which runs in dc/'s unit.
+rust_clippy(
+    name = "package_layout_clippy",
+    testonly = True,
+    visibility = ["//apps/suites/vitruvian-relay/connector/dc:__pkg__"],
+    deps = [":package_layout_test"],
+)
+
 pipeline_unit(
     name = "vrelay-install",
     persona = "backend",
     runner = "ubuntu-26.04",
-    test_targets = [":unit_tests"],
+    test_targets = [
+        ":unit_tests",
+        ":vrelay_install_clippy",
+    ],
     tier = "L1",
     timeout_minutes = 15,
 )

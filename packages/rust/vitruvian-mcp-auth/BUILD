@@ -1,4 +1,4 @@
-load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_clippy", "rust_library", "rust_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
@@ -35,6 +35,16 @@ rust_test(
     crate = ":vitruvian_mcp_auth",
 )
 
+# Clippy over the code and its tests; a lint error fails the unit.
+rust_clippy(
+    name = "vitruvian_mcp_auth_clippy",
+    testonly = True,
+    deps = [
+        ":vitruvian_mcp_auth",
+        ":vitruvian_mcp_auth_test",
+    ],
+)
+
 test_suite(
     name = "unit_tests",
     tests = [":vitruvian_mcp_auth_test"],
@@ -44,7 +54,10 @@ pipeline_unit(
     name = "vitruvian-mcp-auth",
     persona = "backend",
     runner = "ubuntu-26.04",
-    test_targets = [":unit_tests"],
+    test_targets = [
+        ":unit_tests",
+        ":vitruvian_mcp_auth_clippy",
+    ],
     tier = "L1",
     timeout_minutes = 15,
 )

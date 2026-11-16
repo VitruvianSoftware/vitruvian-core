@@ -32,6 +32,13 @@
 //! Nothing here is hand-rolled crypto or networking: the signature check is
 //! ring's RSASSA-PKCS1-v1_5 / SHA-256, and the key set is fetched over HTTPS
 //! with ureq on rustls.
+//!
+//! One knowing difference in parsing: the token's header and claims, and
+//! the key set, are read with `serde_json`, which is stricter than the
+//! Slack MCP's JavaScript `JSON.parse` (it refuses, for instance, a lone
+//! surrogate in a `\u` escape, which `JSON.parse` accepts). Such input
+//! fails here as malformed where the Slack MCP might have read it; never
+//! the other way round.
 
 use std::collections::HashSet;
 use std::fmt;
@@ -271,6 +278,10 @@ fn audience_list(payload: &Value) -> Vec<String> {
 enum JoseErrorCode {
     JwksTimeout,
     JwksInvalid,
+    // jose's full list of classes, so each one is classified explicitly;
+    // this port never raises these three (it reads no single JWK, and no
+    // JWE).
+    #[allow(dead_code)]
     JwkInvalid,
     JwksMultipleMatchingKeys,
     JwsSignatureVerificationFailed,
@@ -281,7 +292,9 @@ enum JoseErrorCode {
     JwksNoMatchingKey,
     JoseAlgNotAllowed,
     JoseNotSupported,
+    #[allow(dead_code)]
     JweInvalid,
+    #[allow(dead_code)]
     JweDecryptionFailed,
     /// A plain JOSEError: jose throws it for a key-set response that is not
     /// a 200 or not JSON. Not on the identity-provider list, so 401.
@@ -789,36 +802,62 @@ which defeats the pin this check exists to enforce."
     }
 }
 
-/// TLS for the key-set fetch: rustls on ring, trusting the system certificate
-/// store as rustls-native-certs finds it (SSL_CERT_FILE / SSL_CERT_DIR first,
-/// then the platform store). Built here rather than through ureq's
-/// `native-certs` feature, which pulls in rustls-native-certs 0.7 and with it
-/// the unmaintained rustls-pemfile (RUSTSEC-2025-0134). Built once and shared.
-fn tls_client_config() -> Arc<rustls::ClientConfig> {
+/// Where a problem with the system's certificates is reported (once, when
+/// the shared TLS setup is first built): stderr unless the program sets its
+/// own with [`set_tls_warning_hook`] (the relay writes its JSON log line).
+static TLS_WARNING_HOOK: OnceLock<fn(&str)> = OnceLock::new();
+
+/// Sends the TLS setup's warnings to `hook` instead of stderr. Set it before
+/// the first verifier is built; only the first call counts.
+pub fn set_tls_warning_hook(hook: fn(&str)) {
+    let _ = TLS_WARNING_HOOK.set(hook);
+}
+
+fn tls_warning(message: &str) {
+    match TLS_WARNING_HOOK.get() {
+        Some(hook) => hook(message),
+        None => eprintln!("vitruvian-mcp-auth: {message}"),
+    }
+}
+
+/// HTTPS client TLS: rustls on ring, trusting the system certificate store
+/// as rustls-native-certs finds it (SSL_CERT_FILE / SSL_CERT_DIR first, then
+/// the platform store). Built here rather than through ureq's `native-certs`
+/// feature, which pulls in rustls-native-certs 0.7 and with it the
+/// unmaintained rustls-pemfile (RUSTSEC-2025-0134). Built once and shared:
+/// the key-set fetch uses it, and so does the vrelay connector.
+pub fn tls_client_config() -> Arc<rustls::ClientConfig> {
     static CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
     CONFIG
         .get_or_init(|| {
             let loaded = rustls_native_certs::load_native_certs();
-            for err in &loaded.errors {
-                eprintln!("vitruvian-mcp-auth: could not read a system CA certificate: {err}");
-            }
-            let mut roots = rustls::RootCertStore::empty();
-            let (added, _unparsable) = roots.add_parsable_certificates(loaded.certs);
-            if added == 0 {
-                eprintln!(
-                    "vitruvian-mcp-auth: no CA certificates found; fetching the issuer's keys will fail"
-                );
-            }
-            let provider = Arc::new(rustls::crypto::ring::default_provider());
-            Arc::new(
-                rustls::ClientConfig::builder_with_provider(provider)
-                    .with_safe_default_protocol_versions()
-                    .expect("ring supports rustls's default protocol versions")
-                    .with_root_certificates(roots)
-                    .with_no_client_auth(),
-            )
+            let errors: Vec<String> = loaded.errors.iter().map(|e| e.to_string()).collect();
+            build_tls_config(loaded.certs, &errors, &tls_warning)
         })
         .clone()
+}
+
+fn build_tls_config(
+    certs: Vec<rustls::pki_types::CertificateDer<'static>>,
+    errors: &[String],
+    warn: &dyn Fn(&str),
+) -> Arc<rustls::ClientConfig> {
+    for err in errors {
+        warn(&format!("could not read a system CA certificate: {err}"));
+    }
+    let mut roots = rustls::RootCertStore::empty();
+    let (added, _unparsable) = roots.add_parsable_certificates(certs);
+    if added == 0 {
+        warn("no CA certificates found; every HTTPS call will fail");
+    }
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    Arc::new(
+        rustls::ClientConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .expect("ring supports rustls's default protocol versions")
+            .with_root_certificates(roots)
+            .with_no_client_auth(),
+    )
 }
 
 fn jws_invalid(message: &str) -> VerificationFailure {
@@ -897,7 +936,7 @@ fn is_jwk_set(value: &Value) -> bool {
         && value
             .get("keys")
             .and_then(|keys| keys.as_array())
-            .map_or(false, |keys| keys.iter().all(Value::is_object))
+            .is_some_and(|keys| keys.iter().all(Value::is_object))
 }
 
 /// An RSA public key from a JWK, big-endian, leading zeros kept as given.
@@ -953,7 +992,7 @@ fn is_usable_jwk(jwk: &Value, alg: &str, kid: Option<&Value>) -> bool {
         None => true,
         Some(Value::Array(ops)) => {
             let names: Option<Vec<&str>> = ops.iter().map(|op| op.as_str()).collect();
-            names.map_or(false, |names| {
+            names.is_some_and(|names| {
                 let unique: HashSet<&str> = names.iter().copied().collect();
                 unique.len() == names.len() && unique.contains("verify")
             })
@@ -1738,7 +1777,7 @@ mod tests {
                     let Ok(mut stream) = stream else { continue };
                     let mut reader = BufReader::new(stream.try_clone().unwrap());
                     let mut line = String::new();
-                    while reader.read_line(&mut line).map_or(false, |n| n > 0) && line != "\r\n" {
+                    while reader.read_line(&mut line).is_ok_and(|n| n > 0) && line != "\r\n" {
                         line.clear();
                     }
                     thread_hits.fetch_add(1, Ordering::SeqCst);
@@ -1902,5 +1941,26 @@ mod tests {
         let first = tls_client_config();
         let second = tls_client_config();
         assert!(Arc::ptr_eq(&first, &second));
+    }
+
+    /// Final-wave deferred item 1b: the setup's warnings go where the
+    /// program says (the relay's JSON log), not straight to stderr.
+    #[test]
+    fn tls_warnings_go_to_the_given_hook() {
+        let got = Mutex::new(Vec::new());
+        let warn = |m: &str| got.lock().unwrap().push(m.to_string());
+        build_tls_config(Vec::new(), &["bad.pem: not a certificate".into()], &warn);
+        let got = got.into_inner().unwrap();
+        assert_eq!(got.len(), 2, "{got:?}");
+        assert!(got[0].contains("bad.pem"), "{got:?}");
+        assert!(got[1].contains("no CA certificates"), "{got:?}");
+        // Once set, the hook is what every warning goes to.
+        static HOOKED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+        fn hook(m: &str) {
+            HOOKED.lock().unwrap().push(m.to_string());
+        }
+        set_tls_warning_hook(hook);
+        tls_warning("x");
+        assert_eq!(*HOOKED.lock().unwrap(), ["x"]);
     }
 }

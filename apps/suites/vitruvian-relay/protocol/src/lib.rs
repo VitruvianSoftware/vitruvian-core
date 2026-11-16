@@ -132,6 +132,16 @@ pub enum ToConnector {
     Pong { n: u64 },
 }
 
+/// Lowercase hex, two digits a byte: ids, digests, keys on disk.
+pub fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
+}
+
 /// The bytes the device key signs. Binding the token hash stops a signature
 /// being replayed with a different token.
 pub fn hello_message(device_id: &str, ts: u64, token_sha256_hex: &str) -> String {
@@ -282,6 +292,12 @@ mod tests {
             out.contains("inputSchema") && !out.contains("input_schema"),
             "{out}"
         );
+    }
+
+    #[test]
+    fn hex_is_two_lowercase_digits_a_byte() {
+        assert_eq!(hex(&[0x00, 0x0f, 0xa0, 0xff]), "000fa0ff");
+        assert_eq!(hex(&[]), "");
     }
 
     #[test]

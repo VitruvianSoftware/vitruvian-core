@@ -28,7 +28,7 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 use crate::config::{agent, Config, REFRESH_MARGIN_SECS};
-use crate::state::{now_unix, save_tokens, DeviceInfo, Tokens};
+use crate::state::{now_unix, save_tokens, str_field, DeviceInfo, Tokens};
 use crate::Result;
 
 pub const DEVICE_CODE_GRANT: &str = "urn:ietf:params:oauth:grant-type:device_code";
@@ -43,13 +43,6 @@ pub struct DeviceStart {
     pub verification_uri_complete: Option<String>,
     pub interval_secs: u64,
     pub expires_in_secs: u64,
-}
-
-fn str_field(body: &Value, key: &str) -> Option<String> {
-    body.get(key)
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
 }
 
 pub fn parse_device_start(body: &Value) -> Result<DeviceStart> {

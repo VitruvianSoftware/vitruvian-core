@@ -66,11 +66,7 @@ pub fn public_key_b64(key: &Ed25519KeyPair) -> String {
 }
 
 pub fn sha256_hex(data: &str) -> String {
-    ring::digest::digest(&ring::digest::SHA256, data.as_bytes())
-        .as_ref()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    vitruvian_relay_protocol::hex(ring::digest::digest(&ring::digest::SHA256, data.as_bytes()).as_ref())
 }
 
 /// Base64 of the signature over the protocol's `hello_message`, which binds

@@ -452,7 +452,7 @@ impl E2eTools {
 
 impl Tools for E2eTools {
     fn list(&self) -> impl std::future::Future<Output = Vec<ToolDef>> + Send {
-        async { vec![tool("read_file"), tool("start_process")] }
+        std::future::ready(vec![tool("read_file"), tool("start_process")])
     }
 
     fn call(
@@ -463,7 +463,7 @@ impl Tools for E2eTools {
         wanted: StillWanted,
     ) -> impl std::future::Future<Output = Option<BridgeOutput>> + Send {
         if !wanted() {
-            return futures_ready(None);
+            return std::future::ready(None);
         }
         self.ran
             .lock()
@@ -475,16 +475,12 @@ impl Tools for E2eTools {
             ("start_process", _, Some(c)) => format!("ran {c}"),
             _ => "?".into(),
         };
-        futures_ready(Some(BridgeOutput {
+        std::future::ready(Some(BridgeOutput {
             content: json!([{"type": "text", "text": text}]),
             is_error: false,
             truncated: false,
         }))
     }
-}
-
-fn futures_ready<T: Send>(v: T) -> impl std::future::Future<Output = T> + Send {
-    std::future::ready(v)
 }
 
 /// The dialog: waits for the test's answer, or for the link to close it.

@@ -183,16 +183,23 @@ pub fn locate_from(
 
 /// The first executable `name` in a `PATH`-style list.
 pub fn find_on_path(name: &str, path: Option<&str>) -> Option<PathBuf> {
+    all_on_path(name, path).into_iter().next()
+}
+
+/// Every executable `name` in a `PATH`-style list, in order, each once.
+pub fn all_on_path(name: &str, path: Option<&str>) -> Vec<PathBuf> {
     use std::os::unix::fs::PermissionsExt;
-    path?
-        .split(':')
-        .filter(|d| !d.is_empty())
-        .map(|d| Path::new(d).join(name))
-        .find(|p| {
-            std::fs::metadata(p)
-                .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-                .unwrap_or(false)
-        })
+    let mut found: Vec<PathBuf> = Vec::new();
+    for d in path.unwrap_or("").split(':').filter(|d| !d.is_empty()) {
+        let p = Path::new(d).join(name);
+        let ok = std::fs::metadata(&p)
+            .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false);
+        if ok && !found.contains(&p) {
+            found.push(p);
+        }
+    }
+    found
 }
 
 /// `v22.12.0` → `(22, 12)`.
@@ -267,21 +274,7 @@ pub fn dc_home(env_home: Option<OsString>) -> Result<PathBuf> {
 /// Makes `HOME/.claude-server-commander` mode 0700, creating it if missing.
 /// `desktop-commander`'s call log there records every call's full arguments.
 pub fn secure_dc_config_dir(home: &Path) -> Result<()> {
-    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
-    let dir = home.join(DC_CONFIG_DIR);
-    match std::fs::DirBuilder::new().mode(0o700).create(&dir) {
-        Ok(()) => return Ok(()),
-        // Already there (or made a moment ago by someone else): tighten it.
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-        Err(e) => return Err(format!("create {}: {e}", dir.display())),
-    }
-    let meta =
-        std::fs::symlink_metadata(&dir).map_err(|e| format!("read {}: {e}", dir.display()))?;
-    if !meta.is_dir() {
-        return Err(format!("{} is not a folder", dir.display()));
-    }
-    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
-        .map_err(|e| format!("make {} private: {e}", dir.display()))
+    crate::state::ensure_dir(&home.join(DC_CONFIG_DIR))
 }
 
 /// What a call returned. Task 8 wraps it, with the call id, into a

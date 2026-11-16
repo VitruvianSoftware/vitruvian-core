@@ -20,7 +20,7 @@
 
 # gazelle:ignore
 
-load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_clippy", "rust_library", "rust_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # The relay server: device registry and call routing, MCP over Streamable HTTP
@@ -106,6 +106,18 @@ rust_test(
     ],
 )
 
+# Clippy over the code and its tests; a lint error fails the unit.
+rust_clippy(
+    name = "vitruvian_relay_clippy",
+    testonly = True,
+    deps = [
+        ":vitruvian-relay",
+        ":vitruvian_relay",
+        ":vitruvian_relay_e2e_test",
+        ":vitruvian_relay_test",
+    ],
+)
+
 test_suite(
     name = "unit_tests",
     tests = [
@@ -118,7 +130,10 @@ pipeline_unit(
     name = "vitruvian-relay",
     persona = "backend",
     runner = "ubuntu-26.04",
-    test_targets = [":unit_tests"],
+    test_targets = [
+        ":unit_tests",
+        ":vitruvian_relay_clippy",
+    ],
     tier = "L1",
     timeout_minutes = 15,
 )

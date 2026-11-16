@@ -1029,13 +1029,13 @@ dependencies = [
  "libc",
  "ring",
  "rustls",
- "rustls-native-certs",
  "serde",
  "serde_json",
  "tokio",
  "tokio-tungstenite",
  "toml",
  "ureq",
+ "vitruvian-mcp-auth",
  "vitruvian-relay-protocol",
 ]
 
