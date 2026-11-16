@@ -849,6 +849,26 @@ final class ViewSnapshotTests: XCTestCase {
         let accounts = Fixture.startNewChatAccounts()
         let candidates = Fixture.startNewChatCandidates()
 
+        // 0. Empty-query mode with overflowing network chips (24pt fade), Recent chats, and A-Z Contacts.
+        let overflowingAccounts = accounts + [
+            Account(network: "slack", displayName: "Slack", flows: ["oauth"], state: .connected),
+            Account(network: "discord", displayName: "Discord", flows: ["qr"], state: .connected),
+            Account(network: "instagram", displayName: "Instagram", flows: ["cookie"], state: .connected),
+            Account(network: "facebook", displayName: "Facebook Messenger", flows: ["cookie"], state: .connected),
+        ]
+        let sampleRecentRows = [
+            Fixture.row("!dm-alice-wa:courier.local", "Alice Example", network: "whatsapp", ts: 2, preview: "Trail map?"),
+            Fixture.row("!dm-carol-sig:courier.local", "Carol Example", network: "signal", ts: 5, preview: "See you at 8"),
+            Fixture.row("!dm-dan-tg:courier.local", "Dan Example", network: "telegram", ts: 10, preview: "On my way"),
+        ]
+        let emptyDraft = StartNewChatDraft(
+            accounts: overflowingAccounts,
+            candidates: candidates
+        )
+        check(try Snapshot.render("start-new-chat-empty", width: 520, height: 520) {
+            StartNewChatView(draft: emptyDraft, recentRows: sampleRecentRows)
+        })
+
         // 1. New Chat (1:1 mode) with search results and "Look up <query> on <Network>" rows.
         var lookupDraft = StartNewChatDraft(accounts: accounts, candidates: candidates)
         lookupDraft.query = "+1 555-010-0199"
@@ -886,6 +906,168 @@ final class ViewSnapshotTests: XCTestCase {
         check(try Snapshot.render("start-new-chat-blast-confirm", width: 520, height: 660) {
             StartNewChatView(draft: blastDraft)
         })
+    }
+
+    func testStartNewChatPresentationEmptyQueryShowMoreAndConfirmAction() throws {
+        let accounts = [
+            Account(
+                network: "whatsapp",
+                displayName: "WhatsApp",
+                flows: ["qr"],
+                state: .connected,
+                logins: [Login(accountID: "wa-1", remoteName: "+15550001", state: .connected)],
+                canCreateGroup: true,
+                canLookupEmail: false
+            ),
+            Account(
+                network: "signal",
+                displayName: "Signal",
+                flows: ["qr"],
+                state: .connected,
+                logins: [Login(accountID: "sig-1", remoteName: "+15550002", state: .connected)],
+                canCreateGroup: true,
+                canLookupEmail: false
+            ),
+            Account(
+                network: "gchat",
+                displayName: "Google Chat",
+                flows: ["google"],
+                state: .connected,
+                logins: [Login(accountID: "gc-1", remoteName: "me@example.com", state: .connected, canLookupEmail: true)],
+                canCreateGroup: false,
+                canLookupEmail: true
+            ),
+        ]
+
+        var rows: [InboxRow] = [
+            Fixture.row("!group:courier.local", "Group Chat", network: "whatsapp", direct: false, ts: 1, preview: "Hi"),
+            InboxRow(
+                roomID: "!hidden:courier.local",
+                network: "signal",
+                name: "Hidden DM",
+                avatarPath: "",
+                isDirect: true,
+                lastTS: Fixture.millis(1),
+                preview: "Hi",
+                previewKind: .text,
+                previewMine: false,
+                unread: 0,
+                muted: false,
+                hidden: true
+            ),
+            Fixture.row("merge:alice", "Merged Alice", network: "whatsapp", direct: true, ts: 1, preview: "Hi"),
+        ]
+        let networks = ["whatsapp", "signal", "gchat"]
+        for i in 0 ..< 10 {
+            rows.append(
+                Fixture.row(
+                    "!dm-\(i):courier.local",
+                    "Recent \(i)",
+                    network: networks[i % networks.count],
+                    direct: true,
+                    ts: 100 - i * 5,
+                    preview: "Last message"
+                )
+            )
+        }
+
+        let recent = StartNewChatPresentation.recentDirectChats(from: rows, accounts: accounts)
+        XCTAssertEqual(recent.count, 8, "Recent section must cap at 8 most recent 1:1 chats")
+        XCTAssertEqual(
+            recent.compactMap(\.roomID),
+            (2 ... 9).reversed().map { "!dm-\($0):courier.local" },
+            "Recent chats must exclude groups, hidden chats, and merge rows, sorted newest first"
+        )
+
+        var contacts: [ContactCandidate] = [
+            ContactCandidate(
+                userID: "@zara:courier.local",
+                name: "Zara",
+                network: "whatsapp",
+                accountID: "wa-1",
+                identifiers: ["+1 555-019-9999"],
+                roomID: "!zara:courier.local"
+            ),
+            ContactCandidate(
+                userID: "@adam:courier.local",
+                name: "adam",
+                network: "signal",
+                accountID: "sig-1",
+                identifiers: ["+1 555-010-0001"],
+                roomID: "!adam:courier.local"
+            ),
+        ]
+        for i in (1 ... 53).reversed() {
+            let padded = String(format: "%02d", i)
+            contacts.append(
+                ContactCandidate(
+                    userID: "@p\(padded):courier.local",
+                    name: "Person \(padded)",
+                    network: "whatsapp",
+                    accountID: "wa-1",
+                    identifiers: ["+1 555-010-10\(padded)"],
+                    roomID: "!p\(padded):courier.local"
+                )
+            )
+        }
+
+        var draft = StartNewChatDraft(accounts: accounts, candidates: contacts)
+        XCTAssertFalse(StartNewChatPresentation.hasTypedQuery(draft.query))
+        XCTAssertFalse(draft.showsNoMatchingContacts)
+
+        let sorted = StartNewChatPresentation.sortedContacts(contacts, filter: nil)
+        XCTAssertEqual(sorted.first?.name, "adam")
+        XCTAssertEqual(sorted.last?.name, "Zara")
+        XCTAssertEqual(sorted.prefix(StartNewChatPresentation.initialContactsLimit).count, 50)
+        XCTAssertGreaterThan(sorted.count, 50)
+
+        let navigable = StartNewChatPresentation.navigableRowIDs(draft: draft, recentRows: rows)
+        XCTAssertEqual(navigable.filter { $0.hasPrefix("recent:") }.count, 8)
+        XCTAssertEqual(navigable.filter { $0.hasPrefix("contact:") }.count, 50, "Contacts stop at 50 until Show more")
+        XCTAssertTrue(navigable.first?.hasPrefix("recent:") == true, "Recent rows come before Contacts")
+
+        XCTAssertNil(
+            StartNewChatPresentation.confirmAction(draft: draft, recentRows: rows, selectedRowID: nil)
+        )
+        let firstRecent = try XCTUnwrap(recent.first)
+        XCTAssertEqual(
+            StartNewChatPresentation.confirmAction(
+                draft: draft,
+                recentRows: rows,
+                selectedRowID: "recent:\(firstRecent.id)"
+            ),
+            .openDirectChat(firstRecent)
+        )
+        let firstContact = try XCTUnwrap(sorted.first)
+        XCTAssertEqual(
+            StartNewChatPresentation.confirmAction(
+                draft: draft,
+                recentRows: rows,
+                selectedRowID: "contact:\(firstContact.id)"
+            ),
+            .openDirectChat(firstContact)
+        )
+
+        // Typed, and the engine's answer is empty: now (and only now) "No matching contacts found" shows.
+        draft.query = "no-such-person-xyz"
+        draft.candidates = []
+        XCTAssertTrue(draft.showsNoMatchingContacts)
+        XCTAssertNil(
+            StartNewChatPresentation.confirmAction(draft: draft, recentRows: rows, selectedRowID: nil)
+        )
+
+        draft.query = "grace@example.com"
+        XCTAssertFalse(draft.showsNoMatchingContacts)
+        if case let .lookup(action)? = StartNewChatPresentation.confirmAction(
+            draft: draft,
+            recentRows: rows,
+            selectedRowID: nil
+        ) {
+            XCTAssertEqual(action.network, "gchat")
+            XCTAssertEqual(action.query, "grace@example.com")
+        } else {
+            XCTFail("Expected Start Chat confirm action to resolve to lookup for valid email query")
+        }
     }
 
     func testMergedChatInboxRowComposerAndEditorLightAndDark() throws {
@@ -2007,6 +2189,20 @@ final class ViewSnapshotTests: XCTestCase {
                 mine: true,
                 ts: Fixture.millis(10),
                 caption: "Campfire clip"
+            ),
+            CarouselItem(
+                eventID: "$c3",
+                roomID: Fixture.room,
+                kind: .image,
+                mediaPath: "",
+                thumbnailPath: "",
+                fileName: "Uncached.jpg",
+                mimeType: "image/jpeg",
+                sender: "@alice:courier.local",
+                senderName: "Alice Example",
+                mine: false,
+                ts: Fixture.millis(5),
+                caption: ""
             ),
         ]
 

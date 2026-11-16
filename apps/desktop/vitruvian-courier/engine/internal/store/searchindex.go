@@ -140,6 +140,8 @@ func MessageText(typ string, content json.RawMessage) (text, kind string, ok boo
 			kind = "audio"
 		case "m.file":
 			kind = "file"
+		case "m.sticker": // a sticker sent as a message rather than as its own event type
+			kind = "sticker"
 		}
 	}
 	text = c.Body

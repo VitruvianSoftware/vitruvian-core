@@ -63,7 +63,7 @@ import dev.vitruvian.design.VitruvianTheme
 
 public class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
-    WatchSentry.init("vitruvian-pulse")
+    WatchSentry.init(this, "vitruvian-pulse")
     super.onCreate(savedInstanceState)
     setContent { VitruvianTheme { PulseWatchScreen() } }
   }

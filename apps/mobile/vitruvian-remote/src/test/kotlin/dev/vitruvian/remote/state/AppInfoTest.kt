@@ -20,28 +20,24 @@
 
 package dev.vitruvian.remote.state
 
+import dev.vitruvian.crashprivacy.DeviceField
 import io.sentry.Attachment
 import io.sentry.Breadcrumb
 import io.sentry.Hint
 import io.sentry.MainEventProcessor
-import io.sentry.Scope
-import io.sentry.Sentry
-import io.sentry.SentryEnvelope
 import io.sentry.SentryEvent
-import io.sentry.SentryOptions
-import io.sentry.cache.EnvelopeCache
-import io.sentry.cache.PersistingOptionsObserver
-import io.sentry.protocol.Message
-import io.sentry.protocol.SentryTransaction
-import io.sentry.protocol.TransactionInfo
+import io.sentry.android.core.SentryAndroidOptions
+import io.sentry.protocol.App
+import io.sentry.protocol.Device
+import io.sentry.protocol.OperatingSystem
+import io.sentry.protocol.SentryRuntime
 import io.sentry.protocol.User
 import java.io.File
-import java.io.StringWriter
-import java.nio.file.Files
+import java.util.EnumSet
 import java.util.Locale
+import java.util.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -237,8 +233,11 @@ public class AppInfoTest {
   public fun `every runtime maven dependency in app and design system BUILD has an open source license entry`() {
     val appBuildText = resolvePath("apps/mobile/vitruvian-remote/BUILD").readText()
     val dsBuildText = resolvePath("packages/design-system-android/BUILD").readText()
+    val crashPrivacyBuildText = resolvePath("packages/android-crash-privacy/BUILD").readText()
     val runtimeMavenTargets =
-        extractRuntimeMavenDeps(appBuildText) + extractRuntimeMavenDeps(dsBuildText)
+        extractRuntimeMavenDeps(appBuildText) +
+            extractRuntimeMavenDeps(dsBuildText) +
+            extractRuntimeMavenDeps(crashPrivacyBuildText)
     assertTrue("Expected runtime @maven deps across BUILD files", runtimeMavenTargets.isNotEmpty())
     assertTrue(
         "Design-system runtime dep androidx_annotation_annotation must be checked",
@@ -281,6 +280,7 @@ public class AppInfoTest {
     assertEquals("Apache-2.0", byName.getValue("AndroidX Annotation").license)
     assertEquals("Apache-2.0", byName.getValue("AndroidX Compose").license)
     assertEquals("MIT", byName.getValue("Sentry SDK").license)
+    assertEquals("MIT", byName.getValue("Sentry Android SDK").license)
     assertEquals("SIL OFL 1.1", byName.getValue("JetBrains Mono").license)
     assertEquals("SIL OFL 1.1", byName.getValue("IBM Plex Sans").license)
   }
@@ -445,9 +445,6 @@ public class AppInfoTest {
             ".javaClass",
             "::class.java",
             "setBooleanOptionIfPresent",
-            "setAttachScreenshot",
-            "setAttachViewHierarchy",
-            "viewHierarchy",
         )
     return forbiddenTokens.filter { token -> source.contains(token) }
   }
@@ -469,8 +466,37 @@ public class AppInfoTest {
   }
 
   @Test
-  public fun `configureSentryOptions sets Java SDK privacy options directly`() {
-    val options = SentryOptions()
+  public fun `manifest disables sentry auto-init and MainActivity uses SentryAndroid init`() {
+    val manifest =
+        resolvePath("apps/mobile/vitruvian-remote/src/main/AndroidManifest.xml").readText()
+    val appSection = manifest.substringAfter("<application")
+    assertTrue(
+        "Expected io.sentry.auto-init metadata in <application>",
+        Regex("""<meta-data[^>]*android:name="io\.sentry\.auto-init"[^>]*android:value="false"""")
+            .containsMatchIn(appSection),
+    )
+    val mainActivity =
+        resolvePath(
+                "apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/MainActivity.kt")
+            .readText()
+    assertTrue(mainActivity.contains("SentryAndroid.init(this)"))
+    assertFalse(mainActivity.contains("Sentry.init("))
+  }
+
+  @Test
+  public fun `AppInfo keeps Remote's documented device and app fields while delegating to shared helper`() {
+    assertEquals(
+        EnumSet.of(
+            DeviceField.MODEL,
+            DeviceField.SCREEN,
+            DeviceField.MEMORY,
+            DeviceField.OS_VERSION,
+            DeviceField.APP_VERSION,
+        ),
+        AppInfo.CRASH_REPORT_DEVICE_FIELDS,
+    )
+
+    val options = SentryAndroidOptions().apply { distinctId = "pre-existing-id" }
     AppInfo.configureSentryOptions(
         options = options,
         dsn = "https://examplePublicKey@o0.ingest.sentry.io/0",
@@ -487,330 +513,63 @@ public class AppInfoTest {
 
     assertEquals("vitruvian-remote@0.1.40", options.release)
     assertEquals("production", options.environment)
-    assertFalse(options.isSendDefaultPii)
-    assertEquals(1, options.maxBreadcrumbs)
-    assertNull(options.beforeBreadcrumb!!.execute(Breadcrumb.info("tap"), Hint()))
-    val scope = Scope(options).apply { addBreadcrumb(Breadcrumb.info("tap")) }
-    assertTrue(scope.breadcrumbs.isEmpty())
-    assertFalse(options.isAttachServerName)
-    assertNull(options.serverName)
-    assertFalse(options.isAttachThreads)
-    assertFalse(options.isSendModules)
-    assertFalse(options.isEnableAutoSessionTracking)
-    assertFalse(options.isSendClientReports)
-
-    assertEquals(false, options.enableTracing)
-    assertFalse(options.isTracingEnabled)
-    assertNull(options.tracesSampleRate)
-    assertNull(options.tracesSampler)
-    assertNull(options.profilesSampleRate)
-    assertNull(options.profilesSampler)
-    assertFalse(options.isProfilingEnabled)
-    assertTrue(options.tracePropagationTargets.isEmpty())
-    val tx =
-        SentryTransaction("tx", 0.0, 1.0, emptyList(), emptyMap(), emptyMap(), TransactionInfo("m"))
-    assertNull(options.beforeSendTransaction!!.execute(tx, Hint()))
-
-    assertEquals("Pixel Fold", options.tags["device.model"])
-    assertEquals("15", options.tags["os.version"])
-  }
-
-  @Test
-  public fun `configureSentryOptions beforeSend strips user IP breadcrumbs threads runtime and attachments and keeps bounded device details`() {
-    val options = SentryOptions()
-    AppInfo.configureSentryOptions(
-        options = options,
-        dsn = "https://examplePublicKey@o0.ingest.sentry.io/0",
-        appVersion = "0.1.40",
-        device =
-            AppInfo.CrashReportDeviceDetails(
-                androidRelease = "15",
-                model = "Pixel Fold",
-                screenWidthPx = 2208,
-                screenHeightPx = 1840,
-                memorySizeBytes = 12_884_901_888L,
-            ),
-    )
+    assertTrue(options.dataCollection.isExplicitlyConfigured)
+    assertFalse(options.dataCollectionResolver.isUserInfo)
+    assertNull(options.distinctId)
+    assertEquals(0, options.maxBreadcrumbs)
+    assertEquals(mapOf("device.model" to "Pixel Fold", "os.version" to "15"), options.tags)
 
     val rawEvent =
-        SentryEvent(RuntimeException("boom")).apply {
+        SentryEvent(RuntimeException("Failed to connect to 192.168.1.20:7411")).apply {
           addBreadcrumb(Breadcrumb.info("tap"))
-          user = User().apply { email = "user@example.com" }
+          user =
+              User().apply {
+                id = "install-id"
+                email = "user@example.com"
+              }
+          dist = "144"
+          setTag("isSideLoaded", "true")
+          setExtra("secret", "1")
+          contexts.setApp(App().apply { appName = "Vitruvian Remote" })
+          contexts.setDevice(
+              Device().apply {
+                manufacturer = "Google"
+                timezone = TimeZone.getTimeZone("UTC")
+              })
+          contexts.setOperatingSystem(
+              OperatingSystem().apply {
+                name = "Android"
+                version = "15"
+                kernelVersion = "6.1"
+              })
+          contexts.setRuntime(SentryRuntime().apply { name = "Android Runtime" })
         }
     val hint = Hint().apply { addAttachment(Attachment(byteArrayOf(6, 7), "extra.txt")) }
-
-    // MainEventProcessor runs before beforeSend in SentryClient and sets user.ipAddress="{{auto}}".
     val processed = MainEventProcessor(options).process(rawEvent, hint)
-    assertNull(processed.threads)
     val sanitized = options.beforeSend!!.execute(processed, hint)!!
 
     assertEquals("vitruvian-remote@0.1.40", sanitized.release)
-    assertNotNull(sanitized.exceptions)
-    assertTrue(sanitized.exceptions!!.isNotEmpty())
+    assertEquals("production", sanitized.environment)
+    assertEquals("Failed to connect to <address>", sanitized.exceptions!!.single().value)
+    assertEquals(mapOf("device.model" to "Pixel Fold", "os.version" to "15"), sanitized.tags)
     assertNull(sanitized.user)
     assertNull(sanitized.breadcrumbs)
-    assertNull(sanitized.request)
-    assertNull(sanitized.serverName)
-    assertTrue(sanitized.threads.isNullOrEmpty())
+    assertNull(sanitized.dist)
+    assertTrue(sanitized.extras.isNullOrEmpty())
+    assertNull(sanitized.contexts.app)
     assertNull(sanitized.contexts.runtime)
     assertTrue(hint.attachments.isEmpty())
 
     assertEquals("Android", sanitized.contexts.operatingSystem?.name)
     assertEquals("15", sanitized.contexts.operatingSystem?.version)
+    assertNull(sanitized.contexts.operatingSystem?.kernelVersion)
+
     val device = sanitized.contexts.device!!
     assertEquals("Pixel Fold", device.model)
     assertEquals(2208, device.screenWidthPixels)
     assertEquals(1840, device.screenHeightPixels)
     assertEquals(12_884_901_888L, device.memorySize)
-    assertNull(device.name)
-    assertNull(device.id)
+    assertNull(device.manufacturer)
     assertNull(device.timezone)
-    assertNull(device.locale)
-  }
-
-  @Test
-  public fun `clearSentryCache removes Java SDK EnvelopeCache options cache and outbox dirs without touching unrelated cache files`() {
-    val appCacheDir = Files.createTempDirectory("vitruvian-sentry-cache-test").toFile()
-    try {
-      val options = SentryOptions()
-      AppInfo.configureSentryOptions(
-          options = options,
-          dsn = "https://examplePublicKey@o0.ingest.sentry.io/0",
-          appVersion = "0.1.40",
-          appCacheDir = appCacheDir,
-      )
-
-      val sentryBaseDir = AppInfo.sentryCacheDir(appCacheDir)
-      val dsnCacheDir = File(options.cacheDirPath!!)
-      val outboxDir = File(options.outboxPath!!)
-      assertEquals(sentryBaseDir.absolutePath, dsnCacheDir.parentFile.absolutePath)
-      assertTrue(dsnCacheDir.absolutePath.startsWith(sentryBaseDir.absolutePath + File.separator))
-      assertEquals(File(dsnCacheDir, "outbox").absolutePath, outboxDir.absolutePath)
-
-      // Exercise the real 7.14.0 Java SDK EnvelopeCache and PersistingOptionsObserver disk layout.
-      dsnCacheDir.mkdirs()
-      outboxDir.mkdirs()
-      val envelope =
-          SentryEnvelope.from(
-              options.serializer, SentryEvent(RuntimeException("cached")), options.sdkVersion)
-      EnvelopeCache.create(options).store(envelope, Hint())
-      PersistingOptionsObserver(options).setRelease(options.release)
-      val queuedOutbox = File(outboxDir, "queued.envelope").apply { writeText("envelope") }
-
-      assertTrue(
-          "Expected EnvelopeCache to write a .envelope file inside ${dsnCacheDir.absolutePath}",
-          dsnCacheDir.listFiles().orEmpty().any { it.isFile && it.name.endsWith(".envelope") },
-      )
-      assertTrue(
-          "Expected PersistingOptionsObserver to populate .options-cache inside ${dsnCacheDir.absolutePath}",
-          File(dsnCacheDir, PersistingOptionsObserver.OPTIONS_CACHE).exists(),
-      )
-
-      val unrelatedDir = File(appCacheDir, "http").apply { mkdirs() }
-      val unrelatedFile = File(unrelatedDir, "keep.bin").apply { writeText("keep") }
-
-      AppInfo.clearSentryCache(appCacheDir)
-
-      assertFalse(sentryBaseDir.exists())
-      assertFalse(dsnCacheDir.exists())
-      assertFalse(outboxDir.exists())
-      assertFalse(queuedOutbox.exists())
-      assertTrue(unrelatedFile.exists())
-
-      AppInfo.clearSentryCache(appCacheDir)
-      assertTrue(unrelatedFile.exists())
-    } finally {
-      appCacheDir.deleteRecursively()
-    }
-  }
-
-  @Test
-  public fun `scrubCrashMessage replaces IPs URLs host-port pairs and hostnames without touching Java class names`() {
-    assertEquals(
-        "Failed to connect to <address>",
-        AppInfo.scrubCrashMessage("Failed to connect to /10.0.2.2:7499"),
-    )
-    assertEquals(
-        "<address>",
-        AppInfo.scrubCrashMessage("http://192.168.1.20:7411/v1/state"),
-    )
-    assertEquals(
-        "Unable to resolve host \"<address>\"",
-        AppInfo.scrubCrashMessage("Unable to resolve host \"james-mbp.tail1234.ts.net\""),
-    )
-    assertEquals(
-        "java.net.ConnectException: timeout",
-        AppInfo.scrubCrashMessage("java.net.ConnectException: timeout"),
-    )
-
-    // IPv6 literals (bracketed, bare, zoned, and URL-wrapped), slash host/IP, host:port, and
-    // LAN/mesh hosts.
-    assertEquals(
-        "Failed to connect to <address>",
-        AppInfo.scrubCrashMessage("Failed to connect to [fd7a:115c:a1e0::1]:7411"),
-    )
-    assertEquals(
-        "Socket unreachable on <address>",
-        AppInfo.scrubCrashMessage("Socket unreachable on fe80::1%wlan0"),
-    )
-    assertEquals(
-        "Peer <address> closed connection",
-        AppInfo.scrubCrashMessage("Peer 2001:0db8:85a3:0000:0000:8a2e:0370:7334 closed connection"),
-    )
-    assertEquals(
-        "java.net.ConnectException: Failed to connect to <address>",
-        AppInfo.scrubCrashMessage(
-            "java.net.ConnectException: Failed to connect to james-mbp.tail1234.ts.net/100.64.0.12:7411",
-        ),
-    )
-    assertEquals(
-        "Lookup failed for <address>, <address>, <address>, and <address>",
-        AppInfo.scrubCrashMessage(
-            "Lookup failed for studio.local, mini.lan, nas.home.arpa, and James-MBP.local",
-        ),
-    )
-    assertEquals(
-        "Dial <address> or <address> failed",
-        AppInfo.scrubCrashMessage("Dial mac-studio:7411 or localhost:7499 failed"),
-    )
-
-    // Benign Java/Kotlin exceptions, file:line stack details, versions, and timestamps stay
-    // untouched.
-    assertEquals(
-        "java.io.IOException: unexpected EOF at Wire.kt:1009 (04:50:19, v0.1.41)",
-        AppInfo.scrubCrashMessage(
-            "java.io.IOException: unexpected EOF at Wire.kt:1009 (04:50:19, v0.1.41)",
-        ),
-    )
-    assertEquals(
-        "dev.vitruvian.remote.state.AgentAuthException: not paired (HTTP 401)",
-        AppInfo.scrubCrashMessage(
-            "dev.vitruvian.remote.state.AgentAuthException: not paired (HTTP 401)",
-        ),
-    )
-  }
-
-  @Test
-  public fun `configureSentryOptions beforeSend scrubs addresses from exceptions and event message`() {
-    val options = SentryOptions()
-    AppInfo.configureSentryOptions(
-        options = options,
-        dsn = "https://examplePublicKey@o0.ingest.sentry.io/0",
-        appVersion = "0.1.41",
-    )
-
-    val cause = IllegalStateException("Unable to resolve host \"james-mbp.tail1234.ts.net\"")
-    val root =
-        RuntimeException(
-            "Failed to connect to /10.0.2.2:7499 while fetching http://192.168.1.20:7411/v1/state",
-            cause,
-        )
-    val rawEvent =
-        SentryEvent(root).apply {
-          message =
-              Message().apply {
-                message = "Request to %s failed via %s"
-                formatted =
-                    "Request to http://192.168.1.20:7411/v1/state failed via studio.local:7411"
-                params = listOf("10.0.2.2:7499", "james-mbp.tail1234.ts.net")
-              }
-        }
-    val hint = Hint()
-    val processed = MainEventProcessor(options).process(rawEvent, hint)
-    val sanitized = options.beforeSend!!.execute(processed, hint)!!
-
-    val values = sanitized.exceptions!!.map { it.value.orEmpty() }
-    assertTrue(values.any { it.contains("Unable to resolve host \"<address>\"") })
-    assertTrue(
-        values.any { it == "Failed to connect to <address> while fetching <address>" },
-    )
-    assertEquals(
-        "Request to <address> failed via <address>",
-        sanitized.message!!.formatted,
-    )
-    assertEquals("Request to %s failed via %s", sanitized.message!!.message)
-    assertEquals(listOf("<address>", "<address>"), sanitized.message!!.params)
-
-    val json = StringWriter().also { options.serializer.serialize(sanitized, it) }.toString()
-    for (leaked in
-        listOf(
-            "10.0.2.2",
-            "7499",
-            "192.168.1.20",
-            "7411",
-            "james-mbp",
-            "tail1234.ts.net",
-            "studio.local",
-        )) {
-      assertFalse("Serialized event must not contain '$leaked': $json", json.contains(leaked))
-    }
-
-    // Benign Java class/error message remains verbatim through beforeSend.
-    val benignRaw = SentryEvent(RuntimeException("java.net.ConnectException: timeout"))
-    val benignProcessed = MainEventProcessor(options).process(benignRaw, Hint())
-    val benignSanitized = options.beforeSend!!.execute(benignProcessed, Hint())!!
-    assertEquals(
-        "java.net.ConnectException: timeout",
-        benignSanitized.exceptions!!.single().value,
-    )
-  }
-
-  @Test
-  public fun `disableCrashReporting sets shutdownTimeoutMillis to zero before close and cache clear`() {
-    val cacheDir = Files.createTempDirectory("vitruvian-sentry-disable-order").toFile()
-    try {
-      val sentryDir = AppInfo.sentryCacheDir(cacheDir)
-      File(sentryDir, "outbox").apply { mkdirs() }
-      File(sentryDir, "outbox/queued.envelope").writeText("queued")
-      val steps = mutableListOf<String>()
-      val recordingOptions =
-          object : SentryOptions() {
-            override fun setShutdownTimeoutMillis(shutdownTimeoutMillis: Long) {
-              super.setShutdownTimeoutMillis(shutdownTimeoutMillis)
-              steps += "setTimeout:$shutdownTimeoutMillis"
-            }
-          }
-      assertEquals(2000L, recordingOptions.shutdownTimeoutMillis)
-
-      AppInfo.disableCrashReporting(
-          appCacheDir = cacheDir,
-          options = recordingOptions,
-          closeSentry = {
-            assertEquals(0L, recordingOptions.shutdownTimeoutMillis)
-            assertTrue(sentryDir.exists())
-            steps += "close"
-          },
-          deleteCache = { dir ->
-            steps += "deleteCache"
-            AppInfo.clearSentryCache(dir)
-          },
-      )
-
-      assertEquals(listOf("setTimeout:0", "close", "deleteCache"), steps)
-      assertEquals(0L, recordingOptions.shutdownTimeoutMillis)
-      assertFalse(sentryDir.exists())
-
-      File(sentryDir, "outbox").apply { mkdirs() }
-      File(sentryDir, "outbox/queued.envelope").writeText("queued")
-      Sentry.init { opts ->
-        AppInfo.configureSentryOptions(
-            options = opts,
-            dsn = "https://public@127.0.0.1:1/0",
-            appVersion = "0.1.41",
-            appCacheDir = cacheDir,
-        )
-      }
-      val liveOptions = Sentry.getCurrentHub().options
-      assertEquals(2000L, liveOptions.shutdownTimeoutMillis)
-
-      AppInfo.disableCrashReporting(cacheDir)
-
-      assertEquals(0L, liveOptions.shutdownTimeoutMillis)
-      assertFalse(Sentry.isEnabled())
-      assertFalse(sentryDir.exists())
-    } finally {
-      Sentry.close()
-      cacheDir.deleteRecursively()
-    }
   }
 }

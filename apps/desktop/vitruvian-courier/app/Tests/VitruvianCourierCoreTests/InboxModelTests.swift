@@ -1670,6 +1670,72 @@ final class InboxModelTests: XCTestCase {
         await stop(h)
     }
 
+    func testStartNewChatNeverShowsThePreviousQuerysContactsForANewQuery() async throws {
+        let h = try await start()
+        let alice: [String: Any] = [
+            "user_id": "@alice:courier.local", "name": "Alice Example", "avatar_path": "",
+            "network": "whatsapp", "account_id": "wa-1", "identifiers": ["+15550100"], "room_id": "",
+        ]
+        h.script.contacts = [alice]
+
+        // Opening asks for every contact at once: nothing to show yet, and the sheet says it is searching.
+        h.inbox.openStartNewChat()
+        XCTAssertEqual(h.inbox.startNewChatDraft?.isSearching, true)
+        try await waitUntil { h.inbox.startNewChatDraft?.candidates.count == 1 }
+        XCTAssertEqual(h.inbox.startNewChatDraft?.isSearching, false)
+
+        // A new query clears the old contacts at once and waits (here, on the held debounce) for the engine.
+        h.script.contacts = []
+        h.inbox.updateStartNewChatQuery("zed")
+        XCTAssertEqual(h.inbox.startNewChatDraft?.candidates, [], "the previous query's contacts must be gone at once")
+        XCTAssertEqual(h.inbox.startNewChatDraft?.isSearching, true)
+        XCTAssertFalse(
+            h.inbox.startNewChatDraft!.showsNoMatchingContacts,
+            "not 'No matching contacts found' while the engine has not answered"
+        )
+
+        // The engine answers with nothing: only now is it "No matching contacts found".
+        await h.sleeps.releaseAlways()
+        try await waitUntil { h.inbox.startNewChatDraft?.isSearching == false }
+        XCTAssertEqual(h.inbox.startNewChatDraft?.candidates, [])
+        XCTAssertTrue(h.inbox.startNewChatDraft!.showsNoMatchingContacts)
+        await stop(h)
+    }
+
+    func testStartNewChatContactSearchFailureIsAnErrorNotNoMatchesAndRetryRecovers() async throws {
+        let h = try await start(autoRelease: true)
+        let alice: [String: Any] = [
+            "user_id": "@alice:courier.local", "name": "Alice Example", "avatar_path": "",
+            "network": "whatsapp", "account_id": "wa-1", "identifiers": ["+15550100"], "room_id": "",
+        ]
+        h.script.contacts = [alice]
+        h.script.fail("people.contacts", code: -32000)
+
+        h.inbox.openStartNewChat()
+        h.inbox.updateStartNewChatQuery("zed")
+        try await waitUntil { h.inbox.startNewChatDraft?.isSearching == false }
+        var draft = try XCTUnwrap(h.inbox.startNewChatDraft)
+        XCTAssertTrue(draft.searchFailed, "a failed call is an error state")
+        XCTAssertEqual(draft.candidates, [])
+        XCTAssertFalse(draft.showsNoMatchingContacts, "a failed search must not read as 'No matching contacts found'")
+
+        // Typing a phone number, email or @handle still works: the lookup is not a contact search.
+        draft.query = "+1 555 010 0199"
+        XCTAssertTrue(draft.isLookupQuery)
+        XCTAssertFalse(draft.showsNoMatchingContacts)
+
+        // Retry runs the same query again, and a good answer clears the error.
+        h.script.succeed("people.contacts")
+        await h.inbox.retryStartNewChatSearch()
+        draft = try XCTUnwrap(h.inbox.startNewChatDraft)
+        XCTAssertFalse(draft.searchFailed)
+        XCTAssertFalse(draft.isSearching)
+        XCTAssertEqual(draft.query, "zed")
+        XCTAssertEqual(draft.candidates.count, 1)
+        XCTAssertEqual(h.server.receivedParams("people.contacts").last?["query"] as? String, "zed")
+        await stop(h)
+    }
+
     func testArchiveMergedChatWithOneMemberAlreadyArchivedCountsAsOneRowAndUndoKeepsAlreadyArchivedMember() async throws {
         let h = try await start(autoRelease: true)
         var waRow = room("!wa:courier.local", ts: 100, network: "whatsapp", name: "Alice Merged", archived: false)
@@ -1845,6 +1911,7 @@ final class InboxScript: @unchecked Sendable {
     private var _rules: [[String: Any]] = []
     private var _mergedChats: [[String: Any]] = []
     private var _blastEvents: [[String: Any]] = []
+    private var _contacts: [[String: Any]] = []
 
     init(rooms: [[String: Any]], accounts: [[String: Any]]) {
         _rooms = rooms
@@ -1859,6 +1926,12 @@ final class InboxScript: @unchecked Sendable {
     var blastEvents: [[String: Any]] {
         get { lock.withLock { _blastEvents } }
         set { lock.withLock { _blastEvents = newValue } }
+    }
+
+    /// What `people.contacts` answers with.
+    var contacts: [[String: Any]] {
+        get { lock.withLock { _contacts } }
+        set { lock.withLock { _contacts = newValue } }
     }
 
     /// What the inbox lists, in the engine's order.
@@ -1923,6 +1996,7 @@ final class InboxScript: @unchecked Sendable {
 
     /// Every call of the method fails with this code.
     func fail(_ method: String, code: Int) { lock.withLock { _errors[method] = code } }
+    func succeed(_ method: String) { lock.withLock { _errors[method] = nil } }
 
     var onMarkRead: (@Sendable (String) -> Void)? {
         get { lock.withLock { _onMarkRead } }
@@ -2001,7 +2075,7 @@ final class InboxScript: @unchecked Sendable {
         case "blast.send":
             return .result(["events": blastEvents])
         case "people.contacts":
-            return .result(["contacts": [[String: Any]]()])
+            return .result(["contacts": contacts])
         default: return .result([String: Any]())
         }
     }
