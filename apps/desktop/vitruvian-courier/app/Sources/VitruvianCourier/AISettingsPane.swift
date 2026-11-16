@@ -549,18 +549,16 @@ public struct AISettingsPane: View {
 
     private var customInstructionsSection: some View {
         Section(String(localized: "Contextual AI & Chat Assistant")) {
-            VStack(alignment: .leading, spacing: 10) {
-                Toggle(
-                    String(localized: "Mention an AI to get answers and help in chat"),
-                    isOn: $preferences.mentionAIInChats
-                )
-                TextField(
-                    String(localized: "Custom instructions"),
-                    text: $preferences.aiMentionsSystemPrompt,
-                    prompt: Text(String(localized: "Keep answers brief and factual…"))
-                )
-                .textFieldStyle(.roundedBorder)
-            }
+            Toggle(
+                String(localized: "Mention an AI to get answers and help in chat"),
+                isOn: $preferences.mentionAIInChats
+            )
+            TextField(
+                String(localized: "Custom instructions"),
+                text: $preferences.aiMentionsSystemPrompt,
+                prompt: Text(String(localized: "Keep answers brief and factual…"))
+            )
+            .textFieldStyle(.roundedBorder)
         }
     }
 
@@ -568,16 +566,17 @@ public struct AISettingsPane: View {
 
     private var translationLanguagesSection: some View {
         Section(String(localized: "Translation Languages")) {
-            VStack(alignment: .leading, spacing: 10) {
-                Picker(
-                    String(localized: "Preferred response language"),
-                    selection: $preferences.responseLanguage
-                ) {
-                    ForEach(AIPreferences.supportedTranslationLanguages, id: \.self) { language in
-                        Text(language).tag(language)
-                    }
+            Picker(
+                String(localized: "Preferred response language"),
+                selection: $preferences.responseLanguage
+            ) {
+                ForEach(AIPreferences.supportedTranslationLanguages, id: \.self) { language in
+                    Text(language).tag(language)
                 }
+            }
+            .settingAnchor("ai.translation", highlighted: highlightedSettingID)
 
+            VStack(alignment: .leading, spacing: 8) {
                 Text(String(localized: "Enabled translation languages"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -605,7 +604,6 @@ public struct AISettingsPane: View {
                     }
                 }
             }
-            .settingAnchor("ai.translation", highlighted: highlightedSettingID)
         }
     }
 
@@ -614,49 +612,47 @@ public struct AISettingsPane: View {
     private var talkToTypeSection: some View {
         let hasOpenAIKey = store.hasKey(for: .openAI)
         return Section(String(localized: "Talk to Type & Voice Transcription")) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(store.speechStatusLine)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Toggle(
-                        String(localized: "Use OpenAI's Whisper model for Talk to Type and transcribing"),
-                        isOn: Binding(
-                            get: { hasOpenAIKey && preferences.useWhisperForTalkToType },
-                            set: { enabled in
-                                guard hasOpenAIKey else { return }
-                                preferences.useWhisperForTalkToType = enabled
-                            }
-                        )
-                    )
-                    .disabled(!hasOpenAIKey)
-                    .help(hasOpenAIKey ? "" : SpeechEngineFactory.whisperMissingKeyMessage)
-
-                    if !hasOpenAIKey {
-                        Text(SpeechEngineFactory.whisperMissingKeyMessage)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+            Text(store.speechStatusLine)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .settingAnchor("ai.talkToType", highlighted: highlightedSettingID)
+                .task(id: "\(preferences.useWhisperForTalkToType)|\(preferences.transcriptionLanguage)|\(hasOpenAIKey)") {
+                    await store.refreshSpeechStatus()
                 }
 
+            VStack(alignment: .leading, spacing: 4) {
                 Toggle(
-                    String(localized: "Automatically transcribe incoming voice notes"),
-                    isOn: $preferences.autoTranscribeVoiceNotes
+                    String(localized: "Use OpenAI's Whisper model for Talk to Type and transcribing"),
+                    isOn: Binding(
+                        get: { hasOpenAIKey && preferences.useWhisperForTalkToType },
+                        set: { enabled in
+                            guard hasOpenAIKey else { return }
+                            preferences.useWhisperForTalkToType = enabled
+                        }
+                    )
                 )
-                Picker(
-                    String(localized: "Transcription language"),
-                    selection: $preferences.transcriptionLanguage
-                ) {
-                    Text(String(localized: "Auto-Detect")).tag("Auto-Detect")
-                    ForEach(AIPreferences.supportedTranslationLanguages, id: \.self) { language in
-                        Text(language).tag(language)
-                    }
+                .disabled(!hasOpenAIKey)
+                .help(hasOpenAIKey ? "" : SpeechEngineFactory.whisperMissingKeyMessage)
+
+                if !hasOpenAIKey {
+                    Text(SpeechEngineFactory.whisperMissingKeyMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .settingAnchor("ai.talkToType", highlighted: highlightedSettingID)
-            .task(id: "\(preferences.useWhisperForTalkToType)|\(preferences.transcriptionLanguage)|\(hasOpenAIKey)") {
-                await store.refreshSpeechStatus()
+
+            Toggle(
+                String(localized: "Automatically transcribe incoming voice notes"),
+                isOn: $preferences.autoTranscribeVoiceNotes
+            )
+            Picker(
+                String(localized: "Transcription language"),
+                selection: $preferences.transcriptionLanguage
+            ) {
+                Text(String(localized: "Auto-Detect")).tag("Auto-Detect")
+                ForEach(AIPreferences.supportedTranslationLanguages, id: \.self) { language in
+                    Text(language).tag(language)
+                }
             }
         }
     }
@@ -665,36 +661,34 @@ public struct AISettingsPane: View {
 
     private var slashCommandsSection: some View {
         Section(String(localized: "Slash Command Triggers")) {
-            VStack(alignment: .leading, spacing: 10) {
-                Toggle(
-                    String(localized: "Enable / slash command triggers in the message box"),
-                    isOn: $preferences.enableSlashCommands
-                )
+            Toggle(
+                String(localized: "Enable / slash command triggers in the message box"),
+                isOn: $preferences.enableSlashCommands
+            )
+            .settingAnchor("ai.slashCommands", highlighted: highlightedSettingID)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(ComposerSlashCommand.allCommands) { cmd in
-                        HStack(spacing: 10) {
-                            Text(cmd.trigger)
-                                .font(.system(.caption, design: .monospaced).weight(.semibold))
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 2)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                        .fill(Color.accentColor.opacity(0.14))
-                                )
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(cmd.title)
-                                    .font(.caption.weight(.medium))
-                                Text(cmd.summary)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(ComposerSlashCommand.allCommands) { cmd in
+                    HStack(spacing: 10) {
+                        Text(cmd.trigger)
+                            .font(.system(.caption, design: .monospaced).weight(.semibold))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .fill(.quaternary)
+                            )
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(cmd.title)
+                                .font(.caption.weight(.medium))
+                            Text(cmd.summary)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
+                        Spacer(minLength: 0)
                     }
                 }
             }
-            .settingAnchor("ai.slashCommands", highlighted: highlightedSettingID)
         }
     }
 }

@@ -42,16 +42,25 @@ struct SettingsWindow: View {
 
     @FocusState private var isSearchFocused: Bool
 
+    /// What the switches and other controls on the right use for "on": the chat theme's accent, as in the main window,
+    /// unless that is nearly grey. Off stays neutral.
+    private var controlTint: Color {
+        let accent = appearance.effectiveTheme(for: nil).accentColorHex
+        return Color(hex: SettingsControlTint.hex(forThemeAccent: accent)) ?? .accentColor
+    }
+
     var body: some View {
         ZStack {
             HStack(spacing: 0) {
                 leftPane
-                    .frame(width: 228)
+                    .frame(width: 244)
                     .background(Color(nsColor: .windowBackgroundColor))
 
                 Divider()
 
                 rightPane
+                    .tint(controlTint)
+                    .toggleStyle(SettingsSwitchToggleStyle())
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color(nsColor: .textBackgroundColor).opacity(0.35))
             }
@@ -142,12 +151,62 @@ struct SettingsWindow: View {
                 searchSuggestionsList
                     .padding(.horizontal, 12)
             } else {
+                accountCard
+                    .padding(.horizontal, 12)
                 categoryList
-                    .padding(.horizontal, 8)
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 0)
         }
+    }
+
+    // MARK: - Account card
+
+    /// The card above the sidebar's rows. The app has no sign-in of its own, so it says how many accounts are connected
+    /// and which plan this Mac is on, and opens Settings ▸ Accounts.
+    private var accountCard: some View {
+        let card = SettingsAccountCard.make(accounts: app.accounts)
+        return Button {
+            navigation.openPane(.accounts)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: 34))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(card.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(card.subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.secondary.opacity(0.22), lineWidth: 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(card.title), \(card.subtitle)")
+        .accessibilityHint(String(localized: "Opens Accounts settings"))
     }
 
     private var searchBar: some View {
@@ -234,57 +293,48 @@ struct SettingsWindow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.10))
+                    .fill(Color.primary.opacity(0.06))
             )
         }
         .buttonStyle(.plain)
     }
 
+    /// The panes, as a standard macOS source list: its own selection highlight, not a fill of ours.
     private var categoryList: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            ForEach(SettingsPaneID.allCases) { pane in
-                categoryRow(for: pane)
+        List(selection: selectedPane) {
+            ForEach(SettingsSidebar.items) { item in
+                categoryRow(for: item)
+                    .tag(item.pane)
             }
         }
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
     }
 
-    private func categoryRow(for pane: SettingsPaneID) -> some View {
-        let isSelected = navigation.selectedPane == pane
-        let connectedCount = app.accounts.filter { $0.state == .connected }.count
-        return Button {
-            navigation.openPane(pane)
-        } label: {
-            HStack(spacing: 9) {
-                Image(systemName: pane.symbolName)
-                    .font(.system(size: 13, weight: .medium))
-                    .frame(width: 18)
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-                Text(pane.title)
-                    .font(.body.weight(isSelected ? .semibold : .regular))
-                    .foregroundStyle(.primary)
-                Spacer()
-                if pane == .accounts && connectedCount > 0 {
-                    Text("\(connectedCount)")
-                        .font(.caption2.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(
-                            Capsule()
-                                .fill(Color.secondary.opacity(0.15))
-                        )
-                }
+    private var selectedPane: Binding<SettingsPaneID?> {
+        Binding(
+            get: { navigation.selectedPane },
+            set: { pane in
+                if let pane { navigation.openPane(pane) }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
-            )
-            .contentShape(Rectangle())
+        )
+    }
+
+    private func categoryRow(for item: SettingsSidebarItem) -> some View {
+        let connectedCount = SettingsAccountCard.connectedCount(of: app.accounts)
+        return HStack(spacing: 9) {
+            SettingsIconTile(symbolName: item.symbolName, color: item.tile.color)
+            Text(item.title)
+            Spacer(minLength: 4)
+            if item.pane == .accounts && connectedCount > 0 {
+                Text("\(connectedCount)")
+                    .font(.caption2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color.secondary.opacity(0.15)))
+            }
         }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Right Column (PrefsRightPane)
@@ -393,6 +443,46 @@ struct SettingsWindow: View {
                 highlightedSettingID: navigation.highlightedSettingID,
                 updates: updates
             )
+        }
+    }
+}
+
+
+/// The coloured rounded square behind a Settings sidebar icon, as in macOS System Settings: a white symbol on a solid
+/// colour, about 20 pt across.
+struct SettingsIconTile: View {
+    let symbolName: String
+    let color: Color
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 5, style: .continuous)
+            .fill(color.gradient)
+            .frame(width: 20, height: 20)
+            .overlay(
+                Image(systemName: symbolName)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+            )
+            .accessibilityHidden(true)
+    }
+}
+
+extension SettingsTileColor {
+    /// The system colour of the same name, which adapts to light and dark mode.
+    var color: Color {
+        switch self {
+        case .gray: .gray
+        case .indigo: .indigo
+        case .red: .red
+        case .blue: .blue
+        case .brown: .brown
+        case .green: .green
+        case .teal: .teal
+        case .orange: .orange
+        case .purple: .purple
+        case .pink: .pink
+        case .mint: .mint
+        case .cyan: .cyan
         }
     }
 }

@@ -60,18 +60,28 @@ extension View {
     }
 }
 
-/// Pill badge for experimental settings (`SettingBadge.labs`).
+/// Tag for experimental settings (`SettingBadge.labs`): a small flask and the word, in secondary text on a faint pill.
+/// Neutral on purpose: it says "experimental", not "problem", so it takes no accent or red.
 struct SettingBadgeView: View {
     let badge: SettingBadge
 
+    /// `flask` arrives with macOS 15; `testtube.2` is the same idea on macOS 14.
+    private static let flaskSymbol = NSImage(systemSymbolName: "flask", accessibilityDescription: nil) != nil
+        ? "flask" : "testtube.2"
+
     var body: some View {
-        Text(badge.label)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(Color.accentColor)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Capsule().fill(Color.accentColor.opacity(0.14)))
-            .help(badge.tooltip)
+        HStack(spacing: 3) {
+            Image(systemName: Self.flaskSymbol)
+                .font(.system(size: 9, weight: .semibold))
+                .accessibilityHidden(true)
+            Text(badge.label)
+        }
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Capsule().fill(.quaternary))
+        .help(badge.tooltip)
     }
 }
 

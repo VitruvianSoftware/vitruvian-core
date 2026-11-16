@@ -38,33 +38,29 @@ struct NotificationsSettingsPane: View {
 
     private var alertTypesSection: some View {
         Section(String(localized: "Alert Types")) {
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle(
-                    SettingsNavigationModel.title(for: "notifications.messages"),
-                    isOn: $preferences.messageNotificationsEnabled
-                )
-                Picker(String(localized: "Direct message sound"), selection: $preferences.messageSound) {
-                    ForEach(NotificationSoundChoice.allCases, id: \.self) { choice in
-                        Text(Self.soundLabel(choice)).tag(choice)
-                    }
-                }
-                .disabled(!preferences.messageNotificationsEnabled)
-            }
+            Toggle(
+                SettingsNavigationModel.title(for: "notifications.messages"),
+                isOn: $preferences.messageNotificationsEnabled
+            )
             .settingAnchor("notifications.messages", highlighted: highlightedSettingID)
 
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle(
-                    SettingsNavigationModel.title(for: "notifications.groups"),
-                    isOn: $preferences.groupNotificationsEnabled
-                )
-                Picker(String(localized: "Group chat sound"), selection: $preferences.groupSound) {
-                    ForEach(NotificationSoundChoice.allCases, id: \.self) { choice in
-                        Text(Self.soundLabel(choice)).tag(choice)
-                    }
-                }
-                .disabled(!preferences.groupNotificationsEnabled)
-            }
+            soundPicker(
+                String(localized: "Direct message sound"),
+                selection: $preferences.messageSound,
+                isEnabled: preferences.messageNotificationsEnabled
+            )
+
+            Toggle(
+                SettingsNavigationModel.title(for: "notifications.groups"),
+                isOn: $preferences.groupNotificationsEnabled
+            )
             .settingAnchor("notifications.groups", highlighted: highlightedSettingID)
+
+            soundPicker(
+                String(localized: "Group chat sound"),
+                selection: $preferences.groupSound,
+                isEnabled: preferences.groupNotificationsEnabled
+            )
 
             Toggle(
                 SettingsNavigationModel.title(for: "notifications.requests"),
@@ -79,12 +75,11 @@ struct NotificationsSettingsPane: View {
             )
             .settingAnchor("notifications.reactions", highlighted: highlightedSettingID)
 
-            HStack(spacing: 8) {
-                Toggle(
-                    SettingsNavigationModel.title(for: "notifications.typing"),
-                    isOn: $preferences.typingNotificationsEnabled
-                )
-                SettingBadgeView(badge: .labs)
+            Toggle(isOn: $preferences.typingNotificationsEnabled) {
+                HStack(spacing: 8) {
+                    Text(SettingsNavigationModel.title(for: "notifications.typing"))
+                    SettingBadgeView(badge: .labs)
+                }
             }
             .help(String(localized: "Only on networks that send typing. Off, you’re told when the message arrives."))
             .settingAnchor("notifications.typing", highlighted: highlightedSettingID)
@@ -97,21 +92,39 @@ struct NotificationsSettingsPane: View {
         }
     }
 
+    /// A sound's own row, under the alert it belongs to. It is greyed out while that alert is off, because the sound
+    /// then never plays.
+    private func soundPicker(
+        _ title: String,
+        selection: Binding<NotificationSoundChoice>,
+        isEnabled: Bool
+    ) -> some View {
+        Picker(title, selection: selection) {
+            ForEach(NotificationSoundChoice.allCases, id: \.self) { choice in
+                Text(Self.soundLabel(choice)).tag(choice)
+            }
+        }
+        .disabled(!isEnabled)
+    }
+
     private var timingAndCodesSection: some View {
         Section(String(localized: "Timing & Verification Codes")) {
-            HStack(spacing: 8) {
-                Picker(
-                    SettingsNavigationModel.title(for: "notifications.delay"),
-                    selection: $preferences.delaySeconds
-                ) {
-                    ForEach(NotificationPreferences.allowedDelaySeconds, id: \.self) { seconds in
-                        Text(Self.delayLabel(seconds)).tag(seconds)
-                    }
+            Picker(selection: $preferences.delaySeconds) {
+                ForEach(NotificationPreferences.allowedDelaySeconds, id: \.self) { seconds in
+                    Text(Self.delayLabel(seconds)).tag(seconds)
                 }
-                SettingBadgeView(badge: .labs)
+            } label: {
+                HStack(spacing: 8) {
+                    Text(SettingsNavigationModel.title(for: "notifications.delay"))
+                    SettingBadgeView(badge: .labs)
+                }
             }
-            .help(String(localized: "Waits before alerting so messages read on another device stay quiet. OTP/2FA codes always notify immediately."))
             .settingAnchor("notifications.delay", highlighted: highlightedSettingID)
+
+            Text(NotificationPreferences.delayFootnote)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             Picker(
                 SettingsNavigationModel.title(for: "notifications.repeatUnread"),
