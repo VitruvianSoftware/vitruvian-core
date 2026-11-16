@@ -638,6 +638,31 @@ final class NotificationPolicyTests: XCTestCase {
                                                    context: context(), preferences: prefs).shouldNotify)
     }
 
+    /// A code gets through a muted chat and Low Priority, but not past switches the person turned off for a whole
+    /// account, all messages or all groups, unless auto-copy is on (which has always meant "always tell me about codes").
+    func testAVerificationCodeRespectsAccountAndMessageSwitchesUnlessAutoCopyIsOn() throws {
+        let code = codeEvent("Your verification code is 482910")
+        for autoCopy in [false, true] {
+            let suiteName = "courier.test.otp.switches.\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            let prefs = NotificationPreferences(defaults: defaults)
+            prefs.autoCopyOTP = autoCopy
+
+            prefs.accountOverrides["whatsapp:wa-1"] = AccountNotificationOverride(
+                enabled: false, showPreviews: true, sound: .marimba
+            )
+            let accountOff = NotificationPolicy.evaluate(event: code, room: row(), context: context(),
+                                                         preferences: prefs, accountKey: "whatsapp:wa-1")
+            XCTAssertEqual(accountOff.shouldNotify, autoCopy, "account turned off (auto-copy \(autoCopy))")
+            prefs.accountOverrides.removeAll()
+
+            prefs.messageNotificationsEnabled = false
+            let messagesOff = NotificationPolicy.evaluate(event: code, room: row(), context: context(), preferences: prefs)
+            XCTAssertEqual(messagesOff.shouldNotify, autoCopy, "message notifications off (auto-copy \(autoCopy))")
+        }
+    }
+
     func testNotificationsNameThePersonWithoutTheNetworkTag() {
         let live = codeEvent("hello", senderName: "Sam Lee (WA)")
         let direct = NotificationPolicy.content(for: live, room: row(name: "Toan Vu (WA)"))

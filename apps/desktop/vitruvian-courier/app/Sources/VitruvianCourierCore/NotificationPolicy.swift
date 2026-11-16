@@ -523,8 +523,13 @@ public enum NotificationPolicy {
 
         let override = resolveAccountOverride(for: room, preferences: preferences, explicitKey: accountKey)
 
+        // A code gets through a chat's mute (as through Low Priority above): that chat is quiet, but this is what the
+        // person asked for. The switches that turn notifications off for all messages, all groups or a whole account
+        // still hold for a code, unless auto-copy is on, which has always meant "always tell me about codes".
         if !holdsCode {
             guard !isMuted(room) else { return noNotify }
+        }
+        if !autoCopiesCode {
             if room.isDirect {
                 guard preferences?.messageNotificationsEnabled ?? true else { return noNotify }
             } else {
