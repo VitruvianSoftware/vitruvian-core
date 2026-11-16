@@ -212,8 +212,8 @@ carries only protocol messages. What the connector must do:
 - **Stop it together with everything it started.** When its Node process died
   mid-call, a command it had started kept running on its own. So the connector
   starts it in its own process group (a family of processes the operating system
-  can stop in one go) and stops the whole group. Closing its input stops it
-  cleanly in under 40 ms.
+  can stop in one go) and stops the whole group (not yet tested). Closing its
+  input stops it cleanly in under 40 ms.
 - **Treat its log messages as logs.** It sends `notifications/message` during
   calls; forward or drop them, never mistake them for replies.
 - **Command output is collected in steps, not streamed.** It returns the output
@@ -227,8 +227,8 @@ carries only protocol messages. What the connector must do:
   points that fetch elsewhere (`DC_FLAG_URL`) so a customer's computer doesn't
   contact a third party because of us.
 - **Its settings file is shared** with any Desktop Commander the user already runs
-  (`~/.claude-server-commander`; read in its source code). The connector must not depend on, or silently
-  change, that file.
+  (`~/.claude-server-commander`; read in its source code). The connector must
+  not depend on, or silently change, that file.
 
 ## 6. Sign-in, devices and billing
 
@@ -250,7 +250,8 @@ Slack MCP with Gemini Spark. What P0 research found (details in
 [the P0 plan](../plans/2026-11-09-relay-p0-spikes.md)):
 
 - **Claude: yes, live (2026-11-11).** It works with a client we register
-  ourselves, on every plan (`relay-claude`, no secret). It found everything else
+  ourselves (`relay-claude`, no secret). Claude's docs say this works on every
+  plan; only James's plan was tried. It found everything else
   from the relay's published sign-in details. It also sends `server/discover` (a
   newer request asking the server to describe itself), which the spike ignored
   and the relay should answer.
@@ -264,13 +265,16 @@ Slack MCP with Gemini Spark. What P0 research found (details in
   customer isn't secret, and one shared client would need every customer's
   callback registered. Gemini at scale therefore has the same registration
   problem as ChatGPT (§11).
-- **ChatGPT** (per OpenAI's docs; not tried live) gives each connector its own callback URL, so one pre-registered
-  client can't serve many users. For a product, ChatGPT needs Zitadel's dynamic
-  client registration. Zitadel supports it, but it's off on our instance, and
-  turning it on in its open form lets anyone create clients. That's an open
+- **ChatGPT** (per OpenAI's docs; not tried live) gives each connector its own
+  callback URL, so one pre-registered client can't serve many users. For a
+  product, ChatGPT needs Zitadel's dynamic client registration. Zitadel
+  supports it, but it's off on our instance, and turning it on in its open form
+  lets anyone create clients. That's an open
   decision (§11).
 - **The relay authorises on client id and subject, never on audience alone.** In
-  our Zitadel, any signed-in user can put any project in a token's audience.
+  our Zitadel, any signed-in user can put any project in a token's audience
+  (found by the sibling `zitadel-apps-mcp-slack` stack, and seen again in spike
+  B, where a connector token's audience listed the Claude client too).
 - **Callback addresses are pinned exactly** (host and path shape) in the Zitadel
   stack, because a wrong one would send a sign-in code to someone else.
 
@@ -342,14 +346,14 @@ consequences to plan for:
 
 Two things to know about the paid setup:
 
-- Cloud Run ends a WebSocket after at most 60 minutes. The connector therefore
-  reconnects on its own about every 50 minutes, with jitter, and the user notices
-  nothing.
+- Cloud Run ends a WebSocket after at most 60 minutes (its request timeout, per
+  Cloud Run's docs). The connector therefore reconnects on its own about every
+  50 minutes, with jitter. That should be invisible to the user; it is untested.
 - With several relay instances, a computer is connected to one instance but a call
   can arrive at another. Cloud Run instances can't be addressed one by one, and
   Postgres `NOTIFY` messages are capped at 8,000 bytes, too small for results. So
-  **launch runs a single relay instance** (Cloud Run max instances = 1, which
-  restarts quickly). Scaling out later needs a message bus between instances,
+  **launch runs a single relay instance** (Cloud Run max instances = 1; how fast
+  it restarts hasn't been measured). Scaling out later needs a message bus between instances,
   such as Redis or NATS, which is an added cost. That decision waits until one
   instance is actually too small (§11).
 
@@ -405,7 +409,8 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
    token carries, so it happens before launch, not after.
 3. **Which ChatGPT plans can add a custom MCP server.** Not confirmed. Some
    sources say only Business, Enterprise and Edu workspaces can, which would shrink
-   the ChatGPT market a lot. Claude allows it on every plan.
+   the ChatGPT market a lot. Claude's docs say every plan can; only one plan was
+   tried.
 4. **Where Zitadel runs for a paid product**, and whether that cost is worth it now
    or only at launch.
 5. **Pricing** for the free and paid tiers.

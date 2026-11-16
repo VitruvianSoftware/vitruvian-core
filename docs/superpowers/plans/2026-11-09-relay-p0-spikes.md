@@ -64,7 +64,7 @@ Each spike ends in a written yes or no with evidence. This file is the record.
 ### B: yes
 
 - `bazel run //apps/suites/vitruvian-relay/spike:vitruvian-relay-spike-client -- login`
-  (run at the time under its old name, since renamed in #4631) asked
+  (run at the time under its old name and path, since renamed in #4631) asked
   Zitadel for a device code with the relay project's audience scope, James
   approved it in the browser, and a token came back 97 seconds later, with a
   refresh token.
@@ -78,11 +78,13 @@ Each spike ends in a written yes or no with evidence. This file is the record.
 - The access token lives 12 hours.
 - One snag: James had to sign in twice. The likely reason, not confirmed, is
   that the device-approval page uses Zitadel's older login screen, which
-  doesn't share the session of the newer one Claude's sign-in used. Worth fixing before real users see it.
+  doesn't share the session of the newer one Claude's sign-in used. Worth
+  fixing before real users see it.
 
 ### C: no for one connection, yes with reconnects
 
-`relay-spike-client hold --hours 24` (renamed in #4631; now `bazel run //apps/suites/vitruvian-relay/spike:vitruvian-relay-spike-client -- hold`) ran
+`relay-spike-client hold --hours 24` (renamed in #4631; now
+`bazel run //apps/suites/vitruvian-relay/spike:vitruvian-relay-spike-client -- hold`) ran
 from 2026-11-11 18:15 to 2026-11-12 18:15 PST from James's MacBook, over home
 Wi-Fi, to `wss://relay-spike.ipv1337.dev/connect`. It sent a probe every 30 s
 and reconnected with backoff.
