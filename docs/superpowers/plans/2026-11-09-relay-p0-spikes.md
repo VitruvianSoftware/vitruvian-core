@@ -13,7 +13,7 @@ Each spike ends in a written yes or no with evidence. This file is the record.
 | A | Can ChatGPT, Claude and Gemini add an OAuth-protected MCP on our domain, with Zitadel sign-in? | **Claude: yes, live** (2026-11-11, claude.ai). **Gemini: yes, live** (2026-11-15, gemini.google.com; needs a client secret). ChatGPT: yes on paper for one user, needs open registration for many; not tried live |
 | B | Does Zitadel's device flow work from a command-line app? | **Yes** (2026-11-11), with `vitruvian-relay-spike-client login` |
 | C | Does a WebSocket through the Cloudflare Tunnel stay up for 24 hours? | **No for one connection, yes for the service** (2026-11-12). 10 drops in 24 hours, connected 99.3% of the time; reconnecting is mandatory |
-| D | Can a connector drive unmodified `desktop-commander` over stdio? | **Yes** (2026-11-12), version 0.3.1 run through Bazel. The connector must kill the whole process group, turn telemetry off and redirect its feature-flag fetch |
+| D | Can a connector drive unmodified `desktop-commander` over stdio (its standard input and output)? | **Yes** (2026-11-12), version 0.3.1 run through Bazel. The connector must kill the whole process group, turn telemetry off and redirect its feature-flag fetch |
 
 ## Live results (2026-11-11 to 2026-11-15)
 
@@ -63,7 +63,7 @@ Each spike ends in a written yes or no with evidence. This file is the record.
 ### B: yes
 
 - `bazel run //apps/suites/vitruvian-relay/spike:vitruvian-relay-spike-client -- login`
-  (then `//apps/suites/relay/spike:relay-spike-client`, renamed in #4631) asked
+  (run at the time under its old name, since renamed in #4631) asked
   Zitadel for a device code with the relay project's audience scope, James
   approved it in the browser, and a token came back 97 seconds later, with a
   refresh token.
@@ -270,7 +270,8 @@ absent), so the verifier pins `client_id`.
 - [x] **A (Claude, web):** James adds `https://<spike-host>/mcp` in Claude with
       the `relay-claude` client id, signs in, and the echo tool runs from
       claude.ai. The Claude phone app is not tried yet (spec §11 question 12)
-- [ ] **A (ChatGPT, not tried; moved to spec §11 questions 3 and 8):** James starts adding the connector in ChatGPT and copies its
+- **A (ChatGPT): not done, moved to spec §11 questions 3 and 8.** The planned
+      step was: James starts adding the connector in ChatGPT and copies its
       callback into `chatgptRedirectUris`, then re-apply, then finish. Only if his
       plan allows custom MCP servers
 - [x] **A (Gemini):** `relay-gemini` client (#4776, has a client secret,

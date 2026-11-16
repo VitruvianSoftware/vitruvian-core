@@ -166,7 +166,7 @@ connector truncates bigger outputs with a note saying so. The relay times out a 
 at its deadline and sends `cancel`. Reconnects use exponential backoff with jitter,
 from 1 s up to 60 s.
 
-**Drops are routine, so both ends are built for them (spike C).** Over a 24-hour
+**Drops are routine, so both ends must be built for them (spike C).** Over a 24-hour
 test through the Cloudflare Tunnel, the computer was connected 99.3% of the time,
 but across 11 separate connections: it dropped 10 times, and the longest single
 connection lasted 12.7 hours. 8 drops were network resets, each back in about 1 s.
@@ -174,9 +174,12 @@ connection lasted 12.7 hours. 8 drops were network resets, each back in about 1 
 Messages took 62 ms to go there and back in a typical case, and 152 ms in the
 slowest one in twenty. So:
 
-- The connector reconnects by itself, quietly; the backoff above was enough.
-- A call in flight when its device's connection drops gets a clear error at once
-  ("Your computer disconnected; try again"), not a hang until the deadline.
+- The connector reconnects by itself, quietly. The spike's test client was back
+  about 1 s after each reset; the 1 to 60 s schedule above is the design, not
+  something the spike ran.
+- A call in flight when its device's connection drops must get a clear error at
+  once ("Your computer disconnected; try again"), not a hang until the deadline.
+  This is a requirement for P1; no spike tested it.
 - **A retry can run a command twice.** The repeated-id rule only covers the
   relay resending the same call. If the AI app retries, the relay sees a new
   call with a new id, and the computer may already have run the first one.
@@ -418,9 +421,10 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
     user their own callback, which the form shows for copying before the client
     exists. Options: a client per customer created by the
     dashboard (the customer first copies Gemini's callback into the dashboard,
-    then pastes the id and secret the dashboard creates into Gemini), or open registration
-    (letting the AI app create its own client automatically) if Gemini supports it
-    when the fields are left empty (untested).
+    then pastes the id and secret the dashboard creates into Gemini), or open
+    registration, where Gemini creates its own client automatically. That would
+    need Gemini to try registering when the client id and secret fields are left
+    blank, which is untested.
 12. **Phone apps.** The echo tool has run from the Claude and Gemini web apps, not
     yet from their phone apps. P1's "done when" depends on the Claude phone app.
 13. **Alpha availability vs one relay instance.** Spike C's plan suggested more
@@ -428,8 +432,9 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
     6 minutes. But a call must reach the copy holding the device's connection
     (§8), so this spec overrides that: until there is a message bus (question 9),
     the alpha runs one copy on an always-on node and relies on Kubernetes
-    restarting it elsewhere if that node fails. How long such a restart takes
-    wasn't measured: the 3 to 6 minute outages were a laptop node dropping out,
-    not a restart.
+    restarting it elsewhere if that node fails. Spike C saw what that costs:
+    the 3 to 6 minute outages lasted until Kubernetes moved the pod off the
+    laptop node that had dropped out (rescheduled on `nuc9i9` at 18:04). Keeping
+    the pod off laptop nodes should make that rare, but it is the cost each time.
 14. **Retries that run twice.** An AI app's retry after a dropped connection
     arrives as a new call (§4). Decide whether the relay should detect it.
