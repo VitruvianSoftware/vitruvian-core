@@ -53,14 +53,22 @@ out="$(run --check)" || fail "root check exited non-zero"
   fail "root check: $out"
 
 out="$(run --dir sub/dc)" || fail "--dir lock exited non-zero"
-[[ "$out" == "cwd=$real_repo/sub/dc chdir=$repo/sub/dc args=--dir $repo/sub/dc install --lockfile-only --ignore-scripts" ]] ||
+[[ "$out" == "cwd=$real_repo/sub/dc chdir=$real_repo/sub/dc args=--dir $real_repo/sub/dc install --lockfile-only --ignore-scripts" ]] ||
   fail "--dir lock: $out"
 
 out="$(run --dir sub/dc/ --check)" || fail "--dir check exited non-zero"
-[[ "$out" == *"args=--dir $repo/sub/dc install --frozen-lockfile --lockfile-only --ignore-scripts" ]] ||
+[[ "$out" == *"args=--dir $real_repo/sub/dc install --frozen-lockfile --lockfile-only --ignore-scripts" ]] ||
   fail "--dir check: $out"
 
-for bad in "--dir" "--dir /etc" "--dir ../x" "--dir sub/../.." "--dir sub/.." "--dir plain" "--dir missing" "--dir sub/dc --bogus" "--bogus"; do
+# A path inside the repo that is a symlink to a workspace outside it.
+outside="$tmp/outside"
+mkdir -p "$outside"
+touch "$outside/package.json" "$outside/pnpm-workspace.yaml"
+ln -s "$outside" "$repo/sub/escape"
+mkdir -p "$repo/sub/inner"
+ln -s "$outside" "$repo/sub/inner/deeper"
+
+for bad in "--dir sub/escape" "--dir sub/inner/deeper/"  "--dir" "--dir /etc" "--dir ../x" "--dir sub/../.." "--dir sub/.." "--dir plain" "--dir missing" "--dir sub/dc --bogus" "--bogus"; do
   # shellcheck disable=SC2086
   if run $bad >/dev/null; then
     fail "accepted: $bad"

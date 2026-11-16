@@ -55,6 +55,25 @@ no_prompt = ["read_file", "read_multiple_files", "list_directory",
 /// `no_prompt` tools have no such argument; see the Task 7 report.)
 pub const ASK_FIRST_ARGS: &[(&str, &str)] = &[("read_file", "isUrl")];
 
+/// Earlier versions of [`DEFAULT_RULES`]. A rules.toml that is exactly one
+/// of these was never edited, so `load` replaces it with the current
+/// defaults; any edit, however small, makes the file the person's own.
+const PREVIOUS_DEFAULTS: &[&str] = &[
+    // Before R13 hid the history, feedback and UI tools (Task 6, Task 7's
+    // first commit).
+    r#"paused = false
+hidden = ["set_config_value", "get_config"]   # never exposed remotely
+config_allow = []    # settings tools to expose anyway; any other tool whose
+                     # name contains "config" is hidden
+# While paused, no tools are visible and every call is refused.
+# Run without asking: reads only. Every other tool, including any tool a
+# future desktop-commander adds, asks first.
+no_prompt = ["read_file", "read_multiple_files", "list_directory",
+             "get_file_info", "start_search", "get_more_search_results",
+             "stop_search", "list_searches"]
+"#,
+];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
     Run,
@@ -77,7 +96,8 @@ pub fn rules_path(dir: &Path) -> PathBuf {
     dir.join("rules.toml")
 }
 
-/// Reads `rules.toml`, writing the defaults first if there is none.
+/// Reads `rules.toml`, writing the defaults first if there is none (or if
+/// it is an untouched copy of older defaults).
 ///
 /// A file that does not parse, or lacks `hidden` or `no_prompt`, is an error,
 /// never a silent fall back to defaults: the caller decides (refuse to start;
@@ -87,8 +107,12 @@ pub fn load(dir: &Path) -> Result<Rules> {
     if !path.exists() {
         write_private(&path, DEFAULT_RULES.as_bytes())?;
     }
-    let text =
+    let mut text =
         std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    if PREVIOUS_DEFAULTS.contains(&text.as_str()) {
+        write_private(&path, DEFAULT_RULES.as_bytes())?;
+        text = DEFAULT_RULES.to_string();
+    }
     toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
 }
 
@@ -461,5 +485,41 @@ mod tests {
             r2.decide("get_recent_tool_calls", &json!({})),
             Decision::AskFirst
         );
+    }
+
+    /// The defaults before R13 (Tasks 6 and 7, first commit), exactly as
+    /// written to rules.toml.
+    const R6_DEFAULTS: &str = r#"paused = false
+hidden = ["set_config_value", "get_config"]   # never exposed remotely
+config_allow = []    # settings tools to expose anyway; any other tool whose
+                     # name contains "config" is hidden
+# While paused, no tools are visible and every call is refused.
+# Run without asking: reads only. Every other tool, including any tool a
+# future desktop-commander adds, asks first.
+no_prompt = ["read_file", "read_multiple_files", "list_directory",
+             "get_file_info", "start_search", "get_more_search_results",
+             "stop_search", "list_searches"]
+"#;
+
+    #[test]
+    fn an_untouched_old_default_file_gets_the_new_defaults() {
+        let dir = test_dir("rules-migrate");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(rules_path(&dir), R6_DEFAULTS).unwrap();
+        let r = load(&dir).unwrap();
+        assert!(r.is_hidden("get_recent_tool_calls"));
+        assert!(r.is_hidden("give_feedback_to_desktop_commander"));
+        assert!(r.is_hidden("track_ui_event"));
+        assert_eq!(
+            std::fs::read_to_string(rules_path(&dir)).unwrap(),
+            DEFAULT_RULES
+        );
+        // A file the person edited, even by one character, is theirs.
+        let edited = R6_DEFAULTS.replace("paused = false", "paused = true");
+        std::fs::write(rules_path(&dir), &edited).unwrap();
+        let r = load(&dir).unwrap();
+        assert!(r.paused);
+        assert!(!r.is_hidden("get_recent_tool_calls"));
+        assert_eq!(std::fs::read_to_string(rules_path(&dir)).unwrap(), edited);
     }
 }

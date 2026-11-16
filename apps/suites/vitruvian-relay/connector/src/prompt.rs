@@ -959,6 +959,19 @@ mod tests {
         let rules: Rules = toml::from_str(DEFAULT_RULES).unwrap();
         // (tool, argument, shown, why not, if not shown)
         let reviewed: &[(&str, &str, bool, &str)] = &[
+            ("read_file", "path", true, ""),
+            ("read_file", "isUrl", true, ""),
+            ("read_file", "offset", false, "which lines"),
+            ("read_file", "length", false, "which lines"),
+            ("read_file", "sheet", false, "a part of the same file"),
+            ("read_file", "range", false, "a part of the same file"),
+            (
+                "read_file",
+                "options",
+                false,
+                "parsed but unused by its handler",
+            ),
+            ("read_file", "origin", false, "telemetry tag only"),
             ("write_file", "path", true, ""),
             ("write_file", "mode", true, ""),
             ("write_file", "content", false, "the file's body"),
@@ -1034,7 +1047,9 @@ mod tests {
         let schemas = pinned_schemas();
         let mut seen = std::collections::HashSet::new();
         for (tool, schema) in &schemas {
-            if rules.decide(tool, &json!({})) != Decision::AskFirst {
+            // Asks first by name, or for some arguments (read_file's isUrl).
+            let by_arg = crate::rules::ASK_FIRST_ARGS.iter().any(|(t, _)| t == tool);
+            if rules.decide(tool, &json!({})) != Decision::AskFirst && !by_arg {
                 continue;
             }
             let props = schema["properties"]

@@ -38,11 +38,12 @@
 //! in flight at once.
 
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::ffi::OsString;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
@@ -70,6 +71,18 @@ pub const DC_CONFIG_DIR: &str = ".claude-server-commander";
 /// characters). Task 8 must not send a longer one.
 pub const CALL_ID_RESERVE: usize = 256;
 
+/// desktop-commander 0.3.1's integrity, as pinned and tested in spike D.
+pub const DC_INTEGRITY: &str = "sha512-cx7KTscLF951adHmDLVCDIVTqJ/Bg1LtdRILZoo5wa/UMeyOfMAuOJOEBulNMKBKb5Xd3nHDQnB9aXroN9Fw5A==";
+
+/// Longest line read from desktop-commander's stdout. A reply over 4 MiB is
+/// cut to fit a frame anyway, and a JSON line is about the size of the frame
+/// it becomes (both escape the same characters), so keeping more than 4x the
+/// frame buys nothing. A longer line is read through and dropped, never held
+/// whole: memory per line stays under twice this.
+pub const MAX_LINE: usize = 4 * MAX_FRAME_BYTES;
+
+/// How long `node --version` may take (a version-manager shim can hang).
+const NODE_VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 const INIT_TIMEOUT: Duration = Duration::from_secs(30);
 const LIST_TIMEOUT: Duration = Duration::from_secs(30);
 /// Each step of `stop`: after closing stdin, after SIGTERM.
@@ -99,7 +112,7 @@ impl BridgeCommand {
     /// on `PATH`. Otherwise `~/.local/share/vrelay/bridge.json`, written by
     /// the installer.
     pub fn locate() -> Result<BridgeCommand> {
-        let home = PathBuf::from(std::env::var("HOME").map_err(|_| "HOME is not set")?);
+        let home = dc_home(std::env::var_os("HOME"))?;
         let under_bazel = std::env::var_os("BUILD_WORKSPACE_DIRECTORY").is_some();
         let mut runfiles = Vec::new();
         if let Some(d) = std::env::var_os("RUNFILES_DIR") {
@@ -174,14 +187,45 @@ pub fn node_ok(version: &str) -> bool {
 }
 
 fn check_node(node: &Path) -> Result<()> {
-    let out = Command::new(node)
+    check_node_with(node, NODE_VERSION_TIMEOUT)
+}
+
+/// Runs `node --version` in its own process group, for at most `timeout`;
+/// past that the group is killed.
+fn check_node_with(node: &Path, timeout: Duration) -> Result<()> {
+    let mut child = Command::new(node)
         .arg("--version")
+        .process_group(0)
         .stdin(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .output()
+        .spawn()
         .map_err(|e| format!("cannot run {}: {e}. {NODE_ADVICE}", node.display()))?;
-    let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if out.status.success() && node_ok(&version) {
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(st)) => break Some(st),
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(10)),
+            _ => break None,
+        }
+    };
+    // Whatever it started goes too (the leader is reaped only below, or
+    // just was, in which case the group is empty or its own).
+    if status.is_none() {
+        kill_group(child.id() as i32, libc::SIGKILL);
+        let _ = child.wait();
+        return Err(format!(
+            "{} --version did not answer in {} s. {NODE_ADVICE}",
+            node.display(),
+            timeout.as_secs_f32()
+        ));
+    }
+    let mut out = String::new();
+    if let Some(mut o) = child.stdout.take() {
+        let _ = o.by_ref().take(256).read_to_string(&mut out);
+    }
+    let version = out.trim().to_string();
+    if status.is_some_and(|s| s.success()) && node_ok(&version) {
         Ok(())
     } else {
         Err(format!(
@@ -194,6 +238,30 @@ fn check_node(node: &Path) -> Result<()> {
             }
         ))
     }
+}
+
+/// The home folder desktop-commander will use, found the way Node's
+/// `os.homedir()` finds it: `HOME`, else the user database.
+pub fn dc_home(env_home: Option<OsString>) -> Result<PathBuf> {
+    if let Some(h) = env_home.filter(|h| !h.is_empty()) {
+        return Ok(PathBuf::from(h));
+    }
+    // SAFETY: getpwuid returns static storage or null; it is read at once.
+    let dir = unsafe {
+        let pw = libc::getpwuid(libc::getuid());
+        if pw.is_null() || (*pw).pw_dir.is_null() {
+            None
+        } else {
+            Some(
+                std::ffi::CStr::from_ptr((*pw).pw_dir)
+                    .to_string_lossy()
+                    .into_owned(),
+            )
+        }
+    };
+    dir.filter(|d| !d.is_empty())
+        .map(PathBuf::from)
+        .ok_or_else(|| "cannot find the home folder: HOME is not set and the user has none".into())
 }
 
 /// Makes `HOME/.claude-server-commander` mode 0700, creating it if missing.
@@ -236,9 +304,12 @@ impl BridgeOutput {
         }
     }
 
-    fn from_result(result: &Value) -> BridgeOutput {
+    fn from_result(mut result: Value) -> BridgeOutput {
         BridgeOutput {
-            content: result.get("content").cloned().unwrap_or_else(|| json!([])),
+            content: result
+                .get_mut("content")
+                .map(Value::take)
+                .unwrap_or_else(|| json!([])),
             is_error: result
                 .get("isError")
                 .and_then(Value::as_bool)
@@ -248,25 +319,67 @@ impl BridgeOutput {
     }
 }
 
-/// How big the `result` frame for `out` is, or `None` if it fits.
-fn overshoot(out: &BridgeOutput) -> Option<usize> {
+/// The encoded size of the `result` frame for `out`, measured with
+/// `protocol::encode` on the real frame type. The content is moved in and
+/// back out, never copied.
+fn frame_len(out: &mut BridgeOutput) -> usize {
     let frame = ToRelay::Result(CallResult {
         call_id: "c".repeat(CALL_ID_RESERVE),
-        content: out.content.clone(),
+        content: out.content.take(),
         is_error: out.is_error,
         truncated: out.truncated,
     });
-    match encode(&frame) {
-        Ok(_) => None,
-        Err(FrameError::TooLarge(n)) => Some(n - MAX_FRAME_BYTES),
-        // Cannot happen for a Value; treat as needing everything cut.
-        Err(FrameError::Json(_)) => Some(usize::MAX / 2),
+    let n = match encode(&frame) {
+        Ok(s) => s.len(),
+        Err(FrameError::TooLarge(n)) => n,
+        // Cannot happen for a Value; treat as far too big.
+        Err(FrameError::Json(_)) => usize::MAX / 2,
+    };
+    if let ToRelay::Result(r) = frame {
+        out.content = r.content;
     }
+    n
+}
+
+/// How many bytes `c` takes inside a JSON string, as serde_json writes it.
+fn json_char_len(c: char) -> usize {
+    match c {
+        '"' | '\\' | '\n' | '\r' | '\t' | '\u{8}' | '\u{c}' => 2,
+        c if (c as u32) < 0x20 => 6,
+        c => c.len_utf8(),
+    }
+}
+
+/// The encoded length of `s` as a JSON string, quotes included.
+fn json_str_len(s: &str) -> usize {
+    2 + s.chars().map(json_char_len).sum::<usize>()
+}
+
+/// Writes nothing; counts what serde_json would write.
+struct Count(usize);
+impl Write for Count {
+    fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+        self.0 += b.len();
+        Ok(b.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn encoded_len(v: &Value) -> usize {
+    let mut c = Count(0);
+    let _ = serde_json::to_writer(&mut c, v);
+    c.0
 }
 
 fn note(omitted: usize) -> String {
     format!("[output truncated by vrelay: {omitted} bytes omitted]")
 }
+
+/// Room left for the line break and note after a cut text (the note is
+/// under 64 bytes for any size that fits in memory).
+const NOTE_ROOM: usize = 2 + 64;
 
 fn floor_boundary(s: &str, mut i: usize) -> usize {
     i = i.min(s.len());
@@ -276,75 +389,140 @@ fn floor_boundary(s: &str, mut i: usize) -> usize {
     i
 }
 
+/// Cuts `text` in place so its encoded form shrinks by at least `need`
+/// bytes (or to nothing), keeping whole characters. Returns the bytes of
+/// the original text that were dropped.
+fn cut_text(text: &mut String, need: usize) -> usize {
+    let target = json_str_len(text).saturating_sub(need + NOTE_ROOM);
+    let mut enc = 2;
+    let mut keep = 0;
+    for (i, c) in text.char_indices() {
+        let n = json_char_len(c);
+        if enc + n > target {
+            break;
+        }
+        enc += n;
+        keep = i + c.len_utf8();
+    }
+    let keep = floor_boundary(text, keep);
+    let omitted = text.len() - keep;
+    text.truncate(keep);
+    omitted
+}
+
 /// Cuts `out` until its encoded `result` frame fits in `MAX_FRAME_BYTES`.
 ///
 /// The size is measured on the encoded frame, not the raw text: JSON escaping
-/// can double it (`"` and line breaks) or worse. Text items are cut from the
-/// longest first and end with a note of how many bytes were dropped; an item
-/// that is not text (an image) and still does not fit is replaced by a note.
+/// can double it (`"` and line breaks) or worse. The overshoot is shared out
+/// from the biggest item down, each text cut by exactly what it must give up
+/// (escaping counted), ending with a note of how many bytes were dropped; an
+/// item that is not text (an image) is replaced by a note. One encode per
+/// pass; the second pass is a check.
 pub fn fit_to_frame(mut out: BridgeOutput) -> BridgeOutput {
-    if overshoot(&out).is_none() {
+    let total = frame_len(&mut out);
+    if total <= MAX_FRAME_BYTES {
         return out;
     }
     out.truncated = true;
     if !out.content.is_array() {
-        out.content = json!([out.content]);
+        out.content = json!([out.content.take()]);
     }
-    // Each text item's original text and how many bytes of it are kept.
-    let mut texts: HashMap<usize, (String, usize)> = HashMap::new();
-    for _ in 0..64 {
-        let Some(over) = overshoot(&out) else {
-            return out;
-        };
+    let original = encoded_len(&out.content);
+    // Bytes already dropped from each text item, by index.
+    let mut dropped: HashMap<usize, usize> = HashMap::new();
+    let mut over = total - MAX_FRAME_BYTES;
+    let passes = out.content.as_array().map_or(0, Vec::len) + 2;
+    for _ in 0..passes {
         let items = out.content.as_array_mut().expect("made an array above");
-        for (i, item) in items.iter().enumerate() {
-            if item.get("type").and_then(Value::as_str) == Some("text") && !texts.contains_key(&i) {
-                if let Some(t) = item.get("text").and_then(Value::as_str) {
-                    texts.insert(i, (t.to_string(), t.len()));
-                }
-            }
-        }
-        // The item with the most to give: a text is cut, anything else (an
-        // image) is replaced by a note.
-        let biggest = items
+        // Biggest first.
+        let mut order: Vec<(usize, usize)> = items
             .iter()
             .enumerate()
-            .map(|(i, v)| match texts.get(&i) {
-                Some((_, kept)) => (i, *kept, true),
-                None => (
-                    i,
-                    serde_json::to_string(v).map(|s| s.len()).unwrap_or(0),
-                    false,
-                ),
-            })
-            .filter(|(_, n, _)| *n > 0)
-            .max_by_key(|(_, n, _)| *n);
-        match biggest {
-            Some((i, _, true)) => {
-                let (orig, kept) = texts.get_mut(&i).expect("a text item");
-                // Every byte cut removes at least one encoded byte; the note
-                // and its line break add at most 64.
-                *kept = floor_boundary(orig, kept.saturating_sub(over + 64));
-                let text = format!("{}\n{}", &orig[..*kept], note(orig.len() - *kept));
-                items[i]["text"] = Value::String(text);
+            .map(|(i, v)| (i, encoded_len(v)))
+            .collect();
+        order.sort_by_key(|o| std::cmp::Reverse(o.1));
+        let mut need = over;
+        for (i, size) in order {
+            if need == 0 {
+                break;
             }
-            Some((i, n, false)) => {
-                items[i] = json!({"type": "text", "text": note(n)});
-                texts.insert(i, (String::new(), 0));
+            let item = &mut items[i];
+            let is_text = item.get("type").and_then(Value::as_str) == Some("text")
+                && item.get("text").is_some_and(Value::is_string);
+            if is_text {
+                let Some(Value::String(t)) = item.get_mut("text") else {
+                    unreachable!()
+                };
+                // Take off an earlier note before cutting again.
+                let prior = dropped.get(&i).copied().unwrap_or(0);
+                if prior > 0 {
+                    if let Some(pos) = t.rfind('\n') {
+                        t.truncate(pos);
+                    }
+                }
+                let before = json_str_len(t);
+                let cut = cut_text(t, need);
+                let total_dropped = prior + cut;
+                if total_dropped > 0 {
+                    t.push('\n');
+                    t.push_str(&note(total_dropped));
+                    dropped.insert(i, total_dropped);
+                }
+                let after = json_str_len(t);
+                need = need.saturating_sub(before.saturating_sub(after));
+            } else if size > NOTE_ROOM + 32 {
+                *item = json!({"type": "text", "text": note(size)});
+                need = need.saturating_sub(size - encoded_len(item));
             }
-            None => break,
         }
+        let n = frame_len(&mut out);
+        if n <= MAX_FRAME_BYTES {
+            return out;
+        }
+        over = n - MAX_FRAME_BYTES;
     }
     // Unreachable in practice; never send a frame that does not fit.
-    let n = serde_json::to_string(&out.content)
-        .map(|s| s.len())
-        .unwrap_or(0);
-    out.content = json!([{"type": "text", "text": note(n)}]);
+    out.content = json!([{"type": "text", "text": note(original)}]);
     out
 }
 
-/// A reply from the server: the JSON-RPC `result`, or an error message.
-type Reply = std::result::Result<Value, String>;
+/// Why a request got no usable `result`.
+#[derive(Debug)]
+enum Fail {
+    Msg(String),
+    /// The reply line was this many bytes, over [`MAX_LINE`]; none was kept.
+    TooBig(usize),
+}
+
+impl From<String> for Fail {
+    fn from(s: String) -> Fail {
+        Fail::Msg(s)
+    }
+}
+
+impl From<&str> for Fail {
+    fn from(s: &str) -> Fail {
+        Fail::Msg(s.into())
+    }
+}
+
+impl std::fmt::Display for Fail {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Fail::Msg(m) => f.write_str(m),
+            Fail::TooBig(n) => write!(
+                f,
+                "desktop-commander's reply was {n} bytes, over vrelay's {} MiB limit for one \
+                 message, so none of it was kept.\n{}",
+                MAX_LINE / (1024 * 1024),
+                note(*n)
+            ),
+        }
+    }
+}
+
+/// A reply from the server: the JSON-RPC `result`, or why not.
+type Reply = std::result::Result<Value, Fail>;
 
 struct Pending {
     waiting: HashMap<u64, oneshot::Sender<Reply>>,
@@ -429,7 +607,11 @@ impl Proc {
     }
 
     /// Sends a request; the reply arrives on the returned channel.
-    fn request(&self, method: &str, params: Value) -> Result<(u64, oneshot::Receiver<Reply>)> {
+    fn request(
+        &self,
+        method: &str,
+        params: Value,
+    ) -> std::result::Result<(u64, oneshot::Receiver<Reply>), Fail> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
         {
@@ -470,7 +652,7 @@ impl Proc {
                 }
                 Err(oneshot::error::TryRecvError::Empty) => {
                     self.forget(id);
-                    return Err(format!("desktop-commander did not answer {method} in time"));
+                    return Err(format!("desktop-commander did not answer {method} in time").into());
                 }
             }
         }
@@ -487,7 +669,7 @@ impl Proc {
                     "notifications/cancelled",
                     json!({"requestId": id, "reason": "deadline passed"}),
                 );
-                Err(format!("desktop-commander did not answer {method} in time"))
+                Err(format!("desktop-commander did not answer {method} in time").into())
             }
         }
     }
@@ -557,33 +739,186 @@ fn cut_for_log(s: &str) -> String {
     }
 }
 
+/// One line from desktop-commander's stdout.
+enum Line {
+    Text(Vec<u8>),
+    /// Over [`MAX_LINE`]: read through and dropped. Its first and last bytes
+    /// are kept to find the request id.
+    TooLong {
+        len: usize,
+        head: Vec<u8>,
+        tail: Vec<u8>,
+    },
+    Eof,
+}
+
+const KEEP_ENDS: usize = 1024;
+
+/// Reads lines with a hard cap: a line over [`MAX_LINE`] is streamed past,
+/// never held whole.
+struct LineReader<R> {
+    r: BufReader<R>,
+    peak: usize,
+}
+
+impl<R: Read> LineReader<R> {
+    fn new(r: R) -> Self {
+        LineReader {
+            r: BufReader::with_capacity(64 * 1024, r),
+            peak: 0,
+        }
+    }
+
+    /// The most bytes a line buffer has held.
+    #[cfg(test)]
+    fn peak_buffer(&self) -> usize {
+        self.peak
+    }
+
+    fn next_line(&mut self) -> Line {
+        let mut buf: Vec<u8> = Vec::new();
+        let mut len = 0usize;
+        let mut long: Option<(Vec<u8>, Vec<u8>)> = None;
+        loop {
+            let (used, done) = {
+                let avail = match self.r.fill_buf() {
+                    Ok(a) => a,
+                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(_) => &[][..],
+                };
+                if avail.is_empty() {
+                    // The end: a last line without a break still counts.
+                    return match long {
+                        Some((head, tail)) => Line::TooLong { len, head, tail },
+                        None if len > 0 => Line::Text(buf),
+                        None => Line::Eof,
+                    };
+                }
+                let (chunk, done) = match avail.iter().position(|b| *b == b'\n') {
+                    Some(i) => (&avail[..i], true),
+                    None => (avail, false),
+                };
+                len += chunk.len();
+                match long.as_mut() {
+                    None if buf.len() + chunk.len() <= MAX_LINE => {
+                        buf.extend_from_slice(chunk);
+                        self.peak = self.peak.max(buf.capacity());
+                    }
+                    None => {
+                        // Over the cap: keep the ends, free the rest.
+                        let mut head = buf[..buf.len().min(KEEP_ENDS)].to_vec();
+                        let room = KEEP_ENDS - head.len();
+                        head.extend_from_slice(&chunk[..chunk.len().min(room)]);
+                        let mut tail = Vec::new();
+                        keep_tail(&mut tail, &buf);
+                        keep_tail(&mut tail, chunk);
+                        buf = Vec::new();
+                        long = Some((head, tail));
+                    }
+                    Some((_, tail)) => keep_tail(tail, chunk),
+                }
+                (chunk.len() + usize::from(done), done)
+            };
+            self.r.consume(used);
+            if done {
+                return match long {
+                    Some((head, tail)) => Line::TooLong { len, head, tail },
+                    None => Line::Text(buf),
+                };
+            }
+        }
+    }
+}
+
+fn keep_tail(tail: &mut Vec<u8>, more: &[u8]) {
+    let more = &more[more.len().saturating_sub(KEEP_ENDS)..];
+    tail.extend_from_slice(more);
+    if tail.len() > KEEP_ENDS {
+        tail.drain(..tail.len() - KEEP_ENDS);
+    }
+}
+
+fn parse_id_at(s: &[u8]) -> Option<u64> {
+    let digits: Vec<u8> = s
+        .iter()
+        .take_while(|b| b.is_ascii_digit())
+        .copied()
+        .collect();
+    std::str::from_utf8(&digits).ok()?.parse().ok()
+}
+
+/// The request id of a reply too long to parse. The MCP SDK writes a result
+/// as `{"result":…,"jsonrpc":"2.0","id":N}` and an error as
+/// `{"jsonrpc":"2.0","id":N,"error":…}`, so the id is at the very end or the
+/// very start; anywhere else it could be part of the content.
+fn too_long_id(head: &[u8], tail: &[u8]) -> Option<u64> {
+    let t = tail.trim_ascii_end();
+    if let Some(body) = t.strip_suffix(b"}") {
+        if let Some(pos) = body.windows(5).rposition(|w| w == b"\"id\":") {
+            let digits = &body[pos + 5..];
+            if !digits.is_empty() && digits.iter().all(u8::is_ascii_digit) {
+                return parse_id_at(digits);
+            }
+        }
+    }
+    for prefix in [&b"{\"jsonrpc\":\"2.0\",\"id\":"[..], &b"{\"id\":"[..]] {
+        if let Some(rest) = head.strip_prefix(prefix) {
+            return parse_id_at(rest);
+        }
+    }
+    None
+}
+
+/// A too-long line that is a notification (a log): nobody waits for it.
+fn is_notification_head(head: &[u8]) -> bool {
+    head.starts_with(b"{\"jsonrpc\":\"2.0\",\"method\":") || head.starts_with(b"{\"method\":")
+}
+
 fn read_loop(
     stdout: std::process::ChildStdout,
     pending: &Mutex<Pending>,
     writer: &Mutex<Option<mpsc::Sender<String>>>,
     log: &Log,
 ) {
-    let mut r = BufReader::new(stdout);
-    let mut buf = Vec::new();
+    let mut r = LineReader::new(stdout);
     loop {
-        buf.clear();
-        match r.read_until(b'\n', &mut buf) {
-            Ok(0) | Err(_) => return,
-            Ok(_) => {}
-        }
+        let buf = match r.next_line() {
+            Line::Eof => return,
+            Line::Text(b) => b,
+            Line::TooLong { len, head, tail } => {
+                log(&format!(
+                    "desktop-commander wrote a {len}-byte line, over vrelay's {MAX_LINE}-byte limit; dropped it"
+                ));
+                if is_notification_head(&head) {
+                    continue;
+                }
+                let tx = {
+                    let mut p = pending.lock().unwrap();
+                    let id = too_long_id(&head, &tail)
+                        .filter(|id| p.waiting.contains_key(id))
+                        // No id to be found: the oldest call is the likeliest.
+                        .or_else(|| p.waiting.keys().min().copied());
+                    id.and_then(|id| p.waiting.remove(&id))
+                };
+                if let Some(tx) = tx {
+                    let _ = tx.send(Err(Fail::TooBig(len)));
+                }
+                continue;
+            }
+        };
         let line = String::from_utf8_lossy(&buf);
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        let Ok(msg) = serde_json::from_str::<Value>(line) else {
+        let Ok(mut msg) = serde_json::from_str::<Value>(line) else {
             log(&format!(
                 "desktop-commander wrote a non-JSON line: {}",
                 cut_for_log(line)
             ));
             continue;
         };
-        let id = msg.get("id");
+        let id = msg.get("id").cloned();
         match (msg.get("method").and_then(Value::as_str), id) {
             // A notification (`notifications/message` and the like): a log.
             (Some(method), None) => {
@@ -609,13 +944,14 @@ fn read_loop(
                     continue;
                 };
                 let tx = pending.lock().unwrap().waiting.remove(&id);
-                let reply = match (msg.get("result"), msg.get("error")) {
-                    (Some(r), _) => Ok(r.clone()),
-                    (None, Some(e)) => Err(e
-                        .get("message")
-                        .and_then(Value::as_str)
-                        .map(str::to_string)
-                        .unwrap_or_else(|| e.to_string())),
+                let reply = match (msg.get_mut("result").map(Value::take), msg.get("error")) {
+                    (Some(r), _) => Ok(r),
+                    (None, Some(e)) => Err(Fail::Msg(
+                        e.get("message")
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                            .unwrap_or_else(|| e.to_string()),
+                    )),
                     (None, None) => Err("desktop-commander sent an empty reply".into()),
                 };
                 if let Some(tx) = tx {
@@ -629,9 +965,11 @@ fn read_loop(
     }
 }
 
-/// Has `pid` exited? Blocks until it has, leaving the zombie in place
-/// (`WNOWAIT`), so the group id cannot be reused before the group is killed.
-fn wait_exited_no_reap(pid: i32) {
+/// Blocks until `pid` has exited, leaving the zombie in place (`WNOWAIT`),
+/// so the group id cannot be reused before the group is killed. An error
+/// (other than EINTR) means the exit cannot be watched: ECHILD when someone
+/// else reaped it, for instance with SIGCHLD ignored.
+fn wait_exited_no_reap(pid: i32) -> std::io::Result<()> {
     loop {
         // SAFETY: `info` is plain zeroed memory that waitid fills in.
         let ret = unsafe {
@@ -644,12 +982,19 @@ fn wait_exited_no_reap(pid: i32) {
             )
         };
         if ret == 0 {
-            return;
+            return Ok(());
         }
-        if std::io::Error::last_os_error().raw_os_error() != Some(libc::EINTR) {
-            return;
+        let e = std::io::Error::last_os_error();
+        if e.raw_os_error() != Some(libc::EINTR) {
+            return Err(e);
         }
     }
+}
+
+/// Only an exit seen with the zombie still held makes the group id ours to
+/// signal. After an error the leader may be gone and its id reused.
+fn may_kill_group_after(waited: &std::io::Result<()>) -> bool {
+    waited.is_ok()
 }
 
 fn wait_loop(
@@ -660,11 +1005,19 @@ fn wait_loop(
     log: &Log,
 ) {
     let pid = child.id() as i32;
-    wait_exited_no_reap(pid);
+    let waited = wait_exited_no_reap(pid);
+    if let Err(e) = &waited {
+        log(&format!(
+            "cannot watch desktop-commander (pid {pid}): {e}; not signalling its group, \
+             so anything it started may still run"
+        ));
+    }
     let status = {
         let mut st = exit.0.lock().unwrap();
         // Whatever it started dies with it, then the leader is reaped.
-        kill_group(pid, libc::SIGKILL);
+        if may_kill_group_after(&waited) {
+            kill_group(pid, libc::SIGKILL);
+        }
         let status = child.wait();
         st.reaped = true;
         status
@@ -744,15 +1097,60 @@ fn cursor_params(cursor: &Option<String>) -> Value {
     }
 }
 
+type Slot = Arc<tokio::sync::Mutex<Option<Arc<Proc>>>>;
+
 /// `desktop-commander` over stdio. Restarts on the next call after it dies.
 pub struct Bridge {
     cmd: BridgeCommand,
     log: Log,
-    proc: tokio::sync::Mutex<Option<Arc<Proc>>>,
+    proc: Slot,
+    /// Set by `stop`/drop; a start still under way then stops what it made.
+    stopped: Arc<AtomicBool>,
     /// The last tool list seen, for when a fresh one cannot be had.
     tools: Mutex<Vec<ToolDef>>,
     next_id: Arc<AtomicU64>,
-    pid: AtomicI32,
+}
+
+/// Starts a fresh server unless one is running. Holds the slot while it
+/// works, so one start serves every waiting call.
+async fn start_in(
+    slot: Slot,
+    cmd: BridgeCommand,
+    log: Log,
+    next_id: Arc<AtomicU64>,
+    stopped: Arc<AtomicBool>,
+) -> Result<Arc<Proc>> {
+    let mut g = slot.lock_owned().await;
+    if let Some(p) = g.as_ref() {
+        if !p.is_dead() {
+            return Ok(p.clone());
+        }
+    }
+    if stopped.load(Ordering::SeqCst) {
+        return Err("the bridge is stopped".into());
+    }
+    log("starting desktop-commander again");
+    let p = Arc::new(Proc::spawn(&cmd, &log, next_id)?);
+    let init = p
+        .request_async(
+            "initialize",
+            initialize_params(),
+            Instant::now() + INIT_TIMEOUT,
+        )
+        .await;
+    if let Err(e) = init {
+        let dead = p.clone();
+        tokio::task::spawn_blocking(move || dead.stop());
+        return Err(format!("desktop-commander did not start: {e}"));
+    }
+    p.notify("notifications/initialized", json!({}));
+    if stopped.load(Ordering::SeqCst) {
+        let dead = p.clone();
+        tokio::task::spawn_blocking(move || dead.stop());
+        return Err("the bridge is stopped".into());
+    }
+    *g = Some(p.clone());
+    Ok(p)
 }
 
 impl Bridge {
@@ -764,12 +1162,10 @@ impl Bridge {
 
     pub fn start_with_log(cmd: &BridgeCommand, log: Log) -> Result<Bridge> {
         check_node(&cmd.node)?;
-        if let Some(home) = std::env::var_os("HOME") {
-            secure_dc_config_dir(Path::new(&home))?;
-        }
+        secure_dc_config_dir(&dc_home(std::env::var_os("HOME"))?)?;
         let next_id = Arc::new(AtomicU64::new(1));
         let proc = Arc::new(Proc::spawn(cmd, &log, next_id.clone())?);
-        let started = (|| -> Result<Vec<ToolDef>> {
+        let started = (|| -> std::result::Result<Vec<ToolDef>, Fail> {
             proc.request_blocking("initialize", initialize_params(), INIT_TIMEOUT)?;
             proc.notify("notifications/initialized", json!({}));
             let mut all = Vec::new();
@@ -794,55 +1190,53 @@ impl Bridge {
         Ok(Bridge {
             cmd: cmd.clone(),
             log,
-            pid: AtomicI32::new(proc.pid),
-            proc: tokio::sync::Mutex::new(Some(proc)),
+            proc: Arc::new(tokio::sync::Mutex::new(Some(proc))),
+            stopped: Arc::new(AtomicBool::new(false)),
             tools: Mutex::new(tools),
             next_id,
         })
     }
 
-    /// The running server, starting a fresh one if the last one died.
-    async fn running(&self) -> Result<Arc<Proc>> {
-        let mut slot = self.proc.lock().await;
-        if let Some(p) = slot.as_ref() {
-            if !p.is_dead() {
-                return Ok(p.clone());
+    /// The running server, starting a fresh one if the last one died. Waits
+    /// no later than `deadline`; a start under way carries on without this
+    /// caller (it has its own 30 s limit), so a later call finds it running.
+    async fn running(&self, deadline: Instant) -> Result<Arc<Proc>> {
+        if let Ok(g) = self.proc.try_lock() {
+            if let Some(p) = g.as_ref() {
+                if !p.is_dead() {
+                    return Ok(p.clone());
+                }
             }
         }
-        (self.log)("starting desktop-commander again");
-        let p = Arc::new(Proc::spawn(&self.cmd, &self.log, self.next_id.clone())?);
-        let init = p
-            .request_async(
-                "initialize",
-                initialize_params(),
-                Instant::now() + INIT_TIMEOUT,
-            )
-            .await;
-        if let Err(e) = init {
-            let dead = p.clone();
-            tokio::task::spawn_blocking(move || dead.stop());
-            return Err(format!("desktop-commander did not start: {e}"));
+        let start = tokio::spawn(start_in(
+            self.proc.clone(),
+            self.cmd.clone(),
+            self.log.clone(),
+            self.next_id.clone(),
+            self.stopped.clone(),
+        ));
+        match tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), start).await {
+            Ok(Ok(r)) => r,
+            Ok(Err(e)) => Err(format!("desktop-commander did not start: {e}")),
+            Err(_) => Err(
+                "desktop-commander was starting again and was not ready in time for this call"
+                    .into(),
+            ),
         }
-        p.notify("notifications/initialized", json!({}));
-        self.pid.store(p.pid, Ordering::Relaxed);
-        *slot = Some(p.clone());
-        Ok(p)
     }
 
     /// `desktop-commander`'s own `tools/list` result, unfiltered (all pages
     /// joined into one `tools` array).
     pub async fn tools_raw(&self) -> Result<Value> {
-        let p = self.running().await?;
+        let deadline = Instant::now() + LIST_TIMEOUT;
+        let p = self.running(deadline).await?;
         let mut all = Vec::new();
         let mut cursor = None;
         for _ in 0..MAX_PAGES {
             let page = p
-                .request_async(
-                    "tools/list",
-                    cursor_params(&cursor),
-                    Instant::now() + LIST_TIMEOUT,
-                )
-                .await?;
+                .request_async("tools/list", cursor_params(&cursor), deadline)
+                .await
+                .map_err(|e| e.to_string())?;
             cursor = add_page(&mut all, &page);
             if cursor.is_none() {
                 break;
@@ -867,10 +1261,11 @@ impl Bridge {
         }
     }
 
-    /// Runs one tool. Never fails as such: a crash, a timeout or a refusal
-    /// comes back as an error result. The output is cut to fit one frame.
+    /// Runs one tool, all of it (a restart included) by `deadline`. Never
+    /// fails as such: a crash, a timeout or a refusal comes back as an error
+    /// result. The output is cut to fit one frame.
     pub async fn call(&self, tool: &str, args: Value, deadline: Instant) -> BridgeOutput {
-        let p = match self.running().await {
+        let p = match self.running(deadline).await {
             Ok(p) => p,
             Err(e) => return BridgeOutput::error(e),
         };
@@ -882,21 +1277,33 @@ impl Bridge {
             )
             .await;
         match reply {
-            Ok(result) => fit_to_frame(BridgeOutput::from_result(&result)),
-            Err(e) => fit_to_frame(BridgeOutput::error(e)),
+            Ok(result) => fit_to_frame(BridgeOutput::from_result(result)),
+            Err(e @ Fail::TooBig(_)) => BridgeOutput {
+                truncated: true,
+                ..BridgeOutput::error(e.to_string())
+            },
+            Err(e) => fit_to_frame(BridgeOutput::error(e.to_string())),
         }
     }
 
-    /// The running server's process id (its group id too), if any.
-    pub fn pid(&self) -> Option<i32> {
-        Some(self.pid.load(Ordering::Relaxed)).filter(|p| *p > 0)
+    /// Takes the server out of the slot. A start holding the slot sees
+    /// `stopped` and cleans up after itself.
+    fn take_proc(&self) -> Option<Arc<Proc>> {
+        self.stopped.store(true, Ordering::SeqCst);
+        for _ in 0..100 {
+            if let Ok(mut g) = self.proc.try_lock() {
+                return g.take();
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        None
     }
 
     /// Stops `desktop-commander` and everything it started: close stdin,
     /// wait 2 s, SIGTERM the group, wait 2 s, SIGKILL it. Blocks for up to
     /// about 6 s; from async code, call it on a blocking thread.
-    pub fn stop(mut self) {
-        if let Some(p) = self.proc.get_mut().take() {
+    pub fn stop(self) {
+        if let Some(p) = self.take_proc() {
             p.stop();
         }
     }
@@ -906,12 +1313,13 @@ impl Drop for Bridge {
     /// Dropped without `stop` (a panic, an early return): kill the group at
     /// once rather than leave commands running.
     fn drop(&mut self) {
-        if let Some(p) = self.proc.get_mut().take() {
+        if let Some(p) = self.take_proc() {
             p.writer.lock().unwrap().take();
             p.signal_group(libc::SIGKILL);
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1314,5 +1722,283 @@ mod tests {
         // A broken bridge.json is an error, not a silent fallback.
         std::fs::write(&bj, "{").unwrap();
         assert!(locate_from(&home, false, &[rf], Some(&path)).is_err());
+    }
+
+    /// A reader that yields `n` bytes of `q`, then `rest`, without ever
+    /// holding the `q`s in memory.
+    struct Gen {
+        left: usize,
+        rest: std::io::Cursor<Vec<u8>>,
+    }
+
+    impl std::io::Read for Gen {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            if self.left > 0 {
+                let n = buf.len().min(self.left);
+                buf[..n].fill(b'q');
+                self.left -= n;
+                return Ok(n);
+            }
+            self.rest.read(buf)
+        }
+    }
+
+    #[test]
+    fn line_reader_never_buffers_a_line_past_the_cap() {
+        let huge = 64 * 1024 * 1024;
+        let mut r = LineReader::new(Gen {
+            left: huge,
+            rest: std::io::Cursor::new(b"tail\"id\":7}\n{\"next\":1}\npartial".to_vec()),
+        });
+        match r.next_line() {
+            Line::TooLong { len, tail, .. } => {
+                assert_eq!(len, huge + "tail\"id\":7}".len());
+                assert!(
+                    tail.ends_with(b"\"id\":7}"),
+                    "{:?}",
+                    String::from_utf8_lossy(&tail)
+                );
+            }
+            _ => panic!("expected TooLong"),
+        }
+        // Memory stayed bounded by the cap, not the line.
+        assert!(r.peak_buffer() <= 2 * MAX_LINE, "{}", r.peak_buffer());
+        // The reader is still in step: the next line is whole.
+        match r.next_line() {
+            Line::Text(t) => assert_eq!(t, b"{\"next\":1}"),
+            _ => panic!("expected the next line"),
+        }
+        // A last line without a line break still comes out, then the end.
+        match r.next_line() {
+            Line::Text(t) => assert_eq!(t, b"partial"),
+            _ => panic!("expected the partial line"),
+        }
+        assert!(matches!(r.next_line(), Line::Eof));
+    }
+
+    #[test]
+    fn too_long_reply_id_is_found_at_either_end() {
+        assert_eq!(
+            too_long_id(
+                b"{\"result\":{\"x",
+                b"q\"}]},\"jsonrpc\":\"2.0\",\"id\":42}"
+            ),
+            Some(42)
+        );
+        assert_eq!(
+            too_long_id(b"{\"jsonrpc\":\"2.0\",\"id\":9,\"error\":{\"m", b"qq\"}}"),
+            Some(9)
+        );
+        // An "id" inside the content does not count.
+        assert_eq!(
+            too_long_id(b"{\"result\":{\"content\":[{\"id\":3,", b"qqq\"}]}}"),
+            None
+        );
+        assert!(is_notification_head(
+            b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\""
+        ));
+        assert!(!is_notification_head(b"{\"result\":{"));
+    }
+
+    #[tokio::test]
+    async fn a_line_over_the_cap_fails_its_call_and_the_bridge_carries_on() {
+        let (cmd, dir) = fake("b-huge");
+        let (log, lines) = logged();
+        let b = Bridge::start_with_log(&cmd, log).unwrap();
+        let pid = read_pid(&dir, "fake.pid");
+        let out = b.call("huge", json!({}), soon()).await;
+        assert!(out.is_error && out.truncated, "{out:?}");
+        let text = text_of(&out);
+        assert!(text.contains("[output truncated by vrelay: "), "{text}");
+        assert!(text.contains("67108"), "{text}");
+        // Same server, still answering.
+        let out = b.call("echo", json!({}), soon()).await;
+        assert_eq!(text_of(&out), "ok");
+        assert_eq!(read_pid(&dir, "fake.pid"), pid);
+        assert!(
+            lines
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|l| l.contains("over vrelay's")),
+            "not logged"
+        );
+        b.stop();
+    }
+
+    #[tokio::test]
+    async fn a_line_over_the_cap_without_an_id_fails_the_oldest_call() {
+        let (cmd, _dir) = fake("b-huge-noid");
+        let b = Bridge::start(&cmd).unwrap();
+        let t = Instant::now();
+        let out = b.call("huge_noid", json!({}), soon()).await;
+        assert!(out.is_error && out.truncated, "{out:?}");
+        assert!(t.elapsed() < Duration::from_secs(15), "{:?}", t.elapsed());
+        let out = b.call("echo", json!({}), soon()).await;
+        assert_eq!(text_of(&out), "ok");
+        b.stop();
+    }
+
+    #[tokio::test]
+    async fn the_deadline_covers_a_restart() {
+        let (cmd, dir) = fake("b-slowinit");
+        let b = Bridge::start(&cmd).unwrap();
+        // It dies; the next start takes 3 s to answer initialize.
+        let out = b.call("exit", json!({}), soon()).await;
+        assert!(out.is_error);
+        std::fs::write(dir.join("slow_init"), "").unwrap();
+        let short = || Instant::now() + Duration::from_millis(500);
+        let t = Instant::now();
+        let (a, c) = tokio::join!(
+            b.call("echo", json!({}), short()),
+            b.call("echo", json!({}), short())
+        );
+        assert!(
+            t.elapsed() < Duration::from_millis(1500),
+            "{:?}",
+            t.elapsed()
+        );
+        assert!(a.is_error && c.is_error, "{a:?} {c:?}");
+        assert!(text_of(&a).contains("in time"), "{}", text_of(&a));
+        // The start carried on without them; a later call finds it running.
+        let out = b.call("echo", json!({}), soon()).await;
+        assert_eq!(text_of(&out), "ok", "{out:?}");
+        b.stop();
+    }
+
+    #[test]
+    fn fitting_carries_the_overshoot_across_items() {
+        // 120 items of 60 KB of `"`: about 14 MB encoded. Most of it should
+        // survive, not collapse into one note.
+        let item = "\"".repeat(60_000);
+        let content: Vec<Value> = (0..120)
+            .map(|_| json!({"type": "text", "text": item}))
+            .collect();
+        let out = fit_to_frame(BridgeOutput {
+            content: Value::Array(content),
+            is_error: false,
+            truncated: false,
+        });
+        assert!(out.truncated);
+        let items = out.content.as_array().unwrap();
+        assert_eq!(items.len(), 120);
+        let frame = ToRelay::Result(CallResult {
+            call_id: "c".repeat(CALL_ID_RESERVE),
+            content: out.content.clone(),
+            is_error: false,
+            truncated: true,
+        });
+        let n = encode(&frame).expect("fits").len();
+        assert!(n > MAX_FRAME_BYTES - 64 * 1024, "kept only {n} bytes");
+    }
+
+    #[test]
+    fn cutting_multibyte_text_lands_on_a_character_boundary() {
+        // 4-byte characters that JSON does not escape: the cut point falls
+        // inside one unless it is moved back to a boundary.
+        let text = "😀".repeat(MAX_FRAME_BYTES / 4 + 1000) + "x";
+        let out = fit_to_frame(BridgeOutput {
+            content: json!([{"type": "text", "text": text}]),
+            is_error: false,
+            truncated: false,
+        });
+        let t = out.content[0]["text"].as_str().unwrap();
+        let (kept, note) = t.rsplit_once('\n').unwrap();
+        assert!(kept.chars().all(|c| c == '😀'));
+        let omitted: usize = note
+            .trim_start_matches("[output truncated by vrelay: ")
+            .trim_end_matches(" bytes omitted]")
+            .parse()
+            .unwrap();
+        assert_eq!(omitted + kept.len(), text.len());
+    }
+
+    #[test]
+    fn content_that_is_not_a_list_is_wrapped_then_cut() {
+        let out = fit_to_frame(BridgeOutput {
+            content: json!("z".repeat(MAX_FRAME_BYTES + 10)),
+            is_error: false,
+            truncated: false,
+        });
+        assert!(out.truncated);
+        let items = out.content.as_array().expect("a list");
+        assert_eq!(items.len(), 1);
+        assert!(items[0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("[output truncated by vrelay: "));
+    }
+
+    #[test]
+    fn a_wait_error_does_not_signal_the_group() {
+        // pid 1 is not our child: waitid fails with ECHILD.
+        let r = wait_exited_no_reap(1);
+        assert_eq!(
+            r.as_ref().err().and_then(|e| e.raw_os_error()),
+            Some(libc::ECHILD)
+        );
+        assert!(!may_kill_group_after(&r));
+        assert!(may_kill_group_after(&Ok(())));
+    }
+
+    #[test]
+    fn a_hanging_node_does_not_hang_the_start() {
+        let dir = test_dir("b-hangnode");
+        std::fs::create_dir_all(&dir).unwrap();
+        let node = dir.join("node");
+        std::fs::write(
+            &node,
+            "#!/bin/sh\nsleep 30 &\necho $! > \"$(dirname \"$0\")/child\"\nsleep 30\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&node, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let t = Instant::now();
+        let err = check_node_with(&node, Duration::from_millis(300)).unwrap_err();
+        assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
+        assert!(
+            err.contains("did not answer") && err.contains("nodejs.org"),
+            "{err}"
+        );
+        // Its child died with it.
+        assert!(pid_gone(read_pid(&dir, "child")));
+    }
+
+    #[test]
+    fn home_falls_back_to_the_user_database() {
+        // SAFETY: getpwuid returns a pointer into static storage, read at once.
+        let pw_dir = unsafe {
+            let pw = libc::getpwuid(libc::getuid());
+            assert!(!pw.is_null());
+            std::ffi::CStr::from_ptr((*pw).pw_dir)
+                .to_string_lossy()
+                .into_owned()
+        };
+        assert_eq!(dc_home(None).unwrap(), PathBuf::from(&pw_dir));
+        assert_eq!(dc_home(Some("".into())).unwrap(), PathBuf::from(&pw_dir));
+        assert_eq!(dc_home(Some("/x/y".into())).unwrap(), PathBuf::from("/x/y"));
+    }
+
+    /// The lock pins the version the code was checked against, with the
+    /// checksum spike D tested.
+    #[test]
+    fn dc_lock_pins_0_3_1_with_the_known_checksum() {
+        let lock = std::fs::read_to_string(runfile(
+            "apps/suites/vitruvian-relay/connector/dc/pnpm-lock.yaml",
+        ))
+        .unwrap();
+        assert!(
+            lock.contains(
+                "  .:\n    dependencies:\n      '@wonderwhy-er/desktop-commander':\n        specifier: 0.3.1\n        version: 0.3.1\n"
+            ),
+            "the importer does not pin 0.3.1"
+        );
+        let entry = format!(
+            "  '@wonderwhy-er/desktop-commander@0.3.1':\n    resolution: {{integrity: {DC_INTEGRITY}}}\n"
+        );
+        assert!(
+            lock.contains(&entry),
+            "integrity differs from {DC_INTEGRITY}"
+        );
+        assert_eq!(lock.matches("'@wonderwhy-er/desktop-commander@").count(), 2);
     }
 }

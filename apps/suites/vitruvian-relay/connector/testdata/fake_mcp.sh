@@ -23,7 +23,8 @@
 # "node": `fake_mcp.sh --version` prints a Node version; `fake_mcp.sh DIR`
 # serves MCP over stdin/stdout. DIR is the test's own folder: the fake writes
 # its pid to DIR/fake.pid and a started child's pid to DIR/sleep.pid. If
-# DIR/stubborn exists it ignores SIGTERM and the end of its input.
+# DIR/stubborn exists it ignores SIGTERM and the end of its input. If
+# DIR/slow_init exists it waits 3 s before answering `initialize`.
 #
 # Tools (by name in tools/call):
 #   echo         answers "ok" at once
@@ -33,6 +34,9 @@
 #   big          answers ~3 MB of text that is all `"` and line breaks
 #   exit         exits without answering
 #   fail         answers with a JSON-RPC error
+#   huge         answers with one 64 MiB line, its id last (as the MCP SDK
+#                orders a result: result, jsonrpc, id)
+#   huge_noid    writes one 64 MiB line with no id, then nothing
 
 if [ "${1:-}" = "--version" ]; then
 	echo "v22.12.0"
@@ -58,6 +62,7 @@ while IFS= read -r line; do
 	method=$(printf '%s' "$line" | sed -n 's/.*"method":"\([^"]*\)".*/\1/p')
 	case "$method" in
 	initialize)
+		if [ -e "$dir/slow_init" ]; then sleep 3; fi
 		reply "$id" '{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"fake","version":"0"}}'
 		printf '{"jsonrpc":"2.0","method":"notifications/message","params":{"level":"info","data":"fake started"}}\n'
 		;;
@@ -85,6 +90,16 @@ while IFS= read -r line; do
 		big)
 			body=$(head -c 1500000 /dev/zero | tr '\0' 'q' | sed 's/q/\\"\\n/g')
 			reply "$id" "$(text "$body")"
+			;;
+		huge)
+			printf '{"result":{"content":[{"type":"text","text":"'
+			head -c 67108864 /dev/zero | tr '\0' 'q'
+			printf '"}]},"jsonrpc":"2.0","id":%s}\n' "$id"
+			;;
+		huge_noid)
+			printf '{"result":{"content":[{"type":"text","text":"'
+			head -c 67108864 /dev/zero | tr '\0' 'q'
+			printf '"}]}}\n'
 			;;
 		exit) exit 3 ;;
 		fail) printf '{"jsonrpc":"2.0","id":%s,"error":{"code":-32000,"message":"it broke"}}\n' "$id" ;;

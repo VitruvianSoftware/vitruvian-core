@@ -88,7 +88,13 @@ if [[ "${1:-}" == "--dir" ]]; then
     echo "lock: $rel has no pnpm-workspace.yaml and package.json of its own" >&2
     exit 2
   fi
-  dir="$root/$rel"
+  # Resolved, it must still be inside the repository: an in-repo symlink to
+  # a workspace elsewhere would have pnpm write a lock outside it.
+  real_root="$(cd "$root" && pwd -P)"
+  if ! dir="$(cd "$root/$rel" && pwd -P)" || [[ "$dir/" != "$real_root/"* || "$dir" == "$real_root" ]]; then
+    echo "lock: --dir must resolve to a folder inside the repository, got $rel" >&2
+    exit 2
+  fi
   shift 2
 fi
 
