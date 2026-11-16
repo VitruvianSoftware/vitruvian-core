@@ -26,7 +26,7 @@ use vitruvian_relay_connector::config::Config;
 use vitruvian_relay_connector::keys::{load_or_create, public_key_b64};
 use vitruvian_relay_connector::link::{system_rng, Dialog, FileTokens, Link, Timing};
 use vitruvian_relay_connector::state::{
-    clear_sign_in, ensure_dir, now_unix, save_device, save_tokens,
+    clear_sign_in, ensure_dir, now_unix, save_new_device, save_new_sign_in,
 };
 use vitruvian_relay_connector::{rules, state, status, Result};
 
@@ -40,10 +40,12 @@ fn cmd_login(cfg: &Config) -> Result<()> {
     // The key first, so a failure here does not cost the person a sign-in.
     let key = load_or_create(&cfg.dir)?;
     let mut tokens = login(cfg)?;
-    save_tokens(&cfg.dir, &tokens)?;
+    // Under the sign-in lock, so a running agent's refresh finishing at
+    // the same moment cannot write the old session over this one.
+    save_new_sign_in(&cfg.dir, &tokens)?;
     let access = fresh_token(cfg, &mut tokens)?;
     let device = register_device(cfg, &access, &public_key_b64(&key))?;
-    save_device(&cfg.dir, &device)?;
+    save_new_device(&cfg.dir, &device)?;
     println!("Signed in. This Mac is registered with the relay.");
     println!();
     println!("To use it from Claude, add a custom connector with:");

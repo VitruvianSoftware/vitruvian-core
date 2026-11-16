@@ -1801,7 +1801,7 @@ fn file_tokens_stop_asking_once_the_issuer_says_no() {
     let (n, o) = (tries.clone(), outage.clone());
     let ft = FileTokens::with_refresh(
         cfg,
-        Box::new(move |_, t| {
+        Box::new(move |_, t, _| {
             n.fetch_add(1, Ordering::SeqCst);
             if o.load(Ordering::SeqCst) {
                 Err(RefreshError::Unavailable("down".into()))
@@ -2625,6 +2625,27 @@ async fn a_pause_stops_a_cleared_call_but_not_a_running_one() {
     until("it to start", || tools.count() == 1).await;
     pause_now(&dir);
     run.reload.send(()).await.unwrap();
+    let line = until_logged(&dir, "running when paused").await;
+    assert_eq!(line["call_id"], "running");
+    // Last review L2: another reload while still paused (the call still
+    // running) does not log it again.
+    let before = crate::status::reloads(&dir, now_unix());
+    run.reload.send(()).await.unwrap();
+    let d = dir.clone();
+    tokio::task::spawn_blocking(move || crate::status::wait_for_reload(&d, before, WAIT))
+        .await
+        .unwrap()
+        .unwrap();
+    // The second reload's line, if any, was queued before its status
+    // write; give the calls log writer a moment.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(tools.count(), 1);
+    let n = log_lines(&dir)
+        .iter()
+        .filter(|l| l["decision"] == "running when paused")
+        .count();
+    assert_eq!(n, 1, "logged again on a repeated reload");
+    // And its result still comes.
     let r = loop {
         match c.recv().await {
             ToRelay::Result(r) => break r,
@@ -2634,6 +2655,4 @@ async fn a_pause_stops_a_cleared_call_but_not_a_running_one() {
     };
     assert_eq!(r.call_id, "running");
     assert!(!r.is_error, "{}", text(&r));
-    let line = until_logged(&dir, "running when paused").await;
-    assert_eq!(line["call_id"], "running");
 }

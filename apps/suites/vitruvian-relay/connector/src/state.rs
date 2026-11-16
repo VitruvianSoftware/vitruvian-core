@@ -202,13 +202,19 @@ pub fn save_tokens(dir: &Path, t: &Tokens) -> Result<()> {
 /// `Ok(None)` when nobody is signed in.
 pub fn load_tokens(dir: &Path) -> Result<Option<Tokens>> {
     let path = token_path(dir);
-    let text = match std::fs::read_to_string(&path) {
-        Ok(t) => t,
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(format!("read {}: {e}", path.display())),
     };
-    let v: Value = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(Some(Tokens {
+    parse_tokens(dir, &bytes).map(Some)
+}
+
+/// `token.json`'s contents (`bytes`, already read) as tokens.
+pub fn parse_tokens(dir: &Path, bytes: &[u8]) -> Result<Tokens> {
+    let path = token_path(dir);
+    let v: Value = serde_json::from_slice(bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(Tokens {
         access_token: str_field(&v, "access_token")
             .ok_or_else(|| format!("{} has no access_token", path.display()))?,
         refresh_token: str_field(&v, "refresh_token"),
@@ -216,7 +222,7 @@ pub fn load_tokens(dir: &Path) -> Result<Option<Tokens>> {
             .get("expires_at_unix")
             .and_then(Value::as_u64)
             .ok_or_else(|| format!("{} has no expiry", path.display()))?,
-    }))
+    })
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -331,6 +337,20 @@ pub fn save_tokens_if_unchanged(dir: &Path, before: &[u8], t: &Tokens) -> Result
         }
         _ => Ok(false),
     }
+}
+
+/// `vrelay login`'s save of a new sign-in, under [`sign_in_lock`]: a
+/// refresh that has checked `token.json` and is about to write finishes
+/// first, and this lands last.
+pub fn save_new_sign_in(dir: &Path, t: &Tokens) -> Result<()> {
+    let _lock = sign_in_lock(dir)?;
+    save_tokens(dir, t)
+}
+
+/// `vrelay login`'s save of the device record, under [`sign_in_lock`].
+pub fn save_new_device(dir: &Path, d: &DeviceInfo) -> Result<()> {
+    let _lock = sign_in_lock(dir)?;
+    save_device(dir, d)
 }
 
 /// Signs out: removes the token and the device record. The device key stays,
@@ -477,6 +497,29 @@ mod tests {
             .unwrap();
         assert!(!cap_log(g.as_raw_fd(), &other, 100).unwrap());
         assert_eq!(std::fs::metadata(&other).unwrap().len(), 200);
+    }
+
+    /// Last review L1: `vrelay login` saves its new sign-in under the
+    /// sign-in lock, so a refresh holding it (between its check and its
+    /// write) finishes first and the login's save lands last.
+    #[test]
+    fn a_new_sign_in_waits_for_the_sign_in_lock() {
+        let dir = test_dir("signin-lock");
+        ensure_dir(&dir).unwrap();
+        let t = Tokens {
+            access_token: "login".into(),
+            refresh_token: None,
+            expires_at_unix: 1,
+        };
+        let held = sign_in_lock(&dir).unwrap();
+        let d = dir.clone();
+        let t2 = t.clone();
+        let login = std::thread::spawn(move || save_new_sign_in(&d, &t2));
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(!token_path(&dir).exists(), "saved while the lock was held");
+        drop(held);
+        login.join().unwrap().unwrap();
+        assert_eq!(load_tokens(&dir).unwrap(), Some(t));
     }
 
     /// Re-review N5: the log folder and desktop-commander's folder must not

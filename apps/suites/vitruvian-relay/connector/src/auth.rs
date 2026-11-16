@@ -296,6 +296,18 @@ pub fn fresh_token_checked(
     cfg: &Config,
     tokens: &mut Tokens,
 ) -> std::result::Result<String, RefreshError> {
+    fresh_token_checked_from(cfg, tokens, None)
+}
+
+/// [`fresh_token_checked`] for `tokens` read from `before`, the bytes of
+/// `token.json` they came from: the result is saved only while the file
+/// still holds exactly those (a logout or a new login since is never
+/// undone). `None`: read the file now.
+pub fn fresh_token_checked_from(
+    cfg: &Config,
+    tokens: &mut Tokens,
+    before: Option<&[u8]>,
+) -> std::result::Result<String, RefreshError> {
     if !needs_refresh(tokens, now_unix()) {
         return Ok(tokens.access_token.clone());
     }
@@ -306,10 +318,13 @@ pub fn fresh_token_checked(
     // What the refresh starts from: its result is saved only over this.
     // (A file that cannot be read at all is not a sign-out: the result is
     // used, and saving it is tried as before.)
-    let before = match std::fs::read(crate::state::token_path(&cfg.dir)) {
-        Ok(b) => Some(Some(b)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(_) => Some(None),
+    let before = match before {
+        Some(b) => Some(Some(b.to_vec())),
+        None => match std::fs::read(crate::state::token_path(&cfg.dir)) {
+            Ok(b) => Some(Some(b)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(_) => Some(None),
+        },
     };
     let agent = agent();
     let mut endpoints = None;
@@ -544,6 +559,27 @@ mod tests {
                 assert!(!token_path(&dir).exists(), "the logout was undone");
             }
         }
+    }
+
+    /// Last review L1, second window: the refresh is given the very bytes
+    /// its tokens were read from. A login that replaced `token.json` after
+    /// they were read is never overwritten by the old session's refresh.
+    #[test]
+    fn a_refresh_saves_only_over_the_bytes_it_was_given() {
+        let (base, _calls, _) = token_server(vec![ok_answer()]);
+        let dir = test_dir("auth-before-bytes");
+        save_tokens(&dir, &near_expiry()).unwrap();
+        let read = std::fs::read(token_path(&dir)).unwrap();
+        let newer = Tokens {
+            access_token: "newer-login".into(),
+            refresh_token: Some("newer-refresh".into()),
+            expires_at_unix: now_unix() + 3600,
+        };
+        save_tokens(&dir, &newer).unwrap();
+        let mut t = near_expiry();
+        let r = fresh_token_checked_from(&cfg_for(&base, dir.clone()), &mut t, Some(&read));
+        assert!(matches!(r, Err(RefreshError::Rejected(_))), "{r:?}");
+        assert_eq!(load_tokens(&dir).unwrap(), Some(newer));
     }
 
     fn ok_answer() -> (u16, String) {

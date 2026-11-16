@@ -70,14 +70,14 @@ use vitruvian_relay_protocol::{
     CALL_BUDGET_SECS, IN_CALL_PING_SECS, MAX_FRAME_BYTES, MAX_MISSED_PINGS, PING_SECS, PROTOCOL,
 };
 
-use crate::auth::{fresh_token_checked, RefreshError};
+use crate::auth::{fresh_token_checked_from, RefreshError};
 use crate::bridge::{Bridge, BridgeOutput, Log, CALL_ID_RESERVE};
 use crate::config::{client_config, Config};
 use crate::keys::sign_hello;
 use crate::prompt::{summarize, Waited};
 use crate::rules::{self, Decision, Rules};
 use crate::state::{
-    device_path, ensure_dir, load_device, load_tokens, status_path, sync_dir, token_path,
+    device_path, ensure_dir, load_device, parse_tokens, status_path, sync_dir, token_path,
     write_private, Tokens,
 };
 
@@ -319,8 +319,9 @@ pub trait TokenSource: Send + Sync + 'static {
     }
 }
 
+/// Refreshes the tokens read from the given `token.json` bytes.
 type Refresh =
-    dyn Fn(&Config, &mut Tokens) -> std::result::Result<String, RefreshError> + Send + Sync;
+    dyn Fn(&Config, &mut Tokens, &[u8]) -> std::result::Result<String, RefreshError> + Send + Sync;
 
 /// `token.json`, refreshed (and saved) when it is close to expiry. Once the
 /// issuer has said no, the same `token.json` is never sent to it again: the
@@ -334,7 +335,10 @@ pub struct FileTokens {
 
 impl FileTokens {
     pub fn new(cfg: Config) -> FileTokens {
-        FileTokens::with_refresh(cfg, Box::new(fresh_token_checked))
+        FileTokens::with_refresh(
+            cfg,
+            Box::new(|cfg, t, before| fresh_token_checked_from(cfg, t, Some(before))),
+        )
     }
 
     pub fn with_refresh(cfg: Config, refresh: Box<Refresh>) -> FileTokens {
@@ -365,12 +369,13 @@ impl TokenSource for FileTokens {
             *self.parked.lock().unwrap() = Some((bytes.clone(), why.clone()));
             Err(TokenError::SignInAgain(why))
         };
-        let mut t = match load_tokens(&self.cfg.dir) {
-            Ok(Some(t)) => t,
-            Ok(None) => return Ok(None),
+        // From the bytes just read, so the refresh can save over exactly
+        // those and nothing newer.
+        let mut t = match parse_tokens(&self.cfg.dir, &bytes) {
+            Ok(t) => t,
             Err(e) => return park(format!("{} ({e})", crate::auth::SIGN_IN_AGAIN)),
         };
-        match (self.refresh)(&self.cfg, &mut t) {
+        match (self.refresh)(&self.cfg, &mut t, &bytes) {
             Ok(token) => {
                 *self.parked.lock().unwrap() = None;
                 Ok(Some(token))
@@ -1459,7 +1464,9 @@ impl<T: Tools, A: Asker> Shared<T, A> {
             }
             Ok(r) => {
                 let visible = r.rules.visible(&tools);
-                let paused = r.rules.paused;
+                // Only when it becomes paused: a reload while already
+                // paused has nothing new to close or log.
+                let paused = r.rules.paused && !current.paused;
                 *self.rules_state.lock().unwrap() = rules_state(&r.rules, n, None);
                 *self.rules.lock().unwrap() = r.rules;
                 if paused {
