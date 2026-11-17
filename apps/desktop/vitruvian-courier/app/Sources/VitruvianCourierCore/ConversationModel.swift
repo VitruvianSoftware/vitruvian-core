@@ -1185,14 +1185,10 @@ public final class ConversationModel: ObservableObject {
     /// in the open chat's timeline (the newest, from the chat's own account). "" when the app has seen none.
     public func ownAvatarPath(for info: RoomInfoResult) -> String {
         // Only my messages from the same account as this chat: my picture differs between accounts and networks.
-        let chatRow = chat(info.roomID)
-        let sameAccount = events.values.filter { event in
-            guard let row = chat(event.roomID) else { return event.roomID == info.roomID }
-            guard row.network == (chatRow?.network ?? info.network) else { return false }
-            let login = chatRow?.loginName ?? ""
-            return login.isEmpty || row.loginName.isEmpty || row.loginName == login
-        }
-        let fromTimeline = ChatInfoPresentation.newestOwnAvatar(in: sameAccount)
+        let fromTimeline = ChatInfoPresentation.ownAvatarFromTimeline(
+            events: Array(events.values), chatRoomID: info.roomID, chatNetwork: info.network,
+            row: { [self] in chat($0) }
+        )
         return ChatInfoPresentation.ownAvatarPath(in: info, fallback: fromTimeline)
     }
 

@@ -251,7 +251,7 @@ public struct ChatInfoPane: View {
             count: nil,
             isExpanded: $notesExpanded
         ) {
-            ChatInfoNotesField(roomID: info.roomID, store: notesStore ?? .shared)
+            ChatInfoNotesField(roomID: info.roomID, store: notesStore)
         }
     }
 
@@ -1095,22 +1095,22 @@ extension EnvironmentValues {
 }
 
 private struct ChatInfoRowProbeModifier: ViewModifier {
-    let name: String
+    let name: () -> String
     @Environment(\.chatInfoRowProbe) private var probe
 
     func body(content: Content) -> some View {
-        content.onAppear { probe?(name) }
+        content.onAppear { probe?(name()) }
     }
 }
 
 extension View {
-    fileprivate func chatInfoRowProbe(_ name: String) -> some View {
+    fileprivate func chatInfoRowProbe(_ name: @autoclosure @escaping () -> String) -> some View {
         modifier(ChatInfoRowProbeModifier(name: name))
     }
 }
 #else
 extension View {
-    fileprivate func chatInfoRowProbe(_ name: String) -> some View { self }
+    fileprivate func chatInfoRowProbe(_ name: @autoclosure @escaping () -> String) -> some View { self }
 }
 #endif
 
@@ -1153,13 +1153,19 @@ struct ChatInfoNotesField: View {
     let roomID: String
     @ObservedObject var store: ChatNotesStore
 
+    init(roomID: String, store: ChatNotesStore? = nil) {
+        self.roomID = roomID
+        self.store = store ?? .shared
+    }
+
+    /// The text of this chat's note: read from and written to the store, which every window on the chat shares.
+    var text: Binding<String> {
+        Binding(get: { store.note(for: roomID) }, set: { store.setNote($0, for: roomID) })
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            TextField(
-                String(localized: "Notes"),
-                text: Binding(get: { store.note(for: roomID) }, set: { store.setNote($0, for: roomID) }),
-                axis: .vertical
-            )
+            TextField(String(localized: "Notes"), text: text, axis: .vertical)
             .textFieldStyle(.plain)
             .font(.callout)
             .lineLimit(3...10)

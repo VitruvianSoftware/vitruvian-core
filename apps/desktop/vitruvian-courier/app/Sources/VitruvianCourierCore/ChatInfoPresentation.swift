@@ -143,6 +143,22 @@ public enum ChatInfoPresentation {
             .max { ($0.ts, $0.seq) < ($1.ts, $1.seq) }?.senderAvatarPath ?? ""
     }
 
+    /// My newest picture among the open chat's `events`, from messages of the same account as the chat (`chatRoomID`).
+    /// An account is a real match only: the same network and the same, non-empty account name. A message in the chat
+    /// itself always counts. With no account known for the chat, nothing from other rooms is taken: "" (the row then
+    /// shows initials).
+    public static func ownAvatarFromTimeline(
+        events: [Event], chatRoomID: String, chatNetwork: String, row: (String) -> InboxRow?
+    ) -> String {
+        let chatLogin = row(chatRoomID)?.loginName ?? ""
+        let sameAccount = events.filter { event in
+            if event.roomID == chatRoomID { return true }
+            guard !chatLogin.isEmpty, let other = row(event.roomID) else { return false }
+            return other.network == chatNetwork && other.loginName == chatLogin
+        }
+        return newestOwnAvatar(in: sameAccount)
+    }
+
     /// The picture a Participants row shows: the member's own, else (for me) `ownAvatarPath`.
     public static func participantAvatarPath(for member: Member, ownAvatarPath: String) -> String {
         if !member.avatarPath.isEmpty { return member.avatarPath }

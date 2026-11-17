@@ -56,6 +56,44 @@ final class ChatInfoPresentationTests: XCTestCase {
         XCTAssertNil(try JSONDecoder().decode(RoomLink.self, from: old).title, "an engine before the field")
     }
 
+    func testTimelineAvatarComesOnlyFromTheChatsOwnAccount() {
+        func row(_ id: String, network: String, login: String) -> InboxRow {
+            InboxRow(roomID: id, network: network, name: id, avatarPath: "", isDirect: true, lastTS: 0, preview: "",
+                     previewKind: .text, previewMine: false, unread: 0, muted: false, archived: false,
+                     lowPriority: false, hidden: false, markedUnread: false, request: false, loginName: login)
+        }
+        func mine(_ room: String, _ avatar: String, ts: Int64) -> Event {
+            var e = makeEvent(id: "$\(room)\(ts)", msgtype: "m.text", sender: Timeline.meUserID, senderName: "Me",
+                              senderAvatarPath: avatar, mine: true)
+            e.roomID = room
+            e.ts = ts
+            return e
+        }
+        let rows = [
+            "!chat": row("!chat", network: "whatsapp", login: "work-phone"),
+            "!sameAccount": row("!sameAccount", network: "whatsapp", login: "work-phone"),
+            "!otherAccount": row("!otherAccount", network: "whatsapp", login: "personal-phone"),
+            "!otherNetwork": row("!otherNetwork", network: "signal", login: "work-phone"),
+            "!noLogin": row("!noLogin", network: "whatsapp", login: ""),
+        ]
+        func avatar(_ events: [Event], chat: String = "!chat") -> String {
+            ChatInfoPresentation.ownAvatarFromTimeline(events: events, chatRoomID: chat,
+                                                       chatNetwork: rows[chat]?.network ?? "whatsapp") { rows[$0] }
+        }
+        // Two accounts on one network: the other account's newer picture is not mine here.
+        XCTAssertEqual(avatar([mine("!sameAccount", "/work.png", ts: 10), mine("!otherAccount", "/personal.png", ts: 99)]),
+                       "/work.png")
+        XCTAssertEqual(avatar([mine("!otherAccount", "/personal.png", ts: 99)]), "", "initials, not another account's face")
+        XCTAssertEqual(avatar([mine("!otherNetwork", "/signal.png", ts: 99)]), "")
+        XCTAssertEqual(avatar([mine("!noLogin", "/unknown.png", ts: 99)]), "", "an unknown account is not a match")
+        XCTAssertEqual(avatar([mine("!chat", "/here.png", ts: 1)]), "/here.png", "a message in the chat itself counts")
+        // A chat whose own account is unknown takes nothing from other rooms.
+        XCTAssertEqual(avatar([mine("!sameAccount", "/work.png", ts: 10)], chat: "!noLogin"), "")
+        XCTAssertEqual(avatar([mine("!noLogin", "/own.png", ts: 10)], chat: "!noLogin"), "/own.png")
+        // Newest wins among the matches.
+        XCTAssertEqual(avatar([mine("!chat", "/old.png", ts: 1), mine("!sameAccount", "/new.png", ts: 5)]), "/new.png")
+    }
+
     func testOwnAvatarComesFromMemberThenMyMessagesThenFallback() {
         let me = Timeline.meUserID
         func info(meAvatar: String = "", media: [Event] = []) -> RoomInfoResult {

@@ -6185,6 +6185,77 @@ final class ViewSnapshotTests: XCTestCase {
         XCTAssertEqual(store.note(for: "!other:courier.local"), "Somebody else's")
     }
 
+    private final class NotesRoom: ObservableObject {
+        @Published var roomID: String
+        init(_ roomID: String) { self.roomID = roomID }
+    }
+
+    private struct NotesFieldHost: View {
+        @ObservedObject var room: NotesRoom
+        var body: some View { ChatInfoNotesField(roomID: room.roomID).padding(8) }
+    }
+
+    private func notesFile(_ url: URL) -> [String: String]? {
+        (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode([String: String].self, from: $0) }
+    }
+
+    /// Two Notes fields on one chat (two windows) read and write the one app store, and see each other's edits.
+    func testChatInfoNotesFieldsShareTheAppStore() throws {
+        let store = ChatNotesStore(fileURL: nil, schedule: { _, _ in {} }, notificationCenter: NotificationCenter())
+        ChatNotesStore.useSharedStoreForTesting(store)
+        defer { ChatNotesStore.useSharedStoreForTesting(nil) }
+        let first = ChatInfoNotesField(roomID: "!a")
+        let second = ChatInfoNotesField(roomID: "!a")
+        XCTAssertTrue(first.store === ChatNotesStore.shared)
+        XCTAssertTrue(second.store === ChatNotesStore.shared)
+        first.text.wrappedValue = "typed in the first window"
+        XCTAssertEqual(second.text.wrappedValue, "typed in the first window")
+        second.text.wrappedValue = "then the second"
+        XCTAssertEqual(first.text.wrappedValue, "then the second")
+        XCTAssertEqual(ChatNotesStore.shared.note(for: "!a"), "then the second")
+        XCTAssertEqual(ChatInfoNotesField(roomID: "!b").text.wrappedValue, "", "another chat has its own note")
+    }
+
+    /// Switching to another chat saves the note being typed under the chat it was typed in.
+    func testChatInfoNotesSavesWhenTheChatSwitches() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("notes-switch-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent(ChatNotesStore.fileName)
+        let store = ChatNotesStore(fileURL: url, schedule: { _, _ in {} }, notificationCenter: NotificationCenter())
+        ChatNotesStore.useSharedStoreForTesting(store)
+        defer { ChatNotesStore.useSharedStoreForTesting(nil) }
+        let room = NotesRoom("!a")
+        let (window, host) = hostChatInfoWindow(NotesFieldHost(room: room), size: NSSize(width: 300, height: 160))
+        defer {
+            window.orderOut(nil)
+            window.contentView = nil
+        }
+        store.setNote("About A", for: "!a")
+        XCTAssertNil(notesFile(url), "the pause hasn't ended: nothing written yet")
+        room.roomID = "!b"
+        settleChatInfoHost(host)
+        await store.waitForFileWork()
+        XCTAssertEqual(notesFile(url), ["!a": "About A"])
+    }
+
+    /// Closing the pane saves the note.
+    func testChatInfoNotesSavesWhenThePaneCloses() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("notes-close-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent(ChatNotesStore.fileName)
+        let store = ChatNotesStore(fileURL: url, schedule: { _, _ in {} }, notificationCenter: NotificationCenter())
+        ChatNotesStore.useSharedStoreForTesting(store)
+        defer { ChatNotesStore.useSharedStoreForTesting(nil) }
+        let (window, host) = hostChatInfoWindow(NotesFieldHost(room: NotesRoom("!a")), size: NSSize(width: 300, height: 160))
+        store.setNote("Typed, then closed", for: "!a")
+        XCTAssertNil(notesFile(url))
+        window.contentView = nil
+        settleChatInfoHost(host)
+        window.orderOut(nil)
+        await store.waitForFileWork()
+        XCTAssertEqual(notesFile(url), ["!a": "Typed, then closed"])
+    }
+
     /// The Labels row shows this chat's labels as chips and offers Add to a Label.
     func testChatInfoLabelsSectionShowsAssignedLabelsAndAddMenu() throws {
         let work = Space(spaceID: "label:1", kind: .label, title: "Work", labelID: 1, color: 7, icon: "briefcase")
