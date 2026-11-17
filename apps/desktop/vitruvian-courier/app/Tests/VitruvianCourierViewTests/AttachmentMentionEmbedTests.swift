@@ -8,11 +8,11 @@ import XCTest
 
 @testable import VitruvianCourier
 
-/// A long file name has room in its chip, mentions read in light and dark (also inside a quote), and a YouTube card
-/// shows its video's picture. Look at attachment-long-name-*, mention-*, embed-thumbnail-*.
 @MainActor
 final class SizeBox { var size = CGSize.zero }
 
+/// A long file name has room in its chip, mentions read in light and dark (also inside a quote), and a YouTube card
+/// shows its video's picture. Look at attachment-long-name-*, mention-*, embed-thumbnail-*.
 @MainActor
 final class AttachmentMentionEmbedTests: XCTestCase {
     // MARK: - Pixels
@@ -83,6 +83,58 @@ final class AttachmentMentionEmbedTests: XCTestCase {
         }
     }
 
+    private func chip(_ message: TimelineMessage) -> some View {
+        FileAttachmentChip(message: message).frame(maxWidth: .infinity, alignment: .leading).padding(10)
+    }
+
+    private func fileMessage(_ name: String, id: String) throws -> TimelineMessage {
+        var event = Fixture.event(id, mine: false, ts: 25, content: [
+            "msgtype": .string("m.file"), "body": .string(name), "filename": .string(name),
+            "info": .object(["mimetype": .string("text/html"), "size": .int(48_000)]),
+        ], name: "Alice Example")
+        event.mediaPath = ""
+        return try XCTUnwrap(Fixture.messages([event]).first)
+    }
+
+    /// Whether two renders draw the same pixels in the name's column (x in points from the left edge of each).
+    private func nameColumnMatches(_ a: String, widthA: CGFloat, _ b: String, widthB: CGFloat) throws -> Bool {
+        func rep(_ name: String) throws -> NSBitmapImageRep {
+            try XCTUnwrap(NSBitmapImageRep(data: Data(contentsOf: Snapshot.directory.appendingPathComponent("\(name)-light.png"))))
+        }
+        let (ra, rb) = (try rep(a), try rep(b))
+        let (sa, sb) = (Double(ra.pixelsWide) / widthA, Double(rb.pixelsWide) / widthB)
+        XCTAssertEqual(sa, sb, accuracy: 0.01)
+        let height = min(ra.pixelsHigh, rb.pixelsHigh)
+        // The name starts after the picture's padding, the chip's padding, its badge and the gap: 66pt.
+        for y in 0 ..< height {
+            for x in Int(66 * sa) ..< Int(166 * sa) {
+                guard let ca = ra.colorAt(x: x, y: y)?.usingColorSpace(.sRGB),
+                      let cb = rb.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                if abs(ca.redComponent - cb.redComponent) > 0.01 || abs(ca.greenComponent - cb.greenComponent) > 0.01
+                    || abs(ca.blueComponent - cb.blueComponent) > 0.01 { return false }
+            }
+        }
+        return true
+    }
+
+    func testANameThatFitsIsShownInFullAndALongOneLosesItsMiddle() throws {
+        XCTAssertEqual(FileAttachmentChip.nameTruncation, .middle)
+        let medium = try fileMessage("Report_final.html", id: "$file-medium")
+        let long = try fileMessage("bucket_pipeline_monkey_report_with_a_very_long_name_indeed.html", id: "$file-long2")
+        // The reference is a chip with more room than any name needs.
+        try Snapshot.render("chip-medium-wide", width: 480) { chip(medium) }
+        try Snapshot.render("chip-medium-fits", width: 380) { chip(medium) }
+        try Snapshot.render("chip-medium-tight", width: 230) { chip(medium) }
+        XCTAssertTrue(try nameColumnMatches("chip-medium-fits", widthA: 380, "chip-medium-wide", widthB: 480),
+                      "a name that fits is drawn whole")
+        XCTAssertFalse(try nameColumnMatches("chip-medium-tight", widthA: 230, "chip-medium-wide", widthB: 480),
+                       "with no room the same name is cut (so the check above can tell)")
+        try Snapshot.render("chip-long-wide", width: 480) { chip(long) }
+        try Snapshot.render("chip-long-narrow", width: 300) { chip(long) }
+        XCTAssertFalse(try nameColumnMatches("chip-long-narrow", widthA: 300, "chip-long-wide", widthB: 480),
+                       "a long name is cut when the bubble is narrow")
+    }
+
     // MARK: - 3. Mentions
 
     private func mentionView(quoted: Bool, onBubble: Bool, userID: String = "@ann:courier.local") -> some View {
@@ -102,39 +154,83 @@ final class AttachmentMentionEmbedTests: XCTestCase {
         0.2126 * linear(Double(c.redComponent)) + 0.7152 * linear(Double(c.greenComponent)) + 0.0722 * linear(Double(c.blueComponent))
     }
 
-    /// The contrast between the mention's text (the pixel furthest from its background) and its tint: the second most
-    /// common colour in the picture, after the plain background around it.
-    private func mentionContrast(_ name: String, _ suffix: String) throws -> Double {
-        let url = Snapshot.directory.appendingPathComponent("\(name)-\(suffix).png")
-        let rep = try XCTUnwrap(NSBitmapImageRep(data: Data(contentsOf: url)))
-        var counts: [String: (Int, NSColor)] = [:]
-        var all: [NSColor] = []
+    /// A colour as the view resolves it under an appearance (sRGB, with its opacity).
+    private func resolved(_ color: NSColor, _ appearance: NSAppearance.Name) -> NSColor {
+        var out = color
+        NSAppearance(named: appearance)!.performAsCurrentDrawingAppearance {
+            out = color.usingColorSpace(.sRGB) ?? color
+        }
+        return out
+    }
+
+    private func over(_ top: NSColor, _ bottom: NSColor) -> NSColor {
+        let a = top.alphaComponent
+        return NSColor(srgbRed: top.redComponent * a + bottom.redComponent * (1 - a),
+                       green: top.greenComponent * a + bottom.greenComponent * (1 - a),
+                       blue: top.blueComponent * a + bottom.blueComponent * (1 - a), alpha: 1)
+    }
+
+    private func pixelsNear(_ color: NSColor, _ name: String, _ suffix: String) throws -> Int {
+        let rep = try XCTUnwrap(NSBitmapImageRep(data: Data(contentsOf: Snapshot.directory.appendingPathComponent("\(name)-\(suffix).png"))))
+        var count = 0
         for y in 0 ..< rep.pixelsHigh {
             for x in 0 ..< rep.pixelsWide {
                 guard let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
-                let key = String(format: "%.3f/%.3f/%.3f", c.redComponent, c.greenComponent, c.blueComponent)
-                counts[key] = ((counts[key]?.0 ?? 0) + 1, c)
-                all.append(c)
+                if abs(c.redComponent - color.redComponent) < 0.08, abs(c.greenComponent - color.greenComponent) < 0.08,
+                   abs(c.blueComponent - color.blueComponent) < 0.08 { count += 1 }
             }
         }
-        let ranked = counts.values.sorted { $0.0 > $1.0 }
-        XCTAssertGreaterThanOrEqual(ranked.count, 2)
-        let tint = relativeLuminance(ranked[1].1)
-        let text = all.map(relativeLuminance).max { abs($0 - tint) < abs($1 - tint) } ?? tint
-        let (hi, lo) = (max(text, tint), min(text, tint))
-        return (hi + 0.05) / (lo + 0.05)
+        return count
+    }
+
+    private func dominantColour(_ name: String, _ suffix: String) throws -> NSColor {
+        let rep = try XCTUnwrap(NSBitmapImageRep(data: Data(contentsOf: Snapshot.directory.appendingPathComponent("\(name)-\(suffix).png"))))
+        var counts: [String: (Int, NSColor)] = [:]
+        for y in 0 ..< rep.pixelsHigh {
+            for x in 0 ..< rep.pixelsWide {
+                guard let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                let key = String(format: "%.3f,%.3f,%.3f", c.redComponent, c.greenComponent, c.blueComponent)
+                counts[key] = ((counts[key]?.0 ?? 0) + 1, c)
+            }
+        }
+        return try XCTUnwrap(counts.values.max { $0.0 < $1.0 }?.1)
+    }
+
+    private func topColours(_ name: String, _ suffix: String) throws -> [String] {
+        let rep = try XCTUnwrap(NSBitmapImageRep(data: Data(contentsOf: Snapshot.directory.appendingPathComponent("\(name)-\(suffix).png"))))
+        var counts: [String: Int] = [:]
+        for y in 0 ..< rep.pixelsHigh {
+            for x in 0 ..< rep.pixelsWide {
+                guard let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                counts[String(format: "%.3f,%.3f,%.3f", c.redComponent, c.greenComponent, c.blueComponent), default: 0] += 1
+            }
+        }
+        return counts.sorted { $0.value > $1.value }.prefix(3).map { "\($0.key)x\($0.value)" }
     }
 
     func testMentionsAreReadableOnTheirTintInLightAndDark() throws {
         // Plain, quoted, and the person's own (@me) mention take the same path; on my own accent bubble too.
+        let accent = EnvironmentValues().themeAccentColor
         for (onBubble, quoted, userID) in [(false, false, "@ann:courier.local"), (false, true, "@ann:courier.local"),
                                            (false, false, Timeline.meUserID), (true, false, "@ann:courier.local"),
                                            (true, true, "@ann:courier.local")] {
             let name = "mention-\(onBubble ? "bubble" : "plain")-\(quoted ? "quoted" : "flat")-\(userID == Timeline.meUserID ? "me" : "other")"
             try Snapshot.render(name, width: 300) { mentionView(quoted: quoted, onBubble: onBubble, userID: userID) }
-            for suffix in ["light", "dark"] {
-                let ratio = try mentionContrast(name, suffix)
+            let colors = RichTextView.mentionColors(onBubble: onBubble, accent: accent)
+            for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                // The colours the view resolves: its tint laid over what is really behind it (the picture's plain
+                // background, which is a device colour a little off the named one), and its text laid over that tint.
+                let behind = try dominantColour(name, suffix)
+                let tint = over(resolved(NSColor(colors.tint), appearance), behind)
+                let text = over(resolved(NSColor(colors.text), appearance), tint)
+                let (hi, lo) = (max(relativeLuminance(text), relativeLuminance(tint)),
+                                min(relativeLuminance(text), relativeLuminance(tint)))
+                let ratio = (hi + 0.05) / (lo + 0.05)
                 XCTAssertGreaterThanOrEqual(ratio, 4.5, "\(name)-\(suffix): text against its tint is \(ratio):1")
+                // And the picture really has that tint (so the colours measured are the ones drawn).
+                let drawn = try pixelsNear(tint, name, suffix)
+                let seen = try topColours(name, suffix)
+                XCTAssertGreaterThan(drawn, 200, "\(name)-\(suffix): the tint is drawn (expected \(tint), pictured \(seen))")
             }
         }
     }
@@ -227,6 +323,62 @@ final class AttachmentMentionEmbedTests: XCTestCase {
         XCTAssertGreaterThan(try redPixelCount("embed-remote-on", "light"), 100, "the fetched picture is drawn")
     }
 
+    private func solid(_ color: NSColor) throws -> CGImage {
+        let image = NSImage(size: NSSize(width: 160, height: 90), flipped: false) { rect in
+            color.setFill(); rect.fill(); return true
+        }
+        return try XCTUnwrap(image.cgImage(forProposedRect: nil, context: nil, hints: nil))
+    }
+
+    private func count(_ rep: NSBitmapImageRep, where match: (NSColor) -> Bool) -> Int {
+        var n = 0
+        for y in 0 ..< rep.pixelsHigh {
+            for x in 0 ..< rep.pixelsWide {
+                if let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB), match(c) { n += 1 }
+            }
+        }
+        return n
+    }
+
+    /// The first video's picture arrives after the card has moved on to a second video: it must never be drawn.
+    func testALateAnswerForAnEarlierVideoIsNotDrawn() async throws {
+        _ = NSApplication.shared
+        let first = try XCTUnwrap(ExternalEmbedDescriptor.match(urlString: "https://youtu.be/AAAAAAAAAAA"))
+        let second = try XCTUnwrap(ExternalEmbedDescriptor.match(urlString: "https://youtu.be/BBBBBBBBBBB"))
+        let red = try solid(NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1))
+        let blue = try solid(NSColor(srgbRed: 0, green: 0, blue: 1, alpha: 1))
+        let gate = PictureGate()
+        // The first video's answer waits at the gate, and does not notice it was cancelled; the second answers at once.
+        let fetch: @Sendable (String) async -> CGImage? = { id in
+            if id == "AAAAAAAAAAA" { await gate.wait(); return red }
+            return blue
+        }
+        let model = EmbedModel(first)
+        let host = NSHostingView(rootView: StaleHost(model: model, fetch: fetch))
+        host.appearance = NSAppearance(named: .aqua)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 90), styleMask: [.borderless],
+                              backing: .buffered, defer: false)
+        window.contentView = host
+        host.frame = NSRect(x: 0, y: 0, width: 360, height: 90)
+        host.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        settle(host)
+        let waiting = await gate.waiterCount
+        XCTAssertEqual(waiting, 1, "the first video's fetch is under way")
+        model.descriptor = second // the card moves on while the first answer is still out
+        settle(host)
+        await gate.release() // now the first answer comes in
+        settle(host)
+        host.layoutSubtreeIfNeeded()
+        let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: rep)
+        let reds = count(rep) { $0.redComponent > 0.85 && $0.greenComponent < 0.4 && $0.blueComponent < 0.4 }
+        let blues = count(rep) { $0.blueComponent > 0.85 && $0.redComponent < 0.4 && $0.greenComponent < 0.4 }
+        XCTAssertGreaterThan(blues, 100, "the second video's picture is drawn")
+        XCTAssertEqual(reds, 0, "the first video's late picture is dropped")
+        window.contentView = nil
+    }
+
     func testPreviewPathComesFromTheMessagesOwnPreview() throws {
         let path = try redPicture()
         func message(_ imagePath: String?) throws -> TimelineMessage {
@@ -276,4 +428,39 @@ final class EmbedCountingURLProtocol: URLProtocol, @unchecked Sendable {
     }
 
     override func stopLoading() {}
+}
+
+/// Holds callers until released, and ignores cancellation (as a slow answer that is already on its way does).
+actor PictureGate {
+    private var isOpen = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+    var waiterCount: Int { waiting.count }
+
+    func wait() async {
+        if isOpen { return }
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    func release() {
+        isOpen = true
+        waiting.forEach { $0.resume() }
+        waiting = []
+    }
+}
+
+@MainActor
+final class EmbedModel: ObservableObject {
+    @Published var descriptor: ExternalEmbedDescriptor
+    init(_ descriptor: ExternalEmbedDescriptor) { self.descriptor = descriptor }
+}
+
+struct StaleHost: View {
+    @ObservedObject var model: EmbedModel
+    let fetch: @Sendable (String) async -> CGImage?
+
+    var body: some View {
+        EmbedConsentCard(messageID: "$e", descriptor: model.descriptor, isLoaded: false, allowsRemoteThumbnail: true,
+                         fetchPicture: fetch, onLoadEmbed: {})
+            .padding(14)
+    }
 }

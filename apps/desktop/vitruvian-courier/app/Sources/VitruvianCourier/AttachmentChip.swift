@@ -505,6 +505,8 @@ public struct FileAttachmentChip: View {
 
     /// The widest the chip grows, so a long file name has room before it is cut.
     static let maxChipWidth: CGFloat = 420
+    /// A name too long for its room loses its middle, so the start and the extension both show.
+    static let nameTruncation = Text.TruncationMode.middle
 
     nonisolated(unsafe) private static let defaultPreferences = ComposerPreferences()
 
@@ -544,7 +546,7 @@ public struct FileAttachmentChip: View {
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                    .truncationMode(.middle)
+                    .truncationMode(Self.nameTruncation)
                     .help(name)
                 Text(detail)
                     .font(.caption)
@@ -554,7 +556,8 @@ public struct FileAttachmentChip: View {
             // The name gets the room first; only what the buttons leave is ever cut, in the middle.
             .layoutPriority(1)
             Spacer(minLength: 4)
-            actionButtons
+            // The buttons keep their size; the name and details give way first.
+            actionButtons.fixedSize()
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)

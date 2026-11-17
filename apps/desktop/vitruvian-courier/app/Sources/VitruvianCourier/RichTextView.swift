@@ -88,6 +88,11 @@ struct RichTextView: View {
         }
     }
 
+    /// A mention's text and the tint behind it (a test measures their contrast).
+    static func mentionColors(onBubble: Bool, accent: Color) -> (text: Color, tint: Color) {
+        onBubble ? (Color.white, Color.black.opacity(0.22)) : (Color.primary, accent.opacity(0.18))
+    }
+
     /// Links, and the arrow after them, are the bubble's text colour.
     private var linkColor: Color { onBubble ? Color.white : Color.primary }
 
@@ -135,8 +140,10 @@ struct RichTextView: View {
             if run.mention != nil {
                 // Mentions are a highlight in the theme's accent, not a link; the text stays the primary colour so it
                 // reads on the tint in light and dark.
-                piece.backgroundColor = onBubble ? Color.black.opacity(0.22) : themeAccent.opacity(0.18)
-                piece.foregroundColor = onBubble ? Color.white : Color.primary
+                let colors = Self.mentionColors(onBubble: onBubble, accent: themeAccent)
+                // Black 22% (not white) on my own bubble: a white tint under white text couldn't reach 4.5:1.
+                piece.backgroundColor = colors.tint
+                piece.foregroundColor = colors.text
             }
             if run.spoiler, !revealed {
                 piece.foregroundColor = .clear

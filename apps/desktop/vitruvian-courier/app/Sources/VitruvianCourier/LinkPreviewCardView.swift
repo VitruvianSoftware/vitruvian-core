@@ -330,6 +330,8 @@ public struct EmbedConsentCard: View {
     public var allowsRemoteThumbnail: Bool
     /// Where a fetched picture comes from (the shared session unless a test supplies its own).
     public var session: URLSession
+    /// Gets a video's picture; the default asks YouTube through `session`. A test supplies its own.
+    public var fetchPicture: (@Sendable (String) async -> CGImage?)?
     public var onBubble: Bool
     @State private var thumbnail: CGImage?
     public let onLoadEmbed: () -> Void
@@ -350,6 +352,7 @@ public struct EmbedConsentCard: View {
         previewImagePath: String? = nil,
         allowsRemoteThumbnail: Bool = false,
         session: URLSession = .shared,
+        fetchPicture: (@Sendable (String) async -> CGImage?)? = nil,
         onBubble: Bool = false,
         onLoadEmbed: @escaping () -> Void,
         onOpenURL: @escaping (URL) -> Void = { url in
@@ -363,6 +366,7 @@ public struct EmbedConsentCard: View {
         self.previewImagePath = previewImagePath
         self.allowsRemoteThumbnail = allowsRemoteThumbnail
         self.session = session
+        self.fetchPicture = fetchPicture
         self.onBubble = onBubble
         self.onLoadEmbed = onLoadEmbed
         self.onOpenURL = onOpenURL
@@ -394,7 +398,11 @@ public struct EmbedConsentCard: View {
             image = await ThumbnailLoader.shared.thumbnail(atPath: path)?.image
         }
         if image == nil, allowsRemoteThumbnail, let id = descriptor.youTubeVideoID, !Task.isCancelled {
-            image = await EmbedThumbnail.fetch(videoID: id, session: session)
+            if let fetchPicture {
+                image = await fetchPicture(id)
+            } else {
+                image = await EmbedThumbnail.fetch(videoID: id, session: session)
+            }
         }
         guard !Task.isCancelled, source == thumbnailSource else { return }
         thumbnail = image
