@@ -298,7 +298,7 @@ package enum SettingsBackupSupport {
         return result
     }
 
-    /// An optional settings file the app reads at launch (issue #497): `$XDG_CONFIG_HOME/vitruvian/settings.plist`, or
+    /// An optional settings file the app reads at launch (issue #497): `$XDG_CONFIG_HOME/vitruvian-atrium/settings.plist`, or
     /// `~/.config` in its place when the variable is unset, empty or relative,
     /// as the XDG spec asks. The Developer build reads its own folder.
     package static func configFileURL(environment: [String: String],
@@ -308,7 +308,7 @@ package enum SettingsBackupSupport {
         if let xdg = environment["XDG_CONFIG_HOME"], xdg.hasPrefix("/") {
             base = URL(fileURLWithPath: xdg, isDirectory: true)
         }
-        var folder = "vitruvian"
+        var folder = "vitruvian-atrium"
         if isDeveloperBuild {
             folder += "-dev"
         }
