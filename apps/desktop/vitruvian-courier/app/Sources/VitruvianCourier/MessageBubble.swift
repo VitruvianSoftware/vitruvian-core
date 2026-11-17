@@ -405,12 +405,22 @@ struct MessageRowView: View {
     static let metaFont = Font.system(size: metaPointSize)
     static let metaPointSize: CGFloat = 11
 
-    /// Whether `text` has Hebrew, Arabic or other right-to-left letters.
-    static func containsRightToLeft(_ text: String) -> Bool {
-        text.unicodeScalars.contains {
-            (0x0590 ... 0x08FF).contains($0.value) || (0xFB1D ... 0xFDFF).contains($0.value)
-                || (0xFE70 ... 0xFEFF).contains($0.value)
+    /// Whether the last line of `text` reads right to left: its first strong character decides, as it does for the
+    /// paragraph when the text is laid out. Hebrew, Arabic and the other right-to-left scripts (including those
+    /// outside the first Unicode plane) and the right-to-left marks count; letters of any other script and the
+    /// left-to-right marks end the search the other way; digits, spaces and punctuation are skipped.
+    static func endsRightToLeft(_ text: String) -> Bool {
+        guard let line = text.split(separator: "\n", omittingEmptySubsequences: true).last else { return false }
+        for scalar in line.unicodeScalars {
+            switch scalar.value {
+            case 0x200F, 0x061C, 0x202B, 0x202E, 0x2067: return true // RLM, ALM, RLE, RLO, RLI
+            case 0x200E, 0x202A, 0x202D, 0x2066: return false // LRM, LRE, LRO, LRI
+            case 0x0590 ... 0x08FF, 0xFB1D ... 0xFDFF, 0xFE70 ... 0xFEFF,
+                 0x10800 ... 0x10FFF, 0x1E800 ... 0x1EFFF: return true
+            default: if scalar.properties.isAlphabetic { return false }
+            }
         }
+        return false
     }
 
     /// What the text reserves for `words` drawn at `metaPointSize`: the text lays it out at 10 pt (RichTextView), so
@@ -824,7 +834,7 @@ struct MessageRowView: View {
         // Right-to-left text ends on its left, where the time (drawn at the trailing corner) is not: that time
         // gets a line of its own instead.
         guard hasMeta, message.kind == .text || message.kind == .notice, contentIsText,
-              !Self.containsRightToLeft(message.body),
+              !Self.endsRightToLeft(message.body),
               message.linkPreviews.isEmpty,
               ExternalEmbedDescriptor.first(in: message) == nil else { return false }
         return true

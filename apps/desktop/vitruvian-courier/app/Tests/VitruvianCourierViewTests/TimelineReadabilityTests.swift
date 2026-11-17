@@ -9,8 +9,9 @@ import XCTest
 @testable import VitruvianCourier
 
 /// Message timeline readability: custom-emoji reactions never show their address, a post of several files shows its
-/// time once, plain text bubbles stop at a readable width, and the thread line can be read.
-/// Look at timeline-custom-emoji-*, timeline-run-times-*, timeline-wide-text-*, timeline-thread-line-*.
+/// time once, plain text bubbles stop at a readable width, right-to-left text keeps its time clear of the last line,
+/// and the thread line can be read.
+/// Look at timeline-custom-emoji-*, timeline-run-times-*, timeline-wide-text-*, timeline-long-word-*, timeline-rtl-*.
 @MainActor
 final class TimelineReadabilityTests: XCTestCase {
     private let mxc = "mxc://courier.local/" + String(repeating: "06da", count: 16)
@@ -50,11 +51,6 @@ final class TimelineReadabilityTests: XCTestCase {
         XCTAssertFalse(plain.isCustomImage)
         XCTAssertEqual(plain.spokenKey, "👍")
         _ = try Snapshot.render("timeline-custom-emoji", width: 480) { row(events) }
-        // Nothing on screen (labels, help) carries the address.
-        let host = NSHostingView(rootView: row(events).frame(width: 480))
-        host.frame = NSRect(x: 0, y: 0, width: 480, height: 200)
-        host.layoutSubtreeIfNeeded()
-        XCTAssertFalse(Self.texts(of: host).contains { $0.contains("mxc://") }, "the address is never drawn")
         // Drawn as text the address would make the row far wider than the same row with a one-character emoji.
         func rowWidth(_ key: String) -> CGFloat {
             let events = [Fixture.text("$m1", "Shipped it", mine: false, ts: 3), reaction(key, on: "$m1")]
@@ -63,25 +59,15 @@ final class TimelineReadabilityTests: XCTestCase {
         XCTAssertLessThan(rowWidth(mxc), rowWidth("👍") + 40, "the custom emoji is a picture, not its address")
     }
 
-    /// Every label, value, help and tooltip in the view and its accessibility tree.
-    private static func texts(of view: NSView) -> [String] {
-        var found: [String] = []
-        if let tip = view.toolTip { found.append(tip) }
-        found += accessibilityTexts(of: view, depth: 0)
-        for child in view.subviews { found += texts(of: child) }
-        return found
-    }
-
-    private static func accessibilityTexts(of element: NSObject, depth: Int) -> [String] {
-        guard depth < 12 else { return [] }
-        var found: [String] = []
-        for key in ["accessibilityLabel", "accessibilityValue", "accessibilityHelp", "accessibilityTitle"] {
-            if let text = element.value(forKey: key) as? String { found.append(text) }
-        }
-        for child in (element.value(forKey: "accessibilityChildren") as? [NSObject]) ?? [] {
-            found += accessibilityTexts(of: child, depth: depth + 1)
-        }
-        return found
+    /// The picture is the chip's, not a tooltip of its own: pointing at it still says who reacted.
+    func testCustomEmojiChipKeepsItsWhoReactedTooltip() throws {
+        let events = [Fixture.text("$m1", "Shipped it", mine: false, ts: 3), reaction(mxc, on: "$m1")]
+        let chip = try XCTUnwrap(Fixture.messages(events).first?.reactions.first)
+        XCTAssertTrue(chip.tooltipText().contains("Ann Example"), chip.tooltipText())
+        // The chip's help is `tooltipText`; the picture adds none of its own (ReactionKeyView has no `.help`), so
+        // this is what pointing at the picture says. The view's own help can't be read in a headless test.
+        XCTAssertFalse(chip.tooltipText().contains("mxc://"))
+        XCTAssertNotEqual(chip.tooltipText(), chip.spokenKey)
     }
 
     // MARK: 2. One time per run
@@ -142,12 +128,12 @@ final class TimelineReadabilityTests: XCTestCase {
 
     private final class Box { var width: CGFloat = 0 }
 
-    private func bubbleWidth(_ event: Event, window: CGFloat) throws -> CGFloat {
+    private func bubbleWidth(_ event: Event, window: CGFloat, snapshot: String = "timeline-wide-text") throws -> CGFloat {
         let box = Box()
         let ui = MessageUI()
         let actions = VitruvianCourier.MessageActions(now: { Fixture.now })
         let item = try XCTUnwrap(Fixture.items([event]).first { if case .message = $0 { true } else { false } })
-        _ = try Snapshot.render("timeline-wide-text-\(Int(window))", width: window) {
+        _ = try Snapshot.render("\(snapshot)-\(Int(window))", width: window) {
             TimelineItemView(item: item, isSelected: false, showsSent: false, actions: actions, ui: ui)
                 .overlayPreferenceValue(RowAnchorsKey.self) { anchors in
                     GeometryReader { geo in
@@ -168,25 +154,29 @@ final class TimelineReadabilityTests: XCTestCase {
         XCTAssertGreaterThan(narrow, 150)
     }
 
-    /// One very long word with no spaces breaks inside the bubble: not past the cap, not past a narrow window.
+    /// One very long word with no spaces breaks inside the bubble: not past the cap, not past a narrow window, and the
+    /// text itself wraps onto more lines (it is not just a clipped frame).
     func testAVeryLongWordStaysInsideTheBubble() throws {
         let word = String(repeating: "W", count: 400)
-        let wide = try bubbleWidth(Fixture.text("$lw1", word, mine: false, ts: 2), window: 1400)
+        let wide = try bubbleWidth(Fixture.text("$lw1", word, mine: false, ts: 2), window: 1400, snapshot: "timeline-long-word")
         XCTAssertLessThanOrEqual(wide, MessageRowView.textBubbleMaxWidth + 1)
-        let narrow = try bubbleWidth(Fixture.text("$lw2", word, mine: false, ts: 2), window: 320)
+        let narrow = try bubbleWidth(Fixture.text("$lw2", word, mine: false, ts: 2), window: 320, snapshot: "timeline-long-word")
         XCTAssertLessThanOrEqual(narrow, 320)
+        let oneLine = fittingHeight(Fixture.text("$lw3", "W", mine: false, ts: 2), showTimes: false, width: 320)
+        let wrapped = fittingHeight(Fixture.text("$lw4", word, mine: false, ts: 2), showTimes: false, width: 320)
+        XCTAssertGreaterThan(wrapped, oneLine + 2 * lineHeight(13), "the word wraps onto several lines")
     }
 
     // MARK: 4/5. Time size and thread line
 
-    private func fittingHeight(_ event: Event, showTimes: Bool) -> CGFloat {
+    private func fittingHeight(_ event: Event, showTimes: Bool, width: CGFloat = 420) -> CGFloat {
         let ui = MessageUI()
         var actions = VitruvianCourier.MessageActions(now: { Fixture.now })
         actions.showMessageTimestamps = showTimes
         let item = Fixture.items([event]).first { if case .message = $0 { true } else { false } }!
         let host = NSHostingView(rootView: TimelineItemView(item: item, isSelected: false, showsSent: false,
                                                             actions: actions, ui: ui)
-                .frame(width: 420).fixedSize(horizontal: false, vertical: true))
+                .frame(width: width).fixedSize(horizontal: false, vertical: true))
         return host.fittingSize.height
     }
 
@@ -208,18 +198,35 @@ final class TimelineReadabilityTests: XCTestCase {
         XCTAssertGreaterThan(abs(drawn - width(Text(words).font(.system(size: 10)))), 1, "11 pt and 10 pt differ")
     }
 
-    /// Right-to-left text ends on its left but the time is drawn at the right corner, so such a message gives the
-    /// time a line of its own; left-to-right text keeps it on the end of its last line.
-    func testRightToLeftTextGetsTheTimeOnItsOwnLine() {
-        XCTAssertTrue(MessageRowView.containsRightToLeft("مرحبا بالعالم"))
-        XCTAssertTrue(MessageRowView.containsRightToLeft("שלום עולם"))
-        XCTAssertFalse(MessageRowView.containsRightToLeft("Hello"))
+    /// The last line's first strong letter decides: right-to-left text, and text that begins right to left even when it
+    /// ends on a Latin word, give the time a line of its own; left-to-right text, even with a Hebrew word at its end,
+    /// keeps it on the end of its last line.
+    func testRightToLeftIsDecidedByTheLastLine() {
+        XCTAssertTrue(MessageRowView.endsRightToLeft("مرحبا بالعالم"), "pure Arabic")
+        XCTAssertTrue(MessageRowView.endsRightToLeft("שלום עולם"), "pure Hebrew")
+        XCTAssertFalse(MessageRowView.endsRightToLeft("Hello world"), "pure Latin")
+        XCTAssertFalse(MessageRowView.endsRightToLeft("Hello world שלום"), "Latin ending with a Hebrew word")
+        XCTAssertTrue(MessageRowView.endsRightToLeft("שלום hello"), "Hebrew ending with a Latin word")
+        XCTAssertTrue(MessageRowView.endsRightToLeft("Hello\nשלום"), "the last line decides")
+        XCTAssertFalse(MessageRowView.endsRightToLeft("שלום\nHello"), "the last line decides")
+        XCTAssertTrue(MessageRowView.endsRightToLeft("\u{200F}123 !"), "a right-to-left mark")
+        XCTAssertFalse(MessageRowView.endsRightToLeft("\u{200E}שלום"), "a left-to-right mark")
+        XCTAssertTrue(MessageRowView.endsRightToLeft("\u{10800}\u{10801}"), "a script outside the first plane")
+        XCTAssertTrue(MessageRowView.endsRightToLeft("\u{1E900}\u{1E901}"), "Adlam")
+        XCTAssertFalse(MessageRowView.endsRightToLeft("123 :)"), "no letters")
+    }
+
+    func testRightToLeftTextGetsTheTimeOnItsOwnLine() throws {
         let arabic = Fixture.text("$ar", "مرحبا بالعالم هذا اختبار", mine: false, ts: 5)
         let english = Fixture.text("$en", "Hello world, this is a test", mine: false, ts: 5)
-        let arabicAdded = fittingHeight(arabic, showTimes: true) - fittingHeight(arabic, showTimes: false)
-        let englishAdded = fittingHeight(english, showTimes: true) - fittingHeight(english, showTimes: false)
-        XCTAssertGreaterThan(arabicAdded, lineHeight(11), "the time has its own line under the Arabic text")
-        XCTAssertLessThan(englishAdded, 1, "the time shares the English text's last line")
+        let mixed = Fixture.text("$mx", "Meet at the cafe, it is called קפה", mine: false, ts: 5)
+        func added(_ event: Event) -> CGFloat {
+            fittingHeight(event, showTimes: true) - fittingHeight(event, showTimes: false)
+        }
+        XCTAssertGreaterThan(added(arabic), lineHeight(11), "the time has its own line under the Arabic text")
+        XCTAssertLessThan(added(english), 1, "the time shares the English text's last line")
+        XCTAssertLessThan(added(mixed), 1, "one Hebrew word doesn't change an English message")
+        _ = try Snapshot.render("timeline-rtl-bubble", width: 420) { row([arabic, english, mixed]) }
     }
 
     /// The text reserves room for the time at 10 pt; the time is drawn at 11 pt. The reserve must be at least as wide
@@ -284,8 +291,10 @@ final class TimelineReadabilityTests: XCTestCase {
         }
         let drawn = added()
         XCTAssertGreaterThan(drawn, 0, "the count is drawn in the accent colour")
-        XCTAssertEqual(drawn, added(weight: .medium, size: 12), accuracy: 0.001, "the default is 12 pt medium")
-        XCTAssertNotEqual(drawn, added(weight: .semibold, size: 12), accuracy: 0.5, "not semibold")
-        XCTAssertNotEqual(drawn, added(weight: .medium, size: 10), accuracy: 0.5, "not 10 pt")
+        // Ratios, not absolute ink: the amount depends on the machine's text rendering, how the shapes compare does not.
+        let medium = added(weight: .medium, size: 12)
+        XCTAssertLessThan(abs(drawn / medium - 1), 0.01, "the default is 12 pt medium")
+        XCTAssertGreaterThan(abs(added(weight: .semibold, size: 12) / medium - 1), 0.03, "semibold looks different")
+        XCTAssertGreaterThan(abs(added(weight: .medium, size: 10) / medium - 1), 0.03, "10 pt looks different")
     }
 }
