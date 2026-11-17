@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 1080 600" width="100%" height="auto" role="img" aria-labelledby="t4 d4" style="background:#0e1317; font-family:'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'calt' 0; border-radius: 6px;">
+  <title id="t4">Zero-Install Repo Hooks Plus a Single Per-User Backstop</title>
+  <desc id="d4">Dual-layer wiring diagram: every checkout carries .claude/settings.json and .agents/hooks.json, while ~/.claude/settings.json and ~/.gemini/config/hooks.json close the escape hatch when an agent starts outside the repository and runs commands inside it.</desc>
+  <defs>
+    <style>
+      .title { fill: #e7e4dd; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+      .subtitle { fill: #8fa5b5; font-size: 12px; }
+      .box-bg { fill: #151d26; stroke: #26384a; stroke-width: 1.5; }
+      .box-hi { fill: #182330; stroke: #3c5975; stroke-width: 1.5; }
+      .box-head { fill: #e7e4dd; font-size: 13px; font-weight: 600; }
+      .box-body { fill: #8fa5b5; font-size: 11px; }
+      .code { fill: #c9d4de; font-size: 11px; }
+      .small { fill: #687f91; font-size: 10px; }
+      .accent { fill: #93b0ca; font-size: 11px; font-weight: 500; }
+      .ok { fill: #7fbf9a; font-size: 11px; font-weight: 500; }
+      .warn { fill: #d9b264; font-size: 11px; font-weight: 500; }
+      .err { fill: #d2907b; font-size: 11px; font-weight: 500; }
+      .flow-ok { stroke: #7fbf9a; stroke-width: 1.5; fill: none; }
+      .flow-steel { stroke: #93b0ca; stroke-width: 1.5; fill: none; }
+    </style>
+    <marker id="arr-ok" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#7fbf9a" />
+    </marker>
+    <marker id="arr-steel" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#93b0ca" />
+    </marker>
+  </defs>
+  <rect width="1080" height="600" fill="#0e1317" rx="6" />
+
+  <!-- Header -->
+  <rect x="24" y="24" width="1032" height="60" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="44" y="49" class="title">Coverage Without Friction: Project Hooks + Per-User Backstop</text>
+  <text x="44" y="69" class="subtitle">Humans in their own terminal never trigger hooks. Every agent session — inside or outside a worktree — is covered.</text>
+
+  <!-- Column 1: Session Started Inside Repo -->
+  <rect x="24" y="104" width="490" height="232" rx="6" class="box-bg" />
+  <rect x="24" y="104" width="4" height="232" fill="#7fbf9a" />
+  <text x="44" y="130" class="ok">PATH A: SESSION STARTED INSIDE REPO OR WORKTREE</text>
+  <text x="44" y="150" class="box-body">Every fresh worktree carries both harness configs in git (zero setup):</text>
+
+  <rect x="44" y="164" width="450" height="72" rx="4" class="box-hi" />
+  <text x="60" y="184" class="code">.claude/settings.json</text>
+  <text x="60" y="202" class="box-body">• Command matcher + "onFailure": "block" (timeout: 60s)</text>
+  <text x="60" y="218" class="box-body">• "disableAllHooks": false overrides any user-level disable</text>
+
+  <rect x="44" y="246" width="450" height="72" rx="4" class="box-hi" />
+  <text x="60" y="266" class="code">.agents/hooks.json (Antigravity)</text>
+  <text x="60" y="284" class="box-body">• Grouped PreToolUse matcher runs `/bin/sh ../tools/agent-guard/hook.sh`</text>
+  <text x="60" y="300" class="box-body">• Covers run_command, manage_task, write_to_file, replace_file_content</text>
+
+  <!-- Column 2: Escape Hatch Closed by Backstop -->
+  <rect x="536" y="104" width="520" height="232" rx="6" class="box-bg" />
+  <rect x="536" y="104" width="4" height="232" fill="#93b0ca" />
+  <text x="556" y="130" class="accent">PATH B: THE ESCAPE HATCH CLOSED BY THE BACKSTOP</text>
+  <text x="556" y="150" class="box-body">Verified live: an agent started in `~` or another repo skips project hooks.</text>
+
+  <rect x="556" y="164" width="480" height="80" rx="4" class="box-hi" />
+  <text x="572" y="184" class="code">bazel run //tools/agent-guard:install</text>
+  <text x="572" y="202" class="box-body">Merges thin backstop entries into ~/.claude/settings.json and</text>
+  <text x="572" y="218" class="box-body">~/.gemini/config/hooks.json (keeps unrelated hooks, backs up originals)</text>
+  <text x="572" y="234" class="small">Self-tests git status vs. git stash + go vet; rolls back on any failure.</text>
+
+  <rect x="556" y="254" width="480" height="64" rx="4" class="box-hi" />
+  <text x="572" y="274" class="ok">Points back to main checkout's hook.sh (no copied binaries)</text>
+  <text x="572" y="292" class="box-body">If main moves or hook.sh is missing, refuses ONLY vitruvian-core calls</text>
+  <text x="572" y="308" class="small">Other repos are let through untouched with a scope = "outside" log entry.</text>
+
+  <!-- Converging arrows -->
+  <path d="M 270 336 L 270 364 L 460 364 L 460 390" class="flow-ok" marker-end="url(#arr-ok)" />
+  <path d="M 796 336 L 796 364 L 620 364 L 620 390" class="flow-steel" marker-end="url(#arr-steel)" />
+
+  <!-- Unified Guard & Scope Matrix -->
+  <rect x="24" y="396" width="1032" height="180" rx="6" class="box-hi" />
+  <text x="44" y="424" class="box-head">ONE SINGLE LAUNCHER + SCOPE VERDICT ENGINE (Running twice is harmless)</text>
+
+  <rect x="44" y="440" width="316" height="118" rx="4" class="box-bg" />
+  <text x="60" y="462" class="ok">Scope: INSIDE vitruvian-core</text>
+  <text x="60" y="482" class="box-body">Matched when resolved cwd (or</text>
+  <text x="60" y="498" class="box-body">workspacePaths, or gh --repo)</text>
+  <text x="60" y="514" class="box-body">names MODULE.bazel vitruvian_core.</text>
+  <text x="60" y="536" class="warn">All 31 policy categories active.</text>
+
+  <rect x="382" y="440" width="316" height="118" rx="4" class="box-bg" />
+  <text x="398" y="462" class="accent">Scope: UNKNOWN location</text>
+  <text x="398" y="482" class="box-body">Some tool payloads (e.g. send_input</text>
+  <text x="398" y="498" class="box-body">by TaskId) omit cwd completely.</text>
+  <text x="398" y="514" class="box-body">hook.sh never trusts agent cwd alone:</text>
+  <text x="398" y="536" class="warn">Judged AS IF INSIDE (fail closed).</text>
+
+  <rect x="720" y="440" width="316" height="118" rx="4" class="box-bg" />
+  <text x="736" y="462" class="box-head">Scope: OUTSIDE other repos</text>
+  <text x="736" y="482" class="box-body">Allowed immediately — EXCEPT for</text>
+  <text x="736" y="498" class="box-body">two global categories:</text>
+  <text x="736" y="518" class="err">1. guard-config (protect user hooks)</text>
+  <text x="736" y="536" class="err">2. bazel-cache (shared Mac caches)</text>
+</svg>

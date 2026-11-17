@@ -128,9 +128,14 @@ rust_test(
 rust_test(
     name = "version_rs_test",
     size = "small",
-    srcs = ["sidecars/panel/src/version_test.rs"],
+    srcs = ["//apps/antigravity:plugin_version_test.rs"],
+    crate_root = "//apps/antigravity:plugin_version_test.rs",
     data = [":release_files"],
     edition = "2021",
+    rustc_env = {
+        "PLUGIN_NAME": "hookify",
+        "PLUGIN_PKG": package_name(),
+    },
     rustc_flags = ["-Copt-level=3"],
     deps = [
         "@crates//:serde",

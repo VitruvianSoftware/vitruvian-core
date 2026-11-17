@@ -40,7 +40,7 @@
 # Hand-written; there is nothing here for Gazelle to write.
 # gazelle:ignore
 
-# The Vitruvian desktop app. It links the protocol and reads the protocol's
+# Vitruvian Atrium. It links the protocol and reads the protocol's
 # examples. It is NOT in `tools`: the app must never come to depend on the kit
 # tools are written with (MIT flows into GPL, one way).
 package_group(

@@ -15,9 +15,6 @@ Component package providing implementation for `gitops/argocd/platform/cicd-tele
 - `[lib.rs:regex_captures]`
 - `[lib.rs:regex_is_match]`
 - `[lib.rs:regex_replace_anchored]`
-- `[yaml.rs:resolve_data_path]`
-- `[yaml.rs:parse_all]`
-- `[yaml.rs:parse_doc]`
 
 ## Invariants
 - [lib.rs:72]: `"Require Dev Soak Test",`

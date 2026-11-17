@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 1080 560" width="100%" height="auto" role="img" aria-labelledby="t7 d7" style="background:#0e1317; font-family:'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'calt' 0; border-radius: 6px;">
+  <title id="t7">Four-Step Playbook for Adopting PreToolUse Guardrails</title>
+  <desc id="d7">Four-phase adoption guide for any engineering team: 1. Wire PreToolUse in warn mode and log real commands; 2. Build canonical wrappers and teaching refusals; 3. Enforce categories backed by a golden decision table; 4. Load from origin/main and lock behind a required human reviewer rule.</desc>
+  <defs>
+    <style>
+      .title { fill: #e7e4dd; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+      .subtitle { fill: #8fa5b5; font-size: 12px; }
+      .box-bg { fill: #151d26; stroke: #26384a; stroke-width: 1.5; }
+      .box-hi { fill: #182330; stroke: #3c5975; stroke-width: 1.5; }
+      .box-head { fill: #e7e4dd; font-size: 13px; font-weight: 600; }
+      .box-body { fill: #8fa5b5; font-size: 11px; }
+      .code { fill: #c9d4de; font-size: 11px; }
+      .small { fill: #687f91; font-size: 10px; }
+      .accent { fill: #93b0ca; font-size: 11px; font-weight: 500; }
+      .ok { fill: #7fbf9a; font-size: 11px; font-weight: 500; }
+      .warn { fill: #d9b264; font-size: 11px; font-weight: 500; }
+      .flow-steel { stroke: #93b0ca; stroke-width: 1.5; fill: none; }
+      .flow-ok { stroke: #7fbf9a; stroke-width: 1.5; fill: none; }
+    </style>
+    <marker id="arr-steel" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#93b0ca" />
+    </marker>
+    <marker id="arr-ok" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#7fbf9a" />
+    </marker>
+  </defs>
+  <rect width="1080" height="560" fill="#0e1317" rx="6" />
+
+  <!-- Header -->
+  <rect x="24" y="24" width="1032" height="60" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="44" y="49" class="title">How to Roll Out Agent Guardrails Without Blocking Day-One Velocity</text>
+  <text x="44" y="69" class="subtitle">Four incremental stages you can adopt in any repository in an afternoon — from audit logging to self-protecting enforcement</text>
+
+  <!-- 4 Cards in a Horizontal Pipeline -->
+  <rect x="24" y="108" width="242" height="318" rx="6" class="box-bg" />
+  <rect x="24" y="108" width="242" height="4" fill="#93b0ca" />
+  <text x="42" y="138" class="accent">PHASE 01 · OBSERVE</text>
+  <text x="42" y="160" class="box-head">Wire Hook in `warn`</text>
+  <text x="42" y="184" class="box-body">Add `.claude/settings.json`</text>
+  <text x="42" y="200" class="box-body">with `"default_mode": "warn"`.</text>
+  <text x="42" y="222" class="box-body">Log every command, tool,</text>
+  <text x="42" y="238" class="box-body">and redacted secret into</text>
+  <text x="42" y="254" class="code">log.jsonl (mode 0600).</text>
+  <text x="42" y="282" class="box-body">Zero workflow breakage</text>
+  <text x="42" y="298" class="box-body">while you discover what</text>
+  <text x="42" y="314" class="box-body">agents actually run.</text>
+  <text x="42" y="406" class="small">Cost: ~1 afternoon</text>
+
+  <path d="M 266 266 L 284 266" class="flow-steel" marker-end="url(#arr-steel)" />
+
+  <rect x="288" y="108" width="242" height="318" rx="6" class="box-bg" />
+  <rect x="288" y="108" width="242" height="4" fill="#d9b264" />
+  <text x="306" y="138" class="warn">PHASE 02 · PAVE</text>
+  <text x="306" y="160" class="box-head">Build Happy-Path CLI</text>
+  <text x="306" y="184" class="box-body">Never block an operation</text>
+  <text x="306" y="200" class="box-body">without giving the agent a</text>
+  <text x="306" y="216" class="box-body">single clean replacement.</text>
+  <text x="306" y="238" class="code">Blocked X. Use Y instead.</text>
+  <text x="306" y="264" class="box-body">Leave read-only commands</text>
+  <text x="306" y="280" class="box-body">and active merge-conflict</text>
+  <text x="306" y="296" class="box-body">recovery (`--continue`)</text>
+  <text x="306" y="312" class="box-body">unblocked from day one.</text>
+  <text x="306" y="406" class="small">Rule: teach &gt; scold</text>
+
+  <path d="M 530 266 L 548 266" class="flow-steel" marker-end="url(#arr-steel)" />
+
+  <rect x="552" y="108" width="242" height="318" rx="6" class="box-bg" />
+  <rect x="552" y="108" width="242" height="4" fill="#7fbf9a" />
+  <text x="570" y="138" class="ok">PHASE 03 · ENFORCE</text>
+  <text x="570" y="160" class="box-head">Replay Golden Table</text>
+  <text x="570" y="184" class="box-body">Harvest real captured calls</text>
+  <text x="570" y="200" class="box-body">from Phase 01 into a</text>
+  <text x="570" y="216" class="code">decision_table.json</text>
+  <text x="570" y="232" class="box-body">regression test suite.</text>
+  <text x="570" y="258" class="box-body">Flip categories to `enforce`</text>
+  <text x="570" y="274" class="box-body">with `"onFailure": "block"`</text>
+  <text x="570" y="290" class="box-body">once false-positive rate</text>
+  <text x="570" y="306" class="box-body">hits zero in CI.</text>
+  <text x="570" y="406" class="small">Ours holds 800+ real cases</text>
+
+  <path d="M 794 266 L 812 266" class="flow-ok" marker-end="url(#arr-ok)" />
+
+  <rect x="816" y="108" width="240" height="318" rx="6" class="box-hi" />
+  <rect x="816" y="108" width="240" height="4" fill="#7fbf9a" />
+  <text x="834" y="138" class="ok">PHASE 04 · HARDEN</text>
+  <text x="834" y="160" class="box-head">Pin to `origin/main`</text>
+  <text x="834" y="184" class="box-body">Run the guard binary and</text>
+  <text x="834" y="200" class="box-body">policy strictly from</text>
+  <text x="834" y="216" class="code">origin/main</text>
+  <text x="834" y="232" class="box-body">inside a `0700` cache.</text>
+  <text x="834" y="258" class="box-body">Protect `.claude/` and guard</text>
+  <text x="834" y="274" class="box-body">files locally, plus add a</text>
+  <text x="834" y="290" class="box-body">human-only GitHub ruleset</text>
+  <text x="834" y="306" class="box-body">plus a per-user backstop.</text>
+  <text x="834" y="406" class="small">Zero bypass without review</text>
+
+  <!-- Bottom Strip -->
+  <rect x="24" y="446" width="1032" height="90" rx="6" class="box-bg" />
+  <text x="44" y="474" class="box-head">CHECKLIST BEFORE TURNING ENFORCE ON FOR YOUR TEAM</text>
+  <text x="44" y="496" class="code">[✓] Humans unaffected (hooks run inside agent harnesses only)</text>
+  <text x="560" y="496" class="code">[✓] Broken hook fails closed ("onFailure": "block")</text>
+  <text x="44" y="516" class="code">[✓] Refusals print the exact working replacement command</text>
+  <text x="560" y="516" class="code">[✓] CI checks target files &amp; rule globs stay in sync</text>
+</svg>

@@ -340,7 +340,7 @@ projects:
     tags: [Swift, macOS, Google Home]
     source: apps/desktop/vitruvian-speaker
 
-  - name: Vitruvian
+  - name: Vitruvian Atrium
     group: lab
     status: in-development
     summary: >-

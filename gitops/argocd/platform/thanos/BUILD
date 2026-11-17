@@ -15,11 +15,11 @@ rust_library(
     name = "thanos_values_lib",
     srcs = [
         "src/lib.rs",
-        "src/yaml.rs",
     ],
     crate_name = "thanos_values",
     edition = "2021",
     deps = [
+        "//tools/gitops/values-yaml:values_yaml",
         "@crates//:serde_json",
     ],
 )

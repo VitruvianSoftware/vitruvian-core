@@ -22,8 +22,8 @@
 // itself, through Accessibility. It does not ask the app for it, and the
 // protocol has no message for it. It shows that a tool is an ordinary
 // program with every permission of whoever started it: started by
-// Vitruvian, it reads the title with no prompt of its own once Vitruvian
-// has Accessibility. Started from a terminal that lacks Accessibility, it
+// Vitruvian Atrium, it reads the title with no prompt of its own once Vitruvian
+// Atrium has Accessibility. Started from a terminal that lacks Accessibility, it
 // says so and reads nothing.
 //
 // Public API only. It never asks macOS to show a permission prompt.

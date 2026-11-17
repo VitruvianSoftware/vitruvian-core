@@ -40,7 +40,7 @@ PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
 exec node "$(dirname "$0")/tool.mjs"
 ```
 
-Add the folder in Vitruvian, `node_modules/` and all:
+Add the folder in Vitruvian Atrium, `node_modules/` and all:
 Settings › Extensions, "Add from Folder…".
 
 ## Drawing

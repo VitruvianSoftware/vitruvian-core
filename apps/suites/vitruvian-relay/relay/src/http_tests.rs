@@ -28,7 +28,7 @@
 
 use super::*;
 use crate::devices::{DeviceRecord, FileDeviceStore};
-use crate::mcp::{PROTOCOL_VERSIONS, SERVER_NAME};
+use crate::mcp::{LEGACY_VERSIONS, MODERN_VERSIONS, SERVER_NAME};
 use futures_util::{SinkExt, StreamExt};
 use http::header;
 use http_body_util::BodyExt;
@@ -814,7 +814,17 @@ async fn server_discover_is_answered() {
         res["capabilities"],
         json!({"tools": {"listChanged": false}})
     );
-    assert_eq!(res["supportedVersions"], json!(PROTOCOL_VERSIONS));
+    // Discover is the stateless revision's request: it lists only the
+    // versions served that way (older ones are reached through initialize),
+    // with the fields that revision requires on a result.
+    assert_eq!(res["supportedVersions"], json!(MODERN_VERSIONS));
+    assert_eq!(res["resultType"], "complete");
+    assert!(res["ttlMs"].as_u64().is_some(), "{res}");
+    assert_eq!(res["cacheScope"], "public");
+    assert_eq!(
+        res["_meta"]["io.modelcontextprotocol/serverInfo"],
+        res["serverInfo"]
+    );
 
     // initialize describes the server the same way.
     let r = h
@@ -829,7 +839,7 @@ async fn server_discover_is_answered() {
     let init = &r.json()["result"];
     assert_eq!(init["serverInfo"], res["serverInfo"]);
     assert_eq!(init["capabilities"], res["capabilities"]);
-    assert_eq!(init["protocolVersion"], PROTOCOL_VERSIONS[0]);
+    assert_eq!(init["protocolVersion"], LEGACY_VERSIONS[0]);
     let id = r.header("mcp-session-id").unwrap();
     assert_eq!(id.len(), 32);
     assert!(id.bytes().all(|c| c.is_ascii_hexdigit()));
@@ -868,7 +878,7 @@ async fn unknown_session_gets_404() {
             json!({"jsonrpc": "2.0", "id": 2, "method": "ping"}),
         )
         .await;
-    assert_eq!(r.json()["result"], json!({}));
+    assert_eq!(r.json()["result"], json!({"resultType": "complete"}));
     let r = h
         .rpc(
             &device,
@@ -1202,6 +1212,204 @@ async fn call_reaches_the_device_and_answers() {
     assert_eq!(
         r.json()["result"]["content"][0]["text"],
         "Your computer is offline."
+    );
+}
+
+/// A request in the stateless MCP revision: the version in `_meta` and,
+/// unless `header` overrides it (`Some(None)` leaves it out), in the
+/// `MCP-Protocol-Version` header. `session` is sent as-is, to show it is
+/// ignored.
+fn modern(mut body: Value, version: &str) -> Value {
+    body["params"]["_meta"] = json!({
+        "io.modelcontextprotocol/protocolVersion": version,
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": {"name": "test", "version": "0"},
+    });
+    body
+}
+
+impl Harness {
+    async fn modern_rpc(
+        &self,
+        device: &str,
+        sub: &str,
+        header: Option<Option<&str>>,
+        session: Option<&str>,
+        body: Value,
+    ) -> Reply {
+        let version = body["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"]
+            .as_str()
+            .map(String::from);
+        let mut headers = self.mcp_headers(sub, session);
+        let header = match header {
+            Some(h) => h.map(String::from),
+            None => version,
+        };
+        if let Some(v) = header {
+            headers.push(("mcp-protocol-version", v));
+        }
+        self.send(
+            "POST",
+            &format!("/mcp/d/{device}"),
+            &headers,
+            &body.to_string(),
+        )
+        .await
+    }
+}
+
+// Claude asks `server/discover`, sees 2026-07-28, and from then on sends each
+// request on its own: no initialize, no session (MCP 2026-07-28, streamable
+// HTTP). Live, the relay refused every one with "Mcp-Session-Id header
+// required" and Claude reported the server broken.
+#[tokio::test]
+async fn modern_requests_need_no_session() {
+    let h = Arc::new(harness().await);
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    let v = MODERN_VERSIONS[0];
+
+    let list = modern(
+        json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
+        v,
+    );
+    let r = h.modern_rpc(&device, ALICE, None, None, list.clone()).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(r.header("mcp-session-id"), None, "mints no session");
+    let res = &r.json()["result"];
+    assert_eq!(res["tools"][0]["name"], "read_file");
+    assert_eq!(res["resultType"], "complete");
+    // The list is this person's device's: never shared, and it can change
+    // whenever the device reconnects.
+    assert_eq!(res["cacheScope"], "private");
+    assert_eq!(res["ttlMs"], 0);
+
+    // A session id from an older client is ignored, not looked up.
+    let r = h
+        .modern_rpc(&device, ALICE, None, Some("not-a-session"), list)
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+
+    // A tool call goes through the same way.
+    let h2 = h.clone();
+    let d2 = device.clone();
+    let pending = tokio::spawn(async move {
+        h2.modern_rpc(
+            &d2,
+            ALICE,
+            None,
+            None,
+            modern(call_body(json!(7), "read_file", json!({"path": "/x"})), v),
+        )
+        .await
+    });
+    let call = fake.next_call().await;
+    assert_eq!(call.tool, "read_file");
+    fake.reply(&call.call_id, "contents");
+    let r = within(pending).await.unwrap();
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(r.json()["result"]["content"][0]["text"], "contents");
+    assert_eq!(r.json()["result"]["resultType"], "complete");
+
+    // An older-style request still needs its session.
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            None,
+            json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST, "{}", r.body);
+}
+
+// The stateless revision answers an unknown method with HTTP 404 (and
+// -32601), so a client can tell "not here" from a server that misunderstood.
+#[tokio::test]
+async fn modern_unknown_method_is_404() {
+    let h = harness().await;
+    let (device, _) = h.new_device(ALICE).await;
+    let r = h
+        .modern_rpc(
+            &device,
+            ALICE,
+            None,
+            None,
+            modern(
+                json!({"jsonrpc": "2.0", "id": 1, "method": "nope/never"}),
+                MODERN_VERSIONS[0],
+            ),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND, "{}", r.body);
+    assert_eq!(r.json()["error"]["code"], -32601);
+
+    // An older-style session keeps the 200 it always had.
+    let s = h.session(&device, ALICE).await;
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            json!({"jsonrpc": "2.0", "id": 2, "method": "nope/never"}),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(r.json()["error"]["code"], -32601);
+}
+
+#[tokio::test]
+async fn modern_header_must_match_meta() {
+    let h = harness().await;
+    let (device, _) = h.new_device(ALICE).await;
+    let list = modern(
+        json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
+        MODERN_VERSIONS[0],
+    );
+    let r = h
+        .modern_rpc(&device, ALICE, Some(Some("2025-11-25")), None, list)
+        .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST, "{}", r.body);
+    assert_eq!(r.json()["error"]["code"], -32020);
+    assert_eq!(r.json()["id"], 1);
+
+    // The header naming the new revision with no `_meta` is a mismatch too.
+    let r = h
+        .modern_rpc(
+            &device,
+            ALICE,
+            Some(Some(MODERN_VERSIONS[0])),
+            None,
+            json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST, "{}", r.body);
+    assert_eq!(r.json()["error"]["code"], -32020);
+}
+
+#[tokio::test]
+async fn modern_unknown_version_is_refused_with_the_supported_list() {
+    let h = harness().await;
+    let (device, _) = h.new_device(ALICE).await;
+    let r = h
+        .modern_rpc(
+            &device,
+            ALICE,
+            None,
+            None,
+            modern(
+                json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
+                "2099-01-01",
+            ),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST, "{}", r.body);
+    assert_eq!(r.json()["error"]["code"], -32022);
+    assert_eq!(
+        r.json()["error"]["data"]["supported"],
+        json!(MODERN_VERSIONS)
     );
 }
 

@@ -35,8 +35,8 @@ let package = Package(
         // a target added to BUILD but not here (or the reverse) breaks
         // `swift build` silently (see packages/peripherals/Package.swift).
         //
-        // The protocol, as Swift: Foundation only, Swift 6 mode. The Vitruvian
-        // desktop app links this module, so it may import nothing of the app.
+        // The protocol, as Swift: Foundation only, Swift 6 mode. Vitruvian
+        // Atrium links this module, so it may import nothing of the app.
         .target(
             name: "VitruvianToolProtocol",
             path: "Sources/VitruvianToolProtocol"

@@ -5,7 +5,7 @@
 //!
 //! Spec: `docs/superpowers/specs/2026-09-28-cicd-telemetry-design.md`
 
-pub mod yaml;
+pub use gitops_values_yaml as yaml;
 
 use serde_json::Value;
 

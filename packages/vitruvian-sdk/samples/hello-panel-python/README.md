@@ -119,7 +119,7 @@ tool.on_start = start
 The island page has a pop-up menu to pick the status with: a `choice` block.
 Picking is the event `change`, with the option's value, as leaving a field
 changed is. Both the status and the `choice` block are newer than protocol 2
-itself, and Vitruvian 3.46 and 3.47 have neither. There `app.status` sends
+itself, and Vitruvian Atrium 3.46 and 3.47 have neither. There `app.status` sends
 nothing and returns False. A `choice` would be drawn as plain words nobody
 can change, so the tool asks first and sends a field in its place:
 
@@ -145,7 +145,7 @@ can change, so the tool asks first and sends a field in its place:
 
 ## A few words beside the mark
 
-On Vitruvian 3.50 and later the status may carry a few words, drawn beside
+On Vitruvian Atrium 3.50 and later the status may carry a few words, drawn beside
 the mark on the closed island, or a start time the app counts the seconds
 from. The manifest says so, `"status": { "placement": "island", "activity":
 true }`, and `app.status` takes `activity` and `since`. When the app has
@@ -192,7 +192,7 @@ older app is sent the same words as a caption after the switch instead:
 The manifest says `"protocol": "2"` and lists the two panels under
 `contributes.panels`. The app starts a tool with Apple's `python3`, so the kit
 is installed into `lib/` inside the folder, as `hello-python-kit` does. Add
-the folder in Vitruvian, `lib/` and all:
+the folder in Vitruvian Atrium, `lib/` and all:
 Settings › Extensions, "Add from Folder…".
 
 ## Subdirectories & Boundaries

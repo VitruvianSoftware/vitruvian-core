@@ -13,9 +13,9 @@ fn main() {
 }
 ```
 
-A tool is a program the Vitruvian app starts and talks to over its standard
+A tool is a program Vitruvian Atrium starts and talks to over its standard
 input and output. It is trusted like an app: it runs as you, with every
-permission Vitruvian has. The guide, the protocol and a sample are in
+permission Vitruvian Atrium has. The guide, the protocol and a sample are in
 [the SDK's repository](https://github.com/VitruvianSoftware/vitruvian-sdk);
 `vitruvian-tool init --template rust` starts a new tool.
 

@@ -13,9 +13,9 @@ tool.Run()
 ```
 
 Package `toolkit` writes a [Vitruvian](https://vitruviansoftware.dev) tool
-in Go: declare commands, handle them, call the app. A tool is a program the
-Vitruvian app starts and talks to over its standard input and output. It is
-trusted like an app: it runs as you, with every permission Vitruvian has.
+in Go: declare commands, handle them, call the app. A tool is a program
+Vitruvian Atrium starts and talks to over its standard input and output. It is
+trusted like an app: it runs as you, with every permission Vitruvian Atrium has.
 The guide and the protocol are in `../docs` and `../protocol`;
 `vitruvian-tool init --template go` starts a new tool.
 

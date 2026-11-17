@@ -105,6 +105,28 @@ impl AuthError {
         }
     }
 
+    /// The value the token presented that got it refused (`sub`, `azp` or
+    /// `client_id`), for the server's own log line. `None` for refusals that
+    /// are not about one claim.
+    pub fn presented(&self) -> Option<&str> {
+        match self {
+            AuthError::SubjectNotAllowed { subject } => Some(subject.as_str()),
+            AuthError::AuthorizedPartyPresent { azp } => Some(azp.as_str()),
+            AuthError::ClientNotAllowed { client_id } => client_id.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// The claim [`AuthError::presented`] came from.
+    pub fn presented_label(&self) -> Option<&'static str> {
+        match self {
+            AuthError::SubjectNotAllowed { .. } => Some("sub"),
+            AuthError::AuthorizedPartyPresent { .. } => Some("azp"),
+            AuthError::ClientNotAllowed { .. } => Some("client_id"),
+            _ => None,
+        }
+    }
+
     pub fn message(&self) -> String {
         match self {
             AuthError::MissingToken => {
@@ -1733,6 +1755,42 @@ mod tests {
         assert!(is_idp_side_failure(&VerificationFailure::non_jose(
             "fetch failed"
         )));
+    }
+
+    #[test]
+    fn a_refusal_names_the_claim_that_caused_it() {
+        let cases = [
+            (
+                AuthError::SubjectNotAllowed {
+                    subject: "u1".into(),
+                },
+                Some("u1"),
+                Some("sub"),
+            ),
+            (
+                AuthError::AuthorizedPartyPresent { azp: "web".into() },
+                Some("web"),
+                Some("azp"),
+            ),
+            (
+                AuthError::ClientNotAllowed {
+                    client_id: Some("c9".into()),
+                },
+                Some("c9"),
+                Some("client_id"),
+            ),
+            (
+                AuthError::ClientNotAllowed { client_id: None },
+                None,
+                Some("client_id"),
+            ),
+            (AuthError::MissingToken, None, None),
+            (AuthError::InvalidToken { reason: "x".into() }, None, None),
+        ];
+        for (err, presented, label) in cases {
+            assert_eq!(err.presented(), presented, "{err:?}");
+            assert_eq!(err.presented_label(), label, "{err:?}");
+        }
     }
 
     #[test]

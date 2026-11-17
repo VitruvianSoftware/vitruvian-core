@@ -23,7 +23,7 @@
 mod prm;
 mod verifier;
 
-pub use prm::{audience_scope_for, protected_resource_metadata};
+pub use prm::{audience_scope_for, full_scope_string, protected_resource_metadata};
 pub use verifier::{
     extract_bearer, set_tls_warning_hook, tls_client_config, verifier, www_authenticate, AuthError,
     Caller, Verifier, VerifierConfig,

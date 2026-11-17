@@ -25,6 +25,7 @@
 //!   GET    /.well-known/oauth-protected-resource             RFC 9728 metadata for the relay
 //!   GET    /.well-known/oauth-protected-resource/mcp/d/{id}  metadata for one device's URL
 //!   POST   /mcp/d/{id}                                       MCP over Streamable HTTP (JSON answers)
+//!                                                            (2026-07-28 requests stand alone; older ones use initialize + Mcp-Session-Id)
 //!   GET    /mcp/d/{id}, DELETE /mcp/d/{id}                   405: no SSE stream or session delete in P1
 //!   POST   /devices                                          register this person's device (connector token)
 //!   GET    /connect                                          the connector's WebSocket (connector token)
@@ -67,7 +68,7 @@ use vitruvian_relay_protocol::{
 
 use crate::config::Settings;
 use crate::devices::{DeviceRecord, DeviceStore};
-use crate::mcp::{needs_session, Mcp};
+use crate::mcp::{era, needs_session, Era, Mcp};
 use crate::registry::{ConnectionId, Registry};
 use crate::{hex, log_event, random_id, uuid_v4, LogSink};
 
@@ -85,6 +86,8 @@ const MAX_SESSIONS: usize = 1024;
 /// one ends, so nobody can push out someone else's.
 pub(crate) const MAX_SESSIONS_PER_SUBJECT: usize = 64;
 const SESSION_HEADER: &str = "mcp-session-id";
+/// Names the MCP revision on each request; must match `params._meta`'s.
+const PROTOCOL_HEADER: &str = "mcp-protocol-version";
 /// Frames queued for one connection before a caller waits for room.
 const CONNECTION_QUEUE: usize = 64;
 
@@ -477,6 +480,11 @@ async fn mcp_post(app: Arc<App>, req: Request<Incoming>, device_id: String) -> R
         .get(SESSION_HEADER)
         .and_then(|v| v.to_str().ok())
         .map(String::from);
+    let protocol_header = req
+        .headers()
+        .get(PROTOCOL_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
     let bytes = match read_body(req.into_body(), MAX_MCP_BODY_BYTES, app.timing.body_timeout).await
     {
         Ok(b) => b,
@@ -492,7 +500,15 @@ async fn mcp_post(app: Arc<App>, req: Request<Incoming>, device_id: String) -> R
         }
     };
     let method = msg.get("method").and_then(Value::as_str);
-    let session = if needs_session(method) {
+    let era = match era(&msg, protocol_header.as_deref()) {
+        Ok(e) => e,
+        Err(err) => return json_response(StatusCode::BAD_REQUEST, &err),
+    };
+    // A modern (2026-07-28) request stands alone: any session id an older
+    // client left on it is ignored, and none is looked up or minted.
+    let session = if era == Era::Modern {
+        None
+    } else if needs_session(method) {
         match session {
             None => return text(StatusCode::BAD_REQUEST, "Mcp-Session-Id header required"),
             // MCP's rule for an ended session: 404 tells the client to start
@@ -505,7 +521,7 @@ async fn mcp_post(app: Arc<App>, req: Request<Incoming>, device_id: String) -> R
     } else {
         None
     };
-    let is_initialize = method == Some("initialize");
+    let is_initialize = era == Era::Legacy && method == Some("initialize");
     match app
         .mcp
         .handle(&msg, &device_id, &caller, session.as_deref())
@@ -513,7 +529,14 @@ async fn mcp_post(app: Arc<App>, req: Request<Incoming>, device_id: String) -> R
     {
         None => respond(StatusCode::ACCEPTED, "text/plain", ""),
         Some(v) => {
-            let mut resp = json_response(StatusCode::OK, &v);
+            // The stateless revision answers an unknown method with 404; the
+            // older ones keep 200 with the JSON-RPC error.
+            let status = if era == Era::Modern && v["error"]["code"] == -32601 {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::OK
+            };
+            let mut resp = json_response(status, &v);
             if is_initialize && v.get("result").is_some() {
                 let id = app.new_session(&device_id, &caller);
                 resp.headers_mut().insert(

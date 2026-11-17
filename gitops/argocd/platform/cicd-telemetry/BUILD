@@ -21,11 +21,11 @@ rust_library(
     name = "collector_config_lib",
     srcs = [
         "src/lib.rs",
-        "src/yaml.rs",
     ],
     crate_name = "collector_config",
     edition = "2021",
     deps = [
+        "//tools/gitops/values-yaml:values_yaml",
         "@crates//:serde_json",
     ],
 )
