@@ -503,6 +503,9 @@ public struct FileAttachmentChip: View {
         String(localized: "Not downloaded yet"),
     ]
 
+    /// The widest the chip grows, so a long file name has room before it is cut.
+    static let maxChipWidth: CGFloat = 420
+
     nonisolated(unsafe) private static let defaultPreferences = ComposerPreferences()
 
     public init(
@@ -542,18 +545,20 @@ public struct FileAttachmentChip: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                    .help(name)
                 Text(detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            .frame(maxWidth: 210, alignment: .leading)
+            // The name gets the room first; only what the buttons leave is ever cut, in the middle.
+            .layoutPriority(1)
             Spacer(minLength: 4)
             actionButtons
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .frame(maxWidth: 340, alignment: .leading)
+        .frame(maxWidth: Self.maxChipWidth, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10).fill(.background.opacity(0.75)))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.quaternary))
         .contentShape(RoundedRectangle(cornerRadius: 10))

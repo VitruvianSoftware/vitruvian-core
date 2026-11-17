@@ -164,6 +164,22 @@ public struct ExternalEmbedDescriptor: Equatable, Sendable {
     public let originalURL: URL
     public let embedURL: URL
 
+    /// The YouTube video's ID, read from the embed address; nil for every other site.
+    public var youTubeVideoID: String? {
+        guard host == "youtube.com", embedURL.pathComponents.count >= 3, embedURL.pathComponents[1] == "embed" else { return nil }
+        return embedURL.pathComponents[2]
+    }
+
+    /// The video's still picture on YouTube, when this is a YouTube link.
+    public var remoteThumbnailURL: URL? { youTubeVideoID.flatMap(EmbedThumbnail.youTubeURL(videoID:)) }
+
+    /// The picture the message's own preview for this link carries, when it has been saved on this Mac.
+    public static func previewImagePath(in message: TimelineMessage) -> String? {
+        guard let path = message.linkPreviews.first(where: isEmbedPreview)?.imagePath, !path.isEmpty,
+              isLocalMediaStorePath(path) else { return nil }
+        return path
+    }
+
     public init(host: String, originalURL: URL, embedURL: URL) {
         self.host = host
         self.originalURL = originalURL
@@ -307,7 +323,13 @@ public struct EmbedConsentCard: View {
     public let isLoaded: Bool
     /// The link's title when the message already carries one (a preview its network sent); else the card names the site.
     public var title: String?
+    /// A picture the link's preview already saved on this Mac; drawn without any request.
+    public var previewImagePath: String?
+    /// Whether the video's picture may be fetched from its site (that tells the site this Mac's address). Off keeps
+    /// the plain play tile.
+    public var allowsRemoteThumbnail: Bool
     public var onBubble: Bool
+    @State private var thumbnail: CGImage?
     public let onLoadEmbed: () -> Void
     public var onOpenURL: (URL) -> Void
 
@@ -323,6 +345,8 @@ public struct EmbedConsentCard: View {
         descriptor: ExternalEmbedDescriptor,
         isLoaded: Bool,
         title: String? = nil,
+        previewImagePath: String? = nil,
+        allowsRemoteThumbnail: Bool = false,
         onBubble: Bool = false,
         onLoadEmbed: @escaping () -> Void,
         onOpenURL: @escaping (URL) -> Void = { url in
@@ -333,6 +357,8 @@ public struct EmbedConsentCard: View {
         self.descriptor = descriptor
         self.isLoaded = isLoaded
         self.title = title
+        self.previewImagePath = previewImagePath
+        self.allowsRemoteThumbnail = allowsRemoteThumbnail
         self.onBubble = onBubble
         self.onLoadEmbed = onLoadEmbed
         self.onOpenURL = onOpenURL
@@ -341,6 +367,37 @@ public struct EmbedConsentCard: View {
     private var displayTitle: String {
         if let title = title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
         return descriptor.fallbackTitle
+    }
+
+    /// What picture the card would draw, so the load restarts when it changes.
+    private var thumbnailSource: String {
+        if let path = localPreviewPath { return path }
+        if allowsRemoteThumbnail, let url = descriptor.remoteThumbnailURL { return url.absoluteString }
+        return ""
+    }
+
+    private var localPreviewPath: String? {
+        guard let path = previewImagePath, isLocalMediaStorePath(path),
+              FileManager.default.fileExists(atPath: path) else { return nil }
+        return path
+    }
+
+    /// A saved preview picture is read on the spot (small, and already on this Mac); the site's is fetched.
+    private var localImage: NSImage? { localPreviewPath.flatMap { NSImage(contentsOfFile: $0) } }
+
+    private var hasThumbnail: Bool { localImage != nil || thumbnail != nil }
+
+    private var thumbnailImage: Image {
+        if let localImage { return Image(nsImage: localImage) }
+        if let thumbnail { return Image(decorative: thumbnail, scale: 1) }
+        return Image(systemName: "play.fill")
+    }
+
+    @MainActor
+    private func loadThumbnail() async {
+        thumbnail = nil
+        guard localPreviewPath == nil, allowsRemoteThumbnail, let url = descriptor.remoteThumbnailURL else { return }
+        thumbnail = await EmbedThumbnail.fetch(url)
     }
 
     private var tooltip: String {
@@ -386,11 +443,23 @@ public struct EmbedConsentCard: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(themeAccent.opacity(onBubble ? 0.30 : 0.16))
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(onBubble ? Color.white : themeAccent)
+                        if hasThumbnail {
+                            thumbnailImage
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 64, height: 36)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color.white)
+                                .shadow(color: .black.opacity(0.6), radius: 2)
+                        } else {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(onBubble ? Color.white : themeAccent)
+                        }
                     }
-                    .frame(width: 48, height: 36)
+                    .frame(width: hasThumbnail ? 64 : 48, height: 36)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(displayTitle)
                             .font(.callout.weight(.semibold))
@@ -418,6 +487,7 @@ public struct EmbedConsentCard: View {
                 .contentShape(RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(.plain)
+            .task(id: thumbnailSource) { await loadThumbnail() }
             .help(tooltip)
             .contextMenu {
                 Button(String(localized: "Open in Browser")) { onOpenURL(descriptor.originalURL) }
