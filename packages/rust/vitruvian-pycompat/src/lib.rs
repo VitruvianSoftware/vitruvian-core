@@ -30,3 +30,4 @@
 pub mod argparse;
 pub mod json;
 pub mod pystr;
+pub mod unicode_tables;

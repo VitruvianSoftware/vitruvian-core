@@ -34,6 +34,7 @@ sh_test(
     data = glob(["src/**/*.rs"]) + [
         "rustc-build.sh",
         "//tools/agent-app:rust_sources",
+        "//tools/release-scope:rust_sources",
         "//tools/sync-downloads:rust_sources",
         "@rules_rust//rust/toolchain:current_rust_stdlib_files",
         "@rules_rust//rust/toolchain:current_rust_toolchain",

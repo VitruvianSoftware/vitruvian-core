@@ -117,21 +117,25 @@ pub fn first_line(s: &str) -> String {
     }
 }
 
-/// An approximation of `str.isprintable()` for one character: control
-/// characters, separators other than space, and a handful of format
-/// characters are not printable.
+/// `str.isprintable()` for one character, from Python's own table: what
+/// `repr()` leaves as it is rather than escaping.
 fn is_printable(c: char) -> bool {
-    let cp = c as u32;
-    !(cp < 0x20
-        || (0x7F..0xA0).contains(&cp)
-        || cp == 0xAD
-        || (0x2028..=0x202E).contains(&cp)
-        || (0x200B..=0x200F).contains(&cp)
-        || (0x2060..=0x206F).contains(&cp)
-        || cp == 0xFEFF
-        || (0xD800..=0xDFFF).contains(&cp)
-        || (0xE000..=0xF8FF).contains(&cp)
-        || (is_space(c) && c != ' '))
+    in_ranges(crate::unicode_tables::PRINTABLE, c as u32)
+}
+
+/// Whether `cp` falls in one of the sorted, inclusive `ranges`.
+fn in_ranges(ranges: &[(u32, u32)], cp: u32) -> bool {
+    ranges
+        .binary_search_by(|&(lo, hi)| {
+            if hi < cp {
+                std::cmp::Ordering::Less
+            } else if lo > cp {
+                std::cmp::Ordering::Greater
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        })
+        .is_ok()
 }
 
 /// `repr(s)` for a str.

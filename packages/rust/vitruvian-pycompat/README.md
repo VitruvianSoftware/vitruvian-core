@@ -12,13 +12,13 @@ ported from Python and must print exactly what the Python printed:
 Standard library only, so a tool can link it whatever crate hub it uses.
 
 These modules started as byte-identical copies in several tools
-(agent-app, merge-queue-stats, sync-downloads, pulumi). Before changing one,
+(agent-app, merge-queue-stats, sync-downloads, pulumi, design-system-android,
+lint-naming, release-scope, sdk-codegen, sync-site-tools). Before changing one,
 run the tests of every tool that depends on it:
 
 ```
 bazel test $(bazel query 'rdeps(//..., //packages/rust/vitruvian-pycompat)' --output=label 2>/dev/null | grep _test)
 ```
-
-Known gap: `pystr`'s printable test (used by `repr()`) is an approximation.
-It treats unassigned code points such as U+0378 as printable, where Python
-escapes them.
+- `unicode_tables`: Python 3.12's character classes on Unicode 15.0.0
+  (whitespace, decimal digits, digits, word characters, printable, case
+  ignorable), shared by every port that needs them.

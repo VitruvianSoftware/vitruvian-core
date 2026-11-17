@@ -10,10 +10,17 @@
 # goes through here, so :rustc_build_test proves on each PR what they run.
 #
 #   rustc-build.sh <out_dir> <crate> <lib.rs> <main.rs> [rustc flags for the lib...]
+#   rustc-build.sh --test <out_dir> <crate> <lib.rs>   # its unit tests, to <out_dir>/<crate>-test
 #
 # RUSTC names the compiler (default: rustc on PATH).
 set -euo pipefail
 
+test_only=
+if [ "${1:-}" = --test ]; then
+	test_only=1
+	shift
+	set -- "$1" "$2" "$3" "-" "${@:4}"
+fi
 if [ "$#" -lt 4 ]; then
 	echo "usage: rustc-build.sh <out_dir> <crate> <lib.rs> <main.rs> [rustc flags for the lib...]" >&2
 	exit 2
@@ -30,6 +37,11 @@ if find -L "$(dirname "$lib")" -name '*.rs' -exec grep -l vitruvian_pycompat {} 
 	"$rustc" --edition 2021 --crate-type lib --crate-name vitruvian_pycompat \
 		"$here/src/lib.rs" -o "$out/libvitruvian_pycompat.rlib"
 	externs=(--extern "vitruvian_pycompat=$out/libvitruvian_pycompat.rlib")
+fi
+if [ -n "$test_only" ]; then
+	"$rustc" --edition 2021 --test --crate-name "$crate" "$@" "$lib" \
+		-L "$out" ${externs[@]+"${externs[@]}"} -o "$out/$crate-test"
+	exit 0
 fi
 "$rustc" --edition 2021 --crate-type lib --crate-name "$crate" "$@" "$lib" \
 	-L "$out" ${externs[@]+"${externs[@]}"} -o "$out/lib$crate.rlib"
