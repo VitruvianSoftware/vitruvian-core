@@ -228,6 +228,7 @@ public final class GitHubTool {
                 host.log("took the sign-in the app handed over")
             } catch {
                 host.log("could not keep the sign-in the app handed over: \(error)")
+                GitHubToolTelemetry.capture(error: error, tags: ["component": "auth", "action": "save_handed_token"])
                 return
             }
         }
