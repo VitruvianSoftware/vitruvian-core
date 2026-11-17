@@ -368,7 +368,8 @@ func (s *Store) scanInboxRow(row dbutil.Scannable) (InboxRow, error) {
 	r.LastTS = msTime(lastTS)
 	// A Slack join or leave note still stored as text is no preview: the row shows nothing for it, as for any
 	// event with nothing readable, rather than "Ann has joined the channel".
-	if _, note := s.noteOf(context.Background(), r.Network, Event{Type: typ, Content: json.RawMessage(content), Sender: sender}); note {
+	// (The name is the sender's profile's, which the row's query already read: no lookup inside the rows.)
+	if _, note := MembershipNote(r.Network, typ, json.RawMessage(content), sender, actorProfileName); note && rxSender == "" {
 		sender, typ, content = "", "", "{}"
 	}
 	r.PreviewMine = sender == myID
@@ -575,11 +576,13 @@ func (s *Store) EventsBefore(ctx context.Context, roomID string, before *Cursor,
 		if err != nil {
 			return nil, nil, err
 		}
-		out = append(out, s.served(ctx, e))
+		out = append(out, e)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, nil, err
 	}
+	rows.Close()
+	out = s.serveAll(ctx, out) // with the rows closed: it looks names up
 	if len(out) <= limit {
 		return out, nil, nil
 	}

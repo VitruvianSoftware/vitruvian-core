@@ -439,14 +439,17 @@ func (s *Store) queryEvents(ctx context.Context, query string, args ...any) ([]E
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var out []Event
 	for rows.Next() {
 		e, err := scanEvent(rows)
 		if err != nil {
+			rows.Close()
 			return nil, err
 		}
-		out = append(out, s.served(ctx, e))
+		out = append(out, e)
 	}
-	return out, rows.Err()
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, err
+	}
+	return s.serveAll(ctx, out), nil // with the rows closed: it looks names up
 }

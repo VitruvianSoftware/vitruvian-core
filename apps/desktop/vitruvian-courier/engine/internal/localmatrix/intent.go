@@ -76,7 +76,7 @@ func (in *Intent) SendMessage(ctx context.Context, roomID id.RoomID, evtType eve
 	if prof, found, _ := in.c.store.GetProfile(ctx, string(in.mxid)); found {
 		senderName = prof.DisplayName
 	}
-	if membership, ok := store.MembershipNote(in.c.network, evtType.Type, raw, senderName); ok {
+	if membership, ok := store.MembershipNote(in.c.network, evtType.Type, raw, string(in.mxid), senderName); ok {
 		sk := string(in.mxid)
 		ev.Type, ev.StateKey = event.StateMember.Type, &sk
 		ev.Content, _ = json.Marshal(map[string]any{"membership": membership, "state_key": sk, "target_user_id": sk})
