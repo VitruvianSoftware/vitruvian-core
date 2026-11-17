@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.101.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.101.0...vitruvian-atrium-v3.101.1) (2026-11-17)
+
+
+### Bug Fixes
+
+* **vitruvian-sdk:** name Vitruvian Atrium in the protocol's refusal text ([#5006](https://github.com/VitruvianSoftware/vitruvian-core/issues/5006)) ([bcf2e5a](https://github.com/VitruvianSoftware/vitruvian-core/commit/bcf2e5af19fca05c4278ed947f1aa2f57d714016))
+
 ## [3.101.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.100.0...vitruvian-atrium-v3.101.0) (2026-11-16)
 
 
