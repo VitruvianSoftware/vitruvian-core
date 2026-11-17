@@ -31,8 +31,15 @@ provider.
 - **Responder lookup**: looks up the account owner (`responderEmail` in
   `Pulumi.production.yaml`) with `pagerduty.LookupUser`; the user is never
   created by Pulumi.
+- **On-call schedule**: one shift-based `Schedulev2` (the legacy `Schedule`
+  resource is deprecated), configured under `schedule`. A single event repeats
+  every `shiftDays` from a fixed `start`, and `members` (emails of existing
+  PagerDuty users, looked up, never created) take it in turns. An empty
+  `members` list means the responder alone, which is what production runs
+  today. The free plan allows one schedule. To add someone, invite them in
+  PagerDuty first (the free plan allows five users), then add their email.
 - **Escalation policy**: one `EscalationPolicy` with a single rule targeting
-  the looked-up user, configured with `escalation.delayMinutes` and
+  the on-call schedule (whoever is on call), configured with `escalation.delayMinutes` and
   `escalation.loops` (without paid-tier team fields). The free plan allows only
   one escalation policy and every account starts with one called "Default", so
   production does not create a policy: `escalation.adoptId` names the existing

@@ -42,6 +42,12 @@ func validSettings() Settings {
 			DelayMinutes: 30,
 			Loops:        2,
 		},
+		Schedule: Schedule{
+			Name:      "Primary rotation",
+			TimeZone:  "America/Los_Angeles",
+			Start:     "2026-11-16T09:00:00-08:00",
+			ShiftDays: 7,
+		},
 		Services: []Service{
 			{
 				Key:         "sentry",
@@ -106,6 +112,34 @@ func TestValidateRejectsBadConfig(t *testing.T) {
 		"negative loops": {
 			mutate: func(s *Settings) { s.Escalation.Loops = -1 },
 			want:   "escalation.loops",
+		},
+		"empty schedule name": {
+			mutate: func(s *Settings) { s.Schedule.Name = " " },
+			want:   "schedule.name",
+		},
+		"unknown time zone": {
+			mutate: func(s *Settings) { s.Schedule.TimeZone = "Pacific" },
+			want:   "schedule.timeZone",
+		},
+		"empty time zone": {
+			mutate: func(s *Settings) { s.Schedule.TimeZone = "" },
+			want:   "schedule.timeZone",
+		},
+		"start without an offset": {
+			mutate: func(s *Settings) { s.Schedule.Start = "2026-11-16T09:00:00" },
+			want:   "schedule.start",
+		},
+		"zero shiftDays": {
+			mutate: func(s *Settings) { s.Schedule.ShiftDays = 0 },
+			want:   "schedule.shiftDays",
+		},
+		"member that is not an email": {
+			mutate: func(s *Settings) { s.Schedule.Members = []string{"james"} },
+			want:   "schedule.members[0]",
+		},
+		"duplicate member": {
+			mutate: func(s *Settings) { s.Schedule.Members = []string{"a@b.dev", "a@b.dev"} },
+			want:   "duplicated",
 		},
 		"no services": {
 			mutate: func(s *Settings) { s.Services = nil },
@@ -213,12 +247,13 @@ func checkStackConfigBytes(raw []byte) (Settings, error) {
 	allowed := map[string]bool{
 		Namespace + ":responderEmail": true,
 		Namespace + ":escalation":     true,
+		Namespace + ":schedule":       true,
 		Namespace + ":services":       true,
 		"pagerduty:token":             true, // only as ciphertext, checked above
 	}
 	for k := range doc.Config {
 		if !allowed[k] {
-			return Settings{}, fmt.Errorf("unexpected config key %q: only responderEmail, escalation, services and an encrypted pagerduty:token are allowed", k)
+			return Settings{}, fmt.Errorf("unexpected config key %q: only responderEmail, escalation, schedule, services and an encrypted pagerduty:token are allowed", k)
 		}
 	}
 	if _, ok := doc.Config[Namespace+":token"]; ok {
@@ -241,6 +276,9 @@ func checkStackConfigBytes(raw []byte) (Settings, error) {
 		return Settings{}, err
 	}
 	if err := decode("escalation", &s.Escalation); err != nil {
+		return Settings{}, err
+	}
+	if err := decode("schedule", &s.Schedule); err != nil {
 		return Settings{}, err
 	}
 	if err := decode("services", &s.Services); err != nil {
@@ -294,6 +332,11 @@ func TestPlaintextTokenGuardRejectsSecrets(t *testing.T) {
     name: Vitruvian on-call
     delayMinutes: 30
     loops: 2
+  vitruvian-pagerduty:schedule:
+    name: Rotation
+    timeZone: America/Los_Angeles
+    start: "2026-11-16T09:00:00-08:00"
+    shiftDays: 7
   vitruvian-pagerduty:services:
     - key: sentry
       name: Sentry
@@ -359,6 +402,8 @@ func (m *pagerdutyMocks) NewResource(args pulumi.MockResourceArgs) (string, reso
 	switch args.TypeToken {
 	case "pagerduty:index/escalationPolicy:EscalationPolicy":
 		id = "PESCPOL01"
+	case "pagerduty:index/schedulev2:Schedulev2":
+		id = "PSCHED01"
 	case "pagerduty:index/service:Service":
 		id = "PSVC_" + args.Name
 	case "pagerduty:index/serviceIntegration:ServiceIntegration":
@@ -483,8 +528,47 @@ func TestReconcileWithMocks(t *testing.T) {
 		t.Fatalf("expected 1 rule target, got %d", len(targets))
 	}
 	targetObj := targets[0].ObjectValue()
-	if targetObj["type"].StringValue() != "user_reference" || targetObj["id"].StringValue() != "PUSER01" {
-		t.Fatalf("expected target user_reference PUSER01, got %v", targetObj)
+	if targetObj["type"].StringValue() != "schedule_reference" || targetObj["id"].StringValue() != "PSCHED01" {
+		t.Fatalf("expected target schedule_reference PSCHED01, got %v", targetObj)
+	}
+
+	schedules := m.byType("pagerduty:index/schedulev2:Schedulev2")
+	if len(schedules) != 1 {
+		t.Fatalf("expected 1 schedule (the free plan allows one), got %d", len(schedules))
+	}
+	sched := schedules[0]
+	if _, hasTeams := sched.Inputs["teams"]; hasTeams {
+		t.Fatal("schedule must not set teams on PagerDuty free tier")
+	}
+	if got := sched.Inputs["timeZone"].StringValue(); got != "America/Los_Angeles" {
+		t.Fatalf("schedule timeZone = %q, want America/Los_Angeles", got)
+	}
+	rotations := sched.Inputs["rotations"].ArrayValue()
+	if len(rotations) != 1 {
+		t.Fatalf("expected 1 rotation, got %d", len(rotations))
+	}
+	events := rotations[0].ObjectValue()["events"].ArrayValue()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	ev := events[0].ObjectValue()
+	// Committed start is 2026-11-16 09:00 Pacific = 17:00 UTC; a weekly shift.
+	if ev["startTime"].StringValue() != "2026-11-16T17:00:00Z" ||
+		ev["effectiveSince"].StringValue() != "2026-11-16T17:00:00Z" ||
+		ev["endTime"].StringValue() != "2026-11-23T17:00:00Z" {
+		t.Fatalf("event times must be the start and start+7d in UTC, got %v", ev)
+	}
+	if rec := ev["recurrences"].ArrayValue(); len(rec) != 1 || rec[0].StringValue() != "RRULE:FREQ=WEEKLY" {
+		t.Fatalf("expected RRULE:FREQ=WEEKLY, got %v", rec)
+	}
+	strat := ev["assignmentStrategies"].ArrayValue()[0].ObjectValue()
+	if strat["type"].StringValue() != "rotating_member_assignment_strategy" || strat["shiftsPerMember"].NumberValue() != 1 {
+		t.Fatalf("expected one shift each in turn, got %v", strat)
+	}
+	users := strat["members"].ArrayValue()
+	if len(users) != 1 || users[0].ObjectValue()["userId"].StringValue() != "PUSER01" ||
+		users[0].ObjectValue()["type"].StringValue() != "user_member" {
+		t.Fatalf("expected the responder alone (PUSER01) in the rotation, got %v", users)
 	}
 
 	services := m.byType("pagerduty:index/service:Service")
@@ -634,5 +718,55 @@ func TestStackConfigRejectsUnknownKeys(t *testing.T) {
 				t.Fatalf("want unexpected-config-key error, got %v", err)
 			}
 		})
+	}
+}
+
+func TestScheduleRotatesMembersInOrder(t *testing.T) {
+	s := validSettings()
+	s.Schedule.Members = []string{"second@example.com", "first@example.com"}
+	m := &pagerdutyMocks{}
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		provider, err := pagerduty.NewProvider(ctx, "pagerduty", &pagerduty.ProviderArgs{
+			Token: pulumi.ToSecret(pulumi.String("mock-token")).(pulumi.StringOutput),
+		})
+		if err != nil {
+			return err
+		}
+		_, err = Reconcile(ctx, provider, s)
+		return err
+	}, pulumi.WithMocks("vitruvian-pagerduty", "production", m))
+	if err != nil {
+		t.Fatalf("mocked run failed: %v", err)
+	}
+
+	var looked []string
+	for _, inv := range m.invokes {
+		looked = append(looked, inv.Args["email"].StringValue())
+	}
+	if strings.Join(looked, ",") != "second@example.com,first@example.com" {
+		t.Fatalf("members must be looked up in rotation order, got %v", looked)
+	}
+	for _, inv := range m.invokes {
+		if inv.Args["email"].StringValue() == s.ResponderEmail {
+			t.Fatal("an explicit member list must replace the responder, not add to it")
+		}
+	}
+	ev := m.byType("pagerduty:index/schedulev2:Schedulev2")[0].Inputs["rotations"].ArrayValue()[0].ObjectValue()["events"].ArrayValue()[0].ObjectValue()
+	if n := len(ev["assignmentStrategies"].ArrayValue()[0].ObjectValue()["members"].ArrayValue()); n != 2 {
+		t.Fatalf("expected 2 users in the rotation, got %d", n)
+	}
+}
+
+func TestRecurrence(t *testing.T) {
+	for days, want := range map[int]string{
+		1:  "RRULE:FREQ=DAILY",
+		3:  "RRULE:FREQ=DAILY;INTERVAL=3",
+		7:  "RRULE:FREQ=WEEKLY",
+		14: "RRULE:FREQ=WEEKLY;INTERVAL=2",
+	} {
+		if got := Recurrence(days); got != want {
+			t.Errorf("Recurrence(%d) = %q, want %q", days, got, want)
+		}
 	}
 }
