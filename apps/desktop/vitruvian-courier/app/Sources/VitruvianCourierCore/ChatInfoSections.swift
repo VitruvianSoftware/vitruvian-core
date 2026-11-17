@@ -52,6 +52,20 @@ public enum ChatInfoShared {
         everything(media: media, links: links).count
     }
 
+    /// The media viewer's tab Show All opens: the one of the first (newest) tile, so what a person is looking at
+    /// is what opens. A link first opens Links, a photo or video first opens Media; the other is one tab away.
+    public static func viewerTab(media: [Event], links: [RoomLink]) -> MediaViewerModel.Tab {
+        guard let first = everything(media: media, links: links).first else { return .media }
+        if case .link = first { return .links }
+        return .media
+    }
+
+    /// The number by the section's title. A chat the engine could not read all of (`RoomInfoResult.sharedCapped`)
+    /// has at least that many, so it reads "50+", never a count that is too small to be true.
+    public static func countText(_ count: Int, capped: Bool) -> String {
+        capped ? "\(count)+" : "\(count)"
+    }
+
     private static func everything(media: [Event], links: [RoomLink]) -> [ChatInfoSharedTile] {
         let mediaTiles = ChatInfoPresentation.sharedMediaEvents(media).map(ChatInfoSharedTile.media)
         let linkTiles = RoomLink.deduplicated(links).map(ChatInfoSharedTile.link)

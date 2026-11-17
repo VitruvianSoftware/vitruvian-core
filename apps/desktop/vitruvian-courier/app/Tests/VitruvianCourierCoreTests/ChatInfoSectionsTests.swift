@@ -46,6 +46,33 @@ final class ChatInfoSectionsTests: XCTestCase {
         XCTAssertEqual(tiles.map(\.eventID), ["$p", "$l"])
     }
 
+    /// Show All opens the viewer on the tab of the first tile, so a link in Shared is never out of reach.
+    func testShowAllOpensTheTabOfTheFirstTile() {
+        let photos = [media("$p", ts: 10)]
+        let links = [link("$l", "https://maps.app.goo.gl/x", ts: 20)]
+        XCTAssertEqual(ChatInfoShared.viewerTab(media: photos, links: links), .links, "the newest thing is a link")
+        XCTAssertEqual(ChatInfoShared.viewerTab(media: [media("$p2", ts: 30)] + photos, links: links), .media)
+        XCTAssertEqual(ChatInfoShared.viewerTab(media: [], links: links), .links)
+        XCTAssertEqual(ChatInfoShared.viewerTab(media: photos, links: []), .media)
+        XCTAssertEqual(ChatInfoShared.viewerTab(media: [], links: []), .media)
+    }
+
+    /// A count the engine could not finish says "at least"; a whole one is a plain number. The engine's flag
+    /// survives the wire, and an engine before it reads as not capped.
+    func testASharedCountThatMayBeTooSmallReadsAsAtLeast() throws {
+        XCTAssertEqual(ChatInfoShared.countText(50, capped: true), "50+")
+        XCTAssertEqual(ChatInfoShared.countText(7, capped: false), "7")
+        func roundTrip(_ capped: Bool?) throws -> RoomInfoResult {
+            let info = RoomInfoResult(
+                roomID: "!r:x", name: "N", remoteName: "N", network: "whatsapp", isDirect: true, sharedCapped: capped,
+                features: ChatFeatures(reply: true, edit: false, unsend: false, deleteReachesPhone: true, source: .stored))
+            return try JSONDecoder().decode(RoomInfoResult.self, from: JSONEncoder().encode(info))
+        }
+        XCTAssertEqual(try roundTrip(true).sharedCapped, true)
+        XCTAssertEqual(try roundTrip(false).sharedCapped, false)
+        XCTAssertNil(try roundTrip(nil).sharedCapped, "an engine before the field")
+    }
+
     func testMapsLinksAreRecognisedInEveryForm() {
         for url in [
             "https://maps.app.goo.gl/kX9abc", "https://goo.gl/maps/AbCd", "https://www.google.com/maps/place/Foo",

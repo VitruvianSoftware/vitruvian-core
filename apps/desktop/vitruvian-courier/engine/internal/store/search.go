@@ -965,20 +965,32 @@ ORDER BY e.ts DESC, e.seq DESC
 LIMIT $2`
 
 func (s *Store) RoomSharedLinks(ctx context.Context, roomID string, limit int) ([]SharedLink, error) {
+	links, _, err := s.RoomSharedLinksCapped(ctx, roomID, limit)
+	return links, err
+}
+
+// RoomSharedLinksCapped is RoomSharedLinks, and whether there may be more links than it returns: it stopped at
+// limit with more to come, or the chat has more messages than the newest maxSharedLinkScanEvents it reads.
+func (s *Store) RoomSharedLinksCapped(ctx context.Context, roomID string, limit int) (links []SharedLink, capped bool, err error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, err := s.db.Query(ctx, roomSharedLinksSQL, roomID, maxSharedLinkScanEvents)
+	// One row past the scan cap says there are older messages that were not read.
+	rows, err := s.db.Query(ctx, roomSharedLinksSQL, roomID, maxSharedLinkScanEvents+1)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer rows.Close()
 	out := []SharedLink{}
+	scanned := 0
 	for rows.Next() {
+		if scanned++; scanned > maxSharedLinkScanEvents {
+			return out, true, nil
+		}
 		var eventID, sender, typ, content, editContent string
 		var ts int64
 		if err := rows.Scan(&eventID, &sender, &typ, &content, &ts, &editContent); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		text, _, _ := MessageText(typ, json.RawMessage(content))
 		if editContent != "" {
@@ -1000,15 +1012,15 @@ func (s *Store) RoomSharedLinks(ctx context.Context, roomID string, limit int) (
 				Host:    u.Hostname(),
 				Title:   titles[rawURL],
 			})
-			if len(out) >= limit {
-				return out, nil
+			if len(out) > limit {
+				return out[:limit], true, nil
 			}
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return out, nil
+	return out, false, nil
 }
 
 // previewTitle cleans a link preview's og:title for display. Bridges and sites often HTML-escape the title, and some
@@ -1130,10 +1142,42 @@ func geoURIMapsLink(geoURI string) string {
 	return "https://maps.google.com/?q=" + lat + "," + lon
 }
 
-// bareLinkPattern is a link written without its scheme: a host with a dot and a letters-only ending, then a path
-// ("maps.app.goo.gl/kX9", "google.com/maps?q=1,2", "ups.com/su/abc"). The path is required: "file.txt", "e.g." and
-// "example.com" alone are words as often as links.
-var bareLinkPattern = regexp.MustCompile(`^(?i:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,24}(?::\d{1,5})?[/?#]\S*)$`)
+// bareLinkPattern is a link written without its scheme: a dotted host, then a path ("maps.app.goo.gl/kX9",
+// "google.com/maps?q=1,2", "ups.com/su/abc"). The path is required: "example.com" alone is a word as often as a
+// link. The host must also end in a real top-level domain (hasKnownTLD), so file names and code paths
+// ("Node.js/express", "config.yaml/dev", "Mr.Smith/Jones") are not links.
+var bareLinkPattern = regexp.MustCompile(`^(?i:((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+([a-z]{2,24}))(?::\d{1,5})?[/?#]\S*)$`)
+
+// knownTLDs are the top-level domains a scheme-less link may end in: the generic ones people actually write and the
+// country codes, a compact list rather than the whole public suffix list. Left out on purpose are the ones that are
+// also common file extensions or language names, because "README.md/docs" and "script.sh/run" are far more often
+// paths than links: md, sh, py, pl, rs, pm, ps, zip, mov, so, cc, ts.
+var knownTLDs = func() map[string]bool {
+	m := map[string]bool{}
+	for _, t := range strings.Fields(`com net org edu gov mil int info biz name pro mobi
+		app dev io ai co me tv xyz online site store tech cloud page link shop blog news live life world today
+		email media music video photo photos games club design agency studio services solutions systems network
+		digital global group company ventures capital finance bank money care health city
+		ac ad ae af ag al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bm bn bo br bs bt bw by bz
+		ca cd cf cg ch ci ck cl cm cn cr cu cv cw cx cy cz de dj dk dm do dz ec ee eg er es et eu fi fj fk fm fo
+		fr ga gd ge gf gg gh gi gl gm gn gp gq gr gt gu gw gy hk hn hr ht hu id ie il im in iq ir is it je jm jo
+		jp ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc me mg mh mk ml mm mn mo mp mq
+		mr ms mt mu mv mw mx my mz na nc ne nf ng ni nl no np nr nu nz om pa pe pf pg ph pk pn pr pt pw py qa re
+		ro rs ru rw sa sb sc sd se sg si sk sl sm sn sr ss st sv sx sy sz tc td tf tg th tj tk tl tm tn to tr tt
+		tw tz ua ug uk us uy uz va vc ve vg vi vn vu wf ws ye yt za zm zw`) {
+		m[t] = true
+	}
+	for _, t := range strings.Fields("md sh py pl rs pm ps zip mov so cc ts") {
+		delete(m, t)
+	}
+	return m
+}()
+
+// hasKnownTLD reports whether host (lower or mixed case) ends in a top-level domain of knownTLDs.
+func hasKnownTLD(host string) bool {
+	i := strings.LastIndexByte(host, '.')
+	return i >= 0 && knownTLDs[strings.ToLower(host[i+1:])]
+}
 
 // extractLinks is the web links in text, each once, in order: the ones written with http:// or https://, and the
 // ones written without a scheme (given https://).
@@ -1152,7 +1196,7 @@ func extractLinks(text string) []string {
 			add(token[idx:])
 		} else if !strings.Contains(token, "://") && !strings.Contains(token, "@") {
 			bare := strings.TrimRight(strings.TrimLeft(token, "([<{\"'*_~"), ".,;:!?)>]}'\"*_~")
-			if bareLinkPattern.MatchString(bare) {
+			if m := bareLinkPattern.FindStringSubmatch(bare); m != nil && hasKnownTLD(m[1]) {
 				add("https://" + bare)
 			}
 		}

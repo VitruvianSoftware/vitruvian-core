@@ -233,6 +233,7 @@ type roomInfoResult struct {
 	SharedMedia    []eventJSON        `json:"shared_media"`
 	SharedFiles    []eventJSON        `json:"shared_files"`
 	SharedLinks    []actions.RoomLink `json:"shared_links"`
+	SharedCapped   bool               `json:"shared_capped"`
 	Features       chatFeatures       `json:"features"`
 }
 
@@ -299,6 +300,7 @@ func roomInfo(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 		SharedMedia:    mediaEvs,
 		SharedFiles:    fileEvs,
 		SharedLinks:    info.SharedLinks,
+		SharedCapped:   info.SharedCapped,
 		Features:       feat,
 	}, nil
 }

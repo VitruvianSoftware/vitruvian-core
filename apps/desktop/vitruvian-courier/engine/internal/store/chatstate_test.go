@@ -808,7 +808,7 @@ func TestMigration13AddsReadAloudAndSetReadAloudPersists(t *testing.T) {
 INSERT INTO rooms (room_id, network, name, is_direct, created_at, last_ts, last_event_id, request) VALUES
   ('!m13:courier.local', 'whatsapp', 'Migrated Chat', 1, 1000, 0, '', 0);
 INSERT INTO room_prefs (room_id, muted) VALUES ('!m13:courier.local', 1);`)
-	require.Equal(t, 13, SchemaVersion)
+	require.GreaterOrEqual(t, SchemaVersion, 13)
 	require.Equal(t, SchemaVersion, userVersion(t, migrated))
 	require.Equal(t, "", inboxByID(t, migrated)["!m13:courier.local"].ReadAloud)
 	require.True(t, inboxByID(t, migrated)["!m13:courier.local"].Muted)

@@ -22,8 +22,8 @@ public enum ChatEncryption: Equatable, Sendable {
     enum Policy: Equatable {
         /// Every chat is.
         case always
-        /// Some chats are. The room says so (`encrypted`): else it isn't known to be.
-        case whenRoomSays(unknownIsNotConfirmed: Bool)
+        /// Some chats are. The room says so (`encrypted`): else it isn't known to be either way.
+        case whenRoomSays
         /// No chat is.
         case never
     }
@@ -31,14 +31,15 @@ public enum ChatEncryption: Equatable, Sendable {
     /// The rule for each network, by the engine's id (see `NetworkNames`). Slack, Google Chat, Discord, LinkedIn,
     /// Google Voice, Bluesky and X direct messages are not end-to-end encrypted. Telegram's ordinary (cloud) chats
     /// are not either; only its secret chats are, which the bridge does not carry. Google Messages is end-to-end
-    /// encrypted for RCS chats and not for SMS, and the app can't tell them apart.
+    /// encrypted for RCS chats and not for SMS, and the app can't tell them apart. Messenger and Instagram encrypt
+    /// some chats only.
     static let policies: [String: Policy] = [
         "whatsapp": .always,
         "signal": .always,
         "imessage": .always,
-        "gmessages": .whenRoomSays(unknownIsNotConfirmed: true),
-        "facebook": .whenRoomSays(unknownIsNotConfirmed: false),
-        "instagram": .whenRoomSays(unknownIsNotConfirmed: false),
+        "gmessages": .whenRoomSays,
+        "facebook": .whenRoomSays,
+        "instagram": .whenRoomSays,
         "telegram": .never,
         "slack": .never,
         "gchat": .never,
@@ -50,17 +51,17 @@ public enum ChatEncryption: Equatable, Sendable {
     ]
 
     /// The answer for a chat on `network` (the engine's id), `roomEncrypted` being `RoomInfoResult.encrypted`.
-    /// A network this app doesn't know is not claimed to be encrypted.
+    /// A network this app doesn't know is treated like one that encrypts some chats: encrypted when its room says
+    /// so, else "isn't confirmed". It is never said to be unencrypted, which nothing known says.
     public static func of(network: String, roomEncrypted: Bool) -> ChatEncryption {
         let name = NetworkNames.displayName(of: network) ?? String(localized: "this network")
-        switch policies[network] ?? .never {
+        switch policies[network] ?? .whenRoomSays {
         case .always:
             return .endToEnd(networkName: name)
         case .never:
             return .notEndToEnd(networkName: name)
-        case let .whenRoomSays(unknownIsNotConfirmed):
-            if roomEncrypted { return .endToEnd(networkName: name) }
-            return unknownIsNotConfirmed ? .notConfirmed(networkName: name) : .notEndToEnd(networkName: name)
+        case .whenRoomSays:
+            return roomEncrypted ? .endToEnd(networkName: name) : .notConfirmed(networkName: name)
         }
     }
 
@@ -87,7 +88,7 @@ public enum ChatEncryption: Equatable, Sendable {
         switch self {
         case .endToEnd: String(localized: "Messages are decrypted on this Mac to show them here.")
         case .notEndToEnd: nil
-        case .notConfirmed: String(localized: "RCS chats are encrypted, SMS texts aren’t, and this chat doesn’t say which it is.")
+        case .notConfirmed: String(localized: "This chat doesn’t say whether it is end-to-end encrypted.")
         }
     }
 

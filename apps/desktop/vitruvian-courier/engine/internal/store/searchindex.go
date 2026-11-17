@@ -517,15 +517,18 @@ const BackfillTimeBudget = 50 * time.Millisecond
 type backfillRange struct {
 	table, after, until string
 	index               func(s *Store, ctx context.Context, b *backfillBatch, from, to int64) (last int64, stopped bool, err error)
+	// retag marks a pass that only fixes the tags of docs that already exist: search is complete without it.
+	retag bool
 }
 
 // backfillRanges are taken in this order: chats and people first, because they are few and every search shows
 // them, then the messages, oldest first.
 var backfillRanges = []backfillRange{
-	{"rooms", "chats_after", "chats_until", (*Store).backfillChats},
-	{"profiles", "profiles_after", "profiles_until", (*Store).backfillProfiles},
-	{"members", "members_after", "members_until", (*Store).backfillMembers},
-	{"events", "backfill_after", "backfill_until", (*Store).backfillMessages},
+	{"rooms", "chats_after", "chats_until", (*Store).backfillChats, false},
+	{"profiles", "profiles_after", "profiles_until", (*Store).backfillProfiles, false},
+	{"members", "members_after", "members_until", (*Store).backfillMembers, false},
+	{"events", "backfill_after", "backfill_until", (*Store).backfillMessages, false},
+	{"events", "relink_after", "relink_until", (*Store).relinkMessages, true},
 }
 
 // backfillBatch is one batch's time budget and what it has to report.
@@ -647,7 +650,7 @@ func (s *Store) SearchComplete(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	for _, r := range backfillRanges {
-		if state[r.after] < state[r.until] {
+		if !r.retag && state[r.after] < state[r.until] {
 			return false, nil
 		}
 	}
@@ -772,6 +775,66 @@ func (s *Store) backfillMessages(ctx context.Context, b *backfillBatch, from, to
 		}
 		if full {
 			b.full++
+		}
+		last = r.rowid
+	}
+	return to, false, nil
+}
+
+// relinkMessagesSQL lists the indexed messages of rowid $1 < rowid <= $2 whose text might hold a link written
+// without a scheme: those with a dot and a slash in their content. The exact rule is applied in Go.
+var relinkMessagesSQL = `SELECT rowid, doc_id, ` + eventCols + ` FROM events
+WHERE rowid > $1 AND rowid <= $2 AND type = 'm.room.message' AND redacted = 0 AND doc_id IS NOT NULL
+  AND content LIKE '%.%/%'
+ORDER BY rowid`
+
+// relinkMessages re-writes the doc of each indexed message of rowid in (from, to] whose text has a link but no
+// http:// or https:// one, which the old tagging missed: the same write as indexing (writeMessageDoc), so the doc
+// gets the "has a link" tag. A message that already has the tag, or has no link, is not touched, so running the pass
+// again changes nothing.
+func (s *Store) relinkMessages(ctx context.Context, b *backfillBatch, from, to int64) (int64, bool, error) {
+	rows, err := s.db.Query(ctx, relinkMessagesSQL, from, to)
+	if err != nil {
+		return 0, false, err
+	}
+	type row struct {
+		rowid, docID int64
+		e            Event
+	}
+	var list []row
+	for rows.Next() {
+		var r row
+		var er eventRow
+		if err := rows.Scan(append([]any{&r.rowid, &r.docID}, er.dest()...)...); err != nil {
+			rows.Close()
+			return 0, false, err
+		}
+		r.e = er.event()
+		list = append(list, r)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return 0, false, err
+	}
+	last := from
+	for _, r := range list {
+		if isEdit(r.e.Content) {
+			last = r.rowid
+			continue
+		}
+		if !b.take() {
+			return last, true, nil
+		}
+		text, err := s.CurrentText(ctx, r.e)
+		if err != nil {
+			return 0, false, err
+		}
+		lower := strings.ToLower(text)
+		if !strings.Contains(lower, "http://") && !strings.Contains(lower, "https://") && hasLink(text) {
+			if _, kind, ok := MessageText(r.e.Type, r.e.Content); ok {
+				if err := s.writeMessageDoc(ctx, r.e, r.docID, kind); err != nil {
+					return 0, false, err
+				}
+			}
 		}
 		last = r.rowid
 	}

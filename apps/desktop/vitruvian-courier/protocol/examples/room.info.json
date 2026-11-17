@@ -40,6 +40,7 @@
       "shared_media": [],
       "shared_files": [],
       "shared_links": [],
+      "shared_capped": false,
       "features": {
         "reply": true,
         "thread": true,

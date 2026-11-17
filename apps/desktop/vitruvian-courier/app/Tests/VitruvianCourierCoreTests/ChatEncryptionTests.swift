@@ -16,8 +16,8 @@ final class ChatEncryptionTests: XCTestCase {
             ("signal", "Signal", .e2e, .e2e),
             ("imessage", "iMessage", .e2e, .e2e),
             ("gmessages", "Google Messages", .e2e, .notConfirmed),
-            ("facebook", "Facebook Messenger", .e2e, .notE2E),
-            ("instagram", "Instagram", .e2e, .notE2E),
+            ("facebook", "Facebook Messenger", .e2e, .notConfirmed),
+            ("instagram", "Instagram", .e2e, .notConfirmed),
             ("telegram", "Telegram", .notE2E, .notE2E),
             ("slack", "Slack", .notE2E, .notE2E),
             ("gchat", "Google Chat", .notE2E, .notE2E),
@@ -58,17 +58,23 @@ final class ChatEncryptionTests: XCTestCase {
         XCTAssertEqual(result.symbolName, "lock.open")
     }
 
-    func testAnUnknownNetworkIsNeverClaimedToBeEncrypted() {
-        let result = ChatEncryption.of(network: "newchat", roomEncrypted: true)
-        XCTAssertEqual(result, .notConfirmed(networkName: "this network"))
-        XCTAssertEqual(result.title, "End-to-end encryption isn’t confirmed on this network")
+    /// A network the app doesn't know is not called unencrypted, and is called encrypted only when its room says so.
+    func testAnUnknownNetworkIsEncryptedOnlyWhenItsRoomSaysSoElseNotConfirmed() {
+        let flagged = ChatEncryption.of(network: "newchat", roomEncrypted: true)
+        XCTAssertEqual(flagged, .endToEnd(networkName: "this network"))
+        XCTAssertEqual(flagged.title, "End-to-end encrypted on this network")
+        let unflagged = ChatEncryption.of(network: "newchat", roomEncrypted: false)
+        XCTAssertEqual(unflagged, .notConfirmed(networkName: "this network"))
+        XCTAssertEqual(unflagged.title, "End-to-end encryption isn’t confirmed on this network")
+        XCTAssertEqual(unflagged.symbolName, "lock.open")
     }
 
-    func testAnUnknownNetworkIsNotClaimedToBeUnencryptedEither() {
-        for roomEncrypted in [true, false] {
-            let result = ChatEncryption.of(network: "newchat", roomEncrypted: roomEncrypted)
-            XCTAssertEqual(result, .notConfirmed(networkName: "this network"), "roomEncrypted=\(roomEncrypted)")
-            XCTAssertEqual(result.title, "End-to-end encryption isn’t confirmed on this network", "roomEncrypted=\(roomEncrypted)")
+    /// Messenger and Instagram encrypt some chats only: with no flag on the room the answer is "isn't confirmed",
+    /// not a claim that the chat is unencrypted.
+    func testMessengerAndInstagramRoomsThatAreNotFlaggedAreNotConfirmed() {
+        for (network, name) in [("facebook", "Facebook Messenger"), ("instagram", "Instagram")] {
+            XCTAssertEqual(ChatEncryption.of(network: network, roomEncrypted: false), .notConfirmed(networkName: name))
+            XCTAssertEqual(ChatEncryption.of(network: network, roomEncrypted: true), .endToEnd(networkName: name))
         }
     }
 

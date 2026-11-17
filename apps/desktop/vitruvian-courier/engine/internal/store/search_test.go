@@ -908,6 +908,93 @@ func TestRoomSharedLinksRejectsSchemelessFalsePositives(t *testing.T) {
 	}
 }
 
+// Messages indexed before scheme-less links were tagged get the "has a link" tag from a one-time, bounded pass that
+// is recorded as done in search_state and never runs again.
+func TestRelinkBackfillTagsOldSchemelessLinksOnceAndOnlyOnce(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	roomID := "!relink:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: roomID, Network: "whatsapp", Name: "Relink", CreatedAt: time.Unix(1, 0)}))
+	t0 := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+	mkMsg(t, s, roomID, "$bare", me, "m.room.message", text("meet at maps.app.goo.gl/kX9abc"), t0.Add(time.Minute))
+	mkMsg(t, s, roomID, "$plain", me, "m.room.message", text("see you there, e.g. at noon"), t0.Add(2*time.Minute))
+	mkMsg(t, s, roomID, "$http", me, "m.room.message", text("https://x.test/a"), t0.Add(3*time.Minute))
+	tagged := func() int {
+		return count(t, s, "SELECT count(*) FROM search_messages WHERE search_messages MATCH 'scope:klink'")
+	}
+	require.Equal(t, 2, tagged(), "a message written now is tagged by its own write")
+
+	untag := func() {
+		doc := docID(t, s, "$bare")
+		require.True(t, doc.Valid)
+		_, err := s.db.Exec(ctx, "DELETE FROM search_messages WHERE rowid=$1", doc.Int64)
+		require.NoError(t, err)
+		_, err = s.db.Exec(ctx, "INSERT INTO search_messages (rowid, body, scope) VALUES ($1, 'meet', 'all ktext')", doc.Int64)
+		require.NoError(t, err)
+	}
+	// The database as an engine before the change left it: the pass is pending over what is on disk.
+	untag()
+	require.Equal(t, 1, tagged())
+	_, err := s.db.Exec(ctx, `UPDATE search_state SET value = 0 WHERE key = 'relink_after';
+		UPDATE search_state SET value = (SELECT MAX(rowid) FROM events) WHERE key = 'relink_until'`)
+	require.NoError(t, err)
+
+	passes := 0
+	for {
+		done, err := s.BackfillSearch(ctx, 1)
+		require.NoError(t, err)
+		passes++
+		if done {
+			break
+		}
+		require.Less(t, passes, 20)
+	}
+	require.Greater(t, passes, 1, "it works in bounded batches")
+	require.Equal(t, 2, tagged(), "the old message with a scheme-less link is tagged now")
+	require.Equal(t, stateValue(t, s, "relink_until"), stateValue(t, s, "relink_after"), "recorded as done")
+	complete, err := s.SearchComplete(ctx)
+	require.NoError(t, err)
+	require.True(t, complete)
+
+	// Once done it never runs again: a tag taken away stays away, and running more batches changes nothing.
+	untag()
+	for range 3 {
+		_, err := s.BackfillSearch(ctx, 10)
+		require.NoError(t, err)
+	}
+	require.Equal(t, 1, tagged())
+}
+
+func TestRoomSharedLinksSaysWhenThereAreMoreThanItReturns(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	roomID := "!capped:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: roomID, Network: "whatsapp", Name: "Capped", CreatedAt: time.Unix(1, 0)}))
+	t0 := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+	for i := 1; i <= 3; i++ {
+		mkMsg(t, s, roomID, fmt.Sprintf("$m%d", i), me, "m.room.message", text(fmt.Sprintf("https://example.com/%d", i)), t0.Add(time.Duration(i)*time.Second))
+	}
+	links, capped, err := s.RoomSharedLinksCapped(ctx, roomID, 3)
+	require.NoError(t, err)
+	require.Len(t, links, 3)
+	require.False(t, capped, "exactly as many as asked for is not more")
+	links, capped, err = s.RoomSharedLinksCapped(ctx, roomID, 2)
+	require.NoError(t, err)
+	require.Len(t, links, 2)
+	require.True(t, capped, "a third exists")
+	require.Equal(t, "https://example.com/3", links[0].URL, "newest first")
+
+	// More messages than the newest 500 it reads.
+	big := "!scan-capped:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: big, Network: "whatsapp", Name: "Big", CreatedAt: time.Unix(1, 0)}))
+	for i := 1; i <= 501; i++ {
+		mkMsg(t, s, big, fmt.Sprintf("$b%d", i), me, "m.room.message", text("hello"), t0.Add(time.Duration(i)*time.Second))
+	}
+	mkMsg(t, s, big, "$old", me, "m.room.message", text("https://old.example.com/x"), t0.Add(-time.Hour))
+	links, capped, err = s.RoomSharedLinksCapped(ctx, big, 50)
+	require.NoError(t, err)
+	require.Empty(t, links, "the only link is older than the newest 500 messages")
+	require.True(t, capped, "so there may be more")
+}
+
 // Search's link filter agrees with Chat Info: a message with a scheme-less link is a link message too.
 func TestMessageScopeMarksSchemelessLinksAsLinks(t *testing.T) {
 	for body, want := range map[string]bool{

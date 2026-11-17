@@ -50,7 +50,10 @@ type RoomInfo struct {
 	SharedMedia    []store.Event     `json:"shared_media"`
 	SharedFiles    []store.Event     `json:"shared_files"`
 	SharedLinks    []RoomLink        `json:"shared_links"`
-	Features       Features          `json:"features"`
+	// SharedCapped: the chat has more shared media or links than shared_media and shared_links hold, so a count of
+	// them is "at least".
+	SharedCapped bool     `json:"shared_capped"`
+	Features     Features `json:"features"`
 }
 
 func (a *Actions) mediaPath(uri string) string {
@@ -67,6 +70,9 @@ func (a *Actions) mediaPath(uri string) string {
 	}
 	return p
 }
+
+// sharedLimit is how many shared media and how many links Chat Info carries.
+const sharedLimit = 50
 
 func (a *Actions) RoomInfo(ctx context.Context, roomID string, refresh bool) (RoomInfo, error) {
 	room, ok, err := a.s.GetRoom(ctx, roomID)
@@ -121,18 +127,24 @@ func (a *Actions) RoomInfo(ctx context.Context, roomID string, refresh bool) (Ro
 			members[i].Identifiers = []string{}
 		}
 	}
-	sharedMedia, err := a.s.RoomSharedMedia(ctx, roomID, 50)
+	// One more than is kept says there is more.
+	sharedMedia, err := a.s.RoomSharedMedia(ctx, roomID, sharedLimit+1)
 	if err != nil {
 		return RoomInfo{}, err
+	}
+	sharedCapped := len(sharedMedia) > sharedLimit
+	if sharedCapped {
+		sharedMedia = sharedMedia[:sharedLimit]
 	}
 	sharedFiles, err := a.s.RoomSharedFiles(ctx, roomID, 50)
 	if err != nil {
 		return RoomInfo{}, err
 	}
-	rawLinks, err := a.s.RoomSharedLinks(ctx, roomID, 50)
+	rawLinks, linksCapped, err := a.s.RoomSharedLinksCapped(ctx, roomID, sharedLimit)
 	if err != nil {
 		return RoomInfo{}, err
 	}
+	sharedCapped = sharedCapped || linksCapped
 	sharedLinks := make([]RoomLink, 0, len(rawLinks))
 	for _, l := range rawLinks {
 		sharedLinks = append(sharedLinks, RoomLink{
@@ -167,6 +179,7 @@ func (a *Actions) RoomInfo(ctx context.Context, roomID string, refresh bool) (Ro
 		SharedMedia:    sharedMedia,
 		SharedFiles:    sharedFiles,
 		SharedLinks:    sharedLinks,
+		SharedCapped:   sharedCapped,
 		Features:       feat,
 	}, nil
 }

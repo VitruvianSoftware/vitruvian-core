@@ -333,6 +333,12 @@ CREATE TABLE settings (
 	migration12SQL,
 	// 13: per-chat Vitruvian Speaker Read Aloud override ('', 'always', 'never').
 	`ALTER TABLE room_prefs ADD COLUMN read_aloud TEXT NOT NULL DEFAULT '';`,
+	// 14: the search "has a link" tag now also covers links written without a scheme ("maps.app.goo.gl/abc"). Messages
+	// already indexed keep their old tags until the relink pass (BackfillSearch, the same batches and cursors as the
+	// index backfill) has re-tagged those with such a link: events with relink_after < rowid <= relink_until, the
+	// range being what was on disk now. Everything written later is tagged by its own write. The pass never runs again
+	// once relink_after has reached relink_until.
+	`INSERT INTO search_state VALUES ('relink_until', (SELECT COALESCE(MAX(rowid), 0) FROM events)), ('relink_after', 0);`,
 }
 
 // migration12SQL is migration 12, frozen as it ships: the floor is the later of the reads and local_reads markers
@@ -357,7 +363,7 @@ INSERT INTO room_prefs (room_id, threads_read_ts, threads_read_seq)
 }()
 
 // SchemaVersion is the latest courier.db schema version (PRAGMA user_version).
-const SchemaVersion = 13
+const SchemaVersion = 14
 
 // migrate brings db up to the latest version.
 func migrate(ctx context.Context, db *dbutil.Database) error { return migrateWith(ctx, db, migrations) }

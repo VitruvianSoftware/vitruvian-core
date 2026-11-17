@@ -549,15 +549,16 @@ public struct ChatInfoPane: View {
         ChatInfoShared.count(media: info.sharedMedia, links: info.sharedLinks)
     }
 
-    /// Show All opens the viewer on the photos and videos, or, with none, on the links.
+    /// Show All opens the viewer on the tab of the first tile, so the links in Shared are always in reach.
     private var sharedViewerTab: MediaViewerModel.Tab {
-        ChatInfoPresentation.sharedMediaEvents(info.sharedMedia).isEmpty ? .links : .media
+        ChatInfoShared.viewerTab(media: info.sharedMedia, links: info.sharedLinks)
     }
 
     private var sharedSection: some View {
         ChatInfoSection(
             title: String(localized: "Shared"),
             count: sharedCount == 0 ? nil : sharedCount,
+            countIsLowerBound: info.sharedCapped == true,
             isExpanded: $sharedExpanded,
             onSeeAll: sharedCount > 0 ? { showAllShared() } : nil,
             seeAllTitle: String(localized: "Show All")
@@ -966,6 +967,8 @@ private struct ChatInfoSection<Content: View>: View {
     let title: String
     /// The number in the badge by the title; nil for a section with nothing to count (Notes).
     let count: Int?
+    /// The count is "at least" (a chat with more than the pane was given): it reads "50+".
+    var countIsLowerBound: Bool = false
     let isExpanded: Binding<Bool>?
     var onSeeAll: (() -> Void)? = nil
     var seeAllTitle: String = String(localized: "See All")
@@ -1032,7 +1035,7 @@ private struct ChatInfoSection<Content: View>: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
             if let count {
-                Text(verbatim: "\(count)")
+                Text(verbatim: ChatInfoShared.countText(count, capped: countIsLowerBound))
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
