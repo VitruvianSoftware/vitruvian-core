@@ -138,6 +138,12 @@ backend.add(import("@backstage/plugin-kubernetes-backend"));
 // oauth-user-inspector). The Kubernetes plugin above covers the ones that do.
 backend.add(cloudRunPlugin);
 
+// PagerDuty: incidents, on-call and change events for entities annotated
+// with pagerduty.com/service-id. Reads with the read-only REST API key in the
+// backstage-pagerduty Secret (pagerDuty.apiToken), so it can never change the
+// account. See docs/backstage-pagerduty.md.
+backend.add(import("@pagerduty/backstage-plugin-backend"));
+
 // Level 3 Operational Maturity Scorecards & Governance diagnostics
 backend.add(scorecardsPlugin);
 
