@@ -161,4 +161,106 @@ mod tests {
     fn the_shared_tls_config_is_reused() {
         assert!(Arc::ptr_eq(&client_config(), &client_config()));
     }
+
+    /// A scalar as YAML reads it: a quoted value is everything up to its
+    /// closing quote (a `#` inside it is kept); a plain value ends at a
+    /// comment, which YAML only starts after whitespace.
+    fn clean(v: &str) -> String {
+        let v = v.trim();
+        for q in ['"', '\''] {
+            if let Some(rest) = v.strip_prefix(q) {
+                return rest.split(q).next().unwrap().to_string();
+            }
+        }
+        let end = v
+            .char_indices()
+            .find(|&(i, c)| c == '#' && i > 0 && v[..i].ends_with(char::is_whitespace))
+            .map_or(v.len(), |(i, _)| i);
+        v[..end].trim().to_string()
+    }
+
+    /// `key:` under the top-level `section:` of a values file (a flat
+    /// two-level read; enough for these files), or None.
+    fn find_entry(text: &str, section: &str, key: &str) -> Option<String> {
+        let mut in_section = false;
+        for line in text.lines() {
+            if line.starts_with(&format!("{section}:")) {
+                in_section = true;
+            } else if line.trim_start().starts_with('#') {
+                // A comment, at any indent, neither ends the section nor is a key.
+            } else if in_section && !line.starts_with(' ') && !line.trim().is_empty() {
+                in_section = false;
+            } else if in_section {
+                if let Some(rest) = line.trim().strip_prefix(&format!("{key}:")) {
+                    return Some(clean(rest));
+                }
+            }
+        }
+        None
+    }
+
+    fn values_entry(text: &str, section: &str, key: &str) -> String {
+        find_entry(text, section, key).unwrap_or_else(|| panic!("{section}.{key} not found"))
+    }
+
+    /// A top-level `key: value`, or None.
+    fn find_top(text: &str, key: &str) -> Option<String> {
+        text.lines()
+            .find_map(|l| l.strip_prefix(&format!("{key}:")))
+            .map(clean)
+    }
+
+    fn top_entry(text: &str, key: &str) -> String {
+        find_top(text, key).unwrap_or_else(|| panic!("{key} not found"))
+    }
+
+    #[test]
+    fn values_parser_strips_comments() {
+        let t = "hostname: a.example  # the record\nname: \"q\"\noidc:\n  issuer: https://i # why\n  other: x\n";
+        assert_eq!(top_entry(t, "hostname"), "a.example");
+        assert_eq!(top_entry(t, "name"), "q");
+        assert_eq!(values_entry(t, "oidc", "issuer"), "https://i");
+        assert_eq!(find_top(t, "missing"), None);
+        assert_eq!(find_entry(t, "oidc", "missing"), None);
+        // Quoted values keep a `#`; single quotes work; a `#` with no space
+        // before it is part of a plain value.
+        let q = "a: \"x # y\"  # note\nb: 'z'\nc: u#v\n";
+        assert_eq!(top_entry(q, "a"), "x # y");
+        assert_eq!(top_entry(q, "b"), "z");
+        assert_eq!(top_entry(q, "c"), "u#v");
+        // A column-0 comment inside a section does not end it.
+        let c = "oidc:\n  a: 1\n# about issuer\n  issuer: https://j\n";
+        assert_eq!(values_entry(c, "oidc", "issuer"), "https://j");
+    }
+
+    fn runfile_text(rel: &str) -> String {
+        let base = std::env::var("TEST_SRCDIR").expect("run under bazel test");
+        std::fs::read_to_string(PathBuf::from(base).join("_main").join(rel)).unwrap()
+    }
+
+    /// The compiled-in defaults are the deployed relay's values: if the Argo CD
+    /// values file or the chart defaults change (or these constants do), the
+    /// connector would sign in to, or call, the wrong place.
+    #[test]
+    fn defaults_match_relay_stack() {
+        let live = runfile_text("gitops/argocd/platform/relay/values.yaml");
+        let chart = runfile_text("apps/suites/vitruvian-relay/relay/deploy/chart/values.yaml");
+        assert_eq!(
+            values_entry(&live, "oidc", "connectorClientId"),
+            DEFAULT_CLIENT_ID
+        );
+        assert_eq!(values_entry(&live, "oidc", "projectId"), DEFAULT_PROJECT_ID);
+        let mcp = values_entry(&live, "oidc", "mcpClientIds");
+        assert!(
+            mcp.split(',').any(|c| c == DEFAULT_CLAUDE_CLIENT_ID),
+            "mcpClientIds {mcp} lacks the claude client"
+        );
+        // What Argo CD deploys: the gitops file's value when it sets one,
+        // else the chart's default.
+        let issuer = find_entry(&live, "oidc", "issuer")
+            .unwrap_or_else(|| values_entry(&chart, "oidc", "issuer"));
+        assert_eq!(issuer, DEFAULT_ISSUER);
+        let host = find_top(&live, "hostname").unwrap_or_else(|| top_entry(&chart, "hostname"));
+        assert_eq!(format!("https://{host}"), DEFAULT_RELAY_URL);
+    }
 }

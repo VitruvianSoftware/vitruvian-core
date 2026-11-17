@@ -19,7 +19,8 @@
 # SOFTWARE.
 
 # The device records (devices.json). Argo CD leaves the claim in place when the
-# Application is deleted (Delete=false), because the `nfs` class deletes the
+# Application is deleted (Delete=false) and does not prune it if it ever drops
+# out of the rendered manifests (Prune=false), because the `nfs` class deletes the
 # volume's data with its claim (reclaimPolicy: Delete), and losing the file
 # means every Mac has to sign in and register again.
 apiVersion: v1
@@ -28,7 +29,7 @@ metadata:
   name: {{ include "vitruvian-relay.name" . }}-data
   labels: {{- include "vitruvian-relay.labels" . | nindent 4 }}
   annotations:
-    argocd.argoproj.io/sync-options: Delete=false
+    argocd.argoproj.io/sync-options: Delete=false,Prune=false
 spec:
   accessModes:
     - ReadWriteOnce

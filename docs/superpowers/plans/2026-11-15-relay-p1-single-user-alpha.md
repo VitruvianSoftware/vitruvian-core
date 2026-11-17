@@ -55,7 +55,8 @@ is retired in the last task.
   `gitops/argocd/platform/zitadel/applicationset.yaml`); a guess, not yet
   checked, is that spike B's second sign-in comes from the device-approval page
   using the older screen, which might need a Zitadel upgrade. Task 10 records what was checked and asks
-  James; P1 does not silently ship two sign-ins.
+  James; P1 does not silently ship two sign-ins. (Decided 2026-11-16: two
+  sign-ins for P1; see Task 10.)
 - **`desktop-commander`'s own log** (`~/.claude-server-commander/claude_tool_call.log`)
   records full arguments outside the connector's log. Changing `HOME` would
   change it for the user's commands too (spike D), so the connector leaves the
@@ -469,6 +470,15 @@ This task ships as **two PRs** (step 2 says why). **PR A:** the Dockerfile, char
   Then **stop and ask James**, with the options found: upgrade Zitadel, change
   an instance-wide setting (it affects every app, and an upstream issue, zitadel/zitadel#12148, reports a Login V2 problem with OTP second factors; check its status before choosing this), or
   accept two sign-ins for P1 and record it.
+
+  **Checked and decided (2026-11-16).** We run Zitadel v4.19.2 (chart 10.5.0),
+  the newest release, so an upgrade changes nothing. An upstream report
+  (zitadel/zitadel#11399, not confirmed by us) says the device-approval page
+  still uses the older Login V1 screen. `pulumi-zitadel` v0.2.0 is still the
+  newest and has no per-app login version. zitadel/zitadel#12148 is still open,
+  so the instance-wide switch carries that risk for every app. **James chose to
+  accept two sign-ins for P1.** Task 11 checks whether the browser session
+  carries over, which would make the second sign-in a single click.
 - Carried from the final review (N4): the relay closes an HTTP connection
   idle for 75 s (`header_read_timeout`). Anything that pools upstream
   connections longer will now and then reuse one the relay just closed, and

@@ -101,6 +101,8 @@ rust_test(
         ":fake_mcp",
         "//apps/suites/vitruvian-relay/connector/dc:package.json",
         "//apps/suites/vitruvian-relay/connector/dc:pnpm-lock.yaml",
+        "//apps/suites/vitruvian-relay/relay:deploy/chart/values.yaml",
+        "//gitops/argocd/platform/relay:values.yaml",
     ],
 )
 
