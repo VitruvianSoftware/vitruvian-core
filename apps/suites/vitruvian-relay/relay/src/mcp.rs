@@ -34,9 +34,18 @@ use vitruvian_relay_protocol::Call;
 use crate::registry::{CallError, Registry};
 use crate::{log_event, random_id, LogSink};
 
-/// MCP revisions the relay agrees to, newest first. The methods it serves are
-/// the same in all of them.
-pub const PROTOCOL_VERSIONS: &[&str] = &["2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26"];
+/// The revisions `initialize` agrees to, newest first: the handshake-and-
+/// session ones. The stateless revision is never agreed here; a client that
+/// asks for it (or for anything unknown) is offered the newest of these.
+pub const LEGACY_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26"];
+/// The stateless revisions (no initialize, no session): what `server/discover`
+/// lists, and what a request's `_meta` may name.
+pub const MODERN_VERSIONS: &[&str] = &["2026-07-28"];
+const INSTRUCTIONS: &str =
+    "Runs tools on the user's own computer through the Vitruvian Relay connector.";
+/// How long a client may reuse a `server/discover` answer: it changes only
+/// with a new relay release.
+const DISCOVER_TTL_MS: u64 = 3_600_000;
 pub const SERVER_NAME: &str = "vitruvian-relay";
 
 /// Longest tool name written to the log; a name is not content, but it comes
@@ -57,8 +66,65 @@ fn rpc_error(id: Value, code: i64, message: &str) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}})
 }
 
-fn rpc_result(id: Value, result: Value) -> Value {
+/// Every result says it is complete: MCP 2026-07-28 requires `resultType` on
+/// all results, and older clients ignore a field they do not know.
+fn rpc_result(id: Value, mut result: Value) -> Value {
+    if let Some(r) = result.as_object_mut() {
+        r.insert("resultType".into(), json!("complete"));
+    }
     json!({"jsonrpc": "2.0", "id": id, "result": result})
+}
+
+/// Which way a request talks to the server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Era {
+    /// `initialize` first, then `Mcp-Session-Id` on each request.
+    Legacy,
+    /// MCP 2026-07-28: each request stands alone, naming its version in
+    /// `params._meta` and the `MCP-Protocol-Version` header.
+    Modern,
+}
+
+const META_VERSION: &str = "io.modelcontextprotocol/protocolVersion";
+
+/// Sorts a request into its era from the version in `params._meta` and the
+/// `MCP-Protocol-Version` header. Only modern requests carry the `_meta`
+/// version, so its presence decides. `Err` is the JSON-RPC error to send with
+/// a 400: `HeaderMismatch` (-32020) when the header names another version
+/// (or names a modern one with no `_meta`), `UnsupportedProtocolVersion`
+/// (-32022, with the versions served) for a modern version not served here.
+/// A missing header with a valid `_meta` is accepted: the version is known
+/// either way, and refusing it would only break a client that is lax.
+pub fn era(req: &Value, header: Option<&str>) -> Result<Era, Value> {
+    let id = req.get("id").cloned().unwrap_or(Value::Null);
+    let meta = req
+        .get("params")
+        .and_then(|p| p.get("_meta"))
+        .and_then(|m| m.get(META_VERSION))
+        .and_then(Value::as_str);
+    match (meta, header) {
+        (None, Some(h)) if MODERN_VERSIONS.contains(&h) => Err(rpc_error(
+            id,
+            -32020,
+            "Header mismatch: MCP-Protocol-Version names a version the request body does not",
+        )),
+        (None, _) => Ok(Era::Legacy),
+        (Some(m), Some(h)) if m != h => Err(rpc_error(
+            id,
+            -32020,
+            "Header mismatch: MCP-Protocol-Version differs from the version in _meta",
+        )),
+        (Some(m), _) if !MODERN_VERSIONS.contains(&m) => Err(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "error": {
+                "code": -32022,
+                "message": format!("Unsupported protocol version: {m}"),
+                "data": {"supported": MODERN_VERSIONS, "requested": m},
+            },
+        })),
+        (Some(_), _) => Ok(Era::Modern),
+    }
 }
 
 fn text_result(text: &str, is_error: bool) -> Value {
@@ -192,32 +258,46 @@ impl Mcp {
                     .get("protocolVersion")
                     .and_then(Value::as_str)
                     .unwrap_or("");
-                let agreed = PROTOCOL_VERSIONS
+                let agreed = LEGACY_VERSIONS
                     .iter()
                     .find(|v| **v == asked)
-                    .unwrap_or(&PROTOCOL_VERSIONS[0]);
+                    .unwrap_or(&LEGACY_VERSIONS[0]);
                 rpc_result(
                     id,
                     json!({
                         "protocolVersion": agreed,
                         "capabilities": capabilities(),
                         "serverInfo": server_info(),
-                        "instructions": "Runs tools on the user's own computer through the Vitruvian Relay connector.",
+                        "instructions": INSTRUCTIONS,
                     }),
                 )
             }
+            // Discover belongs to the stateless revision, so it lists only the
+            // versions served that way; older ones are reached through
+            // `initialize`. `serverInfo` is in `_meta`, where 2026-07-28 puts
+            // it, and at the top level as before.
             "server/discover" => rpc_result(
                 id,
                 json!({
-                    "supportedVersions": PROTOCOL_VERSIONS,
+                    "supportedVersions": MODERN_VERSIONS,
                     "capabilities": capabilities(),
                     "serverInfo": server_info(),
+                    "instructions": INSTRUCTIONS,
+                    "_meta": {"io.modelcontextprotocol/serverInfo": server_info()},
+                    "ttlMs": DISCOVER_TTL_MS,
+                    "cacheScope": "public",
                 }),
             ),
             "ping" => rpc_result(id, json!({})),
             "tools/list" => rpc_result(
                 id,
-                json!({"tools": self.registry.tools(device_id).unwrap_or_default()}),
+                // The device's own tools: private to this person, and stale
+                // as soon as the device reconnects with a different list.
+                json!({
+                    "tools": self.registry.tools(device_id).unwrap_or_default(),
+                    "ttlMs": 0,
+                    "cacheScope": "private",
+                }),
             ),
             "tools/call" => self.call(id, &params, device_id, caller, session).await,
             _ => rpc_error(id, -32601, &format!("Method not found: {method}")),
@@ -352,7 +432,11 @@ mod tests {
         let (m, _) = mcp();
         for (asked, agreed) in [
             ("2025-06-18", "2025-06-18"),
-            ("1999-01-01", PROTOCOL_VERSIONS[0]),
+            ("1999-01-01", LEGACY_VERSIONS[0]),
+            // The handshake is the older revisions' way in; agreeing to the
+            // stateless one here would leave a session whose every request
+            // fails the header check.
+            ("2026-07-28", LEGACY_VERSIONS[0]),
         ] {
             let r = ask(
                 &m,
