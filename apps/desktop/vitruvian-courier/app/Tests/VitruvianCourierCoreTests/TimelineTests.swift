@@ -346,6 +346,46 @@ final class TimelineTests: XCTestCase {
                        "the New divider opens a run")
     }
 
+    func testSystemMembershipTimerCallAndNoticeEventsFollowDirectAndGroupAvatarRules() throws {
+        func json(_ raw: String) throws -> JSONValue {
+            try JSONDecoder().decode(JSONValue.self, from: Data(raw.utf8))
+        }
+        let joinContent = try json(#"{"membership":"join","displayname":"Bo Example","state_key":"@bo:example.test"}"#)
+        let timerContent = try json(#"{"msgtype":"m.notice","body":"Set timer","com.beeper.action_message":{"type":"disappearing_timer","timer":86400000,"timer_type":"after_send","implicit":false}}"#)
+        let callContent = try json(#"{"msgtype":"m.notice","body":"Missed call","com.beeper.action_message":{"type":"call"},"fi.courier.call":{"state":"missed","media":"voice"}}"#)
+        let noticeContent = try json(#"{"msgtype":"m.notice","body":"Bridge reconnected"}"#)
+
+        let events: [Event] = [
+            message("$1", ts: at(14, 10, 0)),
+            Event(eventID: "$join", roomID: "!r", sender: "@bo:example.test", senderName: "Bo Example",
+                  mine: false, type: "m.room.member", content: joinContent, ts: at(14, 10, 1), seq: 2, status: .sent),
+            message("$2", ts: at(14, 10, 2)),
+            Event(eventID: "$timer", roomID: "!r", sender: "@other:example.test", senderName: "Other",
+                  mine: false, type: "m.room.message", content: timerContent, ts: at(14, 10, 3), seq: 3, status: .sent),
+            Event(eventID: "$call", roomID: "!r", sender: "@other:example.test", senderName: "Other",
+                  mine: false, type: "m.room.message", content: callContent, ts: at(14, 10, 4), seq: 4, status: .sent),
+            Event(eventID: "$notice", roomID: "!r", sender: "@bot:example.test", senderName: "Bridge Bot",
+                  mine: false, type: "m.room.message", content: noticeContent, ts: at(14, 10, 5), seq: 5, status: .sent),
+        ]
+
+        let directItems = build(events, isDirect: true)
+        XCTAssertTrue(directItems.contains { if case .membershipRun = $0 { true } else { false } })
+        let directMsgs = messages(directItems)
+        XCTAssertEqual(directMsgs.filter(\.showsSenderAvatar).map(\.id), [], "1:1 shows no avatar on notices, notes, or messages")
+        XCTAssertEqual(directMsgs.filter(\.showsAvatarColumn).map(\.id), [], "1:1 reserves no avatar column on any incoming row")
+        XCTAssertTrue(directMsgs.first { $0.id == "$timer" }?.isNote == true)
+        XCTAssertTrue(directMsgs.first { $0.id == "$call" }?.isNote == true)
+        XCTAssertEqual(directMsgs.first { $0.id == "$notice" }?.kind, .notice)
+
+        let groupMsgs = messages(build(events, isDirect: false))
+        XCTAssertEqual(groupMsgs.first { $0.id == "$1" }?.showsSenderAvatar, true)
+        XCTAssertEqual(groupMsgs.first { $0.id == "$2" }?.showsSenderAvatar, true,
+                       "a membership run breaks the sender run so the next message in a group draws its avatar again")
+        XCTAssertEqual(groupMsgs.first { $0.id == "$notice" }?.showsSenderAvatar, true,
+                       "a plain m.notice in a group starts its sender's run")
+        XCTAssertEqual(groupMsgs.first { $0.id == "$notice" }?.showsAvatarColumn, true)
+    }
+
     func testNewDividerAtReadMarker() {
         let events = [
             message("$1", ts: at(14, 10, 0)),

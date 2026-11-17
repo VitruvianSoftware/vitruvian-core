@@ -165,8 +165,8 @@ public struct EditGroupSheet: View {
     @ViewBuilder
     private var avatarPreview: some View {
         let name = draft.name.isEmpty ? draft.remoteName : draft.name
-        // The chat's room ID, the same as its inbox row and header.
-        let identity = AvatarColor.identity(id: draft.roomID, fallbackName: name)
+        // The same as the chat's inbox row and header.
+        let identity = draft.avatarIdentity
         if !draft.avatarPath.isEmpty {
             AvatarView(path: draft.avatarPath, initials: Self.initials(of: name), identity: identity)
         } else if !draft.isDirect {

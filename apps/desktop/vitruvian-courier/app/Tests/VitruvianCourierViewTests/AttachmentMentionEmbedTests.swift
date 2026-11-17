@@ -478,6 +478,38 @@ final class AttachmentMentionEmbedTests: XCTestCase {
         XCTAssertNil(ExternalEmbedDescriptor.previewImagePath(in: try message("https://i.ytimg.com/x.jpg")),
                      "only pictures already on this Mac")
     }
+
+    func testBrokenLocalPreviewStillMakesNoYouTubeRequestWhenExternalContentIsOff() throws {
+        let descriptor = try XCTUnwrap(ExternalEmbedDescriptor.match(urlString: "https://youtu.be/K9mPq2LwX-_"))
+        EmbedThumbnail.clearCache()
+        EmbedCountingURLProtocol.reset(body: Data())
+        let session = EmbedCountingURLProtocol.session()
+        let missingLocal = FileManager.default.temporaryDirectory
+            .appendingPathComponent("missing-preview-\(UUID().uuidString).png").path
+
+        try Snapshot.render("embed-broken-local-off", width: 360, prepare: settle) {
+            EmbedConsentCard(messageID: "$e-missing", descriptor: descriptor, isLoaded: false,
+                             previewImagePath: missingLocal, allowsRemoteThumbnail: false,
+                             session: session, onLoadEmbed: {}).padding(14)
+        }
+        XCTAssertEqual(EmbedCountingURLProtocol.requests, [],
+                       "even when the local preview file is missing/unreadable, setting off must never fall back to i.ytimg.com")
+
+        // Also verify full TimelineItemView (MessageRowView) with loadExternalEmbedsAutomatically == false.
+        URLProtocol.registerClass(EmbedCountingURLProtocol.self)
+        defer { URLProtocol.unregisterClass(EmbedCountingURLProtocol.self) }
+        EmbedCountingURLProtocol.reset(body: Data())
+        var ytEvent = Fixture.text("$row-yt-off", "https://youtu.be/K9mPq2LwX-_", mine: false, ts: 2)
+        ytEvent.linkPreviews = [LinkPreviewItem(matchedURL: "https://youtu.be/K9mPq2LwX-_", title: "Demo video")]
+        let rowItem = try XCTUnwrap(Fixture.items([ytEvent], isDirect: true).first { if case .message = $0 { true } else { false } })
+        var rowActions = VitruvianCourier.MessageActions(now: { Fixture.now })
+        rowActions.loadExternalEmbedsAutomatically = false
+        _ = try Snapshot.render("message-row-yt-off", width: 420, prepare: settle) {
+            TimelineItemView(item: rowItem, isSelected: false, showsSent: false, actions: rowActions, ui: MessageUI())
+        }
+        XCTAssertEqual(EmbedCountingURLProtocol.requests, [],
+                       "MessageRowView with loadExternalEmbedsAutomatically == false makes no network request")
+    }
 }
 
 /// Answers every request with a small picture and remembers what was asked for.

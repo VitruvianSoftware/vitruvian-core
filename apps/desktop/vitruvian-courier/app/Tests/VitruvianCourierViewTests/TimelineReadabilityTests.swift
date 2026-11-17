@@ -126,22 +126,95 @@ final class TimelineReadabilityTests: XCTestCase {
 
     // MARK: 3. Width cap
 
-    private final class Box { var width: CGFloat = 0 }
+    private final class Box { var frame: CGRect = .zero }
 
-    private func bubbleWidth(_ event: Event, window: CGFloat, snapshot: String = "timeline-wide-text") throws -> CGFloat {
+    private func bubbleFrame(_ item: TimelineItem, window: CGFloat, snapshot: String = "timeline-wide-text") throws -> CGRect {
         let box = Box()
         let ui = MessageUI()
         let actions = VitruvianCourier.MessageActions(now: { Fixture.now })
-        let item = try XCTUnwrap(Fixture.items([event]).first { if case .message = $0 { true } else { false } })
         _ = try Snapshot.render("\(snapshot)-\(Int(window))", width: window) {
             TimelineItemView(item: item, isSelected: false, showsSent: false, actions: actions, ui: ui)
                 .overlayPreferenceValue(RowAnchorsKey.self) { anchors in
                     GeometryReader { geo in
-                        Color.clear.onAppear { if let a = anchors.bubble { box.width = geo[a].width } }
+                        Color.clear.onAppear { if let a = anchors.bubble { box.frame = geo[a] } }
                     }
                 }
         }
-        return box.width
+        return box.frame
+    }
+
+    private func bubbleWidth(_ event: Event, window: CGFloat, snapshot: String = "timeline-wide-text") throws -> CGFloat {
+        let item = try XCTUnwrap(Fixture.items([event]).first { if case .message = $0 { true } else { false } })
+        return try bubbleFrame(item, window: window, snapshot: snapshot).width
+    }
+
+    func testDirectChatBubblesStartAtLeftMarginWhileGroupKeepsAvatarColumnInChatAndThreadPane() throws {
+        let runEvents = [
+            Fixture.text("$m1", "First message in run", mine: false, ts: 4),
+            Fixture.text("$m2", "Second message in run", mine: false, ts: 3),
+        ]
+        let directMsgs = Fixture.items(runEvents, isDirect: true).filter { if case .message = $0 { true } else { false } }
+        let groupMsgs = Fixture.items(runEvents, isDirect: false).filter { if case .message = $0 { true } else { false } }
+        XCTAssertEqual(directMsgs.count, 2)
+        XCTAssertEqual(groupMsgs.count, 2)
+
+        // Direct chat: neither the first nor second incoming bubble in a run reserves an avatar column (minX == 0).
+        let directFirst = try bubbleFrame(directMsgs[0], window: 520, snapshot: "timeline-direct-margin-first")
+        let directSecond = try bubbleFrame(directMsgs[1], window: 520, snapshot: "timeline-direct-margin-second")
+        XCTAssertEqual(directFirst.minX, 0, accuracy: 0.5, "1:1 first incoming bubble starts at the left margin")
+        XCTAssertEqual(directSecond.minX, 0, accuracy: 0.5, "1:1 continuation bubble also starts at the left margin")
+
+        // Group chat: 28pt avatar + 8pt HStack spacing = 36pt offset on both first-of-run and continuation bubbles.
+        let groupFirst = try bubbleFrame(groupMsgs[0], window: 520, snapshot: "timeline-group-margin-first")
+        let groupSecond = try bubbleFrame(groupMsgs[1], window: 520, snapshot: "timeline-group-margin-second")
+        XCTAssertEqual(groupFirst.minX, 36, accuracy: 0.5, "group first incoming bubble sits beside the 28pt avatar")
+        XCTAssertEqual(groupSecond.minX, 36, accuracy: 0.5, "group continuation bubble aligns with the avatar column")
+
+        // ThreadPane follows the exact same rule (14pt horizontal padding inside the pane -> 14pt in 1:1 vs 50pt in group).
+        final class NoOpPasteboard: TextPasteboard { func setString(_: String) {} }
+        func threadBubbleMinX(isDirect: Bool) throws -> CGFloat {
+            let suiteName = "courier.thread.margin.\(UUID().uuidString)"
+            let defaults = ScratchDefaults.suite(named: suiteName)!
+            defer { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
+            let prefs = ComposerPreferences(defaults: defaults)
+            let app = AppModel(supervisor: EngineSupervisor(
+                enginePath: "/nonexistent/vitruvian-courier-engine",
+                dataDir: FileManager.default.temporaryDirectory.appendingPathComponent("courier-thread-margin"),
+                environment: [:], launcher: FoundationProcessLauncher()
+            ))
+            let conv = ConversationModel(appModel: app, preferences: prefs)
+            let row = Fixture.row("!t", "Ann", direct: isDirect, ts: 5, preview: "hi")
+            let items = Fixture.items([Fixture.text("$tr", "In thread", mine: false, ts: 2)], isDirect: isDirect)
+            conv.setSnapshotStateForTesting(roomID: "!t", items: items, row: row)
+            conv.thread.setSnapshotStateForTesting(roomID: "!t", rootID: "$tr", items: items)
+            let msgActions = MessageActionsModel(conversation: conv, appModel: app, preferences: prefs, pasteboard: NoOpPasteboard())
+            let focus = MessageFocus()
+            let box = Box()
+            _ = try Snapshot.render("thread-pane-margin-\(isDirect ? "direct" : "group")", width: 420, height: 260) {
+                ThreadPane(thread: conv.thread, conversation: conv, composer: conv.thread.composer,
+                           messageActions: msgActions, preferences: prefs, focus: focus)
+                    .overlayPreferenceValue(RowAnchorsKey.self) { anchors in
+                        GeometryReader { geo in
+                            Color.clear.onAppear { if let a = anchors.bubble { box.frame = geo[a] } }
+                        }
+                    }
+            }
+            return box.frame.minX
+        }
+        XCTAssertEqual(try threadBubbleMinX(isDirect: true), 14, accuracy: 0.5,
+                       "1:1 ThreadPane incoming bubble starts at the pane's 14pt left margin")
+        XCTAssertEqual(try threadBubbleMinX(isDirect: false), 50, accuracy: 0.5,
+                       "group ThreadPane incoming bubble sits after 14pt padding + 28pt avatar + 8pt gap")
+    }
+
+    func testAVideoCardBubbleIsCappedToTheCardWidthNotTheRow() throws {
+        let long = String(repeating: "A long line of chat text that would stretch across a very wide window. ", count: 20)
+        let ytURL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        var youtube = Fixture.text("$yt-wide", "\(long)\n\(ytURL)", mine: false, ts: 2)
+        youtube.linkPreviews = [LinkPreviewItem(matchedURL: ytURL, url: ytURL, title: "A video")]
+        let ytWidth = try bubbleWidth(youtube, window: 1400, snapshot: "timeline-wide-youtube")
+        XCTAssertLessThanOrEqual(ytWidth, EmbedConsentCard.maxWidth + 32 + 1, "the bubble is capped to the card width")
+        XCTAssertGreaterThanOrEqual(ytWidth, EmbedConsentCard.maxWidth)
     }
 
     func testPlainTextBubbleStopsAtAReadableWidth() throws {
