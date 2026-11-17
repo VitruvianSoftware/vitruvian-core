@@ -779,11 +779,9 @@ def _define_component(_c):
             push = "main",
         ),
         # Component subtree minus the monorepo-only Bazel BUILD files (and any
-        # origin_only_exclude paths the component declares).
-        origin_files = glob(
-            [_subtree + "/**"] + _extra_origin,
-            exclude = _monorepo_only_files + _origin_exclude + _extra_exclude,
-        ),
+        # origin_only_exclude paths the component declares), plus any
+        # extra_exports minus their own monorepo-only BUILD files.
+        origin_files = glob([_subtree + "/**"], exclude = _monorepo_only_files + _origin_exclude) + glob(_extra_origin, exclude = _extra_exclude),
         # Manage all standalone files EXCEPT the standalone-only ones (the sync
         # must never delete the dispatch workflow or an npm lockfile).
         destination_files = glob(["**"], exclude = _standalone_only),
