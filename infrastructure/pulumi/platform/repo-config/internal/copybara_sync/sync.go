@@ -404,7 +404,7 @@ var syncedProjects = []syncedProject{
 		OneWay:         true,
 		CreateRepo:     true,
 		HomebrewTapKey: true,
-		Description:    "Build tools for the Vitruvian Mac app: the protocol, the Swift kit and the vitruvian-tool command",
+		Description:    "Vitruvian Tool SDK: build extensions for Vitruvian Atrium with the protocol, the Swift kit and the vitruvian-tool command",
 	},
 	{
 		// Vitruvian GitHub for Vitruvian Atrium (apps/extensions/atrium/vitruvian-github).
@@ -422,10 +422,10 @@ var syncedProjects = []syncedProject{
 		LegacyRepo:     "vitruvian-tool-github",
 		OneWay:         true,
 		CreateRepo:     true,
-		Description:    "The GitHub tool for the Vitruvian Mac app: pull requests and checks in the Dynamic Island, and a GravaStar mouse as a status light",
+		Description:    "Vitruvian GitHub: pull requests and checks in the Vitruvian Atrium Dynamic Island, and a GravaStar mouse as a status light",
 	},
 	{
-		// The Vitruvian Mac app (apps/desktop/vitruvian), a GPL-3.0-or-later fork
+		// Vitruvian Atrium (apps/desktop/vitruvian-atrium), a GPL-3.0-or-later fork
 		// of vorssaint-utils. Export-only: the mirror is the public source the
 		// GPL owes with every DMG; releases still ship from the monorepo. Name
 		// uppercase-snakes to VITRUVIAN_SYNC_SSH_KEY, consumed by
@@ -438,7 +438,7 @@ var syncedProjects = []syncedProject{
 		LegacyRepo:     "vitruvian",
 		OneWay:         true,
 		CreateRepo:     true,
-		Description:    "Vitruvian, a macOS menu-bar utility hub. GPL-3.0 fork of vorssaint-utils, not an official Vorssaint build",
+		Description:    "Vitruvian Atrium: a macOS menu bar utility hub. GPL-3.0 fork of vorssaint-utils, not an official Vorssaint build",
 	},
 	{
 		// Courier (apps/desktop/courier), AGPL-3.0-or-later. Export-only: the
@@ -452,10 +452,10 @@ var syncedProjects = []syncedProject{
 		LegacyRepo:     "courier",
 		OneWay:         true,
 		CreateRepo:     true,
-		Description:    "Courier: every chat app in one inbox, as a native macOS app",
+		Description:    "Vitruvian Courier: every chat app in one inbox, as a native macOS app",
 	},
 	{
-		// HomeSpeaker (apps/desktop/home-speaker), MIT. Export-only.
+		// Vitruvian Speaker (apps/desktop/vitruvian-speaker), formerly HomeSpeaker, MIT. Export-only.
 		// HOME_SPEAKER_SYNC_SSH_KEY, consumed by copybara-export-home-speaker.yaml.
 		// Renamed in place from VitruvianSoftware/home-speaker to VitruvianSoftware/vitruvian-speaker.
 		// The Pulumi resource keeps the name "home-speaker" (LegacyRepo), and so do the
@@ -465,7 +465,7 @@ var syncedProjects = []syncedProject{
 		LegacyRepo:     "home-speaker",
 		OneWay:         true,
 		CreateRepo:     true,
-		Description:    "HomeSpeaker: a macOS menu bar app that reads agent replies and messages aloud on Google Home speakers, this Mac or your phone",
+		Description:    "Vitruvian Speaker: a macOS menu bar app that reads agent replies and messages aloud on Google Home speakers, this Mac or your phone",
 	},
 	{
 		// Vitruvian Remote (apps/mobile/vitruvian-remote), MIT: the Android app
