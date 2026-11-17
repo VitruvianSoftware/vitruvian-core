@@ -46,6 +46,12 @@ rust_test(
     deps = ["@crates//:serde_json"],
 )
 
+# The version-consistency test every plugin runs as :version_rs_test.
+exports_files(
+    ["plugin_version_test.rs"],
+    visibility = ["//apps/antigravity/plugins:__subpackages__"],
+)
+
 # The files every plugin carries its own copy of are identical.
 rust_test(
     name = "shared_files_test",

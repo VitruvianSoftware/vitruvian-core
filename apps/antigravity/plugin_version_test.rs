@@ -1,6 +1,11 @@
 // Copyright (c) 2026 VitruvianSoftware
 // SPDX-License-Identifier: MIT
 
+//! Each plugin's version is the same in every file release-please bumps
+//! (plugin.json, the panel's package.json, the manifest and config) and its
+//! CHANGELOG has a non-empty section for it. Shared by every plugin's
+//! :version_rs_test.
+
 use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::ser::{Serialize, SerializeMap, SerializeSeq, Serializer};
 use serde_json::Value;
@@ -8,8 +13,9 @@ use std::fmt;
 use std::fs;
 use std::path::PathBuf;
 
-const PLUGIN_NAME: &str = "live-context";
-const PKG: &str = "apps/antigravity/plugins/live-context";
+// One copy for every plugin: its BUILD names the plugin through rustc_env.
+const PLUGIN_NAME: &str = env!("PLUGIN_NAME");
+const PKG: &str = env!("PLUGIN_PKG");
 
 #[derive(Debug, Clone, PartialEq)]
 enum OrderedJson {
