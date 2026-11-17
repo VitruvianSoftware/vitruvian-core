@@ -27,7 +27,9 @@
  * Supports both local testing (with running API) and CI pipeline testing.
  */
 
-import { Page, BrowserContext } from "@playwright/test";
+import { Page, BrowserContext, chromium } from "@playwright/test";
+import fs from "fs";
+import path from "path";
 import jwt from "jsonwebtoken";
 
 /**
@@ -623,4 +625,44 @@ export async function getOrCreateDashboardPage(
   await page.waitForLoadState("domcontentloaded");
   await suppressOnboarding(page);
   return page;
+}
+
+/** The built extension: `EXTENSION_PATH` (Bazel passes `:dist`), else ../dist. */
+export const EXTENSION_PATH = process.env.EXTENSION_PATH
+  ? path.resolve(process.env.EXTENSION_PATH)
+  : path.join(__dirname, "../dist");
+
+/**
+ * Launch Chromium with the built extension loaded and wait for its service
+ * worker. Returns the browser context and the extension's id (the host part
+ * of its chrome-extension:// URL).
+ */
+export async function launchExtension(): Promise<{
+  context: BrowserContext;
+  extensionId: string;
+}> {
+  if (!fs.existsSync(EXTENSION_PATH)) {
+    throw new Error(
+      `Extension not built. Run 'npm run build' first. Expected path: ${EXTENSION_PATH}`,
+    );
+  }
+  const context = await chromium.launchPersistentContext("", {
+    // Full Chromium in the new headless mode: supports MV3 extensions, no
+    // xvfb needed (Playwright >= 1.49).
+    channel: "chromium",
+    args: [
+      `--disable-extensions-except=${EXTENSION_PATH}`,
+      `--load-extension=${EXTENSION_PATH}`,
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      // Bazel's linux-sandbox mounts a tiny /dev/shm; Chromium crashes at
+      // launch without this.
+      "--disable-dev-shm-usage",
+    ],
+  });
+  const background =
+    context.serviceWorkers()[0] ??
+    (await context.waitForEvent("serviceworker"));
+  const extensionId = background.url().split("/")[2];
+  return { context, extensionId };
 }

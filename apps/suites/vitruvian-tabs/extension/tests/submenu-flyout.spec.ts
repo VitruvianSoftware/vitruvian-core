@@ -21,46 +21,14 @@
  */
 
 /* eslint-disable import/no-extraneous-dependencies */
-import {
-  test,
-  expect,
-  chromium,
-  BrowserContext,
-  Page,
-  Locator,
-} from "@playwright/test";
-import path from "path";
-import fs from "fs";
-import { getOrCreateDashboardPage } from "./e2e-helpers";
-
-const EXTENSION_PATH = process.env.EXTENSION_PATH
-  ? path.resolve(process.env.EXTENSION_PATH)
-  : path.join(__dirname, "../dist");
+import { test, expect, BrowserContext, Page, Locator } from "@playwright/test";
+import { getOrCreateDashboardPage, launchExtension } from "./e2e-helpers";
 
 let context: BrowserContext;
 let extensionId: string;
 
 test.beforeAll(async () => {
-  if (!fs.existsSync(EXTENSION_PATH)) {
-    throw new Error(
-      `Extension not built. Run 'npm run build' first. Expected path: ${EXTENSION_PATH}`,
-    );
-  }
-  context = await chromium.launchPersistentContext("", {
-    channel: "chromium",
-    args: [
-      `--disable-extensions-except=${EXTENSION_PATH}`,
-      `--load-extension=${EXTENSION_PATH}`,
-      "--no-sandbox",
-      "--disable-dev-shm-usage",
-    ],
-  });
-  let background = context.serviceWorkers()[0];
-  if (!background) {
-    background = await context.waitForEvent("serviceworker");
-  }
-  // eslint-disable-next-line prefer-destructuring
-  extensionId = background.url().split("/")[2];
+  ({ context, extensionId } = await launchExtension());
 });
 
 test.afterAll(async () => {

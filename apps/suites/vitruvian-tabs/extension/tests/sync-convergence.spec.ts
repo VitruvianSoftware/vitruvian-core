@@ -21,14 +21,13 @@
  */
 
 /* eslint-disable import/no-extraneous-dependencies */
-import { test, expect, chromium, BrowserContext, Page } from "@playwright/test";
-import path from "path";
-import fs from "fs";
+import { test, expect, BrowserContext, Page } from "@playwright/test";
 import {
-  getOrCreateDashboardPage,
-  mintTestToken,
   CONV_TEST_USER,
   cleanupApiWorkspaces,
+  getOrCreateDashboardPage,
+  launchExtension,
+  mintTestToken,
 } from "./e2e-helpers";
 
 /**
@@ -51,10 +50,6 @@ import {
 
 const API = "http://localhost:8080";
 const DEVICE_B = "e2e-device-b";
-
-const EXTENSION_PATH = process.env.EXTENSION_PATH
-  ? path.resolve(process.env.EXTENSION_PATH)
-  : path.join(__dirname, "../dist");
 
 // Convergence runs on its OWN seeded user (not the shared TEST_USER) so the
 // other specs' parallel workspace cleanups never touch the workspaces these
@@ -223,22 +218,7 @@ test.describe("Cross-device sync convergence (#136)", () => {
       test.skip();
       return;
     }
-    if (!fs.existsSync(EXTENSION_PATH)) {
-      throw new Error(`Extension not built. Expected path: ${EXTENSION_PATH}`);
-    }
-    context = await chromium.launchPersistentContext("", {
-      channel: "chromium",
-      args: [
-        `--disable-extensions-except=${EXTENSION_PATH}`,
-        `--load-extension=${EXTENSION_PATH}`,
-        "--no-sandbox",
-        "--disable-dev-shm-usage",
-      ],
-    });
-    let background = context.serviceWorkers()[0];
-    if (!background) background = await context.waitForEvent("serviceworker");
-    // eslint-disable-next-line prefer-destructuring
-    extensionId = background.url().split("/")[2];
+    ({ context, extensionId } = await launchExtension());
   });
 
   test.afterAll(async () => {

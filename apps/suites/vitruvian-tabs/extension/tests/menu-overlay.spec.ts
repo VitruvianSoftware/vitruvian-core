@@ -21,54 +21,22 @@
  */
 
 /* eslint-disable import/no-extraneous-dependencies */
-import { test, expect, chromium, BrowserContext } from "@playwright/test";
-import path from "path";
-import fs from "fs";
+import { test, expect, BrowserContext } from "@playwright/test";
 import {
   getOrCreateDashboardPage,
   getTestToken,
+  launchExtension,
   loginTestUser,
   logoutTestUser,
 } from "./e2e-helpers";
-
-const EXTENSION_PATH = process.env.EXTENSION_PATH
-  ? path.resolve(process.env.EXTENSION_PATH)
-  : path.join(__dirname, "../dist");
 
 // Shared context
 let context: BrowserContext;
 let extensionId: string;
 
 test.beforeAll(async () => {
-  // Verify extension is built
-  if (!fs.existsSync(EXTENSION_PATH)) {
-    throw new Error(
-      `Extension not built. Run 'npm run build' first. Expected path: ${EXTENSION_PATH}`,
-    );
-  }
-
-  // Launch browser with extension
-  context = await chromium.launchPersistentContext("", {
-    // Full Chromium in the new headless mode: supports MV3 extensions, no
-    // xvfb needed (Playwright >= 1.49).
-    channel: "chromium",
-    args: [
-      `--disable-extensions-except=${EXTENSION_PATH}`,
-      `--load-extension=${EXTENSION_PATH}`,
-      "--no-sandbox",
-      // Bazel's linux-sandbox mounts a tiny /dev/shm; Chromium crashes at
-      // launch without this.
-      "--disable-dev-shm-usage",
-    ],
-  });
-
-  // Wait for extension to load
-  let background = context.serviceWorkers()[0];
-  if (!background) {
-    background = await context.waitForEvent("serviceworker");
-  }
-  // eslint-disable-next-line prefer-destructuring
-  extensionId = background.url().split("/")[2];
+  // Launch Chromium with the extension and get its id.
+  ({ context, extensionId } = await launchExtension());
 });
 
 test.afterAll(async () => {

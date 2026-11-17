@@ -29,12 +29,9 @@
 
 // eslint-disable-next-line import/no-extraneous-dependencies
 import { test, expect, chromium, BrowserContext } from "@playwright/test";
+import { EXTENSION_PATH } from "./e2e-helpers";
 import path from "path";
 import fs from "fs";
-
-const EXTENSION_PATH = process.env.EXTENSION_PATH
-  ? path.resolve(process.env.EXTENSION_PATH)
-  : path.join(__dirname, "../dist");
 
 let context: BrowserContext;
 

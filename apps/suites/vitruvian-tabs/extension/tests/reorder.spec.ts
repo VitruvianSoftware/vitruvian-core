@@ -22,44 +22,14 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable no-console */
-import { test, expect, chromium, BrowserContext } from "@playwright/test";
-import path from "path";
-import fs from "fs";
-import { getOrCreateDashboardPage } from "./e2e-helpers";
-
-const EXTENSION_PATH = process.env.EXTENSION_PATH
-  ? path.resolve(process.env.EXTENSION_PATH)
-  : path.join(__dirname, "../dist");
+import { test, expect, BrowserContext } from "@playwright/test";
+import { getOrCreateDashboardPage, launchExtension } from "./e2e-helpers";
 
 let context: BrowserContext;
 let extensionId: string;
 
 test.beforeAll(async () => {
-  if (!fs.existsSync(EXTENSION_PATH)) {
-    throw new Error(
-      `Extension not built. Please run 'npm run build --workspace=extension' before running E2E tests.`,
-    );
-  }
-
-  context = await chromium.launchPersistentContext("", {
-    // Full Chromium in the new headless mode: supports MV3 extensions, no
-    // xvfb needed (Playwright >= 1.49).
-    channel: "chromium",
-    args: [
-      `--disable-extensions-except=${EXTENSION_PATH}`,
-      `--load-extension=${EXTENSION_PATH}`,
-      "--no-sandbox",
-      // Bazel\'s linux-sandbox mounts a tiny /dev/shm; Chromium crashes at
-      // launch without this.
-      "--disable-dev-shm-usage",
-    ],
-  });
-
-  const [firstWorker] = context.serviceWorkers();
-  const background =
-    firstWorker || (await context.waitForEvent("serviceworker"));
-  // eslint-disable-next-line prefer-destructuring
-  extensionId = background.url().split("/")[2];
+  ({ context, extensionId } = await launchExtension());
 });
 
 test.afterAll(async () => {
