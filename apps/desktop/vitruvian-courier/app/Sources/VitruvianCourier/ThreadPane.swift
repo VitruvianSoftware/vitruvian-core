@@ -146,6 +146,9 @@ struct ThreadPane: View {
 /// accent dot and "2 new" (an at sign in place of the dot when one of them mentions me). A click opens the thread
 /// pane, which reads them.
 struct ThreadSummaryLine: View {
+    /// How the line reads: the count in the accent colour at medium weight, the rest at 12 pt.
+    static let countWeight = Font.Weight.medium
+    static let pointSize: CGFloat = 12
     let summary: ThreadSummary
     let open: () -> Void
     @Environment(\.themeAccentColor) private var themeAccent
@@ -155,7 +158,7 @@ struct ThreadSummaryLine: View {
             HStack(spacing: 6) {
                 Image(systemName: "bubble.left.and.bubble.right")
                 Text(MessageLines.replies(summary))
-                    .fontWeight(.semibold)
+                    .fontWeight(Self.countWeight)
                     .foregroundStyle(themeAccent)
                 if let new = MessageLines.newReplies(summary) {
                     NewRepliesMark(text: new, mentionsMe: summary.unreadMentionsMe)
@@ -166,10 +169,10 @@ struct ThreadSummaryLine: View {
                         .lineLimit(1)
                 }
                 Image(systemName: "chevron.right")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
-            .font(.caption)
+            .font(.system(size: Self.pointSize))
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))

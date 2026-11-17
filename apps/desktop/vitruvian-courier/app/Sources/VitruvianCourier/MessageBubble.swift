@@ -398,6 +398,25 @@ struct MessageRowView: View {
     @State private var activeDetectedDate: DetectedMessageDate?
 
     private static let avatarSize: CGFloat = 28
+    /// Plain text stops at this width however wide the pane is (long lines are hard to read); code, pictures and
+    /// cards may use the whole row.
+    static let textBubbleMaxWidth: CGFloat = 640
+    /// The time and "Edited" on a bubble. On macOS `.caption` and `.caption2` are both 10 pt, so this is 11 pt.
+    static let metaFont = Font.system(size: metaPointSize)
+    static let metaPointSize: CGFloat = 11
+
+    /// What the text reserves for `words` drawn at `metaPointSize`: the text lays it out at 10 pt (RichTextView), so
+    /// a few hair spaces make up the difference.
+    static func reservedMeta(_ words: String) -> String {
+        words + String(repeating: "\u{200A}", count: max(3, words.count / 2))
+    }
+
+    /// Whether this bubble holds only plain text, which is what the width cap is for.
+    private var capsBubbleWidth: Bool {
+        guard contentIsText, message.kind == .text || message.kind == .notice || message.kind == .emote,
+              message.linkPreviews.isEmpty, ExternalEmbedDescriptor.first(in: message) == nil else { return false }
+        return !RichTextLayout.blocks(of: message.rich).contains { $0.kind == .code }
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -410,7 +429,11 @@ struct MessageRowView: View {
                 if message.startsGroup { header }
                 HStack(alignment: .center, spacing: 4) {
                     if message.mine { bookmarkMark }
-                    bubble
+                    if capsBubbleWidth {
+                        bubble.frame(maxWidth: Self.textBubbleMaxWidth, alignment: message.mine ? .trailing : .leading)
+                    } else {
+                        bubble
+                    }
                     if !message.mine { bookmarkMark }
                 }
                 .anchorPreference(key: RowAnchorsKey.self, value: .bounds) { RowAnchors(bubble: $0) }
@@ -780,7 +803,7 @@ struct MessageRowView: View {
     // MARK: Time inside the bubble
 
     private var timeText: String? {
-        actions.showMessageTimestamps
+        actions.showMessageTimestamps && message.showsTime
             ? actions.timeFormat.formatTime(Date(timeIntervalSince1970: Double(message.ts) / 1000))
             : nil
     }
@@ -807,7 +830,8 @@ struct MessageRowView: View {
         var parts: [String] = []
         if message.isEdited { parts.append(ui.historyOpen.contains(message.id) ? String(localized: "Hide Edits") : String(localized: "Edited")) }
         if let timeText { parts.append(timeText) }
-        return parts.joined(separator: "  ")
+        // The text reserves this at 10 pt (RichTextView); the time is drawn at 11 pt, so it asks for a little more.
+        return Self.reservedMeta(parts.joined(separator: "  "))
     }
 
     private var metaView: some View {
@@ -815,7 +839,7 @@ struct MessageRowView: View {
             if message.isEdited { editedButton.takesOwnClick() }
             if let timeText { Text(timeText) }
         }
-        .font(.caption2)
+        .font(Self.metaFont)
         .foregroundStyle(metaColor)
         .fixedSize()
     }
@@ -900,7 +924,7 @@ struct MessageRowView: View {
             ui.toggleHistory(message.id)
         } label: {
             Text(ui.historyOpen.contains(message.id) ? String(localized: "Hide Edits") : String(localized: "Edited"))
-                .font(.caption2)
+                .font(Self.metaFont)
                 .underline(ui.historyOpen.contains(message.id))
                 .foregroundStyle(foreground.opacity(0.75))
         }
@@ -1080,7 +1104,7 @@ struct MessageRowView: View {
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Text(chip.key)
+                        ReactionKeyView(chip: chip, size: 13)
                         switch chip.pillDisplay(redacted: isRedacted) {
                         case let .avatars(items, overflowText):
                             ReactionAvatarStack(items: items, isRedacted: isRedacted)
@@ -1474,6 +1498,37 @@ private struct ReactorAvatarCircle: View {
     }
 }
 
+/// What a reaction is: the emoji as text, or, for a custom emoji (an `mxc://` address), its picture at the emoji's
+/// height. The address itself is never shown, not even in a tooltip or to VoiceOver.
+struct ReactionKeyView: View {
+    let chip: ReactionChip
+    let size: CGFloat
+    @State private var image: CGImage?
+
+    var body: some View {
+        if chip.isCustomImage {
+            Group {
+                if let image {
+                    Image(decorative: image, scale: 1)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    RoundedRectangle(cornerRadius: 3).fill(Color.secondary.opacity(0.2))
+                }
+            }
+            .frame(width: size * 1.2, height: size * 1.2)
+            .help(chip.spokenKey)
+            .accessibilityLabel(chip.spokenKey)
+            .task(id: chip.key) {
+                guard let path = ThumbnailLoader.resolveMediaPath(chip.key) else { return }
+                image = await ThumbnailLoader.shared.thumbnail(atPath: path)?.image
+            }
+        } else {
+            Text(chip.key).font(size > 14 ? .system(size: size) : nil)
+        }
+    }
+}
+
 /// Who reacted with one emoji: the emoji large, and the names under it (`ReactionChip.summary`).
 private struct ReactionCard: View {
     let chip: ReactionChip
@@ -1482,7 +1537,7 @@ private struct ReactionCard: View {
     var body: some View {
         CappedWidth(maxWidth: 220) {
             VStack(spacing: 4) {
-                Text(chip.key).font(.system(size: 28))
+                ReactionKeyView(chip: chip, size: 28)
                 Text(chip.summary(redacted: isRedacted))
                     .font(.caption)
                     .multilineTextAlignment(.center)
@@ -1559,12 +1614,12 @@ enum ReactionCardPlacement {
 }
 
 /// Where a row's bubble is (for its action bar) and the reaction chip whose card is open (for the card).
-private struct RowAnchors {
+struct RowAnchors {
     var bubble: Anchor<CGRect>?
     var openChip: Anchor<CGRect>?
 }
 
-private struct RowAnchorsKey: PreferenceKey {
+struct RowAnchorsKey: PreferenceKey {
     static let defaultValue = RowAnchors()
     static func reduce(value: inout RowAnchors, nextValue: () -> RowAnchors) {
         let next = nextValue()
