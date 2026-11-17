@@ -223,6 +223,10 @@ enum NotchMusicVisibilityTests {
             service.syncWithPreferences()
             suite.expect(reader.musicRunning && service.compactActivity == nil && service.hiddenUntilHover,
                    "paused and out of sight, a hidden island set to show activity keeps reading for the next song")
+            // Out of sight at rest but set to show activity, it still takes notices:
+            // this is the case where `hiddenUntilHover` is true, so the setting alone decides.
+            suite.expect(service.hiddenUntilHover && service.showsSystemFeedback,
+                   "a hidden island set to show activity still shows notices while out of sight")
             defaults.set(false, forKey: DefaultsKey.notchHiddenShowsActivity)
             service.syncWithPreferences()
             suite.expect(!reader.musicRunning, "turning that choice off stops the hidden island's music reader again")
