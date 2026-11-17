@@ -4,6 +4,7 @@
 package store
 
 import (
+	"context"
 	"encoding/json"
 	"regexp"
 	"strings"
@@ -48,4 +49,46 @@ func MembershipNote(network, typ string, content json.RawMessage) (membership st
 		return "join", true
 	}
 	return "leave", true
+}
+
+// membershipEvent is the membership change a Slack join or leave note stands for: an m.room.member event with the
+// note's own event ID, sender and time, so replies and scroll anchors that name it keep working. The person is the
+// sender (the note is written by the one who joined); the app names them as it names any member event.
+func membershipEvent(e Event, membership string) Event {
+	sk := e.Sender
+	e.Type, e.StateKey = "m.room.member", &sk
+	e.Content, _ = json.Marshal(map[string]any{"membership": membership, "state_key": sk, "target_user_id": sk})
+	return e
+}
+
+// served is e as the app should see it. A Slack join or leave note that was stored as a text message, before the
+// engine stored them as membership events, is turned into the membership event it is, so history already on disk
+// shows as the centered membership row too. Every other event comes back as given. The cheap content test comes
+// first: only a matching message costs a look at its chat's network.
+func (s *Store) served(ctx context.Context, e Event) Event {
+	membership, ok := MembershipNote("slack", e.Type, e.Content)
+	if !ok {
+		return e
+	}
+	var network string
+	if s.db.QueryRow(ctx, "SELECT network FROM rooms WHERE room_id=$1", e.RoomID).Scan(&network) != nil || network != "slack" {
+		return e
+	}
+	return membershipEvent(e, membership)
+}
+
+// slackNoteSQL is MembershipNote in SQL, for a Slack chat's event u (room alias r): the unread count and the
+// preview must not count a note that is still stored as text. 1 for a note, else 0 or NULL.
+func slackNoteSQL(r, content string) string {
+	body := `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$.body') END)`
+	var globs []string
+	for _, verb := range []string{"joined", "left"} {
+		for _, noun := range []string{"channel", "group", "conversation"} {
+			globs = append(globs, body+` GLOB '* has `+verb+` the `+noun+`'`, body+` GLOB '* has `+verb+` the `+noun+`.'`)
+		}
+	}
+	return `(` + r + `.network = 'slack' AND ` + content + ` LIKE '% has %' AND instr(` + body + `, char(10)) = 0
+       AND (CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$.msgtype') END) IN ('m.text', 'm.notice')
+       AND (CASE WHEN json_valid(` + content + `) THEN json_type(` + content + `, '$."m.new_content"') END) IS NULL
+       AND (` + strings.Join(globs, " OR ") + `))`
 }

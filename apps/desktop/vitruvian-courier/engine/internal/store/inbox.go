@@ -93,6 +93,7 @@ func unreadSQLFor(r, p, rd, rde, lr, lre string) string {
 	return `u.room_id = ` + r + `.room_id
        AND (u.ts, u.seq) > (` + lowTS + `, ` + lowSeq + `)
        AND u.type IN (` + unreadTypes + `) AND u.sender <> $1 AND u.redacted = 0 AND ` + notEditSQL("u.content") + `
+       AND NOT ` + slackNoteSQL(r, "u.content") + `
        AND (` + isTimerNoteSQL("u.content") + `) IS NOT 1 AND (` + isCallRecordSQL("u.content") + `) IS NOT 1
        AND CASE WHEN (` + isThreadReplySQL("u.content") + `) IS 1 THEN ` + threadUnreadSQLFor(p) + `
                 ELSE (u.ts, u.seq) > (` + chatTS + `, ` + chatSeq + `) END`
@@ -365,6 +366,11 @@ func (s *Store) scanInboxRow(row dbutil.Scannable) (InboxRow, error) {
 	}
 	r.IsDirect, r.CreatedAt, r.Muted = direct == 1, time.UnixMilli(created), muted == 1
 	r.LastTS = msTime(lastTS)
+	// A Slack join or leave note still stored as text is no preview: the row shows nothing for it, as for any
+	// event with nothing readable, rather than "Ann has joined the channel".
+	if _, note := MembershipNote(r.Network, typ, json.RawMessage(content)); note {
+		sender, typ, content = "", "", "{}"
+	}
 	r.PreviewMine = sender == myID
 	r.PreviewInThread = isThreadReply(json.RawMessage(content))
 	r.Preview, r.PreviewKind, r.PreviewMediaURI = previewOf(typ, content)
@@ -569,7 +575,7 @@ func (s *Store) EventsBefore(ctx context.Context, roomID string, before *Cursor,
 		if err != nil {
 			return nil, nil, err
 		}
-		out = append(out, e)
+		out = append(out, s.served(ctx, e))
 	}
 	if err := rows.Err(); err != nil {
 		return nil, nil, err
