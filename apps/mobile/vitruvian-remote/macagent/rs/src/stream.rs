@@ -516,28 +516,33 @@ mod tests {
         assert_eq!(code, 7);
     }
 
-    fn wait_for<F: Fn() -> bool>(limit: Duration, cond: F) -> bool {
-        let deadline = Instant::now() + limit;
-        while Instant::now() < deadline {
-            if cond() {
-                return true;
-            }
-            thread::sleep(Duration::from_millis(50));
+    fn process_alive(pid: i32) -> bool {
+        if pid <= 0 {
+            return false;
         }
-        cond()
+        if unsafe { kill(pid, 0) } != 0 {
+            return false;
+        }
+        #[cfg(target_os = "linux")]
+        if let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+            if let Some(after) = stat.rsplit(") ").next() {
+                if after.starts_with('Z') || after.starts_with('X') {
+                    return false;
+                }
+            }
+        }
+        true
     }
 
-    fn pgrep_count(arg: &str) -> usize {
-        let Ok(out) = Command::new("pgrep")
-            .args(["-f", &format!("sleep {}", arg)])
-            .output()
-        else {
-            return 0;
-        };
-        String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .filter(|l| !l.trim().is_empty())
-            .count()
+    fn wait_until_dead(pid: i32, limit: Duration) -> bool {
+        let deadline = Instant::now() + limit;
+        while Instant::now() < deadline {
+            if !process_alive(pid) {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        !process_alive(pid)
     }
 
     #[test]
@@ -545,12 +550,6 @@ mod tests {
         if !require_shell() {
             return;
         }
-        if Command::new("pgrep").arg("-V").output().is_err()
-            && !Path::new("/usr/bin/pgrep").exists()
-        {
-            return;
-        }
-        let marker = "31.5";
         let cancel = CancelToken::new();
         let cancel_runner = cancel.clone();
         let (tx, rx) = mpsc::channel();
@@ -559,26 +558,68 @@ mod tests {
                 &cancel_runner,
                 &ExecRequest {
                     kind: "shell".to_string(),
-                    command: format!("sleep {}", marker),
+                    command: "sleep 30 </dev/null >/dev/null 2>&1 & echo \"CHILD_PID=$!\"; wait"
+                        .to_string(),
                     ..Default::default()
                 },
                 tx,
-            );
+            )
         });
-        thread::spawn(move || for _ in rx {});
 
-        if !wait_for(Duration::from_secs(3), || pgrep_count(marker) > 0) {
-            cancel.cancel();
-            let _ = done.join();
-            return;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut child_pid: Option<i32> = None;
+        loop {
+            let rem = deadline.saturating_duration_since(Instant::now());
+            if rem.is_zero() {
+                break;
+            }
+            match rx.recv_timeout(rem) {
+                Ok(line) => {
+                    if line.stream == "stdout" {
+                        if let Some(pid_str) = line.text.trim().strip_prefix("CHILD_PID=") {
+                            if let Ok(pid) = pid_str.parse::<i32>() {
+                                child_pid = Some(pid);
+                                break;
+                            }
+                        }
+                    }
+                }
+                Err(_) => break,
+            }
         }
-        cancel.cancel();
-        let _ = done.join();
+        let drain = thread::spawn(move || for _ in rx {});
 
+        let child_pid = match child_pid {
+            Some(pid) => pid,
+            None => {
+                cancel.cancel();
+                let _ = done.join();
+                let _ = drain.join();
+                panic!("never received CHILD_PID from streamed shell");
+            }
+        };
         assert!(
-            wait_for(Duration::from_secs(5), || pgrep_count(marker) == 0),
-            "a `sleep {}` survived the cancellation: the process group was not killed",
-            marker
+            process_alive(child_pid),
+            "spawned child {child_pid} was not alive before cancel"
+        );
+
+        cancel.cancel();
+        let (_, killed_by_cancel) = done.join().unwrap();
+        let _ = drain.join();
+        assert!(
+            killed_by_cancel,
+            "run_stream did not report killed_by_cancel"
+        );
+
+        let dead = wait_until_dead(child_pid, Duration::from_secs(5));
+        if !dead {
+            unsafe {
+                let _ = kill(child_pid, SIGKILL);
+            }
+        }
+        assert!(
+            dead,
+            "child {child_pid} survived the cancellation: the process group was not killed"
         );
     }
 
