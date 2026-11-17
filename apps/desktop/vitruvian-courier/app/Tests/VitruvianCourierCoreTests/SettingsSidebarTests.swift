@@ -51,11 +51,11 @@ final class SettingsSidebarTests: XCTestCase {
         let ten = (0 ..< 10).map { account("net\($0)") }
         let many = SettingsAccountCard.make(accounts: ten)
         XCTAssertEqual(many.connectedCount, 10)
-        XCTAssertEqual(many.title, "10 accounts connected")
+        XCTAssertEqual(many.title, "10 accounts")
         XCTAssertEqual(many.subtitle, "Vitruvian Courier Plan")
 
-        XCTAssertEqual(SettingsAccountCard.make(accounts: [account("signal")]).title, "1 account connected")
-        XCTAssertEqual(SettingsAccountCard.make(accounts: []).title, "No accounts connected")
+        XCTAssertEqual(SettingsAccountCard.make(accounts: [account("signal")]).title, "1 account")
+        XCTAssertEqual(SettingsAccountCard.make(accounts: []).title, "No accounts")
     }
 
     // MARK: Control tint
