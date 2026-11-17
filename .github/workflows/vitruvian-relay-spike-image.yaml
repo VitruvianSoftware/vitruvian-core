@@ -38,6 +38,7 @@ on:
       - 'apps/suites/vitruvian-relay/spike/**'
       # The spike builds vitruvian-slack-mcp's crate in (token verifier).
       - 'apps/mcp/vitruvian-slack-mcp/rs/**'
+      - 'packages/rust/vitruvian-mcp-auth/**'
       - '.github/workflows/vitruvian-relay-spike-image.yaml'
   # PR runs BUILD AND VERIFY BUT DO NOT PUSH. This is the only place the image
   # is exercised before it can reach a cluster, and it is deliberately not just
@@ -56,6 +57,7 @@ on:
       - 'apps/suites/vitruvian-relay/spike/**'
       # The spike builds vitruvian-slack-mcp's crate in (token verifier).
       - 'apps/mcp/vitruvian-slack-mcp/rs/**'
+      - 'packages/rust/vitruvian-mcp-auth/**'
       - '.github/workflows/vitruvian-relay-spike-image.yaml'
 
 permissions:
@@ -107,6 +109,7 @@ jobs:
             --platform linux/amd64 \
             --tag vitruvian-relay-spike:verify \
             --build-context slackmcp=apps/mcp/vitruvian-slack-mcp/rs \
+            --build-context mcpauth=packages/rust/vitruvian-mcp-auth \
             apps/suites/vitruvian-relay/spike/
 
       # ASSERTION 1 — the pod runs as UID 10001 (deployment.yaml securityContext),
@@ -171,6 +174,7 @@ jobs:
             --build-arg GIT_REVISION="${GITHUB_SHA}" \
             --platform "${PLATFORMS}" \
             --build-context slackmcp=apps/mcp/vitruvian-slack-mcp/rs \
+            --build-context mcpauth=packages/rust/vitruvian-mcp-auth \
             apps/suites/vitruvian-relay/spike/
 
       # Everything above runs on pull_request too. Everything below is the
@@ -198,6 +202,7 @@ jobs:
             --tag "${IMAGE}:${GITHUB_SHA}" \
             --tag "${IMAGE}:main" \
             --build-context slackmcp=apps/mcp/vitruvian-slack-mcp/rs \
+            --build-context mcpauth=packages/rust/vitruvian-mcp-auth \
             apps/suites/vitruvian-relay/spike/
           # Read the digest back FROM THE REGISTRY rather than from buildx's
           # --metadata-file, whose shape varies by driver. This @sha256 ref is

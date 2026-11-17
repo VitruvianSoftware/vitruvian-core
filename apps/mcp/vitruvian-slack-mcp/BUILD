@@ -22,9 +22,7 @@ _CRATES = [
     "@vitruvian_slack_mcp_crates//:http-body-util",
     "@vitruvian_slack_mcp_crates//:hyper",
     "@vitruvian_slack_mcp_crates//:hyper-util",
-    "@vitruvian_slack_mcp_crates//:ring",
     "@vitruvian_slack_mcp_crates//:rustls",
-    "@vitruvian_slack_mcp_crates//:rustls-native-certs",
     "@vitruvian_slack_mcp_crates//:sentry",
     "@vitruvian_slack_mcp_crates//:serde_json",
     "@vitruvian_slack_mcp_crates//:tokio",
@@ -49,14 +47,18 @@ rust_library(
     crate_root = "rs/src/lib.rs",
     edition = "2021",
     # One narrow exception to the inter-app boundary (#82): the Vitruvian Relay P0 spike
-    # reuses this crate's token verifier instead of copying it. The relay spec
-    # (docs/superpowers/specs/2026-11-07-vitruvian-relay-design.md §5) moves
-    # the verifier into a shared crate before P1; this line goes with it.
+    # builds on this crate (its TLS, base64 and URL helpers, and the token
+    # verifier, which is now //packages/rust/vitruvian-mcp-auth). This line goes
+    # when the spike is retired.
     visibility = [
         "//apps/mcp/vitruvian-slack-mcp:__subpackages__",
         "//apps/suites/vitruvian-relay/spike:__pkg__",
     ],
-    deps = _CRATES,
+    deps = _CRATES + [
+        # Token checking, shared with the Vitruvian Relay; built against this
+        # app's crate hub.
+        "//packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth_slack_mcp_hub",
+    ],
 )
 
 rust_binary(

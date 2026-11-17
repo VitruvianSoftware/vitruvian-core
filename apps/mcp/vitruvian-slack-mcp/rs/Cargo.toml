@@ -28,10 +28,13 @@
 #   bazel run //tools/crates:lock -- --dir apps/mcp/vitruvian-slack-mcp/rs
 #
 # Everything that touches the network or crypto is a vetted crate, never
-# hand-rolled: hyper/tokio serve HTTP, ureq over rustls makes every HTTPS call
-# (Slack and the issuer's JWKS), ring checks the RS256 signature, serde_json
-# parses JSON. rust-version is the Bazel toolchain's, so the lock only holds
-# versions that toolchain can build.
+# hand-rolled: hyper/tokio serve HTTP, ureq over rustls makes every HTTPS call,
+# serde_json parses JSON. Token checking (ring for the RS256 signature, the
+# issuer's JWKS over ureq) is the shared vitruvian-mcp-auth crate, which the
+# Vitruvian Relay uses too. In the monorepo it sits at
+# packages/rust/vitruvian-mcp-auth; the standalone repo carries it at mcp-auth/
+# and its export rewrites the path below. rust-version is the Bazel
+# toolchain's, so the lock only holds versions that toolchain can build.
 [workspace]
 
 [package]
@@ -55,17 +58,22 @@ http = "1"
 http-body-util = "0.1"
 hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
+# Named here only for Bazel: the crate hub gives a label just to crates a
+# workspace member names itself, and vitruvian-mcp-auth's BUILD links
+# @vitruvian_slack_mcp_crates//:ring and :rustls-native-certs. Same versions
+# as that crate's Cargo.toml.
 ring = "0.17"
-# The same rustls ureq uses, ring only (no aws-lc). TLS roots come from
-# rustls-native-certs 0.8 through crate::tls, not ureq's `native-certs`
-# feature: that one pulls rustls-native-certs 0.7 and the unmaintained
-# rustls-pemfile (RUSTSEC-2025-0134).
-rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"] }
 rustls-native-certs = "0.8"
+# The same rustls ureq uses, ring only (no aws-lc). TLS roots come from the
+# shared crate's config through crate::tls, not ureq's `native-certs` feature:
+# that one pulls rustls-native-certs 0.7 and the unmaintained rustls-pemfile
+# (RUSTSEC-2025-0134).
+rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"] }
 sentry = { version = "0.34", default-features = false, features = ["backtrace", "contexts", "panic", "ureq"] }
 serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 ureq = { version = "2.12", default-features = false, features = ["tls"] }
+vitruvian-mcp-auth = { path = "../../../../packages/rust/vitruvian-mcp-auth" }
 
 [profile.release]
 opt-level = 3
