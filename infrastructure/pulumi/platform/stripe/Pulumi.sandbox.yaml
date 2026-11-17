@@ -62,19 +62,19 @@ config:
     # whole rather than one app.
     apps:
       - key: vitruvian
-        name: Vitruvian
+        name: Vitruvian Atrium
       - key: development
         name: Vitruvian Software development
       - key: courier
-        name: Courier
+        name: Vitruvian Courier
       - key: home-speaker
-        name: HomeSpeaker
+        name: Vitruvian Speaker
       - key: vitruvian-remote
         name: Vitruvian Remote
       - key: esp32-desk-companion
         name: Vitruvian Deck
       - key: nexus-agent
-        name: NexusAgent
+        name: Vitruvian Code
       - key: oauth-user-inspector
         name: OAuth User Inspector
       - key: mcp-slack
