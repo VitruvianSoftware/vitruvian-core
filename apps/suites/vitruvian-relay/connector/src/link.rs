@@ -572,6 +572,31 @@ fn append_log_line(
         .map_err(|e| format!("write {}: {e}", path.display()))
 }
 
+/// What happens to a call once its dialog has ended: `None` runs it, else
+/// (log decision, result text, whether to send that result). `in_time`: the
+/// call's deadline has not passed. After the deadline the relay has already
+/// failed the call, so nothing is sent: a dialog that answers in the same
+/// instant the deadline fires must not depend on which of the two won.
+fn prompt_refusal(
+    stop: Option<Stop>,
+    waited: Waited,
+    in_time: bool,
+) -> Option<(&'static str, &'static str, bool)> {
+    match (stop, waited) {
+        (Some(Stop::Cancelled), _) => Some(("cancelled at prompt", CANCELLED, false)),
+        (Some(Stop::LinkDropped), _) => Some(("link dropped at prompt", DROPPED, false)),
+        (Some(Stop::Shutdown), _) => Some(("link dropped at prompt", STOPPING, false)),
+        (Some(Stop::Expired), _) => Some(("timed out", TIMED_OUT, false)),
+        // The relay still waits on it: say why.
+        (Some(Stop::Paused), _) => Some(("paused at prompt", PAUSED, true)),
+        (None, Waited::Allow) if in_time => None,
+        // The dialog's own limit can end before the call's deadline: the
+        // relay still waits then, so it is told.
+        (None, Waited::Allow) | (None, Waited::TimedOut) => Some(("timed out", TIMED_OUT, in_time)),
+        (None, Waited::Deny) | (None, Waited::Dismissed) => Some(("denied", DENIED, in_time)),
+    }
+}
+
 // ------------------------------------------------------------------- calls
 
 /// Why a call waiting at its dialog will not run.
@@ -1217,19 +1242,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                 Phase::Prompting { stop, .. } => *stop,
                 _ => return,
             };
-            let refusal = match (stop, waited) {
-                (Some(Stop::Cancelled), _) => Some(("cancelled at prompt", CANCELLED, false)),
-                (Some(Stop::LinkDropped), _) => Some(("link dropped at prompt", DROPPED, false)),
-                (Some(Stop::Shutdown), _) => Some(("link dropped at prompt", STOPPING, false)),
-                (Some(Stop::Expired), _) => Some(("timed out", TIMED_OUT, false)),
-                // The relay still waits on it: say why.
-                (Some(Stop::Paused), _) => Some(("paused at prompt", PAUSED, true)),
-                (None, Waited::Allow) if Instant::now() < deadline => None,
-                (None, Waited::Allow) | (None, Waited::TimedOut) => {
-                    Some(("timed out", TIMED_OUT, true))
-                }
-                (None, Waited::Deny) | (None, Waited::Dismissed) => Some(("denied", DENIED, true)),
-            };
+            let refusal = prompt_refusal(stop, waited, Instant::now() < deadline);
             match refusal {
                 None => {
                     entry.phase = Phase::Running {

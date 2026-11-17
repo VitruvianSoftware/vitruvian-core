@@ -2711,3 +2711,27 @@ async fn a_rewrite_keeps_only_calls_whose_record_succeeded() {
     assert!(!r.is_error, "{}", text(&r));
     assert_eq!(tools.count(), 0, "the first vrelay ran it");
 }
+
+/// A dialog that answers in the instant the deadline fires finds the call
+/// past its deadline: the relay has already failed it, so nothing is sent,
+/// whichever of the two the runtime saw first (merge-queue flake, #4990).
+#[test]
+fn a_dialog_answer_after_the_deadline_sends_nothing() {
+    for w in [
+        Waited::Allow,
+        Waited::TimedOut,
+        Waited::Deny,
+        Waited::Dismissed,
+    ] {
+        let r = prompt_refusal(None, w, false).expect("refused");
+        assert!(!r.2, "{w:?} past the deadline sent a result");
+    }
+    // Still in time, the relay waits on it and is told.
+    assert_eq!(prompt_refusal(None, Waited::Allow, true), None);
+    for w in [Waited::TimedOut, Waited::Deny, Waited::Dismissed] {
+        assert!(
+            prompt_refusal(None, w, true).unwrap().2,
+            "{w:?} in time sent nothing"
+        );
+    }
+}
