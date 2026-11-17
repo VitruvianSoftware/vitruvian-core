@@ -129,6 +129,10 @@ func TestValidateRejectsBadConfig(t *testing.T) {
 			mutate: func(s *Settings) { s.Schedule.Start = "2026-11-16T09:00:00" },
 			want:   "schedule.start",
 		},
+		"schedule adoptId that is not an id": {
+			mutate: func(s *Settings) { s.Schedule.AdoptID = "rotation" },
+			want:   "schedule.adoptId",
+		},
 		"zero shiftDays": {
 			mutate: func(s *Settings) { s.Schedule.ShiftDays = 0 },
 			want:   "schedule.shiftDays",
@@ -539,6 +543,12 @@ func TestReconcileWithMocks(t *testing.T) {
 	sched := schedules[0]
 	if _, hasTeams := sched.Inputs["teams"]; hasTeams {
 		t.Fatal("schedule must not set teams on PagerDuty free tier")
+	}
+	if got := sched.Inputs["description"].StringValue(); got != ScheduleDescription {
+		t.Fatalf("schedule description = %q: it must always be set, or the provider fails the apply", got)
+	}
+	if sched.ImportID != "PE5D9GC" {
+		t.Fatalf("production must adopt the orphaned schedule PE5D9GC, got import id %q", sched.ImportID)
 	}
 	if got := sched.Inputs["timeZone"].StringValue(); got != "America/Los_Angeles" {
 		t.Fatalf("schedule timeZone = %q, want America/Los_Angeles", got)
