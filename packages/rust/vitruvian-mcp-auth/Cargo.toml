@@ -19,14 +19,20 @@
 # SOFTWARE.
 
 # Token checking for the Vitruvian MCP servers that sit behind Zitadel: the
-# Relay today, the Slack MCP once it moves over. One verifier that accepts
-# several client ids, so a server can serve more than one sign-in client.
+# Relay and the Slack MCP. One verifier that accepts several client ids, so a
+# server can serve more than one sign-in client.
 #
 # Its own empty [workspace], like vitruvian-slack-mcp's, so cargo does not read
-# this crate as an unlisted member of the repo-root workspace when the relay
-# path-depends on it. Its dependencies are locked and built through the relay's
-# hub (@vitruvian_relay_crates): re-lock with
+# this crate as an unlisted member of the repo-root workspace when a server
+# path-depends on it. It has no lock of its own: each server locks it with its
+# own crates and BUILD builds it once per crate hub. After changing a
+# dependency here, re-lock every server that uses it:
 #   bazel run //tools/crates:lock -- --dir apps/suites/vitruvian-relay
+#   bazel run //tools/crates:lock -- --dir apps/mcp/vitruvian-slack-mcp/rs
+#   bazel run //tools/crates:lock -- --dir apps/suites/vitruvian-relay/spike
+#
+# The Slack MCP's standalone repo carries a copy of this crate at mcp-auth/
+# (tools/copybara/copy.bara.sky exports it there), so its image builds alone.
 [workspace]
 
 [package]

@@ -29,6 +29,33 @@ rust_library(
     deps = _CRATES,
 )
 
+# The same sources built against vitruvian-slack-mcp's crate hub, for the Slack
+# MCP (and the relay spike, which builds on it). A crate can only link one
+# copy of serde_json, rustls and ureq, so each hub gets its own build of this
+# library; the tests above run once, against the relay's.
+rust_library(
+    name = "vitruvian_mcp_auth_slack_mcp_hub",
+    srcs = [
+        "src/lib.rs",
+        "src/prm.rs",
+        "src/verifier.rs",
+    ],
+    crate_name = "vitruvian_mcp_auth",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    visibility = [
+        "//apps/mcp/vitruvian-slack-mcp:__subpackages__",
+        "//apps/suites/vitruvian-relay/spike:__pkg__",
+    ],
+    deps = [
+        "@vitruvian_slack_mcp_crates//:ring",
+        "@vitruvian_slack_mcp_crates//:rustls",
+        "@vitruvian_slack_mcp_crates//:rustls-native-certs",
+        "@vitruvian_slack_mcp_crates//:serde_json",
+        "@vitruvian_slack_mcp_crates//:ureq",
+    ],
+)
+
 rust_test(
     name = "vitruvian_mcp_auth_test",
     size = "small",

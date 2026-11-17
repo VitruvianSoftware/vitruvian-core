@@ -358,6 +358,24 @@ COMPONENTS = [
         "standalone_rev_id": "MCP_SLACK_REV_ID",
         "standalone_only": ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,
+        # The shared token-checking crate lives outside the subtree, so the
+        # mirror gets its own copy at mcp-auth/ and rs/Cargo.toml's path to it
+        # is rewritten to match. Its image builds from mcp-auth/ too (Dockerfile).
+        "extra_exports": {"packages/rust/vitruvian-mcp-auth": "mcp-auth"},
+        "export_transformations": [
+            core.replace(
+                before = 'path = "../../../../packages/rust/vitruvian-mcp-auth"',
+                after = 'path = "../mcp-auth"',
+                paths = glob(["rs/Cargo.toml"]),
+            ),
+        ],
+        "import_transformations": [
+            core.replace(
+                before = 'path = "../mcp-auth"',
+                after = 'path = "../../../../packages/rust/vitruvian-mcp-auth"',
+                paths = glob(["apps/mcp/vitruvian-slack-mcp/rs/Cargo.toml"]),
+            ),
+        ],
     },
     {
         "name": "devx",
@@ -718,6 +736,21 @@ def _define_component(_c):
     # integration so its standalone mirror builds on its own.
     _export_transformations = _c.get("export_transformations", [])
 
+    # Monorepo paths OUTSIDE the subtree that the mirror also needs (a shared
+    # library the component path-depends on): {monorepo path: mirror path}.
+    # Exported (minus their monorepo-only BUILD files) to the mirror path, and
+    # never imported back: the monorepo copy is the only one edited, so a
+    # mirror PR touching the mirror path is dropped, not landed in the subtree.
+    _extra_exports = _c.get("extra_exports", {})
+    _extra_origin = [_src + "/**" for _src in _extra_exports]
+    _extra_exclude = [_x for _src in _extra_exports for _x in _monorepo_only(_src)]
+    _extra_moves = [core.move(_src, _extra_exports[_src]) for _src in _extra_exports]
+    _extra_import_exclude = [_extra_exports[_src] + "/**" for _src in _extra_exports]
+
+    # Import transforms, applied AFTER the root->subtree move (so they see
+    # monorepo paths): the reverse of export_transformations.
+    _import_transformations = _c.get("import_transformations", [])
+
     # export_only: emit ONLY the export workflow (no import path). For mirrors
     # that are developed-and-published in the monorepo and never take changes back.
     _export_only = _c.get("export_only", False)
@@ -747,7 +780,10 @@ def _define_component(_c):
         ),
         # Component subtree minus the monorepo-only Bazel BUILD files (and any
         # origin_only_exclude paths the component declares).
-        origin_files = glob([_subtree + "/**"], exclude = _monorepo_only_files + _origin_exclude),
+        origin_files = glob(
+            [_subtree + "/**"] + _extra_origin,
+            exclude = _monorepo_only_files + _origin_exclude + _extra_exclude,
+        ),
         # Manage all standalone files EXCEPT the standalone-only ones (the sync
         # must never delete the dispatch workflow or an npm lockfile).
         destination_files = glob(["**"], exclude = _standalone_only),
@@ -764,7 +800,7 @@ def _define_component(_c):
             )),
             # Strip the `<subtree>/` prefix so the component lands at the repo root.
             core.move(_subtree, ""),
-        ] + _export_transformations,
+        ] + _extra_moves + _export_transformations,
     )
 
     if _export_only:
@@ -812,7 +848,7 @@ def _define_component(_c):
                 body = "Imported from VitruvianSoftware/" + _repo + "#@@PR_NUMBER@@ via Copybara.\n\nMirror-Of: VitruvianSoftware/" + _repo + "#@@PR_NUMBER@@\nMirror-Pr-Number: @@PR_NUMBER@@",
             ),
             # Standalone-only files must never be imported into the Bazel monorepo.
-            origin_files = glob(["**"], exclude = _standalone_only),
+            origin_files = glob(["**"], exclude = _standalone_only + _extra_import_exclude),
             # Manage the monorepo's <subtree>/ EXCEPT the monorepo-only Bazel BUILD
             # files so the sync never deletes them.
             destination_files = glob([_subtree + "/**"], exclude = _monorepo_only_files),
@@ -831,7 +867,7 @@ def _define_component(_c):
                 # Re-add the `<subtree>/` prefix so the standalone root lands under
                 # the component directory in the monorepo.
                 core.move("", _subtree),
-            ],
+            ] + _import_transformations,
         )
     else:
         # Bidirectional import: VitruvianSoftware/<name> (root) -> monorepo <name>/.
@@ -848,7 +884,7 @@ def _define_component(_c):
                 push = "main",
             ),
             # Standalone-only files must never be imported into the Bazel monorepo.
-            origin_files = glob(["**"], exclude = _standalone_only),
+            origin_files = glob(["**"], exclude = _standalone_only + _extra_import_exclude),
             # Manage the monorepo's <subtree>/ EXCEPT the monorepo-only Bazel BUILD
             # files so the sync never deletes them.
             destination_files = glob([_subtree + "/**"], exclude = _monorepo_only_files),
@@ -866,7 +902,7 @@ def _define_component(_c):
                 # Re-add the `<subtree>/` prefix so the standalone root lands under
                 # the component directory in the monorepo.
                 core.move("", _subtree),
-            ],
+            ] + _import_transformations,
         )
 
 # Drive the generator for every component (top-level comprehension, not a `for`).

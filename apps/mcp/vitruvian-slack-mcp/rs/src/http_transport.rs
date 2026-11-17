@@ -1824,7 +1824,7 @@ mod tests {
     fn caller() -> VerifiedCaller {
         VerifiedCaller {
             subject: "user-42".to_string(),
-            claims: JsonValue::object(vec![]),
+            client_id: "111222333".to_string(),
         }
     }
 

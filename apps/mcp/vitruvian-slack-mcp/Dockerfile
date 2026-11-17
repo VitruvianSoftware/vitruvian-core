@@ -41,8 +41,26 @@
 # Slack and the issuer, and the binary. No shell, no package manager, no Node.
 
 # --- Build stage --------------------------------------------------------------
+# The shared token-checking crate, vitruvian-mcp-auth. The standalone repo
+# carries it at mcp-auth/, so a plain `docker build .` there uses this stage.
+# The monorepo keeps it at packages/rust/vitruvian-mcp-auth, outside this
+# folder, and its image workflow replaces this stage with
+# `--build-context mcpauth=packages/rust/vitruvian-mcp-auth` (a named build
+# context overrides a stage of the same name).
+FROM scratch AS mcpauth
+COPY mcp-auth/Cargo.toml /Cargo.toml
+COPY mcp-auth/src /src
+
+# The layout under /src mirrors the monorepo, so rs/Cargo.toml's path to the
+# crate (../../../../packages/rust/vitruvian-mcp-auth) resolves unchanged. The
+# standalone repo's Cargo.toml says ../mcp-auth instead; the link makes that
+# resolve too.
 FROM rust:1.98.1-slim-bookworm AS build
-WORKDIR /src
+COPY --from=mcpauth /Cargo.toml /src/packages/rust/vitruvian-mcp-auth/Cargo.toml
+COPY --from=mcpauth /src /src/packages/rust/vitruvian-mcp-auth/src
+RUN mkdir -p /src/apps/mcp/vitruvian-slack-mcp && \
+    ln -s /src/packages/rust/vitruvian-mcp-auth /src/apps/mcp/vitruvian-slack-mcp/mcp-auth
+WORKDIR /src/apps/mcp/vitruvian-slack-mcp/rs
 COPY rs/Cargo.toml rs/Cargo.lock ./
 COPY rs/src ./src
 RUN cargo build --release --locked --bin vitruvian-slack-mcp && \

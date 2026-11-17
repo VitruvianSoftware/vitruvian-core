@@ -28,7 +28,7 @@ pub fn audience_scope_for(project_id: &str) -> String {
 }
 
 /// Every scope a client should ask for to reach a server on this project.
-pub(crate) fn full_scope_string(project_id: &str) -> String {
+pub fn full_scope_string(project_id: &str) -> String {
     format!("openid offline_access {}", audience_scope_for(project_id))
 }
 

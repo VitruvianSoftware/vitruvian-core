@@ -333,8 +333,14 @@ something to hand-type.
 # In the monorepo
 bazel run //apps/mcp/vitruvian-slack-mcp
 
-# Or build the image from this directory (the same build CI publishes)
+# Or build the image (the same build CI publishes). In the standalone repo,
+# from its root:
 docker build -t vitruvian-slack-mcp .
+
+# In the monorepo, from this directory, also pass the shared token-checking
+# crate, which lives outside it:
+docker build --build-context mcpauth=../../../packages/rust/vitruvian-mcp-auth \
+  -t vitruvian-slack-mcp .
 ```
 
 ### 5. Client Configuration Guides
