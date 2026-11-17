@@ -351,6 +351,16 @@ mod tests {
         assert!(got.contains("set +e -u -o pipefail"));
     }
 
+    /// Only the plan job diffs against a base, so only it clones history. A
+    /// unit that asks for it again pays for a full clone it never reads.
+    #[test]
+    fn only_the_plan_job_clones_history() {
+        let got = render(&[unit("alpha"), unit("beta")]);
+        assert_eq!(got.matches("fetch-depth").count(), 1, "{got}");
+        let plan = &got[got.find("  plan:\n").unwrap()..got.find("  unit-alpha:\n").unwrap()];
+        assert!(plan.contains("          fetch-depth: 0\n"));
+    }
+
     #[test]
     fn emulator_artifacts_flags_and_env_render() {
         let mut u = unit("with");
