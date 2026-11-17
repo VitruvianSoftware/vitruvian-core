@@ -36,7 +36,9 @@ fn main() -> ExitCode {
         sentry::init((
             dsn,
             sentry::ClientOptions {
-                release: sentry::release_name!(),
+                // Not sentry::release_name!(): under Bazel CARGO_PKG_NAME is the
+                // target name, not "vitruvian-wand".
+                release: Some(concat!("vitruvian-wand@", env!("CARGO_PKG_VERSION")).into()),
                 environment: Some(
                     std::env::var("NODE_ENV")
                         .or_else(|_| std::env::var("ENVIRONMENT"))

@@ -30,7 +30,9 @@ Vitruvian Wand requires two macOS system permissions to operate:
 
 ## 3. Running Vitruvian Wand
 
-Launch Vitruvian Wand using Bazel:
+Download `VitruvianWand-X.Y.Z.dmg` from the [latest Wand release](https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-wand) and drag **Vitruvian Wand** to Applications, or run `brew install --cask vitruviansoftware/tap/vitruvian-wand`. Opened from Applications, macOS asks for Bluetooth and Accessibility on behalf of Vitruvian Wand itself.
+
+Or launch it from the repository with Bazel:
 
 ```bash
 # Build the macOS desktop binary

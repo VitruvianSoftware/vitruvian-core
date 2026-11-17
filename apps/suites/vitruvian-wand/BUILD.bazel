@@ -26,8 +26,11 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 package(default_visibility = ["//apps/suites/vitruvian-wand:__subpackages__"])
 
 exports_files([
+    ".release-please-manifest.json",
     "Cargo.lock",
     "Cargo.toml",
+    "release-please-config.json",
+    "version.bzl",
 ])
 
 # Alias to the shared Rust 1.98.1 config_setting so Vitruvian Wand packages can reference
@@ -70,6 +73,7 @@ pipeline_unit(
     persona = "backend",
     runner = "ubuntu-26.04",
     test_targets = [
+        "//apps/suites/vitruvian-wand/build/release:release_test",
         "//apps/suites/vitruvian-wand/build/smoke:smoke_test",
         "//apps/suites/vitruvian-wand/core:integration_test",
         "//apps/suites/vitruvian-wand/core:vitruvian_wand_core_clippy",

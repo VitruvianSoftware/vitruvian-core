@@ -28,6 +28,9 @@ import io.sentry.android.core.SentryAndroidOptions
 import java.util.EnumSet
 
 object WandSentry {
+  /** The release name crash reports carry, e.g. `vitruvian-wand@0.1.0`. */
+  const val RELEASE: String = "vitruvian-wand@${WandVersion.NAME}"
+
   const val DEFAULT_DSN: String =
       "https://9cf2abc1bfe2c6145e8b5334b2c9ff4c@sentry-ingest.ipv1337.dev/9"
 
@@ -37,7 +40,7 @@ object WandSentry {
   fun init(
       context: Context,
       dsn: String = System.getenv("SENTRY_DSN") ?: DEFAULT_DSN,
-      release: String = "vitruvian-wand@0.1.0",
+      release: String = RELEASE,
   ) {
     SentryAndroid.init(context) { options ->
       configureOptions(
@@ -51,7 +54,7 @@ object WandSentry {
   fun configureOptions(
       options: SentryAndroidOptions,
       dsn: String = DEFAULT_DSN,
-      release: String = "vitruvian-wand@0.1.0",
+      release: String = RELEASE,
   ) {
     configurePrivateSentry(
         options = options,

@@ -1,0 +1,246 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# release-please and publisher for Vitruvian Wand:
+# 1. Authors release PRs from conventional commits under apps/suites/vitruvian-wand/.
+# 2. When the release PR merges, cuts the GitHub Release (tag: vitruvian-wand-vX.Y.Z).
+# 3. Three jobs, one per part, each built where it can be and each uploading
+#    its own files (//apps/suites/vitruvian-wand/build/release:publish):
+#    - android: the universal APK (phones and Android TV), on Linux;
+#    - linux:   the desktop program as a .tar.gz, on Linux;
+#    - macos:   Vitruvian Wand.app for Apple silicon and Intel, signed with the
+#               Developer ID and notarised, as DMGs and a zip, plus the
+#               Homebrew cask (//tools/desktop-package), on a Mac.
+#    Every file has a SHA-256 sidecar.
+# 4. Asks GitHub what the release holds, and fails naming any file missing.
+name: vitruvian-wand-release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/suites/vitruvian-wand/**"
+      - ".github/workflows/vitruvian-wand-release.yaml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to package and upload (e.g. vitruvian-wand-v0.1.1). Empty runs release-please."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    # Never cancel a release run; serialize them on the branch so rapid merges
+    # cannot race the release PR or the tag.
+    concurrency:
+      group: vitruvian-wand-release-${{ github.ref }}
+      cancel-in-progress: false
+    outputs:
+      release_created: ${{ steps.release.outputs['apps/suites/vitruvian-wand--release_created'] }}
+      tag_name: ${{ steps.release.outputs['apps/suites/vitruvian-wand--tag_name'] }}
+      version: ${{ steps.release.outputs['apps/suites/vitruvian-wand--version'] }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # release-please PRs must be authored by an App (not GITHUB_TOKEN) so the
+      # PR triggers the merge queue's required checks.
+      - name: Mint App token for the release PR
+        id: app-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        if: ${{ inputs.tag == '' }}
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: apps/suites/vitruvian-wand/release-please-config.json
+          manifest-file: apps/suites/vitruvian-wand/.release-please-manifest.json
+          target-branch: main
+
+  publish-android:
+    needs: release-please
+    if: ${{ always() && !cancelled() && (needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')) }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    concurrency:
+      group: vitruvian-wand-publish-android-${{ inputs.tag || needs.release-please.outputs.tag_name }}
+      cancel-in-progress: false
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+
+      - name: Free up runner disk space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Publish the Android APK
+        env:
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          VERSION: ${{ needs.release-please.outputs.version || '' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bazel run //apps/suites/vitruvian-wand/build/release:publish -- android
+
+  publish-linux:
+    needs: release-please
+    if: ${{ always() && !cancelled() && (needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')) }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    concurrency:
+      group: vitruvian-wand-publish-linux-${{ inputs.tag || needs.release-please.outputs.tag_name }}
+      cancel-in-progress: false
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+
+      - name: Free up runner disk space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      # The desktop program builds with the hermetic LLVM toolchain, as in
+      # presubmit's vitruvian-wand-linux unit.
+      - name: Restore the extracted LLVM toolchain
+        uses: ./.github/actions/llvm-cache-restore
+
+      - name: Publish the Linux desktop program
+        env:
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          VERSION: ${{ needs.release-please.outputs.version || '' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bazel run //apps/suites/vitruvian-wand/build/release:publish -- linux
+
+  publish-macos:
+    needs: release-please
+    if: ${{ always() && !cancelled() && (needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')) }}
+    # The same Xcode as CI and developers (.xcode-version); see ci.yaml.
+    runs-on: xcode-27
+    timeout-minutes: 60
+    concurrency:
+      group: vitruvian-wand-publish-macos-${{ inputs.tag || needs.release-please.outputs.tag_name }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+
+      - name: Select the pinned Xcode
+        uses: ./.github/actions/select-xcode
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      # REQUIRE_SIGNING: an app signed ad hoc would not open on anyone's Mac,
+      # so missing signing secrets fail here rather than ship.
+      - name: Import the signing identity
+        env:
+          SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
+          REQUIRE_SIGNING: "1"
+        run: bazel run //apps/desktop/vitruvian-atrium:ci_setup_signing
+
+      - name: Mint App token for the Homebrew tap
+        id: tap-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          owner: VitruvianSoftware
+          repositories: homebrew-tap
+
+      - name: Build, sign, notarise and publish the Mac app
+        env:
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          VERSION: ${{ needs.release-please.outputs.version || '' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
+        run: bazel run //apps/suites/vitruvian-wand/build/release:publish -- macos
+
+  # The release's last word, and not the publishing scripts': ask GitHub what
+  # the release holds (Vitruvian Speaker 1.12.0 and 1.13.0 were published with
+  # no files and a green job). The list comes from the publisher itself
+  # (expected-assets), so the two cannot disagree. It runs when a publishing
+  # job failed too, so the red says what is missing.
+  check-release:
+    needs: [release-please, publish-android, publish-linux, publish-macos]
+    if: ${{ always() && !cancelled() && (needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')) }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+
+      - name: Check the release has every file
+        env:
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="${TAG#vitruvian-wand-v}"
+          src=apps/suites/vitruvian-wand/build/release/src
+          # The publisher is std-only Rust, so plain rustc builds it without Bazel.
+          rustc --edition=2021 --crate-type=lib --crate-name=vitruvian_wand_release_lib "${src}/lib.rs" -o /tmp/libvitruvian_wand_release_lib.rlib
+          rustc --edition=2021 "${src}/main.rs" -L /tmp --extern vitruvian_wand_release_lib=/tmp/libvitruvian_wand_release_lib.rlib -o /tmp/vitruvian-wand-publish
+          expected="$(/tmp/vitruvian-wand-publish unused expected-assets "${version}")"
+          listing="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json assets \
+            --jq '.assets[] | "\(.name)\t\(.size)"')"
+          printf '%s\n' "${listing}"
+          missing=0
+          while IFS= read -r file; do
+            size="$(awk -F '\t' -v f="${file}" '$1 == f { print $2 }' <<<"${listing}")"
+            if [[ -z "${size}" || "${size}" == "0" ]]; then
+              echo "::error::${TAG} has no ${file}"
+              missing=1
+            fi
+          done <<<"${expected}"
+          if [[ "${missing}" -ne 0 ]]; then
+            exit 1
+          fi
+          # Each download against the checksum beside it.
+          dir="$(mktemp -d)"
+          gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" --dir "${dir}" \
+            --pattern "VitruvianWand-${version}*"
+          (cd "${dir}" && for sha in *.sha256; do sha256sum -c "${sha}"; done)

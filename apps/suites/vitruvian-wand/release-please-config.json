@@ -1,6 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "release-type": "simple",
+  "bootstrap-sha": "b21ba69c955b8ad04208867909bcc3f81fd0c904",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
   "include-component-in-tag": true,
   "include-v-in-tag": true,
   "tag-separator": "-",
@@ -11,11 +14,36 @@
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
+          "type": "generic",
+          "path": "version.bzl"
+        },
+        {
           "type": "toml",
           "path": "Cargo.toml",
           "jsonpath": "$.workspace.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='vitruvian-wand-build-smoke')].version"
+        },
+        {
+          "type": "toml",
+          "path": "Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='vitruvian-wand-core')].version"
+        },
+        {
+          "type": "toml",
+          "path": "Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='vitruvian-wand-desktop')].version"
+        },
+        {
+          "type": "toml",
+          "path": "Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='vitruvian-wand-jni')].version"
         }
-      ]
+      ],
+      "initial-version": "0.1.0"
     }
   }
 }

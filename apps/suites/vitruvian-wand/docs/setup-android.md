@@ -6,6 +6,8 @@ This guide explains how to install Vitruvian Wand on an Android phone, grant res
 
 ## 1. Install the APK
 
+The simplest way: download `VitruvianWand-X.Y.Z.apk` from the [latest Wand release](https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-wand) on the phone and open it (allow installs from your browser when Android asks). To build it yourself instead:
+
 Build and install the Vitruvian Wand universal APK using Bazel and ADB. Building requires `ANDROID_HOME` set to the Android SDK installation path (for example, `/opt/homebrew/share/android-commandlinetools`):
 
 ```bash
