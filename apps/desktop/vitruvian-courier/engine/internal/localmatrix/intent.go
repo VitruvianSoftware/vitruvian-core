@@ -66,11 +66,23 @@ func (in *Intent) SendMessage(ctx context.Context, roomID id.RoomID, evtType eve
 	}
 	// A call notice is stored with Vitruvian Courier's reading of it, which only its network's bridge can say.
 	raw = store.AnnotateCallNote(in.c.network, evtType.Type, raw)
-	// A duplicate insert is not an error: the same bridge event always maps to the same event ID.
-	if _, err = in.c.store.InsertEvent(ctx, store.Event{
+	ev := store.Event{
 		RoomID: string(roomID), EventID: string(evtID), Sender: string(in.mxid),
 		Type: evtType.Type, Content: raw, TS: ts, Status: "sent",
-	}); err != nil {
+	}
+	// Slack's "X has joined the channel" is a membership change, not a message: stored as one, it shows as the
+	// centered membership line and is never unread or a preview.
+	var senderName string
+	if prof, found, _ := in.c.store.GetProfile(ctx, string(in.mxid)); found {
+		senderName = prof.DisplayName
+	}
+	if membership, ok := store.MembershipNote(in.c.network, evtType.Type, raw, string(in.mxid), senderName); ok {
+		sk := string(in.mxid)
+		ev.Type, ev.StateKey = event.StateMember.Type, &sk
+		ev.Content, _ = json.Marshal(map[string]any{"membership": membership, "state_key": sk, "target_user_id": sk})
+	}
+	// A duplicate insert is not an error: the same bridge event always maps to the same event ID.
+	if _, err = in.c.store.InsertEvent(ctx, ev); err != nil {
 		return nil, err
 	}
 	// A new message of mine that the bridge says was already read when it arrived (arrived.go): the receipt the
