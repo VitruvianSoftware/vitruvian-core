@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.9.2...vitruvian-sdk-v1.9.3) (2026-11-17)
+
+
+### Bug Fixes
+
+* **vitruvian-sdk:** name Vitruvian Atrium in the protocol's refusal text ([#5006](https://github.com/VitruvianSoftware/vitruvian-core/issues/5006)) ([bcf2e5a](https://github.com/VitruvianSoftware/vitruvian-core/commit/bcf2e5af19fca05c4278ed947f1aa2f57d714016))
+
 ## [1.9.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.9.1...vitruvian-sdk-v1.9.2) (2026-11-17)
 
 
