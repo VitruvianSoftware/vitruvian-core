@@ -1,0 +1,101 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# THROWAWAY EXPERIMENT -- lives only on exp/ci-speed-bench-2, never merged.
+name: Bench CI speed 2 (experiment)
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: bench-ci-speed-2-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Does everything the plan job does with git still work, and how fast, when
+  # the clone has all commits and trees but no old file contents?
+  plan-clone:
+    name: plan clone ${{ matrix.variant }} ${{ matrix.rep }}
+    if: github.head_ref == 'exp/ci-speed-bench-2'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [full, blobless]
+        rep: [a, b, c]
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          filter: ${{ matrix.variant == 'blobless' && 'blob:none' || '' }}
+      - name: Build the map tool without Bazel
+        id: tool
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: rdeps_map_ref
+      - name: The plan job's git work
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOOL: ${{ steps.tool.outputs.path }}
+        run: |
+          set -euo pipefail
+          du -sh .git
+          old=$(git rev-list --first-parent -n 200 "$BASE_SHA" | tail -n 1)
+          echo "--- fast-lane reads of the base commit's files (git show)"
+          time (for f in tools/ci/src/agent_fast_lane/lib.rs tools/ci/src/agent_fast_lane/main.rs tools/shell-compat/src/lib.rs tools/agent-app/agents.tsv; do git show "$BASE_SHA:$f" | wc -c; done)
+          echo "--- the same for a commit 200 back (contents not in a blobless clone)"
+          time (for f in tools/ci/src/agent_fast_lane/lib.rs tools/shell-compat/src/lib.rs tools/agent-app/agents.tsv; do git show "$old:$f" | wc -c; done)
+          echo "--- planner: merge-base, diff, rev-list"
+          time git merge-base "$BASE_SHA" HEAD
+          time (git diff --name-only "$old" HEAD | wc -l)
+          time (git rev-list --count "$old..HEAD")
+          time (git rev-list --first-parent -n 10 "$BASE_SHA" | wc -l)
+          time (git rev-parse 'HEAD^{tree}')
+          echo "--- dependency map kept under a git ref"
+          time "$TOOL" fetch "$RUNNER_TEMP/map.json" "$BASE_SHA" || echo "map fetch exit $?"
+          ls -la "$RUNNER_TEMP/map.json" || true
+          du -sh .git
+
+  courier-split:
+    name: courier split mac
+    if: github.head_ref == 'exp/ci-speed-bench-2'
+    runs-on: xcode-27
+    timeout-minutes: 75
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/select-xcode
+      - uses: ./.github/actions/setup-bazel
+      - name: bench
+        env:
+          BENCH_EXTRA: --config=macos-app
+        run: tools/ci-bench/bench.sh split
