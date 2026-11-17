@@ -152,7 +152,7 @@ export type TextStyle = (typeof TEXT_STYLES)[number];
 export const UI_EVENT_KINDS = ["tap", "toggle", "submit", "change", "bridge"] as const;
 export type UIEventKind = (typeof UI_EVENT_KINDS)[number];
 
-/** Why a request was not done. Codes: -32700 the line was not JSON; -32600 it was not a message; -32601 the method is not known; -32602 its params are wrong; -32603 something broke inside. A refusal by the app: -32001 the service is not listed in the tool's uses; -32002 the tool is not installed; -32003 Vitruvian lacks a macOS permission the service needs; -32004 not available right now. A refusal by the tool: -32010 the command was not run. A tool must cope with any request being refused. */
+/** Why a request was not done. Codes: -32700 the line was not JSON; -32600 it was not a message; -32601 the method is not known; -32602 its params are wrong; -32603 something broke inside. A refusal by the app: -32001 the service is not listed in the tool's uses; -32002 the tool is not installed; -32003 Vitruvian Atrium lacks a macOS permission the service needs; -32004 not available right now. A refusal by the tool: -32010 the command was not run. A tool must cope with any request being refused. */
 export interface RPCErrorObject {
   /** The reason, as a number. */
   code: number;
@@ -178,7 +178,7 @@ export function readRPCErrorObject(value: unknown, where = "error"): RPCErrorObj
 export interface RefusalData {
   /** For -32001: the entry missing from the tool's uses. */
   service?: string;
-  /** For -32003: the macOS permission Vitruvian lacks, for example accessibility. */
+  /** For -32003: the macOS permission Vitruvian Atrium lacks, for example accessibility. */
   permission?: string;
 }
 
@@ -387,7 +387,7 @@ export function readClipboardReadTextResult(value: unknown, where = "clipboardRe
   return read;
 }
 
-/** Replace the clipboard with this text, marked as Vitruvian's own so clipboard history files it correctly. */
+/** Replace the clipboard with this text, marked as Vitruvian Atrium's own so clipboard history files it correctly. */
 export interface ClipboardWriteTextParams {
   /** The text. */
   text: string;

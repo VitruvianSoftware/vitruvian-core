@@ -186,7 +186,7 @@ UI_EVENT_KINDS: Tuple[str, ...] = ("tap", "toggle", "submit", "change", "bridge"
 
 @dataclass(frozen=True)
 class RPCErrorObject:
-    """Why a request was not done. Codes: -32700 the line was not JSON; -32600 it was not a message; -32601 the method is not known; -32602 its params are wrong; -32603 something broke inside. A refusal by the app: -32001 the service is not listed in the tool's uses; -32002 the tool is not installed; -32003 Vitruvian lacks a macOS permission the service needs; -32004 not available right now. A refusal by the tool: -32010 the command was not run. A tool must cope with any request being refused."""
+    """Why a request was not done. Codes: -32700 the line was not JSON; -32600 it was not a message; -32601 the method is not known; -32602 its params are wrong; -32603 something broke inside. A refusal by the app: -32001 the service is not listed in the tool's uses; -32002 the tool is not installed; -32003 Vitruvian Atrium lacks a macOS permission the service needs; -32004 not available right now. A refusal by the tool: -32010 the command was not run. A tool must cope with any request being refused."""
 
     code: int
     """The reason, as a number."""
@@ -220,7 +220,7 @@ class RefusalData:
     service: Optional[str] = None
     """For -32001: the entry missing from the tool's uses."""
     permission: Optional[str] = None
-    """For -32003: the macOS permission Vitruvian lacks, for example accessibility."""
+    """For -32003: the macOS permission Vitruvian Atrium lacks, for example accessibility."""
 
     @classmethod
     def from_json(cls, value: Any, where: str = "refusalData") -> "RefusalData":
@@ -511,7 +511,7 @@ class ClipboardReadTextResult:
 
 @dataclass(frozen=True)
 class ClipboardWriteTextParams:
-    """Replace the clipboard with this text, marked as Vitruvian's own so clipboard history files it correctly."""
+    """Replace the clipboard with this text, marked as Vitruvian Atrium's own so clipboard history files it correctly."""
 
     text: str
     """The text."""

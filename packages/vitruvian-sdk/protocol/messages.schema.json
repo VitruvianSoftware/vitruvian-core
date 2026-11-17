@@ -271,7 +271,7 @@
       }
     },
     "error": {
-      "description": "Why a request was not done. Codes: -32700 the line was not JSON; -32600 it was not a message; -32601 the method is not known; -32602 its params are wrong; -32603 something broke inside. A refusal by the app: -32001 the service is not listed in the tool's uses; -32002 the tool is not installed; -32003 Vitruvian lacks a macOS permission the service needs; -32004 not available right now. A refusal by the tool: -32010 the command was not run. A tool must cope with any request being refused.",
+      "description": "Why a request was not done. Codes: -32700 the line was not JSON; -32600 it was not a message; -32601 the method is not known; -32602 its params are wrong; -32603 something broke inside. A refusal by the app: -32001 the service is not listed in the tool's uses; -32002 the tool is not installed; -32003 Vitruvian Atrium lacks a macOS permission the service needs; -32004 not available right now. A refusal by the tool: -32010 the command was not run. A tool must cope with any request being refused.",
       "type": "object",
       "required": ["code", "message"],
       "properties": {
@@ -308,7 +308,7 @@
           "type": "string"
         },
         "permission": {
-          "description": "For -32003: the macOS permission Vitruvian lacks, for example accessibility.",
+          "description": "For -32003: the macOS permission Vitruvian Atrium lacks, for example accessibility.",
           "type": "string"
         }
       }
@@ -468,7 +468,7 @@
       }
     },
     "clipboardWriteTextParams": {
-      "description": "Replace the clipboard with this text, marked as Vitruvian's own so clipboard history files it correctly.",
+      "description": "Replace the clipboard with this text, marked as Vitruvian Atrium's own so clipboard history files it correctly.",
       "type": "object",
       "required": ["text"],
       "properties": { "text": { "description": "The text.", "type": "string" } }
