@@ -34,6 +34,16 @@ config:
     # second. A live preview (2026-11-14) showed it already pages the
     # responder above; adoption renames it and sets the loops.
     adoptId: PS9GPWM
+  # The free plan allows one on-call schedule. The escalation policy pages
+  # whoever is on call in it. Members are emails of existing PagerDuty users,
+  # in rotation order; leave the list empty for the responder alone. Keep
+  # start fixed: it anchors every handover.
+  vitruvian-pagerduty:schedule:
+    name: Vitruvian on-call rotation
+    timeZone: America/Los_Angeles
+    start: "2026-11-16T09:00:00-08:00"
+    shiftDays: 7
+    members: []
   vitruvian-pagerduty:services:
     - key: sentry
       name: Sentry

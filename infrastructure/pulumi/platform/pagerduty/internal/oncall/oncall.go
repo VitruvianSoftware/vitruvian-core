@@ -19,7 +19,8 @@
 // SOFTWARE.
 
 // Package oncall loads, validates, and reconciles the PagerDuty responder
-// lookup, escalation policy, services, and Events API v2 integrations.
+// lookup, on-call schedule, escalation policy, services, and Events API v2
+// integrations.
 package oncall
 
 import (
@@ -27,6 +28,7 @@ import (
 	"net/mail"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/pulumi/pulumi-pagerduty/sdk/v4/go/pagerduty"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -59,6 +61,46 @@ type Escalation struct {
 	AdoptID string `json:"adoptId" yaml:"adoptId"`
 }
 
+// Schedule configures the single free-tier on-call schedule. It has one
+// rotation: Members take turns of ShiftDays each, in list order, starting at
+// Start. The escalation policy pages whoever is on call in it.
+type Schedule struct {
+	Name     string `json:"name" yaml:"name"`
+	TimeZone string `json:"timeZone" yaml:"timeZone"`
+	// Start is when the first shift began (RFC 3339). Keep it fixed: it
+	// anchors the rotation, so changing it shifts every handover.
+	Start     string `json:"start" yaml:"start"`
+	ShiftDays int    `json:"shiftDays" yaml:"shiftDays"`
+	// Members are the PagerDuty users' emails, in rotation order. Empty
+	// means the responder alone. Every member must already exist in the
+	// account (the free plan allows five users); Pulumi never creates them.
+	Members []string `json:"members" yaml:"members"`
+}
+
+// members returns the rotation's emails, defaulting to the responder alone.
+func (s Settings) members() []string {
+	if len(s.Schedule.Members) == 0 {
+		return []string{s.ResponderEmail}
+	}
+	return s.Schedule.Members
+}
+
+// Recurrence is the RFC 5545 rule that repeats a shift every shiftDays days.
+func Recurrence(shiftDays int) string {
+	if shiftDays%7 == 0 {
+		if shiftDays == 7 {
+			return "RRULE:FREQ=WEEKLY"
+		}
+		return fmt.Sprintf("RRULE:FREQ=WEEKLY;INTERVAL=%d", shiftDays/7)
+	}
+	if shiftDays == 1 {
+		return "RRULE:FREQ=DAILY"
+	}
+	return fmt.Sprintf("RRULE:FREQ=DAILY;INTERVAL=%d", shiftDays)
+}
+
+func utc(t time.Time) string { return t.UTC().Format(time.RFC3339) }
+
 // Service describes one PagerDuty service and its Events API v2 integration.
 type Service struct {
 	Key         string `json:"key" yaml:"key"`
@@ -70,6 +112,7 @@ type Service struct {
 type Settings struct {
 	ResponderEmail string     `json:"responderEmail" yaml:"responderEmail"`
 	Escalation     Escalation `json:"escalation" yaml:"escalation"`
+	Schedule       Schedule   `json:"schedule" yaml:"schedule"`
 	Services       []Service  `json:"services" yaml:"services"`
 }
 
@@ -81,6 +124,7 @@ type ServiceOutputs struct {
 
 // Outputs carries all stack outputs created by Reconcile.
 type Outputs struct {
+	ScheduleID         pulumi.IDOutput
 	EscalationPolicyID pulumi.IDOutput
 	Services           map[string]ServiceOutputs
 }
@@ -91,6 +135,9 @@ func Load(cfg *config.Config) (Settings, error) {
 	s.ResponderEmail = cfg.Get("responderEmail")
 	if err := cfg.GetObject("escalation", &s.Escalation); err != nil {
 		return Settings{}, fmt.Errorf("decode %s:escalation: %w", Namespace, err)
+	}
+	if err := cfg.GetObject("schedule", &s.Schedule); err != nil {
+		return Settings{}, fmt.Errorf("decode %s:schedule: %w", Namespace, err)
 	}
 	if err := cfg.GetObject("services", &s.Services); err != nil {
 		return Settings{}, fmt.Errorf("decode %s:services: %w", Namespace, err)
@@ -123,6 +170,28 @@ func (s Settings) Validate() error {
 	if s.Escalation.AdoptID != "" && !pagerDutyIDPattern.MatchString(s.Escalation.AdoptID) {
 		add("escalation.adoptId %q must be a PagerDuty id (^P[A-Z0-9]+$)", s.Escalation.AdoptID)
 	}
+	if strings.TrimSpace(s.Schedule.Name) == "" {
+		add("schedule.name must be non-empty")
+	}
+	if _, err := time.LoadLocation(s.Schedule.TimeZone); s.Schedule.TimeZone == "" || err != nil {
+		add("schedule.timeZone %q must be an IANA time zone such as America/Los_Angeles", s.Schedule.TimeZone)
+	}
+	if _, err := time.Parse(time.RFC3339, s.Schedule.Start); err != nil {
+		add("schedule.start %q must be an RFC 3339 time such as 2026-11-17T09:00:00-08:00", s.Schedule.Start)
+	}
+	if s.Schedule.ShiftDays < 1 {
+		add("schedule.shiftDays must be >= 1, got %d", s.Schedule.ShiftDays)
+	}
+	seenMember := map[string]bool{}
+	for i, m := range s.Schedule.Members {
+		if a, err := mail.ParseAddress(m); err != nil || a.Address != m {
+			add("schedule.members[%d] %q must be a bare email address", i, m)
+		}
+		if seenMember[m] {
+			add("schedule.members[%d] %q is duplicated", i, m)
+		}
+		seenMember[m] = true
+	}
 	if len(s.Services) == 0 {
 		add("services must contain at least one entry")
 	}
@@ -147,7 +216,8 @@ func (s Settings) Validate() error {
 	return nil
 }
 
-// Reconcile looks up the account responder, creates the escalation policy, and
+// Reconcile looks up the schedule members, creates the on-call schedule and
+// the escalation policy that pages it, and
 // registers one PagerDuty service + Events API v2 integration per entry.
 func Reconcile(ctx *pulumi.Context, provider *pagerduty.Provider, s Settings) (*Outputs, error) {
 	if err := s.Validate(); err != nil {
@@ -155,12 +225,60 @@ func Reconcile(ctx *pulumi.Context, provider *pagerduty.Provider, s Settings) (*
 	}
 
 	providerOpt := pulumi.Provider(provider)
-	user, err := pagerduty.LookupUser(ctx, &pagerduty.LookupUserArgs{
-		Email: s.ResponderEmail,
+	var userIDs pulumi.StringArray
+	for _, email := range s.members() {
+		user, err := pagerduty.LookupUser(ctx, &pagerduty.LookupUserArgs{
+			Email: email,
+		}, providerOpt)
+		if err != nil {
+			return nil, fmt.Errorf("lookup schedule member %q: %w", email, err)
+		}
+		userIDs = append(userIDs, pulumi.String(user.Id))
+	}
+
+	// A shift-based (v3) schedule: the legacy Schedule resource is deprecated.
+	// One event repeats every ShiftDays, and the members take it in turns.
+	// No Teams: free-tier accounts lack them. The free plan allows one
+	// schedule, which this is.
+	start, _ := time.Parse(time.RFC3339, s.Schedule.Start) // checked by Validate
+	shift := time.Duration(s.Schedule.ShiftDays) * 24 * time.Hour
+	var members pagerduty.Schedulev2RotationEventAssignmentStrategyMemberArray
+	for _, id := range userIDs {
+		members = append(members, &pagerduty.Schedulev2RotationEventAssignmentStrategyMemberArgs{
+			Type:   pulumi.String("user_member"),
+			UserId: id,
+		})
+	}
+	schedule, err := pagerduty.NewSchedulev2(ctx, "oncall", &pagerduty.Schedulev2Args{
+		Name:     pulumi.String(s.Schedule.Name),
+		TimeZone: pulumi.String(s.Schedule.TimeZone),
+		Rotations: pagerduty.Schedulev2RotationArray{
+			&pagerduty.Schedulev2RotationArgs{
+				Events: pagerduty.Schedulev2RotationEventArray{
+					&pagerduty.Schedulev2RotationEventArgs{
+						Name: pulumi.String("On call"),
+						// PagerDuty stores these in UTC; sending UTC keeps the
+						// preview free of no-op diffs.
+						StartTime:      pulumi.String(utc(start)),
+						EndTime:        pulumi.String(utc(start.Add(shift))),
+						EffectiveSince: pulumi.String(utc(start)),
+						Recurrences:    pulumi.StringArray{pulumi.String(Recurrence(s.Schedule.ShiftDays))},
+						AssignmentStrategies: pagerduty.Schedulev2RotationEventAssignmentStrategyArray{
+							&pagerduty.Schedulev2RotationEventAssignmentStrategyArgs{
+								Type:            pulumi.String("rotating_member_assignment_strategy"),
+								ShiftsPerMember: pulumi.Int(1),
+								Members:         members,
+							},
+						},
+					},
+				},
+			},
+		},
 	}, providerOpt)
 	if err != nil {
-		return nil, fmt.Errorf("lookup responder %q: %w", s.ResponderEmail, err)
+		return nil, fmt.Errorf("create schedule: %w", err)
 	}
+	ctx.Export("scheduleId", schedule.ID())
 
 	// Do not set Teams or EscalationRuleAssignmentStrategy: PagerDuty free-tier
 	// accounts lack Teams and reject those fields with 403 Forbidden.
@@ -176,8 +294,8 @@ func Reconcile(ctx *pulumi.Context, provider *pagerduty.Provider, s Settings) (*
 				EscalationDelayInMinutes: pulumi.Int(s.Escalation.DelayMinutes),
 				Targets: pagerduty.EscalationPolicyRuleTargetArray{
 					&pagerduty.EscalationPolicyRuleTargetArgs{
-						Type: pulumi.String("user_reference"),
-						Id:   pulumi.String(user.Id),
+						Type: pulumi.String("schedule_reference"),
+						Id:   schedule.ID(),
 					},
 				},
 			},
@@ -189,6 +307,7 @@ func Reconcile(ctx *pulumi.Context, provider *pagerduty.Provider, s Settings) (*
 	ctx.Export("escalationPolicyId", policy.ID())
 
 	out := &Outputs{
+		ScheduleID:         schedule.ID(),
 		EscalationPolicyID: policy.ID(),
 		Services:           make(map[string]ServiceOutputs, len(s.Services)),
 	}
