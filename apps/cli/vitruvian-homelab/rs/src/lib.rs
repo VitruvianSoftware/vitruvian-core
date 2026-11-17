@@ -30,37 +30,6 @@ pub mod logging;
 pub mod prereqs;
 pub mod remote;
 
-use std::time::Duration;
-
-/// Fallback Sentry DSN for the `homelab` CLI when `SENTRY_DSN` is unset.
-pub const DEFAULT_SENTRY_DSN: &str =
-    "https://d28a9615550bccaa0c33eabe4c3f44ed@sentry-ingest.ipv1337.dev/17";
-
-/// Maximum time dropping the Sentry guard may block on exit.
-pub const SENTRY_SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(500);
-
-/// Resolves the Sentry DSN from `SENTRY_DSN`, falling back to [`DEFAULT_SENTRY_DSN`].
-pub fn resolve_sentry_dsn() -> String {
-    std::env::var("SENTRY_DSN")
-        .ok()
-        .unwrap_or_else(|| DEFAULT_SENTRY_DSN.to_string())
-}
-
-/// Initializes fail-open, non-blocking Sentry error tracking.
-///
-/// Never panics on invalid or empty DSNs and caps shutdown flush at 500ms so
-/// CLI exit never stalls when Sentry is unreachable.
-pub fn init_sentry(dsn: &str) -> sentry::ClientInitGuard {
-    sentry::init((
-        dsn,
-        sentry::ClientOptions {
-            release: sentry::release_name!(),
-            shutdown_timeout: SENTRY_SHUTDOWN_TIMEOUT,
-            ..Default::default()
-        },
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use std::env;
@@ -1105,25 +1074,6 @@ nodes:
                 || changelog.contains(&format!("## {}", version)),
             "CHANGELOG.md must contain entry for manifest version {}",
             version
-        );
-    }
-
-    #[test]
-    fn test_sentry_fail_open_unreachable_port() {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
-        let port = listener.local_addr().expect("local addr").port();
-        drop(listener);
-
-        let dsn = format!("http://abc@127.0.0.1:{port}/1");
-        let start = std::time::Instant::now();
-        let guard = crate::init_sentry(&dsn);
-        sentry::capture_message("homelab fail-open test", sentry::Level::Info);
-        drop(guard);
-
-        assert!(
-            start.elapsed() < Duration::from_secs(2),
-            "sentry shutdown stalled: {:?}",
-            start.elapsed()
         );
     }
 }

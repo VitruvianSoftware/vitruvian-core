@@ -64,7 +64,6 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/cli/vitruvian-homelab:__subpackages__"],
-    deps = ["@vitruvian_homelab_crates//:sentry"],
 )
 
 rust_binary(
@@ -89,6 +88,15 @@ rust_test(
         "homelab.example.yaml",
         "release-please-config.json",
     ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/cli/vitruvian-homelab:__subpackages__"],
+)
+
+rust_test(
+    name = "homelab_bin_test",
+    size = "small",
+    crate = ":homelab",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/cli/vitruvian-homelab:__subpackages__"],
