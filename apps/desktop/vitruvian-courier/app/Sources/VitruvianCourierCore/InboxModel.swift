@@ -159,6 +159,7 @@ public final class InboxModel: ObservableObject {
                 onOpenRowUpdated(current)
             }
             refreshCandidateGroupMembersIfNeeded()
+            refreshRequestHandlesIfNeeded()
         }
     }
     private var cachedRowsByID: [String: InboxRow] = [:]
@@ -254,6 +255,11 @@ public final class InboxModel: ObservableObject {
         didSet { refreshCandidateGroupMembersIfNeeded() }
     }
     private var memberLookupAttempted = Set<String>()
+    /// Message requests from someone the bridge could not name, and the handle (username, number or email) the
+    /// engine has for them in the chat's member profile.
+    @Published public private(set) var requestHandles: [String: String] = [:]
+    private let requestHandleLoader = RequestHandleLoader()
+    private var requestHandleRetry: Task<Void, Never>?
     private var knownMembersSubscription: AnyCancellable?
     /// The lookup in flight for the open chat, which a draft asked for meanwhile shares. `serial` tells a lookup
     /// from an older one for the same chat.
@@ -309,6 +315,8 @@ public final class InboxModel: ObservableObject {
         appModel.onConnect { [weak self] _ in
             guard let self else { return }
             self.memberLookupAttempted.removeAll()
+            self.requestHandleLoader.reset()
+            self.requestHandles = [:]
             KnownGroupMembersStore.shared.clear(in: self.appModel)
             self.requestRead(waiting: false)
         }
@@ -447,6 +455,37 @@ public final class InboxModel: ObservableObject {
                         in: self.appModel
                     )
                 }
+            }
+        }
+    }
+
+    /// The sender's handle for a request the bridge gave a placeholder name; "" when the engine has none.
+    public func requestHandle(for row: InboxRow) -> String {
+        requestHandles[row.roomID] ?? ""
+    }
+
+    private func refreshRequestHandlesIfNeeded() {
+        guard let client = appModel.client else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            let delay = await self.requestHandleLoader.run(
+                candidates: { [weak self] in RequestHandleLoader.candidates(in: self?.rows ?? []) },
+                fetch: { roomID in
+                    let result: MembersResult = try await client.call(
+                        "room.members", MembersParams(roomID: roomID, query: "", limit: 5))
+                    return result.members
+                },
+                onUpdate: { [weak self] in
+                    guard let self else { return }
+                    self.requestHandles = self.requestHandleLoader.handles
+                })
+            guard let delay, client === self.appModel.client else { return }
+            // A lookup failed: try again once its wait is over.
+            self.requestHandleRetry?.cancel()
+            self.requestHandleRetry = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled else { return }
+                self?.refreshRequestHandlesIfNeeded()
             }
         }
     }

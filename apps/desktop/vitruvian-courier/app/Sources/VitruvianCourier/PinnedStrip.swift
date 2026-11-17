@@ -5,7 +5,7 @@ import AppKit
 import VitruvianCourierCore
 import SwiftUI
 
-/// Pinned chats above the list, as Beeper-like tiles (a 48 pt avatar, the name under it) (Settings ▸ Inbox ▸ "Show pinned chats as full rows" puts them
+/// Pinned chats above the list, as Beeper-like tiles (a 48 pt avatar, the name on one line under it) (Settings ▸ Inbox ▸ "Show pinned chats as full rows" puts them
 /// in the list instead). A click opens the chat, or while selecting, selects it.
 struct PinnedStrip: View {
     @ObservedObject var inbox: InboxModel
@@ -109,9 +109,10 @@ struct PinnedChat: View {
             Text(displayName)
                 .font(.caption)
                 .fontWeight(row.isUnread ? .semibold : .regular)
-                .lineLimit(2)
+                // One line, cut in the middle, so every tile is the same height; the tooltip has the whole name.
+                .lineLimit(1)
+                .truncationMode(.middle)
                 .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
                 .foregroundStyle(isOpen || isSelected ? Color.primary : Color.secondary)
         }
         .padding(.horizontal, 4)
