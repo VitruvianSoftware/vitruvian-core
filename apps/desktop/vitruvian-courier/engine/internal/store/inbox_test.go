@@ -100,7 +100,7 @@ func TestInboxPreviewAndUnread(t *testing.T) {
 	mkMsg(t, s, "!r", "$img", ghost, "m.room.message", `{"msgtype":"m.image","body":"pic.jpg"}`, time.Unix(60, 0))
 	row = inboxByID(t, s)["!r"]
 	require.Equal(t, "image", row.PreviewKind)
-	require.Equal(t, "pic.jpg", row.Preview)
+	require.Equal(t, "", row.Preview) // the body is the file name, not a caption
 	require.Equal(t, 3, row.Unread)
 
 	// A sticker.

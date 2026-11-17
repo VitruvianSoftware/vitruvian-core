@@ -441,10 +441,11 @@ func previewOf(typ, content string) (preview, kind, mediaURI string) {
 		kind = "text"
 	}
 	var c struct {
-		Body    string `json:"body"`
-		MsgType string `json:"msgtype"`
-		URL     string `json:"url"`
-		Info    struct {
+		Body     string `json:"body"`
+		Filename string `json:"filename"`
+		MsgType  string `json:"msgtype"`
+		URL      string `json:"url"`
+		Info     struct {
 			ThumbnailURL string `json:"thumbnail_url"`
 		} `json:"info"`
 	}
@@ -467,10 +468,29 @@ func previewOf(typ, content string) (preview, kind, mediaURI string) {
 			mediaURI = c.URL
 		}
 	}
-	if r := []rune(c.Body); len(r) > maxPreviewRunes {
-		c.Body = string(r[:maxPreviewRunes])
+	body := c.Body
+	switch kind {
+	case "image", "video", "audio":
+		// The body of a media message is its file name or address unless the person wrote a caption: the row says
+		// "Image", not "Image https://…".
+		if !isRealCaption(body, c.Filename) {
+			body = ""
+		}
+	case "file":
+		// A file's name is worth showing ("File report.pdf"); its address is not.
+		if isBareURL(body) {
+			body = ""
+		}
+	case "sticker":
+		if isBareURL(body) || looksLikeFileName(body) {
+			body = ""
+		}
 	}
-	return c.Body, kind, mediaURI
+	body = plainPreview(body)
+	if r := []rune(body); len(r) > maxPreviewRunes {
+		body = string(r[:maxPreviewRunes])
+	}
+	return body, kind, mediaURI
 }
 
 // userLocalpart is a Matrix ID's localpart: the part before the server name, without the @.

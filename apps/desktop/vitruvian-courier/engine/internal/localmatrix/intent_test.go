@@ -1243,3 +1243,31 @@ func TestSetExtraProfileMetaPersistsIdentifiersTimezoneAndBot(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, countEvents(t, c, roomID, event.StateMember.Type), "UpdateInfo zero-ts roster sync and full-roster diff removal must not record timeline events")
 }
+
+func TestSlackJoinMessageIsStoredAsMembership(t *testing.T) {
+	dir, ctx := t.TempDir(), context.Background()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	c := New("slack", s, &media.Store{Dir: filepath.Join(dir, "media")})
+	ghost := c.GhostIntent("U1")
+	roomID, err := c.BotIntent().CreateRoom(ctx, &mautrix.ReqCreateRoom{Name: "general", IsDirect: false})
+	require.NoError(t, err)
+	key := networkid.PortalKey{ID: "C1"}
+	send := func(mid, body string) id.EventID {
+		resp, err := ghost.SendMessage(ctx, roomID, event.EventMessage, textContent(body),
+			&bridgev2.MatrixSendExtra{Timestamp: time.Unix(100, 0), MessageMeta: &database.Message{ID: networkid.MessageID(mid), Room: key}})
+		require.NoError(t, err)
+		return resp.EventID
+	}
+	joined := send("m1", "Ann has joined the channel")
+	said := send("m2", "hello")
+	ev, ok, err := s.GetEvent(ctx, string(joined))
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "m.room.member", ev.Type)
+	require.Contains(t, string(ev.Content), `"membership":"join"`)
+	ev, _, err = s.GetEvent(ctx, string(said))
+	require.NoError(t, err)
+	require.Equal(t, "m.room.message", ev.Type)
+}
