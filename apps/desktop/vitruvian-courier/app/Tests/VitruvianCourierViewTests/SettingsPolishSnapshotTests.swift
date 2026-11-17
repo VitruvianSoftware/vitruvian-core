@@ -106,7 +106,7 @@ final class SettingsPolishSnapshotTests: XCTestCase {
     func testAccountCardShowsItsFullTextAtSidebarWidth() throws {
         let accounts = (0 ..< 10).map { Account(network: "net\($0)", displayName: "N", flows: [], state: .connected) }
         let card = SettingsAccountCard.make(accounts: accounts)
-        XCTAssertEqual(card.title, "10 accounts connected")
+        XCTAssertEqual(card.title, "10 accounts")
         var pressed = 0
         let sizes = try Snapshot.render("settings-account-card", width: 244) {
             SettingsAccountCardView(card: card) { pressed += 1 }.padding(12)
@@ -115,7 +115,9 @@ final class SettingsPolishSnapshotTests: XCTestCase {
         let font = NSFont.systemFont(ofSize: NSFont.preferredFont(forTextStyle: .subheadline).pointSize, weight: .semibold)
         let titleWidth = (card.title as NSString).size(withAttributes: [.font: font]).width
         // The card is 244 wide, less 12 either side, 10 either side inside, the 34 picture, 10 and 6 of gaps, the chevron.
-        XCTAssertLessThan(titleWidth, 244 - 24 - 20 - 34 - 10 - 6 - 10, "the card's title no longer fits")
+        // The sidebar list adds its own insets, so the real room is narrower than the card's frame suggests: "10 accounts
+        // connected" measured under the old bound here and was still cut short on screen. Keep a wide margin.
+        XCTAssertLessThan(titleWidth, 100, "the card's title no longer fits")
         XCTAssertEqual(pressed, 0, "drawing the card doesn't press it")
     }
 

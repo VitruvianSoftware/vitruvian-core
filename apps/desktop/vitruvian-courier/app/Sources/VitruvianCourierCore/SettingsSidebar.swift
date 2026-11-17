@@ -54,7 +54,7 @@ public enum SettingsSidebar {
 /// Clicking it opens Settings ▸ Accounts.
 public struct SettingsAccountCard: Equatable, Sendable {
     public let connectedCount: Int
-    /// "10 accounts connected".
+    /// "10 accounts". Short, so it fits the sidebar beside the picture and chevron at any width the window allows.
     public let title: String
     /// The plan's name: "Vitruvian Courier Plan".
     public let subtitle: String
@@ -78,9 +78,9 @@ public struct SettingsAccountCard: Equatable, Sendable {
 
     public static func countText(_ count: Int) -> String {
         switch count {
-        case 0: String(localized: "No accounts connected")
-        case 1: String(localized: "1 account connected")
-        default: String(localized: "\(count) accounts connected")
+        case 0: String(localized: "No accounts")
+        case 1: String(localized: "1 account")
+        default: String(localized: "\(count) accounts")
         }
     }
 
