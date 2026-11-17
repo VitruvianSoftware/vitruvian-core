@@ -811,6 +811,24 @@ func TestRoomSharedLinksCarryThePreviewTitle(t *testing.T) {
 	}, titles)
 }
 
+func TestLinkPreviewTitlesDecodeHTMLEntities(t *testing.T) {
+	for _, tc := range []struct{ raw, want string }{
+		{"You can forecast a new series with Mistral&amp;#39;s newly released model", "You can forecast a new series with Mistral's newly released model"},
+		{"Tom &amp; Jerry", "Tom & Jerry"},
+		{"Q&amp;amp;A", "Q&A"},
+		{"5 &lt; 6", "5 < 6"},
+		{"Plain title", "Plain title"},
+		{"  &nbsp;  ", ""},
+	} {
+		content, err := json.Marshal(map[string]any{
+			"com.beeper.linkpreviews": []map[string]string{{"matched_url": "https://x.test/a", "og:title": tc.raw}},
+		})
+		require.NoError(t, err)
+		got := linkPreviewTitles(content)["https://x.test/a"]
+		require.Equal(t, tc.want, got, "raw title %q", tc.raw)
+	}
+}
+
 type countingDBLogger struct {
 	dbutil.DatabaseLogger
 	count int

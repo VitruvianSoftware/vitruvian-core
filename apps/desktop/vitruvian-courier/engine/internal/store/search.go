@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"html"
 	"math"
 	"net/url"
 	"slices"
@@ -1008,6 +1009,20 @@ func (s *Store) RoomSharedLinks(ctx context.Context, roomID string, limit int) (
 	return out, nil
 }
 
+// previewTitle cleans a link preview's og:title for display. Bridges and sites often HTML-escape the title, and some
+// escape it twice ("Mistral&amp;#39;s"), so entities are decoded up to twice. Non-breaking spaces count as space.
+func previewTitle(raw string) string {
+	title := raw
+	for range 2 {
+		decoded := html.UnescapeString(title)
+		if decoded == title {
+			break
+		}
+		title = decoded
+	}
+	return strings.TrimSpace(strings.ReplaceAll(title, "\u00a0", " "))
+}
+
 // linkPreviewTitles maps each URL a message's link previews cover (matched_url, and og:url when it differs) to the
 // page title the preview holds. URLs whose preview has no title are left out.
 func linkPreviewTitles(content json.RawMessage) map[string]string {
@@ -1023,7 +1038,7 @@ func linkPreviewTitles(content json.RawMessage) map[string]string {
 	}
 	titles := make(map[string]string, len(c.LinkPreviews))
 	for _, lp := range c.LinkPreviews {
-		title := strings.TrimSpace(lp.Title)
+		title := previewTitle(lp.Title)
 		if title == "" {
 			continue
 		}
