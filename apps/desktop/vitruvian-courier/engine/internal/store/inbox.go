@@ -93,10 +93,10 @@ func unreadSQLFor(r, p, rd, rde, lr, lre string) string {
 	return `u.room_id = ` + r + `.room_id
        AND (u.ts, u.seq) > (` + lowTS + `, ` + lowSeq + `)
        AND u.type IN (` + unreadTypes + `) AND u.sender <> $1 AND u.redacted = 0 AND ` + notEditSQL("u.content") + `
-       AND NOT ` + slackNoteSQL(r, "u.content") + `
        AND (` + isTimerNoteSQL("u.content") + `) IS NOT 1 AND (` + isCallRecordSQL("u.content") + `) IS NOT 1
        AND CASE WHEN (` + isThreadReplySQL("u.content") + `) IS 1 THEN ` + threadUnreadSQLFor(p) + `
-                ELSE (u.ts, u.seq) > (` + chatTS + `, ` + chatSeq + `) END`
+                ELSE (u.ts, u.seq) > (` + chatTS + `, ` + chatSeq + `) END
+       AND NOT ` + slackNoteSQL(r, "u")
 }
 
 var unreadSQL = unreadSQLFor("r", "p", "rd", "rde", "lr", "lre")
@@ -368,7 +368,7 @@ func (s *Store) scanInboxRow(row dbutil.Scannable) (InboxRow, error) {
 	r.LastTS = msTime(lastTS)
 	// A Slack join or leave note still stored as text is no preview: the row shows nothing for it, as for any
 	// event with nothing readable, rather than "Ann has joined the channel".
-	if _, note := MembershipNote(r.Network, typ, json.RawMessage(content)); note {
+	if _, note := s.noteOf(context.Background(), r.Network, Event{Type: typ, Content: json.RawMessage(content), Sender: sender}); note {
 		sender, typ, content = "", "", "{}"
 	}
 	r.PreviewMine = sender == myID
@@ -674,7 +674,7 @@ func (s *Store) LastMessage(ctx context.Context, roomID string) (Event, bool, er
 	if errors.Is(err, sql.ErrNoRows) {
 		return Event{}, false, nil
 	}
-	return e, err == nil, err
+	return s.served(ctx, e), err == nil, err
 }
 
 // FindReaction returns the ID of sender's reaction with key to target in roomID, if there is one that has not

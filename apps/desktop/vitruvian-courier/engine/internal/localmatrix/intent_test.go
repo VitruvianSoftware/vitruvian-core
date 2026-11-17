@@ -1251,6 +1251,7 @@ func TestSlackJoinMessageIsStoredAsMembership(t *testing.T) {
 	t.Cleanup(func() { s.Close() })
 	c := New("slack", s, &media.Store{Dir: filepath.Join(dir, "media")})
 	ghost := c.GhostIntent("U1")
+	require.NoError(t, s.UpsertProfile(ctx, store.Profile{UserID: string(ghost.GetMXID()), DisplayName: "Ann"}))
 	roomID, err := c.BotIntent().CreateRoom(ctx, &mautrix.ReqCreateRoom{Name: "general", IsDirect: false})
 	require.NoError(t, err)
 	key := networkid.PortalKey{ID: "C1"}
@@ -1262,12 +1263,15 @@ func TestSlackJoinMessageIsStoredAsMembership(t *testing.T) {
 	}
 	joined := send("m1", "Ann has joined the channel")
 	said := send("m2", "hello")
+	welcome := send("m3", "Welcome! Ann has joined the channel.")
 	ev, ok, err := s.GetEvent(ctx, string(joined))
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "m.room.member", ev.Type)
 	require.Contains(t, string(ev.Content), `"membership":"join"`)
-	ev, _, err = s.GetEvent(ctx, string(said))
-	require.NoError(t, err)
-	require.Equal(t, "m.room.message", ev.Type)
+	for _, id := range []id.EventID{said, welcome} {
+		ev, _, err = s.GetEvent(ctx, string(id))
+		require.NoError(t, err)
+		require.Equal(t, "m.room.message", ev.Type)
+	}
 }

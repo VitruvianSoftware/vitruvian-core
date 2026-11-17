@@ -906,7 +906,7 @@ func (s *Store) GetEvent(ctx context.Context, eventID string) (Event, bool, erro
 	if errors.Is(err, sql.ErrNoRows) {
 		return Event{}, false, nil
 	}
-	return e, err == nil, err
+	return s.served(ctx, e), err == nil, err
 }
 
 func (s *Store) Events(ctx context.Context, roomID string, limit int) ([]Event, error) {
@@ -921,7 +921,7 @@ func (s *Store) Events(ctx context.Context, roomID string, limit int) ([]Event, 
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, e)
+		out = append(out, s.served(ctx, e))
 	}
 	return out, rows.Err()
 }

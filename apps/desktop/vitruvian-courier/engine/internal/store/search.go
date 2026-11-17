@@ -379,6 +379,7 @@ func (s *Store) searchRows(ctx context.Context, m messageSearch, phase int, uppe
 
 // hitOf is the hit of a found row: its message's current text and kind, and its chat.
 func (s *Store) hitOf(ctx context.Context, r searchRow, partial bool) (MessageHit, error) {
+	r.e = s.servedOn(ctx, r.network, r.e)
 	text, err := s.CurrentText(ctx, r.e)
 	if err != nil {
 		return MessageHit{}, err
@@ -496,6 +497,10 @@ func (s *Store) SearchMessages(ctx context.Context, q MessageQuery) ([]MessageHi
 				return nil, "", err
 			}
 			for _, r := range rows {
+				// A Slack join or leave note still stored as text is no message: never a hit.
+				if _, note := s.noteOf(ctx, r.network, r.e); note {
+					continue
+				}
 				h, err := s.hitOf(ctx, r, phase == 1)
 				if err != nil {
 					return nil, "", err

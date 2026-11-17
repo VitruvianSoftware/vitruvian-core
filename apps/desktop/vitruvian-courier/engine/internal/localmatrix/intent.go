@@ -72,7 +72,11 @@ func (in *Intent) SendMessage(ctx context.Context, roomID id.RoomID, evtType eve
 	}
 	// Slack's "X has joined the channel" is a membership change, not a message: stored as one, it shows as the
 	// centered membership line and is never unread or a preview.
-	if membership, ok := store.MembershipNote(in.c.network, evtType.Type, raw); ok {
+	var senderName string
+	if prof, found, _ := in.c.store.GetProfile(ctx, string(in.mxid)); found {
+		senderName = prof.DisplayName
+	}
+	if membership, ok := store.MembershipNote(in.c.network, evtType.Type, raw, senderName); ok {
 		sk := string(in.mxid)
 		ev.Type, ev.StateKey = event.StateMember.Type, &sk
 		ev.Content, _ = json.Marshal(map[string]any{"membership": membership, "state_key": sk, "target_user_id": sk})

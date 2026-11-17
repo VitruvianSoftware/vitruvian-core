@@ -13,19 +13,23 @@ import (
 // Matrix and Beeper clients, mrkdwn and HTML entities from Slack. plainPreview takes the formatting marks out so
 // every client shows the words, not the asterisks.
 
+// wordClass is what counts as part of a word, in any script: letters, marks, digits and the underscore.
+const wordClass = `\p{L}\p{M}\p{N}_`
+
 var (
+	urlRE = regexp.MustCompile(`https?://\S+`)
 	// <@U123|name>, <@U123>, <#C123|name>, <!here>, <https://x|label>, <https://x>, <mailto:a@b|label>.
 	slackTokenRE = regexp.MustCompile(`<([@#!]|https?://|mailto:)([^<>|\s]*)(?:\|([^<>]*))?>`)
 	mdLinkRE     = regexp.MustCompile(`\[([^\]\n]+)\]\((?:https?://|mailto:)[^)\s]*\)`)
 	// Double marks need no word boundary: **bold**, __bold__, ~~strike~~.
 	boldStarRE  = regexp.MustCompile(`\*\*(\S(?:.*?\S)?)\*\*`)
 	strikeRE    = regexp.MustCompile(`~~(\S(?:.*?\S)?)~~`)
-	boldUnderRE = regexp.MustCompile(`(^|[^\w_])__(\S(?:.*?\S)?)__($|[^\w_])`)
+	boldUnderRE = regexp.MustCompile(`(^|[^` + wordClass + `])__(\S(?:.*?\S)?)__($|[^` + wordClass + `])`)
 	// Single marks only wrap a word or phrase that starts and ends at a word edge, so snake_case, 2 * 3 and
 	// file_name_v2 are left alone.
-	italicStarRE  = regexp.MustCompile(`(^|[^\w*])\*(\S(?:[^*\n]*?\S)?)\*($|[^\w*])`)
-	italicUnderRE = regexp.MustCompile(`(^|[^\w_])_(\S(?:[^_\n]*?\S)?)_($|[^\w_])`)
-	strikeOneRE   = regexp.MustCompile(`(^|[^\w~])~(\S(?:[^~\n]*?\S)?)~($|[^\w~])`)
+	italicStarRE  = regexp.MustCompile(`(^|[^` + wordClass + `*])\*(\S(?:[^*\n]*?\S)?)\*($|[^` + wordClass + `*])`)
+	italicUnderRE = regexp.MustCompile(`(^|[^` + wordClass + `])_(\S(?:[^_\n]*?\S)?)_($|[^` + wordClass + `])`)
+	strikeOneRE   = regexp.MustCompile(`(^|[^` + wordClass + `~])~(\S(?:[^~\n]*?\S)?)~($|[^` + wordClass + `~])`)
 	fenceLineRE   = regexp.MustCompile("^\\s*```[\\w+-]*\\s*$")
 	quoteMarkRE   = regexp.MustCompile(`^\s*(?:>\s?)+`)
 )
@@ -65,6 +69,14 @@ func plainPreview(body string) string {
 	}
 	s := strings.Join(strings.Fields(strings.Join(kept, " ")), " ")
 	s = mdLinkRE.ReplaceAllString(s, "$1")
+	// A web address is kept as it is: its underscores and asterisks are part of it, not marks.
+	s = strings.ReplaceAll(s, urlHold, "")
+	var urls []string
+	s = urlRE.ReplaceAllStringFunc(s, func(u string) string {
+		trim := strings.TrimRight(u, ".,;:!?)")
+		urls = append(urls, trim)
+		return urlHold + u[len(trim):]
+	})
 	s = strings.ReplaceAll(s, "`", "")
 	s = boldStarRE.ReplaceAllString(s, "$1")
 	s = strikeRE.ReplaceAllString(s, "$1")
@@ -75,8 +87,15 @@ func plainPreview(body string) string {
 		s = italicUnderRE.ReplaceAllString(s, "$1$2$3")
 		s = strikeOneRE.ReplaceAllString(s, "$1$2$3")
 	}
+	for _, u := range urls {
+		s = strings.Replace(s, urlHold, u, 1)
+	}
 	return strings.TrimSpace(s)
 }
+
+// urlHold stands in for a web address while the marks around it are taken out (a private-use character, which no
+// message carries: any in the text are dropped first).
+const urlHold = "\ue000"
 
 func firstNonEmpty(a, b string) string {
 	if a != "" {

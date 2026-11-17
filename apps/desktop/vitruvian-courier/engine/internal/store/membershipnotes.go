@@ -6,23 +6,55 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"regexp"
+	"maps"
+	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
 // Slack tells a person joining or leaving a channel as a message: "<@U123> has joined the channel", with the
 // subtype channel_join / channel_leave (group_join / group_leave in a private channel). The bridge keeps the words
-// but not the subtype, so for Slack the engine reads the words (a person writing exactly that is as good as the
-// same event) and stores the message as the membership change it is: the timeline shows a centered "Ann joined"
-// line, not a bubble, and it is never unread, never notifies and never the chat's preview.
+// but not the subtype, so for Slack the engine reads the words and stores the message as the membership change it
+// is: the timeline shows a centered "Ann joined" line, not a bubble, and it is never unread, never notifies and never
+// the chat's preview.
+//
+// Slack's own note is sent by the person who joined, and says their name. So a message only counts when it is
+// exactly "<the sender's name> has joined the channel": "Welcome! Ann has joined the channel." from someone else, a
+// quoted line, or a longer message stays a message. MembershipNote is the one rule; slackNoteSQL is its twin for the
+// unread count, and TestMembershipNoteSQLAgreesWithGo holds the two to the same verdicts.
 
-// slackMembershipRE is Slack's own wording: one line, a name, "has joined|left the channel|group|conversation".
-var slackMembershipRE = regexp.MustCompile(`^.{1,200}? has (joined|left) the (?:channel|group|conversation)\.?$`)
+// notePhrases is what follows the name, and what it means.
+var notePhrases = func() map[string]string {
+	m := map[string]string{}
+	for _, verb := range []struct{ word, membership string }{{"joined", "join"}, {"left", "leave"}} {
+		for _, noun := range []string{"channel", "group", "conversation"} {
+			m[" has "+verb.word+" the "+noun] = verb.membership
+			m[" has "+verb.word+" the "+noun+"."] = verb.membership
+		}
+	}
+	return m
+}()
 
-// MembershipNote reads content, an m.room.message from network's bridge, as a person joining or leaving the chat.
-// membership is "join" or "leave"; ok is false for anything else (and for every network but Slack).
-func MembershipNote(network, typ string, content json.RawMessage) (membership string, ok bool) {
-	if network != "slack" || typ != "m.room.message" || !strings.Contains(string(content), " has ") {
+// noteSpace is what is trimmed from a body and a name: the same four characters in Go and in SQL.
+const noteSpace = " \t\n\r"
+
+// maxNoteNameRunes is the longest name a note can carry.
+const maxNoteNameRunes = 200
+
+// couldBeMembershipNote is the cheap first look every event gets: a Slack-shaped text message.
+func couldBeMembershipNote(typ string, content json.RawMessage) bool {
+	return typ == "m.room.message" && strings.Contains(string(content), " has ")
+}
+
+// MembershipNote reads content, an m.room.message from network's bridge sent by someone called senderName, as that
+// person joining or leaving the chat. membership is "join" or "leave"; ok is false for anything else: another
+// network, a sender with no name, a message that says more or less than Slack's note, an edit or a thread reply.
+func MembershipNote(network, typ string, content json.RawMessage, senderName string) (membership string, ok bool) {
+	if network != "slack" || !couldBeMembershipNote(typ, content) {
+		return "", false
+	}
+	name := strings.Trim(senderName, noteSpace)
+	if n := utf8.RuneCountInString(name); n < 1 || n > maxNoteNameRunes {
 		return "", false
 	}
 	var c struct {
@@ -41,14 +73,27 @@ func MembershipNote(network, typ string, content json.RawMessage) (membership st
 	default:
 		return "", false
 	}
-	m := slackMembershipRE.FindStringSubmatch(strings.TrimSpace(c.Body))
-	if m == nil {
+	rest, found := strings.CutPrefix(strings.Trim(c.Body, noteSpace), name)
+	if !found {
 		return "", false
 	}
-	if m[1] == "joined" {
-		return "join", true
+	membership, ok = notePhrases[rest]
+	return membership, ok
+}
+
+// senderName is the name Slack gave userID: their profile's display name.
+func (s *Store) senderName(ctx context.Context, userID string) string {
+	var name string
+	_ = s.db.QueryRow(ctx, "SELECT display_name FROM profiles WHERE user_id=$1", userID).Scan(&name)
+	return name
+}
+
+// noteOf is MembershipNote for event e of a chat on network, looking up its sender's name when the event could be one.
+func (s *Store) noteOf(ctx context.Context, network string, e Event) (string, bool) {
+	if network != "slack" || !couldBeMembershipNote(e.Type, e.Content) {
+		return "", false
 	}
-	return "leave", true
+	return MembershipNote(network, e.Type, e.Content, s.senderName(ctx, e.Sender))
 }
 
 // membershipEvent is the membership change a Slack join or leave note stands for: an m.room.member event with the
@@ -66,29 +111,46 @@ func membershipEvent(e Event, membership string) Event {
 // shows as the centered membership row too. Every other event comes back as given. The cheap content test comes
 // first: only a matching message costs a look at its chat's network.
 func (s *Store) served(ctx context.Context, e Event) Event {
-	membership, ok := MembershipNote("slack", e.Type, e.Content)
-	if !ok {
+	if !couldBeMembershipNote(e.Type, e.Content) {
 		return e
 	}
 	var network string
-	if s.db.QueryRow(ctx, "SELECT network FROM rooms WHERE room_id=$1", e.RoomID).Scan(&network) != nil || network != "slack" {
+	if s.db.QueryRow(ctx, "SELECT network FROM rooms WHERE room_id=$1", e.RoomID).Scan(&network) != nil {
 		return e
 	}
-	return membershipEvent(e, membership)
+	return s.servedOn(ctx, network, e)
 }
 
-// slackNoteSQL is MembershipNote in SQL, for a Slack chat's event u (room alias r): the unread count and the
-// preview must not count a note that is still stored as text. 1 for a note, else 0 or NULL.
-func slackNoteSQL(r, content string) string {
-	body := `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$.body') END)`
-	var globs []string
-	for _, verb := range []string{"joined", "left"} {
-		for _, noun := range []string{"channel", "group", "conversation"} {
-			globs = append(globs, body+` GLOB '* has `+verb+` the `+noun+`'`, body+` GLOB '* has `+verb+` the `+noun+`.'`)
-		}
+// servedOn is served for an event whose chat's network is known.
+func (s *Store) servedOn(ctx context.Context, network string, e Event) Event {
+	if membership, ok := s.noteOf(ctx, network, e); ok {
+		return membershipEvent(e, membership)
 	}
-	return `(` + r + `.network = 'slack' AND ` + content + ` LIKE '% has %' AND instr(` + body + `, char(10)) = 0
-       AND (CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$.msgtype') END) IN ('m.text', 'm.notice')
-       AND (CASE WHEN json_valid(` + content + `) THEN json_type(` + content + `, '$."m.new_content"') END) IS NULL
-       AND (` + strings.Join(globs, " OR ") + `))`
+	return e
+}
+
+// slackNoteSQL is MembershipNote in SQL, for event u (an events alias) of a chat r (a rooms alias): the unread
+// count must not count a note that is still stored as text. 1 for a note, else 0 or NULL. The checks run cheapest
+// first (the network, the type, the two phrases as plain text), so only a message that says "has joined the" or "has
+// left the" costs a JSON read or a look at its sender's name. (MembershipNote's "has joined|left the" phrases are
+// all of the shapes in notePhrases.)
+func slackNoteSQL(r, u string) string {
+	c := u + ".content"
+	jc := func(path string) string {
+		return `(CASE WHEN json_valid(` + c + `) THEN json_extract(` + c + `, '` + path + `') END)`
+	}
+	space := `' ' || char(9) || char(10) || char(13)`
+	name := `trim(pr.display_name, ` + space + `)`
+	body := `trim(` + jc("$.body") + `, ` + space + `)`
+	var forms []string
+	for _, phrase := range slices.Sorted(maps.Keys(notePhrases)) { // sorted: the same statement every time
+		forms = append(forms, name+` || '`+phrase+`'`)
+	}
+	return `(` + r + `.network = 'slack' AND ` + u + `.type = 'm.room.message' AND (instr(` + c + `, ' has joined the ') > 0 OR instr(` + c + `, ' has left the ') > 0)
+       AND COALESCE(` + jc("$.msgtype") + `, '') IN ('', 'm.text', 'm.notice')
+       AND (CASE WHEN json_valid(` + c + `) THEN json_type(` + c + `, '$."m.new_content"') END) IS NULL
+       AND COALESCE(` + jc(`$."m.relates_to".rel_type`) + `, '') = ''
+       AND EXISTS (SELECT 1 FROM profiles pr WHERE pr.user_id = ` + u + `.sender
+                   AND length(` + name + `) BETWEEN 1 AND ` + "200" + `
+                   AND ` + body + ` IN (` + strings.Join(forms, ", ") + `)))`
 }

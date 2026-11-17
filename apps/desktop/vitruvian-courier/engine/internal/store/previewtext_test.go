@@ -32,6 +32,13 @@ func TestPlainPreview(t *testing.T) {
 		{"emoji kept", "❤️ 👍🏽 done", "❤️ 👍🏽 done"},
 		{"adjacent italics", "_a_ _b_", "a b"},
 		{"lone star stays", "5* off", "5* off"},
+		{"cyrillic snake_case survives", "снег_зима и д*в", "снег_зима и д*в"},
+		{"cyrillic italics", "_снег_ и *зима*", "снег и зима"},
+		{"cjk and accents", "日本語_テスト café_au_lait", "日本語_テスト café_au_lait"},
+		{"url underscores survive", "see https://x.org/_draft_ now", "see https://x.org/_draft_ now"},
+		{"url stars survive", "**read** https://x.org/a*b*c", "read https://x.org/a*b*c"},
+		{"url keeps trailing text clean", "_see_ (https://x.org/a_b_c).", "see (https://x.org/a_b_c)."},
+		{"two urls", "https://a.io/_x_ and https://b.io/_y_", "https://a.io/_x_ and https://b.io/_y_"},
 		{"empty", "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) { require.Equal(t, tc.want, plainPreview(tc.in)) })
@@ -83,26 +90,4 @@ func TestReactionPreviewStripsQuotedFormatting(t *testing.T) {
 	target = msgContent("m.text", "> **Chandini**\n> New channel is live: #inference-g4-prod", nil)
 	require.Equal(t, "👍 to “Chandini New channel is live: #inference-g4-prod”",
 		reactionPreview(`{"m.relates_to":{"key":"👍"}}`, "m.room.message", target))
-}
-
-func TestMembershipNote(t *testing.T) {
-	for _, tc := range []struct{ name, network, typ, content, want string }{
-		{"joined", "slack", "m.room.message", msgContent("m.text", "Ann Lee has joined the channel", nil), "join"},
-		{"left", "slack", "m.room.message", msgContent("m.notice", "Ann has left the channel", nil), "leave"},
-		{"private channel", "slack", "m.room.message", msgContent("m.text", "Ann has joined the group", nil), "join"},
-		{"trailing period", "slack", "m.room.message", msgContent("m.text", "Ann has joined the channel.", nil), "join"},
-		{"other network", "whatsapp", "m.room.message", msgContent("m.text", "Ann has joined the channel", nil), ""},
-		{"ordinary message", "slack", "m.room.message", msgContent("m.text", "Ann has a plan", nil), ""},
-		{"longer message", "slack", "m.room.message", msgContent("m.text", "Ann has joined the channel and says hi", nil), ""},
-		{"two lines", "slack", "m.room.message", msgContent("m.text", "hi\nAnn has joined the channel", nil), ""},
-		{"image", "slack", "m.room.message", msgContent("m.image", "Ann has joined the channel", nil), ""},
-		{"an edit", "slack", "m.room.message", msgContent("m.text", "Ann has joined the channel", map[string]any{"m.new_content": map[string]any{"body": "x"}}), ""},
-		{"not a message", "slack", "m.sticker", msgContent("m.text", "Ann has joined the channel", nil), ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got, ok := MembershipNote(tc.network, tc.typ, json.RawMessage(tc.content))
-			require.Equal(t, tc.want != "", ok)
-			require.Equal(t, tc.want, got)
-		})
-	}
 }
