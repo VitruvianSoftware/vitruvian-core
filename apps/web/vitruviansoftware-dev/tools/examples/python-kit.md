@@ -52,7 +52,7 @@ def count(app):
 tool.run()
 ```
 
-Add the folder in Vitruvian, `lib/` and all:
+Add the folder in Vitruvian Atrium, `lib/` and all:
 Settings › Extensions, "Add from Folder…".
 
 ## Drawing

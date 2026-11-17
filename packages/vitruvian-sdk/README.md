@@ -2,7 +2,7 @@
 
 What you build a Vitruvian tool against.
 
-A tool is a separate program, in any language, that the Vitruvian desktop app
+A tool is a separate program, in any language, that Vitruvian Atrium
 starts and talks to in JSON over the program's standard input and output. It
 adds commands to the app: to the command bar, the radial menu, the Quick
 panel, and as shortcuts. A tool of protocol 2 can also show a page of its
@@ -15,7 +15,7 @@ also hold chips, options any number of which are on at once, and divide
 itself into sections, with help under its controls.
 
 **A tool is trusted like an app.** It runs as you, with every permission
-Vitruvian has. The app does not limit or check what it does.
+Vitruvian Atrium has. The app does not limit or check what it does.
 
 **The app adds a tool from a folder**, on Settings › Extensions, with "Add
 from Folder…". The person picks the folder and agrees on one sheet.
@@ -29,7 +29,7 @@ not work.
 |---|---|
 | [`docs/`](docs/writing-a-tool.md) | The guide for a tool's author. Its examples are tested. |
 | [`protocol/`](protocol/README.md) | The protocol, versions 1 and 2: the manifest and every message as JSON Schema, a table of the messages (`methods.json`), and examples. The source of truth. |
-| `samples/` | Twelve tools: `hello-python`, in plain Python with nothing else; `hello-swift`, `hello-typescript`, `hello-python-kit`, `hello-go` and `hello-rust`, each written with its kit; `hello-panel-swift`, `hello-panel-typescript`, `hello-panel-python`, `hello-panel-go` and `hello-panel-rust`, a counter in the island drawn from blocks, with a status on the closed island and a pop-up menu to pick it, and on Vitruvian 3.50 a second menu for a few words beside the mark; `front-window`, which reads the title of the window in front by asking macOS itself. |
+| `samples/` | Twelve tools: `hello-python`, in plain Python with nothing else; `hello-swift`, `hello-typescript`, `hello-python-kit`, `hello-go` and `hello-rust`, each written with its kit; `hello-panel-swift`, `hello-panel-typescript`, `hello-panel-python`, `hello-panel-go` and `hello-panel-rust`, a counter in the island drawn from blocks, with a status on the closed island and a pop-up menu to pick it, and on Vitruvian Atrium 3.50 a second menu for a few words beside the mark; `front-window`, which reads the title of the window in front by asking macOS itself. |
 | `Sources/VitruvianToolKit` | A Swift library to write a tool with: declare commands and panels, handle them, call the app, write a page as its blocks. |
 | `kits/` | The same, for TypeScript (`@vitruviansoftware/tool-kit`, npm) and Python (`vitruvian-tool-kit`, PyPI). Their types are written from the schemas by `//tools/sdk-codegen`, and a test fails when they are not what it writes. |
 | `go/` | The same kit in Go, module `github.com/VitruvianSoftware/vitruvian-sdk/go`, package `toolkit`. Go 1.22 or later, standard library only. |
@@ -124,11 +124,11 @@ lasts; the detail has a switch that hides it.
 added, its detail in Settings lists "Counted so far" with a number field;
 change it, run "Count one more", and the tool counts on from the new number
 without being started again. "Count by" is a pop-up menu of One, Two and
-Five: a text preference with `options`. On Vitruvian 3.46 and 3.47 it is a
+Five: a text preference with `options`. On Vitruvian Atrium 3.46 and 3.47 it is a
 text field holding the same text.
 
 `front-window` needs the Accessibility permission of whoever starts it.
-Started by Vitruvian, it has Vitruvian's. Nothing in this package asks for a
+Started by Vitruvian Atrium, it has Vitruvian Atrium's. Nothing in this package asks for a
 permission or grants one.
 
 ## Checking a tool
@@ -203,7 +203,7 @@ together. The app refuses a whole page that breaks it, and keeps the one it
 had, so the script fails it and says which id and which rule:
 
 ```
-NOT OK   a panel: the page of settings has block id 'installHook:claudeCode', which is not a valid name (ASCII letters, digits, '.', '-' and '_' only): Vitruvian refuses the whole page
+NOT OK   a panel: the page of settings has block id 'installHook:claudeCode', which is not a valid name (ASCII letters, digits, '.', '-' and '_' only): Vitruvian Atrium refuses the whole page
 ```
 
 Every line your tool writes must be one JSON-RPC 2.0 message of at most 1 MB.
@@ -304,7 +304,7 @@ whatever the environment says. The test takes away the ones its own build
 made: new since the test began, the test's user's, still for two seconds,
 and holding nothing but an empty `.keep-directory`.
 
-After changing a file under `Sources/VitruvianToolProtocol`, the Vitruvian app
+After changing a file under `Sources/VitruvianToolProtocol`, Vitruvian Atrium
 must take the change too:
 `bazel run //apps/desktop/vitruvian-atrium:pin_tool_protocol`, and a line in
 `apps/desktop/vitruvian-atrium/UPSTREAM.md`. A test in the app's folder fails until
@@ -312,7 +312,7 @@ you do.
 
 ## Licence
 
-MIT. See [`LICENSE`](LICENSE). The Vitruvian app that links this package is
+MIT. See [`LICENSE`](LICENSE). Vitruvian Atrium, which links this package, is
 GPL-3.0-or-later; nothing from the app's folder may be copied here.
 
 ## Interface

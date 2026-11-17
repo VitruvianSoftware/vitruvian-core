@@ -68,7 +68,7 @@ class RefusalCode:
     NOT_INSTALLED = -32002
     """The app: the tool is not installed."""
     PERMISSION_MISSING = -32003
-    """The app: Vitruvian lacks a macOS permission the service needs."""
+    """The app: Vitruvian Atrium lacks a macOS permission the service needs."""
     UNAVAILABLE = -32004
     """The app: not available right now."""
     COMMAND_REFUSED = -32010

@@ -1,7 +1,7 @@
 ---
 layout: tools
 title: "The Vitruvian tool protocol, versions 1 and 2"
-description: "How Vitruvian and a tool talk: one JSON message per line over the tool's standard input and output."
+description: "How Vitruvian Atrium and a tool talk: one JSON message per line over the tool's standard input and output."
 permalink: /tools/protocol/
 source: packages/vitruvian-sdk/protocol/README.md
 ---
@@ -11,7 +11,7 @@ source: packages/vitruvian-sdk/protocol/README.md
     bazel run //tools/sync-site-tools:sync
 {%- endcomment -%}
 {% raw %}
-A tool is a program the Vitruvian app starts and talks to. This folder says
+A tool is a program Vitruvian Atrium starts and talks to. This folder says
 how they talk. It is the source of truth: the Swift types in
 `../Sources/VitruvianToolProtocol` and the script in `../conformance` are
 written to match it, and tests fail when they stop matching.
@@ -88,7 +88,7 @@ app has. These messages are for what is better done through the app.
 | `notify/beep` | request | `notify` | The alert sound. |
 | `open/url` | request | `open` | Open a link. |
 | `clipboard/readText` | request | `clipboard.read` | The clipboard's text. |
-| `clipboard/writeText` | request | `clipboard.write` | Replace the clipboard with this text, marked as Vitruvian's so clipboard history files it correctly. |
+| `clipboard/writeText` | request | `clipboard.write` | Replace the clipboard with this text, marked as Vitruvian Atrium's so clipboard history files it correctly. |
 | `keystrokes/paste` | request | `keystrokes` | Paste this text into the app in front. |
 | `keystrokes/pressMenuItem` | request | `keystrokes` | Press the menu item with one of these key equivalents in the app in front. |
 | `processes/terminate` | request | `processes` | End this process, with the app's checks and its administrator prompt. |
@@ -105,7 +105,7 @@ Any request can be refused. A refusal is a failure with one of these codes.
 |---|---|---|
 | -32001 | app | The service is not listed in the tool's `uses`. `data.service` names it. |
 | -32002 | app | The tool is not installed. |
-| -32003 | app | Vitruvian lacks a macOS permission the service needs. `data.permission` names it. |
+| -32003 | app | Vitruvian Atrium lacks a macOS permission the service needs. `data.permission` names it. |
 | -32004 | app | Not available right now. |
 | -32010 | tool | The tool will not run the command. |
 
@@ -179,7 +179,7 @@ with the next one.
 
 ## Added to version 2 without a new version
 
-Vitruvian 3.48 added four things to version 2. An older app ignores each
+Vitruvian Atrium 3.48 added four things to version 2. An older app ignores each
 key and answers the one new request with failure -32601, so a tool that
 uses them still installs and runs there.
 
@@ -205,7 +205,7 @@ uses them still installs and runs there.
 A list of choices is never a new preference `type`: every app refuses a
 manifest with a type it does not know.
 
-Vitruvian 3.50 added a status's words, in the same way. 3.48 and 3.49 read
+Vitruvian Atrium 3.50 added a status's words, in the same way. 3.48 and 3.49 read
 each new field and key and ignore it, so the mark is still drawn there.
 
 - **`activity` and `since` on `ui/status`**: a few words for the closed
@@ -220,7 +220,7 @@ each new field and key and ignore it, so the mark is still drawn there.
 - **`ui.status.activity` in `features`**: the app draws them. Each kit sends
   the two fields only to an app that names it.
 
-Vitruvian 3.58 lets a tool open its own settings, with no new field and no
+Vitruvian Atrium 3.58 lets a tool open its own settings, with no new field and no
 new version: only what the app does with `open` changed.
 
 - **`open` in the answer to `ui/event` may name the tool's settings panel**:
