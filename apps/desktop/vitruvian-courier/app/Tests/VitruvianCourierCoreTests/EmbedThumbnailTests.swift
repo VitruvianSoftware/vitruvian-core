@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AppKit
 import XCTest
 
 @testable import VitruvianCourierCore
@@ -19,8 +20,61 @@ final class EmbedThumbnailTests: XCTestCase {
         }
     }
 
-    func testOnlyHTTPSAddressesAreFetched() async {
-        let image = await EmbedThumbnail.fetch(URL(string: "http://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg")!)
-        XCTAssertNil(image)
+    private func pngData() -> Data {
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 4, pixelsHigh: 4, bitsPerSample: 8, samplesPerPixel: 4,
+                                   hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        return rep.representation(using: .png, properties: [:])!
     }
+
+    func testOnlyYouTubesPictureAddressIsEverAskedFor() async {
+        CountingURLProtocol.reset(body: pngData())
+        let session = CountingURLProtocol.session()
+        EmbedThumbnail.clearCache()
+        // Bad IDs, including ones shaped like addresses, ask for nothing at all.
+        for bad in ["", "evil.com/x", "dQw4w9WgXcQ/../x", "dQw4w9WgXc?", "a b c d e f g"] {
+            let image = await EmbedThumbnail.fetch(videoID: bad, session: session)
+            XCTAssertNil(image)
+        }
+        XCTAssertEqual(CountingURLProtocol.requests, [], "no request for a bad ID")
+        let image = await EmbedThumbnail.fetch(videoID: "dQw4w9WgXcQ", session: session)
+        XCTAssertNotNil(image)
+        XCTAssertEqual(CountingURLProtocol.requests, ["https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg"])
+        _ = await EmbedThumbnail.fetch(videoID: "dQw4w9WgXcQ", session: session)
+        XCTAssertEqual(CountingURLProtocol.requests.count, 1, "the second time comes from memory")
+    }
+}
+
+/// Answers every request with a small picture and remembers what was asked for.
+final class CountingURLProtocol: URLProtocol, @unchecked Sendable {
+    nonisolated(unsafe) static var requests: [String] = []
+    nonisolated(unsafe) static var body = Data()
+    private static let lock = NSLock()
+
+    static func reset(body: Data) {
+        lock.lock(); defer { lock.unlock() }
+        requests = []
+        self.body = body
+    }
+
+    static func session() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CountingURLProtocol.self]
+        return URLSession(configuration: configuration)
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        Self.lock.lock()
+        Self.requests.append(request.url?.absoluteString ?? "")
+        let body = Self.body
+        Self.lock.unlock()
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: body)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }

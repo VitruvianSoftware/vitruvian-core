@@ -328,6 +328,8 @@ public struct EmbedConsentCard: View {
     /// Whether the video's picture may be fetched from its site (that tells the site this Mac's address). Off keeps
     /// the plain play tile.
     public var allowsRemoteThumbnail: Bool
+    /// Where a fetched picture comes from (the shared session unless a test supplies its own).
+    public var session: URLSession
     public var onBubble: Bool
     @State private var thumbnail: CGImage?
     public let onLoadEmbed: () -> Void
@@ -347,6 +349,7 @@ public struct EmbedConsentCard: View {
         title: String? = nil,
         previewImagePath: String? = nil,
         allowsRemoteThumbnail: Bool = false,
+        session: URLSession = .shared,
         onBubble: Bool = false,
         onLoadEmbed: @escaping () -> Void,
         onOpenURL: @escaping (URL) -> Void = { url in
@@ -359,6 +362,7 @@ public struct EmbedConsentCard: View {
         self.title = title
         self.previewImagePath = previewImagePath
         self.allowsRemoteThumbnail = allowsRemoteThumbnail
+        self.session = session
         self.onBubble = onBubble
         self.onLoadEmbed = onLoadEmbed
         self.onOpenURL = onOpenURL
@@ -369,35 +373,31 @@ public struct EmbedConsentCard: View {
         return descriptor.fallbackTitle
     }
 
-    /// What picture the card would draw, so the load restarts when it changes.
+    /// What picture the card would draw, so the load restarts when it changes (empty: none).
     private var thumbnailSource: String {
-        if let path = localPreviewPath { return path }
-        if allowsRemoteThumbnail, let url = descriptor.remoteThumbnailURL { return url.absoluteString }
+        if let path = previewImagePath, isLocalMediaStorePath(path) { return path }
+        if allowsRemoteThumbnail, let id = descriptor.youTubeVideoID, EmbedThumbnail.youTubeURL(videoID: id) != nil {
+            return "youtube:\(id)"
+        }
         return ""
     }
 
-    private var localPreviewPath: String? {
-        guard let path = previewImagePath, isLocalMediaStorePath(path),
-              FileManager.default.fileExists(atPath: path) else { return nil }
-        return path
-    }
-
-    /// A saved preview picture is read on the spot (small, and already on this Mac); the site's is fetched.
-    private var localImage: NSImage? { localPreviewPath.flatMap { NSImage(contentsOfFile: $0) } }
-
-    private var hasThumbnail: Bool { localImage != nil || thumbnail != nil }
-
-    private var thumbnailImage: Image {
-        if let localImage { return Image(nsImage: localImage) }
-        if let thumbnail { return Image(decorative: thumbnail, scale: 1) }
-        return Image(systemName: "play.fill")
-    }
-
+    /// Reads a saved preview picture (through the shared small-picture cache) or, when allowed, fetches the video's.
+    /// A result that arrives after the card moved on to another picture, or was left, is dropped.
     @MainActor
     private func loadThumbnail() async {
+        let source = thumbnailSource
         thumbnail = nil
-        guard localPreviewPath == nil, allowsRemoteThumbnail, let url = descriptor.remoteThumbnailURL else { return }
-        thumbnail = await EmbedThumbnail.fetch(url)
+        guard !source.isEmpty else { return }
+        var image: CGImage?
+        if let path = previewImagePath, isLocalMediaStorePath(path) {
+            image = await ThumbnailLoader.shared.thumbnail(atPath: path)?.image
+        }
+        if image == nil, allowsRemoteThumbnail, let id = descriptor.youTubeVideoID, !Task.isCancelled {
+            image = await EmbedThumbnail.fetch(videoID: id, session: session)
+        }
+        guard !Task.isCancelled, source == thumbnailSource else { return }
+        thumbnail = image
     }
 
     private var tooltip: String {
@@ -443,8 +443,8 @@ public struct EmbedConsentCard: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(themeAccent.opacity(onBubble ? 0.30 : 0.16))
-                        if hasThumbnail {
-                            thumbnailImage
+                        if let thumbnail {
+                            Image(decorative: thumbnail, scale: 1)
                                 .resizable()
                                 .scaledToFill()
                                 .frame(width: 64, height: 36)
@@ -459,7 +459,7 @@ public struct EmbedConsentCard: View {
                                 .foregroundStyle(onBubble ? Color.white : themeAccent)
                         }
                     }
-                    .frame(width: hasThumbnail ? 64 : 48, height: 36)
+                    .frame(width: thumbnail == nil ? 48 : 64, height: 36)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(displayTitle)
                             .font(.callout.weight(.semibold))

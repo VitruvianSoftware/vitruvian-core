@@ -56,8 +56,8 @@ struct RichTextView: View {
                 RoundedRectangle(cornerRadius: 1.5)
                     .fill(onBubble ? Color.white.opacity(0.7) : Color.secondary.opacity(0.6))
                     .frame(width: 3)
-                // Quoted text is a touch softer; mentions inside it set their own colour and stay full strength.
-                (Text(joined(block.lines)) + metaGap(reservesMeta))
+                // Quoted text and links are a touch softer; mentions inside it set their own colour and stay full strength.
+                (Text(joined(block.lines, dimmed: true)) + metaGap(reservesMeta))
                     .foregroundStyle(onBubble ? Color.white.opacity(0.85) : Color.primary.opacity(0.85))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -98,17 +98,18 @@ struct RichTextView: View {
 
     private var tint: Color { onBubble ? Color.white.opacity(0.2) : Color.primary.opacity(0.08) }
 
-    private func joined(_ lines: [[RichTextLayout.Run]]) -> AttributedString {
+    private func joined(_ lines: [[RichTextLayout.Run]], dimmed: Bool = false) -> AttributedString {
         var result = AttributedString()
         for (index, line) in lines.enumerated() {
             if index > 0 { result.append(AttributedString("\n")) }
-            result.append(attributed(line))
+            result.append(attributed(line, dimmed: dimmed))
         }
         return result
     }
 
-    /// One line's runs as styled text.
-    private func attributed(_ runs: [RichTextLayout.Run]) -> AttributedString {
+    /// One line's runs as styled text. `dimmed` (inside a quote) softens links the way the rest of the quote is softened.
+    private func attributed(_ runs: [RichTextLayout.Run], dimmed: Bool = false) -> AttributedString {
+        let linkColor = dimmed ? self.linkColor.opacity(0.85) : self.linkColor
         var result = AttributedString()
         for run in runs {
             var piece: AttributedString
@@ -134,7 +135,7 @@ struct RichTextView: View {
             if run.mention != nil {
                 // Mentions are a highlight in the theme's accent, not a link; the text stays the primary colour so it
                 // reads on the tint in light and dark.
-                piece.backgroundColor = onBubble ? Color.white.opacity(0.25) : themeAccent.opacity(0.18)
+                piece.backgroundColor = onBubble ? Color.black.opacity(0.22) : themeAccent.opacity(0.18)
                 piece.foregroundColor = onBubble ? Color.white : Color.primary
             }
             if run.spoiler, !revealed {

@@ -17,18 +17,28 @@ public enum EmbedThumbnail {
         return URL(string: "https://i.ytimg.com/vi/\(videoID)/mqdefault.jpg")
     }
 
-    private static let cache = NSCache<NSURL, CGImageBox>()
+    private static let cache: NSCache<NSString, CGImageBox> = {
+        let cache = NSCache<NSString, CGImageBox>()
+        cache.countLimit = 100
+        cache.totalCostLimit = 32 * 1024 * 1024 // pixel bytes
+        return cache
+    }()
 
     private final class CGImageBox {
         let image: CGImage
         init(_ image: CGImage) { self.image = image }
     }
 
-    /// The picture at an `https` address, kept in memory for next time. Nil on any failure or a non-picture; nothing
-    /// is sent but the request itself (no cookies, no referrer).
-    public static func fetch(_ url: URL, session: URLSession = .shared) async -> CGImage? {
-        guard url.scheme?.lowercased() == "https" else { return nil }
-        if let hit = cache.object(forKey: url as NSURL) { return hit.image }
+    /// Forgets every kept picture (for tests).
+    public static func clearCache() { cache.removeAllObjects() }
+
+    /// The still picture of a YouTube video, kept in memory for next time. The only address ever asked for is the one
+    /// `youTubeURL` builds, on i.ytimg.com, so an ID that is not exactly right asks for nothing. Nil on any failure or
+    /// a non-picture; no cookies are sent.
+    public static func fetch(videoID: String, session: URLSession = .shared) async -> CGImage? {
+        guard let url = youTubeURL(videoID: videoID) else { return nil }
+        let key = videoID as NSString
+        if let hit = cache.object(forKey: key) { return hit.image }
         var request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
         request.httpShouldHandleCookies = false
         guard let (data, response) = try? await session.data(for: request),
@@ -37,7 +47,7 @@ public enum EmbedThumbnail {
               let source = CGImageSourceCreateWithData(data as CFData, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
         else { return nil }
-        cache.setObject(CGImageBox(image), forKey: url as NSURL)
+        cache.setObject(CGImageBox(image), forKey: key, cost: image.bytesPerRow * image.height)
         return image
     }
 }
