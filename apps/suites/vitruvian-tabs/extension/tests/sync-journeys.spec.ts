@@ -23,53 +23,21 @@
 /* eslint-disable import/no-extraneous-dependencies */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable no-console */
-import { test, expect, chromium, BrowserContext } from "@playwright/test";
-import path from "path";
-import fs from "fs";
+import { test, expect, BrowserContext } from "@playwright/test";
 import {
   cleanupApiWorkspaces,
-  getTestToken,
   getOrCreateDashboardPage,
+  getTestToken,
+  launchExtension,
 } from "./e2e-helpers";
-
-const EXTENSION_PATH = process.env.EXTENSION_PATH
-  ? path.resolve(process.env.EXTENSION_PATH)
-  : path.join(__dirname, "../dist");
 
 let context: BrowserContext;
 let extensionId: string;
 const testToken = getTestToken();
 
 test.beforeAll(async () => {
-  // Check if extension is built
-  if (!fs.existsSync(EXTENSION_PATH)) {
-    throw new Error(
-      `Extension not built. Please run 'npm run build --workspace=extension' before running E2E tests. Expected path: ${EXTENSION_PATH}`,
-    );
-  }
-
-  // Launch browser with extension loaded
-  context = await chromium.launchPersistentContext("", {
-    // Full Chromium in the new headless mode: supports MV3 extensions, no
-    // xvfb needed (Playwright >= 1.49).
-    channel: "chromium",
-    args: [
-      `--disable-extensions-except=${EXTENSION_PATH}`,
-      `--load-extension=${EXTENSION_PATH}`,
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      // Bazel's linux-sandbox mounts a tiny /dev/shm; Chromium crashes at
-      // launch without this.
-      "--disable-dev-shm-usage",
-    ],
-  });
-
-  // Get extension ID from background service worker
-  const [firstWorker] = context.serviceWorkers();
-  const background =
-    firstWorker || (await context.waitForEvent("serviceworker"));
-  // eslint-disable-next-line prefer-destructuring
-  extensionId = background.url().split("/")[2];
+  // Launch Chromium with the extension and get its id.
+  ({ context, extensionId } = await launchExtension());
   // Ensure we are in a clean state
   await getOrCreateDashboardPage(context, extensionId);
 
