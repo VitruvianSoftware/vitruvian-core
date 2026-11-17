@@ -1062,8 +1062,8 @@ pub(crate) fn llvm_restore_branch_problems(content: &str) -> Vec<(String, String
         ),
         (
             "actions/cache/restore@",
-            "steps.mode.outputs.readonly == 'true'",
-            "the read-only restore does not branch on the save decision, so a job barred from saving can end up with no restore, or with both",
+            "steps.mode.outputs.readonly == 'true' && runner.environment == 'github-hosted'",
+            "the read-only restore must branch on the save decision (or a job barred from saving ends up with no restore, or with both) and run only on GitHub-hosted runners: a self-hosted queue runner keeps the extracted toolchain on its shared volume, so the 2.3 GB download is thrown away after a median 197 s on the home line (27 queue plan jobs, 2026-11-16)",
         ),
     ];
     for (uses, want, why) in checks {
@@ -1590,7 +1590,7 @@ runs:
 
     - name: Restore the extracted LLVM toolchain (read-only)
       id: restore-ro
-      if: steps.mode.outputs.readonly == 'true'
+      if: steps.mode.outputs.readonly == 'true' && runner.environment == 'github-hosted'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: x
@@ -1619,10 +1619,26 @@ runs:
 
     #[test]
     fn llvm_readonly_step_must_branch_too() {
-        let bad = LLVM_GOOD.replace("      if: steps.mode.outputs.readonly == 'true'\n", "");
+        let bad = LLVM_GOOD.replace(
+            "      if: steps.mode.outputs.readonly == 'true' && runner.environment == 'github-hosted'\n",
+            "",
+        );
         let p = llvm_restore_branch_problems(&bad);
         assert_eq!(p.len(), 1, "{:?}", p);
         assert_eq!(p[0].0, "no if:");
+    }
+
+    #[test]
+    fn llvm_readonly_restore_must_skip_self_hosted_runners() {
+        // The download the queue runners threw away: 2.3 GB per job, unused.
+        let bad = LLVM_GOOD.replace(
+            "if: steps.mode.outputs.readonly == 'true' && runner.environment == 'github-hosted'",
+            "if: steps.mode.outputs.readonly == 'true'",
+        );
+        let p = llvm_restore_branch_problems(&bad);
+        assert_eq!(p.len(), 1, "{:?}", p);
+        assert_eq!(p[0].0, "if: steps.mode.outputs.readonly == 'true'");
+        assert!(p[0].2.contains("self-hosted"), "{:?}", p);
     }
 
     #[test]

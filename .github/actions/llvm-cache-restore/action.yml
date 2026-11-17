@@ -86,8 +86,9 @@ inputs:
       the merge queue did not already pass. When 'false' (the default),
       use full read+write actions/cache, which also saves a fresh extraction
       in its post step on a cache miss -- but only in a GitHub-hosted job on
-      main; everywhere else (merge queue, pull requests, self-hosted runners)
-      the restore is read-only regardless of this input.
+      main; everywhere else (merge queue, pull requests) the restore is
+      read-only regardless of this input, and a self-hosted runner does not
+      restore at all (its shared volume already holds the toolchain).
     required: false
     default: "false"
 
@@ -202,24 +203,50 @@ runs:
         path: ${{ steps.paths.outputs.stage }}
         key: ${{ steps.key.outputs.value }}
 
+    # GitHub-hosted runners only. A self-hosted queue runner already keeps the
+    # extracted toolchain: Bazel's repo contents cache is on the pool's shared
+    # volume (~/.cache/bazel-repo/contents), so the folder is there before the
+    # job starts. The download could never be used: the stage tool leaves an
+    # existing folder alone, and the stage is on the pod's own disk, so it
+    # cannot be moved onto the volume anyway. It was pure cost on the home
+    # line. Over the 27 merge-queue plan jobs of 2026-11-16 on vitruvian-queue,
+    # the 16 that found the 2.3 GB entry spent a median 197 s in this step and
+    # then logged "already exists; leaving it"; their job took a median 316 s
+    # against 182 s for the 11 that ran while the entry was evicted.
+    #
+    # tools/conformance (CACHESAVE) fails if this restore runs on self-hosted
+    # runners again.
     - name: Restore the extracted LLVM toolchain (read-only)
       id: restore-ro
-      if: steps.mode.outputs.readonly == 'true'
+      if: steps.mode.outputs.readonly == 'true' && runner.environment == 'github-hosted'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ${{ steps.paths.outputs.stage }}
         key: ${{ steps.key.outputs.value }}
 
-    # Exactly one of the two steps above ran (mutually exclusive `if:`); fold
+    # At most one of the two steps above ran (mutually exclusive `if:`); fold
     # their outputs into one place so callers don't need to know which mode
     # was used. `steps.<id>.outcome` is populated even for a skipped step
     # (`skipped`), so it can't be string-concatenated like a normal output --
     # branch on the same decision instead.
+    #
+    # On a self-hosted runner neither ran, on purpose (see restore-ro). That
+    # is reported as a restore that ran and missed, which is what the job
+    # sees: nothing staged, and Bazel uses the toolchain on the shared volume
+    # or extracts it there. The llvm-cache-tripwire composite fails on any
+    # other outcome, so a restore that goes missing on a hosted runner is
+    # still caught.
     - name: Resolve restore outcome
       id: resolve
       shell: bash
+      env:
+        RUNNER_KIND: ${{ runner.environment }}
       run: |
-        if [ "${{ steps.mode.outputs.readonly }}" = "true" ]; then
+        if [ "$RUNNER_KIND" = "self-hosted" ]; then
+          echo "outcome=success" >> "$GITHUB_OUTPUT"
+          echo "cache-hit=false" >> "$GITHUB_OUTPUT"
+          echo "LLVM contents cache: not downloaded on a self-hosted runner (the toolchain is kept on the pool's shared volume)"
+        elif [ "${{ steps.mode.outputs.readonly }}" = "true" ]; then
           echo "outcome=${{ steps.restore-ro.outcome }}" >> "$GITHUB_OUTPUT"
           echo "cache-hit=${{ steps.restore-ro.outputs.cache-hit }}" >> "$GITHUB_OUTPUT"
         else
