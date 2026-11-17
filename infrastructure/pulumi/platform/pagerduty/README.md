@@ -38,6 +38,15 @@ provider.
   `members` list means the responder alone, which is what production runs
   today. The free plan allows one schedule. To add someone, invite them in
   PagerDuty first (the free plan allows five users), then add their email.
+- **Your notification rules**: under `notificationRules`, how and how soon
+  PagerDuty reaches the responder for each urgency. PagerDuty stops at the
+  first rule that gets the incident acknowledged, so later rules (SMS, calls,
+  100 a month on Free) only fire if push went unanswered. Each rule names an
+  existing contact method by `type` and `label`; phone numbers and emails never
+  enter this repository, so change them on your PagerDuty profile. `adoptId`
+  takes over a rule that already exists. Leaving the list empty leaves the
+  user's rules unmanaged. To see the live rules:
+  `bazel run //tools/pagerduty:read -- /users/<id>/notification_rules`.
 - **Escalation policy**: one `EscalationPolicy` with a single rule targeting
   the on-call schedule (whoever is on call), configured with `escalation.delayMinutes` and
   `escalation.loops` (without paid-tier team fields). The free plan allows only
