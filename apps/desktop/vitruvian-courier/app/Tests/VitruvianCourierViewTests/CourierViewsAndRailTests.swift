@@ -456,4 +456,47 @@ final class CourierViewsAndRailTests: XCTestCase {
         XCTAssertFalse(accessibilityStrings(in: noMenuHost).contains { $0.contains("send this later?") },
                        "composer without sendLater menu (e.g. ThreadPane) must never show the nudge")
     }
+
+    // MARK: - Request rows: same network, previews off / on
+
+    private func requestRow(_ id: String, ts: Int64, preview: String, kind: PreviewKind = .text) -> InboxRow {
+        InboxRow(
+            roomID: id, network: "facebook", name: "Facebook user", avatarPath: "",
+            isDirect: true, lastTS: ts, preview: preview,
+            previewKind: kind, previewMine: false, unread: 1, muted: false, request: true
+        )
+    }
+
+    private func requestStrings(_ row: InboxRow, showPreviews: Bool, handle: String = "") -> String {
+        var style = RowStyle(InboxPreferences(defaults: defaults()))
+        style.showPreviews = showPreviews
+        let (window, hosted) = host(InboxRowView(
+            row: row, requestHandle: handle, networkName: "Messenger", now: Fixture.now, style: style,
+            isSelecting: false, isSelected: false, isHovered: false, hoverAct: {}, accept: {}, decline: {}
+        ) { EmptyView() })
+        defer { window.contentView = nil }
+        return accessibilityStrings(in: hosted).joined(separator: " | ")
+    }
+
+    func testTwoSameNetworkPlaceholderRequestsDifferWithPreviewsOff() {
+        let first = requestRow("!a:courier.local", ts: Fixture.millis(60 * 24), preview: "Secret A")
+        let second = requestRow("!b:courier.local", ts: Fixture.millis(60 * 50), preview: "Secret B")
+        let one = requestStrings(first, showPreviews: false)
+        let two = requestStrings(second, showPreviews: false)
+        XCTAssertNotEqual(one, two, "same-network placeholder requests must not read alike with previews off")
+        XCTAssertFalse(one.contains("Secret A"), one)
+        XCTAssertTrue(one.contains("Unknown Messenger contact"), one)
+        XCTAssertTrue(one.contains("Message request"), one)
+        // With a handle, the handle is the title and the line.
+        let handled = requestStrings(first, showPreviews: false, handle: "@ana.s")
+        XCTAssertTrue(handled.contains("@ana.s"), handled)
+        XCTAssertFalse(handled.contains("Unknown Messenger contact"), handled)
+    }
+
+    func testPreviewsOnShowMediaLabelNotRequestDate() {
+        let photo = requestRow("!p:courier.local", ts: Fixture.millis(60 * 24), preview: "", kind: .image)
+        let strings = requestStrings(photo, showPreviews: true)
+        XCTAssertTrue(strings.contains("Image"), strings) // the row's media label, not "Message request"
+        XCTAssertFalse(strings.contains("3:12"), strings)
+    }
 }

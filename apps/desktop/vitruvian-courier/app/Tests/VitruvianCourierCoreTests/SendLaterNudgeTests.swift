@@ -179,3 +179,50 @@ final class SpaceShortcutLabelTests: XCTestCase {
         XCTAssertEqual(labels().map(\.1), [nil, nil, nil])
     }
 }
+
+/// The rail's label is what the Go to Space menu would do: the registry's chord, ⌘ when it has none, nothing when off.
+@MainActor
+final class SpaceShortcutRegistryLabelTests: XCTestCase {
+    private func registry(overrides: [String: [KeyChord]] = [:]) throws -> (HotkeyRegistry, () -> Void) {
+        let suite = "courier.space-shortcut-registry.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suite))
+        if !overrides.isEmpty { defaults.set(try JSONEncoder().encode(overrides), forKey: "courier.hotkeys.overrides") }
+        return (HotkeyRegistry(defaults: defaults), { defaults.removePersistentDomain(forName: suite) })
+    }
+
+    func testDefaultRebindAndDisableFollowTheRegistry() throws {
+        let (registry, cleanup) = try registry()
+        defer { cleanup() }
+        XCTAssertEqual(SpaceShortcutLabel.label(position: 1, registry: registry), "⌘1")
+        registry.applyTextsAppPreset() // ⌃
+        XCTAssertEqual(SpaceShortcutLabel.label(position: 3, registry: registry), "⌃3")
+        registry.setEnabled(false, for: "Switch First 9 Spaces Modifier")
+        XCTAssertNil(SpaceShortcutLabel.label(position: 3, registry: registry))
+        registry.setEnabled(true, for: "Switch First 9 Spaces Modifier")
+        XCTAssertEqual(SpaceShortcutLabel.label(position: 3, registry: registry), "⌃3")
+    }
+
+    func testCommandFallbackWhenNoChordOrNoModifier() throws {
+        let (none, cleanup1) = try registry(overrides: ["Switch First 9 Spaces Modifier": []])
+        defer { cleanup1() }
+        XCTAssertEqual(SpaceShortcutLabel.label(position: 2, registry: none), "⌘2")
+        let (plain, cleanup2) = try registry(overrides: ["Switch First 9 Spaces Modifier": [KeyChord(key: "a")]])
+        defer { cleanup2() }
+        XCTAssertEqual(SpaceShortcutLabel.label(position: 2, registry: plain), "⌘2")
+    }
+
+    func testNothingWhenThereAreNoSpacesOrPastNine() throws {
+        let (registry, cleanup) = try registry()
+        defer { cleanup() }
+        XCTAssertNil(SpaceShortcutLabel.label(position: 1, registry: registry, hasSpaces: false))
+        XCTAssertNil(SpaceShortcutLabel.label(position: 10, registry: registry))
+    }
+
+    func testLockedAppShowsNothing() throws {
+        let suite = "courier.space-shortcut-locked.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let locked = HotkeyRegistry(defaults: defaults, isAppLocked: { true })
+        XCTAssertNil(SpaceShortcutLabel.label(position: 1, registry: locked))
+    }
+}

@@ -65,14 +65,8 @@ struct SpaceBar: View {
         ScrollView(.vertical) {
             VStack(spacing: 6) {
                 ForEach(Array(spaces.visible.enumerated()), id: \.element.id) { index, space in
-                    SpaceIcon(space: space, isShown: inbox.query.space == space.spaceID,
-                              isReconnecting: isReconnecting(space), isStarting: isStarting(space),
-                              shortcut: SpaceShortcutLabel.label(
-                                  position: index + 1,
-                                  modifier: hotkeys?.primaryChord(for: "Switch First 9 Spaces Modifier"))) {
-                        spaces.select(space.spaceID)
-                    }
-                    .contextMenu { menu(for: space) }
+                    spaceIcon(space, position: index + 1)
+                        .contextMenu { menu(for: space) }
                 }
                 if !spaces.spaces.isEmpty, !spaces.spaces.contains(where: { $0.kind == .label }) {
                     NewLabelNudge {
@@ -88,6 +82,26 @@ struct SpaceBar: View {
         .courierSurface(.sidebarStrip)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(String(localized: "Spaces"))
+    }
+
+    /// One icon. Its shortcut is what Go to Space would do, read from the registry the menu reads, watched so a
+    /// rebind or turning it off shows at once.
+    @ViewBuilder
+    private func spaceIcon(_ space: Space, position: Int) -> some View {
+        if let hotkeys {
+            ShortcutObserving(registry: hotkeys, position: position, hasSpaces: !spaces.visible.isEmpty) {
+                icon(space, shortcut: $0)
+            }
+        } else {
+            icon(space, shortcut: nil)
+        }
+    }
+
+    private func icon(_ space: Space, shortcut: String?) -> some View {
+        SpaceIcon(space: space, isShown: inbox.query.space == space.spaceID,
+                  isReconnecting: isReconnecting(space), isStarting: isStarting(space), shortcut: shortcut) {
+            spaces.select(space.spaceID)
+        }
     }
 
     private func isReconnecting(_ space: Space) -> Bool {
@@ -231,6 +245,18 @@ private struct ShowInInboxMenu: View {
         }
         .pickerStyle(.menu)
         .help(String(localized: "Which of these chats also show in your inbox."))
+    }
+}
+
+/// Redraws its content when the shortcuts change, with the shortcut the space at `position` has now.
+private struct ShortcutObserving<Content: View>: View {
+    @ObservedObject var registry: HotkeyRegistry
+    let position: Int
+    let hasSpaces: Bool
+    @ViewBuilder let content: (String?) -> Content
+
+    var body: some View {
+        content(SpaceShortcutLabel.label(position: position, registry: registry, hasSpaces: hasSpaces))
     }
 }
 

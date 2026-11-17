@@ -1982,7 +1982,6 @@ private struct ComposerLiveWaveformStrip: View {
     }
 }
 
-
 /// Whether the late-night nudge was dismissed this session (a launch of the app).
 @MainActor
 final class SendLaterNudgeSession: ObservableObject {

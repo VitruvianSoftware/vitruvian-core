@@ -54,6 +54,8 @@ struct RowStyle: Equatable {
 struct InboxRowView<HoverMenu: View>: View {
     let row: InboxRow
     var displayTitleOverride: String? = nil
+    /// A request's sender handle from the engine, when it has one: tells apart strangers the bridge could not name.
+    var requestHandle: String = ""
     let networkName: String
     /// When this row represents a merged chat, the networks of its member rooms (`>= 2`).
     var mergedNetworks: [String] = []
@@ -104,7 +106,7 @@ struct InboxRowView<HoverMenu: View>: View {
         var formatted = displayTitleOverride ?? row.displayTitle
         // A request from a stranger the bridge could not name: say who it is from, not "Facebook user" twice.
         if row.request, RequestPresentation.isPlaceholderName(formatted) {
-            formatted = RequestPresentation.title(name: formatted, networkName: networkName)
+            formatted = RequestPresentation.title(name: formatted, handle: requestHandle, networkName: networkName)
         }
         let raw = formatted.isEmpty ? String(localized: "Unnamed chat") : formatted
         return isRedacted ? AppearancePreferences.redactedText(raw, kind: .chatTitle) : raw
@@ -162,7 +164,8 @@ struct InboxRowView<HoverMenu: View>: View {
                         Button(String(localized: "Accept"), action: accept)
                             .buttonStyle(.borderedProminent)
                         Button(String(localized: "Decline"), action: decline)
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.secondary)
                             .help(String(localized: "Hides the chat on this Mac. The person isn’t told."))
                     }
                     .controlSize(.small)
@@ -188,6 +191,7 @@ struct InboxRowView<HoverMenu: View>: View {
             onHoverChange?(inside)
         }
         .accessibilityElement(children: .combine)
+        .modifier(RequestRowLabel(label: requestAccessibilityLabel))
     }
 
     private var avatar: some View {
@@ -232,8 +236,8 @@ struct InboxRowView<HoverMenu: View>: View {
                 Text(typing)
             }
             .foregroundStyle(themeAccent)
-        } else if row.request, !style.showPreviews || row.preview.isEmpty {
-            Text(String(localized: "Message request"))
+        } else if row.request, case let .text(line) = requestDetail {
+            Text(line)
                 .foregroundStyle(themeAccent)
         } else if !row.draft.isEmpty {
             Text(String(localized: "Draft:")).foregroundStyle(.red) + Text(verbatim: " " + row.draft)
@@ -243,6 +247,22 @@ struct InboxRowView<HoverMenu: View>: View {
     }
 
     private var preview: Text { ChatPreview.text(row) }
+
+    /// A request's second line: the message when previews are on, else what still tells requests apart.
+    private var requestDetail: RequestPresentation.Detail {
+        RequestPresentation.detail(showPreviews: style.showPreviews, handle: requestHandle, lastTS: row.lastTS)
+    }
+
+    /// VoiceOver's label for a request: its own, so two strangers on one network are not read alike.
+    private var requestAccessibilityLabel: String? {
+        guard row.request else { return nil }
+        var detail = ""
+        switch requestDetail {
+        case .text(let line): detail = line
+        case .preview: detail = [row.previewLabel?.title ?? "", row.previewBody].filter { !$0.isEmpty }.joined(separator: " ")
+        }
+        return RequestPresentation.accessibilityLabel(title: displayTitle, networkName: networkName, detail: detail)
+    }
 
     /// "@", "Reminder", muted, and the unread count or dot.
     @ViewBuilder
@@ -665,5 +685,15 @@ final class AvatarCache: @unchecked Sendable {
         let image = await Task.detached(priority: .utility) { NSImage(contentsOfFile: path) }.value
         if let image { cache.setObject(image, forKey: path as NSString) }
         return image
+    }
+}
+
+
+/// A request row's own VoiceOver label; other rows keep the one their parts make.
+private struct RequestRowLabel: ViewModifier {
+    let label: String?
+
+    func body(content: Content) -> some View {
+        if let label { content.accessibilityLabel(label) } else { content }
     }
 }

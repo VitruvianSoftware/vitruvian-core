@@ -159,6 +159,7 @@ public final class InboxModel: ObservableObject {
                 onOpenRowUpdated(current)
             }
             refreshCandidateGroupMembersIfNeeded()
+            refreshRequestHandlesIfNeeded()
         }
     }
     private var cachedRowsByID: [String: InboxRow] = [:]
@@ -254,6 +255,10 @@ public final class InboxModel: ObservableObject {
         didSet { refreshCandidateGroupMembersIfNeeded() }
     }
     private var memberLookupAttempted = Set<String>()
+    /// Message requests from someone the bridge could not name, and the handle (username, number or email) the
+    /// engine has for them in the chat's member profile.
+    @Published public private(set) var requestHandles: [String: String] = [:]
+    private var requestHandleAttempted = Set<String>()
     private var knownMembersSubscription: AnyCancellable?
     /// The lookup in flight for the open chat, which a draft asked for meanwhile shares. `serial` tells a lookup
     /// from an older one for the same chat.
@@ -309,6 +314,7 @@ public final class InboxModel: ObservableObject {
         appModel.onConnect { [weak self] _ in
             guard let self else { return }
             self.memberLookupAttempted.removeAll()
+            self.requestHandleAttempted.removeAll()
             KnownGroupMembersStore.shared.clear(in: self.appModel)
             self.requestRead(waiting: false)
         }
@@ -447,6 +453,32 @@ public final class InboxModel: ObservableObject {
                         in: self.appModel
                     )
                 }
+            }
+        }
+    }
+
+    /// The sender's handle for a request the bridge gave a placeholder name; "" when the engine has none.
+    public func requestHandle(for row: InboxRow) -> String {
+        requestHandles[row.roomID] ?? ""
+    }
+
+    private func refreshRequestHandlesIfNeeded() {
+        guard let client = appModel.client else { return }
+        let candidates = rows
+            .filter { $0.request && RequestPresentation.isPlaceholderName($0.displayTitle)
+                && !requestHandleAttempted.contains($0.roomID) }
+            .prefix(20)
+            .map(\.roomID)
+        guard !candidates.isEmpty else { return }
+        requestHandleAttempted.formUnion(candidates)
+        Task { [weak self] in
+            for roomID in candidates {
+                guard let self, client === self.appModel.client else { return }
+                let result: MembersResult? = try? await client.call(
+                    "room.members", MembersParams(roomID: roomID, query: "", limit: 5))
+                guard client === self.appModel.client else { return }
+                let handle = RequestPresentation.handle(from: result?.members ?? [])
+                if !handle.isEmpty { self.requestHandles[roomID] = handle }
             }
         }
     }

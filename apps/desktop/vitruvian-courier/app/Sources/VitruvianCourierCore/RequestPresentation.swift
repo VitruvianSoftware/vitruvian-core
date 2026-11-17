@@ -28,6 +28,63 @@ public enum RequestPresentation {
     }
 }
 
+extension RequestPresentation {
+    /// What a request row's second line says.
+    public enum Detail: Equatable, Sendable {
+        /// The newest message, as any row shows it (media labels like "Photo" included).
+        case preview
+        /// This text instead.
+        case text(String)
+    }
+
+    /// With previews on, the message. With them off, something that still tells requests apart: the sender's handle
+    /// if the engine has one, else when they wrote ("Nov 14, 3:12 PM"), else "Message request".
+    public static func detail(showPreviews: Bool, handle: String, lastTS: Int64,
+                              locale: Locale = .current, timeZone: TimeZone = .current) -> Detail {
+        if showPreviews { return .preview }
+        let trimmed = handle.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return .text(trimmed) }
+        if lastTS > 0 { return .text(requestTime(lastTS: lastTS, locale: locale, timeZone: timeZone)) }
+        return .text(String(localized: "Message request"))
+    }
+
+    /// "Nov 14, 3:12 PM": the date as well as the time, since a request can be days old.
+    public static func requestTime(lastTS: Int64, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
+        let date = Date(timeIntervalSince1970: Double(lastTS) / 1000)
+        func format(_ template: String) -> String {
+            let formatter = DateFormatter()
+            formatter.locale = locale
+            formatter.timeZone = timeZone
+            formatter.setLocalizedDateFormatFromTemplate(template)
+            return formatter.string(from: date)
+        }
+        // The system puts a narrow no-break space before AM/PM; a plain space reads the same and compares plainly.
+        return "\(format("MMMd")), \(format("jmm"))"
+            .replacingOccurrences(of: "\u{202F}", with: " ")
+            .replacingOccurrences(of: "\u{00A0}", with: " ")
+    }
+
+    /// What VoiceOver says for a request row: who, on which network, and the line that tells it from the others.
+    public static func accessibilityLabel(title: String, networkName: String, detail: String) -> String {
+        [title, networkName, String(localized: "Message request"), detail]
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+    }
+
+    /// The sender's handle (a username, phone number or email the bridge gave) from the chat's members: the first
+    /// person who is not a bot and has one.
+    public static func handle(from members: [Member]) -> String {
+        for member in members where !member.isBot {
+            if let identifier = member.identifiers.first(where: {
+                !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }) {
+                return identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return ""
+    }
+}
+
 /// Where an empty list sends the person next.
 public enum EmptyStateAction: Equatable, Sendable {
     case goToInbox

@@ -161,6 +161,7 @@ struct InboxList: View {
                         InboxRowView(
                             row: row,
                             displayTitleOverride: inbox.displayTitle(for: row),
+                            requestHandle: inbox.requestHandle(for: row),
                             networkName: inbox.networkName(row.network),
                             mergedNetworks: inbox.mergedNetworks(for: row),
                             now: timeline.date, style: style,

@@ -22,8 +22,8 @@ public enum SendLaterNudge {
     }
 }
 
-/// The keyboard shortcut a space on the bar answers to: Go to Space's modifier (⌃ unless changed in Settings ▸
-/// Shortcuts) and the space's place on the bar, 1 to 9.
+/// The keyboard shortcut a space on the bar answers to: Go to Space's modifier (⌘ by default; Settings ▸ Shortcuts
+/// changes it) and the space's place on the bar, 1 to 9.
 public enum SpaceShortcutLabel {
     /// `"⌃2"` for the second space; nil past the ninth, or when Switch First 9 Spaces is off (`modifier` nil).
     public static func label(position: Int, modifier: KeyChord?) -> String? {
@@ -31,5 +31,23 @@ public enum SpaceShortcutLabel {
         let symbols = KeyChord(key: "", command: modifier.command, shift: modifier.shift,
                                option: modifier.option, control: modifier.control).symbols
         return symbols.isEmpty ? nil : symbols + String(position)
+    }
+}
+
+extension SpaceShortcutLabel {
+    static let hotkeyID = "Switch First 9 Spaces Modifier"
+
+    /// What the Go to Space menu would do: the registry's chord for it, ⌘ when that has no modifier (the menu's own
+    /// fallback), and nothing when the shortcut is off, the app is locked, or there is no space to go to.
+    @MainActor
+    public static func label(position: Int, registry: HotkeyRegistry, hasSpaces: Bool = true) -> String? {
+        guard hasSpaces, !registry.isLocked, registry.isEnabled(hotkeyID),
+              registry.definition(for: hotkeyID) != nil
+        else { return nil }
+        var chord = registry.primaryChord(for: hotkeyID) ?? KeyChord(key: "", command: true)
+        if !(chord.command || chord.shift || chord.option || chord.control) {
+            chord = KeyChord(key: "", command: true)
+        }
+        return label(position: position, modifier: chord)
     }
 }
