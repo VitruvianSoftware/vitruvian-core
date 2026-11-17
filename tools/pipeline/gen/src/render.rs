@@ -165,7 +165,17 @@ pub fn render_presubmit_workflow(
     b.push_str("        with:\n");
     b.push_str("          persist-credentials: false\n");
     // The diff needs real history; a shallow clone cannot see the base.
-    b.push_str("          fetch-depth: 0\n\n");
+    b.push_str("          fetch-depth: 0\n");
+    // Every commit and tree, but file contents only for what is checked out.
+    // Planning asks git which paths changed (merge-base, rev-list,
+    // diff --name-only); the fast-lane step reads four of the base commit's
+    // files, and the map is its own fetch. Git fetches an old file on demand,
+    // and the repository is public, so that works with no credentials kept.
+    // Measured on hosted Linux (PR #5046): the clone took 7-9 s instead of
+    // 13-17 s, .git was 115 MB instead of 436 MB, and all of the plan job's
+    // git work still ran. On the queue runners the full clone was a median
+    // 41 s (p90 53 s, worst 176 s) and gates every unit.
+    b.push_str("          filter: blob:none\n\n");
     // A release-bot PR plans NO units on the pull request. It only bumps
     // versions and the changelog of code main already tested, and the merge
     // queue plans and runs this workflow in full on the exact commit that
