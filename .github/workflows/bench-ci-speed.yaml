@@ -1,0 +1,183 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# THROWAWAY EXPERIMENT -- this workflow lives only on exp/ci-speed-bench and is
+# never merged. It measures CI-speed ideas against a baseline on the same
+# commit and, where it can, on the same runner, so the answer does not depend
+# on which day or which runner a job happened to get.
+#
+# Mac jobs are chained so the experiment holds at most two of the five hosted
+# Mac slots at a time.
+name: Bench CI speed (experiment)
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: bench-ci-speed-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  MAC_TARGETS: >-
+    //apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests
+    //apps/desktop/vitruvian-courier/app:VitruvianCourierViewTests
+    //apps/desktop/vitruvian-courier/app:app_holds_engine_test
+    //apps/desktop/vitruvian-courier/app:engine_contract_test
+    //apps/desktop/vitruvian-courier/app:inject_app_credentials_test
+    //apps/desktop/vitruvian-courier/app:release_engine_has_no_seed_test
+  LINUX_TARGETS: >-
+    //apps/mobile/vitruvian-remote:app
+    //apps/mobile/vitruvian-remote:app_info_test
+    //apps/mobile/vitruvian-remote:bridge_policy_test
+    //apps/mobile/vitruvian-remote:derive_test
+    //apps/mobile/vitruvian-remote:wire_test
+    //tools/ci:rdeps_map_ref
+    //tools/pipeline/plan
+  LINUX_EXTRA: --android_platforms=@rules_android//:arm64-v8a,@rules_android//:x86_64
+
+jobs:
+  checkout-linux:
+    name: checkout ${{ matrix.variant }} linux #${{ matrix.rep }}
+    if: github.head_ref == 'exp/ci-speed-bench'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [full, depth1, blobless]
+        rep: [1, 2, 3]
+    steps:
+      - name: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ matrix.variant == 'depth1' && 1 || 0 }}
+          filter: ${{ matrix.variant == 'blobless' && 'blob:none' || '' }}
+      - name: What the planner does with history
+        run: |
+          du -sh .git
+          if [ "${{ matrix.variant }}" != depth1 ]; then
+            base=$(git rev-list --first-parent -n 31 HEAD | tail -n 1)
+            time git merge-base "$base" HEAD
+            time git diff --name-only "$base" HEAD | wc -l
+          fi
+
+  compression-linux:
+    name: compression linux
+    if: github.head_ref == 'exp/ci-speed-bench'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/free-disk-space
+      - uses: ./.github/actions/setup-bazel
+      - uses: ./.github/actions/llvm-cache-restore
+        with:
+          restore-only: "true"
+      - name: bench
+        env:
+          BENCH_TARGETS: ${{ env.LINUX_TARGETS }}
+          BENCH_EXTRA: ${{ env.LINUX_EXTRA }}
+        run: tools/ci-bench/bench.sh compression
+
+  downloader-linux:
+    name: downloader linux
+    if: github.head_ref == 'exp/ci-speed-bench'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/free-disk-space
+      - uses: ./.github/actions/setup-bazel
+      - name: bench
+        env:
+          BENCH_TARGETS: ${{ env.LINUX_TARGETS }}
+          BENCH_EXTRA: ${{ env.LINUX_EXTRA }}
+        run: tools/ci-bench/bench.sh downloader
+
+  compression-mac:
+    name: compression mac
+    if: github.head_ref == 'exp/ci-speed-bench'
+    runs-on: xcode-27
+    timeout-minutes: 75
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/select-xcode
+      - uses: ./.github/actions/setup-bazel
+      - name: bench
+        env:
+          BENCH_TARGETS: ${{ env.MAC_TARGETS }}
+          BENCH_EXTRA: --config=macos-app
+        run: tools/ci-bench/bench.sh compression
+
+  downloader-mac:
+    name: downloader mac
+    if: github.head_ref == 'exp/ci-speed-bench'
+    runs-on: xcode-27
+    timeout-minutes: 75
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/select-xcode
+      - uses: ./.github/actions/setup-bazel
+      - name: bench
+        env:
+          BENCH_TARGETS: ${{ env.MAC_TARGETS }}
+          BENCH_EXTRA: --config=macos-app
+        run: tools/ci-bench/bench.sh downloader
+
+  checkout-mac:
+    name: checkout ${{ matrix.variant }} mac #${{ matrix.rep }}
+    if: ${{ always() && github.head_ref == 'exp/ci-speed-bench' }}
+    needs: [downloader-mac]
+    runs-on: xcode-27
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        variant: [full, depth1]
+        rep: [1, 2, 3]
+    steps:
+      - name: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ matrix.variant == 'depth1' && 1 || 0 }}
+      - run: du -sh .git
