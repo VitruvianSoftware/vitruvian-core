@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 1080 620" width="100%" height="auto" role="img" aria-labelledby="t2 d2" style="background:#0e1317; font-family:'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'calt' 0; border-radius: 6px;">
+  <title id="t2">Real PreToolUse Audit Telemetry Across 5,792 Tool Calls</title>
+  <desc id="d2">Summary chart of 5,792 logged PreToolUse decisions: 4,770 from Claude Code and 1,022 from Antigravity, with 50 denied calls across 12 categories led by gh-read (16), go (7), git-stash (5), git-commit (4), lint (4), and 2 guard-config self-modification attempts.</desc>
+  <defs>
+    <style>
+      .title { fill: #e7e4dd; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+      .subtitle { fill: #8fa5b5; font-size: 12px; }
+      .box-bg { fill: #151d26; stroke: #26384a; stroke-width: 1.5; }
+      .box-hi { fill: #182330; stroke: #3c5975; stroke-width: 1.5; }
+      .kpi-num { fill: #e7e4dd; font-size: 26px; font-weight: 600; }
+      .kpi-ok { fill: #7fbf9a; font-size: 26px; font-weight: 600; }
+      .kpi-err { fill: #d2907b; font-size: 26px; font-weight: 600; }
+      .box-head { fill: #e7e4dd; font-size: 13px; font-weight: 600; }
+      .box-body { fill: #8fa5b5; font-size: 11px; }
+      .small { fill: #687f91; font-size: 10px; }
+      .accent { fill: #93b0ca; font-size: 11px; font-weight: 500; }
+      .ok { fill: #7fbf9a; font-size: 11px; font-weight: 500; }
+      .warn { fill: #d9b264; font-size: 11px; font-weight: 500; }
+      .err { fill: #d2907b; font-size: 11px; font-weight: 500; }
+      .code { fill: #c9d4de; font-size: 11px; }
+      .bar-bg { fill: #0e141a; stroke: #203040; stroke-width: 1; }
+      .bar-steel { fill: #5980a6; }
+      .bar-warn { fill: #c89a3c; }
+      .bar-err { fill: #b4553c; }
+    </style>
+  </defs>
+  <rect width="1080" height="620" fill="#0e1317" rx="6" />
+
+  <!-- Header -->
+  <rect x="24" y="24" width="1032" height="60" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="44" y="49" class="title">What Agents Actually Try to Run: 5,792 Audited Calls</text>
+  <text x="44" y="69" class="subtitle">Snapshot from ~/.local/state/agent-guard/log.jsonl across live Claude Code and Antigravity sessions</text>
+
+  <!-- KPI Strip -->
+  <rect x="24" y="104" width="244" height="92" rx="6" class="box-bg" />
+  <text x="44" y="132" class="accent">TOTAL EVALUATED</text>
+  <text x="44" y="166" class="kpi-num">5,792</text>
+  <text x="44" y="184" class="small">4,770 Claude Code · 1,022 Antigravity</text>
+
+  <rect x="286" y="104" width="244" height="92" rx="6" class="box-bg" />
+  <text x="306" y="132" class="ok">ALLOWED (99.14%)</text>
+  <text x="306" y="166" class="kpi-ok">5,742</text>
+  <text x="306" y="184" class="small">Passed through in ~50 ms warm cache</text>
+
+  <rect x="548" y="104" width="244" height="92" rx="6" class="box-bg" />
+  <text x="568" y="132" class="err">DENIED (0.86%)</text>
+  <text x="568" y="166" class="kpi-err">50</text>
+  <text x="568" y="184" class="small">Stopped pre-exec with exact Bazel hint</text>
+
+  <rect x="810" y="104" width="246" height="92" rx="6" class="box-bg" />
+  <text x="830" y="132" class="warn">TAMPER BLOCKS</text>
+  <text x="830" y="166" class="kpi-num" style="fill:#d9b264;">2</text>
+  <text x="830" y="184" class="small">guard-config writes stopped on contact</text>
+
+  <!-- Bar chart left: Top Refused Categories -->
+  <rect x="24" y="216" width="644" height="380" rx="6" class="box-bg" />
+  <text x="44" y="244" class="box-head">REFUSED INVOCATIONS BY POLICY CATEGORY (N = 50)</text>
+  <text x="44" y="262" class="small">Scale: 0 to 16 hits · Each bar stops a slipped habit and teaches the Bazel wrapper</text>
+
+  <!-- 16 * 13px = 208px max bar -->
+  <text x="44" y="294" class="code">gh-read</text>
+  <rect x="160" y="282" width="208" height="16" class="bar-bg" />
+  <rect x="160" y="282" width="208" height="16" class="bar-steel" />
+  <text x="378" y="294" class="accent">16</text>
+  <text x="410" y="294" class="small">use //tools/agent-app -- read</text>
+
+  <text x="44" y="320" class="code">go</text>
+  <rect x="160" y="308" width="208" height="16" class="bar-bg" />
+  <rect x="160" y="308" width="91" height="16" class="bar-steel" />
+  <text x="261" y="320" class="accent">7</text>
+  <text x="410" y="320" class="small">use bazel test / //tools/gomod:tidy</text>
+
+  <text x="44" y="346" class="code">git-stash</text>
+  <rect x="160" y="334" width="208" height="16" class="bar-bg" />
+  <rect x="160" y="334" width="65" height="16" class="bar-warn" />
+  <text x="235" y="346" class="warn">5</text>
+  <text x="410" y="346" class="small">stash is shared across all worktrees</text>
+
+  <text x="44" y="372" class="code">git-commit</text>
+  <rect x="160" y="360" width="208" height="16" class="bar-bg" />
+  <rect x="160" y="360" width="52" height="16" class="bar-warn" />
+  <text x="222" y="372" class="warn">4</text>
+  <text x="410" y="372" class="small">skips agent-app bot attribution</text>
+
+  <text x="44" y="398" class="code">lint</text>
+  <rect x="160" y="386" width="208" height="16" class="bar-bg" />
+  <rect x="160" y="386" width="52" height="16" class="bar-steel" />
+  <text x="222" y="398" class="accent">4</text>
+  <text x="410" y="398" class="small">use bazel run //tools/format</text>
+
+  <text x="44" y="424" class="code">guard-config</text>
+  <rect x="160" y="412" width="208" height="16" class="bar-bg" />
+  <rect x="160" y="412" width="26" height="16" class="bar-err" />
+  <text x="196" y="424" class="err">2</text>
+  <text x="410" y="424" class="small">touched hook or settings files</text>
+
+  <text x="44" y="450" class="code">bazel-cache</text>
+  <rect x="160" y="438" width="208" height="16" class="bar-bg" />
+  <rect x="160" y="438" width="26" height="16" class="bar-err" />
+  <text x="196" y="450" class="err">2</text>
+  <text x="410" y="450" class="small">blocked rm -rf / clean --expunge</text>
+
+  <text x="44" y="476" class="code">git-worktree</text>
+  <rect x="160" y="464" width="208" height="16" class="bar-bg" />
+  <rect x="160" y="464" width="26" height="16" class="bar-steel" />
+  <text x="196" y="476" class="accent">2</text>
+  <text x="410" y="476" class="small">use bazel run //tools/worktree</text>
+
+  <text x="44" y="502" class="code">git-branch</text>
+  <rect x="160" y="490" width="208" height="16" class="bar-bg" />
+  <rect x="160" y="490" width="26" height="16" class="bar-steel" />
+  <text x="196" y="502" class="accent">2</text>
+  <text x="410" y="502" class="small">use bazel run //tools/worktree</text>
+
+  <text x="44" y="528" class="code">git-other</text>
+  <rect x="160" y="516" width="208" height="16" class="bar-bg" />
+  <rect x="160" y="516" width="26" height="16" class="bar-warn" />
+  <text x="196" y="528" class="warn">2</text>
+  <text x="410" y="528" class="small">git clean / remote / config writes</text>
+
+  <text x="44" y="554" class="code">swift / actionlint</text>
+  <rect x="160" y="542" width="208" height="16" class="bar-bg" />
+  <rect x="160" y="542" width="52" height="16" class="bar-steel" />
+  <text x="222" y="554" class="accent">4</text>
+  <text x="410" y="554" class="small">2 swiftc/test + 2 raw actionlint</text>
+
+  <text x="44" y="582" class="small">Total categories enforced in policy.json: 31 · All defaulted to enforce</text>
+
+  <!-- Insights Right -->
+  <rect x="688" y="216" width="368" height="380" rx="6" class="box-bg" />
+  <text x="708" y="244" class="box-head">THREE LESSONS FROM THE LOGS</text>
+
+  <rect x="708" y="264" width="328" height="96" rx="4" class="box-hi" />
+  <text x="722" y="284" class="accent">1. Reads dominate habit slips</text>
+  <text x="722" y="302" class="box-body">32% of all blocks were raw `gh` reads.</text>
+  <text x="722" y="318" class="box-body">Because the refusal printed the exact</text>
+  <text x="722" y="334" class="box-body">replacement command, agents pivoted</text>
+  <text x="722" y="350" class="ok">on the next tool call without stalling.</text>
+
+  <rect x="708" y="374" width="328" height="96" rx="4" class="box-hi" />
+  <text x="722" y="394" class="warn">2. Muscle memory beats AGENTS.md</text>
+  <text x="722" y="412" class="box-body">`go test`, `git stash`, and `rm -rf` of a</text>
+  <text x="722" y="428" class="box-body">Bazel cache happen routinely mid-debug</text>
+  <text x="722" y="444" class="box-body">no matter how loudly root docs warn</text>
+  <text x="722" y="460" class="box-body">against them.</text>
+
+  <rect x="708" y="484" width="328" height="96" rx="4" class="box-hi" />
+  <text x="722" y="504" class="err">3. Guarded files stay untouched</text>
+  <text x="722" y="522" class="box-body">Redaction strips tokens, auth headers,</text>
+  <text x="722" y="538" class="box-body">and API keys before writing log.jsonl</text>
+  <text x="722" y="554" class="box-body">at 0600 permissions inside a 0700 state</text>
+  <text x="722" y="570" class="box-body">dir (rolling over cleanly at 10 MB).</text>
+</svg>
