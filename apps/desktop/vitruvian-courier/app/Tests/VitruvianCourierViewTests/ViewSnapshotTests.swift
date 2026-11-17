@@ -6185,6 +6185,24 @@ final class ViewSnapshotTests: XCTestCase {
         XCTAssertEqual(store.note(for: "!other:courier.local"), "Somebody else's")
     }
 
+    /// In a narrow info pane the Notification sound row keeps its label whole and puts the picker on its own line,
+    /// instead of squeezing the label to "…"; with room to spare it stays on one line.
+    func testChatInfoSoundRowWrapsInsteadOfTruncatingTheLabel() throws {
+        let suite = "courier.test.chatinfo-sound-wrap.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let prefs = NotificationPreferences(defaults: defaults)
+        func height(atWidth width: CGFloat) -> CGFloat {
+            let host = NSHostingView(rootView: ChatInfoSoundRow(roomID: "!wrap:courier.local", preferences: prefs)
+                .frame(width: width))
+            host.layoutSubtreeIfNeeded()
+            return host.fittingSize.height
+        }
+        let wide = height(atWidth: 360)
+        let narrow = height(atWidth: 150)
+        XCTAssertGreaterThan(narrow, wide + 10, "narrow row should wrap the picker onto its own line")
+    }
+
     private final class NotesRoom: ObservableObject {
         @Published var roomID: String
         init(_ roomID: String) { self.roomID = roomID }

@@ -1300,29 +1300,18 @@ struct ChatInfoSoundRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Divider()
-            HStack(spacing: 8) {
-                Image(systemName: "bell")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 16)
-                Text(String(localized: "Notification sound"))
-                    .font(.callout)
-                    .lineLimit(1)
-                    .layoutPriority(1)
-                Spacer(minLength: 4)
-                Picker(
-                    String(localized: "Notification sound"),
-                    selection: Binding(
-                        get: { preferences.chatSound(for: roomID) ?? .default },
-                        set: { preferences.setChatSound($0, for: roomID) }
-                    )
-                ) {
-                    ForEach(NotificationSoundChoice.allCases, id: \.self) { choice in
-                        Text(Self.title(choice)).tag(choice)
-                    }
+            // The info pane can be narrow: keep the label whole and move the picker under it when both don't fit.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    soundLabel
+                    Spacer(minLength: 4)
+                    soundPicker
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .fixedSize()
+                VStack(alignment: .leading, spacing: 4) {
+                    soundLabel
+                    soundPicker
+                        .padding(.leading, 24)
+                }
             }
             Text(String(localized: "Muted chats stay silent."))
                 .font(.caption)
@@ -1331,6 +1320,35 @@ struct ChatInfoSoundRow: View {
         }
         .accessibilityIdentifier("chat-info-sound")
         .chatInfoRowProbe("sound:\(preferences.chatSound(for: roomID)?.rawValue ?? "default")")
+    }
+
+    private var soundLabel: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "bell")
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+            Text(String(localized: "Notification sound"))
+                .font(.callout)
+                .lineLimit(1)
+                .fixedSize()
+        }
+    }
+
+    private var soundPicker: some View {
+        Picker(
+            String(localized: "Notification sound"),
+            selection: Binding(
+                get: { preferences.chatSound(for: roomID) ?? .default },
+                set: { preferences.setChatSound($0, for: roomID) }
+            )
+        ) {
+            ForEach(NotificationSoundChoice.allCases, id: \.self) { choice in
+                Text(Self.title(choice)).tag(choice)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .fixedSize()
     }
 }
 
