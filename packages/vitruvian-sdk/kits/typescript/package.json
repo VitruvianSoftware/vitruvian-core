@@ -1,6 +1,6 @@
 {
   "name": "@vitruviansoftware/tool-kit",
-  "version": "1.9.2",
+  "version": "1.9.3",
   "description": "Write a tool for Vitruvian Atrium in TypeScript or JavaScript: declare its commands, handle them, call the app.",
   "license": "MIT",
   "repository": {
