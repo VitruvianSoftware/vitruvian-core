@@ -117,3 +117,108 @@ final class RequestPresentationTests: XCTestCase {
         XCTAssertEqual(RequestPresentation.handle(from: []), "")
     }
 }
+
+private final class Clock: @unchecked Sendable {
+    var date = Date(timeIntervalSince1970: 1_000_000)
+}
+
+private actor Probe {
+    var calls: [String] = []
+    var active = 0
+    var peak = 0
+    var failing: Set<String> = []
+
+    func fail(_ ids: Set<String>) { failing = ids }
+    func enter(_ id: String) { calls.append(id); active += 1; peak = max(peak, active) }
+    func leave() { active -= 1 }
+    func shouldFail(_ id: String) -> Bool { failing.contains(id) }
+}
+
+@MainActor
+final class RequestHandleLoaderTests: XCTestCase {
+    private struct Down: Error {}
+
+    private func row(_ id: String, name: String = "Facebook user", request: Bool = true) -> InboxRow {
+        InboxRow(roomID: id, network: "facebook", name: name, avatarPath: "", isDirect: true, lastTS: 1,
+                 preview: "hi", previewKind: .text, previewMine: false, unread: 1, muted: false, request: request)
+    }
+
+    private func fetch(_ probe: Probe, handle: String = "@ana", pause: Bool = false) -> RequestHandleLoader.Fetch {
+        { id in
+            await probe.enter(id)
+            if pause { try? await Task.sleep(for: .milliseconds(20)) }
+            await probe.leave()
+            if await probe.shouldFail(id) { throw Down() }
+            return handle.isEmpty ? [] : [Member(userID: "@u", name: "U", identifiers: [handle])]
+        }
+    }
+
+    func testOnlyPlaceholderNamedRequestsAreLookedUp() {
+        let rows = [row("!a"), row("!b", name: "Ana Silva"), row("!c", name: ""), row("!d", request: false)]
+        XCTAssertEqual(RequestHandleLoader.candidates(in: rows), ["!a", "!c"])
+    }
+
+    func testFailureIsNotCachedAndIsRetriedAfterBackoff() async {
+        let clock = Clock()
+        let loader = RequestHandleLoader(now: { clock.date })
+        let probe = Probe()
+        await probe.fail(["!a"])
+        let delay = await loader.run(candidates: { ["!a"] }, fetch: fetch(probe))
+        XCTAssertEqual(delay, 30)
+        XCTAssertNil(loader.handles["!a"], "an error must not cache an empty handle")
+        var calls = await probe.calls
+        XCTAssertEqual(calls, ["!a"])
+
+        // Too soon: not asked again.
+        clock.date.addTimeInterval(10)
+        _ = await loader.run(candidates: { ["!a"] }, fetch: fetch(probe))
+        calls = await probe.calls
+        XCTAssertEqual(calls, ["!a"])
+
+        // After the wait it fails again, and the wait doubles.
+        clock.date.addTimeInterval(21)
+        let second = await loader.run(candidates: { ["!a"] }, fetch: fetch(probe))
+        XCTAssertEqual(second, 60)
+        calls = await probe.calls
+        XCTAssertEqual(calls, ["!a", "!a"])
+
+        // The engine recovers: the handle is cached and never asked for again.
+        await probe.fail([])
+        clock.date.addTimeInterval(61)
+        let done = await loader.run(candidates: { ["!a"] }, fetch: fetch(probe))
+        XCTAssertNil(done)
+        XCTAssertEqual(loader.handles["!a"], "@ana")
+        _ = await loader.run(candidates: { ["!a"] }, fetch: fetch(probe))
+        calls = await probe.calls
+        XCTAssertEqual(calls.count, 3)
+    }
+
+    func testNoneFoundIsASuccessAndIsCached() async {
+        let loader = RequestHandleLoader()
+        let probe = Probe()
+        let delay = await loader.run(candidates: { ["!a"] }, fetch: fetch(probe, handle: ""))
+        XCTAssertNil(delay)
+        XCTAssertEqual(loader.handles["!a"], "")
+        _ = await loader.run(candidates: { ["!a"] }, fetch: fetch(probe, handle: ""))
+        let calls = await probe.calls
+        XCTAssertEqual(calls, ["!a"])
+    }
+
+    func testBackoffDoublesFrom30SecondsToTenMinutes() {
+        XCTAssertEqual((1 ... 8).map { RequestHandleLoader.delay(afterFailures: $0) },
+                       [30, 60, 120, 240, 480, 600, 600, 600])
+    }
+
+    func testEveryCandidateIsLookedUpWithAtMostFourAtOnce() async {
+        let loader = RequestHandleLoader()
+        let probe = Probe()
+        let ids = (1 ... 30).map { "!r\($0)" }
+        _ = await loader.run(candidates: { ids }, fetch: fetch(probe, pause: true))
+        let calls = await probe.calls
+        let peak = await probe.peak
+        XCTAssertEqual(Set(calls), Set(ids), "no cap of 20 per refresh")
+        XCTAssertEqual(calls.count, 30)
+        XCTAssertLessThanOrEqual(peak, 4)
+        XCTAssertEqual(loader.handles.count, 30)
+    }
+}
