@@ -1,0 +1,44 @@
+# Copyright (c) 2026 VitruvianSoftware
+# SPDX-License-Identifier: MIT
+
+"""Python's string, json and argparse behaviour for the Rust ports of Python tools.
+
+No third-party crates, so any tool can link it whatever crate hub it uses.
+"""
+
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+rust_library(
+    name = "vitruvian_pycompat",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "vitruvian_pycompat",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+)
+
+rust_test(
+    name = "vitruvian_pycompat_test",
+    size = "small",
+    crate = ":vitruvian_pycompat",
+)
+
+# rustc-build.sh is the out-of-Bazel build the scheduled workflows and
+# package-desktop use; this test runs it the way they do.
+sh_test(
+    name = "rustc_build_test",
+    size = "medium",
+    srcs = ["rustc_build_test.sh"],
+    data = glob(["src/**/*.rs"]) + [
+        "rustc-build.sh",
+        "//tools/agent-app:rust_sources",
+        "//tools/sync-downloads:rust_sources",
+        "@rules_rust//rust/toolchain:current_rust_stdlib_files",
+        "@rules_rust//rust/toolchain:current_rust_toolchain",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+        "@rules_rust//rust/toolchain:current_rustc_lib_files",
+    ],
+    env = {"REAL_RUSTC": "$(rootpath @rules_rust//rust/toolchain:current_rustc_files)"},
+)

@@ -1169,44 +1169,19 @@ impl Driver {
         }
         let src = format!("{repo_root}/tools/sync-downloads/src");
         let (lib, main) = (format!("{src}/lib.rs"), format!("{src}/main.rs"));
-        if !is_file(&lib) || !is_file(&main) || !has("rustc") {
+        let build_script = format!("{repo_root}/packages/rust/vitruvian-pycompat/rustc-build.sh");
+        if !is_file(&lib) || !is_file(&main) || !is_file(&build_script) || !has("rustc") {
             return Ok(None);
         }
         let dir = format!("{}/sync-downloads", self.stage_root);
-        let rlib = format!("{dir}/libsync_downloads.rlib");
+        // The same plain-rustc build the site-sync-downloads workflow runs
+        // (it links the shared vitruvian-pycompat crate too).
+        self.run_line(
+            0,
+            "bash",
+            &[&build_script, &dir, "sync_downloads", &lib, &main],
+        )?;
         let bin = format!("{dir}/sync_downloads");
-        let extern_arg = format!("sync_downloads={rlib}");
-        self.run_line(0, "mkdir", &["-p", &dir])?;
-        self.run_line(
-            0,
-            "rustc",
-            &[
-                "--edition",
-                "2021",
-                "--crate-type",
-                "lib",
-                "--crate-name",
-                "sync_downloads",
-                &lib,
-                "-o",
-                &rlib,
-            ],
-        )?;
-        self.run_line(
-            0,
-            "rustc",
-            &[
-                "--edition",
-                "2021",
-                &main,
-                "-L",
-                &dir,
-                "--extern",
-                &extern_arg,
-                "-o",
-                &bin,
-            ],
-        )?;
         Ok(Some(bin))
     }
 

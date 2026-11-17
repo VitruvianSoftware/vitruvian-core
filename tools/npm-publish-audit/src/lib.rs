@@ -44,7 +44,7 @@
 //! - `sort` is byte order; the script's `sort` follows the locale's collation
 //!   (identical under the C locale, which CI and Bazel tests use).
 
-pub mod pyjson;
+pub use vitruvian_pyjson as pyjson;
 pub mod sh;
 
 use pyjson::Py;

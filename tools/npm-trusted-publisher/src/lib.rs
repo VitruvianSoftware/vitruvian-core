@@ -48,6 +48,6 @@
 
 pub mod bootstrap;
 pub mod manifest;
-pub mod pyjson;
+pub use vitruvian_pyjson as pyjson;
 pub mod setup;
 pub mod sh;
