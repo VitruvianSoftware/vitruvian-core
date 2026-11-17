@@ -53,3 +53,11 @@ test_suite(
     name = "sync_downloads_test",
     tests = [":sync_downloads_lib_test"],
 )
+
+# The sources, for //packages/rust/vitruvian-pycompat:rustc_build_test, which
+# builds this tool with plain rustc the way its scheduled workflow does.
+filegroup(
+    name = "rust_sources",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["//packages/rust/vitruvian-pycompat:__pkg__"],
+)

@@ -210,3 +210,11 @@ rust_test(
     },
     rustc_flags = ["-Copt-level=3"],
 )
+
+# The sources, for //packages/rust/vitruvian-pycompat:rustc_build_test, which
+# builds this tool with plain rustc the way its scheduled workflow does.
+filegroup(
+    name = "rust_sources",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["//packages/rust/vitruvian-pycompat:__pkg__"],
+)
