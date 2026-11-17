@@ -12,10 +12,11 @@ import UniformTypeIdentifiers
 ///   - Header: avatar with network badge, effective chat title (`info.name`) + edit pencil button,
 ///     secondary network name line (`"On WhatsApp: <remoteName>"`) only when a local override is set (Ruling 1),
 ///     topic, 1:1 participant handle/phone and timezone (or group member count), and open-in-window / close buttons.
-///   - Filter field (`@FocusState`) filtering participants, files, links, and bookmarks.
-///   - Collapsible sections: Participants (with `Admin` / `Bot` badges and **Add Participants** button),
-///     Pinned, Shared Media (3×3 grid), Files, Links, Bookmarks (`search.query` with `sections: [.bookmarks]`),
-///     Encryption, Disappearing Messages, **Reload Chat Details**, and **Export Chat…** (`NSSavePanel` in view only).
+///   - Topics in their own rounded, labelled boxes: Participants (with `Admin` / `Bot` badges and **Add
+///     Participants** button), Shared (the newest four photos, videos and links, and Show All), Files, Pinned,
+///     Bookmarks (`search.query` with `sections: [.bookmarks]`, for this chat), Contact, Notes, Labels,
+///     Notifications, Privacy (encryption, disappearing messages), Read Aloud and Tools (Summarize, Chat Theme,
+///     **Export Chat…** (`NSSavePanel` in view only), and a More menu with **Reload Chat Details** and Merge).
 public struct ChatInfoPane: View {
     public let info: RoomInfoResult
     public let bookmarks: [MessageHit]
@@ -23,7 +24,6 @@ public struct ChatInfoPane: View {
     public var isMuted: Bool = false
     public var isPinned: Bool = false
     public var showsCloseButton: Bool = true
-    public var focusSearchTrigger: Int = 0
     public var now: () -> Date = Date.init
     public var timerChoices: [DisappearingChoice] = []
     public var onSelectTimer: (DisappearingChoice) -> Void = { _ in }
@@ -72,15 +72,12 @@ public struct ChatInfoPane: View {
 
     @Environment(\.openWindow) private var openWindow
     @Environment(\.chatInfoSpaces) private var environmentSpaces
-    @State private var filterText: String = ""
-    @FocusState private var isFilterFocused: Bool
-
     @State private var participantsExpanded = true
     @State private var pinnedExpanded = true
-    @State private var mediaExpanded = true
+    @State private var sharedExpanded = true
     @State private var filesExpanded = true
-    @State private var linksExpanded = true
     @State private var bookmarksExpanded = true
+    @State private var contactExpanded = true
     @State private var labelsExpanded = true
     @State private var notesExpanded = true
 
@@ -91,7 +88,6 @@ public struct ChatInfoPane: View {
         isMuted: Bool = false,
         isPinned: Bool = false,
         showsCloseButton: Bool = true,
-        focusSearchTrigger: Int = 0,
         now: @escaping () -> Date = Date.init,
         timerChoices: [DisappearingChoice] = [],
         onSelectTimer: @escaping (DisappearingChoice) -> Void = { _ in },
@@ -142,7 +138,6 @@ public struct ChatInfoPane: View {
         self.isMuted = isMuted
         self.isPinned = isPinned
         self.showsCloseButton = showsCloseButton
-        self.focusSearchTrigger = focusSearchTrigger
         self.now = now
         self.timerChoices = timerChoices
         self.onSelectTimer = onSelectTimer
@@ -205,30 +200,26 @@ public struct ChatInfoPane: View {
                 VStack(alignment: .leading, spacing: 12) {
                     identityHeader
                     quickActionsRow
-                    filterBar
                     if !info.isDirect {
                         participantsSection
                     }
-                    if !mediaItems.isEmpty {
-                        mediaSection
+                    sharedSection
+                    if !info.sharedFiles.isEmpty {
+                        filesSection
                     }
-                    if !filteredLinks.isEmpty {
-                        linksSection
-                    }
-                    labelsSection
-                    notificationSoundSection
-                    notesSection
                     if !info.pinnedEventIDs.isEmpty {
                         pinnedSection
                     }
-                    if !filteredFiles.isEmpty {
-                        filesSection
+                    bookmarksSection
+                    if info.isDirect {
+                        contactSection
                     }
-                    if !filteredBookmarks.isEmpty {
-                        bookmarksSection
-                    }
-                    securityAndTimerSection
-                    actionsSection
+                    notesSection
+                    labelsSection
+                    notificationSoundSection
+                    privacySection
+                    readAloudSection
+                    toolsSection
                     destructiveActionsSection
                 }
                 // The header's inset, so the sections line up under its title.
@@ -238,9 +229,6 @@ public struct ChatInfoPane: View {
         }
         .frame(minWidth: 280)
         .courierSurface(.sidePane)
-        .onChange(of: focusSearchTrigger) { _, _ in
-            isFilterFocused = true
-        }
     }
 
     // MARK: - Notes
@@ -274,7 +262,10 @@ public struct ChatInfoPane: View {
     @ViewBuilder
     private var notificationSoundSection: some View {
         if let preferences = notificationPreferences ?? inbox?.preferences.notifications {
-            ChatInfoSoundRow(roomID: info.roomID, preferences: preferences)
+            ChatInfoSoundRow(
+                roomID: info.roomID, preferences: preferences,
+                isDirect: info.isDirect, network: info.network, accountID: info.accountID
+            )
         }
     }
 
@@ -339,15 +330,10 @@ public struct ChatInfoPane: View {
             }
 
             if info.isDirect, let member = directOtherMember {
-                ForEach(ContactsBridge.displayableIdentifiers(member.identifiers), id: \.self) { identifier in
-                    Text(verbatim: ContactsBridge.displayIdentifier(identifier))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
+                // Their phone number and username are in the Contact box.
                 if let localTime = Self.localTimeText(for: member.tz, now: now(), locale: .current) {
                     Label(localTime, systemImage: "clock")
-                        .font(.caption2)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                 }
             } else if !info.isDirect {
@@ -356,7 +342,7 @@ public struct ChatInfoPane: View {
                         ? String(localized: "1 member")
                         : String(localized: "\(info.members.count) members")
                 )
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
             }
         }
@@ -434,84 +420,15 @@ public struct ChatInfoPane: View {
         return base.isEmpty ? member.userID : base
     }
 
-    // MARK: - Filter Bar
+    // MARK: - Collections
 
-    private var trimmedFilter: String {
-        filterText.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
+    private var filteredMembers: [Member] { info.members }
 
-    private var filterBar: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-                .font(.caption)
-            TextField(String(localized: "Filter chat info…"), text: $filterText)
-                .textFieldStyle(.plain)
-                .font(.callout)
-                .focused($isFilterFocused)
-            if !filterText.isEmpty {
-                Button {
-                    filterText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel(String(localized: "Clear filter"))
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06)))
-    }
-
-    // MARK: - Filtered Collections
-
-    private var filteredMembers: [Member] {
-        guard !trimmedFilter.isEmpty else { return info.members }
-        return info.members.filter { member in
-            member.name.localizedCaseInsensitiveContains(trimmedFilter)
-                || member.userID.localizedCaseInsensitiveContains(trimmedFilter)
-                || member.identifiers.contains { $0.localizedCaseInsensitiveContains(trimmedFilter) }
-        }
-    }
-
-    private var filteredFiles: [Event] {
-        guard !trimmedFilter.isEmpty else { return info.sharedFiles }
-        return info.sharedFiles.filter { event in
-            Self.eventBody(event).localizedCaseInsensitiveContains(trimmedFilter)
-        }
-    }
-
-    private var mediaItems: [Event] {
-        ChatInfoPresentation.sharedMediaEvents(info.sharedMedia)
-    }
+    private var filteredFiles: [Event] { info.sharedFiles }
 
     /// My picture: the pane's `selfAvatarPath`, else one the chat's own info holds.
     private var ownAvatarPath: String {
         selfAvatarPath.isEmpty ? ChatInfoPresentation.ownAvatarPath(in: info) : selfAvatarPath
-    }
-
-    private var deduplicatedLinks: [RoomLink] {
-        RoomLink.deduplicated(info.sharedLinks)
-    }
-
-    private var filteredLinks: [RoomLink] {
-        guard !trimmedFilter.isEmpty else { return deduplicatedLinks }
-        return deduplicatedLinks.filter { link in
-            link.url.localizedCaseInsensitiveContains(trimmedFilter)
-                || (link.displayTitle ?? "").localizedCaseInsensitiveContains(trimmedFilter)
-                || link.displayDomain.localizedCaseInsensitiveContains(trimmedFilter)
-        }
-    }
-
-    private var filteredBookmarks: [MessageHit] {
-        guard !trimmedFilter.isEmpty else { return bookmarks }
-        return bookmarks.filter { hit in
-            hit.snippet.localizedCaseInsensitiveContains(trimmedFilter)
-                || hit.senderName.localizedCaseInsensitiveContains(trimmedFilter)
-        }
     }
 
     // MARK: - Participants Section
@@ -622,34 +539,59 @@ public struct ChatInfoPane: View {
         }
     }
 
-    // MARK: - Shared Media Section
+    // MARK: - Shared Section
 
-    private var mediaSection: some View {
+    private var sharedTiles: [ChatInfoSharedTile] {
+        ChatInfoShared.tiles(media: info.sharedMedia, links: info.sharedLinks)
+    }
+
+    private var sharedCount: Int {
+        ChatInfoShared.count(media: info.sharedMedia, links: info.sharedLinks)
+    }
+
+    /// Show All opens the viewer on the photos and videos, or, with none, on the links.
+    private var sharedViewerTab: MediaViewerModel.Tab {
+        ChatInfoPresentation.sharedMediaEvents(info.sharedMedia).isEmpty ? .links : .media
+    }
+
+    private var sharedSection: some View {
         ChatInfoSection(
-            title: String(localized: "Shared Media"),
-            count: mediaItems.count,
-            isExpanded: $mediaExpanded,
-            onSeeAll: {
-                openWindow(
-                    id: WindowID.mediaViewer,
-                    value: MediaViewerTarget(roomID: info.roomID, tab: .media)
-                )
-            }
+            title: String(localized: "Shared"),
+            count: sharedCount == 0 ? nil : sharedCount,
+            isExpanded: $sharedExpanded,
+            onSeeAll: sharedCount > 0 ? { showAllShared() } : nil,
+            seeAllTitle: String(localized: "Show All")
         ) {
-            let columns = Array(repeating: GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 4), count: 3)
-            LazyVGrid(columns: columns, spacing: 4) {
-                ForEach(mediaItems.prefix(9), id: \.eventID) { event in
-                    ChatInfoMediaTile(
-                        event: event,
-                        sender: ChatInfoPresentation.mediaSender(
-                            for: event, members: info.members, ownAvatarPath: ownAvatarPath
-                        )
-                    ) {
-                        onSelectEvent(event.eventID)
+            if sharedTiles.isEmpty {
+                ChatInfoEmptyLine(text: String(localized: "Photos, videos and links shared in this chat appear here."))
+            } else {
+                let columns = Array(repeating: GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 8), count: 2)
+                LazyVGrid(columns: columns, spacing: 8) {
+                    ForEach(sharedTiles) { tile in
+                        switch tile {
+                        case let .media(event):
+                            ChatInfoMediaTile(
+                                event: event,
+                                sender: ChatInfoPresentation.mediaSender(
+                                    for: event, members: info.members, ownAvatarPath: ownAvatarPath
+                                )
+                            ) {
+                                onSelectEvent(event.eventID)
+                            }
+                        case let .link(link):
+                            ChatInfoLinkTile(link: link) { onSelectEvent(link.eventID) }
+                        }
                     }
                 }
             }
         }
+    }
+
+    private func showAllShared() {
+        openWindow(
+            id: WindowID.mediaViewer,
+            value: MediaViewerTarget(roomID: info.roomID, tab: sharedViewerTab)
+        )
     }
 
     // MARK: - Files Section
@@ -687,98 +629,88 @@ public struct ChatInfoPane: View {
         }
     }
 
-    // MARK: - Links Section
-
-    private var linksSection: some View {
-        ChatInfoSection(
-            title: String(localized: "Links"),
-            count: filteredLinks.count,
-            isExpanded: $linksExpanded,
-            onSeeAll: {
-                openWindow(
-                    id: WindowID.mediaViewer,
-                    value: MediaViewerTarget(roomID: info.roomID, tab: .links)
-                )
-            }
-        ) {
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(filteredLinks) { link in
-                    Button {
-                        onSelectEvent(link.eventID)
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "link")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            VStack(alignment: .leading, spacing: 1) {
-                                if let title = link.displayTitle {
-                                    // The page's own title tells apart links on the same site.
-                                    Text(verbatim: title)
-                                        .font(.body)
-                                        .lineLimit(2)
-                                    Text(verbatim: link.displayDomain)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                } else {
-                                    Text(verbatim: link.displayDomain)
-                                        .font(.body)
-                                        .lineLimit(1)
-                                    Text(verbatim: link.url)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                }
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
     // MARK: - Bookmarks Section
+
+    private var bookmarkRows: [ChatInfoBookmarkRow] {
+        ChatInfoPresentation.bookmarkRows(bookmarks)
+    }
 
     private var bookmarksSection: some View {
         ChatInfoSection(
             title: String(localized: "Bookmarks"),
-            count: filteredBookmarks.count,
+            count: bookmarkRows.isEmpty ? nil : bookmarkRows.count,
             isExpanded: $bookmarksExpanded
         ) {
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(filteredBookmarks, id: \.eventID) { hit in
-                    Button {
-                        onSelectEvent(hit.eventID)
-                    } label: {
-                        HStack(alignment: .top, spacing: 6) {
-                            Image(systemName: "bookmark.fill")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                                .padding(.top, 2)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(verbatim: hit.senderName)
-                                    .font(.caption.weight(.semibold))
-                                    .lineLimit(1)
-                                Text(verbatim: hit.snippet)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
+            if bookmarkRows.isEmpty {
+                ChatInfoEmptyLine(text: String(localized: "Bookmarked messages appear here."))
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(bookmarkRows) { row in
+                        Button {
+                            onSelectEvent(row.eventID)
+                        } label: {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "bookmark.fill")
+                                    .font(.callout)
+                                    .foregroundStyle(.orange)
+                                    .padding(.top, 1)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                        Text(verbatim: row.sender)
+                                            .font(.callout.weight(.semibold))
+                                            .lineLimit(1)
+                                        Spacer(minLength: 4)
+                                        Text(verbatim: ChatInfoPresentation.bookmarkDateText(ts: row.ts, now: now()))
+                                            .font(.callout)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                    Text(verbatim: row.snippet)
+                                        .font(.callout)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                }
                             }
-                            Spacer(minLength: 0)
+                            .contentShape(Rectangle())
                         }
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .help(String(localized: "Jump to this message"))
+                        .chatInfoRowProbe("bookmark:\(row.sender):\(row.snippet)")
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
     }
 
-    // MARK: - Security & Disappearing Messages
+    // MARK: - Contact Section
+
+    private var contactSection: some View {
+        ChatInfoSection(
+            title: String(localized: "Contact"),
+            count: nil,
+            isExpanded: $contactExpanded
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(ChatInfoPresentation.contactRows(for: directOtherMember)) { row in
+                    ChatInfoContactRowView(row: row)
+                }
+                // The chat's name on this Mac only: the inbox, the header and the notifications all show it.
+                Button(action: onEditTitleAndAvatar) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "pencil")
+                            .foregroundStyle(.secondary)
+                        Text(String(localized: "Edit name…"))
+                    }
+                    .font(.callout.weight(.medium))
+                }
+                .buttonStyle(.routineLink)
+                .help(String(localized: "Give this person a name of your own. It is kept on this Mac only."))
+            }
+        }
+    }
+
+    // MARK: - Privacy: encryption and disappearing messages
 
     private var disappearingSummary: String {
         let ms = info.disappearingMS > 0
@@ -788,163 +720,169 @@ public struct ChatInfoPane: View {
         return VitruvianCourierCore.MessageActions.duration(ms)
     }
 
-    private var securityAndTimerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Divider()
-            HStack(spacing: 8) {
-                Image(systemName: info.encrypted ? "lock.fill" : "lock.open")
-                    .foregroundStyle(info.encrypted ? .green : .secondary)
-                    .frame(width: 16)
-                Text(info.encrypted ? String(localized: "Encrypted") : String(localized: "Not end-to-end encrypted"))
-                    .font(.callout)
-                Spacer(minLength: 0)
-            }
+    private var showsDisappearing: Bool {
+        info.features.disappearing != nil || info.disappearingMS > 0 || info.features.currentTimer != nil
+    }
 
-            if info.features.disappearing != nil || info.disappearingMS > 0 || info.features.currentTimer != nil {
-                HStack(spacing: 8) {
-                    Image(systemName: "timer")
-                        .foregroundStyle(.secondary)
+    private var privacySection: some View {
+        let encryption = ChatEncryption.of(info)
+        return ChatInfoSection(title: String(localized: "Privacy"), count: nil, isExpanded: nil) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: encryption.symbolName)
+                        .foregroundStyle(encryption.isEndToEnd ? Color.green : Color.secondary)
                         .frame(width: 16)
-                    Text(String(localized: "Disappearing Messages"))
-                        .font(.callout)
-                    Spacer(minLength: 4)
-                    if !timerChoices.isEmpty {
-                        Menu(disappearingSummary) {
-                            DisappearingItems(choices: timerChoices, set: onSelectTimer)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(encryption.title)
+                            .font(.body)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let note = encryption.note {
+                            Text(note)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        .menuStyle(.borderlessButton)
-                        .fixedSize()
-                    } else {
-                        Text(disappearingSummary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
                 }
-            }
+                .accessibilityElement(children: .combine)
+                .chatInfoRowProbe("encryption:\(encryption.title)")
 
-            if let readAloud {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "speaker.wave.2")
-                            .foregroundStyle(.secondary)
-                            .frame(width: 16)
-                        Text(String(localized: "Read Aloud on Vitruvian Speaker"))
-                            .font(.callout)
-                            .lineLimit(1)
-                            .layoutPriority(1)
-                    }
-                    // On its own line under the title, so the title never wraps mid-word in the narrow pane.
-                    HStack(spacing: 8) {
-                        Spacer().frame(width: 16)
-                        Picker(
-                            String(localized: "Read Aloud on Vitruvian Speaker"),
-                            selection: Binding(get: { readAloud }, set: onSelectReadAloud)
-                        ) {
-                            ForEach(ChatReadAloud.settable, id: \.rawValue) { choice in
-                                Text(choice.displayTitle).tag(choice)
+                if showsDisappearing {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "timer")
+                                .foregroundStyle(.secondary)
+                                .frame(width: 16)
+                            Text(String(localized: "Disappearing Messages"))
+                                .font(.body)
+                            Spacer(minLength: 4)
+                            if !timerChoices.isEmpty {
+                                Menu(disappearingSummary) {
+                                    DisappearingItems(choices: timerChoices, set: onSelectTimer)
+                                }
+                                .menuStyle(.borderlessButton)
+                                .fixedSize()
+                            } else {
+                                Text(disappearingSummary)
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
                             }
                         }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                        .fixedSize()
+                        Text(ChatInfoPresentation.disappearingExplanation)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 24)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    Text(String(localized: "Muted chats are never read aloud."))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, 24)
                 }
             }
         }
     }
 
-    // MARK: - Actions Section (Reload & Export Chat)
+    // MARK: - Read Aloud
 
-    private var actionsSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Divider()
-            if let onSummarizeChat {
-                Button(action: {
-                    if isAIAvailable {
-                        onSummarizeChat()
-                    } else {
-                        onOpenAISettings?()
+    @ViewBuilder
+    private var readAloudSection: some View {
+        if let readAloud {
+            ChatInfoSection(
+                title: String(localized: "Read Aloud on Vitruvian Speaker"), count: nil, isExpanded: nil
+            ) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Picker(
+                        String(localized: "Read Aloud on Vitruvian Speaker"),
+                        selection: Binding(get: { readAloud }, set: onSelectReadAloud)
+                    ) {
+                        ForEach(ChatReadAloud.settable, id: \.rawValue) { choice in
+                            Text(choice.displayTitle).tag(choice)
+                        }
                     }
-                }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "text.redaction")
-                            .frame(width: 16)
-                        Text(String(localized: "Summarize Chat"))
-                            .font(.callout)
-                            .foregroundStyle(isAIAvailable ? .primary : .secondary)
-                        Spacer(minLength: 0)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(!isAIAvailable && onOpenAISettings == nil)
-                .help(isAIAvailable ? "" : String(localized: "Set up AI in Settings"))
-            }
-
-            Button(action: onRefresh) {
-                HStack(spacing: 8) {
-                    Image(systemName: "arrow.clockwise")
-                        .frame(width: 16)
-                    Text(String(localized: "Reload Chat Details"))
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                    Text(readAloud.explanation)
                         .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    // MARK: - Tools
+
+    private var toolsSection: some View {
+        ChatInfoSection(title: String(localized: "Tools"), count: nil, isExpanded: nil) {
+            VStack(alignment: .leading, spacing: 8) {
+                if let onSummarizeChat {
+                    toolButton(
+                        symbol: "text.redaction", title: String(localized: "Summarize Chat"),
+                        dimmed: !isAIAvailable
+                    ) {
+                        if isAIAvailable {
+                            onSummarizeChat()
+                        } else {
+                            onOpenAISettings?()
+                        }
+                    }
+                    .disabled(!isAIAvailable && onOpenAISettings == nil)
+                    .help(isAIAvailable ? "" : String(localized: "Set up AI in Settings"))
+                }
+
+                toolButton(symbol: "paintpalette", title: String(localized: "Chat Theme…")) {
+                    openWindow(
+                        id: WindowID.chatTheme,
+                        value: ChatThemeWindowTarget(roomID: info.roomID, chatTitle: info.name)
+                    )
+                }
+
+                toolButton(symbol: "square.and.arrow.up", title: String(localized: "Export Chat…"), action: promptExportChat)
+
+                // The repair tools, out of the way.
+                HStack(spacing: 6) {
                     Spacer(minLength: 0)
                     if isRefreshing {
                         ProgressView()
                             .controlSize(.small)
                     }
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(isRefreshing)
-
-            if info.isDirect, let onMergeChat {
-                Button(action: onMergeChat) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "arrow.triangle.merge")
-                            .frame(width: 16)
-                        Text(String(localized: "Merge with Another Chat…"))
-                            .font(.callout)
-                        Spacer(minLength: 0)
+                    Menu {
+                        Button(action: onRefresh) {
+                            Label(String(localized: "Reload Chat Details"), systemImage: "arrow.clockwise")
+                        }
+                        .disabled(isRefreshing)
+                        if info.isDirect, let onMergeChat {
+                            Button(action: onMergeChat) {
+                                Label(String(localized: "Merge with Another Chat…"), systemImage: "arrow.triangle.merge")
+                            }
+                        }
+                    } label: {
+                        Label(String(localized: "More"), systemImage: "ellipsis.circle")
+                            .font(.callout.weight(.medium))
                     }
-                    .contentShape(Rectangle())
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .accessibilityLabel(String(localized: "More"))
+                    .accessibilityIdentifier("chat-info-more")
+                    .help(String(localized: "More: Reload Chat Details, Merge with Another Chat…"))
                 }
-                .buttonStyle(.plain)
             }
-
-            Button(action: {
-                openWindow(
-                    id: WindowID.chatTheme,
-                    value: ChatThemeWindowTarget(roomID: info.roomID, chatTitle: info.name)
-                )
-            }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "paintpalette")
-                        .frame(width: 16)
-                    Text(String(localized: "Chat Theme…"))
-                        .font(.callout)
-                    Spacer(minLength: 0)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            Button(action: promptExportChat) {
-                HStack(spacing: 8) {
-                    Image(systemName: "square.and.arrow.up")
-                        .frame(width: 16)
-                    Text(String(localized: "Export Chat…"))
-                        .font(.callout)
-                    Spacer(minLength: 0)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
         }
+    }
+
+    private func toolButton(
+        symbol: String, title: String, dimmed: Bool = false, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .frame(width: 16)
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(dimmed ? .secondary : .primary)
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Destructive Actions Section
@@ -1022,61 +960,195 @@ public struct ChatInfoPane: View {
 
 // MARK: - Supporting Views
 
+/// A topic of Chat Info in a rounded box with its name above it. With `isExpanded` the box folds up from its title;
+/// without, it stays open.
 private struct ChatInfoSection<Content: View>: View {
     let title: String
     /// The number in the badge by the title; nil for a section with nothing to count (Notes).
     let count: Int?
-    @Binding var isExpanded: Bool
+    let isExpanded: Binding<Bool>?
     var onSeeAll: (() -> Void)? = nil
+    var seeAllTitle: String = String(localized: "See All")
     @ViewBuilder let content: () -> Content
 
+    private var open: Bool { isExpanded?.wrappedValue ?? true }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Divider()
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
-                Button {
-                    isExpanded.toggle()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 10)
-                        Text(title)
-                            .font(.subheadline.weight(.semibold))
-                        if let count {
-                            Text(verbatim: "\(count)")
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(Capsule().fill(Color.primary.opacity(0.08)))
-                        }
-                        Spacer(minLength: 0)
+                if let isExpanded {
+                    Button {
+                        isExpanded.wrappedValue.toggle()
+                    } label: {
+                        titleRow(showsChevron: true)
                     }
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(title)
+                    .accessibilityValue(open ? String(localized: "Expanded") : String(localized: "Collapsed"))
+                } else {
+                    titleRow(showsChevron: false)
                 }
-                .buttonStyle(.plain)
 
                 if let onSeeAll {
                     Button(action: onSeeAll) {
                         HStack(spacing: 3) {
-                            Text(String(localized: "See All"))
+                            Text(seeAllTitle)
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 8, weight: .semibold))
                                 .foregroundStyle(.secondary)
                         }
-                        .font(.caption.weight(.medium))
+                        .font(.callout.weight(.medium))
                     }
                     .buttonStyle(.routineLink)
                 }
             }
 
-            if isExpanded {
+            if open {
                 content()
-                    .padding(.leading, 4)
             }
         }
+        .padding(ChatInfoBoxMetrics.padding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: ChatInfoBoxMetrics.cornerRadius, style: .continuous)
+                .fill(Color.primary.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: ChatInfoBoxMetrics.cornerRadius, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+        )
+    }
+
+    private func titleRow(showsChevron: Bool) -> some View {
+        HStack(spacing: 6) {
+            if showsChevron {
+                Image(systemName: open ? "chevron.down" : "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 10)
+            }
+            Text(title)
+                .font(.callout.weight(.semibold))
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+            if let count {
+                Text(verbatim: "\(count)")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color.primary.opacity(0.08)))
+            }
+            Spacer(minLength: 0)
+        }
+        .contentShape(Rectangle())
+    }
+}
+
+/// The one padding and corner every Chat Info box shares.
+private enum ChatInfoBoxMetrics {
+    static let padding: CGFloat = 12
+    static let cornerRadius: CGFloat = 10
+}
+
+/// What an empty box says, in the same secondary type as the rest of the pane.
+private struct ChatInfoEmptyLine: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .chatInfoRowProbe("empty:\(text)")
+    }
+}
+
+/// One of the Contact box's lines: what it is and its value, which a click copies.
+private struct ChatInfoContactRowView: View {
+    let row: ChatContactRow
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(row.value, forType: .string)
+            copied = true
+            Task {
+                try? await Task.sleep(for: .seconds(1.5))
+                copied = false
+            }
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(row.label)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 52, alignment: .leading)
+                Text(verbatim: row.value)
+                    .font(.body)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 4)
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(copied ? String(localized: "Copied") : String(localized: "Copy \(row.label)"))
+        .accessibilityLabel(String(localized: "\(row.label): \(row.value)"))
+        .accessibilityHint(String(localized: "Copies it"))
+        .chatInfoRowProbe("contact:\(row.label)=\(row.value)")
+    }
+}
+
+/// A link in the Shared box: a card with the site's icon, the page's title and the site.
+private struct ChatInfoLinkTile: View {
+    let link: RoomLink
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 4) {
+                Image(systemName: link.cardSymbolName)
+                    .font(.title3)
+                    .foregroundStyle(link.isMapsLink ? Color.red : Color.secondary)
+                Spacer(minLength: 0)
+                Text(verbatim: link.cardTitle)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+                // The site under a title that is not the site already.
+                if link.cardTitle != link.displayDomain {
+                    Text(verbatim: link.displayDomain)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(8)
+            .aspectRatio(1, contentMode: .fit)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.07)))
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .help(link.url)
+        .contextMenu {
+            Button(String(localized: "Open Link")) {
+                if let url = URL(string: link.url) { NSWorkspace.shared.open(url) }
+            }
+            Button(String(localized: "Copy Link")) {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(link.url, forType: .string)
+            }
+        }
+        .accessibilityLabel(String(localized: "Link: \(link.cardTitle), \(link.displayDomain)"))
+        .chatInfoRowProbe("link:\(link.url)")
     }
 }
 
@@ -1167,14 +1239,14 @@ struct ChatInfoNotesField: View {
         VStack(alignment: .leading, spacing: 4) {
             TextField(String(localized: "Notes"), text: text, axis: .vertical)
             .textFieldStyle(.plain)
-            .font(.callout)
+            .font(.body)
             .lineLimit(3...10)
             .padding(8)
             .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06)))
             .accessibilityIdentifier("chat-info-notes")
             .chatInfoRowProbe("notes:\(store.note(for: roomID))")
             Text(String(localized: "Only you can see this. It stays on this Mac."))
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
         }
         .onChange(of: roomID) { _, _ in store.flush() }
@@ -1288,35 +1360,54 @@ private struct ChatInfoChipFlow: Layout {
     }
 }
 
-/// Chat Info's Notification sound: this chat's own alert sound, or Default for the usual one.
+/// Chat Info's Notifications box: this chat's own alert sound, or Default for the usual one, and what that means.
 struct ChatInfoSoundRow: View {
     let roomID: String
     @ObservedObject var preferences: NotificationPreferences
+    /// What the chat is, to name the sound Default stands for. Without them Default is shown as it is.
+    var isDirect: Bool = true
+    var network: String = ""
+    var accountID: String = ""
 
     static func title(_ choice: NotificationSoundChoice) -> String {
         choice == .default ? String(localized: "Default") : NotificationsSettingsPane.soundLabel(choice)
     }
 
+    private var chosen: NotificationSoundChoice { preferences.chatSound(for: roomID) ?? .default }
+
+    private var resolvedDefault: NotificationSoundChoice {
+        preferences.defaultSound(isDirect: isDirect, network: network, accountID: accountID)
+    }
+
+    /// The picker's names: "Default (Pop)" says which sound Default is now.
+    func pickerTitle(_ choice: NotificationSoundChoice) -> String {
+        ChatInfoPresentation.soundPickerTitle(
+            choice, resolvedDefault: resolvedDefault, name: NotificationsSettingsPane.soundLabel
+        )
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Divider()
-            // The info pane can be narrow: keep the label whole and move the picker under it when both don't fit.
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) {
-                    soundLabel
-                    Spacer(minLength: 4)
-                    soundPicker
+        ChatInfoSection(title: String(localized: "Notifications"), count: nil, isExpanded: nil) {
+            VStack(alignment: .leading, spacing: 4) {
+                // The info pane can be narrow: keep the label whole and move the picker under it when both don't fit.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        soundLabel
+                        Spacer(minLength: 4)
+                        soundPicker
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        soundLabel
+                        soundPicker
+                            .padding(.leading, 24)
+                    }
                 }
-                VStack(alignment: .leading, spacing: 4) {
-                    soundLabel
-                    soundPicker
-                        .padding(.leading, 24)
-                }
+                Text(ChatInfoPresentation.soundExplanation(chosen: chosen))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 24)
             }
-            Text(String(localized: "Muted chats stay silent."))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.leading, 24)
         }
         .accessibilityIdentifier("chat-info-sound")
         .chatInfoRowProbe("sound:\(preferences.chatSound(for: roomID)?.rawValue ?? "default")")
@@ -1328,7 +1419,7 @@ struct ChatInfoSoundRow: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 16)
             Text(String(localized: "Notification sound"))
-                .font(.callout)
+                .font(.body)
                 .lineLimit(1)
                 .fixedSize()
         }
@@ -1338,12 +1429,12 @@ struct ChatInfoSoundRow: View {
         Picker(
             String(localized: "Notification sound"),
             selection: Binding(
-                get: { preferences.chatSound(for: roomID) ?? .default },
+                get: { chosen },
                 set: { preferences.setChatSound($0, for: roomID) }
             )
         ) {
             ForEach(NotificationSoundChoice.allCases, id: \.self) { choice in
-                Text(Self.title(choice)).tag(choice)
+                Text(pickerTitle(choice)).tag(choice)
             }
         }
         .labelsHidden()
@@ -1403,6 +1494,8 @@ private struct ChatInfoQuickActionsRow: View {
                 title: String(localized: "Archive"),
                 action: onArchive
             )
+            // Remind… asks for a time, so it is "Remind…" to the pointer and to VoiceOver; the label under the icon is
+            // "Remind", which is as short as its neighbours and fits the narrowest pane.
             ChatInfoQuickActionButton(
                 symbol: "alarm",
                 title: String(localized: "Remind…"),
@@ -1477,8 +1570,20 @@ private struct QuickActionWindowRectProbe: NSViewRepresentable {
     }
 }
 
+/// The type of the five quick-action labels: one size for all, so no label is smaller than its neighbours.
+enum ChatInfoQuickActionMetrics {
+    static let labelFont = Font.caption
+
+    /// What is written under the icon for a button called `title`. "Remind…" asks for a time, so to the pointer and to
+    /// VoiceOver it keeps its ellipsis; under the icon it is "Remind", as short as its neighbours.
+    static func visibleLabel(for title: String) -> String {
+        title == String(localized: "Remind…") ? String(localized: "Remind") : title
+    }
+}
+
 private struct ChatInfoQuickActionButton: View {
     let symbol: String
+    /// What the button is called to the pointer (its help), to VoiceOver and to tests.
     let title: String
     let action: () -> Void
     @Environment(\.chatInfoQuickActionProbe) private var quickActionProbe
@@ -1491,8 +1596,8 @@ private struct ChatInfoQuickActionButton: View {
                     .font(.system(size: 15))
                     .foregroundStyle(.primary)
                     .frame(height: 18)
-                Text(title)
-                    .font(.caption2)
+                Text(ChatInfoQuickActionMetrics.visibleLabel(for: title))
+                    .font(ChatInfoQuickActionMetrics.labelFont)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)

@@ -76,7 +76,6 @@ struct ConversationView: View {
                     isMuted: inbox.row(of: info.roomID)?.muted ?? false,
                     isPinned: inbox.row(of: info.roomID)?.pinned ?? false,
                     showsCloseButton: true,
-                    focusSearchTrigger: conversation.focusChatInfoSearchRequest,
                     now: { conversation.currentTime },
                     timerChoices: conversation.timerChoices,
                     onSelectTimer: { choice in Task { await conversation.setTimer(choice) } },

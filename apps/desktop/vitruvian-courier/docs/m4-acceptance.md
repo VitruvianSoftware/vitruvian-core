@@ -910,13 +910,13 @@ These are registered in Vitruvian Courier for the command bar (⌘J), which part
 - `command` Create new chat: opened by File ▸ New Chat… (⌘N).
 - `command` Create new group: registered as "New group or blast chat" (⌘⇧N) and in File ▸ New Group or Blast….
 - `command` Merge chats: opened by "Merge with Another Chat…" / "Edit Merged Chat…" in the chat menu and Chat Info.
-- Vitruvian Courier also registers "Toggle chat info" (⌘⇧I), "Search in chat info" (no shortcut), "Jump to date in chat" (⌘⌥K), and "Show sender profile" (⌘⇧O) in `CommandSet.chatInfo`.
+- Vitruvian Courier also registers "Toggle chat info" (⌘⇧I), "Jump to date in chat" (⌘⌥K), and "Show sender profile" (⌘⇧O) in `CommandSet.chatInfo`.
 
 ### How it behaves
 
 Not failures. Do not report these as bugs.
 
-- Toggle Chat Info is ⌘⇧I so that ⌘I stays Italic in the message box. "Search in chat info" has no keyboard shortcut; use the "Filter chat info…" field at the top of Chat Info.
+- Toggle Chat Info is ⌘⇧I so that ⌘I stays Italic in the message box. Chat Info has no filter field; use the Search quick action at the top of Chat Info to find messages.
 - ⌘L stays Remind Me. In a merged chat, switch the reply network by clicking the "Replying via" pill in the message box.
 - A "Just for Me" name or picture is stored on this Mac only and always wins over the network’s name and picture in the inbox, header, Chat Info and search. If someone renames the chat on the network while your override is set, your name stays on screen and the new network name is saved underneath; clicking "Reset to network name" in Edit Chat / Edit Group brings back the latest network name.
 - "Export Chat…" saves the messages already stored on this Mac in chronological plain text (`[YYYY-MM-DD HH:MM:SS UTC] Sender: Body`) to the file you choose in the Save panel (its default filename ends in `.txt`), and shows a toast "Exported N messages". It never fetches from the network or sends anything out.

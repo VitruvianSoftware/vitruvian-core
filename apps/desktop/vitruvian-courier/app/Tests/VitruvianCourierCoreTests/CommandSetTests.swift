@@ -439,7 +439,7 @@ final class CommandSetTests: XCTestCase {
 
         XCTAssertNotNil(byID["conversation.toggleChatInfo"])
         XCTAssertEqual(byID["conversation.toggleChatInfo"]?.keys, "⌘⇧I")
-        XCTAssertNil(byID["conversation.searchChatInfo"]?.keys)
+        XCTAssertNil(byID["conversation.searchChatInfo"], "Chat Info has no filter field to search")
         XCTAssertEqual(byID["conversation.toggleCalendar"]?.keys, "⌘⌥K")
         XCTAssertEqual(byID["conversation.showSenderCard"]?.keys, "⌘⇧O")
         XCTAssertEqual(byID["inbox.newGroupOrBlast"]?.keys, "⌘⇧N")
