@@ -23,7 +23,7 @@
 # vitruvian-relay-image run's summary. The connector's compiled-in defaults
 # must match this file (test defaults_match_relay_stack).
 image:
-  digest: "e4040bf1dda6760f6871b0235295a0a0cb3b3043@sha256:5b96c269fd0a40a09db7df79743eadbd12f8bced02c74996e5839637bfd0c3e0"
+  digest: "d9e7f240f8909e580ce1b0221dfb81a9347cf293@sha256:dca266363200defaec5e00acddd073ef7352405e02c2836fbcb9cbf27964556e"
 # From the zitadel-apps-relay stack's outputs (zitadel-apps-relay-apply run).
 oidc:
   projectId: "398912441632687930"
