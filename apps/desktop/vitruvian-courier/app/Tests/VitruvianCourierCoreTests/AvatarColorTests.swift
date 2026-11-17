@@ -58,6 +58,28 @@ final class AvatarColorTests: XCTestCase {
         XCTAssertEqual(botOnly.avatarIdentity, "!dm:example.test")
     }
 
+    /// The counterpart is the one joined human who is not me; with two humans or none there is no single person, so the
+    /// row, the header and chat info all fall back to the room ID (never "whoever spoke last", never the first listed).
+    func testMoreThanOneHumanOrNoHumanFallsBackToTheRoomIDInRowAndChatInfo() {
+        let room = "!dm:example.test"
+        let two = [RowMember(userID: "@ann:example.test", name: "Ann"), RowMember(userID: "@bo:example.test", name: "Bo")]
+        XCTAssertEqual(row(roomID: room, name: "Ann", peer: two).avatarIdentity, room, "row, two humans")
+        XCTAssertEqual(row(roomID: room, name: "Ann", peer: []).avatarIdentity, room, "row, no human")
+        XCTAssertEqual(row(roomID: room, name: "Ann", peer: [two[0]]).avatarIdentity, "@ann:example.test", "row, one human")
+
+        let me = Member(userID: Timeline.meUserID, name: "Me")
+        let ann = Member(userID: "@ann:example.test", name: "Ann")
+        let bo = Member(userID: "@bo:example.test", name: "Bo")
+        XCTAssertEqual(info(roomID: room, name: "Ann", members: [me, ann, bo]).avatarIdentity, room, "chat info, two humans")
+        XCTAssertEqual(info(roomID: room, name: "Ann", members: [me]).avatarIdentity, room, "chat info, no human")
+        XCTAssertEqual(info(roomID: room, name: "Ann", members: [me, ann]).avatarIdentity, "@ann:example.test")
+        XCTAssertEqual(info(roomID: room, name: "Ann", members: [me, ann, Member(userID: "@robot:x", name: "R", isBot: true)]).avatarIdentity,
+                       "@ann:example.test", "a bot profile is not a person")
+        // The same member listed first or last, or the order they spoke in, changes nothing.
+        XCTAssertEqual(info(roomID: room, name: "Ann", members: [bo, me, ann]).avatarIdentity, room)
+        XCTAssertEqual(EditGroupDraft(info: info(roomID: room, name: "Ann", members: [me, ann, bo])).avatarIdentity, room)
+    }
+
     func testTheEditSheetDraftColoursAChatTheSameAsItsRow() {
         let chatInfo = info(roomID: "!dm:example.test", name: "Toan", members: [
             Member(userID: Timeline.meUserID, name: "Me"), Member(userID: "@toan:example.test", name: "Toan"),

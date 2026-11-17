@@ -31,21 +31,27 @@ public enum AvatarColor {
         id.isEmpty ? fallbackName : id
     }
 
-    /// The other person in a one-to-one chat, from a room's members: the one who is not me, not a bridge bot and not
-    /// a bot profile. "" when there is not exactly one such person's ID to name.
+    /// The other person in a one-to-one chat: the one joined human who is not me, given the candidates already
+    /// narrowed to humans other than me (the row's `members_preview`, or chat info's members minus me, bridge bots
+    /// and bot profiles). Exactly one names them; none, or more than one (so "whoever spoke last" never decides),
+    /// gives "" and the chat falls back to its room ID. Row, header, chat info and the edit sheet all use this.
+    static func soleCounterpartID(among userIDs: [String]) -> String {
+        let people = Set(userIDs.filter { !$0.isEmpty && $0 != Timeline.meUserID })
+        return people.count == 1 ? people.first ?? "" : ""
+    }
+
+    /// `soleCounterpartID` for a room's member list: leaves out me, the network's bridge bot and bot profiles.
     static func counterpartID(in members: [Member], network: String) -> String {
         let bridgeBot = "@\(network)bot:"
-        let others = members.filter {
-            $0.userID != Timeline.meUserID && !$0.isBot && !$0.userID.hasPrefix(bridgeBot) && !$0.userID.isEmpty
-        }
-        return others.first?.userID ?? ""
+        return soleCounterpartID(among: members.filter { !$0.isBot && !$0.userID.hasPrefix(bridgeBot) }.map(\.userID))
     }
 }
 
 extension InboxRow {
-    /// The other person in a one-to-one chat, by user ID: the engine's `members_preview` for the row holds them (it
-    /// leaves out me and bridge bots). "" for a group, or until the engine has said who.
-    public var directPeerID: String { isDirect ? memberPreview.first?.userID ?? "" : "" }
+    /// The other person in a one-to-one chat, by user ID: the engine's `members_preview` for the row holds the
+    /// joined humans other than me (it leaves out bridge and service bots). "" for a group, when there is not exactly
+    /// one such person, or until the engine has said.
+    public var directPeerID: String { isDirect ? AvatarColor.soleCounterpartID(among: memberPreview.map(\.userID)) : "" }
 
     /// What the row's initials avatar is coloured by. A one-to-one chat is coloured by the other person's user ID, so
     /// they have one colour in the inbox, the header, chat info, beside group messages and in member lists; the

@@ -75,6 +75,10 @@ func (s *Store) MemberPreviews(ctx context.Context, roomIDs []string) (map[strin
 	if err != nil {
 		return nil, err
 	}
+	functional, err := s.functionalMembers(ctx, string(list))
+	if err != nil {
+		return nil, err
+	}
 	rows, err := s.db.Query(ctx, memberPreviewsSQL, string(list))
 	if err != nil {
 		return nil, err
@@ -103,7 +107,8 @@ func (s *Store) MemberPreviews(ctx context.Context, roomIDs []string) (map[strin
 			userID == string(ids.Me),
 			userID == "@"+network+"bot:"+ids.ServerName,
 			isBot != 0,
-			selfGhosts[userID]:
+			selfGhosts[userID],
+			functional[roomID][userID]:
 			continue
 		}
 		byRoom[roomID] = append(byRoom[roomID], candidate{
@@ -139,6 +144,45 @@ func (s *Store) MemberPreviews(ctx context.Context, roomIDs []string) (map[strin
 		out[roomID] = members
 	}
 	return out, nil
+}
+
+// functionalMembersSQL reads the io.element.functional_members state of every chat in $1 (a JSON array of room IDs),
+// by the state primary key.
+const functionalMembersSQL = `SELECT s.room_id, s.content FROM state s
+WHERE s.type = 'io.element.functional_members' AND s.state_key = '' AND s.room_id IN (SELECT value FROM json_each($1))`
+
+// functionalMembers is, for each chat in roomIDsJSON, the service members it lists in io.element.functional_members
+// (bridge service bots that are not flagged as bots), which RoomMembers (Chat Info) leaves out too, so a chat's row
+// and its Chat Info name the same other person. One query for all the chats.
+func (s *Store) functionalMembers(ctx context.Context, roomIDsJSON string) (map[string]map[string]bool, error) {
+	rows, err := s.db.Query(ctx, functionalMembersSQL, roomIDsJSON)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]map[string]bool{}
+	for rows.Next() {
+		var roomID, content string
+		if err := rows.Scan(&roomID, &content); err != nil {
+			return nil, err
+		}
+		var fm struct {
+			ServiceMembers []string `json:"service_members"`
+		}
+		if json.Unmarshal([]byte(content), &fm) != nil {
+			continue
+		}
+		for _, sm := range fm.ServiceMembers {
+			if sm == "" {
+				continue
+			}
+			if out[roomID] == nil {
+				out[roomID] = map[string]bool{}
+			}
+			out[roomID][sm] = true
+		}
+	}
+	return out, rows.Err()
 }
 
 // boolCompare orders false before true.
