@@ -592,8 +592,13 @@ pub fn render_presubmit_workflow(
         b.push_str(&pin("actions/checkout")?);
         b.push('\n');
         b.push_str("        with:\n");
-        b.push_str("          persist-credentials: false\n");
-        b.push_str("          fetch-depth: 0\n\n");
+        // No fetch-depth: a unit builds and tests the commit it is given and
+        // never reads history, so it takes the default one-commit clone. Only
+        // the plan job diffs against a base. Measured on one commit
+        // (2026-11-17, three clones each): full history took 15-16 s on
+        // hosted Linux and 21-32 s on hosted Macs, one commit 7-10 s and
+        // 10-12 s. On the queue runners the full clone was a median 42 s.
+        b.push_str("          persist-credentials: false\n\n");
 
         if !is_mac_runner(&u.runner) {
             b.push_str("      - name: Free up runner disk space\n");
