@@ -69,12 +69,11 @@ public final class ChatNotesStore: ObservableObject {
     ///   - fileURL: where the notes are kept; nil keeps them in memory only.
     ///   - schedule: how the pause before a write, and the retry, are timed.
     ///   - notificationCenter: where the app's quit is announced; the store writes what is waiting, then.
-    public init(fileURL: URL?, saveDelay: Duration = ChatNotesStore.defaultSaveDelay,
-                schedule: @escaping Scheduler = ChatNotesStore.sleepingScheduler,
+    public init(fileURL: URL?, saveDelay: Duration? = nil, schedule: Scheduler? = nil,
                 notificationCenter: NotificationCenter = .default) {
         self.fileURL = fileURL
-        self.saveDelay = saveDelay
-        self.schedule = schedule
+        self.saveDelay = saveDelay ?? Self.defaultSaveDelay
+        self.schedule = schedule ?? Self.sleepingScheduler
         self.center = notificationCenter
         quitObserver = notificationCenter.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
