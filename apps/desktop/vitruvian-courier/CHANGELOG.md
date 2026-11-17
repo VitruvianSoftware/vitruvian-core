@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.25](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.24...vitruvian-courier-v0.3.25) (2026-11-17)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** clearer search: where each result is, highlighted matches, readable filters, search-this-chat hint ([#4970](https://github.com/VitruvianSoftware/vitruvian-core/issues/4970)) ([b2a7a9b](https://github.com/VitruvianSoftware/vitruvian-core/commit/b2a7a9beb3ca0ca049c820bb5d1f0b185c532e08))
+* **vitruvian-courier:** clearer Settings: switches that read on or off, no stray red, roomier notifications, icon sidebar ([#4969](https://github.com/VitruvianSoftware/vitruvian-core/issues/4969)) ([43e7842](https://github.com/VitruvianSoftware/vitruvian-core/commit/43e78423062595292acf245cf3ae894fc830274e))
+* **vitruvian-courier:** fit the Settings account card: "10 accounts", not a cut-off "10 accounts connec…" ([#4989](https://github.com/VitruvianSoftware/vitruvian-core/issues/4989)) ([0b46bf4](https://github.com/VitruvianSoftware/vitruvian-core/commit/0b46bf464e619e4295a5c95d27547b7e8b91b36f))
+* **vitruvian-courier:** full names without network tags, steady hover Archive, number-only senders to Low Priority, codes always notify ([#4971](https://github.com/VitruvianSoftware/vitruvian-core/issues/4971)) ([049f97c](https://github.com/VitruvianSoftware/vitruvian-core/commit/049f97c368549526c7cc16e9ef0a1d73f2b9f5cc))
+* **vitruvian-courier:** Google Chat link cards, one compact YouTube card, avatar once per run, readable sender names ([#4972](https://github.com/VitruvianSoftware/vitruvian-core/issues/4972)) ([2dcfa45](https://github.com/VitruvianSoftware/vitruvian-core/commit/2dcfa456da2aeaa97b0943fd22e1dfb636d7f934))
+* **vitruvian-courier:** tidy the message right-click menu into five sections ([#4966](https://github.com/VitruvianSoftware/vitruvian-core/issues/4966)) ([53a0564](https://github.com/VitruvianSoftware/vitruvian-core/commit/53a0564b7d05c42c99ec3b70cebd49113a29d815))
+
 ## [0.3.24](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.23...vitruvian-courier-v0.3.24) (2026-11-16)
 
 
