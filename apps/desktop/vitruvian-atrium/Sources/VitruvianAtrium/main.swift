@@ -27,7 +27,7 @@ if let command = SettingsBackupSupport.command(in: CommandLine.arguments) {
 
 SuperKeyMappingGuard.runIfRequestedAndExit()
 Defaults.register()
-// The optional read-only settings file (~/.config/vitruvian/settings.plist)
+// The optional read-only settings file (~/.config/vitruvian-atrium/settings.plist)
 // overlays its keys after defaults register and migrations run, so a
 // migration cannot copy a declared value into a key the file leaves out.
 // Only a plain launch reads it. Top-level code runs on the main thread.

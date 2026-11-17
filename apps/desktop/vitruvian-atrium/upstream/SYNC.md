@@ -99,7 +99,11 @@ upstream commits piled up. Work like this instead:
 8. After it merges, run `bazel run //tools/pipeline-status -- <sha>` for the
    squashed commit, then `status` again. If anything is untriaged or pending,
    go back to step 3 (or 4) and port the next batch. Stop only when nothing is
-   left.
+   left. Start each batch from the latest `main`, after the previous batch's
+   pull request has merged: never stack a batch branch on another unmerged
+   one. A stacked branch has to merge `main` back in file by file once the
+   one below it squashes, and there is no target for `git merge-file`, so
+   each of those merges is resolved by hand and can silently revert a fix.
 9. Report the pull requests merged, the upstream commit the fork is now caught up
    with, anything skipped or left pending and why, and anything a maintainer must
    decide.

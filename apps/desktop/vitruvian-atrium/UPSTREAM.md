@@ -139,6 +139,9 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-11-17**: The optional read-only settings file moves from `~/.config/vitruvian/settings.plist` to `~/.config/vitruvian-atrium/settings.plist` (the Developer build's from `vitruvian-dev/` to `vitruvian-atrium-dev/`), so the folder names this app rather than the whole Vitruvian family. It shipped a week earlier and no migration is kept. Upstream files changed:
+  - `Core/SettingsBackupSupport.swift`: `configFileURL` names the folder `vitruvian-atrium` (upstream's is its own brand name). A port that touches this line keeps the fork's name.
+  - `main.swift` and `docs/TROUBLESHOOTING.md`: the path in the comment and the dotfiles guide.
 - **2026-11-09**: The Claude telemetry card now shows the same limits as the Claude app ("Weekly · all models" and per-model weeklies like "Weekly · Fable"), read from the new `limits` list Claude Code reports. Upstream files changed:
   - `Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift`: `limits(_:observed:)` reads the `rate_limits.limits` array when present (including inactive model-scoped weeklies) and merges any remaining legacy window keys in session, all-models weekly, and scoped weekly order.
   - `Sources/Vitruvian/Core/AgentUsage/AgentUsageModels.swift`: `AgentLimitWindow.name` formats Claude weekly windows as `"Weekly · all models"` and `"Weekly · <Model>"`.
