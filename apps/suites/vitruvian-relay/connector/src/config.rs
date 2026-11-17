@@ -162,13 +162,21 @@ mod tests {
         assert!(Arc::ptr_eq(&client_config(), &client_config()));
     }
 
+    /// A scalar as YAML reads it: a quoted value is everything up to its
+    /// closing quote (a `#` inside it is kept); a plain value ends at a
+    /// comment, which YAML only starts after whitespace.
     fn clean(v: &str) -> String {
-        v.split('#')
-            .next()
-            .unwrap()
-            .trim()
-            .trim_matches('"')
-            .to_string()
+        let v = v.trim();
+        for q in ['"', '\''] {
+            if let Some(rest) = v.strip_prefix(q) {
+                return rest.split(q).next().unwrap().to_string();
+            }
+        }
+        let end = v
+            .char_indices()
+            .find(|&(i, c)| c == '#' && i > 0 && v[..i].ends_with(char::is_whitespace))
+            .map_or(v.len(), |(i, _)| i);
+        v[..end].trim().to_string()
     }
 
     /// `key:` under the top-level `section:` of a values file (a flat
@@ -178,6 +186,8 @@ mod tests {
         for line in text.lines() {
             if line.starts_with(&format!("{section}:")) {
                 in_section = true;
+            } else if line.trim_start().starts_with('#') {
+                // A comment, at any indent, neither ends the section nor is a key.
             } else if in_section && !line.starts_with(' ') && !line.trim().is_empty() {
                 in_section = false;
             } else if in_section {
@@ -212,6 +222,15 @@ mod tests {
         assert_eq!(values_entry(t, "oidc", "issuer"), "https://i");
         assert_eq!(find_top(t, "missing"), None);
         assert_eq!(find_entry(t, "oidc", "missing"), None);
+        // Quoted values keep a `#`; single quotes work; a `#` with no space
+        // before it is part of a plain value.
+        let q = "a: \"x # y\"  # note\nb: 'z'\nc: u#v\n";
+        assert_eq!(top_entry(q, "a"), "x # y");
+        assert_eq!(top_entry(q, "b"), "z");
+        assert_eq!(top_entry(q, "c"), "u#v");
+        // A column-0 comment inside a section does not end it.
+        let c = "oidc:\n  a: 1\n# about issuer\n  issuer: https://j\n";
+        assert_eq!(values_entry(c, "oidc", "issuer"), "https://j");
     }
 
     fn runfile_text(rel: &str) -> String {
