@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.9.1...vitruvian-sdk-v1.9.2) (2026-11-17)
+
+
+### Bug Fixes
+
+* **vitruvian-sdk:** call the host app Vitruvian Atrium ([#4997](https://github.com/VitruvianSoftware/vitruvian-core/issues/4997)) ([3776fd4](https://github.com/VitruvianSoftware/vitruvian-core/commit/3776fd42e1be4e94f645365c7032540d63de934d))
+
 ## [1.9.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.9.0...vitruvian-sdk-v1.9.1) (2026-11-13)
 
 
