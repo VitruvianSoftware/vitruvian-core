@@ -47,6 +47,15 @@ provider.
   takes over a rule that already exists. Leaving the list empty leaves the
   user's rules unmanaged. To see the live rules:
   `bazel run //tools/pagerduty:read -- /users/<id>/notification_rules`.
+- **Service dependencies and business services**: `dependencies` says which
+  services need which (`{service: ci, dependsOn: [cluster]}`), and
+  `businessServices` groups services into what people care about ("Vitruvian
+  homelab"). An incident on a supporting service then shows in PagerDuty as
+  affecting everything above it. One `ServiceDependency` per pair, named
+  `dep-<dependent>-on-<supporting>`, so editing one pair touches nothing
+  else. Validation rejects unknown keys, self-dependencies, repeats and
+  cycles before PagerDuty sees them. Both lists are optional; the free plan
+  includes them (no business-service Team, which is Business/Enterprise only).
 - **Escalation policy**: one `EscalationPolicy` with a single rule targeting
   the on-call schedule (whoever is on call), configured with `escalation.delayMinutes` and
   `escalation.loops` (without paid-tier team fields). The free plan allows only

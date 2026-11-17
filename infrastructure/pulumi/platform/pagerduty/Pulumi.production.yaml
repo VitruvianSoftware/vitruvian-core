@@ -60,6 +60,21 @@ config:
     - {urgency: high, type: sms_contact_method, label: Mobile, delayMinutes: 5, adoptId: PEUNHV3}
     - {urgency: high, type: phone_contact_method, label: Mobile, delayMinutes: 10, adoptId: PI3YI7T}
     - {urgency: low, type: push_notification_contact_method, label: Pixel 11 Pro Fold, delayMinutes: 0}
+  # Which services need which, so a cluster incident shows in PagerDuty as
+  # affecting everything that runs on it. Everything here runs in the
+  # dev-local cluster: CI on its self-hosted runners (actions-runner-
+  # controller), Sentry, the databases (CloudNativePG) and the apps. The free
+  # plan includes service dependencies and business services.
+  vitruvian-pagerduty:dependencies:
+    - {service: ci, dependsOn: [cluster]}
+    - {service: sentry, dependsOn: [cluster]}
+    - {service: data, dependsOn: [cluster]}
+    - {service: apps, dependsOn: [cluster]}
+  vitruvian-pagerduty:businessServices:
+    - key: homelab
+      name: Vitruvian homelab
+      description: Everything the dev-local cluster runs, from CI to the apps. Impacted whenever one of its services has an incident.
+      dependsOn: [cluster, data, apps, sentry, ci]
   vitruvian-pagerduty:services:
     - key: sentry
       name: Sentry
