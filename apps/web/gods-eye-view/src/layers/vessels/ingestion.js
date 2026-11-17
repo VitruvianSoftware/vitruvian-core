@@ -49,7 +49,18 @@ export function createIngestion({
   async function loadLivePositions(viewer) {
     // Following the world clock, the layer shows the snapshots loadAt applies.
     if (followsClock()) return;
+    // Back at live, a snapshot at a time still loading no longer applies:
+    // it would hold the live poll back until the next refresh.
+    if (feed.loading && feed.loadingAtTime) dropLoad();
     await loadPositions(viewer);
+  }
+
+  /** Let go of the load in flight, so another can start now. */
+  function dropLoad() {
+    feed.abort?.abort();
+    feed.loading = false;
+    feed.loadingAtTime = false;
+    feed.abort = null;
   }
 
   /**
@@ -63,11 +74,7 @@ export function createIngestion({
   async function loadAt(atMs, { signal = null, replace = false } = {}) {
     // Whatever polls or loads for another time no longer applies: the
     // timeline asks for one time at a time.
-    if (feed.loading) {
-      feed.abort?.abort();
-      feed.loading = false;
-      feed.abort = null;
-    }
+    if (feed.loading) dropLoad();
     return loadPositions(readViewer(), { atMs, replace, signal });
   }
 
@@ -75,6 +82,7 @@ export function createIngestion({
     const timed = atMs !== undefined;
     if (!viewer || feed.loading) return false;
     feed.loading = true;
+    feed.loadingAtTime = timed;
     feed.loadingLabel = feed.loaded ? 'refreshing...' : 'loading...';
     const requestController = new AbortController();
     const requestSessionId = feed.sessionId;
@@ -135,6 +143,10 @@ export function createIngestion({
         ownsAisRequest(requestController, requestSessionId) &&
         error?.name !== 'AbortError'
       ) {
+        // The key is missing only while the source says so; any other
+        // failure is an outage, not a key to add.
+        feed.transportStatus =
+          error?.code === 'key-required' ? 'missing-key' : null;
         markUnavailable(error?.message || msg('AIS live load failed'));
         console.warn('[Data:ais-live-vessels]', feed.error, error);
       }
@@ -145,6 +157,7 @@ export function createIngestion({
         feed.sessionId === requestSessionId
       ) {
         feed.loading = false;
+        feed.loadingAtTime = false;
         feed.loadingLabel =
           feed.firstConnectPhase === 'loading' ? AIS_FIRST_CONNECT_LABEL : '';
         feed.abort = null;
@@ -289,6 +302,8 @@ export function createVesselFeed() {
   return {
     enabled: false,
     loading: false,
+    /** Whether the load in flight is a snapshot at a time, not a poll. */
+    loadingAtTime: false,
     loaded: false,
     stale: false,
     partial: false,

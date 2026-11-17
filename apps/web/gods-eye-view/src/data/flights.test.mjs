@@ -113,6 +113,8 @@ const FULL_INFO = {
   verticalRate: -4.5,
   onGround: false,
   klass: 'airliner',
+  typeCode: 'B738',
+  category: 'A3',
   originCountry: 'United States',
   airline: 'Southwest Airlines',
   route: { origin: { code: 'AUS' }, destination: { code: 'LAX' } },
@@ -136,6 +138,8 @@ test('flights analyst record: full record maps every contract field', () => {
     onGround: false,
     military: false,
     aircraftClass: 'airliner',
+    typeCode: 'B738',
+    category: 'A3',
     originCountry: 'United States',
     operator: 'Southwest Airlines',
     squawk: null,
@@ -146,6 +150,9 @@ test('flights analyst record: full record maps every contract field', () => {
     lastContactAtMs: null,
     routeOrigin: 'AUS',
     routeDestination: 'LAX',
+    routeFrom: null,
+    routeTo: null,
+    routeScheduled: null,
   });
 });
 

@@ -21,6 +21,8 @@
  */
 
 import { nextTick } from 'vue';
+import { useOmnibarStore } from '../ui/stores/omnibar.js';
+import { applicationPinia } from '../ui/vueRuntime.js';
 import { bindAssistantPanelLayout, bindLayoutDock } from './panelLayout.js';
 import { bindChatControl } from './chatControl.js';
 import { bindVoiceMiniPreview } from './voiceMiniPreview.js';
@@ -56,6 +58,7 @@ export function createVoiceCommands({
   supportedProviders,
   onProviderChange,
   onSessionEvent,
+  canStartVoice,
   createCard = (options) => new VoiceCardControls(options),
   pointer = null,
   referents = null,
@@ -71,6 +74,7 @@ export function createVoiceCommands({
   let panelMount;
   const session = createVoiceSession({
     runner,
+    canStart: (options) => options?.textOnly || canStartVoice?.() !== false,
     signal,
     createAdapter: (hooks) => {
       if (panelHost) actionObserver = panelHost.observeActions(hooks);
@@ -306,7 +310,7 @@ export function createVoiceCommands({
     void session.start({ pushToTalk: false });
   };
   const buttonHandler = () => {
-    if (adapter.ignoreButtonClick?.()) return;
+    if (canStartVoice?.() === false || adapter.ignoreButtonClick?.()) return;
     chat?.close();
     if (session.isActive() && adapter.getStartOptions?.().textOnly) {
       session.stop();
@@ -354,5 +358,16 @@ export function createVoiceCommands({
   if (session.disposed) cleanup();
   else adapter.bindControls?.();
   window.__gevVoiceCommands = controls;
+  // The omnibar runs the same actions directly, without a model.
+  // A session already gone leaves the omnibar without a runner.
+  if (!session.disposed) {
+    const omnibar = useOmnibarStore(applicationPinia());
+    omnibar.connectRunner((name, args) => runner(name, args));
+    session.signal.addEventListener(
+      'abort',
+      () => omnibar.connectRunner(null),
+      { once: true },
+    );
+  }
   return controls;
 }

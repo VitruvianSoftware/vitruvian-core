@@ -1,0 +1,98 @@
+/**
+ * Copyright (c) 2026 VitruvianSoftware
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+// While Stories is open, GEV's document-level keys stay quiet behind it.
+import '../testSupport/registerDom.mjs';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { guardStoriesKeyboard } from './keyboard.js';
+
+function page() {
+  document.body.innerHTML =
+    '<div id="gev-stories"><button id="inside"></button></div><button id="gev"></button>';
+  const root = document.getElementById('gev-stories');
+  const heard = [];
+  const gev = (event) => heard.push(`gev ${event.key}`);
+  document.addEventListener('keydown', gev);
+  const own = (event) => heard.push(`stories ${event.key}`);
+  document.getElementById('inside').addEventListener('keydown', own);
+  const windowOwn = (event) => heard.push(`window ${event.key}`);
+  window.addEventListener('keydown', windowOwn, true);
+  const press = (id, key) =>
+    document
+      .getElementById(id)
+      .dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+  const cleanup = () => {
+    document.removeEventListener('keydown', gev);
+    window.removeEventListener('keydown', windowOwn, true);
+  };
+  return { root, heard, press, cleanup };
+}
+
+test('keys in Stories reach Stories and stop there; keys elsewhere reach nothing behind it', () => {
+  const { root, heard, press, cleanup } = page();
+  let open = true;
+  const remove = guardStoriesKeyboard({ root, isOpen: () => open });
+  press('inside', '3');
+  press('gev', 'o');
+  assert.deepEqual(heard, ['window 3', 'stories 3', 'window o']);
+  // Closed, GEV hears its keys again.
+  open = false;
+  heard.length = 0;
+  press('gev', 'o');
+  assert.deepEqual(heard, ['window o', 'gev o']);
+  remove();
+  cleanup();
+});
+
+test('removing the guard lets every key through', () => {
+  const { root, heard, press, cleanup } = page();
+  const remove = guardStoriesKeyboard({ root, isOpen: () => true });
+  remove();
+  press('inside', 'h');
+  assert.deepEqual(heard, ['window h', 'stories h', 'gev h']);
+  cleanup();
+});
+
+test("a playing GEV scene's own on-globe controls keep their keys", () => {
+  const { root, heard, cleanup } = page();
+  document.body.insertAdjacentHTML(
+    'beforeend',
+    '<div data-globe-overlay><button id="slider"></button></div>',
+  );
+  const slider = document.getElementById('slider');
+  slider.addEventListener('keydown', (e) => heard.push(`slider ${e.key}`));
+  const remove = guardStoriesKeyboard({ root, isOpen: () => true });
+  document.body.classList.add('stories-scene');
+  slider.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }),
+  );
+  assert.ok(heard.includes('slider ArrowRight'));
+  document.body.classList.remove('stories-scene');
+  heard.length = 0;
+  slider.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }),
+  );
+  assert.deepEqual(heard, ['window ArrowRight'], 'no scene: GEV stays quiet');
+  remove();
+  cleanup();
+});

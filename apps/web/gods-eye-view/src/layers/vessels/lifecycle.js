@@ -155,7 +155,11 @@ export function createLifecycle({
     state.activeLabelCount = 0;
     state.selectedRecord = null;
     state.trail = null;
+    state.trailHeadOff?.();
+    state.trailHeadOff = null;
     state.trailPositions = [];
+    state.trailTimes = [];
+    state.trailBodyCount = -1;
     state.trailId = null;
     state.trailBackfillToken = 0;
   }
