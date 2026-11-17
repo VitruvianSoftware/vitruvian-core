@@ -392,23 +392,23 @@ enum ChatPreview {
 struct ChatAvatar: View {
     let row: InboxRow
     var size: CGFloat = 40
-    var members: [(name: String, avatarPath: String?)] = []
+    var members: [(name: String, avatarPath: String?, identity: String)] = []
 
     var body: some View {
         if !row.avatarPath.isEmpty {
-            AvatarView(path: row.avatarPath, initials: row.initials, seed: row.name, size: size)
+            AvatarView(path: row.avatarPath, initials: row.initials, identity: row.avatarIdentity, size: size)
         } else if row.name.isEmpty {
             UnknownAvatar()
         } else if !row.isDirect {
             GroupCompositeAvatar(name: row.name, members: groupMembers, size: size)
         } else {
-            AvatarView(path: "", initials: row.initials, seed: row.name, size: size)
+            AvatarView(path: "", initials: row.initials, identity: row.avatarIdentity, size: size)
         }
     }
 
-    private var groupMembers: [(name: String, avatarPath: String?)] {
+    private var groupMembers: [(name: String, avatarPath: String?, identity: String)] {
         if !members.isEmpty { return members }
-        if case let .people(people) = row.groupAvatarStyle { return people.map { ($0.name, $0.avatarPath) } }
+        if case let .people(people) = row.groupAvatarStyle { return people.map { ($0.name, $0.avatarPath, $0.identity) } }
         return []
     }
 }
@@ -418,7 +418,7 @@ struct ChatAvatar: View {
 /// the name says nothing more.
 struct GroupCompositeAvatar: View {
     let name: String
-    let members: [(name: String, avatarPath: String?)]
+    let members: [(name: String, avatarPath: String?, identity: String)]
     var size: CGFloat = 40
 
     /// Lays itself out in whatever square its caller gives it (`size` is only the fallback).
@@ -446,7 +446,7 @@ struct GroupCompositeAvatar: View {
             composite(Array(members.prefix(GroupAvatarStyle.maxMembers)), side: side)
         } else {
             AvatarView(path: members.first?.avatarPath ?? "", initials: InboxRow.initials(of: members.first?.name ?? name),
-                       seed: name, size: side)
+                       identity: members.first?.identity ?? name, size: side)
                 .frame(width: side, height: side)
         }
     }
@@ -460,7 +460,7 @@ struct GroupCompositeAvatar: View {
         return Color(hue: Double(hash % 12) / 12, saturation: 0.55, brightness: 0.68)
     }
 
-    private func composite(_ people: [(name: String, avatarPath: String?)], side: CGFloat) -> some View {
+    private func composite(_ people: [(name: String, avatarPath: String?, identity: String)], side: CGFloat) -> some View {
         let three = people.count >= 3
         let diameter = side * (three ? 0.56 : 0.66)
         // The bottom-right corner is left to the network badge.
@@ -470,7 +470,7 @@ struct GroupCompositeAvatar: View {
         return ZStack(alignment: .topLeading) {
             ForEach(Array(people.enumerated()), id: \.offset) { index, person in
                 AvatarView(path: person.avatarPath ?? "", initials: InboxRow.initials(of: person.name),
-                           seed: person.name, size: diameter)
+                           identity: person.identity, size: diameter)
                     .frame(width: diameter, height: diameter)
                     // A ring in the list's colour keeps overlapping circles apart.
                     .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: max(1, side * 0.04)))
@@ -483,12 +483,12 @@ struct GroupCompositeAvatar: View {
 
 /// A group with no picture: people on its colour.
 struct GroupAvatar: View {
-    let seed: String
+    let identity: String
 
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                Circle().fill(AvatarView.color(for: seed))
+                Circle().fill(AvatarView.color(for: identity))
                 Image(systemName: "person.2.fill")
                     .font(.system(size: proxy.size.width * 0.38))
                     .foregroundStyle(.white)
@@ -590,11 +590,12 @@ struct NetworkTileView: View {
     }
 }
 
-/// A chat's picture, or its initials on a colour taken from its name.
+/// A picture, or initials on a colour. The colour comes from `identity` (a user or room ID, see `AvatarColor`), never
+/// from the name, so one person has one colour on every screen.
 struct AvatarView: View {
     let path: String
     let initials: String
-    let seed: String
+    let identity: String
     var size: CGFloat = 40
     @State private var image: NSImage?
 
@@ -610,7 +611,7 @@ struct AvatarView: View {
                     .resizable()
                     .scaledToFill()
             } else {
-                Circle().fill(Self.color(for: seed))
+                Circle().fill(Self.color(for: identity))
                 if !initials.isEmpty {
                     Text(initials)
                         .font(.system(size: max(10, round(size * 0.38)), weight: .semibold))
@@ -633,11 +634,10 @@ struct AvatarView: View {
         }
     }
 
-    /// A colour that is the same for a name in every run (a Swift hash is not).
-    static func color(for seed: String) -> Color {
-        var hash: UInt32 = 5381
-        for byte in seed.utf8 { hash = (hash &* 33) &+ UInt32(byte) }
-        return Color(hue: Double(hash % 360) / 360, saturation: 0.45, brightness: 0.62)
+    /// The one placeholder colour for an identity, the same in every run and on every screen.
+    static func color(for identity: String) -> Color {
+        let hsb = AvatarColor.hsb(forIdentity: identity)
+        return Color(hue: hsb.hue, saturation: hsb.saturation, brightness: hsb.brightness)
     }
 }
 

@@ -164,13 +164,15 @@ public struct EditGroupSheet: View {
 
     @ViewBuilder
     private var avatarPreview: some View {
-        let seed = draft.name.isEmpty ? draft.remoteName : draft.name
+        let name = draft.name.isEmpty ? draft.remoteName : draft.name
+        // The chat's room ID, the same as its inbox row and header.
+        let identity = AvatarColor.identity(id: draft.roomID, fallbackName: name)
         if !draft.avatarPath.isEmpty {
-            AvatarView(path: draft.avatarPath, initials: Self.initials(of: seed), seed: seed)
+            AvatarView(path: draft.avatarPath, initials: Self.initials(of: name), identity: identity)
         } else if !draft.isDirect {
-            GroupAvatar(seed: seed)
+            GroupAvatar(identity: identity)
         } else {
-            AvatarView(path: "", initials: Self.initials(of: seed), seed: seed)
+            AvatarView(path: "", initials: Self.initials(of: name), identity: identity)
         }
     }
 
@@ -390,7 +392,7 @@ public struct AddParticipantsSheet: View {
                                     AvatarView(
                                         path: candidate.avatarPath,
                                         initials: Self.initials(of: candidate.name),
-                                        seed: candidate.name
+                                        identity: AvatarColor.identity(id: candidate.userID, fallbackName: candidate.name)
                                     )
                                     .frame(width: 32, height: 32)
 

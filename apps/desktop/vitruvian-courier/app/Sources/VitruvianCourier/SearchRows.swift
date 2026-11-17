@@ -112,7 +112,8 @@ private struct PersonResultRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            AvatarView(path: person.avatarPath, initials: InboxRow.initials(of: person.name), seed: person.name)
+            AvatarView(path: person.avatarPath, initials: InboxRow.initials(of: person.name),
+                       identity: AvatarColor.identity(id: person.userID, fallbackName: person.name))
                 .blur(radius: isRedacted ? 6 : 0)
                 .clipShape(Circle())
                 .frame(width: 32, height: 32)

@@ -368,7 +368,7 @@ public struct ChatInfoPane: View {
     private var avatarView: some View {
         let displayAvatar = ChatInfoPresentation.displayAvatarPath(for: info)
         if !displayAvatar.isEmpty {
-            AvatarView(path: displayAvatar, initials: Self.initials(of: info.name), seed: info.name, size: 56)
+            AvatarView(path: displayAvatar, initials: Self.initials(of: info.name), identity: info.avatarIdentity, size: 56)
         } else if !info.isDirect {
             let compositeMembers = ChatInfoPresentation.groupCompositeMembers(for: info)
             if info.name.isEmpty && compositeMembers.isEmpty {
@@ -379,7 +379,7 @@ public struct ChatInfoPane: View {
         } else if info.name.isEmpty {
             UnknownAvatar()
         } else {
-            AvatarView(path: "", initials: Self.initials(of: info.name), seed: info.name, size: 56)
+            AvatarView(path: "", initials: Self.initials(of: info.name), identity: info.avatarIdentity, size: 56)
         }
     }
 
@@ -547,7 +547,7 @@ public struct ChatInfoPane: View {
                             AvatarView(
                                 path: ChatInfoPresentation.participantAvatarPath(for: member, ownAvatarPath: ownAvatarPath),
                                 initials: Self.initials(of: member.name.isEmpty ? participantName : member.name),
-                                seed: member.name.isEmpty ? participantName : member.name,
+                                identity: member.avatarIdentity,
                                 size: 30
                             )
                             .frame(width: 30, height: 30)
@@ -1570,7 +1570,7 @@ private struct ChatInfoMediaTile: View {
                         AvatarView(
                             path: sender.avatarPath,
                             initials: sender.initials,
-                            seed: sender.name.isEmpty ? "?" : sender.name,
+                            identity: sender.identity,
                             size: 16
                         )
                         .frame(width: 16, height: 16)

@@ -440,7 +440,7 @@ struct MessageRowView: View {
         HStack(alignment: .top, spacing: 8) {
             if message.mine {
                 Spacer(minLength: 60)
-            } else {
+            } else if message.showsAvatarColumn {
                 avatarColumn
             }
             VStack(alignment: message.mine ? .trailing : .leading, spacing: 3) {
@@ -449,6 +449,9 @@ struct MessageRowView: View {
                     if message.mine { bookmarkMark }
                     if capsBubbleWidth {
                         bubble.frame(maxWidth: Self.textBubbleMaxWidth, alignment: message.mine ? .trailing : .leading)
+                    } else if ExternalEmbedDescriptor.first(in: message) != nil {
+                        // A video card sets the bubble's width; the text above it wraps to the card, not to the row.
+                        bubble.frame(maxWidth: EmbedConsentCard.maxWidth + 32, alignment: message.mine ? .trailing : .leading)
                     } else {
                         bubble
                     }
@@ -745,11 +748,11 @@ struct MessageRowView: View {
 
     @ViewBuilder
     private var avatarColumn: some View {
-        // On the first message of a run, in a group (beside the name) and in a one-to-one chat alike.
+        // On the first message of a run in a group, beside the name. A one-to-one chat has no column at all.
         if message.showsSenderAvatar {
             let avatar = message.senderAvatar(redacted: isRedacted)
             AvatarView(path: avatar.path, initials: avatar.initials,
-                       seed: avatar.seed, size: Self.avatarSize)
+                       identity: avatar.seed, size: Self.avatarSize)
                 .blur(radius: isRedacted ? 6 : 0)
                 .clipShape(Circle())
                 .frame(width: Self.avatarSize, height: Self.avatarSize)
@@ -776,7 +779,7 @@ struct MessageRowView: View {
     /// A bright, legible per-sender colour for the name inside an incoming bubble.
     private var senderNameColor: Color {
         Color(hex: AppearancePreferences.senderNameColorHex(for: message.sender, isDark: colorScheme == .dark))
-            ?? AvatarView.color(for: message.senderName)
+            ?? AvatarView.color(for: AvatarColor.identity(id: message.sender, fallbackName: message.senderName))
     }
 
     /// The name sits inside the first bubble of a sender's run, at the top, unless the bubble has no background to
@@ -908,7 +911,6 @@ struct MessageRowView: View {
                             isLoaded: actions.loadExternalEmbedsAutomatically || ui.loadedEmbeds.contains(message.id),
                             title: ExternalEmbedDescriptor.embedTitle(in: message),
                             previewImagePath: ExternalEmbedDescriptor.previewImagePath(in: message),
-                            allowsRemoteThumbnail: actions.loadExternalEmbedsAutomatically,
                             onBubble: message.mine && !message.suppressesBubbleBackground,
                             onLoadEmbed: { ui.loadedEmbeds.insert(message.id) }
                         )

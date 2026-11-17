@@ -24,7 +24,7 @@ struct MentionPicker: View {
                         Text(String(localized: "Everyone in this chat"))
                             .foregroundStyle(.secondary)
                     } else {
-                        AvatarView(path: member.avatarPath, initials: InboxRow.initials(of: member.name), seed: member.name)
+                        AvatarView(path: member.avatarPath, initials: InboxRow.initials(of: member.name), identity: member.avatarIdentity)
                             .frame(width: 22, height: 22)
                         Text(member.name)
                             .lineLimit(1)

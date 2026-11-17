@@ -93,7 +93,7 @@ public struct MediaWithSender: View {
                 AvatarView(
                     path: "",
                     initials: String(Self.initials(of: senderDisplayName).prefix(1)),
-                    seed: senderDisplayName
+                    identity: AvatarColor.identity(id: hit.sender, fallbackName: senderDisplayName)
                 )
                 .frame(width: 22, height: 22)
 

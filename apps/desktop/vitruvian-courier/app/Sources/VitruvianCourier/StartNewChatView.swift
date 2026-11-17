@@ -986,7 +986,7 @@ public struct StartNewChatView: View {
                     AvatarView(
                         path: candidate.avatarPath,
                         initials: Self.initials(of: displayName),
-                        seed: displayName,
+                        identity: AvatarColor.identity(id: candidate.userID, fallbackName: displayName),
                         size: 32
                     )
                     .frame(width: 32, height: 32)

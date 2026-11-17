@@ -303,7 +303,7 @@ final class ChatInfoPresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             ChatInfoPresentation.mediaSender(for: explicit, members: members),
-            ChatInfoPresentation.MediaSender(name: "Alice Example", initials: "A", avatarPath: "/tmp/alice.png")
+            ChatInfoPresentation.MediaSender(name: "Alice Example", initials: "A", avatarPath: "/tmp/alice.png", identity: "@alice:courier.local")
         )
 
         let fromMember = makeEvent(
@@ -315,7 +315,7 @@ final class ChatInfoPresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             ChatInfoPresentation.mediaSender(for: fromMember, members: members),
-            ChatInfoPresentation.MediaSender(name: "Bob Builder", initials: "B", avatarPath: "/tmp/bob.png")
+            ChatInfoPresentation.MediaSender(name: "Bob Builder", initials: "B", avatarPath: "/tmp/bob.png", identity: "@bob:courier.local")
         )
 
         let mine = makeEvent(
