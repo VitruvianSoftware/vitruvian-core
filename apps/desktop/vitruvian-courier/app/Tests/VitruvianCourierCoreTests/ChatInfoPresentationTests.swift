@@ -31,6 +31,101 @@ final class ChatInfoPresentationTests: XCTestCase {
         )
     }
 
+    // MARK: - Link titles, my own picture
+
+    func testLinkShowsItsPreviewTitleUnlessItOnlyRepeatsTheDomain() {
+        func link(_ title: String?) -> RoomLink {
+            RoomLink(eventID: "$e", sender: "@a:courier.local", ts: 1, url: "https://share.google/abc", host: "share.google", title: title)
+        }
+        XCTAssertEqual(link("  Courier release notes ").displayTitle, "Courier release notes")
+        XCTAssertNil(link(nil).displayTitle)
+        XCTAssertNil(link("   ").displayTitle)
+        XCTAssertNil(link("Share.Google").displayTitle, "a title that is only the domain adds nothing")
+    }
+
+    func testLinkTitleSurvivesDeduplicationAndTheWire() throws {
+        let newestNoTitle = RoomLink(eventID: "$2", sender: "@a:courier.local", ts: 20, url: "https://x.test/a", host: "x.test")
+        let olderTitled = RoomLink(eventID: "$1", sender: "@a:courier.local", ts: 10, url: "https://x.test/a", host: "x.test", title: "Spec")
+        let merged = RoomLink.deduplicated([olderTitled, newestNoTitle])
+        XCTAssertEqual(merged.map(\.eventID), ["$2"], "the newest message is kept")
+        XCTAssertEqual(merged.first?.displayTitle, "Spec", "and it keeps the title another copy had")
+
+        let json = Data(#"{"event_id":"$1","sender":"@a:courier.local","ts":5,"url":"https://x.test/a","host":"x.test","title":"Spec"}"#.utf8)
+        XCTAssertEqual(try JSONDecoder().decode(RoomLink.self, from: json).title, "Spec")
+        let old = Data(#"{"event_id":"$1","sender":"@a:courier.local","ts":5,"url":"https://x.test/a","host":"x.test"}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(RoomLink.self, from: old).title, "an engine before the field")
+    }
+
+    func testTimelineAvatarComesOnlyFromTheChatsOwnAccount() {
+        func row(_ id: String, network: String, login: String) -> InboxRow {
+            InboxRow(roomID: id, network: network, name: id, avatarPath: "", isDirect: true, lastTS: 0, preview: "",
+                     previewKind: .text, previewMine: false, unread: 0, muted: false, archived: false,
+                     lowPriority: false, hidden: false, markedUnread: false, request: false, loginName: login)
+        }
+        func mine(_ room: String, _ avatar: String, ts: Int64) -> Event {
+            var e = makeEvent(id: "$\(room)\(ts)", msgtype: "m.text", sender: Timeline.meUserID, senderName: "Me",
+                              senderAvatarPath: avatar, mine: true)
+            e.roomID = room
+            e.ts = ts
+            return e
+        }
+        let rows = [
+            "!chat": row("!chat", network: "whatsapp", login: "work-phone"),
+            "!sameAccount": row("!sameAccount", network: "whatsapp", login: "work-phone"),
+            "!otherAccount": row("!otherAccount", network: "whatsapp", login: "personal-phone"),
+            "!otherNetwork": row("!otherNetwork", network: "signal", login: "work-phone"),
+            "!noLogin": row("!noLogin", network: "whatsapp", login: ""),
+        ]
+        func avatar(_ events: [Event], chat: String = "!chat") -> String {
+            ChatInfoPresentation.ownAvatarFromTimeline(events: events, chatRoomID: chat,
+                                                       chatNetwork: rows[chat]?.network ?? "whatsapp") { rows[$0] }
+        }
+        // Two accounts on one network: the other account's newer picture is not mine here.
+        XCTAssertEqual(avatar([mine("!sameAccount", "/work.png", ts: 10), mine("!otherAccount", "/personal.png", ts: 99)]),
+                       "/work.png")
+        XCTAssertEqual(avatar([mine("!otherAccount", "/personal.png", ts: 99)]), "", "initials, not another account's face")
+        XCTAssertEqual(avatar([mine("!otherNetwork", "/signal.png", ts: 99)]), "")
+        XCTAssertEqual(avatar([mine("!noLogin", "/unknown.png", ts: 99)]), "", "an unknown account is not a match")
+        XCTAssertEqual(avatar([mine("!chat", "/here.png", ts: 1)]), "/here.png", "a message in the chat itself counts")
+        // A chat whose own account is unknown takes nothing from other rooms.
+        XCTAssertEqual(avatar([mine("!sameAccount", "/work.png", ts: 10)], chat: "!noLogin"), "")
+        XCTAssertEqual(avatar([mine("!noLogin", "/own.png", ts: 10)], chat: "!noLogin"), "/own.png")
+        // Newest wins among the matches.
+        XCTAssertEqual(avatar([mine("!chat", "/old.png", ts: 1), mine("!sameAccount", "/new.png", ts: 5)]), "/new.png")
+    }
+
+    func testOwnAvatarComesFromMemberThenMyMessagesThenFallback() {
+        let me = Timeline.meUserID
+        func info(meAvatar: String = "", media: [Event] = []) -> RoomInfoResult {
+            RoomInfoResult(roomID: "!r:courier.local", name: "Chat", remoteName: "Chat", network: "whatsapp", isDirect: false,
+                           members: [Member(userID: me, name: "Me", avatarPath: meAvatar)], sharedMedia: media,
+                           features: .noFeatures)
+        }
+        let mine = makeEvent(id: "$m", msgtype: "m.image", sender: me, senderName: "Me", senderAvatarPath: "/own-event.png", mine: true)
+        XCTAssertEqual(ChatInfoPresentation.ownAvatarPath(in: info(meAvatar: "/own-member.png", media: [mine])), "/own-member.png")
+        XCTAssertEqual(ChatInfoPresentation.ownAvatarPath(in: info(media: [mine])), "/own-event.png")
+        XCTAssertEqual(ChatInfoPresentation.ownAvatarPath(in: info(), fallback: "/seen.png"), "/seen.png")
+        XCTAssertEqual(ChatInfoPresentation.ownAvatarPath(in: info()), "")
+
+        // Several of my messages carry a picture: the newest wins, whatever the order they are listed in.
+        var older = makeEvent(id: "$old", msgtype: "m.image", sender: me, senderName: "Me", senderAvatarPath: "/old.png", mine: true)
+        older.ts = 1_000
+        var newer = makeEvent(id: "$new", msgtype: "m.image", sender: me, senderName: "Me", senderAvatarPath: "/new.png", mine: true)
+        newer.ts = 2_000
+        XCTAssertEqual(ChatInfoPresentation.newestOwnAvatar(in: [older, newer]), "/new.png")
+        XCTAssertEqual(ChatInfoPresentation.newestOwnAvatar(in: [newer, older]), "/new.png")
+
+        // My Participants row and my Shared Media badge use it; someone else's never do.
+        XCTAssertEqual(ChatInfoPresentation.participantAvatarPath(for: Member(userID: me, name: "Me"), ownAvatarPath: "/own.png"), "/own.png")
+        XCTAssertEqual(ChatInfoPresentation.participantAvatarPath(for: Member(userID: "@bob:courier.local", name: "Bob"), ownAvatarPath: "/own.png"), "")
+        XCTAssertEqual(ChatInfoPresentation.participantAvatarPath(for: Member(userID: me, name: "Me", avatarPath: "/theirs.png"), ownAvatarPath: "/own.png"), "/theirs.png")
+        let bare = makeEvent(id: "$b", msgtype: "m.image", sender: me, senderName: "", mine: true)
+        XCTAssertEqual(ChatInfoPresentation.mediaSender(for: bare, members: [], ownAvatarPath: "/own.png")?.avatarPath, "/own.png")
+        XCTAssertEqual(ChatInfoPresentation.mediaSender(for: bare, members: [], ownAvatarPath: "")?.avatarPath, "")
+        let other = makeEvent(id: "$o", msgtype: "m.image")
+        XCTAssertEqual(ChatInfoPresentation.mediaSender(for: other, members: [], ownAvatarPath: "/own.png")?.avatarPath, "")
+    }
+
     // MARK: - RoomLink deduplication & domain
 
     func testRoomLinkDeduplicatedKeepsNewestRegardlessOfOrder() {

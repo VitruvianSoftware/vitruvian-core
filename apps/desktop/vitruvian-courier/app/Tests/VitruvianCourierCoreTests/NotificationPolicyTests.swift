@@ -380,6 +380,34 @@ final class NotificationPolicyTests: XCTestCase {
         XCTAssertNil(OTPDetector.extractCode(from: "Your verification code is 12"))
     }
 
+    func testAChatsOwnSoundWinsOverTheAccountAndDefaultSoundsButNeverOverAMute() throws {
+        let suiteName = "courier.test.chatsound.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let prefs = NotificationPreferences(defaults: defaults)
+        prefs.messageSound = .rain
+        prefs.accountOverrides["whatsapp:wa-1"] = AccountNotificationOverride(enabled: true, showPreviews: true, sound: .marimba)
+
+        func sound(of room: InboxRow) -> NotificationSoundChoice? {
+            let decision = NotificationPolicy.evaluate(
+                event: event(room: room.roomID), room: room, context: context(), preferences: prefs, accountKey: "whatsapp:wa-1")
+            return decision.shouldNotify ? decision.sound : nil
+        }
+        XCTAssertEqual(sound(of: row()), .marimba, "the account's sound before the chat has its own")
+
+        prefs.setChatSound(.harp, for: "!a")
+        XCTAssertEqual(sound(of: row()), .harp)
+        XCTAssertEqual(sound(of: row("!b")), .marimba, "another chat is not touched")
+        XCTAssertNil(sound(of: row(muted: true)), "a muted chat stays silent whatever its sound")
+
+        // It is kept across a restart, and Default takes the chat back to the usual sound.
+        XCTAssertEqual(NotificationPreferences(defaults: defaults).chatSound(for: "!a"), .harp)
+        prefs.setChatSound(.default, for: "!a")
+        XCTAssertNil(prefs.chatSound(for: "!a"))
+        XCTAssertEqual(sound(of: row()), .marimba)
+        XCTAssertTrue(NotificationPreferences(defaults: defaults).chatSounds.isEmpty)
+    }
+
     func testPerAccountOverridesFocusReactionAndSoundSelectionInPolicy() throws {
         let suiteName = "courier.test.notifprefs.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))

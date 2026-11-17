@@ -6156,6 +6156,138 @@ final class ViewSnapshotTests: XCTestCase {
         XCTAssertNil(detachedProbe.rects[unpin])
     }
 
+    /// Chat Info has a Notification sound row (with its footnote) and a Notes field holding the saved note; the
+    /// note a person wrote for this chat shows again, and another chat's does not.
+    func testChatInfoPaneShowsNotificationSoundAndSavedNotes() throws {
+        let suite = "courier.test.chatinfo-notes.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ChatNotesStore(fileURL: nil, saveDelay: .seconds(30), notificationCenter: NotificationCenter())
+        store.setNote("Gate code 4417", for: "!notes:courier.local")
+        store.setNote("Somebody else's", for: "!other:courier.local")
+        let prefs = NotificationPreferences(defaults: defaults)
+        prefs.setChatSound(.harp, for: "!notes:courier.local")
+
+        let info = RoomInfoResult(
+            roomID: "!notes:courier.local", name: "Notes Chat", remoteName: "Notes Chat", network: "whatsapp",
+            isDirect: true, members: [Member(userID: "@a:courier.local", name: "Alice")], features: Fixture.features
+        )
+        var seen: [String] = []
+        try Snapshot.render("chat-info-sound-notes", width: 320) {
+            ChatInfoPane(info: info, now: { Fixture.now }, notesStore: store, notificationPreferences: prefs)
+                .environment(\.chatInfoRowProbe) { seen.append($0) }
+        }
+        XCTAssertTrue(seen.contains("sound:harp"), "Notification sound row is missing or not on this chat's sound: \(seen)")
+        XCTAssertTrue(seen.contains("notes:Gate code 4417"), "Notes field is missing or lost the saved note: \(seen)")
+        XCTAssertEqual(ChatInfoSoundRow.title(.default), "Default")
+        XCTAssertEqual(ChatInfoSoundRow.title(.harp), NotificationsSettingsPane.soundLabel(.harp))
+        XCTAssertEqual(store.note(for: "!notes:courier.local"), "Gate code 4417")
+        XCTAssertEqual(store.note(for: "!other:courier.local"), "Somebody else's")
+    }
+
+    private final class NotesRoom: ObservableObject {
+        @Published var roomID: String
+        init(_ roomID: String) { self.roomID = roomID }
+    }
+
+    private struct NotesFieldHost: View {
+        @ObservedObject var room: NotesRoom
+        var body: some View { ChatInfoNotesField(roomID: room.roomID).padding(8) }
+    }
+
+    private func notesFile(_ url: URL) -> [String: String]? {
+        (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode([String: String].self, from: $0) }
+    }
+
+    /// Two Notes fields on one chat (two windows) read and write the one app store, and see each other's edits.
+    func testChatInfoNotesFieldsShareTheAppStore() throws {
+        let store = ChatNotesStore(fileURL: nil, schedule: { _, _ in {} }, notificationCenter: NotificationCenter())
+        ChatNotesStore.useSharedStoreForTesting(store)
+        defer { ChatNotesStore.useSharedStoreForTesting(nil) }
+        let first = ChatInfoNotesField(roomID: "!a")
+        let second = ChatInfoNotesField(roomID: "!a")
+        XCTAssertTrue(first.store === ChatNotesStore.shared)
+        XCTAssertTrue(second.store === ChatNotesStore.shared)
+        first.text.wrappedValue = "typed in the first window"
+        XCTAssertEqual(second.text.wrappedValue, "typed in the first window")
+        second.text.wrappedValue = "then the second"
+        XCTAssertEqual(first.text.wrappedValue, "then the second")
+        XCTAssertEqual(ChatNotesStore.shared.note(for: "!a"), "then the second")
+        XCTAssertEqual(ChatInfoNotesField(roomID: "!b").text.wrappedValue, "", "another chat has its own note")
+    }
+
+    /// Switching to another chat saves the note being typed under the chat it was typed in.
+    func testChatInfoNotesSavesWhenTheChatSwitches() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("notes-switch-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent(ChatNotesStore.fileName)
+        let store = ChatNotesStore(fileURL: url, schedule: { _, _ in {} }, notificationCenter: NotificationCenter())
+        ChatNotesStore.useSharedStoreForTesting(store)
+        defer { ChatNotesStore.useSharedStoreForTesting(nil) }
+        let room = NotesRoom("!a")
+        let (window, host) = hostChatInfoWindow(NotesFieldHost(room: room), size: NSSize(width: 300, height: 160))
+        defer {
+            window.orderOut(nil)
+            window.contentView = nil
+        }
+        store.setNote("About A", for: "!a")
+        XCTAssertNil(notesFile(url), "the pause hasn't ended: nothing written yet")
+        room.roomID = "!b"
+        settleChatInfoHost(host)
+        await store.waitForFileWork()
+        XCTAssertEqual(notesFile(url), ["!a": "About A"])
+    }
+
+    /// Closing the pane saves the note.
+    func testChatInfoNotesSavesWhenThePaneCloses() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("notes-close-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent(ChatNotesStore.fileName)
+        let store = ChatNotesStore(fileURL: url, schedule: { _, _ in {} }, notificationCenter: NotificationCenter())
+        ChatNotesStore.useSharedStoreForTesting(store)
+        defer { ChatNotesStore.useSharedStoreForTesting(nil) }
+        let (window, host) = hostChatInfoWindow(NotesFieldHost(room: NotesRoom("!a")), size: NSSize(width: 300, height: 160))
+        store.setNote("Typed, then closed", for: "!a")
+        XCTAssertNil(notesFile(url))
+        window.contentView = nil
+        settleChatInfoHost(host)
+        window.orderOut(nil)
+        await store.waitForFileWork()
+        XCTAssertEqual(notesFile(url), ["!a": "Typed, then closed"])
+    }
+
+    /// The Labels row shows this chat's labels as chips and offers Add to a Label.
+    func testChatInfoLabelsSectionShowsAssignedLabelsAndAddMenu() throws {
+        let work = Space(spaceID: "label:1", kind: .label, title: "Work", labelID: 1, color: 7, icon: "briefcase")
+        let family = Space(spaceID: "label:2", kind: .label, title: "Family", labelID: 2, color: 0, icon: "heart")
+        var assigned: [Int64] = [1]
+        var expanded = true
+        let section = ChatInfoLabelsSection(
+            labels: [work, family], assignedIDs: assigned,
+            isExpanded: Binding(get: { expanded }, set: { expanded = $0 }),
+            onSet: { label, on in
+                assigned.removeAll { $0 == label.labelID }
+                if on { assigned.append(label.labelID) }
+            },
+            onNewLabel: {}
+        )
+        var seen: [String] = []
+        try Snapshot.render("chat-info-labels", width: 300) {
+            section.padding(8).environment(\.chatInfoRowProbe) { seen.append($0) }
+        }
+        XCTAssertTrue(seen.contains("add-label"), "Add to a Label is missing: \(seen)")
+        XCTAssertTrue(seen.contains("chip:Work"), "the Work chip is missing: \(seen)")
+        XCTAssertFalse(seen.contains("chip:Family"), "Family is not on this chat")
+
+        // Ticking Family in the menu puts it on the chat; the x on Work's chip takes Work off.
+        section.menuBinding(for: family).wrappedValue = true
+        XCTAssertEqual(Set(assigned), [1, 2])
+        section.removeChip(work)
+        XCTAssertEqual(assigned, [2])
+        section.menuBinding(for: family).wrappedValue = false
+        XCTAssertTrue(assigned.isEmpty)
+    }
+
     /// Local avatar override (`localAvatarURI`) must win over network `avatarPath` in ChatInfoPane header.
     func testChatInfoPaneLocalAvatarWinsOverNetworkAvatar() throws {
         let tmpDir = FileManager.default.temporaryDirectory
