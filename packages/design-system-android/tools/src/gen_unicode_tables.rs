@@ -22,7 +22,7 @@
 //! methods (`isprintable`, `isspace`, `isdecimal`, `capitalize`) use on
 //! Unicode 15.0.0.
 
-use gen_tokens::unicode_tables::{CASED, CASE_IGNORABLE, DECIMAL, PRINTABLE, SPACE, TITLE};
+use gen_tokens::unicode_tables::{CASED, TITLE};
 
 fn emit_ranges(out: &mut String, name: &str, doc: &str, pairs: &[(u32, u32)]) {
     out.push_str(&format!("/// {doc}\n"));
@@ -58,30 +58,15 @@ pub fn render_unicode_tables() -> String {
          // from Python 3.12, Unicode 15.0.0. Do not edit by hand.\n\n",
     );
 
-    emit_ranges(
-        &mut out,
-        "PRINTABLE",
-        "str.isprintable(), which decides what repr() escapes.",
-        PRINTABLE,
-    );
-    emit_ranges(&mut out, "SPACE", "str.isspace().", SPACE);
-    emit_ranges(
-        &mut out,
-        "DECIMAL",
-        "str.isdecimal(), in runs counting from 0.",
-        DECIMAL,
+    out.push_str("// Shared with the other ported tools, so not repeated here.\n");
+    out.push_str(
+        "pub use vitruvian_pycompat::unicode_tables::{CASE_IGNORABLE, DECIMAL, PRINTABLE, SPACE};\n\n",
     );
     emit_ranges(
         &mut out,
         "CASED",
         "Characters with the Cased property.",
         CASED,
-    );
-    emit_ranges(
-        &mut out,
-        "CASE_IGNORABLE",
-        "Characters with the Case_Ignorable property.",
-        CASE_IGNORABLE,
     );
 
     out.push_str("/// str.capitalize()'s first character where its title case is not\n");

@@ -37,7 +37,7 @@
 //!   * `fsio` - `Path.read_text` / `Path.write_text`;
 //!   * `render` - the script's own logic.
 
-pub mod argparse;
+pub use vitruvian_pycompat::argparse;
 pub mod fsio;
 pub mod pyerr;
 pub mod pyjson;
@@ -156,3 +156,6 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+mod shared_pystr_test;

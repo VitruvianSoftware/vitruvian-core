@@ -4,13 +4,6 @@
 Component package providing implementation for `packages/design-system-android/tools/src`.
 
 ## Interface
-- `[argparse.rs:Kind]`
-- `[argparse.rs:Opt]`
-- `[argparse.rs:Parser]`
-- `[argparse.rs:Values]`
-- `[argparse.rs:Exit]`
-- `[argparse.rs:help_width]`
-- `[argparse.rs:wrap]`
 - `[fsio.rs:pathlib_str]`
 - `[fsio.rs:read_text]`
 - `[fsio.rs:write_text]`

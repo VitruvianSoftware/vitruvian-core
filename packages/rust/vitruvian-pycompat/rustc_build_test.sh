@@ -5,7 +5,8 @@
 # The tools that scheduled workflows and package-desktop build with plain
 # rustc still build that way and run: sync-downloads (site-sync-downloads,
 # package-desktop --sync-downloads) and agent-app's permission-drift
-# (agent-app-permissions). Their only CI is a schedule or a push to main, so
+# (agent-app-permissions), and release-scope with its tests (the required
+# release-scope check). Their only CI is a schedule or a push to main, so
 # without this a missing link surfaces the next morning, not on the PR.
 set -euo pipefail
 
@@ -25,3 +26,10 @@ bash "$build" "$out/drift" permission_drift \
 	--cfg 'feature="standalone_permission_drift"'
 "$out/drift/permission_drift" --help >/dev/null
 echo "PASS permission_drift builds with plain rustc and runs"
+
+bash "$build" "$out/scope" release_scope \
+	tools/release-scope/src/lib.rs tools/release-scope/src/main.rs
+"$out/scope/release_scope" --help >/dev/null
+bash "$build" --test "$out/scope" release_scope tools/release-scope/src/lib.rs
+"$out/scope/release_scope-test" >/dev/null
+echo "PASS release_scope and its tests build with plain rustc and run"

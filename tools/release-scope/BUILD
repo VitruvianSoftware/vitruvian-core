@@ -33,6 +33,7 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
+    deps = ["//packages/rust/vitruvian-pycompat:vitruvian_pycompat"],
 )
 
 rust_binary(
@@ -67,4 +68,12 @@ rust_test(
 test_suite(
     name = "release_scope_test",
     tests = [":release_scope_lib_test"],
+)
+
+# The sources, for //packages/rust/vitruvian-pycompat:rustc_build_test, which
+# builds this check with plain rustc the way its workflow does.
+filegroup(
+    name = "rust_sources",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["//packages/rust/vitruvian-pycompat:__pkg__"],
 )

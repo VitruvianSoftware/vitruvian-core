@@ -34,6 +34,7 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
+    deps = ["//packages/rust/vitruvian-pycompat:vitruvian_pycompat"],
 )
 
 rust_binary(
