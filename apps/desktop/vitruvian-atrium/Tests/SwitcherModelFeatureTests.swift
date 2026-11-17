@@ -379,10 +379,133 @@ enum SwitcherModelFeatureTests {
             "successful Carbon registration retains the exact shortcut-to-reference mapping")
     }
 
+    /// Counts the early Accessibility reads a test asks for, from any thread.
+    private final class PrefetchReads: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        var total: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return count
+        }
+        func record() {
+            lock.lock()
+            count += 1
+            lock.unlock()
+        }
+    }
+
+    /// Holds one early read's answer for a test that reads it from another
+    /// thread.
+    private final class PrefetchAnswerBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var answer: WindowEnumeratorAccessibilityPrefetch<Int>.Query?
+
+        func set(_ answer: WindowEnumeratorAccessibilityPrefetch<Int>.Query?) {
+            lock.lock()
+            self.answer = answer
+            lock.unlock()
+        }
+
+        var value: WindowEnumeratorAccessibilityPrefetch<Int>.Query? {
+            lock.lock()
+            defer { lock.unlock() }
+            return answer
+        }
+    }
+
+    /// The early Accessibility read one app brings to a batch.
+    ///
+    /// The Accessibility server is the only double here: the read itself,
+    /// when it runs, and when it answers. What is checked is the read's own
+    /// contract — it runs once, a caller waits for the answer that came, and
+    /// a read that was given up never asks the app at all.
+    private static func accessibilityPrefetchChecks(_ suite: TestSuite) {
+        let queue = OperationQueue()
+        queue.maxConcurrentOperationCount = 1
+
+        // A read that answered is handed to every caller, and the app is
+        // asked once: the batch must not ask the source app a second time.
+        let reads = PrefetchReads()
+        let answered = WindowEnumeratorAccessibilityPrefetch<Int>(pid: 42) {
+            reads.record()
+            return WindowEnumeratorAccessibilityPrefetch<Int>.Query(windows: [1, 2],
+                                                                     error: .success)
+        }
+        answered.start(on: queue)
+        answered.start(on: queue)
+        queue.waitUntilAllOperationsAreFinished()
+        let first = answered.answer()
+        let second = answered.answer()
+        suite.expect(reads.total == 1
+                        && first?.windows == [1, 2] && second?.windows == [1, 2],
+                     "repeated starts and consumers share one completed app query")
+
+        // A read that was given up before it started — an app this walk does
+        // not ask, or a session that is over — never asks the app and never
+        // answers. The caller then asks the app itself, exactly as it would
+        // have without the early read.
+        let droppedReads = PrefetchReads()
+        let dropped = WindowEnumeratorAccessibilityPrefetch<Int>(pid: 7) {
+            droppedReads.record()
+            return WindowEnumeratorAccessibilityPrefetch<Int>.Query(windows: nil,
+                                                                     error: .success)
+        }
+        dropped.abandon()
+        dropped.start(on: queue)
+        suite.expect(dropped.answer() == nil,
+                     "a read that was given up before it started never answers")
+        suite.expect(droppedReads.total == 0,
+                     "a read that was given up before it started never asks the app")
+
+        // A read that is in flight is waited for: the caller takes the answer
+        // that comes, and the app is not asked a second time while it waits.
+        let gate = DispatchSemaphore(value: 0)
+        let slowStarted = DispatchSemaphore(value: 0)
+        let slowReads = PrefetchReads()
+        let slow = WindowEnumeratorAccessibilityPrefetch<Int>(pid: 9) {
+            slowReads.record()
+            slowStarted.signal()
+            gate.wait()
+            return WindowEnumeratorAccessibilityPrefetch<Int>.Query(windows: [],
+                                                                     error: .cannotComplete)
+        }
+        slow.start(on: queue)
+        _ = slowStarted.wait(timeout: .now() + 5)
+        let answeredSignal = DispatchSemaphore(value: 0)
+        let box = PrefetchAnswerBox()
+        DispatchQueue.global().async {
+            box.set(slow.answer())
+            answeredSignal.signal()
+        }
+        suite.expect(answeredSignal.wait(timeout: .now()) == .timedOut,
+                     "a caller waits for the early read that is in flight")
+        suite.expect(slowReads.total == 1,
+                     "a caller waiting for the early read does not ask the app itself")
+        gate.signal()
+        _ = answeredSignal.wait(timeout: .now() + 5)
+        suite.expect(box.value?.error == .cannotComplete && box.value?.windows == [],
+                     "the answer of the read that was in flight is the one the caller gets")
+
+        // A generation cancelled while its CG candidates are being fixed must
+        // not publish a successful AX snapshot after the gate rejects it.
+        let rejected = WindowEnumeratorAccessibilityPrefetch<Int>(pid: 10) {
+            WindowEnumeratorAccessibilityPrefetch<Int>.Query(
+                windows: [123], error: .success)
+        }
+        rejected.start(on: queue, beforeRead: { false })
+        queue.waitUntilAllOperationsAreFinished()
+        let rejectedAnswer = rejected.answer()
+        suite.expect(rejectedAnswer?.error == .cannotComplete
+                        && rejectedAnswer?.windows == nil,
+                     "a rejected candidate gate suppresses the obsolete successful source answer")
+    }
+
     static func run(_ suite: TestSuite) {
         ScrollingTitleMotionTests.run(suite)
         scrollNavigationChecks(suite)
         secureInputRegressionChecks(suite)
+        accessibilityPrefetchChecks(suite)
         func expectEqual(_ actual: String, _ expected: String, _ label: String,
                          file: StaticString = #filePath, line: UInt = #line) {
             suite.expect(actual == expected, "\(label): got \(actual), expected \(expected)",
@@ -6242,6 +6365,42 @@ enum SwitcherModelFeatureTests {
                                                               sourceWindowID: nil,
                                                               ownPID: 99),
                "App Switcher does not stage without a concrete source window")
+        suite.expect(SwitcherSupport.shouldSkipSourceStaging(outcome: .staged,
+                                                             frontmostPID: 10,
+                                                             sourcePID: 20),
+               "App Switcher stages the source window once per activation while the target stays in front")
+        suite.expect(!SwitcherSupport.shouldSkipSourceStaging(outcome: .staged,
+                                                              frontmostPID: 20,
+                                                              sourcePID: 20),
+               "App Switcher stages the source window again when the user went back to it")
+        suite.expect(!SwitcherSupport.shouldSkipSourceStaging(outcome: .staged,
+                                                              frontmostPID: nil,
+                                                              sourcePID: 20),
+               "App Switcher stages the source window again when the foreground is unknown")
+        suite.expect(!SwitcherSupport.shouldSkipSourceStaging(outcome: .unresolved,
+                                                              frontmostPID: 10,
+                                                              sourcePID: 20),
+               "App Switcher stages the source window again after an unconfirmed staging")
+        suite.expect(!SwitcherSupport.shouldSkipSourceStaging(outcome: .sourceMinimized,
+                                                              frontmostPID: 10,
+                                                              sourcePID: 20),
+               "App Switcher stages the source window again after a minimized source")
+        suite.expect(!SwitcherSupport.shouldSkipSourceStaging(outcome: .notApplicable,
+                                                              frontmostPID: 10,
+                                                              sourcePID: 20),
+               "App Switcher stages the source window again when there was nothing to stage")
+        let stagingState = SwitcherSourceStagingState(generation: 7)
+        suite.expect(stagingState.lastOutcome == .notApplicable,
+               "a new activation starts with an unstaged source window")
+        stagingState.record(.unresolved, generation: 7)
+        suite.expect(stagingState.lastOutcome == .unresolved,
+               "a failed staging leaves the source window unstaged")
+        stagingState.record(.staged, generation: 7)
+        suite.expect(stagingState.lastOutcome == .staged,
+               "a confirmed staging leaves the source window behind the target")
+        stagingState.record(.unresolved, generation: 8)
+        suite.expect(stagingState.lastOutcome == .staged,
+               "a staging pass from another generation does not change this activation")
         suite.expect(SwitcherSupport.shouldContinueFocusRetry(targetPID: 10,
                                                         sourcePID: 20,
                                                         frontmostPID: 10,
@@ -6399,12 +6558,18 @@ enum SwitcherModelFeatureTests {
             let none: [pid_t?] = [nil]
             let handoff: [pid_t?] = [30]
             let session: [pid_t?] = [20]
+            // A retry pass asks the guard before and after its writes, as
+            // upstream's does, and stages once per round: what matters is that
+            // every call carries the expected source, not how many rounds ran.
+            func every(_ pids: [pid_t?], are expected: pid_t?, atLeast minimum: Int = 0) -> Bool {
+                pids.count >= minimum && pids.allSatisfy { $0 == expected }
+            }
             let target = SwitcherItem.window(id: 77, title: "Target", appName: "Target", pid: 10,
                                              isOnScreen: true, frame: .zero)
             activate(target, SwitcherActivationSources(handoffSourcePID: 30))
             suite.expect(hops == none && watched == none,
                    "only the session source arms the minimize restore and Space hops")
-            suite.expect(guards.map(\.sourcePID) == handoff && staged == none + none,
+            suite.expect(every(guards.map(\.sourcePID), are: 30, atLeast: 1) && every(staged, are: nil),
                    "focus retry guards use the handoff source while staging keeps the session source")
             // Issue #1503: unhiding an app that is not hidden raises every one
             // of its windows, so a selection unhides its app only when hidden.
@@ -6420,20 +6585,20 @@ enum SwitcherModelFeatureTests {
             suite.expect(visibleUnhides == 0 && hiddenUnhides > 0,
                    "activating a selection unhides its app only when the app is hidden")
             activate(target, SwitcherActivationSources(sourcePID: 20, handoffSourcePID: 30, sourceWindowID: 5))
-            let sessionStaged = staged == session + session
+            let sessionStaged = every(staged, are: 20, atLeast: 1)
             suite.expect(hops == session && watched == session && sessionStaged
-                         && guards.map(\.sourcePID) == session,
+                         && every(guards.map(\.sourcePID), are: 20, atLeast: 1),
                    "a session source reaches the hop, the minimize restore, staging and the retry guard")
             activate(target, SwitcherActivationSources())
-            let nothingStaged = staged == none + none
+            let nothingStaged = every(staged, are: nil)
             suite.expect(hops == none && watched == none && nothingStaged
-                         && guards.map(\.sourcePID) == none,
+                         && every(guards.map(\.sourcePID), are: nil, atLeast: 1),
                    "activation never adopts the frontmost app as a source on its own")
             // The fullscreen pass made without retries asks the same guard.
             let fullscreenTarget = SwitcherItem.window(id: 77, title: "Target", appName: "Target", pid: 10,
                                                        isOnScreen: true, isFullscreen: true, frame: .zero)
             activate(fullscreenTarget, retry: false, SwitcherActivationSources(handoffSourcePID: 30))
-            suite.expect(guards.map(\.sourcePID) == handoff && staged == none && hops == none,
+            suite.expect(every(guards.map(\.sourcePID), are: 30, atLeast: 1) && every(staged, are: nil) && hops == none,
                    "the single fullscreen pass guards with the handoff source and stages only the session source")
             activate(.appOnly(appName: "Target", pid: 10),
                      SwitcherActivationSources(sourceWasFullscreen: true, handoffSourcePID: 30))
@@ -6447,7 +6612,7 @@ enum SwitcherModelFeatureTests {
             pending = []
             WindowActivator.activate(pid: 10, windowID: 77, appName: "Target", handoffSourcePID: 30, steps: steps)
             runPending()
-            suite.expect(hops == none && watched == none && guards.map(\.sourcePID) == handoff,
+            suite.expect(hops == none && watched == none && every(guards.map(\.sourcePID), are: 30, atLeast: 1),
                    "activation by pid forwards its source only as a handoff")
             guards = []
             WindowActivator.focusAfterSpaceHop(windowID: 77, appPID: 10, windowOwnerPID: 10, sourcePID: 20,
@@ -7232,6 +7397,35 @@ enum SwitcherModelFeatureTests {
         ], ownerPID: 10)
         suite.expect(snapshot == [101, 102, 103, 104],
                "focus snapshots retain offscreen and auxiliary identities without mixing owners")
+        let alreadyRestored = SwitcherWindowFocusRetryState(targetWindowID: 101,
+                                                            targetStartedMinimized: false,
+                                                            targetWasObservedRestored: true,
+                                                            knownWindowIDs: snapshot)
+        var unneededMinimizedReads = 0
+        alreadyRestored.observeInitialMinimizedState {
+            unneededMinimizedReads += 1
+            return nil
+        }
+        suite.expect(unneededMinimizedReads == 0,
+               "a window that started restored skips an initial minimized-state query")
+
+        let startedMinimized = SwitcherWindowFocusRetryState(targetWindowID: 101,
+                                                             targetStartedMinimized: true,
+                                                             targetWasObservedRestored: false,
+                                                             knownWindowIDs: snapshot)
+        var requiredMinimizedReads = 0
+        startedMinimized.observeInitialMinimizedState {
+            requiredMinimizedReads += 1
+            return false
+        }
+        suite.expect(requiredMinimizedReads == 1
+                     && !startedMinimized.shouldContinue(targetPID: 10, sourcePID: 20,
+                                                         frontmostPID: 10,
+                                                         targetMinimizedState: true,
+                                                         targetAppWindowIDs: [101],
+                                                         targetAppFocusedWindowID: 101,
+                                                         ownPID: 99),
+               "a restored minimized target is not reopened if minimized again")
 
         let cases: [(String, pid_t?, Set<CGWindowID>, CGWindowID?, Set<CGWindowID>, Bool, Int, Int)] = [
             ("new keyboard window cancels", 10, [101, 500], 500, snapshot, false, 1, 1),
@@ -7266,6 +7460,7 @@ enum SwitcherModelFeatureTests {
         let withHelper = SwitcherSupport.focusRetryWindowIDs(in: [helper, window(101)], ownerPID: 10)
         let state = SwitcherWindowFocusRetryState(targetWindowID: 101,
                                                   targetStartedMinimized: false,
+                                                  targetWasObservedRestored: true,
                                                   knownWindowIDs: snapshot)
         suite.expect(!state.shouldContinue(targetPID: 10, sourcePID: 20, frontmostPID: 10,
                                     targetMinimizedState: false, targetAppWindowIDs: withHelper,
@@ -7275,12 +7470,47 @@ enum SwitcherModelFeatureTests {
                "a transparent helper does not justify re-raising an already focused target")
         let fullscreenState = SwitcherWindowFocusRetryState(targetWindowID: 101,
                                                             targetStartedMinimized: false,
+                                                            targetWasObservedRestored: true,
                                                             knownWindowIDs: snapshot)
         suite.expect(fullscreenState.shouldContinue(targetPID: 10, sourcePID: 20, frontmostPID: 10,
                                              targetMinimizedState: false, targetAppWindowIDs: withHelper,
                                              targetAppFocusedWindowID: 101,
                                              targetWindowIsFocused: true, ownPID: 99),
                "fullscreen retries keep later passes available for an already focused target")
+        var foregroundReads = [pid_t?](arrayLiteral: 10, 99)
+        let foregroundState = SwitcherWindowFocusRetryState(targetWindowID: 101,
+                                                            targetStartedMinimized: false,
+                                                            targetWasObservedRestored: true,
+                                                            knownWindowIDs: snapshot)
+        let returnedToOwnApp = foregroundState.shouldContinue(
+            targetPID: 10,
+            sourcePID: 20,
+            frontmostPID: foregroundReads.removeFirst(),
+            frontmostAfterFocusQueryPID: { foregroundReads.removeFirst() },
+            targetMinimizedState: false,
+            targetAppWindowIDs: [101],
+            targetAppFocusedWindowID: 101,
+            stopsWhenTargetFocused: true,
+            ownPID: 99
+        )
+        suite.expect(!returnedToOwnApp && foregroundReads.isEmpty,
+                     "returning to this app during focused-window AX prevents the stale retry from continuing")
+        let focusedWindowAfterSnapshot: CGWindowID = 777
+        let readingsIncludingFocusedWindow = snapshot.union([focusedWindowAfterSnapshot])
+        let laterFocusedWindowState = SwitcherWindowFocusRetryState(targetWindowID: 101,
+                                                                    targetStartedMinimized: false,
+                                                                    targetWasObservedRestored: true,
+                                                                    knownWindowIDs: [101, 102])
+        suite.expect(!laterFocusedWindowState.shouldContinue(
+            targetPID: 10,
+            sourcePID: 20,
+            frontmostPID: 10,
+            frontmostAfterFocusQueryPID: { 10 },
+            targetMinimizedState: false,
+            targetAppWindowIDs: readingsIncludingFocusedWindow,
+            targetAppFocusedWindowID: focusedWindowAfterSnapshot,
+            ownPID: 99
+        ), "a newly focused AX window outside the original snapshot cancels the older retry")
         suite.expect(!fullscreenState.shouldContinue(targetPID: 10, sourcePID: 20, frontmostPID: 10,
                                                targetMinimizedState: false, targetAppWindowIDs: [500],
                                                targetAppFocusedWindowID: 500, ownPID: 99),
@@ -7303,6 +7533,7 @@ enum SwitcherModelFeatureTests {
                 }
                 let pending = SwitcherWindowFocusRetryState(targetWindowID: 101,
                                                             targetStartedMinimized: false,
+                                                            targetWasObservedRestored: true,
                                                             knownWindowIDs: snapshot)
                 suite.expect(!pending.shouldContinue(targetPID: 10, sourcePID: 20, frontmostPID: foreground,
                                                 targetMinimizedState: false, targetAppWindowIDs: [500],
@@ -7313,6 +7544,7 @@ enum SwitcherModelFeatureTests {
 
         let partial = SwitcherWindowFocusRetryState(targetWindowID: 101,
                                                     targetStartedMinimized: false,
+                                                    targetWasObservedRestored: true,
                                                     knownWindowIDs: [102])
         suite.expect(partial.shouldContinue(targetPID: 10, sourcePID: 20, frontmostPID: 10,
                                       targetMinimizedState: false, targetAppWindowIDs: [101],
@@ -7320,6 +7552,7 @@ enum SwitcherModelFeatureTests {
                "the selected target is not new when a partial snapshot missed it")
         let focused = SwitcherWindowFocusRetryState(targetWindowID: 101,
                                                     targetStartedMinimized: false,
+                                                    targetWasObservedRestored: true,
                                                     knownWindowIDs: [102])
         suite.expect(!focused.shouldContinue(targetPID: 10, sourcePID: 20, frontmostPID: 10,
                                        targetMinimizedState: false, targetAppWindowIDs: [101],
@@ -7329,6 +7562,7 @@ enum SwitcherModelFeatureTests {
                "a focused selected target does not receive a redundant retry")
         let unfocused = SwitcherWindowFocusRetryState(targetWindowID: 101,
                                                        targetStartedMinimized: false,
+                                                       targetWasObservedRestored: true,
                                                        knownWindowIDs: [101, 102])
         suite.expect(unfocused.shouldContinue(targetPID: 10, sourcePID: 20, frontmostPID: 10,
                                         targetMinimizedState: false, targetAppWindowIDs: [102],
@@ -7337,6 +7571,7 @@ enum SwitcherModelFeatureTests {
                "an unfocused selected target still gets its settling retry")
         let minimized = SwitcherWindowFocusRetryState(targetWindowID: 101,
                                                       targetStartedMinimized: true,
+                                                      targetWasObservedRestored: false,
                                                       knownWindowIDs: snapshot)
         suite.expect(minimized.shouldContinue(targetPID: 10, sourcePID: 20, frontmostPID: 20,
                                         targetMinimizedState: true, targetAppWindowIDs: [],
@@ -7354,6 +7589,50 @@ enum SwitcherModelFeatureTests {
                                          targetMinimizedState: false, targetAppWindowIDs: [101],
                                          targetAppFocusedWindowID: 101, ownPID: 99),
                "later restoration cannot restart a cancelled focus chain")
+        let restoredAndFocused = SwitcherWindowFocusRetryState(targetWindowID: 101,
+                                                               targetStartedMinimized: true,
+                                                               targetWasObservedRestored: false,
+                                                               knownWindowIDs: [101, 102])
+        suite.expect(!restoredAndFocused.shouldContinue(targetPID: 10, sourcePID: 20, frontmostPID: 10,
+                                                        targetMinimizedState: false,
+                                                        targetAppWindowIDs: [101],
+                                                        targetAppFocusedWindowID: 101,
+                                                        targetWindowIsFocused: true,
+                                                        stopsWhenTargetFocused: true, ownPID: 99),
+               "a restored minimized target that is already focused does not receive a redundant retry")
+        let restoredButUnfocused = SwitcherWindowFocusRetryState(targetWindowID: 101,
+                                                                 targetStartedMinimized: true,
+                                                                 targetWasObservedRestored: false,
+                                                                 knownWindowIDs: [101, 102])
+        suite.expect(restoredButUnfocused.shouldContinue(targetPID: 10, sourcePID: 20, frontmostPID: 10,
+                                                         targetMinimizedState: false,
+                                                         targetAppWindowIDs: [102],
+                                                         targetAppFocusedWindowID: 102,
+                                                         targetWindowIsFocused: false,
+                                                         stopsWhenTargetFocused: true, ownPID: 99),
+               "a restored minimized target still gets the settling retry while unfocused")
+        let stillMinimized = SwitcherWindowFocusRetryState(targetWindowID: 101,
+                                                           targetStartedMinimized: true,
+                                                           targetWasObservedRestored: false,
+                                                           knownWindowIDs: [101, 102])
+        suite.expect(stillMinimized.shouldContinue(targetPID: 10, sourcePID: 20, frontmostPID: 10,
+                                                   targetMinimizedState: true,
+                                                   targetAppWindowIDs: [101],
+                                                   targetAppFocusedWindowID: 101,
+                                                   targetWindowIsFocused: true,
+                                                   stopsWhenTargetFocused: true, ownPID: 99),
+               "a still-minimized target keeps its restoration retry")
+        let unreadableMinimized = SwitcherWindowFocusRetryState(targetWindowID: 101,
+                                                                targetStartedMinimized: true,
+                                                                targetWasObservedRestored: false,
+                                                                knownWindowIDs: [101, 102])
+        suite.expect(unreadableMinimized.shouldContinue(targetPID: 10, sourcePID: 20, frontmostPID: 10,
+                                                        targetMinimizedState: nil,
+                                                        targetAppWindowIDs: [101],
+                                                        targetAppFocusedWindowID: 101,
+                                                        targetWindowIsFocused: true,
+                                                        stopsWhenTargetFocused: true, ownPID: 99),
+               "an unreadable minimized state keeps the restoration retry")
     }
 }
 

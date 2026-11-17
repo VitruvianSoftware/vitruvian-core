@@ -127,8 +127,6 @@ fn main() {
             allowed_subjects: http_cfg.allowed_subjects.clone(),
             allowed_client_id: http_cfg.allowed_client_id.clone(),
             jwks_uri: None,
-            key_source: None,
-            jwks_timeout_ms: None,
         }) {
             Ok(v) => Arc::new(v),
             Err(err) => {

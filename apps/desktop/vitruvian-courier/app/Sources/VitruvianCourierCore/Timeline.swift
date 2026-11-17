@@ -195,6 +195,12 @@ public struct ReactionChip: Equatable, Identifiable, Sendable {
         self.myEventID = myEventID
     }
 
+    /// A custom emoji is an image the bridge stored (`mxc://…`): the key is an address, never something to print.
+    public var isCustomImage: Bool { key.hasPrefix("mxc://") }
+
+    /// The key as words for a tooltip or a screen reader: the emoji itself, or "Custom emoji" for an image.
+    public var spokenKey: String { isCustomImage ? String(localized: "Custom emoji") : key }
+
     /// Who reacted, in words, as Slack says it: "You, Ann and Bo reacted with 👍". I am "You" and come first; past
     /// `maxNames` names the rest are counted ("… and 2 others").
     public func summary(maxNames: Int = 10, locale: Locale = .current, redacted: Bool = false) -> String {
@@ -212,9 +218,9 @@ public struct ReactionChip: Equatable, Identifiable, Sendable {
         } else if rest > 1 {
             parts.append(String(localized: "\(rest) others"))
         }
-        guard !parts.isEmpty else { return String(localized: "Reacted with \(key)") }
+        guard !parts.isEmpty else { return String(localized: "Reacted with \(spokenKey)") }
         let list = parts.formatted(.list(type: .and).locale(locale))
-        return String(localized: "\(list) reacted with \(key)")
+        return String(localized: "\(list) reacted with \(spokenKey)")
     }
 
     /// Returns a real display name for `isMe`, or `nil` when `name` is empty or just a placeholder like `"You"` or `"me"`.
@@ -618,6 +624,9 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     public internal(set) var reactions: [ReactionChip]
     /// The first message of a run from one sender: it shows the name and the picture, and the others do not.
     public internal(set) var startsGroup: Bool
+    /// Whether the time shows on this message. False when the next message is from the same sender in the same minute,
+    /// so a post of several pictures or files shows its time once, on the last item.
+    public internal(set) var showsTime = true
     /// Whether this event's local media was removed via storage cleanup (`com.courier.media_removed == true`).
     public let mediaRemoved: Bool
     /// Whether this message is in a direct (1:1) chat, hiding the sender name label above incoming bubbles.
@@ -683,7 +692,7 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
         self.id = id
         self.roomID = roomID
         self.sender = sender
-        self.senderName = senderName
+        self.senderName = NetworkTag.stripped(senderName)
         self.senderAvatarPath = senderAvatarPath
         self.mine = mine
         self.ts = ts
@@ -728,6 +737,11 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
         self.mediaRemoved = mediaRemoved
         self.isDirect = isDirect
     }
+
+    /// Whether the row draws the other person's picture: on the first message of a run from one sender, in a group
+    /// and in a one-to-one chat alike (a run is `startsGroup`'s: same sender, under five minutes apart, no day or
+    /// "New" divider between). My own messages never draw one.
+    public var showsSenderAvatar: Bool { !mine && startsGroup }
 
     /// Stickers render in a borderless container without the coloured text bubble background tint.
     public var suppressesBubbleBackground: Bool {
@@ -970,7 +984,20 @@ public enum Timeline {
         }
         flushGallery()
         flushMembers()
+        hideRepeatedTimes(&items)
         return items
+    }
+
+    /// A run of messages from one sender in the same minute shows the time once, on its last message.
+    static func hideRepeatedTimes(_ items: inout [TimelineItem]) {
+        guard items.count > 1 else { return }
+        for index in items.indices.dropLast() {
+            guard case var .message(current) = items[index], case let .message(next) = items[index + 1],
+                  current.sender == next.sender, current.roomID == next.roomID,
+                  current.ts / 60000 == next.ts / 60000 else { continue }
+            current.showsTime = false
+            items[index] = .message(current)
+        }
     }
 
     private static func isGalleryCandidate(_ message: TimelineMessage) -> Bool {
@@ -1073,7 +1100,7 @@ public enum Timeline {
     private static func memberName(of event: Event) -> String {
         if let target = event.content["displayname"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
            !target.isEmpty {
-            return target
+            return NetworkTag.stripped(target)
         }
         return senderName(of: event)
     }
@@ -1081,7 +1108,7 @@ public enum Timeline {
     /// The sender's name as the event carries it, or their user id when it carries none.
     private static func senderName(of event: Event) -> String {
         let sender = event.senderName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return sender.isEmpty ? event.sender : sender
+        return sender.isEmpty ? event.sender : NetworkTag.stripped(sender)
     }
 
     private static func summarizeMembershipRun(_ events: [Event]) -> String {

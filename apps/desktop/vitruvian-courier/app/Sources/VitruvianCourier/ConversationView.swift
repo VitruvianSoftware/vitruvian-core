@@ -22,6 +22,7 @@ struct ConversationView: View {
     let appModel: AppModel
     var appearance: AppearancePreferences? = nil
     @Environment(\.controlActiveState) private var controlActiveState
+    @Environment(\.timelineCovered) private var windowCoversTimeline
     @Environment(\.appearancePreferences) private var appearanceEnv
     @Environment(\.themeAccentHex) private var themeAccentHex
     @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
@@ -172,7 +173,8 @@ struct ConversationView: View {
                     },
                     onClose: conversation.toggleChatInfo,
                     inbox: inbox,
-                    headerInToolbar: drawsLiquidGlass
+                    headerInToolbar: drawsLiquidGlass,
+                    selfAvatarPath: conversation.ownAvatarPath(for: info)
                 )
                 .frame(minWidth: 280, idealWidth: 320, maxWidth: 420)
                 .reportsSidePaneWidth(.chatInfo)
@@ -206,6 +208,7 @@ struct ConversationView: View {
         .onPreferenceChange(SidePaneWidthKey.self) { sidePaneWidths = $0 }
         .environment(\.appearancePreferences, resolvedAppearance)
         .environment(\.themeRoomID, conversation.roomID)
+        .environment(\.timelineCovered, windowCoversTimeline || coveredBySheet)
         .environment(
             \.themeAccentHex,
             resolvedAppearance?.effectiveTheme(for: conversation.roomID).accentColorHex ?? themeAccentHex
@@ -540,6 +543,15 @@ struct ConversationView: View {
         }, set: { value in
             if value == nil, sheetRequestIsShown { messageActions.dismissRequest() }
         })
+    }
+
+    /// A sheet or an alert of this chat is up: no message shows its hover bar behind it.
+    private var coveredBySheet: Bool {
+        conversation.isCreatingPoll || conversation.activeEditGroupDraft != nil
+            || conversation.activeAddParticipantsRoom != nil || conversation.activeReportSpamDraft != nil
+            || conversation.activeViewOnceMessage != nil || sheetRequestIsShown
+            || conversation.pendingRoomConfirmation != nil
+            || { if case .confirm? = messageActions.request { return true } else { return false } }()
     }
 
     private var sheetRequestIsShown: Bool {

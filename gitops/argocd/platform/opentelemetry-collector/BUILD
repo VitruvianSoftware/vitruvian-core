@@ -15,11 +15,11 @@ rust_library(
     name = "component_names_lib",
     srcs = [
         "src/lib.rs",
-        "src/yaml.rs",
     ],
     crate_name = "component_names",
     edition = "2021",
     deps = [
+        "//tools/gitops/values-yaml:values_yaml",
         "@crates//:serde_json",
     ],
 )

@@ -338,7 +338,7 @@ pub const EXAMPLES: &[Example] = &[
         folder: "samples/hello-swift",
         files: &[("vitruvian-tool.json", "json"), ("main.swift", "swift")],
         description: "A tool written with the Swift kit: it says hello, and counts with a preference the person can change in Settings.",
-        how: "`vitruvian-tool init <folder> --template swift` starts a new tool from a copy of this one, as a Swift package that depends on the published SDK. Its `build.sh` builds the program into `tool/bin/tool`, and `tool/` is the folder you add to Vitruvian.",
+        how: "`vitruvian-tool init <folder> --template swift` starts a new tool from a copy of this one, as a Swift package that depends on the published SDK. Its `build.sh` builds the program into `tool/bin/tool`, and `tool/` is the folder you add to Vitruvian Atrium.",
     },
     Example {
         language: "python",
@@ -346,7 +346,7 @@ pub const EXAMPLES: &[Example] = &[
         folder: "samples/hello-python",
         files: &[("vitruvian-tool.json", "json"), ("bin/tool.py", "python")],
         description: "A tool in plain Python with nothing else: it says hello, and copies the time.",
-        how: "`vitruvian-tool init <folder>` starts a new tool from a copy of this one. The folder runs as it is: add it to Vitruvian.",
+        how: "`vitruvian-tool init <folder>` starts a new tool from a copy of this one. The folder runs as it is: add it to Vitruvian Atrium.",
     },
 ];
 
@@ -456,7 +456,7 @@ pub fn pages(base: &PyStr) -> Result<Vec<(String, PyStr)>, PyErr> {
         base,
         "protocol/README.md",
         "/tools/protocol/",
-        "How Vitruvian and a tool talk: one JSON message per line over the tool's standard input and output.",
+        "How Vitruvian Atrium and a tool talk: one JSON message per line over the tool's standard input and output.",
     )?;
     let trimmed = body.rstrip_char(NL);
     let old = cat(&[&trimmed, &lit("\n{% endraw %}")]);

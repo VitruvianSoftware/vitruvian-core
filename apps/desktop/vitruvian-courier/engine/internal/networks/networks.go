@@ -176,10 +176,16 @@ func simpleSpec(name, displayName, modulePath string, newConnector func() bridge
 	}
 }
 
-// whatsappSpec is WhatsApp's example config with two changes. A chat archived on the phone is tagged
+// whatsappDisplaynameTemplate names a WhatsApp person by the name the phone's address book has for them (FullName),
+// else a business's name, else the name they gave WhatsApp (PushName, often a first name or a nickname), else their
+// number. The example config's template leaves the address-book name out and ends every name with " (WA)": the
+// network is already shown by the chat's badge, so the tag only crowds the name.
+const whatsappDisplaynameTemplate = `{{or .FullName .BusinessName .PushName .Phone .RedactedPhone "Unknown user"}}`
+
+// whatsappSpec is WhatsApp's example config with three changes. A chat archived on the phone is tagged
 // m.lowpriority, which the store takes in as archived: the example leaves archive_tag empty, so archived chats
-// would arrive in the inbox. And polls arrive as polls (extev_polls), not as text asking people to vote on the
-// phone.
+// would arrive in the inbox. Polls arrive as polls (extev_polls), not as text asking people to vote on the
+// phone. And a person is named in full, without the " (WA)" tag (whatsappDisplaynameTemplate).
 func whatsappSpec() (engine.Spec, error) {
 	return engine.Spec{
 		Name:        "whatsapp",
@@ -193,7 +199,9 @@ func whatsappSpec() (engine.Spec, error) {
 			}
 			cfg.ArchiveTag = event.RoomTagLowPriority
 			cfg.ExtEvPolls = true
-			return nil
+			// The connector parsed the example's template when it decoded the config: parse ours the same way.
+			cfg.DisplaynameTemplate = whatsappDisplaynameTemplate
+			return cfg.PostProcess()
 		},
 	}, nil
 }

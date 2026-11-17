@@ -783,6 +783,34 @@ func TestRoomSharedMediaFilesAndLinks(t *testing.T) {
 	require.Equal(t, "docs.example.org", links[1].Host)
 }
 
+func TestRoomSharedLinksCarryThePreviewTitle(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	roomID := "!titled-links:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: roomID, Network: "whatsapp", Name: "Titled", CreatedAt: time.Unix(1, 0)}))
+	t0 := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+
+	mkMsg(t, s, roomID, "$with", me, "m.room.message",
+		`{"msgtype":"m.text","body":"https://share.google/aaa","com.beeper.linkpreviews":[{"matched_url":"https://share.google/aaa","og:title":"  Courier release notes "}]}`,
+		t0.Add(time.Minute))
+	mkMsg(t, s, roomID, "$without", me, "m.room.message",
+		`{"msgtype":"m.text","body":"https://share.google/bbb"}`, t0.Add(2*time.Minute))
+	mkMsg(t, s, roomID, "$empty", me, "m.room.message",
+		`{"msgtype":"m.text","body":"https://share.google/ccc","com.beeper.linkpreviews":[{"matched_url":"https://share.google/ccc","og:title":"  "}]}`,
+		t0.Add(3*time.Minute))
+
+	links, err := s.RoomSharedLinks(ctx, roomID, 10)
+	require.NoError(t, err)
+	titles := map[string]string{}
+	for _, l := range links {
+		titles[l.URL] = l.Title
+	}
+	require.Equal(t, map[string]string{
+		"https://share.google/aaa": "Courier release notes",
+		"https://share.google/bbb": "",
+		"https://share.google/ccc": "",
+	}, titles)
+}
+
 type countingDBLogger struct {
 	dbutil.DatabaseLogger
 	count int

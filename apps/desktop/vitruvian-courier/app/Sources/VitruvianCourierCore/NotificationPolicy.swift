@@ -113,6 +113,14 @@ public final class NotificationPreferences: ObservableObject {
     public static let allowedDelaySeconds: [Int] = [0, 10, 30, 60, 120, 300]
     public static let allowedRepeatUnreadMinutes: [Int] = [0, 2, 5, 10]
 
+    /// What Settings says under "Delay notifications for". Each claim is what the code does: a delayed notification is
+    /// dropped when the chat is read before the wait is over (`NotificationCoordinator.scheduleDelayedDelivery`), and a
+    /// message with a verification code skips the wait (`NotificationPolicy.evaluate`'s `effectiveDelay`). It does not
+    /// say the wait joins several messages into one notification, because each message is held and sent by itself.
+    public static var delayFootnote: String {
+        String(localized: "Wait this long before alerting. If you read the chat in the meantime, no notification is sent. Messages with a verification code always notify right away.")
+    }
+
     @Published public var soundEffectsMode: SoundEffectsMode {
         didSet {
             guard canMutate({ soundEffectsMode = oldValue }) else { return }
@@ -217,6 +225,17 @@ public final class NotificationPreferences: ObservableObject {
         }
     }
 
+    /// A sound chosen for one chat in Chat Info, by room ID. A chat with no entry uses the account's sound, else the
+    /// direct or group sound. A muted chat stays silent whatever its sound is.
+    @Published public var chatSounds: [String: NotificationSoundChoice] {
+        didSet {
+            guard canMutate({ chatSounds = oldValue }) else { return }
+            if let data = try? JSONEncoder().encode(chatSounds) {
+                defaults.set(data, forKey: Self.key("chatSounds"))
+            }
+        }
+    }
+
     public static func key(_ name: String) -> String { "courier.notifications." + name }
 
     private let defaults: UserDefaults
@@ -272,7 +291,28 @@ public final class NotificationPreferences: ObservableObject {
         } else {
             accountOverrides = [:]
         }
+        if let data = defaults.data(forKey: Self.key("chatSounds")),
+           let decoded = try? JSONDecoder().decode([String: NotificationSoundChoice].self, from: data) {
+            chatSounds = decoded
+        } else {
+            chatSounds = [:]
+        }
         isInitializing = false
+    }
+
+    /// The sound chosen for `roomID`, or nil when the chat uses the default.
+    public func chatSound(for roomID: String) -> NotificationSoundChoice? {
+        chatSounds[roomID]
+    }
+
+    /// Sets the sound for one chat; nil (or `.default`) goes back to the default.
+    public func setChatSound(_ sound: NotificationSoundChoice?, for roomID: String) {
+        guard !roomID.isEmpty else { return }
+        if let sound, sound != .default {
+            chatSounds[roomID] = sound
+        } else if chatSounds[roomID] != nil {
+            chatSounds.removeValue(forKey: roomID)
+        }
     }
 
     public func setAccountOverride(key: String, enabled: Bool) {
@@ -509,17 +549,30 @@ public enum NotificationPolicy {
 
         let rawText = event.type == "m.room.message" ? (event.content["body"]?.stringValue ?? "") : ""
         let otpCode = rawText.isEmpty ? nil : OTPDetector.extractCode(from: rawText)
-        let autoCopyOTP = preferences?.autoCopyOTP ?? false
-        let isUrgentOTP = otpCode != nil && autoCopyOTP
+        // Two questions, kept apart. Does the message hold a verification code? Then it is what a person is waiting
+        // for, and it notifies through the mute and Low Priority guards. Is the code copied? Only when auto-copy is on:
+        // that setting decides copying and nothing else.
+        let holdsCode = otpCode != nil
+        let autoCopiesCode = holdsCode && (preferences?.autoCopyOTP ?? false)
+        // Which codes get through a quiet chat: one sent to me alone (codes come from a sender, one to one), or any
+        // when auto-copy is on, as before. A "code" in a muted group is more likely a "pin 1234" in conversation.
+        let codeGetsThrough = holdsCode && (room.isDirect || autoCopiesCode)
 
-        guard !room.lowPriority, !room.hidden else { return noNotify }
+        // Short-code senders are filed under Low Priority by default (`ShortCodeSenders`), and their codes must still
+        // notify, so a code passes this guard as it passes the mute guard below. A hidden chat stays silent.
+        guard !room.hidden, !room.lowPriority || codeGetsThrough else { return noNotify }
         let allowRequests = preferences?.requestNotificationsEnabled ?? context.requestNotifications
         guard !room.request || allowRequests else { return noNotify }
 
         let override = resolveAccountOverride(for: room, preferences: preferences, explicitKey: accountKey)
 
-        if !isUrgentOTP {
+        // A code gets through a chat's mute (as through Low Priority above): that chat is quiet, but this is what the
+        // person asked for. The switches that turn notifications off for all messages, all groups or a whole account
+        // still hold for a code, unless auto-copy is on, which has always meant "always tell me about codes".
+        if !codeGetsThrough {
             guard !isMuted(room) else { return noNotify }
+        }
+        if !autoCopiesCode {
             if room.isDirect {
                 guard preferences?.messageNotificationsEnabled ?? true else { return noNotify }
             } else {
@@ -538,11 +591,13 @@ public enum NotificationPolicy {
         let baseSound = room.isDirect
             ? (preferences?.messageSound ?? .default)
             : (preferences?.groupSound ?? .default)
-        let sound = override?.sound ?? baseSound
+        // The chat's own sound (Chat Info) wins over the account's, which wins over the direct or group sound.
+        let chatSound = preferences?.chatSounds[event.roomID] ?? preferences?.chatSounds[room.roomID]
+        let sound = chatSound ?? override?.sound ?? baseSound
 
-        var title = room.name.isEmpty ? event.senderName : room.name
+        var title = room.name.isEmpty ? NetworkTag.stripped(event.senderName) : NetworkTag.stripped(room.name)
         if title.isEmpty { title = String(localized: "Vitruvian Courier") }
-        let sender = event.senderName.trimmingCharacters(in: .whitespaces)
+        let sender = NetworkTag.stripped(event.senderName.trimmingCharacters(in: .whitespaces))
         var subtitle: String? = room.isDirect || sender.isEmpty ? nil : sender
         var textBody: String
         var attachment: String?
@@ -553,7 +608,7 @@ public enum NotificationPolicy {
             textBody = body(of: event)
             attachment = attachmentPath(of: event)
         }
-        let category: NotificationCategory = isUrgentOTP ? .messageOTP : .message
+        let category: NotificationCategory = autoCopiesCode ? .messageOTP : .message
 
         if override?.showPreviews == false {
             subtitle = nil
@@ -583,7 +638,7 @@ public enum NotificationPolicy {
             delaySeconds: effectiveDelay,
             repeatUnreadMinutes: effectiveRepeat,
             otpCode: context.isAppLocked ? nil : otpCode,
-            shouldAutoCopyOTP: isUrgentOTP && !context.isAppLocked
+            shouldAutoCopyOTP: autoCopiesCode && !context.isAppLocked
         )
     }
 
@@ -686,7 +741,7 @@ public enum NotificationPolicy {
     public static func typingContent(room: InboxRow) -> NotificationContent {
         NotificationContent(
             eventID: typingID(roomID: room.roomID), roomID: room.roomID,
-            title: room.name.isEmpty ? String(localized: "Vitruvian Courier") : room.name, subtitle: nil,
+            title: room.name.isEmpty ? String(localized: "Vitruvian Courier") : NetworkTag.stripped(room.name), subtitle: nil,
             body: room.typingLine ?? "", category: .typing)
     }
 
@@ -699,14 +754,14 @@ public enum NotificationPolicy {
     public static func reminderContent(room: InboxRow) -> NotificationContent {
         NotificationContent(
             eventID: "reminder-" + room.roomID + "-" + UUID().uuidString, roomID: room.roomID,
-            title: room.name.isEmpty ? String(localized: "Vitruvian Courier") : room.name, subtitle: nil,
+            title: room.name.isEmpty ? String(localized: "Vitruvian Courier") : NetworkTag.stripped(room.name), subtitle: nil,
             body: String(localized: "You asked to be reminded about this chat."), category: .reminder)
     }
 
     /// A scheduled message that won't go by itself: canceled because they wrote first, or missed while Vitruvian Courier was
     /// closed. The chat's name comes from its row; without one, "the chat".
     public static func scheduledContent(_ message: ScheduledMessage, room: InboxRow?) -> NotificationContent {
-        let name = room?.name.isEmpty == false ? room!.name : String(localized: "the chat")
+        let name = room?.name.isEmpty == false ? NetworkTag.stripped(room!.name) : String(localized: "the chat")
         let body = message.state == .canceled
             ? String(localized: "A scheduled message to \(name) wasn’t sent: they wrote first.")
             : String(localized: "A scheduled message to \(name) missed its time while Vitruvian Courier was closed.")
@@ -718,9 +773,9 @@ public enum NotificationPolicy {
 
     /// What the notification for `event` says.
     public static func content(for event: Event, room: InboxRow) -> NotificationContent {
-        var name = room.name.isEmpty ? event.senderName : room.name
+        var name = room.name.isEmpty ? NetworkTag.stripped(event.senderName) : NetworkTag.stripped(room.name)
         if name.isEmpty { name = String(localized: "Vitruvian Courier") }
-        let sender = event.senderName.trimmingCharacters(in: .whitespaces)
+        let sender = NetworkTag.stripped(event.senderName.trimmingCharacters(in: .whitespaces))
         return NotificationContent(
             eventID: event.eventID, roomID: event.roomID, title: name,
             subtitle: room.isDirect || sender.isEmpty ? nil : sender, body: body(of: event),

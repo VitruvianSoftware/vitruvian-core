@@ -58,7 +58,7 @@ func main() {
 ```
 
 `build.sh` builds the program into `tool/bin/tool`, and `tool/` is the
-folder you add in Vitruvian: Settings › Extensions, "Add from Folder…".
+folder you add in Vitruvian Atrium: Settings › Extensions, "Add from Folder…".
 
 ## Drawing
 

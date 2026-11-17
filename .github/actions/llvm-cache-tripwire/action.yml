@@ -110,8 +110,13 @@ runs:
         # merge queue, pull requests, self-hosted runners and restore-only
         # lanes never save, so telling them the toolchain was "staged for the
         # post step to save" would be false.
+        #
+        # A self-hosted runner is told nothing: it never downloads the entry
+        # (see llvm-cache-restore), and the toolchain it finds is the one kept
+        # on the pool's shared volume, not a fresh extraction. A notice on
+        # every queue job would bury the misses that mean something.
         SAVES="${LLVM_CACHE_SAVES:-true}"
-        if [ "$CACHE_HIT" != "true" ] && [ -n "$LIVE" ]; then
+        if [ "$CACHE_HIT" != "true" ] && [ -n "$LIVE" ] && [ "${RUNNER_ENVIRONMENT:-}" != "self-hosted" ]; then
           if [ "$SAVES" = "true" ]; then
             echo "::notice::llvm-contents cache miss -- extracted under $(basename "$LIVE"); staged for this job's post step to save. Expected exactly once after a toolchain-affecting MODULE.bazel change, or after a runner-image point release moves /etc/os-release (see tools/ci/src/llvm_cache_key/lib.rs)."
           else

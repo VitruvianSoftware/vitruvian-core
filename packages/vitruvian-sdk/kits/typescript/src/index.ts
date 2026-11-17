@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// @vitruviansoftware/tool-kit: write a tool for the Vitruvian app. See README.md.
+// @vitruviansoftware/tool-kit: write a tool for Vitruvian Atrium. See README.md.
 
 export * from "./generated/messages.js";
 export * from "./generated/manifest.js";

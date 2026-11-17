@@ -7,7 +7,7 @@
 //! the StoreGateway caches block indexes, and the Compactor processes blocks.
 //! Limits below 2Gi cause flapping and OOM kills under load.
 
-pub mod yaml;
+pub use gitops_values_yaml as yaml;
 
 use serde_json::Value;
 

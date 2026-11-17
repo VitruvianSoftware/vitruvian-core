@@ -112,9 +112,9 @@ var Methods = []Method{
 // -32600 it was not a message; -32601 the method is not known; -32602 its
 // params are wrong; -32603 something broke inside. A refusal by the app:
 // -32001 the service is not listed in the tool's uses; -32002 the tool is not
-// installed; -32003 Vitruvian lacks a macOS permission the service needs;
-// -32004 not available right now. A refusal by the tool: -32010 the command
-// was not run. A tool must cope with any request being refused.
+// installed; -32003 Vitruvian Atrium lacks a macOS permission the service
+// needs; -32004 not available right now. A refusal by the tool: -32010 the
+// command was not run. A tool must cope with any request being refused.
 type Error struct {
 	// The reason, as a number.
 	Code int `json:"code"`
@@ -132,8 +132,8 @@ type RefusalData struct {
 	// For -32001: the entry missing from the tool's uses.
 	Service *string `json:"service,omitempty"`
 
-	// For -32003: the macOS permission Vitruvian lacks, for example
-	// accessibility.
+	// For -32003: the macOS permission Vitruvian Atrium lacks, for
+	// example accessibility.
 	Permission *string `json:"permission,omitempty"`
 }
 
@@ -285,7 +285,7 @@ type ClipboardReadTextResult struct {
 }
 
 // ClipboardWriteTextParams: Replace the clipboard with this text, marked as
-// Vitruvian's own so clipboard history files it correctly.
+// Vitruvian Atrium's own so clipboard history files it correctly.
 type ClipboardWriteTextParams struct {
 	// The text.
 	Text string `json:"text"`

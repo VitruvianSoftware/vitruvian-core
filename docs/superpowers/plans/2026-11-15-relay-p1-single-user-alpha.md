@@ -55,7 +55,8 @@ is retired in the last task.
   `gitops/argocd/platform/zitadel/applicationset.yaml`); a guess, not yet
   checked, is that spike B's second sign-in comes from the device-approval page
   using the older screen, which might need a Zitadel upgrade. Task 10 records what was checked and asks
-  James; P1 does not silently ship two sign-ins.
+  James; P1 does not silently ship two sign-ins. (Decided 2026-11-16: two
+  sign-ins for P1; see Task 10.)
 - **`desktop-commander`'s own log** (`~/.claude-server-commander/claude_tool_call.log`)
   records full arguments outside the connector's log. Changing `HOME` would
   change it for the user's commands too (spike D), so the connector leaves the
@@ -195,7 +196,7 @@ in this task's PR.
   - `enum ToConnector { Welcome { device_id: String }, Reject { reason: String }, Call(Call), Cancel { call_id: String }, Ping { n: u64 }, Pong { n: u64 } }`
   - Ping and pong go both ways (§4): each side pings every 20 s and treats 3 unanswered pings as a dead link.
   - `struct Hello { device_id: String, connector_version: String, protocol: u32, ts: u64, sig: String, tools: Vec<ToolDef> }`
-  - `struct Call { call_id: String, tool: String, arguments: serde_json::Value, deadline_ms: u64 }` — `deadline_ms` is a duration from when the frame is sent, not a clock time (the two machines' clocks may differ). The relay's budget for a `tools/call` is **180 s**, covering a 60 s "ask first" prompt plus the command
+  - `struct Call { call_id: String, tool: String, arguments: serde_json::Value, deadline_ms: u64 }` — `deadline_ms` is a duration from when the frame is sent, not a clock time (the two machines' clocks may differ). The relay's budget for a `tools/call` is **180 s** (as built: **90 s**, `CALL_BUDGET_SECS`, ruling R16 at the final review: under the ~100 s a Cloudflare tunnel holds a silent request), covering a 60 s "ask first" prompt plus the command
   - `struct CallResult { call_id: String, content: serde_json::Value, is_error: bool, truncated: bool }`
   - `struct ToolDef { name: String, description: String, #[serde(rename = "inputSchema")] input_schema: serde_json::Value }` — the MCP wire name, so a `desktop-commander` tool passes through unchanged
   - `const PROTOCOL: u32 = 1; const MAX_FRAME_BYTES: usize = 4 * 1024 * 1024; const PING_SECS: u64 = 20; const IN_CALL_PING_SECS: u64 = 2; const MAX_MISSED_PINGS: u32 = 3;`
@@ -261,7 +262,7 @@ device replaces the old one (its pending calls fail `Disconnected`).
     - `GET /.well-known/oauth-protected-resource/mcp/d/{device_id}` — PRM with `resource` = that device's URL. The bare `/.well-known/oauth-protected-resource` returns the same metadata with `resource` = `PUBLIC_URL` (the relay itself), for clients that look there first.
     - `POST /devices` — bearer verified with `CONNECTOR_CLIENT_ID`; body `{ "public_key": "<base64 32 bytes>" }`; creates a record owned by the caller, returns `{ "device_id": "<uuid v4>", "mcp_url": "…" }`. P1 allows one device per subject: a second call for the same subject replaces the key, keeps the id, and calls `Registry::kick` so a session signed with the old key ends at once.
     - `GET /connect` — WebSocket. Bearer verified with `CONNECTOR_CLIENT_ID`. First frame must be `hello` within 10 s: device exists, owned by the caller, `|now − ts| ≤ 60 s`, Ed25519 `sig` over `hello_message(device_id, ts, sha256(bearer))` verifies, `protocol == 1`. Otherwise `reject` with the reason and close. Then `welcome`, `Registry::connect`, ping every 20 s (every 2 s while the device has a call in flight), answer the connector's pings, disconnect after 3 missed pongs.
-  - `mcp::handle(req, device_id, caller, registry) -> Option<Value>`: `initialize` (protocol versions as the spike's `PROTOCOL_VERSIONS`; capabilities `tools: { listChanged: false }`, because P1 answers in JSON only and has no stream to push a change on), `ping`, `server/discover` (returns the same `serverInfo` — name `vitruvian-relay`, version — `capabilities` and supported protocol versions as `initialize`, without starting a session), `tools/list` (the device's current tools; empty list and no error if offline), `tools/call` (→ `Registry::call` with a 180 s budget; `CallError` becomes an MCP tool result with `isError: true` and `user_message()`). Sessions: `initialize` returns an `Mcp-Session-Id` header (a random 128-bit id), and every later request carries it; a request with a missing id gets 400, and one with an unknown id gets 404, which tells the AI app to start a new session (MCP's rule for an ended session). Sessions live in memory, so after a relay restart every client gets 404 once and re-initializes. `initialize` and `server/discover` need no session. Cancelling: the relay keeps a map from (session id, JSON-RPC `id`) to `call_id`, so one chat can never cancel another's call. An MCP `notifications/cancelled` with that `requestId`, or the HTTP request being dropped before the result is ready, sends `cancel { call_id }` to the device (Task 8 dismisses a pending prompt on it). A `tools_changed` frame calls `Registry::update_tools`; AI apps see the new list on their next `tools/list`.
+  - `mcp::handle(req, device_id, caller, registry) -> Option<Value>`: `initialize` (protocol versions as the spike's `PROTOCOL_VERSIONS`; capabilities `tools: { listChanged: false }`, because P1 answers in JSON only and has no stream to push a change on), `ping`, `server/discover` (returns the same `serverInfo` — name `vitruvian-relay`, version — `capabilities` and supported protocol versions as `initialize`, without starting a session), `tools/list` (the device's current tools; empty list and no error if offline), `tools/call` (→ `Registry::call` with a 180 s budget (as built: 90 s, ruling R16); `CallError` becomes an MCP tool result with `isError: true` and `user_message()`). Sessions: `initialize` returns an `Mcp-Session-Id` header (a random 128-bit id), and every later request carries it; a request with a missing id gets 400, and one with an unknown id gets 404, which tells the AI app to start a new session (MCP's rule for an ended session). Sessions live in memory, so after a relay restart every client gets 404 once and re-initializes. `initialize` and `server/discover` need no session. Cancelling: the relay keeps a map from (session id, JSON-RPC `id`) to `call_id`, so one chat can never cancel another's call. An MCP `notifications/cancelled` with that `requestId`, or the HTTP request being dropped before the result is ready, sends `cancel { call_id }` to the device (Task 8 dismisses a pending prompt on it). A `tools_changed` frame calls `Registry::update_tools`; AI apps see the new list on their next `tools/list`.
   - Logging: one line per call — device id, caller client id, tool, argument bytes, result bytes, duration, outcome. Never arguments or output (§7.2).
 
 - [ ] **Step 1: Tests** (hyper test client against an in-process server, with a
@@ -294,7 +295,7 @@ device replaces the old one (its pending calls fail `Disconnected`).
 - Produces:
   - Commands: `vrelay login`, `vrelay status`, `vrelay logout` (`run` and `install` come in Tasks 8–9). `vrelay status` prints signed in or out, the device id and MCP URL, and the link state, which `vrelay run` writes to `status.json` in the state dir: `connected` (welcome received and a pong within the last 60 s), `connecting` (with the next retry time), `waiting for sign-in`, or `stopped` (no `vrelay run` process, or `status.json` older than 60 s).
   - State dir: `~/Library/Application Support/vrelay/` (`$VRELAY_HOME` overrides, for tests), mode `0700`; files `token.json` (holds the refresh token, mode `0600`), `device.json` (`{device_id, mcp_url}`), `device.key` (Ed25519 seed, mode `0600`).
-  - `auth::login(issuer, client_id, project_id) -> Result<Tokens>` — the spike's device flow: `parse_device_start` and `parse_token_response` from `client.rs`, the polling loop from `client_main.rs`; scope `openid offline_access urn:zitadel:iam:org:project:id:<id>:aud`.
+  - `auth::login(issuer, client_id, project_id) -> Result<Tokens>` — the spike's device flow (as built it takes the `Config`, which holds all three: `auth::login(&cfg) -> Result<Tokens>`, ruling R10's pattern; noted at the final review): `parse_device_start` and `parse_token_response` from `client.rs`, the polling loop from `client_main.rs`; scope `openid offline_access urn:zitadel:iam:org:project:id:<id>:aud`.
   - `auth::fresh_token(&mut Tokens) -> Result<String>` — refresh when within 300 s of expiry; on failure retry once after 1 s, then report "sign in again" (P0: one refresh failed on a reset and worked a second later).
   - `keys::load_or_create(dir) -> Result<Ed25519KeyPair>`, `keys::sign_hello(&key, device_id, ts, token) -> String` (base64 of the signature over Task 2's `hello_message`, with `sha256(token)` hex).
   - `login` ends by calling `POST /devices`, saving `device.json`, and printing the MCP URL plus the client id to paste into Claude.
@@ -469,6 +470,24 @@ This task ships as **two PRs** (step 2 says why). **PR A:** the Dockerfile, char
   Then **stop and ask James**, with the options found: upgrade Zitadel, change
   an instance-wide setting (it affects every app, and an upstream issue, zitadel/zitadel#12148, reports a Login V2 problem with OTP second factors; check its status before choosing this), or
   accept two sign-ins for P1 and record it.
+
+  **Checked and decided (2026-11-16).** We run Zitadel v4.19.2 (chart 10.5.0),
+  the newest release, so an upgrade changes nothing. An upstream report
+  (zitadel/zitadel#11399, not confirmed by us) says the device-approval page
+  still uses the older Login V1 screen. `pulumi-zitadel` v0.2.0 is still the
+  newest and has no per-app login version. zitadel/zitadel#12148 is still open,
+  so the instance-wide switch carries that risk for every app. **James chose to
+  accept two sign-ins for P1.** Task 11 checks whether the browser session
+  carries over, which would make the second sign-in a single click.
+- Carried from the final review (N4): the relay closes an HTTP connection
+  idle for 75 s (`header_read_timeout`). Anything that pools upstream
+  connections longer will now and then reuse one the relay just closed, and
+  the caller gets a 503: Envoy's default upstream idle timeout is 1 h,
+  cloudflared's origin keep-alive 90 s. In PR A's chart, set the route's
+  upstream idle timeout below 75 s (an Envoy Gateway `BackendTrafficPolicy`
+  `connection` idle timeout, e.g. 60 s), and set cloudflared's
+  `keepAliveTimeout` under it too if traffic reaches the pod straight from the
+  tunnel. Task 11 checks a second request after a minute's idle.
 - Optional for P1 (unlike the one sign-in above): Gemini's callback is tied to
   the server URL (spike A), so the new relay URL needs a new callback in
   `geminiRedirectUris` before Gemini can use it. Note it in the stack README if

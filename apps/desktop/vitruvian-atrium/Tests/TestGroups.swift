@@ -319,6 +319,7 @@ enum TestGroups {
                 SwitcherAllWindowsTests.run(suite)
                 SwitcherScrollContract.run(suite)
                 SwitcherActivationTests.run(suite)
+                SwitcherLatencyTests.run(suite)
                 WindowServerCaptureContract.run(suite)
             }),
             ("keep-awake", {

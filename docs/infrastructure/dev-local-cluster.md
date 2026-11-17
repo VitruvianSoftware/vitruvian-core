@@ -231,7 +231,7 @@ flows).
 | k3s | `v1.35.3+k3s1` | Kubernetes distribution | GKE managed control plane |
 | Cilium | `1.17.17` | CNI · eBPF · kube-proxy-replacement · LB-IPAM | GKE Dataplane V2 |
 | Envoy Gateway | `v1.9.0` | Gateway API ingress (L7 proxy) | GKE Gateway controller |
-| cloudflared | `2026.6.1` | public ingress (Tunnel + Access) | external LB + IAP / Cloud Armor |
+| cloudflared | `2026.11.1` | public ingress (Tunnel + Access) | external LB + IAP / Cloud Armor |
 | external-dns | `v0.15.0` | DNS automation → Cloudflare | external-dns → Cloud DNS |
 | cert-manager | (gitops) | TLS certificates | cert-manager / Google-managed certs |
 | ArgoCD | `v3.4.4` | GitOps reconciliation | ArgoCD / Config Sync |

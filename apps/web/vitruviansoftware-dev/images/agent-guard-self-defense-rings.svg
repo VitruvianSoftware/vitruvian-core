@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 1080 640" width="100%" height="auto" role="img" aria-labelledby="t6 d6" style="background:#0e1317; font-family:'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'calt' 0; border-radius: 6px;">
+  <title id="t6">Four Rings of Self-Defense Preventing Guard Weakening</title>
+  <desc id="d6">Four layered defenses stopping an agent from weakening agent-guard: Ring 1 guard-config blocks local and user hook tampering; Ring 2 blocks malicious git fetch refspecs that rewrite origin/main; Ring 3 byte-for-byte verifies the installer against origin/main; Ring 4 enforces the agent-guard-review GitHub ruleset managed via Pulumi.</desc>
+  <defs>
+    <style>
+      .title { fill: #e7e4dd; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+      .subtitle { fill: #8fa5b5; font-size: 12px; }
+      .box-bg { fill: #151d26; stroke: #26384a; stroke-width: 1.5; }
+      .box-hi { fill: #182330; stroke: #3c5975; stroke-width: 1.5; }
+      .box-head { fill: #e7e4dd; font-size: 13px; font-weight: 600; }
+      .box-body { fill: #8fa5b5; font-size: 11px; }
+      .code { fill: #c9d4de; font-size: 11px; }
+      .small { fill: #687f91; font-size: 10px; }
+      .accent { fill: #93b0ca; font-size: 11px; font-weight: 500; }
+      .ok { fill: #7fbf9a; font-size: 11px; font-weight: 500; }
+      .warn { fill: #d9b264; font-size: 11px; font-weight: 500; }
+      .err { fill: #d2907b; font-size: 11px; font-weight: 500; }
+      .flow { stroke: #4f6e8d; stroke-width: 1.5; fill: none; }
+    </style>
+    <marker id="arr" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#4f6e8d" />
+    </marker>
+  </defs>
+  <rect width="1080" height="640" fill="#0e1317" rx="6" />
+
+  <!-- Header -->
+  <rect x="24" y="24" width="1032" height="60" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="44" y="49" class="title">How the Guard Protects Itself Across Four Independent Rings</text>
+  <text x="44" y="69" class="subtitle">Without self-defense, a goal-seeking agent blocked twice edits settings.json or auto-merges a weakened policy</text>
+
+  <!-- Ring 1 -->
+  <rect x="24" y="104" width="504" height="200" rx="6" class="box-bg" />
+  <rect x="24" y="104" width="4" height="200" fill="#d2907b" />
+  <text x="44" y="130" class="err">RING 1 · `guard-config` LOCAL FILE &amp; ENV LOCK</text>
+  <text x="44" y="150" class="box-body">Protects files that execute BEFORE PR review happens:</text>
+  <text x="44" y="170" class="code">• .claude/settings*.json, .claude/*.sh, .agents/hooks.json</text>
+  <text x="44" y="186" class="code">• tools/agent-guard/hook.sh &amp; ~/.local/state/agent-guard/</text>
+  <text x="44" y="206" class="box-body">User hooks (`~/.claude/settings.json`, `~/.gemini/config/hooks.json`)</text>
+  <text x="44" y="222" class="box-body">allow edits to unrelated plugins ONLY if our entries stay intact</text>
+  <text x="44" y="238" class="box-body">and `"disableAllHooks": true` is never added.</text>
+  <text x="44" y="264" class="warn">Blocks env-stripping: `unset CLAUDECODE`, `env -u`, `ANTIGRAVITY_*=`</text>
+  <text x="44" y="284" class="small">Applies globally — even outside vitruvian-core.</text>
+
+  <!-- Ring 2 -->
+  <rect x="552" y="104" width="504" height="200" rx="6" class="box-bg" />
+  <rect x="552" y="104" width="4" height="200" fill="#d9b264" />
+  <text x="572" y="130" class="warn">RING 2 · `origin/main` FETCH INTEGRITY (`git-other`)</text>
+  <text x="572" y="150" class="box-body">Since hook.sh compiles &amp; executes whatever `origin/main` points to,</text>
+  <text x="572" y="166" class="box-body">repointing `refs/remotes/origin/main` locally would swap the guard.</text>
+  <rect x="572" y="180" width="464" height="44" fill="#0d141b" stroke="#233547" rx="3" />
+  <text x="582" y="198" class="err">✗ DENIED: git fetch https://fork +main:refs/remotes/origin/main</text>
+  <text x="582" y="214" class="ok">✓ ALLOWED: git fetch origin main   /   git fetch -q</text>
+  <text x="572" y="246" class="box-body">Refuses explicit `src:dst` refspecs, `--refmap`, and `-c remote.*`</text>
+  <text x="572" y="262" class="box-body">or `-c url.*` overrides on `git fetch` and `git pull`.</text>
+  <text x="572" y="284" class="small">Combined with cleared GIT_DIR/GIT_WORK_TREE at hook startup.</text>
+
+  <!-- Ring 3 -->
+  <rect x="24" y="324" width="504" height="196" rx="6" class="box-bg" />
+  <rect x="24" y="324" width="4" height="196" fill="#93b0ca" />
+  <text x="44" y="350" class="accent">RING 3 · INSTALLER BYTE-FOR-BYTE `origin/main` CHECK</text>
+  <text x="44" y="370" class="box-body">`bazel run //tools/agent-guard:install` builds from the checkout it</text>
+  <text x="44" y="386" class="box-body">runs in — so an agent on a dirty worktree could edit installer.rs.</text>
+  <text x="44" y="408" class="box-body">Before letting an agent run `:install` (or `--check` / `--dry-run`):</text>
+  <text x="44" y="428" class="code">1. Guard verifies BUILD, src/**, install/** match origin/main bytes.</text>
+  <text x="44" y="444" class="code">2. Scans all .bazelrc files for `--run_under` or `--script_path`.</text>
+  <text x="44" y="460" class="code">3. Installer re-checks the real primary checkout on its own side.</text>
+  <text x="44" y="496" class="warn">`--uninstall` and `--mode` are always refused for agents.</text>
+
+  <!-- Ring 4 -->
+  <rect x="552" y="324" width="504" height="196" rx="6" class="box-bg" />
+  <rect x="552" y="324" width="4" height="196" fill="#7fbf9a" />
+  <text x="572" y="350" class="ok">RING 4 · GITHUB RULESET (`agent-guard-review` VIA PULUMI)</text>
+  <text x="572" y="370" class="box-body">Everyday feature PRs merge autonomously via peer bot reviews.</text>
+  <text x="572" y="386" class="box-body">Any PR touching the 14 protected globs (`guard_review.go`) waits:</text>
+  <rect x="572" y="400" width="464" height="58" fill="#0d141b" stroke="#233547" rx="3" />
+  <text x="582" y="418" class="code">• tools/agent-guard/** · .claude/settings*.json · .claude/*.sh</text>
+  <text x="582" y="434" class="code">• .agents/hooks.json · .github/{workflows,actions}/**</text>
+  <text x="582" y="450" class="code">• repo-config/{guard_review,main,release_tags}.go · Pulumi*.yaml</text>
+  <text x="572" y="480" class="box-body">Requires fresh approval from team `agent-guard-approvers` (`ipv1337`).</text>
+  <text x="572" y="496" class="small">TestGuardReviewPatternLimit guards GitHub's 15-pattern limit (#4259).</text>
+
+  <!-- Bottom Convergence Banner -->
+  <rect x="24" y="540" width="1032" height="76" rx="6" class="box-hi" />
+  <text x="44" y="568" class="ok">THE CONSEQUENCE FOR DAY-TO-DAY WORKFLOWS</text>
+  <text x="44" y="588" class="box-body">Agents are encouraged to improve `tools/agent-guard/src/` and `policy.json` like ordinary code on feature branches —</text>
+  <text x="44" y="604" class="box-body">testing every edit with `bazel test //tools/agent-guard/...` — while live sessions keep running the audited `origin/main` build until human sign-off.</text>
+</svg>

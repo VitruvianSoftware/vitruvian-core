@@ -1,6 +1,6 @@
 # @vitruviansoftware/tool-kit
 
-Write a tool for the [Vitruvian](https://vitruviansoftware.dev) Mac app in
+Write a tool for [Vitruvian Atrium](https://vitruviansoftware.dev) in
 TypeScript or JavaScript. A tool is a folder with a `vitruvian-tool.json` and
 a program; the app starts the program and talks to it over its standard input
 and output. This kit is that conversation: you say what each command does, and

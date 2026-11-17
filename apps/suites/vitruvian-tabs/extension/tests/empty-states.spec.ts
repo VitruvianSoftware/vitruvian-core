@@ -21,12 +21,8 @@
  */
 
 import { test, expect, chromium, BrowserContext } from "@playwright/test";
-import path from "path";
+import { EXTENSION_PATH } from "./e2e-helpers";
 import fs from "fs";
-
-const EXTENSION_PATH = process.env.EXTENSION_PATH
-  ? path.resolve(process.env.EXTENSION_PATH)
-  : path.join(__dirname, "../dist");
 
 async function getExtensionId(ctx: BrowserContext) {
   const page = await ctx.newPage();

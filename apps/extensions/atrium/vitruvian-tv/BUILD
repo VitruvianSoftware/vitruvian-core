@@ -37,6 +37,7 @@ rust_binary(
     edition = "2021",
     deps = [
         "//packages/vitruvian-sdk/kits/rust:vitruvian_tool_kit",
+        "@crates//:sentry",
         "@crates//:serde_json",
     ],
 )

@@ -22,11 +22,11 @@
 //! line, the same GitHub requests, the same report. The parity test
 //! (merge_queue_stats_rs_parity_test.py) holds the two together.
 
-pub mod argparse;
+pub use vitruvian_pycompat::argparse;
 pub mod http;
-pub mod json;
+pub use vitruvian_pycompat::json;
 pub mod pyerr;
-pub mod pystr;
+pub use vitruvian_pycompat::pystr;
 pub mod pytime;
 pub mod stats;
 

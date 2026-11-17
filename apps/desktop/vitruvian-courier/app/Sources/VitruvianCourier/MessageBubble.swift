@@ -374,6 +374,10 @@ struct MessageRowView: View {
     @Environment(\.redactNamesAndPictures) private var redactEnv
     @Environment(\.themeAccentColor) private var envThemeAccent
     @Environment(\.reactionCardOverride) private var cardOverride
+    @Environment(\.timelineCovered) private var timelineCovered
+    /// Where the pointer is, for the action bar: it goes when the pointer leaves the message.
+    @State private var pointer = ActionBarPointer()
+    @State private var settling: Task<Void, Never>?
     @State private var barSize: CGSize = .zero
     /// The reaction chip under the pointer, and the one whose card is open (after a short rest on it).
     @State private var hoveredChip: String?
@@ -394,6 +398,43 @@ struct MessageRowView: View {
     @State private var activeDetectedDate: DetectedMessageDate?
 
     private static let avatarSize: CGFloat = 28
+    /// Plain text stops at this width however wide the pane is (long lines are hard to read); code, pictures and
+    /// cards may use the whole row.
+    static let textBubbleMaxWidth: CGFloat = 640
+    /// The time and "Edited" on a bubble. On macOS `.caption` and `.caption2` are both 10 pt, so this is 11 pt.
+    static let metaFont = Font.system(size: metaPointSize)
+    static let metaPointSize: CGFloat = 11
+
+    /// Whether the last line of `text` reads right to left: its first strong character decides, as it does for the
+    /// paragraph when the text is laid out. Hebrew, Arabic and the other right-to-left scripts (including those
+    /// outside the first Unicode plane) and the right-to-left marks count; letters of any other script and the
+    /// left-to-right marks end the search the other way; digits, spaces and punctuation are skipped.
+    static func endsRightToLeft(_ text: String) -> Bool {
+        guard let line = text.split(separator: "\n", omittingEmptySubsequences: true).last else { return false }
+        for scalar in line.unicodeScalars {
+            switch scalar.value {
+            case 0x200F, 0x061C, 0x202B, 0x202E, 0x2067: return true // RLM, ALM, RLE, RLO, RLI
+            case 0x200E, 0x202A, 0x202D, 0x2066: return false // LRM, LRE, LRO, LRI
+            case 0x0590 ... 0x08FF, 0xFB1D ... 0xFDFF, 0xFE70 ... 0xFEFF,
+                 0x10800 ... 0x10FFF, 0x1E800 ... 0x1EFFF: return true
+            default: if scalar.properties.isAlphabetic { return false }
+            }
+        }
+        return false
+    }
+
+    /// What the text reserves for `words` drawn at `metaPointSize`: the text lays it out at 10 pt (RichTextView), so
+    /// a few hair spaces make up the difference.
+    static func reservedMeta(_ words: String) -> String {
+        words + String(repeating: "\u{200A}", count: max(3, words.count / 2))
+    }
+
+    /// Whether this bubble holds only plain text, which is what the width cap is for.
+    private var capsBubbleWidth: Bool {
+        guard contentIsText, message.kind == .text || message.kind == .notice || message.kind == .emote,
+              message.linkPreviews.isEmpty, ExternalEmbedDescriptor.first(in: message) == nil else { return false }
+        return !RichTextLayout.blocks(of: message.rich).contains { $0.kind == .code }
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -406,7 +447,11 @@ struct MessageRowView: View {
                 if message.startsGroup { header }
                 HStack(alignment: .center, spacing: 4) {
                     if message.mine { bookmarkMark }
-                    bubble
+                    if capsBubbleWidth {
+                        bubble.frame(maxWidth: Self.textBubbleMaxWidth, alignment: message.mine ? .trailing : .leading)
+                    } else {
+                        bubble
+                    }
                     if !message.mine { bookmarkMark }
                 }
                 .anchorPreference(key: RowAnchorsKey.self, value: .bounds) { RowAnchors(bubble: $0) }
@@ -447,6 +492,8 @@ struct MessageRowView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.28 * highlight)))
         .onChange(of: isHighlighted, initial: true) { _, on in fadeHighlight(on) }
         .contentShape(Rectangle())
+        .onHover { pointer.rowHover($0); pointerMoved() }
+        .onChange(of: isSelected) { _, _ in pointer.selectionChanged() }
         .gesture(TapGesture(count: 2).onEnded {
             guard canAct else { return }
             if actions.doubleClickShowsMenu { showsMenu = true } else { actions.doubleClick(message.id) }
@@ -484,6 +531,7 @@ struct MessageRowView: View {
                     if let bar {
                         MessageActionBar(message: message, actions: actions) { showsMenu = true }
                             .fixedSize()
+                            .onHover { pointer.barHover($0); pointerMoved() }
                             .onGeometryChange(for: CGSize.self) { $0.size } action: { barSize = $0 }
                             .offset(x: bar.minX, y: bar.minY)
                             .opacity(barSize == .zero ? 0 : 1)
@@ -551,9 +599,25 @@ struct MessageRowView: View {
 
     /// The action bar is the selected message's (a click, or the arrow keys, select it), and stays up while its
     /// menu or its reaction picker is open. Pointing at a message shows nothing: moving the pointer quickly over
-    /// the chat flashed a bar on every row it crossed.
+    /// the chat flashed a bar on every row it crossed. It goes when the pointer leaves the message, and while a
+    /// panel or a sheet covers the chat (`ActionBarVisibility`).
     private var showsActionBar: Bool {
-        canAct && (isSelected || showsMenu || actions.isPickingReaction(message.id))
+        ActionBarVisibility.isShown(
+            canAct: canAct, isSelected: isSelected, menuOpen: showsMenu,
+            pickingReaction: actions.isPickingReaction(message.id), pointer: pointer,
+            timelineCovered: timelineCovered)
+    }
+
+    /// The pointer entered or left the row or the bar: entering shows the bar again at once; leaving hides it once
+    /// the pointer has stayed off both for a moment (it crosses from the row to the bar through neither).
+    private func pointerMoved() {
+        settling?.cancel()
+        guard !pointer.isOver else { return }
+        settling = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(ActionBarPointer.settleMilliseconds))
+            guard !Task.isCancelled else { return }
+            pointer.settle()
+        }
     }
 
     /// The chip whose who-reacted card is open: the one the pointer rested on, or the one the snapshot tests open.
@@ -681,7 +745,8 @@ struct MessageRowView: View {
 
     @ViewBuilder
     private var avatarColumn: some View {
-        if message.startsGroup {
+        // On the first message of a run, in a group (beside the name) and in a one-to-one chat alike.
+        if message.showsSenderAvatar {
             let avatar = message.senderAvatar(redacted: isRedacted)
             AvatarView(path: avatar.path, initials: avatar.initials,
                        seed: avatar.seed, size: Self.avatarSize)
@@ -722,7 +787,8 @@ struct MessageRowView: View {
 
     private var senderNameLabel: some View {
         Text(displaySenderName)
-            .font(.caption.weight(.semibold))
+            // One step up from the 10 pt caption (on macOS caption, caption2 and footnote are all 10 pt).
+            .font(.subheadline.weight(.semibold))
             .foregroundStyle(senderNameColor)
             .lineLimit(1)
             .onHover { hovering in
@@ -755,7 +821,7 @@ struct MessageRowView: View {
     // MARK: Time inside the bubble
 
     private var timeText: String? {
-        actions.showMessageTimestamps
+        actions.showMessageTimestamps && message.showsTime
             ? actions.timeFormat.formatTime(Date(timeIntervalSince1970: Double(message.ts) / 1000))
             : nil
     }
@@ -765,8 +831,12 @@ struct MessageRowView: View {
     /// Text that is the last thing in its bubble carries the time on the end of its last line (the way Beeper does);
     /// everything else (pictures, files, cards under the text) gets it on a line of its own at the trailing edge.
     private var metaIsInline: Bool {
+        // Right-to-left text ends on its left, where the time (drawn at the trailing corner) is not: that time
+        // gets a line of its own instead.
         guard hasMeta, message.kind == .text || message.kind == .notice, contentIsText,
-              message.linkPreviews.isEmpty, ExternalEmbedDescriptor.first(in: message) == nil else { return false }
+              !Self.endsRightToLeft(message.body),
+              message.linkPreviews.isEmpty,
+              ExternalEmbedDescriptor.first(in: message) == nil else { return false }
         return true
     }
 
@@ -781,15 +851,15 @@ struct MessageRowView: View {
         var parts: [String] = []
         if message.isEdited { parts.append(ui.historyOpen.contains(message.id) ? String(localized: "Hide Edits") : String(localized: "Edited")) }
         if let timeText { parts.append(timeText) }
-        return parts.joined(separator: "  ")
+        // The text reserves this at 10 pt (RichTextView); the time is drawn at 11 pt, so it asks for a little more.
+        return Self.reservedMeta(parts.joined(separator: "  "))
     }
 
     private var metaView: some View {
         HStack(spacing: 5) {
             if message.isEdited { editedButton.takesOwnClick() }
-            if let timeText { Text(timeText) }
+            if let timeText { MessageTimeLabel(text: timeText) }
         }
-        .font(.caption2)
         .foregroundStyle(metaColor)
         .fixedSize()
     }
@@ -827,7 +897,7 @@ struct MessageRowView: View {
                     content.takesOwnClick()
                 }
                 if message.kind != .deleted && message.kind != .undecryptable {
-                    ForEach(Array(message.linkPreviews.enumerated()), id: \.offset) { _, preview in
+                    ForEach(Array(ExternalEmbedDescriptor.cardPreviews(in: message).enumerated()), id: \.offset) { _, preview in
                         LinkPreviewCardView(preview: preview, onBubble: message.mine && !message.suppressesBubbleBackground)
                             .takesOwnClick()
                     }
@@ -836,6 +906,9 @@ struct MessageRowView: View {
                             messageID: message.id,
                             descriptor: embed,
                             isLoaded: actions.loadExternalEmbedsAutomatically || ui.loadedEmbeds.contains(message.id),
+                            title: ExternalEmbedDescriptor.embedTitle(in: message),
+                            previewImagePath: ExternalEmbedDescriptor.previewImagePath(in: message),
+                            allowsRemoteThumbnail: actions.loadExternalEmbedsAutomatically,
                             onBubble: message.mine && !message.suppressesBubbleBackground,
                             onLoadEmbed: { ui.loadedEmbeds.insert(message.id) }
                         )
@@ -873,7 +946,7 @@ struct MessageRowView: View {
             ui.toggleHistory(message.id)
         } label: {
             Text(ui.historyOpen.contains(message.id) ? String(localized: "Hide Edits") : String(localized: "Edited"))
-                .font(.caption2)
+                .font(Self.metaFont)
                 .underline(ui.historyOpen.contains(message.id))
                 .foregroundStyle(foreground.opacity(0.75))
         }
@@ -1053,7 +1126,7 @@ struct MessageRowView: View {
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Text(chip.key)
+                        ReactionKeyView(chip: chip, size: 13)
                         switch chip.pillDisplay(redacted: isRedacted) {
                         case let .avatars(items, overflowText):
                             ReactionAvatarStack(items: items, isRedacted: isRedacted)
@@ -1447,6 +1520,45 @@ private struct ReactorAvatarCircle: View {
     }
 }
 
+/// The time on a bubble, at `MessageRowView.metaFont`.
+struct MessageTimeLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text).font(MessageRowView.metaFont)
+    }
+}
+
+/// What a reaction is: the emoji as text, or, for a custom emoji (an `mxc://` address), its picture at the emoji's
+/// height. The address itself is never shown, not even in a tooltip or to VoiceOver.
+struct ReactionKeyView: View {
+    let chip: ReactionChip
+    let size: CGFloat
+    @State private var image: CGImage?
+
+    var body: some View {
+        if chip.isCustomImage {
+            Group {
+                if let image {
+                    Image(decorative: image, scale: 1)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    RoundedRectangle(cornerRadius: 3).fill(Color.secondary.opacity(0.2))
+                }
+            }
+            .frame(width: size * 1.2, height: size * 1.2)
+            .accessibilityLabel(chip.spokenKey)
+            .task(id: chip.key) {
+                guard let path = ThumbnailLoader.resolveMediaPath(chip.key) else { return }
+                image = await ThumbnailLoader.shared.thumbnail(atPath: path)?.image
+            }
+        } else {
+            Text(chip.key).font(size > 14 ? .system(size: size) : nil)
+        }
+    }
+}
+
 /// Who reacted with one emoji: the emoji large, and the names under it (`ReactionChip.summary`).
 private struct ReactionCard: View {
     let chip: ReactionChip
@@ -1455,7 +1567,7 @@ private struct ReactionCard: View {
     var body: some View {
         CappedWidth(maxWidth: 220) {
             VStack(spacing: 4) {
-                Text(chip.key).font(.system(size: 28))
+                ReactionKeyView(chip: chip, size: 28)
                 Text(chip.summary(redacted: isRedacted))
                     .font(.caption)
                     .multilineTextAlignment(.center)
@@ -1532,12 +1644,12 @@ enum ReactionCardPlacement {
 }
 
 /// Where a row's bubble is (for its action bar) and the reaction chip whose card is open (for the card).
-private struct RowAnchors {
+struct RowAnchors {
     var bubble: Anchor<CGRect>?
     var openChip: Anchor<CGRect>?
 }
 
-private struct RowAnchorsKey: PreferenceKey {
+struct RowAnchorsKey: PreferenceKey {
     static let defaultValue = RowAnchors()
     static func reduce(value: inout RowAnchors, nextValue: () -> RowAnchors) {
         let next = nextValue()
@@ -1621,6 +1733,19 @@ extension EnvironmentValues {
     var reactionCardOverride: ReactionCardOverride? {
         get { self[ReactionCardOverrideKey.self] }
         set { self[ReactionCardOverrideKey.self] = newValue }
+    }
+}
+
+/// True while a panel or a sheet covers the timeline (the ⌘K search panel, the command bar, a sheet, an alert): no
+/// message shows its hover bar then (`ActionBarVisibility`). False (the default) in the snapshot tests.
+private struct TimelineCoveredKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var timelineCovered: Bool {
+        get { self[TimelineCoveredKey.self] }
+        set { self[TimelineCoveredKey.self] = newValue }
     }
 }
 

@@ -63,6 +63,9 @@ rust_library(
         "//tools/gcp-secrets:__pkg__",
         "//tools/saas-cli:__pkg__",
     ],
+    deps = [
+        "//packages/rust/vitruvian-pycompat:vitruvian_pycompat",
+    ],
 )
 
 # The #[cfg(test)] unit tests in src/.

@@ -17,7 +17,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-"""vitruvian-tool-kit: write a tool for the Vitruvian app in Python. See README.md.
+"""vitruvian-tool-kit: write a tool for Vitruvian Atrium in Python. See README.md.
 
 Standard library only, Python 3.9 and later: the python3 that the Command Line
 Tools put on every Mac, which is the one the app finds.

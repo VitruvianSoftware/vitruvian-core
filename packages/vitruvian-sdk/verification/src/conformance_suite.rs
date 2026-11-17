@@ -42,7 +42,7 @@ use conformance_rs_lib::{
 use crate::find_package_dir;
 
 const SLOWEST_SECONDS: f64 = 15.0;
-const REFUSED: &str = ": Vitruvian refuses the whole page";
+const REFUSED: &str = ": Vitruvian Atrium refuses the whole page";
 const CHARS: &str = "ASCII letters, digits, '.', '-' and '_' only";
 
 const BROKEN: &[(&str, &str)] = &[

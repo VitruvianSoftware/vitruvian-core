@@ -1266,7 +1266,7 @@ dependencies = [
 
 [[package]]
 name = "vitruvian-tool-kit"
-version = "1.9.1"
+version = "1.9.3"
 dependencies = [
  "serde",
  "serde_json",

@@ -16,6 +16,7 @@ go_test(
     name = "networks_test",
     srcs = [
         "gchat_link_test.go",
+        "gmessages_routing_test.go",
         "networks_test.go",
         "offline_test.go",
         "signal_absent_other_test.go",
@@ -42,6 +43,7 @@ go_test(
         "@fi_mau_go_mautrix_discord//pkg/connector",
         "@fi_mau_go_mautrix_discord//pkg/discordid",
         "@fi_mau_go_mautrix_gmessages//pkg/connector",
+        "@fi_mau_go_mautrix_gmessages//pkg/libgm",
         "@fi_mau_go_mautrix_gmessages//pkg/libgm/gmproto",
         "@fi_mau_go_mautrix_gvoice//pkg/connector",
         "@fi_mau_go_mautrix_linkedin//pkg/connector",
@@ -60,6 +62,8 @@ go_test(
         "@net_maunium_go_mautrix//bridgev2/database",
         "@net_maunium_go_mautrix//bridgev2/networkid",
         "@net_maunium_go_mautrix//event",
+        "@net_maunium_go_mautrix//id",
+        "@org_golang_google_protobuf//proto",
     ] + select({
         "@rules_go//go/platform:darwin": [
             "//apps/desktop/vitruvian-courier/engine/internal/gchat",

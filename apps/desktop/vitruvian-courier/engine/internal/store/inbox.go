@@ -95,7 +95,8 @@ func unreadSQLFor(r, p, rd, rde, lr, lre string) string {
        AND u.type IN (` + unreadTypes + `) AND u.sender <> $1 AND u.redacted = 0 AND ` + notEditSQL("u.content") + `
        AND (` + isTimerNoteSQL("u.content") + `) IS NOT 1 AND (` + isCallRecordSQL("u.content") + `) IS NOT 1
        AND CASE WHEN (` + isThreadReplySQL("u.content") + `) IS 1 THEN ` + threadUnreadSQLFor(p) + `
-                ELSE (u.ts, u.seq) > (` + chatTS + `, ` + chatSeq + `) END`
+                ELSE (u.ts, u.seq) > (` + chatTS + `, ` + chatSeq + `) END
+       AND NOT ` + slackNoteSQL(r, "u")
 }
 
 var unreadSQL = unreadSQLFor("r", "p", "rd", "rde", "lr", "lre")
@@ -365,6 +366,12 @@ func (s *Store) scanInboxRow(row dbutil.Scannable) (InboxRow, error) {
 	}
 	r.IsDirect, r.CreatedAt, r.Muted = direct == 1, time.UnixMilli(created), muted == 1
 	r.LastTS = msTime(lastTS)
+	// A Slack join or leave note still stored as text is no preview: the row shows nothing for it, as for any
+	// event with nothing readable, rather than "Ann has joined the channel".
+	// (The name is the sender's profile's, which the row's query already read: no lookup inside the rows.)
+	if _, note := MembershipNote(r.Network, typ, json.RawMessage(content), sender, actorProfileName); note && rxSender == "" {
+		sender, typ, content = "", "", "{}"
+	}
 	r.PreviewMine = sender == myID
 	r.PreviewInThread = isThreadReply(json.RawMessage(content))
 	r.Preview, r.PreviewKind, r.PreviewMediaURI = previewOf(typ, content)
@@ -441,10 +448,11 @@ func previewOf(typ, content string) (preview, kind, mediaURI string) {
 		kind = "text"
 	}
 	var c struct {
-		Body    string `json:"body"`
-		MsgType string `json:"msgtype"`
-		URL     string `json:"url"`
-		Info    struct {
+		Body     string `json:"body"`
+		Filename string `json:"filename"`
+		MsgType  string `json:"msgtype"`
+		URL      string `json:"url"`
+		Info     struct {
 			ThumbnailURL string `json:"thumbnail_url"`
 		} `json:"info"`
 	}
@@ -467,10 +475,29 @@ func previewOf(typ, content string) (preview, kind, mediaURI string) {
 			mediaURI = c.URL
 		}
 	}
-	if r := []rune(c.Body); len(r) > maxPreviewRunes {
-		c.Body = string(r[:maxPreviewRunes])
+	body := c.Body
+	switch kind {
+	case "image", "video", "audio":
+		// The body of a media message is its file name or address unless the person wrote a caption: the row says
+		// "Image", not "Image https://…".
+		if !isRealCaption(body, c.Filename) {
+			body = ""
+		}
+	case "file":
+		// A file's name is worth showing ("File report.pdf"); its address is not.
+		if isBareURL(body) {
+			body = ""
+		}
+	case "sticker":
+		if isBareURL(body) || looksLikeFileName(body) {
+			body = ""
+		}
 	}
-	return c.Body, kind, mediaURI
+	body = plainPreview(body)
+	if r := []rune(body); len(r) > maxPreviewRunes {
+		body = string(r[:maxPreviewRunes])
+	}
+	return body, kind, mediaURI
 }
 
 // userLocalpart is a Matrix ID's localpart: the part before the server name, without the @.
@@ -554,6 +581,8 @@ func (s *Store) EventsBefore(ctx context.Context, roomID string, before *Cursor,
 	if err := rows.Err(); err != nil {
 		return nil, nil, err
 	}
+	rows.Close()
+	out = s.serveAll(ctx, out) // with the rows closed: it looks names up
 	if len(out) <= limit {
 		return out, nil, nil
 	}
@@ -648,7 +677,7 @@ func (s *Store) LastMessage(ctx context.Context, roomID string) (Event, bool, er
 	if errors.Is(err, sql.ErrNoRows) {
 		return Event{}, false, nil
 	}
-	return e, err == nil, err
+	return s.served(ctx, e), err == nil, err
 }
 
 // FindReaction returns the ID of sender's reaction with key to target in roomID, if there is one that has not

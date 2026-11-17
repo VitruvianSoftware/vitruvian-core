@@ -1,0 +1,51 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Native Rust implementation of the `homelab` k3s cluster operations CLI.
+#
+# Its own workspace and Cargo.lock, apart from the root one, so
+# apps/cli/vitruvian-homelab stays self-contained. Bazel reads this lock
+# through the @vitruvian_homelab_crates hub (MODULE.bazel). Re-lock with:
+#   bazel run //tools/crates:lock -- --dir apps/cli/vitruvian-homelab/rs
+
+[workspace]
+
+[package]
+name = "homelab"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.98"
+license = "MIT"
+description = "Declaratively provision and manage multi-node Kubernetes homelab clusters on macOS"
+publish = false
+
+[lib]
+name = "homelab_rs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "homelab"
+path = "src/main.rs"
+
+[dependencies]
+sentry = { version = "0.35", default-features = false, features = ["backtrace", "contexts", "panic", "ureq"] }
+
+[profile.release]
+opt-level = 3

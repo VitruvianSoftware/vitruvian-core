@@ -82,8 +82,18 @@ struct MainWindow: View {
         }
     }
 
+    /// Something covers the chat: the search panel, the command bar, the image viewer or a sheet. No message
+    /// shows its hover bar behind it (`ActionBarVisibility`). The chat's own sheets add theirs (ConversationView).
+    private var coversTimeline: Bool {
+        search.phase != .closed || commandBar.isPresented || hotkeys.isShortcutsSheetPresented
+            || conversation.carousel.isPresented || login.screen != .closed
+            || ui.customReminder != nil || inbox.customReminder != nil
+            || inbox.startNewChatDraft != nil || inbox.mergedChatEditorDraft != nil
+    }
+
     private var overlaidContent: some View {
         content
+            .environment(\.timelineCovered, coversTimeline)
             // The image viewer covers the whole window, toolbar included, and nothing behind it takes input.
             .disabled(conversation.carousel.isPresented)
             .toolbar(conversation.carousel.isPresented ? .hidden : .automatic, for: .windowToolbar)
@@ -94,6 +104,7 @@ struct MainWindow: View {
                         search: search,
                         inbox: inbox,
                         composerPreferences: composerPreferences,
+                        hotkeys: hotkeys,
                         onOpenCommandBar: { initialQuery in
                             commandBar.open(initialQuery: initialQuery)
                         }
@@ -353,6 +364,7 @@ struct MainWindow: View {
                                              messageActions: messageActions, scheduled: scheduled, preferences: composerPreferences,
                                              thread: conversation.thread, focus: focus, appModel: model,
                                              appearance: appearance)
+                                .environment(\.chatInfoSpaces, spaces)
                         } else {
                             NoChatSelected(
                                 appearance: appearance,

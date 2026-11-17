@@ -159,7 +159,7 @@ public enum RefusalCode: Int, CaseIterable, Sendable {
     case notInUses = -32001
     /// The app: the tool is not installed.
     case notInstalled = -32002
-    /// The app: Vitruvian lacks a macOS permission the service needs.
+    /// The app: Vitruvian Atrium lacks a macOS permission the service needs.
     case permissionMissing = -32003
     /// The app: not available right now.
     case unavailable = -32004
@@ -171,7 +171,7 @@ public enum RefusalCode: Int, CaseIterable, Sendable {
         switch self {
         case .notInUses: return "not listed in uses"
         case .notInstalled: return "tool not installed"
-        case .permissionMissing: return "Vitruvian lacks a macOS permission"
+        case .permissionMissing: return "Vitruvian Atrium lacks a macOS permission"
         case .unavailable: return "not available right now"
         case .commandRefused: return "command refused"
         }
@@ -196,7 +196,7 @@ public enum RefusalCode: Int, CaseIterable, Sendable {
 public struct RefusalData: Codable, Equatable, Sendable {
     /// With `notInUses`: the entry missing from the tool's `uses`.
     public let service: String?
-    /// With `permissionMissing`: the macOS permission Vitruvian lacks.
+    /// With `permissionMissing`: the macOS permission Vitruvian Atrium lacks.
     public let permission: String?
 
     public init(service: String? = nil, permission: String? = nil) {

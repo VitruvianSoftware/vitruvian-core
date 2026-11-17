@@ -43,9 +43,9 @@
     "@backstage/plugin-techdocs-backend": "^2.3.0",
     "@sentry/node": "^11.12.0",
     "@vitruviansoftware/backstage-app": "workspace:*",
-    "better-sqlite3": "^13.0.3",
+    "better-sqlite3": "^13.2.0",
     "express-promise-router": "^4.1.1",
-    "google-auth-library": "^11.3.3",
+    "google-auth-library": "^11.3.4",
     "pg": "^8.23.1"
   },
   "devDependencies": {

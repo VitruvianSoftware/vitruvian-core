@@ -22,6 +22,7 @@ _CRATES = [
     "@ostation_crates//:aes-gcm",
     "@ostation_crates//:getrandom",
     "@ostation_crates//:hmac",
+    "@ostation_crates//:sentry",
     "@ostation_crates//:serde_json",
     "@ostation_crates//:sha2",
 ]
@@ -47,6 +48,7 @@ rust_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":ostation_lib",
+        "@ostation_crates//:sentry",
         "@ostation_crates//:serde_json",
     ],
 )

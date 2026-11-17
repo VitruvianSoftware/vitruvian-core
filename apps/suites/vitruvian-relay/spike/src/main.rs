@@ -84,8 +84,6 @@ fn verifier(s: &Settings, client_id: &str) -> Result<Arc<StandardTokenVerifier>,
         allowed_subjects: s.allowed_subjects.clone(),
         allowed_client_id: client_id.to_string(),
         jwks_uri: s.jwks_uri.clone(),
-        key_source: None,
-        jwks_timeout_ms: None,
     })
     .map(Arc::new)
 }

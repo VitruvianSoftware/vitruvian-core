@@ -25,12 +25,14 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/VitruvianSoftware/vitruvian-devx/internal/ai"
 	"github.com/VitruvianSoftware/vitruvian-devx/internal/devxerr"
 	"github.com/VitruvianSoftware/vitruvian-devx/internal/secrets"
 	"github.com/VitruvianSoftware/vitruvian-devx/internal/telemetry"
 	"github.com/VitruvianSoftware/vitruvian-devx/internal/updater"
+	"github.com/getsentry/sentry-go"
 	"github.com/spf13/cobra"
 )
 
@@ -94,7 +96,19 @@ Run 'devx vm init' to bootstrap your machine, or 'devx up' to start services.`,
 }
 
 func Execute() {
+	if code := execute(); code != 0 {
+		os.Exit(code)
+	}
+}
+
+func execute() int {
+	initSentry("")
+	defer sentry.Flush(500 * time.Millisecond)
+	defer sentry.Recover()
+
 	if err := rootCmd.Execute(); err != nil {
+		sentry.CaptureException(err)
+
 		var dex *devxerr.DevxError
 		exitCode := 1
 		if errors.As(err, &dex) {
@@ -117,9 +131,10 @@ func Execute() {
 		}
 
 		telemetry.Flush()
-		os.Exit(exitCode)
+		return exitCode
 	}
 	telemetry.Flush()
+	return 0
 }
 
 func init() {

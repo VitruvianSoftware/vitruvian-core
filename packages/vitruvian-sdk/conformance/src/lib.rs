@@ -101,7 +101,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             misnamed(&bad_block_tree, "counter").as_deref(),
-            Some("the page of counter has block id 'installHook:claudeCode', which is not a valid name (ASCII letters, digits, '.', '-' and '_' only): Vitruvian refuses the whole page")
+            Some("the page of counter has block id 'installHook:claudeCode', which is not a valid name (ASCII letters, digits, '.', '-' and '_' only): Vitruvian Atrium refuses the whole page")
         );
 
         let missing_row_id_tree = json::loads(
@@ -110,7 +110,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             misnamed(&missing_row_id_tree, "counter").as_deref(),
-            Some("the page of counter has a row in list 'hooks' whose id is missing or not text: Vitruvian refuses the whole page")
+            Some("the page of counter has a row in list 'hooks' whose id is missing or not text: Vitruvian Atrium refuses the whole page")
         );
     }
 

@@ -148,7 +148,7 @@ struct AccountsSettingsPane: View {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(entry.displayName)
                                             .font(.body.weight(isSelected ? .semibold : .medium))
-                                            .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                                            .foregroundStyle(Color.primary)
                                             .lineLimit(1)
                                             .truncationMode(.tail)
                                         Text(entry.remoteName)
@@ -164,7 +164,7 @@ struct AccountsSettingsPane: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .background(
                                     RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                        .fill(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
+                                        .fill(isSelected ? Color.primary.opacity(0.10) : Color.clear)
                                 )
                             }
                             .buttonStyle(.plain)
@@ -344,7 +344,8 @@ struct AccountsSettingsPane: View {
                 displayName: entry.displayName
             )
         } label: {
-            Text(String(localized: "Remove Account…"))
+            // System red, never the accent, with a symbol so it reads as destructive by shape too.
+            Label(String(localized: "Remove Account…"), systemImage: "person.crop.circle.badge.minus")
                 .foregroundStyle(model.isLocked ? Color.secondary : Color.red)
                 .frame(maxWidth: .infinity)
         }
@@ -360,7 +361,7 @@ struct AccountsSettingsPane: View {
         GroupBox(String(localized: "Space Bar & Inbox")) {
             VStack(alignment: .leading, spacing: 12) {
                 if let space = accountSpace {
-                    Toggle(
+                    SettingsSwitchRow(
                         String(localized: "Show in Space Bar"),
                         isOn: Binding(
                             get: { !space.hidden },
@@ -398,7 +399,7 @@ struct AccountsSettingsPane: View {
                         .disabled(model.isLocked)
                     }
 
-                    Toggle(
+                    SettingsSwitchRow(
                         String(localized: "Mute Account Space"),
                         isOn: Binding(
                             get: { space.muted },
@@ -438,7 +439,7 @@ struct AccountsSettingsPane: View {
         let hasCustomOverride = currentOverride != nil
         return GroupBox(String(localized: "Notifications for this Account")) {
             VStack(alignment: .leading, spacing: 10) {
-                Toggle(
+                SettingsSwitchRow(
                     String(localized: "Override global notification settings"),
                     isOn: Binding(
                         get: { hasCustomOverride },
@@ -455,7 +456,7 @@ struct AccountsSettingsPane: View {
                 .disabled(model.isLocked)
 
                 if let ov = currentOverride {
-                    Toggle(
+                    SettingsSwitchRow(
                         String(localized: "Desktop notifications"),
                         isOn: Binding(
                             get: { ov.enabled },
@@ -492,7 +493,7 @@ struct AccountsSettingsPane: View {
                         .disabled(model.isLocked)
                     }
 
-                    Toggle(
+                    SettingsSwitchRow(
                         String(localized: "Include message preview"),
                         isOn: Binding(
                             get: { ov.showPreviews },
@@ -565,7 +566,7 @@ struct AccountsSettingsPane: View {
 
     private func subAccountRow(entry: AccountEntry, item: SubAccountItem) -> some View {
         HStack(spacing: 10) {
-            Toggle(
+            SettingsSwitchRow(
                 item.title.isEmpty ? item.subID : item.title,
                 isOn: Binding(
                     get: { item.enabled },
@@ -720,7 +721,9 @@ struct RemoveAccountConfirmationSheet: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Toggle(confirmation.logoutToggleLabel, isOn: $confirmation.logoutRemote)
+                    .toggleStyle(.checkbox)
                 Toggle(confirmation.deleteChatsToggleLabel, isOn: $confirmation.deleteChats)
+                    .toggleStyle(.checkbox)
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)

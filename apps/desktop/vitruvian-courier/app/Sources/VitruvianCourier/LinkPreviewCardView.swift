@@ -164,10 +164,44 @@ public struct ExternalEmbedDescriptor: Equatable, Sendable {
     public let originalURL: URL
     public let embedURL: URL
 
+    /// The YouTube video's ID, read from the embed address; nil for every other site.
+    public var youTubeVideoID: String? {
+        guard host == "youtube.com", embedURL.pathComponents.count >= 3, embedURL.pathComponents[1] == "embed" else { return nil }
+        return embedURL.pathComponents[2]
+    }
+
+    /// The video's still picture on YouTube, when this is a YouTube link.
+    public var remoteThumbnailURL: URL? { youTubeVideoID.flatMap(EmbedThumbnail.youTubeURL(videoID:)) }
+
+    /// The picture the message's own preview for this link carries, when it has been saved on this Mac.
+    public static func previewImagePath(in message: TimelineMessage) -> String? {
+        guard let path = message.linkPreviews.first(where: isEmbedPreview)?.imagePath, !path.isEmpty,
+              isLocalMediaStorePath(path) else { return nil }
+        return path
+    }
+
     public init(host: String, originalURL: URL, embedURL: URL) {
         self.host = host
         self.originalURL = originalURL
         self.embedURL = embedURL
+    }
+
+    /// The site as people say it ("YouTube"), for the card's second line.
+    public var siteName: String {
+        switch host {
+        case "youtube.com": "YouTube"
+        case "vimeo.com": "Vimeo"
+        case "open.spotify.com": "Spotify"
+        case "loom.com": "Loom"
+        default: host
+        }
+    }
+
+    /// What the card says when nothing better is known about the link: what it is, on which site.
+    public var fallbackTitle: String {
+        host == "open.spotify.com"
+            ? String(localized: "Listen on \(siteName)")
+            : String(localized: "Watch on \(siteName)")
     }
 
     /// Returns a descriptor when `urlString` matches an embeddable YouTube, Vimeo, Spotify, or Loom link.
@@ -252,6 +286,23 @@ public struct ExternalEmbedDescriptor: Equatable, Sendable {
         return nil
     }
 
+    /// Whether a network-supplied preview is for an embeddable link: the embed card stands for it.
+    public static func isEmbedPreview(_ preview: LinkPreviewItem) -> Bool {
+        match(urlString: preview.url ?? "") != nil || match(urlString: preview.matchedURL) != nil
+    }
+
+    /// The previews a message draws as link cards. A link with an embed card (YouTube and the like) gets that one
+    /// card, not a second for the same link: its preview is left out here and its title goes on the embed card.
+    public static func cardPreviews(in message: TimelineMessage) -> [LinkPreviewItem] {
+        guard first(in: message) != nil else { return message.linkPreviews }
+        return message.linkPreviews.filter { !isEmbedPreview($0) }
+    }
+
+    /// The title the network's preview gives the embedded link, for the embed card to carry.
+    public static func embedTitle(in message: TimelineMessage) -> String? {
+        message.linkPreviews.first(where: isEmbedPreview)?.title
+    }
+
     private static func isSafeEmbedToken(_ token: String) -> Bool {
         guard !token.isEmpty, token.count <= 64 else { return false }
         return token.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
@@ -260,23 +311,45 @@ public struct ExternalEmbedDescriptor: Equatable, Sendable {
 
 /// Privacy-gated external embed placeholder and sandboxed loader (`MessageIFrame.tsx`).
 ///
-/// Until the person clicks **Load Embed** (when `loadExternalEmbedsAutomatically == false`), no `WKWebView` is
-/// instantiated at all. Once loaded, the `WKWebView` runs with a non-persistent `WKWebsiteDataStore` and blocks
-/// navigation away from the embed URL.
+/// Until the person clicks the card (when `loadExternalEmbedsAutomatically == false`), no `WKWebView` is
+/// instantiated at all. The card is a compact preview (a play glyph, a title, the site); its tooltip says the embed
+/// is held back to protect the person's IP address, and clicking it loads the embed. Once loaded, the `WKWebView`
+/// runs with a non-persistent `WKWebsiteDataStore` and blocks navigation away from the embed URL.
 public struct EmbedConsentCard: View {
     /// The theme's accent, never the system one (which can be red).
     @Environment(\.themeAccentColor) private var themeAccent
     public let messageID: String
     public let descriptor: ExternalEmbedDescriptor
     public let isLoaded: Bool
+    /// The link's title when the message already carries one (a preview its network sent); else the card names the site.
+    public var title: String?
+    /// A picture the link's preview already saved on this Mac; drawn without any request.
+    public var previewImagePath: String?
+    /// Whether the video's picture may be fetched from its site (that tells the site this Mac's address). Off keeps
+    /// the plain play tile.
+    public var allowsRemoteThumbnail: Bool
+    /// Where a fetched picture comes from (the shared session unless a test supplies its own).
+    public var session: URLSession
+    /// Gets a video's picture; the default asks YouTube through `session`. A test supplies its own.
+    public var fetchPicture: (@Sendable (String) async -> CGImage?)?
     public var onBubble: Bool
+    /// The last picture loaded, tagged with the source it was loaded for. It is drawn only while that source is
+    /// still the card's current one, so a late answer for an earlier video can never show.
+    @State private var loaded: (source: String, image: CGImage)?
+    private var thumbnail: CGImage? { Self.visibleThumbnail(loaded, currentSource: thumbnailSource) }
+
+    /// The picture to draw: only one loaded for the card's current source.
+    static func visibleThumbnail(_ loaded: (source: String, image: CGImage)?, currentSource: String) -> CGImage? {
+        guard let loaded, !loaded.source.isEmpty, loaded.source == currentSource else { return nil }
+        return loaded.image
+    }
     public let onLoadEmbed: () -> Void
     public var onOpenURL: (URL) -> Void
 
     public static let userVisibleStrings: [String] = [
-        String(localized: "Load embed from youtube.com"),
-        String(localized: "External embed from youtube.com is blocked to protect your IP address"),
-        String(localized: "Load Embed"),
+        String(localized: "Watch on YouTube"),
+        String(localized: "Listen on Spotify"),
+        String(localized: "External embed from youtube.com is blocked to protect your IP address. Click to load it."),
         String(localized: "Open in Browser"),
     ]
 
@@ -284,6 +357,11 @@ public struct EmbedConsentCard: View {
         messageID: String,
         descriptor: ExternalEmbedDescriptor,
         isLoaded: Bool,
+        title: String? = nil,
+        previewImagePath: String? = nil,
+        allowsRemoteThumbnail: Bool = false,
+        session: URLSession = .shared,
+        fetchPicture: (@Sendable (String) async -> CGImage?)? = nil,
         onBubble: Bool = false,
         onLoadEmbed: @escaping () -> Void,
         onOpenURL: @escaping (URL) -> Void = { url in
@@ -293,9 +371,53 @@ public struct EmbedConsentCard: View {
         self.messageID = messageID
         self.descriptor = descriptor
         self.isLoaded = isLoaded
+        self.title = title
+        self.previewImagePath = previewImagePath
+        self.allowsRemoteThumbnail = allowsRemoteThumbnail
+        self.session = session
+        self.fetchPicture = fetchPicture
         self.onBubble = onBubble
         self.onLoadEmbed = onLoadEmbed
         self.onOpenURL = onOpenURL
+    }
+
+    private var displayTitle: String {
+        if let title = title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
+        return descriptor.fallbackTitle
+    }
+
+    /// What picture the card would draw, so the load restarts when it changes (empty: none).
+    private var thumbnailSource: String {
+        if let path = previewImagePath, isLocalMediaStorePath(path) { return path }
+        if allowsRemoteThumbnail, let id = descriptor.youTubeVideoID, EmbedThumbnail.youTubeURL(videoID: id) != nil {
+            return "youtube:\(id)"
+        }
+        return ""
+    }
+
+    /// Reads a saved preview picture (through the shared small-picture cache) or, when allowed, fetches the video's.
+    /// A result that arrives after the card moved on to another picture, or was left, is dropped.
+    @MainActor
+    private func loadThumbnail() async {
+        let source = thumbnailSource
+        guard !source.isEmpty else { return }
+        var image: CGImage?
+        if let path = previewImagePath, isLocalMediaStorePath(path) {
+            image = await ThumbnailLoader.shared.thumbnail(atPath: path)?.image
+        }
+        if image == nil, allowsRemoteThumbnail, let id = descriptor.youTubeVideoID, !Task.isCancelled {
+            if let fetchPicture {
+                image = await fetchPicture(id)
+            } else {
+                image = await EmbedThumbnail.fetch(videoID: id, session: session)
+            }
+        }
+        guard !Task.isCancelled, let image else { return }
+        loaded = (source, image)
+    }
+
+    private var tooltip: String {
+        String(localized: "External embed from \(descriptor.host) is blocked to protect your IP address. Click to load it.")
     }
 
     public var body: some View {
@@ -332,57 +454,63 @@ public struct EmbedConsentCard: View {
                     .strokeBorder(onBubble ? Color.white.opacity(0.22) : Color.primary.opacity(0.12), lineWidth: 1)
             )
         } else {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
+            Button(action: onLoadEmbed) {
+                HStack(spacing: 10) {
                     ZStack {
-                        Circle()
-                            .fill(themeAccent.opacity(onBubble ? 0.28 : 0.14))
-                            .frame(width: 30, height: 30)
-                        Image(systemName: "lock.shield.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(onBubble ? Color.white : themeAccent)
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(themeAccent.opacity(onBubble ? 0.30 : 0.16))
+                        if let thumbnail {
+                            Image(decorative: thumbnail, scale: 1)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 64, height: 36)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color.white)
+                                .shadow(color: .black.opacity(0.6), radius: 2)
+                        } else {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(onBubble ? Color.white : themeAccent)
+                        }
                     }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "Load embed from \(descriptor.host)"))
+                    .frame(width: thumbnail == nil ? 48 : 64, height: 36)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(displayTitle)
                             .font(.callout.weight(.semibold))
                             .foregroundStyle(onBubble ? Color.white : Color.primary)
-                        Text(String(localized: "External embed from \(descriptor.host) is blocked to protect your IP address"))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        // The site's name under a real title; under the stand-in title (which names it), the address.
+                        Text(displayTitle == descriptor.fallbackTitle ? descriptor.host : descriptor.siteName)
                             .font(.caption)
-                            .foregroundStyle(onBubble ? Color.white.opacity(0.82) : Color.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .foregroundStyle(onBubble ? Color.white.opacity(0.78) : Color.secondary)
+                            .lineLimit(1)
                     }
+                    Spacer(minLength: 0)
                 }
-
-                HStack(spacing: 8) {
-                    Button(action: onLoadEmbed) {
-                        Label(String(localized: "Load Embed"), systemImage: "play.rectangle")
-                            .font(.caption.weight(.semibold))
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-
-                    Button {
-                        onOpenURL(descriptor.originalURL)
-                    } label: {
-                        Label(String(localized: "Open in Browser"), systemImage: "safari")
-                            .font(.caption.weight(.medium))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
+                .padding(8)
+                .frame(maxWidth: 320, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(onBubble ? Color.black.opacity(0.18) : Color.primary.opacity(0.05))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(onBubble ? Color.white.opacity(0.22) : Color.primary.opacity(0.12), lineWidth: 1)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 10))
             }
-            .padding(10)
-            .frame(maxWidth: 320, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(onBubble ? Color.black.opacity(0.18) : Color.primary.opacity(0.05))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(onBubble ? Color.white.opacity(0.22) : Color.primary.opacity(0.12), lineWidth: 1)
-            )
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(String(localized: "Load embed from \(descriptor.host)"))
+            .buttonStyle(.plain)
+            .task(id: thumbnailSource) { await loadThumbnail() }
+            .help(tooltip)
+            .contextMenu {
+                Button(String(localized: "Open in Browser")) { onOpenURL(descriptor.originalURL) }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(descriptor.siteName): \(displayTitle)")
+            .accessibilityHint(tooltip)
         }
     }
 

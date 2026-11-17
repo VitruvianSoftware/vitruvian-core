@@ -50,6 +50,10 @@ enum CourierSurface {
     /// A panel floating over the window: search (translucent without glass) and the command bar (opaque without
     /// glass).
     case floatingPanel(cornerRadius: CGFloat, opaque: Bool)
+    /// The ⌘K search panel: a floating panel that never lets what is behind it show through. Its rows are read, and
+    /// a blurred bubble smeared under the first row's edge made them hard to. With glass, the glass is over the
+    /// window's own opaque colour; without, the material is.
+    case searchPanel(cornerRadius: CGFloat)
     /// The selected message's action bar (quick reactions, Reply, More).
     case actionBar
     /// Who reacted, over a reaction chip.
@@ -84,6 +88,11 @@ private struct CourierSurfaceBackground: ViewModifier {
         case let .floatingPanel(cornerRadius, _):
             content.environment(\.liquidGlass, false)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        case let .searchPanel(cornerRadius):
+            let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            content.environment(\.liquidGlass, false)
+                .glassEffect(.regular, in: shape)
+                .background(Color(nsColor: .windowBackgroundColor), in: shape)
         case .actionBar:
             GlassEffectContainer {
                 content
@@ -113,6 +122,14 @@ private struct CourierSurfaceBackground: ViewModifier {
                 ZStack {
                     Color(nsColor: .windowBackgroundColor)
                     Rectangle().fill(.ultraThinMaterial)
+                }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        case let .searchPanel(cornerRadius):
+            content.background(
+                ZStack {
+                    Color(nsColor: .windowBackgroundColor)
+                    Rectangle().fill(.regularMaterial)
                 }
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))

@@ -83,7 +83,7 @@ package struct NotchAgentTile: Identifiable, Equatable {
     package let card: NotchAgentCard
     /// The account a limits card belongs to.
     package let provider: AgentProvider?
-    /// An added Codex home's card; nil for the one the logs feed.
+    /// An explicitly chosen account's card; nil for the default reading.
     package var accountID: String?
     /// The Resets card beside added Codex homes, which says whose resets they are.
     package var namesDefaultAccount: Bool
@@ -359,10 +359,13 @@ package enum NotchAgentSupport {
     /// Codex homes the person added take the place of Codex's one limits
     /// card, the usual home among them when they add it.
     package static func tiles(cards: [NotchAgentCard], providers: [AgentProvider],
-                              codexAccounts: [String] = []) -> [NotchAgentTile] {
+                              codexAccounts: [String] = [], claudeAccount: String? = nil) -> [NotchAgentTile] {
         cards.flatMap { card -> [NotchAgentTile] in
             switch card {
             case .limits: return providers.filter(\.reportsLimits).flatMap { provider -> [NotchAgentTile] in
+                if provider == .claude, let claudeAccount {
+                    return [NotchAgentTile(card: .limits, provider: provider, accountID: claudeAccount)]
+                }
                 guard provider == .codex, !codexAccounts.isEmpty else { return [NotchAgentTile(card: .limits, provider: provider)] }
                 return codexAccounts.map { NotchAgentTile(card: .limits, provider: provider, accountID: $0) }
             }
@@ -380,8 +383,11 @@ package enum NotchAgentSupport {
     /// Codex also gets cards for the accounts the person added, before or
     /// without any log.
     package static func pageProviders(seen: Set<AgentProvider>, hasCodexAccounts: Bool = false,
+                                      hasClaudeAccount: Bool = false,
                                       in defaults: UserDefaults = .standard) -> [AgentProvider] {
-        providers(in: defaults).filter { seen.contains($0) || ($0 == .codex && hasCodexAccounts) }
+        providers(in: defaults).filter {
+            seen.contains($0) || ($0 == .codex && hasCodexAccounts) || ($0 == .claude && hasClaudeAccount)
+        }
     }
 
     package static func telemetryFilter(in defaults: UserDefaults = .standard) -> NotchTelemetryFilter {
@@ -392,11 +398,13 @@ package enum NotchAgentSupport {
     /// tab keeps its cards while that agent is switched on, even before it
     /// leaves anything on this Mac. The island's size and the page both ask here.
     package static func pageProviders(seen: Set<AgentProvider>, filter: NotchTelemetryFilter,
-                                      hasCodexAccounts: Bool = false,
+                                      hasCodexAccounts: Bool = false, hasClaudeAccount: Bool = false,
                                       in defaults: UserDefaults = .standard) -> [AgentProvider] {
         let only: AgentProvider
         switch filter {
-        case .all: return pageProviders(seen: seen, hasCodexAccounts: hasCodexAccounts, in: defaults)
+        case .all:
+            return pageProviders(seen: seen, hasCodexAccounts: hasCodexAccounts,
+                                 hasClaudeAccount: hasClaudeAccount, in: defaults)
         case .antigravity: only = .antigravity
         case .claude: only = .claude
         case .opencode: only = .opencode
@@ -406,8 +414,10 @@ package enum NotchAgentSupport {
 
     /// The AI page's rows for `providers` across `width`.
     package static func pageRows(providers: [AgentProvider], width: CGFloat, codexAccounts: [String] = [],
+                                 claudeAccount: String? = nil,
                                  in defaults: UserDefaults = .standard) -> [[NotchAgentTile]] {
-        rows(tiles(cards: cards(in: defaults), providers: providers, codexAccounts: codexAccounts), width: width)
+        rows(tiles(cards: cards(in: defaults), providers: providers, codexAccounts: codexAccounts,
+                   claudeAccount: claudeAccount), width: width)
     }
 
     /// Cards pair up in reading order; a chart, or a card left without a

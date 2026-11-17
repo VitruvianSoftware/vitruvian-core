@@ -102,22 +102,16 @@ enum StartNewChatPresentation {
         return ""
     }
 
-    /// Contacts matching `filter`, sorted A–Z by display name.
+    /// Contacts matching `filter`, as New Chat lists them: named people A–Z, then number-only entries A–Z
+    /// (`ContactListOrdering`). A number is dropped when a named contact in this list has it, so with an account
+    /// filter on, a number is only hidden by a person who is also shown.
+    static func contactSections(_ candidates: [ContactCandidate], filter: String?) -> ContactListOrdering.Sections {
+        ContactListOrdering.sections(candidates.filter { matchesAccountFilter($0, filter: filter) })
+    }
+
+    /// `contactSections` as one list, in on-screen order.
     static func sortedContacts(_ candidates: [ContactCandidate], filter: String?) -> [ContactCandidate] {
-        candidates
-            .filter { matchesAccountFilter($0, filter: filter) }
-            .sorted { lhs, rhs in
-                let leftName = lhs.name.isEmpty ? lhs.userID : lhs.name
-                let rightName = rhs.name.isEmpty ? rhs.userID : rhs.name
-                let order = leftName.localizedStandardCompare(rightName)
-                if order != .orderedSame {
-                    return order == .orderedAscending
-                }
-                if lhs.network != rhs.network {
-                    return lhs.network < rhs.network
-                }
-                return lhs.userID < rhs.userID
-            }
+        contactSections(candidates, filter: filter).ordered
     }
 
     /// Row IDs in on-screen order: `lookup:` / `search:` once typed, else `recent:` then `contact:`.
@@ -787,8 +781,11 @@ public struct StartNewChatView: View {
             filter: draft.selectedAccountFilter,
             limit: StartNewChatPresentation.maxRecentChats
         )
-        let allContacts = StartNewChatPresentation.sortedContacts(draft.candidates, filter: draft.selectedAccountFilter)
+        let sections = StartNewChatPresentation.contactSections(draft.candidates, filter: draft.selectedAccountFilter)
+        let allContacts = sections.ordered
         let visibleContacts = Array(allContacts.prefix(contactsLimit))
+        let visibleNamed = visibleContacts.prefix(sections.named.count)
+        let visibleOther = visibleContacts.dropFirst(sections.named.count)
         let hasMoreContacts = allContacts.count > contactsLimit
 
         if !recents.isEmpty {
@@ -797,28 +794,38 @@ public struct StartNewChatView: View {
                 candidateRow(candidate, rowID: "recent:\(candidate.id)")
             }
         }
-        if !visibleContacts.isEmpty {
+        if !visibleNamed.isEmpty {
             sectionHeader(String(localized: "Contacts"))
                 .padding(.top, recents.isEmpty ? 0 : 6)
-            ForEach(visibleContacts) { candidate in
+            ForEach(visibleNamed) { candidate in
                 candidateRow(candidate, rowID: "contact:\(candidate.id)")
             }
-            if hasMoreContacts {
-                Button {
-                    contactsLimit += StartNewChatPresentation.initialContactsLimit
-                } label: {
-                    HStack {
-                        Text(String(localized: "Show more"))
-                            .font(.callout.weight(.medium))
-                            .foregroundStyle(Color.accentColor)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+        }
+        if !visibleOther.isEmpty {
+            // Entries with no name (only a number, handle or opaque ID): after every named person, under their own
+            // small heading.
+            sectionHeader(String(localized: "Other contacts"))
+                .padding(.top, recents.isEmpty && visibleNamed.isEmpty ? 0 : 6)
+            ForEach(visibleOther) { candidate in
+                candidateRow(candidate, rowID: "contact:\(candidate.id)")
             }
+        }
+        if hasMoreContacts {
+            Button {
+                contactsLimit += StartNewChatPresentation.initialContactsLimit
+            } label: {
+                HStack(spacing: 4) {
+                    Text(String(localized: "Show more"))
+                        .font(.callout.weight(.medium))
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+            }
+            .buttonStyle(.routineLink)
         }
         if recents.isEmpty && visibleContacts.isEmpty && !draft.isSearching && !draft.searchFailed {
             Text(String(localized: "Enter a phone number, email, or @username above to start a chat."))
@@ -912,13 +919,16 @@ public struct StartNewChatView: View {
                     name: action.networkDisplayName,
                     size: 16
                 )
+                // A routine action, so plain label text (underlined on hover), not the accent: with a red accent
+                // colour an accent-coloured link reads like a destructive one.
                 Text(action.title)
                     .font(.callout.weight(.medium))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(.primary)
+                    .underline(isHovered || isKeyboardSelected)
                     .lineLimit(1)
                 Spacer(minLength: 4)
                 Image(systemName: "arrow.up.right.circle")
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
@@ -927,7 +937,7 @@ public struct StartNewChatView: View {
                     .fill(
                         isKeyboardSelected
                             ? Color.accentColor.opacity(0.18)
-                            : (isHovered ? Color.accentColor.opacity(0.13) : Color.accentColor.opacity(0.08))
+                            : (isHovered ? Color.primary.opacity(0.10) : Color.primary.opacity(0.06))
                     )
             )
             .overlay(

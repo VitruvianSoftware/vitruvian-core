@@ -34,23 +34,18 @@
  *   3. Export token: export E2E_TEST_TOKEN=<token>
  *   4. Run tests: npm run test:e2e -w extension
  */
-import { test, expect, chromium, BrowserContext } from "@playwright/test";
-import path from "path";
-import fs from "fs";
+import { test, expect, BrowserContext } from "@playwright/test";
 import {
-  getTestToken,
-  loginTestUser,
-  logoutTestUser,
   cleanupAllTestData,
+  cleanupApiWorkspaces,
   cleanupTestBackups,
   createWorkspace,
-  cleanupApiWorkspaces,
   getOrCreateDashboardPage,
+  getTestToken,
+  launchExtension,
+  loginTestUser,
+  logoutTestUser,
 } from "./e2e-helpers";
-
-const EXTENSION_PATH = process.env.EXTENSION_PATH
-  ? path.resolve(process.env.EXTENSION_PATH)
-  : path.join(__dirname, "../dist");
 
 // Shared context and extension ID
 let context: BrowserContext;
@@ -67,35 +62,8 @@ test.beforeAll(async () => {
     );
   }
 
-  // Verify extension is built
-  if (!fs.existsSync(EXTENSION_PATH)) {
-    throw new Error(
-      `Extension not built. Run 'npm run build' first. Expected path: ${EXTENSION_PATH}`,
-    );
-  }
-
-  // Launch browser with extension
-  context = await chromium.launchPersistentContext("", {
-    // Full Chromium in the new headless mode: supports MV3 extensions, no
-    // xvfb needed (Playwright >= 1.49).
-    channel: "chromium",
-    args: [
-      `--disable-extensions-except=${EXTENSION_PATH}`,
-      `--load-extension=${EXTENSION_PATH}`,
-      "--no-sandbox",
-      // Bazel's linux-sandbox mounts a tiny /dev/shm; Chromium crashes at
-      // launch without this.
-      "--disable-dev-shm-usage",
-    ],
-  });
-
-  // Wait for extension to load and get its ID
-  let background = context.serviceWorkers()[0];
-  if (!background) {
-    background = await context.waitForEvent("serviceworker");
-  }
-  // eslint-disable-next-line prefer-destructuring
-  extensionId = background.url().split("/")[2];
+  // Launch Chromium with the extension and get its id.
+  ({ context, extensionId } = await launchExtension());
 
   // Clean up any existing test workspaces from API to prevent hitting 10-workspace limit
   if (testToken) {

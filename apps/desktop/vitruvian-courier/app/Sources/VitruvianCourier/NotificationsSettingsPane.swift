@@ -38,58 +38,56 @@ struct NotificationsSettingsPane: View {
 
     private var alertTypesSection: some View {
         Section(String(localized: "Alert Types")) {
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle(
-                    SettingsNavigationModel.title(for: "notifications.messages"),
-                    isOn: $preferences.messageNotificationsEnabled
-                )
-                Picker(String(localized: "Direct message sound"), selection: $preferences.messageSound) {
-                    ForEach(NotificationSoundChoice.allCases, id: \.self) { choice in
-                        Text(Self.soundLabel(choice)).tag(choice)
-                    }
-                }
-                .disabled(!preferences.messageNotificationsEnabled)
-            }
+            SettingsSwitchRow(
+                SettingsNavigationModel.title(for: "notifications.messages"),
+                isOn: $preferences.messageNotificationsEnabled
+            )
             .settingAnchor("notifications.messages", highlighted: highlightedSettingID)
 
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle(
-                    SettingsNavigationModel.title(for: "notifications.groups"),
-                    isOn: $preferences.groupNotificationsEnabled
-                )
-                Picker(String(localized: "Group chat sound"), selection: $preferences.groupSound) {
-                    ForEach(NotificationSoundChoice.allCases, id: \.self) { choice in
-                        Text(Self.soundLabel(choice)).tag(choice)
-                    }
-                }
-                .disabled(!preferences.groupNotificationsEnabled)
-            }
+            soundPicker(
+                String(localized: "Direct message sound"),
+                selection: $preferences.messageSound,
+                isEnabled: preferences.messageNotificationsEnabled
+            )
+
+            SettingsSwitchRow(
+                SettingsNavigationModel.title(for: "notifications.groups"),
+                isOn: $preferences.groupNotificationsEnabled
+            )
             .settingAnchor("notifications.groups", highlighted: highlightedSettingID)
 
-            Toggle(
+            soundPicker(
+                String(localized: "Group chat sound"),
+                selection: $preferences.groupSound,
+                isEnabled: preferences.groupNotificationsEnabled
+            )
+
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "notifications.requests"),
                 isOn: $preferences.requestNotificationsEnabled
             )
             .help(String(localized: "A message request is someone you haven’t chatted with before writing to you."))
             .settingAnchor("notifications.requests", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "notifications.reactions"),
                 isOn: $preferences.notifyOnReaction
             )
             .settingAnchor("notifications.reactions", highlighted: highlightedSettingID)
 
-            HStack(spacing: 8) {
-                Toggle(
-                    SettingsNavigationModel.title(for: "notifications.typing"),
-                    isOn: $preferences.typingNotificationsEnabled
-                )
-                SettingBadgeView(badge: .labs)
+            SettingsSwitchRow(
+                isOn: $preferences.typingNotificationsEnabled,
+                title: SettingsNavigationModel.title(for: "notifications.typing")
+            ) {
+                HStack(spacing: 8) {
+                    Text(SettingsNavigationModel.title(for: "notifications.typing"))
+                    SettingBadgeView(badge: .labs)
+                }
             }
             .help(String(localized: "Only on networks that send typing. Off, you’re told when the message arrives."))
             .settingAnchor("notifications.typing", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "notifications.inFocus"),
                 isOn: $preferences.notifyWhenInFocus
             )
@@ -97,21 +95,39 @@ struct NotificationsSettingsPane: View {
         }
     }
 
+    /// A sound's own row, under the alert it belongs to. It is greyed out while that alert is off, because the sound
+    /// then never plays.
+    private func soundPicker(
+        _ title: String,
+        selection: Binding<NotificationSoundChoice>,
+        isEnabled: Bool
+    ) -> some View {
+        Picker(title, selection: selection) {
+            ForEach(NotificationSoundChoice.allCases, id: \.self) { choice in
+                Text(Self.soundLabel(choice)).tag(choice)
+            }
+        }
+        .disabled(!isEnabled)
+    }
+
     private var timingAndCodesSection: some View {
         Section(String(localized: "Timing & Verification Codes")) {
-            HStack(spacing: 8) {
-                Picker(
-                    SettingsNavigationModel.title(for: "notifications.delay"),
-                    selection: $preferences.delaySeconds
-                ) {
-                    ForEach(NotificationPreferences.allowedDelaySeconds, id: \.self) { seconds in
-                        Text(Self.delayLabel(seconds)).tag(seconds)
-                    }
+            Picker(selection: $preferences.delaySeconds) {
+                ForEach(NotificationPreferences.allowedDelaySeconds, id: \.self) { seconds in
+                    Text(Self.delayLabel(seconds)).tag(seconds)
                 }
-                SettingBadgeView(badge: .labs)
+            } label: {
+                HStack(spacing: 8) {
+                    Text(SettingsNavigationModel.title(for: "notifications.delay"))
+                    SettingBadgeView(badge: .labs)
+                }
             }
-            .help(String(localized: "Waits before alerting so messages read on another device stay quiet. OTP/2FA codes always notify immediately."))
             .settingAnchor("notifications.delay", highlighted: highlightedSettingID)
+
+            Text(NotificationPreferences.delayFootnote)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             Picker(
                 SettingsNavigationModel.title(for: "notifications.repeatUnread"),
@@ -123,7 +139,7 @@ struct NotificationsSettingsPane: View {
             }
             .settingAnchor("notifications.repeatUnread", highlighted: highlightedSettingID)
 
-            Toggle(
+            SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "notifications.autoCopyOTP"),
                 isOn: $preferences.autoCopyOTP
             )
@@ -221,7 +237,7 @@ struct NotificationsSettingsPane: View {
                             }
                         }
                         Spacer()
-                        Toggle(
+                        SettingsSwitchRow(
                             String(localized: "Alerts"),
                             isOn: Binding(
                                 get: { preferences.accountOverrides[key]?.enabled ?? true },
@@ -230,9 +246,9 @@ struct NotificationsSettingsPane: View {
                                     entry.enabled = enabled
                                     preferences.accountOverrides[key] = entry
                                 }
-                            )
+                            ),
+                            fillsWidth: false
                         )
-                        .toggleStyle(.switch)
                         .controlSize(.small)
 
                         Toggle(

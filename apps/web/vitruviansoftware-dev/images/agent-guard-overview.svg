@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 1080 620" width="100%" height="auto" role="img" aria-labelledby="t1 d1" style="background:#0e1317; font-family:'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'calt' 0; border-radius: 6px;">
+  <title id="t1">Prompt Rules vs. Deterministic PreToolUse Guardrails</title>
+  <desc id="d1">Comparison showing why prompt-only AGENTS.md rules degrade under context pressure while a PreToolUse Rust hook intercepts the command deterministically, refuses in 50 milliseconds, and teaches the agent the exact replacement Bazel target.</desc>
+  <defs>
+    <style>
+      .title { fill: #e7e4dd; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+      .subtitle { fill: #8fa5b5; font-size: 12px; }
+      .box-bg { fill: #151d26; stroke: #26384a; stroke-width: 1.5; }
+      .box-hi { fill: #182330; stroke: #3c5975; stroke-width: 1.5; }
+      .box-head { fill: #e7e4dd; font-size: 13px; font-weight: 600; }
+      .box-body { fill: #8fa5b5; font-size: 11px; }
+      .code { fill: #c9d4de; font-size: 11px; }
+      .small { fill: #687f91; font-size: 10px; }
+      .accent { fill: #93b0ca; font-size: 11px; font-weight: 500; }
+      .ok { fill: #7fbf9a; font-size: 11px; font-weight: 500; }
+      .warn { fill: #d9b264; font-size: 11px; font-weight: 500; }
+      .err { fill: #d2907b; font-size: 11px; font-weight: 500; }
+      .flow-err { stroke: #d2907b; stroke-width: 1.5; fill: none; }
+      .flow-ok { stroke: #7fbf9a; stroke-width: 1.5; fill: none; }
+      .flow-steel { stroke: #93b0ca; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+    </style>
+    <marker id="arrow-err" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#d2907b" />
+    </marker>
+    <marker id="arrow-ok" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#7fbf9a" />
+    </marker>
+    <marker id="arrow-steel" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#93b0ca" />
+    </marker>
+  </defs>
+  <rect width="1080" height="620" fill="#0e1317" rx="6" />
+
+  <!-- Header -->
+  <rect x="24" y="24" width="1032" height="60" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="44" y="49" class="title">Prompts Advise. PreToolUse Hooks Enforce — and Teach.</text>
+  <text x="44" y="69" class="subtitle">Why passive Markdown instructions break 40 turns into a task, and how agent-guard turns refusals into one-turn self-correction</text>
+
+  <!-- LEFT PANEL: Advisory Prompts -->
+  <rect x="24" y="104" width="496" height="492" rx="6" class="box-bg" />
+  <rect x="24" y="104" width="4" height="492" fill="#d2907b" />
+  <rect x="40" y="118" width="464" height="28" rx="4" fill="#23191c" />
+  <text x="52" y="137" class="err">BEFORE: ADVISORY PROMPT RULES (AGENTS.md)</text>
+
+  <rect x="40" y="160" width="464" height="82" rx="4" class="box-hi" />
+  <text x="54" y="182" class="box-head">1. Session Start</text>
+  <text x="54" y="202" class="box-body">Agent loads AGENTS.md ("Always use bazel run //tools/git:commit,</text>
+  <text x="54" y="218" class="box-body">never raw git commit, never git stash, never go test...").</text>
+  <text x="54" y="234" class="small">Works cleanly for the first ~10 trivial tool calls.</text>
+
+  <path d="M 272 242 L 272 268" class="flow-err" marker-end="url(#arrow-err)" />
+
+  <rect x="40" y="274" width="464" height="104" rx="4" class="box-hi" />
+  <text x="54" y="296" class="warn">2. Turn 40: Deep Debug + Context Pressure</text>
+  <text x="54" y="316" class="box-body">Window fills with stack traces, diffs, and failing tests.</text>
+  <text x="54" y="332" class="box-body">Pre-training habits ("git stash", "go test", "gh pr view")</text>
+  <text x="54" y="348" class="box-body">outrank prose instructions sitting thousands of tokens back.</text>
+  <rect x="54" y="356" width="436" height="18" fill="#0d141b" />
+  <text x="62" y="369" class="err">$ git stash &amp;&amp; go test ./tools/worktree/...</text>
+
+  <path d="M 272 378 L 272 404" class="flow-err" marker-end="url(#arrow-err)" />
+
+  <rect x="40" y="410" width="464" height="168" rx="4" fill="#1e1719" stroke="#5b342d" stroke-width="1.5" />
+  <text x="54" y="434" class="err">3. Silent Side Effects in Live Repo</text>
+  <text x="54" y="456" class="box-body">• git stash mutates the shared stash stack across every</text>
+  <text x="68" y="472" class="box-body">parallel worktree (wiping another agent's uncommitted changes)</text>
+  <text x="54" y="494" class="box-body">• go test skips Bazel hermetic toolchains &amp; secret checks</text>
+  <text x="54" y="516" class="box-body">• Human discovers leaked work or damaged state after the fact</text>
+  <text x="54" y="556" class="err">✗ Probabilistic: obeys ~98% of calls — the other 2% break things</text>
+
+  <!-- RIGHT PANEL: Deterministic agent-guard -->
+  <rect x="544" y="104" width="512" height="492" rx="6" class="box-bg" />
+  <rect x="544" y="104" width="4" height="492" fill="#7fbf9a" />
+  <rect x="560" y="118" width="480" height="28" rx="4" fill="#172721" />
+  <text x="572" y="137" class="ok">AFTER: DETERMINISTIC PRETOOLUSE HOOK (agent-guard)</text>
+
+  <rect x="560" y="160" width="480" height="72" rx="4" class="box-hi" />
+  <text x="574" y="182" class="box-head">1. Model Proposes Tool Call (Claude Code / Antigravity)</text>
+  <text x="574" y="202" class="code">Bash / run_command: "git stash"  or  "gh pr view 4990"</text>
+  <text x="574" y="220" class="small">Agent harness pauses execution and pipes tool JSON to hook.sh</text>
+
+  <path d="M 800 232 L 800 258" class="flow-ok" marker-end="url(#arrow-ok)" />
+
+  <rect x="560" y="264" width="480" height="108" rx="4" class="box-hi" />
+  <text x="574" y="286" class="accent">2. Cached origin/main Rust Binary (~50 ms)</text>
+  <text x="574" y="306" class="box-body">• Parses compound shell syntax, escapes, subshells &amp; cwd scope</text>
+  <text x="574" y="322" class="box-body">• Evaluates against origin/main's 31 policy categories + fails closed</text>
+  <text x="574" y="338" class="box-body">• Never alters James's own interactive terminal sessions</text>
+  <text x="574" y="356" class="warn">Decision: DENY (or ALLOW in ~50 ms, logged to 0600 JSONL)</text>
+
+  <path d="M 800 372 L 800 398" class="flow-ok" marker-end="url(#arrow-ok)" />
+
+  <rect x="560" y="404" width="480" height="110" rx="4" fill="#141e26" stroke="#3c5975" stroke-width="1.5" />
+  <text x="574" y="426" class="ok">3. Refusal Teaches the Exact Replacement Command</text>
+  <rect x="574" y="436" width="452" height="64" fill="#0d141b" stroke="#233547" rx="3" />
+  <text x="584" y="454" class="err">Blocked by agent-guard: `gh pr view` must go through</text>
+  <text x="584" y="470" class="err">Bazel in vitruvian-core. Use `bazel run //tools/agent-app</text>
+  <text x="584" y="486" class="ok">-- read pr view 4990`. If no target fits, stop and tell James.</text>
+
+  <path d="M 1038 456 C 1053 380, 1053 260, 1038 202" class="flow-steel" marker-end="url(#arrow-steel)" />
+  <rect x="952" y="381" width="90" height="18" rx="3" fill="#151d26" stroke="#3c5975" stroke-width="1" />
+  <text x="997" y="394" text-anchor="middle" class="accent">self-corrects</text>
+
+  <rect x="560" y="528" width="480" height="50" rx="4" fill="#15231e" stroke="#3b6351" stroke-width="1" />
+  <text x="574" y="549" class="ok">✓ Next turn: agent runs the named Bazel target directly</text>
+  <text x="574" y="566" class="small">Real result: 5,742 / 5,792 calls allowed cleanly; 50 habit violations caught</text>
+</svg>

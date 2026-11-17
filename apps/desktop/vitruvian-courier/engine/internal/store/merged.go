@@ -724,6 +724,7 @@ func (s *Store) MergedEventsAround(ctx context.Context, mergeID, roomID, eventID
 	if err != nil {
 		return nil, false, false, err
 	}
+	centre = s.served(ctx, centre)
 	at := centre.TS.UnixMilli()
 
 	older, err := s.queryEvents(ctx, mergedEventsBeforeSQL, mergeID, at, centre.Seq, limit)

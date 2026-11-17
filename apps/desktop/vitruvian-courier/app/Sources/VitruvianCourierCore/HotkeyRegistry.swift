@@ -174,6 +174,8 @@ public struct HotkeyDefinition: Equatable, Sendable, Identifiable {
 /// Canonical ledger IDs for M4.7 Command Bar, Talk to Type, and Zoom shortcuts.
 public enum HotkeyID {
     public static let commandBar = "Command Bar"
+    /// Search in Chat (⌘F by default).
+    public static let searchInChat = "Search: Room"
     public static let talkToType = "Message: Talk to Type"
     public static let zoomIn = "Zoom In"
     public static let zoomOut = "Zoom Out"

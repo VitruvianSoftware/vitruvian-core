@@ -41,6 +41,16 @@
 #     is dropped.
 
 [[IgnoredVulns]]
+id = "GHSA-3g3m-2fjr-6pw4"
+ignoreUntil = 2027-02-15
+reason = "npm glob 10.5.0 in apps/suites/vitruvian-relay/connector/dc (vrelay's pinned desktop-commander 0.3.1, which declares glob ^10.3.10). Fixed only in 14.0.2, four majors above what desktop-commander accepts. Not reachable: desktop-commander 0.3.1's dist/ never imports glob (checked with grep, 2026-11-15), and the flaw needs a caller that bounds a glob walk with an AbortSignal. Revisit when desktop-commander is bumped."
+
+[[IgnoredVulns]]
+id = "GHSA-g3hv-75wg-m249"
+ignoreUntil = 2027-02-15
+reason = "npm minimatch 9.0.9 in apps/suites/vitruvian-relay/connector/dc, reached only through glob 10.5.0 (above), which declares minimatch ^9.0.4. Fixed only in 11.0.1, a major glob 10 does not accept. Not reachable: glob is never imported by desktop-commander 0.3.1, so no pattern reaches minimatch. Revisit with the glob entry."
+
+[[IgnoredVulns]]
 id = "GHSA-w5hq-g745-h8pq"
 ignoreUntil = 2026-12-23
 reason = "npm uuid 3.4.0, reached via @material-table/core 3.2.5 in @backstage/core-components. Fixed only in 11.1.1 (12.0.1, 13.0.1); uuid dropped its default export in v7, and overriding uuid@3 to 11.1.1 crashed the Backstage catalog page at runtime (#3004). uuid@8/9/10 remain overridden to ^11.1.1."

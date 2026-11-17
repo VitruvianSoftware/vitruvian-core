@@ -21,16 +21,20 @@
 # SOFTWARE.
 
 # The Vitruvian Relay P0 spike server. Built by .github/workflows/vitruvian-relay-spike-image.yaml
-# with this folder as the context and vitruvian-slack-mcp's crate as a second, named
-# context (`--build-context slackmcp=apps/mcp/vitruvian-slack-mcp/rs`), because the spike
-# reuses vitruvian-slack-mcp's token verifier through a Cargo path dependency
-# (../../../mcp/vitruvian-slack-mcp/rs). The layout under /src mirrors apps/ so that path
-# resolves unchanged.
+# with this folder as the context and two more named contexts:
+# `--build-context slackmcp=apps/mcp/vitruvian-slack-mcp/rs`, because the spike
+# reuses vitruvian-slack-mcp's crate through a Cargo path dependency
+# (../../../mcp/vitruvian-slack-mcp/rs), and
+# `--build-context mcpauth=packages/rust/vitruvian-mcp-auth`, the token-checking
+# crate that one path-depends on in turn. The layout under /src mirrors the
+# repo so both paths resolve unchanged.
 
 FROM rust:1.98.1-slim-bookworm AS build
-WORKDIR /src/suites/vitruvian-relay/spike
-COPY --from=slackmcp Cargo.toml Cargo.lock /src/mcp/vitruvian-slack-mcp/rs/
-COPY --from=slackmcp src /src/mcp/vitruvian-slack-mcp/rs/src
+COPY --from=mcpauth Cargo.toml /src/packages/rust/vitruvian-mcp-auth/
+COPY --from=mcpauth src /src/packages/rust/vitruvian-mcp-auth/src
+COPY --from=slackmcp Cargo.toml Cargo.lock /src/apps/mcp/vitruvian-slack-mcp/rs/
+COPY --from=slackmcp src /src/apps/mcp/vitruvian-slack-mcp/rs/src
+WORKDIR /src/apps/suites/vitruvian-relay/spike
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 RUN cargo build --release --locked --bin vitruvian-relay-spike && \

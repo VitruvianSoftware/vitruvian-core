@@ -56,8 +56,9 @@ struct RichTextView: View {
                 RoundedRectangle(cornerRadius: 1.5)
                     .fill(onBubble ? Color.white.opacity(0.7) : Color.secondary.opacity(0.6))
                     .frame(width: 3)
-                (Text(joined(block.lines)) + metaGap(reservesMeta))
-                    .opacity(0.85)
+                // Quoted text and links are a touch softer; mentions inside it set their own colour and stay full strength.
+                (Text(joined(block.lines, dimmed: true)) + metaGap(reservesMeta))
+                    .foregroundStyle(onBubble ? Color.white.opacity(0.85) : Color.primary.opacity(0.85))
                     .fixedSize(horizontal: false, vertical: true)
             }
             .fixedSize(horizontal: false, vertical: true)
@@ -87,6 +88,11 @@ struct RichTextView: View {
         }
     }
 
+    /// A mention's text and the tint behind it (a test measures their contrast).
+    static func mentionColors(onBubble: Bool, accent: Color) -> (text: Color, tint: Color) {
+        onBubble ? (Color.white, Color.black.opacity(0.22)) : (Color.primary, accent.opacity(0.18))
+    }
+
     /// Links, and the arrow after them, are the bubble's text colour.
     private var linkColor: Color { onBubble ? Color.white : Color.primary }
 
@@ -97,17 +103,18 @@ struct RichTextView: View {
 
     private var tint: Color { onBubble ? Color.white.opacity(0.2) : Color.primary.opacity(0.08) }
 
-    private func joined(_ lines: [[RichTextLayout.Run]]) -> AttributedString {
+    private func joined(_ lines: [[RichTextLayout.Run]], dimmed: Bool = false) -> AttributedString {
         var result = AttributedString()
         for (index, line) in lines.enumerated() {
             if index > 0 { result.append(AttributedString("\n")) }
-            result.append(attributed(line))
+            result.append(attributed(line, dimmed: dimmed))
         }
         return result
     }
 
-    /// One line's runs as styled text.
-    private func attributed(_ runs: [RichTextLayout.Run]) -> AttributedString {
+    /// One line's runs as styled text. `dimmed` (inside a quote) softens links the way the rest of the quote is softened.
+    private func attributed(_ runs: [RichTextLayout.Run], dimmed: Bool = false) -> AttributedString {
+        let linkColor = dimmed ? self.linkColor.opacity(0.85) : self.linkColor
         var result = AttributedString()
         for run in runs {
             var piece: AttributedString
@@ -117,7 +124,7 @@ struct RichTextView: View {
                 piece = AttributedString(run.text)
             }
             var font = Font.system(size: pointSize, design: run.code ? .monospaced : .default)
-            if run.bold || run.mention != nil { font = font.bold() }
+            if run.bold { font = font.bold() } else if run.mention != nil { font = font.weight(.semibold) }
             if run.italic { font = font.italic() }
             piece.font = font
             if run.strikethrough { piece.strikethroughStyle = .single }
@@ -131,9 +138,12 @@ struct RichTextView: View {
                 piece = LinkedText.decorated(piece, color: linkColor, arrowSize: round(pointSize * 0.8))
             }
             if run.mention != nil {
-                // Mentions are a highlight in the theme's accent, not a link.
-                piece.backgroundColor = onBubble ? Color.white.opacity(0.25) : themeAccent.opacity(0.18)
-                if !onBubble { piece.foregroundColor = themeAccent }
+                // Mentions are a highlight in the theme's accent, not a link; the text stays the primary colour so it
+                // reads on the tint in light and dark.
+                let colors = Self.mentionColors(onBubble: onBubble, accent: themeAccent)
+                // Black 22% (not white) on my own bubble: a white tint under white text couldn't reach 4.5:1.
+                piece.backgroundColor = colors.tint
+                piece.foregroundColor = colors.text
             }
             if run.spoiler, !revealed {
                 piece.foregroundColor = .clear

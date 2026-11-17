@@ -73,22 +73,24 @@ public struct IntegrationsSettingsPane: View {
 
     private var localAPISection: some View {
         Section {
-            Toggle(isOn: Binding(
-                get: { model.isEnabled },
-                set: { on in Task { await model.setEnabled(on) } }
-            )) {
-                Text(String(localized: "Allow connections"))
-                Text(String(localized: "Claude and other apps that support MCP can read your chats, with a connection you approve."))
-            }
+            SettingsSwitchRow(
+                String(localized: "Allow connections"),
+                isOn: Binding(
+                    get: { model.isEnabled },
+                    set: { on in Task { await model.setEnabled(on) } }
+                ),
+                footnote: String(localized: "Claude and other apps that support MCP can read your chats, with a connection you approve.")
+            )
             .settingAnchor("integrations.localAPI", highlighted: highlightedSettingID)
 
-            Toggle(isOn: Binding(
-                get: { model.isRemote },
-                set: { on in Task { await model.requestRemoteAccess(on) } }
-            )) {
-                Text(String(localized: "Remote Access"))
-                Text(String(localized: "Other devices on your network can connect too. Off, only apps on this Mac can."))
-            }
+            SettingsSwitchRow(
+                String(localized: "Remote Access"),
+                isOn: Binding(
+                    get: { model.isRemote },
+                    set: { on in Task { await model.requestRemoteAccess(on) } }
+                ),
+                footnote: String(localized: "Other devices on your network can connect too. Off, only apps on this Mac can.")
+            )
             .settingAnchor("integrations.remoteAccess", highlighted: highlightedSettingID)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -314,6 +316,7 @@ public struct NewConnectionSheet: View {
                           prompt: Text(String(localized: "Claude Code")))
                     .onSubmit { Task { await model.createConnection() } }
                 Toggle(String(localized: "Can send messages"), isOn: $model.newConnectionCanSend)
+                    .toggleStyle(.checkbox)
             }
             .formStyle(.columns)
             if let error = model.lastError {

@@ -527,6 +527,7 @@ package enum Defaults {
         DefaultsKey.notchCalendarExcluded: Preferences.notchCalendarExcluded.defaultValue,
         DefaultsKey.notchAgentsEnabled: Preferences.notchAgentsEnabled.defaultValue,
         DefaultsKey.notchAgentsClaude: Preferences.notchAgentsClaude.defaultValue,
+        DefaultsKey.notchAgentsClaudeProfile: Preferences.notchAgentsClaudeProfile.defaultValue,
         DefaultsKey.notchAgentsCodex: Preferences.notchAgentsCodex.defaultValue,
         DefaultsKey.notchAgentsOpenCode: Preferences.notchAgentsOpenCode.defaultValue,
         DefaultsKey.notchAgentsCopilot: Preferences.notchAgentsCopilot.defaultValue,

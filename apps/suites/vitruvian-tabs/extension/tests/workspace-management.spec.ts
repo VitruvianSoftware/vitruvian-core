@@ -23,15 +23,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable no-console */
 import { test, expect, chromium, BrowserContext, Page } from "@playwright/test";
-import path from "path";
 import fs from "fs";
-import { cleanupApiWorkspaces, getTestToken } from "./e2e-helpers";
+import {
+  EXTENSION_PATH,
+  cleanupApiWorkspaces,
+  getTestToken,
+} from "./e2e-helpers";
 
 const testToken = getTestToken();
-const EXTENSION_PATH = process.env.EXTENSION_PATH
-  ? path.resolve(process.env.EXTENSION_PATH)
-  : path.join(__dirname, "../dist");
-
 async function getExtensionId(ctx: BrowserContext) {
   const page = await ctx.newPage();
   await page.goto("chrome://extensions");

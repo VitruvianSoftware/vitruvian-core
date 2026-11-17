@@ -516,7 +516,7 @@ abf441034c3176e973b0b134b0d493bfe2852a3e	d54100fe396180cdd4315e334595b3c86e1be03
 4a405fd2abd3ed312be8022e05140798961087c3	f4bde9c01a3c2045cf9b30d5f58dbebfdbd97fc8	2026-10-29	ported	#4708	fix(shelf): offer only a copy for files stored inside packages (#2085)
 8e2a826eca02b54a803f7eb8c4f335fccba11ca2	07d271b4b81e24593580d6729f491961c28acc88	2026-10-28	skipped	touches only upstream-only paths	docs(changelog): note safer Shelf package drags
 0121b0177a5a7075996f9d82374221383a850b09	6a316224d258d34dce9cb8281c67d97579b6f189	2026-10-28	ported	#4708	feat(switcher): add an optional shortcut for all windows (#3609)
-efb5e60f5445ba68b3f0ce7cbafa21fcf7375595	aee62ad86de20e44b5650f19db38bfe0ecb6ea43	2026-10-28	pending	-	feat(agents): add Claude account selection (#3610)
+efb5e60f5445ba68b3f0ce7cbafa21fcf7375595	aee62ad86de20e44b5650f19db38bfe0ecb6ea43	2026-10-28	ported	#4954	feat(agents): add Claude account selection (#3610)
 4d830f42178da244166e1dd842bc2db822286249	bb7da9b0b69becc86de1626ce3288d5c36d7ab03	2026-10-28	ported	#4708	fix(super-key): make hotkeys independent of startup order (#3613)
 00f8386bb09c5fdb47c2b8bf260a17cfc631acfb	5edcfd44bc96175c698dc0bfd34afbcf218a97af	2026-10-28	ported	#4710	fix(clipboard): support control navigation in the dynamic island (#3615)
 b33607515ea4b104e818bd2f2b1e674012aa3b4e	c474b8734f060f24b997b345423c28be8c8a63f8	2026-10-28	ported	#4710	fix(uninstaller): stop removal when Homebrew verification fails (#3617)
@@ -538,7 +538,7 @@ da971fd4b7923f6db0bfced82fb25765a4ad7a61	3cb625882722e2adec5720e9bb7512c1061d316
 c5930bfc6fc64d48337c7717ddb7891826f7a54a	0efb0fdd1c20869126b6b4cf18a31ca7c9b10a97	2026-11-04	ported	#4732	fix(notch): hide over an app's own full screen on every display (#3686)
 3afcd0222dd1dfc8b76c8c3782599cba60e44b62	ae744230d0f8c042f5f66a72653270b34c96f6c7	2026-11-04	ported	#4710	fix(recorder): stop compiling GPU programs for every exported frame (#3648)
 b1ffc9d9010eb567d6ebfdd3af26224e322726b7	2cdc059fc51cc59b3eb915ca25eb5153e36fd49b	2026-11-04	ported	#4710	fix(mixer): slide the volume across a block instead of stepping it (#3538)
-73b4846f52a938e1b924abae285813b702459980	801eafc241a6a2ac7342bce12fcf799681878ee4	2026-11-05	pending	-	perf(switcher): reduce quick-switch latency and minimized-window flashes (#3570)
+73b4846f52a938e1b924abae285813b702459980	801eafc241a6a2ac7342bce12fcf799681878ee4	2026-11-05	ported	#4955	perf(switcher): reduce quick-switch latency and minimized-window flashes (#3570)
 d257dfd208634981cef9856e9bd291ec6eab7966	9eca256c08e3eb7df329dbc402a6538df4ecc3d7	2026-11-05	ported	#4710	fix(mouse): focus without raising again when the no-raise path fails (#3737)
 2806d2bcc11f52de78f5786d6e618df147dea414	3968aeb37e67e41b3e676f76dc46b83ab8cb4650	2026-11-05	ported	#4710	fix(window-layout): resolve gesture targets when child hit tests fail (#3773)
 ab7e57131ebbb86135d09917c2b81b8a165f69be	f3d73a7c17384c732a43c6b5ce580b008837fc79	2026-11-04	ported	#4732	fix(switcher): keep the shortcut working under secure input (#3643)

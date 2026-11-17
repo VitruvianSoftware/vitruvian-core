@@ -19,11 +19,6 @@ Component package providing implementation for `tools/pulumi/src`.
 - `[http.rs:Error]`
 - `[http.rs:Request]`
 - `[http.rs:send]`
-- `[json.rs:Value]`
-- `[json.rs:dedup]`
-- `[json.rs:JsonError]`
-- `[json.rs:loads]`
-- `[json.rs:dumps]`
 - Subdirectory: [bin](./bin/README.md)
 
 ## Invariants

@@ -6,6 +6,7 @@ go_library(
         "arrived.go",
         "connector.go",
         "intent.go",
+        "repair_gmessages.go",
     ],
     importpath = "github.com/VitruvianSoftware/vitruvian-courier/engine/internal/localmatrix",
     visibility = ["//apps/desktop/vitruvian-courier/engine:__subpackages__"],
@@ -18,6 +19,7 @@ go_library(
         "@net_maunium_go_mautrix//bridgev2",
         "@net_maunium_go_mautrix//bridgev2/database",
         "@net_maunium_go_mautrix//bridgev2/networkid",
+        "@net_maunium_go_mautrix//bridgev2/simplevent",
         "@net_maunium_go_mautrix//bridgev2/status",
         "@net_maunium_go_mautrix//event",
         "@net_maunium_go_mautrix//id",
@@ -30,6 +32,7 @@ go_test(
         "arrived_test.go",
         "connector_test.go",
         "intent_test.go",
+        "repair_gmessages_test.go",
     ],
     embed = [":localmatrix"],
     deps = [

@@ -27,7 +27,7 @@
 //	})
 //	tool.Run()
 //
-// A tool is a program the Vitruvian app starts and talks to in JSON, one
+// A tool is a program Vitruvian Atrium starts and talks to in JSON, one
 // message per line, over the program's standard input and output. The kit
 // is that conversation: it answers the app's greeting, runs a command's
 // handler when the app asks, and turns each call on App into a request and

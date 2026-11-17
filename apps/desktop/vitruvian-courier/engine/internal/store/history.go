@@ -59,6 +59,7 @@ func (s *Store) EditHistory(ctx context.Context, eventID string) ([]Version, err
 	if err != nil {
 		return nil, err
 	}
+	e = s.served(ctx, e)
 	body, formatted := textOf(e.Content)
 	out := []Version{{Body: body, FormattedBody: formatted, TS: e.TS}}
 	rows, err := s.db.Query(ctx, liveEditsSQL, eventID, e.Sender)

@@ -1,0 +1,265 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import XCTest
+
+@testable import VitruvianCourierCore
+
+/// `ContactListOrdering`: which names are only a phone number or handle, and how New Chat's Contacts list puts
+/// named people first and leaves out numbers that a named contact already has. All data is synthetic.
+final class ContactListOrderingTests: XCTestCase {
+    private func candidate(
+        _ name: String,
+        network: String = "whatsapp",
+        account: String = "wa-1",
+        user: String? = nil,
+        identifiers: [String] = []
+    ) -> ContactCandidate {
+        ContactCandidate(
+            userID: user ?? "@\(UUID().uuidString):courier.local",
+            name: name,
+            network: network,
+            accountID: account,
+            identifiers: identifiers
+        )
+    }
+
+    // MARK: - Is this name only a number or handle?
+
+    func testPhoneNumbersAreNotNames() {
+        for text in [
+            "+12134476502",
+            "+1 213-447-6502",
+            "+1 (213) 447-6502",
+            "(213) 447-6502",
+            "213.447.6502",
+            "+44 20 7946 0958",
+            "+1\u{00A0}213\u{00A0}447\u{00A0}6502",
+            "tel:+12134476502",
+            "5550101",
+        ] {
+            XCTAssertTrue(ContactListOrdering.isNumberOrHandle(text), "\(text) is a phone number, not a name")
+        }
+    }
+
+    func testNetworkTagAfterANumberDoesNotMakeItAName() {
+        for text in ["+12134476502 (WA)", "(+1 213) 447-6502 (WA)", "+1 (213) 447-6502 (TG)", "+12134476502 (Signal)"] {
+            XCTAssertTrue(ContactListOrdering.isNumberOrHandle(text), "\(text) is a number with a network tag")
+        }
+    }
+
+    func testEmailsAndHandlesAreNotNames() {
+        for text in ["alice@example.com", "mailto:alice@example.com", "@alice", "@alice:courier.local", "", "   "] {
+            XCTAssertTrue(ContactListOrdering.isNumberOrHandle(text), "\(text) is not a name")
+        }
+    }
+
+    func testRealNamesStayNamed() {
+        for text in [
+            "Alice Example",
+            "alice",
+            "Room 101",
+            "Studio 54",
+            "Apt 4B",
+            "Route 66 Diner",
+            "Alice (WA)",
+            "Alice Example (work)",
+            "3M Support",
+            "Al@Home",
+            "(WA)",
+        ] {
+            XCTAssertFalse(ContactListOrdering.isNumberOrHandle(text), "\(text) is a name")
+        }
+    }
+
+    // MARK: - Same number, different spellings
+
+    func testPhoneKeyIsTheSameForEverySpellingOfOneNumber() {
+        let spellings = [
+            "+12134476502",
+            "+1 213-447-6502",
+            "(213) 447-6502",
+            "+1 (213) 447-6502 (WA)",
+            "tel:+1 213 447 6502",
+        ]
+        XCTAssertEqual(Set(spellings.compactMap(ContactListOrdering.phoneKey)), ["+12134476502"])
+        XCTAssertNotEqual(ContactListOrdering.phoneKey("+12134476503"), "+12134476502")
+    }
+
+    func testPhoneKeyIsNilForNamesAndHandles() {
+        for text in ["Alice", "Room 101", "alice@example.com", "@alice", ""] {
+            XCTAssertNil(ContactListOrdering.phoneKey(text), text)
+        }
+    }
+
+    // MARK: - Ordering
+
+    func testNamedPeopleComeFirstThenNumbersEachAToZ() {
+        let sections = ContactListOrdering.sections([
+            candidate("+12134476502"),
+            candidate("Zara"),
+            candidate("adam"),
+            candidate("+12125550100"),
+            candidate("Mia"),
+        ])
+        XCTAssertEqual(sections.named.map(\.name), ["adam", "Mia", "Zara"])
+        XCTAssertEqual(sections.other.map(\.name), ["+12125550100", "+12134476502"])
+        XCTAssertEqual(sections.ordered.map(\.name), ["adam", "Mia", "Zara", "+12125550100", "+12134476502"])
+    }
+
+    func testHandlesAndEmailsGoWithTheNumbers() {
+        let sections = ContactListOrdering.sections([candidate("@bot"), candidate("Bea"), candidate("bo@example.com")])
+        XCTAssertEqual(sections.named.map(\.name), ["Bea"])
+        XCTAssertEqual(Set(sections.other.map(\.name)), ["@bot", "bo@example.com"])
+    }
+
+    func testAnEmptyNameCountsAsNumberOnly() {
+        let sections = ContactListOrdering.sections([candidate("", user: "@x:courier.local"), candidate("Bea")])
+        XCTAssertEqual(sections.named.map(\.name), ["Bea"])
+        XCTAssertEqual(sections.other.map(\.userID), ["@x:courier.local"])
+    }
+
+    func testNamesWithDigitsAreSortedAmongThePeople() {
+        let sections = ContactListOrdering.sections([candidate("Room 101"), candidate("+12134476502"), candidate("Zed")])
+        XCTAssertEqual(sections.named.map(\.name), ["Room 101", "Zed"])
+        XCTAssertEqual(sections.other.map(\.name), ["+12134476502"])
+    }
+
+    // MARK: - Duplicates
+
+    func testNumberOnlyEntryIsDroppedWhenANamedContactHasThatNumber() {
+        let alice = candidate("Alice", network: "signal", account: "sig-1", identifiers: ["+1 213-447-6502"])
+        let bareE164 = candidate("+12134476502", network: "whatsapp")
+        let formattedWithTag = candidate("(+1 213) 447-6502 (WA)", network: "whatsapp", account: "wa-2")
+        let other = candidate("+12125550100")
+        let sections = ContactListOrdering.sections([bareE164, alice, formattedWithTag, other])
+        XCTAssertEqual(sections.named, [alice])
+        XCTAssertEqual(sections.other, [other], "Both spellings of Alice's number go, on any network")
+    }
+
+    func testNumberOnlyEntryMatchesANamedContactThroughItsIdentifiers() {
+        let alice = candidate("Alice", identifiers: ["tel:+12134476502", "mailto:alice@example.com"])
+        let bare = candidate("+12134476502", identifiers: [])
+        XCTAssertEqual(ContactListOrdering.sections([bare, alice]).other, [])
+    }
+
+    func testNumberOnlyEntryMatchesThroughItsOwnIdentifiers() {
+        let alice = candidate("Alice", identifiers: ["+12134476502"])
+        let handleWithNumber = candidate("@alice_wa", identifiers: ["+1 213 447 6502"])
+        XCTAssertEqual(ContactListOrdering.sections([handleWithNumber, alice]).other, [])
+    }
+
+    func testNumberWrittenWithoutCountryCodeMatchesTheSameNumberWithIt() {
+        let alice = candidate("Alice", identifiers: ["+12134476502"])
+        let local = candidate("(213) 447-6502")
+        XCTAssertEqual(ContactListOrdering.sections([local, alice]).other, [])
+    }
+
+    func testDifferentNumbersAreKept() {
+        let alice = candidate("Alice", identifiers: ["+12134476502"])
+        let stranger = candidate("+12134476503")
+        XCTAssertEqual(ContactListOrdering.sections([stranger, alice]).other, [stranger])
+    }
+
+    func testNumberOnlyEntriesDoNotHideEachOtherOrNamedContactsWithoutNumbers() {
+        let a = candidate("+12134476502", network: "whatsapp")
+        let b = candidate("+12134476502", network: "signal", account: "sig-1")
+        let bea = candidate("Bea")
+        let sections = ContactListOrdering.sections([a, b, bea])
+        XCTAssertEqual(sections.named, [bea])
+        XCTAssertEqual(Set(sections.other.map(\.network)), ["whatsapp", "signal"], "Only a named contact removes a number")
+    }
+
+    func testTwoPeopleWithTheSameNameAreBothKept() {
+        let one = candidate("Sam", network: "whatsapp")
+        let two = candidate("Sam", network: "signal", account: "sig-1")
+        XCTAssertEqual(ContactListOrdering.sections([two, one]).named.count, 2)
+    }
+
+    func testNothingIsLostOrInvented() {
+        let all = [
+            candidate("Alice", identifiers: ["+12134476502"]),
+            candidate("+12134476502"),
+            candidate("Room 101"),
+            candidate("@bot"),
+            candidate("+12125550100"),
+        ]
+        let sections = ContactListOrdering.sections(all)
+        XCTAssertEqual(sections.ordered.count, all.count - 1, "Only the duplicate number is dropped")
+        XCTAssertEqual(Set(sections.ordered.map(\.id)).count, sections.ordered.count)
+    }
+
+    func testSameLastTenDigitsFromDifferentCountryCodesAreDifferentNumbers() {
+        let alice = candidate("Alice", identifiers: ["+44 7911 123456"])
+        let stranger = candidate("(791) 112-3456")
+        XCTAssertEqual(ContactListOrdering.sections([stranger, alice]).other, [stranger])
+    }
+
+    func testFiveOrSixDigitShortCodeIsNotAName() {
+        let shortCode = candidate("32665")
+        let bea = candidate("Bea")
+        let sections = ContactListOrdering.sections([shortCode, bea])
+        XCTAssertEqual(sections.named.map(\.name), ["Bea"])
+        XCTAssertEqual(sections.other.map(\.name), ["32665"])
+    }
+
+    func testCountryCodeIsKeptAndAssumedOnlyWhenMissing() {
+        XCTAssertEqual(ContactListOrdering.phoneKey("+44 7911 123456"), "+447911123456")
+        XCTAssertEqual(ContactListOrdering.phoneKey("0044 7911 123456"), "+447911123456")
+        XCTAssertEqual(ContactListOrdering.phoneKey("(791) 112-3456"), "+17911123456")
+        XCTAssertEqual(ContactListOrdering.phoneKey("1 (213) 447-6502"), "+12134476502")
+        XCTAssertNil(ContactListOrdering.phoneKey("447-6502"), "A 7-digit local number has no full number")
+        XCTAssertNil(ContactListOrdering.phoneKey("32665"), "A short code has no full number")
+    }
+
+    func testShortCodesAreNumbersWhateverTheirLength() {
+        for text in ["123", "32665", "898 332", "5-5-5-0-1", "88022", "12345678"] {
+            XCTAssertTrue(ContactListOrdering.isNumberOrHandle(text), "\(text) is a short code, not a name")
+        }
+        for text in ["12", "3M", "24 Hour Gym"] {
+            XCTAssertFalse(ContactListOrdering.isNumberOrHandle(text), "\(text) is a name")
+        }
+    }
+
+    func testNumberWithAnExtensionIsStillANumber() {
+        let ext = candidate("+1 213 447 6502 x123")
+        let bea = candidate("Bea")
+        XCTAssertEqual(ContactListOrdering.sections([ext, bea]).named.map(\.name), ["Bea"])
+        XCTAssertEqual(ContactListOrdering.sections([ext, bea]).other.map(\.name), ["+1 213 447 6502 x123"])
+        for text in ["+1 213 447 6502 ext. 9", "(213) 447-6502 ext 12", "+12134476502;ext=4", "213-447-6502 #77"] {
+            XCTAssertEqual(ContactListOrdering.phoneKey(text), "+12134476502", text)
+        }
+        XCTAssertFalse(ContactListOrdering.isNumberOrHandle("Suite #12"))
+    }
+
+    func testNumberWithAnExtensionIsLeftOutWhenTheNamedContactHasIt() {
+        let ann = candidate("Ann", identifiers: ["+12134476502"])
+        let ext = candidate("+1 213 447 6502 x123")
+        let sections = ContactListOrdering.sections([ext, ann])
+        XCTAssertEqual(sections.named.map(\.name), ["Ann"])
+        XCTAssertEqual(sections.other, [])
+    }
+
+    func testVanityNumbersAreNumbers() {
+        for text in ["1-800-FLOWERS", "+1 (800) FLOWERS", "1 800 GOT JUNK"] {
+            XCTAssertTrue(ContactListOrdering.isNumberOrHandle(text), "\(text) is a vanity number")
+        }
+        XCTAssertEqual(ContactListOrdering.phoneKey("1-800-FLOWERS"), "+18003569377")
+        for text in ["3M", "24 Hour Gym", "7 Eleven", "Route 66 Diner"] {
+            XCTAssertFalse(ContactListOrdering.isNumberOrHandle(text), "\(text) is a name")
+        }
+    }
+
+    func testUKTrunkZeroInBracketsIsDropped() {
+        XCTAssertEqual(ContactListOrdering.phoneKey("+44 (0) 20 7946 0958"), "+442079460958")
+        XCTAssertEqual(ContactListOrdering.phoneKey("+44 20 7946 0958"), "+442079460958")
+    }
+
+    func testEmailNamedContactGoesUnderOtherContacts() {
+        let mail = candidate("ann@example.com")
+        let bea = candidate("Bea")
+        let sections = ContactListOrdering.sections([mail, bea])
+        XCTAssertEqual(sections.named.map(\.name), ["Bea"])
+        XCTAssertEqual(sections.other.map(\.name), ["ann@example.com"])
+    }
+}

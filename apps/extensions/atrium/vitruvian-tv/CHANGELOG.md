@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tv-v0.1.3...vitruvian-tv-v0.1.4) (2026-11-17)
+
+
+### Features
+
+* **atrium:** instrument vitruvian-github and vitruvian-tv with fail-open Sentry ([#4975](https://github.com/VitruvianSoftware/vitruvian-core/issues/4975)) ([a224fda](https://github.com/VitruvianSoftware/vitruvian-core/commit/a224fda54bd497bb0b059ba45aa04ec7aa435229))
+
 ## [0.1.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tv-v0.1.2...vitruvian-tv-v0.1.3) (2026-11-14)
 
 

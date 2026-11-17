@@ -119,7 +119,7 @@ export interface AppCalls {
   readonly clipboard: {
     /** `clipboard/readText`. Needs `clipboard.read` in the manifest's `uses`. */
     readText(): ClipboardReadTextResult;
-    /** `clipboard/writeText`. Replace the clipboard with this text, marked as Vitruvian's own so clipboard history files it correctly. Needs `clipboard.write` in the manifest's `uses`. */
+    /** `clipboard/writeText`. Replace the clipboard with this text, marked as Vitruvian Atrium's own so clipboard history files it correctly. Needs `clipboard.write` in the manifest's `uses`. */
     writeText(params: ClipboardWriteTextParams): ClipboardWriteTextResult;
   };
   readonly keystrokes: {

@@ -11,7 +11,7 @@ source: packages/vitruvian-sdk/samples/hello-swift
     bazel run //tools/sync-site-tools:sync
 {%- endcomment -%}
 {% raw %}
-`vitruvian-tool init <folder> --template swift` starts a new tool from a copy of this one, as a Swift package that depends on the published SDK. Its `build.sh` builds the program into `tool/bin/tool`, and `tool/` is the folder you add to Vitruvian.
+`vitruvian-tool init <folder> --template swift` starts a new tool from a copy of this one, as a Swift package that depends on the published SDK. Its `build.sh` builds the program into `tool/bin/tool`, and `tool/` is the folder you add to Vitruvian Atrium.
 
 This is [`samples/hello-swift`](https://github.com/VitruvianSoftware/vitruvian-sdk/tree/main/samples/hello-swift) of the SDK, as it is. The conformance script runs it in the SDK's tests.
 

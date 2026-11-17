@@ -931,6 +931,7 @@ package enum DefaultsKey {
     // AI agents: what the island reads from Claude Code, Codex, OpenCode and GitHub Copilot, and shows.
     package static let notchAgentsEnabled = "notchAgentsEnabled"
     package static let notchAgentsClaude = "notchAgentsClaude"
+    package static let notchAgentsClaudeProfile = "notchAgentsClaudeProfile"
     package static let notchAgentsCodex = "notchAgentsCodex"
     package static let notchAgentsOpenCode = "notchAgentsOpenCode"
     package static let notchAgentsCopilot = "notchAgentsCopilot"

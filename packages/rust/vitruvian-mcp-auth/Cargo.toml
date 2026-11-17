@@ -1,0 +1,59 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Token checking for the Vitruvian MCP servers that sit behind Zitadel: the
+# Relay and the Slack MCP. One verifier that accepts several client ids, so a
+# server can serve more than one sign-in client.
+#
+# Its own empty [workspace], like vitruvian-slack-mcp's, so cargo does not read
+# this crate as an unlisted member of the repo-root workspace when a server
+# path-depends on it. It has no lock of its own: each server locks it with its
+# own crates and BUILD builds it once per crate hub. After changing a
+# dependency here, re-lock every server that uses it:
+#   bazel run //tools/crates:lock -- --dir apps/suites/vitruvian-relay
+#   bazel run //tools/crates:lock -- --dir apps/mcp/vitruvian-slack-mcp/rs
+#   bazel run //tools/crates:lock -- --dir apps/suites/vitruvian-relay/spike
+#
+# The Slack MCP's standalone repo carries a copy of this crate at mcp-auth/
+# (tools/copybara/copy.bara.sky exports it there), so its image builds alone.
+[workspace]
+
+[package]
+name = "vitruvian-mcp-auth"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.98"
+publish = false
+license = "MIT"
+
+[lib]
+name = "vitruvian_mcp_auth"
+path = "src/lib.rs"
+
+[dependencies]
+ring = "0.17"
+# The same TLS stack as vitruvian-slack-mcp: rustls on ring only, roots from
+# rustls-native-certs 0.8, and ureq without its `native-certs` feature (that
+# one pulls rustls-native-certs 0.7 and the unmaintained rustls-pemfile,
+# RUSTSEC-2025-0134).
+rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"] }
+rustls-native-certs = "0.8"
+serde_json = "1"
+ureq = { version = "2.12", default-features = false, features = ["tls"] }

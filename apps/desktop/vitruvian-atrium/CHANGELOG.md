@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.101.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.101.0...vitruvian-atrium-v3.101.1) (2026-11-17)
+
+
+### Bug Fixes
+
+* **vitruvian-sdk:** name Vitruvian Atrium in the protocol's refusal text ([#5006](https://github.com/VitruvianSoftware/vitruvian-core/issues/5006)) ([bcf2e5a](https://github.com/VitruvianSoftware/vitruvian-core/commit/bcf2e5af19fca05c4278ed947f1aa2f57d714016))
+
+## [3.101.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.100.0...vitruvian-atrium-v3.101.0) (2026-11-16)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 44, switcher latency ([#4955](https://github.com/VitruvianSoftware/vitruvian-core/issues/4955)) ([81a26f7](https://github.com/VitruvianSoftware/vitruvian-core/commit/81a26f7cdb9dad21920d6e213d13194ee8458da7))
+
+## [3.100.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.99.0...vitruvian-atrium-v3.100.0) (2026-11-16)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 43, Claude account selection ([#4954](https://github.com/VitruvianSoftware/vitruvian-core/issues/4954)) ([6de90fc](https://github.com/VitruvianSoftware/vitruvian-core/commit/6de90fc2f2f223c102f9fa252a6ebabe161f176f))
+
 ## [3.99.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.98.1...vitruvian-atrium-v3.99.0) (2026-11-15)
 
 

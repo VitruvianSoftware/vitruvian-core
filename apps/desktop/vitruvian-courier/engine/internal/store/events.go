@@ -382,6 +382,7 @@ func (s *Store) EventsAround(ctx context.Context, roomID, eventID string, limit 
 	} else if err != nil {
 		return nil, nil, nil, err
 	}
+	centre = s.served(ctx, centre)
 	at := centre.TS.UnixMilli()
 
 	// Each side may fill the whole page but the event itself: read limit-1 rows, plus one extra to know whether
@@ -438,14 +439,17 @@ func (s *Store) queryEvents(ctx context.Context, query string, args ...any) ([]E
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var out []Event
 	for rows.Next() {
 		e, err := scanEvent(rows)
 		if err != nil {
+			rows.Close()
 			return nil, err
 		}
 		out = append(out, e)
 	}
-	return out, rows.Err()
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, err
+	}
+	return s.serveAll(ctx, out), nil // with the rows closed: it looks names up
 }

@@ -84,6 +84,8 @@ pub const WORKTREE_SH: &str = r#"#!/usr/bin/env bash
 #   bazel run //tools/worktree -- --remove <branch|name>             # remove that worktree (or scratch tree)
 #   bazel run //tools/worktree -- --remove <branch> --force          # ...with its uncommitted files
 #   bazel run //tools/worktree -- --remove <branch> --delete-branch  # ...and its branch, if clean AND landed
+#   bazel run //tools/worktree -- --remove <branch> --delete-branch  # a branch with no worktree and no commits
+#                                     # of its own (all already on main): deleted outright
 #   bazel run //tools/worktree -- --remove <branch> --delete-branch --landed-as <PR,PR>
 #                                     # a branch with no worktree whose work landed changed (landed can't match it):
 #                                     # deleted once those PRs are on main and nothing on it is newer than them
@@ -1901,9 +1903,55 @@ impl Context {
             901,
             "worktree: deleted branch ",
             br,
-            format!(" ({own}); to bring it back: git branch {name} {tip}")
+            format!(" ({own}); {}", restore_hint(&name, &tip))
         );
         true
+    }
+
+    /// `--remove <branch> --delete-branch` for a local branch with no worktree and no commits of its own (every commit
+    /// is already on the base). `None` when it is not such a branch, so the caller carries on as before.
+    fn delete_unused_branch(&mut self, br: &[u8]) -> Option<bool> {
+        let full = bcat!("refs/heads/", br);
+        let tip = Command::new("git")
+            .args(["rev-parse", "--verify", "--quiet"])
+            .arg(bytes_to_os(&full))
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())?;
+        if br == b"main" || !git_is_ancestor(&full, &self.base_ref) {
+            return None;
+        }
+        let ok = Command::new("git")
+            .args(["branch", "-D"])
+            .arg(bytes_to_os(br))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if !ok {
+            let _ = echo_err_ln!(
+                &self.argv0,
+                905,
+                "worktree: ",
+                br,
+                " is kept: git branch -D failed"
+            );
+            return Some(false);
+        }
+        let name = String::from_utf8_lossy(br).into_owned();
+        let _ = echo_ln!(
+            &self.argv0,
+            906,
+            "worktree: deleted branch ",
+            br,
+            format!(" (no commits of its own); {}", restore_hint(&name, &tip))
+        );
+        Some(true)
     }
 
     fn remove_one(
@@ -2229,6 +2277,14 @@ impl Context {
             .status();
 
         if execute {
+            // Clear the records of worktrees whose directory is gone; their branches stay. The dry run lists these as
+            // kept with "--prune --execute clears the record".
+            let _ = Command::new("git")
+                .args(["worktree", "prune"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
             if let Err(code) =
                 echo_ln!(&self.argv0, 398, "worktree: prune against ", &self.base_ref)
             {
@@ -2270,9 +2326,8 @@ impl Context {
             } else if !locked.is_empty() {
                 reason = locked;
             } else if prunable || !bytes_to_path(&path).is_dir() {
-                reason =
-                    b"directory is missing (git worktree prune clears the record; branch kept)"
-                        .to_vec();
+                reason = b"directory is missing (--prune --execute clears the record; branch kept)"
+                    .to_vec();
             } else if br.is_empty() {
                 let mark = self.scratch_mark_of(&path);
                 if mark.is_empty() {
@@ -2429,8 +2484,9 @@ impl Context {
                 reason = b"the base branch".to_vec();
             } else if git_is_ancestor(&bcat!("refs/heads/", br), &self.base_ref) {
                 reason = bcat!(
-                    "no commits of its own (new or unused); delete by hand: git branch -D ",
-                    br
+                    "no commits of its own (new or unused); delete it with: bazel run //tools/worktree -- --remove ",
+                    br,
+                    " --delete-branch"
                 );
             } else if !self.is_landed(br) {
                 reason = bcat!("not landed: ", &self.landed_says);
@@ -2957,6 +3013,12 @@ fn git_show_ref_quiet(refname: &[u8]) -> bool {
         .unwrap_or(false)
 }
 
+/// How to bring a deleted branch back, as the repo's own target (never a raw git command): creating a worktree for
+/// the branch at its old tip recreates the branch there.
+fn restore_hint(name: &str, tip: &str) -> String {
+    format!("to bring it back: bazel run //tools/worktree -- {name} {tip}")
+}
+
 fn git_is_ancestor(anc: &[u8], desc: &[u8]) -> bool {
     Command::new("git")
         .args(["merge-base", "--is-ancestor"])
@@ -3234,6 +3296,13 @@ pub fn run_os(args: &[OsString]) -> i32 {
                     }
                     Err(code) => code,
                 };
+            }
+            // A branch no worktree has and with no commits of its own holds no work, so --delete-branch may delete it
+            // outright; anything with commits still needs a worktree removal or --landed-as.
+            if delete_branch && !force && matches!(ctx.find_worktree(br), Ok(None)) {
+                if let Some(done) = ctx.delete_unused_branch(br) {
+                    return if done { 0 } else { 1 };
+                }
             }
             return match ctx.remove_one(br, force, delete_branch, true) {
                 Ok(true) => 0,
@@ -3574,6 +3643,35 @@ mod tests {
         assert!(landed_as_verdict(&commits, &[]).is_err());
         // A branch with no commits of its own is fine to delete.
         assert_eq!(landed_as_verdict(&[], &[(1, Some(10))]), Ok(10));
+    }
+
+    #[test]
+    fn restore_hint_names_the_worktree_target() {
+        assert_eq!(
+            restore_hint("proof-x", "de3d5b3b"),
+            "to bring it back: bazel run //tools/worktree -- proof-x de3d5b3b"
+        );
+    }
+
+    /// Hints the tool prints tell the reader what to run next, and in this repo that is a Bazel target, never a raw
+    /// git write (agent-guard blocks those, and James is never handed one). Scans the non-test source for the
+    /// "do this next" phrasings that used to carry raw git.
+    #[test]
+    fn printed_hints_never_hand_over_raw_git() {
+        let src = include_str!("lib.rs");
+        let body = src.split("#[cfg(test)]").next().unwrap();
+        for bad in [
+            "bring it back: git",
+            "by hand: git",
+            "git worktree prune clears",
+            "delete it with: git",
+            "run: git",
+        ] {
+            assert!(
+                !body.contains(bad),
+                "a printed hint hands over raw git: {bad:?}"
+            );
+        }
     }
 
     #[test]

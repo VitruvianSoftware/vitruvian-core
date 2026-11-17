@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.3.25](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.24...vitruvian-courier-v0.3.25) (2026-11-17)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** clearer search: where each result is, highlighted matches, readable filters, search-this-chat hint ([#4970](https://github.com/VitruvianSoftware/vitruvian-core/issues/4970)) ([b2a7a9b](https://github.com/VitruvianSoftware/vitruvian-core/commit/b2a7a9beb3ca0ca049c820bb5d1f0b185c532e08))
+* **vitruvian-courier:** clearer Settings: switches that read on or off, no stray red, roomier notifications, icon sidebar ([#4969](https://github.com/VitruvianSoftware/vitruvian-core/issues/4969)) ([43e7842](https://github.com/VitruvianSoftware/vitruvian-core/commit/43e78423062595292acf245cf3ae894fc830274e))
+* **vitruvian-courier:** fit the Settings account card: "10 accounts", not a cut-off "10 accounts connec…" ([#4989](https://github.com/VitruvianSoftware/vitruvian-core/issues/4989)) ([0b46bf4](https://github.com/VitruvianSoftware/vitruvian-core/commit/0b46bf464e619e4295a5c95d27547b7e8b91b36f))
+* **vitruvian-courier:** full names without network tags, steady hover Archive, number-only senders to Low Priority, codes always notify ([#4971](https://github.com/VitruvianSoftware/vitruvian-core/issues/4971)) ([049f97c](https://github.com/VitruvianSoftware/vitruvian-core/commit/049f97c368549526c7cc16e9ef0a1d73f2b9f5cc))
+* **vitruvian-courier:** Google Chat link cards, one compact YouTube card, avatar once per run, readable sender names ([#4972](https://github.com/VitruvianSoftware/vitruvian-core/issues/4972)) ([2dcfa45](https://github.com/VitruvianSoftware/vitruvian-core/commit/2dcfa456da2aeaa97b0943fd22e1dfb636d7f934))
+* **vitruvian-courier:** tidy the message right-click menu into five sections ([#4966](https://github.com/VitruvianSoftware/vitruvian-core/issues/4966)) ([53a0564](https://github.com/VitruvianSoftware/vitruvian-core/commit/53a0564b7d05c42c99ec3b70cebd49113a29d815))
+
+## [0.3.24](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.23...vitruvian-courier-v0.3.24) (2026-11-16)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** calmer routine actions, filmstrip placeholders, named contacts first ([#4958](https://github.com/VitruvianSoftware/vitruvian-core/issues/4958)) ([a668777](https://github.com/VitruvianSoftware/vitruvian-core/commit/a6687772963a760a69ac9980ab02aa5536387478))
+* **vitruvian-courier:** route Google Messages by nested IDs and repair mixed-up chats ([#4962](https://github.com/VitruvianSoftware/vitruvian-core/issues/4962)) ([85007ba](https://github.com/VitruvianSoftware/vitruvian-core/commit/85007baae98d66e353fa3adfc1b7ef8e10fc15c6))
+
+## [0.3.23](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.22...vitruvian-courier-v0.3.23) (2026-11-16)
+
+
+### Features
+
+* **vitruvian-courier:** keep the chat header when switching views, readable inbox names, first-name group titles ([#4940](https://github.com/VitruvianSoftware/vitruvian-core/issues/4940)) ([b9b13ba](https://github.com/VitruvianSoftware/vitruvian-core/commit/b9b13ba9f9bad4a443faab599cde8c63e4f2e97a))
+* **vitruvian-courier:** polish the chat info panel: media grid, quick actions, calmer colours ([#4937](https://github.com/VitruvianSoftware/vitruvian-core/issues/4937)) ([43f6d2f](https://github.com/VitruvianSoftware/vitruvian-core/commit/43f6d2ff8aa7a5e69b8607886d47e4d11d3ec1b6))
+* **vitruvian-courier:** put attach, GIF and voice beside the message box, show who reacted, tidy Settings ▸ Accounts ([#4939](https://github.com/VitruvianSoftware/vitruvian-core/issues/4939)) ([26a9e5d](https://github.com/VitruvianSoftware/vitruvian-core/commit/26a9e5d92b04d7db5582be85c65d46eb04482e70))
+* **vitruvian-courier:** show contacts when New Chat opens, a cleaner image viewer, matching media counts ([#4941](https://github.com/VitruvianSoftware/vitruvian-core/issues/4941)) ([00ca84e](https://github.com/VitruvianSoftware/vitruvian-core/commit/00ca84e0a44e2774bdd59672a2b85dacc07fa99b))
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** don't list Google Chat apps like GitHub as group members ([#4942](https://github.com/VitruvianSoftware/vitruvian-core/issues/4942)) ([80d1599](https://github.com/VitruvianSoftware/vitruvian-core/commit/80d1599d1ee48036e293ea195ff72d52b5e51308))
+* **vitruvian-courier:** leave Google Chat apps out of unnamed spaces too ([#4949](https://github.com/VitruvianSoftware/vitruvian-core/issues/4949)) ([6c49682](https://github.com/VitruvianSoftware/vitruvian-core/commit/6c49682da71ff6b26d139ff76908becb3d2e2fe7))
+
 ## [0.3.22](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.21...vitruvian-courier-v0.3.22) (2026-11-16)
 
 

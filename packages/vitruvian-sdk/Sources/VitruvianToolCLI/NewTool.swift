@@ -265,7 +265,7 @@ public enum NewToolWriter {
         set -eu
         cd "$(dirname "$0")"
         go build -mod=mod -o tool/bin/tool .
-        echo "Built. The folder to add to Vitruvian is $(pwd)/tool"
+        echo "Built. The folder to add to Vitruvian Atrium is $(pwd)/tool"
 
         """
 
@@ -293,7 +293,7 @@ public enum NewToolWriter {
         cargo build --release
         mkdir -p tool/bin
         cp target/release/tool tool/bin/tool
-        echo "Built. The folder to add to Vitruvian is $(pwd)/tool"
+        echo "Built. The folder to add to Vitruvian Atrium is $(pwd)/tool"
 
         """
 
@@ -380,7 +380,7 @@ public enum NewToolWriter {
         swift build -c release
         mkdir -p tool/bin
         cp "$(swift build -c release --show-bin-path)/Tool" tool/bin/tool
-        echo "Built. The folder to add to Vitruvian is $(pwd)/tool"
+        echo "Built. The folder to add to Vitruvian Atrium is $(pwd)/tool"
 
         """
 }

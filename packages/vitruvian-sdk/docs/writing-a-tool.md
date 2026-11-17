@@ -1,4 +1,4 @@
-# Writing a tool for Vitruvian
+# Writing a tool for Vitruvian Atrium
 
 This is the guide for someone who wants to write a tool. It covers what a
 tool is, how to write one in ten minutes, the manifest, every message, the
@@ -11,15 +11,15 @@ Where this page and the schemas there disagree, the schemas are right.
 ## What a tool is
 
 A tool is a folder with two things in it: a file called `vitruvian-tool.json`
-that says what the tool is, and a program. The Vitruvian app starts the
+that says what the tool is, and a program. Vitruvian Atrium starts the
 program when it is needed and talks to it in JSON, one message per line, over
 the program's standard input and output. A tool adds commands to the app: to
 the command bar, the radial menu, the Quick panel, and as shortcuts. It can be
 written in any language.
 
-**A tool can do anything Vitruvian can.** The app starts it as an ordinary
-program. It runs as the person, with every permission Vitruvian has: if
-Vitruvian may read the screen or control other apps, so may the tool, with no
+**A tool can do anything Vitruvian Atrium can.** The app starts it as an ordinary
+program. It runs as the person, with every permission Vitruvian Atrium has: if
+Vitruvian Atrium may read the screen or control other apps, so may the tool, with no
 prompt of its own. It can read the person's files and use the network. The app
 does not limit or check what it does.
 
@@ -494,7 +494,7 @@ func frontWindowTitle() throws -> String {
 }
 ```
 
-Started by Vitruvian, it works once Vitruvian has Accessibility, with no
+Started by Vitruvian Atrium, it works once Vitruvian Atrium has Accessibility, with no
 prompt of its own. Started from a terminal that lacks Accessibility, it
 refuses its command and says why.
 
@@ -556,7 +556,7 @@ refuses its command and says why.
   know: the tool is added and runs there as before, and the person is shown
   no setting. The manifest has no field for the oldest app a tool needs, and
   a title needs none.
-- **`options` and `status` are newer still**, from Vitruvian 3.48. An app
+- **`options` and `status` are newer still**, from Vitruvian Atrium 3.48. An app
   from before them ignores both fields: a preference with options is a text
   field there, holding the same text, and the tool shows no status. So the
   options are how the app draws, never a rule on the value: the app keeps a
@@ -592,7 +592,7 @@ block), `preferences.options` (a preference's `options`, drawn as a
 menu), `ui.status.activity` (a status's `activity` and `since`, drawn
 beside the mark), `ui.open.settings` (an answer's `open` may name your
 settings panel), `ui.chips` (the `chips` block) and `ui.sections` (a
-heading's `section`, and a control's `help`). Vitruvian 3.48 and later send
+heading's `section`, and a control's `help`). Vitruvian Atrium 3.48 and later send
 it; 3.48 and 3.49 name the first three, 3.50 to 3.57 the first four, and
 3.58 and later at least the first five. An older app sends no `features` at
 all, and has none of them. Ignore a name you do not know.
@@ -810,7 +810,7 @@ Any request can be refused, at any time. Your tool must cope.
 |---|---|
 | -32001 | The service is not in your manifest's `uses`. `data.service` names it. |
 | -32002 | The tool is not installed, or is switched off. |
-| -32003 | Vitruvian lacks a macOS permission the service needs. `data.permission` names it. |
+| -32003 | Vitruvian Atrium lacks a macOS permission the service needs. `data.permission` names it. |
 | -32004 | Not available right now. |
 | -32010 | Yours: you will not run the command. |
 | -32601 | A method the other side does not know. |
@@ -1511,7 +1511,7 @@ tool.onStart = { app in
 
 #### A few words with it
 
-From Vitruvian 3.50 a status can carry a few words, drawn beside the mark
+From Vitruvian Atrium 3.50 a status can carry a few words, drawn beside the mark
 on the closed island, in place of the allowance percent: "3", "push",
 "754s". The mark keeps its place and its colour on the left, so the person
 still sees whose words they are. The manifest's status says so first:
@@ -1826,7 +1826,7 @@ option and its help as a `text`. The samples' Settings page does that:
 ### What an older app does
 
 The status, the `choice` block and a preference's `options` were added to
-protocol 2 in Vitruvian 3.48, with no new version. A tool that uses them
+protocol 2 in Vitruvian Atrium 3.48, with no new version. A tool that uses them
 still installs and runs on 3.46 and 3.47. There it shows less, and nothing
 breaks.
 
@@ -1834,7 +1834,7 @@ The app says what it has. `initialize` carries `features`, a list of names,
 and an app before 3.48 sends none. Each kit keeps the list and answers
 `supports`:
 
-| What your tool does | Vitruvian 3.46 and 3.47 | Vitruvian 3.48 and later |
+| What your tool does | Vitruvian Atrium 3.46 and 3.47 | Vitruvian Atrium 3.48 and later |
 |---|---|---|
 | Its manifest has `contributes.status` | The key is ignored. The tool is added and runs. | The sheet that asks before the tool is added says so, and the tool's detail has a switch for it. |
 | It sets a status with a kit | The kit sends nothing, and the call says the status is not shown. | The mark is drawn. |
@@ -1843,10 +1843,10 @@ and an app before 3.48 sends none. Each kit keeps the list and answers
 | A page has a `choice` block | Its `fallback`, as plain words. So check `supports` and send a `field`. | A pop-up menu. |
 | A preference has a `type` the table of the manifest does not list | **The tool is refused.** | **The tool is refused.** |
 
-A status's words came later, in Vitruvian 3.50, the same way. 3.48 and 3.49
+A status's words came later, in Vitruvian Atrium 3.50, the same way. 3.48 and 3.49
 read the new key and fields and ignore them, so the mark is drawn there:
 
-| What your tool does | Vitruvian 3.46 and 3.47 | Vitruvian 3.48 and 3.49 | Vitruvian 3.50 and later |
+| What your tool does | Vitruvian Atrium 3.46 and 3.47 | Vitruvian Atrium 3.48 and 3.49 | Vitruvian Atrium 3.50 and later |
 |---|---|---|---|
 | Its status says `"activity": true` | The key is ignored. | The key is ignored. The sheet says the tool shows a status mark. | The sheet says the tool shows a status mark and a few words. |
 | It sends words with a kit | Nothing is sent. | The status is sent without them. The mark is drawn. | The mark and the words are drawn. |
@@ -1854,10 +1854,10 @@ read the new key and fields and ignore them, so the mark is drawn there:
 | It sends a `since` below 0, or not a number, with no kit | Failure -32601. | `{}`. Ignored. | Failure -32602, and the status stays as it was. |
 | It asks `supports("ui.status.activity")` | false | false | true |
 
-Opening your own settings came in Vitruvian 3.58, with no new version and
+Opening your own settings came in Vitruvian Atrium 3.58, with no new version and
 no new field: only what the app does with `open` changed.
 
-| What your tool does | Vitruvian 3.57 and before | Vitruvian 3.58 and later |
+| What your tool does | Vitruvian Atrium 3.57 and before | Vitruvian Atrium 3.58 and later |
 |---|---|---|
 | An answer's `open` names your settings panel | Nothing opens. Your tool's log says the window was not opened. A `tree` in the same answer is still drawn. | Settings comes to the front on your tool's detail. |
 | It asks `supports("ui.open.settings")` | false | true |
@@ -1933,10 +1933,10 @@ output and dependencies you do not ship out of it.
 
 ## Adding it to the app
 
-1. Open Vitruvian's Settings, then **Extensions**.
+1. Open Vitruvian Atrium's Settings, then **Extensions**.
 2. Click **Add from Folder…**, at the top right, and choose the tool's folder.
 3. Read the sheet. It names the tool, its publisher and its commands, and
-   says that the tool can do anything Vitruvian can. Click **Add Tool**.
+   says that the tool can do anything Vitruvian Atrium can. Click **Add Tool**.
 
 The app copies the folder and runs the copy, so the original may move. The
 copy is in
@@ -2052,8 +2052,8 @@ opened; close it and open it again to see more.
   them yourself. Nothing is ended if the app itself crashes: your tool
   still ends when its input closes, and should take its helpers with it.
 - **Not that the data folder outlives it.** Removing the tool may delete it.
-- **Not a permission.** A tool has what Vitruvian has, and nothing more. A
-  prompt your tool causes says Vitruvian is asking. Vitruvian's permissions
+- **Not a permission.** A tool has what Vitruvian Atrium has, and nothing more. A
+  prompt your tool causes says Vitruvian Atrium is asking. Vitruvian Atrium's permissions
   reset when the app is updated, and the tool's with them.
 - **Not a shortcut of its own.** Give a command the `shortcut` surface and
   let the person record one, so the app can check it against every other.

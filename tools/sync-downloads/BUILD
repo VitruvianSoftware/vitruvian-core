@@ -30,6 +30,9 @@ rust_library(
     crate_root = "src/lib.rs",
     edition = "2021",
     visibility = ["//visibility:public"],
+    deps = [
+        "//packages/rust/vitruvian-pycompat:vitruvian_pycompat",
+    ],
 )
 
 rust_binary(
@@ -49,4 +52,12 @@ rust_test(
 test_suite(
     name = "sync_downloads_test",
     tests = [":sync_downloads_lib_test"],
+)
+
+# The sources, for //packages/rust/vitruvian-pycompat:rustc_build_test, which
+# builds this tool with plain rustc the way its scheduled workflow does.
+filegroup(
+    name = "rust_sources",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["//packages/rust/vitruvian-pycompat:__pkg__"],
 )

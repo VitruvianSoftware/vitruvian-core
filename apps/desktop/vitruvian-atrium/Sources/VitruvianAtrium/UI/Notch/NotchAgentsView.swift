@@ -44,14 +44,16 @@ package struct NotchAgentsView: View {
         // The switches are read here so a change in Settings redraws the page.
         _ = (claude, codex, opencode, copilot, antigravity)
         return NotchAgentSupport.pageProviders(seen: usage.snapshot.seen, filter: telemetryFilter,
-                                                 hasCodexAccounts: !codexAccounts.isEmpty)
+                                                 hasCodexAccounts: !codexAccounts.isEmpty,
+                                                 hasClaudeAccount: !usage.claudeProfile.isDefault)
     }
 
     private var rows: [[NotchAgentTile]] {
         // The strings are read here so a change in Settings redraws the page.
         _ = (cardOrder, hiddenCards)
         return NotchAgentSupport.pageRows(providers: providers, width: size.width,
-                                          codexAccounts: codexAccounts.map(\.id))
+                                          codexAccounts: codexAccounts.map(\.id),
+                                          claudeAccount: usage.claudeProfile.isDefault ? nil : usage.claudeProfile.id)
     }
 
     /// The chat tab is the place kept for a tool in the Agents slot; with
@@ -205,7 +207,8 @@ package struct NotchAgentsView: View {
                 NotchAgentLimitsCard(provider: provider, snapshot: snapshot, now: now,
                                      period: shown,
                                      display: NotchAgentLimitDisplay(rawValue: display) ?? .remaining, text: text,
-                                     account: account(tile, now: now))
+                                     account: account(tile, now: now),
+                                     accountName: provider == .claude ? claudeAccountName : nil)
             }
         case .spend:
             NotchAgentSpendCard(snapshot: snapshot, providers: providers, period: shown, text: text)
@@ -233,6 +236,13 @@ package struct NotchAgentsView: View {
     }
 
     private func account(_ tile: NotchAgentTile, now: Date) -> NotchAgentAccount? {
+        if tile.provider == .claude, tile.accountID != nil {
+            let strings = FeatureStrings.codexAccounts(l10n.language)
+            return NotchAgentAccount(name: claudeAccountName, limits: usage.snapshot.limits[.claude],
+                plan: usage.snapshot.plans[.claude]?.name, checking: usage.claudeAccountChecking,
+                failure: usage.claudeAccountFailure.map(text.claudeCode), refreshHint: strings.refreshHint,
+                checkLabel: strings.check, refresh: usage.checkClaudeAccount)
+        }
         guard let id = tile.accountID, let state = codexAccounts.first(where: { $0.id == id }) else { return nil }
         let strings = FeatureStrings.codexAccounts(l10n.language)
         let failure = state.failure.map { failure -> String in
@@ -264,6 +274,12 @@ package struct NotchAgentsView: View {
             let ra = rank(a.element), rb = rank(b.element)
             return ra != rb ? ra < rb : a.offset < b.offset
         }.map(\.element)
+    }
+
+    private var claudeAccountName: String {
+        let name = usage.claudeProfile.name(defaultName: FeatureStrings.claudeAccount(l10n.language).defaultAccount)
+        guard let email = usage.claudeAccountIdentity?.email else { return name }
+        return usage.claudeProfile.isDefault ? email : name + " · " + email
     }
 }
 
@@ -343,7 +359,7 @@ package struct NotchAgentLimitReading: View {
     }
 }
 
-/// An added Codex home's card: only its own checks, never the reading the
+/// An explicitly chosen account's card: only its own checks, never the reading the
 /// logs give the provider's other account, even when its check failed.
 private struct NotchAgentAccount {
     let name: String
@@ -364,6 +380,7 @@ private struct NotchAgentLimitsCard: View {
     let display: NotchAgentLimitDisplay
     let text: NotchAgentStrings
     var account: NotchAgentAccount? = nil
+    var accountName: String? = nil
     @Environment(\.locale) private var locale
 
     private var limits: AgentLimits? {
@@ -418,7 +435,8 @@ private struct NotchAgentLimitsCard: View {
         let windows = windows
         NotchAgentCardChrome {
             VStack(alignment: .leading, spacing: 6) {
-                NotchAgentCardHeader(title: account.map { provider.displayName + " · " + $0.name } ?? provider.displayName,
+                NotchAgentCardHeader(title: (account?.name ?? accountName).map { provider.displayName + " · " + $0 }
+                                        ?? provider.displayName,
                                      symbol: provider.symbol, tint: provider.tint, provider: provider) {
                     HStack(spacing: 4) {
                         if let account {
@@ -460,6 +478,7 @@ private struct NotchAgentLimitsCard: View {
                         }
                     }
                 }
+                .help(account?.name ?? accountName ?? provider.displayName)
                 if let account {
                     let notes = NotchAgentSupport.accountNotes(
                         hasWindows: !windows.isEmpty, checking: account.checking, failure: account.failure,

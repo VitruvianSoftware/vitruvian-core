@@ -60,7 +60,7 @@ export const RefusalCode = {
   notInUses: -32001,
   /** The app: the tool is not installed. */
   notInstalled: -32002,
-  /** The app: Vitruvian lacks a macOS permission the service needs. */
+  /** The app: Vitruvian Atrium lacks a macOS permission the service needs. */
   permissionMissing: -32003,
   /** The app: not available right now. */
   unavailable: -32004,
