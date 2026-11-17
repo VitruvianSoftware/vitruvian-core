@@ -44,6 +44,9 @@ config:
     start: "2026-11-16T09:00:00-08:00"
     shiftDays: 7
     members: []
+    # The first apply (2026-11-17) created this schedule, then failed before
+    # recording it, so the stack adopts it rather than making a second.
+    adoptId: PE5D9GC
   vitruvian-pagerduty:services:
     - key: sentry
       name: Sentry
