@@ -1181,6 +1181,15 @@ public final class ConversationModel: ObservableObject {
         }
     }
 
+    /// My own picture for Chat Info: the one on my entry in the member list, else on a message of mine in Chat Info or
+    /// in the open chat's timeline. "" when the app has seen none.
+    public func ownAvatarPath(for info: RoomInfoResult) -> String {
+        let fromTimeline = events.values.first {
+            ($0.mine || $0.sender == Timeline.meUserID) && !$0.senderAvatarPath.isEmpty
+        }?.senderAvatarPath ?? ""
+        return ChatInfoPresentation.ownAvatarPath(in: info, fallback: fromTimeline)
+    }
+
     private func selfReactionIdentity() -> (name: String, avatarPath: String) {
         let currentRoom = activeReplyRoomID ?? roomID
         let matchingInfo = currentRoom.flatMap { id in chatInfo?.roomID == id ? chatInfo : nil } ?? chatInfo

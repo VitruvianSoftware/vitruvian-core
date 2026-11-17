@@ -6156,6 +6156,57 @@ final class ViewSnapshotTests: XCTestCase {
         XCTAssertNil(detachedProbe.rects[unpin])
     }
 
+    /// Chat Info has a Notification sound row (with its footnote) and a Notes field holding the saved note; the
+    /// note a person wrote for this chat shows again, and another chat's does not.
+    func testChatInfoPaneShowsNotificationSoundAndSavedNotes() throws {
+        let suite = "courier.test.chatinfo-notes.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ChatNotesStore(defaults: defaults)
+        store.setNote("Gate code 4417", for: "!notes:courier.local")
+        store.setNote("Somebody else's", for: "!other:courier.local")
+        let prefs = NotificationPreferences(defaults: defaults)
+        prefs.setChatSound(.harp, for: "!notes:courier.local")
+
+        let info = RoomInfoResult(
+            roomID: "!notes:courier.local", name: "Notes Chat", remoteName: "Notes Chat", network: "whatsapp",
+            isDirect: true, members: [Member(userID: "@a:courier.local", name: "Alice")], features: Fixture.features
+        )
+        var seen: [String] = []
+        try Snapshot.render("chat-info-sound-notes", width: 320) {
+            ChatInfoPane(info: info, now: { Fixture.now }, notesStore: store, notificationPreferences: prefs)
+                .environment(\.chatInfoRowProbe) { seen.append($0) }
+        }
+        XCTAssertTrue(seen.contains("sound:harp"), "Notification sound row is missing or not on this chat's sound: \(seen)")
+        XCTAssertTrue(seen.contains("notes:Gate code 4417"), "Notes field is missing or lost the saved note: \(seen)")
+        XCTAssertEqual(ChatInfoSoundRow.title(.default), "Default")
+        XCTAssertEqual(ChatInfoSoundRow.title(.harp), NotificationsSettingsPane.soundLabel(.harp))
+        XCTAssertEqual(store.note(for: "!notes:courier.local"), "Gate code 4417")
+        XCTAssertEqual(store.note(for: "!other:courier.local"), "Somebody else's")
+    }
+
+    /// The Labels row shows this chat's labels as chips and offers Add to a Label.
+    func testChatInfoLabelsSectionShowsAssignedLabelsAndAddMenu() throws {
+        let work = Space(spaceID: "label:1", kind: .label, title: "Work", labelID: 1, color: 7, icon: "briefcase")
+        let family = Space(spaceID: "label:2", kind: .label, title: "Family", labelID: 2, color: 0, icon: "heart")
+        var changes: [String] = []
+        var expanded = true
+        let section = ChatInfoLabelsSection(
+            labels: [work, family], assignedIDs: [1],
+            isExpanded: Binding(get: { expanded }, set: { expanded = $0 }),
+            onSet: { label, on in changes.append("\(label.title):\(on)") },
+            onNewLabel: {}
+        )
+        var seen: [String] = []
+        try Snapshot.render("chat-info-labels", width: 300) {
+            section.padding(8).environment(\.chatInfoRowProbe) { seen.append($0) }
+        }
+        XCTAssertTrue(seen.contains("add-label"), "Add to a Label is missing: \(seen)")
+        XCTAssertTrue(seen.contains("chip:Work"), "the Work chip is missing: \(seen)")
+        XCTAssertFalse(seen.contains("chip:Family"), "Family is not on this chat")
+        XCTAssertTrue(changes.isEmpty)
+    }
+
     /// Local avatar override (`localAvatarURI`) must win over network `avatarPath` in ChatInfoPane header.
     func testChatInfoPaneLocalAvatarWinsOverNetworkAvatar() throws {
         let tmpDir = FileManager.default.temporaryDirectory

@@ -173,7 +173,8 @@ struct ConversationView: View {
                     },
                     onClose: conversation.toggleChatInfo,
                     inbox: inbox,
-                    headerInToolbar: drawsLiquidGlass
+                    headerInToolbar: drawsLiquidGlass,
+                    selfAvatarPath: conversation.ownAvatarPath(for: info)
                 )
                 .frame(minWidth: 280, idealWidth: 320, maxWidth: 420)
                 .reportsSidePaneWidth(.chatInfo)

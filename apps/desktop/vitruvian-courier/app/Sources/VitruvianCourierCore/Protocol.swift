@@ -4203,15 +4203,18 @@ public struct RoomLink: ProtocolType, Equatable, Hashable, Identifiable {
     public var ts: Int64
     public var url: String
     public var host: String
+    /// The page's title from the message's link preview; nil when the message had none (or an engine before this field).
+    public var title: String?
 
     public var id: String { "\(eventID):\(url)" }
 
-    public init(eventID: String, sender: String, ts: Int64, url: String, host: String) {
+    public init(eventID: String, sender: String, ts: Int64, url: String, host: String, title: String? = nil) {
         self.eventID = eventID
         self.sender = sender
         self.ts = ts
         self.url = url
         self.host = host
+        self.title = title
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -4220,6 +4223,7 @@ public struct RoomLink: ProtocolType, Equatable, Hashable, Identifiable {
         case ts
         case url
         case host
+        case title
     }
 }
 

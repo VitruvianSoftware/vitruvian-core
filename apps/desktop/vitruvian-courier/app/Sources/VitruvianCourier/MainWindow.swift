@@ -364,6 +364,7 @@ struct MainWindow: View {
                                              messageActions: messageActions, scheduled: scheduled, preferences: composerPreferences,
                                              thread: conversation.thread, focus: focus, appModel: model,
                                              appearance: appearance)
+                                .environment(\.chatInfoSpaces, spaces)
                         } else {
                             NoChatSelected(
                                 appearance: appearance,

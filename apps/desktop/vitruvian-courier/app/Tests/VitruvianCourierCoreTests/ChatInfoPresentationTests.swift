@@ -31,6 +31,55 @@ final class ChatInfoPresentationTests: XCTestCase {
         )
     }
 
+    // MARK: - Link titles, my own picture
+
+    func testLinkShowsItsPreviewTitleUnlessItOnlyRepeatsTheDomain() {
+        func link(_ title: String?) -> RoomLink {
+            RoomLink(eventID: "$e", sender: "@a:courier.local", ts: 1, url: "https://share.google/abc", host: "share.google", title: title)
+        }
+        XCTAssertEqual(link("  Courier release notes ").displayTitle, "Courier release notes")
+        XCTAssertNil(link(nil).displayTitle)
+        XCTAssertNil(link("   ").displayTitle)
+        XCTAssertNil(link("Share.Google").displayTitle, "a title that is only the domain adds nothing")
+    }
+
+    func testLinkTitleSurvivesDeduplicationAndTheWire() throws {
+        let newestNoTitle = RoomLink(eventID: "$2", sender: "@a:courier.local", ts: 20, url: "https://x.test/a", host: "x.test")
+        let olderTitled = RoomLink(eventID: "$1", sender: "@a:courier.local", ts: 10, url: "https://x.test/a", host: "x.test", title: "Spec")
+        let merged = RoomLink.deduplicated([olderTitled, newestNoTitle])
+        XCTAssertEqual(merged.map(\.eventID), ["$2"], "the newest message is kept")
+        XCTAssertEqual(merged.first?.displayTitle, "Spec", "and it keeps the title another copy had")
+
+        let json = Data(#"{"event_id":"$1","sender":"@a:courier.local","ts":5,"url":"https://x.test/a","host":"x.test","title":"Spec"}"#.utf8)
+        XCTAssertEqual(try JSONDecoder().decode(RoomLink.self, from: json).title, "Spec")
+        let old = Data(#"{"event_id":"$1","sender":"@a:courier.local","ts":5,"url":"https://x.test/a","host":"x.test"}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(RoomLink.self, from: old).title, "an engine before the field")
+    }
+
+    func testOwnAvatarComesFromMemberThenMyMessagesThenFallback() {
+        let me = Timeline.meUserID
+        func info(meAvatar: String = "", media: [Event] = []) -> RoomInfoResult {
+            RoomInfoResult(roomID: "!r:courier.local", name: "Chat", remoteName: "Chat", network: "whatsapp", isDirect: false,
+                           members: [Member(userID: me, name: "Me", avatarPath: meAvatar)], sharedMedia: media,
+                           features: .noFeatures)
+        }
+        let mine = makeEvent(id: "$m", msgtype: "m.image", sender: me, senderName: "Me", senderAvatarPath: "/own-event.png", mine: true)
+        XCTAssertEqual(ChatInfoPresentation.ownAvatarPath(in: info(meAvatar: "/own-member.png", media: [mine])), "/own-member.png")
+        XCTAssertEqual(ChatInfoPresentation.ownAvatarPath(in: info(media: [mine])), "/own-event.png")
+        XCTAssertEqual(ChatInfoPresentation.ownAvatarPath(in: info(), fallback: "/seen.png"), "/seen.png")
+        XCTAssertEqual(ChatInfoPresentation.ownAvatarPath(in: info()), "")
+
+        // My Participants row and my Shared Media badge use it; someone else's never do.
+        XCTAssertEqual(ChatInfoPresentation.participantAvatarPath(for: Member(userID: me, name: "Me"), ownAvatarPath: "/own.png"), "/own.png")
+        XCTAssertEqual(ChatInfoPresentation.participantAvatarPath(for: Member(userID: "@bob:courier.local", name: "Bob"), ownAvatarPath: "/own.png"), "")
+        XCTAssertEqual(ChatInfoPresentation.participantAvatarPath(for: Member(userID: me, name: "Me", avatarPath: "/theirs.png"), ownAvatarPath: "/own.png"), "/theirs.png")
+        let bare = makeEvent(id: "$b", msgtype: "m.image", sender: me, senderName: "", mine: true)
+        XCTAssertEqual(ChatInfoPresentation.mediaSender(for: bare, members: [], ownAvatarPath: "/own.png")?.avatarPath, "/own.png")
+        XCTAssertEqual(ChatInfoPresentation.mediaSender(for: bare, members: [], ownAvatarPath: "")?.avatarPath, "")
+        let other = makeEvent(id: "$o", msgtype: "m.image")
+        XCTAssertEqual(ChatInfoPresentation.mediaSender(for: other, members: [], ownAvatarPath: "/own.png")?.avatarPath, "")
+    }
+
     // MARK: - RoomLink deduplication & domain
 
     func testRoomLinkDeduplicatedKeepsNewestRegardlessOfOrder() {

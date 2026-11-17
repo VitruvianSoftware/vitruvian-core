@@ -225,6 +225,17 @@ public final class NotificationPreferences: ObservableObject {
         }
     }
 
+    /// A sound chosen for one chat in Chat Info, by room ID. A chat with no entry uses the account's sound, else the
+    /// direct or group sound. A muted chat stays silent whatever its sound is.
+    @Published public var chatSounds: [String: NotificationSoundChoice] {
+        didSet {
+            guard canMutate({ chatSounds = oldValue }) else { return }
+            if let data = try? JSONEncoder().encode(chatSounds) {
+                defaults.set(data, forKey: Self.key("chatSounds"))
+            }
+        }
+    }
+
     public static func key(_ name: String) -> String { "courier.notifications." + name }
 
     private let defaults: UserDefaults
@@ -280,7 +291,28 @@ public final class NotificationPreferences: ObservableObject {
         } else {
             accountOverrides = [:]
         }
+        if let data = defaults.data(forKey: Self.key("chatSounds")),
+           let decoded = try? JSONDecoder().decode([String: NotificationSoundChoice].self, from: data) {
+            chatSounds = decoded
+        } else {
+            chatSounds = [:]
+        }
         isInitializing = false
+    }
+
+    /// The sound chosen for `roomID`, or nil when the chat uses the default.
+    public func chatSound(for roomID: String) -> NotificationSoundChoice? {
+        chatSounds[roomID]
+    }
+
+    /// Sets the sound for one chat; nil (or `.default`) goes back to the default.
+    public func setChatSound(_ sound: NotificationSoundChoice?, for roomID: String) {
+        guard !roomID.isEmpty else { return }
+        if let sound, sound != .default {
+            chatSounds[roomID] = sound
+        } else if chatSounds[roomID] != nil {
+            chatSounds.removeValue(forKey: roomID)
+        }
     }
 
     public func setAccountOverride(key: String, enabled: Bool) {
@@ -559,7 +591,9 @@ public enum NotificationPolicy {
         let baseSound = room.isDirect
             ? (preferences?.messageSound ?? .default)
             : (preferences?.groupSound ?? .default)
-        let sound = override?.sound ?? baseSound
+        // The chat's own sound (Chat Info) wins over the account's, which wins over the direct or group sound.
+        let chatSound = preferences?.chatSounds[event.roomID] ?? preferences?.chatSounds[room.roomID]
+        let sound = chatSound ?? override?.sound ?? baseSound
 
         var title = room.name.isEmpty ? NetworkTag.stripped(event.senderName) : NetworkTag.stripped(room.name)
         if title.isEmpty { title = String(localized: "Vitruvian Courier") }

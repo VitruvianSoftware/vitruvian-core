@@ -1969,7 +1969,11 @@
         "sender": { "type": "string", "doc": "Who sent it." },
         "ts": { "type": "int", "doc": "When it was sent (Unix ms)." },
         "url": { "type": "string", "doc": "The URL." },
-        "host": { "type": "string", "doc": "The URL's host." }
+        "host": { "type": "string", "doc": "The URL's host." },
+        "title": {
+          "type": "string?",
+          "doc": "The page's title from the message's link preview; left out when the message had no preview or it had no title."
+        }
       }
     },
     "RoomInfoResult": {

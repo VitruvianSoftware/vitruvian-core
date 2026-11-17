@@ -28,6 +28,8 @@ type RoomLink struct {
 	TS      int64  `json:"ts"`
 	URL     string `json:"url"`
 	Host    string `json:"host"`
+	// Title is the page title from the message's link preview; left out when the message has none.
+	Title string `json:"title,omitempty"`
 }
 
 type RoomInfo struct {
@@ -139,6 +141,7 @@ func (a *Actions) RoomInfo(ctx context.Context, roomID string, refresh bool) (Ro
 			TS:      l.TS.UnixMilli(),
 			URL:     l.URL,
 			Host:    l.Host,
+			Title:   l.Title,
 		})
 	}
 	feat, err := a.Features(ctx, roomID)

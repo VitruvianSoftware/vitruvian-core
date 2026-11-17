@@ -86,6 +86,7 @@ struct CourierApp: App {
             if let roomID {
                 LockableWindowContent(lifecycle: delegate.lifecycle) {
                     ChatInfoWindow(roomID: roomID, conversation: delegate.conversation)
+                        .environment(\.chatInfoSpaces, delegate.spaces)
                 }
             }
         }

@@ -60,8 +60,18 @@ public struct ChatInfoPane: View {
     /// With glass in the main window the header is a toolbar item (`ChatInfoHeader`, placed by ConversationView), so
     /// the pane draws none of its own.
     public var headerInToolbar: Bool = false
+    /// My own picture, for my Participants row and my Shared Media badges when the member list has none for me.
+    public var selfAvatarPath: String = ""
+    /// Where this chat's private note is kept (on this Mac only).
+    public var notesStore: ChatNotesStore = ChatNotesStore()
+    /// The notification settings the per-chat sound is kept in; nil takes them from `inbox`. With neither, the
+    /// Notification sound row is left out.
+    public var notificationPreferences: NotificationPreferences? = nil
+    /// The labels, for the Labels row; nil takes them from the environment (`chatInfoSpaces`).
+    public var labelSpaces: SpacesModel? = nil
 
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.chatInfoSpaces) private var environmentSpaces
     @State private var filterText: String = ""
     @FocusState private var isFilterFocused: Bool
 
@@ -71,6 +81,12 @@ public struct ChatInfoPane: View {
     @State private var filesExpanded = true
     @State private var linksExpanded = true
     @State private var bookmarksExpanded = true
+    @State private var labelsExpanded = true
+    @State private var notesExpanded = true
+    @State private var noteText: String
+    /// The chat `noteText` belongs to: a note is saved under it, never under whatever chat is open by then.
+    @State private var noteRoomID: String
+    @State private var noteSaveTask: Task<Void, Never>?
 
     public init(
         info: RoomInfoResult,
@@ -112,8 +128,18 @@ public struct ChatInfoPane: View {
         onSearchInChat: @escaping () -> Void = {},
         onClose: @escaping () -> Void = {},
         inbox: InboxModel? = nil,
-        headerInToolbar: Bool = false
+        headerInToolbar: Bool = false,
+        selfAvatarPath: String = "",
+        notesStore: ChatNotesStore = ChatNotesStore(),
+        notificationPreferences: NotificationPreferences? = nil,
+        labelSpaces: SpacesModel? = nil
     ) {
+        self.selfAvatarPath = selfAvatarPath
+        self.notesStore = notesStore
+        self.notificationPreferences = notificationPreferences
+        self.labelSpaces = labelSpaces
+        _noteText = State(initialValue: notesStore.note(for: info.roomID))
+        _noteRoomID = State(initialValue: info.roomID)
         self.headerInToolbar = headerInToolbar
         self.inbox = inbox
         self.info = info
@@ -189,17 +215,20 @@ public struct ChatInfoPane: View {
                     if !info.isDirect {
                         participantsSection
                     }
-                    if !info.pinnedEventIDs.isEmpty {
-                        pinnedSection
-                    }
                     if !mediaItems.isEmpty {
                         mediaSection
                     }
-                    if !filteredFiles.isEmpty {
-                        filesSection
-                    }
                     if !filteredLinks.isEmpty {
                         linksSection
+                    }
+                    labelsSection
+                    notificationSoundSection
+                    notesSection
+                    if !info.pinnedEventIDs.isEmpty {
+                        pinnedSection
+                    }
+                    if !filteredFiles.isEmpty {
+                        filesSection
                     }
                     if !filteredBookmarks.isEmpty {
                         bookmarksSection
@@ -217,6 +246,85 @@ public struct ChatInfoPane: View {
         .courierSurface(.sidePane)
         .onChange(of: focusSearchTrigger) { _, _ in
             isFilterFocused = true
+        }
+        .onChange(of: noteText) { _, _ in scheduleNoteSave() }
+        .onChange(of: info.roomID) { _, newRoomID in switchNote(to: newRoomID) }
+        .onDisappear { flushNote() }
+    }
+
+    // MARK: - Notes
+
+    /// Saves the note a moment after the last keystroke, so typing never waits on storage.
+    private func scheduleNoteSave() {
+        noteSaveTask?.cancel()
+        let text = noteText
+        let roomID = noteRoomID
+        let store = notesStore
+        noteSaveTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: ChatNotesStore.saveDelayNanoseconds)
+            guard !Task.isCancelled else { return }
+            store.setNote(text, for: roomID)
+        }
+    }
+
+    /// Saves now: when the pane closes, and before another chat's note replaces this one.
+    private func flushNote() {
+        noteSaveTask?.cancel()
+        noteSaveTask = nil
+        notesStore.setNote(noteText, for: noteRoomID)
+    }
+
+    private func switchNote(to roomID: String) {
+        guard roomID != noteRoomID else { return }
+        flushNote()
+        noteRoomID = roomID
+        noteText = notesStore.note(for: roomID)
+        noteSaveTask?.cancel()
+        noteSaveTask = nil
+    }
+
+    private var notesSection: some View {
+        ChatInfoSection(
+            title: String(localized: "Notes"),
+            count: nil,
+            isExpanded: $notesExpanded
+        ) {
+            VStack(alignment: .leading, spacing: 4) {
+                TextField(String(localized: "Notes"), text: $noteText, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.callout)
+                    .lineLimit(3...10)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06)))
+                    .accessibilityIdentifier("chat-info-notes")
+                    .chatInfoRowProbe("notes:\(noteText)")
+                Text(String(localized: "Only you can see this. It stays on this Mac."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: - Labels
+
+    @ViewBuilder
+    private var labelsSection: some View {
+        if let spaces = labelSpaces ?? environmentSpaces, let inbox {
+            ObservedChatInfoLabelsSection(
+                roomID: info.roomID,
+                inbox: inbox,
+                spaces: spaces,
+                isExpanded: $labelsExpanded
+            )
+        }
+    }
+
+    // MARK: - Notification sound
+
+    @ViewBuilder
+    private var notificationSoundSection: some View {
+        if let preferences = notificationPreferences ?? inbox?.preferences.notifications {
+            ChatInfoSoundRow(roomID: info.roomID, preferences: preferences)
         }
     }
 
@@ -430,6 +538,11 @@ public struct ChatInfoPane: View {
         ChatInfoPresentation.sharedMediaEvents(info.sharedMedia)
     }
 
+    /// My picture: the pane's `selfAvatarPath`, else one the chat's own info holds.
+    private var ownAvatarPath: String {
+        selfAvatarPath.isEmpty ? ChatInfoPresentation.ownAvatarPath(in: info) : selfAvatarPath
+    }
+
     private var deduplicatedLinks: [RoomLink] {
         RoomLink.deduplicated(info.sharedLinks)
     }
@@ -438,6 +551,7 @@ public struct ChatInfoPane: View {
         guard !trimmedFilter.isEmpty else { return deduplicatedLinks }
         return deduplicatedLinks.filter { link in
             link.url.localizedCaseInsensitiveContains(trimmedFilter)
+                || (link.displayTitle ?? "").localizedCaseInsensitiveContains(trimmedFilter)
                 || link.displayDomain.localizedCaseInsensitiveContains(trimmedFilter)
         }
     }
@@ -481,7 +595,7 @@ public struct ChatInfoPane: View {
                     } label: {
                         HStack(spacing: 8) {
                             AvatarView(
-                                path: member.avatarPath,
+                                path: ChatInfoPresentation.participantAvatarPath(for: member, ownAvatarPath: ownAvatarPath),
                                 initials: Self.initials(of: member.name.isEmpty ? participantName : member.name),
                                 seed: member.name.isEmpty ? participantName : member.name,
                                 size: 30
@@ -577,7 +691,9 @@ public struct ChatInfoPane: View {
                 ForEach(mediaItems.prefix(9), id: \.eventID) { event in
                     ChatInfoMediaTile(
                         event: event,
-                        sender: ChatInfoPresentation.mediaSender(for: event, members: info.members)
+                        sender: ChatInfoPresentation.mediaSender(
+                            for: event, members: info.members, ownAvatarPath: ownAvatarPath
+                        )
                     ) {
                         onSelectEvent(event.eventID)
                     }
@@ -645,14 +761,25 @@ public struct ChatInfoPane: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(verbatim: link.displayDomain)
-                                    .font(.body)
-                                    .lineLimit(1)
-                                Text(verbatim: link.url)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
+                                if let title = link.displayTitle {
+                                    // The page's own title tells apart links on the same site.
+                                    Text(verbatim: title)
+                                        .font(.body)
+                                        .lineLimit(2)
+                                    Text(verbatim: link.displayDomain)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                } else {
+                                    Text(verbatim: link.displayDomain)
+                                        .font(.body)
+                                        .lineLimit(1)
+                                    Text(verbatim: link.url)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                }
                             }
                             Spacer(minLength: 0)
                         }
@@ -947,7 +1074,8 @@ public struct ChatInfoPane: View {
 
 private struct ChatInfoSection<Content: View>: View {
     let title: String
-    let count: Int
+    /// The number in the badge by the title; nil for a section with nothing to count (Notes).
+    let count: Int?
     @Binding var isExpanded: Bool
     var onSeeAll: (() -> Void)? = nil
     @ViewBuilder let content: () -> Content
@@ -966,12 +1094,14 @@ private struct ChatInfoSection<Content: View>: View {
                             .frame(width: 10)
                         Text(title)
                             .font(.subheadline.weight(.semibold))
-                        Text(verbatim: "\(count)")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(Capsule().fill(Color.primary.opacity(0.08)))
+                        if let count {
+                            Text(verbatim: "\(count)")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(Capsule().fill(Color.primary.opacity(0.08)))
+                        }
                         Spacer(minLength: 0)
                     }
                     .contentShape(Rectangle())
@@ -997,6 +1127,211 @@ private struct ChatInfoSection<Content: View>: View {
                     .padding(.leading, 4)
             }
         }
+    }
+}
+
+/// Tells a view test which Chat Info rows were drawn (`name`), without relying on the accessibility tree.
+struct ChatInfoRowProbeKey: EnvironmentKey {
+    static let defaultValue: (@MainActor (String) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    var chatInfoRowProbe: (@MainActor (String) -> Void)? {
+        get { self[ChatInfoRowProbeKey.self] }
+        set { self[ChatInfoRowProbeKey.self] = newValue }
+    }
+}
+
+private struct ChatInfoRowProbeModifier: ViewModifier {
+    let name: String
+    @Environment(\.chatInfoRowProbe) private var probe
+
+    func body(content: Content) -> some View {
+        content.onAppear { probe?(name) }
+    }
+}
+
+extension View {
+    fileprivate func chatInfoRowProbe(_ name: String) -> some View {
+        modifier(ChatInfoRowProbeModifier(name: name))
+    }
+}
+
+/// The environment's spaces (and so the labels), for a Chat Info pane built without them.
+private struct ChatInfoSpacesKey: EnvironmentKey {
+    static let defaultValue: SpacesModel? = nil
+}
+
+extension EnvironmentValues {
+    var chatInfoSpaces: SpacesModel? {
+        get { self[ChatInfoSpacesKey.self] }
+        set { self[ChatInfoSpacesKey.self] = newValue }
+    }
+}
+
+/// Reads the chat's labels live from the inbox, so adding or removing one shows at once.
+private struct ObservedChatInfoLabelsSection: View {
+    let roomID: String
+    @ObservedObject var inbox: InboxModel
+    @ObservedObject var spaces: SpacesModel
+    @Binding var isExpanded: Bool
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        let all = spaces.spaces.filter { $0.kind == .label }
+        let assigned = inbox.row(of: roomID)?.labels ?? []
+        ChatInfoLabelsSection(
+            labels: all,
+            assignedIDs: assigned,
+            isExpanded: $isExpanded,
+            onSet: { label, on in Task { await inbox.setLabel(label.labelID, on: on, ids: [roomID]) } },
+            onNewLabel: { openWindow(id: WindowID.label, value: LabelWindowTarget.new(applyTo: [roomID])) }
+        )
+    }
+}
+
+/// Chat Info's Labels: this chat's labels as chips, and "Add to a Label" to change them.
+struct ChatInfoLabelsSection: View {
+    let labels: [Space]
+    let assignedIDs: [Int64]
+    @Binding var isExpanded: Bool
+    let onSet: (Space, Bool) -> Void
+    let onNewLabel: () -> Void
+
+    private var assigned: [Space] { labels.filter { assignedIDs.contains($0.labelID) } }
+
+    var body: some View {
+        ChatInfoSection(title: String(localized: "Labels"), count: assigned.count, isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 8) {
+                if !assigned.isEmpty {
+                    ChatInfoChipFlow(spacing: 6) {
+                        ForEach(assigned) { label in
+                            HStack(spacing: 4) {
+                                LabelIcon(color: label.color, icon: label.icon, size: 14)
+                                Text(verbatim: label.title)
+                                    .font(.caption)
+                                    .lineLimit(1)
+                                Button {
+                                    onSet(label, false)
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(String(localized: "Remove label \(label.title)"))
+                            }
+                            .chatInfoRowProbe("chip:\(label.title)")
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(Color.primary.opacity(0.08)))
+                        }
+                    }
+                }
+                Menu {
+                    ForEach(labels) { label in
+                        Toggle(label.title, isOn: Binding(
+                            get: { assignedIDs.contains(label.labelID) },
+                            set: { onSet(label, $0) }
+                        ))
+                    }
+                    if !labels.isEmpty { Divider() }
+                    Button(String(localized: "New Label…"), action: onNewLabel)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "tag").foregroundStyle(.secondary)
+                        Text(String(localized: "Add to a Label"))
+                    }
+                    .font(.callout.weight(.medium))
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .accessibilityIdentifier("chat-info-add-label")
+                .chatInfoRowProbe("add-label")
+                .help(String(localized: "A label puts the chat in a space of its own, on this Mac."))
+            }
+        }
+        .accessibilityIdentifier("chat-info-labels")
+    }
+}
+
+/// Lays its children out in rows, starting a new row when one is full.
+private struct ChatInfoChipFlow: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrange(width: proposal.width ?? .infinity, subviews: subviews).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let result = arrange(width: bounds.width, subviews: subviews)
+        for (index, origin) in result.origins.enumerated() {
+            subviews[index].place(at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y), proposal: .unspecified)
+        }
+    }
+
+    private func arrange(width: CGFloat, subviews: Subviews) -> (size: CGSize, origins: [CGPoint]) {
+        var origins: [CGPoint] = []
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, maxX: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > width {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            origins.append(CGPoint(x: x, y: y))
+            x += size.width + spacing
+            maxX = max(maxX, x - spacing)
+            rowHeight = max(rowHeight, size.height)
+        }
+        return (CGSize(width: maxX, height: y + rowHeight), origins)
+    }
+}
+
+/// Chat Info's Notification sound: this chat's own alert sound, or Default for the usual one.
+struct ChatInfoSoundRow: View {
+    let roomID: String
+    @ObservedObject var preferences: NotificationPreferences
+
+    static func title(_ choice: NotificationSoundChoice) -> String {
+        choice == .default ? String(localized: "Default") : NotificationsSettingsPane.soundLabel(choice)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Divider()
+            HStack(spacing: 8) {
+                Image(systemName: "bell")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16)
+                Text(String(localized: "Notification sound"))
+                    .font(.callout)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                Spacer(minLength: 4)
+                Picker(
+                    String(localized: "Notification sound"),
+                    selection: Binding(
+                        get: { preferences.chatSound(for: roomID) ?? .default },
+                        set: { preferences.setChatSound($0, for: roomID) }
+                    )
+                ) {
+                    ForEach(NotificationSoundChoice.allCases, id: \.self) { choice in
+                        Text(Self.title(choice)).tag(choice)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
+            }
+            Text(String(localized: "Muted chats stay silent."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 24)
+        }
+        .accessibilityIdentifier("chat-info-sound")
+        .chatInfoRowProbe("sound:\(preferences.chatSound(for: roomID)?.rawValue ?? "default")")
     }
 }
 
@@ -1377,7 +1712,8 @@ struct ChatInfoWindow: View {
                     onSearchInChat: {
                         conversation.onSearchInChat(info.roomID)
                     },
-                    inbox: resolvedInbox
+                    inbox: resolvedInbox,
+                    selfAvatarPath: conversation.ownAvatarPath(for: info)
                 )
             } else {
                 ProgressView()
