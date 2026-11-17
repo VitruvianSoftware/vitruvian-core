@@ -60,7 +60,7 @@ categories:
 
       - id: vitruvian-atrium
         name: Vitruvian Atrium
-        version: "3.99.0"
+        version: "3.101.1"
         summary: >-
           The flagship desktop control hub for Vitruvian. Orchestrates AI coding sessions,
           multi-agent workspaces, live status tracking, and terminal integration from the macOS menu bar.
@@ -68,20 +68,20 @@ categories:
         brew_cask: vitruviansoftware/tap/vitruvian-atrium
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.99.0/VitruvianAtrium-3.99.0-universal.dmg
-            size: 85.9 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.101.1/VitruvianAtrium-3.101.1-universal.dmg
+            size: 86.2 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.99.0/VitruvianAtrium-3.99.0-arm64.dmg
-            size: 45.3 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.101.1/VitruvianAtrium-3.101.1-arm64.dmg
+            size: 45.4 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.99.0/VitruvianAtrium-3.99.0-x86_64.dmg
-            size: 46.8 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.101.1/VitruvianAtrium-3.101.1-x86_64.dmg
+            size: 46.9 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.99.0/VitruvianAtrium-3.99.0-universal.zip
-            size: 86.0 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.101.1/VitruvianAtrium-3.101.1-universal.zip
+            size: 86.3 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-atrium
@@ -120,7 +120,7 @@ categories:
 
       - id: vitruvian-courier
         name: Vitruvian Courier
-        version: "0.3.22"
+        version: "0.3.25"
         summary: >-
           Every chat app in one inbox, on this Mac. A native macOS app that brings
           your messaging accounts into one window, signed with Developer ID and notarized.
@@ -128,20 +128,20 @@ categories:
         brew_cask: vitruviansoftware/tap/vitruvian-courier
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.22/VitruvianCourier-0.3.22-universal.dmg
-            size: 150.5 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.25/VitruvianCourier-0.3.25-universal.dmg
+            size: 152.1 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.22/VitruvianCourier-0.3.22-arm64.dmg
-            size: 73.0 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.25/VitruvianCourier-0.3.25-arm64.dmg
+            size: 73.7 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.22/VitruvianCourier-0.3.22-x86_64.dmg
-            size: 78.4 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.25/VitruvianCourier-0.3.25-x86_64.dmg
+            size: 79.2 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.22/VitruvianCourier-0.3.22-universal.zip
-            size: 151.2 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.25/VitruvianCourier-0.3.25-universal.zip
+            size: 152.7 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-courier
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-courier
@@ -172,7 +172,7 @@ categories:
     items:
       - id: devx
         name: Vitruvian DevX CLI
-        version: "0.74.6"
+        version: "0.75.0"
         summary: >-
           A local development orchestrator. One CLI provisions container VMs, ephemeral
           databases and cloud emulators, local K3s clusters, and Cloudflare tunnel ingress in dependency order.
