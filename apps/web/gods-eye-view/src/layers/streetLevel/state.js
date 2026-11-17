@@ -41,6 +41,8 @@ export function freshStreet() {
     capturedAt: null,
     /** 'day', or 'month' for providers that date images by month (Google). */
     capturedAtPrecision: 'day',
+    /** Why the last nearest lookup opened nothing: 'empty', 'sky' or null. */
+    nearestOutcome: null,
     /** A place name for the caption (Google's address), or null. */
     title: null,
     /** Whether the open viewer has FIT/FILL render modes. */
@@ -51,6 +53,8 @@ export function freshStreet() {
     externalUrl: null,
     loading: false,
     error: null,
+    // A lookup a link prepared but left to a click: {point, providerIds, radiusM}.
+    armed: null,
   };
 }
 
@@ -77,7 +81,8 @@ export function createState({ services }) {
     /** Whether the camera is low enough for a ground click to open an image. */
     groundClickReady: false,
 
-    marker: { collection: null, billboard: null, look: null },
-    clickHandler: null,
+    /** The open image's marker: its draw set and drawn icon. */
+    marker: { set: null, placed: null, look: null },
+    clickSubscription: null,
   };
 }

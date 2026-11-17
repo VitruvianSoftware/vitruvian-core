@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-import * as Cesium from 'cesium';
+import { findQuery } from '../../render/rendererOf.js';
 import { FOCUS_EVIDENCE_DEV } from './policy.js';
 
 export function createEvidence({
@@ -35,7 +35,7 @@ export function createEvidence({
   /** Replace live AIS rows through the production reconciliation path (DEV only). */
 
   function _setFocusEvidenceVessels(rows = []) {
-    if (!FOCUS_EVIDENCE_DEV || !state.viewer || !state.billboardCollection) {
+    if (!FOCUS_EVIDENCE_DEV || !state.viewer || !state.icons) {
       return { ok: false, count: 0 };
     }
     components.selection.clearVesselInspection();
@@ -60,18 +60,16 @@ export function createEvidence({
 
   function _focusEvidenceVesselSnapshot() {
     if (!FOCUS_EVIDENCE_DEV || !state.viewer) return [];
+    const query = findQuery(state.viewer);
     return state.records.all.map((record) => {
-      const bb = components.rendering.getVisual(record).billboard;
-      const screen = bb?.position
-        ? Cesium.SceneTransforms.worldToWindowCoordinates(
-            state.viewer.scene,
-            bb.position,
-          )
-        : null;
+      const visual = components.rendering.getVisual(record);
+      const drawn = state.icons?.has(visual.iconId) === true;
+      const position = drawn ? visual.position : null;
+      const screen = position ? query?.project(position) : null;
       return {
-        id: record.mmsi,
-        show: bb?.show === true,
-        alpha: bb?.color?.alpha ?? null,
+        id: record.id,
+        show: drawn && visual.visible === true,
+        alpha: drawn ? state.icons.focus(visual.iconId) : null,
         x: screen?.x ?? null,
         y: screen?.y ?? null,
       };

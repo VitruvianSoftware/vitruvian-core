@@ -25,6 +25,7 @@ import { msg } from '../../i18n/marker.js';
 import { translateFeedError } from '../../ui/statusText.js';
 import { wildlifeIconicGroup } from './model.js';
 import { formatAge } from './photoText.js';
+import { wildlifeEyeHeight } from './view.js';
 import {
   ICONIC_TINTS,
   ICONIC_LEGEND_ORDER,
@@ -252,8 +253,7 @@ export function createControls({ state, services, parts }) {
       if (
         !state.error &&
         !state.query &&
-        state.viewer?.camera?.positionCartographic?.height >
-          WILDLIFE_GRID_HEIGHT_METERS
+        wildlifeEyeHeight(state.viewer) > WILDLIFE_GRID_HEIGHT_METERS
       ) {
         // i18n-ignore: feed-state protocol value
         stats.status = 'zoom-in';

@@ -66,6 +66,7 @@ js_test(
     data = glob(
         [
             "src/**",
+            "dev/**",
             "scripts/**",
             "public/**",
             "config/**",
@@ -283,6 +284,7 @@ boundary_check_data = [
     [
         "build/**",
         "config/**",
+        "dev/**",
         "docs/**",
         "pinokio/**",
         "public/**",
@@ -435,5 +437,5 @@ pipeline_unit(
         ":build",
     ],
     tier = "L1",
-    timeout_minutes = 15,
+    timeout_minutes = 30,
 )

@@ -30,6 +30,7 @@ import { createWildlifeSightingsSource } from './source.js';
 import { wildlifeGridCellId } from './gridViewport.js';
 import { LayerLifecycle } from '../../data/lifecycle.js';
 import { layerFeedState } from '../../data/feedState.js';
+import { bindWildlifeViewer } from '../../testSupport/wildlifeViewer.mjs';
 
 const NOW = Date.UTC(2026, 10, 4, 18);
 const rectangle = { south: 10, west: 10, north: 12, east: 12 };
@@ -82,6 +83,7 @@ function harness(source = { getSnapshot: async () => [] }) {
     failures: 0,
     controlsListener: () => notifications++,
   };
+  bindWildlifeViewer(state.viewer);
   const services = {
     source,
     now: () => time,

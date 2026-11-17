@@ -741,6 +741,11 @@ pub fn is_test_file(file: &str) -> bool {
     file.ends_with(".test.mjs")
         || file.starts_with("src/testSupport/")
         || file.starts_with("src/tooling/")
+        // Test doubles outside src/testSupport, imported by tests only.
+        || file == "src/input/testDoubles.mjs"
+        || file == "src/layers/recentImagery/testDoubles.mjs"
+        || file == "src/voice/voiceWorkflowHarness.mjs"
+        || file == "src/layers/wildlifeSightings/renderPerformanceFixtures.mjs"
         || file == "src/overlays/worldOverlayAllocation.worker.mjs"
 }
 

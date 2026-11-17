@@ -44,6 +44,7 @@ export const {
   reportMeshFloorCell,
   meshFloorSampleWithinPrior,
   reportValidatedMeshFloorCell,
+  meshFloorPriorReady,
   cachedMeshFloor,
   _clearMeshFloorCellsForTest,
   cachedGroundFloor,

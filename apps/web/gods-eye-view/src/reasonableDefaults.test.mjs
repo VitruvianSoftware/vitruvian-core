@@ -64,6 +64,7 @@ import {
   setScopeMaskFeather,
 } from './scopeMask.js';
 import { ShareLinkManager } from './sharelink.js';
+import { bindFakeCesiumCamera } from './testSupport/fakeCameraPort.mjs';
 
 // Follow the UI wiring and its extracted preset definitions.
 const uiSource = readShellSource()
@@ -93,7 +94,7 @@ function managerForHash(hash) {
       roll: 0,
     },
   };
-  return new ShareLinkManager(viewer);
+  return new ShareLinkManager(bindFakeCesiumCamera(viewer));
 }
 
 // ---------------------------------------------------------------------------
@@ -275,7 +276,7 @@ test('detection-on-by-default is a default, not an operator override', () => {
   // A factory default is not that. If applying the baseline set the flag, a
   // fresh session would silently lose the style auto-enable behaviour — a
   // separate landed feature, taken out by an unrelated change.
-  const applyDefaults = uiBlock('  _applyGlobalPostDefaults() {', '\n  }\n');
+  const applyDefaults = uiBlock('  _applyGlobalPostDefaults({ keepHudVariant = false } = {}) {', '\n  }\n');
   assert.match(applyDefaults, /this\._setDetectionMode\(defaults\.detectionMode\)/,
     'the baseline still goes through the real detection path');
   assert.doesNotMatch(applyDefaults, /_detectionUserOverridden/,

@@ -281,7 +281,7 @@ test('recording restores the original HUD after repeated entry and revokes retai
   }
 });
 
-test('weather rail orders between CCTV and Context, observes and presents chrome', (t) => {
+test('Context leads the right rail, weather follows CCTV, observes and presents chrome', (t) => {
   const f = fixture();
   const observed = new Set();
   const previousResizeObserver = globalThis.ResizeObserver;
@@ -341,7 +341,7 @@ test('weather rail orders between CCTV and Context, observes and presents chrome
     owner._initRightPanelAdaptiveLayout();
     assert.deepEqual(
       stack.children.map((panel) => panel.id),
-      ['pp-toggles', 'cctv-panel', 'weather-panel', 'global-context-panel'],
+      ['global-context-panel', 'pp-toggles', 'cctv-panel', 'weather-panel'],
     );
     assert.ok(observed.has(weather));
     // Moving a panel into the rail leaves its state as it was.

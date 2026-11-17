@@ -1,0 +1,75 @@
+/**
+ * Copyright (c) 2026 VitruvianSoftware
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+/**
+ * @module render/applicationHooks
+ * @description What a renderer's plugin may hand the application beside the
+ * contract: behaviour the application uses where a renderer has it, and does
+ * without where it has none. Nothing here is part of the renderer contract,
+ * and the application never asks which renderer it runs on: it reads the
+ * hooks of the renderer it was given, each of them optional.
+ *
+ * - `mapEngine`: the renderer's own map engine (`src/maps/engine.js`), which
+ *   the map stacks switch through in place of the globe port
+ *   (`src/maps/globeEngine.js`).
+ * - `trimStaleCommands()`: drops the draw commands a renderer keeps for a
+ *   while after it stops drawing them; run after a layer turns off.
+ * - `viewerDrawsEntity(entity)`: whether an entity is one the renderer draws
+ *   itself (Cockpit asks whether the aircraft it flies still draws).
+ * - `qaHandles`: values QA scripts read from `window.__godsEyeView`.
+ * - `ownCreditDisplay`: true when the renderer shows its credits in a
+ *   display of its own; otherwise the application shows what its credits
+ *   port lists (`src/ui/creditsView.js`).
+ * - `renderFailureNotice({allowReload, store})`: a recoverable notice,
+ *   published to `store`, when the renderer stops drawing
+ *   (`src/render/cesium/renderFailure.js`); returns its removal.
+ *
+ * A plugin hands them as its `applicationHooks(renderer)`
+ * (`ApplicationHooks`, `contract/renderer.d.ts`); the application scene
+ * records them here as it creates the renderer. What the renderer should
+ * do is in the contract instead: keeping the Earth framed on zooming out is
+ * `camera.controls.keepEarthFramed`, the detection overlay's depth test is
+ * `query.occlusionTest`, and an inline panel keeps drawing through the frame
+ * port (`src/app/panelRendering.js`).
+ */
+
+const hooks = new WeakMap();
+const NONE = Object.freeze({});
+
+/**
+ * Hand the application `value`'s hooks for `renderer`. A renderer's plugin
+ * calls it as it creates the renderer; a later call replaces them.
+ * @param {object} renderer
+ * @param {object} value
+ */
+export function provideApplicationHooks(renderer, value) {
+  hooks.set(renderer, Object.freeze({ ...value }));
+}
+
+/**
+ * The hooks `renderer`'s plugin provided; an empty object when it provided
+ * none, or `renderer` is not an object.
+ * @param {object|null|undefined} renderer
+ * @returns {Readonly<object>}
+ */
+export const applicationHooksOf = (renderer) =>
+  (renderer && hooks.get(renderer)) || NONE;

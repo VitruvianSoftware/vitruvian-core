@@ -20,18 +20,13 @@
  * SOFTWARE.
  */
 
-import * as Cesium from 'cesium';
-
 export function createState({ services }) {
   const state = {};
 
-  state.distanceEndpointScratch = new Cesium.Cartographic();
-
-  state.distanceGeodesicScratch = new Cesium.EllipsoidGeodesic();
-
   Object.assign(state, {
     viewer: null,
-    dataSource: null,
+    /** The layer's draw sets (`dots`, `outlines`, `fills`) while attached. */
+    sets: null,
     enabled: false,
     records: [],
     recordById: new Map(),
@@ -51,7 +46,7 @@ export function createState({ services }) {
     retryAt: 0,
     failureReason: null,
     moveEndRemove: null,
-    clickHandler: null,
+    clickSubscription: null,
     timer: null,
     googleSearchRequested: false,
     /** Contacts subject position; when set, it replaces the camera viewport. */
@@ -60,7 +55,10 @@ export function createState({ services }) {
     contextPosition: null,
     /** Coverage of the last successful load: viewport, or radius around a subject. */
     coverage: { kind: 'viewport' },
-    /** Per-record geometry keys of the rendered entities, for in-place updates. */
+    /**
+     * What each drawn record last drew: its geometry key, outline item ids,
+     * context carrier, height and selection, for in-place updates.
+     */
     renderedKeys: new Map(),
   });
   return state;

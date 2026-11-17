@@ -22,6 +22,7 @@
 
 import { useStatusStore } from './stores/status.js';
 import { applicationPinia } from './vueRuntime.js';
+import { findFrame } from '../render/rendererOf.js';
 
 /**
  * Count rendered globe frames while the optional readout is visible. The
@@ -32,9 +33,9 @@ export function createFrameRateMonitor({
   documentRef = document,
   store = useStatusStore(applicationPinia()),
 }) {
-  const frameEvent = viewer?.scene?.postRender;
+  const frameOfViewer = () => findFrame(viewer);
   // A page without the scene chrome has no title bar to show it in.
-  if (!documentRef.getElementById('title-bar') || !frameEvent)
+  if (!documentRef.getElementById('title-bar') || !frameOfViewer())
     return { destroy() {} };
 
   // i18n-ignore: FPS is a unit code, the same in every language
@@ -65,7 +66,9 @@ export function createFrameRateMonitor({
     startedAt = performance.now();
     // i18n-ignore: FPS is a unit code, the same in every language
     present({ visible: true, text: 'FPS —' });
-    removeFrameListener = frameEvent.addEventListener(() => {
+    // Looked up when shown, so a renderer bound since creation is the one
+    // counted.
+    removeFrameListener = frameOfViewer()?.on('postRender', () => {
       frames++;
     });
     timer = setInterval(() => {

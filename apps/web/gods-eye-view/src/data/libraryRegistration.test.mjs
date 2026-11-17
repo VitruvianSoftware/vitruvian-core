@@ -1,0 +1,76 @@
+/**
+ * Copyright (c) 2026 VitruvianSoftware
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { LayerLifecycle } from './lifecycle.js';
+
+const layer = (id) => ({
+  id,
+  name: id,
+  icon: '',
+  source: 'test',
+  async init() {},
+  async enable() {},
+  async update() {},
+  async disable() {},
+  async destroy() {},
+  getStats: () => ({ count: 0, lastUpdate: null }),
+});
+
+test('library layers register only after sealing and only in the lib- namespace', async () => {
+  const manager = new LayerLifecycle({});
+  const activity = [];
+  manager.subscribeActivity((change) => activity.push(change.type));
+  manager.register(layer('earthquakes'));
+  assert.throws(
+    () => manager.registerLibraryLayer(layer('lib-night-lights')),
+    /after the catalog is sealed/,
+  );
+  manager.finalizeRegistrations([
+    { id: 'earthquakes', disposition: 'enabled-only' },
+  ]);
+  assert.throws(
+    () => manager.registerLibraryLayer(layer('radio')),
+    /lib- namespace/,
+  );
+  assert.throws(() => manager.register(layer('lib-x-y-z')), /finalized/);
+  manager.registerLibraryLayer(layer('lib-night-lights'));
+  assert.equal(manager.isLibraryLayer('lib-night-lights'), true);
+  assert.equal(manager.isLibraryLayer('earthquakes'), false);
+  const rows = manager.getAll();
+  assert.equal(
+    rows.find(({ id }) => id === 'earthquakes').libraryEntryId,
+    null,
+  );
+  assert.equal(
+    rows.find(({ id }) => id === 'lib-night-lights').libraryEntryId,
+    'night-lights',
+  );
+  assert.equal(await manager.unregisterLibraryLayer('earthquakes'), false);
+  assert.equal(manager.layers.has('earthquakes'), true);
+  await manager.setEnabled('lib-night-lights', true, { origin: 'user' });
+  assert.equal(await manager.unregisterLibraryLayer('lib-night-lights'), true);
+  assert.equal(manager.layers.has('lib-night-lights'), false);
+  assert.equal(manager.isLibraryLayer('lib-night-lights'), false);
+  assert.equal(activity.filter((type) => type === 'registrations').length, 2);
+});

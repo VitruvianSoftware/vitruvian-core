@@ -50,6 +50,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import puppeteer from 'puppeteer';
+import { stubPlanespotters } from './qa-photo-stub.mjs';
 import { createScreencast, moveCamera } from './qa-journey-recorder.mjs';
 
 const argv = process.argv.slice(2);
@@ -99,6 +100,7 @@ const browser = await puppeteer.launch({
 
 async function openPage({ aircraft = false } = {}) {
   const page = await browser.newPage();
+  await stubPlanespotters(page);
   await page.setViewport({ width: 1440, height: 900 });
   page.on('console', (message) => {
     if (message.type() === 'error') result.consoleErrors.push(message.text());
@@ -382,7 +384,9 @@ async function contacts() {
         entities: ds?.entities.values.length ?? 0,
         created,
         tracked:
-          window.__godsEyeView.viewer.trackedEntity?.gevTrackedId ?? null,
+          window.__godsEyeView.entityRecords.read(
+            window.__godsEyeView.viewer.trackedEntity,
+          )?.trackedId ?? null,
         cockpit: document.body.classList.contains('cockpit-mode'),
       });
       if (samples.length > 5000) samples.splice(0, 1000);
@@ -397,8 +401,9 @@ async function contacts() {
   await page
     .waitForFunction(
       () =>
-        window.__godsEyeView.viewer.trackedEntity?.gevTrackedId ===
-        'flights:aaa051',
+        window.__godsEyeView.entityRecords.read(
+          window.__godsEyeView.viewer.trackedEntity,
+        )?.trackedId === 'flights:aaa051',
       { timeout: 60_000 },
     )
     .catch(() => {});

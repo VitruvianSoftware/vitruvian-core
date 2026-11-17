@@ -25,10 +25,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { createGoogleTokenSource } from './maps/googleTokens.js';
-import {
-  loadPhotorealisticTileset,
-  selectMapStartupRoute,
-} from './mapStartup.js';
+import { selectMapStartupRoute } from './mapStartup.js';
+import { loadPhotorealisticTileset } from './render/cesium/google3d.js';
 
 function fakeCesium(outcomes = []) {
   const calls = [];
@@ -86,12 +84,9 @@ async function standaloneStartup(Cesium, credentials, fetchImpl) {
     document: {
       getElementById: () => ({ querySelector: () => ({}) }),
     },
-    resolveLocale: () => 'en',
-    setLocale() {},
-    getLocale: () => 'en',
-    onLocaleChange: () => () => {},
+    startPageLocale: () => 'en',
+    followPageLocale: () => () => {},
     mountApplicationViews() {},
-    applyDocumentLanguage() {},
     applyDocumentTranslations() {},
     CITY_POIS: [],
     createApplication: (options) => options,
@@ -99,6 +94,8 @@ async function standaloneStartup(Cesium, credentials, fetchImpl) {
     createStandaloneCatalog: () => ({}),
     createGoogleTokenSource: () => createGoogleTokenSource({ fetchImpl }),
     selectMapStartupRoute,
+    // The default renderer's load; the scene below draws with none.
+    loadDefaultRenderer: () => null,
     // The real scene forwards these credentials to this same loader.
     createStandaloneScene: async (options) => ({
       ...(await loadPhotorealisticTileset(Cesium, options)),

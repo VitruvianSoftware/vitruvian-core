@@ -24,7 +24,6 @@
 // stubbed /api/launches, so a failed first load takes the browser's path.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import * as Cesium from 'cesium';
 import { DataLayerManager } from '../../data/manager.js';
 import { ContextControls } from '../../ui/contextControls.js';
 import { spaceMissionsIndexFailure } from '../../ui/contextActions.js';
@@ -37,6 +36,7 @@ import { createPanel } from './panel.js';
 import { createControls } from './controls.js';
 import { createLifecycle } from './lifecycle.js';
 import { createReplay } from './replay.js';
+import { bindFakeCesiumCamera } from '../../testSupport/fakeCameraPort.mjs';
 
 const noop = () => {};
 
@@ -71,7 +71,7 @@ function plainLayer(id, name, params = {}) {
 
 function fakeCamera() {
   const camera = {
-    position: new Cesium.Cartesian3(1, 2, 3),
+    position: { x: 1, y: 2, z: 3 },
     heading: 0.1,
     pitch: -0.5,
     roll: 0,
@@ -86,7 +86,11 @@ function fakeCamera() {
       camera.flight?.cancel?.();
       camera.flight = { complete, cancel };
       camera.flights += 1;
-      camera.position = Cesium.Cartesian3.clone(destination);
+      camera.position = {
+        x: destination.x,
+        y: destination.y,
+        z: destination.z,
+      };
       camera.heading = 0;
       camera.pitch = -Math.PI / 2;
     },
@@ -103,7 +107,11 @@ function fakeCamera() {
     },
     lookAtTransform: noop,
     setView({ destination, orientation }) {
-      camera.position = Cesium.Cartesian3.clone(destination);
+      camera.position = {
+        x: destination.x,
+        y: destination.y,
+        z: destination.z,
+      };
       camera.heading = orientation.heading;
       camera.pitch = orientation.pitch;
       camera.roll = orientation.roll;
@@ -144,9 +152,10 @@ async function fixture(t) {
   });
   const viewer = {
     camera,
-    dataSources: new Cesium.DataSourceCollection(),
-    scene: { canvas, preRender: new Cesium.Event(), drillPick: () => [] },
+    scene: { canvas, drillPick: () => [] },
   };
+  // The Cesium camera port over the fake camera, as the renderer binds it.
+  bindFakeCesiumCamera(viewer);
   // Scene presentation is stubbed; ingestion, lifecycle and panel are real.
   const parts = {
     overlays: {
@@ -160,7 +169,7 @@ async function fixture(t) {
     selection: {
       focusFullGlobe(target, flight) {
         target.camera.flyTo({
-          destination: new Cesium.Cartesian3(9, 9, 9),
+          destination: { x: 9, y: 9, z: 9 },
           ...flight,
         });
         return true;
@@ -180,13 +189,22 @@ async function fixture(t) {
       destroyLaunchPadZonePrimitive: noop,
     },
     rendering: {
-      updateMissionFrame: noop,
-      addLaunchEntity(record) {
-        state._dataSource.entities.add({
-          id: record.id,
-          position: Cesium.Cartesian3.fromDegrees(record.lon, record.lat),
-        });
+      // The launches' draw sets, which a loaded index needs to land in.
+      attach() {
+        state._missionSets = {};
       },
+      detach() {
+        state._missionSets = null;
+      },
+      showMissions: noop,
+      missionsShown: () => true,
+      updateMissionFrame: noop,
+      addLaunchEntity: noop,
+      flushLaunchEntities: noop,
+      clearLaunchEntities: noop,
+      launchIdFromPicks: () => null,
+      launchMarkerAt: () => null,
+      missionHitsAt: () => [],
     },
   };
   const context = { state, services, parts, source };
@@ -350,7 +368,7 @@ test('a camera move after the entry flight survives a failed first load', async 
   f.camera.land();
   // The user drags the globe while the mission index is still loading.
   f.camera.setView({
-    destination: new Cesium.Cartesian3(7, 7, 7),
+    destination: { x: 7, y: 7, z: 7 },
     orientation: { heading: 0.3, pitch: -0.2, roll: 0 },
   });
   const moved = f.view();
@@ -374,7 +392,7 @@ test('a navigation during a failed first load is not cancelled by the rollback',
   f.missions.releaseCameraOwnership();
   let navigationCancelled = false;
   f.camera.flyTo({
-    destination: new Cesium.Cartesian3(5, 5, 5),
+    destination: { x: 5, y: 5, z: 5 },
     cancel: () => {
       navigationCancelled = true;
     },
@@ -502,7 +520,7 @@ test('navigation taking the camera keeps a mission flight it asked to preserve',
   // After exit an inactive layer never cancels another owner's flight.
   await f.manager.setEnabled('rocket-launches', false, { origin: 'user' });
   await f.settle();
-  f.camera.flyTo({ destination: new Cesium.Cartesian3(1, 1, 1) });
+  f.camera.flyTo({ destination: { x: 1, y: 1, z: 1 } });
   const other = f.camera.flight;
   f.missions.releaseCameraOwnership();
   assert.equal(f.camera.flight, other);

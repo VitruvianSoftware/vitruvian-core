@@ -24,6 +24,8 @@
 // These helpers are DOM/WebRTC-free so they pin the screenshot down-scaling and
 // payload-byte estimation that keep an oversized dc.send from stranding a turn.
 import { test } from 'node:test';
+import { bindRenderer } from '../render/rendererOf.js';
+import { fakeSceneFrame } from '../testSupport/fakeCesiumScene.mjs';
 import assert from 'node:assert/strict';
 import { DataLayerManager } from '../data/manager.js';
 import { controlRadio as runControlRadio, createGevActionRunner as createActionRunner } from './gevActions.js';
@@ -57,6 +59,15 @@ import {
 } from './gevRealtime.js';
 import { createVoiceCostTracker } from './voiceCost.js';
 import { createTestVoiceUi } from '../testSupport/voiceUi.mjs';
+import { setLocale, t } from '../i18n/index.js';
+
+
+/** A viewer over `scene` whose renderer's frame port is the scene's own loop. */
+function framed(scene) {
+  const viewer = { scene };
+  bindRenderer(viewer, { frame: fakeSceneFrame(viewer) });
+  return viewer;
+}
 
 test('push-to-talk recognizes Space by code or key', () => {
   assert.equal(PUSH_TO_TALK_HOLD_DELAY_MS, 500);
@@ -1364,6 +1375,7 @@ test('generic same-response Radio visibility disable supersedes delayed Select',
   });
   const viewer = {
     clock: { onTick: { addEventListener: () => () => {} } },
+    canvas: { addEventListener() {}, removeEventListener() {} },
     scene: { canvas: { addEventListener() {}, removeEventListener() {} } },
     camera: { moveEnd: { addEventListener() {} } },
   };
@@ -1616,6 +1628,7 @@ test('Pause and Stop preserve independent dedicated and generic Radio ON across 
               });
               const viewer = {
                 clock: { onTick: { addEventListener: () => () => {} } },
+                canvas: { addEventListener() {}, removeEventListener() {} },
                 scene: { canvas: { addEventListener() {}, removeEventListener() {} } },
                 camera: { moveEnd: { addEventListener() {} } },
               };
@@ -2867,7 +2880,7 @@ test('hidden document yields no fresh frame — capture must not label a stale c
   };
   try {
     globalThis.document = { hidden: true };
-    const fresh = await renderFreshCesiumFrame({ scene });
+    const fresh = await renderFreshCesiumFrame(framed(scene));
     assert.equal(fresh, false, 'hidden capture reports non-fresh');
     assert.equal(requested, 0, 'no secret render restart while hidden');
   } finally {
@@ -2884,7 +2897,7 @@ test('visible document with a rendering scene reports a fresh frame', async () =
       postRender: { addEventListener(listener) { fire = listener; return () => { fire = null; }; } },
       requestRender() { queueMicrotask(() => fire?.()); },
     };
-    const fresh = await renderFreshCesiumFrame({ scene });
+    const fresh = await renderFreshCesiumFrame(framed(scene));
     assert.equal(fresh, true);
   } finally {
     globalThis.document = originalDocument;
@@ -2901,7 +2914,7 @@ test('a tab switch during the bounded render wait invalidates freshness', async 
       postRender: { addEventListener(listener) { fire = listener; return () => { fire = null; }; } },
       requestRender() { doc.hidden = true; queueMicrotask(() => fire?.()); },
     };
-    const fresh = await renderFreshCesiumFrame({ scene });
+    const fresh = await renderFreshCesiumFrame(framed(scene));
     assert.equal(fresh, false, 'freshness rechecked after the await');
   } finally {
     globalThis.document = originalDocument;
@@ -3729,4 +3742,77 @@ test('voice runs app actions itself and other tools through the catalog', async 
   assert.deepEqual(resets, [['stopped']]);
   assert.deepEqual(disposals, [['removed']]);
   assert.equal(withToolCatalog(runner, undefined), runner);
+});
+
+test('the controller forwards viewport escalation diagnostics to its debug log', async () => {
+  const records = [];
+  const controller = new GevRealtimeController({
+    ui: createTestVoiceUi(),
+    runner: async () => ({ ok: true }),
+    radioLayer: { subscribePlaybackControls: () => () => {}, setVoiceDucked() {} },
+  });
+  controller.debugLog = (event, detail) => records.push({ event, detail });
+  controller.dc = { readyState: 'open', send() {}, close() {} };
+
+  assert.equal(
+    await controller.sendVisualContextIfUseful({
+      action: 'get_entity_context',
+      scene: { basemap: { viewScale: 'regional' } },
+    }),
+    false,
+  );
+  assert.deepEqual(
+    records.filter((record) => record.event.startsWith('viewport_context.')),
+    [{
+      event: 'viewport_context.decision',
+      detail: { contextId: 1, send: false, reason: 'view-scale-not-local', viewScale: 'regional' },
+    }],
+  );
+});
+
+test('a missing server key says where to add it, without the microphone hint, in every language', () => {
+  const ui = createTestVoiceUi();
+  const controller = new GevRealtimeController({
+    ui,
+    runner: async () => ({ ok: true }),
+    radioLayer: { subscribePlaybackControls: () => () => {}, setVoiceDucked() {} },
+  });
+  try {
+    controller.reportError(
+      'Realtime connection',
+      Object.assign(new Error('OPENAI_API_KEY is not set'), { code: 'API_KEY_MISSING' }),
+    );
+    assert.equal(ui.state.error.text, 'Needs OPENAI_API_KEY — add it in Provider Settings');
+    assert.equal(ui.state.error.hint, false);
+
+    setLocale('es');
+    assert.notEqual(ui.state.error.text, 'Needs OPENAI_API_KEY — add it in Provider Settings');
+    assert.match(ui.state.error.text, /OPENAI_API_KEY/);
+    assert.equal(ui.state.error.hint, false);
+    setLocale('en');
+
+    controller.reportError('Realtime connection', new Error('ICE failed'));
+    assert.match(ui.state.error.text, /ICE failed/);
+    assert.equal(ui.state.error.hint, true);
+  } finally {
+    setLocale('en');
+  }
+});
+
+test('a status from a shared helper is worded again after a language change', () => {
+  const ui = createTestVoiceUi();
+  const controller = new GevRealtimeController({
+    ui,
+    runner: async () => ({ ok: true }),
+    radioLayer: { subscribePlaybackControls: () => () => {}, setVoiceDucked() {} },
+  });
+  try {
+    controller.setStatus('listening', 'Radio did not start');
+    assert.equal(ui.state.detail.text, 'Radio did not start');
+    setLocale('es');
+    assert.equal(ui.state.detail.text, t('Radio did not start'));
+    assert.notEqual(ui.state.detail.text, 'Radio did not start');
+  } finally {
+    setLocale('en');
+  }
 });

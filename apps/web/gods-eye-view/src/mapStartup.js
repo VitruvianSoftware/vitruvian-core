@@ -20,7 +20,4 @@
  * SOFTWARE.
  */
 
-export {
-  selectMapStartupRoute,
-  loadPhotorealisticTileset,
-} from './maps/google3d.js';
+export { selectMapStartupRoute } from './maps/startupRoute.js';

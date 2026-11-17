@@ -21,7 +21,7 @@
  */
 
 import {
-  ACTIVATION_ALTITUDE_M,
+  ACTIVATION_ENTER_ALTITUDE_M,
   FEED_STALE_AFTER_MS,
   aggregateTransitFeedHealth,
   transitDetectionClass,
@@ -111,7 +111,7 @@ export function createQueries({ state, parts }) {
    * @returns {Array<object>}
    */
   function collectDetectableVehicles(options = defaults) {
-    if (!state._enabled || !state._markers?.show) return empty;
+    if (!state._enabled || !state._markersShown) return empty;
     if (state._vehicles.size === 0) return empty;
     const maxCount = Number.isFinite(options.maxCount)
       ? Math.max(1, Math.floor(options.maxCount))
@@ -151,7 +151,9 @@ export function createQueries({ state, parts }) {
     const visible = [];
     for (const entry of state._visible) {
       const marker = entry.marker;
-      if (!marker?.position || marker.show === false) continue;
+      // A vehicle drawn as its 3D model is present though its marker is hidden.
+      if (!marker?.position) continue;
+      if (marker.show === false && entry.modelOwnsVisual !== true) continue;
       visible.push(entry);
     }
     let chosen = visible;
@@ -267,17 +269,19 @@ export function createQueries({ state, parts }) {
       const health = aggregateTransitFeedHealth(statuses, now);
       const count = state._vehicles.size;
       if (state._enabled && active.length === 0) {
+        // English: the analyst's empty note and the row's prompt, both shown
+        // through translateStatusMessage (ui/statusText.js).
+        const note = state._altitudeGateOpen
+          ? `No feed here yet · ${TRANSIT_REGION_COUNT} regions available`
+          : `Fly below ${Math.round(ACTIVATION_ENTER_ALTITUDE_M / 1000).toLocaleString('en-US')} km to a covered region`;
         return {
           count: 0,
           lastUpdate: state._lastUpdate,
           error: null,
           source: 'GTFS-RT',
           status: 'zoom-in',
-          // English data (the analyst's empty note to the model); the voice
-          // card shows it through NOTE_PATTERNS (voice/resultDisplay.js).
-          coverage: state._altitudeGateOpen
-            ? `No feed here yet · ${TRANSIT_REGION_COUNT} regions available`
-            : `Fly below ${Math.round(ACTIVATION_ALTITUDE_M / 1000).toLocaleString('en-US')} km to a covered region`,
+          statusMessage: note,
+          coverage: note,
         };
       }
       // Age is shown by the same rule the row state uses, so the text and the
