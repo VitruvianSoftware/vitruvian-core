@@ -908,6 +908,36 @@ func TestRoomSharedLinksRejectsSchemelessFalsePositives(t *testing.T) {
 	}
 }
 
+func TestSchemelessLinksOnExcludedTLDsAreKnownMisses(t *testing.T) {
+	for _, tc := range []struct {
+		text string
+		want []string
+	}{
+		{"notion.so/abc123", []string{"https://notion.so/abc123"}},
+		{"bun.sh/docs", []string{"https://bun.sh/docs"}},
+		{"www.example.cc/x", []string{"https://www.example.cc/x"}},
+		{"docs.example.zip/x", []string{"https://docs.example.zip/x"}},
+		{"README.md/docs", []string{}},
+		{"script.sh/run", []string{}},
+		{"config.yaml/dev", []string{}},
+		{"Node.js/express", []string{}},
+	} {
+		t.Run(tc.text, func(t *testing.T) {
+			s, ctx := open(t), context.Background()
+			roomID := "!excluded-tlds:courier.local"
+			require.NoError(t, s.UpsertRoom(ctx, Room{ID: roomID, Network: "whatsapp", Name: "Excluded TLDs", CreatedAt: time.Unix(1, 0)}))
+			mkMsg(t, s, roomID, "$m", me, "m.room.message", text(tc.text), time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC))
+			links, err := s.RoomSharedLinks(ctx, roomID, 10)
+			require.NoError(t, err)
+			got := []string{}
+			for _, l := range links {
+				got = append(got, l.URL)
+			}
+			require.Equal(t, tc.want, got, "input %q", tc.text)
+		})
+	}
+}
+
 // Messages indexed before scheme-less links were tagged get the "has a link" tag from a one-time, bounded pass that
 // is recorded as done in search_state and never runs again.
 func TestRelinkBackfillTagsOldSchemelessLinksOnceAndOnlyOnce(t *testing.T) {

@@ -6,6 +6,7 @@ package search
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/store"
 	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/store/storetest"
 )
@@ -258,4 +260,74 @@ func TestRunBackfillRestsAsLongAsEachBatchTook(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRunBackfillRunsTheRelinkPassOnAFinishedIndex(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "courier.db")
+	s, err := store.Open(path)
+	require.NoError(t, err)
+
+	roomID := "!relink:courier.local"
+	personID := "@relink:courier.local"
+	personName := "Relink Person"
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: roomID, Network: "whatsapp", Name: "Relink", CreatedAt: t0}))
+	require.NoError(t, s.SetProfile(ctx, personID, &personName, nil))
+	require.NoError(t, s.SetMember(ctx, roomID, personID, json.RawMessage(`{"membership":"join","displayname":"Relink Person"}`)))
+	_, err = s.InsertEvent(ctx, store.Event{
+		RoomID: roomID, EventID: "$bare", Sender: string(ids.Me), Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"meet at maps.app.goo.gl/kX9abc"}`),
+		TS:      t0.Add(time.Minute), Status: "sent",
+	})
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+
+	raw, err := sql.Open("sqlite3-fk-wal", "file:"+path)
+	require.NoError(t, err)
+	var docID int64
+	require.NoError(t, raw.QueryRowContext(ctx, "SELECT doc_id FROM events WHERE event_id = '$bare'").Scan(&docID))
+	for _, q := range []string{
+		`UPDATE search_state SET value = (SELECT MAX(rowid) FROM rooms) WHERE key IN ('chats_after', 'chats_until')`,
+		`UPDATE search_state SET value = (SELECT MAX(rowid) FROM profiles) WHERE key IN ('profiles_after', 'profiles_until')`,
+		`UPDATE search_state SET value = (SELECT MAX(rowid) FROM members) WHERE key IN ('members_after', 'members_until')`,
+		`UPDATE search_state SET value = (SELECT MAX(rowid) FROM events) WHERE key IN ('backfill_after', 'backfill_until')`,
+		`UPDATE search_state SET value = 0 WHERE key = 'relink_after'`,
+		`UPDATE search_state SET value = (SELECT MAX(rowid) FROM events) WHERE key = 'relink_until'`,
+	} {
+		_, err = raw.ExecContext(ctx, q)
+		require.NoError(t, err)
+	}
+	_, err = raw.ExecContext(ctx, "DELETE FROM search_messages WHERE rowid = $1", docID)
+	require.NoError(t, err)
+	_, err = raw.ExecContext(ctx, "INSERT INTO search_messages (rowid, body, scope) VALUES ($1, 'meet', 'all ktext')", docID)
+	require.NoError(t, err)
+	require.NoError(t, raw.Close())
+
+	s, err = store.Open(path)
+	require.NoError(t, err)
+	defer s.Close()
+	require.True(t, complete(t, s))
+
+	linkHitIDs := func() []string {
+		hits, _, err := s.SearchMessages(ctx, store.MessageQuery{Kinds: []string{"link"}, Limit: 10})
+		require.NoError(t, err)
+		out := []string{}
+		for _, h := range hits {
+			out = append(out, h.Event.EventID)
+		}
+		return out
+	}
+	require.Empty(t, linkHitIDs())
+
+	_, log := newLog()
+	var clock time.Time
+	cfg := defaultConfig()
+	cfg.now = func() time.Time {
+		clock = clock.Add(time.Millisecond)
+		return clock
+	}
+	cfg.sleep = func(context.Context, time.Duration) bool { return true }
+	runBackfill(ctx, s, log, cfg)
+
+	require.Equal(t, []string{"$bare"}, linkHitIDs())
 }
