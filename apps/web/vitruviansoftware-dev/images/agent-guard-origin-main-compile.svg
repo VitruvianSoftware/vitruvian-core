@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 1080 680" width="100%" height="auto" role="img" aria-labelledby="t3 d3" style="background:#0e1317; font-family:'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'calt' 0; border-radius: 6px;">
+  <title id="t3">Why the Hook Compiles origin/main Instead of Running the Worktree Copy</title>
+  <desc id="d3">Execution flowchart for tools/agent-guard/hook.sh showing how it resolves git object IDs on origin/main, compiles standard-library Rust into ~/.local/state/agent-guard/cache (0700), falls back safely without weakening the guard, and fails closed if no copy runs.</desc>
+  <defs>
+    <style>
+      .title { fill: #e7e4dd; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+      .subtitle { fill: #8fa5b5; font-size: 12px; }
+      .box-bg { fill: #151d26; stroke: #26384a; stroke-width: 1.5; }
+      .box-hi { fill: #182330; stroke: #3c5975; stroke-width: 1.5; }
+      .box-head { fill: #e7e4dd; font-size: 13px; font-weight: 600; }
+      .box-body { fill: #8fa5b5; font-size: 11px; }
+      .code { fill: #c9d4de; font-size: 11px; }
+      .small { fill: #687f91; font-size: 10px; }
+      .accent { fill: #93b0ca; font-size: 11px; font-weight: 500; }
+      .ok { fill: #7fbf9a; font-size: 11px; font-weight: 500; }
+      .warn { fill: #d9b264; font-size: 11px; font-weight: 500; }
+      .err { fill: #d2907b; font-size: 11px; font-weight: 500; }
+      .flow { stroke: #4f6e8d; stroke-width: 1.5; fill: none; }
+      .flow-ok { stroke: #7fbf9a; stroke-width: 1.5; fill: none; }
+      .flow-warn { stroke: #d9b264; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .flow-err { stroke: #d2907b; stroke-width: 1.5; fill: none; }
+    </style>
+    <marker id="arr" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#4f6e8d" />
+    </marker>
+    <marker id="arr-ok" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#7fbf9a" />
+    </marker>
+    <marker id="arr-warn" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#d9b264" />
+    </marker>
+    <marker id="arr-err" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#d2907b" />
+    </marker>
+  </defs>
+  <rect width="1080" height="680" fill="#0e1317" rx="6" />
+
+  <!-- Header -->
+  <rect x="24" y="24" width="1032" height="60" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="44" y="49" class="title">Running the Guard from origin/main, Never the Agent's Branch</text>
+  <text x="44" y="69" class="subtitle">tools/agent-guard/hook.sh compiles stdlib-only Rust by git object ID into a 0700 cache and fails closed if nothing runs</text>
+
+  <!-- Step 1: Resolve path & unset git overrides -->
+  <rect x="24" y="104" width="490" height="104" rx="6" class="box-bg" />
+  <text x="42" y="128" class="box-head">1. Locate Checkout From $0 (Not Agent cwd)</text>
+  <text x="42" y="148" class="code">unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE ...</text>
+  <text x="42" y="166" class="box-body">Reads tool JSON on stdin; clears git env vars so a caller cannot</text>
+  <text x="42" y="182" class="box-body">spoof origin/main lookup. Looks up tree + blob IDs on origin/main:</text>
+  <text x="42" y="198" class="accent">git -C "$root" rev-parse origin/main:tools/agent-guard/src ...policy.json</text>
+
+  <rect x="536" y="104" width="520" height="104" rx="6" class="box-bg" />
+  <text x="554" y="128" class="err">THE TRAP IT PREVENTS</text>
+  <text x="554" y="148" class="box-body">If a hook executes `tools/agent-guard/src` straight from the active</text>
+  <text x="554" y="164" class="box-body">worktree, an agent can add `"mode": "off"` on its own branch and</text>
+  <text x="554" y="180" class="box-body">immediately bypass the guard before review. Executing origin/main</text>
+  <text x="554" y="196" class="ok">means branch edits govern nothing until a human approves &amp; merges.</text>
+
+  <path d="M 268 208 L 268 236" class="flow-ok" marker-end="url(#arr-ok)" />
+
+  <!-- Step 2: Cache Lookup & Compile -->
+  <rect x="24" y="242" width="1032" height="162" rx="6" class="box-hi" />
+  <rect x="24" y="242" width="4" height="162" fill="#7fbf9a" />
+  <text x="44" y="266" class="ok">2. CONTENT-ADDRESSED CACHE LOOKUP (~/.local/state/agent-guard/cache)</text>
+
+  <rect x="44" y="280" width="320" height="106" rx="4" class="box-bg" />
+  <text x="60" y="302" class="accent">Cache Hit (Warm: ~50 ms)</text>
+  <text x="60" y="322" class="code">cache/guard-&lt;tree-oid&gt;</text>
+  <text x="60" y="338" class="code">cache/policy-&lt;blob-oid&gt;.json</text>
+  <text x="60" y="358" class="box-body">Zero Cargo, zero crates.io, zero Bazel.</text>
+  <text x="60" y="374" class="small">8 ms git rev-parse + tiny Rust binary</text>
+
+  <path d="M 364 333 L 392 333" class="flow-ok" marker-end="url(#arr-ok)" />
+
+  <rect x="398" y="280" width="340" height="106" rx="4" class="box-bg" />
+  <text x="414" y="302" class="warn">Cache Miss (First Call After Merge: ~2.5 s)</text>
+  <text x="414" y="322" class="code">git archive &lt;tree-oid&gt; | tar -xf</text>
+  <text x="414" y="338" class="code">rustc --edition 2021 -O lib.rs &amp;&amp; main.rs</text>
+  <text x="414" y="358" class="box-body">Atomic mktemp + mv rename; prunes >7d entries.</text>
+  <text x="414" y="374" class="small">Compiler chain: rustup → brew → Bazel → PATH</text>
+
+  <path d="M 738 333 L 766 333" class="flow" marker-end="url(#arr)" />
+
+  <rect x="772" y="280" width="264" height="106" rx="4" class="box-bg" />
+  <text x="788" y="302" class="box-head">Why 0700 Cache (Not $TMPDIR)</text>
+  <text x="788" y="322" class="box-body">Agents can write to $TMPDIR,</text>
+  <text x="788" y="338" class="box-body">and the next git oid is public—</text>
+  <text x="788" y="354" class="box-body">so an agent could pre-plant a</text>
+  <text x="788" y="370" class="err">no-op binary there.</text>
+
+  <!-- Fallback Ladder -->
+  <path d="M 204 404 L 204 438" class="flow-ok" marker-end="url(#arr-ok)" />
+  <path d="M 524 404 L 524 438" class="flow-warn" marker-end="url(#arr-warn)" />
+  <path d="M 858 404 L 858 438" class="flow-err" marker-end="url(#arr-err)" />
+
+  <rect x="24" y="444" width="328" height="212" rx="6" class="box-bg" />
+  <rect x="24" y="444" width="328" height="4" fill="#7fbf9a" />
+  <text x="42" y="472" class="ok">PRIMARY PATH (99%+ of calls)</text>
+  <text x="42" y="494" class="code">source: "origin/main:&lt;oid&gt;"</text>
+  <text x="42" y="518" class="box-body">Runs origin/main's binary +</text>
+  <text x="42" y="534" class="box-body">origin/main's policy.json.</text>
+  <text x="42" y="560" class="box-body">Exit 0 with allow (silent) or</text>
+  <text x="42" y="576" class="box-body">JSON deny verdict on stdout.</text>
+  <text x="42" y="616" class="small">Caches failed compiler lists in .failed</text>
+  <text x="42" y="632" class="small">so broken toolchains do not repeat.</text>
+
+  <rect x="376" y="444" width="328" height="212" rx="6" class="box-bg" />
+  <rect x="376" y="444" width="328" height="4" fill="#d9b264" />
+  <text x="394" y="472" class="warn">LOGGED FALLBACKS</text>
+  <text x="394" y="494" class="box-body">If origin/main missing or fails:</text>
+  <text x="394" y="518" class="code">1. working-copy-&lt;cksum&gt;</text>
+  <text x="408" y="534" class="small">Logs stderr warning + fallback reason</text>
+  <text x="394" y="560" class="code">2. Stale origin/main build</text>
+  <text x="408" y="576" class="small">Newest cache/guard-* from main</text>
+  <text x="408" y="592" class="small">(never an older unreviewed copy)</text>
+  <text x="394" y="632" class="warn">Both keep enforcement active.</text>
+
+  <rect x="728" y="444" width="328" height="212" rx="6" class="box-bg" />
+  <rect x="728" y="444" width="328" height="4" fill="#d2907b" />
+  <text x="746" y="472" class="err">FAIL CLOSED ON ERROR</text>
+  <text x="746" y="494" class="code">exit 1 (nothing runs unguarded)</text>
+  <text x="746" y="518" class="box-body">• Claude Code command hook sets</text>
+  <text x="760" y="534" class="code">"onFailure": "block"</text>
+  <text x="746" y="556" class="box-body">• Antigravity always denies if a</text>
+  <text x="760" y="572" class="box-body">hook crashes, hangs >60s, or</text>
+  <text x="760" y="588" class="box-body">prints malformed JSON.</text>
+  <text x="746" y="632" class="ok">File-edit tools omit onFailure in CC.</text>
+</svg>

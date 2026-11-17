@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 1080 680" width="100%" height="auto" role="img" aria-labelledby="t5 d5" style="background:#0e1317; font-family:'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'calt' 0; border-radius: 6px;">
+  <title id="t5">Why Naive Regex Fails: Anatomy of agent-guard's Rust Shell Parser</title>
+  <desc id="d5">Diagram showing six real shell evasion and edge cases handled by agent-guard's shell.rs and invocations.rs parser: compound pipelines and subshells, ANSI-C escapes and NUL truncation, APFS Unicode case folding, RUSTUP_FORCE_ARG0 proxy spoofing, prefix assignment divergence between bash and zsh, and git merge/rebase recovery exceptions.</desc>
+  <defs>
+    <style>
+      .title { fill: #e7e4dd; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+      .subtitle { fill: #8fa5b5; font-size: 12px; }
+      .box-bg { fill: #151d26; stroke: #26384a; stroke-width: 1.5; }
+      .box-hi { fill: #182330; stroke: #3c5975; stroke-width: 1.5; }
+      .box-head { fill: #e7e4dd; font-size: 13px; font-weight: 600; }
+      .box-body { fill: #8fa5b5; font-size: 11px; }
+      .code { fill: #c9d4de; font-size: 11px; }
+      .small { fill: #687f91; font-size: 10px; }
+      .accent { fill: #93b0ca; font-size: 11px; font-weight: 500; }
+      .ok { fill: #7fbf9a; font-size: 11px; font-weight: 500; }
+      .warn { fill: #d9b264; font-size: 11px; font-weight: 500; }
+      .err { fill: #d2907b; font-size: 11px; font-weight: 500; }
+      .flow-steel { stroke: #93b0ca; stroke-width: 1.5; fill: none; }
+    </style>
+    <marker id="arr-steel" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#93b0ca" />
+    </marker>
+  </defs>
+  <rect width="1080" height="680" fill="#0e1317" rx="6" />
+
+  <!-- Header -->
+  <rect x="24" y="24" width="1032" height="60" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="44" y="49" class="title">Beyond `^git push`: Inside the Rust Shell &amp; Context Decomposer</text>
+  <text x="44" y="69" class="subtitle">Why regex hooks break on day two — and what agent-guard's stdlib parser extracts before classifying a command</text>
+
+  <!-- Card 1: Compound Wrappers -->
+  <rect x="24" y="104" width="506" height="148" rx="6" class="box-bg" />
+  <text x="42" y="128" class="accent">1. RECURSIVE WRAPPERS &amp; SUBSHELLS</text>
+  <rect x="42" y="138" width="470" height="26" fill="#0d141b" stroke="#233547" rx="3" />
+  <text x="52" y="155" class="code">env FOO=1 xargs bash -c "cd sub &amp;&amp; $(echo go) test"</text>
+  <text x="42" y="182" class="box-body">Unwraps `&amp;&amp;`, `||`, `;`, `|`, `{ }`, `$(...)`, backticks, `&lt;(...)`, `bash -c`,</text>
+  <text x="42" y="198" class="box-body">`eval`, `env -S`, `xargs`, `find -exec`, `uv run`, `python -m`, and `sudo`.</text>
+  <text x="42" y="220" class="ok">→ Tracks `cd` &amp; `git -C` changes sequentially across invocations.</text>
+  <text x="42" y="236" class="small">Unquoted `cat &lt;&lt;EOF` checks `$(...)`; quoted `&lt;&lt;'EOF'` stays pure data.</text>
+
+  <!-- Card 2: Escapes & NUL bytes -->
+  <rect x="550" y="104" width="506" height="148" rx="6" class="box-bg" />
+  <text x="568" y="128" class="err">2. ANSI-C ESCAPES, NUL TRUNCATION &amp; HEREDOCS</text>
+  <rect x="568" y="138" width="470" height="26" fill="#0d141b" stroke="#233547" rx="3" />
+  <text x="578" y="155" class="err">$'\x67it' $'pu\x73h'   or   $'git\0padding' commit</text>
+  <text x="568" y="182" class="box-body">Decodes bash `$'...'` hex/octal escapes and truncates tokens at NUL bytes</text>
+  <text x="568" y="198" class="box-body">exactly as bash and zsh C strings do at execve() time.</text>
+  <text x="568" y="220" class="ok">→ Both decode back to `git push` / `git commit` before rules run.</text>
+  <text x="568" y="236" class="small">Heredocs piped cleanly or passed via `bash &lt;&lt;EOF` are parsed recursively.</text>
+
+  <!-- Card 3: APFS Case Folding -->
+  <rect x="24" y="270" width="506" height="148" rx="6" class="box-bg" />
+  <text x="42" y="294" class="warn">3. MACOS DISK CASE-FOLDING &amp; UNICODE HOMOGLYPHS</text>
+  <rect x="42" y="304" width="470" height="26" fill="#0d141b" stroke="#233547" rx="3" />
+  <text x="52" y="321" class="warn">/usr/bin/GIT push   |   =git stash   |   ba&#x017f;h -c "git push"</text>
+  <text x="42" y="348" class="box-body">Matches basename (strips `/usr/bin/` and zsh's `=cmd` prefix) and applies</text>
+  <text x="42" y="364" class="box-body">ASCII + Unicode case folding (long s `&#x017f;`, Kelvin `&#x212a;`, ligatures `&#xfb00;`).</text>
+  <text x="42" y="386" class="ok">→ Matches APFS case-insensitive filesystem resolution rules.</text>
+  <text x="42" y="402" class="small">Tables generated in unicode_tables.rs; tested in decision_table.json.</text>
+
+  <!-- Card 4: Rustup Proxies & Prefix Divergence -->
+  <rect x="550" y="270" width="506" height="148" rx="6" class="box-bg" />
+  <text x="568" y="294" class="accent">4. PROXY SPOOFING &amp; BASH-VS-ZSH AMBIGUITY</text>
+  <rect x="568" y="304" width="470" height="26" fill="#0d141b" stroke="#233547" rx="3" />
+  <text x="578" y="321" class="code">RUSTUP_FORCE_ARG0=cargo rustc  |  A[ x ]=1 git push</text>
+  <text x="568" y="348" class="box-body">• Reads rustup's `argv[0]` override by file stem; dynamic `$R` denies all.</text>
+  <text x="568" y="364" class="box-body">• Evaluates BOTH bash (`A[ x ]=1` = one var word) and zsh (`A[ x ]=1` =</text>
+  <text x="568" y="380" class="box-body">  split words) readings and refuses if either interpretation triggers a ban.</text>
+  <text x="568" y="402" class="ok">→ Conservative union prevents parser-differential bypasses.</text>
+
+  <!-- Bottom Row: Context-Aware Exceptions & Performance -->
+  <path d="M 540 418 L 540 446" class="flow-steel" marker-end="url(#arr-steel)" />
+
+  <rect x="24" y="452" width="676" height="204" rx="6" class="box-hi" />
+  <rect x="24" y="452" width="4" height="204" fill="#7fbf9a" />
+  <text x="44" y="478" class="ok">5. CONTEXT-AWARE EXCEPTIONS: NEVER STRAND HALF-FINISHED WORK</text>
+  <text x="44" y="498" class="box-body">Blocking blindly breaks real workflows. agent-guard probes git state via `git rev-parse --git-path`:</text>
+
+  <rect x="44" y="512" width="310" height="84" rx="4" class="box-bg" />
+  <text x="58" y="532" class="ok">Allowed During Active Conflict</text>
+  <text x="58" y="550" class="code">MERGE_HEAD / REBASE_HEAD present:</text>
+  <text x="58" y="568" class="box-body">• `git rebase --continue/--abort`</text>
+  <text x="58" y="584" class="box-body">• `git add &lt;conflicted-file&gt;`</text>
+
+  <rect x="372" y="512" width="310" height="84" rx="4" class="box-bg" />
+  <text x="386" y="532" class="accent">Distinguished Path vs. Branch</text>
+  <text x="386" y="550" class="code">git checkout &lt;name&gt;:</text>
+  <text x="386" y="568" class="box-body">• Exists on disk as path → ALLOWED</text>
+  <text x="386" y="584" class="err">• Branch switch → DENIED (worktree)</text>
+
+  <text x="44" y="622" class="box-body">• Read-only commands (`git status/diff/log`, `kubectl version`, `--help/--version`) pass freely.</text>
+  <text x="44" y="638" class="small">• Validated against a table of 800 real captured commands in tools/agent-guard/testdata/decision_table.json.</text>
+
+  <rect x="720" y="452" width="336" height="204" rx="6" class="box-bg" />
+  <text x="738" y="478" class="box-head">BOUNDED BY DESIGN</text>
+  <text x="738" y="502" class="accent">Performance Limits</text>
+  <text x="738" y="520" class="box-body">• 1 MB word / 5 MB heredoc: &lt; 1 s</text>
+  <text x="738" y="536" class="box-body">• Typical hook call: ~50 ms</text>
+  <text x="738" y="552" class="box-body">• &gt; 20,000 cmds → `oversize` deny</text>
+  <text x="738" y="578" class="warn">Honest Scope Limit</text>
+  <text x="738" y="596" class="box-body">Reads command text only — a</text>
+  <text x="738" y="612" class="box-body">script invoking `git` inside or</text>
+  <text x="738" y="628" class="box-body">`g=git; $g push` stops habits, not</text>
+  <text x="738" y="644" class="small">hostile sandbox escapes.</text>
+</svg>
