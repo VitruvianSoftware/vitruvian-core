@@ -101,7 +101,11 @@ struct InboxRowView<HoverMenu: View>: View {
     }
 
     private var displayTitle: String {
-        let formatted = displayTitleOverride ?? row.displayTitle
+        var formatted = displayTitleOverride ?? row.displayTitle
+        // A request from a stranger the bridge could not name: say who it is from, not "Facebook user" twice.
+        if row.request, RequestPresentation.isPlaceholderName(formatted) {
+            formatted = RequestPresentation.title(name: formatted, networkName: networkName)
+        }
         let raw = formatted.isEmpty ? String(localized: "Unnamed chat") : formatted
         return isRedacted ? AppearancePreferences.redactedText(raw, kind: .chatTitle) : raw
     }
@@ -156,7 +160,9 @@ struct InboxRowView<HoverMenu: View>: View {
                 if row.request {
                     HStack(spacing: 6) {
                         Button(String(localized: "Accept"), action: accept)
+                            .buttonStyle(.borderedProminent)
                         Button(String(localized: "Decline"), action: decline)
+                            .buttonStyle(.bordered)
                             .help(String(localized: "Hides the chat on this Mac. The person isn’t told."))
                     }
                     .controlSize(.small)
@@ -226,7 +232,7 @@ struct InboxRowView<HoverMenu: View>: View {
                 Text(typing)
             }
             .foregroundStyle(themeAccent)
-        } else if row.request {
+        } else if row.request, !style.showPreviews || row.preview.isEmpty {
             Text(String(localized: "Message request"))
                 .foregroundStyle(themeAccent)
         } else if !row.draft.isEmpty {

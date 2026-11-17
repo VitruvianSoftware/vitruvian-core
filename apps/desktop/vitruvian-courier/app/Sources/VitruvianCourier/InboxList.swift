@@ -142,7 +142,8 @@ struct InboxList: View {
         if !inbox.isLoaded {
             SkeletonRows(compact: preferences.compactList)
         } else if inbox.rows.isEmpty {
-            EmptyStateView(state: EmptyState.of(inbox.query))
+            EmptyStateView(state: EmptyState.of(inbox.query), guidance: EmptyStateGuidance.of(inbox.query),
+                           goToInbox: { spaces.select("inbox") })
         } else {
             list
         }
@@ -284,6 +285,8 @@ struct InboxList: View {
 /// An empty list: what this place is and how chats get here.
 struct EmptyStateView: View {
     let state: EmptyState
+    var guidance = EmptyStateGuidance(actions: [], howTo: nil)
+    var goToInbox: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 8) {
@@ -296,10 +299,21 @@ struct EmptyStateView: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 260)
             }
+            if let howTo = guidance.howTo {
+                Text(howTo)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 260)
+            }
+            if guidance.actions.contains(.goToInbox) {
+                Button(String(localized: "Go to Inbox"), action: goToInbox)
+                    .padding(.top, 4)
+            }
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 }
 
