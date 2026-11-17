@@ -290,12 +290,14 @@ func checkStackConfigBytes(raw []byte) (Settings, error) {
 		Namespace + ":escalation":        true,
 		Namespace + ":schedule":          true,
 		Namespace + ":notificationRules": true,
+		Namespace + ":dependencies":      true,
+		Namespace + ":businessServices":  true,
 		Namespace + ":services":          true,
 		"pagerduty:token":                true, // only as ciphertext, checked above
 	}
 	for k := range doc.Config {
 		if !allowed[k] {
-			return Settings{}, fmt.Errorf("unexpected config key %q: only responderEmail, escalation, schedule, notificationRules, services and an encrypted pagerduty:token are allowed", k)
+			return Settings{}, fmt.Errorf("unexpected config key %q: only responderEmail, escalation, schedule, notificationRules, dependencies, businessServices, services and an encrypted pagerduty:token are allowed", k)
 		}
 	}
 	if _, ok := doc.Config[Namespace+":token"]; ok {
@@ -322,6 +324,13 @@ func checkStackConfigBytes(raw []byte) (Settings, error) {
 	}
 	if err := decode("schedule", &s.Schedule); err != nil {
 		return Settings{}, err
+	}
+	for key, into := range map[string]any{"dependencies": &s.Dependencies, "businessServices": &s.BusinessServices} {
+		if n, ok := doc.Config[Namespace+":"+key]; ok {
+			if err := n.Decode(into); err != nil {
+				return Settings{}, fmt.Errorf("decode %s:%s: %w", Namespace, key, err)
+			}
+		}
 	}
 	// notificationRules is optional: empty leaves the user's rules alone.
 	if n, ok := doc.Config[Namespace+":notificationRules"]; ok {
@@ -462,6 +471,10 @@ func (m *pagerdutyMocks) NewResource(args pulumi.MockResourceArgs) (string, reso
 		id = "PSCHED01"
 	case "pagerduty:index/service:Service":
 		id = "PSVC_" + args.Name
+		outputs["type"] = resource.NewStringProperty("service")
+	case "pagerduty:index/businessService:BusinessService":
+		id = "PBIZ_" + args.Name
+		outputs["type"] = resource.NewStringProperty("business_service")
 	case "pagerduty:index/serviceIntegration:ServiceIntegration":
 		id = "PINT_" + args.Name
 		outputs["integrationKey"] = resource.NewStringProperty("fake-routing-key-0000000000000001")
@@ -919,5 +932,97 @@ func TestNoNotificationRulesLeavesUserAlone(t *testing.T) {
 	}
 	if n := len(m.byType("pagerduty:index/userNotificationRule:UserNotificationRule")); n != 0 {
 		t.Fatalf("no notificationRules config must manage no rules, got %d", n)
+	}
+}
+
+func depSettings() Settings {
+	s := validSettings()
+	s.Services = []Service{{Key: "cluster", Name: "Cluster"}, {Key: "ci", Name: "CI"}, {Key: "data", Name: "Data"}}
+	return s
+}
+
+func TestValidateDependencies(t *testing.T) {
+	cases := map[string]struct {
+		deps []Dependency
+		biz  []BusinessService
+		want string
+	}{
+		"unknown service":     {deps: []Dependency{{Service: "web", DependsOn: []string{"cluster"}}}, want: "dependencies[0].service"},
+		"unknown supporter":   {deps: []Dependency{{Service: "ci", DependsOn: []string{"web"}}}, want: "dependsOn \"web\""},
+		"no supporters":       {deps: []Dependency{{Service: "ci"}}, want: "at least one"},
+		"self":                {deps: []Dependency{{Service: "ci", DependsOn: []string{"ci"}}}, want: "itself"},
+		"repeat":              {deps: []Dependency{{Service: "ci", DependsOn: []string{"cluster"}}, {Service: "ci", DependsOn: []string{"cluster"}}}, want: "already depends"},
+		"cycle":               {deps: []Dependency{{Service: "ci", DependsOn: []string{"data"}}, {Service: "data", DependsOn: []string{"cluster"}}, {Service: "cluster", DependsOn: []string{"ci"}}}, want: "cycle: ci -> data -> cluster -> ci"},
+		"business bad key":    {biz: []BusinessService{{Key: "Home", Name: "H", DependsOn: []string{"ci"}}}, want: "businessServices[0].key"},
+		"business key clash":  {biz: []BusinessService{{Key: "ci", Name: "H", DependsOn: []string{"cluster"}}}, want: "already used"},
+		"business no name":    {biz: []BusinessService{{Key: "home", DependsOn: []string{"ci"}}}, want: "businessServices[0].name"},
+		"business unknown":    {biz: []BusinessService{{Key: "home", Name: "H", DependsOn: []string{"web"}}}, want: "is not a services key"},
+		"business repeat":     {biz: []BusinessService{{Key: "home", Name: "H", DependsOn: []string{"ci", "ci"}}}, want: "repeats"},
+		"business no members": {biz: []BusinessService{{Key: "home", Name: "H"}}, want: "at least one"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			s := depSettings()
+			s.Dependencies, s.BusinessServices = tc.deps, tc.biz
+			err := s.Validate()
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+	ok := depSettings()
+	ok.Dependencies = []Dependency{{Service: "ci", DependsOn: []string{"cluster"}}, {Service: "data", DependsOn: []string{"cluster"}}}
+	ok.BusinessServices = []BusinessService{{Key: "home", Name: "Home", DependsOn: []string{"ci", "data"}}}
+	if err := ok.Validate(); err != nil {
+		t.Fatalf("a valid map must pass: %v", err)
+	}
+}
+
+func TestDependencyResources(t *testing.T) {
+	s := depSettings()
+	s.Dependencies = []Dependency{{Service: "ci", DependsOn: []string{"cluster", "data"}}}
+	s.BusinessServices = []BusinessService{{Key: "home", Name: "Home", Description: "d", DependsOn: []string{"cluster"}}}
+	m := &pagerdutyMocks{}
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		provider, err := pagerduty.NewProvider(ctx, "pagerduty", &pagerduty.ProviderArgs{
+			Token: pulumi.ToSecret(pulumi.String("mock-token")).(pulumi.StringOutput),
+		})
+		if err != nil {
+			return err
+		}
+		_, err = Reconcile(ctx, provider, s)
+		return err
+	}, pulumi.WithMocks("vitruvian-pagerduty", "production", m))
+	if err != nil {
+		t.Fatalf("mocked run failed: %v", err)
+	}
+	deps := map[string]recordedResource{}
+	for _, r := range m.byType("pagerduty:index/serviceDependency:ServiceDependency") {
+		deps[r.Name] = r
+	}
+	if len(deps) != 3 {
+		t.Fatalf("want one dependency per pair (3), got %v", deps)
+	}
+	pair := func(name string) (string, string, string, string) {
+		d := deps[name].Inputs["dependency"].ObjectValue()
+		dep := d["dependentServices"].ArrayValue()[0].ObjectValue()
+		sup := d["supportingServices"].ArrayValue()[0].ObjectValue()
+		return dep["id"].StringValue(), dep["type"].StringValue(), sup["id"].StringValue(), sup["type"].StringValue()
+	}
+	if a, at, b, bt := pair("dep-ci-on-cluster"); a != "PSVC_ci" || at != "service" || b != "PSVC_cluster" || bt != "service" {
+		t.Fatalf("ci on cluster = %s/%s on %s/%s", a, at, b, bt)
+	}
+	if _, _, b, _ := pair("dep-ci-on-data"); b != "PSVC_data" {
+		t.Fatalf("ci on data supporter = %s", b)
+	}
+	if a, at, b, _ := pair("dep-business-home-on-cluster"); a != "PBIZ_business-home" || at != "business_service" || b != "PSVC_cluster" {
+		t.Fatalf("business dependency = %s/%s on %s", a, at, b)
+	}
+	biz := m.byType("pagerduty:index/businessService:BusinessService")
+	if len(biz) != 1 || biz[0].Inputs["name"].StringValue() != "Home" {
+		t.Fatalf("want one business service named Home, got %+v", biz)
+	}
+	if _, hasTeam := biz[0].Inputs["team"]; hasTeam {
+		t.Fatal("business service must not set team: Business/Enterprise only")
 	}
 }

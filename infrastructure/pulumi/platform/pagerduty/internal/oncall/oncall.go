@@ -125,7 +125,11 @@ type Settings struct {
 	// NotificationRules are the responder's own rules. Empty leaves the
 	// user's rules unmanaged.
 	NotificationRules []NotificationRule `json:"notificationRules" yaml:"notificationRules"`
-	Services          []Service          `json:"services" yaml:"services"`
+	// Dependencies and BusinessServices map which services need which, so an
+	// incident shows everything it affects. Both are optional.
+	Dependencies     []Dependency      `json:"dependencies" yaml:"dependencies"`
+	BusinessServices []BusinessService `json:"businessServices" yaml:"businessServices"`
+	Services         []Service         `json:"services" yaml:"services"`
 }
 
 // ServiceOutputs carries the exported Pulumi outputs for a single service.
@@ -153,6 +157,12 @@ func Load(cfg *config.Config) (Settings, error) {
 	}
 	if err := cfg.GetObject("notificationRules", &s.NotificationRules); err != nil {
 		return Settings{}, fmt.Errorf("decode %s:notificationRules: %w", Namespace, err)
+	}
+	if err := cfg.GetObject("dependencies", &s.Dependencies); err != nil {
+		return Settings{}, fmt.Errorf("decode %s:dependencies: %w", Namespace, err)
+	}
+	if err := cfg.GetObject("businessServices", &s.BusinessServices); err != nil {
+		return Settings{}, fmt.Errorf("decode %s:businessServices: %w", Namespace, err)
 	}
 	if err := cfg.GetObject("services", &s.Services); err != nil {
 		return Settings{}, fmt.Errorf("decode %s:services: %w", Namespace, err)
@@ -211,6 +221,7 @@ func (s Settings) Validate() error {
 		seenMember[m] = true
 	}
 	validateNotificationRules(s.NotificationRules, add)
+	validateDependencies(s, add)
 	if len(s.Services) == 0 {
 		add("services must contain at least one entry")
 	}
@@ -368,6 +379,7 @@ func Reconcile(ctx *pulumi.Context, provider *pagerduty.Provider, s Settings) (*
 		Services:           make(map[string]ServiceOutputs, len(s.Services)),
 	}
 
+	pdServices := make(map[string]*pagerduty.Service, len(s.Services))
 	for _, svc := range s.Services {
 		// Derive resource names from svc.Key so display name edits never replace.
 		pdService, err := pagerduty.NewService(ctx, svc.Key, &pagerduty.ServiceArgs{
@@ -403,11 +415,15 @@ func Reconcile(ctx *pulumi.Context, provider *pagerduty.Provider, s Settings) (*
 		ctx.Export(svc.Key+"ServiceId", pdService.ID())
 		ctx.Export(svc.Key+"IntegrationKey", secretKey)
 
+		pdServices[svc.Key] = pdService
 		out.Services[svc.Key] = ServiceOutputs{
 			ServiceID:      pdService.ID(),
 			IntegrationKey: secretKey,
 		}
 	}
 
+	if err := reconcileDependencies(ctx, providerOpt, s, pdServices); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
