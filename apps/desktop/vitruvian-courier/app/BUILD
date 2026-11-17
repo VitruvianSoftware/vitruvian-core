@@ -368,7 +368,6 @@ pipeline_unit(
     runner = "xcode-27",
     test_targets = [
         ":VitruvianCourierCoreTests",
-        ":VitruvianCourierViewTests",
         ":app_holds_engine_test",
         ":engine_contract_test",
         ":inject_app_credentials_test",
@@ -378,6 +377,25 @@ pipeline_unit(
     # A cold build of the engine it bundles is libsignal's 2,000+ actions
     # (../engine/BUILD); the remote cache makes later runs much shorter.
     timeout_minutes = 60,
+)
+
+# The view tests are a unit of their own so they do not wait for the engine.
+# They need Swift and nothing else, while the unit above also builds the
+# engine it bundles, and with it LLVM, Go and Rust. On a hosted Mac with no
+# repository cache, fetch and analysis took 77-125 s for the view tests alone
+# against 481-566 s for all six tests together (PR #5046), and the view tests
+# are the longest thing either unit runs (about 9.5 minutes). Apart, the two
+# run side by side: a view change costs a second Mac for a shorter queue run.
+pipeline_unit(
+    name = "vitruvian-courier-views-macos",
+    persona = "frontend",
+    runner = "xcode-27",
+    test_targets = [
+        ":VitruvianCourierViewTests",
+    ],
+    tier = "L1",
+    # The suite alone is allowed 900 s (see :VitruvianCourierViewTests).
+    timeout_minutes = 40,
 )
 
 # bazel run //apps/desktop/vitruvian-courier/app:publish [-- --dry-run]

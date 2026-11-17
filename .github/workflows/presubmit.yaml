@@ -224,7 +224,7 @@ jobs:
           QUEUED: ${{ steps.queued.outputs.verdict }}
           QUEUED_RUN: ${{ steps.queued.outputs.run }}
           FAST_LANE: ${{ steps.fastlane.outputs.verdict }}
-          ALL_UNITS: '["antigravity-ext-marketplace","antigravity-gh-watch","antigravity-hookify","antigravity-live-context","antigravity-plugins-conformance","antigravity-ralph-loop","antigravity-receipts-report","antigravity-savvy-fleet","antigravity-security-guidance","antigravity-worktree-band","backstage-backend","design-system","backstage-app","design-system-android","gods-eye-view","oauth-user-inspector","peripherals","pulumi-repo-config","remote","remote-boot","remote-mac-agent","remote-mac-menu","vitruvian-atrium-macos","vitruvian-code-src","vitruvian-code-macos","vitruvian-courier-app-macos","vitruvian-courier-engine-macos","vitruvian-devx","vitruvian-github","vitruvian-homelab","vitruvian-mcp-auth","vitruvian-relay","vitruvian-relay-protocol","vitruvian-relay-spike-service","vitruvian-sdk","vitruvian-slack-mcp-service","vitruvian-tabs-shared","vitruvian-tabs-api","vitruvian-tabs-cli","vitruvian-tabs-extension","vitruvian-tabs-web","vitruvian-wand-android","vitruvian-wand-linux","vitruvian-wand-macos","vrelay","vrelay-dc","vrelay-install"]'
+          ALL_UNITS: '["antigravity-ext-marketplace","antigravity-gh-watch","antigravity-hookify","antigravity-live-context","antigravity-plugins-conformance","antigravity-ralph-loop","antigravity-receipts-report","antigravity-savvy-fleet","antigravity-security-guidance","antigravity-worktree-band","backstage-backend","design-system","backstage-app","design-system-android","gods-eye-view","oauth-user-inspector","peripherals","pulumi-repo-config","remote","remote-boot","remote-mac-agent","remote-mac-menu","vitruvian-atrium-macos","vitruvian-code-src","vitruvian-code-macos","vitruvian-courier-app-macos","vitruvian-courier-engine-macos","vitruvian-courier-views-macos","vitruvian-devx","vitruvian-github","vitruvian-homelab","vitruvian-mcp-auth","vitruvian-relay","vitruvian-relay-protocol","vitruvian-relay-spike-service","vitruvian-sdk","vitruvian-slack-mcp-service","vitruvian-tabs-shared","vitruvian-tabs-api","vitruvian-tabs-cli","vitruvian-tabs-extension","vitruvian-tabs-web","vitruvian-wand-android","vitruvian-wand-linux","vitruvian-wand-macos","vrelay","vrelay-dc","vrelay-install"]'
         run: |
           set +e -u -o pipefail
           if [ "$RELEASE_SKIP" = "true" ]; then
@@ -1352,7 +1352,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests //apps/desktop/vitruvian-courier/app:VitruvianCourierViewTests //apps/desktop/vitruvian-courier/app:app_holds_engine_test //apps/desktop/vitruvian-courier/app:engine_contract_test //apps/desktop/vitruvian-courier/app:inject_app_credentials_test //apps/desktop/vitruvian-courier/app:release_engine_has_no_seed_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests //apps/desktop/vitruvian-courier/app:VitruvianCourierViewTests //apps/desktop/vitruvian-courier/app:app_holds_engine_test //apps/desktop/vitruvian-courier/app:engine_contract_test //apps/desktop/vitruvian-courier/app:inject_app_credentials_test //apps/desktop/vitruvian-courier/app:release_engine_has_no_seed_test; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests //apps/desktop/vitruvian-courier/app:app_holds_engine_test //apps/desktop/vitruvian-courier/app:engine_contract_test //apps/desktop/vitruvian-courier/app:inject_app_credentials_test //apps/desktop/vitruvian-courier/app:release_engine_has_no_seed_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests //apps/desktop/vitruvian-courier/app:app_holds_engine_test //apps/desktop/vitruvian-courier/app:engine_contract_test //apps/desktop/vitruvian-courier/app:inject_app_credentials_test //apps/desktop/vitruvian-courier/app:release_engine_has_no_seed_test; else exit $rc; fi; }
 
   unit-vitruvian-courier-engine-macos:
     name: vitruvian-courier-engine-macos
@@ -1383,6 +1383,36 @@ jobs:
             cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
           bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian-courier/engine/cmd/vitruvian-courier-engine:vitruvian-courier-engine_seed_test //apps/desktop/vitruvian-courier/engine/cmd/vitruvian-courier-engine:vitruvian-courier-engine_test //apps/desktop/vitruvian-courier/engine/cmd/vitruvian-courier-engine-cli:vitruvian-courier-engine-cli_test //apps/desktop/vitruvian-courier/engine/internal/gchat:gchat_test //apps/desktop/vitruvian-courier/engine/internal/networks:gchat_link_test //apps/desktop/vitruvian-courier/engine/internal/networks:networks_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian-courier/engine/cmd/vitruvian-courier-engine:vitruvian-courier-engine_seed_test //apps/desktop/vitruvian-courier/engine/cmd/vitruvian-courier-engine:vitruvian-courier-engine_test //apps/desktop/vitruvian-courier/engine/cmd/vitruvian-courier-engine-cli:vitruvian-courier-engine-cli_test //apps/desktop/vitruvian-courier/engine/internal/gchat:gchat_test //apps/desktop/vitruvian-courier/engine/internal/networks:gchat_link_test //apps/desktop/vitruvian-courier/engine/internal/networks:networks_test; else exit $rc; fi; }
+
+  unit-vitruvian-courier-views-macos:
+    name: vitruvian-courier-views-macos
+    runs-on: xcode-27
+    timeout-minutes: 40
+    needs: [plan]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-courier-views-macos')) }}
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select the pinned Xcode
+        uses: ./.github/actions/select-xcode
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Build & Test Unit vitruvian-courier-views-macos
+        run: |
+          set -euo pipefail
+          cache_flags=()
+          extra_flags=()
+          extra_flags=(--config=macos-app)
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian-courier/app:VitruvianCourierViewTests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian-courier/app:VitruvianCourierViewTests; else exit $rc; fi; }
 
   unit-vitruvian-devx:
     name: vitruvian-devx
@@ -2253,7 +2283,7 @@ jobs:
 
   gate:
     name: gate/all-required-passed
-    needs: [plan, unit-antigravity-ext-marketplace, unit-antigravity-gh-watch, unit-antigravity-hookify, unit-antigravity-live-context, unit-antigravity-plugins-conformance, unit-antigravity-ralph-loop, unit-antigravity-receipts-report, unit-antigravity-savvy-fleet, unit-antigravity-security-guidance, unit-antigravity-worktree-band, unit-backstage-backend, unit-design-system, unit-backstage-app, unit-design-system-android, unit-gods-eye-view, unit-oauth-user-inspector, unit-peripherals, unit-pulumi-repo-config, unit-remote, unit-remote-boot, unit-remote-mac-agent, unit-remote-mac-menu, unit-vitruvian-atrium-macos, unit-vitruvian-code-src, unit-vitruvian-code-macos, unit-vitruvian-courier-app-macos, unit-vitruvian-courier-engine-macos, unit-vitruvian-devx, unit-vitruvian-github, unit-vitruvian-homelab, unit-vitruvian-mcp-auth, unit-vitruvian-relay, unit-vitruvian-relay-protocol, unit-vitruvian-relay-spike-service, unit-vitruvian-sdk, unit-vitruvian-slack-mcp-service, unit-vitruvian-tabs-shared, unit-vitruvian-tabs-api, unit-vitruvian-tabs-cli, unit-vitruvian-tabs-extension, unit-vitruvian-tabs-web, unit-vitruvian-wand-android, unit-vitruvian-wand-linux, unit-vitruvian-wand-macos, unit-vrelay, unit-vrelay-dc, unit-vrelay-install]
+    needs: [plan, unit-antigravity-ext-marketplace, unit-antigravity-gh-watch, unit-antigravity-hookify, unit-antigravity-live-context, unit-antigravity-plugins-conformance, unit-antigravity-ralph-loop, unit-antigravity-receipts-report, unit-antigravity-savvy-fleet, unit-antigravity-security-guidance, unit-antigravity-worktree-band, unit-backstage-backend, unit-design-system, unit-backstage-app, unit-design-system-android, unit-gods-eye-view, unit-oauth-user-inspector, unit-peripherals, unit-pulumi-repo-config, unit-remote, unit-remote-boot, unit-remote-mac-agent, unit-remote-mac-menu, unit-vitruvian-atrium-macos, unit-vitruvian-code-src, unit-vitruvian-code-macos, unit-vitruvian-courier-app-macos, unit-vitruvian-courier-engine-macos, unit-vitruvian-courier-views-macos, unit-vitruvian-devx, unit-vitruvian-github, unit-vitruvian-homelab, unit-vitruvian-mcp-auth, unit-vitruvian-relay, unit-vitruvian-relay-protocol, unit-vitruvian-relay-spike-service, unit-vitruvian-sdk, unit-vitruvian-slack-mcp-service, unit-vitruvian-tabs-shared, unit-vitruvian-tabs-api, unit-vitruvian-tabs-cli, unit-vitruvian-tabs-extension, unit-vitruvian-tabs-web, unit-vitruvian-wand-android, unit-vitruvian-wand-linux, unit-vitruvian-wand-macos, unit-vrelay, unit-vrelay-dc, unit-vrelay-install]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5
