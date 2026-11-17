@@ -151,7 +151,7 @@ class _Clipboard:
         return ClipboardReadTextResult.from_json(self._request("clipboard/readText", None), "the answer to clipboard/readText")
 
     def write_text(self, text: str) -> ClipboardWriteTextResult:
-        """`clipboard/writeText`. Replace the clipboard with this text, marked as Vitruvian's own so clipboard history files it correctly. Needs `clipboard.write` in the manifest's `uses`."""
+        """`clipboard/writeText`. Replace the clipboard with this text, marked as Vitruvian Atrium's own so clipboard history files it correctly. Needs `clipboard.write` in the manifest's `uses`."""
         return ClipboardWriteTextResult.from_json(self._request("clipboard/writeText", ClipboardWriteTextParams(text=text).to_json()), "the answer to clipboard/writeText")
 
 

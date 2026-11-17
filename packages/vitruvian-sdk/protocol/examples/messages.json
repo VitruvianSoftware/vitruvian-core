@@ -279,7 +279,7 @@
       }
     },
     {
-      "about": "refused: Vitruvian lacks a permission",
+      "about": "refused: Vitruvian Atrium lacks a permission",
       "valid": true,
       "answers": "keystrokes/paste",
       "message": {
@@ -287,7 +287,7 @@
         "id": 7,
         "error": {
           "code": -32003,
-          "message": "Vitruvian lacks a macOS permission",
+          "message": "Vitruvian Atrium lacks a macOS permission",
           "data": { "permission": "accessibility" }
         }
       }

@@ -221,7 +221,7 @@ enum ExternalToolCallsTests {
                      "a modifier the protocol does not name is invalid params")
         bench.world.granted = []
         let refused = error(bench.ask(.keystrokesPaste, #"{"text": "Plain"}"#))
-        suite.expect(refused == RPCErrorObject(code: -32003, message: "Vitruvian lacks a macOS permission",
+        suite.expect(refused == RPCErrorObject(code: -32003, message: "Vitruvian Atrium lacks a macOS permission",
                                                data: .object(["permission": .string("accessibility")]))
                          && bench.pastes == ["Plain"],
                      "without Accessibility a keystroke request is refused with -32003, and names the permission")
