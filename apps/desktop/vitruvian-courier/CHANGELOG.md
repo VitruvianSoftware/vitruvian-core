@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.26](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.25...vitruvian-courier-v0.3.26) (2026-11-17)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** chat info: your own picture, link titles, notes, labels and per-chat sound ([#5014](https://github.com/VitruvianSoftware/vitruvian-core/issues/5014)) ([da4dfa9](https://github.com/VitruvianSoftware/vitruvian-core/commit/da4dfa9ae289d34ed200223257acb933ff357e74))
+* **vitruvian-courier:** clean inbox previews, no media URLs, Slack joins as quiet membership lines ([#5016](https://github.com/VitruvianSoftware/vitruvian-core/issues/5016)) ([25fbd5c](https://github.com/VitruvianSoftware/vitruvian-core/commit/25fbd5cce75306000fe05ed38d9182bef50fda68))
+* **vitruvian-courier:** decode double-escaped link titles, keep the sound label whole ([#5031](https://github.com/VitruvianSoftware/vitruvian-core/issues/5031)) ([e329bcd](https://github.com/VitruvianSoftware/vitruvian-core/commit/e329bcd78ae505cccdb22f69aff557baacc31682))
+* **vitruvian-courier:** full file names, YouTube thumbnails, readable mentions ([#5015](https://github.com/VitruvianSoftware/vitruvian-core/issues/5015)) ([f37b423](https://github.com/VitruvianSoftware/vitruvian-core/commit/f37b423aaad46fba8a46f8de8f4de8fbd3cb811a))
+* **vitruvian-courier:** readable timeline: custom emoji, one time per run, capped width, bigger time, clearer thread line ([#5013](https://github.com/VitruvianSoftware/vitruvian-core/issues/5013)) ([ef0a03f](https://github.com/VitruvianSoftware/vitruvian-core/commit/ef0a03f6cd22be7da3ee3824a51b2930e0a23f85))
+
 ## [0.3.25](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.24...vitruvian-courier-v0.3.25) (2026-11-17)
 
 
