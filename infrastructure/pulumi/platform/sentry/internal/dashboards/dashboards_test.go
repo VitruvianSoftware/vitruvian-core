@@ -51,8 +51,16 @@ func TestDefaultDashboardsValid(t *testing.T) {
 			if w.WidgetType != "error-events" {
 				t.Errorf("widget %q has widgetType %q, want error-events", w.Title, w.WidgetType)
 			}
+			if w.DisplayType == "bar" && (w.Limit < 1 || w.Limit > 10) {
+				t.Errorf("bar widget %q has limit %d, must be in 1..10", w.Title, w.Limit)
+			}
 			if len(w.Queries) == 0 {
 				t.Errorf("widget %q has no queries", w.Title)
+			}
+			for _, q := range w.Queries {
+				if strings.Contains(q.Conditions, "is:unhandled") {
+					t.Errorf("widget %q uses invalid filter is:unhandled; use error.unhandled:true", w.Title)
+				}
 			}
 		}
 		raw, err := Body(d)
