@@ -1182,11 +1182,17 @@ public final class ConversationModel: ObservableObject {
     }
 
     /// My own picture for Chat Info: the one on my entry in the member list, else on a message of mine in Chat Info or
-    /// in the open chat's timeline. "" when the app has seen none.
+    /// in the open chat's timeline (the newest, from the chat's own account). "" when the app has seen none.
     public func ownAvatarPath(for info: RoomInfoResult) -> String {
-        let fromTimeline = events.values.first {
-            ($0.mine || $0.sender == Timeline.meUserID) && !$0.senderAvatarPath.isEmpty
-        }?.senderAvatarPath ?? ""
+        // Only my messages from the same account as this chat: my picture differs between accounts and networks.
+        let chatRow = chat(info.roomID)
+        let sameAccount = events.values.filter { event in
+            guard let row = chat(event.roomID) else { return event.roomID == info.roomID }
+            guard row.network == (chatRow?.network ?? info.network) else { return false }
+            let login = chatRow?.loginName ?? ""
+            return login.isEmpty || row.loginName.isEmpty || row.loginName == login
+        }
+        let fromTimeline = ChatInfoPresentation.newestOwnAvatar(in: sameAccount)
         return ChatInfoPresentation.ownAvatarPath(in: info, fallback: fromTimeline)
     }
 

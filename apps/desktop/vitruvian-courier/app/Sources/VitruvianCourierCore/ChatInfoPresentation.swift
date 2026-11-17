@@ -131,11 +131,16 @@ public enum ChatInfoPresentation {
         if let mine = info.members.first(where: { $0.userID == Timeline.meUserID }), !mine.avatarPath.isEmpty {
             return mine.avatarPath
         }
-        for event in info.sharedMedia + info.sharedFiles
-        where (event.mine || event.sender == Timeline.meUserID) && !event.senderAvatarPath.isEmpty {
-            return event.senderAvatarPath
-        }
-        return fallback
+        let fromInfo = newestOwnAvatar(in: info.sharedMedia + info.sharedFiles)
+        return fromInfo.isEmpty ? fallback : fromInfo
+    }
+
+    /// The picture on my newest message among `events` that carries one (newest by time, then by order), "" when none
+    /// does. Never an arbitrary one: the same events always give the same picture.
+    public static func newestOwnAvatar(in events: [Event]) -> String {
+        events
+            .filter { ($0.mine || $0.sender == Timeline.meUserID) && !$0.senderAvatarPath.isEmpty }
+            .max { ($0.ts, $0.seq) < ($1.ts, $1.seq) }?.senderAvatarPath ?? ""
     }
 
     /// The picture a Participants row shows: the member's own, else (for me) `ownAvatarPath`.

@@ -62,8 +62,8 @@ public struct ChatInfoPane: View {
     public var headerInToolbar: Bool = false
     /// My own picture, for my Participants row and my Shared Media badges when the member list has none for me.
     public var selfAvatarPath: String = ""
-    /// Where this chat's private note is kept (on this Mac only).
-    public var notesStore: ChatNotesStore = ChatNotesStore()
+    /// Where the chats' private notes are kept (on this Mac only); nil is the app's own store.
+    public var notesStore: ChatNotesStore? = nil
     /// The notification settings the per-chat sound is kept in; nil takes them from `inbox`. With neither, the
     /// Notification sound row is left out.
     public var notificationPreferences: NotificationPreferences? = nil
@@ -83,10 +83,6 @@ public struct ChatInfoPane: View {
     @State private var bookmarksExpanded = true
     @State private var labelsExpanded = true
     @State private var notesExpanded = true
-    @State private var noteText: String
-    /// The chat `noteText` belongs to: a note is saved under it, never under whatever chat is open by then.
-    @State private var noteRoomID: String
-    @State private var noteSaveTask: Task<Void, Never>?
 
     public init(
         info: RoomInfoResult,
@@ -130,7 +126,7 @@ public struct ChatInfoPane: View {
         inbox: InboxModel? = nil,
         headerInToolbar: Bool = false,
         selfAvatarPath: String = "",
-        notesStore: ChatNotesStore = ChatNotesStore(),
+        notesStore: ChatNotesStore? = nil,
         notificationPreferences: NotificationPreferences? = nil,
         labelSpaces: SpacesModel? = nil
     ) {
@@ -138,8 +134,6 @@ public struct ChatInfoPane: View {
         self.notesStore = notesStore
         self.notificationPreferences = notificationPreferences
         self.labelSpaces = labelSpaces
-        _noteText = State(initialValue: notesStore.note(for: info.roomID))
-        _noteRoomID = State(initialValue: info.roomID)
         self.headerInToolbar = headerInToolbar
         self.inbox = inbox
         self.info = info
@@ -247,41 +241,9 @@ public struct ChatInfoPane: View {
         .onChange(of: focusSearchTrigger) { _, _ in
             isFilterFocused = true
         }
-        .onChange(of: noteText) { _, _ in scheduleNoteSave() }
-        .onChange(of: info.roomID) { _, newRoomID in switchNote(to: newRoomID) }
-        .onDisappear { flushNote() }
     }
 
     // MARK: - Notes
-
-    /// Saves the note a moment after the last keystroke, so typing never waits on storage.
-    private func scheduleNoteSave() {
-        noteSaveTask?.cancel()
-        let text = noteText
-        let roomID = noteRoomID
-        let store = notesStore
-        noteSaveTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: ChatNotesStore.saveDelayNanoseconds)
-            guard !Task.isCancelled else { return }
-            store.setNote(text, for: roomID)
-        }
-    }
-
-    /// Saves now: when the pane closes, and before another chat's note replaces this one.
-    private func flushNote() {
-        noteSaveTask?.cancel()
-        noteSaveTask = nil
-        notesStore.setNote(noteText, for: noteRoomID)
-    }
-
-    private func switchNote(to roomID: String) {
-        guard roomID != noteRoomID else { return }
-        flushNote()
-        noteRoomID = roomID
-        noteText = notesStore.note(for: roomID)
-        noteSaveTask?.cancel()
-        noteSaveTask = nil
-    }
 
     private var notesSection: some View {
         ChatInfoSection(
@@ -289,19 +251,7 @@ public struct ChatInfoPane: View {
             count: nil,
             isExpanded: $notesExpanded
         ) {
-            VStack(alignment: .leading, spacing: 4) {
-                TextField(String(localized: "Notes"), text: $noteText, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.callout)
-                    .lineLimit(3...10)
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06)))
-                    .accessibilityIdentifier("chat-info-notes")
-                    .chatInfoRowProbe("notes:\(noteText)")
-                Text(String(localized: "Only you can see this. It stays on this Mac."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            ChatInfoNotesField(roomID: info.roomID, store: notesStore ?? .shared)
         }
     }
 
@@ -1130,7 +1080,9 @@ private struct ChatInfoSection<Content: View>: View {
     }
 }
 
-/// Tells a view test which Chat Info rows were drawn (`name`), without relying on the accessibility tree.
+#if DEBUG
+/// Tells a view test which Chat Info rows were drawn (`name`), without relying on the accessibility tree. Not in
+/// release builds.
 struct ChatInfoRowProbeKey: EnvironmentKey {
     static let defaultValue: (@MainActor (String) -> Void)? = nil
 }
@@ -1156,6 +1108,11 @@ extension View {
         modifier(ChatInfoRowProbeModifier(name: name))
     }
 }
+#else
+extension View {
+    fileprivate func chatInfoRowProbe(_ name: String) -> some View { self }
+}
+#endif
 
 /// The environment's spaces (and so the labels), for a Chat Info pane built without them.
 private struct ChatInfoSpacesKey: EnvironmentKey {
@@ -1190,6 +1147,35 @@ private struct ObservedChatInfoLabelsSection: View {
     }
 }
 
+/// The note for one chat. It reads and writes the shared store, so a second window on the chat shows the same text,
+/// and it saves on a chat switch and when the pane goes away.
+struct ChatInfoNotesField: View {
+    let roomID: String
+    @ObservedObject var store: ChatNotesStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            TextField(
+                String(localized: "Notes"),
+                text: Binding(get: { store.note(for: roomID) }, set: { store.setNote($0, for: roomID) }),
+                axis: .vertical
+            )
+            .textFieldStyle(.plain)
+            .font(.callout)
+            .lineLimit(3...10)
+            .padding(8)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06)))
+            .accessibilityIdentifier("chat-info-notes")
+            .chatInfoRowProbe("notes:\(store.note(for: roomID))")
+            Text(String(localized: "Only you can see this. It stays on this Mac."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .onChange(of: roomID) { _, _ in store.flush() }
+        .onDisappear { store.flush() }
+    }
+}
+
 /// Chat Info's Labels: this chat's labels as chips, and "Add to a Label" to change them.
 struct ChatInfoLabelsSection: View {
     let labels: [Space]
@@ -1199,6 +1185,16 @@ struct ChatInfoLabelsSection: View {
     let onNewLabel: () -> Void
 
     private var assigned: [Space] { labels.filter { assignedIDs.contains($0.labelID) } }
+
+    /// What ticking a label in the Add to a Label menu does: ticked puts it on the chat, unticked takes it off.
+    func menuBinding(for label: Space) -> Binding<Bool> {
+        Binding(get: { assignedIDs.contains(label.labelID) }, set: { onSet(label, $0) })
+    }
+
+    /// What the x on a label's chip does.
+    func removeChip(_ label: Space) {
+        onSet(label, false)
+    }
 
     var body: some View {
         ChatInfoSection(title: String(localized: "Labels"), count: assigned.count, isExpanded: $isExpanded) {
@@ -1212,7 +1208,7 @@ struct ChatInfoLabelsSection: View {
                                     .font(.caption)
                                     .lineLimit(1)
                                 Button {
-                                    onSet(label, false)
+                                    removeChip(label)
                                 } label: {
                                     Image(systemName: "xmark")
                                         .font(.system(size: 8, weight: .bold))
@@ -1230,10 +1226,7 @@ struct ChatInfoLabelsSection: View {
                 }
                 Menu {
                     ForEach(labels) { label in
-                        Toggle(label.title, isOn: Binding(
-                            get: { assignedIDs.contains(label.labelID) },
-                            set: { onSet(label, $0) }
-                        ))
+                        Toggle(label.title, isOn: menuBinding(for: label))
                     }
                     if !labels.isEmpty { Divider() }
                     Button(String(localized: "New Label…"), action: onNewLabel)

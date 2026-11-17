@@ -69,6 +69,14 @@ final class ChatInfoPresentationTests: XCTestCase {
         XCTAssertEqual(ChatInfoPresentation.ownAvatarPath(in: info(), fallback: "/seen.png"), "/seen.png")
         XCTAssertEqual(ChatInfoPresentation.ownAvatarPath(in: info()), "")
 
+        // Several of my messages carry a picture: the newest wins, whatever the order they are listed in.
+        var older = makeEvent(id: "$old", msgtype: "m.image", sender: me, senderName: "Me", senderAvatarPath: "/old.png", mine: true)
+        older.ts = 1_000
+        var newer = makeEvent(id: "$new", msgtype: "m.image", sender: me, senderName: "Me", senderAvatarPath: "/new.png", mine: true)
+        newer.ts = 2_000
+        XCTAssertEqual(ChatInfoPresentation.newestOwnAvatar(in: [older, newer]), "/new.png")
+        XCTAssertEqual(ChatInfoPresentation.newestOwnAvatar(in: [newer, older]), "/new.png")
+
         // My Participants row and my Shared Media badge use it; someone else's never do.
         XCTAssertEqual(ChatInfoPresentation.participantAvatarPath(for: Member(userID: me, name: "Me"), ownAvatarPath: "/own.png"), "/own.png")
         XCTAssertEqual(ChatInfoPresentation.participantAvatarPath(for: Member(userID: "@bob:courier.local", name: "Bob"), ownAvatarPath: "/own.png"), "")

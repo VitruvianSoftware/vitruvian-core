@@ -6162,7 +6162,7 @@ final class ViewSnapshotTests: XCTestCase {
         let suite = "courier.test.chatinfo-notes.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let store = ChatNotesStore(defaults: defaults)
+        let store = ChatNotesStore(fileURL: nil, saveDelay: .seconds(30), notificationCenter: NotificationCenter())
         store.setNote("Gate code 4417", for: "!notes:courier.local")
         store.setNote("Somebody else's", for: "!other:courier.local")
         let prefs = NotificationPreferences(defaults: defaults)
@@ -6189,12 +6189,15 @@ final class ViewSnapshotTests: XCTestCase {
     func testChatInfoLabelsSectionShowsAssignedLabelsAndAddMenu() throws {
         let work = Space(spaceID: "label:1", kind: .label, title: "Work", labelID: 1, color: 7, icon: "briefcase")
         let family = Space(spaceID: "label:2", kind: .label, title: "Family", labelID: 2, color: 0, icon: "heart")
-        var changes: [String] = []
+        var assigned: [Int64] = [1]
         var expanded = true
         let section = ChatInfoLabelsSection(
-            labels: [work, family], assignedIDs: [1],
+            labels: [work, family], assignedIDs: assigned,
             isExpanded: Binding(get: { expanded }, set: { expanded = $0 }),
-            onSet: { label, on in changes.append("\(label.title):\(on)") },
+            onSet: { label, on in
+                assigned.removeAll { $0 == label.labelID }
+                if on { assigned.append(label.labelID) }
+            },
             onNewLabel: {}
         )
         var seen: [String] = []
@@ -6204,7 +6207,14 @@ final class ViewSnapshotTests: XCTestCase {
         XCTAssertTrue(seen.contains("add-label"), "Add to a Label is missing: \(seen)")
         XCTAssertTrue(seen.contains("chip:Work"), "the Work chip is missing: \(seen)")
         XCTAssertFalse(seen.contains("chip:Family"), "Family is not on this chat")
-        XCTAssertTrue(changes.isEmpty)
+
+        // Ticking Family in the menu puts it on the chat; the x on Work's chip takes Work off.
+        section.menuBinding(for: family).wrappedValue = true
+        XCTAssertEqual(Set(assigned), [1, 2])
+        section.removeChip(work)
+        XCTAssertEqual(assigned, [2])
+        section.menuBinding(for: family).wrappedValue = false
+        XCTAssertTrue(assigned.isEmpty)
     }
 
     /// Local avatar override (`localAvatarURI`) must win over network `avatarPath` in ChatInfoPane header.
