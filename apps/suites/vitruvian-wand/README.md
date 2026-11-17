@@ -86,7 +86,7 @@ and every file has a `.sha256` checksum beside it:
 
 | Platform | File |
 |---|---|
-| Mac (Apple silicon and Intel) | `VitruvianWand-X.Y.Z.dmg`, signed and notarised. Or `brew install --cask vitruviansoftware/tap/vitruvian-wand` |
+| Mac (Apple silicon and Intel) | `VitruvianWand-X.Y.Z.dmg`, signed and notarised. Or `brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install --cask vitruviansoftware/tap/vitruvian-wand` |
 | Linux (x86_64) | `VitruvianWand-X.Y.Z-linux-x86_64.tar.gz`: the program, its licence and the Linux setup guide |
 | Android phone and TV | `VitruvianWand-X.Y.Z.apk` |
 
