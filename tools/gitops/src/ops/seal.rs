@@ -21,7 +21,8 @@
 //! The seal tools that write one SealedSecret into
 //! gitops/argocd/platform/sealed-secrets-manifests: seal_alert_ntfy.sh,
 //! seal_headplane_secret.sh, seal_zitadel_login_cookie_secret.sh,
-//! seal_arc_github_app.sh and seal_alert_pagerduty.sh. Each value goes to
+//! seal_arc_github_app.sh, seal_alert_pagerduty.sh and
+//! seal_pagerduty_readonly.sh. Each value goes to
 //! kubectl or kubeseal on stdin, never on a command line, and is never printed.
 
 use std::os::unix::fs::PermissionsExt;
@@ -978,5 +979,125 @@ mod headscale_key_exporter_tests {
         for bad in [&b""[..], b"d", b"365", b"1y", b"-1d", b"36 5d"] {
             assert!(!is_duration(bad), "{}", String::from_utf8_lossy(bad));
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// seal-pagerduty-readonly: the read-only PagerDuty REST API key, sealed once
+// for each in-cluster reader (pagerduty-exporter, Backstage's PagerDuty plugin)
+// ---------------------------------------------------------------------------
+
+/// Where the read-only key goes: (namespace, Secret, key). One SealedSecret
+/// each, because a SealedSecret only decrypts in the namespace it names.
+pub const PAGERDUTY_READONLY_TARGETS: &[(&str, &str, &str)] = &[
+    ("monitoring", "pagerduty-exporter", "api-token"),
+    ("backstage", "backstage-pagerduty", "api-token"),
+];
+
+/// A PagerDuty REST API key: 20 URL-safe characters (letters, digits, `_`,
+/// `-`, `+`). An Events API routing key (32 lower-case characters) is the
+/// common mix-up, and it cannot read the API, so it is refused.
+pub fn is_pagerduty_api_key(v: &[u8]) -> bool {
+    v.len() == 20
+        && v.iter()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-' | b'+'))
+}
+
+pub fn pagerduty_readonly(args: &[Vec<u8>]) -> i32 {
+    code(pagerduty_readonly_run(args))
+}
+
+fn pagerduty_readonly_run(args: &[Vec<u8>]) -> Res<i32> {
+    default_kubeconfig(line!())?;
+    let k = kctx();
+    let mut apply = false;
+    for a in args {
+        if a == b"--apply" {
+            apply = true;
+        } else {
+            // Never take the key as an argument: it would sit in the
+            // process list and the shell history.
+            return die(
+                2,
+                &sc::cat(&[
+                    b"ERROR: unexpected argument '",
+                    a,
+                    b"': pipe the key on stdin (only --apply is a flag)",
+                ]),
+            );
+        }
+    }
+    let key = read_prompt("read-only PagerDuty API key: ")?;
+    if !is_pagerduty_api_key(&key) {
+        return die(
+            2,
+            b"ERROR: that is not a PagerDuty REST API key (20 letters, digits, _ - +). An Events API routing key will not work here.",
+        );
+    }
+    need_tools(&["kubectl", "kubeseal"], false)?;
+    cd_workspace(line!())?;
+    for (ns, secret, field) in PAGERDUTY_READONLY_TARGETS {
+        let out = out_path(secret);
+        write_new(line!(), &out, LICENSE_HEADER.as_bytes())?;
+        let st = seal_value(line!(), &k, ns, secret, field, &key, &out);
+        if st != 0 {
+            return Err(st);
+        }
+        say(&sealed_msg(&out, ns, secret, field));
+        apply_or_next(
+            &k,
+            &out,
+            ns,
+            secret,
+            apply,
+            "\u{2713} applied \u{2014} the sealed-secrets controller will materialize",
+        )?;
+    }
+    Ok(0)
+}
+
+#[cfg(test)]
+mod pagerduty_readonly_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_a_rest_api_key() {
+        assert!(is_pagerduty_api_key(b"u+AbCdEf_12345-xyZ90"));
+    }
+
+    #[test]
+    fn refuses_what_is_not_a_rest_api_key() {
+        for bad in [
+            &b""[..],
+            b"short",
+            b"0123456789abcdef0123456789abcdef", // an Events API routing key
+            b"u+AbCdEf_12345-xyZ9 ",             // whitespace
+            b"u+AbCdEf_12345-xyZ9/",             // not URL-safe
+            b"u+AbCdEf_12345-xyZ901",            // 21 characters
+        ] {
+            assert!(
+                !is_pagerduty_api_key(bad),
+                "{:?}",
+                String::from_utf8_lossy(bad)
+            );
+        }
+    }
+
+    #[test]
+    fn each_reader_gets_its_own_sealed_secret() {
+        let mut names: Vec<_> = PAGERDUTY_READONLY_TARGETS.iter().map(|t| t.1).collect();
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), PAGERDUTY_READONLY_TARGETS.len());
+        assert!(PAGERDUTY_READONLY_TARGETS.contains(&(
+            "monitoring",
+            "pagerduty-exporter",
+            "api-token"
+        )));
+        assert!(PAGERDUTY_READONLY_TARGETS.contains(&(
+            "backstage",
+            "backstage-pagerduty",
+            "api-token"
+        )));
     }
 }

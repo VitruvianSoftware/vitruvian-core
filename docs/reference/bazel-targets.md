@@ -149,6 +149,7 @@ Additional tooling:
 | `//tools/gitops:ntfy-rotate-ci-password` | Rotate the ntfy password CI uses: sets it on the server and as `NTFY_GITHUB_ACTIONS_PASSWORD`, checks it works, never prints it |
 | `//tools/gitops:rotate-github-otel-webhook-secret` | Generate/rotate the GitHub → CI-collector webhook secret: sealed into git and stored as `OTEL_GITHUB_WEBHOOK_SECRET` (Actions + Dependabot); never printed |
 | `//tools/gitops:seal-alert-ntfy` | Encrypt and seal the alert delivery endpoint for Alertmanager |
+| `//tools/gitops:seal-pagerduty-readonly` | Seal the read-only PagerDuty REST API key (on stdin) for pagerduty-exporter and Backstage's PagerDuty plugin; never printed |
 | `//tools/gitops:seal-alert-pagerduty` | Seal the PagerDuty Events API keys Alertmanager pages with, read from the PagerDuty stack's outputs on stdin; never printed |
 | `//tools/gitops:seal-alert-heartbeat` | Seal the healthchecks.io ping URL that the Watchdog dead-man's switch pings (prompts for it; `--apply` to apply now) |
 | `//tools/gitops:alert-test` | Fire one test alert through Alertmanager, hold it (default 90s), then resolve it, to prove alerts reach ntfy and clear themselves (`--hold SECS`, `--fire-only`, `--resolve TEST_ID`) |

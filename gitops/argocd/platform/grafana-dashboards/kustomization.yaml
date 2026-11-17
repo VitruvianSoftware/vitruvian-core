@@ -55,6 +55,9 @@ configMapGenerator:
   - name: grafana-dashboard-minio
     files:
       - minio.json
+  - name: grafana-dashboard-pagerduty
+    files:
+      - pagerduty.json
   - name: grafana-dashboard-node-exporter
     files:
       - node-exporter.json
