@@ -88,6 +88,15 @@ backstage:
       secretKeyRef:
         name: grafana-backstage-token
         key: GRAFANA_TOKEN
+  # Read-only PagerDuty REST API key for the PagerDuty plugin, sealed with
+  # bazel run //tools/gitops:seal-pagerduty-readonly. optional, like
+  # ARGOCD_TOKEN: a missing key degrades the PagerDuty card, never startup.
+  - name: PAGERDUTY_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: backstage-pagerduty
+        key: api-token
+        optional: true
   - name: POSTGRES_PASSWORD
     valueFrom:
       secretKeyRef:
@@ -326,6 +335,11 @@ backstage:
     # the data itself comes through the proxy above.
     argocd:
       baseUrl: https://argocd.lab.ipv1337.dev
+    # PagerDuty plugin (@pagerduty/backstage-plugin-backend). The key is
+    # read-only, and the card renders readOnly, so Backstage never changes the
+    # account. See docs/backstage-pagerduty.md.
+    pagerDuty:
+      apiToken: ${PAGERDUTY_TOKEN}
     grafana:
       # Used to build the click-through links the card renders. This is the
       # user-facing URL, unlike the proxy target above which is in-cluster.

@@ -124,6 +124,8 @@ metadata:
   title: CloudNativePG
   description: PostgreSQL operator running the Backstage, Zitadel and buzz clusters
   annotations:
+    # PagerDuty service "Homelab databases and backups" (infrastructure/pulumi/platform/pagerduty).
+    pagerduty.com/service-id: P4CDT6V
     backstage.io/techdocs-ref: dir:..
     grafana/dashboard-selector: cloudnativepg
     # app-name, not app-selector: in pure proxy mode the plugin requests

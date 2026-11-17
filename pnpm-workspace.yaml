@@ -121,6 +121,10 @@ overrides:
   "mysql2": "3.24.2"
   "prisma>mysql2": "3.24.2"
   "@backstage/backend-plugin-api": "1.10.1"
+  # @pagerduty/backstage-plugin-backend 0.14.0 asks for ^0.17.2, which would
+  # install a second backend-defaults next to the backend's 0.18.x. Run it on
+  # the backend's copy (one version); the Backstage boot smoke checks it loads.
+  "@pagerduty/backstage-plugin-backend>@backstage/backend-defaults": "^0.18.0"
 
 
 

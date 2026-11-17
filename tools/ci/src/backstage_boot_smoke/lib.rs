@@ -105,6 +105,8 @@ auth:
         clientSecret: smoke-client-secret
 permission:
   enabled: true
+pagerDuty:
+  apiToken: smoke-pagerduty-token
 kubernetes:
   serviceLocatorMethod: { type: multiTenant }
   clusterLocatorMethods:

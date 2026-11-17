@@ -58,6 +58,10 @@ import {
   EntityGrafanaDashboardsCard,
   isDashboardSelectorAvailable,
 } from "@backstage-community/plugin-grafana";
+import {
+  EntityPagerDutyCard,
+  isPluginApplicableToEntity as isPagerDutyAvailable,
+} from "@pagerduty/backstage-plugin";
 import { DeployWorkflowRunsCard } from "./DeployWorkflowRunsCard";
 import { isDeployWorkflowAvailable } from "./deployWorkflowRuns";
 import { CloudRunCard } from "./CloudRunCard";
@@ -186,6 +190,18 @@ const defaultEntityPage = (
           >
             <Grid item md={6} xs={12}>
               <EntityGrafanaDashboardsCard />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+        {/* PagerDuty: open incidents, recent changes and who is on call for
+            the entity's PagerDuty service. Guarded on the
+            pagerduty.com/service-id annotation. readOnly hides the "create
+            incident" button: the backend's key is read-only, so it could not
+            create one anyway. See docs/backstage-pagerduty.md. */}
+        <EntitySwitch>
+          <EntitySwitch.Case if={isPagerDutyAvailable}>
+            <Grid item md={6} xs={12}>
+              <EntityPagerDutyCard readOnly />
             </Grid>
           </EntitySwitch.Case>
         </EntitySwitch>
@@ -323,6 +339,15 @@ const systemPage = (
         <Grid item md={6}>
           <EntityHasResourcesCard />
         </Grid>
+        {/* The same PagerDuty card as the component page, for systems that
+            map to a PagerDuty service (pagerduty.com/service-id). */}
+        <EntitySwitch>
+          <EntitySwitch.Case if={isPagerDutyAvailable}>
+            <Grid item md={6} xs={12}>
+              <EntityPagerDutyCard readOnly />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
       </Grid>
     </EntityLayout.Route>
   </EntityLayout>

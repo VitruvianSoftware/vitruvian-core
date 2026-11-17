@@ -30,6 +30,8 @@ metadata:
   name: vitruvian-core
   description: VitruvianSoftware polyglot Bazel monorepo — apps, IaC, developer tooling, homelab platform
   annotations:
+    # PagerDuty service "CI / delivery" (infrastructure/pulumi/platform/pagerduty).
+    pagerduty.com/service-id: PE5K2S9
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:.
 spec:
@@ -172,6 +174,9 @@ apiVersion: backstage.io/v1alpha1
 kind: System
 metadata:
   name: platform-runtime
+  annotations:
+    # PagerDuty service "Homelab cluster" (infrastructure/pulumi/platform/pagerduty).
+    pagerduty.com/service-id: P8P1TII
   title: Platform Runtime
   description: Homelab Kubernetes cluster bootstrap, Cilium eBPF CNI, Envoy Gateway, Cloudflare Tunnels, Cert-Manager, Zitadel IAM, MinIO, and CloudNativePG
 spec:
@@ -192,6 +197,9 @@ apiVersion: backstage.io/v1alpha1
 kind: System
 metadata:
   name: observability-platform
+  annotations:
+    # PagerDuty service "Homelab cluster" (infrastructure/pulumi/platform/pagerduty).
+    pagerduty.com/service-id: P8P1TII
   title: Observability Platform
   description: Centralized metrics, logs, traces, and alert routing (Prometheus, Thanos, Tempo, Grafana, OpenTelemetry, Uptime Kuma, and Alertmanager)
 spec:
@@ -263,6 +271,9 @@ apiVersion: backstage.io/v1alpha1
 kind: System
 metadata:
   name: vitruvian-slack-mcp
+  annotations:
+    # PagerDuty service "Homelab apps and GitOps" (infrastructure/pulumi/platform/pagerduty).
+    pagerduty.com/service-id: P13SSU5
   title: Vitruvian Slack MCP Integration
   description: Model Context Protocol server exposing Slack workspace tools, message search, and canvas operations
 spec:
