@@ -14,7 +14,7 @@
     "@vitruvian-tabs/shared": "workspace:*",
     "@vitruviansoftware/design-system": "workspace:*",
     "geist": "^1.9.2",
-    "next": "16.4.5",
+    "next": "16.4.6",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zustand": "^5.1.0"
