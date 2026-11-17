@@ -576,7 +576,7 @@ pub fn handle_permission_decide(req: &HttpRequest, perms: &PermissionBroker) -> 
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::http_util::{http_request, parse_bearer, CancelToken, LogCapture, TestServer};
+    use crate::http_util::{http_request, parse_bearer, CancelToken, TestServer};
     use std::collections::BTreeMap;
     use std::io::Write;
     use std::net::TcpStream;
@@ -778,8 +778,8 @@ pub mod tests {
             ("deny without one", r#""decision":"deny""#, "deny", ""),
         ];
         for (name, decide, want_decision, want_message) in cases {
-            let logs = LogCapture::new();
             let a = PermAgent::new(Duration::from_secs(5));
+            let logs = a.server.capture_logs();
             let got = a.ask(BASH_ASK);
 
             let pending = a.wait_pending(1);

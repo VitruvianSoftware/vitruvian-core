@@ -20,6 +20,7 @@
 
 //! Zero-dependency (std-only) HTTP/1.1 + SSE server, client, and test harness.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
@@ -610,6 +611,7 @@ pub struct TestServer {
     pub url: String,
     pub addr: String,
     stop: Arc<AtomicBool>,
+    log_sink: Arc<Mutex<Option<Arc<LogSink>>>>,
 }
 
 impl TestServer {
@@ -621,6 +623,8 @@ impl TestServer {
         let stop = Arc::new(AtomicBool::new(false));
         let stop_clone = Arc::clone(&stop);
         let handler_arc: Arc<dyn HttpHandler> = Arc::new(handler);
+        let log_sink = Arc::new(Mutex::new(current_thread_log_sink()));
+        let log_sink_accept = Arc::clone(&log_sink);
 
         thread::spawn(move || {
             for incoming in listener.incoming() {
@@ -630,7 +634,12 @@ impl TestServer {
                 match incoming {
                     Ok(stream) => {
                         let h = Arc::clone(&handler_arc);
+                        let conn_sink = log_sink_accept
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .clone();
                         thread::spawn(move || {
+                            let _log_guard = ThreadLogGuard::install(conn_sink);
                             serve_http_connection(stream, h);
                         });
                     }
@@ -639,11 +648,20 @@ impl TestServer {
             }
         });
 
-        Self { url, addr, stop }
+        Self {
+            url,
+            addr,
+            stop,
+            log_sink,
+        }
     }
 
     pub fn url(&self) -> &str {
         &self.url
+    }
+
+    pub fn capture_logs(&self) -> LogCapture {
+        LogCapture::for_server(self)
     }
 
     pub fn close(&self) {
@@ -869,51 +887,126 @@ pub fn http_post_json(url: &str, token: &str, json_body: &str) -> Result<ClientR
     http_do("POST", url, &hdrs, json_body.as_bytes(), None)
 }
 
-/// Thread-safe log buffer for unit tests that assert on agent audit log lines.
-static TEST_LOG_SINK: Mutex<Option<Arc<Mutex<String>>>> = Mutex::new(None);
+struct LogSink {
+    buf: Mutex<String>,
+    open: AtomicBool,
+}
 
-pub fn agent_log(msg: &str) {
-    if let Ok(guard) = TEST_LOG_SINK.lock() {
-        if let Some(sink) = &*guard {
-            if let Ok(mut buf) = sink.lock() {
+impl LogSink {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            buf: Mutex::new(String::new()),
+            open: AtomicBool::new(true),
+        })
+    }
+
+    fn push_line(&self, msg: &str) {
+        if let Ok(mut buf) = self.buf.lock() {
+            if self.open.load(Ordering::Acquire) {
                 buf.push_str(msg);
                 buf.push('\n');
             }
         }
     }
+
+    fn close(&self) {
+        if let Ok(_buf) = self.buf.lock() {
+            self.open.store(false, Ordering::Release);
+        } else {
+            self.open.store(false, Ordering::Release);
+        }
+    }
+
+    fn contents(&self) -> String {
+        self.buf.lock().map(|g| g.clone()).unwrap_or_default()
+    }
+}
+
+thread_local! {
+    static THREAD_LOG_SINK: RefCell<Option<Arc<LogSink>>> = const { RefCell::new(None) };
+}
+
+fn current_thread_log_sink() -> Option<Arc<LogSink>> {
+    THREAD_LOG_SINK
+        .try_with(|cell| cell.borrow().clone())
+        .ok()
+        .flatten()
+}
+
+struct ThreadLogGuard {
+    prev: Option<Arc<LogSink>>,
+}
+
+impl ThreadLogGuard {
+    fn install(sink: Option<Arc<LogSink>>) -> Self {
+        let prev = THREAD_LOG_SINK
+            .try_with(|cell| cell.replace(sink))
+            .ok()
+            .flatten();
+        Self { prev }
+    }
+}
+
+impl Drop for ThreadLogGuard {
+    fn drop(&mut self) {
+        let prev = self.prev.take();
+        let _ = THREAD_LOG_SINK.try_with(|cell| {
+            cell.replace(prev);
+        });
+    }
+}
+
+pub fn agent_log(msg: &str) {
+    if let Some(sink) = current_thread_log_sink() {
+        sink.push_line(msg);
+    }
     eprintln!("{}", msg);
 }
 
-/// Held by the one `LogCapture` that owns `TEST_LOG_SINK`. The sink is
-/// process-wide and tests run in parallel, so without this a second capture
-/// took the sink from the first, and each test read the other's log lines
-/// (the flaky `test_permission_ask_decide_round_trip`). Captures now take
-/// turns; tests that capture nothing are unaffected.
-static CAPTURE_TURN: Mutex<()> = Mutex::new(());
-
+/// Captures `agent_log` lines emitted on the current thread (and optionally
+/// on a `TestServer`'s connection threads) without sharing a process-wide sink
+/// across parallel tests.
 pub struct LogCapture {
-    buf: Arc<Mutex<String>>,
-    _turn: std::sync::MutexGuard<'static, ()>,
+    sink: Arc<LogSink>,
+    server_slot: Option<Arc<Mutex<Option<Arc<LogSink>>>>>,
+    prev_server_sink: Option<Arc<LogSink>>,
+    _thread_guard: ThreadLogGuard,
 }
 
 impl LogCapture {
     pub fn start() -> Self {
-        // A test that panicked while holding the turn poisons the lock;
-        // the next capture still takes it.
-        let turn = CAPTURE_TURN.lock().unwrap_or_else(|e| e.into_inner());
-        let buf = Arc::new(Mutex::new(String::new()));
-        if let Ok(mut guard) = TEST_LOG_SINK.lock() {
-            *guard = Some(Arc::clone(&buf));
+        let sink = LogSink::new();
+        let thread_guard = ThreadLogGuard::install(Some(Arc::clone(&sink)));
+        Self {
+            sink,
+            server_slot: None,
+            prev_server_sink: None,
+            _thread_guard: thread_guard,
         }
-        Self { buf, _turn: turn }
     }
 
     pub fn new() -> Self {
         Self::start()
     }
 
+    pub fn for_server(server: &TestServer) -> Self {
+        let sink = LogSink::new();
+        let prev_server_sink = server
+            .log_sink
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .replace(Arc::clone(&sink));
+        let thread_guard = ThreadLogGuard::install(Some(Arc::clone(&sink)));
+        Self {
+            sink,
+            server_slot: Some(Arc::clone(&server.log_sink)),
+            prev_server_sink,
+            _thread_guard: thread_guard,
+        }
+    }
+
     pub fn contents(&self) -> String {
-        self.buf.lock().map(|g| g.clone()).unwrap_or_default()
+        self.sink.contents()
     }
 
     pub fn text(&self) -> String {
@@ -921,13 +1014,20 @@ impl LogCapture {
     }
 }
 
+impl Default for LogCapture {
+    fn default() -> Self {
+        Self::start()
+    }
+}
+
 impl Drop for LogCapture {
     fn drop(&mut self) {
-        // Detach the sink before the turn passes on, so the next capture
-        // starts from an empty buffer of its own.
-        if let Ok(mut guard) = TEST_LOG_SINK.lock() {
-            if guard.as_ref().is_some_and(|b| Arc::ptr_eq(b, &self.buf)) {
-                *guard = None;
+        self.sink.close();
+        if let Some(ref slot) = self.server_slot {
+            if let Ok(mut guard) = slot.lock() {
+                if guard.as_ref().is_some_and(|s| Arc::ptr_eq(s, &self.sink)) {
+                    *guard = self.prev_server_sink.take();
+                }
             }
         }
     }
@@ -988,4 +1088,122 @@ pub fn write_sse_json(stream: &mut dyn Write, event: &str, val: &JsonValue) -> s
         val.to_json_string()
     )?;
     stream.flush()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Barrier;
+
+    #[test]
+    fn test_log_captures_isolate_concurrent_servers_and_ignore_uncaptured_noise() {
+        let srv_a = TestServer::start(|_req: &HttpRequest| {
+            log_act("test", "alpha-only");
+            HttpResponse::new(200, b"ok".to_vec())
+        });
+        let srv_b = TestServer::start(|_req: &HttpRequest| {
+            log_act("test", "beta-only");
+            HttpResponse::new(200, b"ok".to_vec())
+        });
+        let srv_noise = TestServer::start(|_req: &HttpRequest| {
+            log_act("test", "foreign-server-noise");
+            HttpResponse::new(200, b"ok".to_vec())
+        });
+
+        let entered = Barrier::new(3);
+        let logged = Barrier::new(3);
+
+        thread::scope(|s| {
+            let url_a = &srv_a.url;
+            let url_b = &srv_b.url;
+            let url_noise = &srv_noise.url;
+            let srv_a_ref = &srv_a;
+            let srv_b_ref = &srv_b;
+            let entered_ref = &entered;
+            let logged_ref = &logged;
+
+            let ta = s.spawn(move || {
+                let cap_a = srv_a_ref.capture_logs();
+                entered_ref.wait();
+                log_line("direct-alpha");
+                http_get(url_a).unwrap();
+                logged_ref.wait();
+                let got = cap_a.contents();
+                assert!(
+                    got.contains("direct-alpha"),
+                    "missing direct-alpha: {got:?}"
+                );
+                assert!(
+                    got.contains("act test: alpha-only"),
+                    "missing alpha server line: {got:?}"
+                );
+                assert!(!got.contains("beta"), "foreign beta line leaked: {got:?}");
+                assert!(!got.contains("noise"), "foreign noise leaked: {got:?}");
+            });
+
+            let tb = s.spawn(move || {
+                let cap_b = srv_b_ref.capture_logs();
+                entered_ref.wait();
+                log_line("direct-beta");
+                http_get(url_b).unwrap();
+                logged_ref.wait();
+                let got = cap_b.contents();
+                assert!(got.contains("direct-beta"), "missing direct-beta: {got:?}");
+                assert!(
+                    got.contains("act test: beta-only"),
+                    "missing beta server line: {got:?}"
+                );
+                assert!(!got.contains("alpha"), "foreign alpha line leaked: {got:?}");
+                assert!(!got.contains("noise"), "foreign noise leaked: {got:?}");
+            });
+
+            let tc = s.spawn(move || {
+                entered_ref.wait();
+                log_line("foreign-direct-noise");
+                http_get(url_noise).unwrap();
+                logged_ref.wait();
+            });
+
+            ta.join().unwrap();
+            tb.join().unwrap();
+            tc.join().unwrap();
+        });
+    }
+
+    #[test]
+    fn test_log_capture_inherits_into_new_server_and_stops_on_drop() {
+        let cap = LogCapture::start();
+        let srv = TestServer::start(|req: &HttpRequest| {
+            log_line(&req.path);
+            HttpResponse::new(200, b"ok".to_vec())
+        });
+        http_get(&format!("{}/during-capture", srv.url)).unwrap();
+        let captured = cap.contents();
+        assert!(captured.contains("/during-capture"), "got: {captured:?}");
+
+        let sink_ref = Arc::clone(&cap.sink);
+        drop(cap);
+        http_get(&format!("{}/after-drop", srv.url)).unwrap();
+        assert!(
+            !sink_ref.contents().contains("/after-drop"),
+            "dropped capture recorded after-drop line: {:?}",
+            sink_ref.contents()
+        );
+
+        let cap2 = srv.capture_logs();
+        http_get(&format!("{}/second-capture", srv.url)).unwrap();
+        let captured2 = cap2.contents();
+        assert!(
+            !captured2.contains("/after-drop"),
+            "after-drop leaked: {captured2:?}"
+        );
+        assert!(
+            !captured2.contains("/during-capture"),
+            "first capture leaked: {captured2:?}"
+        );
+        assert!(
+            captured2.contains("/second-capture"),
+            "second capture missed line: {captured2:?}"
+        );
+    }
 }

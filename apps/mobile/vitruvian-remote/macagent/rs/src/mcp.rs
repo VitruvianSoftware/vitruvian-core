@@ -247,7 +247,7 @@ pub fn split_host_from_addr(addr: &str) -> &str {
 pub mod tests {
     use super::*;
     use crate::http_util::{
-        http_do, http_get, http_open_stream, http_post_json, HttpHandler, LogCapture, TestServer,
+        http_do, http_get, http_open_stream, http_post_json, HttpHandler, TestServer,
     };
     use crate::phone::{
         PhoneCall, PhoneTool, PHONE_OUTBOUND_TIMEOUT, PHONE_TOOL_TIMEOUT, TIER_ACT, TIER_OUTBOUND,
@@ -429,7 +429,7 @@ pub mod tests {
             }),
         );
 
-        let logs = LogCapture::start();
+        let logs = srv.capture_logs();
         let (status, out_opt) = rpc(
             &srv.url,
             &mtok,
