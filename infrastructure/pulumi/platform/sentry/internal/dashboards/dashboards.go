@@ -56,6 +56,7 @@ type Widget struct {
 	Title       string  `json:"title"`
 	DisplayType string  `json:"displayType"`
 	Interval    string  `json:"interval,omitempty"`
+	Limit       int     `json:"limit,omitempty"`
 	WidgetType  string  `json:"widgetType"`
 	Layout      Layout  `json:"layout"`
 	Queries     []Query `json:"queries"`
@@ -97,6 +98,7 @@ func DefaultDashboards() []Dashboard {
 					Title:       "Errors by Project",
 					DisplayType: "bar",
 					Interval:    "1d",
+					Limit:       10,
 					WidgetType:  "error-events",
 					Layout:      Layout{X: 3, Y: 0, W: 3, H: 2, MinH: 2},
 					Queries: []Query{{
@@ -123,6 +125,7 @@ func DefaultDashboards() []Dashboard {
 					Title:       "Events by Environment",
 					DisplayType: "bar",
 					Interval:    "1d",
+					Limit:       10,
 					WidgetType:  "error-events",
 					Layout:      Layout{X: 4, Y: 2, W: 2, H: 3, MinH: 2},
 					Queries: []Query{{
@@ -138,7 +141,7 @@ func DefaultDashboards() []Dashboard {
 					WidgetType:  "error-events",
 					Layout:      Layout{X: 0, Y: 5, W: 3, H: 3, MinH: 2},
 					Queries: []Query{{
-						Conditions: "is:unresolved is:unhandled",
+						Conditions: "is:unresolved error.unhandled:true",
 						Fields:     []string{"issue", "project", "count()"},
 						Aggregates: []string{"count()"},
 						Columns:    []string{"issue", "project"},
@@ -179,6 +182,7 @@ func DefaultDashboards() []Dashboard {
 					Title:       "Errors by Service",
 					DisplayType: "bar",
 					Interval:    "1d",
+					Limit:       10,
 					WidgetType:  "error-events",
 					Layout:      Layout{X: 3, Y: 0, W: 3, H: 2, MinH: 2},
 					Queries: []Query{{
@@ -237,6 +241,7 @@ func DefaultDashboards() []Dashboard {
 					Title:       "Errors by App",
 					DisplayType: "bar",
 					Interval:    "1d",
+					Limit:       10,
 					WidgetType:  "error-events",
 					Layout:      Layout{X: 3, Y: 0, W: 3, H: 2, MinH: 2},
 					Queries: []Query{{
