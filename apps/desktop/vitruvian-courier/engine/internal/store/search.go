@@ -14,7 +14,9 @@ import (
 	"html"
 	"math"
 	"net/url"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -963,12 +965,19 @@ ORDER BY e.ts DESC, e.seq DESC
 LIMIT $2`
 
 func (s *Store) RoomSharedLinks(ctx context.Context, roomID string, limit int) ([]SharedLink, error) {
+	links, _, err := s.RoomSharedLinksCapped(ctx, roomID, limit)
+	return links, err
+}
+
+// RoomSharedLinksCapped is RoomSharedLinks, and whether it stopped at limit with more links to come. Reaching the
+// end of the newest maxSharedLinkScanEvents messages it reads is not a cap: every link it found is returned.
+func (s *Store) RoomSharedLinksCapped(ctx context.Context, roomID string, limit int) (links []SharedLink, capped bool, err error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	rows, err := s.db.Query(ctx, roomSharedLinksSQL, roomID, maxSharedLinkScanEvents)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer rows.Close()
 	out := []SharedLink{}
@@ -976,7 +985,7 @@ func (s *Store) RoomSharedLinks(ctx context.Context, roomID string, limit int) (
 		var eventID, sender, typ, content, editContent string
 		var ts int64
 		if err := rows.Scan(&eventID, &sender, &typ, &content, &ts, &editContent); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		text, _, _ := MessageText(typ, json.RawMessage(content))
 		if editContent != "" {
@@ -985,7 +994,7 @@ func (s *Store) RoomSharedLinks(ctx context.Context, roomID string, limit int) (
 			}
 		}
 		titles := linkPreviewTitles(json.RawMessage(content))
-		for _, rawURL := range extractHTTPURLs(text) {
+		for _, rawURL := range messageLinks(json.RawMessage(content), text, editContent != "") {
 			u, err := url.Parse(rawURL)
 			if err != nil || u.Hostname() == "" {
 				continue
@@ -998,15 +1007,15 @@ func (s *Store) RoomSharedLinks(ctx context.Context, roomID string, limit int) (
 				Host:    u.Hostname(),
 				Title:   titles[rawURL],
 			})
-			if len(out) >= limit {
-				return out, nil
+			if len(out) > limit {
+				return out[:limit], true, nil
 			}
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return out, nil
+	return out, false, nil
 }
 
 // previewTitle cleans a link preview's og:title for display. Bridges and sites often HTML-escape the title, and some
@@ -1053,20 +1062,178 @@ func linkPreviewTitles(content json.RawMessage) map[string]string {
 	return titles
 }
 
-func extractHTTPURLs(text string) []string {
+// messageLinks is every link a message carries, in the order it holds them, each once: the links in its text, the
+// ones only its link previews name (not for an edited message, whose previews are of the text it had before), and
+// for a dropped pin (m.location) a Maps link when its text has no map link.
+func messageLinks(content json.RawMessage, text string, edited bool) []string {
+	links := extractLinks(text)
+	if !edited {
+		var preview struct {
+			LinkPreviews []struct {
+				MatchedURL string `json:"matched_url"`
+			} `json:"com.beeper.linkpreviews"`
+		}
+		if json.Unmarshal(content, &preview) == nil {
+			for _, lp := range preview.LinkPreviews {
+				if isWebURL(lp.MatchedURL) && !slices.Contains(links, lp.MatchedURL) {
+					links = append(links, lp.MatchedURL)
+				}
+			}
+		}
+	}
+	var loc struct {
+		MsgType string `json:"msgtype"`
+		GeoURI  string `json:"geo_uri"`
+	}
+	if json.Unmarshal(content, &loc) == nil && loc.MsgType == "m.location" {
+		if pin := geoURIMapsLink(loc.GeoURI); pin != "" && !slices.ContainsFunc(links, isMapsLink) {
+			links = append(links, pin)
+		}
+	}
+	return links
+}
+
+// isWebURL reports whether raw is an http(s) URL with a host.
+func isWebURL(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Hostname() != ""
+}
+
+// isMapsLink reports whether a link points at a map: Google Maps (maps.google.com, google.com/maps, its short links
+// maps.app.goo.gl and goo.gl/maps) or Apple Maps.
+func isMapsLink(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	host := strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
+	switch {
+	case host == "maps.app.goo.gl", host == "maps.apple.com", strings.HasPrefix(host, "maps.google."):
+		return true
+	case host == "goo.gl", strings.HasPrefix(host, "google."):
+		return strings.HasPrefix(u.Path, "/maps")
+	}
+	return false
+}
+
+// geoURIMapsLink is a Maps link to the place a geo URI ("geo:37.79,-122.39;u=20") names, or "" for a malformed one.
+func geoURIMapsLink(geoURI string) string {
+	coords, ok := strings.CutPrefix(strings.TrimSpace(geoURI), "geo:")
+	if !ok {
+		return ""
+	}
+	coords, _, _ = strings.Cut(coords, ";")
+	lat, lon, ok := strings.Cut(coords, ",")
+	if !ok {
+		return ""
+	}
+	lat, lon = strings.TrimSpace(lat), strings.TrimSpace(lon)
+	if _, err := strconv.ParseFloat(lat, 64); err != nil {
+		return ""
+	}
+	if _, err := strconv.ParseFloat(lon, 64); err != nil {
+		return ""
+	}
+	return "https://maps.google.com/?q=" + lat + "," + lon
+}
+
+// bareLinkPattern is a link written without its scheme: a dotted host, then a path ("maps.app.goo.gl/kX9",
+// "google.com/maps?q=1,2", "ups.com/su/abc"). The path is required: "example.com" alone is a word as often as a
+// link. The host must also end in a real top-level domain (isBareLinkHost), so file names and code paths
+// ("Node.js/express", "config.yaml/dev", "Mr.Smith/Jones") are not links.
+var bareLinkPattern = regexp.MustCompile(`^(?i:((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+([a-z]{2,24}))(?::\d{1,5})?[/?#]\S*)$`)
+
+// knownTLDs are the top-level domains a scheme-less link may end in: the generic ones people actually write and the
+// country codes, a compact list rather than the whole public suffix list. Left out on purpose are the ones that are
+// also common file extensions or language names, because "README.md/docs" and "script.sh/run" are far more often
+// paths than links: md, sh, py, pl, rs, pm, ps, zip, mov, so, cc, ts.
+var knownTLDs, excludedTLDs = func() (known, excluded map[string]bool) {
+	known, excluded = map[string]bool{}, map[string]bool{}
+	for _, t := range strings.Fields(`com net org edu gov mil int info biz name pro mobi
+		app dev io ai co me tv xyz online site store tech cloud page link shop blog news live life world today
+		email media music video photo photos games club design agency studio services solutions systems network
+		digital global group company ventures capital finance bank money care health city
+		ac ad ae af ag al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bm bn bo br bs bt bw by bz
+		ca cd cf cg ch ci ck cl cm cn cr cu cv cw cx cy cz de dj dk dm do dz ec ee eg er es et eu fi fj fk fm fo
+		fr ga gd ge gf gg gh gi gl gm gn gp gq gr gt gu gw gy hk hn hr ht hu id ie il im in iq ir is it je jm jo
+		jp ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc me mg mh mk ml mm mn mo mp mq
+		mr ms mt mu mv mw mx my mz na nc ne nf ng ni nl no np nr nu nz om pa pe pf pg ph pk pn pr pt pw qa re
+		ro ru rw sa sb sc sd se sg si sk sl sm sn sr ss st sv sx sy sz tc td tf tg th tj tk tl tm tn to tr tt
+		tw tz ua ug uk us uy uz va vc ve vg vi vn vu wf ws ye yt za zm zw`) {
+		known[t] = true
+	}
+	for _, t := range strings.Fields("md sh py pl rs pm ps zip mov so cc ts") {
+		excluded[t] = true
+	}
+	return known, excluded
+}()
+
+// wellKnownBareHosts are real sites on an excluded TLD with no subdomain, which the rules below can't tell from a
+// file name ("notion.so/abc" from "README.md/docs"), so they are listed.
+var wellKnownBareHosts = map[string]bool{"notion.so": true, "bun.sh": true}
+
+// fileNameSegment matches a last path segment that looks like a file name: a dot and a short extension.
+var fileNameSegment = regexp.MustCompile(`\.[A-Za-z0-9]{1,5}$`)
+
+// isBareLinkHost reports whether host, followed by rest (the port, path, query), is a link written without its
+// scheme. It must end in a top-level domain of knownTLDs. One of the excludedTLDs (also file extensions and
+// languages: .md, .sh, .zip, .cc, .so, ...) counts only when the host cannot be a file name: it is a well-known bare
+// host, or it has a "www." prefix or a subdomain besides its name ("docs.example.zip"), and the path does not end in
+// a file name. So "README.md/docs" and "script.sh/run" are not links; "www.example.cc/x" and "bun.sh/docs" are.
+func isBareLinkHost(host, rest string) bool {
+	host = strings.ToLower(host)
+	i := strings.LastIndexByte(host, '.')
+	if i < 0 {
+		return false
+	}
+	tld := host[i+1:]
+	if knownTLDs[tld] {
+		return true
+	}
+	if !excludedTLDs[tld] {
+		return false
+	}
+	if wellKnownBareHosts[host] {
+		return true
+	}
+	labels := strings.Split(host, ".")
+	if len(labels) < 3 || len(labels[len(labels)-2]) < 2 {
+		return false
+	}
+	path := rest
+	if k := strings.IndexAny(path, "?#"); k >= 0 {
+		path = path[:k]
+	}
+	return !fileNameSegment.MatchString(path)
+}
+
+// extractLinks is the web links in text, each once, in order: the ones written with http:// or https://, and the
+// ones written without a scheme (given https://).
+func extractLinks(text string) []string {
 	var urls []string
-	for _, token := range strings.Fields(text) {
-		idx := strings.Index(token, "https://")
-		if idx < 0 {
-			idx = strings.Index(token, "http://")
-		}
-		if idx < 0 {
-			continue
-		}
-		u := strings.TrimRight(token[idx:], ".,;:!?)>]'\"")
-		if u != "http://" && u != "https://" {
+	add := func(u string) {
+		u = strings.TrimRight(u, ".,;:!?)>]'\"")
+		if u != "http://" && u != "https://" && !slices.Contains(urls, u) {
 			urls = append(urls, u)
 		}
 	}
+	for _, token := range strings.Fields(text) {
+		if idx := strings.Index(token, "https://"); idx >= 0 {
+			add(token[idx:])
+		} else if idx := strings.Index(token, "http://"); idx >= 0 {
+			add(token[idx:])
+		} else if !strings.Contains(token, "://") && !strings.Contains(token, "@") {
+			bare := strings.TrimRight(strings.TrimLeft(token, "([<{\"'*_~"), ".,;:!?)>]}'\"*_~")
+			if m := bareLinkPattern.FindStringSubmatch(bare); m != nil && isBareLinkHost(m[1], bare[len(m[1]):]) {
+				add("https://" + bare)
+			}
+		}
+	}
 	return urls
+}
+
+// hasLink reports whether text holds a web link.
+func hasLink(text string) bool {
+	lower := strings.ToLower(text)
+	return strings.Contains(lower, "http://") || strings.Contains(lower, "https://") || len(extractLinks(text)) > 0
 }

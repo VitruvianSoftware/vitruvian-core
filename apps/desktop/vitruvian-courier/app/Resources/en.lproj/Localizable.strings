@@ -2310,8 +2310,6 @@
 "The network didn’t accept that change." = "The network didn’t accept that change.";
 /* Command bar: shows or hides the chat info pane. */
 "Toggle chat info" = "Toggle chat info";
-/* Command bar: focuses the search field in the chat info pane. */
-"Search in chat info" = "Search in chat info";
 /* Command bar: opens the calendar date jumper in the chat info pane. */
 "Jump to date in chat" = "Jump to date in chat";
 /* Command bar: opens the sender's profile card for the selected message. */
@@ -2332,17 +2330,12 @@
 "On %@: %@" = "On %1$@: %2$@";
 "1 member" = "1 member";
 "%lld members" = "%lld members";
-"Filter chat info…" = "Filter chat info…";
-"Clear filter" = "Clear filter";
 "Participants" = "Participants";
 "Add Participants…" = "Add Participants…";
 "Admin" = "Admin";
 "Bot" = "Bot";
 "Pinned" = "Pinned";
 "Pinned message" = "Pinned message";
-"Shared Media" = "Shared Media";
-"Encrypted" = "Encrypted";
-"Not end-to-end encrypted" = "Not end-to-end encrypted";
 "Reload Chat Details" = "Reload Chat Details";
 "Remind…" = "Remind…";
 "Export Chat…" = "Export Chat…";

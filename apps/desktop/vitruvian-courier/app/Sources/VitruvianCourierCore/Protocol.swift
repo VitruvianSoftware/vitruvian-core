@@ -4247,13 +4247,16 @@ public struct RoomInfoResult: ProtocolType, Equatable {
     public var sharedMedia: [Event]
     public var sharedFiles: [Event]
     public var sharedLinks: [RoomLink]
+    /// The chat has more shared media or links than `sharedMedia` and `sharedLinks` hold: a count of them is "at
+    /// least". nil from an engine before the field.
+    public var sharedCapped: Bool?
     public var features: ChatFeatures
 
     public init(roomID: String, name: String, remoteName: String, localName: String = "", topic: String = "",
                 avatarPath: String = "", localAvatarURI: String = "", network: String, accountID: String = "",
                 isDirect: Bool, encrypted: Bool = false, disappearingMS: Int64 = 0, pinnedEventIDs: [String] = [],
                 members: [Member] = [], sharedMedia: [Event] = [], sharedFiles: [Event] = [],
-                sharedLinks: [RoomLink] = [], features: ChatFeatures) {
+                sharedLinks: [RoomLink] = [], sharedCapped: Bool? = nil, features: ChatFeatures) {
         self.roomID = roomID
         self.name = name
         self.remoteName = remoteName
@@ -4271,6 +4274,7 @@ public struct RoomInfoResult: ProtocolType, Equatable {
         self.sharedMedia = sharedMedia
         self.sharedFiles = sharedFiles
         self.sharedLinks = sharedLinks
+        self.sharedCapped = sharedCapped
         self.features = features
     }
 
@@ -4292,6 +4296,7 @@ public struct RoomInfoResult: ProtocolType, Equatable {
         case sharedMedia = "shared_media"
         case sharedFiles = "shared_files"
         case sharedLinks = "shared_links"
+        case sharedCapped = "shared_capped"
         case features
     }
 }

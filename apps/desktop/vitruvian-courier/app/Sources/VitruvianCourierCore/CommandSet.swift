@@ -365,14 +365,13 @@ public enum CommandSet {
     }
 
     /// Chat info, calendar, sender profile and new group/blast commands (Milestone 4.5).
-    /// Per Ruling 5 (inventory 02 lines 298, 340, 744): Toggle Chat Info is ⌘⇧I (`⌘I` stays Italic),
-    /// and Search in chat info has no shortcut (it still focuses the search field when chosen from the command list).
+    /// Per Ruling 5 (inventory 02 lines 298, 340, 744): Toggle Chat Info is ⌘⇧I (`⌘I` stays Italic).
+    /// Chat Info has no filter field, so there is no "Search in chat info": the Search quick action finds messages.
     @MainActor
     public static func chatInfo(
         hasOpenChat: @escaping @MainActor () -> Bool = { true },
         hasSelectedMessage: @escaping @MainActor () -> Bool = { true },
         toggleChatInfo: @escaping @MainActor () -> Void = {},
-        searchChatInfo: @escaping @MainActor () -> Void = {},
         toggleCalendar: @escaping @MainActor () -> Void = {},
         showSenderCard: @escaping @MainActor () -> Void = {},
         newGroupOrBlast: @escaping @MainActor () -> Void = {},
@@ -388,16 +387,6 @@ public enum CommandSet {
                 confirmation: nil,
                 isEnabled: hasOpenChat,
                 run: toggleChatInfo
-            ),
-            CourierCommand(
-                id: "conversation.searchChatInfo",
-                title: String(localized: "Search in chat info"),
-                keys: nil,
-                category: .chatInfo,
-                icon: "magnifyingglass",
-                confirmation: nil,
-                isEnabled: hasOpenChat,
-                run: searchChatInfo
             ),
             CourierCommand(
                 id: "conversation.toggleCalendar",
@@ -443,7 +432,6 @@ public enum CommandSet {
             hasOpenChat: { conversation.roomID != nil },
             hasSelectedMessage: { conversation.selectedMessage != nil || conversation.roomID != nil },
             toggleChatInfo: { conversation.toggleChatInfo() },
-            searchChatInfo: { conversation.focusChatInfoSearch() },
             toggleCalendar: { conversation.toggleCalendar() },
             showSenderCard: { Task { await conversation.showSenderCardForSelectedMessage() } },
             newGroupOrBlast: { inbox.openStartNewChat(multiSelect: true) },

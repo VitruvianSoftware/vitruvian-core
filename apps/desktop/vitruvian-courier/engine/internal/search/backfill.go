@@ -52,7 +52,8 @@ func runBackfill(ctx context.Context, s *store.Store, log zerolog.Logger, cfg ba
 	// database driver complaining at shutdown. The store's own warnings (milliseconds with no doc id left) go to log.
 	batchCtx := log.WithContext(context.WithoutCancel(ctx))
 	start := cfg.now()
-	if complete, err := s.SearchComplete(batchCtx); err == nil && complete {
+	// Pending includes the relink pass (re-tagging old messages), which an install with a complete index can still have.
+	if pending, err := s.BackfillPending(batchCtx); err == nil && !pending {
 		return // every start after the first one that finished: nothing to do, nothing to say
 	}
 	batches := 0

@@ -811,6 +811,233 @@ func TestRoomSharedLinksCarryThePreviewTitle(t *testing.T) {
 	}, titles)
 }
 
+// A Maps link counts as a link however it was written: with its scheme, without one (people paste
+// "maps.app.goo.gl/abc" and chat apps link it anyway), or as a dropped pin whose text holds no URL at all.
+func TestRoomSharedLinksCountMapsLinksInEveryForm(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		content string
+		want    []string
+	}{
+		{"with scheme", text("Meet here https://maps.app.goo.gl/kX9abc123"), []string{"https://maps.app.goo.gl/kX9abc123"}},
+		{"short link without scheme", text("Meet here maps.app.goo.gl/kX9abc123 ok?"), []string{"https://maps.app.goo.gl/kX9abc123"}},
+		{"google.com/maps without scheme", text("google.com/maps/place/Ferry+Building"), []string{"https://google.com/maps/place/Ferry+Building"}},
+		{"www and query string", text("(www.google.com/maps?q=37.79,-122.39)."), []string{"https://www.google.com/maps?q=37.79,-122.39"}},
+		{"old goo.gl/maps short link", text("goo.gl/maps/AbCdEf"), []string{"https://goo.gl/maps/AbCdEf"}},
+		{
+			"two links in one message", text("https://maps.app.goo.gl/one and maps.app.goo.gl/two"),
+			[]string{"https://maps.app.goo.gl/one", "https://maps.app.goo.gl/two"},
+		},
+		{
+			"the same link twice in one message counts once", text("maps.app.goo.gl/one https://maps.app.goo.gl/one"),
+			[]string{"https://maps.app.goo.gl/one"},
+		},
+		{
+			"a dropped pin has a geo URI and no URL in its text",
+			`{"msgtype":"m.location","body":"Ferry Building","geo_uri":"geo:37.7955,-122.3937;u=20"}`,
+			[]string{"https://maps.google.com/?q=37.7955,-122.3937"},
+		},
+		{
+			"a dropped pin whose text already links to the map counts once",
+			`{"msgtype":"m.location","body":"Ferry Building https://maps.google.com/?q=37.7955,-122.3937","geo_uri":"geo:37.7955,-122.3937"}`,
+			[]string{"https://maps.google.com/?q=37.7955,-122.3937"},
+		},
+		{
+			"a link only its preview names", `{"msgtype":"m.text","body":"look","com.beeper.linkpreviews":[{"matched_url":"https://maps.app.goo.gl/prev","og:title":"A place"}]}`,
+			[]string{"https://maps.app.goo.gl/prev"},
+		},
+		{"words are not links", text("see e.g. file.txt, version 3.5 and/or 1.5/2 or me@example.com/x"), []string{}},
+		{"a bare domain with no path is not a link", text("example.com"), []string{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, ctx := open(t), context.Background()
+			roomID := "!maps:courier.local"
+			require.NoError(t, s.UpsertRoom(ctx, Room{ID: roomID, Network: "whatsapp", Name: "Maps", CreatedAt: time.Unix(1, 0)}))
+			mkMsg(t, s, roomID, "$m", me, "m.room.message", tc.content, time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC))
+			links, err := s.RoomSharedLinks(ctx, roomID, 10)
+			require.NoError(t, err)
+			got := []string{}
+			for _, l := range links {
+				got = append(got, l.URL)
+			}
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestRoomSharedLinksRejectsSchemelessFalsePositives(t *testing.T) {
+	for _, tc := range []struct {
+		body string
+		want []string
+	}{
+		{"e.g. more", []string{}},
+		{"i.e. this", []string{}},
+		{"file.txt", []string{}},
+		{"file.txt/", []string{}},
+		{"Node.js/express", []string{}},
+		{"README.md/docs", []string{}},
+		{"config.yaml/dev", []string{}},
+		{"Mr.Smith/Jones", []string{}},
+		{"U.S./Canada", []string{}},
+		{"v1.2", []string{}},
+		{"v1.2/3", []string{}},
+		{"3.5/10", []string{}},
+		{"1.25/0.5", []string{}},
+		{"10.0.0.1/24", []string{}},
+		{"john.doe@example.com/x", []string{}},
+		{"and/or", []string{}},
+		{"1.5/2", []string{}},
+		{"example.com", []string{}},
+		{"maps.app.goo.gl/kX9", []string{"https://maps.app.goo.gl/kX9"}},
+		{"example.com/path.", []string{"https://example.com/path"}},
+		{"(www.google.com/maps?q=1,2).", []string{"https://www.google.com/maps?q=1,2"}},
+	} {
+		t.Run(tc.body, func(t *testing.T) {
+			s, ctx := open(t), context.Background()
+			roomID := "!bare-links:courier.local"
+			require.NoError(t, s.UpsertRoom(ctx, Room{ID: roomID, Network: "whatsapp", Name: "Bare Links", CreatedAt: time.Unix(1, 0)}))
+			mkMsg(t, s, roomID, "$m", me, "m.room.message", text(tc.body), time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC))
+			links, err := s.RoomSharedLinks(ctx, roomID, 10)
+			require.NoError(t, err)
+			got := []string{}
+			for _, l := range links {
+				got = append(got, l.URL)
+			}
+			require.Equal(t, tc.want, got, "input %q", tc.body)
+		})
+	}
+}
+
+func TestSchemelessLinksOnExcludedTLDsAreKnownMisses(t *testing.T) {
+	for _, tc := range []struct {
+		text string
+		want []string
+	}{
+		{"notion.so/abc123", []string{"https://notion.so/abc123"}},
+		{"bun.sh/docs", []string{"https://bun.sh/docs"}},
+		{"www.example.cc/x", []string{"https://www.example.cc/x"}},
+		{"docs.example.zip/x", []string{"https://docs.example.zip/x"}},
+		{"README.md/docs", []string{}},
+		{"script.sh/run", []string{}},
+		{"config.yaml/dev", []string{}},
+		{"Node.js/express", []string{}},
+	} {
+		t.Run(tc.text, func(t *testing.T) {
+			s, ctx := open(t), context.Background()
+			roomID := "!excluded-tlds:courier.local"
+			require.NoError(t, s.UpsertRoom(ctx, Room{ID: roomID, Network: "whatsapp", Name: "Excluded TLDs", CreatedAt: time.Unix(1, 0)}))
+			mkMsg(t, s, roomID, "$m", me, "m.room.message", text(tc.text), time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC))
+			links, err := s.RoomSharedLinks(ctx, roomID, 10)
+			require.NoError(t, err)
+			got := []string{}
+			for _, l := range links {
+				got = append(got, l.URL)
+			}
+			require.Equal(t, tc.want, got, "input %q", tc.text)
+		})
+	}
+}
+
+// Messages indexed before scheme-less links were tagged get the "has a link" tag from a one-time, bounded pass that
+// is recorded as done in search_state and never runs again.
+func TestRelinkBackfillTagsOldSchemelessLinksOnceAndOnlyOnce(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	roomID := "!relink:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: roomID, Network: "whatsapp", Name: "Relink", CreatedAt: time.Unix(1, 0)}))
+	t0 := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+	mkMsg(t, s, roomID, "$bare", me, "m.room.message", text("meet at maps.app.goo.gl/kX9abc"), t0.Add(time.Minute))
+	mkMsg(t, s, roomID, "$plain", me, "m.room.message", text("see you there, e.g. at noon"), t0.Add(2*time.Minute))
+	mkMsg(t, s, roomID, "$http", me, "m.room.message", text("https://x.test/a"), t0.Add(3*time.Minute))
+	tagged := func() int {
+		return count(t, s, "SELECT count(*) FROM search_messages WHERE search_messages MATCH 'scope:klink'")
+	}
+	require.Equal(t, 2, tagged(), "a message written now is tagged by its own write")
+
+	untag := func() {
+		doc := docID(t, s, "$bare")
+		require.True(t, doc.Valid)
+		_, err := s.db.Exec(ctx, "DELETE FROM search_messages WHERE rowid=$1", doc.Int64)
+		require.NoError(t, err)
+		_, err = s.db.Exec(ctx, "INSERT INTO search_messages (rowid, body, scope) VALUES ($1, 'meet', 'all ktext')", doc.Int64)
+		require.NoError(t, err)
+	}
+	// The database as an engine before the change left it: the pass is pending over what is on disk.
+	untag()
+	require.Equal(t, 1, tagged())
+	_, err := s.db.Exec(ctx, `UPDATE search_state SET value = 0 WHERE key = 'relink_after';
+		UPDATE search_state SET value = (SELECT MAX(rowid) FROM events) WHERE key = 'relink_until'`)
+	require.NoError(t, err)
+
+	passes := 0
+	for {
+		done, err := s.BackfillSearch(ctx, 1)
+		require.NoError(t, err)
+		passes++
+		if done {
+			break
+		}
+		require.Less(t, passes, 20)
+	}
+	require.Greater(t, passes, 1, "it works in bounded batches")
+	require.Equal(t, 2, tagged(), "the old message with a scheme-less link is tagged now")
+	require.Equal(t, stateValue(t, s, "relink_until"), stateValue(t, s, "relink_after"), "recorded as done")
+	complete, err := s.SearchComplete(ctx)
+	require.NoError(t, err)
+	require.True(t, complete)
+
+	// Once done it never runs again: a tag taken away stays away, and running more batches changes nothing.
+	untag()
+	for range 3 {
+		_, err := s.BackfillSearch(ctx, 10)
+		require.NoError(t, err)
+	}
+	require.Equal(t, 1, tagged())
+}
+
+func TestRoomSharedLinksSaysWhenThereAreMoreThanItReturns(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	roomID := "!capped:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: roomID, Network: "whatsapp", Name: "Capped", CreatedAt: time.Unix(1, 0)}))
+	t0 := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+	for i := 1; i <= 3; i++ {
+		mkMsg(t, s, roomID, fmt.Sprintf("$m%d", i), me, "m.room.message", text(fmt.Sprintf("https://example.com/%d", i)), t0.Add(time.Duration(i)*time.Second))
+	}
+	links, capped, err := s.RoomSharedLinksCapped(ctx, roomID, 3)
+	require.NoError(t, err)
+	require.Len(t, links, 3)
+	require.False(t, capped, "exactly as many as asked for is not more")
+	links, capped, err = s.RoomSharedLinksCapped(ctx, roomID, 2)
+	require.NoError(t, err)
+	require.Len(t, links, 2)
+	require.True(t, capped, "a third exists")
+	require.Equal(t, "https://example.com/3", links[0].URL, "newest first")
+
+	// More messages than the newest 500 it reads: that is not a cap.
+	big := "!scan-capped:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: big, Network: "whatsapp", Name: "Big", CreatedAt: time.Unix(1, 0)}))
+	for i := 1; i <= 501; i++ {
+		mkMsg(t, s, big, fmt.Sprintf("$b%d", i), me, "m.room.message", text("hello"), t0.Add(time.Duration(i)*time.Second))
+	}
+	mkMsg(t, s, big, "$old", me, "m.room.message", text("https://old.example.com/x"), t0.Add(-time.Hour))
+	links, capped, err = s.RoomSharedLinksCapped(ctx, big, 50)
+	require.NoError(t, err)
+	require.Empty(t, links, "the only link is older than the newest 500 messages")
+	require.False(t, capped, "reaching the scan window is not the 50-link cap: every link found was returned")
+}
+
+// Search's link filter agrees with Chat Info: a message with a scheme-less link is a link message too.
+func TestMessageScopeMarksSchemelessLinksAsLinks(t *testing.T) {
+	for body, want := range map[string]bool{
+		"https://example.com":           true,
+		"maps.app.goo.gl/kX9abc123":     true,
+		"see google.com/maps/place/Foo": true,
+		"no link here, e.g. file.txt":   false,
+	} {
+		scope := messageScope(Event{RoomID: "!r:x", Sender: "@a:x"}, "whatsapp", "text", body)
+		require.Equal(t, want, strings.Contains(scope, "klink"), body)
+	}
+}
+
 func TestLinkPreviewTitlesDecodeHTMLEntities(t *testing.T) {
 	for _, tc := range []struct{ raw, want string }{
 		{"You can forecast a new series with Mistral&amp;#39;s newly released model", "You can forecast a new series with Mistral's newly released model"},

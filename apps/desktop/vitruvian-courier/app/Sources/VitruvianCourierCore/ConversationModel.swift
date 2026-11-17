@@ -367,8 +367,6 @@ public final class ConversationModel: ObservableObject {
     @Published public private(set) var chatInfoBookmarks: [MessageHit] = []
     /// Whether `refreshChatInfo` is currently in flight.
     @Published public private(set) var isRefreshingChatInfo = false
-    /// Incremented when `conversation.searchChatInfo` asks the Chat Info pane to focus its filter field.
-    @Published public private(set) var focusChatInfoSearchRequest = 0
     /// Active Edit Group / Edit Chat sheet draft.
     @Published public var activeEditGroupDraft: EditGroupDraft?
     /// Active Add Participants sheet target room info.
@@ -2490,16 +2488,6 @@ public final class ConversationModel: ObservableObject {
     /// Waits for an in-flight chat summary request to finish (for deterministic tests).
     public func waitForSummary() async {
         await summarizeTask?.value
-    }
-
-    /// Opens the Chat Info pane if closed and asks its filter field to take focus.
-    public func focusChatInfoSearch() {
-        guard !isLocked else { return }
-        if !isShowingChatInfo {
-            isShowingChatInfo = true
-            Task { [weak self] in await self?.refreshChatInfo() }
-        }
-        focusChatInfoSearchRequest += 1
     }
 
     /// Reads `room.info` and the chat's bookmarked messages (`search.query` with `sections: [.bookmarks]`) for the

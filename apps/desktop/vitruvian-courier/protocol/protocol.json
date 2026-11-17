@@ -2037,6 +2037,10 @@
           "type": "RoomLink[]",
           "doc": "Recent links shared in the chat."
         },
+        "shared_capped": {
+          "type": "bool",
+          "doc": "The chat has more shared media or links than shared_media and shared_links hold, so a count of them is at least that many."
+        },
         "features": {
           "type": "ChatFeatures",
           "doc": "Capabilities and admin permissions in this chat."
