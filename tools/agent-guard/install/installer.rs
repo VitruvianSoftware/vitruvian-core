@@ -74,7 +74,13 @@ pub const AGY_MATCHER: &str = concat!(
     "run_command|shell_exec|send_command_input|manage_task|git_commit",
     "|write_to_file|replace_file_content|multi_replace_file_content|notebook_edit"
 );
-pub const HOOK_TIMEOUT: u64 = 10;
+/// Seconds Claude Code and agy give the hook before giving up. A cached guard
+/// answers in well under a second; the first call after origin/main changes
+/// compiles the guard first (~2-3 s, far longer on a loaded or nearly full
+/// disk). At 10 s that compile was killed every time and never finished, so
+/// every command tool failed closed until someone built it by hand
+/// (2026-11-16). 60 s lets that one call finish; no normal call waits longer.
+pub const HOOK_TIMEOUT: u64 = 60;
 
 /// Environment markers that mean "this is an agent's shell, not James's".
 pub const AGENT_MARKERS: [&str; 3] = ["CLAUDECODE", "ANTIGRAVITY_AGENT", "GEMINI_CLI"];

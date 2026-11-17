@@ -37,7 +37,7 @@ const CLAUDE_SETTINGS_REL: &str = ".claude/settings.json";
 const AGY_HOOKS_REL: &str = ".agents/hooks.json";
 const LAUNCHER_REL: &str = "tools/agent-guard/hook.sh";
 const AGY_HOOK_NAME: &str = "agent-guard";
-const HOOK_TIMEOUT: i64 = 10;
+const HOOK_TIMEOUT: i64 = 60;
 
 fn command_matcher() -> String {
     format!(
