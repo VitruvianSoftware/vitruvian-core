@@ -105,6 +105,14 @@ struct ComposerView: View {
     @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
     @Environment(\.themeAccentColor) private var themeAccent
     @State private var isPlusHovering = false
+    /// "It's late — send this later?" is dismissed for the rest of the session, in every chat.
+    @ObservedObject private var nudgeSession = SendLaterNudgeSession.shared
+
+    /// Late at night, with a message that can be scheduled in the box, and Send Later on offer.
+    private var showsSendLaterNudge: Bool {
+        menus.sendLater != nil && composer.entitlement.isEntitled(.sendLater)
+            && SendLaterNudge.shows(hasText: composer.canSchedule, now: Date(), dismissed: nudgeSession.dismissed)
+    }
 
     /// The message box's height at one line, with glass: the text's height and the field's padding above and below.
     static let floatingFieldPadding: CGFloat = 4
@@ -202,6 +210,9 @@ struct ComposerView: View {
             ) { id in
                 composer.removeAttachment(id)
             }
+        }
+        if showsSendLaterNudge, let sendLater = menus.sendLater {
+            SendLaterNudgeBar(sendLater: sendLater) { nudgeSession.dismissed = true }
         }
         picker
         if showsFormattingBar {
@@ -1968,5 +1979,45 @@ private struct ComposerLiveWaveformStrip: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+
+/// Whether the late-night nudge was dismissed this session (a launch of the app).
+@MainActor
+final class SendLaterNudgeSession: ObservableObject {
+    static let shared = SendLaterNudgeSession()
+    @Published var dismissed = false
+}
+
+/// The gentle line above the message box at night: "It's late — send this later?", with the link to the picker.
+private struct SendLaterNudgeBar: View {
+    let sendLater: () -> Void
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "moon.stars")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(String(localized: "It’s late — send this later?"))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Button(String(localized: "Send Later…"), action: sendLater)
+                .buttonStyle(.link)
+                .font(.callout)
+            Spacer(minLength: 0)
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(String(localized: "Don’t suggest this again until Vitruvian Courier restarts"))
+            .accessibilityLabel(String(localized: "Dismiss"))
+        }
+        .padding(.horizontal, 4)
     }
 }

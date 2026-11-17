@@ -338,7 +338,7 @@ struct MainWindow: View {
             SidebarSplitView(sidebarState: menuCoordinator) {
                 HStack(spacing: 0) {
                     if preferences.showSpaceBar {
-                        SpaceBar(spaces: spaces, inbox: inbox, labels: labels)
+                        SpaceBar(spaces: spaces, inbox: inbox, labels: labels, hotkeys: hotkeys)
                         Divider()
                     }
                     InboxList(

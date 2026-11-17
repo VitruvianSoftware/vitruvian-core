@@ -54,6 +54,8 @@ struct SpaceBar: View {
     var accountsAndBridges: AccountsAndBridgesModel? = nil
     var onOpenSpaceInNewWindow: ((String) -> Void)? = nil
     var onOpenAccountSettings: ((String) -> Void)? = nil
+    /// Where Go to Space's modifier is read, for the shortcut in each icon's tooltip.
+    var hotkeys: HotkeyRegistry? = nil
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openDetachedWindow) private var openDetachedWindow
 
@@ -62,9 +64,12 @@ struct SpaceBar: View {
     var body: some View {
         ScrollView(.vertical) {
             VStack(spacing: 6) {
-                ForEach(spaces.visible) { space in
+                ForEach(Array(spaces.visible.enumerated()), id: \.element.id) { index, space in
                     SpaceIcon(space: space, isShown: inbox.query.space == space.spaceID,
-                              isReconnecting: isReconnecting(space), isStarting: isStarting(space)) {
+                              isReconnecting: isReconnecting(space), isStarting: isStarting(space),
+                              shortcut: SpaceShortcutLabel.label(
+                                  position: index + 1,
+                                  modifier: hotkeys?.primaryChord(for: "Switch First 9 Spaces Modifier"))) {
                         spaces.select(space.spaceID)
                     }
                     .contextMenu { menu(for: space) }
@@ -235,6 +240,8 @@ private struct SpaceIcon: View {
     let isShown: Bool
     let isReconnecting: Bool
     let isStarting: Bool
+    /// "⌃2": the keys that open this space, when it has some.
+    var shortcut: String? = nil
     let select: () -> Void
     @State private var hovering = false
     @Environment(\.themeAccentColor) private var themeAccent
@@ -244,6 +251,12 @@ private struct SpaceIcon: View {
             mark
                 .frame(width: 40, height: 40)
                 .background(RoundedRectangle(cornerRadius: 10).fill(background))
+                .overlay {
+                    // The open space: the same accent wash and thin edge behind every kind of icon.
+                    if isShown {
+                        RoundedRectangle(cornerRadius: 10).strokeBorder(themeAccent.opacity(0.45), lineWidth: 1)
+                    }
+                }
                 .overlay(alignment: .topTrailing) { badge }
                 .overlay(alignment: .bottomTrailing) {
                     if isReconnecting {
@@ -275,22 +288,15 @@ private struct SpaceIcon: View {
     }
 
     private var background: Color {
-        isShown ? themeAccent.opacity(0.22) : hovering ? Color.primary.opacity(0.08) : Color.clear
+        isShown ? themeAccent.opacity(0.2) : hovering ? Color.primary.opacity(0.08) : Color.clear
     }
 
     @ViewBuilder
     private var mark: some View {
         switch space.kind {
         case .account:
-            // An app-icon tile; the selected account's has an accent outline besides the highlight behind it.
+            // An app-icon tile; no tooltip of its own, so the button's (name and shortcut) is the one shown.
             NetworkBadge(network: space.network, name: SpaceLook.title(space), size: 26, showsTooltip: false)
-                .overlay {
-                    if isShown {
-                        RoundedRectangle(cornerRadius: 26 * 0.26 + 2.5, style: .continuous)
-                            .strokeBorder(themeAccent, lineWidth: 2)
-                            .padding(-3)
-                    }
-                }
                 .opacity(isShown || hovering ? 1 : 0.88)
                 .accessibilityHidden(true)
         case .label:
@@ -325,9 +331,10 @@ private struct SpaceIcon: View {
         }
     }
 
-    /// "Inbox · 12 chats", and for an account that is reconnecting, so.
+    /// "Inbox  ⌃1 · 12 chats", and for an account that is reconnecting, so.
     private var tooltip: String {
-        var parts = [SpaceLook.title(space), SpaceLook.count(space)]
+        let name = shortcut.map { "\(SpaceLook.title(space))  \($0)" } ?? SpaceLook.title(space)
+        var parts = [name, SpaceLook.count(space)]
         if space.unreadChats > 0 { parts.append(String(localized: "\(space.unreadChats) unread")) }
         if isStarting { parts.append(NetworkChoice.startingLabel) }
         if isReconnecting { parts.append(String(localized: "Reconnecting…")) }
