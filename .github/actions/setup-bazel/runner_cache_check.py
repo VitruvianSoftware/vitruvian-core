@@ -30,6 +30,9 @@ What it checks:
   it on the first run; when one run finds --escalate broken entries or more,
   the whole contents cache is moved aside in one rename (Bazel rebuilds it).
 
+  Every job on the pool runs this, a dozen or so per merge-queue entry, so
+  the samples add up across jobs; action.yml sets the budget each one gets.
+
   A marker whose directory is gone is removed. A directory with no marker is
   a fetch still being moved in, and is left alone.
 
@@ -336,14 +339,21 @@ class Check:
     def run(self):
         # A quarter of the budget at most for leftovers, so checking always gets time.
         self.empty_trash(share=0.25)
+        before_bazelisk = time.monotonic()
         self.check_bazelisk()
+        before_contents = time.monotonic()
         self.check_contents()
+        contents_seconds = time.monotonic() - before_contents
         self.empty_trash(share=1.0)
+        # The split says how much of the budget the sample really got: the
+        # Bazelisk check has no deadline of its own and runs first.
         info(
             f"checked {self.checked} cached repos, recorded {self.recorded} new ones, "
             f"{self.verb} {len(self.evicted)}"
             + (" and the whole contents cache" if self.escalated else "")
             + f", {time.monotonic() - self.started:.1f} s"
+            + f" (Bazelisk {before_contents - before_bazelisk:.1f} s,"
+            + f" repos {contents_seconds:.1f} s)"
         )
 
 

@@ -260,6 +260,17 @@ runs:
     # Bazelisk binary whose SHA-256 no longer matches, so the next job heals
     # it. It never fails the job; `timeout` caps it if NFS stalls.
     # runner_cache_check_test (BUILD here) holds the rules.
+    #
+    # The budget is 5 seconds, down from 20. The check always uses all of it,
+    # so at 20 it was most of this action on the pool: a median 25-26 s in
+    # every one of 116 queue jobs on 2026-11-17, a dozen or so jobs per
+    # merge-queue entry. A 20-second sample covered 659 to 2,015 cached repos
+    # in the four logs read; 5 seconds covers about a quarter of that per job,
+    # and the check now logs how its time was split. That still finds
+    # damage that hits many repos at once, which is what this is here for
+    # (three broken repos in one sample clear the whole cache), and the
+    # Bazelisk check is not sampled, so it is unchanged. What it gives up is
+    # some chance of one job catching a single broken repo before it needs it.
     - name: Check the shared runner caches for broken entries
       if: runner.environment == 'self-hosted' && runner.os == 'Linux'
       shell: bash
@@ -267,7 +278,7 @@ runs:
         timeout 60 python3 "${GITHUB_ACTION_PATH}/runner_cache_check.py" \
           --repo-cache "${HOME}/.cache/bazel-repo" \
           --bazelisk-cache "${HOME}/.cache/bazelisk" \
-          --budget-seconds 20 \
+          --budget-seconds 5 \
           || echo "::warning title=Runner cache check::stopped early (exit $?); the job goes on"
 
     - name: Restore the Bazel repository cache
