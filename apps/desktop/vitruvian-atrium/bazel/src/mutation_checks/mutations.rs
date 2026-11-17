@@ -514,7 +514,7 @@ pub const MUTATIONS: &[Mutation] = &[
         relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "        acceptsSystemFeedback && (!hiddenUntilHover || NotchSupport.hiddenShowsActivity(in: defaults))",
         after: "        acceptsSystemFeedback && !hiddenUntilHover",
-        diagnostic: "a hidden island set to show activity reads the song and shows its strip",
+        diagnostic: "a hidden island set to show activity still shows notices while out of sight",
     },
     Mutation {
         name: "copies of a hidden island hide the activity it shows",
