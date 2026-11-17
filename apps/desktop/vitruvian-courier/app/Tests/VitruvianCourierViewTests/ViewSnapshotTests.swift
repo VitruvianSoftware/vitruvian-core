@@ -1981,7 +1981,7 @@ final class ViewSnapshotTests: XCTestCase {
             .padding(14)
         })
 
-        // 4b. The placeholder is a compact card, not the old tall "blocked" box: its title can come from a preview the
+        // 4b. The placeholder is a card with a 16:9 picture area, not the old tall "blocked" box: its title can come from a preview the
         // network sent, and the privacy note lives in the tooltip, not the body.
         check(try Snapshot.render("embed-consent-card-titled", width: 360) {
             EmbedConsentCard(
@@ -1997,7 +1997,9 @@ final class ViewSnapshotTests: XCTestCase {
             rootView: EmbedConsentCard(messageID: "$embed-1", descriptor: descriptor, isLoaded: false, onLoadEmbed: {})
                 .frame(width: 320)
         )
-        XCTAssertLessThanOrEqual(compact.fittingSize.height, 64, "the placeholder is one compact row")
+        // A 16:9 picture the width of the card (320 -> 180 high) with the title and site under it.
+        XCTAssertGreaterThanOrEqual(compact.fittingSize.height, 320 * 9 / 16, "the card holds a 16:9 picture")
+        XCTAssertLessThanOrEqual(compact.fittingSize.height, 320 * 9 / 16 + 64, "and one title row under it")
         XCTAssertEqual(descriptor.siteName, "YouTube")
         XCTAssertEqual(descriptor.fallbackTitle, "Watch on YouTube")
 

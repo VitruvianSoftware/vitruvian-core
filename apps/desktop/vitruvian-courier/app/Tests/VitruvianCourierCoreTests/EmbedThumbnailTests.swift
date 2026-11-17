@@ -9,7 +9,7 @@ import XCTest
 final class EmbedThumbnailTests: XCTestCase {
     func testAValidVideoIDMakesYouTubesPictureAddress() {
         XCTAssertEqual(EmbedThumbnail.youTubeURL(videoID: "dQw4w9WgXcQ")?.absoluteString,
-                       "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg")
+                       "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")
         XCTAssertNotNil(EmbedThumbnail.youTubeURL(videoID: "a-_B1234567"))
     }
 
@@ -38,7 +38,7 @@ final class EmbedThumbnailTests: XCTestCase {
         XCTAssertEqual(CountingURLProtocol.requests, [], "no request for a bad ID")
         let image = await EmbedThumbnail.fetch(videoID: "dQw4w9WgXcQ", session: session)
         XCTAssertNotNil(image)
-        XCTAssertEqual(CountingURLProtocol.requests, ["https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg"])
+        XCTAssertEqual(CountingURLProtocol.requests, ["https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"])
         _ = await EmbedThumbnail.fetch(videoID: "dQw4w9WgXcQ", session: session)
         XCTAssertEqual(CountingURLProtocol.requests.count, 1, "the second time comes from memory")
     }

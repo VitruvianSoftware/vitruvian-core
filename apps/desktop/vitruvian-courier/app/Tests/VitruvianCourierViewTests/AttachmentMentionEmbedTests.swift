@@ -255,7 +255,7 @@ final class AttachmentMentionEmbedTests: XCTestCase {
     func testYouTubeDescriptorKnowsItsPictureAddress() throws {
         let youtube = try XCTUnwrap(ExternalEmbedDescriptor.match(urlString: "https://youtu.be/dQw4w9WgXcQ"))
         XCTAssertEqual(youtube.youTubeVideoID, "dQw4w9WgXcQ")
-        XCTAssertEqual(youtube.remoteThumbnailURL?.absoluteString, "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg")
+        XCTAssertEqual(youtube.remoteThumbnailURL?.absoluteString, "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")
         let vimeo = try XCTUnwrap(ExternalEmbedDescriptor.match(urlString: "https://vimeo.com/123456"))
         XCTAssertNil(vimeo.remoteThumbnailURL)
         let spotify = try XCTUnwrap(ExternalEmbedDescriptor.match(urlString: "https://open.spotify.com/track/abc123"))
@@ -298,7 +298,11 @@ final class AttachmentMentionEmbedTests: XCTestCase {
         }
     }
 
-    func testTheVideoPictureIsFetchedOnlyWhenExternalContentIsAllowed() throws {
+    /// Why #5015's picture never showed: the card asked for the picture only when "Load external embeds
+    /// automatically" was on, but with that on the card is replaced by the player, so the one state that fetched
+    /// never drew a card. The picture is a still from the video, so the card fetches it by default; the setting still
+    /// decides whether the player loads.
+    func testTheCardFetchesTheVideoPictureByDefaultAndOnlyWhenItMayNot() throws {
         let descriptor = try XCTUnwrap(ExternalEmbedDescriptor.match(urlString: "https://youtu.be/Zx9Qk3LmN-_"))
         EmbedThumbnail.clearCache()
         let rep = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(NSImage(size: NSSize(width: 16, height: 9), flipped: false) { rect in
@@ -311,16 +315,80 @@ final class AttachmentMentionEmbedTests: XCTestCase {
             EmbedConsentCard(messageID: "$e", descriptor: descriptor, isLoaded: false, allowsRemoteThumbnail: false,
                              session: session, onLoadEmbed: {}).padding(14)
         }
-        XCTAssertEqual(EmbedCountingURLProtocol.requests, [], "external content off: nothing is requested")
+        XCTAssertEqual(EmbedCountingURLProtocol.requests, [], "asked not to fetch: nothing is requested")
         for suffix in ["light", "dark"] { XCTAssertEqual(try redPixelCount("embed-remote-off", suffix), 0) }
 
+        // No argument: the card as the message row builds it.
         try Snapshot.render("embed-remote-on", width: 360, prepare: settle) {
-            EmbedConsentCard(messageID: "$e", descriptor: descriptor, isLoaded: false, allowsRemoteThumbnail: true,
+            EmbedConsentCard(messageID: "$e", descriptor: descriptor, isLoaded: false,
                              session: session, onLoadEmbed: {}).padding(14)
         }
         // Light and dark each draw the card; the second comes from memory, so the site is asked once.
-        XCTAssertEqual(EmbedCountingURLProtocol.requests, ["https://i.ytimg.com/vi/Zx9Qk3LmN-_/mqdefault.jpg"])
+        XCTAssertEqual(EmbedCountingURLProtocol.requests, ["https://i.ytimg.com/vi/Zx9Qk3LmN-_/hqdefault.jpg"])
         XCTAssertGreaterThan(try redPixelCount("embed-remote-on", "light"), 100, "the fetched picture is drawn")
+    }
+
+    /// The red region's box in a rendered card, in pixels.
+    private func redBounds(_ name: String, _ suffix: String) throws -> (width: Int, height: Int, fill: Double) {
+        let rep = try XCTUnwrap(NSBitmapImageRep(data: Data(contentsOf: Snapshot.directory.appendingPathComponent("\(name)-\(suffix).png"))))
+        var (minX, maxX, minY, maxY, reds) = (Int.max, -1, Int.max, -1, 0)
+        for y in 0 ..< rep.pixelsHigh {
+            for x in 0 ..< rep.pixelsWide {
+                guard let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB),
+                      c.redComponent > 0.85, c.greenComponent < 0.4, c.blueComponent < 0.4 else { continue }
+                reds += 1; minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y)
+            }
+        }
+        guard maxX >= 0 else { return (0, 0, 0) }
+        let (w, h) = (maxX - minX + 1, maxY - minY + 1)
+        return (w, h, Double(reds) / Double(w * h))
+    }
+
+    /// The picture is a 16:9 still across the whole card (up to the cap), not a thumbnail beside the text.
+    func testTheCardPictureIsSixteenByNineAcrossTheWholeCard() throws {
+        let descriptor = try XCTUnwrap(ExternalEmbedDescriptor.match(urlString: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"))
+        let path = try redPicture()
+        // A wide bubble: the card fills its room up to its cap.
+        try Snapshot.render("embed-wide", width: 560, prepare: settle) {
+            EmbedConsentCard(messageID: "$e", descriptor: descriptor, isLoaded: false, title: "A video with a title",
+                             previewImagePath: path, onLoadEmbed: {}).padding(14)
+        }
+        // A narrow bubble: the card shrinks to fit.
+        try Snapshot.render("embed-narrow", width: 260, prepare: settle) {
+            EmbedConsentCard(messageID: "$e", descriptor: descriptor, isLoaded: false, title: "A video with a title",
+                             previewImagePath: path, onLoadEmbed: {}).padding(14)
+        }
+        for suffix in ["light", "dark"] {
+            let wide = try redBounds("embed-wide", suffix)
+            XCTAssertGreaterThanOrEqual(wide.width, 440, "wide: the picture fills the card (\(wide.width) px)")
+            XCTAssertEqual(Double(wide.width) / Double(wide.height), 16.0 / 9.0, accuracy: 0.06, "wide: 16:9")
+            XCTAssertGreaterThan(wide.fill, 0.97, "wide: one solid picture, play glyph aside")
+            let narrow = try redBounds("embed-narrow", suffix)
+            XCTAssertGreaterThanOrEqual(narrow.width, 220, "narrow: the picture fills the card (\(narrow.width) px)")
+            XCTAssertEqual(Double(narrow.width) / Double(narrow.height), 16.0 / 9.0, accuracy: 0.06, "narrow: 16:9")
+        }
+    }
+
+    /// YouTube's `hqdefault` is 4:3 with black bars above and below the 16:9 picture; the card shows only the picture.
+    func testTheBlackBarsOfAFourByThreeStillAreCroppedOut() throws {
+        let descriptor = try XCTUnwrap(ExternalEmbedDescriptor.match(urlString: "https://youtu.be/dQw4w9WgXcQ"))
+        let barred = NSImage(size: NSSize(width: 480, height: 360), flipped: false) { rect in
+            NSColor.black.setFill(); rect.fill()
+            NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1).setFill()
+            NSRect(x: 0, y: 45, width: 480, height: 270).fill()
+            return true
+        }
+        let image = try XCTUnwrap(barred.cgImage(forProposedRect: nil, context: nil, hints: nil))
+        try Snapshot.render("embed-barred", width: 520, prepare: settle) {
+            EmbedConsentCard(messageID: "$e", descriptor: descriptor, isLoaded: false,
+                             fetchPicture: { _ in image }, onLoadEmbed: {}).padding(14)
+        }
+        for suffix in ["light", "dark"] {
+            let box = try redBounds("embed-barred", suffix)
+            XCTAssertGreaterThan(box.width, 440)
+            XCTAssertGreaterThan(box.fill, 0.97, "no black bar inside the picture")
+            XCTAssertEqual(Double(box.width) / Double(box.height), 16.0 / 9.0, accuracy: 0.06)
+        }
     }
 
     private func solid(_ color: NSColor) throws -> CGImage {

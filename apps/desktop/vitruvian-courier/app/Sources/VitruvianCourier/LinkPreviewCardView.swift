@@ -325,8 +325,9 @@ public struct EmbedConsentCard: View {
     public var title: String?
     /// A picture the link's preview already saved on this Mac; drawn without any request.
     public var previewImagePath: String?
-    /// Whether the video's picture may be fetched from its site (that tells the site this Mac's address). Off keeps
-    /// the plain play tile.
+    /// Whether the video's picture may be fetched from its site (that tells the site this Mac's address). On by
+    /// default: the picture is only a still from the video, and the "load external embeds" setting is about the
+    /// player. Off keeps the plain placeholder.
     public var allowsRemoteThumbnail: Bool
     /// Where a fetched picture comes from (the shared session unless a test supplies its own).
     public var session: URLSession
@@ -359,7 +360,7 @@ public struct EmbedConsentCard: View {
         isLoaded: Bool,
         title: String? = nil,
         previewImagePath: String? = nil,
-        allowsRemoteThumbnail: Bool = false,
+        allowsRemoteThumbnail: Bool = true,
         session: URLSession = .shared,
         fetchPicture: (@Sendable (String) async -> CGImage?)? = nil,
         onBubble: Bool = false,
@@ -416,6 +417,31 @@ public struct EmbedConsentCard: View {
         loaded = (source, image)
     }
 
+    /// The widest the card is, and so the widest a bubble holding it is.
+    public static let maxWidth: CGFloat = 480
+
+    /// The video's still, 16:9 across the full width of the card, with the play glyph over it. While the picture
+    /// loads, or if it never comes, a calm tinted box of the same shape stands in, so the card does not jump.
+    private var picture: some View {
+        Color.clear
+            .aspectRatio(16.0 / 9.0, contentMode: .fit)
+            .overlay {
+                ZStack {
+                    Rectangle().fill(themeAccent.opacity(onBubble ? 0.30 : 0.16))
+                    if let thumbnail {
+                        Image(decorative: thumbnail, scale: 1)
+                            .resizable()
+                            .scaledToFill()
+                    }
+                    Image(systemName: "play.fill")
+                        .font(.system(size: thumbnail == nil ? 22 : 20, weight: .semibold))
+                        .foregroundStyle(thumbnail == nil && !onBubble ? themeAccent : Color.white)
+                        .shadow(color: .black.opacity(thumbnail == nil ? 0 : 0.6), radius: 3)
+                }
+            }
+            .clipped()
+    }
+
     private var tooltip: String {
         String(localized: "External embed from \(descriptor.host) is blocked to protect your IP address. Click to load it.")
     }
@@ -455,27 +481,8 @@ public struct EmbedConsentCard: View {
             )
         } else {
             Button(action: onLoadEmbed) {
-                HStack(spacing: 10) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(themeAccent.opacity(onBubble ? 0.30 : 0.16))
-                        if let thumbnail {
-                            Image(decorative: thumbnail, scale: 1)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 64, height: 36)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Color.white)
-                                .shadow(color: .black.opacity(0.6), radius: 2)
-                        } else {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(onBubble ? Color.white : themeAccent)
-                        }
-                    }
-                    .frame(width: thumbnail == nil ? 48 : 64, height: 36)
+                VStack(alignment: .leading, spacing: 0) {
+                    picture
                     VStack(alignment: .leading, spacing: 1) {
                         Text(displayTitle)
                             .font(.callout.weight(.semibold))
@@ -488,14 +495,13 @@ public struct EmbedConsentCard: View {
                             .foregroundStyle(onBubble ? Color.white.opacity(0.78) : Color.secondary)
                             .lineLimit(1)
                     }
-                    Spacer(minLength: 0)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
                 }
-                .padding(8)
-                .frame(maxWidth: 320, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(onBubble ? Color.black.opacity(0.18) : Color.primary.opacity(0.05))
-                )
+                .frame(minWidth: 0, idealWidth: Self.maxWidth, maxWidth: Self.maxWidth, alignment: .leading)
+                .background(onBubble ? Color.black.opacity(0.18) : Color.primary.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
                         .strokeBorder(onBubble ? Color.white.opacity(0.22) : Color.primary.opacity(0.12), lineWidth: 1)

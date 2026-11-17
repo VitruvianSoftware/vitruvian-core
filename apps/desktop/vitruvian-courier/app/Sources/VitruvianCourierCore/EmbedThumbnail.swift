@@ -7,14 +7,14 @@ import ImageIO
 
 /// Where a video's still picture lives, and a small in-memory cache for fetching it.
 public enum EmbedThumbnail {
-    /// YouTube's picture for `videoID` (320 by 180), or nil when the ID is not exactly 11 letters, digits, `-` or `_`.
+    /// YouTube's picture for `videoID` (480 by 360, with black bars above and below the 16:9 still; the card crops them), or nil when the ID is not exactly 11 letters, digits, `-` or `_`.
     public static func youTubeURL(videoID: String) -> URL? {
         guard videoID.utf8.count == 11,
               videoID.unicodeScalars.allSatisfy({ scalar in
                   scalar.isASCII && (CharacterSet.alphanumerics.contains(scalar) || scalar == "-" || scalar == "_")
               })
         else { return nil }
-        return URL(string: "https://i.ytimg.com/vi/\(videoID)/mqdefault.jpg")
+        return URL(string: "https://i.ytimg.com/vi/\(videoID)/hqdefault.jpg")
     }
 
     private static let cache: NSCache<NSString, CGImageBox> = {
