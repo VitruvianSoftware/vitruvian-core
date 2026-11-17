@@ -632,6 +632,19 @@ func (s *Store) BackfillSearch(ctx context.Context, batch int) (done bool, err e
 // SearchComplete reports whether the backfill is done: backfill_after >= backfill_until, and no chat or person
 // waits (every other range's after has reached its until). Until then search finds only part of the history.
 func (s *Store) SearchComplete(ctx context.Context) (bool, error) {
+	return s.rangesDone(ctx, false)
+}
+
+// BackfillPending reports whether BackfillSearch has anything to do: SearchComplete's ranges and also the relink
+// pass, which re-tags docs that already exist and so is not part of "search is complete". The startup backfill runs
+// while this is true, so an install whose index is complete still gets its pending relink pass.
+func (s *Store) BackfillPending(ctx context.Context) (bool, error) {
+	done, err := s.rangesDone(ctx, true)
+	return !done, err
+}
+
+// rangesDone reports whether every backfill range (the retag ones too, with withRetag) has reached its end.
+func (s *Store) rangesDone(ctx context.Context, withRetag bool) (bool, error) {
 	rows, err := s.db.Query(ctx, "SELECT key, value FROM search_state")
 	if err != nil {
 		return false, err
@@ -650,7 +663,7 @@ func (s *Store) SearchComplete(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	for _, r := range backfillRanges {
-		if !r.retag && state[r.after] < state[r.until] {
+		if (withRetag || !r.retag) && state[r.after] < state[r.until] {
 			return false, nil
 		}
 	}

@@ -969,24 +969,19 @@ func (s *Store) RoomSharedLinks(ctx context.Context, roomID string, limit int) (
 	return links, err
 }
 
-// RoomSharedLinksCapped is RoomSharedLinks, and whether there may be more links than it returns: it stopped at
-// limit with more to come, or the chat has more messages than the newest maxSharedLinkScanEvents it reads.
+// RoomSharedLinksCapped is RoomSharedLinks, and whether it stopped at limit with more links to come. Reaching the
+// end of the newest maxSharedLinkScanEvents messages it reads is not a cap: every link it found is returned.
 func (s *Store) RoomSharedLinksCapped(ctx context.Context, roomID string, limit int) (links []SharedLink, capped bool, err error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	// One row past the scan cap says there are older messages that were not read.
-	rows, err := s.db.Query(ctx, roomSharedLinksSQL, roomID, maxSharedLinkScanEvents+1)
+	rows, err := s.db.Query(ctx, roomSharedLinksSQL, roomID, maxSharedLinkScanEvents)
 	if err != nil {
 		return nil, false, err
 	}
 	defer rows.Close()
 	out := []SharedLink{}
-	scanned := 0
 	for rows.Next() {
-		if scanned++; scanned > maxSharedLinkScanEvents {
-			return out, true, nil
-		}
 		var eventID, sender, typ, content, editContent string
 		var ts int64
 		if err := rows.Scan(&eventID, &sender, &typ, &content, &ts, &editContent); err != nil {
@@ -1144,7 +1139,7 @@ func geoURIMapsLink(geoURI string) string {
 
 // bareLinkPattern is a link written without its scheme: a dotted host, then a path ("maps.app.goo.gl/kX9",
 // "google.com/maps?q=1,2", "ups.com/su/abc"). The path is required: "example.com" alone is a word as often as a
-// link. The host must also end in a real top-level domain (hasKnownTLD), so file names and code paths
+// link. The host must also end in a real top-level domain (isBareLinkHost), so file names and code paths
 // ("Node.js/express", "config.yaml/dev", "Mr.Smith/Jones") are not links.
 var bareLinkPattern = regexp.MustCompile(`^(?i:((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+([a-z]{2,24}))(?::\d{1,5})?[/?#]\S*)$`)
 
@@ -1152,8 +1147,8 @@ var bareLinkPattern = regexp.MustCompile(`^(?i:((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9]
 // country codes, a compact list rather than the whole public suffix list. Left out on purpose are the ones that are
 // also common file extensions or language names, because "README.md/docs" and "script.sh/run" are far more often
 // paths than links: md, sh, py, pl, rs, pm, ps, zip, mov, so, cc, ts.
-var knownTLDs = func() map[string]bool {
-	m := map[string]bool{}
+var knownTLDs, excludedTLDs = func() (known, excluded map[string]bool) {
+	known, excluded = map[string]bool{}, map[string]bool{}
 	for _, t := range strings.Fields(`com net org edu gov mil int info biz name pro mobi
 		app dev io ai co me tv xyz online site store tech cloud page link shop blog news live life world today
 		email media music video photo photos games club design agency studio services solutions systems network
@@ -1162,21 +1157,54 @@ var knownTLDs = func() map[string]bool {
 		ca cd cf cg ch ci ck cl cm cn cr cu cv cw cx cy cz de dj dk dm do dz ec ee eg er es et eu fi fj fk fm fo
 		fr ga gd ge gf gg gh gi gl gm gn gp gq gr gt gu gw gy hk hn hr ht hu id ie il im in iq ir is it je jm jo
 		jp ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc me mg mh mk ml mm mn mo mp mq
-		mr ms mt mu mv mw mx my mz na nc ne nf ng ni nl no np nr nu nz om pa pe pf pg ph pk pn pr pt pw py qa re
-		ro rs ru rw sa sb sc sd se sg si sk sl sm sn sr ss st sv sx sy sz tc td tf tg th tj tk tl tm tn to tr tt
+		mr ms mt mu mv mw mx my mz na nc ne nf ng ni nl no np nr nu nz om pa pe pf pg ph pk pn pr pt pw qa re
+		ro ru rw sa sb sc sd se sg si sk sl sm sn sr ss st sv sx sy sz tc td tf tg th tj tk tl tm tn to tr tt
 		tw tz ua ug uk us uy uz va vc ve vg vi vn vu wf ws ye yt za zm zw`) {
-		m[t] = true
+		known[t] = true
 	}
 	for _, t := range strings.Fields("md sh py pl rs pm ps zip mov so cc ts") {
-		delete(m, t)
+		excluded[t] = true
 	}
-	return m
+	return known, excluded
 }()
 
-// hasKnownTLD reports whether host (lower or mixed case) ends in a top-level domain of knownTLDs.
-func hasKnownTLD(host string) bool {
+// wellKnownBareHosts are real sites on an excluded TLD with no subdomain, which the rules below can't tell from a
+// file name ("notion.so/abc" from "README.md/docs"), so they are listed.
+var wellKnownBareHosts = map[string]bool{"notion.so": true, "bun.sh": true}
+
+// fileNameSegment matches a last path segment that looks like a file name: a dot and a short extension.
+var fileNameSegment = regexp.MustCompile(`\.[A-Za-z0-9]{1,5}$`)
+
+// isBareLinkHost reports whether host, followed by rest (the port, path, query), is a link written without its
+// scheme. It must end in a top-level domain of knownTLDs. One of the excludedTLDs (also file extensions and
+// languages: .md, .sh, .zip, .cc, .so, ...) counts only when the host cannot be a file name: it is a well-known bare
+// host, or it has a "www." prefix or a subdomain besides its name ("docs.example.zip"), and the path does not end in
+// a file name. So "README.md/docs" and "script.sh/run" are not links; "www.example.cc/x" and "bun.sh/docs" are.
+func isBareLinkHost(host, rest string) bool {
+	host = strings.ToLower(host)
 	i := strings.LastIndexByte(host, '.')
-	return i >= 0 && knownTLDs[strings.ToLower(host[i+1:])]
+	if i < 0 {
+		return false
+	}
+	tld := host[i+1:]
+	if knownTLDs[tld] {
+		return true
+	}
+	if !excludedTLDs[tld] {
+		return false
+	}
+	if wellKnownBareHosts[host] {
+		return true
+	}
+	labels := strings.Split(host, ".")
+	if len(labels) < 3 || len(labels[len(labels)-2]) < 2 {
+		return false
+	}
+	path := rest
+	if k := strings.IndexAny(path, "?#"); k >= 0 {
+		path = path[:k]
+	}
+	return !fileNameSegment.MatchString(path)
 }
 
 // extractLinks is the web links in text, each once, in order: the ones written with http:// or https://, and the
@@ -1196,7 +1224,7 @@ func extractLinks(text string) []string {
 			add(token[idx:])
 		} else if !strings.Contains(token, "://") && !strings.Contains(token, "@") {
 			bare := strings.TrimRight(strings.TrimLeft(token, "([<{\"'*_~"), ".,;:!?)>]}'\"*_~")
-			if m := bareLinkPattern.FindStringSubmatch(bare); m != nil && hasKnownTLD(m[1]) {
+			if m := bareLinkPattern.FindStringSubmatch(bare); m != nil && isBareLinkHost(m[1], bare[len(m[1]):]) {
 				add("https://" + bare)
 			}
 		}

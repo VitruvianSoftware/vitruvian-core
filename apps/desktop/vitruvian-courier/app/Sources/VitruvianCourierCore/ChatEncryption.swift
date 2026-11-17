@@ -88,7 +88,10 @@ public enum ChatEncryption: Equatable, Sendable {
         switch self {
         case .endToEnd: String(localized: "Messages are decrypted on this Mac to show them here.")
         case .notEndToEnd: nil
-        case .notConfirmed: String(localized: "This chat doesn’t say whether it is end-to-end encrypted.")
+        case let .notConfirmed(name):
+            name == NetworkNames.displayName(of: "gmessages")
+                ? String(localized: "RCS chats are end-to-end encrypted and SMS texts aren’t, and this chat doesn’t say which it is.")
+                : String(localized: "This chat doesn’t say whether it is end-to-end encrypted.")
         }
     }
 

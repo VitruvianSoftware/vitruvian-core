@@ -84,4 +84,11 @@ final class ChatEncryptionTests: XCTestCase {
         XCTAssertEqual(result.symbolName, "lock.open")
         XCTAssertNotNil(result.note)
     }
+
+    func testTheNoteSaysWhichChatsAreEncryptedOnlyForGoogleMessages() {
+        XCTAssertEqual(ChatEncryption.of(network: "gmessages", roomEncrypted: false).note,
+                       "RCS chats are end-to-end encrypted and SMS texts aren’t, and this chat doesn’t say which it is.")
+        XCTAssertEqual(ChatEncryption.of(network: "facebook", roomEncrypted: false).note,
+                       "This chat doesn’t say whether it is end-to-end encrypted.")
+    }
 }

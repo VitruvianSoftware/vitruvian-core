@@ -1012,7 +1012,7 @@ func TestRoomSharedLinksSaysWhenThereAreMoreThanItReturns(t *testing.T) {
 	require.True(t, capped, "a third exists")
 	require.Equal(t, "https://example.com/3", links[0].URL, "newest first")
 
-	// More messages than the newest 500 it reads.
+	// More messages than the newest 500 it reads: that is not a cap.
 	big := "!scan-capped:courier.local"
 	require.NoError(t, s.UpsertRoom(ctx, Room{ID: big, Network: "whatsapp", Name: "Big", CreatedAt: time.Unix(1, 0)}))
 	for i := 1; i <= 501; i++ {
@@ -1022,7 +1022,7 @@ func TestRoomSharedLinksSaysWhenThereAreMoreThanItReturns(t *testing.T) {
 	links, capped, err = s.RoomSharedLinksCapped(ctx, big, 50)
 	require.NoError(t, err)
 	require.Empty(t, links, "the only link is older than the newest 500 messages")
-	require.True(t, capped, "so there may be more")
+	require.False(t, capped, "reaching the scan window is not the 50-link cap: every link found was returned")
 }
 
 // Search's link filter agrees with Chat Info: a message with a scheme-less link is a link message too.
