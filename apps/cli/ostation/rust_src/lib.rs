@@ -13,6 +13,36 @@ pub mod relay;
 pub mod session;
 
 use std::fmt;
+use std::time::Duration;
+
+/// Fallback Sentry DSN for `ostation` when `SENTRY_DSN` is unset.
+pub const DEFAULT_SENTRY_DSN: &str =
+    "https://3bacdd14dd3bb4d326948b35048dfdb6@sentry-ingest.ipv1337.dev/16";
+
+/// Maximum time dropping the Sentry guard may block on exit.
+pub const SENTRY_SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// Resolves the Sentry DSN from `SENTRY_DSN`, falling back to [`DEFAULT_SENTRY_DSN`].
+pub fn resolve_sentry_dsn() -> String {
+    std::env::var("SENTRY_DSN")
+        .ok()
+        .unwrap_or_else(|| DEFAULT_SENTRY_DSN.to_string())
+}
+
+/// Initializes fail-open, non-blocking Sentry error tracking.
+///
+/// Never panics on invalid or empty DSNs and caps shutdown flush at 500ms so
+/// CLI exit never stalls when Sentry is unreachable.
+pub fn init_sentry(dsn: &str) -> sentry::ClientInitGuard {
+    sentry::init((
+        dsn,
+        sentry::ClientOptions {
+            release: sentry::release_name!(),
+            shutdown_timeout: SENTRY_SHUTDOWN_TIMEOUT,
+            ..Default::default()
+        },
+    ))
+}
 
 /// A 16-byte AES-128 key: the device localKey or a derived session key.
 pub type Key = [u8; 16];

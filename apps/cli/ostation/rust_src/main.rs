@@ -23,13 +23,17 @@ OPTIONS (environment fallbacks in brackets):
 
 The charger serves one LAN session at a time: stop the Olight app first.";
 
-fn main() {
+use std::process::ExitCode;
+
+fn main() -> ExitCode {
+    let _sentry_guard = ostation_lib::init_sentry(&ostation_lib::resolve_sentry_dsn());
+
     let args: Vec<String> = std::env::args().skip(1).collect();
     match run(&args) {
-        Ok(()) => {}
+        Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("ostation: {e}");
-            std::process::exit(if matches!(e, Error::Usage(_)) { 2 } else { 1 });
+            ExitCode::from(if matches!(e, Error::Usage(_)) { 2 } else { 1 })
         }
     }
 }
