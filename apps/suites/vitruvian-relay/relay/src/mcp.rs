@@ -34,9 +34,10 @@ use vitruvian_relay_protocol::Call;
 use crate::registry::{CallError, Registry};
 use crate::{log_event, random_id, LogSink};
 
-/// MCP revisions the relay agrees to, newest first. The methods it serves are
-/// the same in all of them.
-pub const PROTOCOL_VERSIONS: &[&str] = &["2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26"];
+/// The revisions `initialize` agrees to, newest first: the handshake-and-
+/// session ones. The stateless revision is never agreed here; a client that
+/// asks for it (or for anything unknown) is offered the newest of these.
+pub const LEGACY_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26"];
 /// The stateless revisions (no initialize, no session): what `server/discover`
 /// lists, and what a request's `_meta` may name.
 pub const MODERN_VERSIONS: &[&str] = &["2026-07-28"];
@@ -257,10 +258,10 @@ impl Mcp {
                     .get("protocolVersion")
                     .and_then(Value::as_str)
                     .unwrap_or("");
-                let agreed = PROTOCOL_VERSIONS
+                let agreed = LEGACY_VERSIONS
                     .iter()
                     .find(|v| **v == asked)
-                    .unwrap_or(&PROTOCOL_VERSIONS[0]);
+                    .unwrap_or(&LEGACY_VERSIONS[0]);
                 rpc_result(
                     id,
                     json!({
@@ -431,7 +432,11 @@ mod tests {
         let (m, _) = mcp();
         for (asked, agreed) in [
             ("2025-06-18", "2025-06-18"),
-            ("1999-01-01", PROTOCOL_VERSIONS[0]),
+            ("1999-01-01", LEGACY_VERSIONS[0]),
+            // The handshake is the older revisions' way in; agreeing to the
+            // stateless one here would leave a session whose every request
+            // fails the header check.
+            ("2026-07-28", LEGACY_VERSIONS[0]),
         ] {
             let r = ask(
                 &m,

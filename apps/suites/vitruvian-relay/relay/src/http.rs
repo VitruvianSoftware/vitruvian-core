@@ -529,7 +529,14 @@ async fn mcp_post(app: Arc<App>, req: Request<Incoming>, device_id: String) -> R
     {
         None => respond(StatusCode::ACCEPTED, "text/plain", ""),
         Some(v) => {
-            let mut resp = json_response(StatusCode::OK, &v);
+            // The stateless revision answers an unknown method with 404; the
+            // older ones keep 200 with the JSON-RPC error.
+            let status = if era == Era::Modern && v["error"]["code"] == -32601 {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::OK
+            };
+            let mut resp = json_response(status, &v);
             if is_initialize && v.get("result").is_some() {
                 let id = app.new_session(&device_id, &caller);
                 resp.headers_mut().insert(

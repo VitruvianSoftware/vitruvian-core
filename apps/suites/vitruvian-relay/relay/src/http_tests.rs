@@ -28,7 +28,7 @@
 
 use super::*;
 use crate::devices::{DeviceRecord, FileDeviceStore};
-use crate::mcp::{MODERN_VERSIONS, PROTOCOL_VERSIONS, SERVER_NAME};
+use crate::mcp::{LEGACY_VERSIONS, MODERN_VERSIONS, SERVER_NAME};
 use futures_util::{SinkExt, StreamExt};
 use http::header;
 use http_body_util::BodyExt;
@@ -839,7 +839,7 @@ async fn server_discover_is_answered() {
     let init = &r.json()["result"];
     assert_eq!(init["serverInfo"], res["serverInfo"]);
     assert_eq!(init["capabilities"], res["capabilities"]);
-    assert_eq!(init["protocolVersion"], PROTOCOL_VERSIONS[0]);
+    assert_eq!(init["protocolVersion"], LEGACY_VERSIONS[0]);
     let id = r.header("mcp-session-id").unwrap();
     assert_eq!(id.len(), 32);
     assert!(id.bytes().all(|c| c.is_ascii_hexdigit()));
@@ -1323,6 +1323,41 @@ async fn modern_requests_need_no_session() {
         )
         .await;
     assert_eq!(r.status, StatusCode::BAD_REQUEST, "{}", r.body);
+}
+
+// The stateless revision answers an unknown method with HTTP 404 (and
+// -32601), so a client can tell "not here" from a server that misunderstood.
+#[tokio::test]
+async fn modern_unknown_method_is_404() {
+    let h = harness().await;
+    let (device, _) = h.new_device(ALICE).await;
+    let r = h
+        .modern_rpc(
+            &device,
+            ALICE,
+            None,
+            None,
+            modern(
+                json!({"jsonrpc": "2.0", "id": 1, "method": "nope/never"}),
+                MODERN_VERSIONS[0],
+            ),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND, "{}", r.body);
+    assert_eq!(r.json()["error"]["code"], -32601);
+
+    // An older-style session keeps the 200 it always had.
+    let s = h.session(&device, ALICE).await;
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            json!({"jsonrpc": "2.0", "id": 2, "method": "nope/never"}),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(r.json()["error"]["code"], -32601);
 }
 
 #[tokio::test]
