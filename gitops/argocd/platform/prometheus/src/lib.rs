@@ -4,7 +4,7 @@
 //! Prometheus Thanos sidecar must have sufficient memory headroom to avoid OOM kills,
 //! and alerting/recording/scrape rules must preserve cluster invariants.
 
-pub mod yaml;
+pub use gitops_values_yaml as yaml;
 
 use serde_json::Value;
 

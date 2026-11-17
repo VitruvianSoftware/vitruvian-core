@@ -9,7 +9,7 @@
 //! `headscale policy get` to fail with:
 //!   `reading policy from path "": open : no such file or directory`
 
-pub mod yaml;
+pub use gitops_values_yaml as yaml;
 
 use serde_json::Value;
 

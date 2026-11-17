@@ -10,9 +10,6 @@ Component package providing implementation for `gitops/argocd/platform/prometheu
 - `[lib.rs:load_values_from_str]`
 - `[lib.rs:resource_job]`
 - `[lib.rs:prometheus_regex_fullmatch]`
-- `[yaml.rs:resolve_data_path]`
-- `[yaml.rs:parse_all]`
-- `[yaml.rs:parse_doc]`
 
 ## Invariants
 - [lib.rs:22]: `.unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));`

@@ -15,11 +15,11 @@ rust_library(
     name = "tempo_values_lib",
     srcs = [
         "src/lib.rs",
-        "src/yaml.rs",
     ],
     crate_name = "tempo_values",
     edition = "2021",
     deps = [
+        "//tools/gitops/values-yaml:values_yaml",
         "@crates//:serde_json",
     ],
 )

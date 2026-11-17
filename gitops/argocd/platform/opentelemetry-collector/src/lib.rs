@@ -8,7 +8,7 @@
 //! drops the alias, the collector fails to start. Same fix as the CI collector
 //! (gitops/argocd/platform/cicd-telemetry, #2571).
 
-pub mod yaml;
+pub use gitops_values_yaml as yaml;
 
 use serde_json::Value;
 

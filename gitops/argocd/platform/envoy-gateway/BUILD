@@ -15,11 +15,11 @@ rust_library(
     name = "envoyproxy_lib",
     srcs = [
         "src/lib.rs",
-        "src/yaml.rs",
     ],
     crate_name = "envoyproxy",
     edition = "2021",
     deps = [
+        "//tools/gitops/values-yaml:values_yaml",
         "@crates//:serde_json",
     ],
 )
