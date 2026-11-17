@@ -145,6 +145,43 @@ func TestValidateRejectsBadConfig(t *testing.T) {
 			mutate: func(s *Settings) { s.Schedule.Members = []string{"a@b.dev", "a@b.dev"} },
 			want:   "duplicated",
 		},
+		"bad rule urgency": {
+			mutate: func(s *Settings) {
+				s.NotificationRules = []NotificationRule{{Urgency: "urgent", Type: "email_contact_method", Label: "Default"}}
+			},
+			want: "notificationRules[0].urgency",
+		},
+		"bad rule type": {
+			mutate: func(s *Settings) {
+				s.NotificationRules = []NotificationRule{{Urgency: "high", Type: "pager", Label: "Default"}}
+			},
+			want: "notificationRules[0].type",
+		},
+		"rule without a label": {
+			mutate: func(s *Settings) {
+				s.NotificationRules = []NotificationRule{{Urgency: "high", Type: "sms_contact_method"}}
+			},
+			want: "notificationRules[0].label",
+		},
+		"negative rule delay": {
+			mutate: func(s *Settings) {
+				s.NotificationRules = []NotificationRule{{Urgency: "high", Type: "sms_contact_method", Label: "Mobile", DelayMinutes: -1}}
+			},
+			want: "notificationRules[0].delayMinutes",
+		},
+		"rule adoptId that is not an id": {
+			mutate: func(s *Settings) {
+				s.NotificationRules = []NotificationRule{{Urgency: "high", Type: "sms_contact_method", Label: "Mobile", AdoptID: "sms"}}
+			},
+			want: "notificationRules[0].adoptId",
+		},
+		"repeated rule": {
+			mutate: func(s *Settings) {
+				r := NotificationRule{Urgency: "low", Type: "email_contact_method", Label: "Default"}
+				s.NotificationRules = []NotificationRule{r, r}
+			},
+			want: "repeats",
+		},
 		"no services": {
 			mutate: func(s *Settings) { s.Services = nil },
 			want:   "at least one",
@@ -249,15 +286,16 @@ func checkStackConfigBytes(raw []byte) (Settings, error) {
 	// Allowlist: any key not named here is rejected, so a token pasted under
 	// a new or misspelt key fails the build whatever its format.
 	allowed := map[string]bool{
-		Namespace + ":responderEmail": true,
-		Namespace + ":escalation":     true,
-		Namespace + ":schedule":       true,
-		Namespace + ":services":       true,
-		"pagerduty:token":             true, // only as ciphertext, checked above
+		Namespace + ":responderEmail":    true,
+		Namespace + ":escalation":        true,
+		Namespace + ":schedule":          true,
+		Namespace + ":notificationRules": true,
+		Namespace + ":services":          true,
+		"pagerduty:token":                true, // only as ciphertext, checked above
 	}
 	for k := range doc.Config {
 		if !allowed[k] {
-			return Settings{}, fmt.Errorf("unexpected config key %q: only responderEmail, escalation, schedule, services and an encrypted pagerduty:token are allowed", k)
+			return Settings{}, fmt.Errorf("unexpected config key %q: only responderEmail, escalation, schedule, notificationRules, services and an encrypted pagerduty:token are allowed", k)
 		}
 	}
 	if _, ok := doc.Config[Namespace+":token"]; ok {
@@ -284,6 +322,12 @@ func checkStackConfigBytes(raw []byte) (Settings, error) {
 	}
 	if err := decode("schedule", &s.Schedule); err != nil {
 		return Settings{}, err
+	}
+	// notificationRules is optional: empty leaves the user's rules alone.
+	if n, ok := doc.Config[Namespace+":notificationRules"]; ok {
+		if err := n.Decode(&s.NotificationRules); err != nil {
+			return Settings{}, fmt.Errorf("decode %s:notificationRules: %w", Namespace, err)
+		}
 	}
 	if err := decode("services", &s.Services); err != nil {
 		return Settings{}, err
@@ -386,6 +430,14 @@ func (m *pagerdutyMocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, e
 	m.invokes = append(m.invokes, recordedInvoke{Token: args.Token, Args: args.Args})
 	m.mu.Unlock()
 
+	if args.Token == "pagerduty:index/getUserContactMethod:getUserContactMethod" {
+		return resource.PropertyMap{
+			"id":      resource.NewStringProperty("PCM_" + args.Args["type"].StringValue()),
+			"address": resource.NewStringProperty("redacted"),
+			"label":   args.Args["label"],
+			"type":    args.Args["type"],
+		}, nil
+	}
 	if args.Token == "pagerduty:index/getUser:getUser" {
 		return resource.PropertyMap{
 			"id":    resource.NewStringProperty("PUSER01"),
@@ -498,8 +550,14 @@ func TestReconcileWithMocks(t *testing.T) {
 		t.Fatalf("mocked run failed: %v", err)
 	}
 
-	if len(m.invokes) != 1 || m.invokes[0].Token != "pagerduty:index/getUser:getUser" {
-		t.Fatalf("expected 1 getUser invoke, got %+v", m.invokes)
+	var userInvokes []recordedInvoke
+	for _, inv := range m.invokes {
+		if inv.Token == "pagerduty:index/getUser:getUser" {
+			userInvokes = append(userInvokes, inv)
+		}
+	}
+	if len(userInvokes) != 1 || m.invokes[0].Token != "pagerduty:index/getUser:getUser" {
+		t.Fatalf("expected the responder looked up once, first; got %+v", m.invokes)
 	}
 	if got := m.invokes[0].Args["email"].StringValue(); got != "james@vitruviansoftware.dev" {
 		t.Fatalf("expected getUser email james@vitruviansoftware.dev, got %q", got)
@@ -778,5 +836,88 @@ func TestRecurrence(t *testing.T) {
 		if got := Recurrence(days); got != want {
 			t.Errorf("Recurrence(%d) = %q, want %q", days, got, want)
 		}
+	}
+}
+
+func TestNotificationRules(t *testing.T) {
+	s := validSettings()
+	s.NotificationRules = []NotificationRule{
+		{Urgency: "high", Type: "push_notification_contact_method", Label: "Phone", DelayMinutes: 0, AdoptID: "PRULE01"},
+		{Urgency: "high", Type: "sms_contact_method", Label: "Mobile", DelayMinutes: 5},
+		{Urgency: "low", Type: "email_contact_method", Label: "Default", DelayMinutes: 0},
+	}
+	m := &pagerdutyMocks{}
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		provider, err := pagerduty.NewProvider(ctx, "pagerduty", &pagerduty.ProviderArgs{
+			Token: pulumi.ToSecret(pulumi.String("mock-token")).(pulumi.StringOutput),
+		})
+		if err != nil {
+			return err
+		}
+		_, err = Reconcile(ctx, provider, s)
+		return err
+	}, pulumi.WithMocks("vitruvian-pagerduty", "production", m))
+	if err != nil {
+		t.Fatalf("mocked run failed: %v", err)
+	}
+
+	users := 0
+	for _, inv := range m.invokes {
+		switch inv.Token {
+		case "pagerduty:index/getUser:getUser":
+			users++
+		case "pagerduty:index/getUserContactMethod:getUserContactMethod":
+			if inv.Args["userId"].StringValue() != "PUSER01" {
+				t.Fatalf("contact method looked up on the wrong user: %v", inv.Args)
+			}
+		}
+	}
+	if users != 1 {
+		t.Fatalf("the responder is both member and rule owner; want 1 user lookup, got %d", users)
+	}
+
+	rules := map[string]recordedResource{}
+	for _, r := range m.byType("pagerduty:index/userNotificationRule:UserNotificationRule") {
+		rules[r.Name] = r
+	}
+	if len(rules) != 3 {
+		t.Fatalf("expected 3 rules, got %v", rules)
+	}
+	push, sms, low := rules["notify-high-push-notification"], rules["notify-high-sms"], rules["notify-low-email"]
+	if push.ImportID != "PUSER01:PRULE01" || sms.ImportID != "" || low.ImportID != "" {
+		t.Fatalf("only the rule with adoptId may be imported: push=%q sms=%q low=%q", push.ImportID, sms.ImportID, low.ImportID)
+	}
+	if got := sms.Inputs["startDelayInMinutes"].NumberValue(); got != 5 {
+		t.Fatalf("sms delay = %v, want 5", got)
+	}
+	if got := low.Inputs["urgency"].StringValue(); got != "low" {
+		t.Fatalf("low rule urgency = %q", got)
+	}
+	cm := sms.Inputs["contactMethod"].ObjectValue()
+	if cm["id"].StringValue() != "PCM_sms_contact_method" || cm["type"].StringValue() != "sms_contact_method" {
+		t.Fatalf("sms rule must point at the looked-up sms contact method, got %v", cm)
+	}
+	if got := sms.Inputs["userId"].StringValue(); got != "PUSER01" {
+		t.Fatalf("rule userId = %q, want PUSER01", got)
+	}
+}
+
+func TestNoNotificationRulesLeavesUserAlone(t *testing.T) {
+	m := &pagerdutyMocks{}
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		provider, err := pagerduty.NewProvider(ctx, "pagerduty", &pagerduty.ProviderArgs{
+			Token: pulumi.ToSecret(pulumi.String("mock-token")).(pulumi.StringOutput),
+		})
+		if err != nil {
+			return err
+		}
+		_, err = Reconcile(ctx, provider, validSettings())
+		return err
+	}, pulumi.WithMocks("vitruvian-pagerduty", "production", m))
+	if err != nil {
+		t.Fatalf("mocked run failed: %v", err)
+	}
+	if n := len(m.byType("pagerduty:index/userNotificationRule:UserNotificationRule")); n != 0 {
+		t.Fatalf("no notificationRules config must manage no rules, got %d", n)
 	}
 }

@@ -122,7 +122,10 @@ type Settings struct {
 	ResponderEmail string     `json:"responderEmail" yaml:"responderEmail"`
 	Escalation     Escalation `json:"escalation" yaml:"escalation"`
 	Schedule       Schedule   `json:"schedule" yaml:"schedule"`
-	Services       []Service  `json:"services" yaml:"services"`
+	// NotificationRules are the responder's own rules. Empty leaves the
+	// user's rules unmanaged.
+	NotificationRules []NotificationRule `json:"notificationRules" yaml:"notificationRules"`
+	Services          []Service          `json:"services" yaml:"services"`
 }
 
 // ServiceOutputs carries the exported Pulumi outputs for a single service.
@@ -147,6 +150,9 @@ func Load(cfg *config.Config) (Settings, error) {
 	}
 	if err := cfg.GetObject("schedule", &s.Schedule); err != nil {
 		return Settings{}, fmt.Errorf("decode %s:schedule: %w", Namespace, err)
+	}
+	if err := cfg.GetObject("notificationRules", &s.NotificationRules); err != nil {
+		return Settings{}, fmt.Errorf("decode %s:notificationRules: %w", Namespace, err)
 	}
 	if err := cfg.GetObject("services", &s.Services); err != nil {
 		return Settings{}, fmt.Errorf("decode %s:services: %w", Namespace, err)
@@ -204,6 +210,7 @@ func (s Settings) Validate() error {
 		}
 		seenMember[m] = true
 	}
+	validateNotificationRules(s.NotificationRules, add)
 	if len(s.Services) == 0 {
 		add("services must contain at least one entry")
 	}
@@ -237,15 +244,37 @@ func Reconcile(ctx *pulumi.Context, provider *pagerduty.Provider, s Settings) (*
 	}
 
 	providerOpt := pulumi.Provider(provider)
-	var userIDs pulumi.StringArray
-	for _, email := range s.members() {
+	// Each user is looked up once, however many roles they have here.
+	ids := map[string]string{}
+	lookup := func(email string) (string, error) {
+		if id, ok := ids[email]; ok {
+			return id, nil
+		}
 		user, err := pagerduty.LookupUser(ctx, &pagerduty.LookupUserArgs{
 			Email: email,
 		}, providerOpt)
 		if err != nil {
-			return nil, fmt.Errorf("lookup schedule member %q: %w", email, err)
+			return "", fmt.Errorf("lookup user %q: %w", email, err)
 		}
-		userIDs = append(userIDs, pulumi.String(user.Id))
+		ids[email] = user.Id
+		return user.Id, nil
+	}
+	var userIDs pulumi.StringArray
+	for _, email := range s.members() {
+		id, err := lookup(email)
+		if err != nil {
+			return nil, err
+		}
+		userIDs = append(userIDs, pulumi.String(id))
+	}
+	if len(s.NotificationRules) > 0 {
+		responderID, err := lookup(s.ResponderEmail)
+		if err != nil {
+			return nil, err
+		}
+		if err := reconcileNotificationRules(ctx, providerOpt, responderID, s.NotificationRules); err != nil {
+			return nil, err
+		}
 	}
 
 	// A shift-based (v3) schedule: the legacy Schedule resource is deprecated.
