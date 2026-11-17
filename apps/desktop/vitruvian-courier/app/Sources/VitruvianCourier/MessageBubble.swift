@@ -907,6 +907,8 @@ struct MessageRowView: View {
                             descriptor: embed,
                             isLoaded: actions.loadExternalEmbedsAutomatically || ui.loadedEmbeds.contains(message.id),
                             title: ExternalEmbedDescriptor.embedTitle(in: message),
+                            previewImagePath: ExternalEmbedDescriptor.previewImagePath(in: message),
+                            allowsRemoteThumbnail: actions.loadExternalEmbedsAutomatically,
                             onBubble: message.mine && !message.suppressesBubbleBackground,
                             onLoadEmbed: { ui.loadedEmbeds.insert(message.id) }
                         )

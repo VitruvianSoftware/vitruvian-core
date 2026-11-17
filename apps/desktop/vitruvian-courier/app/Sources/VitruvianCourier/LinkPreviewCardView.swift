@@ -164,6 +164,22 @@ public struct ExternalEmbedDescriptor: Equatable, Sendable {
     public let originalURL: URL
     public let embedURL: URL
 
+    /// The YouTube video's ID, read from the embed address; nil for every other site.
+    public var youTubeVideoID: String? {
+        guard host == "youtube.com", embedURL.pathComponents.count >= 3, embedURL.pathComponents[1] == "embed" else { return nil }
+        return embedURL.pathComponents[2]
+    }
+
+    /// The video's still picture on YouTube, when this is a YouTube link.
+    public var remoteThumbnailURL: URL? { youTubeVideoID.flatMap(EmbedThumbnail.youTubeURL(videoID:)) }
+
+    /// The picture the message's own preview for this link carries, when it has been saved on this Mac.
+    public static func previewImagePath(in message: TimelineMessage) -> String? {
+        guard let path = message.linkPreviews.first(where: isEmbedPreview)?.imagePath, !path.isEmpty,
+              isLocalMediaStorePath(path) else { return nil }
+        return path
+    }
+
     public init(host: String, originalURL: URL, embedURL: URL) {
         self.host = host
         self.originalURL = originalURL
@@ -307,7 +323,26 @@ public struct EmbedConsentCard: View {
     public let isLoaded: Bool
     /// The link's title when the message already carries one (a preview its network sent); else the card names the site.
     public var title: String?
+    /// A picture the link's preview already saved on this Mac; drawn without any request.
+    public var previewImagePath: String?
+    /// Whether the video's picture may be fetched from its site (that tells the site this Mac's address). Off keeps
+    /// the plain play tile.
+    public var allowsRemoteThumbnail: Bool
+    /// Where a fetched picture comes from (the shared session unless a test supplies its own).
+    public var session: URLSession
+    /// Gets a video's picture; the default asks YouTube through `session`. A test supplies its own.
+    public var fetchPicture: (@Sendable (String) async -> CGImage?)?
     public var onBubble: Bool
+    /// The last picture loaded, tagged with the source it was loaded for. It is drawn only while that source is
+    /// still the card's current one, so a late answer for an earlier video can never show.
+    @State private var loaded: (source: String, image: CGImage)?
+    private var thumbnail: CGImage? { Self.visibleThumbnail(loaded, currentSource: thumbnailSource) }
+
+    /// The picture to draw: only one loaded for the card's current source.
+    static func visibleThumbnail(_ loaded: (source: String, image: CGImage)?, currentSource: String) -> CGImage? {
+        guard let loaded, !loaded.source.isEmpty, loaded.source == currentSource else { return nil }
+        return loaded.image
+    }
     public let onLoadEmbed: () -> Void
     public var onOpenURL: (URL) -> Void
 
@@ -323,6 +358,10 @@ public struct EmbedConsentCard: View {
         descriptor: ExternalEmbedDescriptor,
         isLoaded: Bool,
         title: String? = nil,
+        previewImagePath: String? = nil,
+        allowsRemoteThumbnail: Bool = false,
+        session: URLSession = .shared,
+        fetchPicture: (@Sendable (String) async -> CGImage?)? = nil,
         onBubble: Bool = false,
         onLoadEmbed: @escaping () -> Void,
         onOpenURL: @escaping (URL) -> Void = { url in
@@ -333,6 +372,10 @@ public struct EmbedConsentCard: View {
         self.descriptor = descriptor
         self.isLoaded = isLoaded
         self.title = title
+        self.previewImagePath = previewImagePath
+        self.allowsRemoteThumbnail = allowsRemoteThumbnail
+        self.session = session
+        self.fetchPicture = fetchPicture
         self.onBubble = onBubble
         self.onLoadEmbed = onLoadEmbed
         self.onOpenURL = onOpenURL
@@ -341,6 +384,36 @@ public struct EmbedConsentCard: View {
     private var displayTitle: String {
         if let title = title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
         return descriptor.fallbackTitle
+    }
+
+    /// What picture the card would draw, so the load restarts when it changes (empty: none).
+    private var thumbnailSource: String {
+        if let path = previewImagePath, isLocalMediaStorePath(path) { return path }
+        if allowsRemoteThumbnail, let id = descriptor.youTubeVideoID, EmbedThumbnail.youTubeURL(videoID: id) != nil {
+            return "youtube:\(id)"
+        }
+        return ""
+    }
+
+    /// Reads a saved preview picture (through the shared small-picture cache) or, when allowed, fetches the video's.
+    /// A result that arrives after the card moved on to another picture, or was left, is dropped.
+    @MainActor
+    private func loadThumbnail() async {
+        let source = thumbnailSource
+        guard !source.isEmpty else { return }
+        var image: CGImage?
+        if let path = previewImagePath, isLocalMediaStorePath(path) {
+            image = await ThumbnailLoader.shared.thumbnail(atPath: path)?.image
+        }
+        if image == nil, allowsRemoteThumbnail, let id = descriptor.youTubeVideoID, !Task.isCancelled {
+            if let fetchPicture {
+                image = await fetchPicture(id)
+            } else {
+                image = await EmbedThumbnail.fetch(videoID: id, session: session)
+            }
+        }
+        guard !Task.isCancelled, let image else { return }
+        loaded = (source, image)
     }
 
     private var tooltip: String {
@@ -386,11 +459,23 @@ public struct EmbedConsentCard: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(themeAccent.opacity(onBubble ? 0.30 : 0.16))
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(onBubble ? Color.white : themeAccent)
+                        if let thumbnail {
+                            Image(decorative: thumbnail, scale: 1)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 64, height: 36)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color.white)
+                                .shadow(color: .black.opacity(0.6), radius: 2)
+                        } else {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(onBubble ? Color.white : themeAccent)
+                        }
                     }
-                    .frame(width: 48, height: 36)
+                    .frame(width: thumbnail == nil ? 48 : 64, height: 36)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(displayTitle)
                             .font(.callout.weight(.semibold))
@@ -418,6 +503,7 @@ public struct EmbedConsentCard: View {
                 .contentShape(RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(.plain)
+            .task(id: thumbnailSource) { await loadThumbnail() }
             .help(tooltip)
             .contextMenu {
                 Button(String(localized: "Open in Browser")) { onOpenURL(descriptor.originalURL) }

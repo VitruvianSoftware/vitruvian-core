@@ -906,7 +906,7 @@ func (s *Store) GetEvent(ctx context.Context, eventID string) (Event, bool, erro
 	if errors.Is(err, sql.ErrNoRows) {
 		return Event{}, false, nil
 	}
-	return e, err == nil, err
+	return s.served(ctx, e), err == nil, err
 }
 
 func (s *Store) Events(ctx context.Context, roomID string, limit int) ([]Event, error) {
@@ -914,16 +914,19 @@ func (s *Store) Events(ctx context.Context, roomID string, limit int) ([]Event, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var out []Event
 	for rows.Next() {
 		e, err := scanEvent(rows)
 		if err != nil {
+			rows.Close()
 			return nil, err
 		}
 		out = append(out, e)
 	}
-	return out, rows.Err()
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, err
+	}
+	return s.serveAll(ctx, out), nil
 }
 
 // SetStatus records how a message I sent is doing (pending, sent or failed, with the network's reason), and keeps

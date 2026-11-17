@@ -51,6 +51,7 @@ func newGMWorld(t *testing.T) *gmWorld {
 	h, err := host.Start(ctx, dir, "gmessages", s, &media.Store{Dir: filepath.Join(dir, "media")}, &gmessages.GMConnector{}, zerolog.Nop())
 	require.NoError(t, err)
 	t.Cleanup(h.Stop)
+	waitForPostStart(t, h)
 	w := &gmWorld{h: h, s: s}
 	user, err := h.Me(ctx)
 	require.NoError(t, err)
@@ -63,6 +64,19 @@ func newGMWorld(t *testing.T) *gmWorld {
 	w.gc = w.login.Client.(*gmessages.GMClient)
 	require.NotNil(t, w.gc.Client)
 	return w
+}
+
+// waitForPostStart waits for the bridge's start-up work, which runs on its own goroutine (bridgev2's PostStart
+// resends room capabilities). Its last step stores the bridge-info version, so once that is stored nothing else from
+// the start-up touches the portals the test is about to change. Without the wait the test races it under -race.
+func waitForPostStart(t *testing.T, h *host.Host) {
+	t.Helper()
+	ctx := context.Background()
+	info, caps := h.Bridge.Network.GetBridgeInfoVersion()
+	want := fmt.Sprintf("%d,%d", info, caps)
+	require.Eventually(t, func() bool {
+		return h.Bridge.DB.KV.Get(ctx, database.KeyBridgeInfoVersion) == want
+	}, 10*time.Second, 5*time.Millisecond, "the bridge's start-up work finishes")
 }
 
 // reload makes the login's client again, as a start does: it reads the phone number mappings the database holds.
@@ -126,7 +140,10 @@ func directConversation(id, nestedID, number string, lastMessageMicros int64) *g
 		LatestMessageID:      "",
 		Participants: []*gmproto.Participant{
 			{ID: &gmproto.SmallInfo{Type: gmproto.IdentifierType_PHONE, Number: "+15550000001", ParticipantID: "1"}, IsMe: true, IsVisible: true},
-			{ID: &gmproto.SmallInfo{Type: gmproto.IdentifierType_PHONE, Number: number, ParticipantID: "2"}, IsVisible: true},
+			// The contact has a name, so the bridge never starts its background contact-list refresh. That refresh
+			// races the bridge's own Disconnect on PhoneResponding (an upstream mautrix-gmessages race, still in
+			// v0.2611.0) and made these tests fail under -race when the test ended mid-refresh.
+			{ID: &gmproto.SmallInfo{Type: gmproto.IdentifierType_PHONE, Number: number, ParticipantID: "2"}, FullName: "Contact " + number, IsVisible: true},
 		},
 	}
 	if nestedID != "" {

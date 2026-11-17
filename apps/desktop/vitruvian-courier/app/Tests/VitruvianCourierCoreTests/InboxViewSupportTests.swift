@@ -48,6 +48,18 @@ final class InboxViewSupportTests: XCTestCase {
                        dicts([["room_ids": ["!e"], "label_id": 3, "on": true]]))
     }
 
+    /// What Chat Info's Labels row asks the inbox: ticking a label puts it on this chat only, the chip's x takes it off.
+    func testChatInfoLabelsPutALabelOnTheChatAndTakeItOff() async throws {
+        let h = try await start()
+        h.inbox.select("!a")
+        await h.inbox.setLabel(3, on: true, ids: ["!b"])
+        await h.inbox.setLabel(3, on: false, ids: ["!b"])
+        XCTAssertEqual(dicts(h.server.receivedParams("room.setLabel")),
+                       dicts([["room_ids": ["!b"], "label_id": 3, "on": true],
+                              ["room_ids": ["!b"], "label_id": 3, "on": false]]),
+                       "on, then off, for the chat Chat Info shows and no other")
+    }
+
     func testMarkAsReadAndUnreadAreExplicit() async throws {
         let h = try await start([room("!a", ts: 3, unread: 2), room("!b", ts: 2), room("!c", ts: 1, markedUnread: true)])
         await h.inbox.setRead(false, ids: ["!a", "!b"])

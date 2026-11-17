@@ -71,22 +71,22 @@
     "mgrs": "^2.1.0",
     "pbf": "^5.1.2",
     "pinia": "^4.1.0",
-    "satellite.js": "^7.1.0",
+    "satellite.js": "^7.2.0",
     "vue": "^3.5.45",
-    "vue-i18n": "^11.4.17",
-    "ws": "^8.22.1"
+    "vue-i18n": "^11.4.20",
+    "ws": "^8.23.0"
   },
   "devDependencies": {
     "@cesium/engine": "26.5.0",
     "@happy-dom/global-registrator": "^21.0.4",
-    "@vitejs/plugin-vue": "^6.0.0",
+    "@vitejs/plugin-vue": "^6.0.11",
     "@vue/test-utils": "^2.5.1",
     "flag-icons": "7.6.0",
     "happy-dom": "^21.0.4",
-    "prettier": "3.9.10",
-    "puppeteer": "^25.16.0",
+    "prettier": "3.10.1",
+    "puppeteer": "^25.17.0",
     "sharp": "^0.35.5",
-    "vite": "^8.3.6",
+    "vite": "^8.3.8",
     "vite-plugin-cesium": "^1.2.23"
   },
   "exports": {

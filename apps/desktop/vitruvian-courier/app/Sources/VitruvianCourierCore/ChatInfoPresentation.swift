@@ -16,6 +16,14 @@ extension RoomLink {
         return url
     }
 
+    /// What a Links row names the page: its preview title, when the message had one that says more than the domain
+    /// does. nil otherwise, and the row shows the domain alone.
+    public var displayTitle: String? {
+        guard let trimmed = title?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
+        guard trimmed.caseInsensitiveCompare(displayDomain) != .orderedSame else { return nil }
+        return trimmed
+    }
+
     /// De-duplicates links with identical `url` strings, keeping the newest entry (`ts` descending)
     /// and preserving relative input order when timestamps match.
     public static func deduplicated(_ links: [RoomLink]) -> [RoomLink] {
@@ -23,7 +31,14 @@ extension RoomLink {
         for (index, link) in links.enumerated() {
             if let existing = bestByURL[link.url] {
                 if link.ts > existing.link.ts {
-                    bestByURL[link.url] = (index, link)
+                    // The newest message wins, but not at the cost of a title another copy of the link has.
+                    var newest = link
+                    if newest.displayTitle == nil, existing.link.displayTitle != nil { newest.title = existing.link.title }
+                    bestByURL[link.url] = (index, newest)
+                } else if existing.link.displayTitle == nil, link.displayTitle != nil {
+                    var kept = existing.link
+                    kept.title = link.title
+                    bestByURL[link.url] = (existing.index, kept)
                 }
             } else {
                 bestByURL[link.url] = (index, link)
@@ -107,6 +122,59 @@ public enum ChatInfoPresentation {
         guard !name.isEmpty || !avatarPath.isEmpty else { return nil }
         let initial = String(InboxRow.initials(of: name.isEmpty ? "?" : name).prefix(1))
         return MediaSender(name: name, initials: initial, avatarPath: avatarPath)
+    }
+
+    /// My own picture for Chat Info. The chat's member list often has none for me, so this looks for one in turn: my
+    /// own entry in the member list, then a message of mine the pane already holds (shared media and files), then
+    /// `fallback` (a picture the app has seen on any of my messages). "" when none is known.
+    public static func ownAvatarPath(in info: RoomInfoResult, fallback: String = "") -> String {
+        if let mine = info.members.first(where: { $0.userID == Timeline.meUserID }), !mine.avatarPath.isEmpty {
+            return mine.avatarPath
+        }
+        let fromInfo = newestOwnAvatar(in: info.sharedMedia + info.sharedFiles)
+        return fromInfo.isEmpty ? fallback : fromInfo
+    }
+
+    /// The picture on my newest message among `events` that carries one (newest by time, then by order), "" when none
+    /// does. Never an arbitrary one: the same events always give the same picture.
+    public static func newestOwnAvatar(in events: [Event]) -> String {
+        events
+            .filter { ($0.mine || $0.sender == Timeline.meUserID) && !$0.senderAvatarPath.isEmpty }
+            .max { ($0.ts, $0.seq) < ($1.ts, $1.seq) }?.senderAvatarPath ?? ""
+    }
+
+    /// My newest picture among the open chat's `events`, from messages of the same account as the chat (`chatRoomID`).
+    /// An account is a real match only: the same network and the same, non-empty account name. A message in the chat
+    /// itself always counts. With no account known for the chat, nothing from other rooms is taken: "" (the row then
+    /// shows initials).
+    public static func ownAvatarFromTimeline(
+        events: [Event], chatRoomID: String, chatNetwork: String, row: (String) -> InboxRow?
+    ) -> String {
+        let chatLogin = row(chatRoomID)?.loginName ?? ""
+        let sameAccount = events.filter { event in
+            if event.roomID == chatRoomID { return true }
+            guard !chatLogin.isEmpty, let other = row(event.roomID) else { return false }
+            return other.network == chatNetwork && other.loginName == chatLogin
+        }
+        return newestOwnAvatar(in: sameAccount)
+    }
+
+    /// The picture a Participants row shows: the member's own, else (for me) `ownAvatarPath`.
+    public static func participantAvatarPath(for member: Member, ownAvatarPath: String) -> String {
+        if !member.avatarPath.isEmpty { return member.avatarPath }
+        return member.userID == Timeline.meUserID ? ownAvatarPath : ""
+    }
+
+    /// `mediaSender` with my picture filled in when the sender is me and no picture came with the message.
+    public static func mediaSender(for event: Event, members: [Member], ownAvatarPath: String) -> MediaSender? {
+        guard let sender = mediaSender(for: event, members: members) else {
+            guard (event.mine || event.sender == Timeline.meUserID), !ownAvatarPath.isEmpty else { return nil }
+            return MediaSender(name: String(localized: "You"), initials: "Y", avatarPath: ownAvatarPath)
+        }
+        guard sender.avatarPath.isEmpty, event.mine || event.sender == Timeline.meUserID, !ownAvatarPath.isEmpty else {
+            return sender
+        }
+        return MediaSender(name: sender.name, initials: sender.initials, avatarPath: ownAvatarPath)
     }
 
     /// Shows the "Admin" badge only when the member is an admin AND not every member in the chat is an admin.

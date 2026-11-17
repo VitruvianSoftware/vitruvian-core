@@ -379,6 +379,7 @@ func (s *Store) searchRows(ctx context.Context, m messageSearch, phase int, uppe
 
 // hitOf is the hit of a found row: its message's current text and kind, and its chat.
 func (s *Store) hitOf(ctx context.Context, r searchRow, partial bool) (MessageHit, error) {
+	r.e = s.servedOn(ctx, r.network, r.e)
 	text, err := s.CurrentText(ctx, r.e)
 	if err != nil {
 		return MessageHit{}, err
@@ -496,6 +497,10 @@ func (s *Store) SearchMessages(ctx context.Context, q MessageQuery) ([]MessageHi
 				return nil, "", err
 			}
 			for _, r := range rows {
+				// A Slack join or leave note still stored as text is no message: never a hit.
+				if _, note := s.noteOf(ctx, r.network, r.e); note {
+					continue
+				}
 				h, err := s.hitOf(ctx, r, phase == 1)
 				if err != nil {
 					return nil, "", err
@@ -852,6 +857,8 @@ type SharedLink struct {
 	TS      time.Time
 	URL     string
 	Host    string
+	// Title is the page title from the message's own link preview, when it carries one for this URL; "" otherwise.
+	Title string
 }
 
 // SharedMediaKinds is the one definition of "media" that Chat Info's Shared Media and the image viewer both count:
@@ -976,6 +983,7 @@ func (s *Store) RoomSharedLinks(ctx context.Context, roomID string, limit int) (
 				text = edited
 			}
 		}
+		titles := linkPreviewTitles(json.RawMessage(content))
 		for _, rawURL := range extractHTTPURLs(text) {
 			u, err := url.Parse(rawURL)
 			if err != nil || u.Hostname() == "" {
@@ -987,6 +995,7 @@ func (s *Store) RoomSharedLinks(ctx context.Context, roomID string, limit int) (
 				TS:      msTime(ts),
 				URL:     rawURL,
 				Host:    u.Hostname(),
+				Title:   titles[rawURL],
 			})
 			if len(out) >= limit {
 				return out, nil
@@ -997,6 +1006,36 @@ func (s *Store) RoomSharedLinks(ctx context.Context, roomID string, limit int) (
 		return nil, err
 	}
 	return out, nil
+}
+
+// linkPreviewTitles maps each URL a message's link previews cover (matched_url, and og:url when it differs) to the
+// page title the preview holds. URLs whose preview has no title are left out.
+func linkPreviewTitles(content json.RawMessage) map[string]string {
+	var c struct {
+		LinkPreviews []struct {
+			MatchedURL string `json:"matched_url"`
+			URL        string `json:"og:url"`
+			Title      string `json:"og:title"`
+		} `json:"com.beeper.linkpreviews"`
+	}
+	if err := json.Unmarshal(content, &c); err != nil || len(c.LinkPreviews) == 0 {
+		return nil
+	}
+	titles := make(map[string]string, len(c.LinkPreviews))
+	for _, lp := range c.LinkPreviews {
+		title := strings.TrimSpace(lp.Title)
+		if title == "" {
+			continue
+		}
+		for _, u := range []string{lp.MatchedURL, lp.URL} {
+			if u != "" {
+				if _, ok := titles[u]; !ok {
+					titles[u] = title
+				}
+			}
+		}
+	}
+	return titles
 }
 
 func extractHTTPURLs(text string) []string {
