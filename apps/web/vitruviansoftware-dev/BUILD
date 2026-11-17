@@ -48,6 +48,13 @@ exports_files(
     visibility = ["//tools/sync-site-tools:__pkg__"],
 )
 
+# The downloads catalog: //tools/sync-downloads keeps it current, and its test
+# checks each entry it updates has the labels it writes.
+exports_files(
+    ["_data/downloads.yml"],
+    visibility = ["//tools/sync-downloads:__pkg__"],
+)
+
 # The donate pages and the links they forward to. The stripe stack's
 # donations_pages_test.go checks they list the same apps as its
 # donations.apps, so each app's donations reach its own Payment Link.
