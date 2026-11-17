@@ -1526,4 +1526,37 @@ mod callers_and_wiring {
             "{TRIPWIRE} uses the stage tool before checking the restore ran"
         );
     }
+
+    /// A self-hosted runner restores no cache entry, so the tripwire has
+    /// nothing to verify there, and finding the live toolchain walks every
+    /// cached repo on the pool's NFS volume (a median 20 s per queue job). It
+    /// must stop before that walk, but only after the two checks that say a
+    /// job was wired up wrongly.
+    #[test]
+    fn the_tripwire_stops_on_self_hosted_runners_before_walking_the_cache() {
+        let t = std::fs::read_to_string(TRIPWIRE).unwrap();
+        let stop = t
+            .find(r#"if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ]; then"#)
+            .expect("the tripwire must stop early on self-hosted runners");
+        let outcome = t
+            .find(r#"if [ "$RESTORE_OUTCOME" != "success" ]; then"#)
+            .expect("outcome check");
+        let exists = t
+            .find(r#"if [ ! -x "$STAGE_BIN" ]; then"#)
+            .expect("stage tool check");
+        let walk = t.find(r#""$STAGE_BIN" live "#).expect("the live walk");
+        assert!(
+            outcome < stop && exists < stop,
+            "{TRIPWIRE} stops on self-hosted runners before checking the job was wired up"
+        );
+        assert!(
+            stop < walk,
+            "{TRIPWIRE} walks the shared cache on self-hosted runners again"
+        );
+        let after = &t[stop..walk];
+        assert!(
+            after.contains("exit 0"),
+            "{TRIPWIRE} names self-hosted runners but does not stop there"
+        );
+    }
 }
