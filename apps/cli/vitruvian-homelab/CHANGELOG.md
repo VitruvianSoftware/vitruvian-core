@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-homelab-v1.6.1...vitruvian-homelab-v1.7.0) (2026-11-17)
+
+
+### Features
+
+* **cli:** instrument vitruvian-homelab and ostation with fail-open Sentry ([#4974](https://github.com/VitruvianSoftware/vitruvian-core/issues/4974)) ([ce03215](https://github.com/VitruvianSoftware/vitruvian-core/commit/ce032153a27d59e9d5445ada9fabca9357be0a73))
+
 ## [1.6.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/homelab-v1.6.0...homelab-v1.6.1) (2026-09-02)
 
 
