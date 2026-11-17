@@ -574,9 +574,11 @@ fn append_log_line(
 
 /// What happens to a call once its dialog has ended: `None` runs it, else
 /// (log decision, result text, whether to send that result). `in_time`: the
-/// call's deadline has not passed. After the deadline the relay has already
-/// failed the call, so nothing is sent: a dialog that answers in the same
-/// instant the deadline fires must not depend on which of the two won.
+/// call's deadline has not passed. Past it the relay has failed the call, or
+/// will within the transit margin it subtracted from `deadline_ms` (about
+/// 6 s), and answers with its own deadline error, so nothing is sent: a
+/// dialog that answers in the same instant the deadline fires must not
+/// depend on which of the two won.
 fn prompt_refusal(
     stop: Option<Stop>,
     waited: Waited,
