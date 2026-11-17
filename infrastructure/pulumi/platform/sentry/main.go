@@ -26,6 +26,8 @@ import (
 
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/sentry/internal/alerts"
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/sentry/internal/config"
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/sentry/internal/dashboards"
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/sentry/internal/filters"
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/sentry/internal/orgsettings"
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/sentry/internal/projects"
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/sentry/internal/teams"
@@ -74,8 +76,18 @@ func main() {
 		}
 
 		projMap := make(map[string]*sentry.SentryProject)
+		projDeps := make([]pulumi.Resource, 0, len(projResults))
 		for slug, r := range projResults {
 			projMap[slug] = r.Project
+			projDeps = append(projDeps, r.Project)
+		}
+
+		// Reconcile organization-wide Sentry dashboards and per-project inbound filters.
+		if _, err := dashboards.Reconcile(ctx, cfg.BaseURL, cfg.Organization, pulumi.DependsOn(projDeps)); err != nil {
+			return err
+		}
+		if _, err := filters.Reconcile(ctx, cfg.BaseURL, cfg.Organization, cfg.Projects, pulumi.DependsOn(projDeps)); err != nil {
+			return err
 		}
 
 		if cfg.EnableIssueAlerts {
