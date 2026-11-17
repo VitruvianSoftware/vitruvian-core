@@ -69,6 +69,7 @@ pub const TOOLS: &[(&str, &str)] = &[
     ("cicd-telemetry-smoke", "cicd_telemetry_smoke.sh"),
     ("seal-arc-github-app", "seal_arc_github_app.sh"),
     ("seal-alert-pagerduty", "seal_alert_pagerduty.sh"),
+    ("seal-pagerduty-readonly", "seal_pagerduty_readonly.sh"),
 ];
 
 /// Run tool `name` with the script's arguments; None for an unknown name.
@@ -91,6 +92,7 @@ pub fn run_tool(name: &[u8], args: &[Vec<u8>]) -> Option<i32> {
         b"cicd-telemetry-smoke" => cicd_smoke::main(args),
         b"seal-arc-github-app" => seal::arc_github_app(args),
         b"seal-alert-pagerduty" => seal::alert_pagerduty(args),
+        b"seal-pagerduty-readonly" => seal::pagerduty_readonly(args),
         _ => return None,
     })
 }
@@ -192,7 +194,7 @@ mod tests {
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-'));
             assert!(script.ends_with(".sh"));
         }
-        assert_eq!(TOOLS.len(), 17);
+        assert_eq!(TOOLS.len(), 18);
         assert!(run_tool(b"no-such-tool", &[]).is_none());
     }
 

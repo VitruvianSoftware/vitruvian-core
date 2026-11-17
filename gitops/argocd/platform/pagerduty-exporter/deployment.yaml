@@ -1,0 +1,109 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# webdevops/pagerduty-exporter: PagerDuty incidents, on-call and services as
+# Prometheus metrics, for the "PagerDuty" Grafana dashboard
+# (gitops/argocd/platform/grafana-dashboards/pagerduty.json).
+#
+# It only READS, with the read-only REST API key in the pagerduty-exporter
+# Secret (bazel run //tools/gitops:seal-pagerduty-readonly). It calls the
+# plain list endpoints (incidents, log entries, on-calls, services,
+# schedules, users), not the Analytics API.
+#
+# Free plan settings:
+#   --pagerduty.disable-teams: the free plan has no Teams.
+#   --pagerduty.summary.since=2160h: the free plan keeps 3 months of history,
+#     so the summary (counts, time to acknowledge, time to resolve) covers
+#     the last 90 days rather than the default 730h.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pagerduty-exporter
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: pagerduty-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pagerduty-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pagerduty-exporter
+    spec:
+      # Wired nodes only: Docker Hub pulls time out on the WiFi nodes (see
+      # alertmanager-ntfy-bridge/deployment.yaml).
+      nodeSelector:
+        node.ipv1337.dev/link: wired
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: exporter
+          # 26.10.0 (2026-10-20), multi-arch manifest list.
+          image: webdevops/pagerduty-exporter:26.10.0@sha256:9e95922abab07aa0747a858c09918cbd6db532b066c2b0a339bc3a920286192d
+          # Flags rather than env vars: each one is in the exporter's README.
+          args:
+            - --pagerduty.authtokenfile=/etc/pagerduty/api-token
+            - --pagerduty.disable-teams
+            - --pagerduty.summary.since=2160h
+            - --server.bind=:8080
+            - --log.format=json
+          ports:
+            - name: metrics
+              containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: api-token
+              mountPath: /etc/pagerduty
+              readOnly: true
+      volumes:
+        - name: api-token
+          secret:
+            secretName: pagerduty-exporter
+            defaultMode: 0400
