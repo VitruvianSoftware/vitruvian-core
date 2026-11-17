@@ -60,6 +60,16 @@ class Deployment(unittest.TestCase):
         self.assertIn("secretName: pagerduty-exporter", DEPLOYMENT)
         self.assertNotIn("PAGERDUTY_AUTH_TOKEN\n", DEPLOYMENT)
 
+    def test_non_root_user_can_read_the_token_file(self):
+        # A root-owned 0400 file is unreadable by runAsUser 1000: the
+        # exporter then crashes at start. fsGroup + a group-readable mode fix it.
+        user = re.search(r"runAsUser: (\d+)", DEPLOYMENT).group(1)
+        self.assertIn(f"fsGroup: {user}", DEPLOYMENT)
+        mode = re.search(r"defaultMode: (0[0-7]{3})", DEPLOYMENT).group(1)
+        self.assertTrue(
+            int(mode, 8) & 0o040, f"defaultMode {mode} is not group-readable"
+        )
+
     def test_free_plan_settings(self):
         # The free plan has no Teams and keeps 3 months of history.
         self.assertIn("--pagerduty.disable-teams", DEPLOYMENT)
