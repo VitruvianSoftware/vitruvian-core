@@ -60,8 +60,16 @@ final class ChatEncryptionTests: XCTestCase {
 
     func testAnUnknownNetworkIsNeverClaimedToBeEncrypted() {
         let result = ChatEncryption.of(network: "newchat", roomEncrypted: true)
-        XCTAssertEqual(result, .notEndToEnd(networkName: "this network"))
-        XCTAssertEqual(result.title, "Not end-to-end encrypted on this network")
+        XCTAssertEqual(result, .notConfirmed(networkName: "this network"))
+        XCTAssertEqual(result.title, "End-to-end encryption isn’t confirmed on this network")
+    }
+
+    func testAnUnknownNetworkIsNotClaimedToBeUnencryptedEither() {
+        for roomEncrypted in [true, false] {
+            let result = ChatEncryption.of(network: "newchat", roomEncrypted: roomEncrypted)
+            XCTAssertEqual(result, .notConfirmed(networkName: "this network"), "roomEncrypted=\(roomEncrypted)")
+            XCTAssertEqual(result.title, "End-to-end encryption isn’t confirmed on this network", "roomEncrypted=\(roomEncrypted)")
+        }
     }
 
     func testGoogleMessagesNeitherClaimsNorDeniesWhenItCannotTellRCSFromSMS() {

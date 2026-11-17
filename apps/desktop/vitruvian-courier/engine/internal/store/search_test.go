@@ -865,6 +865,49 @@ func TestRoomSharedLinksCountMapsLinksInEveryForm(t *testing.T) {
 	}
 }
 
+func TestRoomSharedLinksRejectsSchemelessFalsePositives(t *testing.T) {
+	for _, tc := range []struct {
+		body string
+		want []string
+	}{
+		{"e.g. more", []string{}},
+		{"i.e. this", []string{}},
+		{"file.txt", []string{}},
+		{"file.txt/", []string{}},
+		{"Node.js/express", []string{}},
+		{"README.md/docs", []string{}},
+		{"config.yaml/dev", []string{}},
+		{"Mr.Smith/Jones", []string{}},
+		{"U.S./Canada", []string{}},
+		{"v1.2", []string{}},
+		{"v1.2/3", []string{}},
+		{"3.5/10", []string{}},
+		{"1.25/0.5", []string{}},
+		{"10.0.0.1/24", []string{}},
+		{"john.doe@example.com/x", []string{}},
+		{"and/or", []string{}},
+		{"1.5/2", []string{}},
+		{"example.com", []string{}},
+		{"maps.app.goo.gl/kX9", []string{"https://maps.app.goo.gl/kX9"}},
+		{"example.com/path.", []string{"https://example.com/path"}},
+		{"(www.google.com/maps?q=1,2).", []string{"https://www.google.com/maps?q=1,2"}},
+	} {
+		t.Run(tc.body, func(t *testing.T) {
+			s, ctx := open(t), context.Background()
+			roomID := "!bare-links:courier.local"
+			require.NoError(t, s.UpsertRoom(ctx, Room{ID: roomID, Network: "whatsapp", Name: "Bare Links", CreatedAt: time.Unix(1, 0)}))
+			mkMsg(t, s, roomID, "$m", me, "m.room.message", text(tc.body), time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC))
+			links, err := s.RoomSharedLinks(ctx, roomID, 10)
+			require.NoError(t, err)
+			got := []string{}
+			for _, l := range links {
+				got = append(got, l.URL)
+			}
+			require.Equal(t, tc.want, got, "input %q", tc.body)
+		})
+	}
+}
+
 // Search's link filter agrees with Chat Info: a message with a scheme-less link is a link message too.
 func TestMessageScopeMarksSchemelessLinksAsLinks(t *testing.T) {
 	for body, want := range map[string]bool{
