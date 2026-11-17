@@ -379,6 +379,14 @@ final class AttachmentMentionEmbedTests: XCTestCase {
         window.contentView = nil
     }
 
+    func testAPictureLoadedForAnotherSourceIsNeverDrawn() throws {
+        let red = try solid(NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1))
+        XCTAssertNil(EmbedConsentCard.visibleThumbnail(("youtube:AAAAAAAAAAA", red), currentSource: "youtube:BBBBBBBBBBB"))
+        XCTAssertNil(EmbedConsentCard.visibleThumbnail(("", red), currentSource: ""))
+        XCTAssertNil(EmbedConsentCard.visibleThumbnail(nil, currentSource: "youtube:AAAAAAAAAAA"))
+        XCTAssertNotNil(EmbedConsentCard.visibleThumbnail(("youtube:AAAAAAAAAAA", red), currentSource: "youtube:AAAAAAAAAAA"))
+    }
+
     func testPreviewPathComesFromTheMessagesOwnPreview() throws {
         let path = try redPicture()
         func message(_ imagePath: String?) throws -> TimelineMessage {

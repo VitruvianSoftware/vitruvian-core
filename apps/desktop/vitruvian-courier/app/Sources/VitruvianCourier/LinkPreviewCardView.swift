@@ -333,7 +333,16 @@ public struct EmbedConsentCard: View {
     /// Gets a video's picture; the default asks YouTube through `session`. A test supplies its own.
     public var fetchPicture: (@Sendable (String) async -> CGImage?)?
     public var onBubble: Bool
-    @State private var thumbnail: CGImage?
+    /// The last picture loaded, tagged with the source it was loaded for. It is drawn only while that source is
+    /// still the card's current one, so a late answer for an earlier video can never show.
+    @State private var loaded: (source: String, image: CGImage)?
+    private var thumbnail: CGImage? { Self.visibleThumbnail(loaded, currentSource: thumbnailSource) }
+
+    /// The picture to draw: only one loaded for the card's current source.
+    static func visibleThumbnail(_ loaded: (source: String, image: CGImage)?, currentSource: String) -> CGImage? {
+        guard let loaded, !loaded.source.isEmpty, loaded.source == currentSource else { return nil }
+        return loaded.image
+    }
     public let onLoadEmbed: () -> Void
     public var onOpenURL: (URL) -> Void
 
@@ -391,7 +400,6 @@ public struct EmbedConsentCard: View {
     @MainActor
     private func loadThumbnail() async {
         let source = thumbnailSource
-        thumbnail = nil
         guard !source.isEmpty else { return }
         var image: CGImage?
         if let path = previewImagePath, isLocalMediaStorePath(path) {
@@ -404,8 +412,8 @@ public struct EmbedConsentCard: View {
                 image = await EmbedThumbnail.fetch(videoID: id, session: session)
             }
         }
-        guard !Task.isCancelled, source == thumbnailSource else { return }
-        thumbnail = image
+        guard !Task.isCancelled, let image else { return }
+        loaded = (source, image)
     }
 
     private var tooltip: String {
