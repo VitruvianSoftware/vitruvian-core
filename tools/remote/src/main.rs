@@ -865,6 +865,8 @@ fn remote_bazelrc(endpoint: &str, bes_results: &str) -> String {
         l(&format!("common:remote --bes_results_url={bes_results}"));
     }
     l("common:remote --remote_timeout=10m");
+    l("# Send and receive cache blobs zstd-compressed: less transfer, same build time.");
+    l("common:remote --remote_cache_compression");
     l("common:remote --jobs=50");
     l("common:remote --remote_download_outputs=minimal");
     l("# Default Linux execution platform/container for RBE actions. The image must ship");
@@ -889,5 +891,6 @@ fn remote_bazelrc(endpoint: &str, bes_results: &str) -> String {
     }
     l("common:remotecache --bes_upload_mode=fully_async");
     l("common:remotecache --remote_timeout=10m");
+    l("common:remotecache --remote_cache_compression");
     s
 }
