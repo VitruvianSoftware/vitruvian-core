@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.75.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-devx-v0.74.6...vitruvian-devx-v0.75.0) (2026-11-17)
+
+
+### Features
+
+* **vitruvian-devx:** add fail-open Sentry error tracking ([#4973](https://github.com/VitruvianSoftware/vitruvian-core/issues/4973)) ([b6d038a](https://github.com/VitruvianSoftware/vitruvian-core/commit/b6d038a85da8efa869d8ed7381378459da547e80))
+
 ## [0.74.6](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-devx-v0.74.5...vitruvian-devx-v0.74.6) (2026-11-13)
 
 
