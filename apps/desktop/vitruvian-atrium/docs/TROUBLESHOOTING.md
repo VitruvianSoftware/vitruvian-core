@@ -77,9 +77,9 @@ starting a multiplexer or a slow prompt:
 
 ## Keeping settings in your dotfiles
 
-At each normal launch, Vitruvian Atrium reads `~/.config/vitruvian/settings.plist`.
-An absolute `XDG_CONFIG_HOME` selects the parent of `vitruvian/`. The Developer
-build uses `vitruvian-dev/`. Git, Stow or Home Manager can own the file,
+At each normal launch, Vitruvian Atrium reads `~/.config/vitruvian-atrium/settings.plist`.
+An absolute `XDG_CONFIG_HOME` selects the parent of `vitruvian-atrium/`. The Developer
+build uses `vitruvian-atrium-dev/`. Git, Stow or Home Manager can own the file,
 including a symlink to a read-only target. Edits made during a session take
 effect the next time you launch the app.
 
@@ -87,7 +87,7 @@ Create a starting file by exporting your current settings. Backups include
 your text snippets, so review the contents before sharing one.
 
 ```sh
-"/Applications/Vitruvian Atrium.app/Contents/MacOS/VitruvianAtrium" --export-settings ~/.config/vitruvian/settings.plist
+"/Applications/Vitruvian Atrium.app/Contents/MacOS/VitruvianAtrium" --export-settings ~/.config/vitruvian-atrium/settings.plist
 ```
 
 Keep the backup version and the `settings` dictionary. You can trim the

@@ -38,7 +38,7 @@ export function createLifecycle({
   // While on with a catalog, satellites can be shown at any time in reach of
   // their element sets. Registered once; off, the layer has no time to show,
   // and each step tells the clock once it has settled.
-  worldClock.register({
+  const clockSource = {
     id: 'satellites',
     coverage: () => {
       if (!layerState._enabled || !layerState._catalog.size) return null;
@@ -48,7 +48,10 @@ export function createLifecycle({
         end: now + SATELLITE_COVERAGE_MS,
       };
     },
-  });
+  };
+  // Unregistered on destroy, so a page that builds the app again holds no old layer; init
+  // registers it again.
+  let uncover = worldClock.register(clockSource);
   const { holdContinuousRender, releaseContinuousRender } = services.render;
   const { registerPickOwner, unregisterPickOwner } = services.picking;
 
@@ -61,6 +64,7 @@ export function createLifecycle({
     // Catalog data refresh; propagation remains preRender-owned.
 
     async init(viewer) {
+      uncover ??= worldClock.register(clockSource);
       // Asked first: a viewer without one fails before anything is built.
       const frame = frameOf(viewer);
       parts.catalog._abortActiveUpdates();
@@ -176,6 +180,8 @@ export function createLifecycle({
 
     destroy(viewer) {
       parts.catalog._abortActiveUpdates();
+      uncover?.();
+      uncover = null;
       releaseContinuousRender('satellites'); // direct-destroy path (perf wave 2 fix)
       layerState._enabled = false;
       parts.tracking._clearTracking();

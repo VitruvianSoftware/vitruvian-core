@@ -60,6 +60,7 @@ export function createApplicationControls({
       ...services,
       ...operations.surface.controlServices,
       searchAndFlyTo: operations.searchAndFlyTo,
+      pickWorldFromScreen: operations.annotationResolver?.pickWorldFromScreen,
       fetchRegionalBrief: (...args) =>
         operations.requests.regional.getBrief(...args),
       ...catalogControlServices(catalog),

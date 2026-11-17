@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.101.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.101.1...vitruvian-atrium-v3.101.2) (2026-11-17)
+
+
+### Bug Fixes
+
+* **vitruvian-atrium:** read the settings file from ~/.config/vitruvian-atrium ([#5033](https://github.com/VitruvianSoftware/vitruvian-core/issues/5033)) ([b21ba69](https://github.com/VitruvianSoftware/vitruvian-core/commit/b21ba69c955b8ad04208867909bcc3f81fd0c904))
+
 ## [3.101.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.101.0...vitruvian-atrium-v3.101.1) (2026-11-17)
 
 

@@ -91,6 +91,16 @@ runs:
           echo "::error title=llvm-contents-cache broken::LLVM_CACHE_STAGE_BIN is '${STAGE_BIN}', not a built //tools/ci:llvm_cache_stage; the llvm-cache-restore composite builds and exports it."
           exit 1
         fi
+        # Nothing below applies on a self-hosted runner. It never downloads
+        # the entry (see llvm-cache-restore), so there is no hit to verify and
+        # nothing to stage for saving. Finding the live toolchain means
+        # walking every cached repo on the pool's NFS volume: a median 20 s
+        # (p90 39 s) per unit job across 83 queue jobs on 2026-11-17, for a
+        # result nothing read.
+        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ]; then
+          echo "self-hosted runner: no LLVM cache entry is restored here, so there is nothing to verify"
+          exit 0
+        fi
         # The contents/<hash> dir that actually holds clang after the build
         # (empty when this lane never needed LLVM).
         LIVE=$("$STAGE_BIN" live "${LLVM_CACHE_CONTENTS:-/home/runner/.cache/bazel-repo/contents}")
@@ -110,13 +120,8 @@ runs:
         # merge queue, pull requests, self-hosted runners and restore-only
         # lanes never save, so telling them the toolchain was "staged for the
         # post step to save" would be false.
-        #
-        # A self-hosted runner is told nothing: it never downloads the entry
-        # (see llvm-cache-restore), and the toolchain it finds is the one kept
-        # on the pool's shared volume, not a fresh extraction. A notice on
-        # every queue job would bury the misses that mean something.
         SAVES="${LLVM_CACHE_SAVES:-true}"
-        if [ "$CACHE_HIT" != "true" ] && [ -n "$LIVE" ] && [ "${RUNNER_ENVIRONMENT:-}" != "self-hosted" ]; then
+        if [ "$CACHE_HIT" != "true" ] && [ -n "$LIVE" ]; then
           if [ "$SAVES" = "true" ]; then
             echo "::notice::llvm-contents cache miss -- extracted under $(basename "$LIVE"); staged for this job's post step to save. Expected exactly once after a toolchain-affecting MODULE.bazel change, or after a runner-image point release moves /etc/os-release (see tools/ci/src/llvm_cache_key/lib.rs)."
           else

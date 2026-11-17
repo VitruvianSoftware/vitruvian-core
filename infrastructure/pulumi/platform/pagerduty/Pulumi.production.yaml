@@ -44,13 +44,16 @@ config:
     start: "2026-11-16T09:00:00-08:00"
     shiftDays: 7
     members: []
+    # The first apply (2026-11-17) created this schedule, then failed before
+    # recording it, so the stack adopts it rather than making a second.
+    adoptId: PE5D9GC
   # The responder's own notification rules. PagerDuty stops at the first one
   # that gets the incident acknowledged, so SMS and calls (100 a month on the
   # free plan, email and push are unlimited) only go out if push goes
   # unanswered. Low urgency (warnings, about nine a day over 2026-11-10..17)
-  # goes to push only: unlimited, and never escalates to SMS or calls. Contact methods are
-  # named by type and label, never by number; change numbers in PagerDuty.
-  # adoptId takes over the rules the account already had.
+  # goes to push only: unlimited, and never escalates to SMS or calls. Contact
+  # methods are named by type and label, never by number; change numbers in
+  # PagerDuty. adoptId takes over the rules the account already had.
   vitruvian-pagerduty:notificationRules:
     - {urgency: high, type: push_notification_contact_method, label: Pixel 11 Pro Fold, delayMinutes: 0, adoptId: PLE2VCZ}
     - {urgency: high, type: email_contact_method, label: Default, delayMinutes: 0, adoptId: PTZQFR0}

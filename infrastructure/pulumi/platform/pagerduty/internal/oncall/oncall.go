@@ -75,6 +75,9 @@ type Schedule struct {
 	// means the responder alone. Every member must already exist in the
 	// account (the free plan allows five users); Pulumi never creates them.
 	Members []string `json:"members" yaml:"members"`
+	// AdoptID is the id of a schedule that already exists in the account, so
+	// the stack takes it over (Pulumi import) instead of creating another.
+	AdoptID string `json:"adoptId" yaml:"adoptId"`
 }
 
 // members returns the rotation's emails, defaulting to the responder alone.
@@ -84,6 +87,12 @@ func (s Settings) members() []string {
 	}
 	return s.Schedule.Members
 }
+
+// EffectiveSincePath is the schedule property the stack ignores after create.
+const EffectiveSincePath = "rotations[0].events[0].effectiveSince"
+
+// ScheduleDescription is the schedule's description in PagerDuty.
+const ScheduleDescription = "Managed by Pulumi: infrastructure/pulumi/platform/pagerduty"
 
 // Recurrence is the RFC 5545 rule that repeats a shift every shiftDays days.
 func Recurrence(shiftDays int) string {
@@ -185,6 +194,9 @@ func (s Settings) Validate() error {
 	if _, err := time.Parse(time.RFC3339, s.Schedule.Start); err != nil {
 		add("schedule.start %q must be an RFC 3339 time such as 2026-11-17T09:00:00-08:00", s.Schedule.Start)
 	}
+	if s.Schedule.AdoptID != "" && !pagerDutyIDPattern.MatchString(s.Schedule.AdoptID) {
+		add("schedule.adoptId %q must be a PagerDuty id (^P[A-Z0-9]+$)", s.Schedule.AdoptID)
+	}
 	if s.Schedule.ShiftDays < 1 {
 		add("schedule.shiftDays must be >= 1, got %d", s.Schedule.ShiftDays)
 	}
@@ -278,9 +290,24 @@ func Reconcile(ctx *pulumi.Context, provider *pagerduty.Provider, s Settings) (*
 			UserId: id,
 		})
 	}
+	// PagerDuty moves an effectiveSince in the past to the moment it creates
+	// the schedule, so the stored value never matches config again. It only
+	// matters at creation; ignoring later differences stops a diff on every
+	// run (seen 2026-11-17: 2026-11-16T17:00Z stored as 2026-11-17T20:38Z).
+	scheduleOpts := []pulumi.ResourceOption{
+		providerOpt,
+		pulumi.IgnoreChanges([]string{EffectiveSincePath}),
+	}
+	if s.Schedule.AdoptID != "" {
+		scheduleOpts = append(scheduleOpts, pulumi.Import(pulumi.ID(s.Schedule.AdoptID)))
+	}
 	schedule, err := pagerduty.NewSchedulev2(ctx, "oncall", &pagerduty.Schedulev2Args{
-		Name:     pulumi.String(s.Schedule.Name),
-		TimeZone: pulumi.String(s.Schedule.TimeZone),
+		Name: pulumi.String(s.Schedule.Name),
+		// Always set: left empty, provider v4.37.1 reports "unexpected
+		// unknown value at description" after the create and the apply
+		// fails with the schedule made but not recorded (2026-11-17).
+		Description: pulumi.String(ScheduleDescription),
+		TimeZone:    pulumi.String(s.Schedule.TimeZone),
 		Rotations: pagerduty.Schedulev2RotationArray{
 			&pagerduty.Schedulev2RotationArgs{
 				Events: pagerduty.Schedulev2RotationEventArray{
@@ -303,7 +330,7 @@ func Reconcile(ctx *pulumi.Context, provider *pagerduty.Provider, s Settings) (*
 				},
 			},
 		},
-	}, providerOpt)
+	}, scheduleOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("create schedule: %w", err)
 	}
