@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-11-16T10:02:44Z",
+  "generated": "2026-11-17T01:04:52Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -377,14 +377,14 @@
       "summary": {
         "en": "Controls your Sony Google TV over ADB: power, 4K Aerial screensaver, SmartTube, Projectivy Launcher, volume, and clipboard video casting."
       },
-      "version": "0.1.3",
+      "version": "0.1.4",
       "protocol": "2",
       "minimumAppVersion": "3.48.0",
       "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/extensions/atrium/vitruvian-tv",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-tv-v0.1.3/VitruvianTV-0.1.3-tool.zip",
-        "sha256": "35784300de82bfc5ba5148d85136713c24f19293e23f949f354ececdc6332246",
-        "size": 777761
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-tv-v0.1.4/VitruvianTV-0.1.4-tool.zip",
+        "sha256": "41b26c0f4dbf4658f82561221a69b9dc3d246bd94fa146de5a8b98db505bc40f",
+        "size": 4202623
       },
       "uses": ["notify", "clipboard.read", "storage"],
       "commands": [
