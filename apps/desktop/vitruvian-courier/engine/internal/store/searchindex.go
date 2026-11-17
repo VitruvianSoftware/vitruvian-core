@@ -267,7 +267,7 @@ func messageScope(e Event, network, kind, text string) string {
 		tokens = append(tokens, "me")
 	}
 	tokens = append(tokens, NetworkScope(network), "k"+kind)
-	if lower := strings.ToLower(text); strings.Contains(lower, "http://") || strings.Contains(lower, "https://") {
+	if hasLink(text) {
 		tokens = append(tokens, "klink")
 	}
 	return strings.Join(tokens, " ")

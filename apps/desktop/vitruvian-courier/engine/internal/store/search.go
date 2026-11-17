@@ -14,7 +14,9 @@ import (
 	"html"
 	"math"
 	"net/url"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -985,7 +987,7 @@ func (s *Store) RoomSharedLinks(ctx context.Context, roomID string, limit int) (
 			}
 		}
 		titles := linkPreviewTitles(json.RawMessage(content))
-		for _, rawURL := range extractHTTPURLs(text) {
+		for _, rawURL := range messageLinks(json.RawMessage(content), text, editContent != "") {
 			u, err := url.Parse(rawURL)
 			if err != nil || u.Hostname() == "" {
 				continue
@@ -1053,20 +1055,113 @@ func linkPreviewTitles(content json.RawMessage) map[string]string {
 	return titles
 }
 
-func extractHTTPURLs(text string) []string {
+// messageLinks is every link a message carries, in the order it holds them, each once: the links in its text, the
+// ones only its link previews name (not for an edited message, whose previews are of the text it had before), and
+// for a dropped pin (m.location) a Maps link when its text has no map link.
+func messageLinks(content json.RawMessage, text string, edited bool) []string {
+	links := extractLinks(text)
+	if !edited {
+		var preview struct {
+			LinkPreviews []struct {
+				MatchedURL string `json:"matched_url"`
+			} `json:"com.beeper.linkpreviews"`
+		}
+		if json.Unmarshal(content, &preview) == nil {
+			for _, lp := range preview.LinkPreviews {
+				if isWebURL(lp.MatchedURL) && !slices.Contains(links, lp.MatchedURL) {
+					links = append(links, lp.MatchedURL)
+				}
+			}
+		}
+	}
+	var loc struct {
+		MsgType string `json:"msgtype"`
+		GeoURI  string `json:"geo_uri"`
+	}
+	if json.Unmarshal(content, &loc) == nil && loc.MsgType == "m.location" {
+		if pin := geoURIMapsLink(loc.GeoURI); pin != "" && !slices.ContainsFunc(links, isMapsLink) {
+			links = append(links, pin)
+		}
+	}
+	return links
+}
+
+// isWebURL reports whether raw is an http(s) URL with a host.
+func isWebURL(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Hostname() != ""
+}
+
+// isMapsLink reports whether a link points at a map: Google Maps (maps.google.com, google.com/maps, its short links
+// maps.app.goo.gl and goo.gl/maps) or Apple Maps.
+func isMapsLink(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	host := strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
+	switch {
+	case host == "maps.app.goo.gl", host == "maps.apple.com", strings.HasPrefix(host, "maps.google."):
+		return true
+	case host == "goo.gl", strings.HasPrefix(host, "google."):
+		return strings.HasPrefix(u.Path, "/maps")
+	}
+	return false
+}
+
+// geoURIMapsLink is a Maps link to the place a geo URI ("geo:37.79,-122.39;u=20") names, or "" for a malformed one.
+func geoURIMapsLink(geoURI string) string {
+	coords, ok := strings.CutPrefix(strings.TrimSpace(geoURI), "geo:")
+	if !ok {
+		return ""
+	}
+	coords, _, _ = strings.Cut(coords, ";")
+	lat, lon, ok := strings.Cut(coords, ",")
+	if !ok {
+		return ""
+	}
+	lat, lon = strings.TrimSpace(lat), strings.TrimSpace(lon)
+	if _, err := strconv.ParseFloat(lat, 64); err != nil {
+		return ""
+	}
+	if _, err := strconv.ParseFloat(lon, 64); err != nil {
+		return ""
+	}
+	return "https://maps.google.com/?q=" + lat + "," + lon
+}
+
+// bareLinkPattern is a link written without its scheme: a host with a dot and a letters-only ending, then a path
+// ("maps.app.goo.gl/kX9", "google.com/maps?q=1,2", "ups.com/su/abc"). The path is required: "file.txt", "e.g." and
+// "example.com" alone are words as often as links.
+var bareLinkPattern = regexp.MustCompile(`^(?i:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,24}(?::\d{1,5})?[/?#]\S*)$`)
+
+// extractLinks is the web links in text, each once, in order: the ones written with http:// or https://, and the
+// ones written without a scheme (given https://).
+func extractLinks(text string) []string {
 	var urls []string
-	for _, token := range strings.Fields(text) {
-		idx := strings.Index(token, "https://")
-		if idx < 0 {
-			idx = strings.Index(token, "http://")
-		}
-		if idx < 0 {
-			continue
-		}
-		u := strings.TrimRight(token[idx:], ".,;:!?)>]'\"")
-		if u != "http://" && u != "https://" {
+	add := func(u string) {
+		u = strings.TrimRight(u, ".,;:!?)>]'\"")
+		if u != "http://" && u != "https://" && !slices.Contains(urls, u) {
 			urls = append(urls, u)
 		}
 	}
+	for _, token := range strings.Fields(text) {
+		if idx := strings.Index(token, "https://"); idx >= 0 {
+			add(token[idx:])
+		} else if idx := strings.Index(token, "http://"); idx >= 0 {
+			add(token[idx:])
+		} else if !strings.Contains(token, "://") && !strings.Contains(token, "@") {
+			bare := strings.TrimRight(strings.TrimLeft(token, "([<{\"'*_~"), ".,;:!?)>]}'\"*_~")
+			if bareLinkPattern.MatchString(bare) {
+				add("https://" + bare)
+			}
+		}
+	}
 	return urls
+}
+
+// hasLink reports whether text holds a web link.
+func hasLink(text string) bool {
+	lower := strings.ToLower(text)
+	return strings.Contains(lower, "http://") || strings.Contains(lower, "https://") || len(extractLinks(text)) > 0
 }

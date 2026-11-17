@@ -811,6 +811,73 @@ func TestRoomSharedLinksCarryThePreviewTitle(t *testing.T) {
 	}, titles)
 }
 
+// A Maps link counts as a link however it was written: with its scheme, without one (people paste
+// "maps.app.goo.gl/abc" and chat apps link it anyway), or as a dropped pin whose text holds no URL at all.
+func TestRoomSharedLinksCountMapsLinksInEveryForm(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		content string
+		want    []string
+	}{
+		{"with scheme", text("Meet here https://maps.app.goo.gl/kX9abc123"), []string{"https://maps.app.goo.gl/kX9abc123"}},
+		{"short link without scheme", text("Meet here maps.app.goo.gl/kX9abc123 ok?"), []string{"https://maps.app.goo.gl/kX9abc123"}},
+		{"google.com/maps without scheme", text("google.com/maps/place/Ferry+Building"), []string{"https://google.com/maps/place/Ferry+Building"}},
+		{"www and query string", text("(www.google.com/maps?q=37.79,-122.39)."), []string{"https://www.google.com/maps?q=37.79,-122.39"}},
+		{"old goo.gl/maps short link", text("goo.gl/maps/AbCdEf"), []string{"https://goo.gl/maps/AbCdEf"}},
+		{
+			"two links in one message", text("https://maps.app.goo.gl/one and maps.app.goo.gl/two"),
+			[]string{"https://maps.app.goo.gl/one", "https://maps.app.goo.gl/two"},
+		},
+		{
+			"the same link twice in one message counts once", text("maps.app.goo.gl/one https://maps.app.goo.gl/one"),
+			[]string{"https://maps.app.goo.gl/one"},
+		},
+		{
+			"a dropped pin has a geo URI and no URL in its text",
+			`{"msgtype":"m.location","body":"Ferry Building","geo_uri":"geo:37.7955,-122.3937;u=20"}`,
+			[]string{"https://maps.google.com/?q=37.7955,-122.3937"},
+		},
+		{
+			"a dropped pin whose text already links to the map counts once",
+			`{"msgtype":"m.location","body":"Ferry Building https://maps.google.com/?q=37.7955,-122.3937","geo_uri":"geo:37.7955,-122.3937"}`,
+			[]string{"https://maps.google.com/?q=37.7955,-122.3937"},
+		},
+		{
+			"a link only its preview names", `{"msgtype":"m.text","body":"look","com.beeper.linkpreviews":[{"matched_url":"https://maps.app.goo.gl/prev","og:title":"A place"}]}`,
+			[]string{"https://maps.app.goo.gl/prev"},
+		},
+		{"words are not links", text("see e.g. file.txt, version 3.5 and/or 1.5/2 or me@example.com/x"), []string{}},
+		{"a bare domain with no path is not a link", text("example.com"), []string{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, ctx := open(t), context.Background()
+			roomID := "!maps:courier.local"
+			require.NoError(t, s.UpsertRoom(ctx, Room{ID: roomID, Network: "whatsapp", Name: "Maps", CreatedAt: time.Unix(1, 0)}))
+			mkMsg(t, s, roomID, "$m", me, "m.room.message", tc.content, time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC))
+			links, err := s.RoomSharedLinks(ctx, roomID, 10)
+			require.NoError(t, err)
+			got := []string{}
+			for _, l := range links {
+				got = append(got, l.URL)
+			}
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// Search's link filter agrees with Chat Info: a message with a scheme-less link is a link message too.
+func TestMessageScopeMarksSchemelessLinksAsLinks(t *testing.T) {
+	for body, want := range map[string]bool{
+		"https://example.com":           true,
+		"maps.app.goo.gl/kX9abc123":     true,
+		"see google.com/maps/place/Foo": true,
+		"no link here, e.g. file.txt":   false,
+	} {
+		scope := messageScope(Event{RoomID: "!r:x", Sender: "@a:x"}, "whatsapp", "text", body)
+		require.Equal(t, want, strings.Contains(scope, "klink"), body)
+	}
+}
+
 func TestLinkPreviewTitlesDecodeHTMLEntities(t *testing.T) {
 	for _, tc := range []struct{ raw, want string }{
 		{"You can forecast a new series with Mistral&amp;#39;s newly released model", "You can forecast a new series with Mistral's newly released model"},
