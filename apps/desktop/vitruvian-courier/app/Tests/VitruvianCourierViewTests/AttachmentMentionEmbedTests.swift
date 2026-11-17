@@ -298,11 +298,9 @@ final class AttachmentMentionEmbedTests: XCTestCase {
         }
     }
 
-    /// Why #5015's picture never showed: the card asked for the picture only when "Load external embeds
-    /// automatically" was on, but with that on the card is replaced by the player, so the one state that fetched
-    /// never drew a card. The picture is a still from the video, so the card fetches it by default; the setting still
-    /// decides whether the player loads.
-    func testTheCardFetchesTheVideoPictureByDefaultAndOnlyWhenItMayNot() throws {
+    /// The video's site is asked for the picture only when external content is allowed. Otherwise the card uses the
+    /// picture the network's own preview saved on this Mac, or a placeholder, and makes no request.
+    func testNoRequestIsMadeUnlessExternalContentIsAllowed() throws {
         let descriptor = try XCTUnwrap(ExternalEmbedDescriptor.match(urlString: "https://youtu.be/Zx9Qk3LmN-_"))
         EmbedThumbnail.clearCache()
         let rep = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(NSImage(size: NSSize(width: 16, height: 9), flipped: false) { rect in
@@ -311,19 +309,30 @@ final class AttachmentMentionEmbedTests: XCTestCase {
         EmbedCountingURLProtocol.reset(body: try XCTUnwrap(rep.representation(using: .png, properties: [:])))
         let session = EmbedCountingURLProtocol.session()
 
+        // The card as the message row builds it with the setting off (the default): placeholder, no request.
         try Snapshot.render("embed-remote-off", width: 360, prepare: settle) {
-            EmbedConsentCard(messageID: "$e", descriptor: descriptor, isLoaded: false, allowsRemoteThumbnail: false,
-                             session: session, onLoadEmbed: {}).padding(14)
-        }
-        XCTAssertEqual(EmbedCountingURLProtocol.requests, [], "asked not to fetch: nothing is requested")
-        for suffix in ["light", "dark"] { XCTAssertEqual(try redPixelCount("embed-remote-off", suffix), 0) }
-
-        // No argument: the card as the message row builds it.
-        try Snapshot.render("embed-remote-on", width: 360, prepare: settle) {
             EmbedConsentCard(messageID: "$e", descriptor: descriptor, isLoaded: false,
                              session: session, onLoadEmbed: {}).padding(14)
         }
-        // Light and dark each draw the card; the second comes from memory, so the site is asked once.
+        XCTAssertEqual(EmbedCountingURLProtocol.requests, [], "setting off: nothing is requested")
+        for suffix in ["light", "dark"] { XCTAssertEqual(try redPixelCount("embed-remote-off", suffix), 0) }
+
+        // The network's own picture, already saved on this Mac, is used, still with no request.
+        let path = try redPicture()
+        try Snapshot.render("embed-network-picture", width: 360, prepare: settle) {
+            EmbedConsentCard(messageID: "$e", descriptor: descriptor, isLoaded: false, previewImagePath: path,
+                             session: session, onLoadEmbed: {}).padding(14)
+        }
+        XCTAssertEqual(EmbedCountingURLProtocol.requests, [], "the network's picture needs no request")
+        for suffix in ["light", "dark"] {
+            XCTAssertGreaterThan(try redPixelCount("embed-network-picture", suffix), 500, "the network's picture is drawn")
+        }
+
+        // Allowed: the picture is fetched.
+        try Snapshot.render("embed-remote-on", width: 360, prepare: settle) {
+            EmbedConsentCard(messageID: "$e", descriptor: descriptor, isLoaded: false, allowsRemoteThumbnail: true,
+                             session: session, onLoadEmbed: {}).padding(14)
+        }
         XCTAssertEqual(EmbedCountingURLProtocol.requests, ["https://i.ytimg.com/vi/Zx9Qk3LmN-_/hqdefault.jpg"])
         XCTAssertGreaterThan(try redPixelCount("embed-remote-on", "light"), 100, "the fetched picture is drawn")
     }
@@ -381,7 +390,7 @@ final class AttachmentMentionEmbedTests: XCTestCase {
         let image = try XCTUnwrap(barred.cgImage(forProposedRect: nil, context: nil, hints: nil))
         try Snapshot.render("embed-barred", width: 520, prepare: settle) {
             EmbedConsentCard(messageID: "$e", descriptor: descriptor, isLoaded: false,
-                             fetchPicture: { _ in image }, onLoadEmbed: {}).padding(14)
+                             allowsRemoteThumbnail: true, fetchPicture: { _ in image }, onLoadEmbed: {}).padding(14)
         }
         for suffix in ["light", "dark"] {
             let box = try redBounds("embed-barred", suffix)

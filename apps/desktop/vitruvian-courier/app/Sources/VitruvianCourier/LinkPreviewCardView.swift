@@ -325,9 +325,9 @@ public struct EmbedConsentCard: View {
     public var title: String?
     /// A picture the link's preview already saved on this Mac; drawn without any request.
     public var previewImagePath: String?
-    /// Whether the video's picture may be fetched from its site (that tells the site this Mac's address). On by
-    /// default: the picture is only a still from the video, and the "load external embeds" setting is about the
-    /// player. Off keeps the plain placeholder.
+    /// Whether the video's picture may be fetched from its site (that tells the site this Mac's address). Off by
+    /// default and only on with "Load external embeds automatically"; off, the card uses the picture the network's
+    /// own preview saved on this Mac, else the tinted placeholder, and asks for nothing.
     public var allowsRemoteThumbnail: Bool
     /// Where a fetched picture comes from (the shared session unless a test supplies its own).
     public var session: URLSession
@@ -360,7 +360,7 @@ public struct EmbedConsentCard: View {
         isLoaded: Bool,
         title: String? = nil,
         previewImagePath: String? = nil,
-        allowsRemoteThumbnail: Bool = true,
+        allowsRemoteThumbnail: Bool = false,
         session: URLSession = .shared,
         fetchPicture: (@Sendable (String) async -> CGImage?)? = nil,
         onBubble: Bool = false,
