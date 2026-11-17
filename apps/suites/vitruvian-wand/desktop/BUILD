@@ -20,6 +20,7 @@
 
 # gazelle:ignore
 
+load("//apps/suites/vitruvian-wand:version.bzl", "VITRUVIAN_WAND_VERSION")
 load(
     "//apps/suites/vitruvian-wand/build:defs.bzl",
     "vitruvian_wand_rust_binary",
@@ -79,6 +80,8 @@ vitruvian_wand_rust_library(
     crate_root = "src/lib.rs",
     edition = "2024",
     target_compatible_with = _DESKTOP_OS,
+    # CARGO_PKG_VERSION: `vitruvian-wand doctor` and the crash-report release.
+    version = VITRUVIAN_WAND_VERSION,
     deps = _DEPS,
 )
 
@@ -87,6 +90,7 @@ vitruvian_wand_rust_binary(
     srcs = ["src/main.rs"],
     edition = "2024",
     target_compatible_with = _DESKTOP_OS,
+    version = VITRUVIAN_WAND_VERSION,
     deps = [":vitruvian_wand_desktop"] + _DEPS,
 )
 

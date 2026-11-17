@@ -5,6 +5,7 @@ load("@rules_android//android:rules.bzl", "android_binary")
 load("@rules_java//java:java_import.bzl", "java_import")
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
 load("@rules_kotlin//kotlin:jvm.bzl", "kt_jvm_library", "kt_jvm_test")
+load("//apps/suites/vitruvian-wand:version.bzl", "VITRUVIAN_WAND_VERSION", "VITRUVIAN_WAND_VERSION_CODE")
 load("//apps/suites/vitruvian-wand/android:defs.bzl", "vitruvian_wand_multi_abi_apk")
 
 package(default_visibility = ["//apps/suites/vitruvian-wand/android:__subpackages__"])
@@ -82,6 +83,7 @@ kt_jvm_test(
     data = [
         "src/main/AndroidManifest.xml",
         "src/main/kotlin/com/vitruviansoftware/wand/MainActivity.kt",
+        "//apps/suites/vitruvian-wand:version.bzl",
     ],
     test_class = "com.vitruviansoftware.wand.WandSentryTest",
     deps = [
@@ -94,12 +96,20 @@ kt_jvm_test(
     ],
 )
 
+# WandVersion.NAME, from //apps/suites/vitruvian-wand:version.bzl, so the
+# crash-report release name moves with every release.
+genrule(
+    name = "wand_version_kt",
+    outs = ["WandVersion.kt"],
+    cmd = "printf '%s\\n' 'package com.vitruviansoftware.wand' '' '/** The release this build is: from version.bzl. */' 'object WandVersion {' '  const val NAME: String = \"{v}\"' '}' > $@".replace("{v}", VITRUVIAN_WAND_VERSION),
+)
+
 kt_android_library(
     name = "lib",
     srcs = glob(
         ["src/main/kotlin/**/*.kt"],
         exclude = ["src/main/kotlin/com/vitruviansoftware/wand/core/*.kt"],
-    ),
+    ) + [":wand_version_kt"],
     custom_package = "com.vitruviansoftware.wand",
     manifest = "src/main/AndroidManifest.xml",
     plugins = ["//packages/design-system-android:compose_compiler"],
@@ -134,8 +144,8 @@ android_binary(
         "applicationId": "com.vitruviansoftware.wand",
         "minSdkVersion": "26",
         "targetSdkVersion": "35",
-        "versionCode": "1",
-        "versionName": "0.1.0",
+        "versionCode": str(VITRUVIAN_WAND_VERSION_CODE),
+        "versionName": VITRUVIAN_WAND_VERSION,
     },
     tags = ["manual"],
     deps = [

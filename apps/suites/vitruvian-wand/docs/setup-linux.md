@@ -63,6 +63,15 @@ Vitruvian Wand uses kernel-level `uinput` events, which work identically on both
 
 ## 4. Running Vitruvian Wand
 
+Download `VitruvianWand-X.Y.Z-linux-x86_64.tar.gz` from the [latest Wand release](https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-wand), unpack it and run the program inside:
+
+```bash
+tar -xzf VitruvianWand-X.Y.Z-linux-x86_64.tar.gz
+./VitruvianWand-X.Y.Z/vitruvian-wand
+```
+
+Or build and run it from the repository:
+
 Launch Vitruvian Wand using Bazel:
 
 ```bash

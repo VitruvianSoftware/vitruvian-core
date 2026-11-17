@@ -79,13 +79,25 @@ class WandSentryTest {
   }
 
   @Test
+  fun releaseNameIsTheVersionInVersionBzl() {
+    val bzl = java.io.File("apps/suites/vitruvian-wand/version.bzl").readText()
+    val written =
+        Regex("""VITRUVIAN_WAND_VERSION = "([0-9]+\.[0-9]+\.[0-9]+)"""")
+            .find(bzl)
+            ?.groupValues
+            ?.get(1)
+    assertEquals(written, WandVersion.NAME)
+    assertEquals("vitruvian-wand@$written", WandSentry.RELEASE)
+  }
+
+  @Test
   fun wandSentryStripsDeviceAndOsContextsAndMatchesOriginMainReleaseEnvDsn() {
     assertEquals(EnumSet.of(DeviceField.APP_VERSION), WandSentry.KEPT_DEVICE_FIELDS)
 
     val defaultOptions = SentryAndroidOptions()
     WandSentry.configureOptions(options = defaultOptions)
     assertEquals(WandSentry.DEFAULT_DSN, defaultOptions.dsn)
-    assertEquals("vitruvian-wand@0.1.0", defaultOptions.release)
+    assertEquals("vitruvian-wand@${WandVersion.NAME}", defaultOptions.release)
     assertEquals("production", defaultOptions.environment)
 
     val options =
