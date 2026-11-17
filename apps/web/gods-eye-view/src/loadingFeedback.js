@@ -104,16 +104,22 @@ export function normalizeLayerLoading(layer = {}) {
   };
 }
 
+/**
+ * A batch's ending from its layers' stats: a layer that failed fails it; a
+ * layer only waiting for its provider key (whose error is that missing key)
+ * ends it KEY REQUIRED, which asks the user to act rather than reporting a
+ * fault.
+ */
 function terminalFromParticipantStats(summary, participantIds) {
   if (!participantIds?.length) return null;
   const participants = new Set(participantIds);
-  return summary.records.some(
-    (record) =>
-      participants.has(record.id) &&
-      (record.error || record.unavailable || record.keyRequired),
-  )
-    ? 'error'
-    : null;
+  let keyRequired = false;
+  for (const record of summary.records) {
+    if (!participants.has(record.id)) continue;
+    if (record.keyRequired) keyRequired = true;
+    else if (record.error || record.unavailable) return 'error';
+  }
+  return keyRequired ? 'key-required' : null;
 }
 
 /** Aggregate all manager layers without changing their lifecycle authority. */
@@ -294,17 +300,26 @@ export function reduceTrafficSyncFeedback(
   };
 }
 
-function terminalFromEvent(event) {
+/**
+ * A lifecycle event's ending. A layer that failed only for want of its
+ * provider key (its stats say `keyRequired`) ends KEY REQUIRED on every
+ * load or refresh, not just the first.
+ */
+function terminalFromEvent(event, summary) {
   const type = String(event?.type || '');
   if (type === 'visibility-failed' || type === 'refresh-failed' || event?.error)
-    return 'error';
+    return summary?.records?.some(
+      (record) => record.id === event?.layerId && record.keyRequired,
+    )
+      ? 'key-required'
+      : 'error';
   if (type === 'visibility-cancelled' || event?.cancelled) return 'cancelled';
   if (type === 'visibility' || type === 'refresh') return 'complete';
   return null;
 }
 
 function mergeTerminalOutcome(current, next) {
-  const severity = { complete: 1, cancelled: 2, error: 3 };
+  const severity = { complete: 1, cancelled: 2, 'key-required': 3, error: 4 };
   if (!next) return current || null;
   if (!current || severity[next] > severity[current]) return next;
   return current;
@@ -328,7 +343,7 @@ export function reduceLoadingFeedback(previous, summary, nowMs, event = null) {
         beginning ? null : state.batchOutcome,
         terminalFromParticipantStats(summary, activeIds),
       ),
-      eventParticipates ? terminalFromEvent(event) : null,
+      eventParticipates ? terminalFromEvent(event, summary) : null,
     );
     return {
       phase: 'loading',
@@ -347,7 +362,7 @@ export function reduceLoadingFeedback(previous, summary, nowMs, event = null) {
       failedEventIds: [
         ...new Set([
           ...(beginning ? [] : state.failedEventIds || []),
-          ...(eventParticipates && terminalFromEvent(event) === 'error'
+          ...(eventParticipates && terminalFromEvent(event, summary) === 'error'
             ? [eventLayerId]
             : []),
         ]),
@@ -365,13 +380,13 @@ export function reduceLoadingFeedback(previous, summary, nowMs, event = null) {
           state.batchOutcome,
           terminalFromParticipantStats(summary, state.activeIds),
         ),
-        eventParticipates ? terminalFromEvent(event) : null,
+        eventParticipates ? terminalFromEvent(event, summary) : null,
       ) || 'complete';
     const wasVisible = state.visible || now >= state.showAt;
     if (!wasVisible && terminal === 'complete')
       return createLoadingFeedbackState();
     const dwell =
-      terminal === 'error'
+      terminal === 'error' || terminal === 'key-required'
         ? LOADING_FAILURE_DWELL_MS
         : LOADING_TERMINAL_DWELL_MS;
     return {
@@ -384,7 +399,7 @@ export function reduceLoadingFeedback(previous, summary, nowMs, event = null) {
       failedEventIds: [
         ...new Set([
           ...(state.failedEventIds || []),
-          ...(eventParticipates && terminalFromEvent(event) === 'error'
+          ...(eventParticipates && terminalFromEvent(event, summary) === 'error'
             ? [eventLayerId]
             : []),
         ]),
@@ -446,6 +461,7 @@ export function presentLoadingFeedback(state, summary, nowMs) {
     const labels = {
       complete: 'LOAD COMPLETE',
       cancelled: 'LOAD CANCELLED',
+      'key-required': 'KEY REQUIRED',
       error: 'LOAD FAILED',
     };
     const label =

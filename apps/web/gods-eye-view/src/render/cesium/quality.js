@@ -37,7 +37,10 @@
  *   at 0. While tile detail is lowered, a tileset added later is brought
  *   to it on the next drawn frame; an error is written only when it
  *   changes, since each write resets the tileset's memory-adjusted error.
- * - `targetFps`: the frame port's target frame rate, 0 for none.
+ * - `targetFps`: a cap on the loop's frame rate, 0 for none (`fpsCap`: by
+ *   default the frame port's own `setTargetFps`; the renderer's ports keep
+ *   it apart from the rate the application sets there, and draw at the
+ *   lower of the two).
  *
  * Building the port changes nothing in the scene; each setting is applied
  * when it is first set, and a detail set back to 1 hands each tileset and
@@ -178,6 +181,10 @@ export function createCesiumQuality(
     limits = Cesium.ContextLimits,
     tickStarted = null,
     gl = webglContext(widget.scene),
+    fpsCap = {
+      get: () => frame.diagnostics?.().targetFps ?? 0,
+      set: (fps) => frame.setTargetFps(fps),
+    },
   },
 ) {
   const scene = widget.scene;
@@ -193,7 +200,7 @@ export function createCesiumQuality(
       : [];
 
   // What the scene had before the port first changed it: the defaults.
-  const builtFps = frame.diagnostics?.().targetFps ?? 0;
+  const builtFps = fpsCap.get();
   let msaaAtBuild = null;
   let shadowsAtBuild = null;
   // Cesium clamps the count to the context's only when it is set.
@@ -356,7 +363,7 @@ export function createCesiumQuality(
     },
     targetFps(value) {
       const fps = inRange(value, 0, MAX_FPS);
-      if (fps !== null) frame.setTargetFps(fps);
+      if (fps !== null) fpsCap.set(fps);
     },
   };
 
@@ -365,7 +372,7 @@ export function createCesiumQuality(
       pixelRatio,
       tiles3dDetail: detail.tiles,
       terrainDetail: detail.terrain,
-      targetFps: frame.diagnostics?.().targetFps ?? 0,
+      targetFps: fpsCap.get(),
     };
     if (scene.shadowMap) settings.shadows = Boolean(scene.shadowMap.enabled);
     if (msaaOptions().length > 1)
