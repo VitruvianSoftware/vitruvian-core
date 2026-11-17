@@ -359,6 +359,10 @@ mod tests {
         assert_eq!(got.matches("fetch-depth").count(), 1, "{got}");
         let plan = &got[got.find("  plan:\n").unwrap()..got.find("  unit-alpha:\n").unwrap()];
         assert!(plan.contains("          fetch-depth: 0\n"));
+        // ...and of that history only commits and trees: planning asks which
+        // paths changed, never what an old file held.
+        assert!(plan.contains("          fetch-depth: 0\n          filter: blob:none\n"));
+        assert_eq!(got.matches("filter: blob:none").count(), 1, "{got}");
     }
 
     #[test]

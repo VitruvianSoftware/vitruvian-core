@@ -223,11 +223,18 @@ jobs:
           persist-credentials: false
           # SAFETY INVARIANT (issue #81): affected-target selection needs the PR
           # merge-base with origin/main present locally. The default shallow
-          # fetch (depth 1) lacks it and would break target-determinator (and the
-          # diff guard). Full history makes the merge-base + before-rev reliable;
-          # target-determinator may also check the before-rev out into a temp
-          # worktree, which needs the full object graph.
+          # fetch (depth 1) lacks it and would break the diff guard. Full
+          # history makes the merge-base + before-rev reliable.
           fetch-depth: 0
+          # Every commit and tree, but file contents only for what is checked
+          # out. //tools/ci:affected_targets and the gate below only ask git
+          # which paths changed (rev-parse, merge-base, rev-list,
+          # diff --name-only), and nothing here checks an old commit out any
+          # more. Git fetches an old file on demand if something does ask.
+          # Measured on hosted Linux (PR #5046): the clone took 7-9 s instead
+          # of 13-17 s and .git was 115 MB instead of 436 MB. On the queue
+          # runners this job's full clone was a median 36 s (p90 76 s).
+          filter: blob:none
 
       # Changed-paths gate (CI lead-time optimisation, NOT a safety floor).
       # `build-test` is a REQUIRED status check behind the merge queue, so it
@@ -699,8 +706,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # The gate below diffs against the merge-base / before-rev.
+          # The gate below diffs against the merge-base / before-rev: paths
+          # only, so file contents of old commits stay on the server (see the
+          # note on build-test's checkout).
           fetch-depth: 0
+          filter: blob:none
       # Deliberately UNGATED and ahead of the changed-paths gate: it is a few
       # seconds of pure bash with no Bazel, and it guards the verifier that this
       # required check's verdict rests on. A silent hole in :verify (see the
@@ -779,6 +789,8 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+          # History for the path gates only; see build-test's checkout.
+          filter: blob:none
 
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
