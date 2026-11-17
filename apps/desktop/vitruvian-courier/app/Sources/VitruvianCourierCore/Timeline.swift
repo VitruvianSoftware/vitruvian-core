@@ -195,14 +195,14 @@ public struct ReactionChip: Equatable, Identifiable, Sendable {
         self.myEventID = myEventID
     }
 
-    /// Who reacted, in words, as Slack says it: "You, Ann and Bo reacted with 👍". I am "You" and come first; past
-    /// `maxNames` names the rest are counted ("… and 2 others").
     /// A custom emoji is an image the bridge stored (`mxc://…`): the key is an address, never something to print.
     public var isCustomImage: Bool { key.hasPrefix("mxc://") }
 
     /// The key as words for a tooltip or a screen reader: the emoji itself, or "Custom emoji" for an image.
     public var spokenKey: String { isCustomImage ? String(localized: "Custom emoji") : key }
 
+    /// Who reacted, in words, as Slack says it: "You, Ann and Bo reacted with 👍". I am "You" and come first; past
+    /// `maxNames` names the rest are counted ("… and 2 others").
     public func summary(maxNames: Int = 10, locale: Locale = .current, redacted: Bool = false) -> String {
         var names: [String] = []
         if mine || reactors.contains(where: \.isMe) { names.append(String(localized: "You")) }

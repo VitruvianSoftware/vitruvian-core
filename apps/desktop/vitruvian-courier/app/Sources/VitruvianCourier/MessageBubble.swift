@@ -405,6 +405,14 @@ struct MessageRowView: View {
     static let metaFont = Font.system(size: metaPointSize)
     static let metaPointSize: CGFloat = 11
 
+    /// Whether `text` has Hebrew, Arabic or other right-to-left letters.
+    static func containsRightToLeft(_ text: String) -> Bool {
+        text.unicodeScalars.contains {
+            (0x0590 ... 0x08FF).contains($0.value) || (0xFB1D ... 0xFDFF).contains($0.value)
+                || (0xFE70 ... 0xFEFF).contains($0.value)
+        }
+    }
+
     /// What the text reserves for `words` drawn at `metaPointSize`: the text lays it out at 10 pt (RichTextView), so
     /// a few hair spaces make up the difference.
     static func reservedMeta(_ words: String) -> String {
@@ -813,7 +821,10 @@ struct MessageRowView: View {
     /// Text that is the last thing in its bubble carries the time on the end of its last line (the way Beeper does);
     /// everything else (pictures, files, cards under the text) gets it on a line of its own at the trailing edge.
     private var metaIsInline: Bool {
+        // Right-to-left text ends on its left, where the time (drawn at the trailing corner) is not: that time
+        // gets a line of its own instead.
         guard hasMeta, message.kind == .text || message.kind == .notice, contentIsText,
+              !Self.containsRightToLeft(message.body),
               message.linkPreviews.isEmpty,
               ExternalEmbedDescriptor.first(in: message) == nil else { return false }
         return true
@@ -837,9 +848,8 @@ struct MessageRowView: View {
     private var metaView: some View {
         HStack(spacing: 5) {
             if message.isEdited { editedButton.takesOwnClick() }
-            if let timeText { Text(timeText) }
+            if let timeText { MessageTimeLabel(text: timeText) }
         }
-        .font(Self.metaFont)
         .foregroundStyle(metaColor)
         .fixedSize()
     }
@@ -1498,6 +1508,15 @@ private struct ReactorAvatarCircle: View {
     }
 }
 
+/// The time on a bubble, at `MessageRowView.metaFont`.
+struct MessageTimeLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text).font(MessageRowView.metaFont)
+    }
+}
+
 /// What a reaction is: the emoji as text, or, for a custom emoji (an `mxc://` address), its picture at the emoji's
 /// height. The address itself is never shown, not even in a tooltip or to VoiceOver.
 struct ReactionKeyView: View {
@@ -1517,7 +1536,6 @@ struct ReactionKeyView: View {
                 }
             }
             .frame(width: size * 1.2, height: size * 1.2)
-            .help(chip.spokenKey)
             .accessibilityLabel(chip.spokenKey)
             .task(id: chip.key) {
                 guard let path = ThumbnailLoader.resolveMediaPath(chip.key) else { return }
