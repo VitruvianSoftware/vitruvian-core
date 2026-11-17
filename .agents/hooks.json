@@ -8,7 +8,7 @@
           {
             "type": "command",
             "command": "/bin/sh ../tools/agent-guard/hook.sh",
-            "timeout": 10
+            "timeout": 60
           }
         ]
       }
