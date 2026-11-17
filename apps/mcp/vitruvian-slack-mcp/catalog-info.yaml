@@ -29,8 +29,6 @@ metadata:
   title: Vitruvian Slack MCP
   description: Vitruvian Slack MCP server exposing Slack tools — Rust, published as a container image (ghcr.io/vitruviansoftware/vitruvian-slack-mcp), and deployed as a hosted Streamable HTTP OAuth service
   annotations:
-    # PagerDuty service "Homelab apps and GitOps" (infrastructure/pulumi/platform/pagerduty).
-    pagerduty.com/service-id: P13SSU5
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:.
     opentelemetry.io/service-name: vitruvian-slack-mcp

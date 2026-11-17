@@ -35,7 +35,7 @@ An entity gets the card when it carries `pagerduty.com/service-id`:
 | System `platform-runtime` | Homelab cluster (`P8P1TII`) |
 | System `observability-platform` | Homelab cluster (`P8P1TII`) |
 | Resource `cloudnative-pg` | Homelab databases and backups (`P4CDT6V`) |
-| System and Component `vitruvian-slack-mcp` | Homelab apps and GitOps (`P13SSU5`) |
+| System `vitruvian-slack-mcp` | Homelab apps and GitOps (`P13SSU5`) |
 | System `vitruvian-core` | CI / delivery (`PE5K2S9`) |
 
 The Sentry PagerDuty service has no catalog entity yet. Service ids come from
