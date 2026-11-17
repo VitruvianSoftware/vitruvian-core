@@ -46,6 +46,9 @@ rust_binary(
 rust_test(
     name = "sync_downloads_lib_test",
     size = "small",
+    # The live catalog: the test checks every entry the sync updates has the
+    # labels it writes.
+    compile_data = ["//apps/web/vitruviansoftware-dev:_data/downloads.yml"],
     crate = ":sync_downloads_lib",
 )
 

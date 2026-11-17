@@ -524,6 +524,49 @@ pub fn sync_catalog(
         }
     }
 
+    // 9. vitruvian-wand, 10. vitruvian-watch, 11. daytona-platinum: each asset
+    // whose name ends a known way updates the link under its label; any other
+    // file (checksums, the -macOS.zip alias, the zip) is left out.
+    for (prefix, id, name, label_of) in [
+        (
+            "vitruvian-wand-v",
+            "vitruvian-wand",
+            "Vitruvian Wand",
+            wand_label as fn(&str) -> Option<&'static str>,
+        ),
+        (
+            "vitruvian-watch-v",
+            "vitruvian-watch",
+            "Vitruvian Watch",
+            watch_label,
+        ),
+        (
+            "daytona-platinum-v",
+            "daytona-platinum",
+            "Daytona Platinum",
+            daytona_label,
+        ),
+    ] {
+        if let Some(rel) = get_latest_release(CORE, Some(prefix), token)? {
+            if rel.truthy() {
+                let tag_name = str_of(&rel, "tag_name", "replace")?;
+                let ver = tag_name.replace(prefix, "");
+                say(&format!("✓ {}: v{}", name, ver));
+                cat.version(id, &ver)?;
+                cat.releases_url(id, &tag_name)?;
+                let scope = format!(r"id:\s*{}\n[\s\S]*?", id);
+                for a in assets(&rel)? {
+                    let Some(asset) = read_asset(&a, true)? else {
+                        continue;
+                    };
+                    if let Some(label) = label_of(name_str(&asset)) {
+                        cat.asset(&scope, label, &asset.url, &asset.size)?;
+                    }
+                }
+            }
+        }
+    }
+
     if original == cat.content {
         say("\nAll package versions and download URLs are already up to date.");
         return Ok(0);
@@ -549,6 +592,43 @@ pub fn sync_catalog(
     std::fs::write(path, cat.content.as_bytes()).map_err(|e| Crash::os(&e, Some(path)))?;
     say(&format!("\nSuccessfully updated {}", path));
     Ok(0)
+}
+
+/// The catalog label of one of Vitruvian Wand's release files, by how its name ends.
+pub fn wand_label(name: &str) -> Option<&'static str> {
+    const LABELS: [(&str, &str); 5] = [
+        ("-universal.dmg", "Universal DMG"),
+        ("-arm64.dmg", "Apple Silicon DMG"),
+        ("-x86_64.dmg", "Intel x86_64 DMG"),
+        ("-linux-x86_64.tar.gz", "Linux x86_64 tar.gz"),
+        (".apk", "Android APK"),
+    ];
+    LABELS
+        .iter()
+        .find(|(end, _)| name.ends_with(end))
+        .map(|(_, label)| *label)
+}
+
+/// The catalog label of one of Vitruvian Watch's four APKs.
+pub fn watch_label(name: &str) -> Option<&'static str> {
+    const LABELS: [(&str, &str); 4] = [
+        ("VitruvianWatchPulse-", "Pulse APK"),
+        ("VitruvianWatchRemote-", "Remote APK"),
+        ("VitruvianWatchHome-", "Home APK"),
+        ("VitruvianWatchCode-", "Code APK"),
+    ];
+    if !name.ends_with(".apk") {
+        return None;
+    }
+    LABELS
+        .iter()
+        .find(|(start, _)| name.starts_with(start))
+        .map(|(_, label)| *label)
+}
+
+/// The Daytona Platinum watch face's one download.
+pub fn daytona_label(name: &str) -> Option<&'static str> {
+    (name.starts_with("DaytonaPlatinum-") && name.ends_with(".apk")).then_some("Watch Face APK")
 }
 
 /// The label of one of Vitruvian Code's release assets that is a download.
@@ -620,6 +700,131 @@ mod tests {
         )
         .unwrap();
         assert_eq!(cat.content, original);
+    }
+
+    #[test]
+    fn wand_watch_and_daytona_files_map_to_their_labels() {
+        assert_eq!(
+            wand_label("VitruvianWand-0.1.1-universal.dmg"),
+            Some("Universal DMG")
+        );
+        assert_eq!(wand_label("VitruvianWand-0.1.1.dmg"), None);
+        assert_eq!(
+            wand_label("VitruvianWand-0.1.1-arm64.dmg"),
+            Some("Apple Silicon DMG")
+        );
+        assert_eq!(
+            wand_label("VitruvianWand-0.1.1-x86_64.dmg"),
+            Some("Intel x86_64 DMG")
+        );
+        assert_eq!(
+            wand_label("VitruvianWand-0.1.1-linux-x86_64.tar.gz"),
+            Some("Linux x86_64 tar.gz")
+        );
+        assert_eq!(wand_label("VitruvianWand-0.1.1.apk"), Some("Android APK"));
+        assert_eq!(wand_label("VitruvianWand-0.1.1-universal.zip"), None);
+        assert_eq!(wand_label("VitruvianWand-0.1.1-macOS.zip"), None);
+        assert_eq!(
+            watch_label("VitruvianWatchPulse-0.1.2.apk"),
+            Some("Pulse APK")
+        );
+        assert_eq!(
+            watch_label("VitruvianWatchRemote-0.1.2.apk"),
+            Some("Remote APK")
+        );
+        assert_eq!(
+            watch_label("VitruvianWatchHome-0.1.2.apk"),
+            Some("Home APK")
+        );
+        assert_eq!(
+            watch_label("VitruvianWatchCode-0.1.2.apk"),
+            Some("Code APK")
+        );
+        assert_eq!(watch_label("VitruvianWatchCode-0.1.2.apk.sha256"), None);
+        assert_eq!(
+            daytona_label("DaytonaPlatinum-0.1.8.apk"),
+            Some("Watch Face APK")
+        );
+        assert_eq!(daytona_label("DaytonaPlatinum-0.1.8.apk.sha256"), None);
+    }
+
+    /// The live catalog: every label the sync writes must exist in its own
+    /// entry, or the lazy scope regex would run on into the next entry and
+    /// overwrite that entry's link instead.
+    #[test]
+    fn the_live_catalog_has_every_wand_watch_and_daytona_label() {
+        let catalog = include_str!("../../../apps/web/vitruviansoftware-dev/_data/downloads.yml");
+        let entry = |id: &str| -> String {
+            let start = catalog
+                .find(&format!("- id: {}\n", id))
+                .unwrap_or_else(|| panic!("no {} entry", id));
+            let rest = &catalog[start + 1..];
+            let end = rest
+                .find("\n      - id: ")
+                .or_else(|| rest.find("\n  - id: "));
+            rest[..end.unwrap_or(rest.len())].to_string()
+        };
+        let checks: [(&str, Vec<&str>); 3] = [
+            (
+                "vitruvian-wand",
+                vec![
+                    "Universal DMG",
+                    "Apple Silicon DMG",
+                    "Intel x86_64 DMG",
+                    "Linux x86_64 tar.gz",
+                    "Android APK",
+                ],
+            ),
+            (
+                "vitruvian-watch",
+                vec!["Pulse APK", "Remote APK", "Home APK", "Code APK"],
+            ),
+            ("daytona-platinum", vec!["Watch Face APK"]),
+        ];
+        for (id, labels) in checks {
+            let block = entry(id);
+            assert!(block.contains("version: \""), "{} has no version", id);
+            assert!(
+                block.contains("releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/"),
+                "{} has no tag releases_url",
+                id
+            );
+            for label in labels {
+                assert!(
+                    block.contains(&format!("label: {}\n", label)),
+                    "{} has no {} download",
+                    id,
+                    label
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_wand_sync_touches_only_the_wand_entry() {
+        let original = "      - id: vitruvian-remote\n        version: \"0.1.46\"\n        downloads:\n          - label: Android APK\n            url: https://example.invalid/remote.apk\n            size: 9 MB\n      - id: vitruvian-wand\n        version: \"0.1.1\"\n        downloads:\n          - label: Android APK\n            url: https://example.invalid/wand-old.apk\n            size: 9 MB\n        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/vitruvian-wand-v0.1.1\n";
+        let mut cat = Catalog {
+            content: original.to_string(),
+        };
+        cat.version("vitruvian-wand", "0.1.2").unwrap();
+        cat.releases_url("vitruvian-wand", "vitruvian-wand-v0.1.2")
+            .unwrap();
+        cat.asset(
+            r"id:\s*vitruvian-wand\n[\s\S]*?",
+            "Android APK",
+            "https://example.invalid/wand-new.apk",
+            "10 MB",
+        )
+        .unwrap();
+        assert!(cat.content.contains("https://example.invalid/remote.apk"));
+        assert!(cat.content.contains("version: \"0.1.46\""));
+        assert!(cat
+            .content
+            .contains("id: vitruvian-wand\n        version: \"0.1.2\""));
+        assert!(cat
+            .content
+            .contains("wand-new.apk\n            size: 10 MB"));
+        assert!(cat.content.contains("releases/tag/vitruvian-wand-v0.1.2"));
     }
 
     #[test]

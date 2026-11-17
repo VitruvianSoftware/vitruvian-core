@@ -166,6 +166,77 @@ categories:
         extensions_url: /ai/#eco-vitruvian-remote
         extensions_label: Companion Extensions
 
+      - id: vitruvian-wand
+        name: Vitruvian Wand
+        version: "0.1.1"
+        summary: >-
+          Turn a Google Daydream controller into a wireless air mouse. Swipe the touchpad or
+          wave the controller to move the pointer, and set every button to clicks, shortcuts or
+          media keys, on a Mac, a Linux PC, an Android phone or an Android TV. The Mac app is
+          signed with Developer ID and notarized.
+        platforms: ["macOS Universal", "Linux (x86_64)", "Android (phone and TV)"]
+        brew_cask: vitruviansoftware/tap/vitruvian-wand
+        downloads:
+          - label: Universal DMG
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-wand-v0.1.1/VitruvianWand-0.1.1-universal.dmg
+            size: 14.0 MB
+            arch: Universal
+          - label: Apple Silicon DMG
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-wand-v0.1.1/VitruvianWand-0.1.1-arm64.dmg
+            size: 6.7 MB
+            arch: arm64
+          - label: Intel x86_64 DMG
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-wand-v0.1.1/VitruvianWand-0.1.1-x86_64.dmg
+            size: 7.4 MB
+            arch: x86_64
+          - label: Linux x86_64 tar.gz
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-wand-v0.1.1/VitruvianWand-0.1.1-linux-x86_64.tar.gz
+            size: 11.7 MB
+            arch: x86_64
+          - label: Android APK
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-wand-v0.1.1/VitruvianWand-0.1.1.apk
+            size: 9.2 MB
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/vitruvian-wand-v0.1.1
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/suites/vitruvian-wand
+
+      - id: vitruvian-watch
+        name: Vitruvian Watch
+        version: "0.1.2"
+        summary: >-
+          Wear OS apps for the Pixel Watch: Pulse puts homelab health, the merge queue and the
+          robot vacuum on your watch face; Remote is a TV remote with crown volume; Home
+          switches speaker rooms and starts cleans; Code sends spoken prompts to coding agents.
+        platforms: ["Wear OS (Pixel Watch)"]
+        downloads:
+          - label: Pulse APK
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-watch-v0.1.2/VitruvianWatchPulse-0.1.2.apk
+            size: 8.4 MB
+          - label: Remote APK
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-watch-v0.1.2/VitruvianWatchRemote-0.1.2.apk
+            size: 8.4 MB
+          - label: Home APK
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-watch-v0.1.2/VitruvianWatchHome-0.1.2.apk
+            size: 8.4 MB
+          - label: Code APK
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-watch-v0.1.2/VitruvianWatchCode-0.1.2.apk
+            size: 8.4 MB
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/vitruvian-watch-v0.1.2
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/vitruvian-watch
+
+      - id: daytona-platinum
+        name: Daytona Platinum Watch Face
+        version: "0.1.8"
+        summary: >-
+          A Wear OS watch face for the Pixel Watch: an ice-blue sunray dial with a chestnut
+          tachymeter bezel and seven complication slots, including the Vitruvian Watch Pulse feeds.
+        platforms: ["Wear OS (Pixel Watch)"]
+        downloads:
+          - label: Watch Face APK
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/daytona-platinum-v0.1.8/DaytonaPlatinum-0.1.8.apk
+            size: 2.4 MB
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/daytona-platinum-v0.1.8
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/vitruvian-watch/faces/daytona-platinum
+
   - id: cli
     title: Developer Tools & CLI
     blurb: High-performance CLI tools for local development orchestration, declarative K3s clusters, and peripheral control.
