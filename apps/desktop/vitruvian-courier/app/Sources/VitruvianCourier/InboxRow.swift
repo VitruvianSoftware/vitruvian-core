@@ -82,6 +82,12 @@ struct InboxRowView<HoverMenu: View>: View {
         isHovered ?? localHovered
     }
 
+    /// The button (Settings ▸ Inbox ▸ "Button on a chat you point at") is there while the pointer is on the row,
+    /// except while choosing chats.
+    private var showsHoverButton: Bool {
+        effectiveHovered && !isSelecting && style.hoverAction != .nothing
+    }
+
     /// The chat's name, preview, and time font sizes, scaled together so the name is always larger than the preview.
     private var pointSizes: (title: CGFloat, preview: CGFloat, time: CGFloat) {
         FontSizeScale.inboxRowPointSizes(
@@ -119,16 +125,19 @@ struct InboxRowView<HoverMenu: View>: View {
                         .layoutPriority(1)
                     if let tag = row.accountTag { AccountTag(name: tag) }
                     Spacer(minLength: 4)
-                    if effectiveHovered, !isSelecting, style.hoverAction != .nothing {
-                        hoverButton
-                    } else {
-                        HStack(spacing: 3) {
-                            Text(RelativeTime.text(forMillis: row.lastTS, now: now, timeFormat: style.timeFormat))
-                                .font(.system(size: pointSizes.time))
-                                .foregroundStyle(.tertiary)
-                            if let tick = row.previewTick { PreviewTickMark(tick: tick) }
-                        }
-                        .fixedSize()
+                    // The time keeps its place while the pointer is on the row and the hover button is drawn over it,
+                    // so the button takes the time's slot and neither the name nor the row's height moves.
+                    HStack(spacing: 3) {
+                        Text(RelativeTime.text(forMillis: row.lastTS, now: now, timeFormat: style.timeFormat))
+                            .font(.system(size: pointSizes.time))
+                            .foregroundStyle(.tertiary)
+                        if let tick = row.previewTick { PreviewTickMark(tick: tick) }
+                    }
+                    .fixedSize()
+                    .frame(minWidth: 24, alignment: .trailing)
+                    .opacity(showsHoverButton ? 0 : 1)
+                    .overlay(alignment: .trailing) {
+                        if showsHoverButton { hoverButton }
                     }
                 }
                 HStack(alignment: .top, spacing: 6) {

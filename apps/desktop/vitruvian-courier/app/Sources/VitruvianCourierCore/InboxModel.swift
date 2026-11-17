@@ -1646,7 +1646,31 @@ public final class InboxModel: ObservableObject {
         if !isLoaded {
             isLoaded = true
         }
+        fileShortCodeSenders(in: deduped, isInbox: query.space == "inbox", using: client)
         return true
+    }
+
+    /// Looks at short-code chats the app has not seen before (`ShortCodeSenders`): records every one, and files those
+    /// the person has not touched, if they are in the inbox, under Low Priority, quietly. Recording comes first and is
+    /// kept whether or not the filing works, so a chat is dealt with at most once, ever. Filing needs a plan that
+    /// includes Low Priority, as moving a chat there by hand does.
+    private func fileShortCodeSenders(in listed: [InboxRow], isInbox: Bool, using client: EngineClient) {
+        let seen = preferences.evaluatedShortCodeRoomIDs
+        let evaluation = ShortCodeSenders.evaluate(listed, isInbox: isInbox, alreadySeen: seen)
+        guard !evaluation.newlySeen.isEmpty else { return }
+        preferences.recordEvaluatedShortCodes(evaluation.newlySeen)
+        guard !evaluation.toFile.isEmpty, entitlement.isEntitled(.lowPriority) else { return }
+        let ids = evaluation.toFile
+        Task { [weak self] in
+            guard let self else { return }
+            var filed = false
+            for chunk in ids.chunked(Self.batchSize) {
+                let result: RoomsChanged? = try? await client.call(
+                    "room.setLowPriority", RoomsFlagParams(roomIDs: chunk, on: true))
+                filed = filed || !(result?.roomIDs.isEmpty ?? true)
+            }
+            if filed { self.requestRead(waiting: false) }
+        }
     }
 
     /// Collapses member rows sharing a non-empty `mergeID` into a single row in the inbox,

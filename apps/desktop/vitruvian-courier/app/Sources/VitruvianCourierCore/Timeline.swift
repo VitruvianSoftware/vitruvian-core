@@ -683,7 +683,7 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
         self.id = id
         self.roomID = roomID
         self.sender = sender
-        self.senderName = senderName
+        self.senderName = NetworkTag.stripped(senderName)
         self.senderAvatarPath = senderAvatarPath
         self.mine = mine
         self.ts = ts
@@ -1078,7 +1078,7 @@ public enum Timeline {
     private static func memberName(of event: Event) -> String {
         if let target = event.content["displayname"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
            !target.isEmpty {
-            return target
+            return NetworkTag.stripped(target)
         }
         return senderName(of: event)
     }
@@ -1086,7 +1086,7 @@ public enum Timeline {
     /// The sender's name as the event carries it, or their user id when it carries none.
     private static func senderName(of event: Event) -> String {
         let sender = event.senderName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return sender.isEmpty ? event.sender : sender
+        return sender.isEmpty ? event.sender : NetworkTag.stripped(sender)
     }
 
     private static func summarizeMembershipRun(_ events: [Event]) -> String {

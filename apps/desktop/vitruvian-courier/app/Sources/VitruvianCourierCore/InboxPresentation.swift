@@ -644,6 +644,8 @@ public enum ChatDisplayTitle {
         return splitCommaSegments(trimmed) != nil
     }
 
+    /// The title a chat is shown under. Whatever the chat's kind, a trailing bridge network tag is taken off
+    /// (`NetworkTag`), so a group's own name, a custom title and a person's name all read the same as in search.
     public static func format(
         name: String,
         isDirect: Bool = false,
@@ -651,6 +653,20 @@ public enum ChatDisplayTitle {
         members: [GroupTitleMember] = [],
         isCompleteMemberList: Bool = true
     ) -> String {
+        NetworkTag.stripped(formatUntagged(
+            name: name, isDirect: isDirect, localName: localName, members: members,
+            isCompleteMemberList: isCompleteMemberList))
+    }
+
+    private static func formatUntagged(
+        name: String,
+        isDirect: Bool,
+        localName: String,
+        members: [GroupTitleMember],
+        isCompleteMemberList: Bool
+    ) -> String {
+        // A one-to-one chat is named for the person, in full as the network gave it. First-name shortening below is
+        // for group titles only.
         guard !isDirect else { return name }
         guard localName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return name }
 
@@ -806,7 +822,10 @@ public enum ChatDisplayTitle {
     private static func render(entries: [GroupTitleMember], totalCount: Int) -> String? {
         guard !entries.isEmpty else { return nil }
         let limit = totalCount <= 3 ? min(totalCount, entries.count) : min(3, entries.count)
-        let shownEntries = Array(entries.prefix(limit))
+        // A member's bridge tag never reaches a title ("Toan (WA), Adam (WA)").
+        let shownEntries = entries.prefix(limit).map {
+            GroupTitleMember(userID: $0.userID, name: NetworkTag.stripped($0.name), isBot: $0.isBot)
+        }
         let displayNames = disambiguatedShortNames(for: shownEntries)
 
         switch shownEntries.count {

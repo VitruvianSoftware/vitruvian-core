@@ -588,4 +588,124 @@ final class NotificationPolicyTests: XCTestCase {
         XCTAssertEqual(lockedReminder.body, "Reminder due")
         XCTAssertEqual(lockedReminder.category, .scheduled)
     }
+
+    // MARK: - Verification codes in Low Priority, and names without network tags
+
+    private func codeEvent(_ body: String, senderName: String = "Sam") -> Event {
+        event(content: .object(["msgtype": .string("m.text"), "body": .string(body)]), senderName: senderName)
+    }
+
+    /// Short-code senders are filed under Low Priority by default, so a verification code must still get through the
+    /// Low Priority guard as it gets through the mute guard, whatever the auto-copy setting: that setting only decides
+    /// whether the code is copied. Anything else in a Low Priority chat stays silent.
+    func testAVerificationCodeNotifiesInALowPriorityChatWhateverAutoCopySays() throws {
+        let code = codeEvent("Your verification code is 482910")
+        let low = row("!code", name: "787473", lowPriority: true)
+        for autoCopy in [false, true] {
+            let suiteName = "courier.test.otp.lowpriority.\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            let prefs = NotificationPreferences(defaults: defaults)
+            prefs.autoCopyOTP = autoCopy
+
+            let decision = NotificationPolicy.evaluate(event: code, room: low, context: context(), preferences: prefs)
+            XCTAssertTrue(decision.shouldNotify, "a code in a Low Priority chat notifies (auto-copy \(autoCopy))")
+            XCTAssertEqual(decision.otpCode, "482910")
+            XCTAssertEqual(decision.shouldAutoCopyOTP, autoCopy, "it is copied only when auto-copy is on")
+
+            let chat = NotificationPolicy.evaluate(event: codeEvent("See you at 6"), room: low, context: context(),
+                                                   preferences: prefs)
+            XCTAssertFalse(chat.shouldNotify, "a message that is not a code in a Low Priority chat stays silent")
+
+            let hidden = NotificationPolicy.evaluate(event: code, room: row("!code", name: "787473", lowPriority: true,
+                                                                            hidden: true),
+                                                     context: context(), preferences: prefs)
+            XCTAssertFalse(hidden.shouldNotify, "a hidden chat stays silent, code or not")
+        }
+    }
+
+    func testAVerificationCodeNotifiesInAMutedChatWhateverAutoCopySays() throws {
+        let suiteName = "courier.test.otp.muted.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let prefs = NotificationPreferences(defaults: defaults)
+        prefs.autoCopyOTP = false
+        let decision = NotificationPolicy.evaluate(event: codeEvent("Your verification code is 482910"),
+                                                   room: row(muted: true), context: context(), preferences: prefs)
+        XCTAssertTrue(decision.shouldNotify)
+        XCTAssertFalse(decision.shouldAutoCopyOTP)
+        XCTAssertFalse(NotificationPolicy.evaluate(event: codeEvent("See you at 6"), room: row(muted: true),
+                                                   context: context(), preferences: prefs).shouldNotify)
+    }
+
+    /// A code gets through a muted chat and Low Priority, but not past switches the person turned off for a whole
+    /// account, all messages or all groups, unless auto-copy is on (which has always meant "always tell me about codes").
+    func testAVerificationCodeRespectsAccountAndMessageSwitchesUnlessAutoCopyIsOn() throws {
+        let code = codeEvent("Your verification code is 482910")
+        for autoCopy in [false, true] {
+            let suiteName = "courier.test.otp.switches.\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            let prefs = NotificationPreferences(defaults: defaults)
+            prefs.autoCopyOTP = autoCopy
+
+            prefs.accountOverrides["whatsapp:wa-1"] = AccountNotificationOverride(
+                enabled: false, showPreviews: true, sound: .marimba
+            )
+            let accountOff = NotificationPolicy.evaluate(event: code, room: row(), context: context(),
+                                                         preferences: prefs, accountKey: "whatsapp:wa-1")
+            XCTAssertEqual(accountOff.shouldNotify, autoCopy, "account turned off (auto-copy \(autoCopy))")
+            prefs.accountOverrides.removeAll()
+
+            prefs.messageNotificationsEnabled = false
+            let messagesOff = NotificationPolicy.evaluate(event: code, room: row(), context: context(), preferences: prefs)
+            XCTAssertEqual(messagesOff.shouldNotify, autoCopy, "message notifications off (auto-copy \(autoCopy))")
+        }
+    }
+
+    func testNotificationsNameThePersonWithoutTheNetworkTag() {
+        let live = codeEvent("hello", senderName: "Sam Lee (WA)")
+        let direct = NotificationPolicy.content(for: live, room: row(name: "Toan Vu (WA)"))
+        XCTAssertEqual(direct.title, "Toan Vu")
+        XCTAssertNil(direct.subtitle)
+        let group = NotificationPolicy.content(for: live, room: row(name: "Trail Crew", direct: false))
+        XCTAssertEqual(group.title, "Trail Crew")
+        XCTAssertEqual(group.subtitle, "Sam Lee", "the sender's name loses its tag too")
+        let unnamed = NotificationPolicy.content(for: live, room: row(name: ""))
+        XCTAssertEqual(unnamed.title, "Sam Lee")
+
+        let decided = NotificationPolicy.evaluate(event: live, room: row(name: "Toan Vu (WA)", direct: false),
+                                                  context: context())
+        XCTAssertEqual(decided.content?.title, "Toan Vu")
+        XCTAssertEqual(decided.content?.subtitle, "Sam Lee")
+
+        XCTAssertEqual(NotificationPolicy.reminderContent(room: row(name: "Toan Vu (WA)")).title, "Toan Vu")
+        XCTAssertEqual(NotificationPolicy.content(for: live, room: row(name: "Room (2)")).title, "Room (2)")
+
+        XCTAssertEqual(NotificationPolicy.typingContent(room: row(name: "Toan Vu (WA)")).title, "Toan Vu")
+        let scheduled = ScheduledMessage(outboxID: 7, roomID: "!a", text: "hi", entities: [], dueAt: 2000,
+                                         condition: .ifNoReply, state: .canceled, setAt: 1000)
+        let missed = NotificationPolicy.scheduledContent(scheduled, room: row(name: "Toan Vu (WA)"))
+        XCTAssertTrue(missed.body.contains("Toan Vu"), missed.body)
+        XCTAssertFalse(missed.body.contains("(WA)"), missed.body)
+    }
+
+    /// In a muted group, a message the detector reads as a code ("pin 1234") stays quiet unless auto-copy is on: only a
+    /// code sent to me alone gets through a quiet chat by itself.
+    func testACodeInAMutedOrLowPriorityGroupNotifiesOnlyWithAutoCopy() throws {
+        let code = codeEvent("Your verification code is 482910")
+        for autoCopy in [false, true] {
+            let suiteName = "courier.test.otp.group.\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            let prefs = NotificationPreferences(defaults: defaults)
+            prefs.autoCopyOTP = autoCopy
+            let muted = NotificationPolicy.evaluate(event: code, room: row(direct: false, muted: true),
+                                                    context: context(), preferences: prefs)
+            XCTAssertEqual(muted.shouldNotify, autoCopy, "muted group (auto-copy \(autoCopy))")
+            let low = NotificationPolicy.evaluate(event: code, room: row(direct: false, lowPriority: true),
+                                                  context: context(), preferences: prefs)
+            XCTAssertEqual(low.shouldNotify, autoCopy, "Low Priority group (auto-copy \(autoCopy))")
+        }
+    }
 }

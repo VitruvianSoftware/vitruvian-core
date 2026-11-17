@@ -83,7 +83,7 @@ private struct ChatResultRow: View {
                 .overlay(alignment: .bottomTrailing) { badge(row.network) }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(SearchRedaction.chatTitle(row.name, redacted: isRedacted))
+                    Text(SearchRedaction.chatTitle(NetworkTag.stripped(row.name), redacted: isRedacted))
                         .font(.body.weight(.medium))
                         .lineLimit(1)
                     if let tag = row.place.tag { PlaceTag(text: tag) }
@@ -122,7 +122,7 @@ private struct PersonResultRow: View {
                         .offset(x: 3, y: 3)
                 }
             VStack(alignment: .leading, spacing: 2) {
-                Text(isRedacted ? AppearancePreferences.redactedText(person.name, kind: .name) : person.name)
+                Text(isRedacted ? AppearancePreferences.redactedText(person.name, kind: .name) : NetworkTag.stripped(person.name))
                     .font(.body.weight(.medium))
                     .lineLimit(1)
                 Text(person.groupsLine)

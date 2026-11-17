@@ -54,8 +54,8 @@ func TestEveryNetworkStartsOfflineTwice(t *testing.T) {
 
 				switch c := nc.(type) {
 				case *whatsapp.WhatsAppConnector:
-					require.Equal(t, `{{or .BusinessName .PushName .Phone .RedactedPhone "Unknown user"}} (WA)`, c.Config.DisplaynameTemplate,
-						"start %d: the connector's example config must become its real defaults", run)
+					require.Equal(t, whatsappDisplaynameTemplate, c.Config.DisplaynameTemplate,
+						"start %d: the connector's example config must become its real defaults, and the spec's name template", run)
 				case *telegram.TelegramConnector:
 					require.Equal(t, 424242, c.Config.APIID, "start %d: the spec's credentials must reach the connector", run)
 					require.Equal(t, "0123456789abcdef0123456789abcdef", c.Config.APIHash)

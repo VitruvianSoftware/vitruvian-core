@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"text/template"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -238,8 +239,43 @@ func TestWhatsAppArchivedChatsArriveArchived(t *testing.T) {
 	require.Equal(t, event.RoomTagFavourite, cfg.PinnedTag, "pins keep the example's tag")
 	require.Contains(t, h.Bridge.Config.OnlyBridgeTags, cfg.ArchiveTag, "the bridge takes the tag in")
 	require.True(t, cfg.ExtEvPolls, "polls arrive as polls (TestPollsArriveAsPolls), after the example config is read")
-	require.Equal(t, "{{or .BusinessName .PushName .Phone .RedactedPhone \"Unknown user\"}} (WA)", cfg.DisplaynameTemplate,
-		"every other setting keeps the example's value")
+	require.Equal(t, whatsappDisplaynameTemplate, cfg.DisplaynameTemplate,
+		"people are named in full, without the example's \" (WA)\" tag (TestWhatsAppNamesPeopleInFull)")
+	require.Equal(t, "Unknown user", renderName(t, cfg.DisplaynameTemplate, nameParts{}),
+		"the template Configure set is the one that parsed: it names an unknown person")
+}
+
+// nameParts is the fields of a bridge's display-name template that the two templates below read. The bridges' own
+// parameter types (whatsmeow's ContactInfo, Signal's Recipient) carry the same fields under these names, and the
+// connector parses and runs the template once at start (PostProcess), so a field that does not exist is an error
+// in TestWhatsAppArchivedChatsArriveArchived above, not here.
+type nameParts struct {
+	FullName, BusinessName, PushName, Phone, RedactedPhone string
+	ContactName, ProfileName, PhoneNumber                  string
+}
+
+func renderName(t *testing.T, tmpl string, parts nameParts) string {
+	t.Helper()
+	parsed, err := template.New("displayname").Parse(tmpl)
+	require.NoError(t, err)
+	var out strings.Builder
+	require.NoError(t, parsed.Execute(&out, parts))
+	return out.String()
+}
+
+// The inbox named people "Toan Vu (WA)" or by the short name they gave WhatsApp. A person is named by the phone's
+// address-book name when there is one, then by a business name, the name they gave WhatsApp, and their number, and
+// never carries a network tag: the chat's badge says the network.
+func TestWhatsAppNamesPeopleInFull(t *testing.T) {
+	tmpl := whatsappDisplaynameTemplate
+	require.NotContains(t, tmpl, "(WA)")
+	require.Equal(t, "Duy Nguyen", renderName(t, tmpl, nameParts{FullName: "Duy Nguyen", PushName: "Thang", Phone: "+8490"}),
+		"the address-book name beats the name they gave WhatsApp")
+	require.Equal(t, "Acme Co", renderName(t, tmpl, nameParts{BusinessName: "Acme Co", PushName: "Pat", Phone: "+1"}))
+	require.Equal(t, "Toan Vu", renderName(t, tmpl, nameParts{PushName: "Toan Vu", Phone: "+1714"}),
+		"with no address-book name the name they gave WhatsApp is used, with no tag")
+	require.Equal(t, "+17145106179", renderName(t, tmpl, nameParts{Phone: "+17145106179"}))
+	require.Equal(t, "+1714•••6179", renderName(t, tmpl, nameParts{RedactedPhone: "+1714•••6179"}))
 }
 
 // The "sent" rows of the plan's per-network table (what Vitruvian Courier sends each network), and the bridgev2 interfaces

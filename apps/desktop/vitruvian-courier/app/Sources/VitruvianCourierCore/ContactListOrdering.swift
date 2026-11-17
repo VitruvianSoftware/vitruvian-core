@@ -124,19 +124,15 @@ public enum ContactListOrdering {
         return keys
     }
 
-    /// `text` with one trailing network tag removed: `(WA)`, `(TG)`, `(Signal)`: letters only, in parentheses, after
-    /// something else. `(213)` is not a tag (digits), and neither is a string that is only a parenthesis.
+    /// `text` with one trailing network tag removed (`NetworkTag`): `(WA)`, `(TG)`, `(Signal)`. `(213)` is not a tag
+    /// (digits), and neither is a string that is only a tag.
     private static func strippedOfNetworkTag(_ text: String) -> String {
-        guard text.hasSuffix(")"), let open = text.lastIndex(of: "(") else { return text }
-        let inside = text[text.index(after: open) ..< text.index(before: text.endIndex)]
-        guard !inside.isEmpty, inside.allSatisfy(\.isLetter) else { return text }
-        let rest = text[text.startIndex ..< open].trimmingCharacters(in: .whitespacesAndNewlines)
-        return rest.isEmpty ? text : rest
+        NetworkTag.stripped(text)
     }
 
     /// A run of 3 to 8 digits with nothing else but spaces and dashes (`32665`, `5 5 5 0 1`, `888-222`): an SMS short
-    /// code, which is a sender and not a name.
-    private static func isShortCode(_ text: String) -> Bool {
+    /// code, which is a sender and not a name. Public: Low Priority filing (`ShortCodeSenders`) asks the same question.
+    public static func isShortCode(_ text: String) -> Bool {
         guard !text.isEmpty, text.allSatisfy({ ($0.isASCII && $0.isNumber) || $0 == " " || $0 == "-" }) else {
             return false
         }

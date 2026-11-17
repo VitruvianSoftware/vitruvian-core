@@ -34,7 +34,7 @@ struct ForwardPicker: View {
                             .foregroundStyle(model.isSelected(row) ? Color.accentColor : .secondary)
                         ChatAvatar(row: row)
                             .frame(width: 26, height: 26)
-                        Text(row.name.isEmpty ? String(localized: "Unnamed chat") : row.name)
+                        Text(row.name.isEmpty ? String(localized: "Unnamed chat") : NetworkTag.stripped(row.name))
                             .lineLimit(1)
                         Spacer(minLength: 0)
                         NetworkBadge(network: row.network, name: networkName(row.network), size: 13)

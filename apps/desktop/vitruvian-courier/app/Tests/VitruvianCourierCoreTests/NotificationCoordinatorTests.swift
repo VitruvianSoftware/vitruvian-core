@@ -1045,14 +1045,28 @@ final class NotificationCoordinatorTests: XCTestCase {
         XCTAssertEqual(h.delivery.delivered.first?.category, .message)
         XCTAssertTrue(clipboard.copiedCodes.isEmpty, "autoCopyOTP is false: nothing may be written to clipboard")
 
-        // When autoCopyOTP == false, a muted chat remains silent even for an OTP message
+        // A code notifies in a muted chat and a Low Priority chat whatever autoCopyOTP says: it only decides copying.
         h.window.rows["!a"] = inboxRow("!a", name: "Chat A", muted: true)
         let ts2 = ts1 + 1000
         h.script.events["!a"] = [message("$otp2", ts: ts2, text: "123456 is your login code")]
         h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$otp2"])
+        try await waitUntil { h.delivery.delivered.count == 2 }
+        XCTAssertEqual(h.delivery.delivered.last?.eventID, "$otp2")
+        XCTAssertTrue(clipboard.copiedCodes.isEmpty, "autoCopyOTP is false: a code in a muted chat is not copied")
+
+        h.window.rows["!a"] = inboxRow("!a", name: "Chat A", lowPriority: true)
+        h.script.events["!a"] = [message("$otpLow", ts: ts2 + 500, text: "Your verification code is 654321")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$otpLow"])
+        try await waitUntil { h.delivery.delivered.count == 3 }
+        XCTAssertEqual(h.delivery.delivered.last?.eventID, "$otpLow")
+        XCTAssertTrue(clipboard.copiedCodes.isEmpty, "autoCopyOTP is false: a code in a Low Priority chat is not copied")
+
+        // Not a code: a Low Priority chat stays silent.
+        h.script.events["!a"] = [message("$chatLow", ts: ts2 + 700, text: "see you at six")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$chatLow"])
         try await settle(h, fetches: 2)
-        XCTAssertEqual(h.delivery.delivered.count, 1)
-        XCTAssertTrue(clipboard.copiedCodes.isEmpty)
+        XCTAssertEqual(h.delivery.delivered.count, 3)
+        h.window.rows["!a"] = inboxRow("!a", name: "Chat A", muted: true)
 
         // 2. autoCopyOTP == true: OTP message in a muted chat (and disabled account override) still notifies at t = 0s and copies 123456
         h.preferences.notifications.autoCopyOTP = true
@@ -1060,7 +1074,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         let ts3 = ts2 + 1000
         h.script.events["!a"] = [message("$otp3", ts: ts3, text: "Your verification code is 123456")]
         h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$otp3"])
-        try await waitUntil { h.delivery.delivered.count == 2 }
+        try await waitUntil { h.delivery.delivered.count == 4 }
         let deliveredOTP = try XCTUnwrap(h.delivery.delivered.last)
         XCTAssertEqual(deliveredOTP.eventID, "$otp3")
         XCTAssertEqual(deliveredOTP.body, "Your verification code is 123456")
