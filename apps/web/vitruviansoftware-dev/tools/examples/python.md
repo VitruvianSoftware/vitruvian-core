@@ -11,7 +11,7 @@ source: packages/vitruvian-sdk/samples/hello-python
     bazel run //tools/sync-site-tools:sync
 {%- endcomment -%}
 {% raw %}
-`vitruvian-tool init <folder>` starts a new tool from a copy of this one. The folder runs as it is: add it to Vitruvian.
+`vitruvian-tool init <folder>` starts a new tool from a copy of this one. The folder runs as it is: add it to Vitruvian Atrium.
 
 This is [`samples/hello-python`](https://github.com/VitruvianSoftware/vitruvian-sdk/tree/main/samples/hello-python) of the SDK, as it is. The conformance script runs it in the SDK's tests.
 

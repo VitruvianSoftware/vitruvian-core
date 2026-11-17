@@ -20,8 +20,8 @@ overwrite it.
 2. **Open a pull request** to vitruvian-core, changing files under
    `packages/vitruvian-sdk`. Link the issue.
 
-Everything in this folder is MIT licensed, and a contribution is too. The
-Vitruvian app, which links the protocol's Swift types, is GPL-3.0-or-later:
+Everything in this folder is MIT licensed, and a contribution is too. Vitruvian
+Atrium, which links the protocol's Swift types, is GPL-3.0-or-later:
 nothing from the app's folder may be copied here.
 
 ## A change to the protocol
@@ -117,5 +117,5 @@ cannot judge, is in
 [`catalog/README.md`](https://github.com/VitruvianSoftware/vitruvian-core/blob/main/catalog/README.md#a-pull-request-that-lists-a-tool).
 The list is signed after the merge and served at
 [vitruviansoftware.dev/tools/catalog](https://vitruviansoftware.dev/tools/catalog/),
-where Vitruvian reads it. A tool can still be added from its folder, in
-Vitruvian's Settings › Extensions, with "Add from Folder…".
+where Vitruvian Atrium reads it. A tool can still be added from its folder, in
+Vitruvian Atrium's Settings › Extensions, with "Add from Folder…".

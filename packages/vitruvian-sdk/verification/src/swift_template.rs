@@ -489,7 +489,7 @@ pub fn check_swift_template(
     }
 
     let real_tool = fs::canonicalize(&tool).unwrap_or_else(|_| tool.clone());
-    let expected_msg = format!("The folder to add to Vitruvian is {}", real_tool.display());
+    let expected_msg = format!("The folder to add to Vitruvian Atrium is {}", real_tool.display());
     if !printed.contains(&expected_msg) {
         problems.push(format!(
             "build.sh does not name the folder to add:\n{}",

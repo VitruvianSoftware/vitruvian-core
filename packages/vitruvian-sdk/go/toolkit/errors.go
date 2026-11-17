@@ -39,7 +39,7 @@ const (
 	CodeNotInUses = -32001
 	// CodeNotInstalled: the tool is not installed, or is switched off.
 	CodeNotInstalled = -32002
-	// CodePermissionMissing: Vitruvian lacks a macOS permission the service
+	// CodePermissionMissing: Vitruvian Atrium lacks a macOS permission the service
 	// needs.
 	CodePermissionMissing = -32003
 	// CodeUnavailable: not available right now.

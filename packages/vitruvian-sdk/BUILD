@@ -19,7 +19,7 @@
 # SOFTWARE.
 
 # //packages/vitruvian-sdk: what a tool that runs as its own program is built
-# against. The protocol between such a tool and the Vitruvian desktop app, as
+# against. The protocol between such a tool and Vitruvian Atrium, as
 # JSON Schema (protocol/) and as Swift (Sources/VitruvianToolProtocol). See
 # README.md.
 #
@@ -97,7 +97,7 @@ REFERENCE_MANIFESTS = [
 ]
 
 # The one list of the protocol's Swift sources: it is both what the module
-# compiles and what the Vitruvian app's pin hashes
+# compiles and what Vitruvian Atrium's pin hashes
 # (//apps/desktop/vitruvian-atrium:tool_protocol_pin_test), so the two cannot differ.
 filegroup(
     name = "protocol_sources",

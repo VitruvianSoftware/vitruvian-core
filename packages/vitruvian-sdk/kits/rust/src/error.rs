@@ -45,7 +45,7 @@ pub enum RefusalCode {
     NotInUses,
     /// The app: the tool is not installed, or is switched off.
     NotInstalled,
-    /// The app: Vitruvian lacks a macOS permission the service needs.
+    /// The app: Vitruvian Atrium lacks a macOS permission the service needs.
     PermissionMissing,
     /// The app: not available right now.
     Unavailable,

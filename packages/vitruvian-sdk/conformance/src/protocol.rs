@@ -309,7 +309,7 @@ pub fn name_rule_broken(text: &str) -> Option<String> {
 /// What on a page of `panel` has an id that is not a name, said in words, or
 /// `None`.
 pub fn misnamed(tree: &Value, panel: &str) -> Option<String> {
-    let refused = "Vitruvian refuses the whole page";
+    let refused = "Vitruvian Atrium refuses the whole page";
     let blocks = tree.get("blocks").and_then(|v| v.as_arr()).unwrap_or(&[]);
     for block in blocks {
         let named = block.get("id").filter(|v| !matches!(v, Value::Null));
