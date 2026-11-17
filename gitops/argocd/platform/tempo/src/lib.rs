@@ -9,7 +9,7 @@
 //! trace sent seconds earlier (measured 2026-09-29). And the WAL lived in the
 //! container's scratch layer, so a restart lost every unflushed trace.
 
-pub mod yaml;
+pub use gitops_values_yaml as yaml;
 
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};

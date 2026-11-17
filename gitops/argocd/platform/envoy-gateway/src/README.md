@@ -6,9 +6,6 @@ Component package providing implementation for `gitops/argocd/platform/envoy-gat
 ## Interface
 - `[lib.rs:PKG_DIR]`
 - `[lib.rs:validate_envoyproxy_docs]`
-- `[yaml.rs:resolve_data_path]`
-- `[yaml.rs:parse_all]`
-- `[yaml.rs:parse_doc]`
 
 ## Invariants
 - [lib.rs:70]: `.unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));`

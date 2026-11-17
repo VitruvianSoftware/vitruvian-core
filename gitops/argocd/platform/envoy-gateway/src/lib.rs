@@ -7,7 +7,7 @@
 //! patch key. Omitting `port` causes Envoy Gateway's infrastructure runner to fail
 //! Service reconciliation.
 
-pub mod yaml;
+pub use gitops_values_yaml as yaml;
 
 use serde_json::Value;
 

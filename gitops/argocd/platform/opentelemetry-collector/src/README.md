@@ -11,9 +11,6 @@ Component package providing implementation for `gitops/argocd/platform/opentelem
 - `[lib.rs:load_config_from_str]`
 - `[lib.rs:check_exporters_and_connectors_use_current_names]`
 - `[lib.rs:check_pipelines_reference_current_names]`
-- `[yaml.rs:resolve_data_path]`
-- `[yaml.rs:parse_all]`
-- `[yaml.rs:parse_doc]`
 
 ## Invariants
 - [lib.rs:35]: `.unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));`

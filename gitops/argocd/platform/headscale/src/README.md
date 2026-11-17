@@ -10,9 +10,6 @@ Component package providing implementation for `gitops/argocd/platform/headscale
 - `[lib.rs:load_headscale_values]`
 - `[lib.rs:load_headplane_config]`
 - `[lib.rs:check_policy_mode]`
-- `[yaml.rs:resolve_data_path]`
-- `[yaml.rs:parse_all]`
-- `[yaml.rs:parse_doc]`
 
 ## Invariants
 - [lib.rs:22]: `.unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));`
