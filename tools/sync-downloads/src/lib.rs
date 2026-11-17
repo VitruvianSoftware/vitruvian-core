@@ -22,13 +22,13 @@
 //! same output, same edits to the catalog; the parity test
 //! (sync_downloads_rs_parity_test.py) holds the two together.
 
-pub mod argparse;
+pub use vitruvian_pycompat::argparse;
 pub mod difflib;
 pub mod fetch;
-pub mod json;
+pub use vitruvian_pycompat::json;
 pub mod pyerr;
 pub mod pyre;
-pub mod pystr;
+pub use vitruvian_pycompat::pystr;
 pub mod sync;
 
 use std::process::Command;

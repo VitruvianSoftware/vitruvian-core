@@ -4,13 +4,6 @@
 Component package providing implementation for `tools/agent-app/src`.
 
 ## Interface
-- `[argparse.rs:Kind]`
-- `[argparse.rs:Opt]`
-- `[argparse.rs:Parser]`
-- `[argparse.rs:Values]`
-- `[argparse.rs:Exit]`
-- `[argparse.rs:help_width]`
-- `[argparse.rs:wrap]`
 - `[drift.rs:ORG]`
 - `[drift.rs:LEVELS]`
 - `[drift.rs:OK]`

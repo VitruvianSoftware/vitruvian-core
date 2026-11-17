@@ -28,7 +28,7 @@
 
 #[cfg(not(feature = "standalone_permission_drift"))]
 pub mod agent_app;
-pub mod argparse;
+pub use vitruvian_pycompat::argparse;
 pub mod drift;
 pub mod github;
 pub mod http;

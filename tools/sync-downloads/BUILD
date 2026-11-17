@@ -30,6 +30,9 @@ rust_library(
     crate_root = "src/lib.rs",
     edition = "2021",
     visibility = ["//visibility:public"],
+    deps = [
+        "//packages/rust/vitruvian-pycompat:vitruvian_pycompat",
+    ],
 )
 
 rust_binary(

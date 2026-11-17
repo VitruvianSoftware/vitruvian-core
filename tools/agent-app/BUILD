@@ -147,7 +147,8 @@ test_suite(
 
 # The same check in Rust, standard library only (primary `:permission-drift`):
 # the same command line, requests, report and exit codes. It carries what it
-# needs of Python by hand: src/json.rs (json.loads and ==), src/argparse.rs,
+# needs of Python by hand: src/json.rs (json.loads and ==), argparse (from
+# //packages/rust/vitruvian-pycompat, shared with other ports),
 # src/http.rs (urllib's errors and redirect rules; https:// runs curl, since
 # std has no TLS). Optimised in every build mode.
 #
@@ -169,6 +170,7 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
+        "//packages/rust/vitruvian-pycompat:vitruvian_pycompat",
         "//tools/shell-compat:shell_compat",
         "@crates//:serde",
         "@crates//:serde_json",
