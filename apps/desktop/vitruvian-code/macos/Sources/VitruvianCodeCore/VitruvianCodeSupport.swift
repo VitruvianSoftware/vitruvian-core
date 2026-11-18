@@ -1696,6 +1696,8 @@ public struct VitruvianCodeApprovalRequest: Identifiable, Equatable, Sendable {
     public let requestID: String?
     /// Permission choices offered by an ACP agent (`allow_once`, `allow_always`, etc.).
     public var options: [AgentPermissionOption]
+    /// The option ID chosen by the user (or auto-approved for the session) when `options` is non-empty.
+    public var chosenOptionID: String?
 
     public enum Status: String, Sendable, Equatable {
         case pending
@@ -1710,7 +1712,8 @@ public struct VitruvianCodeApprovalRequest: Identifiable, Equatable, Sendable {
         commandOrPath: String,
         status: Status = .pending,
         requestID: String? = nil,
-        options: [AgentPermissionOption] = []
+        options: [AgentPermissionOption] = [],
+        chosenOptionID: String? = nil
     ) {
         self.id = id
         self.toolName = toolName
@@ -1718,6 +1721,7 @@ public struct VitruvianCodeApprovalRequest: Identifiable, Equatable, Sendable {
         self.status = status
         self.requestID = requestID
         self.options = options
+        self.chosenOptionID = chosenOptionID
     }
 }
 
@@ -2005,6 +2009,14 @@ public struct AgentQuestion: Identifiable, Equatable, Sendable, Codable {
         self.url = url
         self.fields = fields
     }
+}
+
+/// Lifecycle state of an interactive question form or URL-consent card in a chat message.
+public enum AgentQuestionStatus: Equatable, Sendable, Codable {
+    case pending
+    case answered([String: String])
+    case skipped
+    case expired
 }
 
 /// Why a live agent connection failed mid-session or on startup.

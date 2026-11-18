@@ -1067,7 +1067,7 @@ final class AntigravityACPTests: XCTestCase {
         XCTAssertEqual(VitruvianCodeQuickPromptSession.approvalAnswer(for: [], decision: .approved), .option("allow"))
         XCTAssertEqual(VitruvianCodeQuickPromptSession.approvalAnswer(for: [], decision: .denied), .cancelled)
 
-        // End-to-end approval buttons + `.question` interim handling through session
+        // End-to-end approval buttons + `.question` form handling through session
         let connections = LockedBox<[MockPersistentConnection]>([])
         let env = makeSessionEnvironment(makeConnection: { spec in
             let conn = MockPersistentConnection(spec: spec)
@@ -1089,14 +1089,20 @@ final class AntigravityACPTests: XCTestCase {
             message: "Pick a branch",
             fields: [AgentQuestion.Field(id: "f1", type: .choice, label: "Pick a branch", options: [.init(value: "main", label: "main")])]
         )))
-        try await waitUntil("interim question answered cancelled") {
-            conn.answers.contains(where: { $0.0 == "q-1" && $0.1 == .cancelled })
+        try await waitUntil("question card visible") {
+            session.hasPendingApproval && session.messages.contains { $0.question?.requestID == "q-1" && $0.questionStatus == .pending }
         }
-        XCTAssertTrue(session.messages.last?.text.contains("Pick a branch") == true)
+        XCTAssertTrue(conn.answers.isEmpty)
+        let qMsg = try XCTUnwrap(session.messages.first(where: { $0.question?.requestID == "q-1" }))
+        session.answerQuestion(messageID: qMsg.id, answers: ["f1": "main"])
+        try await waitUntil("question answer sent") {
+            conn.answers.contains(where: { $0.0 == "q-1" && $0.1 == .form(["f1": "main"]) })
+        }
+        XCTAssertFalse(session.hasPendingApproval)
 
         conn.emit(.approval(VitruvianCodeApprovalRequest(id: "a1", toolName: "bash", commandOrPath: "ls", requestID: "p-1", options: fullOptions)))
         try await waitUntil("approval card visible") { session.hasPendingApproval }
-        XCTAssertEqual(sessionHost.approvals.count, 1)
+        XCTAssertEqual(sessionHost.approvals.count, 2)
         let cardMsg = try XCTUnwrap(session.messages.first(where: { $0.approvalRequest?.requestID == "p-1" }))
         session.decideApproval(messageID: cardMsg.id, decision: .sessionAllowed)
         try await waitUntil("allow_always answer sent") {

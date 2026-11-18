@@ -1296,13 +1296,31 @@ public struct VitruvianCodeChatView: View {
                             .padding(.horizontal, 16)
                             .padding(.top, 20)
                         }
+                        let firstPendingQuestionID = session.messages.first(where: {
+                            $0.question != nil && $0.questionStatus == .pending
+                        })?.id
                         ForEach(session.messages) { message in
                             if Self.isShown(message) {
-                                VitruvianCodeMessageBubble(message: message, strings: strings, errorScheme: chrome.errorScheme, onDecision: { decision in
-                                    session.decideApproval(messageID: message.id, decision: decision)
-                                },
-                                isStreaming: session.isRunning && message.id == streamingReplyID,
-                                workingDirectory: conversationDirectory)
+                                VitruvianCodeMessageBubble(
+                                    message: message,
+                                    strings: strings,
+                                    errorScheme: chrome.errorScheme,
+                                    onDecision: { decision in
+                                        session.decideApproval(messageID: message.id, decision: decision)
+                                    },
+                                    onApprovalOption: { optionID in
+                                        session.decideApproval(messageID: message.id, optionID: optionID)
+                                    },
+                                    onAnswerQuestion: { answers in
+                                        session.answerQuestion(messageID: message.id, answers: answers)
+                                    },
+                                    onSkipQuestion: {
+                                        session.skipQuestion(messageID: message.id)
+                                    },
+                                    isFirstPendingQuestion: message.id == firstPendingQuestionID && caret == nil,
+                                    isStreaming: session.isRunning && message.id == streamingReplyID,
+                                    workingDirectory: conversationDirectory
+                                )
                                 // The timeline scrolls to a prompt by its id.
                                 .id(message.id)
                                 .background(timelineAnchor(turn: turnOf[message.id]))

@@ -58,6 +58,7 @@ public enum VitruvianCodeTimeline {
     /// not part of a turn. The chat view draws by the same rule.
     public static func isShown(_ message: VitruvianCodeChatMessage) -> Bool {
         !(message.role == .agent && message.text.isEmpty && message.approvalRequest == nil
+            && message.question == nil
             && (message.toolSteps ?? []).isEmpty && (message.thinkingText ?? "").isEmpty)
     }
 
