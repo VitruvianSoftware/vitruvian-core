@@ -32,11 +32,11 @@ final class StatusTests: XCTestCase {
     private func inputs(
         role: DoorRole = .active, signInProblem: String? = nil, monitorProblem: String? = nil,
         setUp: Bool = true, speaking: Bool = false, quietUntil: String? = nil,
-        broadcasting: Bool = true, defaultSpeaker: String? = "Kitchen"
+        broadcasting: Bool = true, defaultSpeaker: String? = "Kitchen", phoneNotConnected: Bool = false
     ) -> StatusInputs {
         StatusInputs(role: role, signInProblem: signInProblem, monitorProblem: monitorProblem, setUp: setUp,
                      speaking: speaking, quietUntil: quietUntil, broadcasting: broadcasting,
-                     defaultSpeaker: defaultSpeaker)
+                     defaultSpeaker: defaultSpeaker, phoneNotConnected: phoneNotConnected)
     }
 
     private func mark(_ inputs: StatusInputs) -> MarkChoice { IslandStatus.mark(inputs) }
@@ -66,6 +66,19 @@ final class StatusTests: XCTestCase {
     func testTheChatMonitorsProblemIsShownInItsOwnWords() {
         XCTAssertEqual(mark(inputs(monitorProblem: "Slack: invalid_auth")),
                        MarkChoice(state: .failure, icon: "exclamationmark.triangle", text: "Slack: invalid_auth"))
+    }
+
+    func testAPhoneThatIsNotConnectedNeedsAttention() {
+        let phone = MarkChoice(state: .attention, icon: "iphone.slash", text: "Your phone: not connected")
+        XCTAssertEqual(mark(inputs(phoneNotConnected: true)), phone)
+        // It wins over not set up, speaking, quiet hours and broadcasting off...
+        XCTAssertEqual(mark(inputs(setUp: false, speaking: true, quietUntil: "07:00", broadcasting: false,
+                                   phoneNotConnected: true)), phone)
+        // ...and yields to the choice, a sign-in and the chat monitor.
+        XCTAssertEqual(mark(inputs(role: .activeAsking, phoneNotConnected: true)).text, "Pick which Vitruvian Speaker to use")
+        XCTAssertEqual(mark(inputs(signInProblem: "expired", phoneNotConnected: true)).text, "Sign in to Google again")
+        XCTAssertEqual(mark(inputs(monitorProblem: "Slack: invalid_auth", phoneNotConnected: true)).text, "Slack: invalid_auth")
+        XCTAssertEqual(mark(inputs(role: .quiet(other: .app), phoneNotConnected: true)).state, .none)
     }
 
     func testNotSetUpAsksForSetUp() {

@@ -38,10 +38,14 @@ public struct StatusInputs: Equatable {
     public var quietUntil: String?
     public var broadcasting: Bool
     public var defaultSpeaker: String?
+    /// Phone output is on and the phone's link is down
+    /// (`PhoneLinkStatusFile.outageSince`).
+    public var phoneNotConnected: Bool
 
     public init(
         role: DoorRole, signInProblem: String? = nil, monitorProblem: String? = nil, setUp: Bool,
-        speaking: Bool = false, quietUntil: String? = nil, broadcasting: Bool, defaultSpeaker: String? = nil
+        speaking: Bool = false, quietUntil: String? = nil, broadcasting: Bool, defaultSpeaker: String? = nil,
+        phoneNotConnected: Bool = false
     ) {
         self.role = role
         self.signInProblem = signInProblem
@@ -51,6 +55,7 @@ public struct StatusInputs: Equatable {
         self.quietUntil = quietUntil
         self.broadcasting = broadcasting
         self.defaultSpeaker = defaultSpeaker
+        self.phoneNotConnected = phoneNotConnected
     }
 }
 
@@ -75,9 +80,10 @@ public enum IslandStatus {
     /// 1. The other Vitruvian Speaker is chosen: no mark at all.
     /// 2. A sign-in stopped working, then the chat monitor has a problem.
     /// 3. Both installed and nobody has picked.
-    /// 4. Not set up.
-    /// 5. Speaking now.
-    /// 6. Quiet hours, broadcasting off, broadcasting: all `ok`.
+    /// 4. Phone output is on and the phone is not connected.
+    /// 5. Not set up.
+    /// 6. Speaking now.
+    /// 7. Quiet hours, broadcasting off, broadcasting: all `ok`.
     public static func mark(_ inputs: StatusInputs) -> MarkChoice {
         if inputs.role.isQuiet {
             return MarkChoice(state: .none)
@@ -93,6 +99,9 @@ public enum IslandStatus {
             return MarkChoice(state: .attention, icon: "exclamationmark.circle", text: "Pick which Vitruvian Speaker to use")
         case .active, .quiet:
             break
+        }
+        if inputs.phoneNotConnected {
+            return MarkChoice(state: .attention, icon: "iphone.slash", text: PhoneLinkStatusFile.headline)
         }
         if !inputs.setUp {
             return MarkChoice(state: .attention, icon: "hifispeaker.2", text: "Set up Vitruvian Speaker")

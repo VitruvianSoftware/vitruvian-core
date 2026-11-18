@@ -525,6 +525,7 @@ public enum BroadcastCommand {
         systemVoices: [LocalVoice] = [],
         hasGeminiKey: Bool = false,
         queuedCount: Int = 0,
+        phoneLink: PhoneLinkStatus? = nil,
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> [String] {
@@ -568,6 +569,10 @@ public enum BroadcastCommand {
             phoneVoiceDescription = PhoneVoiceEngine.phone.label
         }
         lines.append("\(SettingsCatalog.macPhoneOutputLabel): \(config.effectiveSpeakPhone ? "ON" : "OFF") (voice: \(phoneVoiceDescription))")
+        if let since = PhoneLinkStatusFile.outageSince(phoneLink, config: config) {
+            lines.append(PhoneLinkStatusFile.headline(since: since, calendar: calendar))
+            lines.append(PhoneLinkStatusFile.hint)
+        }
 
         var outputs: [String] = []
         if config.effectiveSpeakHome {
@@ -671,6 +676,7 @@ public enum BroadcastCommand {
                 systemVoices: systemVoices(),
                 hasGeminiKey: hasGeminiKey,
                 queuedCount: targetEngine.snoozeQueue.count(),
+                phoneLink: targetEngine.phoneLink.read(),
                 now: now,
                 calendar: calendar
             )

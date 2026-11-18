@@ -161,6 +161,7 @@
   "outputs_footer": "Gemini TTS sends what this Mac says to Google to be spoken; with no key, or when Gemini fails, the Mac voice speaks instead. The Home speakers play the Gemini voice over this Wi-Fi network, falling back to Google Assistant Broadcast when they can't. This Mac speaks at its own volume. More voices: System Settings › Accessibility › Read & Speak › System voice › ⓘ › Voice, then download an \"(Enhanced)\" voice. Your phone plays the Gemini voice (or Android's on-device voice when Gemini is unavailable) via Vitruvian Remote. Both speak at the same time. Quiet hours and pausing media cover both.",
   "outputs_label": "Office Mini + This Mac + Your phone",
   "owner_running": true,
+  "phone_connected": null,
   "program": "app",
   "queued_count": 0,
   "quiet_hours": {

@@ -61,6 +61,8 @@ public enum VitruvianSpeakerStateContract {
         public var history: BroadcastHistory
         public var snoozeQueue: SnoozeQueue
         public var monitorStatusFile: ChatMonitorStatusFile
+        /// Whether the phone's link was last seen down (`phone_connected`).
+        public var phoneLinkStatusFile: PhoneLinkStatusFile
         public var doorFile: DoorFile
         public var otherInstalled: @Sendable (DoorRecord?) -> Bool
         public var appRunning: @Sendable () -> Bool
@@ -95,6 +97,7 @@ public enum VitruvianSpeakerStateContract {
             history: BroadcastHistory,
             snoozeQueue: SnoozeQueue? = nil,
             monitorStatusFile: ChatMonitorStatusFile,
+            phoneLinkStatusFile: PhoneLinkStatusFile? = nil,
             doorFile: DoorFile,
             otherInstalled: @escaping @Sendable (DoorRecord?) -> Bool,
             appRunning: @escaping @Sendable () -> Bool,
@@ -123,6 +126,8 @@ public enum VitruvianSpeakerStateContract {
             self.snoozeQueue = snoozeQueue ?? SnoozeQueue(
                 fileURL: configFile.url.deletingLastPathComponent().appendingPathComponent(defaultQueueName))
             self.monitorStatusFile = monitorStatusFile
+            self.phoneLinkStatusFile = phoneLinkStatusFile ?? PhoneLinkStatusFile(
+                url: PhoneLinkStatusFile.url(beside: configFile.url, door: program))
             self.doorFile = doorFile
             self.otherInstalled = otherInstalled
             self.appRunning = appRunning
@@ -172,6 +177,7 @@ public enum VitruvianSpeakerStateContract {
                 history: BroadcastHistory(fileURL: profile.historyURL),
                 snoozeQueue: SnoozeQueue(fileURL: profile.snoozeQueueURL),
                 monitorStatusFile: ChatMonitorStatusFile(url: profile.monitorStatusURL),
+                phoneLinkStatusFile: PhoneLinkStatusFile(url: profile.phoneLinkStatusURL),
                 doorFile: doorFile,
                 otherInstalled: otherInstalled,
                 appRunning: { VitruvianSpeakerProfile.isAppRunning(among: VitruvianSpeakerProfile.runningApps()) },
@@ -572,6 +578,11 @@ public enum VitruvianSpeakerStateContract {
             "quiet_hours": quietHoursDict,
             "snooze_until": snoozeUntilValue,
             "queued_count": seam.snoozeQueue.count(),
+            // Whether the phone's link was last seen up; null while phone
+            // output is off or nothing has been recorded.
+            "phone_connected": config.effectiveSpeakPhone
+                ? (seam.phoneLinkStatusFile.read().map { $0.connected as Any } ?? NSNull())
+                : NSNull(),
             "outputs_label": config.activeOutputsLabel,
             "outputs_footer": config.outputsFooter,
             "warnings": warnings,

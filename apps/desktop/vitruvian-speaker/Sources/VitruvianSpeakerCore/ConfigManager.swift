@@ -25,11 +25,15 @@ public class ConfigManager: ObservableObject {
     /// The app's settings, on the app's history and secrets: the parts of
     /// `VitruvianSpeakerEngine.app`.
     public static let shared = ConfigManager(
-        configPath: ConfigManager.defaultConfigURL(), history: .shared, secrets: .shared, snoozeQueue: .shared)
+        configPath: ConfigManager.defaultConfigURL(), history: .shared, secrets: .shared, snoozeQueue: .shared,
+        phoneLink: PhoneLinkStatusFile(url: VitruvianSpeakerProfile.app().phoneLinkStatusURL))
 
     @Published public var config: SpeakerConfig
     @Published public var recentBroadcasts: [BroadcastLogItem] = []
     @Published public private(set) var queuedCount: Int = 0
+    /// What `phoneLink` last said: read again when the settings folder
+    /// changes. Nil with no file, or no `phoneLink`.
+    @Published public private(set) var phoneLinkStatus: PhoneLinkStatus?
     @Published public var isConnectedToGoogle: Bool = false
     @Published public var googleEmail: String?
     /// Set when the config file exists but does not read as a config (bad
@@ -56,6 +60,8 @@ public class ConfigManager: ObservableObject {
     public let snoozeQueue: SnoozeQueue
     /// The secrets the Google connection is read from.
     public let secrets: SecretStore
+    /// Whether the phone's link was last seen down, beside the settings.
+    public let phoneLink: PhoneLinkStatusFile?
 
     /// The bytes this process last wrote to the config file, so a change
     /// notification for our own save is not mistaken for someone else's edit.
@@ -96,8 +102,10 @@ public class ConfigManager: ObservableObject {
         history: BroadcastHistory,
         secrets: SecretStore,
         snoozeQueue: SnoozeQueue = .shared,
+        phoneLink: PhoneLinkStatusFile? = nil,
         fileSystem: ConfigFileSystem = LocalConfigFileSystem()
     ) {
+        self.phoneLink = phoneLink
         self.configPath = configPath
         self.file = SpeakerConfigFile(url: configPath, fileSystem: fileSystem)
         self.history = history
@@ -107,6 +115,7 @@ public class ConfigManager: ObservableObject {
         loadConfig()
         reloadHistory()
         refreshQueuedCount()
+        refreshPhoneLink()
         checkConnection()
     }
 
@@ -196,6 +205,7 @@ public class ConfigManager: ObservableObject {
     public func folderChanged() {
         reloadIfChangedExternally()
         refreshQueuedCount()
+        refreshPhoneLink()
         onFolderChange?()
     }
 
@@ -204,6 +214,17 @@ public class ConfigManager: ObservableObject {
         watcher = nil
         snoozeExpiryTimer?.invalidate()
         snoozeExpiryTimer = nil
+    }
+
+    public func refreshPhoneLink() {
+        let status = phoneLink?.read()
+        if phoneLinkStatus != status { phoneLinkStatus = status }
+    }
+
+    /// When the phone outage the menu shows began: phone output on and
+    /// the link last seen down. Nil otherwise.
+    public var phoneOutageSince: Date? {
+        PhoneLinkStatusFile.outageSince(phoneLinkStatus, config: config)
     }
 
     public func refreshQueuedCount() {

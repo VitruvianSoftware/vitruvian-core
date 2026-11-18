@@ -115,6 +115,9 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
         /// (`ChatMonitorStatusFile`): by default beside the settings file,
         /// so a test's temporary settings never read this Mac's.
         public var monitorStatusURL: URL
+        /// Whether the phone's link was last seen down
+        /// (`PhoneLinkStatusFile`): by default beside the settings file.
+        public var phoneLinkURL: URL
         /// Starts or stops this side's chat monitor: for the extension, the
         /// one in its own process. The default does nothing, so a test never
         /// reaches a real monitor or a real running app.
@@ -185,6 +188,7 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
                     vitruvianSpeakerVersion: @escaping () -> String? = { nil },
                     launchctlBootout: @escaping @Sendable (String) -> Void = AgentIntegration.launchctlBootout,
                     historyURL: URL? = nil, snoozeQueueURL: URL? = nil, monitorStatusURL: URL? = nil,
+                    phoneLinkURL: URL? = nil,
                     controlChatMonitor: @escaping (ChatMonitorAction) -> Void = { _ in },
                     role: @escaping () -> DoorRole = { .active }, other: (any OtherAppControlling)? = nil,
                     door: DoorFile? = nil,
@@ -218,6 +222,8 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
             self.historyURL = historyURL ?? Self.historyURL(beside: settingsURL)
             self.snoozeQueueURL = snoozeQueueURL ?? Self.snoozeQueueURL(beside: settingsURL, door: profile?.door ?? .extension)
             self.monitorStatusURL = monitorStatusURL ?? ChatMonitorStatusFile.url(beside: settingsURL)
+            self.phoneLinkURL = phoneLinkURL
+                ?? PhoneLinkStatusFile.url(beside: settingsURL, door: profile?.door ?? .extension)
             self.controlChatMonitor = controlChatMonitor
             self.role = role
             self.other = other
@@ -1397,7 +1403,8 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
         }
         let currentQueued = SnoozeQueue(fileURL: parts.snoozeQueueURL).count()
         let currentSnoozed = config.isSnoozed(at: now)
-        if changed || (!openPanels.isEmpty && (config != drawnConfig || configProblem != drawnConfigProblem || currentQueued != drawnQueuedCount || currentSnoozed != drawnSnoozed)) || drawnStarting != otherStarting {
+        let currentPhoneOutage = phoneOutageSince()
+        if changed || (!openPanels.isEmpty && (config != drawnConfig || configProblem != drawnConfigProblem || currentQueued != drawnQueuedCount || currentSnoozed != drawnSnoozed || currentPhoneOutage != drawnPhoneOutage)) || drawnStarting != otherStarting {
             refreshOpenPanels()
         }
         drawnStarting = otherStarting
@@ -1412,6 +1419,13 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
     private var drawnConfigProblem: String?
     private var drawnQueuedCount = 0
     private var drawnSnoozed = false
+    private var drawnPhoneOutage: Date?
+
+    /// When the phone's link went down, while phone output is on and it has
+    /// not been seen back.
+    private func phoneOutageSince() -> Date? {
+        PhoneLinkStatusFile(url: parts.phoneLinkURL).outageSince(config: config)
+    }
 
     /// An app that cannot hear the choice file: older than 1.19, or of a
     /// version that does not read.
@@ -1486,7 +1500,8 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
             speaking: speaking,
             quietUntil: config.isInQuietHours(at: parts.now()) ? config.quietHoursEnd : nil,
             broadcasting: config.enabled,
-            defaultSpeaker: config.defaultDevice?.name)
+            defaultSpeaker: config.defaultDevice?.name,
+            phoneNotConnected: phoneOutageSince() != nil)
     }
 
     /// Sends the mark when it changed, to an app that shows one.
@@ -1994,6 +2009,8 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
         status.volumeRestoreReport = parts.volumeRestoreReport()
         let queuedCount = SnoozeQueue(fileURL: parts.snoozeQueueURL).count()
         status.queuedCount = queuedCount
+        let phoneOutage = phoneOutageSince()
+        status.phoneOutageSince = phoneOutage
         status.customIslandSnoozeOpen = customIslandSnoozeOpen
         status.customDefaultSnoozeOpen = customDefaultSnoozeOpen
         let account = parts.account
@@ -2005,6 +2022,7 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
             drawnConfig = config
             drawnConfigProblem = configProblem
             drawnQueuedCount = queuedCount
+            drawnPhoneOutage = phoneOutage
             drawnSnoozed = config.isSnoozed(at: status.effectiveNow)
             // Whether a Gemini key is saved, whenever Gemini is chosen:
             // the chat status below reads it only while a chat source is on.

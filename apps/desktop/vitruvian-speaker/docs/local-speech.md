@@ -79,3 +79,14 @@ available to apps.
 Your paired phone uses its own on-device text-to-speech by default, with Gemini voice as an option
 under **Phone voice**. The Mac agent reads and writes these settings in the same file as the Mac
 app and extension (see `apps/mobile/vitruvian-remote/macagent/vitruvian-speaker.go`).
+
+**When the phone is not connected** (the relay answers "no phone connected"), the announcement
+is dropped for the phone and not queued: announcements are "right now" status, the snooze queue
+would replay it on the outputs that already spoke, and it drains when snooze ends, not when the
+phone returns. The outage is written to `~/.gemini/speaker_phone_link.json` (the extension's
+`phone_link.json` in its data folder) as `{"connected": false, "since": "<ISO 8601 UTC>"}`, logged
+once, and shown while phone output is on: "Your phone: not connected (since HH:mm)" with "Open
+Vitruvian Remote → Settings → Phone Bridge → Run Phone Bridge" in `--status`, the menu bar and the
+extension's island (whose mark turns to attention), and as `phone_connected` in `--state`
+(`null` while phone output is off or nothing is recorded). The next announcement the phone takes,
+or the running app or extension asking `GET /v1/phone` every 60 s, writes `connected: true`.
