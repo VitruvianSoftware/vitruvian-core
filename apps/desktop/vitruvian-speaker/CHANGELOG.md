@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.45.2...vitruvian-speaker-v1.45.3) (2026-11-18)
+
+
+### Bug Fixes
+
+* **vitruvian-speaker:** prevent announcement audio and text clipping ([#5141](https://github.com/VitruvianSoftware/vitruvian-core/issues/5141)) ([c99a9f2](https://github.com/VitruvianSoftware/vitruvian-core/commit/c99a9f23a2e140c79a47c41a191fea4a3ab778a4))
+
 ## [1.45.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.45.1...vitruvian-speaker-v1.45.2) (2026-11-18)
 
 
