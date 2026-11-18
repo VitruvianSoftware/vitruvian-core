@@ -2323,6 +2323,7 @@ impl VitruvianSpeaker {
             return HttpResponse::error(400, "text is required");
         }
         if !phone.connected() {
+            log_phone_say_outcome("no phone connected");
             return HttpResponse::json(
                 200,
                 &phone_say_response_json(false, false, false, "no phone connected", ""),
@@ -2369,6 +2370,7 @@ impl VitruvianSpeaker {
         ) {
             Ok(r) => r,
             Err(e) => {
+                log_phone_say_outcome(&format!("failed: {e}"));
                 return HttpResponse::json(
                     200,
                     &phone_say_response_json(false, false, false, &e, ""),
@@ -2377,6 +2379,12 @@ impl VitruvianSpeaker {
         };
         let raw_text = first_text_content(&res);
         if res.is_error {
+            // The phone's error is its own words; keep the announcement out
+            // of the log even if the phone quotes it back.
+            log_phone_say_outcome(&format!(
+                "failed: {}",
+                raw_text.replace(text.as_str(), "<text>")
+            ));
             return HttpResponse::json(
                 200,
                 &phone_say_response_json(false, false, false, &raw_text, ""),
@@ -2385,6 +2393,7 @@ impl VitruvianSpeaker {
         let tool_val = match JsonValue::parse(&raw_text) {
             Ok(v) => v,
             Err(e) => {
+                log_phone_say_outcome("failed: invalid phone.speak response");
                 return HttpResponse::json(
                     200,
                     &phone_say_response_json(
@@ -2414,6 +2423,13 @@ impl VitruvianSpeaker {
             .and_then(|o| o.get("engine"))
             .and_then(|v| v.as_str())
             .unwrap_or("");
+        log_phone_say_outcome(&if spoken {
+            format!("spoken engine={engine}")
+        } else if skipped {
+            format!("skipped reason={reason}")
+        } else {
+            format!("not spoken reason={reason}")
+        });
         HttpResponse::json(
             200,
             &phone_say_response_json(true, spoken, skipped, reason, engine),
@@ -2461,6 +2477,23 @@ impl Default for VitruvianSpeaker {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// One line per phone-say, with the time, saying what became of it. It never
+/// carries the announcement text: the `act speaker:` line above it already
+/// logs that (truncated), and a reason from the phone is capped the same way.
+fn log_phone_say_outcome(outcome: &str) {
+    const N: usize = 80;
+    let one_line = outcome.trim().replace('\n', " ");
+    let capped = match one_line.char_indices().nth(N) {
+        Some((i, _)) => format!("{}...", &one_line[..i]),
+        None => one_line,
+    };
+    crate::http_util::agent_log(&format!(
+        "{} phone-say: {}",
+        crate::phone::utc_stamp(),
+        capped
+    ));
 }
 
 fn phone_say_response_json(
@@ -5643,5 +5676,125 @@ mod tests {
         // The one file it still reads is the choice file.
         assert!(prod.contains("speaker_door.json"));
         assert_eq!(prod.matches("fs::read_to_string").count(), 1);
+    }
+
+    fn phone_say_log(bridge: &PhoneBridge, body: &str) -> (JsonValue, String) {
+        let capture = crate::http_util::LogCapture::start();
+        let (h, _d, _calls) = relay_speaker("phone_say_log", |_name, _args| {
+            Err("no speaker in this test".to_string())
+        });
+        let resp = h.handle_phone_say(&post_req("/v1/speaker/phone-say", body), bridge);
+        assert_eq!(resp.status, 200);
+        (
+            JsonValue::parse(&resp.body_string()).unwrap(),
+            capture.contents(),
+        )
+    }
+
+    fn outcome_line(log: &str) -> &str {
+        let line = log
+            .lines()
+            .find(|l| l.contains(" phone-say: "))
+            .unwrap_or_else(|| panic!("no phone-say outcome line in:\n{log}"));
+        let stamp = &line[..20];
+        assert!(
+            stamp.ends_with('Z') && stamp.as_bytes()[10] == b'T',
+            "outcome line starts with a UTC time: {line}"
+        );
+        &line[21..]
+    }
+
+    #[test]
+    fn phone_say_with_no_phone_logs_the_outcome_with_a_time() {
+        let (out, log) = phone_say_log(
+            &PhoneBridge::new(),
+            r#"{"text":"build finished secret-words"}"#,
+        );
+        assert_eq!(out.get_str("reason"), "no phone connected");
+        assert_eq!(outcome_line(&log), "phone-say: no phone connected");
+        assert!(
+            !log.contains("secret-words"),
+            "no text is logged for a skipped send: {log}"
+        );
+    }
+
+    #[test]
+    fn phone_say_logs_spoken_skipped_and_failed_outcomes() {
+        let cases: [(&str, bool, &str); 4] = [
+            (
+                r#"{"spoken":true,"engine":"android_tts"}"#,
+                false,
+                "phone-say: spoken engine=android_tts",
+            ),
+            (
+                r#"{"spoken":false,"skipped":true,"reason":"no headphones"}"#,
+                false,
+                "phone-say: skipped reason=no headphones",
+            ),
+            (
+                r#"{"spoken":false,"reason":"tts busy"}"#,
+                false,
+                "phone-say: not spoken reason=tts busy",
+            ),
+            (
+                "speaker crashed",
+                true,
+                "phone-say: failed: speaker crashed",
+            ),
+        ];
+        for (answer, is_error, want) in cases {
+            let bridge = Arc::new(PhoneBridge::new());
+            let a = answer.to_string();
+            bridge.attach_fake_phone_for_test(move |_call| (a.clone(), is_error));
+            let (_out, log) = phone_say_log(&bridge, r#"{"text":"hello"}"#);
+            assert_eq!(outcome_line(&log), want, "answer {answer}");
+        }
+    }
+
+    #[test]
+    fn phone_say_outcome_reason_is_one_capped_line() {
+        let bridge = Arc::new(PhoneBridge::new());
+        let long = format!("{}\nsecond line", "é".repeat(200));
+        let body = JsonValue::from_str_val(&long).to_json_string();
+        let answer = format!(r#"{{"spoken":false,"reason":{body}}}"#);
+        bridge.attach_fake_phone_for_test(move |_call| (answer.clone(), false));
+        let (_out, log) = phone_say_log(&bridge, r#"{"text":"hello"}"#);
+        let line = outcome_line(&log);
+        assert!(line.ends_with("..."), "{line}");
+        assert!(line.chars().count() < 120, "{line}");
+        assert!(!log.contains("second line"));
+    }
+
+    #[test]
+    fn phone_say_failure_never_logs_the_text_the_phone_quotes_back() {
+        let bridge = Arc::new(PhoneBridge::new());
+        bridge.attach_fake_phone_for_test(|_call| {
+            (
+                "could not speak \"the vault code is 4711\"".to_string(),
+                true,
+            )
+        });
+        let (_out, log) = phone_say_log(&bridge, r#"{"text":"the vault code is 4711"}"#);
+        assert_eq!(
+            outcome_line(&log),
+            r#"phone-say: failed: could not speak "<text>""#
+        );
+    }
+
+    #[test]
+    fn phone_say_logs_a_garbled_answer_and_a_dead_link() {
+        let bridge = Arc::new(PhoneBridge::new());
+        bridge.attach_fake_phone_for_test(|_call| ("not json".to_string(), false));
+        let (_out, log) = phone_say_log(&bridge, r#"{"text":"hello"}"#);
+        assert_eq!(
+            outcome_line(&log),
+            "phone-say: failed: invalid phone.speak response"
+        );
+
+        let bridge = Arc::new(PhoneBridge::new());
+        bridge.attach_dead_phone_for_test();
+        let (out, log) = phone_say_log(&bridge, r#"{"text":"hello"}"#);
+        assert_eq!(out.get_str("reason"), "phone link is busy");
+        assert_eq!(outcome_line(&log), "phone-say: failed: phone link is busy");
     }
 }

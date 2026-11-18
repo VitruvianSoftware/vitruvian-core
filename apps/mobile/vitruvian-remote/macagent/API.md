@@ -19,6 +19,22 @@ Two tiers:
 Everything an act endpoint runs is logged to the agent log with its kind and
 the first 80 characters, so the Mac has a record of what the phone did.
 
+The phone link and phone announcements also log, each line starting with the
+UTC time to the second, so a dropped link can be dated and explained later:
+
+```
+2026-11-18T16:50:03Z phone link: open id=4 model="Pixel Fold" tools=19
+2026-11-18T18:12:41Z phone link: closed id=4 reason=stream ended lasted=1h22m38s
+2026-11-18T18:15:00Z phone-say: no phone connected
+```
+
+`reason` is `stream ended` (the phone or the network closed it), `replaced by a
+new link`, `write error` (a call could not be sent) or `ping failure` (the
+20-second keep-alive could not be sent). `phone-say:` says `spoken engine=…`,
+`skipped reason=…`, `not spoken reason=…`, `no phone connected` or `failed: …`.
+These lines never carry the announcement text or a token; the `act speaker:`
+line logs the first 80 characters of the text, as before.
+
 ## Read (no auth)
 
 | Method | Path | Body / query | Response |
