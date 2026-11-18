@@ -190,6 +190,9 @@ final class CourierViewsAndRailTests: XCTestCase {
                     && $0.accessibilityPerformPress != nil
             }
             XCTAssertNotNil(button, "Go to Inbox must be an accessible pressable button in \(space)")
+            // It must look like a button, not faint text: a padded control, not a bare line of text (seen 13 pt tall).
+            let height = button?.accessibilityFrame().height ?? 0
+            XCTAssertGreaterThanOrEqual(height, 22, "Go to Inbox in \(space) is \(height) pt tall: drawn as text, not a button")
             _ = button?.accessibilityPerformPress?()
             XCTAssertEqual(wentToInbox, 1, "pressing Go to Inbox in \(space) must navigate to inbox")
         }
