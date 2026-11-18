@@ -94,26 +94,99 @@ public enum ACPConnectionError: Error, Equatable, Sendable, LocalizedError {
     }
 }
 
+private struct ACPAuthFailureError: Error, Sendable {
+    let message: String
+}
+
 /// Live `AgentConnection` speaking Agent Client Protocol (ACP) v1 over newline-delimited JSON-RPC 2.0.
 @MainActor
-public final class ACPConnection: AgentConnection {
+public final class ACPConnection: PersistentAgentConnection {
     public typealias ProcessFactory = @Sendable (AgentProcessLaunchSpec) throws -> ACPLaunchedProcess
     public typealias ModeProvider = @MainActor () -> (mode: VitruvianCodeApprovalMode, planSwitch: Bool)
 
+    /// Extension points used by provider-specific layers such as `AntigravityACP`.
+    /// Every hook defaults to `nil` / empty so base ACP behavior is unchanged.
+    public struct Hooks: Sendable {
+        public var initializeMeta: [String: ACPJSONValue]?
+        public var prepareInitialize: (@MainActor @Sendable () async -> (clientInfo: ACPImplementation, policy: ACPClientPolicy)?)?
+        public var onInitialized: (@MainActor @Sendable (ACPInitializeResult) -> ACPClientPolicy?)?
+        public var authMethodID: String?
+        public var authFailureMessage: String?
+        public var additionalDirectories: [String]
+        public var sessionMetaProvider: (@MainActor @Sendable (ACPInitializeResult, String?) -> [String: ACPJSONValue]?)?
+        public var permissionInterceptor: (@MainActor @Sendable (ACPRequestPermissionParams, String) -> AgentQuestion?)?
+        public var onClientFileRead: (@MainActor @Sendable (_ path: String, _ served: Bool) -> [ACPSessionNotification])?
+        public var transformSessionUpdate: (@MainActor @Sendable (ACPSessionNotification) -> (notification: ACPSessionNotification?, extraEvents: [AgentEvent]))?
+        public var onPromptStarted: (@MainActor @Sendable () -> Void)?
+        public var finishSubagentsOnTurnEnd: Bool
+        public var promptOutcomeWatcher: (@Sendable (_ sessionID: String) async -> (@Sendable (_ stopReason: String) async -> String?)?)?
+        public var promptContextUsageProvider: (@MainActor @Sendable (_ initResult: ACPInitializeResult?, _ usage: ACPUsage?, _ contextWindow: Int) -> VitruvianCodeContextUsage?)?
+        public var promptInactivityTimeout: TimeInterval?
+        public var cancelGraceTimeout: TimeInterval
+
+        public init(
+            initializeMeta: [String: ACPJSONValue]? = nil,
+            prepareInitialize: (@MainActor @Sendable () async -> (clientInfo: ACPImplementation, policy: ACPClientPolicy)?)? = nil,
+            onInitialized: (@MainActor @Sendable (ACPInitializeResult) -> ACPClientPolicy?)? = nil,
+            authMethodID: String? = nil,
+            authFailureMessage: String? = nil,
+            additionalDirectories: [String] = [],
+            sessionMetaProvider: (@MainActor @Sendable (ACPInitializeResult, String?) -> [String: ACPJSONValue]?)? = nil,
+            permissionInterceptor: (@MainActor @Sendable (ACPRequestPermissionParams, String) -> AgentQuestion?)? = nil,
+            onClientFileRead: (@MainActor @Sendable (_ path: String, _ served: Bool) -> [ACPSessionNotification])? = nil,
+            transformSessionUpdate: (@MainActor @Sendable (ACPSessionNotification) -> (notification: ACPSessionNotification?, extraEvents: [AgentEvent]))? = nil,
+            onPromptStarted: (@MainActor @Sendable () -> Void)? = nil,
+            finishSubagentsOnTurnEnd: Bool = false,
+            promptOutcomeWatcher: (@Sendable (_ sessionID: String) async -> (@Sendable (_ stopReason: String) async -> String?)?)? = nil,
+            promptContextUsageProvider: (@MainActor @Sendable (_ initResult: ACPInitializeResult?, _ usage: ACPUsage?, _ contextWindow: Int) -> VitruvianCodeContextUsage?)? = nil,
+            promptInactivityTimeout: TimeInterval? = nil,
+            cancelGraceTimeout: TimeInterval = ACPConnection.defaultCancelGraceTimeout
+        ) {
+            self.initializeMeta = initializeMeta
+            self.prepareInitialize = prepareInitialize
+            self.onInitialized = onInitialized
+            self.authMethodID = authMethodID
+            self.authFailureMessage = authFailureMessage
+            self.additionalDirectories = additionalDirectories
+            self.sessionMetaProvider = sessionMetaProvider
+            self.permissionInterceptor = permissionInterceptor
+            self.onClientFileRead = onClientFileRead
+            self.transformSessionUpdate = transformSessionUpdate
+            self.onPromptStarted = onPromptStarted
+            self.finishSubagentsOnTurnEnd = finishSubagentsOnTurnEnd
+            self.promptOutcomeWatcher = promptOutcomeWatcher
+            self.promptContextUsageProvider = promptContextUsageProvider
+            self.promptInactivityTimeout = promptInactivityTimeout
+            self.cancelGraceTimeout = cancelGraceTimeout
+        }
+    }
+
+    /// Bounded grace after `session/cancel` copied from `AcpSessionRuntime.ts:83` (`defaultCancelTimeout = Duration.seconds(15)`).
+    public nonisolated static let defaultCancelGraceTimeout: TimeInterval = 15.0
+    /// How long `stop()` waits for a polite `session/close` before ending the process group anyway.
+    /// Kept short so the whole stop (close + SIGTERM grace + SIGKILL) fits inside the app's quit bound
+    /// (`VitruvianCodeEngine.quitStopTimeout`) and agy cannot outlive the app.
+    public nonisolated static let sessionCloseTimeout: TimeInterval = 1.0
+
     public private(set) var capabilities = AgentCapabilities()
     public private(set) var authMethods: [ACPAuthMethod] = []
+    public private(set) var initializeResult: ACPInitializeResult?
+    public private(set) var agentVersion: String?
+    public var currentSessionModeID: String? { configState.modeState?.currentModeId }
+    public var isConnected: Bool { !isStopping && !isStopped }
     public let events: AsyncStream<AgentEvent>
 
     private let launchSpec: AgentProcessLaunchSpec
-    private let policy: ACPClientPolicy
+    private var policy: ACPClientPolicy
     private let processFactory: ProcessFactory
     private let modeProvider: ModeProvider
+    private let hooks: Hooks
     private let redactions: [String]
     private let statePaths: VitruvianCodeStatePaths?
     private let sessionSetupTimeout: TimeInterval
     private let terminationGrace: TimeInterval
     private let maxLineBytes: Int
-    private let clientInfo: ACPImplementation
+    private var clientInfo: ACPImplementation
 
     private let eventsContinuation: AsyncStream<AgentEvent>.Continuation
     private let clientTerminals: ACPClientTerminals
@@ -124,6 +197,8 @@ public final class ACPConnection: AgentConnection {
     private var stderrDrainTask: Task<Void, Never>?
 
     private var sessionID = ""
+    private var lastKnownModeID: String?
+    private var lastKnownContextWindow: Int = 0
     private var clientFiles: ACPClientFiles?
     private var configState = ACPSessionConfigState()
     private var isLoadingSessionReplay = false
@@ -134,13 +209,19 @@ public final class ACPConnection: AgentConnection {
     // Active prompt tracking
     private var isPromptActive = false
     private var activePromptCancelled = false
+    private var activePromptInactivityTimedOut = false
     private var activePromptCollectedText = ""
     private var activePromptCompletionWaiters: [CheckedContinuation<Void, Never>] = []
     private var trackedToolCalls: [String: ACPToolCall] = [:]
+    private var activeSubagentOrder: [String] = []
+    private var activeSubagentsByID: [String: VitruvianCodeActiveSubagent] = [:]
+    private var inactivityTimerTask: Task<Void, Never>?
+    private var cancelGraceTask: Task<Void, Never>?
 
     // Pending interactive requests from agent
     private var nextInteractionNumber = 1
     private var pendingPermissions: [String: CheckedContinuation<ACPRequestPermissionResult, Never>] = [:]
+    private var pendingQuestionToolCallIDs: [String: String] = [:]
     private var pendingElicitations: [
         String: (
             form: ACPElicitationForm,
@@ -158,6 +239,7 @@ public final class ACPConnection: AgentConnection {
         launchSpec: AgentProcessLaunchSpec,
         policy: ACPClientPolicy = .none,
         modeProvider: @escaping ModeProvider = { (.standard, false) },
+        hooks: Hooks = Hooks(),
         stateFolderURL: URL? = nil,
         stateDirectoryOverride: String? = nil,
         redactions: [String] = [],
@@ -174,6 +256,7 @@ public final class ACPConnection: AgentConnection {
         self.launchSpec = launchSpec
         self.policy = policy
         self.modeProvider = modeProvider
+        self.hooks = hooks
         self.redactions = redactions
             .filter { !$0.isEmpty }
             .sorted { $0.count > $1.count }
@@ -231,11 +314,15 @@ public final class ACPConnection: AgentConnection {
         }()
 
         do {
+            let initialAdditionalDirs = Self.mergedDirectories(
+                request.additionalDirectories,
+                hooks.additionalDirectories
+            )
             let launched = try processFactory(effectiveSpec)
             self.launchedProcess = launched
             self.clientFiles = ACPClientFiles(
                 workingDirectory: request.workingDirectory,
-                additionalDirectories: request.additionalDirectories
+                additionalDirectories: initialAdditionalDirs
             )
 
             startStderrDrain(launched.stderr)
@@ -269,16 +356,31 @@ public final class ACPConnection: AgentConnection {
             self.transport = acpTransport
             await acpTransport.start()
 
+            if let prepared = await hooks.prepareInitialize?() {
+                self.clientInfo = prepared.clientInfo
+                self.policy = prepared.policy
+            }
+            guard !isStopping, !isStopped else {
+                throw ACPConnectionError.alreadyStopped
+            }
+
             let initParams = ACPInitializeParams(
                 protocolVersion: ACPInitializeParams.v1ProtocolVersion,
                 clientInfo: clientInfo,
-                clientCapabilities: policy.clientCapabilities
+                clientCapabilities: policy.clientCapabilities,
+                _meta: hooks.initializeMeta
             )
             let initResult: ACPInitializeResult = try await acpTransport.request(
                 method: "initialize",
                 params: initParams,
                 timeout: sessionSetupTimeout
             )
+
+            self.initializeResult = initResult
+            self.agentVersion = initResult.agentInfo?.version
+            if let updatedPolicy = hooks.onInitialized?(initResult) {
+                self.policy = updatedPolicy
+            }
 
             let agentCaps = initResult.agentCapabilities
             let advertisedAuthMethods = initResult.authMethods ?? []
@@ -298,8 +400,16 @@ public final class ACPConnection: AgentConnection {
             self.capabilities = resolvedCapabilities
 
             let mcpServers = Self.encodeMCPServers(request.mcpServers, allowHTTP: resolvedCapabilities.mcpHTTP)
-            let extraDirs = request.additionalDirectories.isEmpty ? nil : request.additionalDirectories
+            let supportsAdditionalDirs = agentCaps?.sessionCapabilities?.supportsAdditionalDirectories == true
+            let extraDirsSource: [String] = supportsAdditionalDirs
+                ? initialAdditionalDirs
+                : request.additionalDirectories
+            let extraDirs = extraDirsSource.isEmpty ? nil : extraDirsSource
+
             let meta: [String: ACPJSONValue]? = {
+                if let customMeta = hooks.sessionMetaProvider?(initResult, request.systemPrompt) {
+                    return customMeta.isEmpty ? nil : customMeta
+                }
                 guard let append = request.systemPrompt?.trimmingCharacters(in: .whitespacesAndNewlines),
                       !append.isEmpty else {
                     return nil
@@ -307,68 +417,92 @@ public final class ACPConnection: AgentConnection {
                 return ["systemPrompt": .object(["append": .string(append)])]
             }()
 
-            let setupResult: ACPSessionSetupResult
-            let fallbackSessionID: String?
+            let resumeID = request.resumeSessionID?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedResumeID = (resumeID?.isEmpty == false) ? resumeID : nil
 
-            if let resumeID = request.resumeSessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !resumeID.isEmpty {
-                if resolvedCapabilities.resumeSession {
-                    let resumeParams = ACPSessionResumeParams(
-                        sessionId: resumeID,
-                        cwd: request.workingDirectory,
-                        mcpServers: mcpServers,
-                        additionalDirectories: extraDirs,
-                        _meta: meta
-                    )
-                    setupResult = try await acpTransport.request(
-                        method: "session/resume",
-                        params: resumeParams,
-                        timeout: sessionSetupTimeout
-                    )
-                    fallbackSessionID = resumeID
-                } else if resolvedCapabilities.loadSession {
-                    isLoadingSessionReplay = true
-                    defer { isLoadingSessionReplay = false }
-                    let loadParams = ACPSessionLoadParams(
-                        sessionId: resumeID,
-                        cwd: request.workingDirectory,
-                        mcpServers: mcpServers,
-                        additionalDirectories: extraDirs,
-                        _meta: meta
-                    )
-                    setupResult = try await acpTransport.request(
-                        method: "session/load",
-                        params: loadParams,
-                        timeout: sessionSetupTimeout
-                    )
-                    fallbackSessionID = resumeID
-                } else {
-                    let newParams = ACPSessionNewParams(
-                        cwd: request.workingDirectory,
-                        mcpServers: mcpServers,
-                        additionalDirectories: extraDirs,
-                        _meta: meta
-                    )
-                    setupResult = try await acpTransport.request(
-                        method: "session/new",
-                        params: newParams,
-                        timeout: sessionSetupTimeout
-                    )
-                    fallbackSessionID = nil
+            let openAttempt: () async throws -> (ACPSessionSetupResult, String?) = {
+                if let resumeID = normalizedResumeID {
+                    if resolvedCapabilities.resumeSession {
+                        let resumeParams = ACPSessionResumeParams(
+                            sessionId: resumeID,
+                            cwd: request.workingDirectory,
+                            mcpServers: mcpServers,
+                            additionalDirectories: extraDirs,
+                            _meta: meta
+                        )
+                        let res: ACPSessionSetupResult = try await acpTransport.request(
+                            method: "session/resume",
+                            params: resumeParams,
+                            timeout: self.sessionSetupTimeout
+                        )
+                        return (res, resumeID)
+                    } else if resolvedCapabilities.loadSession {
+                        self.isLoadingSessionReplay = true
+                        defer { self.isLoadingSessionReplay = false }
+                        let loadParams = ACPSessionLoadParams(
+                            sessionId: resumeID,
+                            cwd: request.workingDirectory,
+                            mcpServers: mcpServers,
+                            additionalDirectories: extraDirs,
+                            _meta: meta
+                        )
+                        let res: ACPSessionSetupResult = try await acpTransport.request(
+                            method: "session/load",
+                            params: loadParams,
+                            timeout: self.sessionSetupTimeout
+                        )
+                        return (res, resumeID)
+                    }
                 }
-            } else {
                 let newParams = ACPSessionNewParams(
                     cwd: request.workingDirectory,
                     mcpServers: mcpServers,
                     additionalDirectories: extraDirs,
                     _meta: meta
                 )
-                setupResult = try await acpTransport.request(
+                let res: ACPSessionSetupResult = try await acpTransport.request(
                     method: "session/new",
                     params: newParams,
-                    timeout: sessionSetupTimeout
+                    timeout: self.sessionSetupTimeout
                 )
-                fallbackSessionID = nil
+                return (res, nil)
+            }
+
+            let setupResult: ACPSessionSetupResult
+            let fallbackSessionID: String?
+            do {
+                (setupResult, fallbackSessionID) = try await openAttempt()
+            } catch {
+                guard Self.isAuthRequiredError(error) else {
+                    throw error
+                }
+                guard let authMethodID = hooks.authMethodID,
+                      advertisedAuthMethods.isEmpty || advertisedAuthMethods.contains(where: { $0.id == authMethodID }) else {
+                    throw ACPAuthFailureError(
+                        message: hooks.authFailureMessage ?? Self.errorDescription(error)
+                    )
+                }
+                do {
+                    let _: ACPJSONValue = try await acpTransport.request(
+                        method: "authenticate",
+                        params: ACPAuthenticateParams(methodId: authMethodID),
+                        timeout: sessionSetupTimeout
+                    )
+                } catch {
+                    throw ACPAuthFailureError(
+                        message: hooks.authFailureMessage ?? Self.errorDescription(error)
+                    )
+                }
+                do {
+                    (setupResult, fallbackSessionID) = try await openAttempt()
+                } catch {
+                    if Self.isAuthRequiredError(error) {
+                        throw ACPAuthFailureError(
+                            message: hooks.authFailureMessage ?? Self.errorDescription(error)
+                        )
+                    }
+                    throw error
+                }
             }
 
             let establishedID = (setupResult.sessionId ?? fallbackSessionID ?? "")
@@ -388,6 +522,7 @@ public final class ACPConnection: AgentConnection {
                 mergedSetup = setupResult
             }
             self.configState = ACPSessionConfigState(setupResult: mergedSetup)
+            self.lastKnownModeID = configState.modeState?.currentModeId ?? "default"
             resolvedCapabilities.configOptions = configState.hasConfigOptions
             self.capabilities = resolvedCapabilities
 
@@ -453,15 +588,26 @@ public final class ACPConnection: AgentConnection {
 
         isPromptActive = true
         activePromptCancelled = false
+        activePromptInactivityTimedOut = false
         activePromptCollectedText = ""
         trackedToolCalls.removeAll()
+        hooks.onPromptStarted?()
+        let outcomeChecker = await hooks.promptOutcomeWatcher?(sessionID)
+        resetPromptInactivityTimer()
 
         defer {
+            inactivityTimerTask?.cancel()
+            inactivityTimerTask = nil
+            cancelGraceTask?.cancel()
+            cancelGraceTask = nil
             isPromptActive = false
             let waiters = activePromptCompletionWaiters
             activePromptCompletionWaiters.removeAll()
             for waiter in waiters {
                 waiter.resume()
+            }
+            if isStopping && !isStopped {
+                finalizeStoppedConnection()
             }
         }
 
@@ -472,13 +618,64 @@ public final class ACPConnection: AgentConnection {
                 params: params,
                 timeout: nil
             )
+            inactivityTimerTask?.cancel()
+            inactivityTimerTask = nil
+            cancelGraceTask?.cancel()
+            cancelGraceTask = nil
+
+            let collected = activePromptCollectedText.isEmpty ? nil : activePromptCollectedText
+            var metrics = Self.makeTurnMetrics(from: result.usage)
+            let turnContextUsage = hooks.promptContextUsageProvider?(
+                initializeResult,
+                result.usage,
+                lastKnownContextWindow
+            )
+            if let turnContextUsage {
+                if metrics == nil {
+                    metrics = VitruvianCodeTurnMetrics()
+                }
+                metrics?.contextUsage = turnContextUsage
+            }
+            if hooks.finishSubagentsOnTurnEnd {
+                finishRemainingSubagents()
+            }
+
+            if activePromptInactivityTimedOut {
+                let message = Self.inactivityFailureMessage(timeout: hooks.promptInactivityTimeout)
+                emit(
+                    .finished(
+                        status: "error",
+                        response: collected,
+                        error: message,
+                        conversationID: sessionID,
+                        metrics: metrics
+                    )
+                )
+                return .error
+            }
+
+            if let turnContextUsage {
+                emit(.contextUsage(turnContextUsage))
+            }
+
+            let watchedError = activePromptCancelled ? nil : (await outcomeChecker?(result.stopReason))
+            if let watchedError {
+                emit(
+                    .finished(
+                        status: "error",
+                        response: collected,
+                        error: watchedError,
+                        conversationID: sessionID,
+                        metrics: metrics
+                    )
+                )
+                return .error
+            }
 
             let mapped = Self.mapStopReason(
                 result.stopReason,
                 wasCancelled: activePromptCancelled
             )
-            let metrics = Self.makeTurnMetrics(from: result.usage)
-            let collected = activePromptCollectedText.isEmpty ? nil : activePromptCollectedText
             let errorMessage: String? = mapped.status == "error"
                 ? "ACP prompt ended with error stop reason: \(result.stopReason)"
                 : nil
@@ -494,6 +691,30 @@ public final class ACPConnection: AgentConnection {
             )
             return mapped.reason
         } catch {
+            inactivityTimerTask?.cancel()
+            inactivityTimerTask = nil
+            cancelGraceTask?.cancel()
+            cancelGraceTask = nil
+            if hooks.finishSubagentsOnTurnEnd {
+                finishRemainingSubagents()
+            }
+            if activePromptInactivityTimedOut {
+                let collected = activePromptCollectedText.isEmpty ? nil : activePromptCollectedText
+                let message = Self.inactivityFailureMessage(timeout: hooks.promptInactivityTimeout)
+                emit(
+                    .finished(
+                        status: "error",
+                        response: collected,
+                        error: message,
+                        conversationID: sessionID,
+                        metrics: nil
+                    )
+                )
+                if isStopping && !isStopped {
+                    finalizeStoppedConnection()
+                }
+                return .error
+            }
             if activePromptCancelled && isStopping {
                 let collected = activePromptCollectedText.isEmpty ? nil : activePromptCollectedText
                 emit(
@@ -505,6 +726,9 @@ public final class ACPConnection: AgentConnection {
                         metrics: nil
                     )
                 )
+                if !isStopped {
+                    finalizeStoppedConnection()
+                }
                 return .cancelled
             }
 
@@ -540,6 +764,9 @@ public final class ACPConnection: AgentConnection {
         }
         activePromptCancelled = true
         cancelAllPendingInteractions()
+        scheduleCancelGraceTimeout(
+            reason: "The ACP agent did not finish cancellation. Its process was stopped."
+        )
         try? await acpTransport.notify(
             method: "session/cancel",
             params: ACPSessionCancelParams(sessionId: sessionID)
@@ -557,11 +784,20 @@ public final class ACPConnection: AgentConnection {
 
     public func answer(_ requestID: String, _ choice: AgentAnswer) async throws {
         if let permissionContinuation = pendingPermissions.removeValue(forKey: requestID) {
+            let questionToolCallID = pendingQuestionToolCallIDs.removeValue(forKey: requestID)
             let outcome: ACPPermissionOutcome
             switch choice {
             case .option(let optionId):
                 outcome = .selected(optionId: optionId)
-            case .cancelled, .form:
+            case .form(let answers):
+                if let toolID = questionToolCallID,
+                   let selected = answers[toolID] ?? answers.values.first,
+                   !selected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    outcome = .selected(optionId: selected)
+                } else {
+                    outcome = .cancelled
+                }
+            case .cancelled:
                 outcome = .cancelled
             }
             permissionContinuation.resume(returning: ACPRequestPermissionResult(outcome: outcome))
@@ -575,6 +811,34 @@ public final class ACPConnection: AgentConnection {
         }
 
         throw ACPConnectionError.unknownInteractionRequest(requestID)
+    }
+
+    /// Switches the session's active mode (`session/set_config_option` or legacy `session/set_mode`)
+    /// without restarting the agent process.
+    public func setSessionMode(_ modeID: String) async throws {
+        guard let acpTransport = transport, !sessionID.isEmpty else {
+            throw ACPConnectionError.notStarted
+        }
+        if (configState.modeState?.currentModeId ?? lastKnownModeID) == modeID {
+            return
+        }
+        if configState.hasConfigOptions || configState.modeState != nil {
+            _ = try await setConfigOption(ACPSessionConfigState.sessionModeOptionID, .string(modeID))
+        } else {
+            let _: ACPEmptyObject = try await acpTransport.request(
+                method: "session/set_mode",
+                params: ACPSetSessionModeParams(sessionId: sessionID, modeId: modeID),
+                timeout: sessionSetupTimeout
+            )
+            configState.applyCurrentModeUpdate(modeID)
+        }
+        lastKnownModeID = modeID
+    }
+
+    public func syncPlanMode(_ planSwitch: Bool) async throws {
+        let current = modeProvider()
+        let target = (planSwitch || current.mode == .plan) ? "plan" : "default"
+        try await setSessionMode(target)
     }
 
     public func setConfigOption(
@@ -628,13 +892,17 @@ public final class ACPConnection: AgentConnection {
         isStopped = true
         hasFinalizedLogTarget = true
 
+        inactivityTimerTask?.cancel()
+        inactivityTimerTask = nil
+        cancelGraceTask?.cancel()
+        cancelGraceTask = nil
         cancelAllPendingInteractions()
 
         if capabilities.closeSession, !sessionID.isEmpty, let acpTransport = transport {
             _ = try? await acpTransport.request(
                 method: "session/close",
                 params: ACPSessionCloseParams(sessionId: sessionID),
-                timeout: min(5.0, sessionSetupTimeout),
+                timeout: min(Self.sessionCloseTimeout, sessionSetupTimeout),
                 as: ACPEmptyObject.self
             )
         }
@@ -692,14 +960,36 @@ public final class ACPConnection: AgentConnection {
             return
         }
 
-        switch notification.update {
+        await handleSessionNotification(notification)
+    }
+
+    private func handleSessionNotification(
+        _ incomingNotification: ACPSessionNotification,
+        skipTransform: Bool = false
+    ) async {
+        let activeNotification: ACPSessionNotification
+        if !skipTransform, let transformSessionUpdate = hooks.transformSessionUpdate {
+            let transformed = transformSessionUpdate(incomingNotification)
+            for extra in transformed.extraEvents {
+                emitTrackedEvent(extra)
+            }
+            guard let nextNotification = transformed.notification else {
+                resetPromptInactivityTimer()
+                return
+            }
+            activeNotification = nextNotification
+        } else {
+            activeNotification = incomingNotification
+        }
+
+        switch activeNotification.update {
         case .agentMessageChunk(let block):
-            guard isPromptActive, let text = block.textContent, !text.isEmpty else { return }
+            guard isPromptActive, let text = block.textContent, !text.isEmpty else { break }
             activePromptCollectedText += text
             emit(.text(text))
 
         case .agentThoughtChunk(let block):
-            guard isPromptActive, let text = block.textContent, !text.isEmpty else { return }
+            guard isPromptActive, let text = block.textContent, !text.isEmpty else { break }
             emit(.thinking(text))
 
         case .userMessageChunk:
@@ -708,7 +998,7 @@ public final class ACPConnection: AgentConnection {
 
         case .toolCall(let call):
             let merged = mergeToolCall(call)
-            let terminalOutputs = await collectTerminalOutputs(for: merged, sessionId: notification.sessionId)
+            let terminalOutputs = await collectTerminalOutputs(for: merged, sessionId: activeNotification.sessionId)
             let step = Self.makeToolStep(from: merged, terminalOutputs: terminalOutputs)
             emit(.toolStep(step))
             if Self.isTerminalToolStatus(merged.status) {
@@ -727,7 +1017,7 @@ public final class ACPConnection: AgentConnection {
         case .toolCallUpdate(let update):
             let hadPrior = trackedToolCalls[update.toolCallId] != nil
             let merged = mergeToolCall(update)
-            let terminalOutputs = await collectTerminalOutputs(for: merged, sessionId: notification.sessionId)
+            let terminalOutputs = await collectTerminalOutputs(for: merged, sessionId: activeNotification.sessionId)
             if Self.isTerminalToolStatus(merged.status) {
                 if !hadPrior || Self.hasStepDetails(update) {
                     emit(.toolStep(Self.makeToolStep(from: merged, terminalOutputs: terminalOutputs)))
@@ -786,6 +1076,9 @@ public final class ACPConnection: AgentConnection {
             let cached = usage.cachedTokens ?? 0
             let output = usage.outputTokens ?? 0
             let window = usage.size ?? 0
+            if window > 0 {
+                lastKnownContextWindow = window
+            }
             emit(
                 .contextUsage(
                     VitruvianCodeContextUsage(
@@ -812,6 +1105,8 @@ public final class ACPConnection: AgentConnection {
                 recordLogLine("[acp] unknown session/update '\(kind)': \(rawJSON.serializedJSONString())")
             }
         }
+
+        resetPromptInactivityTimer()
     }
 
     // MARK: - Incoming Agent Requests
@@ -845,8 +1140,21 @@ public final class ACPConnection: AgentConnection {
                   let decoded = try? params.decode(ACPReadTextFileParams.self) else {
                 throw ACPRPCError(code: ACPRPCError.invalidParams, message: "Invalid fs/read_text_file params")
             }
-            let result = try files.readTextFile(decoded, policy: policy)
-            return try ACPJSONValue.fromEncodable(result)
+            resetPromptInactivityTimer()
+            do {
+                let result = try files.readTextFile(decoded, policy: policy)
+                let synthesized = hooks.onClientFileRead?(decoded.path, true) ?? []
+                for note in synthesized {
+                    await handleSessionNotification(note, skipTransform: true)
+                }
+                return try ACPJSONValue.fromEncodable(result)
+            } catch {
+                let synthesized = hooks.onClientFileRead?(decoded.path, false) ?? []
+                for note in synthesized {
+                    await handleSessionNotification(note, skipTransform: true)
+                }
+                throw error
+            }
 
         case "fs/write_text_file":
             guard let files = clientFiles else {
@@ -935,6 +1243,27 @@ public final class ACPConnection: AgentConnection {
             return ACPRequestPermissionResult(outcome: .cancelled)
         }
 
+        let interactionID = "perm-\(nextInteractionNumber)"
+        // Questions arrive inside `session/request_permission` before permission policy runs
+        // so full-access mode never silently answers a question (`AntigravityProtocol.ts:80`).
+        if let question = hooks.permissionInterceptor?(request, interactionID) {
+            nextInteractionNumber += 1
+            pendingQuestionToolCallIDs[interactionID] = request.toolCall.toolCallId
+            inactivityTimerTask?.cancel()
+            inactivityTimerTask = nil
+            let result = await withCheckedContinuation { continuation in
+                if isStopping || isStopped {
+                    continuation.resume(returning: ACPRequestPermissionResult(outcome: .cancelled))
+                    return
+                }
+                pendingPermissions[interactionID] = continuation
+                emit(.question(question))
+            }
+            pendingQuestionToolCallIDs.removeValue(forKey: interactionID)
+            resetPromptInactivityTimer()
+            return result
+        }
+
         let mappedOptions = request.options.map { option in
             AgentPermissionOption(
                 id: option.optionId,
@@ -955,10 +1284,10 @@ public final class ACPConnection: AgentConnection {
             approvalPolicy: policy.approvalPolicy,
             options: mappedOptions
         ) {
+            resetPromptInactivityTimer()
             return ACPRequestPermissionResult(outcome: automaticOutcome)
         }
 
-        let interactionID = "perm-\(nextInteractionNumber)"
         nextInteractionNumber += 1
 
         let toolName = Self.nonEmpty(request.toolCall.title)
@@ -974,7 +1303,9 @@ public final class ACPConnection: AgentConnection {
             options: mappedOptions
         )
 
-        return await withCheckedContinuation { continuation in
+        inactivityTimerTask?.cancel()
+        inactivityTimerTask = nil
+        let result = await withCheckedContinuation { continuation in
             if isStopping || isStopped {
                 continuation.resume(returning: ACPRequestPermissionResult(outcome: .cancelled))
                 return
@@ -982,6 +1313,8 @@ public final class ACPConnection: AgentConnection {
             pendingPermissions[interactionID] = continuation
             emit(.approval(approvalRequest))
         }
+        resetPromptInactivityTimer()
+        return result
     }
 
     private func handleElicitationRequest(
@@ -998,7 +1331,9 @@ public final class ACPConnection: AgentConnection {
             return ACPElicitationCreateResult(action: .decline)
         }
 
-        return await withCheckedContinuation { continuation in
+        inactivityTimerTask?.cancel()
+        inactivityTimerTask = nil
+        let result = await withCheckedContinuation { continuation in
             if isStopping || isStopped {
                 continuation.resume(returning: ACPElicitationCreateResult(action: .cancel))
                 return
@@ -1006,6 +1341,8 @@ public final class ACPConnection: AgentConnection {
             pendingElicitations[interactionID] = (parsed, continuation)
             emit(.question(parsed.question))
         }
+        resetPromptInactivityTimer()
+        return result
     }
 
     // MARK: - Unexpected Exit, Transport Failure & Logging
@@ -1062,6 +1399,9 @@ public final class ACPConnection: AgentConnection {
     }
 
     private static func makeStartupFailure(from error: any Error, detail: String?) -> AgentFailure {
+        if let authError = error as? ACPAuthFailureError {
+            return AgentFailure(kind: .auth, message: authError.message, detail: detail)
+        }
         if let transportError = error as? ACPTransportError {
             switch transportError {
             case .rpcError(let rpc):
@@ -1090,7 +1430,12 @@ public final class ACPConnection: AgentConnection {
         guard !hasEmittedTerminalFailure else { return }
         hasEmittedTerminalFailure = true
         hasFinalizedLogTarget = true
+        inactivityTimerTask?.cancel()
+        inactivityTimerTask = nil
         cancelAllPendingInteractions()
+        if hooks.finishSubagentsOnTurnEnd {
+            finishRemainingSubagents()
+        }
         emit(.connectionFailed(failure))
         if isPromptActive {
             let collected = activePromptCollectedText.isEmpty ? nil : activePromptCollectedText
@@ -1109,6 +1454,7 @@ public final class ACPConnection: AgentConnection {
     }
 
     private func cancelAllPendingInteractions() {
+        pendingQuestionToolCallIDs.removeAll()
         let permissions = pendingPermissions
         pendingPermissions.removeAll()
         for (_, continuation) in permissions {
@@ -1120,6 +1466,191 @@ public final class ACPConnection: AgentConnection {
         for (_, pending) in elicitations {
             pending.continuation.resume(returning: ACPElicitationCreateResult(action: .cancel))
         }
+    }
+
+    private var isPromptInactivityPaused: Bool {
+        !trackedToolCalls.isEmpty
+            || !pendingPermissions.isEmpty
+            || !pendingElicitations.isEmpty
+    }
+
+    private func resetPromptInactivityTimer() {
+        inactivityTimerTask?.cancel()
+        inactivityTimerTask = nil
+        guard isPromptActive,
+              !isStopping,
+              !isStopped,
+              !hasEmittedTerminalFailure,
+              !activePromptCancelled,
+              !activePromptInactivityTimedOut,
+              !isPromptInactivityPaused,
+              let timeout = hooks.promptInactivityTimeout,
+              timeout > 0 else {
+            return
+        }
+        let nanos = UInt64(max(1_000_000, timeout * 1_000_000_000))
+        inactivityTimerTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: nanos)
+            guard !Task.isCancelled, let self else { return }
+            self.handlePromptInactivityTimeout()
+        }
+    }
+
+    private func handlePromptInactivityTimeout() {
+        guard isPromptActive,
+              !isStopping,
+              !isStopped,
+              !hasEmittedTerminalFailure,
+              !activePromptCancelled,
+              !activePromptInactivityTimedOut,
+              !isPromptInactivityPaused,
+              let acpTransport = transport,
+              !sessionID.isEmpty else {
+            return
+        }
+        activePromptInactivityTimedOut = true
+        recordLogLine("[acp] prompt inactivity timeout reached; cancelling turn")
+        cancelAllPendingInteractions()
+        scheduleCancelGraceTimeout(
+            reason: "The ACP agent did not finish cancellation after prompt inactivity timeout. Its process was stopped."
+        )
+        Task { @MainActor in
+            try? await acpTransport.notify(
+                method: "session/cancel",
+                params: ACPSessionCancelParams(sessionId: sessionID)
+            )
+        }
+    }
+
+    /// Bounds the wait after `session/cancel`, stopping the process group if the agent ignores cancel
+    /// (`AcpSessionRuntime.ts:83, 2386-2407`).
+    private func scheduleCancelGraceTimeout(reason: String) {
+        cancelGraceTask?.cancel()
+        let grace = hooks.cancelGraceTimeout
+        guard grace > 0 else { return }
+        let nanos = UInt64(max(1_000_000, grace * 1_000_000_000))
+        cancelGraceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: nanos)
+            guard !Task.isCancelled,
+                  let self,
+                  self.isPromptActive,
+                  !self.isStopping,
+                  !self.isStopped else {
+                return
+            }
+            await self.forceStopAfterIgnoredCancel(reason: reason)
+        }
+    }
+
+    private func forceStopAfterIgnoredCancel(reason: String) async {
+        guard !isStopping, !isStopped else { return }
+        isStopping = true
+        hasFinalizedLogTarget = true
+        inactivityTimerTask?.cancel()
+        inactivityTimerTask = nil
+        cancelGraceTask?.cancel()
+        cancelGraceTask = nil
+        cancelAllPendingInteractions()
+        recordLogLine("[acp] \(reason)")
+
+        await clientTerminals.closeAll()
+        if let launchedProcess {
+            await launchedProcess.terminate(terminationGrace)
+        }
+        if let acpTransport = transport {
+            await acpTransport.close(reason: reason)
+        }
+    }
+
+    private func finalizeStoppedConnection() {
+        guard !isStopped else { return }
+        isStopped = true
+        flushBufferedLogs(allowFallbackSessionID: true)
+        exitMonitorTask?.cancel()
+        exitMonitorTask = nil
+        stderrDrainTask?.cancel()
+        stderrDrainTask = nil
+        eventsContinuation.finish()
+    }
+
+    private func emitTrackedEvent(_ event: AgentEvent) {
+        if case .subagent(let subagent, let started) = event {
+            if started {
+                if activeSubagentsByID[subagent.id] == nil {
+                    activeSubagentOrder.append(subagent.id)
+                }
+                activeSubagentsByID[subagent.id] = subagent
+            } else {
+                activeSubagentsByID.removeValue(forKey: subagent.id)
+                activeSubagentOrder.removeAll { $0 == subagent.id }
+            }
+        }
+        emit(event)
+    }
+
+    private func finishRemainingSubagents() {
+        guard !activeSubagentOrder.isEmpty else { return }
+        let order = activeSubagentOrder
+        activeSubagentOrder.removeAll()
+        for id in order {
+            guard let running = activeSubagentsByID.removeValue(forKey: id) else { continue }
+            let completed = VitruvianCodeActiveSubagent(
+                id: running.id,
+                typeName: running.typeName,
+                role: running.role,
+                prompt: running.prompt,
+                model: running.model,
+                isRunning: false
+            )
+            emit(.subagent(completed, started: false))
+        }
+    }
+
+    private static func mergedDirectories(_ first: [String], _ second: [String]) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for entry in first + second {
+            let trimmed = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, seen.insert(trimmed).inserted else { continue }
+            result.append(trimmed)
+        }
+        return result
+    }
+
+    private static func isAuthRequiredError(_ error: any Error) -> Bool {
+        if error is ACPAuthFailureError {
+            return true
+        }
+        if case ACPTransportError.rpcError(let rpc) = error {
+            if rpc.code == -32000 {
+                return true
+            }
+            let lower = (rpc.message + " " + (rpc.data?.serializedJSONString() ?? "")).lowercased()
+            return lower.contains("auth_required")
+                || lower.contains("authentication required")
+                || lower.contains("unauthenticated")
+                || lower.contains("unauthorized")
+                || lower.contains("not authenticated")
+                || lower.contains("not logged in")
+                || lower.contains("login required")
+                || lower.contains("sign in")
+        }
+        return false
+    }
+
+    private static func errorDescription(_ error: any Error) -> String {
+        if case ACPTransportError.rpcError(let rpc) = error {
+            return rpc.message
+        }
+        return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+
+    private static func inactivityFailureMessage(timeout: TimeInterval?) -> String {
+        guard let timeout, timeout >= 60 else {
+            return "Agent stopped responding during the turn and was cancelled."
+        }
+        let minutes = Int((timeout / 60).rounded())
+        return "Antigravity stopped responding after \(minutes) minute\(minutes == 1 ? "" : "s") without activity and was cancelled."
     }
 
     private func startStderrDrain(_ stderrStream: AsyncStream<Data>) {

@@ -22,6 +22,7 @@ pub mod bazel_app_holds_bot;
 pub mod bazel_app_holds_mermaid;
 pub mod bundle;
 pub mod check_packaged_app;
+pub mod record_acp_fixture;
 
 // --- Pure-Rust SHA-256 (FIPS 180-4) ------------------------------------------
 

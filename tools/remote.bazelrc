@@ -55,6 +55,17 @@ common:remote --remote_default_exec_properties=container-image=docker://gcr.io/f
 # alongside it on any lane that consumes a built artifact.
 common:remotecache-ci --config=remotecache
 common:remotecache-ci --remote_upload_local_results
+# Eight actions in flight, not one per CPU. A cache hit is a network round
+# trip, not CPU work, and at the default (3 on a hosted Mac) Bazel waited on
+# three of them at a time: the courier app unit spent 1,176 s walking its
+# 8,855 cache hits in a merge-queue run where every test was itself a hit.
+# Benchmarked on hosted Macs (PR #5061), same targets, all hits: 316 to 1,400 s
+# at the default, 154 s at 8, 124 to 157 s at 48. Eight and not more because
+# local compiles still share the machine's three cores: with the cache off, the
+# view tests compiled about 35% slower at 48 than at the default and 10% slower
+# at 8. :remote sets its own (50). Not in :remotecache, so a developer's builds
+# are unchanged.
+common:remotecache-ci --jobs=8
 
 common:remotecache --remote_cache=grpcs://remote.buildbuddy.io
 common:remotecache --bes_backend=grpcs://remote.buildbuddy.io

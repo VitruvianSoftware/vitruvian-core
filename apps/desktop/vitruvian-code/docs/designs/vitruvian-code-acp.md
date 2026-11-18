@@ -645,10 +645,11 @@ Build the helper with Node's single-executable feature or Bun's compiler.
 
 These don't need a decision. They're checked during implementation.
 
-*   **Whether `agy acp` still writes agy's transcript files.** T3 Code reads
-    agy's session logs (`AntigravitySessionFiles.ts`), so this design expects
-    them. The first change in Detailed Implementation, Delivery order, step 2 confirms it.
-*   **Memory per live connection,** measured in Detailed Implementation, Delivery order, step 2, and recorded here.
+*   **Whether `agy acp` still writes agy's transcript files.** Checked on `2026-11-17` against `agy 1.5.10`: **yes**, both `agy acp` and command-line `agy -p` (`1.5.10`) write JSONL transcripts under `~/.gemini/antigravity-cli/brain/<session-id>/.system_generated/logs/transcript.jsonl` and trajectory SQLite databases (`steps` table) under `~/.gemini/antigravity-cli/conversations/<session-id>.db` (earlier 1.4.x ACP builds wrote `~/.gemini/antigravity-acp/conversations/<session-id>.db` with the same `steps` schema, and older desktop/CLI builds wrote `~/.gemini/antigravity/brain/...`).
+*   **Memory per live connection,** measured on `2026-11-17` against `agy 1.5.10`: the `agy` process itself is about 290 MiB. Each connection also starts every MCP server listed in the user's own agy settings, at about 110–170 MiB each. On the measuring machine that is 10 servers, so about 2.6 GiB per connection in total. That total is driven by the user's MCP configuration, not by this app; a machine with fewer or no MCP servers costs little more than the `agy` process.
+*   **Step 2b replay fixtures (`testdata/acp/agy-*.ndjson`).** Checked against the recording history on `2026-11-17`: **3 live** and **2 synthetic**:
+    *   **Live (3):** `agy-prompt-text-thinking.ndjson`, `agy-cancel.ndjson`, and `agy-resume.ndjson` — recorded against live `agy acp` (`1.5.10`) in an isolated scratch directory (matching transcripts under `~/.gemini/antigravity-cli/brain/{ef176d1c-0065-4775-accd-f99a6645ec5a,49357a68-16cc-4dd7-a56d-95c68b49db39,042662ce-2c7a-4915-bc29-f8a57936f8c5}`).
+    *   **Synthetic (2):** `agy-tool-permission-synthetic.ndjson` and `agy-question-synthetic.ndjson` — hand-written from T3 Code's `AntigravityProtocol` test cases because `agy 1.5.10` run in an empty scratch folder cannot be deterministically triggered to emit a specific `session/request_permission` tool prompt or `interaction_*` question prompt on demand.
 
 ## Decisions
 

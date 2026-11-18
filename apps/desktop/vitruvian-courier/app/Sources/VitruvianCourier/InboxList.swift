@@ -308,8 +308,21 @@ struct EmptyStateView: View {
                     .frame(maxWidth: 260)
             }
             if guidance.actions.contains(.goToInbox) {
-                Button(String(localized: "Go to Inbox"), action: goToInbox)
-                    .padding(.top, 4)
+                Button(action: goToInbox) {
+                    Text(String(localized: "Go to Inbox"))
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(Color.primary.opacity(0.08)))
+                        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.18)))
+                        .contentShape(Capsule())
+                }
+                // Drawn here rather than with `.bordered`: in the sidebar `.bordered` came out as faint text, and the
+                // empty list's one way out has to look clickable.
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "Go to Inbox"))
+                .padding(.top, 4)
             }
         }
         .padding(24)

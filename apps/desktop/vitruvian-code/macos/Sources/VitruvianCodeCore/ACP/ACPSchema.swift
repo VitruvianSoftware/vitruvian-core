@@ -327,15 +327,18 @@ public struct ACPInitializeParams: Equatable, Sendable, Codable {
     public var protocolVersion: Int
     public var clientInfo: ACPImplementation?
     public var clientCapabilities: ACPClientCapabilities
+    public var _meta: [String: ACPJSONValue]?
 
     public init(
         protocolVersion: Int = ACPInitializeParams.v1ProtocolVersion,
         clientInfo: ACPImplementation? = nil,
-        clientCapabilities: ACPClientCapabilities = ACPClientCapabilities()
+        clientCapabilities: ACPClientCapabilities = ACPClientCapabilities(),
+        _meta: [String: ACPJSONValue]? = nil
     ) {
         self.protocolVersion = protocolVersion
         self.clientInfo = clientInfo
         self.clientCapabilities = clientCapabilities
+        self._meta = _meta
     }
 }
 
@@ -365,26 +368,34 @@ public struct ACPSessionCapabilities: Equatable, Sendable, Codable {
     public var resume: ACPJSONValue?
     public var list: ACPJSONValue?
     public var close: ACPJSONValue?
+    public var load: ACPJSONValue?
     public var fork: ACPJSONValue?
     public var delete: ACPJSONValue?
+    public var additionalDirectories: ACPJSONValue?
 
     public init(
         resume: ACPJSONValue? = nil,
         list: ACPJSONValue? = nil,
         close: ACPJSONValue? = nil,
+        load: ACPJSONValue? = nil,
         fork: ACPJSONValue? = nil,
-        delete: ACPJSONValue? = nil
+        delete: ACPJSONValue? = nil,
+        additionalDirectories: ACPJSONValue? = nil
     ) {
         self.resume = resume
         self.list = list
         self.close = close
+        self.load = load
         self.fork = fork
         self.delete = delete
+        self.additionalDirectories = additionalDirectories
     }
 
     public var supportsResume: Bool { resume?.isAdvertisedCapability == true }
     public var supportsList: Bool { list?.isAdvertisedCapability == true }
     public var supportsClose: Bool { close?.isAdvertisedCapability == true }
+    public var supportsLoad: Bool { load?.isAdvertisedCapability == true }
+    public var supportsAdditionalDirectories: Bool { additionalDirectories?.isAdvertisedCapability == true }
 }
 
 public struct ACPAgentCapabilities: Equatable, Sendable, Codable {
@@ -392,17 +403,69 @@ public struct ACPAgentCapabilities: Equatable, Sendable, Codable {
     public var promptCapabilities: ACPPromptCapabilities?
     public var mcpCapabilities: ACPMCPCapabilities?
     public var sessionCapabilities: ACPSessionCapabilities?
+    public var auth: ACPJSONValue?
+    public var _meta: [String: ACPJSONValue]?
 
     public init(
         loadSession: Bool? = nil,
         promptCapabilities: ACPPromptCapabilities? = nil,
         mcpCapabilities: ACPMCPCapabilities? = nil,
-        sessionCapabilities: ACPSessionCapabilities? = nil
+        sessionCapabilities: ACPSessionCapabilities? = nil,
+        auth: ACPJSONValue? = nil,
+        _meta: [String: ACPJSONValue]? = nil
     ) {
         self.loadSession = loadSession
         self.promptCapabilities = promptCapabilities
         self.mcpCapabilities = mcpCapabilities
         self.sessionCapabilities = sessionCapabilities
+        self.auth = auth
+        self._meta = _meta
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.loadSession = try container.decodeIfPresent(Bool.self, forKey: .loadSession)
+            ?? (try container.decodeIfPresent(Bool.self, forKey: .loadSessionSnake))
+        self.promptCapabilities = try container.decodeIfPresent(ACPPromptCapabilities.self, forKey: .promptCapabilities)
+        self.mcpCapabilities = try container.decodeIfPresent(ACPMCPCapabilities.self, forKey: .mcpCapabilities)
+        let camel = try container.decodeIfPresent(ACPSessionCapabilities.self, forKey: .sessionCapabilities)
+        let snake = try container.decodeIfPresent(ACPSessionCapabilities.self, forKey: .sessionCapabilitiesSnake)
+        if let camel, let snake {
+            self.sessionCapabilities = ACPSessionCapabilities(
+                resume: camel.resume ?? snake.resume,
+                list: camel.list ?? snake.list,
+                close: camel.close ?? snake.close,
+                load: camel.load ?? snake.load,
+                fork: camel.fork ?? snake.fork,
+                delete: camel.delete ?? snake.delete,
+                additionalDirectories: camel.additionalDirectories ?? snake.additionalDirectories
+            )
+        } else {
+            self.sessionCapabilities = camel ?? snake
+        }
+        self.auth = try container.decodeIfPresent(ACPJSONValue.self, forKey: .auth)
+        self._meta = try container.decodeIfPresent([String: ACPJSONValue].self, forKey: ._meta)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(loadSession, forKey: .loadSession)
+        try container.encodeIfPresent(promptCapabilities, forKey: .promptCapabilities)
+        try container.encodeIfPresent(mcpCapabilities, forKey: .mcpCapabilities)
+        try container.encodeIfPresent(sessionCapabilities, forKey: .sessionCapabilities)
+        try container.encodeIfPresent(auth, forKey: .auth)
+        try container.encodeIfPresent(_meta, forKey: ._meta)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case loadSession
+        case loadSessionSnake = "load_session"
+        case promptCapabilities
+        case mcpCapabilities
+        case sessionCapabilities
+        case sessionCapabilitiesSnake = "session_capabilities"
+        case auth
+        case _meta
     }
 }
 
@@ -423,17 +486,20 @@ public struct ACPInitializeResult: Equatable, Sendable, Codable {
     public var agentCapabilities: ACPAgentCapabilities?
     public var authMethods: [ACPAuthMethod]?
     public var agentInfo: ACPImplementation?
+    public var _meta: [String: ACPJSONValue]?
 
     public init(
         protocolVersion: Int = ACPInitializeParams.v1ProtocolVersion,
         agentCapabilities: ACPAgentCapabilities? = nil,
         authMethods: [ACPAuthMethod]? = nil,
-        agentInfo: ACPImplementation? = nil
+        agentInfo: ACPImplementation? = nil,
+        _meta: [String: ACPJSONValue]? = nil
     ) {
         self.protocolVersion = protocolVersion
         self.agentCapabilities = agentCapabilities
         self.authMethods = authMethods
         self.agentInfo = agentInfo
+        self._meta = _meta
     }
 
     public init(from decoder: Decoder) throws {
@@ -443,6 +509,7 @@ public struct ACPInitializeResult: Equatable, Sendable, Codable {
         self.agentCapabilities = try container.decodeIfPresent(ACPAgentCapabilities.self, forKey: .agentCapabilities)
         self.authMethods = try container.decodeIfPresent([ACPAuthMethod].self, forKey: .authMethods)
         self.agentInfo = try container.decodeIfPresent(ACPImplementation.self, forKey: .agentInfo)
+        self._meta = try container.decodeIfPresent([String: ACPJSONValue].self, forKey: ._meta)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -450,6 +517,7 @@ public struct ACPInitializeResult: Equatable, Sendable, Codable {
         case agentCapabilities
         case authMethods
         case agentInfo
+        case _meta
     }
 }
 

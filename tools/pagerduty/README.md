@@ -18,3 +18,15 @@ bazel run //tools/pagerduty:read -- /users/<id>/notification_rules
   command line.
 
 Changes to the account go through the Pulumi stack, never through this tool.
+
+## Resolving an incident
+
+```sh
+export PAGERDUTY_TOKEN=...   # Bitwarden item vitruviansoftware.pagerduty.com, field PULUMI_API_KEY
+bazel run //tools/pagerduty:resolve-incident -- <incident-id> --from james@vitruviansoftware.dev
+```
+
+For closing out a test page (`//tools/sentry:send-test-event`) or a known
+false alarm. PagerDuty requires `--from`, the email of the user resolving it.
+The key reaches curl on stdin only. Account configuration still belongs to the
+PagerDuty Pulumi stack.

@@ -21,10 +21,23 @@ public enum RequestPresentation {
         guard isPlaceholderName(name) else { return name }
         let trimmedHandle = handle.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedHandle.isEmpty { return trimmedHandle }
-        let network = networkName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let network = shortNetworkName(networkName)
         return network.isEmpty
             ? String(localized: "Unknown contact")
             : String(localized: "Unknown \(network) contact")
+    }
+}
+
+extension RequestPresentation {
+    /// The network's name short enough for a one-line request title: "Facebook Messenger" reads "Messenger", so
+    /// "Unknown Messenger contact" fits instead of being cut before the word that matters.
+    public static func shortNetworkName(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefix = "Facebook "
+        if trimmed.hasPrefix(prefix), trimmed.count > prefix.count {
+            return String(trimmed.dropFirst(prefix.count))
+        }
+        return trimmed
     }
 }
 
