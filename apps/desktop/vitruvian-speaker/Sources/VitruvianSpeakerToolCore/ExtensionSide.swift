@@ -432,9 +432,10 @@ extension VitruvianSpeakerTool.Parts {
     ///   with the extension's and copies from or into.
     /// - `home` is where the coding agents keep their files.
     /// - `holdsLiveLock` is whether this process holds the extension's
-    ///   `running.lock`. A second `bin/tool` that could not take it (the
-    ///   old one still exiting) never lets its chat monitor start, whatever
-    ///   the role: the process that holds the lock is the one that reads.
+    ///   `running.lock`, asked on each role tick (`Parts.holdsLiveLock`). A
+    ///   second `bin/tool` that could not take it (the old one still
+    ///   exiting) lets its chat monitor start only once it has taken it:
+    ///   the process that holds the lock is the one that reads.
     @MainActor
     public static func `extension`(
         engine: VitruvianSpeakerEngine,
@@ -443,7 +444,7 @@ extension VitruvianSpeakerTool.Parts {
         later: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void,
         driverParts: EngineDriver.Parts,
         monitor: GatedMonitor,
-        holdsLiveLock: Bool,
+        holdsLiveLock: @escaping () -> Bool,
         check: DoorCheck,
         appProgram: @escaping @Sendable () -> URL?,
         appProfile: VitruvianSpeakerProfile,
@@ -490,8 +491,8 @@ extension VitruvianSpeakerTool.Parts {
             door: check.file,
             copy: DoorCopy.copy,
             sendStatus: sendStatus,
-            monitorMayRun: { mayRun in
-                let active = holdsLiveLock && mayRun
+            monitorMayRun: { active in
+                // `refreshRole` asks for the live lock: true only with it.
                 permission.set(active)
                 if let snoozeCoordinator {
                     onMain {
@@ -516,6 +517,7 @@ extension VitruvianSpeakerTool.Parts {
                 if let snoozeCoordinator {
                     onMain { snoozeCoordinator.poke() }
                 }
-            })
+            },
+            holdsLiveLock: holdsLiveLock)
     }
 }

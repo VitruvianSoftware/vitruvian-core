@@ -113,3 +113,48 @@ public final class LiveLock: @unchecked Sendable {
         return true
     }
 }
+
+/// The live lock for a process that may start while the old one is still
+/// exiting (#3357). It tries at start, waiting out a look (`LiveLock.hold`);
+/// a process refused then tries again, without waiting, each time it is
+/// asked (`holds()`, on the five-second role tick). So once the old process
+/// has gone, this one takes the lock and reads chat, with no restart.
+///
+/// `onTaken` runs once, on the call that first takes the lock: what only
+/// the live process does (listening for the hook's runs).
+public final class LiveLockKeeper: @unchecked Sendable {
+    public let url: URL
+    private let lock = NSLock()
+    private var held: LiveLock?
+    private let onTaken: () -> Void
+
+    /// Tries once now (`LiveLock.hold`, with its short wait), and runs
+    /// `onTaken` if that takes the lock.
+    public convenience init(url: URL, onTaken: @escaping () -> Void) {
+        self.init(url: url, first: { try? LiveLock.hold(at: url) }, onTaken: onTaken)
+    }
+
+    /// `init(url:onTaken:)` with the first try given, for tests: they
+    /// cannot wait out a holder in another process.
+    init(url: URL, first: () -> LiveLock?, onTaken: @escaping () -> Void) {
+        self.url = url
+        self.onTaken = onTaken
+        held = first()
+        if held != nil { onTaken() }
+    }
+
+    /// Whether this process holds the lock, trying once more, without
+    /// waiting, if it does not.
+    public func holds() -> Bool {
+        lock.lock()
+        if held != nil {
+            lock.unlock()
+            return true
+        }
+        held = try? LiveLock.hold(at: url, retries: 0, wait: 0, onBusy: { _ in })
+        let taken = held != nil
+        lock.unlock()
+        if taken { onTaken() }
+        return taken
+    }
+}
