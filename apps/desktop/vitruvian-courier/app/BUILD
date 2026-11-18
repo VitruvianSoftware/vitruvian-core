@@ -89,9 +89,14 @@ swift_test(
 # broken layout before. SwiftPM's VitruvianCourierViewTests is the same harness against the executable target.
 # Large (900 s): on CI's hosted Macs the suite already took 254 s of medium's 300 on main, and each new snapshot
 # pushes it closer; a timeout there fails the merge queue for no fault in the change (PR #4238).
+# An eternal timeout (3,600 s) on top, because large's 900 s ran out the same way: on 2026-11-17 the suite took
+# 641 to 898 s in the eight merge-queue runs that ran it and then timed out at 905 s in a ninth, which threw
+# PR #5054 out of the queue. Bazel has no step between 900 and 3,600; the unit's 60-minute job limit is what
+# stops a real hang. The suite's own time is the thing to fix: one run a day earlier took about 565 s.
 swift_test(
     name = "VitruvianCourierViewTests",
     size = "large",
+    timeout = "eternal",
     srcs = glob(["Tests/VitruvianCourierViewTests/**/*.swift"]),
     # The made-up chats the test copy can open with: SeedScenarioSnapshotTests draws one (SeedScenario.swift).
     data = [
@@ -362,12 +367,18 @@ rust_test(
     deps = [":vitruvian_courier_scripts_lib"],
 )
 
+# One unit, on purpose. The view tests were split into a unit of their own
+# for a day (#5048, reverted in #5059): this unit still took about 25 minutes
+# without them, because its time is the walk over the engine's ~8,900 cached
+# actions, and a courier change then claimed three of the five hosted Macs
+# (views, app, engine), with waits for a runner of up to 757 s.
 pipeline_unit(
     name = "vitruvian-courier-app-macos",
     persona = "frontend",
     runner = "xcode-27",
     test_targets = [
         ":VitruvianCourierCoreTests",
+        ":VitruvianCourierViewTests",
         ":app_holds_engine_test",
         ":engine_contract_test",
         ":inject_app_credentials_test",
@@ -377,25 +388,6 @@ pipeline_unit(
     # A cold build of the engine it bundles is libsignal's 2,000+ actions
     # (../engine/BUILD); the remote cache makes later runs much shorter.
     timeout_minutes = 60,
-)
-
-# The view tests are a unit of their own so they do not wait for the engine.
-# They need Swift and nothing else, while the unit above also builds the
-# engine it bundles, and with it LLVM, Go and Rust. On a hosted Mac with no
-# repository cache, fetch and analysis took 77-125 s for the view tests alone
-# against 481-566 s for all six tests together (PR #5046), and the view tests
-# are the longest thing either unit runs (about 9.5 minutes). Apart, the two
-# run side by side: a view change costs a second Mac for a shorter queue run.
-pipeline_unit(
-    name = "vitruvian-courier-views-macos",
-    persona = "frontend",
-    runner = "xcode-27",
-    test_targets = [
-        ":VitruvianCourierViewTests",
-    ],
-    tier = "L1",
-    # The suite alone is allowed 900 s (see :VitruvianCourierViewTests).
-    timeout_minutes = 40,
 )
 
 # bazel run //apps/desktop/vitruvian-courier/app:publish [-- --dry-run]
