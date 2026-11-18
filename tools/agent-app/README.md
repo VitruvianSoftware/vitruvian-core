@@ -6,7 +6,7 @@ the step-by-step runbook is [docs/guides/creating-an-agent-github-app.md](../../
 
 | Command | What it does |
 |---|---|
-| `convert <code> <out.pem>` | Completes the App-manifest handshake. Prints the app id and **writes the private key** — GitHub issues it exactly once. |
+| `convert <code> <out.pem> [<out.creds.json>]` | Completes the App-manifest handshake. Prints the app id and **writes the private key** — GitHub issues it exactly once. The optional third path also keeps the App's OAuth client id and secret (mode 600), which GitHub likewise returns only here; Backstage needs them. |
 | `installations <app-id> <key.pem>` | Lists the App's installations, with their ids. |
 | `repos <app-id> <key.pem> <inst-id>` | Lists the repositories an installation can reach. |
 | `token <app-id> <key.pem> <inst-id>` | Mints a **1-hour** installation access token. |

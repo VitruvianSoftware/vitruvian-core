@@ -35,6 +35,7 @@ import {
 import { CatalogClient } from "@backstage/catalog-client";
 import { parseEntityRef } from "@backstage/catalog-model";
 import { evaluateEntityScorecard } from "../scorecards/evaluator";
+import { githubTokenSource } from "../scorecards/githubToken";
 
 /**
  * Registers Backstage Software Catalog, TechDocs, Scaffolder, Search, and
@@ -1015,21 +1016,10 @@ When querying for entity relationships, prefer using relations over spec fields.
 
       const repoRoot =
         optionsRepoRoot ?? resolve(__dirname, "../../../../../../..");
-      let githubToken =
-        optionsGithubToken ?? process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
-
-      if (!githubToken && config) {
-        try {
-          if (config.has("integrations.github")) {
-            const githubConfigs = config.getOptionalConfigArray(
-              "integrations.github",
-            );
-            githubToken = githubConfigs?.[0]?.getOptionalString("token");
-          }
-        } catch {
-          // ignore in standalone runs
-        }
-      }
+      const githubToken = githubTokenSource({
+        githubToken: optionsGithubToken,
+        config,
+      });
 
       const scorecard = await evaluateEntityScorecard(
         entity,

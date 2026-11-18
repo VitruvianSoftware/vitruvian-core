@@ -155,6 +155,7 @@ Additional tooling:
 | `//tools/gitops:seal-pagerduty-readonly` | Seal the read-only PagerDuty REST API key (on stdin) for pagerduty-exporter and Backstage's PagerDuty plugin; never printed |
 | `//tools/gitops:seal-alert-pagerduty` | Seal the PagerDuty Events API keys Alertmanager pages with, read from the PagerDuty stack's outputs on stdin; never printed |
 | `//tools/gitops:seal-alert-heartbeat` | Seal the healthchecks.io ping URL that the Watchdog dead-man's switch pings (prompts for it; `--apply` to apply now) |
+| `//tools/gitops:seal-backstage-github-app` | Seal the vitruvian-backstage GitHub App's id, client id/secret and private key into `backstage/backstage-github-app` (`-- <key.pem> <creds.json> [--apply]`; the inputs come from `//tools/agent-app -- convert`) |
 | `//tools/gitops:alert-test` | Fire one test alert through Alertmanager, hold it (default 90s), then resolve it, to prove alerts reach ntfy and clear themselves (`--hold SECS`, `--fire-only`, `--resolve TEST_ID`) |
 | `//tools/gitops:seal-argocd-backstage-token` | Mint and seal read-only ArgoCD token for Backstage UI |
 | `//tools/gitops:seal-headplane-secret` | Generate and seal 32-character cookie secret for Headplane |

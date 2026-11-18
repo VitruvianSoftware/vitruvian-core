@@ -105,7 +105,7 @@ flow, whose final step IS an API call -- but the `code` it consumes exists only
 after a signed-in human approves the handshake in a browser. So the manual part
 is two clicks per agent; everything either side of them is here.
 
-  bazel run //tools/agent-app -- convert <manifest-code> <out.pem>
+  bazel run //tools/agent-app -- convert <manifest-code> <out.pem> [<out.creds.json>]
   bazel run //tools/agent-app -- installations <app-id> <key.pem>
   bazel run //tools/agent-app -- repos <app-id> <key.pem> <installation-id>
   bazel run //tools/agent-app -- token <app-id> <key.pem> <installation-id>
@@ -688,11 +688,22 @@ impl Tool {
     fn convert(&self, args: &[Vec<u8>]) -> Res {
         let code = arg(args, 0);
         let outp = arg(args, 1);
+        let credp = arg(args, 2);
         if code.is_empty() || outp.is_empty() {
-            return Err(die(b"usage: convert <manifest-code> <out.pem>"));
+            return Err(die(
+                b"usage: convert <manifest-code> <out.pem> [<out.creds.json>]",
+            ));
         }
         if sh::exists(outp) {
             return Err(die(&cat(&[b"refusing to overwrite existing key: ", outp])));
+        }
+        // Checked before the call: the code is single-use, so a refusal after
+        // it would lose the client secret for good.
+        if !credp.is_empty() && sh::exists(credp) {
+            return Err(die(&cat(&[
+                b"refusing to overwrite existing credentials: ",
+                credp,
+            ])));
         }
         let mut c = Command::new("curl");
         c.args(["-sSf", "-X", "POST"])
@@ -730,6 +741,9 @@ impl Tool {
             return Err(die(b"response contained no pem"));
         }
         sh::umask(old);
+        if !credp.is_empty() {
+            write_client_creds(credp, &resp)?;
+        }
         let outs = s(outp);
         let (summary, sst) = jq(&jq::Prog::Convert(&outs), &resp, false);
         out(&summary);
@@ -3392,4 +3406,45 @@ pub fn run_main() -> i32 {
     let code = tool.main(&argv);
     let _ = std::io::stdout().flush();
     code
+}
+
+/// The App's OAuth client id and secret (and webhook secret, if any) from a
+/// manifest conversion. GitHub returns the client secret only here, and some
+/// consumers (Backstage's `integrations.github[].apps`) require it, so
+/// `convert` keeps it when asked rather than dropping it on the floor. Written
+/// mode 600, never printed.
+pub fn client_creds_json(resp: &[u8]) -> Result<Vec<u8>, String> {
+    let v: serde_json::Value = serde_json::from_slice(resp)
+        .map_err(|e| format!("conversion response is not JSON: {e}"))?;
+    let field = |k: &str| v.get(k).and_then(|x| x.as_str()).map(str::to_owned);
+    let client_id = field("client_id").ok_or("conversion response has no client_id")?;
+    let client_secret = field("client_secret").ok_or("conversion response has no client_secret")?;
+    let mut m = serde_json::Map::new();
+    m.insert("client_id".into(), client_id.into());
+    m.insert("client_secret".into(), client_secret.into());
+    if let Some(w) = field("webhook_secret") {
+        m.insert("webhook_secret".into(), w.into());
+    }
+    let mut out =
+        serde_json::to_vec_pretty(&serde_json::Value::Object(m)).map_err(|e| e.to_string())?;
+    out.push(b'\n');
+    Ok(out)
+}
+
+fn write_client_creds(path: &[u8], resp: &[u8]) -> Res {
+    let body = client_creds_json(resp).map_err(|e| die(e.as_bytes()))?;
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(sh::path(path))
+        .map_err(|e| die(format!("cannot write credentials: {e}").as_bytes()))?;
+    f.write_all(&body)
+        .map_err(|e| die(format!("cannot write credentials: {e}").as_bytes()))?;
+    err(&cat(&[
+        b"agent-app: client id and secret written to ",
+        path,
+        b" (mode 600).\n",
+    ]));
+    Ok(())
 }

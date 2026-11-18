@@ -70,6 +70,12 @@ bazel run //tools/agent-app -- convert <CODE> ~/keys/<agent>.pem
 
 Prints `app_id`, `slug`, `owner`, and writes the key at mode 600.
 
+Add a third path (`convert <CODE> <out.pem> <out.creds.json>`) when the consumer
+also needs the App's OAuth **client id and secret** — Backstage's
+`integrations.github[].apps` requires both. GitHub returns the client secret only
+in this response, so without the third path it is gone (you would have to
+generate a new one in the App's settings).
+
 > **The code is single-use and expires an hour after step 1**, and **the private
 > key is issued exactly once**. If this command fails, redo step 1. If you lose
 > the key, the App has to be recreated.

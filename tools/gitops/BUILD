@@ -296,6 +296,7 @@ TOOLS = {
     "rotate-github-otel-webhook-secret": ("rotate_github_otel_webhook_secret.sh", []),
     "cicd-telemetry-smoke": ("cicd_telemetry_smoke.sh", []),
     "seal-arc-github-app": ("seal_arc_github_app.sh", []),
+    "seal-backstage-github-app": ("seal_backstage_github_app.sh", []),
 }
 
 # The Rust tool name for each tool (src/ops/mod.rs TOOLS).
@@ -313,6 +314,7 @@ TOOL_OF = {
     "seal_alert_pagerduty.sh": "seal-alert-pagerduty",
     "seal_pagerduty_readonly.sh": "seal-pagerduty-readonly",
     "seal_arc_github_app.sh": "seal-arc-github-app",
+    "seal_backstage_github_app.sh": "seal-backstage-github-app",
     "seal_argocd_backstage_token.sh": "seal-argocd-backstage-token",
     "seal_headplane_secret.sh": "seal-headplane-secret",
     "seal_headscale_key_exporter.sh": "seal-headscale-key-exporter",

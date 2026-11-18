@@ -34,11 +34,12 @@ import type {
   ScorecardTrackId,
   TrackEvaluation,
 } from "./types";
+import type { GithubTokenSource } from "./githubToken";
 
 export async function evaluateEntityScorecard(
   entity: Entity,
   repoRoot: string,
-  githubToken?: string,
+  githubToken?: GithubTokenSource,
 ): Promise<EvaluatedScorecard> {
   const archetype = determineArchetype(entity);
   const spec = entity.spec as Record<string, any> | undefined;
