@@ -657,14 +657,14 @@ program's settings) and `phone_connected` (bool): whether the phone bridge curre
 optional bools; each is a `set` operation.
 
 `POST /v1/speaker/phone-say` — loopback (no bearer required from local processes on the Mac) or
-act tier (pairing bearer token required from non-loopback peers), body up to 8 MiB:
+act tier (pairing bearer token required from non-loopback peers), body up to 12 MiB:
 `{"text": string, "wav_base64"?: string, "pause_media"?: bool, "headphones_only"?: bool}`.
 - Blank `text` returns `400`.
 - When `pause_media` or `headphones_only` is omitted, defaults are the `phone_pause_media` and
   `phone_headphones_only` settings in the chosen program's `--state`.
 - Loopback requests without a bearer token must send `Content-Type: application/json` (`415` otherwise).
 - When no phone link is open, replies `200 {"ok": false, "spoken": false, "reason": "no phone connected"}`.
-- Otherwise dispatches `phone.speak` (`read` tier, 60 s timeout) over the phone bridge and returns
+- Otherwise dispatches `phone.speak` (`read` tier, 60–210 s timeout scaled to audio/text length) over the phone bridge and returns
   `200 {"ok": true, "spoken": bool, "skipped"?: bool, "reason"?: string, "engine"?: "gemini"|"android_tts"}`.
 
 ---

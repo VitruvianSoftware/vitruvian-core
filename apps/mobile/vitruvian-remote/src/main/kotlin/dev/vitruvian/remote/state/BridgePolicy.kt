@@ -374,6 +374,145 @@ public object BridgePolicy {
     append('"')
   }
 
+  /** Pre-roll silence prepended to phone announcements so Bluetooth / audio focus wakes cleanly. */
+  public const val WAV_PREROLL_MS: Int = 300
+
+  /** Minimum timeout for `phone.speak` playback on the phone. */
+  public const val MIN_SPEAK_TIMEOUT_S: Long = 45L
+
+  /** Maximum timeout for `phone.speak` playback on the phone. */
+  public const val MAX_SPEAK_TIMEOUT_S: Long = 180L
+
+  /** Safety margin added to audio/text duration when computing `phone.speak` timeout. */
+  public const val SPEAK_TIMEOUT_MARGIN_S: Long = 30L
+
+  /**
+   * Computes the playback duration in seconds of a RIFF PCM WAV buffer by inspecting its `fmt `
+   * `byteRate` and `data` chunk size (clamped to available bytes for streamed `0xFFFFFFFF` sizes).
+   * Returns `null` if [wav] is not a valid PCM WAV.
+   */
+  public fun wavDurationSeconds(wav: ByteArray): Double? {
+    if (wav.size < 12 || !asciiEquals(wav, 0, "RIFF") || !asciiEquals(wav, 8, "WAVE")) {
+      return null
+    }
+    var i = 12
+    var byteRate = 0L
+    while (i + 8 <= wav.size) {
+      val size = u32Le(wav, i + 4)
+      if (asciiEquals(wav, i, "fmt ") && i + 24 <= wav.size) {
+        byteRate = u32Le(wav, i + 16)
+      } else if (asciiEquals(wav, i, "data") && byteRate > 0L) {
+        val remaining = (wav.size - (i + 8)).toLong()
+        val available = minOf(size, remaining)
+        return available.toDouble() / byteRate.toDouble()
+      }
+      if (size > (wav.size - (i + 8)).toLong()) break
+      val step = 8 + size.toInt() + (size.toInt() and 1)
+      if (step <= 0) break
+      i += step
+    }
+    return null
+  }
+
+  /**
+   * Prepends [durationMs] ms of PCM silence to [wav] so Bluetooth headphones waking from idle or
+   * ducked background audio do not clip the opening syllable. Returns [wav] unchanged if it is not
+   * uncompressed PCM (format 1) or has invalid chunk sizes.
+   */
+  public fun prependWavSilence(wav: ByteArray, durationMs: Int = WAV_PREROLL_MS): ByteArray {
+    if (durationMs <= 0 ||
+        wav.size < 44 ||
+        !asciiEquals(wav, 0, "RIFF") ||
+        !asciiEquals(wav, 8, "WAVE")) {
+      return wav
+    }
+    var i = 12
+    var audioFormat = 0
+    var byteRate = 0L
+    var blockAlign = 0
+    var bitsPerSample = 0
+    var dataChunkIdx = -1
+    var declaredDataSize = 0L
+    while (i + 8 <= wav.size) {
+      val size = u32Le(wav, i + 4)
+      if (asciiEquals(wav, i, "fmt ") && i + 24 <= wav.size) {
+        audioFormat = u16Le(wav, i + 8)
+        byteRate = u32Le(wav, i + 16)
+        blockAlign = u16Le(wav, i + 20)
+        bitsPerSample = u16Le(wav, i + 22)
+      } else if (asciiEquals(wav, i, "data")) {
+        dataChunkIdx = i
+        declaredDataSize = size
+        break
+      }
+      if (size > (wav.size - (i + 8)).toLong()) break
+      val step = 8 + size.toInt() + (size.toInt() and 1)
+      if (step <= 0) break
+      i += step
+    }
+    if (audioFormat != 1 || byteRate <= 0L || blockAlign <= 0 || dataChunkIdx < 0) {
+      return wav
+    }
+    val rawPad = (byteRate * durationMs.toLong()) / 1000L
+    val alignedPad = (rawPad / blockAlign.toLong()) * blockAlign.toLong()
+    if (alignedPad <= 0L || alignedPad > Int.MAX_VALUE - wav.size) {
+      return wav
+    }
+    val padBytes = alignedPad.toInt()
+    val dataStart = dataChunkIdx + 8
+    val availableData = wav.size - dataStart
+    val actualDataLen =
+        if (declaredDataSize == 0xFFFFFFFFL) availableData
+        else minOf(declaredDataSize, availableData.toLong()).toInt()
+    val out = ByteArray(wav.size + padBytes)
+    System.arraycopy(wav, 0, out, 0, dataStart)
+    if (bitsPerSample == 8) {
+      java.util.Arrays.fill(out, dataStart, dataStart + padBytes, 0x80.toByte())
+    }
+    System.arraycopy(wav, dataStart, out, dataStart + padBytes, availableData)
+    putU32Le(out, 4, (out.size - 8).toLong())
+    putU32Le(out, dataChunkIdx + 4, (actualDataLen + padBytes).toLong())
+    return out
+  }
+
+  /**
+   * Scales the `phone.speak` playback timeout to the actual WAV duration (or text length for TTS)
+   * plus [SPEAK_TIMEOUT_MARGIN_S], clamped to [[MIN_SPEAK_TIMEOUT_S], [MAX_SPEAK_TIMEOUT_S]].
+   */
+  public fun speakTimeoutSeconds(wavDurationSeconds: Double?, textLength: Int): Long {
+    val base =
+        if (wavDurationSeconds != null && wavDurationSeconds > 0.0) {
+          kotlin.math.ceil(wavDurationSeconds).toLong()
+        } else {
+          maxOf(1L, textLength.toLong() / 10L)
+        }
+    return (base + SPEAK_TIMEOUT_MARGIN_S).coerceIn(MIN_SPEAK_TIMEOUT_S, MAX_SPEAK_TIMEOUT_S)
+  }
+
+  private fun asciiEquals(bytes: ByteArray, offset: Int, tag: String): Boolean {
+    if (offset + 4 > bytes.size) return false
+    for (k in 0 until 4) {
+      if (bytes[offset + k].toInt().toChar() != tag[k]) return false
+    }
+    return true
+  }
+
+  private fun u16Le(bytes: ByteArray, offset: Int): Int =
+      (bytes[offset].toInt() and 0xFF) or ((bytes[offset + 1].toInt() and 0xFF) shl 8)
+
+  private fun u32Le(bytes: ByteArray, offset: Int): Long =
+      (bytes[offset].toLong() and 0xFFL) or
+          ((bytes[offset + 1].toLong() and 0xFFL) shl 8) or
+          ((bytes[offset + 2].toLong() and 0xFFL) shl 16) or
+          ((bytes[offset + 3].toLong() and 0xFFL) shl 24)
+
+  private fun putU32Le(bytes: ByteArray, offset: Int, value: Long) {
+    bytes[offset] = (value and 0xFFL).toByte()
+    bytes[offset + 1] = ((value ushr 8) and 0xFFL).toByte()
+    bytes[offset + 2] = ((value ushr 16) and 0xFFL).toByte()
+    bytes[offset + 3] = ((value ushr 24) and 0xFFL).toByte()
+  }
+
   private const val MS_PER_MINUTE = 60_000L
   private const val MINUTES_PER_HOUR = 60L
 }

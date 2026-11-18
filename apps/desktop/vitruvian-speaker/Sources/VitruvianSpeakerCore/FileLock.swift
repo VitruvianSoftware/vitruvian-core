@@ -75,8 +75,8 @@ public enum SpeechLock {
     /// time waiting in the speech queue behind earlier announcements.
     public static let maxQueueWaitSeconds: TimeInterval = 180
 
-    /// Maximum post-broadcast speaker cooldown honored from a lock file.
-    public static let maxCooldownSeconds: TimeInterval = 60
+    /// Maximum post-broadcast speaker cooldown honored from a lock file (matches `AnnouncementTiming` ceiling).
+    public static let maxCooldownSeconds: TimeInterval = 120
 
     /// A non-blocking lock lease acquired by `tryAcquire(at:)`.
     public final class Lease: @unchecked Sendable {

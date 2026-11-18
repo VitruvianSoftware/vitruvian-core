@@ -142,7 +142,7 @@ extension HomeBroadcasting {
 
 extension GoogleHomeClient: HomeBroadcasting {
     public nonisolated func speakerHoldSeconds(for text: String) -> TimeInterval {
-        session === URLSession.shared ? AnnouncementTiming.seconds(for: text, extra: 0) : 0
+        session === URLSession.shared ? AnnouncementTiming.seconds(for: text, extra: 2.0) : 0
     }
 }
 

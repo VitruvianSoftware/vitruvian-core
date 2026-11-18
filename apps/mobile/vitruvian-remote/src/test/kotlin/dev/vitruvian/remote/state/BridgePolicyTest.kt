@@ -390,4 +390,90 @@ public class BridgePolicyTest {
     // A row with no tool name is dropped, and the rest of the trail survives.
     assertEquals(1, BridgePolicy.decodeAudit("[{\"tool\":\"\"},{\"tool\":\"calls.log\"}]").size)
   }
+
+  // --- phone.speak WAV pre-roll silence and duration-scaled timeouts ---
+
+  private fun makePcmWav(
+      sampleRate: Int,
+      channels: Int,
+      bitsPerSample: Int,
+      pcmPayload: ByteArray,
+      declaredDataSize: Long? = null,
+  ): ByteArray {
+    val blockAlign = channels * bitsPerSample / 8
+    val byteRate = sampleRate * blockAlign
+    val dataSize = declaredDataSize ?: pcmPayload.size.toLong()
+    val riffSize = 36L + pcmPayload.size.toLong()
+    val header = ByteArray(44)
+    fun putAscii(off: Int, s: String) {
+      for (k in s.indices) header[off + k] = s[k].code.toByte()
+    }
+    fun putU16(off: Int, v: Int) {
+      header[off] = (v and 0xFF).toByte()
+      header[off + 1] = ((v ushr 8) and 0xFF).toByte()
+    }
+    fun putU32(off: Int, v: Long) {
+      header[off] = (v and 0xFFL).toByte()
+      header[off + 1] = ((v ushr 8) and 0xFFL).toByte()
+      header[off + 2] = ((v ushr 16) and 0xFFL).toByte()
+      header[off + 3] = ((v ushr 24) and 0xFFL).toByte()
+    }
+    putAscii(0, "RIFF")
+    putU32(4, riffSize)
+    putAscii(8, "WAVE")
+    putAscii(12, "fmt ")
+    putU32(16, 16L)
+    putU16(20, 1) // PCM
+    putU16(22, channels)
+    putU32(24, sampleRate.toLong())
+    putU32(28, byteRate.toLong())
+    putU16(32, blockAlign)
+    putU16(34, bitsPerSample)
+    putAscii(36, "data")
+    putU32(40, dataSize)
+    return header + pcmPayload
+  }
+
+  @Test
+  public fun wavDurationAndPrerollSilenceFor24KhzMonoPcm() {
+    val originalPayload = ByteArray(48_000) { 0x42 } // 1.0 s at 24 kHz 16-bit mono
+    val wav = makePcmWav(24_000, 1, 16, originalPayload)
+    assertEquals(1.0, BridgePolicy.wavDurationSeconds(wav)!!, 0.0001)
+
+    val padded = BridgePolicy.prependWavSilence(wav, 300)
+    // 300 ms at 48,000 bytes/s = 14,400 zero bytes inserted at byte 44.
+    assertEquals(wav.size + 14_400, padded.size)
+    assertEquals(1.3, BridgePolicy.wavDurationSeconds(padded)!!, 0.0001)
+    for (i in 44 until 44 + 14_400) {
+      assertEquals("pre-roll sample at $i must be silence", 0.toByte(), padded[i])
+    }
+    for (i in 0 until originalPayload.size) {
+      assertEquals(originalPayload[i], padded[44 + 14_400 + i])
+    }
+  }
+
+  @Test
+  public fun wavDurationHandlesStreamedSizesAndRejectsNonWav() {
+    val payload = ByteArray(24_000) { 1 } // 0.5 s at 48,000 bytes/s
+    val streamed = makePcmWav(24_000, 1, 16, payload, declaredDataSize = 0xFFFFFFFFL)
+    assertEquals(0.5, BridgePolicy.wavDurationSeconds(streamed)!!, 0.0001)
+
+    val paddedStreamed = BridgePolicy.prependWavSilence(streamed, 300)
+    assertEquals(streamed.size + 14_400, paddedStreamed.size)
+    assertEquals(0.8, BridgePolicy.wavDurationSeconds(paddedStreamed)!!, 0.0001)
+
+    val garbage = "not-a-wav-file-at-all".toByteArray()
+    assertNull(BridgePolicy.wavDurationSeconds(garbage))
+    assertTrue(garbage.contentEquals(BridgePolicy.prependWavSilence(garbage, 300)))
+  }
+
+  @Test
+  public fun speakTimeoutScalesWithAudioAndTextDurationAndClamps() {
+    assertEquals(45L, BridgePolicy.speakTimeoutSeconds(10.0, textLength = 0))
+    assertEquals(109L, BridgePolicy.speakTimeoutSeconds(78.1, textLength = 0))
+    assertEquals(180L, BridgePolicy.speakTimeoutSeconds(300.0, textLength = 0))
+
+    assertEquals(45L, BridgePolicy.speakTimeoutSeconds(null, textLength = 50))
+    assertEquals(180L, BridgePolicy.speakTimeoutSeconds(null, textLength = 1500))
+  }
 }
