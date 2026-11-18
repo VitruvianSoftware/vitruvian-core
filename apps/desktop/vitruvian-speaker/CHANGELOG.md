@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.45.0...vitruvian-speaker-v1.45.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* **vitruvian-speaker:** retry the live lock on each tick, and ask when the extension appears ([#5092](https://github.com/VitruvianSoftware/vitruvian-core/issues/5092)) ([5d48515](https://github.com/VitruvianSoftware/vitruvian-core/commit/5d48515b33e82fb8ffe57c7d9b40fcd1f10f6013)), closes [#3357](https://github.com/VitruvianSoftware/vitruvian-core/issues/3357) [#3356](https://github.com/VitruvianSoftware/vitruvian-core/issues/3356)
+
 ## [1.45.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.44.0...vitruvian-speaker-v1.45.0) (2026-11-18)
 
 
