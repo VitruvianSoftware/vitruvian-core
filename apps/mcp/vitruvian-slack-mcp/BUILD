@@ -46,14 +46,7 @@ rust_library(
     crate_name = "vitruvian_slack_mcp_rs_lib",
     crate_root = "rs/src/lib.rs",
     edition = "2021",
-    # One narrow exception to the inter-app boundary (#82): the Vitruvian Relay P0 spike
-    # builds on this crate (its TLS, base64 and URL helpers, and the token
-    # verifier, which is now //packages/rust/vitruvian-mcp-auth). This line goes
-    # when the spike is retired.
-    visibility = [
-        "//apps/mcp/vitruvian-slack-mcp:__subpackages__",
-        "//apps/suites/vitruvian-relay/spike:__pkg__",
-    ],
+    visibility = ["//apps/mcp/vitruvian-slack-mcp:__subpackages__"],
     deps = _CRATES + [
         # Token checking, shared with the Vitruvian Relay; built against this
         # app's crate hub.

@@ -479,22 +479,6 @@ crate.from_cargo(
 )
 use_repo(crate, "vitruvian_slack_mcp_crates")
 
-# The Vitruvian Relay P0 spike server's crates. A separate hub with its own Cargo.lock
-# because its image builds with cargo from apps/suites/vitruvian-relay/spike (plus the
-# vitruvian-slack-mcp crate it reuses). Re-lock: bazel run //tools/crates:lock -- --dir apps/suites/vitruvian-relay/spike
-crate.from_cargo(
-    name = "vitruvian_relay_spike_crates",
-    cargo_lock = "//apps/suites/vitruvian-relay/spike:Cargo.lock",
-    cargo_toml = "//apps/suites/vitruvian-relay/spike:Cargo.toml",
-    platform_triples = [
-        "aarch64-apple-darwin",
-        "aarch64-unknown-linux-gnu",
-        "x86_64-apple-darwin",
-        "x86_64-unknown-linux-gnu",
-    ],
-)
-use_repo(crate, "vitruvian_relay_spike_crates")
-
 # The Vitruvian Relay's crates (apps/suites/vitruvian-relay, and the shared
 # packages/rust/vitruvian-mcp-auth its members path-depend on). Its own Cargo.lock
 # because the relay's image builds with cargo from that folder.
@@ -591,7 +575,6 @@ crate.annotation(
     repositories = [
         "oauth_user_inspector_server_crates",
         "vitruvian_relay_crates",
-        "vitruvian_relay_spike_crates",
         "vitruvian_roborock_mcp_crates",
         "vitruvian_slack_mcp_crates",
     ],
