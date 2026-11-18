@@ -81,13 +81,19 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                                   _ onOutput: @escaping @MainActor @Sendable (Data) -> Void,
                                   _ onExit: @escaping @MainActor @Sendable (Int32) -> Void) throws -> VitruvianCodeRunningAgent
         private var customMakeConnection: ((AgentConnectionSpec) -> any AgentConnection)?
-        /// Builds the `AgentConnection` for a turn. Defaults to `CommandLineConnection`
-        /// backed by this `Environment` as it stands when the turn starts.
+        internal var hasCustomMakeConnection: Bool { customMakeConnection != nil }
+        /// Builds the `AgentConnection` for a turn. Defaults to `AntigravityACPConnection` when
+        /// `spec.provider` is Antigravity with `.acp` selected, and `CommandLineConnection` otherwise.
         public var makeConnection: (AgentConnectionSpec) -> any AgentConnection {
             get {
                 if let customMakeConnection { return customMakeConnection }
                 let current = self
-                return { spec in CommandLineConnection(spec: spec, environment: current) }
+                return { spec in
+                    if spec.provider.route == .antigravity && spec.provider.connection == .acp {
+                        return AntigravityACPConnection(spec: spec, environment: current)
+                    }
+                    return CommandLineConnection(spec: spec, environment: current)
+                }
             }
             set {
                 customMakeConnection = newValue
@@ -414,7 +420,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
     /// The app took the feature away: nothing stays resident, the bot included.
     public func stopAfterUninstall() {
         stopPolling()
-        session.stop()
+        session.stopConnection()
         if isRunning || managedPID != nil { stop() }
         didAutoStart = false
     }
@@ -432,10 +438,33 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
     }
 
     /// The bot outlives the app, as it does the standalone one; only the
-    /// reply in flight belongs to this process.
+    /// reply in flight and any open chat connection belong to this process.
     public func stopForQuit() {
-        session.stop()
+        session.stopConnection()
         stopPolling()
+    }
+
+    public nonisolated static let quitStopTimeout: TimeInterval = 5.0
+
+    /// Stops polling and awaits termination of every live connection and process group
+    /// held by the open chat before the app or extension exits.
+    public func stopAll() async {
+        stopPolling()
+        await session.stopAll()
+    }
+
+    /// Bounded `stopAll()` for app termination paths (`applicationShouldTerminate`).
+    public func stopAll(timeout: TimeInterval) async {
+        var completed = false
+        let stopTask = Task { @MainActor in
+            await self.stopAll()
+            completed = true
+        }
+        let deadline = ProcessInfo.processInfo.systemUptime + max(0.01, timeout)
+        while !completed && ProcessInfo.processInfo.systemUptime < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        stopTask.cancel()
     }
 
     // MARK: - Configuration
@@ -485,12 +514,16 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
 
     /// Switches the chat to `provider` and has the host remember it.
     public func updateActiveProvider(_ provider: VitruvianCodeCLIProvider) {
+        let previous = configuration.activeProvider
         host.chosenProviderID = provider.id
         var next = configuration
         next.activeProvider = provider
         next.model = resolvedModel(for: provider, fallback: envFileModel)
         configuration = next
         agentPath = locateProgram(of: provider)
+        if provider.id != previous.id || provider.route != previous.route || provider.connection != previous.connection {
+            session.resetLiveConnectionState(keepingWorktree: true)
+        }
         syncAvailableModels()
         session.refreshSessions(configuration: configuration)
     }
@@ -528,6 +561,9 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         updated.model = resolvedModel(for: next, fallback: envFileModel)
         configuration = updated
         agentPath = locateProgram(of: next)
+        if next.id != previous.id || next.route != previous.route || next.connection != previous.connection {
+            session.resetLiveConnectionState(keepingWorktree: true)
+        }
         syncAvailableModels()
         // Another provider, or the same one now run another way, has other
         // conversations; a changed name or flag does not.
@@ -1179,18 +1215,22 @@ extension VitruvianCodeEngine {
                     }
                 }
             }
-            let agyPath = (home as NSString).appendingPathComponent(".gemini/antigravity/brain/\(conversationID)/.system_generated/logs/transcript.jsonl")
-            if fileManager.fileExists(atPath: agyPath),
-               let content = try? String(contentsOfFile: agyPath, encoding: .utf8) {
-                return withAntigravityContext(parseTranscript(content), home: home, conversationID: conversationID)
+            for base in VitruvianCodeSessionSummary.antigravityDataDirectories {
+                let agyPath = (home as NSString).appendingPathComponent("\(base)/brain/\(conversationID)/.system_generated/logs/transcript.jsonl")
+                if fileManager.fileExists(atPath: agyPath),
+                   let content = try? String(contentsOfFile: agyPath, encoding: .utf8) {
+                    return withAntigravityContext(parseTranscript(content), home: home, conversationID: conversationID)
+                }
             }
             return nil
         }
 
-        let agyPath = (home as NSString).appendingPathComponent(".gemini/antigravity/brain/\(conversationID)/.system_generated/logs/transcript.jsonl")
-        if fileManager.fileExists(atPath: agyPath),
-           let content = try? String(contentsOfFile: agyPath, encoding: .utf8) {
-            return withAntigravityContext(parseTranscript(content), home: home, conversationID: conversationID)
+        for base in VitruvianCodeSessionSummary.antigravityDataDirectories {
+            let agyPath = (home as NSString).appendingPathComponent("\(base)/brain/\(conversationID)/.system_generated/logs/transcript.jsonl")
+            if fileManager.fileExists(atPath: agyPath),
+               let content = try? String(contentsOfFile: agyPath, encoding: .utf8) {
+                return withAntigravityContext(parseTranscript(content), home: home, conversationID: conversationID)
+            }
         }
 
         let claudeProjectsDir = (home as NSString).appendingPathComponent(".claude/projects")
@@ -1628,16 +1668,20 @@ extension VitruvianCodeEngine {
                     }
                 }
             }
-            let agyPath = (home as NSString).appendingPathComponent(".gemini/antigravity/brain/\(conversationID)/.system_generated/logs/transcript.jsonl")
-            if fileManager.fileExists(atPath: agyPath) {
-                return agyPath
+            for base in VitruvianCodeSessionSummary.antigravityDataDirectories {
+                let agyPath = (home as NSString).appendingPathComponent("\(base)/brain/\(conversationID)/.system_generated/logs/transcript.jsonl")
+                if fileManager.fileExists(atPath: agyPath) {
+                    return agyPath
+                }
             }
             return nil
         }
 
-        let agyPath = (home as NSString).appendingPathComponent(".gemini/antigravity/brain/\(conversationID)/.system_generated/logs/transcript.jsonl")
-        if fileManager.fileExists(atPath: agyPath) {
-            return agyPath
+        for base in VitruvianCodeSessionSummary.antigravityDataDirectories {
+            let agyPath = (home as NSString).appendingPathComponent("\(base)/brain/\(conversationID)/.system_generated/logs/transcript.jsonl")
+            if fileManager.fileExists(atPath: agyPath) {
+                return agyPath
+            }
         }
 
         let claudeProjectsDir = (home as NSString).appendingPathComponent(".claude/projects")

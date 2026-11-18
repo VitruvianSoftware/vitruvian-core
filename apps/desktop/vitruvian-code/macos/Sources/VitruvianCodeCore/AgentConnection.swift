@@ -170,6 +170,8 @@ public struct AgentTurnModes: Equatable, Sendable {
 
 /// Which agent connection to build and what its turn needs to run.
 public struct AgentConnectionSpec: Equatable, Sendable {
+    public typealias LiveModeProvider = @MainActor @Sendable () -> (mode: VitruvianCodeApprovalMode, planSwitch: Bool)
+
     public var kind: AgentConnectionKind
     public var provider: VitruvianCodeCLIProvider
     public var configuration: VitruvianCodeConfiguration
@@ -178,6 +180,7 @@ public struct AgentConnectionSpec: Equatable, Sendable {
     public var ollamaDefaultModel: String
     public var turnModes: AgentTurnModes
     public var environment: [String: String]
+    public var liveModeProvider: LiveModeProvider?
 
     public var executablePath: String? {
         get { agentPath }
@@ -192,7 +195,8 @@ public struct AgentConnectionSpec: Equatable, Sendable {
         workingDirectory: String,
         ollamaDefaultModel: String = VitruvianCodeSupport.ollamaFallbackModel,
         turnModes: AgentTurnModes = AgentTurnModes(),
-        environment: [String: String] = [:]
+        environment: [String: String] = [:],
+        liveModeProvider: LiveModeProvider? = nil
     ) {
         var resolvedConfiguration = configuration
         resolvedConfiguration.activeProvider = provider
@@ -204,6 +208,18 @@ public struct AgentConnectionSpec: Equatable, Sendable {
         self.ollamaDefaultModel = ollamaDefaultModel
         self.turnModes = turnModes
         self.environment = environment
+        self.liveModeProvider = liveModeProvider
+    }
+
+    public static func == (lhs: AgentConnectionSpec, rhs: AgentConnectionSpec) -> Bool {
+        lhs.kind == rhs.kind
+            && lhs.provider == rhs.provider
+            && lhs.configuration == rhs.configuration
+            && lhs.agentPath == rhs.agentPath
+            && lhs.workingDirectory == rhs.workingDirectory
+            && lhs.ollamaDefaultModel == rhs.ollamaDefaultModel
+            && lhs.turnModes == rhs.turnModes
+            && lhs.environment == rhs.environment
     }
 }
 
@@ -225,6 +241,18 @@ public protocol AgentConnection: AnyObject {
     func answer(_ requestID: String, _ choice: AgentAnswer) async throws
     func setConfigOption(_ id: String, _ value: AgentConfigValue) async throws -> [AgentConfigOption]
     func stop() async
+}
+
+/// Marker protocol for long-lived connections (such as ACP) reused across multiple turns
+/// within one open chat and updated live when plan mode toggles.
+@MainActor
+public protocol PersistentAgentConnection: AgentConnection {
+    var isConnected: Bool { get }
+    func syncPlanMode(_ planSwitch: Bool) async throws
+}
+
+public extension PersistentAgentConnection {
+    var isConnected: Bool { true }
 }
 
 /// Internal fast-path adopted by `CommandLineConnection` so main-actor callers

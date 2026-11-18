@@ -207,8 +207,23 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     /// every prompt sent since it opened; only what is saved is cut.
     public static let savedPromptHistoryLimit = 20
 
+    public enum TranscriptFollowerMode: Equatable, Sendable {
+        case full
+        case subagentsOnly
+    }
+
+    /// Maximum consecutive restart failures before refusing auto-restarts until a new chat or connection change.
+    public static let maxConsecutiveRestartFailures = 3
+
+    /// Idle shutdown limit before tearing down an unused persistent connection
+    /// (`ProviderSessionManager.ts:61`: `DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000`). Injectable for tests.
+    public var idleConnectionTimeout: TimeInterval = AntigravityACPSupport.defaultIdleTimeout
+
     @Published public private(set) var activeSubagents: [VitruvianCodeActiveSubagent] = []
     @Published public var isFollowerActive: Bool = false
+    public private(set) var transcriptFollowerMode: TranscriptFollowerMode = .full
+    public private(set) var consecutiveRestartFailures = 0
+    public private(set) var isConnectionLockedAfterFailures = false
     public internal(set) weak var engine: VitruvianCodeEngine?
     private var followerTimer: Timer?
     private var lastTranscriptModDate: Date?
@@ -219,6 +234,17 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     /// The app's settings, text and notices. Asked each time, never kept.
     private let host: any VitruvianCodeHost
     private var connection: (any AgentConnection)?
+    private var liveConnection: (any PersistentAgentConnection)?
+    private var liveConnectionProviderID: UUID?
+    private var liveConnectionKind: AgentConnectionKind?
+    private var liveEventDrainTask: Task<Void, Never>?
+    private var idleShutdownTask: Task<Void, Never>?
+    private var pendingConnectionStops: [UUID: Task<Void, Never>] = [:]
+    private var lastSyncedPlanMode: Bool?
+    public private(set) var liveWorktreePath: String?
+    private var lastRestartFailureMessage: String?
+    private var hasReceivedTurnFinishedEvent = false
+    private var turnFinishedWaiters: [CheckedContinuation<Void, Never>] = []
     private var isApplyingChatModeState = false
     private var isSyncingPlanMode = false
     private var replyID: UUID?
@@ -506,9 +532,18 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     }
 
     /// Starts watching the transcript file for live updates while in chat mode.
-    public func startTranscriptFollower(provider: VitruvianCodeCLIProvider? = nil) {
+    public func startTranscriptFollower(
+        provider: VitruvianCodeCLIProvider? = nil,
+        mode: TranscriptFollowerMode? = nil
+    ) {
         if let provider { self.activeProvider = provider }
-        guard let convID = conversationID, !convID.isEmpty, mode == .chat else { return }
+        let effectiveProvider = provider ?? activeProvider ?? engine?.configuration.activeProvider ?? .antigravity
+        transcriptFollowerMode = mode ?? (
+            (effectiveProvider.route == .antigravity && effectiveProvider.connection == .acp)
+                ? .subagentsOnly
+                : .full
+        )
+        guard let convID = conversationID, !convID.isEmpty, modeOrChatIsActive else { return }
         stopTranscriptFollower()
         isFollowerActive = true
         if !messages.isEmpty {
@@ -591,7 +626,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                 if self.activeSubagents != parsedSubagents {
                     self.activeSubagents = parsedSubagents
                 }
-                if !isRunning, let reloaded = environment.readTranscript(convID, provider) {
+                if !isRunning, transcriptFollowerMode == .full, let reloaded = environment.readTranscript(convID, provider) {
                     let merged = Self.mergingTranscriptReload(existing: self.messages, reloaded: reloaded)
                     if merged != self.messages {
                         self.messages = merged
@@ -601,11 +636,15 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         }
     }
 
+    private var modeOrChatIsActive: Bool {
+        mode == .chat
+    }
+
     /// Continues a past conversation: the next turn passes its id to the active provider.
     public func resume(_ summary: VitruvianCodeSessionSummary, configuration: VitruvianCodeConfiguration = VitruvianCodeConfiguration()) {
         // A turn still waiting for its model is dropped, not ended.
         awaitingModel = false
-        stop()
+        resetLiveConnectionState()
         turn += 1
         connection = nil
         isRunning = false
@@ -1065,22 +1104,152 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         fullPromptForFailure: String? = nil,
         turn current: Int
     ) {
+        if !isCustomCommand, isConnectionLockedAfterFailures {
+            let lockMessage = lastRestartFailureMessage
+                ?? "Live connection failed \(Self.maxConsecutiveRestartFailures) times in a row. Start a new chat or change the connection to retry."
+            reportedError = true
+            reportedErrorText = lockMessage
+            if currentReplyText.isEmpty { removeReply() }
+            messages.append(VitruvianCodeChatMessage(role: .agent, text: lockMessage, isError: true, createdAt: Date()))
+            connection = nil
+            isRunning = false
+            stopTranscriptFollower()
+            elapsedTimer?.invalidate()
+            elapsedTimer = nil
+            replyID = nil
+            lastFailedPrompt = messages.last(where: { $0.role == .user })?.text
+            report(VitruvianCodeTurnNotice(providerName: providerName, text: "", failed: true, endedCleanly: false, failureDetail: lockMessage))
+            return
+        }
+
+        cancelIdleConnectionShutdown()
+
+        if !isCustomCommand, let existing = liveConnection, !existing.isConnected {
+            discardLiveConnection(existing)
+        }
+
+        if !isCustomCommand,
+           let reusable = liveConnection,
+           reusable.isConnected,
+           liveConnectionProviderID == configuration.activeProvider.id,
+           liveConnectionKind == configuration.activeProvider.connection {
+            connection = reusable
+            hasReceivedTurnFinishedEvent = false
+            let blocks = Self.promptBlocks(text: text, attachments: modes.attachments)
+            Task { @MainActor [weak self] in
+                guard let self, current == self.turn else { return }
+                do {
+                    if self.lastSyncedPlanMode != modes.plan {
+                        try await reusable.syncPlanMode(modes.plan)
+                        self.lastSyncedPlanMode = modes.plan
+                    }
+                    let stopReason = try await reusable.prompt(blocks)
+                    await self.waitForTurnFinishedEvent()
+                    guard current == self.turn else { return }
+                    if stopReason == .cancelled {
+                        self.stoppedByUser = true
+                    }
+                    self.agentDidExit(stopReason == .error ? 1 : 0, turn: current)
+                    self.scheduleIdleConnectionShutdown()
+                } catch {
+                    self.discardLiveConnection(reusable)
+                    await reusable.stop()
+                    guard current == self.turn else { return }
+                    self.launchDidFail(
+                        error: error,
+                        isCustomCommand: false,
+                        fullPromptForFailure: fullPromptForFailure
+                    )
+                }
+            }
+            return
+        }
+
         let turnConfiguration = Self.turnConfiguration(configuration, planMode: modes.plan)
         let directory = workingDirectory(for: configuration)
+        let usesDefaultCommandLine = (configuration.activeProvider.connection ?? .commandLine) == .commandLine
+            && !environment.hasCustomMakeConnection
+
+        if !isCustomCommand,
+           !usesDefaultCommandLine,
+           modes.worktree,
+           liveWorktreePath == nil,
+           VitruvianCodeSupport.isGitRepo(at: URL(fileURLWithPath: directory)) {
+            Task { @MainActor [weak self] in
+                guard let self, current == self.turn else { return }
+                let worktree = await self.worktreeManager.createWorktree(
+                    taskName: "chat-\(current)",
+                    baseRepositoryPath: directory,
+                    provider: configuration.activeProvider,
+                    runGit: self.environment.runProgram
+                )
+                guard current == self.turn, self.isRunning else { return }
+                if case .ready = worktree.setupStatus {
+                    self.liveWorktreePath = worktree.worktreePath
+                }
+                let resolvedDir = self.liveWorktreePath ?? directory
+                self.launchResolved(
+                    text,
+                    resolvedDirectory: resolvedDir,
+                    configuration: configuration,
+                    turnConfiguration: turnConfiguration,
+                    agentPath: agentPath,
+                    modes: modes,
+                    ollamaDefaultModel: ollamaDefaultModel,
+                    isCustomCommand: false,
+                    fullPromptForFailure: fullPromptForFailure,
+                    turn: current
+                )
+            }
+            return
+        }
+
+        let resolvedDirectory = liveWorktreePath ?? directory
+        launchResolved(
+            text,
+            resolvedDirectory: resolvedDirectory,
+            configuration: configuration,
+            turnConfiguration: turnConfiguration,
+            agentPath: agentPath,
+            modes: modes,
+            ollamaDefaultModel: ollamaDefaultModel,
+            isCustomCommand: isCustomCommand,
+            fullPromptForFailure: fullPromptForFailure,
+            turn: current
+        )
+    }
+
+    private func launchResolved(
+        _ text: String,
+        resolvedDirectory: String,
+        configuration: VitruvianCodeConfiguration,
+        turnConfiguration: VitruvianCodeConfiguration,
+        agentPath: String,
+        modes: AgentTurnModes,
+        ollamaDefaultModel: String,
+        isCustomCommand: Bool,
+        fullPromptForFailure: String?,
+        turn current: Int
+    ) {
         let spec = AgentConnectionSpec(
             provider: configuration.activeProvider,
             configuration: turnConfiguration,
             agentPath: agentPath,
-            workingDirectory: directory,
+            workingDirectory: resolvedDirectory,
             ollamaDefaultModel: ollamaDefaultModel,
             turnModes: modes,
-            environment: environment.processEnvironment
+            environment: environment.processEnvironment,
+            liveModeProvider: { [weak self] in
+                guard let self else { return (turnConfiguration.approvalMode, modes.plan) }
+                let base = self.engine?.configuration ?? configuration
+                return (self.effectiveApprovalMode(for: base), self.effectivePlanMode)
+            }
         )
         let turnConnection = environment.makeConnection(spec)
         connection = turnConnection
         let blocks = Self.promptBlocks(text: text, attachments: modes.attachments)
         let sessionRequest = AgentSessionRequest(
-            workingDirectory: directory,
+            workingDirectory: resolvedDirectory,
             resumeSessionID: isCustomCommand ? nil : conversationID
         )
 
@@ -1117,6 +1286,104 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                     isCustomCommand: isCustomCommand,
                     fullPromptForFailure: fullPromptForFailure
                 )
+            }
+            return
+        }
+
+        if let persistent = turnConnection as? any PersistentAgentConnection, !isCustomCommand {
+            discardLiveConnection(nil)
+            liveConnection = persistent
+            liveConnectionProviderID = configuration.activeProvider.id
+            liveConnectionKind = configuration.activeProvider.connection
+            lastSyncedPlanMode = modes.plan
+            hasReceivedTurnFinishedEvent = false
+
+            let drainTask = Task { @MainActor [weak self] in
+                for await event in persistent.events {
+                    guard let self else { break }
+                    self.handle(event: event)
+                    if case .finished = event {
+                        self.markTurnFinishedEventReceived()
+                    }
+                }
+                guard let self else { return }
+                self.markTurnFinishedEventReceived()
+                if self.liveConnection === persistent {
+                    self.liveConnection = nil
+                    self.liveEventDrainTask = nil
+                    self.lastSyncedPlanMode = nil
+                    if self.pendingConnectionStops.isEmpty {
+                        self.cancelPendingApprovalCards()
+                    }
+                }
+            }
+            liveEventDrainTask = drainTask
+
+            Task { @MainActor [weak self] in
+                guard let self, current == self.turn else {
+                    drainTask.cancel()
+                    await persistent.stop()
+                    return
+                }
+                let request = AgentSessionRequest(
+                    workingDirectory: resolvedDirectory,
+                    resumeSessionID: self.conversationID
+                )
+
+                do {
+                    let startedID = try await persistent.start(request)
+                    guard current == self.turn else {
+                        await persistent.stop()
+                        return
+                    }
+                    self.consecutiveRestartFailures = 0
+                    self.isConnectionLockedAfterFailures = false
+                    self.lastRestartFailureMessage = nil
+                    self.lastSyncedPlanMode = modes.plan
+                    if !startedID.isEmpty {
+                        self.assignConversationID(startedID)
+                        if !self.isFollowerActive {
+                            self.startTranscriptFollower(provider: configuration.activeProvider)
+                        }
+                    }
+                } catch {
+                    self.discardLiveConnection(persistent)
+                    await persistent.stop()
+                    await drainTask.value
+                    self.consecutiveRestartFailures += 1
+                    if self.consecutiveRestartFailures >= Self.maxConsecutiveRestartFailures {
+                        self.isConnectionLockedAfterFailures = true
+                    }
+                    guard current == self.turn else { return }
+                    self.launchDidFail(
+                        error: error,
+                        isCustomCommand: false,
+                        fullPromptForFailure: fullPromptForFailure
+                    )
+                    self.lastRestartFailureMessage = self.reportedErrorText
+                    return
+                }
+
+                do {
+                    let stopReason = try await persistent.prompt(blocks)
+                    await self.waitForTurnFinishedEvent()
+                    guard current == self.turn else { return }
+                    if stopReason == .cancelled {
+                        self.stoppedByUser = true
+                    }
+                    self.agentDidExit(stopReason == .error ? 1 : 0, turn: current)
+                    self.scheduleIdleConnectionShutdown()
+                } catch {
+                    self.discardLiveConnection(persistent)
+                    await persistent.stop()
+                    await drainTask.value
+                    guard current == self.turn else { return }
+                    self.launchDidFail(
+                        error: error,
+                        isCustomCommand: false,
+                        fullPromptForFailure: fullPromptForFailure
+                    )
+                }
             }
             return
         }
@@ -1328,7 +1595,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     public func newChat() {
         // A turn still waiting for its model is dropped, not ended.
         awaitingModel = false
-        stop()
+        resetLiveConnectionState()
         stopTranscriptFollower()
         activeSubagents = []
         turn += 1
@@ -1349,6 +1616,138 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         messages = []
         mode = .compact
         resetComposerExtras()
+    }
+
+    /// Stops any live persistent connection held open by this chat (new chat, switch chat, window close, quit, idle).
+    /// Pass `keepingWorktree: true` for idle shutdowns and mid-chat connection switches so the next prompt keeps the
+    /// chat's worktree; new chat, switching chats, and closing/quitting pass `false` to clear it.
+    public func stopConnection(keepingWorktree: Bool = false) {
+        cancelIdleConnectionShutdown()
+        stop()
+        markTurnFinishedEventReceived()
+        cancelPendingApprovalCards()
+        if !keepingWorktree {
+            liveWorktreePath = nil
+        }
+
+        var toStop: [any AgentConnection] = []
+        var seenIDs = Set<ObjectIdentifier>()
+        for candidate in [liveConnection as (any AgentConnection)?, connection] {
+            guard let candidate else { continue }
+            if candidate is any _ImmediateAgentConnection {
+                // `stop()` above already cancelled any running immediate turn synchronously;
+                // keep `_ImmediateAgentConnection` inline so synchronous callers and test rigs
+                // never outlive their stack frame inside an async teardown task.
+                continue
+            }
+            let oid = ObjectIdentifier(candidate as AnyObject)
+            if seenIDs.insert(oid).inserted {
+                toStop.append(candidate)
+            }
+        }
+        liveConnection = nil
+        connection = nil
+        liveConnectionProviderID = nil
+        liveConnectionKind = nil
+        lastSyncedPlanMode = nil
+        liveEventDrainTask?.cancel()
+        liveEventDrainTask = nil
+
+        guard !toStop.isEmpty else {
+            if isRunning {
+                isRunning = false
+                elapsedTimer?.invalidate()
+                elapsedTimer = nil
+                turn += 1
+            }
+            return
+        }
+        let token = UUID()
+        let stopTask = Task { @MainActor [weak self] in
+            for conn in toStop {
+                await conn.stop()
+            }
+            self?.pendingConnectionStops.removeValue(forKey: token)
+        }
+        pendingConnectionStops[token] = stopTask
+    }
+
+    /// Stops every active/live connection and awaits completion of all pending `stop()` teardowns.
+    public func stopAll() async {
+        stopConnection(keepingWorktree: false)
+        while !pendingConnectionStops.isEmpty {
+            let tasks = Array(pendingConnectionStops.values)
+            for task in tasks {
+                await task.value
+            }
+        }
+    }
+
+    /// Tears down the open connection and clears any failed-restart lockout (e.g. on New Chat or connection change).
+    public func resetLiveConnectionState(keepingWorktree: Bool = false) {
+        stopConnection(keepingWorktree: keepingWorktree)
+        consecutiveRestartFailures = 0
+        isConnectionLockedAfterFailures = false
+        lastRestartFailureMessage = nil
+    }
+
+    private func discardLiveConnection(_ target: (any PersistentAgentConnection)?) {
+        if let target, let existing = liveConnection, existing !== target {
+            return
+        }
+        liveConnection = nil
+        liveConnectionProviderID = nil
+        liveConnectionKind = nil
+        lastSyncedPlanMode = nil
+        liveEventDrainTask = nil
+    }
+
+    private func scheduleIdleConnectionShutdown() {
+        cancelIdleConnectionShutdown()
+        guard liveConnection != nil, !isRunning, idleConnectionTimeout > 0 else { return }
+        let nanos = UInt64(max(1_000_000, idleConnectionTimeout * 1_000_000_000))
+        idleShutdownTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: nanos)
+            guard !Task.isCancelled, let self, !self.isRunning, self.liveConnection != nil else { return }
+            self.stopConnection(keepingWorktree: true)
+        }
+    }
+
+    private func cancelIdleConnectionShutdown() {
+        idleShutdownTask?.cancel()
+        idleShutdownTask = nil
+    }
+
+    private func markTurnFinishedEventReceived() {
+        hasReceivedTurnFinishedEvent = true
+        let waiters = turnFinishedWaiters
+        turnFinishedWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
+    }
+
+    private func waitForTurnFinishedEvent() async {
+        if hasReceivedTurnFinishedEvent { return }
+        await withCheckedContinuation { continuation in
+            if hasReceivedTurnFinishedEvent {
+                continuation.resume()
+            } else {
+                turnFinishedWaiters.append(continuation)
+            }
+        }
+    }
+
+    private func cancelPendingApprovalCards() {
+        awaitingAnswers = []
+        var changed = false
+        for index in messages.indices where messages[index].approvalRequest?.status == .pending {
+            messages[index].approvalRequest?.status = .denied
+            changed = true
+        }
+        if changed {
+            refreshPendingApproval()
+        }
     }
 
     /// What belonged to the conversation that was open: a prompt waiting
@@ -1547,9 +1946,31 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                     VitruvianCodeChatMessage(role: .agent, text: failure.message, isError: true, createdAt: Date())
                 )
             }
+        case .subagent(let subagent, let started):
+            if started {
+                if let index = activeSubagents.firstIndex(where: { $0.id == subagent.id }) {
+                    activeSubagents[index] = subagent
+                } else {
+                    activeSubagents.append(subagent)
+                }
+            } else {
+                activeSubagents.removeAll { $0.id == subagent.id }
+            }
+        case .question(let question):
+            finishThinkingIfNeeded()
+            // Step 2b interim behavior: display the agent question as an agent message and answer
+            // `.cancelled` so the turn never hangs waiting for user input until Step 2c adds AgentFormCard.
+            appendToReply(Self.formatInterimQuestionMessage(question))
+            if let active = connection ?? liveConnection {
+                if let immediate = active as? any _ImmediateAgentConnection {
+                    immediate.sendImmediateAnswer(question.requestID, .cancelled)
+                } else {
+                    Task { @MainActor in
+                        try? await active.answer(question.requestID, .cancelled)
+                    }
+                }
+            }
         case .planReplaced,
-             .subagent,
-             .question,
              .configOptions,
              .compaction,
              .notice,
@@ -1559,11 +1980,72 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         }
     }
 
+    private nonisolated static func formatInterimQuestionMessage(_ question: AgentQuestion) -> String {
+        var lines: [String] = []
+        let trimmed = question.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            lines.append(trimmed)
+        }
+        for field in question.fields where !field.options.isEmpty {
+            for option in field.options {
+                lines.append("- \(option.label)")
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Maps the interim Step 2b approval card buttons to ACP option IDs (`allow_once`, `allow_always`,
+    /// `reject_once`), falling back to the nearest same-direction option or `.cancelled`.
+    /// When `options` is empty (legacy Claude stream-json path), preserves `"allow"` / `"allow_always"`.
+    public nonisolated static func approvalAnswer(
+        for options: [AgentPermissionOption],
+        decision: VitruvianCodeApprovalRequest.Status
+    ) -> AgentAnswer {
+        guard !options.isEmpty else {
+            switch decision {
+            case .pending, .denied:
+                return .cancelled
+            case .approved:
+                return .option("allow")
+            case .sessionAllowed:
+                return .option("allow_always")
+            }
+        }
+        switch decision {
+        case .pending:
+            return .cancelled
+        case .approved:
+            if let exact = options.first(where: { $0.kind == .allowOnce }) {
+                return .option(exact.id)
+            }
+            if let nearest = options.first(where: { $0.kind == .allowAlways }) {
+                return .option(nearest.id)
+            }
+            return .cancelled
+        case .sessionAllowed:
+            if let exact = options.first(where: { $0.kind == .allowAlways }) {
+                return .option(exact.id)
+            }
+            if let nearest = options.first(where: { $0.kind == .allowOnce }) {
+                return .option(nearest.id)
+            }
+            return .cancelled
+        case .denied:
+            if let exact = options.first(where: { $0.kind == .rejectOnce }) {
+                return .option(exact.id)
+            }
+            if let nearest = options.first(where: { $0.kind == .rejectAlways }) {
+                return .option(nearest.id)
+            }
+            return .cancelled
+        }
+    }
+
     /// Resolves an interactive tool execution approval request.
     /// The decision is shown on the card; when the agent is waiting on it
-    /// (Claude Code's `can_use_tool`), it is also sent on the agent's
-    /// standard input, which lets the tool run or refuses it. Allow for
-    /// Session also answers later requests for the same tool by itself.
+    /// (Claude Code's `can_use_tool` or ACP `session/request_permission`), it is
+    /// also sent back so the tool runs or is refused. Allow for Session also
+    /// answers later requests for the same tool by itself.
     public func decideApproval(messageID: UUID, decision: VitruvianCodeApprovalRequest.Status) {
         guard decision != .pending,
               let idx = messages.firstIndex(where: { $0.id == messageID }),
@@ -1579,18 +2061,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     /// one waiting on it.
     private func answer(_ request: VitruvianCodeApprovalRequest, decision: VitruvianCodeApprovalRequest.Status) {
         guard let requestID = request.requestID, awaitingAnswers.remove(requestID) != nil else { return }
-        let choice: AgentAnswer
-        switch decision {
-        case .pending:
-            return
-        case .approved:
-            choice = .option("allow")
-        case .sessionAllowed:
-            choice = .option("allow_always")
-        case .denied:
-            choice = .cancelled
-        }
-        guard let active = connection else { return }
+        let choice = Self.approvalAnswer(for: request.options, decision: decision)
+        guard let active = connection ?? liveConnection else { return }
         if let immediate = active as? any _ImmediateAgentConnection {
             immediate.sendImmediateAnswer(requestID, choice)
         } else {

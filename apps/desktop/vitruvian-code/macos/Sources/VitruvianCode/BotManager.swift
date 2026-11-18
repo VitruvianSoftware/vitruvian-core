@@ -80,6 +80,10 @@ class BotManager: ObservableObject {
         engine.startPolling()
     }
 
+    func stopForQuit(timeout: TimeInterval = VitruvianCodeEngine.quitStopTimeout) async {
+        await engine.stopAll(timeout: timeout)
+    }
+
     /// The engine's log lines, then why the bot could not start or the
     /// settings could not be saved, when there is such a problem: the log
     /// panel is the only place this app has to say it.

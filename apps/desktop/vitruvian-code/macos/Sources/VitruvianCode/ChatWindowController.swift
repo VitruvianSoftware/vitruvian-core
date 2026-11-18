@@ -713,4 +713,8 @@ final class QuickPromptWindowController: NSObject, NSWindowDelegate {
             clickOutsideMonitor = nil
         }
     }
+
+    func windowWillClose(_ notification: Notification) {
+        engine?.session.stopConnection()
+    }
 }

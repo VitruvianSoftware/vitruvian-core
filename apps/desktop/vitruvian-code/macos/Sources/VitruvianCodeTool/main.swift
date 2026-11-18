@@ -126,6 +126,7 @@ let settings = ToolSettings(folder: dataFolder, log: { message in link.log(messa
 let engine = ToolEngine(environment: .live, host: settings)
 nonisolated(unsafe) var languageTag = "en"
 let window = ToolWindowController(engine: engine, language: { languageTag })
+application.delegate = window
 let codeTool = VitruvianCodeTool(parts: .init(
     link: link, settings: settings, engine: engine, window: window,
     chooseFolder: {
@@ -212,8 +213,8 @@ tool.onLanguageChanged = { app in
 // from the main thread, after the engine has let the bot be.
 Thread.detachNewThread {
     let status = kit.tool.serve()
-    DispatchQueue.main.async {
-        codeTool.stop()
+    Task { @MainActor in
+        await codeTool.stopAll()
         exit(status)
     }
 }

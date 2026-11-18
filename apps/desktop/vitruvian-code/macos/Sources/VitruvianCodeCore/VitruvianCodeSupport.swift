@@ -2011,6 +2011,7 @@ public struct AgentQuestion: Identifiable, Equatable, Sendable, Codable {
 public struct AgentFailure: Equatable, Sendable, Codable {
     public enum Kind: String, Equatable, Sendable, Codable {
         case startupFailed = "startup_failed"
+        case auth
         case protocolError = "protocol_error"
         case exited
         case timedOut = "timed_out"

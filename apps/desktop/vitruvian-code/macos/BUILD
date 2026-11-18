@@ -501,6 +501,23 @@ rust_binary(
     "check_packaged_app",
 ]]
 
+rust_binary(
+    name = "record-acp-fixture",
+    srcs = ["scripts/src/bin/record_acp_fixture.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/desktop/vitruvian-code:__subpackages__"],
+    deps = [":vitruvian_code_scripts_lib"],
+)
+
+[alias(
+    name = n,
+    actual = ":record-acp-fixture",
+    visibility = ["//apps/desktop/vitruvian-code:__subpackages__"],
+) for n in [
+    "record_acp_fixture",
+]]
+
 # Mac runners are scarce (5 at a time on GitHub's free plan), so this unit
 # lists only what needs a Mac: Swift, app bundles, and tests whose code differs
 # on macOS. Tests that pass on Linux run in ci.yaml's build-test whenever they

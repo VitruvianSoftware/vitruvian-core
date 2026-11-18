@@ -42,12 +42,13 @@ private final class QuickPromptPanel: NSPanel {
 /// is drawn embedded, above the menu bar, without shadow, and stays put
 /// when the person clicks elsewhere; undocked, it floats again.
 @MainActor
-final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow {
+final class ToolWindowController: NSObject, NSWindowDelegate, NSApplicationDelegate, QuickPromptWindow {
     private typealias Layout = VitruvianCodeQuickPromptLayout
 
     private let engine: ToolEngine
     private var language: () -> String
     private var panel: NSPanel?
+    private var isTerminating = false
     private var hosting: NSHostingView<VitruvianCodeChatView>?
     private var modeObserver: AnyCancellable?
     private var keyMonitor: Any?
@@ -374,5 +375,23 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
         keyMonitor = nil
         localClickMonitor = nil
         outsideClickMonitor = nil
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        if !isDockedInSlot {
+            engine.session.stopConnection()
+        }
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !isTerminating else { return .terminateNow }
+        isTerminating = true
+        Task { @MainActor [weak self] in
+            if let self {
+                await self.engine.stopAll(timeout: VitruvianCodeEngine.quitStopTimeout)
+            }
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 }
