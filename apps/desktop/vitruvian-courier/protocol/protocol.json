@@ -230,7 +230,7 @@
         },
         "members_preview": {
           "type": "RowMember[]?",
-          "doc": "For a group (not is_direct) with no picture of its own (avatar_path and local_avatar_path both \"\" on the engine's side), up to 3 of its joined members other than me, for a stacked picture: who spoke most recently first, then those with a picture, then by name. Bridge bots and my own ghosts are left out. Left out for a one-to-one chat, a group with a picture, or a group with nobody else (and by an engine before this field): read it as []."
+          "doc": "Up to 3 of the chat's joined members other than me: who spoke most recently first, then those with a picture, then by name. Bridge bots, the service members the chat lists in io.element.functional_members, and my own ghosts are left out. For a group (not is_direct) with no picture of its own (avatar_path and local_avatar_path both \"\" on the engine's side) it is for a stacked picture. For a one-to-one chat it is always sent and an entry is the other person, and the app takes them as the one only when exactly one is listed; their user_id colours the chat's initials. Left out for a group with a picture or with nobody else (and by an engine before this field, or before it covered one-to-one chats): read it as []."
         },
         "preview_in_thread": {
           "type": "bool",

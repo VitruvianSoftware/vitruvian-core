@@ -204,5 +204,76 @@ final class ThreadModelTests: XCTestCase {
         }
         XCTAssertEqual(messages.map(\.id), ["$r", "$t1"])
         XCTAssertTrue(messages.allSatisfy(\.isDirect), "Direct chat thread pane items must have isDirect == true")
+        XCTAssertTrue(messages.allSatisfy { !$0.showsSenderAvatar && !$0.showsAvatarColumn },
+                      "Direct chat thread pane hides incoming avatars and reserves no avatar column")
+    }
+
+    func testOneToOneChatBecomingGroupRebuildsMainTimelineAndThreadPaneAvatars() async throws {
+        let h = try await startConversation(
+            ["!chat": [threadRoot(id: "$r", room: "!chat", at: 1, replies: 2),
+                       threadReply(id: "$t1", root: "$r", room: "!chat", at: 2, body: "First reply", mine: false),
+                       threadReply(id: "$t2", root: "$r", room: "!chat", at: 3, body: "Second in run", mine: false),
+                       textEvent(id: "$m2", room: "!chat", at: 4, body: "Still in run", mine: false)]],
+            features: ["!chat": featuresJSON(replyIsThread: true)],
+            rows: ["!chat": chatRow("!chat", name: "Ann", network: "signal", direct: true)]
+        )
+        harnesses.append(h)
+        try await h.open("!chat")
+        let thread = h.conversation.thread
+        h.conversation.openThread("$r")
+        try await waitUntil { thread.isLoaded }
+
+        let initialChatMsgs = h.conversation.items.compactMap { if case let .message(m) = $0 { m } else { nil } }
+        let initialThreadMsgs = thread.items.compactMap { if case let .message(m) = $0 { m } else { nil } }
+        XCTAssertEqual(initialChatMsgs.map(\.showsSenderAvatar), [false, false])
+        XCTAssertEqual(initialChatMsgs.map(\.showsAvatarColumn), [false, false])
+        XCTAssertEqual(initialThreadMsgs.map(\.showsSenderAvatar), [false, false, false])
+        XCTAssertEqual(initialThreadMsgs.map(\.showsAvatarColumn), [false, false, false])
+
+        // The 1:1 chat converts into a group and the inbox row updates.
+        let groupRow = chatRow("!chat", name: "Ann, Bo", network: "signal", direct: false)
+        h.rows.rows["!chat"] = groupRow
+        h.conversation.learnChat(groupRow)
+
+        let updatedChatMsgs = h.conversation.items.compactMap { if case let .message(m) = $0 { m } else { nil } }
+        let updatedThreadMsgs = thread.items.compactMap { if case let .message(m) = $0 { m } else { nil } }
+        XCTAssertFalse(thread.isDirect)
+        XCTAssertEqual(updatedChatMsgs.map(\.showsSenderAvatar), [true, false], "group timeline shows one avatar per run")
+        XCTAssertEqual(updatedChatMsgs.map(\.showsAvatarColumn), [true, true], "group timeline keeps the avatar column")
+        XCTAssertEqual(updatedThreadMsgs.map(\.showsSenderAvatar), [true, false, false], "group thread pane shows one avatar per run")
+        XCTAssertEqual(updatedThreadMsgs.map(\.showsAvatarColumn), [true, true, true], "group thread pane keeps the avatar column")
+    }
+
+    func testBridgedDirectRoomWithExtraBotMemberKeepsIsDirectInChatAndThread() async throws {
+        let h = try await startConversation(
+            ["!dm": [threadRoot(id: "$r", room: "!dm", at: 1, replies: 1),
+                     threadReply(id: "$t1", root: "$r", room: "!dm", at: 2, body: "From contact", mine: false)]],
+            features: ["!dm": featuresJSON(replyIsThread: true)],
+            rows: ["!dm": chatRow("!dm", name: "Ann", network: "whatsapp", direct: true)]
+        )
+        harnesses.append(h)
+        try await h.open("!dm")
+        let thread = h.conversation.thread
+        h.conversation.openThread("$r")
+        try await waitUntil { thread.isLoaded }
+
+        // Even with 3 room members (me + contact + bridge/network bot), isDirect from the room metadata holds.
+        let infoWithBot = RoomInfoResult(
+            roomID: "!dm", name: "Ann", remoteName: "Ann", network: "whatsapp", isDirect: true,
+            members: [
+                Member(userID: Timeline.meUserID, name: "Me"),
+                Member(userID: "@ann:courier.local", name: "Ann"),
+                Member(userID: "@whatsappbot:courier.local", name: "WhatsApp bridge bot", isBot: true),
+            ],
+            features: .noFeatures
+        )
+        h.conversation.setChatInfoForTesting(infoWithBot)
+
+        XCTAssertEqual(h.conversation.isDirectChat, true)
+        XCTAssertTrue(thread.isDirect)
+        let chatMsgs = h.conversation.items.compactMap { if case let .message(m) = $0 { m } else { nil } }
+        let threadMsgs = thread.items.compactMap { if case let .message(m) = $0 { m } else { nil } }
+        XCTAssertTrue(chatMsgs.allSatisfy { $0.isDirect && !$0.showsSenderAvatar && !$0.showsAvatarColumn })
+        XCTAssertTrue(threadMsgs.allSatisfy { $0.isDirect && !$0.showsSenderAvatar && !$0.showsAvatarColumn })
     }
 }

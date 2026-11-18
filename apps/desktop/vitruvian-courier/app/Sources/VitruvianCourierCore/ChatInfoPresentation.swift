@@ -62,11 +62,14 @@ public enum ChatInfoPresentation {
         public let name: String
         public let initials: String
         public let avatarPath: String
+        /// What the placeholder colour is keyed on: the sender's user ID (their name only when no ID is known).
+        public let identity: String
 
-        public init(name: String, initials: String, avatarPath: String) {
+        public init(name: String, initials: String, avatarPath: String, identity: String? = nil) {
             self.name = name
             self.initials = initials
             self.avatarPath = avatarPath
+            self.identity = AvatarColor.identity(id: identity ?? "", fallbackName: name.isEmpty ? "?" : name)
         }
     }
 
@@ -121,7 +124,7 @@ public enum ChatInfoPresentation {
 
         guard !name.isEmpty || !avatarPath.isEmpty else { return nil }
         let initial = String(InboxRow.initials(of: name.isEmpty ? "?" : name).prefix(1))
-        return MediaSender(name: name, initials: initial, avatarPath: avatarPath)
+        return MediaSender(name: name, initials: initial, avatarPath: avatarPath, identity: rawSenderID)
     }
 
     /// My own picture for Chat Info. The chat's member list often has none for me, so this looks for one in turn: my
@@ -169,12 +172,12 @@ public enum ChatInfoPresentation {
     public static func mediaSender(for event: Event, members: [Member], ownAvatarPath: String) -> MediaSender? {
         guard let sender = mediaSender(for: event, members: members) else {
             guard (event.mine || event.sender == Timeline.meUserID), !ownAvatarPath.isEmpty else { return nil }
-            return MediaSender(name: String(localized: "You"), initials: "Y", avatarPath: ownAvatarPath)
+            return MediaSender(name: String(localized: "You"), initials: "Y", avatarPath: ownAvatarPath, identity: Timeline.meUserID)
         }
         guard sender.avatarPath.isEmpty, event.mine || event.sender == Timeline.meUserID, !ownAvatarPath.isEmpty else {
             return sender
         }
-        return MediaSender(name: sender.name, initials: sender.initials, avatarPath: ownAvatarPath)
+        return MediaSender(name: sender.name, initials: sender.initials, avatarPath: ownAvatarPath, identity: sender.identity)
     }
 
     /// Shows the "Admin" badge only when the member is an admin AND not every member in the chat is an admin.
@@ -183,7 +186,7 @@ public enum ChatInfoPresentation {
     }
 
     /// Resolves up to 3 member tuples for `GroupCompositeAvatar`, matching `InboxRow.groupAvatarStyle`.
-    public static func groupCompositeMembers(for info: RoomInfoResult) -> [(name: String, avatarPath: String?)] {
+    public static func groupCompositeMembers(for info: RoomInfoResult) -> [(name: String, avatarPath: String?, identity: String)] {
         if case .channel = GroupAvatarStyle.of(name: info.name) {
             return []
         }
@@ -194,14 +197,15 @@ public enum ChatInfoPresentation {
             let displayName = member.name.trimmingCharacters(in: .whitespacesAndNewlines)
             return (
                 name: displayName.isEmpty ? member.userID : displayName,
-                avatarPath: member.avatarPath.isEmpty ? nil : Optional(member.avatarPath)
+                avatarPath: member.avatarPath.isEmpty ? nil : Optional(member.avatarPath),
+                identity: member.avatarIdentity
             )
         }
         if !picked.isEmpty {
             return Array(picked)
         }
         if case let .people(people) = GroupAvatarStyle.of(name: info.name) {
-            return people.map { ($0.name, $0.avatarPath) }
+            return people.map { ($0.name, $0.avatarPath, $0.identity) }
         }
         return []
     }

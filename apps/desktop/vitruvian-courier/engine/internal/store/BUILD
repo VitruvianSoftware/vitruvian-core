@@ -74,6 +74,7 @@ go_test(
         "query_test.go",
         "receipts_test.go",
         "reminders_test.go",
+        "rowpreview_direct_test.go",
         "rowpreview_test.go",
         "search_test.go",
         "searchindex_test.go",

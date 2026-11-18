@@ -208,14 +208,17 @@ public enum RelativeTime {
     }
 }
 
-/// One person on a group's composite avatar: a name, and a local picture when there is one.
+/// One person on a group's composite avatar: a name, a local picture when there is one, and the identity their colour
+/// comes from (their user ID; the name only when the circles are drawn from a group's name, with no IDs known).
 public struct AvatarMember: Equatable, Sendable {
     public let name: String
     public let avatarPath: String?
+    public let identity: String
 
-    public init(name: String, avatarPath: String? = nil) {
+    public init(name: String, avatarPath: String? = nil, identity: String? = nil) {
         self.name = name
         self.avatarPath = avatarPath
+        self.identity = AvatarColor.identity(id: identity ?? "", fallbackName: name)
     }
 }
 
@@ -253,7 +256,7 @@ extension InboxRow {
         let byName = GroupAvatarStyle.of(name: name)
         if case .channel = byName { return byName }
         let real = memberPreview.prefix(GroupAvatarStyle.maxMembers)
-            .map { AvatarMember(name: $0.name, avatarPath: $0.avatarPath) }
+            .map { AvatarMember(name: $0.name, avatarPath: $0.avatarPath, identity: $0.userID) }
         return real.isEmpty ? byName : .people(Array(real))
     }
 }

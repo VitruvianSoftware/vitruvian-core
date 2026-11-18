@@ -393,10 +393,11 @@ func (d *Deps) toRows(ctx context.Context, rows []store.InboxRow) ([]inboxRow, e
 	return out, nil
 }
 
-// needsMembersPreview is whether a row gets members_preview: a group (not one-to-one) with no picture of its own,
-// on the network or set on this Mac.
+// needsMembersPreview is whether a row gets members_preview: every one-to-one chat (its one other person, whose user
+// ID colours the chat's initials the same as everywhere else they appear), and a group with no picture of its own, on
+// the network or set on this Mac.
 func needsMembersPreview(r store.InboxRow) bool {
-	return !r.IsDirect && r.AvatarURI == "" && r.LocalAvatarURI == ""
+	return r.IsDirect || (r.AvatarURI == "" && r.LocalAvatarURI == "")
 }
 
 // accountNames is the name of each of network's accounts, by account ID, for an inbox row's account tag

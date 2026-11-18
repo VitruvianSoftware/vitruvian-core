@@ -135,7 +135,7 @@ public struct AttachmentCarouselOverlay: View {
             AvatarView(
                 path: item.senderAvatarPath,
                 initials: Self.initials(of: displaySender),
-                seed: displaySender
+                identity: AvatarColor.identity(id: item.sender, fallbackName: displaySender)
             )
             .frame(width: 28, height: 28)
 

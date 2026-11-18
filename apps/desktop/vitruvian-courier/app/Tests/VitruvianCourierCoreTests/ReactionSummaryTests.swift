@@ -72,7 +72,7 @@ final class ReactionSummaryTests: XCTestCase {
                         userID: "@kent:example.test",
                         avatarPath: "/tmp/kent.png",
                         initials: "KH",
-                        seed: "Kent Hua",
+                        seed: "@kent:example.test",
                         isMe: false
                     ),
                 ],
@@ -89,8 +89,8 @@ final class ReactionSummaryTests: XCTestCase {
             two.pillDisplay(),
             .avatars(
                 items: [
-                    ReactionAvatarItem(userID: "@kent:example.test", avatarPath: "", initials: "KH", seed: "Kent Hua", isMe: false),
-                    ReactionAvatarItem(userID: "@eddie:example.test", avatarPath: "", initials: "ES", seed: "Eddie Stecker", isMe: false),
+                    ReactionAvatarItem(userID: "@kent:example.test", avatarPath: "", initials: "KH", seed: "@kent:example.test", isMe: false),
+                    ReactionAvatarItem(userID: "@eddie:example.test", avatarPath: "", initials: "ES", seed: "@eddie:example.test", isMe: false),
                 ],
                 overflowText: nil
             )
@@ -102,8 +102,8 @@ final class ReactionSummaryTests: XCTestCase {
             three.pillDisplay(),
             .avatars(
                 items: [
-                    ReactionAvatarItem(userID: "@ann example:example.test", avatarPath: "", initials: "AE", seed: "Ann Example", isMe: false),
-                    ReactionAvatarItem(userID: "@bo:example.test", avatarPath: "", initials: "B", seed: "Bo", isMe: false),
+                    ReactionAvatarItem(userID: "@ann example:example.test", avatarPath: "", initials: "AE", seed: "@ann example:example.test", isMe: false),
+                    ReactionAvatarItem(userID: "@bo:example.test", avatarPath: "", initials: "B", seed: "@bo:example.test", isMe: false),
                     ReactionAvatarItem(userID: "@cy:example.test", avatarPath: "", initials: "C", seed: "@cy:example.test", isMe: false),
                 ],
                 overflowText: nil
@@ -341,10 +341,10 @@ final class ReactionSummaryTests: XCTestCase {
             XCTAssertEqual(items.count, 2)
             XCTAssertEqual(items[0].avatarPath, "")
             XCTAssertEqual(items[0].initials, "")
-            XCTAssertEqual(items[0].seed, AppearancePreferences.redactedText("Eddie Stecker", kind: .name))
+            XCTAssertEqual(items[0].seed, AppearancePreferences.redactedText(Timeline.meUserID, kind: .name))
             XCTAssertEqual(items[1].avatarPath, "")
             XCTAssertEqual(items[1].initials, "")
-            XCTAssertEqual(items[1].seed, AppearancePreferences.redactedText("Kent Hua", kind: .name))
+            XCTAssertEqual(items[1].seed, AppearancePreferences.redactedText("@kent:example.test", kind: .name))
         } else {
             XCTFail("Expected avatars display")
         }
@@ -388,12 +388,12 @@ final class ReactionSummaryTests: XCTestCase {
         let unredacted = message.senderAvatar(redacted: false)
         XCTAssertEqual(unredacted.path, "/tmp/kent.png")
         XCTAssertEqual(unredacted.initials, "KH")
-        XCTAssertEqual(unredacted.seed, "Kent Hua")
+        XCTAssertEqual(unredacted.seed, "@kent:example.test", "coloured by who they are, not what they are called")
 
         let redacted = message.senderAvatar(redacted: true)
         XCTAssertEqual(redacted.path, "")
         XCTAssertEqual(redacted.initials, "")
-        XCTAssertEqual(redacted.seed, AppearancePreferences.redactedText("Kent Hua", kind: .name))
+        XCTAssertEqual(redacted.seed, AppearancePreferences.redactedText("@kent:example.test", kind: .name))
 
         let emptyNameMessage = TimelineMessage(
             id: "$m-avatar-empty",

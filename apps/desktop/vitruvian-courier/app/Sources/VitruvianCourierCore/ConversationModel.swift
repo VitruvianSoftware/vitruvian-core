@@ -36,6 +36,9 @@ public struct EditGroupDraft: Equatable, Identifiable, Sendable {
     public var remoteTopic: String
     public var remoteAvatarPath: String
     public var localAvatarPath: String
+    /// The other person's user ID in a one-to-one chat ("" when unknown), for the avatar's colour.
+    public var directPeerID = ""
+    public var avatarIdentity: String { AvatarColor.identity(id: directPeerID.isEmpty ? roomID : directPeerID, fallbackName: name) }
 
     /// **For Everyone** is enabled only when at least one of `canSetName`, `canSetTopic`, or `canSetAvatar` is true.
     public var canEditForEveryone: Bool {
@@ -110,6 +113,7 @@ public struct EditGroupDraft: Equatable, Identifiable, Sendable {
             remoteAvatarPath: networkAvatarPath,
             localAvatarPath: info.localAvatarURI
         )
+        directPeerID = info.directPeerID
     }
 
     public mutating func selectScope(_ newScope: EditGroupScope) {
@@ -2610,6 +2614,7 @@ public final class ConversationModel: ObservableObject {
                 remoteAvatarPath: networkAvatarValue,
                 localAvatarPath: localAvatarValue
             )
+            activeEditGroupDraft?.directPeerID = row?.directPeerID ?? ""
         }
     }
 

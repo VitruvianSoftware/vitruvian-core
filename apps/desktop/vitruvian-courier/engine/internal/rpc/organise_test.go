@@ -915,3 +915,18 @@ func TestRoomSetReadAloudAndInboxWire(t *testing.T) {
 	c.fails(CodeInvalidParams, "room.setReadAloud", map[string]any{"room_ids": []string{w.room}})
 	c.fails(CodeNotFound, "room.setReadAloud", map[string]any{"room_ids": []string{"!nope:courier.local"}, "read_aloud": "never"})
 }
+
+// A one-to-one chat always gets members_preview (its other person's user ID colours its initials the same as
+// everywhere else they appear); a group gets it only while it has no picture of its own.
+func TestNeedsMembersPreview(t *testing.T) {
+	row := func(direct bool, avatar, localAvatar string) store.InboxRow {
+		var r store.InboxRow
+		r.IsDirect, r.AvatarURI, r.LocalAvatarURI = direct, avatar, localAvatar
+		return r
+	}
+	require.True(t, needsMembersPreview(row(true, "", "")), "one-to-one, no picture")
+	require.True(t, needsMembersPreview(row(true, "mxc://x/a", "")), "one-to-one, with a picture")
+	require.True(t, needsMembersPreview(row(false, "", "")), "a group with no picture")
+	require.False(t, needsMembersPreview(row(false, "mxc://x/a", "")), "a group with a network picture")
+	require.False(t, needsMembersPreview(row(false, "", "file:///a")), "a group with a local picture")
+}

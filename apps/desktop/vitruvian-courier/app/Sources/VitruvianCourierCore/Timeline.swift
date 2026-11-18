@@ -251,12 +251,10 @@ public struct ReactionChip: Equatable, Identifiable, Sendable {
         let shown = Array(reactors.prefix(limit))
         let items = shown.map { reactor in
             let rawSeed: String
-            if reactor.isMe {
-                rawSeed = Self.cleanedSelfRealName(reactor.name, userID: reactor.userID)
-                    ?? (reactor.userID.isEmpty ? "me" : reactor.userID)
-            } else {
-                rawSeed = reactor.name.isEmpty ? reactor.userID : reactor.name
-            }
+            // The colour comes from who they are (their ID), never from the name a reaction happened to carry.
+            rawSeed = reactor.isMe && reactor.userID.isEmpty
+                ? "me"
+                : AvatarColor.identity(id: reactor.userID, fallbackName: reactor.name)
             if redacted {
                 return ReactionAvatarItem(
                     userID: reactor.userID,
@@ -738,10 +736,14 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
         self.isDirect = isDirect
     }
 
-    /// Whether the row draws the other person's picture: on the first message of a run from one sender, in a group
-    /// and in a one-to-one chat alike (a run is `startsGroup`'s: same sender, under five minutes apart, no day or
-    /// "New" divider between). My own messages never draw one.
-    public var showsSenderAvatar: Bool { !mine && startsGroup }
+    /// Whether the row draws the other person's picture: in a group, on the first message of a run from one sender
+    /// (a run is `startsGroup`'s: same sender, under five minutes apart, no day or "New" divider between). Never in a
+    /// one-to-one chat, where the other person is the whole chat (as in Messages and Beeper), and never on my own.
+    public var showsSenderAvatar: Bool { showsAvatarColumn && startsGroup }
+
+    /// Whether the row keeps a column for the other person's picture, so a group's bubbles line up whether or not
+    /// this row draws one. A one-to-one chat keeps none: its bubbles start at the left margin.
+    public var showsAvatarColumn: Bool { !mine && !isDirect }
 
     /// Stickers render in a borderless container without the coloured text bubble background tint.
     public var suppressesBubbleBackground: Bool {
@@ -760,7 +762,7 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     /// Presentation values for the timeline sender avatar: blanks the photo and initials and pseudonymises the colour seed when redacted.
     public func senderAvatar(redacted: Bool = false) -> SenderAvatarDisplay {
         if redacted {
-            let rawSeed = senderName.isEmpty ? sender : senderName
+            let rawSeed = AvatarColor.identity(id: sender, fallbackName: senderName)
             return SenderAvatarDisplay(
                 path: "",
                 initials: "",
@@ -770,7 +772,7 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
         return SenderAvatarDisplay(
             path: senderAvatarPath,
             initials: InboxRow.initials(of: senderName),
-            seed: senderName
+            seed: AvatarColor.identity(id: sender, fallbackName: senderName)
         )
     }
 }

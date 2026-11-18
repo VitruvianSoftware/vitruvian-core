@@ -160,7 +160,7 @@ public struct MergedChatEditorSheet: View {
                                     AvatarView(
                                         path: row.avatarValue,
                                         initials: Self.initials(of: row.name),
-                                        seed: row.name
+                                        identity: row.avatarIdentity
                                     )
                                     .frame(width: 30, height: 30)
                                     NetworkBadge(network: row.network, name: networkName, size: 13)
