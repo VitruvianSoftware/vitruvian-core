@@ -362,6 +362,11 @@ rust_test(
     deps = [":vitruvian_courier_scripts_lib"],
 )
 
+# One unit, on purpose. The view tests were split into a unit of their own
+# for a day (#5048, reverted in #5059): this unit still took about 25 minutes
+# without them, because its time is the walk over the engine's ~8,900 cached
+# actions, and a courier change then claimed three of the five hosted Macs
+# (views, app, engine), with waits for a runner of up to 757 s.
 pipeline_unit(
     name = "vitruvian-courier-app-macos",
     persona = "frontend",
